@@ -24,7 +24,7 @@ services:
 
   # TradeTally Application
   app:
-    image: YOUR_DOCKERHUB_USERNAME/tradetally:latest  # Replace with your actual image
+    image: potentialmidas/tradetally:latest  # Replace with your actual image
     container_name: tradetally-app
     depends_on:
       postgres:
