@@ -1,0 +1,83 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: trader-vue-db
+    environment:
+      POSTGRES_USER: ${DB_USER:-trader}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-trader_password}
+      POSTGRES_DB: ${DB_NAME:-trader_vue}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/src/utils/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - trader-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-trader}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Application (Frontend + Backend)
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: trader-vue-app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Backend environment variables
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: ${PORT:-3000}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-trader}
+      DB_PASSWORD: ${DB_PASSWORD:-trader_password}
+      DB_NAME: ${DB_NAME:-trader_vue}
+      JWT_SECRET: ${JWT_SECRET:-your_jwt_secret_here}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      # Email configuration (optional)
+      EMAIL_HOST: ${EMAIL_HOST:-smtp.gmail.com}
+      EMAIL_PORT: ${EMAIL_PORT:-587}
+      EMAIL_USER: ${EMAIL_USER:-}
+      EMAIL_PASS: ${EMAIL_PASS:-}
+      EMAIL_FROM: ${EMAIL_FROM:-noreply@tradervue.com}
+      # Frontend API URL
+      VITE_API_URL: ${VITE_API_URL:-http://localhost/api}
+    ports:
+      - "80:80"
+      - "3000:3000"
+    volumes:
+      - ./backend/src/logs:/app/backend/src/logs
+      - ./backend/src/data:/app/backend/src/data
+    networks:
+      - trader-network
+    restart: unless-stopped
+
+  # Optional: Adminer for database management
+  adminer:
+    image: adminer:latest
+    container_name: trader-vue-adminer
+    depends_on:
+      - postgres
+    ports:
+      - "8080:8080"
+    networks:
+      - trader-network
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+    restart: unless-stopped
+
+networks:
+  trader-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
