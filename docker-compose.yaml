@@ -12,7 +12,6 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./backend/src/utils/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
-      - ./docker/init-db.sql:/docker-entrypoint-initdb.d/00-init.sql
     ports:
       - "5432:5432"
     networks:
