@@ -4,6 +4,7 @@
       <div class="flex justify-between h-16">
         <div class="flex">
           <router-link to="/" class="flex items-center px-2 py-2 text-xl font-bold text-primary-600">
+            <img src="/tradetally-logo.svg" alt="TradeTally" class="h-8 w-auto mr-2" />
             TradeTally
           </router-link>
           
