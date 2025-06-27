@@ -17,8 +17,17 @@ const PORT = process.env.PORT || 5001;
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100 // limit each IP to 100 requests per windowMs
+  max: 1000 // limit each IP to 1000 requests per windowMs
 });
+
+// Skip rate limiting for certain paths
+const skipRateLimit = (req, res, next) => {
+  // Skip rate limiting for import endpoints
+  if (req.path.includes('/import')) {
+    return next();
+  }
+  return limiter(req, res, next);
+};
 
 app.use(helmet());
 app.use(cors({
@@ -28,7 +37,7 @@ app.use(cors({
 app.use(morgan('combined'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use('/api', limiter);
+app.use('/api', skipRateLimit);
 
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
