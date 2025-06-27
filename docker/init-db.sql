@@ -1,9 +1,8 @@
--- Create database if it doesn't exist
-SELECT 'CREATE DATABASE tradetally'
-WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'tradetally')\gexec
-
--- Connect to the database
-\c tradetally;
-
--- Create schema (copy from backend/src/utils/schema.sql)
--- This will be executed when the container starts
+-- Check if database exists and only create if it doesn't
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT FROM pg_database WHERE datname = 'tradetally') THEN
+        PERFORM dblink_exec('dbname=postgres', 'CREATE DATABASE tradetally');
+    END IF;
+END
+$$;

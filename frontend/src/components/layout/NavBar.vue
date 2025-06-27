@@ -26,6 +26,17 @@
         </div>
 
         <div class="flex items-center space-x-4">
+          <a
+            href="https://www.paypal.com/donate/?business=EHMBRET4CNELL&no_recurring=0&currency_code=USD"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="flex items-center space-x-1 px-3 py-1 text-sm bg-primary-100 hover:bg-primary-200 text-primary-800 rounded-full transition-colors duration-200"
+            title="Support TradeTally development"
+          >
+            <span>☕</span>
+            <span class="hidden sm:inline">Buy me a coffee</span>
+          </a>
+          
           <button
             @click="toggleDarkMode"
             class="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"

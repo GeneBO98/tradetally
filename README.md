@@ -654,3 +654,5 @@ pm2 restart tradetally-backend
 ---
 
 **Note**: This README provides comprehensive setup instructions for TradeTally. Follow each section carefully and ensure all prerequisites are met before proceeding to the next step. For production deployments, pay special attention to the security and monitoring sections.
+
+Feel free to [throw me a couple of bucks](https://www.paypal.com/donate/?business=EHMBRET4CNELL&no_recurring=0&currency_code=USD) if you got some use out of this.
