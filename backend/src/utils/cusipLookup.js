@@ -193,7 +193,7 @@ class CusipLookup {
       // SEC EDGAR API - free, no API key required
       const response = await axios.get(`https://www.sec.gov/cgi-bin/browse-edgar?CIK=${cusip}&action=getcompany&output=json`, {
         headers: {
-          'User-Agent': 'TraderVue-Clone contact@example.com'
+          'User-Agent': 'TradeTally contact@tradetally.io'
         },
         timeout: 5000
       });

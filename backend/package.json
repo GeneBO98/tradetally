@@ -1,7 +1,7 @@
 {
-  "name": "trader-vue-backend",
+  "name": "tradetally-backend",
   "version": "1.0.0",
-  "description": "Backend API for TraderVue trade journaling platform",
+  "description": "Backend API for TradeTally trade journaling platform",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",

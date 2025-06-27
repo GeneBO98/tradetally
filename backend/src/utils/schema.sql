@@ -1,5 +1,5 @@
 -- Database should already be created
--- CREATE DATABASE tradervue_db;
+-- CREATE DATABASE tradetally_db;
 
 -- Users table
 CREATE TABLE IF NOT EXISTS users (

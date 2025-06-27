@@ -4,11 +4,11 @@ services:
   # PostgreSQL Database
   postgres:
     image: postgres:15-alpine
-    container_name: trader-vue-db
+    container_name: tradetally-db
     environment:
       POSTGRES_USER: ${DB_USER:-trader}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-trader_password}
-      POSTGRES_DB: ${DB_NAME:-trader_vue}
+      POSTGRES_DB: ${DB_NAME:-tradetally}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./backend/src/utils/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
@@ -18,7 +18,7 @@ services:
     networks:
       - trader-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-trader} -d ${DB_NAME:-trader_vue}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-trader} -d ${DB_NAME:-tradetally}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -28,7 +28,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: trader-vue-app
+    container_name: tradetally-app
     depends_on:
       postgres:
         condition: service_healthy
@@ -40,7 +40,7 @@ services:
       DB_PORT: 5432
       DB_USER: ${DB_USER:-trader}
       DB_PASSWORD: ${DB_PASSWORD:-trader_password}
-      DB_NAME: ${DB_NAME:-trader_vue}
+      DB_NAME: ${DB_NAME:-tradetally}
       JWT_SECRET: ${JWT_SECRET:-your_jwt_secret_here}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
       # Email configuration (optional)
@@ -48,7 +48,7 @@ services:
       EMAIL_PORT: ${EMAIL_PORT:-587}
       EMAIL_USER: ${EMAIL_USER:-}
       EMAIL_PASS: ${EMAIL_PASS:-}
-      EMAIL_FROM: ${EMAIL_FROM:-noreply@tradervue.com}
+      EMAIL_FROM: ${EMAIL_FROM:-noreply@tradetally.io}
       # Frontend API URL
       VITE_API_URL: ${VITE_API_URL:-http://localhost/api}
       # External API Keys
@@ -67,7 +67,7 @@ services:
   # Optional: Adminer for database management
   adminer:
     image: adminer:latest
-    container_name: trader-vue-adminer
+    container_name: tradetally-adminer
     depends_on:
       - postgres
     ports:

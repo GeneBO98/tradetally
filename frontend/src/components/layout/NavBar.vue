@@ -4,7 +4,7 @@
       <div class="flex justify-between h-16">
         <div class="flex">
           <router-link to="/" class="flex items-center px-2 py-2 text-xl font-bold text-primary-600">
-            TraderVue
+            TradeTally
           </router-link>
           
           <div v-if="authStore.isAuthenticated" class="hidden sm:ml-6 sm:flex sm:space-x-8">
