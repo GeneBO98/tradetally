@@ -51,6 +51,9 @@ services:
       EMAIL_FROM: ${EMAIL_FROM:-noreply@tradervue.com}
       # Frontend API URL
       VITE_API_URL: ${VITE_API_URL:-http://localhost/api}
+      # External API Keys
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      OPENFIGI_API_KEY: ${OPENFIGI_API_KEY:-}
     ports:
       - "80:80"
       - "3000:3000"
