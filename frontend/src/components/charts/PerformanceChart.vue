@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div class="w-full h-full">
     <canvas ref="chartCanvas"></canvas>
   </div>
 </template>
@@ -129,7 +129,13 @@ watch(() => document.documentElement.classList.contains('dark'), () => {
 </script>
 
 <style scoped>
+div {
+  position: relative;
+}
+
 canvas {
-  max-height: 300px;
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
 }
 </style>
