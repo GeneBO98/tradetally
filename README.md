@@ -36,7 +36,14 @@ Before setting up TradeTally, ensure you have the following installed:
 - Windows (10+)
 - Linux (Ubuntu 18.04+, CentOS 7+)
 
-## 🛠️ Installation Guide
+## Docker
+
+This image is available at https://hub.docker.com/r/potentialmidas/tradetally
+
+You can read the deployment.md file for more details.
+
+
+## 🛠️ Installation Guide (From Source)
 
 ### Step 1: Install Node.js and npm
 

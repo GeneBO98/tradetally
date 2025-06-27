@@ -1,0 +1,88 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: tradetally-db
+    environment:
+      POSTGRES_USER: ${DB_USER:-trader}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-trader_password}
+      POSTGRES_DB: ${DB_NAME:-tradetally}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - tradetally-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-trader} -d ${DB_NAME:-tradetally}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # TradeTally Application
+  app:
+    image: YOUR_DOCKERHUB_USERNAME/tradetally:latest  # Replace with your actual image
+    container_name: tradetally-app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Database Configuration
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-trader}
+      DB_PASSWORD: ${DB_PASSWORD:-trader_password}
+      DB_NAME: ${DB_NAME:-tradetally}
+      
+      # JWT Configuration
+      JWT_SECRET: ${JWT_SECRET:-change_this_in_production_please}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      
+      # Email Configuration (Optional)
+      EMAIL_HOST: ${EMAIL_HOST:-smtp.gmail.com}
+      EMAIL_PORT: ${EMAIL_PORT:-587}
+      EMAIL_USER: ${EMAIL_USER:-}
+      EMAIL_PASS: ${EMAIL_PASS:-}
+      EMAIL_FROM: ${EMAIL_FROM:-noreply@tradetally.io}
+      
+      # Application Configuration
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: ${PORT:-3000}
+      
+      # API Keys for CUSIP Resolution
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      OPENFIGI_API_KEY: ${OPENFIGI_API_KEY:-}
+    ports:
+      - "80:80"
+      - "3000:3000"
+    volumes:
+      - ./logs:/app/backend/src/logs
+      - ./data:/app/backend/src/data
+    networks:
+      - tradetally-network
+    restart: unless-stopped
+
+  # Database Administration (Optional)
+  adminer:
+    image: adminer:latest
+    container_name: tradetally-adminer
+    depends_on:
+      - postgres
+    ports:
+      - "8080:8080"
+    networks:
+      - tradetally-network
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+    restart: unless-stopped
+
+networks:
+  tradetally-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
