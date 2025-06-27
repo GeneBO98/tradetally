@@ -122,6 +122,39 @@
         </div>
       </div>
 
+      <!-- New Chart Section -->
+      <div class="grid grid-cols-1 gap-8 lg:grid-cols-2 xl:grid-cols-3">
+        <!-- Trade Distribution by Price -->
+        <div class="card">
+          <div class="card-body">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Trade Distribution by Price</h3>
+            <div class="h-80 relative">
+              <canvas ref="tradeDistributionChart" class="absolute inset-0 w-full h-full"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Performance by Price -->
+        <div class="card">
+          <div class="card-body">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Performance by Price</h3>
+            <div class="h-80 relative">
+              <canvas ref="performanceByPriceChart" class="absolute inset-0 w-full h-full"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Performance by Volume Traded -->
+        <div class="card">
+          <div class="card-body">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Performance by Volume Traded</h3>
+            <div class="h-80 relative">
+              <canvas ref="performanceByVolumeChart" class="absolute inset-0 w-full h-full"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Detailed Stats -->
       <div class="grid grid-cols-1 gap-8 lg:grid-cols-2">
         <!-- Win/Loss Breakdown -->
@@ -269,9 +302,10 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import api from '@/services/api'
 import PerformanceChart from '@/components/charts/PerformanceChart.vue'
+import Chart from 'chart.js/auto'
 
 const loading = ref(true)
 const performancePeriod = ref('daily')
@@ -300,6 +334,21 @@ const performanceData = ref([])
 const symbolStats = ref([])
 const tagStats = ref([])
 
+// Chart refs
+const tradeDistributionChart = ref(null)
+const performanceByPriceChart = ref(null)
+const performanceByVolumeChart = ref(null)
+
+// Chart instances
+let tradeDistributionChartInstance = null
+let performanceByPriceChartInstance = null
+let performanceByVolumeChartInstance = null
+
+// Chart data
+const tradeDistributionData = ref([])
+const performanceByPriceData = ref([])
+const performanceByVolumeData = ref([])
+
 function formatNumber(num) {
   return new Intl.NumberFormat('en-US', {
     minimumFractionDigits: 2,
@@ -315,6 +364,183 @@ function getWinPercentage() {
 function getLossPercentage() {
   if (overview.value.total_trades === 0) return 0
   return ((overview.value.losing_trades / overview.value.total_trades) * 100).toFixed(1)
+}
+
+// Chart creation functions
+function createTradeDistributionChart() {
+  if (!tradeDistributionChart.value) {
+    console.error('Trade distribution chart canvas not found')
+    return
+  }
+
+  if (tradeDistributionChartInstance) {
+    tradeDistributionChartInstance.destroy()
+  }
+
+  const ctx = tradeDistributionChart.value.getContext('2d')
+  const labels = ['< $2', '$2-4.99', '$5-9.99', '$10-19.99', '$20-49.99', '$50-99.99', '$100-199.99', '$200+']
+  
+  console.log('Creating trade distribution chart with data:', tradeDistributionData.value)
+  
+  tradeDistributionChartInstance = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Number of Trades',
+        data: tradeDistributionData.value,
+        backgroundColor: '#F0812A',
+        borderColor: '#e46a16',
+        borderWidth: 1
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      indexAxis: 'y',
+      scales: {
+        x: {
+          beginAtZero: true,
+          title: {
+            display: true,
+            text: 'Number of Trades'
+          }
+        },
+        y: {
+          title: {
+            display: true,
+            text: 'Price Range'
+          }
+        }
+      }
+    }
+  })
+}
+
+function createPerformanceByPriceChart() {
+  if (performanceByPriceChartInstance) {
+    performanceByPriceChartInstance.destroy()
+  }
+
+  const ctx = performanceByPriceChart.value.getContext('2d')
+  const labels = ['< $2', '$2-4.99', '$5-9.99', '$10-19.99', '$20-49.99', '$50-99.99', '$100-199.99', '$200+']
+  
+  performanceByPriceChartInstance = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Total P&L',
+        data: performanceByPriceData.value,
+        backgroundColor: performanceByPriceData.value.map(val => val >= 0 ? '#10b981' : '#ef4444'),
+        borderWidth: 1
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: {
+          title: {
+            display: true,
+            text: 'Price Range'
+          }
+        },
+        y: {
+          title: {
+            display: true,
+            text: 'Total P&L ($)'
+          }
+        }
+      },
+      plugins: {
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              return `Total P&L: $${context.parsed.y.toFixed(2)}`
+            }
+          }
+        }
+      }
+    }
+  })
+}
+
+function createPerformanceByVolumeChart() {
+  if (performanceByVolumeChartInstance) {
+    performanceByVolumeChartInstance.destroy()
+  }
+
+  const ctx = performanceByVolumeChart.value.getContext('2d')
+  const labels = ['2-4', '5-9', '10-19', '20-49', '50-99', '100-500', '500-999', '1K-2K', '2K-3K', '3K-5K', '5K-10K', '10K-20K', '20K+']
+  
+  performanceByVolumeChartInstance = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Total P&L',
+        data: performanceByVolumeData.value,
+        backgroundColor: performanceByVolumeData.value.map(val => val >= 0 ? '#10b981' : '#ef4444'),
+        borderWidth: 1
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: {
+          title: {
+            display: true,
+            text: 'Volume Range (Shares)'
+          }
+        },
+        y: {
+          title: {
+            display: true,
+            text: 'Total P&L ($)'
+          }
+        }
+      },
+      plugins: {
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              return `Total P&L: $${context.parsed.y.toFixed(2)}`
+            }
+          }
+        }
+      }
+    }
+  })
+}
+
+async function fetchChartData() {
+  try {
+    const params = {}
+    if (filters.value.startDate) params.startDate = filters.value.startDate
+    if (filters.value.endDate) params.endDate = filters.value.endDate
+
+    const response = await api.get('/analytics/charts', { params })
+    
+    console.log('Chart data received:', response.data)
+    
+    tradeDistributionData.value = response.data.tradeDistribution
+    performanceByPriceData.value = response.data.performanceByPrice
+    performanceByVolumeData.value = response.data.performanceByVolume
+
+    // Create charts after data is loaded and DOM is updated
+    await nextTick()
+    
+    // Small delay to ensure canvases are ready
+    setTimeout(() => {
+      createTradeDistributionChart()
+      createPerformanceByPriceChart()
+      createPerformanceByVolumeChart()
+    }, 100)
+  } catch (error) {
+    console.error('Error fetching chart data:', error)
+  }
 }
 
 async function fetchOverview() {
@@ -371,11 +597,16 @@ async function fetchTagStats() {
 
 async function applyFilters() {
   loading.value = true
+  
+  // Save filters to localStorage
+  saveFilters()
+  
   await Promise.all([
     fetchOverview(),
     fetchPerformance(),
     fetchSymbolStats(),
-    fetchTagStats()
+    fetchTagStats(),
+    fetchChartData()
   ])
   loading.value = false
 }
@@ -383,17 +614,50 @@ async function applyFilters() {
 async function loadData() {
   loading.value = true
   
-  // Set default date range (last 30 days)
+  // Load saved filters from localStorage
+  const savedFilters = localStorage.getItem('analyticsFilters')
+  if (savedFilters) {
+    try {
+      const parsed = JSON.parse(savedFilters)
+      filters.value = parsed
+    } catch (e) {
+      // If parsing fails, use default date range
+      setDefaultDateRange()
+    }
+  } else {
+    // Set default date range (last 30 days)
+    setDefaultDateRange()
+  }
+
+  await applyFilters()
+}
+
+function setDefaultDateRange() {
   const today = new Date()
   const thirtyDaysAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000)
   
   filters.value.endDate = today.toISOString().split('T')[0]
   filters.value.startDate = thirtyDaysAgo.toISOString().split('T')[0]
+}
 
-  await applyFilters()
+function saveFilters() {
+  localStorage.setItem('analyticsFilters', JSON.stringify(filters.value))
 }
 
 onMounted(() => {
   loadData()
+})
+
+// Clean up charts on unmount
+onUnmounted(() => {
+  if (tradeDistributionChartInstance) {
+    tradeDistributionChartInstance.destroy()
+  }
+  if (performanceByPriceChartInstance) {
+    performanceByPriceChartInstance.destroy()
+  }
+  if (performanceByVolumeChartInstance) {
+    performanceByVolumeChartInstance.destroy()
+  }
 })
 </script>

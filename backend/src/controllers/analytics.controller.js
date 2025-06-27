@@ -249,6 +249,177 @@ const analyticsController = {
     } catch (error) {
       next(error);
     }
+  },
+
+  async getChartData(req, res, next) {
+    try {
+      const { startDate, endDate } = req.query;
+      
+      let dateFilter = '';
+      const params = [req.user.id];
+      
+      if (startDate) {
+        dateFilter += ' AND trade_date >= $2';
+        params.push(startDate);
+      }
+      
+      if (endDate) {
+        dateFilter += ` AND trade_date <= $${params.length + 1}`;
+        params.push(endDate);
+      }
+
+      // Trade Distribution by Price
+      const tradeDistributionQuery = `
+        WITH price_ranges AS (
+          SELECT 
+            CASE 
+              WHEN entry_price < 2 THEN '< $2'
+              WHEN entry_price < 5 THEN '$2-4.99'
+              WHEN entry_price < 10 THEN '$5-9.99'
+              WHEN entry_price < 20 THEN '$10-19.99'
+              WHEN entry_price < 50 THEN '$20-49.99'
+              WHEN entry_price < 100 THEN '$50-99.99'
+              WHEN entry_price < 200 THEN '$100-199.99'
+              ELSE '$200+'
+            END as price_range,
+            CASE 
+              WHEN entry_price < 2 THEN 1
+              WHEN entry_price < 5 THEN 2
+              WHEN entry_price < 10 THEN 3
+              WHEN entry_price < 20 THEN 4
+              WHEN entry_price < 50 THEN 5
+              WHEN entry_price < 100 THEN 6
+              WHEN entry_price < 200 THEN 7
+              ELSE 8
+            END as range_order
+          FROM trades
+          WHERE user_id = $1 ${dateFilter}
+        )
+        SELECT price_range, COUNT(*) as trade_count
+        FROM price_ranges
+        GROUP BY price_range, range_order
+        ORDER BY range_order
+      `;
+
+      // Performance by Price
+      const performanceByPriceQuery = `
+        WITH price_ranges AS (
+          SELECT 
+            CASE 
+              WHEN entry_price < 2 THEN '< $2'
+              WHEN entry_price < 5 THEN '$2-4.99'
+              WHEN entry_price < 10 THEN '$5-9.99'
+              WHEN entry_price < 20 THEN '$10-19.99'
+              WHEN entry_price < 50 THEN '$20-49.99'
+              WHEN entry_price < 100 THEN '$50-99.99'
+              WHEN entry_price < 200 THEN '$100-199.99'
+              ELSE '$200+'
+            END as price_range,
+            CASE 
+              WHEN entry_price < 2 THEN 1
+              WHEN entry_price < 5 THEN 2
+              WHEN entry_price < 10 THEN 3
+              WHEN entry_price < 20 THEN 4
+              WHEN entry_price < 50 THEN 5
+              WHEN entry_price < 100 THEN 6
+              WHEN entry_price < 200 THEN 7
+              ELSE 8
+            END as range_order,
+            pnl
+          FROM trades
+          WHERE user_id = $1 ${dateFilter}
+        )
+        SELECT price_range, COALESCE(SUM(pnl), 0) as total_pnl
+        FROM price_ranges
+        GROUP BY price_range, range_order
+        ORDER BY range_order
+      `;
+
+      // Performance by Volume
+      const performanceByVolumeQuery = `
+        WITH volume_ranges AS (
+          SELECT 
+            CASE 
+              WHEN quantity BETWEEN 2 AND 4 THEN '2-4'
+              WHEN quantity BETWEEN 5 AND 9 THEN '5-9'
+              WHEN quantity BETWEEN 10 AND 19 THEN '10-19'
+              WHEN quantity BETWEEN 20 AND 49 THEN '20-49'
+              WHEN quantity BETWEEN 50 AND 99 THEN '50-99'
+              WHEN quantity BETWEEN 100 AND 499 THEN '100-500'
+              WHEN quantity BETWEEN 500 AND 999 THEN '500-999'
+              WHEN quantity BETWEEN 1000 AND 1999 THEN '1K-2K'
+              WHEN quantity BETWEEN 2000 AND 2999 THEN '2K-3K'
+              WHEN quantity BETWEEN 3000 AND 4999 THEN '3K-5K'
+              WHEN quantity BETWEEN 5000 AND 9999 THEN '5K-10K'
+              WHEN quantity BETWEEN 10000 AND 19999 THEN '10K-20K'
+              WHEN quantity >= 20000 THEN '20K+'
+              ELSE 'Other'
+            END as volume_range,
+            CASE 
+              WHEN quantity BETWEEN 2 AND 4 THEN 1
+              WHEN quantity BETWEEN 5 AND 9 THEN 2
+              WHEN quantity BETWEEN 10 AND 19 THEN 3
+              WHEN quantity BETWEEN 20 AND 49 THEN 4
+              WHEN quantity BETWEEN 50 AND 99 THEN 5
+              WHEN quantity BETWEEN 100 AND 499 THEN 6
+              WHEN quantity BETWEEN 500 AND 999 THEN 7
+              WHEN quantity BETWEEN 1000 AND 1999 THEN 8
+              WHEN quantity BETWEEN 2000 AND 2999 THEN 9
+              WHEN quantity BETWEEN 3000 AND 4999 THEN 10
+              WHEN quantity BETWEEN 5000 AND 9999 THEN 11
+              WHEN quantity BETWEEN 10000 AND 19999 THEN 12
+              WHEN quantity >= 20000 THEN 13
+              ELSE 14
+            END as range_order,
+            pnl
+          FROM trades
+          WHERE user_id = $1 ${dateFilter}
+        )
+        SELECT volume_range, COALESCE(SUM(pnl), 0) as total_pnl
+        FROM volume_ranges
+        GROUP BY volume_range, range_order
+        ORDER BY range_order
+      `;
+
+      const [tradeDistResult, perfByPriceResult, perfByVolumeResult] = await Promise.all([
+        db.query(tradeDistributionQuery, params),
+        db.query(performanceByPriceQuery, params),
+        db.query(performanceByVolumeQuery, params)
+      ]);
+
+      console.log('Chart data query results:', {
+        tradeDistribution: tradeDistResult.rows,
+        performanceByPrice: perfByPriceResult.rows,
+        performanceByVolume: perfByVolumeResult.rows
+      });
+
+      // Process data into arrays matching the chart labels
+      const priceLabels = ['< $2', '$2-4.99', '$5-9.99', '$10-19.99', '$20-49.99', '$50-99.99', '$100-199.99', '$200+'];
+      const volumeLabels = ['2-4', '5-9', '10-19', '20-49', '50-99', '100-500', '500-999', '1K-2K', '2K-3K', '3K-5K', '5K-10K', '10K-20K', '20K+'];
+
+      const tradeDistribution = priceLabels.map(label => {
+        const found = tradeDistResult.rows.find(row => row.price_range === label);
+        return found ? parseInt(found.trade_count) : 0;
+      });
+
+      const performanceByPrice = priceLabels.map(label => {
+        const found = perfByPriceResult.rows.find(row => row.price_range === label);
+        return found ? parseFloat(found.total_pnl) : 0;
+      });
+
+      const performanceByVolume = volumeLabels.map(label => {
+        const found = perfByVolumeResult.rows.find(row => row.volume_range === label);
+        return found ? parseFloat(found.total_pnl) : 0;
+      });
+
+      res.json({
+        tradeDistribution,
+        performanceByPrice,
+        performanceByVolume
+      });
+    } catch (error) {
+      next(error);
+    }
   }
 };
 
