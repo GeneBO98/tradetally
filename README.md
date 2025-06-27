@@ -1,6 +1,13 @@
 # TradeTally - Trading Journal & Analytics Platform
+## Try the DEMO
+Visit [TradeTally](https://tradetally.io)
 
 A comprehensive trading journal and analytics platform built with Vue.js frontend and Node.js backend. Track your trades, analyze performance, and gain insights into your trading patterns across multiple brokers.
+
+Login with:
+
+Username: demo@example.com
+Password: DemoUser25
 
 ## 🚀 Features
 
