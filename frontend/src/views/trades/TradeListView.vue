@@ -1,0 +1,272 @@
+<template>
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="sm:flex sm:items-center">
+      <div class="sm:flex-auto">
+        <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Trades</h1>
+        <p class="mt-2 text-sm text-gray-700 dark:text-gray-300">
+          A list of all your trades including their details and performance.
+        </p>
+      </div>
+      <div class="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
+        <router-link to="/trades/new" class="btn-primary">
+          Add trade
+        </router-link>
+      </div>
+    </div>
+
+    <div class="mt-8 card">
+      <div class="card-body">
+        <TradeFilters @filter="handleFilter" />
+      </div>
+    </div>
+
+    <div class="mt-8">
+      <div v-if="tradesStore.loading" class="flex justify-center py-12">
+        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+      </div>
+
+      <div v-else-if="tradesStore.trades.length === 0" class="text-center py-12">
+        <DocumentTextIcon class="mx-auto h-12 w-12 text-gray-400" />
+        <h3 class="mt-2 text-sm font-medium text-gray-900 dark:text-white">No trades</h3>
+        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+          Get started by creating a new trade.
+        </p>
+        <div class="mt-6">
+          <router-link to="/trades/new" class="btn-primary">
+            Add trade
+          </router-link>
+        </div>
+      </div>
+
+      <div v-else class="overflow-hidden shadow ring-1 ring-black ring-opacity-5 md:rounded-lg">
+        <table class="min-w-full divide-y divide-gray-300 dark:divide-gray-700">
+          <thead class="bg-gray-50 dark:bg-gray-800">
+            <tr>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                Symbol
+              </th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                Date
+              </th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                Side
+              </th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                Entry
+              </th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                Exit
+              </th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                P&L
+              </th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                Status
+              </th>
+              <th class="relative px-6 py-3">
+                <span class="sr-only">Actions</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody class="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
+            <tr v-for="trade in tradesStore.trades" :key="trade.id">
+              <td class="px-6 py-4 whitespace-nowrap">
+                <div class="text-sm font-medium text-gray-900 dark:text-white">
+                  {{ trade.symbol }}
+                </div>
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap">
+                <div class="text-sm text-gray-900 dark:text-white">
+                  {{ formatDate(trade.trade_date) }}
+                </div>
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap">
+                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
+                  :class="[
+                    trade.side === 'long' 
+                      ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
+                      : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
+                  ]">
+                  {{ trade.side }}
+                </span>
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                ${{ formatNumber(trade.entry_price) }}
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                {{ trade.exit_price ? `$${formatNumber(trade.exit_price)}` : '-' }}
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap">
+                <div class="text-sm font-medium" :class="[
+                  trade.pnl >= 0 ? 'text-green-600' : 'text-red-600'
+                ]">
+                  {{ trade.pnl ? `$${formatNumber(trade.pnl)}` : '-' }}
+                </div>
+                <div v-if="trade.pnl_percent" class="text-xs text-gray-500 dark:text-gray-400">
+                  {{ trade.pnl_percent > 0 ? '+' : '' }}{{ formatNumber(trade.pnl_percent) }}%
+                </div>
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap">
+                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
+                  :class="[
+                    trade.exit_price 
+                      ? 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
+                      : 'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400'
+                  ]">
+                  {{ trade.exit_price ? 'Closed' : 'Open' }}
+                </span>
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                <router-link
+                  :to="`/trades/${trade.id}`"
+                  class="text-primary-600 hover:text-primary-900 dark:hover:text-primary-400"
+                >
+                  View
+                </router-link>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        
+        <!-- Pagination -->
+        <div v-if="tradesStore.pagination.totalPages > 1" class="bg-white dark:bg-gray-900 px-4 py-3 flex items-center justify-between border-t border-gray-200 dark:border-gray-700 sm:px-6">
+          <div class="flex-1 flex justify-between sm:hidden">
+            <button 
+              @click="prevPage"
+              :disabled="tradesStore.pagination.page === 1"
+              class="relative inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 text-sm font-medium rounded-md text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Previous
+            </button>
+            <button 
+              @click="nextPage"
+              :disabled="tradesStore.pagination.page === tradesStore.pagination.totalPages"
+              class="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 text-sm font-medium rounded-md text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Next
+            </button>
+          </div>
+          <div class="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+            <div>
+              <p class="text-sm text-gray-700 dark:text-gray-300">
+                Showing
+                <span class="font-medium">{{ (tradesStore.pagination.page - 1) * tradesStore.pagination.limit + 1 }}</span>
+                to
+                <span class="font-medium">{{ Math.min(tradesStore.pagination.page * tradesStore.pagination.limit, tradesStore.pagination.total) }}</span>
+                of
+                <span class="font-medium">{{ tradesStore.pagination.total }}</span>
+                results
+              </p>
+            </div>
+            <div>
+              <nav class="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                <button 
+                  @click="prevPage"
+                  :disabled="tradesStore.pagination.page === 1"
+                  class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm font-medium text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <span class="sr-only">Previous</span>
+                  <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" />
+                  </svg>
+                </button>
+                
+                <button
+                  v-for="page in visiblePages"
+                  :key="page"
+                  @click="goToPage(page)"
+                  :class="[
+                    page === tradesStore.pagination.page
+                      ? 'z-10 bg-primary-50 dark:bg-primary-900/20 border-primary-500 text-primary-600 dark:text-primary-400'
+                      : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700',
+                    'relative inline-flex items-center px-4 py-2 border text-sm font-medium'
+                  ]"
+                >
+                  {{ page }}
+                </button>
+                
+                <button 
+                  @click="nextPage"
+                  :disabled="tradesStore.pagination.page === tradesStore.pagination.totalPages"
+                  class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm font-medium text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <span class="sr-only">Next</span>
+                  <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" />
+                  </svg>
+                </button>
+              </nav>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { onMounted, computed, watch } from 'vue'
+import { useTradesStore } from '@/stores/trades'
+import { format } from 'date-fns'
+import { DocumentTextIcon } from '@heroicons/vue/24/outline'
+import TradeFilters from '@/components/trades/TradeFilters.vue'
+
+const tradesStore = useTradesStore()
+
+// Pagination computed properties
+const visiblePages = computed(() => {
+  const current = tradesStore.pagination.page
+  const total = tradesStore.pagination.totalPages
+  const pages = []
+  
+  // Show 5 pages around current page
+  const start = Math.max(1, current - 2)
+  const end = Math.min(total, current + 2)
+  
+  for (let i = start; i <= end; i++) {
+    pages.push(i)
+  }
+  
+  return pages
+})
+
+// Watch for pagination changes and refetch
+watch(
+  () => tradesStore.pagination.page,
+  () => {
+    tradesStore.fetchTrades()
+  }
+)
+
+function formatNumber(num) {
+  return new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(num || 0)
+}
+
+function formatDate(date) {
+  return format(new Date(date), 'MMM dd, yyyy')
+}
+
+function handleFilter(filters) {
+  tradesStore.setFilters(filters)
+  tradesStore.fetchTrades()
+}
+
+function goToPage(page) {
+  tradesStore.setPage(page)
+}
+
+function nextPage() {
+  tradesStore.nextPage()
+}
+
+function prevPage() {
+  tradesStore.prevPage()
+}
+
+onMounted(() => {
+  tradesStore.fetchTrades()
+})
+</script>
