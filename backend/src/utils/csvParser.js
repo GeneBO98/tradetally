@@ -274,24 +274,52 @@ async function parseLightspeedTransactions(records) {
     }
   });
   
-  // Use cache-only CUSIP lookup during import to prevent hanging
-  // Unresolved CUSIPs can be looked up after import via API
+  // Batch lookup CUSIPs with API calls
   let cusipToTickerMap = {};
   if (cusipsToResolve.size > 0) {
-    console.log(`Found ${cusipsToResolve.size} unique CUSIPs, checking cache only during import`);
+    console.log(`Found ${cusipsToResolve.size} unique CUSIPs to resolve`);
     
-    // Check cache only (no API calls during import)
+    // First check cache
+    const uncachedCusips = [];
     cusipsToResolve.forEach(cusip => {
       const cleanCusip = cusip.replace(/\s/g, '').toUpperCase();
       if (cusipLookup.cache[cleanCusip]) {
         cusipToTickerMap[cleanCusip] = cusipLookup.cache[cleanCusip];
         console.log(`CUSIP ${cleanCusip} found in cache: ${cusipLookup.cache[cleanCusip]}`);
       } else {
-        console.log(`CUSIP ${cleanCusip} not found in cache - can be resolved after import`);
+        uncachedCusips.push(cleanCusip);
       }
     });
     
-    console.log(`Resolved ${Object.keys(cusipToTickerMap).length} of ${cusipsToResolve.size} CUSIPs from cache`);
+    // Lookup uncached CUSIPs with rate limiting
+    if (uncachedCusips.length > 0) {
+      console.log(`Looking up ${uncachedCusips.length} uncached CUSIPs via API`);
+      const batchSize = 5; // Process 5 at a time to avoid overwhelming APIs
+      
+      for (let i = 0; i < uncachedCusips.length; i += batchSize) {
+        const batch = uncachedCusips.slice(i, i + batchSize);
+        const lookupPromises = batch.map(async cusip => {
+          try {
+            const ticker = await cusipLookup.lookupTicker(cusip);
+            if (ticker) {
+              cusipToTickerMap[cusip] = ticker;
+              console.log(`API resolved CUSIP ${cusip} to ticker ${ticker}`);
+            }
+          } catch (error) {
+            console.warn(`Failed to lookup CUSIP ${cusip}: ${error.message}`);
+          }
+        });
+        
+        await Promise.all(lookupPromises);
+        
+        // Small delay between batches to avoid rate limits
+        if (i + batchSize < uncachedCusips.length) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+    }
+    
+    console.log(`Resolved ${Object.keys(cusipToTickerMap).length} of ${cusipsToResolve.size} CUSIPs total`);
   }
   
   // Parse all transactions
