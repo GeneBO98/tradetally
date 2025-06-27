@@ -120,9 +120,19 @@ class User {
     const values = [];
     let paramCount = 1;
 
+    // Map camelCase to snake_case for database columns
+    const columnMapping = {
+      emailNotifications: 'email_notifications',
+      publicProfile: 'public_profile',
+      defaultTags: 'default_tags',
+      importSettings: 'import_settings',
+      theme: 'theme'
+    };
+
     Object.entries(settings).forEach(([key, value]) => {
       if (key !== 'user_id' && key !== 'id') {
-        fields.push(`${key} = $${paramCount}`);
+        const dbColumn = columnMapping[key] || key;
+        fields.push(`${dbColumn} = $${paramCount}`);
         values.push(value);
         paramCount++;
       }
