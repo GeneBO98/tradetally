@@ -12,12 +12,13 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./backend/src/utils/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./docker/init-db.sql:/docker-entrypoint-initdb.d/00-init.sql
     ports:
       - "5432:5432"
     networks:
       - trader-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-trader}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-trader} -d ${DB_NAME:-trader_vue}"]
       interval: 10s
       timeout: 5s
       retries: 5
