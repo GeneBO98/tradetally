@@ -28,7 +28,7 @@
             <div class="flex justify-center">
               <ChartBarIcon class="h-12 w-12 text-primary-600" />
             </div>
-            <h3 class="mt-4 text-lg font-medium text-gray-900 dark:text-white">Advanced Analytics</h3>
+            <h2 class="mt-4 text-lg font-medium text-gray-900 dark:text-white">Advanced Analytics</h2>
             <p class="mt-2 text-gray-500 dark:text-gray-400">
               Visualize your trading performance with comprehensive charts and statistics.
             </p>
@@ -38,7 +38,7 @@
             <div class="flex justify-center">
               <DocumentTextIcon class="h-12 w-12 text-primary-600" />
             </div>
-            <h3 class="mt-4 text-lg font-medium text-gray-900 dark:text-white">Trade Journal</h3>
+            <h2 class="mt-4 text-lg font-medium text-gray-900 dark:text-white">Trade Journal</h2>
             <p class="mt-2 text-gray-500 dark:text-gray-400">
               Keep detailed records of all your trades with notes, tags, and attachments.
             </p>
@@ -48,7 +48,7 @@
             <div class="flex justify-center">
               <ArrowUpTrayIcon class="h-12 w-12 text-primary-600" />
             </div>
-            <h3 class="mt-4 text-lg font-medium text-gray-900 dark:text-white">Easy Import</h3>
+            <h2 class="mt-4 text-lg font-medium text-gray-900 dark:text-white">Easy Import</h2>
             <p class="mt-2 text-gray-500 dark:text-gray-400">
               Import trades from major brokers with CSV support for seamless integration.
             </p>

@@ -3,7 +3,7 @@ const db = require('../config/database');
 class Trade {
   static async create(userId, tradeData) {
     const {
-      symbol, tradeDate, entryTime, exitTime, entryPrice, exitPrice,
+      symbol, entryTime, exitTime, entryPrice, exitPrice,
       quantity, side, commission, fees, notes, isPublic, broker,
       strategy, setup, tags, pnl: providedPnL, pnlPercent: providedPnLPercent
     } = tradeData;
@@ -11,6 +11,9 @@ class Trade {
     // Use provided P&L if available (e.g., from Schwab), otherwise calculate it
     const pnl = providedPnL !== undefined ? providedPnL : this.calculatePnL(entryPrice, exitPrice, quantity, side, commission, fees);
     const pnlPercent = providedPnLPercent !== undefined ? providedPnLPercent : this.calculatePnLPercent(entryPrice, exitPrice, side);
+
+    // Use exit date as trade date if available, otherwise use entry date
+    const finalTradeDate = exitTime ? new Date(exitTime).toISOString().split('T')[0] : new Date(entryTime).toISOString().split('T')[0];
 
     const query = `
       INSERT INTO trades (
@@ -23,7 +26,7 @@ class Trade {
     `;
 
     const values = [
-      userId, symbol.toUpperCase(), tradeDate, entryTime, exitTime, entryPrice, exitPrice,
+      userId, symbol.toUpperCase(), finalTradeDate, entryTime, exitTime, entryPrice, exitPrice,
       quantity, side, commission || 0, fees || 0, pnl, pnlPercent, notes, isPublic || false,
       broker, strategy, setup, tags || []
     ];
@@ -121,32 +124,47 @@ class Trade {
   }
 
   static async update(id, userId, updates) {
+    // First get the current trade data for calculations
+    const currentTrade = await this.findById(id, userId);
+    
     const fields = [];
     const values = [];
     let paramCount = 1;
 
+    // Calculate trade_date based on exitTime or entryTime
+    if (updates.exitTime) {
+      updates.tradeDate = new Date(updates.exitTime).toISOString().split('T')[0];
+    } else if (updates.entryTime) {
+      // If we're updating entry time and there's no exit time, use entry time for trade date
+      const exitTime = updates.exitTime || currentTrade.exit_time;
+      if (!exitTime) {
+        updates.tradeDate = new Date(updates.entryTime).toISOString().split('T')[0];
+      }
+    }
+
     Object.entries(updates).forEach(([key, value]) => {
       if (key !== 'id' && key !== 'user_id' && key !== 'created_at') {
-        fields.push(`${key} = $${paramCount}`);
+        // Convert camelCase to snake_case for database columns
+        const dbKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+        fields.push(`${dbKey} = $${paramCount}`);
         values.push(value);
         paramCount++;
       }
     });
 
     if (updates.entryPrice || updates.exitPrice || updates.quantity || updates.side || updates.commission || updates.fees) {
-      const trade = await this.findById(id, userId);
       const pnl = this.calculatePnL(
-        updates.entryPrice || trade.entry_price,
-        updates.exitPrice || trade.exit_price,
-        updates.quantity || trade.quantity,
-        updates.side || trade.side,
-        updates.commission || trade.commission,
-        updates.fees || trade.fees
+        updates.entryPrice || currentTrade.entry_price,
+        updates.exitPrice || currentTrade.exit_price,
+        updates.quantity || currentTrade.quantity,
+        updates.side || currentTrade.side,
+        updates.commission || currentTrade.commission,
+        updates.fees || currentTrade.fees
       );
       const pnlPercent = this.calculatePnLPercent(
-        updates.entryPrice || trade.entry_price,
-        updates.exitPrice || trade.exit_price,
-        updates.side || trade.side
+        updates.entryPrice || currentTrade.entry_price,
+        updates.exitPrice || currentTrade.exit_price,
+        updates.side || currentTrade.side
       );
 
       fields.push(`pnl = $${paramCount}`);
@@ -215,9 +233,10 @@ class Trade {
         count(DISTINCT tc.id) as comment_count
       FROM trades t
       JOIN users u ON t.user_id = u.id
+      JOIN user_settings us ON u.id = us.user_id
       LEFT JOIN trade_attachments ta ON t.id = ta.trade_id
       LEFT JOIN trade_comments tc ON t.id = tc.trade_id
-      WHERE t.is_public = true
+      WHERE t.is_public = true AND us.public_profile = true
     `;
 
     const values = [];

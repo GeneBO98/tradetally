@@ -2,16 +2,16 @@ const db = require('../config/database');
 const bcrypt = require('bcryptjs');
 
 class User {
-  static async create({ email, username, password, fullName }) {
+  static async create({ email, username, password, fullName, verificationToken, verificationExpires }) {
     const hashedPassword = await bcrypt.hash(password, 10);
     
     const query = `
-      INSERT INTO users (email, username, password_hash, full_name)
-      VALUES ($1, $2, $3, $4)
+      INSERT INTO users (email, username, password_hash, full_name, verification_token, verification_expires)
+      VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING id, email, username, full_name, avatar_url, is_verified, is_active, timezone, created_at
     `;
     
-    const values = [email.toLowerCase(), username, hashedPassword, fullName];
+    const values = [email.toLowerCase(), username, hashedPassword, fullName, verificationToken, verificationExpires];
     const result = await db.query(query, values);
     
     return result.rows[0];
@@ -148,6 +148,41 @@ class User {
     `;
 
     const result = await db.query(query, values);
+    return result.rows[0];
+  }
+
+  static async findByVerificationToken(token) {
+    const query = `
+      SELECT id, email, username, verification_token, verification_expires, is_verified
+      FROM users
+      WHERE verification_token = $1 AND is_active = true
+    `;
+    
+    const result = await db.query(query, [token]);
+    return result.rows[0];
+  }
+
+  static async verifyUser(userId) {
+    const query = `
+      UPDATE users
+      SET is_verified = true, verification_token = NULL, verification_expires = NULL, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $1
+      RETURNING id, email, username, is_verified
+    `;
+    
+    const result = await db.query(query, [userId]);
+    return result.rows[0];
+  }
+
+  static async updateVerificationToken(userId, token, expires) {
+    const query = `
+      UPDATE users
+      SET verification_token = $1, verification_expires = $2, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $3
+      RETURNING id, email
+    `;
+    
+    const result = await db.query(query, [token, expires, userId]);
     return result.rows[0];
   }
 }

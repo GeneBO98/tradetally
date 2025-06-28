@@ -11,6 +11,8 @@ CREATE TABLE IF NOT EXISTS users (
     avatar_url VARCHAR(500),
     is_verified BOOLEAN DEFAULT FALSE,
     is_active BOOLEAN DEFAULT TRUE,
+    verification_token VARCHAR(255),
+    verification_expires TIMESTAMP WITH TIME ZONE,
     timezone VARCHAR(50) DEFAULT 'UTC',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP

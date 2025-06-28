@@ -118,7 +118,7 @@
                     Public Profile
                   </label>
                   <p class="text-gray-500 dark:text-gray-400">
-                    Allow others to view your profile and public trades.
+                    Allow others to see your trades that you've marked as public. Individual trades must still be marked as public to appear.
                   </p>
                 </div>
               </div>

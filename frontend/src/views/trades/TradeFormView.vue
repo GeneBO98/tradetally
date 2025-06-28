@@ -11,30 +11,21 @@
 
     <form @submit.prevent="handleSubmit" class="card">
       <div class="card-body space-y-6">
+        <!-- Symbol field standalone -->
+        <div>
+          <label for="symbol" class="label">Symbol *</label>
+          <input
+            id="symbol"
+            v-model="form.symbol"
+            type="text"
+            required
+            class="input uppercase"
+            placeholder="AAPL"
+          />
+        </div>
+
+        <!-- Two column grid for remaining fields -->
         <div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
-          <div>
-            <label for="symbol" class="label">Symbol *</label>
-            <input
-              id="symbol"
-              v-model="form.symbol"
-              type="text"
-              required
-              class="input uppercase"
-              placeholder="AAPL"
-            />
-          </div>
-
-          <div>
-            <label for="tradeDate" class="label">Trade Date *</label>
-            <input
-              id="tradeDate"
-              v-model="form.tradeDate"
-              type="date"
-              required
-              class="input"
-            />
-          </div>
-
           <div>
             <label for="entryTime" class="label">Entry Time *</label>
             <input
@@ -239,7 +230,6 @@ const isEdit = computed(() => !!route.params.id)
 
 const form = ref({
   symbol: '',
-  tradeDate: '',
   entryTime: '',
   exitTime: '',
   entryPrice: '',
@@ -277,7 +267,6 @@ async function loadTrade() {
     
     form.value = {
       symbol: trade.symbol,
-      tradeDate: trade.trade_date,
       entryTime: formatDateTimeLocal(trade.entry_time),
       exitTime: trade.exit_time ? formatDateTimeLocal(trade.exit_time) : '',
       entryPrice: trade.entry_price,
@@ -338,9 +327,8 @@ onMounted(() => {
   if (isEdit.value) {
     loadTrade()
   } else {
-    // Set default date and time
+    // Set default entry time
     const now = new Date()
-    form.value.tradeDate = now.toISOString().split('T')[0]
     form.value.entryTime = formatDateTimeLocal(now)
   }
 })

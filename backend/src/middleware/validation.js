@@ -30,7 +30,6 @@ const schemas = {
 
   createTrade: Joi.object({
     symbol: Joi.string().max(20).required(),
-    tradeDate: Joi.date().iso().required(),
     entryTime: Joi.date().iso().required(),
     exitTime: Joi.date().iso().allow(null),
     entryPrice: Joi.number().positive().required(),
@@ -41,15 +40,14 @@ const schemas = {
     fees: Joi.number().min(0).default(0),
     notes: Joi.string().allow(''),
     isPublic: Joi.boolean().default(false),
-    broker: Joi.string().max(50),
-    strategy: Joi.string().max(100),
-    setup: Joi.string().max(100),
+    broker: Joi.string().max(50).allow(''),
+    strategy: Joi.string().max(100).allow(''),
+    setup: Joi.string().max(100).allow(''),
     tags: Joi.array().items(Joi.string().max(50))
   }),
 
   updateTrade: Joi.object({
     symbol: Joi.string().max(20),
-    tradeDate: Joi.date().iso(),
     entryTime: Joi.date().iso(),
     exitTime: Joi.date().iso().allow(null),
     entryPrice: Joi.number().positive(),
@@ -60,9 +58,9 @@ const schemas = {
     fees: Joi.number().min(0),
     notes: Joi.string().allow(''),
     isPublic: Joi.boolean(),
-    broker: Joi.string().max(50),
-    strategy: Joi.string().max(100),
-    setup: Joi.string().max(100),
+    broker: Joi.string().max(50).allow(''),
+    strategy: Joi.string().max(100).allow(''),
+    setup: Joi.string().max(100).allow(''),
     tags: Joi.array().items(Joi.string().max(50))
   }).min(1),
 

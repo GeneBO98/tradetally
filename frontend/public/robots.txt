@@ -1,0 +1,27 @@
+# Robots.txt for TradeTally
+# https://www.robotstxt.org/robotstxt.html
+
+User-agent: *
+Allow: /
+
+# Sitemap location
+Sitemap: https://tradetally.io/sitemap.xml
+
+# Block access to API endpoints
+Disallow: /api/
+
+# Block access to user-specific pages (if not already handled by authentication)
+Disallow: /dashboard
+Disallow: /trades/
+Disallow: /settings
+Disallow: /import
+
+# Allow crawling of public pages
+Allow: /$
+Allow: /login
+Allow: /register
+Allow: /public
+Allow: /analytics
+
+# Crawl delay (in seconds) - optional, adjust as needed
+Crawl-delay: 1

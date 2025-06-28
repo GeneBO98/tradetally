@@ -22,6 +22,12 @@ const router = createRouter({
       meta: { guest: true }
     },
     {
+      path: '/verify-email/:token',
+      name: 'verify-email',
+      component: () => import('@/views/auth/EmailVerificationView.vue'),
+      meta: { guest: true }
+    },
+    {
       path: '/dashboard',
       name: 'dashboard',
       component: () => import('@/views/DashboardView.vue'),
@@ -55,6 +61,12 @@ const router = createRouter({
       path: '/analytics',
       name: 'analytics',
       component: () => import('@/views/AnalyticsView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/calendar',
+      name: 'calendar',
+      component: () => import('@/views/CalendarView.vue'),
       meta: { requiresAuth: true }
     },
     {

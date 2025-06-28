@@ -85,7 +85,7 @@ const brokerParsers = {
       commission: Math.abs(parseFloat(row['Cost Basis (CB)'] || 0) - (parseFloat(row['Cost Per Share'] || 0) * quantity)) || 0,
       fees: 0, // Not separately provided by Schwab
       broker: 'schwab',
-      notes: `${row.Term || 'Unknown'} term - ${row['Wash Sale?'] === 'Yes' ? 'Wash Sale' : 'Normal'}`
+      notes: `${row.Term || 'Unknown'} - ${row['Wash Sale?'] === 'Yes' ? 'Wash Sale' : 'Normal'}`
     };
   }
 };
@@ -633,7 +633,7 @@ async function parseSchwabTrades(records) {
         pnl: gainLoss,  // Use Schwab's calculated gain/loss
         pnlPercent: gainLossPercent,  // Use Schwab's calculated percentage
         broker: 'schwab',
-        notes: `${term} term - ${washSale ? 'Wash Sale' : 'Normal'}`
+        notes: `${term} - ${washSale ? 'Wash Sale' : 'Normal'}`
       };
       
       console.log('Parsed Schwab trade:', {

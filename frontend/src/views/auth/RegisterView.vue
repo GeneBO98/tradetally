@@ -91,11 +91,13 @@
 
 <script setup>
 import { ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useNotification } from '@/composables/useNotification'
 
 const authStore = useAuthStore()
-const { showError } = useNotification()
+const router = useRouter()
+const { showError, showSuccess } = useNotification()
 
 const form = ref({
   fullName: '',
@@ -106,7 +108,15 @@ const form = ref({
 
 async function handleRegister() {
   try {
-    await authStore.register(form.value)
+    const response = await authStore.register(form.value)
+    
+    // Check if email verification is required
+    if (response.requiresVerification) {
+      // Show success message and redirect to login
+      showSuccess('Registration Successful', response.message)
+      // Redirect to login page with verification message
+      router.push({ name: 'login', query: { message: 'Please check your email to verify your account' } })
+    }
   } catch (error) {
     showError('Registration failed', authStore.error)
   }

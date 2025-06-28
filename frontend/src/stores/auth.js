@@ -17,6 +17,13 @@ export const useAuthStore = defineStore('auth', () => {
     
     try {
       const response = await api.post('/auth/login', credentials)
+      
+      // Check if email verification is required
+      if (response.data.requiresVerification) {
+        error.value = response.data.error
+        throw new Error('Email verification required')
+      }
+      
       const { user: userData, token: authToken } = response.data
       
       user.value = userData
@@ -40,14 +47,24 @@ export const useAuthStore = defineStore('auth', () => {
     
     try {
       const response = await api.post('/auth/register', userData)
+      
+      // Check if email verification is required (new flow)
+      if (response.data.requiresVerification) {
+        // Don't auto-login, just return the response
+        return response.data
+      }
+      
+      // Legacy flow for existing users (if any)
       const { user: newUser, token: authToken } = response.data
       
-      user.value = newUser
-      token.value = authToken
-      localStorage.setItem('token', authToken)
-      api.defaults.headers.common['Authorization'] = `Bearer ${authToken}`
+      if (authToken) {
+        user.value = newUser
+        token.value = authToken
+        localStorage.setItem('token', authToken)
+        api.defaults.headers.common['Authorization'] = `Bearer ${authToken}`
+        router.push({ name: 'dashboard' })
+      }
       
-      router.push({ name: 'dashboard' })
       return response.data
     } catch (err) {
       error.value = err.response?.data?.error || 'Registration failed'

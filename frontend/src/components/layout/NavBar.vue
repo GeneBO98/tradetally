@@ -4,7 +4,7 @@
       <div class="flex justify-between h-16">
         <div class="flex items-center">
           <router-link to="/" class="flex items-center px-2 py-2 text-xl font-bold text-primary-600">
-            <img src="/favicon.svg" alt="TradeTally" class="h-8 w-auto mr-2" />
+            <img src="/favicon.svg" alt="" class="h-8 w-auto mr-2" />
             TradeTally
           </router-link>
           
@@ -43,6 +43,7 @@
             <button
               @click="toggleDarkMode"
               class="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              :aria-label="isDark ? 'Switch to light mode' : 'Switch to dark mode'"
             >
               <SunIcon v-if="isDark" class="h-5 w-5" />
               <MoonIcon v-else class="h-5 w-5" />
@@ -75,6 +76,7 @@
             <button
               @click="toggleDarkMode"
               class="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              :aria-label="isDark ? 'Switch to light mode' : 'Switch to dark mode'"
             >
               <SunIcon v-if="isDark" class="h-5 w-5" />
               <MoonIcon v-else class="h-5 w-5" />
@@ -82,6 +84,8 @@
             <button
               @click="toggleMobileMenu"
               class="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              :aria-label="isMobileMenuOpen ? 'Close menu' : 'Open menu'"
+              :aria-expanded="isMobileMenuOpen"
             >
               <Bars3Icon v-if="!isMobileMenuOpen" class="h-6 w-6" />
               <XMarkIcon v-else class="h-6 w-6" />
@@ -157,6 +161,7 @@ const navigation = [
   { name: 'Dashboard', to: '/dashboard', route: 'dashboard' },
   { name: 'Trades', to: '/trades', route: 'trades' },
   { name: 'Analytics', to: '/analytics', route: 'analytics' },
+  { name: 'Calendar', to: '/calendar', route: 'calendar' },
   { name: 'Import', to: '/import', route: 'import' },
   { name: 'Settings', to: '/settings', route: 'settings' }
 ]

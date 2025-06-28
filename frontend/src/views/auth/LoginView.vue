@@ -15,6 +15,11 @@
           </router-link>
         </p>
       </div>
+
+      <!-- Verification message from registration -->
+      <div v-if="verificationMessage" class="rounded-md bg-blue-50 dark:bg-blue-900/20 p-4">
+        <p class="text-sm text-blue-800 dark:text-blue-400">{{ verificationMessage }}</p>
+      </div>
       
       <form class="mt-8 space-y-6" @submit.prevent="handleLogin">
         <div class="rounded-md shadow-sm -space-y-px">
@@ -64,12 +69,16 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useNotification } from '@/composables/useNotification'
 
+const route = useRoute()
 const authStore = useAuthStore()
 const { showError } = useNotification()
+
+const verificationMessage = ref('')
 
 const form = ref({
   email: '',
@@ -83,4 +92,11 @@ async function handleLogin() {
     showError('Login failed', authStore.error)
   }
 }
+
+onMounted(() => {
+  // Check for verification message from registration
+  if (route.query.message) {
+    verificationMessage.value = route.query.message
+  }
+})
 </script>
