@@ -15,9 +15,16 @@ const errorHandler = require('./middleware/errorHandler');
 const app = express();
 const PORT = process.env.PORT || 5001;
 
+// Trust proxy headers for rate limiting and forwarded headers
+app.set('trust proxy', true);
+
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 1000 // limit each IP to 1000 requests per windowMs
+  max: 1000, // limit each IP to 1000 requests per windowMs
+  validate: {
+    trustProxy: false, // Disable trust proxy validation for rate limiting
+    xForwardedForHeader: false // Disable X-Forwarded-For validation
+  }
 });
 
 // Skip rate limiting for certain paths
