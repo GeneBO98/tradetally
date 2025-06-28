@@ -52,6 +52,10 @@ services:
       NODE_ENV: ${NODE_ENV:-production}
       PORT: ${PORT:-3000}
       
+      # Analytics Configuration
+      VITE_ANALYTICS_DOMAIN: ${VITE_ANALYTICS_DOMAIN:-}
+      VITE_ANALYTICS_SITE_ID: ${VITE_ANALYTICS_SITE_ID:-}
+      
       # API Keys for CUSIP Resolution
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       OPENFIGI_API_KEY: ${OPENFIGI_API_KEY:-}
