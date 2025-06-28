@@ -33,6 +33,7 @@ jobs:
             echo "VERSION=${GITHUB_REF##*/}" >> $GITHUB_OUTPUT
           else
             echo "VERSION=latest" >> $GITHUB_OUTPUT
+          fi
 
       - name: Build and Push Docker Image
         uses: docker/build-push-action@v5
