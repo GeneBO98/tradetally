@@ -21,7 +21,10 @@ export const useAuthStore = defineStore('auth', () => {
       // Check if email verification is required
       if (response.data.requiresVerification) {
         error.value = response.data.error
-        throw new Error('Email verification required')
+        const verificationError = new Error('Email verification required')
+        verificationError.requiresVerification = true
+        verificationError.email = response.data.email
+        throw verificationError
       }
       
       const { user: userData, token: authToken } = response.data
@@ -101,6 +104,51 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  async function resendVerification(email) {
+    loading.value = true
+    error.value = null
+    
+    try {
+      const response = await api.post('/auth/resend-verification', { email })
+      return response.data
+    } catch (err) {
+      error.value = err.response?.data?.error || 'Failed to resend verification email'
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function forgotPassword(email) {
+    loading.value = true
+    error.value = null
+    
+    try {
+      const response = await api.post('/auth/forgot-password', { email })
+      return response.data
+    } catch (err) {
+      error.value = err.response?.data?.error || 'Failed to send password reset email'
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function resetPassword(token, password) {
+    loading.value = true
+    error.value = null
+    
+    try {
+      const response = await api.post('/auth/reset-password', { token, password })
+      return response.data
+    } catch (err) {
+      error.value = err.response?.data?.error || 'Failed to reset password'
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
   function checkAuth() {
     if (token.value) {
       api.defaults.headers.common['Authorization'] = `Bearer ${token.value}`
@@ -118,6 +166,9 @@ export const useAuthStore = defineStore('auth', () => {
     register,
     logout,
     fetchUser,
-    checkAuth
+    checkAuth,
+    resendVerification,
+    forgotPassword,
+    resetPassword
   }
 })

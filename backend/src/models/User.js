@@ -185,6 +185,52 @@ class User {
     const result = await db.query(query, [token, expires, userId]);
     return result.rows[0];
   }
+
+  static async verifyUser(userId) {
+    const query = `
+      UPDATE users 
+      SET is_verified = true, verification_token = NULL, verification_expires = NULL
+      WHERE id = $1
+      RETURNING *
+    `;
+    
+    const result = await db.query(query, [userId]);
+    return result.rows[0];
+  }
+
+  static async updateResetToken(userId, resetToken, resetExpires) {
+    const query = `
+      UPDATE users 
+      SET reset_token = $1, reset_expires = $2
+      WHERE id = $3
+      RETURNING *
+    `;
+    
+    const result = await db.query(query, [resetToken, resetExpires, userId]);
+    return result.rows[0];
+  }
+
+  static async findByResetToken(token) {
+    const query = `
+      SELECT * FROM users 
+      WHERE reset_token = $1 AND reset_expires > NOW()
+    `;
+    
+    const result = await db.query(query, [token]);
+    return result.rows[0];
+  }
+
+  static async updatePassword(userId, hashedPassword) {
+    const query = `
+      UPDATE users 
+      SET password_hash = $1, reset_token = NULL, reset_expires = NULL
+      WHERE id = $2
+      RETURNING *
+    `;
+    
+    const result = await db.query(query, [hashedPassword, userId]);
+    return result.rows[0];
+  }
 }
 
 module.exports = User;

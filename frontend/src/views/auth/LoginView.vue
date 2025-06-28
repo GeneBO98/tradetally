@@ -51,6 +51,15 @@
 
         <div v-if="authStore.error" class="rounded-md bg-red-50 dark:bg-red-900/20 p-4">
           <p class="text-sm text-red-800 dark:text-red-400">{{ authStore.error }}</p>
+          <div v-if="showResendVerification" class="mt-3">
+            <button
+              @click="handleResendVerification"
+              :disabled="authStore.loading"
+              class="text-sm text-primary-600 hover:text-primary-500 font-medium"
+            >
+              Resend verification email
+            </button>
+          </div>
         </div>
 
         <div>
@@ -62,6 +71,12 @@
             <span v-if="authStore.loading">Signing in...</span>
             <span v-else>Sign in</span>
           </button>
+        </div>
+
+        <div class="text-center mt-4">
+          <router-link to="/forgot-password" class="text-sm text-primary-600 hover:text-primary-500">
+            Forgot your password?
+          </router-link>
         </div>
       </form>
     </div>
@@ -76,9 +91,11 @@ import { useNotification } from '@/composables/useNotification'
 
 const route = useRoute()
 const authStore = useAuthStore()
-const { showError } = useNotification()
+const { showError, showSuccess } = useNotification()
 
 const verificationMessage = ref('')
+const showResendVerification = ref(false)
+const userEmail = ref('')
 
 const form = ref({
   email: '',
@@ -89,7 +106,21 @@ async function handleLogin() {
   try {
     await authStore.login(form.value)
   } catch (error) {
+    if (error.requiresVerification) {
+      showResendVerification.value = true
+      userEmail.value = error.email
+    }
     showError('Login failed', authStore.error)
+  }
+}
+
+async function handleResendVerification() {
+  try {
+    await authStore.resendVerification(userEmail.value)
+    showSuccess('Success', 'Verification email has been resent. Please check your inbox.')
+    showResendVerification.value = false
+  } catch (error) {
+    showError('Error', 'Failed to resend verification email')
   }
 }
 

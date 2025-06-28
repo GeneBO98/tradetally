@@ -2,6 +2,7 @@ const User = require('../models/User');
 const { generateToken } = require('../middleware/auth');
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
+const bcrypt = require('bcrypt');
 
 const authController = {
   async register(req, res, next) {
@@ -153,6 +154,13 @@ const authController = {
         return res.json({ message: 'If the email exists, a reset link has been sent' });
       }
 
+      // Generate reset token
+      const resetToken = crypto.randomBytes(32).toString('hex');
+      const resetExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+      await User.updateResetToken(user.id, resetToken, resetExpires);
+      await sendPasswordResetEmail(email, resetToken);
+
       res.json({ message: 'If the email exists, a reset link has been sent' });
     } catch (error) {
       next(error);
@@ -163,7 +171,23 @@ const authController = {
     try {
       const { token, password } = req.body;
 
-      res.status(501).json({ error: 'Password reset not implemented' });
+      if (!token || !password) {
+        return res.status(400).json({ error: 'Token and password are required' });
+      }
+
+      if (password.length < 6) {
+        return res.status(400).json({ error: 'Password must be at least 6 characters long' });
+      }
+
+      const user = await User.findByResetToken(token);
+      if (!user) {
+        return res.status(400).json({ error: 'Invalid or expired reset token' });
+      }
+
+      const hashedPassword = await bcrypt.hash(password, 10);
+      await User.updatePassword(user.id, hashedPassword);
+
+      res.json({ message: 'Password has been reset successfully' });
     } catch (error) {
       next(error);
     }
@@ -273,6 +297,60 @@ async function sendVerificationEmail(email, token) {
   } catch (error) {
     console.error('Failed to send verification email:', error);
     // Don't throw error to prevent registration failure due to email issues
+  }
+}
+
+// Password reset email function
+async function sendPasswordResetEmail(email, token) {
+  // Only send emails if email configuration is provided
+  if (!process.env.EMAIL_HOST || !process.env.EMAIL_USER) {
+    console.log('Email not configured, skipping password reset email');
+    return;
+  }
+
+  const transporter = nodemailer.createTransport({
+    host: process.env.EMAIL_HOST,
+    port: process.env.EMAIL_PORT || 587,
+    secure: false,
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS
+    }
+  });
+
+  const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/reset-password/${token}`;
+
+  const mailOptions = {
+    from: process.env.EMAIL_FROM || 'noreply@tradetally.io',
+    to: email,
+    subject: 'Reset your TradeTally password',
+    html: `
+      <div style="max-width: 600px; margin: 0 auto; padding: 20px; font-family: Arial, sans-serif;">
+        <h1 style="color: #4F46E5;">Reset Your Password</h1>
+        <p>You requested to reset your password for your TradeTally account. Click the button below to reset it:</p>
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${resetUrl}" 
+             style="background-color: #4F46E5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
+            Reset Password
+          </a>
+        </div>
+        <p>Or copy and paste this link into your browser:</p>
+        <p style="word-break: break-all; color: #6B7280;">${resetUrl}</p>
+        <p>This link will expire in 1 hour for security reasons.</p>
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #E5E7EB;">
+        <p style="color: #6B7280; font-size: 12px;">
+          If you didn't request a password reset, you can safely ignore this email. Your password will not be changed.
+        </p>
+      </div>
+    `
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    console.log('Password reset email sent to:', email);
+  } catch (error) {
+    console.error('Failed to send password reset email:', error);
+    // Don't throw error to prevent operation failure due to email issues
   }
 }
 
