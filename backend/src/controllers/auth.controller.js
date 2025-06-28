@@ -2,7 +2,7 @@ const User = require('../models/User');
 const { generateToken } = require('../middleware/auth');
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 
 const authController = {
   async register(req, res, next) {
