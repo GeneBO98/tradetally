@@ -3,17 +3,6 @@ WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm ci
 COPY frontend/ ./
-
-# Accept build arguments for analytics
-ARG VITE_ANALYTICS_DOMAIN
-ARG VITE_ANALYTICS_SITE_ID
-ARG VITE_API_URL
-
-# Set environment variables for build
-ENV VITE_ANALYTICS_DOMAIN=$VITE_ANALYTICS_DOMAIN
-ENV VITE_ANALYTICS_SITE_ID=$VITE_ANALYTICS_SITE_ID
-ENV VITE_API_URL=$VITE_API_URL
-
 RUN npm run build
 
 FROM node:18-alpine AS backend-builder
