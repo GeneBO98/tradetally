@@ -29,11 +29,10 @@ jobs:
       - name: Extract version tag (if release)
         id: vars
         run: |
-          VERSION=latest
           if [[ "${{ github.event_name }}" == "release" ]]; then
-            VERSION=${{ github.event.release.tag_name }}
-          fi
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+            echo "VERSION=${GITHUB_REF##*/}" >> $GITHUB_OUTPUT
+          else
+            echo "VERSION=latest" >> $GITHUB_OUTPUT
 
       - name: Build and Push Docker Image
         uses: docker/build-push-action@v5
