@@ -51,6 +51,7 @@ services:
       # Application Configuration
       NODE_ENV: ${NODE_ENV:-production}
       PORT: ${PORT:-3000}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
       
       # Analytics Configuration
       VITE_ANALYTICS_DOMAIN: ${VITE_ANALYTICS_DOMAIN:-}
