@@ -11,22 +11,13 @@ export default defineConfig(({ command, mode }) => {
     {
       name: 'html-transform',
       transformIndexHtml(html) {
-        console.log('Analytics Domain:', env.VITE_ANALYTICS_DOMAIN)
-        console.log('Analytics Site ID:', env.VITE_ANALYTICS_SITE_ID)
-        
         if (env.VITE_ANALYTICS_DOMAIN && env.VITE_ANALYTICS_SITE_ID) {
-          console.log('Injecting analytics script')
           return html.replace(
             '</head>',
-            `    <script
-      src="${env.VITE_ANALYTICS_DOMAIN}/api/script.js"
-      data-site-id="${env.VITE_ANALYTICS_SITE_ID}"
-      defer
-    ></script>
+            `    <script src="${env.VITE_ANALYTICS_DOMAIN}/api/script.js" data-site-id="${env.VITE_ANALYTICS_SITE_ID}" defer></script>
   </head>`
           )
         }
-        console.log('Analytics not injected - missing env vars')
         return html
       }
     }

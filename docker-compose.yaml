@@ -26,10 +26,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      args:
-        VITE_ANALYTICS_DOMAIN: ${VITE_ANALYTICS_DOMAIN:-}
-        VITE_ANALYTICS_SITE_ID: ${VITE_ANALYTICS_SITE_ID:-}
-        VITE_API_URL: ${VITE_API_URL:-http://localhost/api}
     container_name: tradetally-app
     depends_on:
       postgres:
