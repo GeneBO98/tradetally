@@ -36,6 +36,7 @@
               required
               class="input"
               placeholder="Enter new password"
+              @keydown.enter="handleResetPassword"
             />
           </div>
           
@@ -49,6 +50,7 @@
               required
               class="input"
               placeholder="Confirm new password"
+              @keydown.enter="handleResetPassword"
             />
           </div>
         </div>

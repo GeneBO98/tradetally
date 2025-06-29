@@ -32,7 +32,6 @@ export const useAuthStore = defineStore('auth', () => {
       user.value = userData
       token.value = authToken
       localStorage.setItem('token', authToken)
-      api.defaults.headers.common['Authorization'] = `Bearer ${authToken}`
       
       router.push({ name: 'dashboard' })
       return response.data
@@ -86,7 +85,6 @@ export const useAuthStore = defineStore('auth', () => {
       user.value = null
       token.value = null
       localStorage.removeItem('token')
-      delete api.defaults.headers.common['Authorization']
       router.push({ name: 'home' })
     }
   }
@@ -97,10 +95,12 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const response = await api.get('/auth/me')
       user.value = response.data.user
+      return response.data.user
     } catch (err) {
       if (err.response?.status === 401) {
         logout()
       }
+      throw err
     }
   }
 
@@ -151,6 +151,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   function checkAuth() {
     if (token.value) {
+      // Set the authorization header for subsequent requests
       api.defaults.headers.common['Authorization'] = `Bearer ${token.value}`
       fetchUser()
     }

@@ -53,8 +53,8 @@ services:
       VITE_ANALYTICS_DOMAIN: ${VITE_ANALYTICS_DOMAIN:-}
       VITE_ANALYTICS_SITE_ID: ${VITE_ANALYTICS_SITE_ID:-}
       # External API Keys
+      FINNHUB_API_KEY: ${FINNHUB_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      OPENFIGI_API_KEY: ${OPENFIGI_API_KEY:-}
     ports:
       - "80:80"
       - "3000:3000"
