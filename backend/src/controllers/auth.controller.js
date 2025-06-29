@@ -4,6 +4,16 @@ const crypto = require('crypto');
 const nodemailer = require('nodemailer');
 const bcrypt = require('bcryptjs');
 
+// Check if email configuration is available
+function isEmailConfigured() {
+  return !!(process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASS);
+}
+
+// Check if detailed error messages are enabled (for self-hosted setups)
+function useDetailedErrors() {
+  return process.env.DETAILED_AUTH_ERRORS === 'true' || !isEmailConfigured();
+}
+
 const authController = {
   async register(req, res, next) {
     try {
@@ -27,9 +37,22 @@ const authController = {
         return res.status(409).json({ error: 'Username already taken' });
       }
 
-      // Generate verification token
-      const verificationToken = crypto.randomBytes(32).toString('hex');
-      const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+      // Check if this is the first user (make them admin)
+      const userCount = await User.getUserCount();
+      const isFirstUser = userCount === 0;
+
+      // Check if email verification is configured
+      const emailConfigured = isEmailConfigured();
+      
+      let verificationToken = null;
+      let verificationExpires = null;
+      let isVerified = !emailConfigured; // Auto-verify if email not configured
+
+      if (emailConfigured) {
+        // Generate verification token only if email is configured
+        verificationToken = crypto.randomBytes(32).toString('hex');
+        verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+      }
 
       const user = await User.create({ 
         email, 
@@ -37,22 +60,52 @@ const authController = {
         password, 
         fullName,
         verificationToken,
-        verificationExpires
+        verificationExpires,
+        role: isFirstUser ? 'admin' : 'user',
+        isVerified
       });
       await User.createSettings(user.id);
 
-      // Send verification email
-      await sendVerificationEmail(email, verificationToken);
+      // Log if this user was made an admin
+      if (isFirstUser) {
+        console.log(`🔐 First user registered - automatically granted admin privileges: ${user.username} (${user.email})`);
+      }
+
+      // Send verification email only if email is configured
+      if (emailConfigured) {
+        try {
+          await sendVerificationEmail(email, verificationToken);
+        } catch (error) {
+          console.warn('⚠️  Failed to send verification email (continuing with registration):', error.message);
+        }
+      } else {
+        console.log(`📧 Email verification skipped - no email configuration found for user: ${user.username}`);
+      }
+
+      // Determine response message
+      let message;
+      if (isFirstUser && emailConfigured) {
+        message = 'Registration successful. As the first user, you have been granted admin privileges. Please check your email to verify your account.';
+      } else if (isFirstUser && !emailConfigured) {
+        message = 'Registration successful. As the first user, you have been granted admin privileges. Your account is ready to use.';
+      } else if (!isFirstUser && emailConfigured) {
+        message = 'Registration successful. Please check your email to verify your account.';
+      } else {
+        message = 'Registration successful. Your account is ready to use.';
+      }
 
       res.status(201).json({
-        message: 'Registration successful. Please check your email to verify your account.',
-        requiresVerification: true,
+        message,
+        requiresVerification: emailConfigured,
+        isFirstUser,
+        emailConfigured,
         user: {
           id: user.id,
           email: user.email,
           username: user.username,
           fullName: user.full_name,
           avatarUrl: user.avatar_url,
+          role: user.role,
           isVerified: user.is_verified
         }
       });
@@ -67,17 +120,24 @@ const authController = {
       const { email, password } = req.body;
 
       const user = await User.findByEmail(email);
+      const detailedErrors = useDetailedErrors();
+      
       if (!user || !user.is_active) {
-        return res.status(401).json({ error: 'Invalid credentials' });
+        return res.status(401).json({ 
+          error: detailedErrors ? 'No account found with this email address' : 'Invalid credentials'
+        });
       }
 
       const isValid = await User.verifyPassword(user, password);
       if (!isValid) {
-        return res.status(401).json({ error: 'Invalid credentials' });
+        return res.status(401).json({ 
+          error: detailedErrors ? 'Incorrect password' : 'Invalid credentials'
+        });
       }
 
-      // Check if email is verified
-      if (!user.is_verified) {
+      // Check if email is verified (only if email verification is configured)
+      const emailConfigured = isEmailConfigured();
+      if (emailConfigured && !user.is_verified) {
         return res.status(403).json({ 
           error: 'Please verify your email before signing in',
           requiresVerification: true,
@@ -95,6 +155,7 @@ const authController = {
           username: user.username,
           fullName: user.full_name,
           avatarUrl: user.avatar_url,
+          role: user.role,
           isVerified: user.is_verified
         },
         token
@@ -124,6 +185,7 @@ const authController = {
           username: user.username,
           fullName: user.full_name,
           avatarUrl: user.avatar_url,
+          role: user.role,
           isVerified: user.is_verified,
           timezone: user.timezone,
           createdAt: user.created_at

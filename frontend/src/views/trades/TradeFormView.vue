@@ -175,6 +175,7 @@
             rows="4"
             class="input"
             placeholder="Add your trade notes, observations, and learnings..."
+            @keydown="handleNotesKeydown"
           ></textarea>
         </div>
 
@@ -288,6 +289,13 @@ async function loadTrade() {
     router.push('/trades')
   } finally {
     loading.value = false
+  }
+}
+
+function handleNotesKeydown(event) {
+  if (event.key === 'Enter' && !event.shiftKey) {
+    event.preventDefault()
+    handleSubmit()
   }
 }
 

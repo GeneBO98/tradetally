@@ -154,11 +154,23 @@
 
           <div class="mt-4 flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
             <div class="flex items-center space-x-4">
-              <span class="flex items-center">
+              <button
+                @click="openComments(trade)"
+                class="flex items-center hover:text-primary-600 transition-colors"
+              >
                 <ChatBubbleLeftIcon class="h-4 w-4 mr-1" />
                 {{ trade.comment_count || 0 }} comments
-              </span>
+              </button>
               <span>{{ formatDateTime(trade.created_at) }}</span>
+              <!-- Delete button for trade owner or admin -->
+              <button
+                v-if="canDeleteTrade(trade)"
+                @click="deleteTrade(trade)"
+                class="flex items-center text-red-600 hover:text-red-700 transition-colors"
+                title="Delete trade"
+              >
+                <TrashIcon class="h-4 w-4" />
+              </button>
             </div>
             
             <router-link
@@ -183,20 +195,41 @@
         </button>
       </div>
     </div>
+
+    <!-- Comments Dialog -->
+    <TradeCommentsDialog
+      v-if="selectedTrade"
+      :is-open="showCommentsDialog"
+      :trade-id="selectedTrade.id"
+      @close="showCommentsDialog = false"
+      @comment-added="handleCommentAdded"
+      @comment-deleted="handleCommentDeleted"
+    />
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue'
 import { format } from 'date-fns'
-import { DocumentTextIcon, DocumentIcon, ChatBubbleLeftIcon } from '@heroicons/vue/24/outline'
+import { DocumentTextIcon, DocumentIcon, ChatBubbleLeftIcon, TrashIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
+import TradeCommentsDialog from '@/components/trades/TradeCommentsDialog.vue'
+import { useAuthStore } from '@/stores/auth'
+import { useNotification } from '@/composables/useNotification'
 
 const loading = ref(true)
 const trades = ref([])
 const hasMore = ref(true)
 const currentPage = ref(0)
 const pageSize = 10
+
+// Comments dialog
+const showCommentsDialog = ref(false)
+const selectedTrade = ref(null)
+
+// Auth and notifications
+const authStore = useAuthStore()
+const { showSuccess, showError } = useNotification()
 
 function formatNumber(num, decimals = 2) {
   return new Intl.NumberFormat('en-US', {
@@ -242,6 +275,57 @@ async function fetchTrades(offset = 0) {
 async function loadMore() {
   loading.value = true
   await fetchTrades((currentPage.value + 1) * pageSize)
+}
+
+function openComments(trade) {
+  selectedTrade.value = trade
+  showCommentsDialog.value = true
+}
+
+function handleCommentAdded() {
+  // Increment the comment count for the trade
+  const tradeIndex = trades.value.findIndex(t => t.id === selectedTrade.value.id)
+  if (tradeIndex !== -1) {
+    trades.value[tradeIndex].comment_count = (trades.value[tradeIndex].comment_count || 0) + 1
+  }
+}
+
+function handleCommentDeleted() {
+  // Decrement the comment count for the trade
+  const tradeIndex = trades.value.findIndex(t => t.id === selectedTrade.value.id)
+  if (tradeIndex !== -1) {
+    trades.value[tradeIndex].comment_count = Math.max((trades.value[tradeIndex].comment_count || 0) - 1, 0)
+  }
+}
+
+function canDeleteTrade(trade) {
+  // Only allow deletion if user is authenticated and either owns the trade or is admin
+  if (!authStore.isAuthenticated) return false
+  
+  const user = authStore.user
+  if (!user) return false
+  
+  // User can delete if they own the trade OR if they are an admin
+  return trade.user_id === user.id || user.role === 'admin'
+}
+
+async function deleteTrade(trade) {
+  if (!confirm(`Are you sure you want to delete this trade for ${trade.symbol}?`)) {
+    return
+  }
+  
+  try {
+    await api.delete(`/trades/${trade.id}`)
+    
+    // Remove the trade from the list
+    trades.value = trades.value.filter(t => t.id !== trade.id)
+    
+    showSuccess('Success', 'Trade deleted successfully')
+  } catch (error) {
+    console.error('Failed to delete trade:', error)
+    const errorMessage = error.response?.data?.error || 'Failed to delete trade'
+    showError('Error', errorMessage)
+  }
 }
 
 onMounted(() => {

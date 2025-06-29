@@ -35,6 +35,7 @@
             required
             class="input"
             placeholder="Enter your email address"
+            @keydown.enter="handleForgotPassword"
           />
         </div>
 

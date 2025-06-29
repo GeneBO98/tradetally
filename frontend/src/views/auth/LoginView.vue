@@ -33,6 +33,7 @@
               required
               class="input rounded-t-md"
               placeholder="Email address"
+              @keydown.enter="handleLogin"
             />
           </div>
           <div>
@@ -45,6 +46,7 @@
               required
               class="input rounded-b-md"
               placeholder="Password"
+              @keydown.enter="handleLogin"
             />
           </div>
         </div>
@@ -110,7 +112,7 @@ async function handleLogin() {
       showResendVerification.value = true
       userEmail.value = error.email
     }
-    showError('Login failed', authStore.error)
+    // Error will be displayed via authStore.error in the template
   }
 }
 

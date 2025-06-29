@@ -28,8 +28,15 @@ api.interceptors.response.use(
   response => response,
   error => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('token')
-      window.location.href = '/login'
+      // Don't redirect to login if we're already on login/auth pages or if this is a login attempt
+      const currentPath = window.location.pathname
+      const isAuthPage = currentPath.includes('/login') || currentPath.includes('/register') || currentPath.includes('/forgot-password') || currentPath.includes('/reset-password')
+      const isLoginRequest = error.config?.url?.includes('/auth/login')
+      
+      if (!isAuthPage && !isLoginRequest) {
+        localStorage.removeItem('token')
+        window.location.href = '/login'
+      }
     }
     return Promise.reject(error)
   }

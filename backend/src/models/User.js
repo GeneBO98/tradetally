@@ -2,16 +2,16 @@ const db = require('../config/database');
 const bcrypt = require('bcryptjs');
 
 class User {
-  static async create({ email, username, password, fullName, verificationToken, verificationExpires }) {
+  static async create({ email, username, password, fullName, verificationToken, verificationExpires, role = 'user', isVerified = false }) {
     const hashedPassword = await bcrypt.hash(password, 10);
     
     const query = `
-      INSERT INTO users (email, username, password_hash, full_name, verification_token, verification_expires)
-      VALUES ($1, $2, $3, $4, $5, $6)
-      RETURNING id, email, username, full_name, avatar_url, is_verified, is_active, timezone, created_at
+      INSERT INTO users (email, username, password_hash, full_name, verification_token, verification_expires, role, is_verified)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      RETURNING id, email, username, full_name, avatar_url, role, is_verified, is_active, timezone, created_at
     `;
     
-    const values = [email.toLowerCase(), username, hashedPassword, fullName, verificationToken, verificationExpires];
+    const values = [email.toLowerCase(), username, hashedPassword, fullName, verificationToken, verificationExpires, role, isVerified];
     const result = await db.query(query, values);
     
     return result.rows[0];
@@ -19,7 +19,7 @@ class User {
 
   static async findById(id) {
     const query = `
-      SELECT id, email, username, full_name, avatar_url, is_verified, is_active, timezone, created_at, updated_at
+      SELECT id, email, username, full_name, avatar_url, role, is_verified, is_active, timezone, created_at, updated_at
       FROM users
       WHERE id = $1 AND is_active = true
     `;
@@ -30,7 +30,7 @@ class User {
 
   static async findByEmail(email) {
     const query = `
-      SELECT id, email, username, password_hash, full_name, avatar_url, is_verified, is_active, timezone, created_at
+      SELECT id, email, username, password_hash, full_name, avatar_url, role, is_verified, is_active, timezone, created_at
       FROM users
       WHERE email = $1
     `;
@@ -186,17 +186,6 @@ class User {
     return result.rows[0];
   }
 
-  static async verifyUser(userId) {
-    const query = `
-      UPDATE users 
-      SET is_verified = true, verification_token = NULL, verification_expires = NULL
-      WHERE id = $1
-      RETURNING *
-    `;
-    
-    const result = await db.query(query, [userId]);
-    return result.rows[0];
-  }
 
   static async updateResetToken(userId, resetToken, resetExpires) {
     const query = `
@@ -230,6 +219,86 @@ class User {
     
     const result = await db.query(query, [hashedPassword, userId]);
     return result.rows[0];
+  }
+
+  static async getUserCount() {
+    const query = `SELECT COUNT(*) as count FROM users WHERE is_active = true`;
+    const result = await db.query(query);
+    return parseInt(result.rows[0].count);
+  }
+
+  // Admin user management methods
+  static async getAllUsers() {
+    const query = `
+      SELECT id, email, username, full_name, avatar_url, role, is_verified, is_active, timezone, created_at, updated_at
+      FROM users
+      ORDER BY created_at DESC
+    `;
+    
+    const result = await db.query(query);
+    return result.rows;
+  }
+
+  static async updateRole(userId, role) {
+    const query = `
+      UPDATE users
+      SET role = $1, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $2
+      RETURNING id, email, username, full_name, avatar_url, role, is_verified, is_active, timezone, created_at, updated_at
+    `;
+    
+    const result = await db.query(query, [role, userId]);
+    return result.rows[0];
+  }
+
+  static async updateStatus(userId, isActive) {
+    const query = `
+      UPDATE users
+      SET is_active = $1, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $2
+      RETURNING id, email, username, full_name, avatar_url, role, is_verified, is_active, timezone, created_at, updated_at
+    `;
+    
+    const result = await db.query(query, [isActive, userId]);
+    return result.rows[0];
+  }
+
+  static async getAdminCount() {
+    const query = `SELECT COUNT(*) as count FROM users WHERE role = 'admin' AND is_active = true`;
+    const result = await db.query(query);
+    return parseInt(result.rows[0].count);
+  }
+
+  static async getActiveAdminCount() {
+    const query = `SELECT COUNT(*) as count FROM users WHERE role = 'admin' AND is_active = true`;
+    const result = await db.query(query);
+    return parseInt(result.rows[0].count);
+  }
+
+  static async getOwnerCount() {
+    const query = `SELECT COUNT(*) as count FROM users WHERE role = 'owner'`;
+    const result = await db.query(query);
+    return parseInt(result.rows[0].count);
+  }
+
+  static async getOwner() {
+    const query = `SELECT id, email, username, full_name, avatar_url, role, is_verified, is_active, timezone, created_at, updated_at FROM users WHERE role = 'owner' LIMIT 1`;
+    const result = await db.query(query);
+    return result.rows[0];
+  }
+
+  static async deleteUser(userId) {
+    // First delete related data (user settings, etc.)
+    await db.query('DELETE FROM user_settings WHERE user_id = $1', [userId]);
+    
+    // Note: In a production system, you might want to handle related data like trades
+    // For now, we'll assume trades should be preserved or handled separately
+    
+    // Delete the user
+    const query = `DELETE FROM users WHERE id = $1`;
+    const result = await db.query(query, [userId]);
+    
+    return result.rowCount > 0;
   }
 }
 

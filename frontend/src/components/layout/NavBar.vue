@@ -26,18 +26,6 @@
         </div>
 
         <div class="flex items-center space-x-4">
-          <!-- Buy me a coffee - hidden on mobile -->
-          <a
-            href="https://www.paypal.com/donate/?business=EHMBRET4CNELL&no_recurring=0&currency_code=USD"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="hidden sm:flex items-center space-x-1 px-3 py-1 text-sm bg-primary-100 hover:bg-primary-200 text-primary-800 rounded-full transition-colors duration-200"
-            title="Support TradeTally development"
-          >
-            <span>☕</span>
-            <span>Buy me a coffee</span>
-          </a>
-          
           <!-- Desktop Navigation -->
           <div class="hidden sm:flex sm:items-center sm:space-x-4">
             <button
@@ -50,6 +38,15 @@
             </button>
 
             <div v-if="authStore.isAuthenticated" class="flex items-center space-x-3">
+              <a v-if="config.showDonationButton"
+                href="https://www.paypal.com/donate/?business=EHMBRET4CNELL&no_recurring=0&currency_code=USD"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                title="Support TradeTally development"
+              >
+                ☕
+              </a>
               <span class="text-sm text-gray-700 dark:text-gray-300">
                 {{ authStore.user?.username }}
               </span>
@@ -142,6 +139,20 @@
               Sign Up
             </router-link>
           </template>
+          
+          <!-- Donation link (subtle placement at bottom) -->
+          <div v-if="config.showDonationButton" class="border-t border-gray-200 dark:border-gray-700 pt-4 pb-3 px-3 mt-4">
+            <a
+              href="https://www.paypal.com/donate/?business=EHMBRET4CNELL&no_recurring=0&currency_code=USD"
+              target="_blank"
+              rel="noopener noreferrer"
+              @click="isMobileMenuOpen = false"
+              class="flex items-center text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+            >
+              <span class="mr-2">☕</span>
+              <span>Support development</span>
+            </a>
+          </div>
         </div>
       </div>
     </div>
@@ -149,15 +160,16 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { SunIcon, MoonIcon, Bars3Icon, XMarkIcon } from '@heroicons/vue/24/outline'
+import config from '@/config'
 
 const authStore = useAuthStore()
 const isDark = ref(false)
 const isMobileMenuOpen = ref(false)
 
-const navigation = [
+const baseNavigation = [
   { name: 'Dashboard', to: '/dashboard', route: 'dashboard' },
   { name: 'Trades', to: '/trades', route: 'trades' },
   { name: 'Analytics', to: '/analytics', route: 'analytics' },
@@ -165,6 +177,17 @@ const navigation = [
   { name: 'Import', to: '/import', route: 'import' },
   { name: 'Settings', to: '/settings', route: 'settings' }
 ]
+
+const navigation = computed(() => {
+  const nav = [...baseNavigation]
+  
+  // Add admin navigation for admin users
+  if (authStore.user?.role === 'admin') {
+    nav.push({ name: 'Admin', to: '/admin/users', route: 'admin-users' })
+  }
+  
+  return nav
+})
 
 function toggleDarkMode() {
   isDark.value = !isDark.value

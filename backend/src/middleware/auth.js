@@ -43,12 +43,34 @@ const optionalAuth = async (req, res, next) => {
   }
 };
 
+const requireAdmin = async (req, res, next) => {
+  try {
+    // First authenticate the user
+    await new Promise((resolve, reject) => {
+      authenticate(req, res, (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+
+    // Check if user has admin role
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    next();
+  } catch (error) {
+    res.status(401).json({ error: 'Please authenticate' });
+  }
+};
+
 const generateToken = (user) => {
   return jwt.sign(
     { 
       id: user.id, 
       email: user.email,
-      username: user.username
+      username: user.username,
+      role: user.role
     },
     process.env.JWT_SECRET,
     { 
@@ -57,4 +79,4 @@ const generateToken = (user) => {
   );
 };
 
-module.exports = { authenticate, optionalAuth, generateToken };
+module.exports = { authenticate, optionalAuth, requireAdmin, generateToken };
