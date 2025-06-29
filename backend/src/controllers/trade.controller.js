@@ -3,12 +3,17 @@ const { parseCSV } = require('../utils/csvParser');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../config/database');
 const logger = require('../utils/logger');
-const cusipLookup = require('../utils/cusipLookup');
+const finnhub = require('../utils/finnhub');
 
 const tradeController = {
   async getUserTrades(req, res, next) {
     try {
-      const { symbol, startDate, endDate, tags, strategy, limit = 50, offset = 0 } = req.query;
+      const { 
+        symbol, startDate, endDate, tags, strategy, 
+        side, minPrice, maxPrice, minQuantity, maxQuantity,
+        status, minPnl, maxPnl, pnlType,
+        limit = 50, offset = 0 
+      } = req.query;
       
       const filters = {
         symbol,
@@ -16,6 +21,17 @@ const tradeController = {
         endDate,
         tags: tags ? tags.split(',') : undefined,
         strategy,
+        // New advanced filters
+        side,
+        minPrice: minPrice ? parseFloat(minPrice) : undefined,
+        maxPrice: maxPrice ? parseFloat(maxPrice) : undefined,
+        minQuantity: minQuantity ? parseInt(minQuantity) : undefined,
+        maxQuantity: maxQuantity ? parseInt(maxQuantity) : undefined,
+        status,
+        minPnl: minPnl ? parseFloat(minPnl) : undefined,
+        maxPnl: maxPnl ? parseFloat(maxPnl) : undefined,
+        pnlType,
+        // Pagination
         limit: parseInt(limit),
         offset: parseInt(offset)
       };
@@ -82,7 +98,23 @@ const tradeController = {
 
   async deleteTrade(req, res, next) {
     try {
-      const result = await Trade.delete(req.params.id, req.user.id);
+      // First, get the trade to check ownership
+      const trade = await Trade.findById(req.params.id);
+      
+      if (!trade) {
+        return res.status(404).json({ error: 'Trade not found' });
+      }
+
+      // Check if user is the trade owner or an admin
+      const isOwner = trade.user_id === req.user.id;
+      const isAdmin = req.user.role === 'admin';
+
+      if (!isOwner && !isAdmin) {
+        return res.status(403).json({ error: 'Access denied. You can only delete your own trades.' });
+      }
+
+      // Delete the trade (pass the trade owner's ID for the database constraint)
+      const result = await Trade.delete(req.params.id, trade.user_id);
       
       if (!result) {
         return res.status(404).json({ error: 'Trade not found' });
@@ -170,15 +202,25 @@ const tradeController = {
         return res.status(404).json({ error: 'Trade not found' });
       }
 
-      const query = `
+      const insertQuery = `
         INSERT INTO trade_comments (trade_id, user_id, comment)
         VALUES ($1, $2, $3)
         RETURNING *
       `;
 
-      const result = await db.query(query, [req.params.id, req.user.id, comment]);
+      const insertResult = await db.query(insertQuery, [req.params.id, req.user.id, comment]);
       
-      res.status(201).json({ comment: result.rows[0] });
+      // Get the comment with user information
+      const selectQuery = `
+        SELECT tc.*, u.username, u.avatar_url
+        FROM trade_comments tc
+        JOIN users u ON tc.user_id = u.id
+        WHERE tc.id = $1
+      `;
+      
+      const selectResult = await db.query(selectQuery, [insertResult.rows[0].id]);
+      
+      res.status(201).json({ comment: selectResult.rows[0] });
     } catch (error) {
       next(error);
     }
@@ -202,6 +244,89 @@ const tradeController = {
       const result = await db.query(query, [req.params.id]);
       
       res.json({ comments: result.rows });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async updateComment(req, res, next) {
+    try {
+      const { id: tradeId, commentId } = req.params;
+      const { comment } = req.body;
+      const userId = req.user.id;
+
+      if (!comment || !comment.trim()) {
+        return res.status(400).json({ error: 'Comment content is required' });
+      }
+
+      // Check if trade exists
+      const trade = await Trade.findById(tradeId);
+      if (!trade) {
+        return res.status(404).json({ error: 'Trade not found' });
+      }
+
+      // Check if comment exists and belongs to user
+      const existingCommentQuery = `
+        SELECT * FROM trade_comments 
+        WHERE id = $1 AND trade_id = $2 AND user_id = $3
+      `;
+      const existingResult = await db.query(existingCommentQuery, [commentId, tradeId, userId]);
+      
+      if (existingResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Comment not found or not authorized' });
+      }
+
+      // Update comment
+      const updateQuery = `
+        UPDATE trade_comments 
+        SET comment = $1, edited_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $2
+        RETURNING *
+      `;
+      const updateResult = await db.query(updateQuery, [comment.trim(), commentId]);
+
+      // Get updated comment with user info
+      const query = `
+        SELECT tc.*, u.username, u.avatar_url
+        FROM trade_comments tc
+        JOIN users u ON tc.user_id = u.id
+        WHERE tc.id = $1
+      `;
+      const result = await db.query(query, [commentId]);
+      
+      res.json({ comment: result.rows[0] });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async deleteComment(req, res, next) {
+    try {
+      const { id: tradeId, commentId } = req.params;
+      const userId = req.user.id;
+
+      // Check if trade exists
+      const trade = await Trade.findById(tradeId);
+      if (!trade) {
+        return res.status(404).json({ error: 'Trade not found' });
+      }
+
+      // Check if comment exists and belongs to user
+      const existingCommentQuery = `
+        SELECT * FROM trade_comments 
+        WHERE id = $1 AND trade_id = $2 AND user_id = $3
+      `;
+      const existingResult = await db.query(existingCommentQuery, [commentId, tradeId, userId]);
+      
+      if (existingResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Comment not found or not authorized' });
+      }
+
+      // Delete comment
+      const deleteQuery = `DELETE FROM trade_comments WHERE id = $1`;
+      await db.query(deleteQuery, [commentId]);
+      
+      res.json({ message: 'Comment deleted successfully' });
     } catch (error) {
       next(error);
     }
@@ -260,7 +385,12 @@ const tradeController = {
         
         try {
           logger.logImport(`Starting import for user ${req.user.id}, broker: ${broker}, file: ${req.file.originalname}`);
-          const trades = await parseCSV(req.file.buffer, broker);
+          const parseResult = await parseCSV(req.file.buffer, broker);
+          
+          // Handle both old format (array) and new format (object with trades and unresolvedCusips)
+          const trades = Array.isArray(parseResult) ? parseResult : parseResult.trades;
+          const unresolvedCusips = parseResult.unresolvedCusips || [];
+          
           logger.logImport(`Parsed ${trades.length} trades from CSV`);
           
           let imported = 0;
@@ -341,6 +471,13 @@ const tradeController = {
 
           logger.logImport(`Import completed: ${imported} imported, ${failed} failed, ${duplicates} duplicates skipped`);
 
+          // Schedule background CUSIP resolution if there are unresolved CUSIPs
+          if (unresolvedCusips.length > 0) {
+            logger.logImport(`Scheduling background CUSIP resolution for ${unresolvedCusips.length} CUSIPs`);
+            const cusipResolver = require('../utils/cusipResolver');
+            cusipResolver.scheduleResolution(req.user.id, unresolvedCusips);
+          }
+
           // Clear timeout on successful completion
           clearTimeout(importTimeout);
           
@@ -404,6 +541,151 @@ const tradeController = {
       
       res.json({ imports: result.rows });
     } catch (error) {
+      next(error);
+    }
+  },
+
+  async getCusipResolutionStatus(req, res, next) {
+    try {
+      const cusipResolver = require('../utils/cusipResolver');
+      const status = cusipResolver.getStatus();
+      
+      res.json({ cusipResolution: status });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async getOpenPositionsWithQuotes(req, res, next) {
+    try {
+      console.log('getOpenPositionsWithQuotes called for user:', req.user.id);
+      const finnhub = require('../utils/finnhub');
+      
+      // Check if Finnhub is configured
+      if (!finnhub.isConfigured()) {
+        console.log('Finnhub not configured, proceeding without quotes');
+      }
+
+      // Get open trades
+      console.log('Fetching open trades...');
+      const openTrades = await Trade.findByUser(req.user.id, { 
+        status: 'open',
+        limit: 200
+      });
+      
+      console.log(`Found ${openTrades.length} open trades`);
+
+      if (openTrades.length === 0) {
+        return res.json({ positions: [] });
+      }
+
+      // Group trades by symbol
+      const positionMap = {};
+      openTrades.forEach(trade => {
+        if (!positionMap[trade.symbol]) {
+          positionMap[trade.symbol] = {
+            symbol: trade.symbol,
+            side: trade.side,
+            trades: [],
+            totalQuantity: 0,
+            totalCost: 0,
+            avgPrice: 0
+          };
+        }
+        
+        positionMap[trade.symbol].trades.push(trade);
+        positionMap[trade.symbol].totalQuantity += trade.quantity;
+        positionMap[trade.symbol].totalCost += (trade.entry_price * trade.quantity);
+      });
+
+      // Calculate average prices
+      Object.values(positionMap).forEach(position => {
+        position.avgPrice = position.totalCost / position.totalQuantity;
+      });
+
+      // Get unique symbols for quotes
+      const symbols = Object.keys(positionMap);
+      console.log('Symbols to get quotes for:', symbols);
+      
+      // If Finnhub is not configured, return positions without quotes
+      if (!finnhub.isConfigured()) {
+        console.log('Finnhub not configured, returning positions without quotes');
+        const positions = Object.values(positionMap);
+        return res.json({ 
+          positions,
+          error: 'Real-time quotes not available - Finnhub API key not configured'
+        });
+      }
+      
+      try {
+        // Get real-time quotes
+        console.log('Attempting to get quotes from Finnhub...');
+        const quotes = await finnhub.getBatchQuotes(symbols);
+        console.log('Received quotes:', quotes);
+        
+        // Enhance positions with real-time data
+        const enhancedPositions = Object.values(positionMap).map(position => {
+          const quote = quotes[position.symbol];
+          
+          if (quote) {
+            const currentPrice = quote.c; // Current price
+            const currentValue = currentPrice * position.totalQuantity;
+            const unrealizedPnL = currentValue - position.totalCost;
+            const unrealizedPnLPercent = (unrealizedPnL / position.totalCost) * 100;
+            
+            return {
+              ...position,
+              currentPrice,
+              currentValue,
+              unrealizedPnL,
+              unrealizedPnLPercent,
+              dayChange: quote.d, // Day's change in price
+              dayChangePercent: quote.dp, // Day's change in percent
+              high: quote.h, // Day's high
+              low: quote.l, // Day's low
+              open: quote.o, // Day's open
+              previousClose: quote.pc, // Previous close
+              quoteTime: new Date().toISOString()
+            };
+          } else {
+            // Return position without real-time data
+            return {
+              ...position,
+              currentPrice: null,
+              currentValue: null,
+              unrealizedPnL: null,
+              unrealizedPnLPercent: null,
+              error: `No quote available for ${position.symbol}`
+            };
+          }
+        });
+
+        // Sort by unrealized P&L (biggest gains/losses first)
+        enhancedPositions.sort((a, b) => {
+          if (a.unrealizedPnL === null) return 1;
+          if (b.unrealizedPnL === null) return -1;
+          return Math.abs(b.unrealizedPnL) - Math.abs(a.unrealizedPnL);
+        });
+
+        res.json({ 
+          positions: enhancedPositions,
+          quotesAvailable: Object.keys(quotes).length,
+          totalPositions: enhancedPositions.length
+        });
+
+      } catch (quoteError) {
+        console.error('Failed to get quotes:', quoteError);
+        
+        // Return positions without real-time data
+        const positions = Object.values(positionMap);
+        res.json({ 
+          positions,
+          error: `Failed to get real-time quotes: ${quoteError.message}`
+        });
+      }
+
+    } catch (error) {
+      console.error('Failed to get open positions:', error);
       next(error);
     }
   },
@@ -549,7 +831,7 @@ const tradeController = {
         return res.status(400).json({ error: 'Valid CUSIP must be 9 characters' });
       }
 
-      const ticker = await cusipLookup.lookupTicker(cusip);
+      const ticker = await finnhub.lookupCusip(cusip);
       
       if (ticker) {
         res.json({ cusip, ticker, found: true });
@@ -576,8 +858,11 @@ const tradeController = {
       const cleanCusip = cusip.replace(/\s/g, '').toUpperCase();
       const cleanTicker = ticker.toUpperCase();
 
-      // Add the mapping
-      cusipLookup.addMapping(cleanCusip, cleanTicker);
+      // Cache the mapping in Finnhub
+      finnhub.cache.set(`cusip_${cleanCusip}`, {
+        data: cleanTicker,
+        timestamp: Date.now()
+      });
       
       // Retroactively update existing trades that have this CUSIP as symbol
       const updateResult = await Trade.updateSymbolForCusip(req.user.id, cleanCusip, cleanTicker);
@@ -595,7 +880,14 @@ const tradeController = {
 
   async getCusipMappings(req, res, next) {
     try {
-      const mappings = cusipLookup.cache;
+      // Get Finnhub cached mappings
+      const mappings = {};
+      for (const [key, value] of finnhub.cache.entries()) {
+        if (key.startsWith('cusip_')) {
+          const cusip = key.replace('cusip_', '');
+          mappings[cusip] = value.data;
+        }
+      }
       res.json({ mappings });
     } catch (error) {
       next(error);
@@ -616,15 +908,18 @@ const tradeController = {
 
       const cleanCusip = cusip.replace(/\s/g, '').toUpperCase();
       
-      // Check if mapping exists
-      if (!cusipLookup.cache[cleanCusip]) {
+      // Check if mapping exists in Finnhub cache
+      const cacheKey = `cusip_${cleanCusip}`;
+      const cachedMapping = finnhub.cache.get(cacheKey);
+      
+      if (!cachedMapping) {
         return res.status(404).json({ error: 'CUSIP mapping not found' });
       }
 
-      const deletedTicker = cusipLookup.cache[cleanCusip];
+      const deletedTicker = cachedMapping.data;
       
-      // Remove the mapping
-      const removed = cusipLookup.removeMapping(cleanCusip);
+      // Remove the mapping from cache
+      const removed = finnhub.cache.delete(cacheKey);
       
       if (removed) {
         res.json({ 
@@ -642,12 +937,18 @@ const tradeController = {
 
   async resolveUnresolvedCusips(req, res, next) {
     try {
-      // Find all trades with CUSIP-like symbols that aren't in cache
-      const cacheKeys = Object.keys(cusipLookup.cache);
+      // Get cached CUSIPs from Finnhub
+      const cachedCusips = [];
+      for (const key of finnhub.cache.keys()) {
+        if (key.startsWith('cusip_')) {
+          cachedCusips.push(key.replace('cusip_', ''));
+        }
+      }
+      
       let cusipQuery;
       let queryParams;
       
-      if (cacheKeys.length === 0) {
+      if (cachedCusips.length === 0) {
         // No cached CUSIPs, find all CUSIP-like symbols
         cusipQuery = `
           SELECT DISTINCT symbol 
@@ -665,9 +966,9 @@ const tradeController = {
           WHERE user_id = $1 
           AND LENGTH(symbol) = 9 
           AND symbol ~ '^[A-Z0-9]{8}[0-9]$'
-          AND symbol NOT IN (${cacheKeys.map((_, i) => `$${i + 2}`).join(',')})
+          AND symbol NOT IN (${cachedCusips.map((_, i) => `$${i + 2}`).join(',')})
         `;
-        queryParams = [req.user.id, ...cacheKeys];
+        queryParams = [req.user.id, ...cachedCusips];
       }
       
       const result = await db.query(cusipQuery, queryParams);
@@ -683,8 +984,8 @@ const tradeController = {
 
       console.log(`Found ${unresolvedCusips.length} unresolved CUSIPs, attempting to resolve...`);
       
-      // Resolve CUSIPs using full lookup pipeline
-      const resolvedMappings = await cusipLookup.lookupBatch(unresolvedCusips);
+      // Resolve CUSIPs using Finnhub batch lookup
+      const resolvedMappings = await finnhub.batchLookupCusips(unresolvedCusips);
       const resolvedCount = Object.keys(resolvedMappings).length;
       
       // Update trades with resolved mappings

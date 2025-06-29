@@ -14,12 +14,14 @@ Password: DemoUser25
 ## 🚀 Features
 
 - **Multi-Broker Support**: Import trades from Lightspeed, Charles Schwab, ThinkorSwim, Interactive Brokers, and E*TRADE
-- **CUSIP Resolution**: Automatic conversion of CUSIP codes to ticker symbols using OpenFIGI and Google Gemini AI
-- **Real-time Analytics**: Dashboard with P&L tracking, win rates, and performance metrics
+- **CUSIP Resolution**: Automatic conversion of CUSIP codes to ticker symbols using Finnhub API and Google Gemini AI
+- **Real-time Market Data**: Live stock quotes and unrealized P&L tracking for open positions using Finnhub API
+- **Comprehensive Analytics**: Dashboard with P&L tracking, win rates, performance metrics, and hold time analysis
 - **Trade Management**: Add, edit, and categorize trades with tags and strategies
+- **Advanced Charts**: Performance analysis by hold time, day of week, price ranges, and volume
 - **File Uploads**: Support for CSV imports with detailed validation and error reporting
 - **Responsive Design**: Modern UI built with Vue 3 and Tailwind CSS
-- **Secure Authentication**: JWT-based user authentication and authorization
+- **Secure Authentication**: JWT-based user authentication and authorization with owner/admin roles
 
 ## 📋 Prerequisites
 
@@ -181,7 +183,7 @@ Edit the `.env` file with your specific values:
 
 ```env
 NODE_ENV=development
-PORT=5001
+PORT=3000
 
 # Database Configuration
 DB_HOST=localhost
@@ -194,11 +196,17 @@ DB_PASSWORD=your_secure_password
 JWT_SECRET=your_super_secret_jwt_key_here_make_it_long_and_random
 JWT_EXPIRE=7d
 
-# Email Configuration (for user registration/notifications)
+# Email Configuration (Optional - for user registration/notifications)
+# Leave these empty for self-hosted setups without email verification
 EMAIL_HOST=smtp.gmail.com
 EMAIL_PORT=587
 EMAIL_USER=your_email@gmail.com
 EMAIL_PASS=your_app_password
+
+# Authentication Configuration
+# Set to 'true' for detailed error messages (helpful for self-hosted setups)
+# Automatically enabled when email is not configured
+DETAILED_AUTH_ERRORS=false
 
 # Frontend URL
 FRONTEND_URL=http://localhost:5173
@@ -207,8 +215,12 @@ FRONTEND_URL=http://localhost:5173
 MAX_FILE_SIZE=52428800
 
 # API Keys (Optional but recommended)
+# Finnhub API Key - For real-time stock quotes and CUSIP resolution
+# Get your free API key at: https://finnhub.io/register
+FINNHUB_API_KEY=your_finnhub_api_key
+
+# Google Gemini API Key - For AI-powered CUSIP resolution (backup)
 GEMINI_API_KEY=your_gemini_api_key
-OPENFIGI_API_KEY=your_openfigi_api_key
 ```
 
 ### Step 6: Frontend Setup
@@ -219,11 +231,37 @@ cd ../frontend
 
 # Install dependencies
 npm install
+
+# Copy environment configuration (optional)
+cp .env.example .env
+```
+
+#### Frontend Environment Variables (Optional)
+
+Create a `.env` file in the frontend directory to customize frontend behavior:
+
+```env
+# Set to 'false' to hide the donation button
+VITE_SHOW_DONATION_BUTTON=true
 ```
 
 ## 🔑 API Key Configuration
 
-### Google Gemini API (Recommended)
+### Finnhub API (Primary - Recommended)
+
+1. Visit [Finnhub.io](https://finnhub.io/register)
+2. Sign up for a free account
+3. Generate an API key from your dashboard
+4. Add the key to your `.env` file as `FINNHUB_API_KEY`
+
+**Features:**
+- **Real-time stock quotes**: Live market data for open position tracking
+- **CUSIP to ticker resolution**: Symbol search and identification
+- **Rate limiting**: Built-in 30 calls/second rate limiting
+- **Free tier**: 60 API calls/minute (sufficient for most use cases)
+- **Consolidated API**: Single provider for both quotes and CUSIP resolution
+
+### Google Gemini API (Backup for CUSIP Resolution)
 
 1. Visit [Google AI Studio](https://aistudio.google.com/app/apikey)
 2. Sign in with your Google account
@@ -234,25 +272,20 @@ npm install
 - AI-powered CUSIP to ticker symbol resolution
 - High accuracy for modern securities
 - Free tier available with generous limits
+- Used as fallback when Finnhub cannot resolve a CUSIP
 
-### OpenFIGI API (Alternative/Backup)
+### CUSIP Resolution & Market Data Priority
 
-1. Visit [OpenFIGI API](https://www.openfigi.com/api)
-2. Sign up for a free account
-3. Generate an API key
-4. Add the key to your `.env` file as `OPENFIGI_API_KEY`
+The system uses the following priority:
 
-**Features:**
-- Professional-grade financial identifier resolution
-- Extensive database of securities
-- Free tier: 100 requests per minute
+**For Real-time Quotes:**
+1. **Finnhub API**: Primary source for live market data
+2. **Cache**: Previously fetched quotes (1-minute cache)
+3. **Fallback**: Display without real-time data if API unavailable
 
-### CUSIP Resolution Priority
-
-The system uses the following priority for CUSIP lookups:
-
+**For CUSIP Resolution:**
 1. **Cache**: Previously resolved mappings (fastest)
-2. **OpenFIGI**: If API key is provided (most reliable)
+2. **Finnhub**: Symbol search API (primary)
 3. **Google Gemini**: AI-powered resolution (fallback)
 4. **Manual Entry**: User can manually add mappings
 
@@ -267,8 +300,8 @@ The system uses the following priority for CUSIP lookups:
 cd backend
 npm run dev
 
-# Server will start on http://localhost:5001
-# API endpoints available at http://localhost:5001/api
+# Server will start on http://localhost:3000
+# API endpoints available at http://localhost:3000/api
 ```
 
 #### Start Frontend Development Server
@@ -294,7 +327,7 @@ npm run build
 
 ```bash
 cd backend
-NODE_ENV=production npm start
+NODE_ENV=production PORT=3000 npm start
 ```
 
 ## 📊 Supported Broker Formats
@@ -394,7 +427,7 @@ module.exports = {
     cwd: '/var/www/tradetally/backend',
     env: {
       NODE_ENV: 'production',
-      PORT: 5001
+      PORT: 3000
     },
     instances: 2,
     exec_mode: 'cluster',
@@ -440,7 +473,7 @@ server {
 
     # Backend API
     location /api {
-        proxy_pass http://localhost:5001;
+        proxy_pass http://localhost:3000;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -502,7 +535,7 @@ sudo tail -f /var/log/postgresql/postgresql-*.log
 | Variable | Description | Default | Required |
 |----------|-------------|---------|----------|
 | `NODE_ENV` | Environment mode | `development` | No |
-| `PORT` | Backend server port | `5001` | No |
+| `PORT` | Backend server port | `3000` | No |
 | `DB_HOST` | PostgreSQL host | `localhost` | Yes |
 | `DB_PORT` | PostgreSQL port | `5432` | No |
 | `DB_NAME` | Database name | - | Yes |
@@ -510,23 +543,48 @@ sudo tail -f /var/log/postgresql/postgresql-*.log
 | `DB_PASSWORD` | Database password | - | Yes |
 | `JWT_SECRET` | JWT signing secret | - | Yes |
 | `JWT_EXPIRE` | JWT expiration time | `7d` | No |
-| `EMAIL_HOST` | SMTP host | - | Yes |
+| `EMAIL_HOST` | SMTP host | - | No* |
 | `EMAIL_PORT` | SMTP port | `587` | No |
-| `EMAIL_USER` | SMTP username | - | Yes |
-| `EMAIL_PASS` | SMTP password | - | Yes |
+| `EMAIL_USER` | SMTP username | - | No* |
+| `EMAIL_PASS` | SMTP password | - | No* |
+| `DETAILED_AUTH_ERRORS` | Show specific auth errors | `false` | No |
 | `FRONTEND_URL` | Frontend URL | `http://localhost:5173` | No |
 | `MAX_FILE_SIZE` | Max upload size (bytes) | `52428800` (50MB) | No |
-| `GEMINI_API_KEY` | Google Gemini API key | - | No |
-| `OPENFIGI_API_KEY` | OpenFIGI API key | - | No |
+| `FINNHUB_API_KEY` | Finnhub API key for quotes/CUSIP | - | No |
+| `GEMINI_API_KEY` | Google Gemini API key (backup) | - | No |
+
+**Self-Hosted Configuration Notes:**
+- Email settings marked with * are optional for self-hosted setups
+- If email is not configured, users are automatically verified and can sign in immediately
+- This makes TradeTally self-host friendly without requiring email setup
+- Email verification will be enabled automatically if all email settings are provided
+- `DETAILED_AUTH_ERRORS` automatically enables for self-hosted setups to show specific login error messages
 
 ## 📈 Usage Guide
+
+### Self-Hosted Setup (No Email Required)
+
+For personal or small team use without email setup:
+
+1. **Skip Email Configuration**: Leave `EMAIL_HOST`, `EMAIL_USER`, and `EMAIL_PASS` empty in your `.env` file
+2. **Register Your Account**: Users will be automatically verified and can sign in immediately
+3. **First User Becomes Admin**: The first registered user automatically gets admin privileges
+4. **Ready to Use**: No email verification steps required
+
+### Production Setup (With Email)
+
+For larger deployments with email verification:
+
+1. **Configure Email Settings**: Set all email variables in your `.env` file
+2. **Email Verification**: New users must verify their email before signing in
+3. **Enhanced Security**: Email-based password resets and notifications available
 
 ### First Run
 
 1. **Create Admin Account**:
    - Navigate to `http://localhost:5173`
    - Click "Sign Up" and create your account
-   - Verify your email if email is configured
+   - Verify your email if email is configured (automatic if not configured)
 
 2. **Import Your First Trades**:
    - Go to "Import" tab
@@ -535,8 +593,11 @@ sudo tail -f /var/log/postgresql/postgresql-*.log
    - Review and confirm the import
 
 3. **View Analytics**:
-   - Navigate to "Dashboard" for overview
-   - Visit "Analytics" for detailed metrics
+   - Navigate to "Dashboard" for overview with real-time open positions
+   - Visit "Analytics" for detailed metrics including:
+     - Performance by hold time (< 1 min to 1+ months)
+     - Performance by day of week
+     - Performance by price ranges and volume
    - Use date range filters to analyze specific periods
 
 ### CUSIP Resolution
@@ -547,6 +608,61 @@ If your broker uses CUSIP codes instead of ticker symbols:
 2. **Manual Resolution**: Go to Import tab → "Resolve Unresolved CUSIPs"
 3. **Add Mappings**: Add custom CUSIP-to-ticker mappings in the import interface
 4. **Delete Mappings**: Remove incorrect mappings if needed
+
+### Admin Management
+
+TradeTally includes a role-based admin system for site management:
+
+#### Creating Admin Users
+
+**First User Auto-Admin:**
+The first user to register on a fresh TradeTally installation is automatically granted admin privileges. This ensures you always have an admin account to manage the system.
+
+**Manual Admin Promotion:**
+To promote additional users to admin status:
+
+```bash
+cd backend
+node scripts/make-admin.js user@example.com
+```
+
+This will:
+- Update the user's role to 'admin' in the database
+- Show confirmation with user details
+- Exit with an error if the user is not found
+
+#### Admin Permissions
+
+Admin users have the following additional capabilities:
+
+**Trade Management:**
+- Can delete any public trade (not just their own)
+- Regular users can only delete their own trades
+- Admin actions are properly logged and audited
+
+**Security Features:**
+- All admin permissions are validated server-side
+- JWT tokens include user role for frontend permission checks
+- Database constraints ensure only valid roles ('user' or 'admin')
+
+**Visual Indicators:**
+- Trash/delete icons appear next to public trades for authorized users
+- Clear permission-based UI elements
+
+#### Future Admin Features
+
+The admin role system is designed to be extensible and can include:
+- User management and moderation
+- Site-wide settings configuration
+- Advanced analytics and reporting
+- Content moderation tools
+
+#### Admin Security Notes
+
+- Admin permissions are always checked server-side in middleware
+- Role changes require direct database access (cannot be done through UI)
+- All admin actions maintain full audit trails
+- Regular users cannot elevate their own permissions
 
 ## 🐛 Troubleshooting
 
@@ -581,10 +697,30 @@ npm install
 ```
 
 #### CUSIP Resolution Not Working
-1. Check if API keys are correctly set in `.env`
+1. Check if `FINNHUB_API_KEY` is correctly set in backend `.env`
 2. Verify internet connectivity
 3. Check console logs for error messages
-4. Try manual CUSIP mapping as fallback
+4. Ensure API key is in backend `.env`, not frontend
+5. Try manual CUSIP mapping as fallback
+
+#### Real-time Quotes Not Working
+1. Ensure `FINNHUB_API_KEY` is set in backend `.env` file
+2. Check that backend server is running on correct port (3000)
+3. Verify frontend is proxying to correct backend port
+4. Check browser console for API errors
+5. Confirm ticker symbols are valid (not CUSIPs)
+
+#### Email Verification Issues
+**For Self-Hosted Setups (No Email Required):**
+1. Leave `EMAIL_HOST`, `EMAIL_USER`, and `EMAIL_PASS` empty in `.env`
+2. Users will be automatically verified and can sign in immediately
+3. No email setup required - perfect for personal use
+
+**For Production Setups (With Email):**
+1. Ensure all email settings are configured in `.env`
+2. Test email connectivity with your SMTP provider
+3. Check firewall settings for SMTP port (usually 587 or 465)
+4. For Gmail, use App Passwords instead of regular passwords
 
 ### Performance Optimization
 
@@ -666,6 +802,23 @@ npm run build
 # Restart backend (if using PM2)
 pm2 restart tradetally-backend
 ```
+
+### Recent Updates
+
+**v2.1.0 - Market Data Integration**
+- **Finnhub API Integration**: Replaced OpenFIGI with Finnhub for consolidated market data
+- **Real-time Quotes**: Live stock quotes for open positions with unrealized P&L
+- **Enhanced CUSIP Resolution**: Improved symbol resolution using Finnhub's search API
+- **Hold Time Analytics**: New chart showing performance by hold time periods
+- **Rate Limiting**: Built-in 30 calls/second rate limiting for Finnhub API
+- **Port Change**: Backend now runs on port 3000 (update your configs)
+- **Owner Role**: First user becomes owner with enhanced permissions
+
+**Migration Notes:**
+- Update your `.env` to include `FINNHUB_API_KEY`
+- Remove `OPENFIGI_API_KEY` (no longer used)
+- Update frontend proxy to point to port 3000
+- Restart both frontend and backend after update
 
 ---
 

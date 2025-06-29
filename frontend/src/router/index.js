@@ -94,6 +94,12 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
+      path: '/admin/users',
+      name: 'admin-users',
+      component: () => import('@/views/admin/UserManagementView.vue'),
+      meta: { requiresAuth: true, requiresAdmin: true }
+    },
+    {
       path: '/public',
       name: 'public-trades',
       component: () => import('@/views/PublicTradesView.vue')
@@ -106,13 +112,30 @@ const router = createRouter({
   ]
 })
 
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from, next) => {
   const authStore = useAuthStore()
   
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
     next({ name: 'login', query: { redirect: to.fullPath } })
   } else if (to.meta.guest && authStore.isAuthenticated) {
     next({ name: 'dashboard' })
+  } else if (to.meta.requiresAdmin) {
+    // Ensure user data is loaded for admin check
+    if (authStore.isAuthenticated && !authStore.user) {
+      try {
+        await authStore.fetchUser()
+      } catch (error) {
+        console.error('Failed to fetch user data:', error)
+        next({ name: 'login' })
+        return
+      }
+    }
+    
+    if (authStore.user?.role !== 'admin') {
+      next({ name: 'dashboard' })
+    } else {
+      next()
+    }
   } else {
     next()
   }

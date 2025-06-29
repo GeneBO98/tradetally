@@ -39,7 +39,7 @@ class Trade {
     let query = `
       SELECT t.*, u.username, u.avatar_url,
         array_agg(DISTINCT ta.*) FILTER (WHERE ta.id IS NOT NULL) as attachments,
-        count(DISTINCT tc.id) as comment_count
+        count(DISTINCT tc.id)::integer as comment_count
       FROM trades t
       LEFT JOIN users u ON t.user_id = u.id
       LEFT JOIN trade_attachments ta ON t.id = ta.trade_id
@@ -66,7 +66,7 @@ class Trade {
     let query = `
       SELECT t.*, 
         array_agg(DISTINCT ta.file_url) FILTER (WHERE ta.id IS NOT NULL) as attachment_urls,
-        count(DISTINCT tc.id) as comment_count
+        count(DISTINCT tc.id)::integer as comment_count
       FROM trades t
       LEFT JOIN trade_attachments ta ON t.id = ta.trade_id
       LEFT JOIN trade_comments tc ON t.id = tc.trade_id
@@ -104,6 +104,61 @@ class Trade {
       query += ` AND t.strategy = $${paramCount}`;
       values.push(filters.strategy);
       paramCount++;
+    }
+
+    // Advanced filters
+    if (filters.side) {
+      query += ` AND t.side = $${paramCount}`;
+      values.push(filters.side);
+      paramCount++;
+    }
+
+    if (filters.minPrice !== undefined) {
+      query += ` AND t.entry_price >= $${paramCount}`;
+      values.push(filters.minPrice);
+      paramCount++;
+    }
+
+    if (filters.maxPrice !== undefined) {
+      query += ` AND t.entry_price <= $${paramCount}`;
+      values.push(filters.maxPrice);
+      paramCount++;
+    }
+
+    if (filters.minQuantity !== undefined) {
+      query += ` AND t.quantity >= $${paramCount}`;
+      values.push(filters.minQuantity);
+      paramCount++;
+    }
+
+    if (filters.maxQuantity !== undefined) {
+      query += ` AND t.quantity <= $${paramCount}`;
+      values.push(filters.maxQuantity);
+      paramCount++;
+    }
+
+    if (filters.status === 'open') {
+      query += ` AND t.exit_price IS NULL`;
+    } else if (filters.status === 'closed') {
+      query += ` AND t.exit_price IS NOT NULL`;
+    }
+
+    if (filters.minPnl !== undefined) {
+      query += ` AND t.pnl >= $${paramCount}`;
+      values.push(filters.minPnl);
+      paramCount++;
+    }
+
+    if (filters.maxPnl !== undefined) {
+      query += ` AND t.pnl <= $${paramCount}`;
+      values.push(filters.maxPnl);
+      paramCount++;
+    }
+
+    if (filters.pnlType === 'profit') {
+      query += ` AND t.pnl > 0`;
+    } else if (filters.pnlType === 'loss') {
+      query += ` AND t.pnl < 0`;
     }
 
     query += ` GROUP BY t.id ORDER BY t.trade_date DESC, t.entry_time DESC`;
@@ -230,7 +285,7 @@ class Trade {
     let query = `
       SELECT t.*, u.username, u.avatar_url,
         array_agg(DISTINCT ta.file_url) FILTER (WHERE ta.id IS NOT NULL) as attachment_urls,
-        count(DISTINCT tc.id) as comment_count
+        count(DISTINCT tc.id)::integer as comment_count
       FROM trades t
       JOIN users u ON t.user_id = u.id
       JOIN user_settings us ON u.id = us.user_id

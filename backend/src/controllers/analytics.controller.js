@@ -381,21 +381,71 @@ const analyticsController = {
         ORDER BY range_order
       `;
 
-      const [tradeDistResult, perfByPriceResult, perfByVolumeResult] = await Promise.all([
+      // Performance by Hold Time
+      const performanceByHoldTimeQuery = `
+        WITH hold_time_analysis AS (
+          SELECT 
+            CASE 
+              WHEN entry_time IS NULL OR exit_time IS NULL THEN 'Open Position'
+              WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 60 THEN '< 1 min'
+              WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 300 THEN '1-5 min'
+              WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 900 THEN '5-15 min'
+              WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 1800 THEN '15-30 min'
+              WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 3600 THEN '30-60 min'
+              WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 7200 THEN '1-2 hours'
+              WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 14400 THEN '2-4 hours'
+              WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 86400 THEN '4-24 hours'
+              WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 604800 THEN '1-7 days'
+              WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 2592000 THEN '1-4 weeks'
+              ELSE '1+ months'
+            END as hold_time_range,
+            CASE 
+              WHEN entry_time IS NULL OR exit_time IS NULL THEN 0
+              WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 60 THEN 1
+              WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 300 THEN 2
+              WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 900 THEN 3
+              WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 1800 THEN 4
+              WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 3600 THEN 5
+              WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 7200 THEN 6
+              WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 14400 THEN 7
+              WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 86400 THEN 8
+              WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 604800 THEN 9
+              WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 2592000 THEN 10
+              ELSE 11
+            END as range_order,
+            pnl,
+            CASE WHEN pnl > 0 THEN 1 ELSE 0 END as is_winner
+          FROM trades
+          WHERE user_id = $1 ${dateFilter} AND pnl IS NOT NULL
+        )
+        SELECT 
+          hold_time_range, 
+          COALESCE(SUM(pnl), 0) as total_pnl,
+          COUNT(*) as trade_count,
+          SUM(is_winner) as winning_trades
+        FROM hold_time_analysis
+        GROUP BY hold_time_range, range_order
+        ORDER BY range_order
+      `;
+
+      const [tradeDistResult, perfByPriceResult, perfByVolumeResult, perfByHoldTimeResult] = await Promise.all([
         db.query(tradeDistributionQuery, params),
         db.query(performanceByPriceQuery, params),
-        db.query(performanceByVolumeQuery, params)
+        db.query(performanceByVolumeQuery, params),
+        db.query(performanceByHoldTimeQuery, params)
       ]);
 
       console.log('Chart data query results:', {
         tradeDistribution: tradeDistResult.rows,
         performanceByPrice: perfByPriceResult.rows,
-        performanceByVolume: perfByVolumeResult.rows
+        performanceByVolume: perfByVolumeResult.rows,
+        performanceByHoldTime: perfByHoldTimeResult.rows
       });
 
       // Process data into arrays matching the chart labels
       const priceLabels = ['< $2', '$2-4.99', '$5-9.99', '$10-19.99', '$20-49.99', '$50-99.99', '$100-199.99', '$200+'];
       const volumeLabels = ['2-4', '5-9', '10-19', '20-49', '50-99', '100-500', '500-999', '1K-2K', '2K-3K', '3K-5K', '5K-10K', '10K-20K', '20K+'];
+      const holdTimeLabels = ['< 1 min', '1-5 min', '5-15 min', '15-30 min', '30-60 min', '1-2 hours', '2-4 hours', '4-24 hours', '1-7 days', '1-4 weeks', '1+ months'];
 
       const tradeDistribution = priceLabels.map(label => {
         const found = tradeDistResult.rows.find(row => row.price_range === label);
@@ -412,10 +462,41 @@ const analyticsController = {
         return found ? parseFloat(found.total_pnl) : 0;
       });
 
+      const performanceByHoldTime = holdTimeLabels.map(label => {
+        const found = perfByHoldTimeResult.rows.find(row => row.hold_time_range === label);
+        return found ? parseFloat(found.total_pnl) : 0;
+      });
+
+      // Day of Week Performance
+      const dayOfWeekQuery = `
+        SELECT 
+          EXTRACT(DOW FROM trade_date) as day_of_week,
+          COUNT(*) as trade_count,
+          COALESCE(SUM(pnl), 0) as total_pnl
+        FROM trades
+        WHERE user_id = $1 ${dateFilter}
+        GROUP BY EXTRACT(DOW FROM trade_date)
+        ORDER BY EXTRACT(DOW FROM trade_date)
+      `;
+
+      const dayOfWeekResult = await db.query(dayOfWeekQuery, params);
+
+      // Process day of week data (0=Sunday, 1=Monday, ..., 6=Saturday)
+      const dayOfWeekData = [];
+      for (let i = 0; i < 7; i++) {
+        const found = dayOfWeekResult.rows.find(row => parseInt(row.day_of_week) === i);
+        dayOfWeekData.push({
+          total_pnl: found ? parseFloat(found.total_pnl) : 0,
+          trade_count: found ? parseInt(found.trade_count) : 0
+        });
+      }
+
       res.json({
         tradeDistribution,
         performanceByPrice,
-        performanceByVolume
+        performanceByVolume,
+        performanceByHoldTime,
+        dayOfWeek: dayOfWeekData
       });
     } catch (error) {
       next(error);

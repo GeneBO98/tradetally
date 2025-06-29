@@ -30,6 +30,7 @@
               type="date" 
               v-model="filters.startDate"
               @change="applyFilters"
+              @keydown.enter="applyFilters"
               class="input text-sm"
               placeholder="Start Date"
             />
@@ -37,6 +38,7 @@
               type="date" 
               v-model="filters.endDate"
               @change="applyFilters"
+              @keydown.enter="applyFilters"
               class="input text-sm"
               placeholder="End Date"
             />
@@ -64,6 +66,170 @@
     </div>
 
     <div v-else class="space-y-8">
+      <!-- Open Trades Section -->
+      <div v-if="openTrades.length > 0" class="card">
+        <div class="card-body">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white">Open Positions</h3>
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400">
+              {{ openTrades.length }} {{ openTrades.length === 1 ? 'position' : 'positions' }}
+            </span>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+              <thead>
+                <tr>
+                  <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Symbol
+                  </th>
+                  <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Side
+                  </th>
+                  <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Total Quantity
+                  </th>
+                  <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Avg Entry Price
+                  </th>
+                  <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Total Cost
+                  </th>
+                  <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Current Price
+                  </th>
+                  <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Current Value
+                  </th>
+                  <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Unrealized P&L
+                  </th>
+                  <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Individual Trades
+                  </th>
+                  <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                <template v-for="position in openTrades" :key="position.symbol">
+                  <!-- Position Summary Row -->
+                  <tr class="bg-gray-50 dark:bg-gray-800/50 font-medium">
+                    <td class="px-3 py-2 text-sm font-bold text-gray-900 dark:text-white">
+                      {{ position.symbol }}
+                    </td>
+                    <td class="px-3 py-2 text-sm">
+                      <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
+                        :class="[
+                          position.side === 'long' 
+                            ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
+                            : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
+                        ]">
+                        {{ position.side }}
+                      </span>
+                    </td>
+                    <td class="px-3 py-2 text-sm font-bold text-gray-900 dark:text-white text-right">
+                      {{ position.totalQuantity.toLocaleString() }}
+                    </td>
+                    <td class="px-3 py-2 text-sm font-bold text-gray-900 dark:text-white text-right">
+                      ${{ formatCurrency(position.avgPrice) }}
+                    </td>
+                    <td class="px-3 py-2 text-sm font-bold text-gray-900 dark:text-white text-right">
+                      ${{ formatCurrency(position.totalCost) }}
+                    </td>
+                    <td class="px-3 py-2 text-sm text-right">
+                      <div v-if="position.currentPrice !== null" class="font-bold text-gray-900 dark:text-white">
+                        ${{ formatCurrency(position.currentPrice) }}
+                        <div v-if="position.dayChange !== undefined" class="text-xs" :class="[
+                          position.dayChange >= 0 ? 'text-green-600' : 'text-red-600'
+                        ]">
+                          {{ position.dayChange >= 0 ? '+' : '' }}{{ formatCurrency(position.dayChange) }}
+                          ({{ position.dayChangePercent >= 0 ? '+' : '' }}{{ formatNumber(position.dayChangePercent) }}%)
+                        </div>
+                      </div>
+                      <span v-else class="text-xs text-gray-400">No quote</span>
+                    </td>
+                    <td class="px-3 py-2 text-sm font-bold text-right">
+                      <span v-if="position.currentValue !== null" class="text-gray-900 dark:text-white">
+                        ${{ formatCurrency(position.currentValue) }}
+                      </span>
+                      <span v-else class="text-xs text-gray-400">-</span>
+                    </td>
+                    <td class="px-3 py-2 text-sm font-bold text-right">
+                      <div v-if="position.unrealizedPnL !== null">
+                        <div :class="[
+                          position.unrealizedPnL >= 0 ? 'text-green-600' : 'text-red-600'
+                        ]">
+                          {{ position.unrealizedPnL >= 0 ? '+' : '' }}${{ formatCurrency(Math.abs(position.unrealizedPnL)) }}
+                        </div>
+                        <div class="text-xs" :class="[
+                          position.unrealizedPnL >= 0 ? 'text-green-500' : 'text-red-500'
+                        ]">
+                          {{ position.unrealizedPnLPercent >= 0 ? '+' : '' }}{{ formatNumber(position.unrealizedPnLPercent) }}%
+                        </div>
+                      </div>
+                      <span v-else class="text-xs text-gray-400">-</span>
+                    </td>
+                    <td class="px-3 py-2 text-sm text-gray-500 dark:text-gray-400 text-right">
+                      {{ position.trades.length }} {{ position.trades.length === 1 ? 'trade' : 'trades' }}
+                    </td>
+                    <td class="px-3 py-2 text-sm text-right">
+                      <span class="text-xs text-gray-400">Position Total</span>
+                    </td>
+                  </tr>
+                  
+                  <!-- Individual Trade Rows -->
+                  <tr v-for="trade in position.trades" :key="trade.id" class="hover:bg-gray-50 dark:hover:bg-gray-800">
+                    <td class="px-3 py-2 text-sm text-gray-500 dark:text-gray-400 pl-6">
+                      <span class="text-xs">└─</span> Trade #{{ trade.id }}
+                    </td>
+                    <td class="px-3 py-2 text-sm">
+                      <span class="px-1.5 inline-flex text-xs leading-4 font-medium rounded"
+                        :class="[
+                          trade.side === 'long' 
+                            ? 'bg-green-50 text-green-700 dark:bg-green-900/10 dark:text-green-400'
+                            : 'bg-red-50 text-red-700 dark:bg-red-900/10 dark:text-red-400'
+                        ]">
+                        {{ trade.side }}
+                      </span>
+                    </td>
+                    <td class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300 text-right">
+                      {{ trade.quantity.toLocaleString() }}
+                    </td>
+                    <td class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300 text-right">
+                      ${{ formatCurrency(trade.entry_price) }}
+                    </td>
+                    <td class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300 text-right">
+                      ${{ formatCurrency(trade.entry_price * trade.quantity) }}
+                    </td>
+                    <td class="px-3 py-2 text-sm text-gray-400 text-right">
+                      <span class="text-xs">-</span>
+                    </td>
+                    <td class="px-3 py-2 text-sm text-gray-400 text-right">
+                      <span class="text-xs">-</span>
+                    </td>
+                    <td class="px-3 py-2 text-sm text-gray-400 text-right">
+                      <span class="text-xs">-</span>
+                    </td>
+                    <td class="px-3 py-2 text-sm text-gray-500 dark:text-gray-400 text-right">
+                      {{ formatDate(trade.trade_date) }}
+                    </td>
+                    <td class="px-3 py-2 text-sm text-right">
+                      <router-link
+                        :to="`/trades/${trade.id}`"
+                        class="text-primary-600 hover:text-primary-900 dark:hover:text-primary-400 font-medium text-xs"
+                      >
+                        View
+                      </router-link>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
       <!-- Key Metrics Cards -->
       <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
         <div class="card">
@@ -177,9 +343,9 @@
       </div>
 
       <!-- Charts Row -->
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <!-- P&L Over Time Chart -->
-        <div class="card">
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <!-- P&L Over Time Chart (2/3 width) -->
+        <div class="lg:col-span-2 card">
           <div class="card-body">
             <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
               Cumulative P&L Over Time
@@ -190,8 +356,8 @@
           </div>
         </div>
 
-        <!-- Win/Loss Distribution -->
-        <div class="card">
+        <!-- Win/Loss Distribution (1/3 width) -->
+        <div class="lg:col-span-1 card">
           <div class="card-body">
             <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
               Win/Loss Distribution
@@ -371,6 +537,7 @@ const analytics = ref({
   dailyWinRate: [],
   topTrades: { best: [], worst: [] }
 })
+const openTrades = ref([])
 const symbols = ref([])
 const strategies = ref([])
 
@@ -498,6 +665,63 @@ async function fetchAnalytics() {
     console.error('Failed to fetch analytics:', error)
   } finally {
     loading.value = false
+  }
+}
+
+async function fetchOpenTrades() {
+  try {
+    // Use the new endpoint that includes real-time quotes
+    console.log('Fetching open positions with quotes...')
+    const response = await api.get('/trades/open-positions-quotes')
+    
+    console.log('Open positions response:', response.data)
+    
+    if (response.data.error) {
+      console.warn('Real-time quotes not available:', response.data.error)
+    }
+    
+    openTrades.value = response.data.positions || []
+    console.log('Set openTrades to:', openTrades.value)
+    
+  } catch (error) {
+    console.error('Failed to fetch open trades:', error)
+    
+    // Fallback to original endpoint if the new one fails
+    try {
+      const fallbackResponse = await api.get('/trades', {
+        params: { status: 'open', limit: 100 }
+      })
+      const trades = fallbackResponse.data.trades || fallbackResponse.data
+      
+      // Group trades by symbol and calculate totals (without real-time data)
+      const grouped = {}
+      trades.forEach(trade => {
+        if (!grouped[trade.symbol]) {
+          grouped[trade.symbol] = {
+            symbol: trade.symbol,
+            side: trade.side,
+            trades: [],
+            totalQuantity: 0,
+            totalCost: 0,
+            avgPrice: 0
+          }
+        }
+        
+        grouped[trade.symbol].trades.push(trade)
+        grouped[trade.symbol].totalQuantity += trade.quantity
+        grouped[trade.symbol].totalCost += (trade.entry_price * trade.quantity)
+      })
+      
+      // Calculate average prices and convert to array
+      openTrades.value = Object.values(grouped).map(group => {
+        group.avgPrice = group.totalCost / group.totalQuantity
+        return group
+      }).sort((a, b) => a.symbol.localeCompare(b.symbol))
+      
+    } catch (fallbackError) {
+      console.error('Fallback fetch also failed:', fallbackError)
+      openTrades.value = []
+    }
   }
 }
 
@@ -725,7 +949,8 @@ watch(loading, (newLoading) => {
 onMounted(async () => {
   await Promise.all([
     fetchAnalytics(),
-    fetchFilterOptions()
+    fetchFilterOptions(),
+    fetchOpenTrades()
   ])
 })
 </script>

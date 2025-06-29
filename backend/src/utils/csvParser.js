@@ -1,6 +1,9 @@
 const { parse } = require('csv-parse/sync');
 const logger = require('./logger');
-const cusipLookup = require('./cusipLookup');
+const finnhub = require('./finnhub');
+
+// Module-level variable to store unresolved CUSIPs
+let pendingCusips = [];
 
 const brokerParsers = {
   generic: (row) => ({
@@ -81,9 +84,9 @@ const brokerParsers = {
       exitPrice: isShort ? parseFloat(row['Cost Per Share'] || 0) : parseFloat(row['Proceeds Per Share'] || 0),
       quantity: quantity,
       side: isShort ? 'short' : 'long',
-      // Schwab doesn't separate commission/fees, estimate from proceeds vs cost basis difference
-      commission: Math.abs(parseFloat(row['Cost Basis (CB)'] || 0) - (parseFloat(row['Cost Per Share'] || 0) * quantity)) || 0,
-      fees: 0, // Not separately provided by Schwab
+      // Schwab doesn't provide commission/fees data separately
+      commission: 0, // Not provided by Schwab
+      fees: 0, // Not provided by Schwab
       broker: 'schwab',
       notes: `${row.Term || 'Unknown'} - ${row['Wash Sale?'] === 'Yes' ? 'Wash Sale' : 'Normal'}`
     };
@@ -274,52 +277,34 @@ async function parseLightspeedTransactions(records) {
     }
   });
   
-  // Batch lookup CUSIPs with API calls
+  // Only check cache during import, schedule background CUSIP resolution
   let cusipToTickerMap = {};
+  const unresolvedCusips = [];
+  
   if (cusipsToResolve.size > 0) {
     console.log(`Found ${cusipsToResolve.size} unique CUSIPs to resolve`);
     
-    // First check cache
-    const uncachedCusips = [];
+    // Only check cache during import
     cusipsToResolve.forEach(cusip => {
       const cleanCusip = cusip.replace(/\s/g, '').toUpperCase();
-      if (cusipLookup.cache[cleanCusip]) {
-        cusipToTickerMap[cleanCusip] = cusipLookup.cache[cleanCusip];
-        console.log(`CUSIP ${cleanCusip} found in cache: ${cusipLookup.cache[cleanCusip]}`);
+      const cacheKey = `cusip_${cleanCusip}`;
+      const cached = finnhub.cache.get(cacheKey);
+      
+      if (cached && finnhub.isCacheValid(cached.timestamp)) {
+        cusipToTickerMap[cleanCusip] = cached.data;
+        console.log(`CUSIP ${cleanCusip} found in cache: ${cached.data}`);
       } else {
-        uncachedCusips.push(cleanCusip);
+        unresolvedCusips.push(cleanCusip);
+        console.log(`CUSIP ${cleanCusip} not in cache, will resolve in background`);
       }
     });
     
-    // Lookup uncached CUSIPs with rate limiting
-    if (uncachedCusips.length > 0) {
-      console.log(`Looking up ${uncachedCusips.length} uncached CUSIPs via API`);
-      const batchSize = 5; // Process 5 at a time to avoid overwhelming APIs
-      
-      for (let i = 0; i < uncachedCusips.length; i += batchSize) {
-        const batch = uncachedCusips.slice(i, i + batchSize);
-        const lookupPromises = batch.map(async cusip => {
-          try {
-            const ticker = await cusipLookup.lookupTicker(cusip);
-            if (ticker) {
-              cusipToTickerMap[cusip] = ticker;
-              console.log(`API resolved CUSIP ${cusip} to ticker ${ticker}`);
-            }
-          } catch (error) {
-            console.warn(`Failed to lookup CUSIP ${cusip}: ${error.message}`);
-          }
-        });
-        
-        await Promise.all(lookupPromises);
-        
-        // Small delay between batches to avoid rate limits
-        if (i + batchSize < uncachedCusips.length) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-      }
-    }
+    console.log(`Using cached results for ${Object.keys(cusipToTickerMap).length} of ${cusipsToResolve.size} CUSIPs. ${unresolvedCusips.length} will be resolved in background.`);
     
-    console.log(`Resolved ${Object.keys(cusipToTickerMap).length} of ${cusipsToResolve.size} CUSIPs total`);
+    // Store unresolved CUSIPs for background processing
+    if (unresolvedCusips.length > 0) {
+      pendingCusips = unresolvedCusips;
+    }
   }
   
   // Parse all transactions
@@ -546,7 +531,14 @@ async function parseLightspeedTransactions(records) {
   console.log(`Total distributed commissions: $${totalDistributedCommissions.toFixed(2)} (should match CSV total: $${totalCSVCommissions.toFixed(2)})`);
   console.log(`Total distributed fees: $${totalDistributedFees.toFixed(2)} (should match CSV total: $${totalCSVFees.toFixed(2)})`);
   
-  return completedTrades;
+  // Include unresolved CUSIPs in the result for background processing
+  const result = { trades: completedTrades };
+  if (pendingCusips.length > 0) {
+    result.unresolvedCusips = [...pendingCusips];
+    pendingCusips = []; // Clean up
+  }
+  
+  return result;
 }
 
 async function parseSchwabTrades(records) {
@@ -606,10 +598,8 @@ async function parseSchwabTrades(records) {
       // You may need to check the "Name" field or other indicators for short positions
       const isShort = false; // Default to long trades for now
       
-      // Calculate estimated commission/fees from cost basis vs theoretical cost
-      const theoreticalCost = costPerShare * quantity;
-      const actualCostBasis = costBasis;
-      const estimatedCommission = Math.abs(actualCostBasis - theoreticalCost);
+      // Schwab doesn't provide commission data separately in their export
+      const estimatedCommission = 0;
       
       // Get the gain/loss percentage
       let gainLossPercent = 0;
@@ -669,7 +659,7 @@ async function parseSchwabTrades(records) {
   
   console.log(`Created ${completedTrades.length} Schwab trades`);
   console.log(`Total P&L from Schwab data: $${totalPnL.toFixed(2)}`);
-  console.log(`Total estimated commissions: $${totalCommissions.toFixed(2)}`);
+  console.log(`Commissions not available in Schwab export format`);
   
   return completedTrades;
 }

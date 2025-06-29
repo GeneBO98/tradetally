@@ -122,6 +122,26 @@
         </div>
       </div>
 
+      <!-- Day of Week Performance -->
+      <div class="card">
+        <div class="card-body">
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Performance by Day of Week</h3>
+          <div class="h-80 relative">
+            <canvas ref="dayOfWeekChart" class="absolute inset-0 w-full h-full"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Performance by Hold Time -->
+      <div class="card">
+        <div class="card-body">
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Performance by Hold Time</h3>
+          <div class="h-96 relative">
+            <canvas ref="performanceByHoldTimeChart" class="absolute inset-0 w-full h-full"></canvas>
+          </div>
+        </div>
+      </div>
+
       <!-- New Chart Section -->
       <div class="grid grid-cols-1 gap-8 lg:grid-cols-2 xl:grid-cols-3">
         <!-- Trade Distribution by Price -->
@@ -338,16 +358,22 @@ const tagStats = ref([])
 const tradeDistributionChart = ref(null)
 const performanceByPriceChart = ref(null)
 const performanceByVolumeChart = ref(null)
+const performanceByHoldTimeChart = ref(null)
+const dayOfWeekChart = ref(null)
 
 // Chart instances
 let tradeDistributionChartInstance = null
 let performanceByPriceChartInstance = null
 let performanceByVolumeChartInstance = null
+let performanceByHoldTimeChartInstance = null
+let dayOfWeekChartInstance = null
 
 // Chart data
 const tradeDistributionData = ref([])
 const performanceByPriceData = ref([])
 const performanceByVolumeData = ref([])
+const performanceByHoldTimeData = ref([])
+const dayOfWeekData = ref([])
 
 function formatNumber(num) {
   return new Intl.NumberFormat('en-US', {
@@ -389,8 +415,8 @@ function createTradeDistributionChart() {
       datasets: [{
         label: 'Number of Trades',
         data: tradeDistributionData.value,
-        backgroundColor: '#F0812A',
-        borderColor: '#e46a16',
+        backgroundColor: '#f3a05a',
+        borderColor: '#e89956',
         borderWidth: 1
       }]
     },
@@ -432,7 +458,7 @@ function createPerformanceByPriceChart() {
       datasets: [{
         label: 'Total P&L',
         data: performanceByPriceData.value,
-        backgroundColor: performanceByPriceData.value.map(val => val >= 0 ? '#10b981' : '#ef4444'),
+        backgroundColor: performanceByPriceData.value.map(val => val >= 0 ? '#4ade80' : '#f87171'),
         borderWidth: 1
       }]
     },
@@ -481,7 +507,7 @@ function createPerformanceByVolumeChart() {
       datasets: [{
         label: 'Total P&L',
         data: performanceByVolumeData.value,
-        backgroundColor: performanceByVolumeData.value.map(val => val >= 0 ? '#10b981' : '#ef4444'),
+        backgroundColor: performanceByVolumeData.value.map(val => val >= 0 ? '#4ade80' : '#f87171'),
         borderWidth: 1
       }]
     },
@@ -515,6 +541,133 @@ function createPerformanceByVolumeChart() {
   })
 }
 
+function createDayOfWeekChart() {
+  if (!dayOfWeekChart.value) {
+    console.error('Day of week chart canvas not found')
+    return
+  }
+
+  if (dayOfWeekChartInstance) {
+    dayOfWeekChartInstance.destroy()
+  }
+
+  const ctx = dayOfWeekChart.value.getContext('2d')
+  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+  
+  dayOfWeekChartInstance = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: days,
+      datasets: [{
+        label: 'Total P&L',
+        data: dayOfWeekData.value.map(d => d.total_pnl || 0),
+        backgroundColor: dayOfWeekData.value.map(d => (d.total_pnl || 0) >= 0 ? '#4ade80' : '#f87171'),
+        borderWidth: 1,
+        barThickness: 30,
+        categoryPercentage: 0.7
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      indexAxis: 'y',
+      scales: {
+        x: {
+          beginAtZero: true,
+          title: {
+            display: true,
+            text: 'Total P&L ($)'
+          }
+        },
+        y: {
+          title: {
+            display: true,
+            text: 'Day of Week'
+          }
+        }
+      },
+      plugins: {
+        legend: {
+          display: false
+        },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              return `P&L: $${context.parsed.x.toFixed(2)}`
+            }
+          }
+        }
+      }
+    }
+  })
+}
+
+function createPerformanceByHoldTimeChart() {
+  if (!performanceByHoldTimeChart.value) {
+    console.error('Performance by hold time chart canvas not found')
+    return
+  }
+
+  if (performanceByHoldTimeChartInstance) {
+    performanceByHoldTimeChartInstance.destroy()
+  }
+
+  const ctx = performanceByHoldTimeChart.value.getContext('2d')
+  const labels = ['< 1 min', '1-5 min', '5-15 min', '15-30 min', '30-60 min', '1-2 hours', '2-4 hours', '4-24 hours', '1-7 days', '1-4 weeks', '1+ months']
+  
+  performanceByHoldTimeChartInstance = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Total P&L',
+        data: performanceByHoldTimeData.value,
+        backgroundColor: performanceByHoldTimeData.value.map(val => val >= 0 ? '#4ade80' : '#f87171'),
+        borderWidth: 1,
+        barThickness: 20,
+        categoryPercentage: 0.4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      indexAxis: 'y',
+      layout: {
+        padding: {
+          top: 20,
+          bottom: 20,
+          left: 10,
+          right: 10
+        }
+      },
+      scales: {
+        x: {
+          beginAtZero: true,
+          title: {
+            display: true,
+            text: 'Total P&L ($)'
+          }
+        },
+        y: {
+          title: {
+            display: true,
+            text: 'Hold Time'
+          }
+        }
+      },
+      plugins: {
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              return `Total P&L: $${context.parsed.x.toFixed(2)}`
+            }
+          }
+        }
+      }
+    }
+  })
+}
+
 async function fetchChartData() {
   try {
     const params = {}
@@ -528,6 +681,8 @@ async function fetchChartData() {
     tradeDistributionData.value = response.data.tradeDistribution
     performanceByPriceData.value = response.data.performanceByPrice
     performanceByVolumeData.value = response.data.performanceByVolume
+    performanceByHoldTimeData.value = response.data.performanceByHoldTime
+    dayOfWeekData.value = response.data.dayOfWeek
 
     // Create charts after data is loaded and DOM is updated
     await nextTick()
@@ -537,6 +692,8 @@ async function fetchChartData() {
       createTradeDistributionChart()
       createPerformanceByPriceChart()
       createPerformanceByVolumeChart()
+      createPerformanceByHoldTimeChart()
+      createDayOfWeekChart()
     }, 100)
   } catch (error) {
     console.error('Error fetching chart data:', error)
@@ -658,6 +815,12 @@ onUnmounted(() => {
   }
   if (performanceByVolumeChartInstance) {
     performanceByVolumeChartInstance.destroy()
+  }
+  if (performanceByHoldTimeChartInstance) {
+    performanceByHoldTimeChartInstance.destroy()
+  }
+  if (dayOfWeekChartInstance) {
+    dayOfWeekChartInstance.destroy()
   }
 })
 </script>

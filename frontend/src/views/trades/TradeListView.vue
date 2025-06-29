@@ -38,8 +38,84 @@
         </div>
       </div>
 
-      <div v-else class="overflow-hidden shadow ring-1 ring-black ring-opacity-5 md:rounded-lg">
-        <table class="min-w-full divide-y divide-gray-300 dark:divide-gray-700">
+      <!-- Show trades when available -->
+      <div v-else>
+        <!-- Mobile view (cards) -->
+        <div class="block md:hidden space-y-4">
+        <div v-for="trade in tradesStore.trades" :key="trade.id" 
+             @click="$router.push(`/trades/${trade.id}`)"
+             class="bg-white dark:bg-gray-800 shadow rounded-lg p-4 cursor-pointer hover:shadow-md transition-shadow">
+          <div class="flex justify-between items-start mb-3">
+            <div class="flex items-center space-x-3">
+              <div class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ trade.symbol }}
+              </div>
+              <span class="px-2 py-1 text-xs font-semibold rounded-full"
+                :class="[
+                  trade.side === 'long' 
+                    ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
+                    : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
+                ]">
+                {{ trade.side }}
+              </span>
+            </div>
+            <span class="px-2 py-1 text-xs font-semibold rounded-full"
+              :class="[
+                trade.exit_price 
+                  ? 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
+                  : 'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400'
+              ]">
+              {{ trade.exit_price ? 'Closed' : 'Open' }}
+            </span>
+          </div>
+          
+          <div class="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <div class="text-gray-500 dark:text-gray-400">Date</div>
+              <div class="text-gray-900 dark:text-white">{{ formatDate(trade.trade_date) }}</div>
+            </div>
+            <div>
+              <div class="text-gray-500 dark:text-gray-400">Entry</div>
+              <div class="text-gray-900 dark:text-white">${{ formatNumber(trade.entry_price) }}</div>
+            </div>
+            <div>
+              <div class="text-gray-500 dark:text-gray-400">Exit</div>
+              <div class="text-gray-900 dark:text-white">
+                {{ trade.exit_price ? `$${formatNumber(trade.exit_price)}` : '-' }}
+              </div>
+            </div>
+            <div>
+              <div class="text-gray-500 dark:text-gray-400">P&L</div>
+              <div class="font-medium" :class="[
+                trade.pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+              ]">
+                {{ trade.pnl ? `$${formatNumber(trade.pnl)}` : '-' }}
+                <span v-if="trade.pnl_percent" class="text-xs ml-1">
+                  ({{ trade.pnl_percent > 0 ? '+' : '' }}{{ formatNumber(trade.pnl_percent) }}%)
+                </span>
+              </div>
+            </div>
+          </div>
+          
+          <div class="flex justify-between items-center mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+            <button
+              @click.stop="openComments(trade)"
+              class="inline-flex items-center text-gray-500 hover:text-primary-600 transition-colors"
+            >
+              <ChatBubbleLeftIcon class="h-4 w-4 mr-1" />
+              <span class="text-sm">{{ trade.comment_count || 0 }}</span>
+            </button>
+            <svg class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+          </div>
+        </div>
+        </div>
+
+        <!-- Desktop view (table) -->
+        <div class="hidden md:block overflow-hidden shadow ring-1 ring-black ring-opacity-5 md:rounded-lg">
+        <div class="overflow-x-auto">
+          <table class="min-w-full divide-y divide-gray-300 dark:divide-gray-700">
           <thead class="bg-gray-50 dark:bg-gray-800">
             <tr>
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
@@ -63,13 +139,18 @@
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                 Status
               </th>
+              <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                Comments
+              </th>
               <th class="relative px-6 py-3">
                 <span class="sr-only">Actions</span>
               </th>
             </tr>
           </thead>
           <tbody class="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
-            <tr v-for="trade in tradesStore.trades" :key="trade.id">
+            <tr v-for="trade in tradesStore.trades" :key="trade.id" 
+                class="hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer"
+                @click="$router.push(`/trades/${trade.id}`)">
               <td class="px-6 py-4 whitespace-nowrap">
                 <div class="text-sm font-medium text-gray-900 dark:text-white">
                   {{ trade.symbol }}
@@ -116,20 +197,34 @@
                   {{ trade.exit_price ? 'Closed' : 'Open' }}
                 </span>
               </td>
+              <td class="px-6 py-4 whitespace-nowrap text-center">
+                <button
+                  @click.stop="openComments(trade)"
+                  class="inline-flex items-center text-gray-500 hover:text-primary-600 transition-colors"
+                >
+                  <ChatBubbleLeftIcon class="h-4 w-4 mr-1" />
+                  <span class="text-sm">{{ trade.comment_count || 0 }}</span>
+                </button>
+              </td>
               <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                 <router-link
                   :to="`/trades/${trade.id}`"
                   class="text-primary-600 hover:text-primary-900 dark:hover:text-primary-400"
+                  @click.stop
                 >
                   View
                 </router-link>
               </td>
             </tr>
           </tbody>
-        </table>
+          </table>
+        </div>
+      </div>
+      </div>
         
-        <!-- Pagination -->
-        <div v-if="tradesStore.pagination.totalPages > 1" class="bg-white dark:bg-gray-900 px-4 py-3 flex items-center justify-between border-t border-gray-200 dark:border-gray-700 sm:px-6">
+      <!-- Pagination (shared for both mobile and desktop) -->
+      <div v-if="tradesStore.pagination.totalPages > 1" class="mt-4">
+        <div class="bg-white dark:bg-gray-900 px-4 py-3 flex items-center justify-between border-t border-gray-200 dark:border-gray-700 sm:px-6 rounded-lg shadow">
           <div class="flex-1 flex justify-between sm:hidden">
             <button 
               @click="prevPage"
@@ -201,17 +296,32 @@
         </div>
       </div>
     </div>
+
+    <!-- Comments Dialog -->
+    <TradeCommentsDialog
+      v-if="selectedTrade"
+      :is-open="showCommentsDialog"
+      :trade-id="selectedTrade.id"
+      @close="showCommentsDialog = false"
+      @comment-added="handleCommentAdded"
+      @comment-deleted="handleCommentDeleted"
+    />
   </div>
 </template>
 
 <script setup>
-import { onMounted, computed, watch } from 'vue'
+import { onMounted, computed, watch, ref } from 'vue'
 import { useTradesStore } from '@/stores/trades'
 import { format } from 'date-fns'
-import { DocumentTextIcon } from '@heroicons/vue/24/outline'
+import { DocumentTextIcon, ChatBubbleLeftIcon } from '@heroicons/vue/24/outline'
 import TradeFilters from '@/components/trades/TradeFilters.vue'
+import TradeCommentsDialog from '@/components/trades/TradeCommentsDialog.vue'
 
 const tradesStore = useTradesStore()
+
+// Comments dialog
+const showCommentsDialog = ref(false)
+const selectedTrade = ref(null)
 
 // Pagination computed properties
 const visiblePages = computed(() => {
@@ -264,6 +374,27 @@ function nextPage() {
 
 function prevPage() {
   tradesStore.prevPage()
+}
+
+function openComments(trade) {
+  selectedTrade.value = trade
+  showCommentsDialog.value = true
+}
+
+function handleCommentAdded() {
+  // Increment the comment count for the trade
+  const tradeIndex = tradesStore.trades.findIndex(t => t.id === selectedTrade.value.id)
+  if (tradeIndex !== -1) {
+    tradesStore.trades[tradeIndex].comment_count = (tradesStore.trades[tradeIndex].comment_count || 0) + 1
+  }
+}
+
+function handleCommentDeleted() {
+  // Decrement the comment count for the trade
+  const tradeIndex = tradesStore.trades.findIndex(t => t.id === selectedTrade.value.id)
+  if (tradeIndex !== -1) {
+    tradesStore.trades[tradeIndex].comment_count = Math.max((tradesStore.trades[tradeIndex].comment_count || 0) - 1, 0)
+  }
 }
 
 onMounted(() => {
