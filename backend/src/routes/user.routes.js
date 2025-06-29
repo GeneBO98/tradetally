@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const userController = require('../controllers/user.controller');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, requireAdmin } = require('../middleware/auth');
 const multer = require('multer');
 
 const upload = multer({
@@ -23,6 +23,14 @@ router.put('/profile', authenticate, userController.updateProfile);
 router.post('/avatar', authenticate, upload.single('avatar'), userController.uploadAvatar);
 router.delete('/avatar', authenticate, userController.deleteAvatar);
 router.put('/password', authenticate, userController.changePassword);
+
+// Admin-only user management routes
+router.get('/admin/users', requireAdmin, userController.getAllUsers);
+router.put('/admin/users/:userId/role', requireAdmin, userController.updateUserRole);
+router.put('/admin/users/:userId/status', requireAdmin, userController.toggleUserStatus);
+router.delete('/admin/users/:userId', requireAdmin, userController.deleteUser);
+
+// Public profile routes (must be last to avoid conflicts)
 router.get('/:username', userController.getPublicProfile);
 router.get('/:username/trades', userController.getUserPublicTrades);
 

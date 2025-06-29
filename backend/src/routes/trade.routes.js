@@ -30,6 +30,7 @@ const upload = multer({
 });
 
 router.get('/', authenticate, tradeController.getUserTrades);
+router.get('/open-positions-quotes', authenticate, tradeController.getOpenPositionsWithQuotes);
 router.post('/', authenticate, validate(schemas.createTrade), tradeController.createTrade);
 router.get('/public', optionalAuth, tradeController.getPublicTrades);
 router.get('/analytics', authenticate, tradeController.getAnalytics);
@@ -41,6 +42,7 @@ router.get('/import/history', authenticate, tradeController.getImportHistory);
 router.delete('/import/:importId', authenticate, tradeController.deleteImport);
 router.get('/import/logs', authenticate, tradeController.getImportLogs);
 router.get('/import/logs/:filename', authenticate, tradeController.getLogFile);
+router.get('/cusip/resolution-status', authenticate, tradeController.getCusipResolutionStatus);
 router.get('/cusip/:cusip', authenticate, tradeController.lookupCusip);
 router.post('/cusip', authenticate, tradeController.addCusipMapping);
 router.delete('/cusip/:cusip', authenticate, tradeController.deleteCusipMapping);
@@ -53,5 +55,7 @@ router.post('/:id/attachments', authenticate, upload.single('file'), tradeContro
 router.delete('/:id/attachments/:attachmentId', authenticate, tradeController.deleteAttachment);
 router.post('/:id/comments', authenticate, tradeController.addComment);
 router.get('/:id/comments', optionalAuth, tradeController.getComments);
+router.put('/:id/comments/:commentId', authenticate, tradeController.updateComment);
+router.delete('/:id/comments/:commentId', authenticate, tradeController.deleteComment);
 
 module.exports = router;

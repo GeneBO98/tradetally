@@ -121,6 +121,95 @@ const userController = {
     } catch (error) {
       next(error);
     }
+  },
+
+  // Admin-only user management endpoints
+  async getAllUsers(req, res, next) {
+    try {
+      const users = await User.getAllUsers();
+      res.json({ users });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async updateUserRole(req, res, next) {
+    try {
+      const { userId } = req.params;
+      const { role } = req.body;
+
+      if (!['user', 'admin'].includes(role)) {
+        return res.status(400).json({ error: 'Invalid role. Must be "user" or "admin"' });
+      }
+
+      // Prevent removing admin role from the last admin
+      if (role === 'user') {
+        const adminCount = await User.getAdminCount();
+        const targetUser = await User.findById(userId);
+        
+        if (adminCount === 1 && targetUser.role === 'admin') {
+          return res.status(400).json({ error: 'Cannot remove admin role from the last admin user' });
+        }
+      }
+
+      const user = await User.updateRole(userId, role);
+      res.json({ user, message: `User role updated to ${role}` });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async toggleUserStatus(req, res, next) {
+    try {
+      const { userId } = req.params;
+      const { isActive } = req.body;
+
+      // Prevent deactivating the last admin
+      if (!isActive) {
+        const targetUser = await User.findById(userId);
+        if (targetUser.role === 'admin') {
+          const activeAdminCount = await User.getActiveAdminCount();
+          if (activeAdminCount === 1) {
+            return res.status(400).json({ error: 'Cannot deactivate the last active admin user' });
+          }
+        }
+      }
+
+      const user = await User.updateStatus(userId, isActive);
+      res.json({ user, message: `User ${isActive ? 'activated' : 'deactivated'}` });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async deleteUser(req, res, next) {
+    try {
+      const { userId } = req.params;
+
+      // Prevent deleting yourself
+      if (userId === req.user.id) {
+        return res.status(400).json({ error: 'Cannot delete your own account' });
+      }
+
+      // Get user details before deletion
+      const targetUser = await User.findById(userId);
+      if (!targetUser) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      // Prevent deleting the last admin
+      if (targetUser.role === 'admin') {
+        const adminCount = await User.getAdminCount();
+        if (adminCount === 1) {
+          return res.status(400).json({ error: 'Cannot delete the last admin user' });
+        }
+      }
+
+      await User.deleteUser(userId);
+      res.json({ message: `User ${targetUser.username} has been permanently deleted` });
+    } catch (error) {
+      next(error);
+    }
   }
 };
 

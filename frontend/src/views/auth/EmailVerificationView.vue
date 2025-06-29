@@ -65,6 +65,7 @@
                 required
                 class="input"
                 placeholder="Enter your email"
+                @keydown.enter="resendVerification"
               />
             </div>
             <div class="flex space-x-3">

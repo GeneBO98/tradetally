@@ -27,6 +27,7 @@
               type="text"
               class="input"
               placeholder="John Doe"
+              @keydown.enter="handleRegister"
             />
           </div>
           
@@ -40,6 +41,7 @@
               required
               class="input"
               placeholder="johndoe"
+              @keydown.enter="handleRegister"
             />
           </div>
           
@@ -53,6 +55,7 @@
               required
               class="input"
               placeholder="john@example.com"
+              @keydown.enter="handleRegister"
             />
           </div>
           
@@ -66,6 +69,7 @@
               required
               class="input"
               placeholder="Minimum 6 characters"
+              @keydown.enter="handleRegister"
             />
           </div>
         </div>
@@ -110,12 +114,16 @@ async function handleRegister() {
   try {
     const response = await authStore.register(form.value)
     
+    // Show success message
+    showSuccess('Registration Successful', response.message)
+    
     // Check if email verification is required
     if (response.requiresVerification) {
-      // Show success message and redirect to login
-      showSuccess('Registration Successful', response.message)
       // Redirect to login page with verification message
       router.push({ name: 'login', query: { message: 'Please check your email to verify your account' } })
+    } else {
+      // Email verification not required, can proceed to login
+      router.push({ name: 'login', query: { message: 'You can now sign in to your account' } })
     }
   } catch (error) {
     showError('Registration failed', authStore.error)

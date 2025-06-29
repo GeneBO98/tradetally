@@ -170,7 +170,18 @@ export const useTradesStore = defineStore('trades', () => {
   }
 
   function setFilters(newFilters) {
-    filters.value = { ...filters.value, ...newFilters }
+    // If newFilters is empty object, reset all filters
+    if (Object.keys(newFilters).length === 0) {
+      filters.value = {
+        symbol: '',
+        startDate: '',
+        endDate: '',
+        tags: [],
+        strategy: ''
+      }
+    } else {
+      filters.value = { ...filters.value, ...newFilters }
+    }
     pagination.value.page = 1 // Reset to first page when filtering
   }
 
