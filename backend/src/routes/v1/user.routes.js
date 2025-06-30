@@ -23,9 +23,9 @@ router.get('/sync-info', authenticate, userV1Controller.getSyncInfo);
 router.post('/sync-info', authenticate, userV1Controller.updateSyncInfo);
 
 // Admin routes (reuse existing)
-router.get('/', authenticate, requireAdmin, userController.getUsers);
-router.get('/:id', authenticate, requireAdmin, userController.getUserById);
-router.put('/:id', authenticate, requireAdmin, userController.updateUser);
-router.delete('/:id', authenticate, requireAdmin, userController.deleteUser);
+router.get('/', authenticate, requireAdmin, userController.getAllUsers);
+router.put('/:userId/role', authenticate, requireAdmin, userController.updateUserRole);
+router.put('/:userId/status', authenticate, requireAdmin, userController.toggleUserStatus);
+router.delete('/:userId', authenticate, requireAdmin, userController.deleteUser);
 
 module.exports = router;

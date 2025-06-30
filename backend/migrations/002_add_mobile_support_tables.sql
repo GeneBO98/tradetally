@@ -88,9 +88,10 @@ BEGIN
         ALTER TABLE trades ADD COLUMN updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;
     END IF;
     
-    -- Add updated_at to trade_journal_entries table if it doesn't exist
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
-                  WHERE table_name = 'trade_journal_entries' AND column_name = 'updated_at') THEN
+    -- Add updated_at to trade_journal_entries table if it exists and doesn't have the column
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'trade_journal_entries') 
+       AND NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                      WHERE table_name = 'trade_journal_entries' AND column_name = 'updated_at') THEN
         ALTER TABLE trade_journal_entries ADD COLUMN updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;
     END IF;
 END $$;
@@ -104,18 +105,38 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
--- Create triggers for updated_at on all relevant tables
-CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users 
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+-- Create triggers for updated_at on all relevant tables (only if they don't exist)
+DO $$ 
+BEGIN
+    -- Create users trigger if it doesn't exist
+    IF NOT EXISTS (SELECT 1 FROM information_schema.triggers 
+                   WHERE trigger_name = 'update_users_updated_at' AND event_object_table = 'users') THEN
+        EXECUTE 'CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()';
+    END IF;
+    
+    -- Create trades trigger if it doesn't exist
+    IF NOT EXISTS (SELECT 1 FROM information_schema.triggers 
+                   WHERE trigger_name = 'update_trades_updated_at' AND event_object_table = 'trades') THEN
+        EXECUTE 'CREATE TRIGGER update_trades_updated_at BEFORE UPDATE ON trades FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()';
+    END IF;
+END $$;
 
-CREATE TRIGGER update_trades_updated_at BEFORE UPDATE ON trades 
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+-- Only create trigger if table exists
+DO $$ 
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'trade_journal_entries') THEN
+        EXECUTE 'CREATE TRIGGER update_trade_journal_entries_updated_at BEFORE UPDATE ON trade_journal_entries FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()';
+    END IF;
+END $$;
 
-CREATE TRIGGER update_trade_journal_entries_updated_at BEFORE UPDATE ON trade_journal_entries 
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_devices_updated_at BEFORE UPDATE ON devices 
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+-- Create devices trigger
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.triggers 
+                   WHERE trigger_name = 'update_devices_updated_at' AND event_object_table = 'devices') THEN
+        EXECUTE 'CREATE TRIGGER update_devices_updated_at BEFORE UPDATE ON devices FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()';
+    END IF;
+END $$;
 
 -- Create function to track changes for sync
 CREATE OR REPLACE FUNCTION track_sync_changes()

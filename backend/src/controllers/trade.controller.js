@@ -1005,6 +1005,82 @@ const tradeController = {
     } catch (error) {
       next(error);
     }
+  },
+
+  async getTradeJournalEntries(req, res, next) {
+    try {
+      const trade = await Trade.findById(req.params.id, req.user.id);
+      if (!trade) {
+        return res.status(404).json({ error: 'Trade not found' });
+      }
+
+      res.json({
+        message: 'Trade journal entries not yet implemented',
+        entries: []
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async createJournalEntry(req, res, next) {
+    try {
+      const trade = await Trade.findById(req.params.id, req.user.id);
+      if (!trade) {
+        return res.status(404).json({ error: 'Trade not found' });
+      }
+
+      res.status(201).json({
+        message: 'Journal entry creation not yet implemented',
+        entry: null
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async updateJournalEntry(req, res, next) {
+    try {
+      const trade = await Trade.findById(req.params.id, req.user.id);
+      if (!trade) {
+        return res.status(404).json({ error: 'Trade not found' });
+      }
+
+      res.json({
+        message: 'Journal entry update not yet implemented',
+        entry: null
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async deleteJournalEntry(req, res, next) {
+    try {
+      const trade = await Trade.findById(req.params.id, req.user.id);
+      if (!trade) {
+        return res.status(404).json({ error: 'Trade not found' });
+      }
+
+      res.json({
+        message: 'Journal entry deletion not yet implemented',
+        deleted: false
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async exportTrades(req, res, next) {
+    try {
+      res.json({
+        message: 'Trade export not yet implemented',
+        format: null,
+        data: null
+      });
+    } catch (error) {
+      next(error);
+    }
   }
 };
 
