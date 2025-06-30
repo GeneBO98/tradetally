@@ -133,18 +133,20 @@
             />
           </div>
 
-          <div>
-            <label for="strategy" class="label">Strategy</label>
-            <input
-              id="strategy"
-              v-model="form.strategy"
-              type="text"
-              class="input"
-              placeholder="Scalping"
-            />
-          </div>
+          
         </div>
-
+      
+      <div v-if="showMoreOptions">
+        <div>
+          <label for="strategy" class="label">Strategy</label>
+          <input
+            id="strategy"
+            v-model="form.strategy"
+            type="text"
+            class="input"
+            placeholder="Scalping"
+          />
+        </div>
         <div>
           <label for="setup" class="label">Setup</label>
           <input
@@ -155,7 +157,7 @@
             placeholder="Breakout"
           />
         </div>
-
+  
         <div>
           <label for="tags" class="label">Tags (comma separated)</label>
           <input
@@ -166,7 +168,7 @@
             placeholder="momentum, earnings, breakout"
           />
         </div>
-
+  
         <div>
           <label for="notes" class="label">Notes</label>
           <textarea
@@ -178,7 +180,7 @@
             @keydown="handleNotesKeydown"
           ></textarea>
         </div>
-
+  
         <div class="flex items-center">
           <input
             id="isPublic"
@@ -190,8 +192,11 @@
             Make this trade public
           </label>
         </div>
-
-        <div v-if="error" class="rounded-md bg-red-50 dark:bg-red-900/20 p-4">
+      </div>
+      <button type="button" @click="showMoreOptions = !showMoreOptions" class="btn-secondary">
+        {{ showMoreOptions ? 'Less Options' : 'More Options' }}
+      </button>
+      <div v-if="error" class="rounded-md bg-red-50 dark:bg-red-900/20 p-4">
           <p class="text-sm text-red-800 dark:text-red-400">{{ error }}</p>
         </div>
 
@@ -219,6 +224,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useTradesStore } from '@/stores/trades'
 import { useNotification } from '@/composables/useNotification'
 
+const showMoreOptions = ref(false)
 const route = useRoute()
 const router = useRouter()
 const tradesStore = useTradesStore()
