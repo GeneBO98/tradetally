@@ -131,6 +131,17 @@ const settingsController = {
     } catch (error) {
       next(error);
     }
+  },
+
+  async resetSettings(req, res, next) {
+    try {
+      res.json({
+        message: 'Settings reset not yet implemented',
+        reset: false
+      });
+    } catch (error) {
+      next(error);
+    }
   }
 };
 
