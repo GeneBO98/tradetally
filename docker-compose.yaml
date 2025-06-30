@@ -49,6 +49,14 @@ services:
       EMAIL_FROM: ${EMAIL_FROM:-noreply@tradetally.io}
       # Frontend API URL
       VITE_API_URL: ${VITE_API_URL:-http://localhost/api}
+      # CORS Configuration for Mobile Apps
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      # Mobile Support Configuration
+      ACCESS_TOKEN_EXPIRE: ${ACCESS_TOKEN_EXPIRE:-15m}
+      REFRESH_TOKEN_EXPIRE: ${REFRESH_TOKEN_EXPIRE:-30d}
+      MAX_DEVICES_PER_USER: ${MAX_DEVICES_PER_USER:-10}
+      ENABLE_DEVICE_TRACKING: ${ENABLE_DEVICE_TRACKING:-true}
       # Analytics Configuration
       VITE_ANALYTICS_DOMAIN: ${VITE_ANALYTICS_DOMAIN:-}
       VITE_ANALYTICS_SITE_ID: ${VITE_ANALYTICS_SITE_ID:-}
