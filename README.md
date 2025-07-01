@@ -3,6 +3,13 @@
 Visit [TradeTally](https://tradetally.io)
 
 ![Demo](https://zipline.id10tips.com/u/tradetally-demo.png)
+<img width="1309" alt="SCR-20250630-szkr" src="https://github.com/user-attachments/assets/37c00683-162f-421f-b9d2-98ce815793ea" />
+<img width="1312" alt="SCR-20250630-szis" src="https://github.com/user-attachments/assets/b9232617-0d2a-48cf-a68a-3fbc07fefc1f" />
+<img width="1273" alt="SCR-20250630-szqs" src="https://github.com/user-attachments/assets/37a669af-0e06-42ed-ae2b-5447f2b15e8f" />
+<img width="1309" alt="SCR-20250630-szow" src="https://github.com/user-attachments/assets/f5cff605-4d49-4f53-a803-c024d2bbf2af" />
+<img width="1272" alt="SCR-20250630-szmv" src="https://github.com/user-attachments/assets/1f146601-6441-4820-ada4-05293e0faaf5" />
+
+
 
 A comprehensive trading journal and analytics platform built with Vue.js frontend and Node.js backend. Track your trades, analyze performance, and gain insights into your trading patterns across multiple brokers.
 
