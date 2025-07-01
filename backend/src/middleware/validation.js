@@ -71,7 +71,103 @@ const schemas = {
     importSettings: Joi.object(),
     theme: Joi.string().valid('light', 'dark'),
     timezone: Joi.string().max(50)
-  }).min(1)
+  }).min(1),
+
+  // Mobile-specific validation schemas
+  deviceLogin: Joi.object({
+    email: Joi.string().email().required(),
+    password: Joi.string().required(),
+    deviceInfo: Joi.object({
+      name: Joi.string().max(255).required(),
+      type: Joi.string().valid('ios', 'android', 'web', 'desktop').required(),
+      model: Joi.string().max(255).allow(''),
+      fingerprint: Joi.string().max(255).allow(''),
+      platformVersion: Joi.string().max(50).allow(''),
+      appVersion: Joi.string().max(50).allow('')
+    }).required()
+  }),
+
+  deviceRegistration: Joi.object({
+    name: Joi.string().max(255).required(),
+    type: Joi.string().valid('ios', 'android', 'web', 'desktop').required(),
+    model: Joi.string().max(255).allow(''),
+    fingerprint: Joi.string().max(255).allow(''),
+    platformVersion: Joi.string().max(50).allow(''),
+    appVersion: Joi.string().max(50).allow('')
+  }),
+
+  deviceUpdate: Joi.object({
+    name: Joi.string().max(255),
+    model: Joi.string().max(255).allow(''),
+    platformVersion: Joi.string().max(50).allow(''),
+    appVersion: Joi.string().max(50).allow('')
+  }).min(1),
+
+  pushToken: Joi.object({
+    token: Joi.string().max(500).required(),
+    platform: Joi.string().valid('fcm', 'apns').required()
+  }),
+
+  deltaSync: Joi.object({
+    lastSyncVersion: Joi.number().integer().min(0).required(),
+    changes: Joi.array().items(Joi.object({
+      entityType: Joi.string().valid('trade', 'journal', 'settings', 'user_profile').required(),
+      entityId: Joi.string().uuid().required(),
+      action: Joi.string().valid('create', 'update', 'delete').required(),
+      data: Joi.object().when('action', {
+        is: 'delete',
+        then: Joi.optional(),
+        otherwise: Joi.required()
+      })
+    })).default([])
+  }),
+
+  conflictResolution: Joi.object({
+    conflicts: Joi.array().items(Joi.object({
+      conflictId: Joi.string().uuid().required(),
+      resolution: Joi.string().valid('client', 'server', 'merge').required(),
+      mergedData: Joi.object().when('resolution', {
+        is: 'merge',
+        then: Joi.required(),
+        otherwise: Joi.optional()
+      })
+    })).required()
+  }),
+
+  pushChanges: Joi.object({
+    changes: Joi.array().items(Joi.object({
+      entityType: Joi.string().valid('trade', 'journal', 'settings', 'user_profile').required(),
+      entityId: Joi.string().uuid().required(),
+      action: Joi.string().valid('create', 'update', 'delete').required(),
+      data: Joi.object().required(),
+      timestamp: Joi.date().iso().required()
+    })).required()
+  }),
+
+  queueItem: Joi.object({
+    entityType: Joi.string().valid('trade', 'journal', 'settings', 'user_profile').required(),
+    entityId: Joi.string().uuid().required(),
+    action: Joi.string().valid('create', 'update', 'delete').required(),
+    data: Joi.object().required(),
+    priority: Joi.number().integer().min(1).max(10).default(5)
+  }),
+
+  // Reuse existing schemas with aliases
+  trade: Joi.ref('createTrade'),
+  journalEntry: Joi.object({
+    content: Joi.string().required(),
+    type: Joi.string().valid('note', 'lesson', 'emotion', 'setup').default('note'),
+    tags: Joi.array().items(Joi.string().max(50)).default([])
+  }),
+  updateProfile: Joi.object({
+    fullName: Joi.string().max(255).allow(''),
+    timezone: Joi.string().max(50)
+  }).min(1),
+  changePassword: Joi.object({
+    currentPassword: Joi.string().required(),
+    newPassword: Joi.string().min(6).required()
+  }),
+  settings: Joi.ref('updateSettings')
 };
 
 module.exports = { validate, schemas };
