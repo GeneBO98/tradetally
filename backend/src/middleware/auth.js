@@ -9,6 +9,7 @@ const authenticate = async (req, res, next) => {
       throw new Error();
     }
 
+    // Verify JWT token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const user = await User.findById(decoded.id);
 
@@ -16,10 +17,27 @@ const authenticate = async (req, res, next) => {
       throw new Error();
     }
 
+    // Add device tracking headers to request
     req.user = user;
     req.token = token;
+    req.deviceId = req.headers['x-device-id'];
+    req.userAgent = req.headers['user-agent'];
+    
     next();
   } catch (error) {
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({ 
+        error: 'Token expired',
+        code: 'TOKEN_EXPIRED',
+        message: 'Access token has expired. Please refresh your token.'
+      });
+    } else if (error.name === 'JsonWebTokenError') {
+      return res.status(401).json({ 
+        error: 'Invalid token',
+        code: 'INVALID_TOKEN'
+      });
+    }
+    
     res.status(401).json({ error: 'Please authenticate' });
   }
 };
