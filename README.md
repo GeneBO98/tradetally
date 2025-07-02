@@ -2,6 +2,8 @@
 ## Try the DEMO
 Visit [TradeTally](https://tradetally.io)
 
+<img width="1316" alt="SCR-20250702-kiss" src="https://github.com/user-attachments/assets/ca901b46-cabb-43fc-a1fb-98b1a7ca58be" />
+<img width="1316" alt="SCR-20250702-kipr" src="https://github.com/user-attachments/assets/47ba8ba5-911f-4575-9c15-63947e7625c9" />
 <img width="1309" alt="SCR-20250630-szkr" src="https://github.com/user-attachments/assets/37c00683-162f-421f-b9d2-98ce815793ea" />
 <img width="1312" alt="SCR-20250630-szis" src="https://github.com/user-attachments/assets/b9232617-0d2a-48cf-a68a-3fbc07fefc1f" />
 <img width="1273" alt="SCR-20250630-szqs" src="https://github.com/user-attachments/assets/37a669af-0e06-42ed-ae2b-5447f2b15e8f" />
