@@ -284,74 +284,47 @@ const createTradeChart = () => {
   candleSeries.setData(validatedCandles)
   console.log('Data set successfully')
 
-  // Add entry and exit markers
-  const markers = []
+  // Note: Markers API was removed in lightweight-charts v5
+  // We'll use enhanced price lines instead for entry/exit indicators
   const trade = chartData.value.trade
   
-  console.log('Trade data for markers:', trade)
+  console.log('Trade data for indicators:', trade)
   console.log('Entry time:', trade.entryTime, 'Exit time:', trade.exitTime)
 
-  // Entry marker - bigger and more prominent
-  if (trade.entryTime && trade.entryPrice) {
-    markers.push({
-      time: Number(trade.entryTime),
-      position: 'belowBar',
-      color: '#10b981',
-      shape: 'arrowUp',
-      text: `📈 ENTRY: $${formatNumber(trade.entryPrice)} (${trade.side.toUpperCase()})`,
-      size: 1.5, // Make marker larger
-    })
-  }
-
-  // Exit marker - bigger and more prominent
-  if (trade.exitTime && trade.exitPrice) {
-    const pnlText = trade.pnl >= 0 ? `+$${formatNumber(trade.pnl)}` : `-$${formatNumber(Math.abs(trade.pnl))}`
-    markers.push({
-      time: Number(trade.exitTime),
-      position: 'aboveBar',
-      color: trade.pnl >= 0 ? '#10b981' : '#ef4444',
-      shape: 'arrowDown',
-      text: `📉 EXIT: $${formatNumber(trade.exitPrice)} (${pnlText})`,
-      size: 1.5, // Make marker larger
-    })
-  }
-  
-  console.log('Markers to set:', markers)
-  
-  if (markers.length > 0) {
-    candleSeries.setMarkers(markers)
-  }
-
-  // Add prominent price lines for entry and exit
+  // Add prominent price lines for entry and exit (v5 compatible)
+  console.log('Creating entry price line...')
   const entryPriceLine = candleSeries.createPriceLine({
-    price: trade.entryPrice,
+    price: parseFloat(trade.entryPrice),
     color: '#10b981',
-    lineWidth: 3, // Thicker line
+    lineWidth: 4, // Extra thick line for visibility
     lineStyle: 2, // Dashed
     axisLabelVisible: true,
-    title: `Entry: $${formatNumber(trade.entryPrice)}`,
+    title: `📈 ENTRY: $${formatNumber(trade.entryPrice)} (${trade.side.toUpperCase()})`,
   })
 
+  console.log('Creating exit price line...')
+  const pnlText = trade.pnl >= 0 ? `+$${formatNumber(trade.pnl)}` : `-$${formatNumber(Math.abs(trade.pnl))}`
   const exitPriceLine = candleSeries.createPriceLine({
-    price: trade.exitPrice,
+    price: parseFloat(trade.exitPrice),
     color: trade.pnl >= 0 ? '#10b981' : '#ef4444', // Color based on profit/loss
-    lineWidth: 3, // Thicker line
+    lineWidth: 4, // Extra thick line for visibility
     lineStyle: 2, // Dashed
     axisLabelVisible: true,
-    title: `Exit: $${formatNumber(trade.exitPrice)}`,
+    title: `📉 EXIT: $${formatNumber(trade.exitPrice)} (${pnlText})`,
   })
 
-  // Add a profit/loss zone if trade was profitable
-  if (trade.pnl !== 0) {
-    const zonePriceLine = candleSeries.createPriceLine({
-      price: (trade.entryPrice + trade.exitPrice) / 2, // Middle price
-      color: trade.pnl >= 0 ? '#10b981' : '#ef4444',
-      lineWidth: 1,
-      lineStyle: 3, // Dotted
-      axisLabelVisible: false,
-      title: trade.pnl >= 0 ? `Profit Zone` : `Loss Zone`,
-    })
-  }
+  // Add a breakeven line as reference
+  console.log('Creating breakeven reference line...')
+  const breakevenPriceLine = candleSeries.createPriceLine({
+    price: parseFloat(trade.entryPrice), // Same as entry for reference
+    color: '#6b7280', // Gray color
+    lineWidth: 1,
+    lineStyle: 3, // Dotted
+    axisLabelVisible: false,
+    title: 'Breakeven',
+  })
+
+  console.log('Price lines created successfully')
 
   // Fit content
   chart.timeScale().fitContent()
