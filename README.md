@@ -24,6 +24,7 @@ Password: DemoUser25
 - **Multi-Broker Support**: Import trades from Lightspeed, Charles Schwab, ThinkorSwim, Interactive Brokers, and E*TRADE
 - **CUSIP Resolution**: Automatic conversion of CUSIP codes to ticker symbols using Finnhub API and Google Gemini AI
 - **Real-time Market Data**: Live stock quotes and unrealized P&L tracking for open positions using Finnhub API
+- **Trade Chart Visualization**: Interactive candlestick charts with entry/exit markers using Alpha Vantage API
 - **Comprehensive Analytics**: Dashboard with P&L tracking, win rates, performance metrics, and hold time analysis
 - **Trade Management**: Add, edit, and categorize trades with tags and strategies
 - **Advanced Charts**: Performance analysis by hold time, day of week, price ranges, and volume
@@ -227,6 +228,10 @@ MAX_FILE_SIZE=52428800
 # Get your free API key at: https://finnhub.io/register
 FINNHUB_API_KEY=your_finnhub_api_key
 
+# Alpha Vantage API Key - For trade chart visualization
+# Get your free API key at: https://www.alphavantage.co/support/#api-key
+ALPHA_VANTAGE_API_KEY=your_alpha_vantage_api_key
+
 # Google Gemini API Key - For AI-powered CUSIP resolution (backup)
 GEMINI_API_KEY=your_gemini_api_key
 ```
@@ -268,6 +273,20 @@ VITE_SHOW_DONATION_BUTTON=true
 - **Rate limiting**: Built-in 30 calls/second rate limiting
 - **Free tier**: 60 API calls/minute (sufficient for most use cases)
 - **Consolidated API**: Single provider for both quotes and CUSIP resolution
+
+### Alpha Vantage API (For Trade Chart Visualization)
+
+1. Visit [Alpha Vantage](https://www.alphavantage.co/support/#api-key)
+2. Sign up for a free account
+3. Generate an API key from your dashboard
+4. Add the key to your `.env` file as `ALPHA_VANTAGE_API_KEY`
+
+**Features:**
+- **Interactive candlestick charts**: Visual trade analysis with entry/exit markers
+- **Historical market data**: Intraday and daily stock price data
+- **Trade performance overlay**: Entry/exit indicators with P&L visualization
+- **Free tier**: 25 API calls/day, 5 calls/minute (sufficient for chart analysis)
+- **Smart caching**: Reduces API usage with intelligent data caching
 
 ### Google Gemini API (Backup for CUSIP Resolution)
 
@@ -559,6 +578,7 @@ sudo tail -f /var/log/postgresql/postgresql-*.log
 | `FRONTEND_URL` | Frontend URL | `http://localhost:5173` | No |
 | `MAX_FILE_SIZE` | Max upload size (bytes) | `52428800` (50MB) | No |
 | `FINNHUB_API_KEY` | Finnhub API key for quotes/CUSIP | - | No |
+| `ALPHA_VANTAGE_API_KEY` | Alpha Vantage API key for charts | - | No |
 | `GEMINI_API_KEY` | Google Gemini API key (backup) | - | No |
 
 **Self-Hosted Configuration Notes:**
@@ -813,6 +833,14 @@ pm2 restart tradetally-backend
 
 ### Recent Updates
 
+**v1.1.2 - Trade Chart Visualization**
+- **Interactive Candlestick Charts**: Visual trade analysis with entry/exit markers using TradingView's lightweight-charts
+- **Alpha Vantage Integration**: Historical market data for chart visualization (25 calls/day free tier)
+- **Trade Performance Overlay**: Entry/exit price lines with P&L visualization and color coding
+- **Short Position P&L Fix**: Corrected profit/loss calculations for short positions
+- **Smart Caching**: Intelligent data caching to reduce API usage
+- **Chart Controls**: On-demand chart loading to conserve API calls
+
 **v2.1.0 - Market Data Integration**
 - **Finnhub API Integration**: Replaced OpenFIGI with Finnhub for consolidated market data
 - **Real-time Quotes**: Live stock quotes for open positions with unrealized P&L
@@ -823,6 +851,7 @@ pm2 restart tradetally-backend
 - **Owner Role**: First user becomes owner with enhanced permissions
 
 **Migration Notes:**
+- Update your `.env` to include `ALPHA_VANTAGE_API_KEY` for chart visualization
 - Update your `.env` to include `FINNHUB_API_KEY`
 - Remove `OPENFIGI_API_KEY` (no longer used)
 - Update frontend proxy to point to port 3000
