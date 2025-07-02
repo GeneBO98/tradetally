@@ -62,6 +62,7 @@ services:
       VITE_ANALYTICS_SITE_ID: ${VITE_ANALYTICS_SITE_ID:-}
       # External API Keys
       FINNHUB_API_KEY: ${FINNHUB_API_KEY:-}
+      ALPHA_VANTAGE_API_KEY: ${ALPHA_VANTAGE_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
     ports:
       - "80:80"
