@@ -1183,6 +1183,99 @@ const tradeController = {
     } catch (error) {
       next(error);
     }
+  },
+
+  async getTradeChartData(req, res, next) {
+    try {
+      const { id } = req.params;
+      const userId = req.user.id;
+
+      // Get the trade
+      const trade = await Trade.findById(id, userId);
+      
+      if (!trade) {
+        return res.status(404).json({ error: 'Trade not found' });
+      }
+
+      // Access control is already handled by findById with userId parameter
+
+      // Only show charts for closed trades
+      if (!trade.exit_price || !trade.exit_time) {
+        return res.status(400).json({ error: 'Chart data only available for closed trades' });
+      }
+
+      const alphaVantage = require('../utils/alphaVantage');
+      
+      if (!alphaVantage.isConfigured()) {
+        return res.status(503).json({ 
+          error: 'Chart service not configured. Alpha Vantage API key is required.',
+          details: 'Add ALPHA_VANTAGE_API_KEY to your environment variables'
+        });
+      }
+
+      try {
+        // Get chart data based on trade duration
+        const chartData = await alphaVantage.getTradeChartData(
+          trade.symbol,
+          trade.entry_time,
+          trade.exit_time
+        );
+
+        // Filter data to relevant date range (1 day before entry to 1 day after exit)
+        const entryTime = new Date(trade.entry_time).getTime() / 1000;
+        const exitTime = new Date(trade.exit_time).getTime() / 1000;
+        const oneDaySec = 24 * 60 * 60;
+        
+        const filteredData = chartData.data.filter(candle => 
+          candle.time >= (entryTime - oneDaySec) && 
+          candle.time <= (exitTime + oneDaySec)
+        );
+
+        // Prepare response with trade markers
+        res.json({
+          symbol: trade.symbol,
+          type: chartData.type,
+          interval: chartData.interval,
+          candles: filteredData,
+          trade: {
+            entryPrice: trade.entry_price,
+            entryTime: entryTime,
+            exitPrice: trade.exit_price,
+            exitTime: exitTime,
+            side: trade.side,
+            quantity: trade.quantity,
+            pnl: trade.pnl,
+            pnlPercent: trade.pnl_percent
+          },
+          usage: alphaVantage.getUsageStats()
+        });
+      } catch (error) {
+        console.error('Failed to fetch chart data:', error);
+        console.error('Error details:', {
+          message: error.message,
+          stack: error.stack,
+          tradeSymbol: trade.symbol,
+          entryTime: trade.entry_time,
+          exitTime: trade.exit_time
+        });
+        
+        // If it's a rate limit error, return appropriate status
+        if (error.message.includes('limit')) {
+          return res.status(429).json({ 
+            error: error.message,
+            usage: await alphaVantage.getUsageStats()
+          });
+        }
+        
+        // Return more specific error message
+        res.status(500).json({ 
+          error: error.message || 'Failed to load chart data',
+          details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        });
+      }
+    } catch (error) {
+      next(error);
+    }
   }
 };
 

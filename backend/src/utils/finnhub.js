@@ -1,11 +1,10 @@
 const axios = require('axios');
+const cache = require('./cache');
 
 class FinnhubClient {
   constructor() {
     this.apiKey = process.env.FINNHUB_API_KEY;
     this.baseURL = 'https://finnhub.io/api/v1';
-    this.cache = new Map();
-    this.cacheExpiry = 60 * 1000; // 1 minute cache
     
     // Rate limiting: 60 calls per minute
     this.maxCallsPerMinute = 60;
@@ -64,25 +63,17 @@ class FinnhubClient {
     }
   }
 
-  getCacheKey(symbol) {
-    return `quote_${symbol.toUpperCase()}`;
-  }
-
-  isCacheValid(timestamp) {
-    return Date.now() - timestamp < this.cacheExpiry;
-  }
-
   async getQuote(symbol) {
-    const cacheKey = this.getCacheKey(symbol);
-    const cached = this.cache.get(cacheKey);
-
-    // Return cached data if valid
-    if (cached && this.isCacheValid(cached.timestamp)) {
-      return cached.data;
+    const symbolUpper = symbol.toUpperCase();
+    
+    // Check cache first
+    const cached = await cache.get('quote', symbolUpper);
+    if (cached) {
+      return cached;
     }
 
     try {
-      const quote = await this.makeRequest('/quote', { symbol: symbol.toUpperCase() });
+      const quote = await this.makeRequest('/quote', { symbol: symbolUpper });
       
       // Validate quote data
       if (!quote || quote.c === undefined || quote.c === 0) {
@@ -90,10 +81,7 @@ class FinnhubClient {
       }
 
       // Cache the result
-      this.cache.set(cacheKey, {
-        data: quote,
-        timestamp: Date.now()
-      });
+      await cache.set('quote', symbolUpper, quote);
 
       return quote;
     } catch (error) {
@@ -149,8 +137,20 @@ class FinnhubClient {
   }
 
   async getCompanyProfile(symbol) {
+    const symbolUpper = symbol.toUpperCase();
+    
+    // Check cache first (24 hour TTL for company profiles)
+    const cached = await cache.get('company_profile', symbolUpper);
+    if (cached) {
+      return cached;
+    }
+
     try {
-      const profile = await this.makeRequest('/stock/profile2', { symbol: symbol.toUpperCase() });
+      const profile = await this.makeRequest('/stock/profile2', { symbol: symbolUpper });
+      
+      // Cache the result
+      await cache.set('company_profile', symbolUpper, profile);
+      
       return profile;
     } catch (error) {
       console.warn(`Failed to get company profile for ${symbol}: ${error.message}`);
@@ -172,16 +172,28 @@ class FinnhubClient {
   }
 
   async getCompanyNews(symbol, fromDate = null, toDate = null) {
+    const symbolUpper = symbol.toUpperCase();
+    const to = toDate || new Date().toISOString().split('T')[0];
+    const from = fromDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    
+    // Create cache key with date range
+    const cacheKey = `${symbolUpper}_${from}_${to}`;
+    
+    // Check cache first (15 minute TTL for company news)
+    const cached = await cache.get('company_news', cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     try {
-      // Default to last 7 days if no dates provided
-      const to = toDate || new Date().toISOString().split('T')[0];
-      const from = fromDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-      
       const news = await this.makeRequest('/company-news', { 
-        symbol: symbol.toUpperCase(),
+        symbol: symbolUpper,
         from,
         to
       });
+      
+      // Cache the result
+      await cache.set('company_news', cacheKey, news);
       
       return news;
     } catch (error) {
@@ -191,20 +203,31 @@ class FinnhubClient {
   }
 
   async getEarningsCalendar(fromDate = null, toDate = null, symbol = null) {
+    const from = fromDate || new Date().toISOString().split('T')[0];
+    const to = toDate || new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    
+    // Create cache key with date range and optional symbol
+    const cacheKey = symbol ? `${symbol.toUpperCase()}_${from}_${to}` : `all_${from}_${to}`;
+    
+    // Check cache first (4 hour TTL for earnings)
+    const cached = await cache.get('earnings', cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     try {
-      // Default to next 2 weeks if no dates provided
-      const from = fromDate || new Date().toISOString().split('T')[0];
-      const to = toDate || new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-      
       const params = { from, to };
       if (symbol) {
         params.symbol = symbol.toUpperCase();
       }
       
       const earnings = await this.makeRequest('/calendar/earnings', params);
+      const result = earnings.earningsCalendar || [];
       
-      // The API returns an object with earningsCalendar array
-      return earnings.earningsCalendar || [];
+      // Cache the result
+      await cache.set('earnings', cacheKey, result);
+      
+      return result;
     } catch (error) {
       console.warn(`Failed to get earnings calendar: ${error.message}`);
       throw error;
@@ -228,12 +251,10 @@ class FinnhubClient {
 
     const cleanCusip = cusip.replace(/\s/g, '').toUpperCase();
     
-    // Check cache first
-    const cacheKey = `cusip_${cleanCusip}`;
-    const cached = this.cache.get(cacheKey);
-    
-    if (cached && this.isCacheValid(cached.timestamp)) {
-      return cached.data;
+    // Check cache first (7 day TTL for CUSIP resolution)
+    const cached = await cache.get('cusip_resolution', cleanCusip);
+    if (cached) {
+      return cached;
     }
 
     try {
@@ -252,10 +273,7 @@ class FinnhubClient {
             const ticker = result.symbol;
             
             // Cache the result
-            this.cache.set(cacheKey, {
-              data: ticker,
-              timestamp: Date.now()
-            });
+            await cache.set('cusip_resolution', cleanCusip, ticker);
             
             console.log(`Finnhub resolved CUSIP ${cleanCusip} to ticker ${ticker}`);
             return ticker;
@@ -268,10 +286,7 @@ class FinnhubClient {
           const ticker = firstResult.symbol;
           
           // Cache the result
-          this.cache.set(cacheKey, {
-            data: ticker,
-            timestamp: Date.now()
-          });
+          await cache.set('cusip_resolution', cleanCusip, ticker);
           
           console.log(`Finnhub resolved CUSIP ${cleanCusip} to ticker ${ticker} (best match)`);
           return ticker;
@@ -311,22 +326,13 @@ class FinnhubClient {
     return results;
   }
 
-  // Clear cache (useful for testing or manual refresh)
-  clearCache() {
-    this.cache.clear();
-  }
-
   // Get cache stats
-  getCacheStats() {
+  async getCacheStats() {
     const now = Date.now();
-    const validEntries = Array.from(this.cache.values())
-      .filter(entry => this.isCacheValid(entry.timestamp));
+    const cacheStats = await cache.getStats();
     
     return {
-      totalEntries: this.cache.size,
-      validEntries: validEntries.length,
-      expiredEntries: this.cache.size - validEntries.length,
-      cacheExpiry: this.cacheExpiry,
+      ...cacheStats,
       rateLimitStats: {
         maxCallsPerMinute: this.maxCallsPerMinute,
         recentCalls: this.callTimestamps.length,

@@ -51,6 +51,7 @@ router.delete('/cusip/:cusip', authenticate, tradeController.deleteCusipMapping)
 router.get('/cusip-mappings', authenticate, tradeController.getCusipMappings);
 router.post('/cusip/resolve-unresolved', authenticate, tradeController.resolveUnresolvedCusips);
 router.get('/:id', optionalAuth, tradeController.getTrade);
+router.get('/:id/chart-data', authenticate, tradeController.getTradeChartData);
 router.put('/:id', authenticate, validate(schemas.updateTrade), tradeController.updateTrade);
 router.delete('/:id', authenticate, tradeController.deleteTrade);
 router.post('/:id/attachments', authenticate, upload.single('file'), tradeController.uploadAttachment);
