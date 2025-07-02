@@ -7,8 +7,8 @@ class FinnhubClient {
     this.cache = new Map();
     this.cacheExpiry = 60 * 1000; // 1 minute cache
     
-    // Rate limiting: 30 calls per second
-    this.maxCallsPerSecond = 30;
+    // Rate limiting: 60 calls per minute
+    this.maxCallsPerMinute = 60;
     this.callTimestamps = [];
   }
 
@@ -18,15 +18,15 @@ class FinnhubClient {
 
   async waitForRateLimit() {
     const now = Date.now();
-    const oneSecondAgo = now - 1000;
+    const oneMinuteAgo = now - 60000;
     
-    // Remove timestamps older than 1 second
-    this.callTimestamps = this.callTimestamps.filter(timestamp => timestamp > oneSecondAgo);
+    // Remove timestamps older than 1 minute
+    this.callTimestamps = this.callTimestamps.filter(timestamp => timestamp > oneMinuteAgo);
     
-    // If we've made 30 calls in the last second, wait
-    if (this.callTimestamps.length >= this.maxCallsPerSecond) {
+    // If we've made 60 calls in the last minute, wait
+    if (this.callTimestamps.length >= this.maxCallsPerMinute) {
       const oldestCall = this.callTimestamps[0];
-      const waitTime = 1000 - (now - oldestCall) + 50; // Add 50ms buffer
+      const waitTime = 60000 - (now - oldestCall) + 100; // Add 100ms buffer
       
       if (waitTime > 0) {
         console.log(`Rate limit reached, waiting ${waitTime}ms`);
@@ -171,6 +171,46 @@ class FinnhubClient {
     }
   }
 
+  async getCompanyNews(symbol, fromDate = null, toDate = null) {
+    try {
+      // Default to last 7 days if no dates provided
+      const to = toDate || new Date().toISOString().split('T')[0];
+      const from = fromDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      
+      const news = await this.makeRequest('/company-news', { 
+        symbol: symbol.toUpperCase(),
+        from,
+        to
+      });
+      
+      return news;
+    } catch (error) {
+      console.warn(`Failed to get company news for ${symbol}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  async getEarningsCalendar(fromDate = null, toDate = null, symbol = null) {
+    try {
+      // Default to next 2 weeks if no dates provided
+      const from = fromDate || new Date().toISOString().split('T')[0];
+      const to = toDate || new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      
+      const params = { from, to };
+      if (symbol) {
+        params.symbol = symbol.toUpperCase();
+      }
+      
+      const earnings = await this.makeRequest('/calendar/earnings', params);
+      
+      // The API returns an object with earningsCalendar array
+      return earnings.earningsCalendar || [];
+    } catch (error) {
+      console.warn(`Failed to get earnings calendar: ${error.message}`);
+      throw error;
+    }
+  }
+
   async symbolSearch(query) {
     try {
       const results = await this.makeRequest('/search', { q: query });
@@ -288,7 +328,7 @@ class FinnhubClient {
       expiredEntries: this.cache.size - validEntries.length,
       cacheExpiry: this.cacheExpiry,
       rateLimitStats: {
-        maxCallsPerSecond: this.maxCallsPerSecond,
+        maxCallsPerMinute: this.maxCallsPerMinute,
         recentCalls: this.callTimestamps.length,
         lastMinuteCalls: this.callTimestamps.filter(t => t > now - 60000).length
       }

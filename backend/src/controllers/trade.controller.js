@@ -1081,6 +1081,108 @@ const tradeController = {
     } catch (error) {
       next(error);
     }
+  },
+
+  async getTradeNews(req, res, next) {
+    try {
+      const { symbols } = req.query;
+      
+      if (!symbols) {
+        return res.status(400).json({ error: 'Symbols parameter is required' });
+      }
+
+      const symbolList = symbols.split(',').map(s => s.trim()).filter(s => s);
+      
+      if (symbolList.length === 0) {
+        return res.json([]);
+      }
+
+      const finnhub = require('../utils/finnhub');
+      
+      if (!finnhub.isConfigured()) {
+        return res.status(503).json({ error: 'News service not configured' });
+      }
+
+      const allNews = [];
+      const errors = [];
+
+      // Fetch news for each symbol
+      for (const symbol of symbolList) {
+        try {
+          const news = await finnhub.getCompanyNews(symbol);
+          
+          // Add symbol to each news item and filter to last 7 days
+          const enrichedNews = news
+            .map(item => ({ ...item, symbol }))
+            .filter(item => {
+              // Ensure news is from last 7 days
+              const newsDate = new Date(item.datetime * 1000);
+              const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+              return newsDate >= sevenDaysAgo;
+            })
+            .slice(0, 5); // Limit to 5 news items per symbol
+          
+          allNews.push(...enrichedNews);
+        } catch (error) {
+          console.error(`Failed to fetch news for ${symbol}:`, error);
+          errors.push({ symbol, error: error.message });
+        }
+      }
+
+      // Sort all news by datetime descending
+      allNews.sort((a, b) => b.datetime - a.datetime);
+
+      res.json(allNews);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async getUpcomingEarnings(req, res, next) {
+    try {
+      const { symbols } = req.query;
+      
+      if (!symbols) {
+        return res.status(400).json({ error: 'Symbols parameter is required' });
+      }
+
+      const symbolList = symbols.split(',').map(s => s.trim()).filter(s => s);
+      
+      if (symbolList.length === 0) {
+        return res.json([]);
+      }
+
+      const finnhub = require('../utils/finnhub');
+      
+      if (!finnhub.isConfigured()) {
+        return res.status(503).json({ error: 'Earnings service not configured' });
+      }
+
+      // Get earnings for next 2 weeks
+      const from = new Date().toISOString().split('T')[0];
+      const to = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      
+      try {
+        // Fetch all earnings for the date range
+        const allEarnings = await finnhub.getEarningsCalendar(from, to);
+        
+        // Filter to only include symbols in user's open positions
+        const symbolSet = new Set(symbolList.map(s => s.toUpperCase()));
+        const relevantEarnings = allEarnings.filter(earning => 
+          symbolSet.has(earning.symbol.toUpperCase())
+        );
+        
+        // Sort by date
+        relevantEarnings.sort((a, b) => new Date(a.date) - new Date(b.date));
+        
+        res.json(relevantEarnings);
+      } catch (error) {
+        console.error('Failed to fetch earnings calendar:', error);
+        res.json([]); // Return empty array on error to not break the UI
+      }
+    } catch (error) {
+      next(error);
+    }
   }
 };
 
