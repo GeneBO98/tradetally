@@ -8,12 +8,16 @@ class Trade {
       strategy, setup, tags, pnl: providedPnL, pnlPercent: providedPnLPercent
     } = tradeData;
 
+    // Convert empty strings to null for optional fields
+    const cleanExitTime = exitTime === '' ? null : exitTime;
+    const cleanExitPrice = exitPrice === '' ? null : exitPrice;
+
     // Use provided P&L if available (e.g., from Schwab), otherwise calculate it
-    const pnl = providedPnL !== undefined ? providedPnL : this.calculatePnL(entryPrice, exitPrice, quantity, side, commission, fees);
-    const pnlPercent = providedPnLPercent !== undefined ? providedPnLPercent : this.calculatePnLPercent(entryPrice, exitPrice, side);
+    const pnl = providedPnL !== undefined ? providedPnL : this.calculatePnL(entryPrice, cleanExitPrice, quantity, side, commission, fees);
+    const pnlPercent = providedPnLPercent !== undefined ? providedPnLPercent : this.calculatePnLPercent(entryPrice, cleanExitPrice, side);
 
     // Use exit date as trade date if available, otherwise use entry date
-    const finalTradeDate = exitTime ? new Date(exitTime).toISOString().split('T')[0] : new Date(entryTime).toISOString().split('T')[0];
+    const finalTradeDate = cleanExitTime ? new Date(cleanExitTime).toISOString().split('T')[0] : new Date(entryTime).toISOString().split('T')[0];
 
     const query = `
       INSERT INTO trades (
@@ -26,7 +30,7 @@ class Trade {
     `;
 
     const values = [
-      userId, symbol.toUpperCase(), finalTradeDate, entryTime, exitTime, entryPrice, exitPrice,
+      userId, symbol.toUpperCase(), finalTradeDate, entryTime, cleanExitTime, entryPrice, cleanExitPrice,
       quantity, side, commission || 0, fees || 0, pnl, pnlPercent, notes, isPublic || false,
       broker, strategy, setup, tags || []
     ];
@@ -181,6 +185,10 @@ class Trade {
   static async update(id, userId, updates) {
     // First get the current trade data for calculations
     const currentTrade = await this.findById(id, userId);
+    
+    // Convert empty strings to null for optional fields
+    if (updates.exitTime === '') updates.exitTime = null;
+    if (updates.exitPrice === '') updates.exitPrice = null;
     
     const fields = [];
     const values = [];

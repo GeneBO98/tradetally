@@ -31,9 +31,9 @@ const schemas = {
   createTrade: Joi.object({
     symbol: Joi.string().max(20).required(),
     entryTime: Joi.date().iso().required(),
-    exitTime: Joi.date().iso().allow(null),
+    exitTime: Joi.date().iso().allow(null, ''),
     entryPrice: Joi.number().positive().required(),
-    exitPrice: Joi.number().positive().allow(null),
+    exitPrice: Joi.number().positive().allow(null, ''),
     quantity: Joi.number().integer().positive().required(),
     side: Joi.string().valid('long', 'short').required(),
     commission: Joi.number().min(0).default(0),
@@ -49,9 +49,9 @@ const schemas = {
   updateTrade: Joi.object({
     symbol: Joi.string().max(20),
     entryTime: Joi.date().iso(),
-    exitTime: Joi.date().iso().allow(null),
+    exitTime: Joi.date().iso().allow(null, ''),
     entryPrice: Joi.number().positive(),
-    exitPrice: Joi.number().positive().allow(null),
+    exitPrice: Joi.number().positive().allow(null, ''),
     quantity: Joi.number().integer().positive(),
     side: Joi.string().valid('long', 'short'),
     commission: Joi.number().min(0),
