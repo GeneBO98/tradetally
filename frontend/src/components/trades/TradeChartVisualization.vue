@@ -119,6 +119,7 @@
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import * as LightweightCharts from 'lightweight-charts'
 import api from '@/services/api'
+import { useNotification } from '@/composables/useNotification'
 
 const props = defineProps({
   tradeId: {
@@ -126,6 +127,8 @@ const props = defineProps({
     required: true
   }
 })
+
+const { showError, showWarning } = useNotification()
 
 const chartContainer = ref(null)
 const loading = ref(false)
@@ -210,6 +213,9 @@ const createTradeChart = () => {
     errorMsg += '\n• Daily API limit reached (25 calls per day)'
     errorMsg += '\n\n💡 Try testing with common symbols like:'
     errorMsg += '\n   AAPL, MSFT, GOOGL, TSLA, SPY'
+    
+    // Show user-friendly toast notification
+    showWarning('Chart Data Unavailable', `Chart information could not be resolved for ${symbol}. This is common for smaller stocks or ETFs. Try major symbols like AAPL, MSFT, or GOOGL.`)
     
     throw new Error(errorMsg)
   }
@@ -371,12 +377,16 @@ const fetchChartData = async () => {
     if (err.response?.status === 503) {
       isConfigured.value = false
       error.value = err.response.data.error || 'Chart service not configured'
+      showError('Chart Service Unavailable', 'Chart visualization requires Alpha Vantage API configuration.')
     } else if (err.response?.status === 429) {
       error.value = err.response.data.error || 'API rate limit exceeded'
+      showWarning('Chart API Limit Reached', 'Daily chart limit reached (25/day). Try again tomorrow or use common symbols like AAPL, MSFT, GOOGL.')
     } else if (err.response?.status === 400) {
       error.value = err.response.data.error || 'Invalid request'
+      showWarning('Chart Data Unavailable', 'Chart data could not be resolved for this symbol. Try using major stocks like AAPL, MSFT, GOOGL, or TSLA.')
     } else {
       error.value = err.response?.data?.error || 'Failed to load chart data'
+      showWarning('Chart Data Unavailable', 'Chart information could not be resolved for this symbol. This is common for smaller stocks or ETFs not covered by the free data tier.')
     }
   } finally {
     loading.value = false
