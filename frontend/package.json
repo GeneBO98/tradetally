@@ -9,16 +9,16 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "vue": "^3.3.8",
-    "vue-router": "^4.2.5",
-    "pinia": "^2.1.7",
+    "@heroicons/vue": "^2.0.18",
     "axios": "^1.6.2",
     "chart.js": "^4.4.0",
-    "vue-chartjs": "^5.2.0",
     "date-fns": "^2.30.0",
+    "lightweight-charts": "^5.0.8",
     "papaparse": "^5.4.1",
-    "@heroicons/vue": "^2.0.18",
-    "lightweight-charts": "^5.0.8"
+    "pinia": "^2.1.7",
+    "vue": "^3.3.8",
+    "vue-chartjs": "^5.2.0",
+    "vue-router": "^4.2.5"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^4.5.0",

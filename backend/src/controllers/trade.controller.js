@@ -98,23 +98,15 @@ const tradeController = {
 
   async deleteTrade(req, res, next) {
     try {
-      // First, get the trade to check ownership
-      const trade = await Trade.findById(req.params.id);
+      // Get the trade and ensure it belongs to the current user
+      const trade = await Trade.findById(req.params.id, req.user.id);
       
       if (!trade) {
-        return res.status(404).json({ error: 'Trade not found' });
+        return res.status(404).json({ error: 'Trade not found or access denied' });
       }
 
-      // Check if user is the trade owner or an admin
-      const isOwner = trade.user_id === req.user.id;
-      const isAdmin = req.user.role === 'admin';
-
-      if (!isOwner && !isAdmin) {
-        return res.status(403).json({ error: 'Access denied. You can only delete your own trades.' });
-      }
-
-      // Delete the trade (pass the trade owner's ID for the database constraint)
-      const result = await Trade.delete(req.params.id, trade.user_id);
+      // Delete the trade
+      const result = await Trade.delete(req.params.id, req.user.id);
       
       if (!result) {
         return res.status(404).json({ error: 'Trade not found' });
