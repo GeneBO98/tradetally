@@ -217,8 +217,8 @@ const createTradeChart = () => {
   // Create candlestick series using the correct v5 API
   console.log('Creating candlestick series...')
   try {
-    // Use the correct v5 API syntax - string-based series type
-    candleSeries = chart.addSeries('Candlestick', {
+    // Use the correct v5 API syntax with CandlestickSeries
+    candleSeries = chart.addSeries(LightweightCharts.CandlestickSeries, {
       upColor: '#10b981',
       downColor: '#ef4444',
       borderUpColor: '#10b981',
