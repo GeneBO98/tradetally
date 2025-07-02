@@ -17,7 +17,8 @@
     "vue-chartjs": "^5.2.0",
     "date-fns": "^2.30.0",
     "papaparse": "^5.4.1",
-    "@heroicons/vue": "^2.0.18"
+    "@heroicons/vue": "^2.0.18",
+    "lightweight-charts": "^5.0.8"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^4.5.0",

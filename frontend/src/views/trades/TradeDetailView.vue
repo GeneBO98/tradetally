@@ -114,6 +114,12 @@
             </div>
           </div>
 
+          <!-- Trade Chart Visualization -->
+          <TradeChartVisualization 
+            v-if="trade.exit_price && trade.exit_time" 
+            :trade-id="trade.id" 
+          />
+
           <!-- Tags -->
           <div v-if="trade.tags && trade.tags.length > 0" class="card">
             <div class="card-body">
@@ -396,6 +402,7 @@ import { format, formatDistanceToNow, formatDistance } from 'date-fns'
 import { DocumentIcon, ChatBubbleLeftIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
+import TradeChartVisualization from '@/components/trades/TradeChartVisualization.vue'
 
 const route = useRoute()
 const router = useRouter()
