@@ -291,25 +291,28 @@ const createTradeChart = () => {
   console.log('Trade data for markers:', trade)
   console.log('Entry time:', trade.entryTime, 'Exit time:', trade.exitTime)
 
-  // Entry marker
+  // Entry marker - bigger and more prominent
   if (trade.entryTime && trade.entryPrice) {
     markers.push({
       time: Number(trade.entryTime),
       position: 'belowBar',
       color: '#10b981',
       shape: 'arrowUp',
-      text: `Entry: $${formatNumber(trade.entryPrice)}`,
+      text: `📈 ENTRY: $${formatNumber(trade.entryPrice)} (${trade.side.toUpperCase()})`,
+      size: 1.5, // Make marker larger
     })
   }
 
-  // Exit marker
+  // Exit marker - bigger and more prominent
   if (trade.exitTime && trade.exitPrice) {
+    const pnlText = trade.pnl >= 0 ? `+$${formatNumber(trade.pnl)}` : `-$${formatNumber(Math.abs(trade.pnl))}`
     markers.push({
       time: Number(trade.exitTime),
       position: 'aboveBar',
-      color: '#ef4444',
+      color: trade.pnl >= 0 ? '#10b981' : '#ef4444',
       shape: 'arrowDown',
-      text: `Exit: $${formatNumber(trade.exitPrice)}`,
+      text: `📉 EXIT: $${formatNumber(trade.exitPrice)} (${pnlText})`,
+      size: 1.5, // Make marker larger
     })
   }
   
@@ -319,24 +322,36 @@ const createTradeChart = () => {
     candleSeries.setMarkers(markers)
   }
 
-  // Add price lines for entry and exit
-  candleSeries.createPriceLine({
+  // Add prominent price lines for entry and exit
+  const entryPriceLine = candleSeries.createPriceLine({
     price: trade.entryPrice,
     color: '#10b981',
-    lineWidth: 2,
+    lineWidth: 3, // Thicker line
     lineStyle: 2, // Dashed
     axisLabelVisible: true,
-    title: 'Entry',
+    title: `Entry: $${formatNumber(trade.entryPrice)}`,
   })
 
-  candleSeries.createPriceLine({
+  const exitPriceLine = candleSeries.createPriceLine({
     price: trade.exitPrice,
-    color: '#ef4444',
-    lineWidth: 2,
+    color: trade.pnl >= 0 ? '#10b981' : '#ef4444', // Color based on profit/loss
+    lineWidth: 3, // Thicker line
     lineStyle: 2, // Dashed
     axisLabelVisible: true,
-    title: 'Exit',
+    title: `Exit: $${formatNumber(trade.exitPrice)}`,
   })
+
+  // Add a profit/loss zone if trade was profitable
+  if (trade.pnl !== 0) {
+    const zonePriceLine = candleSeries.createPriceLine({
+      price: (trade.entryPrice + trade.exitPrice) / 2, // Middle price
+      color: trade.pnl >= 0 ? '#10b981' : '#ef4444',
+      lineWidth: 1,
+      lineStyle: 3, // Dotted
+      axisLabelVisible: false,
+      title: trade.pnl >= 0 ? `Profit Zone` : `Loss Zone`,
+    })
+  }
 
   // Fit content
   chart.timeScale().fitContent()
