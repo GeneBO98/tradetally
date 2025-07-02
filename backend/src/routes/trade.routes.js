@@ -31,6 +31,8 @@ const upload = multer({
 
 router.get('/', authenticate, tradeController.getUserTrades);
 router.get('/open-positions-quotes', authenticate, tradeController.getOpenPositionsWithQuotes);
+router.get('/news', authenticate, tradeController.getTradeNews);
+router.get('/earnings', authenticate, tradeController.getUpcomingEarnings);
 router.post('/', authenticate, validate(schemas.createTrade), tradeController.createTrade);
 router.get('/public', optionalAuth, tradeController.getPublicTrades);
 router.get('/analytics', authenticate, tradeController.getAnalytics);

@@ -225,10 +225,49 @@
                   </tr>
                 </template>
               </tbody>
+              <tfoot class="bg-gray-50 dark:bg-gray-800 border-t-2 border-gray-300 dark:border-gray-600">
+                <tr>
+                  <td colspan="4" class="px-3 py-3 text-sm font-bold text-gray-900 dark:text-white text-right">
+                    Total:
+                  </td>
+                  <td class="px-3 py-3 text-sm font-bold text-gray-900 dark:text-white text-right">
+                    ${{ formatCurrency(totalOpenCost) }}
+                  </td>
+                  <td colspan="2" class="px-3 py-3"></td>
+                  <td class="px-3 py-3 text-sm font-bold text-right">
+                    <div v-if="totalUnrealizedPnL !== null">
+                      <div :class="[
+                        totalUnrealizedPnL >= 0 ? 'text-green-600' : 'text-red-600'
+                      ]">
+                        {{ totalUnrealizedPnL >= 0 ? '+' : '' }}${{ formatCurrency(Math.abs(totalUnrealizedPnL)) }}
+                      </div>
+                      <div class="text-xs" :class="[
+                        totalUnrealizedPnLPercent >= 0 ? 'text-green-500' : 'text-red-500'
+                      ]">
+                        {{ totalUnrealizedPnLPercent >= 0 ? '+' : '' }}{{ formatNumber(totalUnrealizedPnLPercent) }}%
+                      </div>
+                    </div>
+                    <span v-else class="text-xs text-gray-400">-</span>
+                  </td>
+                  <td colspan="2" class="px-3 py-3"></td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         </div>
       </div>
+
+      <!-- Upcoming Earnings Section -->
+      <UpcomingEarningsSection 
+        v-if="openTradeSymbols.length > 0" 
+        :symbols="openTradeSymbols" 
+      />
+
+      <!-- Trade News Section -->
+      <TradeNewsSection 
+        v-if="openTradeSymbols.length > 0" 
+        :symbols="openTradeSymbols" 
+      />
 
       <!-- Key Metrics Cards -->
       <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
@@ -521,11 +560,13 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick, watch } from 'vue'
+import { ref, onMounted, nextTick, watch, computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { format } from 'date-fns'
 import Chart from 'chart.js/auto'
 import api from '@/services/api'
+import TradeNewsSection from '@/components/dashboard/TradeNewsSection.vue'
+import UpcomingEarningsSection from '@/components/dashboard/UpcomingEarningsSection.vue'
 
 const authStore = useAuthStore()
 
@@ -555,6 +596,26 @@ const winRateChart = ref(null)
 let pnlChartInstance = null
 let distributionChartInstance = null
 let winRateChartInstance = null
+
+const openTradeSymbols = computed(() => {
+  return [...new Set(openTrades.value.map(position => position.symbol))]
+})
+
+const totalOpenCost = computed(() => {
+  return openTrades.value.reduce((sum, position) => sum + (position.totalCost || 0), 0)
+})
+
+const totalUnrealizedPnL = computed(() => {
+  const hasQuotes = openTrades.value.some(position => position.unrealizedPnL !== null)
+  if (!hasQuotes) return null
+  
+  return openTrades.value.reduce((sum, position) => sum + (position.unrealizedPnL || 0), 0)
+})
+
+const totalUnrealizedPnLPercent = computed(() => {
+  if (totalUnrealizedPnL.value === null || totalOpenCost.value === 0) return 0
+  return (totalUnrealizedPnL.value / totalOpenCost.value) * 100
+})
 
 function formatCurrency(amount) {
   if (!amount && amount !== 0) return '0.00'
