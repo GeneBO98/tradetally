@@ -2,7 +2,6 @@
 ## Try the DEMO
 Visit [TradeTally](https://tradetally.io)
 
-![Demo](https://zipline.id10tips.com/u/tradetally-demo.png)
 <img width="1309" alt="SCR-20250630-szkr" src="https://github.com/user-attachments/assets/37c00683-162f-421f-b9d2-98ce815793ea" />
 <img width="1312" alt="SCR-20250630-szis" src="https://github.com/user-attachments/assets/b9232617-0d2a-48cf-a68a-3fbc07fefc1f" />
 <img width="1273" alt="SCR-20250630-szqs" src="https://github.com/user-attachments/assets/37a669af-0e06-42ed-ae2b-5447f2b15e8f" />
