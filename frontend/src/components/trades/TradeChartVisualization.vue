@@ -203,11 +203,13 @@ const createTradeChart = () => {
       errorMsg += ` API calls remaining: ${usage.dailyCallsRemaining}/25.`
     }
     
-    errorMsg += ' This may be due to:'
+    errorMsg += '\n\nThis may be due to:'
     errorMsg += '\n• Symbol not found or delisted'
-    errorMsg += '\n• No trading activity in the selected time period'
+    errorMsg += '\n• No trading activity in the selected time period'  
     errorMsg += '\n• Alpha Vantage API limitations'
     errorMsg += '\n• Daily API limit reached (25 calls per day)'
+    errorMsg += '\n\n💡 Try testing with common symbols like:'
+    errorMsg += '\n   AAPL, MSFT, GOOGL, TSLA, SPY'
     
     throw new Error(errorMsg)
   }
