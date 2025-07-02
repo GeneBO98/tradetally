@@ -212,11 +212,11 @@ const createTradeChart = () => {
     throw new Error(errorMsg)
   }
 
-  // Create candlestick series - try different series type names for v5
+  // Create candlestick series using the correct v5 API
   console.log('Creating candlestick series...')
   try {
-    // Try the most common v5 syntax
-    candleSeries = chart.addSeries(LightweightCharts.SeriesType.Candlestick, {
+    // Use the correct v5 API syntax - string-based series type
+    candleSeries = chart.addSeries('Candlestick', {
       upColor: '#10b981',
       downColor: '#ef4444',
       borderUpColor: '#10b981',
@@ -224,21 +224,9 @@ const createTradeChart = () => {
       wickUpColor: '#10b981',
       wickDownColor: '#ef4444',
     })
-  } catch (e1) {
-    console.warn('SeriesType.Candlestick failed, trying string:', e1.message)
-    try {
-      candleSeries = chart.addSeries('candlestick', {
-        upColor: '#10b981',
-        downColor: '#ef4444',
-        borderUpColor: '#10b981',
-        borderDownColor: '#ef4444',
-        wickUpColor: '#10b981',
-        wickDownColor: '#ef4444',
-      })
-    } catch (e2) {
-      console.error('Both series creation methods failed:', e1.message, e2.message)
-      throw new Error(`Failed to create candlestick series: ${e2.message}`)
-    }
+  } catch (error) {
+    console.error('Failed to create candlestick series:', error.message)
+    throw new Error(`Failed to create candlestick series: ${error.message}`)
   }
   console.log('Candlestick series created successfully')
   
