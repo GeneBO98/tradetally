@@ -22,10 +22,9 @@ services:
       retries: 5
 
   # Application (Frontend + Backend)
+  # Using pre-built image from Docker Hub - includes latest chart features
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: potentialmidas/tradetally:latest
     container_name: tradetally-app
     depends_on:
       postgres:
