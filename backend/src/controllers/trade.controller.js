@@ -622,7 +622,10 @@ const tradeController = {
           if (quote) {
             const currentPrice = quote.c; // Current price
             const currentValue = currentPrice * position.totalQuantity;
-            const unrealizedPnL = currentValue - position.totalCost;
+            // For short positions, profit is made when price goes down
+            const unrealizedPnL = position.side === 'short' 
+              ? position.totalCost - currentValue  // Short: profit when current value < entry cost
+              : currentValue - position.totalCost;  // Long: profit when current value > entry cost
             const unrealizedPnLPercent = (unrealizedPnL / position.totalCost) * 100;
             
             return {
