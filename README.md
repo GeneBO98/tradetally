@@ -18,7 +18,9 @@ Login with:
 
 Username: demo@example.com
 Password: DemoUser25
-
+## Mobile App Now Available For Testing
+### Testflight
+[Click here for the invitation](https://testflight.apple.com/join/11shUY3t)
 ## 🚀 Features
 
 - **Multi-Broker Support**: Import trades from Lightspeed, Charles Schwab, ThinkorSwim, Interactive Brokers, and E*TRADE
