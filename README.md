@@ -1,16 +1,14 @@
-# TradeTally - Trading Journal & Analytics Platform
+# TradeTally - Trading Journal & Analytics Platform - Dominate With Data
 ## Try the DEMO
 Visit [TradeTally](https://tradetally.io)
 
-<img width="1316" alt="SCR-20250702-kiss" src="https://github.com/user-attachments/assets/ca901b46-cabb-43fc-a1fb-98b1a7ca58be" />
-<img width="1316" alt="SCR-20250702-kipr" src="https://github.com/user-attachments/assets/47ba8ba5-911f-4575-9c15-63947e7625c9" />
-<img width="1309" alt="SCR-20250630-szkr" src="https://github.com/user-attachments/assets/37c00683-162f-421f-b9d2-98ce815793ea" />
-<img width="1312" alt="SCR-20250630-szis" src="https://github.com/user-attachments/assets/b9232617-0d2a-48cf-a68a-3fbc07fefc1f" />
-<img width="1273" alt="SCR-20250630-szqs" src="https://github.com/user-attachments/assets/37a669af-0e06-42ed-ae2b-5447f2b15e8f" />
-<img width="1309" alt="SCR-20250630-szow" src="https://github.com/user-attachments/assets/f5cff605-4d49-4f53-a803-c024d2bbf2af" />
-<img width="1272" alt="SCR-20250630-szmv" src="https://github.com/user-attachments/assets/1f146601-6441-4820-ada4-05293e0faaf5" />
-
-
+<img width="1340" alt="SCR-20250703-qdty" src="https://github.com/user-attachments/assets/c7281791-53f6-43c4-937d-ebc9c679f32f" />
+<img width="1282" alt="SCR-20250703-qdvz" src="https://github.com/user-attachments/assets/9eadee5c-5b71-4d38-baf9-b335080d4cae" />
+<img width="1336" alt="SCR-20250703-qeal" src="https://github.com/user-attachments/assets/6057c9a2-ac33-4aa1-8946-388628e6b8cc" />
+<img width="1416" alt="SCR-20250703-qech" src="https://github.com/user-attachments/assets/d7e35549-46ef-4e6a-b878-e47fd1ae08ba" />
+<img width="1285" alt="SCR-20250703-qeed" src="https://github.com/user-attachments/assets/801e3b90-d677-48c3-a685-622b6c31f6df" />
+<img width="1335" alt="SCR-20250703-qegs" src="https://github.com/user-attachments/assets/d19ff676-dec3-4b72-a14f-a701a38c23ab" />
+<img width="1357" alt="SCR-20250703-qeih" src="https://github.com/user-attachments/assets/10439cfa-1f29-4c1a-b5d8-0ed53255b50b" />
 
 A comprehensive trading journal and analytics platform built with Vue.js frontend and Node.js backend. Track your trades, analyze performance, and gain insights into your trading patterns across multiple brokers.
 
