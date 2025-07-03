@@ -18,7 +18,7 @@ Login with:
 
 Username: demo@example.com
 Password: DemoUser25
-## Mobile App Now Available For Testing
+## Mobile App (Available For Testing 07/08/25)
 ### Testflight
 [Click here for the invitation](https://testflight.apple.com/join/11shUY3t)
 ## 🚀 Features
