@@ -105,76 +105,6 @@
         </div>
       </div>
 
-      <!-- Performance Chart -->
-      <div class="card">
-        <div class="card-body">
-          <div class="flex items-center justify-between mb-4">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white">Performance Over Time</h3>
-            <select v-model="performancePeriod" @change="fetchPerformance" class="input w-auto">
-              <option value="daily">Daily</option>
-              <option value="weekly">Weekly</option>
-              <option value="monthly">Monthly</option>
-            </select>
-          </div>
-          <div class="h-80">
-            <PerformanceChart :data="performanceData" />
-          </div>
-        </div>
-      </div>
-
-      <!-- Day of Week Performance -->
-      <div class="card">
-        <div class="card-body">
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Performance by Day of Week</h3>
-          <div class="h-80 relative">
-            <canvas ref="dayOfWeekChart" class="absolute inset-0 w-full h-full"></canvas>
-          </div>
-        </div>
-      </div>
-
-      <!-- Performance by Hold Time -->
-      <div class="card">
-        <div class="card-body">
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Performance by Hold Time</h3>
-          <div class="h-96 relative">
-            <canvas ref="performanceByHoldTimeChart" class="absolute inset-0 w-full h-full"></canvas>
-          </div>
-        </div>
-      </div>
-
-      <!-- New Chart Section -->
-      <div class="grid grid-cols-1 gap-8 lg:grid-cols-2 xl:grid-cols-3">
-        <!-- Trade Distribution by Price -->
-        <div class="card">
-          <div class="card-body">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Trade Distribution by Price</h3>
-            <div class="h-80 relative">
-              <canvas ref="tradeDistributionChart" class="absolute inset-0 w-full h-full"></canvas>
-            </div>
-          </div>
-        </div>
-
-        <!-- Performance by Price -->
-        <div class="card">
-          <div class="card-body">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Performance by Price</h3>
-            <div class="h-80 relative">
-              <canvas ref="performanceByPriceChart" class="absolute inset-0 w-full h-full"></canvas>
-            </div>
-          </div>
-        </div>
-
-        <!-- Performance by Volume Traded -->
-        <div class="card">
-          <div class="card-body">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Performance by Volume Traded</h3>
-            <div class="h-80 relative">
-              <canvas ref="performanceByVolumeChart" class="absolute inset-0 w-full h-full"></canvas>
-            </div>
-          </div>
-        </div>
-      </div>
-
       <!-- Detailed Stats -->
       <div class="grid grid-cols-1 gap-8 lg:grid-cols-2">
         <!-- Win/Loss Breakdown -->
@@ -235,29 +165,135 @@
             <div v-if="symbolStats.length === 0" class="text-center py-4 text-gray-500 dark:text-gray-400">
               No data available
             </div>
-            <div v-else class="space-y-3">
-              <div
-                v-for="symbol in symbolStats.slice(0, 10)"
-                :key="symbol.symbol"
-                class="flex items-center justify-between"
-              >
-                <div>
-                  <span class="font-medium text-gray-900 dark:text-white">{{ symbol.symbol }}</span>
-                  <span class="ml-2 text-sm text-gray-500 dark:text-gray-400">
-                    {{ symbol.total_trades }} trades
-                  </span>
+            <div v-else>
+              <!-- Column Headers -->
+              <div class="flex items-center justify-between pb-2 mb-2 border-b border-gray-200 dark:border-gray-700">
+                <div class="flex items-baseline">
+                  <span class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-16">Symbol</span>
+                  <span class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Trades</span>
                 </div>
-                <div class="text-right">
-                  <div class="font-medium" :class="[
-                    symbol.total_pnl >= 0 ? 'text-green-600' : 'text-red-600'
-                  ]">
-                    ${{ formatNumber(symbol.total_pnl) }}
+                <div class="flex items-center">
+                  <span class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-20 text-right">P&L</span>
+                  <span class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-12 text-right">Win %</span>
+                </div>
+              </div>
+              
+              <!-- Data Rows -->
+              <div class="space-y-1">
+                <div
+                  v-for="symbol in symbolStats.slice(0, 10)"
+                  :key="symbol.symbol"
+                  class="flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800 rounded p-1 -m-1 cursor-pointer transition-colors"
+                  @click="navigateToSymbolTrades(symbol.symbol)"
+                >
+                  <div class="flex items-baseline">
+                    <span class="font-medium text-gray-900 dark:text-white hover:text-primary-600 dark:hover:text-primary-400 w-16">{{ symbol.symbol }}</span>
+                    <span class="text-xs text-gray-500 dark:text-gray-400">
+                      {{ symbol.total_trades }}
+                    </span>
                   </div>
-                  <div class="text-xs text-gray-500 dark:text-gray-400">
-                    {{ (symbol.winning_trades / symbol.total_trades * 100).toFixed(0) }}% win
+                  <div class="flex items-center">
+                    <div class="text-sm font-medium w-20 text-right" :class="[
+                      symbol.total_pnl >= 0 ? 'text-green-600' : 'text-red-600'
+                    ]">
+                      ${{ formatNumber(symbol.total_pnl) }}
+                    </div>
+                    <div class="text-xs text-gray-500 dark:text-gray-400 w-12 text-right">
+                      {{ (symbol.winning_trades / symbol.total_trades * 100).toFixed(0) }}%
+                    </div>
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Performance Chart -->
+      <div class="card">
+        <div class="card-body">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white">Performance Over Time</h3>
+            <select v-model="performancePeriod" @change="fetchPerformance" class="input w-auto">
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+            </select>
+          </div>
+          <div class="h-80">
+            <PerformanceChart :data="performanceData" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Drawdown Chart -->
+      <div class="card">
+        <div class="card-body">
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Drawdown Analysis</h3>
+          <div class="h-80 relative">
+            <canvas ref="drawdownChart" class="absolute inset-0 w-full h-full"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Daily Volume Chart -->
+      <div class="card">
+        <div class="card-body">
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Daily Volume Traded</h3>
+          <div class="h-80 relative">
+            <canvas ref="dailyVolumeChart" class="absolute inset-0 w-full h-full"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Day of Week Performance -->
+      <div class="card">
+        <div class="card-body">
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Performance by Day of Week</h3>
+          <div class="h-80 relative">
+            <canvas ref="dayOfWeekChart" class="absolute inset-0 w-full h-full"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Performance by Hold Time -->
+      <div class="card">
+        <div class="card-body">
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Performance by Hold Time</h3>
+          <div class="h-96 relative">
+            <canvas ref="performanceByHoldTimeChart" class="absolute inset-0 w-full h-full"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- New Chart Section -->
+      <div class="grid grid-cols-1 gap-8 lg:grid-cols-2 xl:grid-cols-3">
+        <!-- Trade Distribution by Price -->
+        <div class="card">
+          <div class="card-body">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Trade Distribution by Price</h3>
+            <div class="h-80 relative">
+              <canvas ref="tradeDistributionChart" class="absolute inset-0 w-full h-full"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Performance by Price -->
+        <div class="card">
+          <div class="card-body">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Performance by Price</h3>
+            <div class="h-80 relative">
+              <canvas ref="performanceByPriceChart" class="absolute inset-0 w-full h-full"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Performance by Volume Traded -->
+        <div class="card">
+          <div class="card-body">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Performance by Volume Traded</h3>
+            <div class="h-80 relative">
+              <canvas ref="performanceByVolumeChart" class="absolute inset-0 w-full h-full"></canvas>
             </div>
           </div>
         </div>
@@ -323,12 +359,14 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import { useRouter } from 'vue-router'
 import api from '@/services/api'
 import PerformanceChart from '@/components/charts/PerformanceChart.vue'
 import Chart from 'chart.js/auto'
 
 const loading = ref(true)
 const performancePeriod = ref('daily')
+const router = useRouter()
 
 const filters = ref({
   startDate: '',
@@ -360,6 +398,8 @@ const performanceByPriceChart = ref(null)
 const performanceByVolumeChart = ref(null)
 const performanceByHoldTimeChart = ref(null)
 const dayOfWeekChart = ref(null)
+const dailyVolumeChart = ref(null)
+const drawdownChart = ref(null)
 
 // Chart instances
 let tradeDistributionChartInstance = null
@@ -367,6 +407,8 @@ let performanceByPriceChartInstance = null
 let performanceByVolumeChartInstance = null
 let performanceByHoldTimeChartInstance = null
 let dayOfWeekChartInstance = null
+let dailyVolumeChartInstance = null
+let drawdownChartInstance = null
 
 // Chart data
 const tradeDistributionData = ref([])
@@ -374,6 +416,8 @@ const performanceByPriceData = ref([])
 const performanceByVolumeData = ref([])
 const performanceByHoldTimeData = ref([])
 const dayOfWeekData = ref([])
+const dailyVolumeData = ref([])
+const drawdownData = ref([])
 
 function formatNumber(num) {
   return new Intl.NumberFormat('en-US', {
@@ -465,17 +509,26 @@ function createPerformanceByPriceChart() {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      indexAxis: 'y',
       scales: {
         x: {
           title: {
             display: true,
-            text: 'Price Range'
+            text: 'Total P&L ($)'
+          },
+          grid: {
+            color: function(context) {
+              if (context.tick.value === 0) {
+                return '#9ca3af'
+              }
+              return 'rgba(0,0,0,0.1)'
+            }
           }
         },
         y: {
           title: {
             display: true,
-            text: 'Total P&L ($)'
+            text: 'Price Range'
           }
         }
       },
@@ -483,7 +536,7 @@ function createPerformanceByPriceChart() {
         tooltip: {
           callbacks: {
             label: function(context) {
-              return `Total P&L: $${context.parsed.y.toFixed(2)}`
+              return `Total P&L: $${context.parsed.x.toFixed(2)}`
             }
           }
         }
@@ -514,17 +567,26 @@ function createPerformanceByVolumeChart() {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      indexAxis: 'y',
       scales: {
         x: {
           title: {
             display: true,
-            text: 'Volume Range (Shares)'
+            text: 'Total P&L ($)'
+          },
+          grid: {
+            color: function(context) {
+              if (context.tick.value === 0) {
+                return '#9ca3af'
+              }
+              return 'rgba(0,0,0,0.1)'
+            }
           }
         },
         y: {
           title: {
             display: true,
-            text: 'Total P&L ($)'
+            text: 'Volume Range (Shares)'
           }
         }
       },
@@ -532,7 +594,7 @@ function createPerformanceByVolumeChart() {
         tooltip: {
           callbacks: {
             label: function(context) {
-              return `Total P&L: $${context.parsed.y.toFixed(2)}`
+              return `Total P&L: $${context.parsed.x.toFixed(2)}`
             }
           }
         }
@@ -577,6 +639,14 @@ function createDayOfWeekChart() {
           title: {
             display: true,
             text: 'Total P&L ($)'
+          },
+          grid: {
+            color: function(context) {
+              if (context.tick.value === 0) {
+                return '#9ca3af'
+              }
+              return 'rgba(0,0,0,0.1)'
+            }
           }
         },
         y: {
@@ -646,6 +716,14 @@ function createPerformanceByHoldTimeChart() {
           title: {
             display: true,
             text: 'Total P&L ($)'
+          },
+          grid: {
+            color: function(context) {
+              if (context.tick.value === 0) {
+                return '#9ca3af'
+              }
+              return 'rgba(0,0,0,0.1)'
+            }
           }
         },
         y: {
@@ -660,6 +738,175 @@ function createPerformanceByHoldTimeChart() {
           callbacks: {
             label: function(context) {
               return `Total P&L: $${context.parsed.x.toFixed(2)}`
+            }
+          }
+        }
+      }
+    }
+  })
+}
+
+function createDailyVolumeChart() {
+  if (!dailyVolumeChart.value) {
+    console.error('Daily volume chart canvas not found')
+    return
+  }
+
+  if (dailyVolumeChartInstance) {
+    dailyVolumeChartInstance.destroy()
+  }
+
+  const ctx = dailyVolumeChart.value.getContext('2d')
+  const labels = dailyVolumeData.value.map(d => {
+    const date = new Date(d.trade_date)
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  })
+  const volumes = dailyVolumeData.value.map(d => d.total_volume)
+  
+  dailyVolumeChartInstance = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Total Volume',
+        data: volumes,
+        backgroundColor: '#f3a05a',
+        borderColor: '#e89956',
+        borderWidth: 1
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: {
+          title: {
+            display: true,
+            text: 'Date'
+          },
+          ticks: {
+            callback: function(value, index) {
+              // Show every 7th tick (weekly intervals)
+              if (index % 7 === 0) {
+                return this.getLabelForValue(value)
+              }
+              return ''
+            },
+            maxRotation: 0,
+            minRotation: 0
+          }
+        },
+        y: {
+          beginAtZero: true,
+          title: {
+            display: true,
+            text: 'Volume (Shares)'
+          }
+        }
+      },
+      plugins: {
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              return `Volume: ${context.parsed.y.toLocaleString()} shares`
+            },
+            title: function(context) {
+              const originalDate = dailyVolumeData.value[context[0].dataIndex].trade_date
+              const date = new Date(originalDate)
+              return date.toLocaleDateString('en-US', { 
+                weekday: 'short', 
+                year: 'numeric', 
+                month: 'short', 
+                day: 'numeric' 
+              })
+            }
+          }
+        }
+      }
+    }
+  })
+}
+
+function createDrawdownChart() {
+  if (!drawdownChart.value) {
+    console.error('Drawdown chart canvas not found')
+    return
+  }
+
+  if (drawdownChartInstance) {
+    drawdownChartInstance.destroy()
+  }
+
+  const ctx = drawdownChart.value.getContext('2d')
+  const labels = drawdownData.value.map(d => {
+    const date = new Date(d.trade_date)
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  })
+  const drawdowns = drawdownData.value.map(d => d.drawdown)
+  
+  drawdownChartInstance = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Drawdown',
+        data: drawdowns,
+        borderColor: '#ef4444',
+        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+        borderWidth: 2,
+        fill: true,
+        tension: 0.4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: {
+          title: {
+            display: true,
+            text: 'Date'
+          },
+          ticks: {
+            callback: function(value, index) {
+              // Show every 7th tick (weekly intervals)
+              if (index % 7 === 0) {
+                return this.getLabelForValue(value)
+              }
+              return ''
+            },
+            maxRotation: 0,
+            minRotation: 0
+          }
+        },
+        y: {
+          title: {
+            display: true,
+            text: 'Drawdown ($)'
+          },
+          afterDataLimits: function(scale) {
+            const minValue = Math.min(...drawdowns)
+            const range = Math.abs(minValue)
+            scale.max = range * 0.15 // Add 15% padding above 0
+            scale.min = minValue - (range * 0.05) // Add small padding below minimum
+          }
+        }
+      },
+      plugins: {
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              return `Drawdown: $${context.parsed.y.toFixed(2)}`
+            },
+            title: function(context) {
+              const originalDate = drawdownData.value[context[0].dataIndex].trade_date
+              const date = new Date(originalDate)
+              return date.toLocaleDateString('en-US', { 
+                weekday: 'short', 
+                year: 'numeric', 
+                month: 'short', 
+                day: 'numeric' 
+              })
             }
           }
         }
@@ -683,6 +930,7 @@ async function fetchChartData() {
     performanceByVolumeData.value = response.data.performanceByVolume
     performanceByHoldTimeData.value = response.data.performanceByHoldTime
     dayOfWeekData.value = response.data.dayOfWeek
+    dailyVolumeData.value = response.data.dailyVolume
 
     // Create charts after data is loaded and DOM is updated
     await nextTick()
@@ -694,6 +942,8 @@ async function fetchChartData() {
       createPerformanceByVolumeChart()
       createPerformanceByHoldTimeChart()
       createDayOfWeekChart()
+      createDailyVolumeChart()
+      createDrawdownChart()
     }, 100)
   } catch (error) {
     console.error('Error fetching chart data:', error)
@@ -752,6 +1002,19 @@ async function fetchTagStats() {
   }
 }
 
+async function fetchDrawdownData() {
+  try {
+    const params = {}
+    if (filters.value.startDate) params.startDate = filters.value.startDate
+    if (filters.value.endDate) params.endDate = filters.value.endDate
+
+    const response = await api.get('/analytics/drawdown', { params })
+    drawdownData.value = response.data.drawdown
+  } catch (error) {
+    console.error('Failed to fetch drawdown data:', error)
+  }
+}
+
 async function applyFilters() {
   loading.value = true
   
@@ -763,7 +1026,8 @@ async function applyFilters() {
     fetchPerformance(),
     fetchSymbolStats(),
     fetchTagStats(),
-    fetchChartData()
+    fetchChartData(),
+    fetchDrawdownData()
   ])
   loading.value = false
 }
@@ -801,6 +1065,13 @@ function saveFilters() {
   localStorage.setItem('analyticsFilters', JSON.stringify(filters.value))
 }
 
+function navigateToSymbolTrades(symbol) {
+  router.push({
+    path: '/trades',
+    query: { symbol: symbol }
+  })
+}
+
 onMounted(() => {
   loadData()
 })
@@ -821,6 +1092,12 @@ onUnmounted(() => {
   }
   if (dayOfWeekChartInstance) {
     dayOfWeekChartInstance.destroy()
+  }
+  if (dailyVolumeChartInstance) {
+    dailyVolumeChartInstance.destroy()
+  }
+  if (drawdownChartInstance) {
+    drawdownChartInstance.destroy()
   }
 })
 </script>

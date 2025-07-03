@@ -311,6 +311,7 @@
 
 <script setup>
 import { onMounted, computed, watch, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { useTradesStore } from '@/stores/trades'
 import { format } from 'date-fns'
 import { DocumentTextIcon, ChatBubbleLeftIcon } from '@heroicons/vue/24/outline'
@@ -318,6 +319,7 @@ import TradeFilters from '@/components/trades/TradeFilters.vue'
 import TradeCommentsDialog from '@/components/trades/TradeCommentsDialog.vue'
 
 const tradesStore = useTradesStore()
+const route = useRoute()
 
 // Comments dialog
 const showCommentsDialog = ref(false)
@@ -398,6 +400,11 @@ function handleCommentDeleted() {
 }
 
 onMounted(() => {
+  // Check for symbol query parameter from analytics page
+  if (route.query.symbol) {
+    tradesStore.setFilters({ symbol: route.query.symbol })
+  }
+  
   tradesStore.fetchTrades()
 })
 </script>

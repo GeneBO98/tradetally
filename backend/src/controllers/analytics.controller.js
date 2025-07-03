@@ -491,12 +491,27 @@ const analyticsController = {
         });
       }
 
+      // Daily Volume Data
+      const dailyVolumeQuery = `
+        SELECT 
+          trade_date,
+          COALESCE(SUM(quantity), 0) as total_volume,
+          COUNT(*) as trade_count
+        FROM trades
+        WHERE user_id = $1 ${dateFilter}
+        GROUP BY trade_date
+        ORDER BY trade_date
+      `;
+
+      const dailyVolumeResult = await db.query(dailyVolumeQuery, params);
+
       res.json({
         tradeDistribution,
         performanceByPrice,
         performanceByVolume,
         performanceByHoldTime,
-        dayOfWeek: dayOfWeekData
+        dayOfWeek: dayOfWeekData,
+        dailyVolume: dailyVolumeResult.rows
       });
     } catch (error) {
       next(error);
@@ -582,10 +597,59 @@ const analyticsController = {
 
   async getDrawdownAnalysis(req, res, next) {
     try {
-      res.json({
-        message: 'Drawdown analysis not yet implemented',
-        analysis: null
-      });
+      const { startDate, endDate } = req.query;
+      
+      let dateFilter = '';
+      const params = [req.user.id];
+      
+      if (startDate) {
+        dateFilter += ' AND trade_date >= $2';
+        params.push(startDate);
+      }
+      
+      if (endDate) {
+        dateFilter += ` AND trade_date <= $${params.length + 1}`;
+        params.push(endDate);
+      }
+
+      const drawdownQuery = `
+        WITH daily_pnl AS (
+          SELECT 
+            trade_date,
+            COALESCE(SUM(pnl), 0) as daily_pnl
+          FROM trades
+          WHERE user_id = $1 ${dateFilter}
+          GROUP BY trade_date
+          ORDER BY trade_date
+        ),
+        cumulative_pnl AS (
+          SELECT 
+            trade_date,
+            daily_pnl,
+            SUM(daily_pnl) OVER (ORDER BY trade_date) as cumulative_pnl
+          FROM daily_pnl
+        ),
+        running_max AS (
+          SELECT 
+            trade_date,
+            daily_pnl,
+            cumulative_pnl,
+            MAX(cumulative_pnl) OVER (ORDER BY trade_date) as running_max_pnl
+          FROM cumulative_pnl
+        )
+        SELECT 
+          trade_date,
+          daily_pnl,
+          cumulative_pnl,
+          running_max_pnl,
+          cumulative_pnl - running_max_pnl as drawdown
+        FROM running_max
+        ORDER BY trade_date
+      `;
+
+      const result = await db.query(drawdownQuery, params);
+      
+      res.json({ drawdown: result.rows });
     } catch (error) {
       next(error);
     }
