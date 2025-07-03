@@ -55,8 +55,12 @@ const analyticsController = {
     try {
       const { period = 'daily', startDate, endDate } = req.query;
       
+      // Whitelist allowed periods to prevent SQL injection
+      const allowedPeriods = ['daily', 'weekly', 'monthly'];
+      const sanitizedPeriod = allowedPeriods.includes(period) ? period : 'daily';
+      
       let groupBy;
-      switch (period) {
+      switch (sanitizedPeriod) {
         case 'weekly':
           groupBy = "DATE_TRUNC('week', trade_date)";
           break;
@@ -117,7 +121,13 @@ const analyticsController = {
         params.push(endDate);
       }
 
-      params.push(parseInt(limit));
+      // Validate and sanitize limit parameter
+      const sanitizedLimit = parseInt(limit);
+      if (isNaN(sanitizedLimit) || sanitizedLimit < 1 || sanitizedLimit > 100) {
+        return res.status(400).json({ error: 'Invalid limit parameter. Must be between 1 and 100' });
+      }
+      
+      params.push(sanitizedLimit);
 
       const symbolQuery = `
         SELECT 
@@ -188,8 +198,21 @@ const analyticsController = {
       let dateFilter = '';
       
       if (year && month) {
-        const startDate = `${year}-${month.padStart(2, '0')}-01`;
-        const endDate = new Date(year, month, 0).toISOString().split('T')[0];
+        // Validate and sanitize year and month to prevent injection
+        const sanitizedYear = parseInt(year);
+        const sanitizedMonth = parseInt(month);
+        
+        // Validate ranges
+        if (isNaN(sanitizedYear) || sanitizedYear < 1900 || sanitizedYear > 2100) {
+          return res.status(400).json({ error: 'Invalid year parameter' });
+        }
+        
+        if (isNaN(sanitizedMonth) || sanitizedMonth < 1 || sanitizedMonth > 12) {
+          return res.status(400).json({ error: 'Invalid month parameter' });
+        }
+        
+        const startDate = `${sanitizedYear}-${sanitizedMonth.toString().padStart(2, '0')}-01`;
+        const endDate = new Date(sanitizedYear, sanitizedMonth, 0).toISOString().split('T')[0];
         dateFilter = ' AND trade_date >= $2 AND trade_date <= $3';
         params.push(startDate, endDate);
       }
@@ -217,6 +240,10 @@ const analyticsController = {
     try {
       const { format = 'csv', startDate, endDate } = req.query;
       
+      // Validate format parameter
+      const allowedFormats = ['csv', 'json'];
+      const sanitizedFormat = allowedFormats.includes(format) ? format : 'csv';
+      
       let dateFilter = '';
       const params = [req.user.id];
       
@@ -238,7 +265,7 @@ const analyticsController = {
 
       const result = await db.query(exportQuery, params);
       
-      if (format === 'csv') {
+      if (sanitizedFormat === 'csv') {
         const csv = convertToCSV(result.rows);
         res.setHeader('Content-Type', 'text/csv');
         res.setHeader('Content-Disposition', 'attachment; filename="trades.csv"');
