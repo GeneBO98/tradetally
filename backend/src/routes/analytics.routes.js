@@ -10,5 +10,6 @@ router.get('/tags', authenticate, analyticsController.getTagStats);
 router.get('/calendar', authenticate, analyticsController.getCalendarData);
 router.get('/export', authenticate, analyticsController.exportData);
 router.get('/charts', authenticate, analyticsController.getChartData);
+router.get('/drawdown', authenticate, analyticsController.getDrawdownAnalysis);
 
 module.exports = router;
