@@ -4,7 +4,7 @@
       <div class="flex justify-between h-16">
         <div class="flex items-center">
           <router-link to="/" class="flex items-center px-2 py-2 text-xl font-bold text-primary-600">
-            <img src="/favicon.svg" alt="" class="h-8 w-auto mr-2" />
+            <img src="https://zipline.id10tips.com/u/tradetally-favicon.svg" alt="" class="h-8 w-auto mr-2" />
             TradeTally
           </router-link>
           
