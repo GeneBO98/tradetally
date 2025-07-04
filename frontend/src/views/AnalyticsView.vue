@@ -293,7 +293,22 @@
           <div class="card-body">
             <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Performance by Volume Traded</h3>
             <div class="h-80 relative">
-              <canvas ref="performanceByVolumeChart" class="absolute inset-0 w-full h-full"></canvas>
+              <canvas 
+                ref="performanceByVolumeChart" 
+                class="absolute inset-0 w-full h-full"
+                :class="{ 'hidden': !performanceByVolumeData.length || performanceByVolumeData.every(val => val === 0) }"
+              ></canvas>
+              <div 
+                v-if="!performanceByVolumeData.length || performanceByVolumeData.every(val => val === 0)"
+                class="absolute inset-0 flex items-center justify-center text-gray-500 dark:text-gray-400"
+              >
+                <div class="text-center">
+                  <svg class="w-12 h-12 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                  </svg>
+                  <p>No volume data available for the selected period</p>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -418,6 +433,13 @@ const performanceByHoldTimeData = ref([])
 const dayOfWeekData = ref([])
 const dailyVolumeData = ref([])
 const drawdownData = ref([])
+
+// Dynamic chart labels
+const chartLabels = ref({
+  volume: [],
+  price: ['< $2', '$2-4.99', '$5-9.99', '$10-19.99', '$20-49.99', '$50-99.99', '$100-199.99', '$200+'],
+  holdTime: ['< 1 min', '1-5 min', '5-15 min', '15-30 min', '30-60 min', '1-2 hours', '2-4 hours', '4-24 hours', '1-7 days', '1-4 weeks', '1+ months']
+})
 
 function formatNumber(num) {
   return new Intl.NumberFormat('en-US', {
@@ -550,8 +572,14 @@ function createPerformanceByVolumeChart() {
     performanceByVolumeChartInstance.destroy()
   }
 
+  // Only create chart if there's data to display
+  if (!performanceByVolumeData.value.length || performanceByVolumeData.value.every(val => val === 0)) {
+    console.log('No volume data to display, skipping chart creation')
+    return
+  }
+
   const ctx = performanceByVolumeChart.value.getContext('2d')
-  const labels = ['2-4', '5-9', '10-19', '20-49', '50-99', '100-500', '500-999', '1K-2K', '2K-3K', '3K-5K', '5K-10K', '10K-20K', '20K+']
+  const labels = chartLabels.value.volume.length > 0 ? chartLabels.value.volume : []
   
   performanceByVolumeChartInstance = new Chart(ctx, {
     type: 'bar',
@@ -931,6 +959,14 @@ async function fetchChartData() {
     performanceByHoldTimeData.value = response.data.performanceByHoldTime
     dayOfWeekData.value = response.data.dayOfWeek
     dailyVolumeData.value = response.data.dailyVolume
+    
+    // Update dynamic labels if provided
+    if (response.data.labels) {
+      chartLabels.value = {
+        ...chartLabels.value,
+        ...response.data.labels
+      }
+    }
 
     // Create charts after data is loaded and DOM is updated
     await nextTick()
