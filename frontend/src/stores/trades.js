@@ -22,7 +22,16 @@ export const useTradesStore = defineStore('trades', () => {
   })
 
   const totalPnL = computed(() => {
-    return trades.value.reduce((sum, trade) => sum + (trade.pnl || 0), 0)
+    const total = trades.value.reduce((sum, trade) => {
+      const pnl = parseFloat(trade.pnl) || 0
+      return sum + pnl
+    }, 0)
+    console.log('Total P/L calculation:', {
+      tradesCount: trades.value.length,
+      totalPnL: total,
+      sampleTrades: trades.value.slice(0, 3).map(t => ({ symbol: t.symbol, pnl: t.pnl, type: typeof t.pnl }))
+    })
+    return total
   })
 
   const winRate = computed(() => {

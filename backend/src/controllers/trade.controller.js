@@ -76,6 +76,16 @@ const tradeController = {
         return res.status(404).json({ error: 'Trade not found' });
       }
 
+      // Parse executions JSON if it exists
+      if (trade.executions && typeof trade.executions === 'string') {
+        try {
+          trade.executions = JSON.parse(trade.executions);
+        } catch (e) {
+          console.warn('Failed to parse executions JSON:', e);
+          trade.executions = [];
+        }
+      }
+
       res.json({ trade });
     } catch (error) {
       next(error);

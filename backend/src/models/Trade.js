@@ -5,7 +5,8 @@ class Trade {
     const {
       symbol, entryTime, exitTime, entryPrice, exitPrice,
       quantity, side, commission, fees, notes, isPublic, broker,
-      strategy, setup, tags, pnl: providedPnL, pnlPercent: providedPnLPercent
+      strategy, setup, tags, pnl: providedPnL, pnlPercent: providedPnLPercent,
+      executionData
     } = tradeData;
 
     // Convert empty strings to null for optional fields
@@ -23,16 +24,16 @@ class Trade {
       INSERT INTO trades (
         user_id, symbol, trade_date, entry_time, exit_time, entry_price, exit_price,
         quantity, side, commission, fees, pnl, pnl_percent, notes, is_public,
-        broker, strategy, setup, tags
+        broker, strategy, setup, tags, executions
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
       RETURNING *
     `;
 
     const values = [
       userId, symbol.toUpperCase(), finalTradeDate, entryTime, cleanExitTime, entryPrice, cleanExitPrice,
       quantity, side, commission || 0, fees || 0, pnl, pnlPercent, notes, isPublic || false,
-      broker, strategy, setup, tags || []
+      broker, strategy, setup, tags || [], JSON.stringify(executionData || [])
     ];
 
     const result = await db.query(query, values);

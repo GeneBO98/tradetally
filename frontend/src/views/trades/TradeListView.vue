@@ -20,6 +20,30 @@
       </div>
     </div>
 
+    <!-- Total P/L Summary for Filtered Results -->
+    <div v-if="tradesStore.trades.length > 0" class="mt-6">
+      <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-4">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center space-x-4">
+            <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+              Total P&L ({{ tradesStore.pagination.total }} {{ tradesStore.pagination.total === 1 ? 'trade' : 'trades' }})
+            </h3>
+            <div class="text-lg font-semibold" :class="[
+              tradesStore.totalPnL >= 0 
+                ? 'text-green-600 dark:text-green-400' 
+                : 'text-red-600 dark:text-red-400'
+            ]">
+              {{ tradesStore.totalPnL >= 0 ? '+' : '' }}${{ formatNumber(Math.abs(tradesStore.totalPnL)) }}
+            </div>
+          </div>
+          <div class="text-right">
+            <div class="text-sm text-gray-500 dark:text-gray-400">Win Rate</div>
+            <div class="text-lg font-medium text-gray-900 dark:text-white">{{ tradesStore.winRate }}%</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="mt-8">
       <div v-if="tradesStore.loading" class="flex justify-center py-12">
         <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>

@@ -317,6 +317,12 @@ class FinnhubClient {
         if (ticker) {
           results[cusip] = ticker;
         }
+        
+        // Add 1-second delay for CUSIP lookups to stay under 30 calls/second and 60 calls/minute limits
+        if (uniqueCusips.indexOf(cusip) < uniqueCusips.length - 1) {
+          console.log(`Waiting 1 second before next CUSIP lookup...`);
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
       } catch (error) {
         console.warn(`Failed to resolve CUSIP ${cusip}: ${error.message}`);
       }
