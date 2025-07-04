@@ -581,13 +581,13 @@ const tradeController = {
         return res.json({ positions: [] });
       }
 
-      // Group trades by symbol
+      // Group trades by symbol and calculate net position
       const positionMap = {};
       openTrades.forEach(trade => {
         if (!positionMap[trade.symbol]) {
           positionMap[trade.symbol] = {
             symbol: trade.symbol,
-            side: trade.side,
+            side: null, // Will be determined by net position
             trades: [],
             totalQuantity: 0,
             totalCost: 0,
@@ -596,14 +596,35 @@ const tradeController = {
         }
         
         positionMap[trade.symbol].trades.push(trade);
-        positionMap[trade.symbol].totalQuantity += trade.quantity;
-        positionMap[trade.symbol].totalCost += (trade.entry_price * trade.quantity);
+        
+        // Calculate net position considering trade direction
+        const quantity = trade.side === 'long' ? trade.quantity : -trade.quantity;
+        positionMap[trade.symbol].totalQuantity += quantity;
+        
+        // For cost calculation, use absolute value since we're tracking net cost basis
+        positionMap[trade.symbol].totalCost += Math.abs(quantity) * trade.entry_price;
       });
 
-      // Calculate average prices
+      // Calculate average prices and determine position side
+      const symbolsToDelete = [];
       Object.values(positionMap).forEach(position => {
-        position.avgPrice = position.totalCost / position.totalQuantity;
+        if (position.totalQuantity === 0) {
+          // No net position, mark for deletion
+          symbolsToDelete.push(position.symbol);
+          return;
+        }
+        
+        // Determine side based on net position
+        position.side = position.totalQuantity > 0 ? 'long' : 'short';
+        
+        // Use absolute quantity for calculations
+        const absQuantity = Math.abs(position.totalQuantity);
+        position.totalQuantity = absQuantity;
+        position.avgPrice = position.totalCost / absQuantity;
       });
+      
+      // Remove symbols with zero net position
+      symbolsToDelete.forEach(symbol => delete positionMap[symbol]);
 
       // Get unique symbols for quotes
       const symbols = Object.keys(positionMap);
