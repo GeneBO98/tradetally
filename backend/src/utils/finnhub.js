@@ -6,8 +6,8 @@ class FinnhubClient {
     this.apiKey = process.env.FINNHUB_API_KEY;
     this.baseURL = 'https://finnhub.io/api/v1';
     
-    // Rate limiting: 60 calls per minute
-    this.maxCallsPerMinute = 60;
+    // Rate limiting: Conservative limits for free tier (30 calls per minute)
+    this.maxCallsPerMinute = 30;
     this.callTimestamps = [];
   }
 
@@ -22,7 +22,7 @@ class FinnhubClient {
     // Remove timestamps older than 1 minute
     this.callTimestamps = this.callTimestamps.filter(timestamp => timestamp > oneMinuteAgo);
     
-    // If we've made 60 calls in the last minute, wait
+    // If we've made max calls in the last minute, wait
     if (this.callTimestamps.length >= this.maxCallsPerMinute) {
       const oldestCall = this.callTimestamps[0];
       const waitTime = 60000 - (now - oldestCall) + 100; // Add 100ms buffer
@@ -57,7 +57,13 @@ class FinnhubClient {
       return response.data;
     } catch (error) {
       if (error.response) {
-        throw new Error(`Finnhub API error: ${error.response.status} - ${error.response.data.error || 'Unknown error'}`);
+        // Handle 429 rate limit errors with exponential backoff
+        if (error.response.status === 429) {
+          console.log('Rate limit hit, waiting 60 seconds before retry...');
+          await new Promise(resolve => setTimeout(resolve, 60000));
+          throw new Error(`Finnhub API rate limit exceeded: ${error.response.status} - ${error.response.data?.error || 'Rate limit reached'}`);
+        }
+        throw new Error(`Finnhub API error: ${error.response.status} - ${error.response.data?.error || 'Unknown error'}`);
       }
       throw new Error(`Finnhub request failed: ${error.message}`);
     }
@@ -318,10 +324,10 @@ class FinnhubClient {
           results[cusip] = ticker;
         }
         
-        // Add 1-second delay for CUSIP lookups to stay under 30 calls/second and 60 calls/minute limits
+        // Add 3-second delay for CUSIP lookups to stay well under rate limits
         if (uniqueCusips.indexOf(cusip) < uniqueCusips.length - 1) {
-          console.log(`Waiting 1 second before next CUSIP lookup...`);
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          console.log(`Waiting 3 seconds before next CUSIP lookup...`);
+          await new Promise(resolve => setTimeout(resolve, 3000));
         }
       } catch (error) {
         console.warn(`Failed to resolve CUSIP ${cusip}: ${error.message}`);

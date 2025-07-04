@@ -2,9 +2,9 @@ const { parse } = require('csv-parse/sync');
 const logger = require('./logger');
 const finnhub = require('./finnhub');
 const cache = require('./cache');
+const cusipQueue = require('./cusipQueue');
 
-// Module-level variable to store unresolved CUSIPs
-let pendingCusips = [];
+// CUSIP resolution is now handled by the cusipQueue module
 
 const brokerParsers = {
   generic: (row) => ({
@@ -304,11 +304,12 @@ async function parseLightspeedTransactions(records) {
       }
     }
     
-    console.log(`Using cached results for ${Object.keys(cusipToTickerMap).length} of ${cusipsToResolve.size} CUSIPs. ${unresolvedCusips.length} will be resolved in background.`);
+    console.log(`Using cached results for ${Object.keys(cusipToTickerMap).length} of ${cusipsToResolve.size} CUSIPs. ${unresolvedCusips.length} will be queued for background processing.`);
     
-    // Store unresolved CUSIPs for background processing
+    // Add unresolved CUSIPs to the processing queue
     if (unresolvedCusips.length > 0) {
-      pendingCusips = unresolvedCusips;
+      await cusipQueue.addToQueue(unresolvedCusips, 2); // High priority for import
+      console.log(`Added ${unresolvedCusips.length} CUSIPs to background processing queue`);
     }
   }
   
@@ -514,15 +515,7 @@ async function parseLightspeedTransactions(records) {
   });
 
   console.log(`Created ${completedTrades.length} trades from ${transactions.length} transactions`);
-  
-  // Include unresolved CUSIPs in the result for background processing
-  const result = { trades: completedTrades };
-  if (pendingCusips.length > 0) {
-    result.unresolvedCusips = [...pendingCusips];
-    pendingCusips = []; // Clean up
-  }
-  
-  return result;
+  return { trades: completedTrades };
 }
 
 async function parseSchwabTrades(records) {
