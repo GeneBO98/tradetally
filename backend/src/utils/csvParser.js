@@ -1,6 +1,7 @@
 const { parse } = require('csv-parse/sync');
 const logger = require('./logger');
 const finnhub = require('./finnhub');
+const cache = require('./cache');
 
 // Module-level variable to store unresolved CUSIPs
 let pendingCusips = [];
@@ -285,19 +286,23 @@ async function parseLightspeedTransactions(records) {
     console.log(`Found ${cusipsToResolve.size} unique CUSIPs to resolve`);
     
     // Only check cache during import
-    cusipsToResolve.forEach(cusip => {
+    for (const cusip of cusipsToResolve) {
       const cleanCusip = cusip.replace(/\s/g, '').toUpperCase();
-      const cacheKey = `cusip_${cleanCusip}`;
-      const cached = finnhub.cache.get(cacheKey);
-      
-      if (cached && finnhub.isCacheValid(cached.timestamp)) {
-        cusipToTickerMap[cleanCusip] = cached.data;
-        console.log(`CUSIP ${cleanCusip} found in cache: ${cached.data}`);
-      } else {
+      try {
+        const cached = await cache.get('cusip_resolution', cleanCusip);
+        
+        if (cached) {
+          cusipToTickerMap[cleanCusip] = cached;
+          console.log(`CUSIP ${cleanCusip} found in cache: ${cached}`);
+        } else {
+          unresolvedCusips.push(cleanCusip);
+          console.log(`CUSIP ${cleanCusip} not in cache, will resolve in background`);
+        }
+      } catch (error) {
+        console.warn(`Failed to check cache for CUSIP ${cleanCusip}:`, error.message);
         unresolvedCusips.push(cleanCusip);
-        console.log(`CUSIP ${cleanCusip} not in cache, will resolve in background`);
       }
-    });
+    }
     
     console.log(`Using cached results for ${Object.keys(cusipToTickerMap).length} of ${cusipsToResolve.size} CUSIPs. ${unresolvedCusips.length} will be resolved in background.`);
     
@@ -364,7 +369,7 @@ async function parseLightspeedTransactions(records) {
   console.log(`Total commissions from CSV: $${totalCSVCommissions.toFixed(2)}`);
   console.log(`Total fees from CSV: $${totalCSVFees.toFixed(2)}`);
 
-  // Group transactions by symbol and match using simple FIFO
+  // Group transactions by symbol
   const symbolGroups = {};
   transactions.forEach(transaction => {
     if (!symbolGroups[transaction.symbol]) {
@@ -374,9 +379,8 @@ async function parseLightspeedTransactions(records) {
   });
 
   const completedTrades = [];
-  let totalDistributedCommissions = 0;
-  let totalDistributedFees = 0;
   
+  // Process transactions using round-trip trade grouping (like TradersVue and updated Schwab parser)
   Object.keys(symbolGroups).forEach(symbol => {
     const symbolTransactions = symbolGroups[symbol];
     
@@ -384,152 +388,132 @@ async function parseLightspeedTransactions(records) {
     const totalCommissions = symbolTransactions.reduce((sum, tx) => sum + tx.commission, 0);
     const totalFees = symbolTransactions.reduce((sum, tx) => sum + tx.fees, 0);
     
+    console.log(`\n=== Processing ${symbolTransactions.length} Lightspeed transactions for ${symbol} ===`);
     console.log(`Symbol ${symbol}: CSV commissions: $${totalCommissions.toFixed(2)}, fees: $${totalFees.toFixed(2)}`);
     
     // Sort by execution time for FIFO matching
     symbolTransactions.sort((a, b) => new Date(a.entryTime) - new Date(b.entryTime));
     
-    // Simple FIFO matching - track open positions
-    const openBuys = [];  // Long positions waiting to be sold
-    const openSells = []; // Short positions waiting to be covered
-    const symbolCompletedTrades = []; // Track completed trades for this symbol
+    // Track position and round-trip trades
+    let currentPosition = 0;
+    let currentTrade = null; // Active round-trip trade being built
     
-    symbolTransactions.forEach(transaction => {
-      if (transaction.side === 'buy') {
-        // Try to cover short positions first
-        while (transaction.quantity > 0 && openSells.length > 0) {
-          const shortPosition = openSells[0];
-          const matchQuantity = Math.min(transaction.quantity, shortPosition.quantity);
-          
-          // Create completed short trade (commission will be distributed later)
-          const trade = {
-            symbol: symbol,
-            tradeDate: shortPosition.tradeDate,
-            entryTime: shortPosition.entryTime,
-            exitTime: transaction.entryTime,
-            entryPrice: shortPosition.entryPrice,
-            exitPrice: transaction.entryPrice,
-            quantity: matchQuantity,
-            side: 'short',
-            commission: 0, // Will be set later from total CSV commissions
-            fees: 0, // Will be set later from total CSV fees
-            broker: 'lightspeed',
-            notes: shortPosition.notes + ' | Covered'
-          };
-          
-          symbolCompletedTrades.push(trade);
-          
-          // Update quantities
-          transaction.quantity -= matchQuantity;
-          shortPosition.quantity -= matchQuantity;
-          
-          if (shortPosition.quantity === 0) {
-            openSells.shift();
-          }
-        }
+    for (const transaction of symbolTransactions) {
+      const qty = transaction.quantity;
+      const prevPosition = currentPosition;
+      
+      console.log(`\n${transaction.side} ${qty} @ $${transaction.entryPrice} | Position: ${currentPosition}`);
+      
+      // Start new trade if going from flat to position
+      if (currentPosition === 0) {
+        currentTrade = {
+          symbol: symbol,
+          entryTime: transaction.entryTime,
+          tradeDate: transaction.tradeDate,
+          side: transaction.side === 'buy' ? 'long' : 'short',
+          executions: [],
+          totalQuantity: 0,
+          totalFees: 0, // Accumulate fees for this specific trade
+          totalFeesForSymbol: totalCommissions + totalFees, // Include all fees/commissions for the symbol
+          entryValue: 0,
+          exitValue: 0,
+          broker: 'lightspeed'
+        };
+        console.log(`  → Started new ${currentTrade.side} trade`);
+      }
+      
+      // Add execution to current trade
+      if (currentTrade) {
+        currentTrade.executions.push({
+          action: transaction.side,
+          quantity: qty,
+          price: transaction.entryPrice,
+          datetime: transaction.entryTime,
+          fees: transaction.commission + transaction.fees
+        });
         
-        // Any remaining quantity becomes a long position
-        if (transaction.quantity > 0) {
-          openBuys.push({ ...transaction });
+        // Accumulate total fees for this trade
+        currentTrade.totalFees += (transaction.commission || 0) + (transaction.fees || 0);
+      }
+      
+      // Process the transaction
+      if (transaction.side === 'buy') {
+        currentPosition += qty;
+        
+        // Add to entry or exit value based on trade direction
+        if (currentTrade && currentTrade.side === 'long') {
+          currentTrade.entryValue += qty * transaction.entryPrice;
+          currentTrade.totalQuantity += qty;
+        } else if (currentTrade && currentTrade.side === 'short') {
+          currentTrade.exitValue += qty * transaction.entryPrice;
         }
         
       } else if (transaction.side === 'sell') {
-        // Try to close long positions first
-        while (transaction.quantity > 0 && openBuys.length > 0) {
-          const longPosition = openBuys[0];
-          const matchQuantity = Math.min(transaction.quantity, longPosition.quantity);
-          
-          // Create completed long trade (commission will be distributed later)
-          const trade = {
-            symbol: symbol,
-            tradeDate: longPosition.tradeDate,
-            entryTime: longPosition.entryTime,
-            exitTime: transaction.entryTime,
-            entryPrice: longPosition.entryPrice,
-            exitPrice: transaction.entryPrice,
-            quantity: matchQuantity,
-            side: 'long',
-            commission: 0, // Will be set later from total CSV commissions
-            fees: 0, // Will be set later from total CSV fees
-            broker: 'lightspeed',
-            notes: longPosition.notes + ' | Sold'
-          };
-          
-          symbolCompletedTrades.push(trade);
-          
-          // Update quantities
-          transaction.quantity -= matchQuantity;
-          longPosition.quantity -= matchQuantity;
-          
-          if (longPosition.quantity === 0) {
-            openBuys.shift();
-          }
-        }
+        currentPosition -= qty;
         
-        // Any remaining quantity becomes a short position
-        if (transaction.quantity > 0) {
-          openSells.push({ ...transaction });
+        // Add to entry or exit value based on trade direction
+        if (currentTrade && currentTrade.side === 'short') {
+          currentTrade.entryValue += qty * transaction.entryPrice;
+          currentTrade.totalQuantity += qty;
+        } else if (currentTrade && currentTrade.side === 'long') {
+          currentTrade.exitValue += qty * transaction.entryPrice;
         }
       }
-    });
+      
+      console.log(`  Position: ${prevPosition} → ${currentPosition}`);
+      
+      // Close trade if position goes to zero
+      if (currentPosition === 0 && currentTrade && currentTrade.totalQuantity > 0) {
+        // Calculate weighted average prices
+        currentTrade.entryPrice = currentTrade.entryValue / currentTrade.totalQuantity;
+        currentTrade.exitPrice = currentTrade.exitValue / currentTrade.totalQuantity;
+        
+        // Calculate P/L
+        if (currentTrade.side === 'long') {
+          currentTrade.pnl = currentTrade.exitValue - currentTrade.entryValue - currentTrade.totalFees;
+        } else {
+          currentTrade.pnl = currentTrade.entryValue - currentTrade.exitValue - currentTrade.totalFees;
+        }
+        
+        currentTrade.pnlPercent = (currentTrade.pnl / currentTrade.entryValue) * 100;
+        currentTrade.quantity = currentTrade.totalQuantity;
+        currentTrade.commission = currentTrade.totalFees;
+        currentTrade.fees = 0;
+        currentTrade.exitTime = transaction.entryTime;
+        currentTrade.notes = `Round trip: ${currentTrade.executions.length} executions`;
+        // Store executions for display in trade details
+        currentTrade.executionData = currentTrade.executions;
+        
+        completedTrades.push(currentTrade);
+        console.log(`  ✓ Completed ${currentTrade.side} trade: ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions, P/L: $${currentTrade.pnl.toFixed(2)}`);
+        
+        currentTrade = null;
+      }
+    }
     
-    // Count total trades (completed + open) for commission distribution
-    const totalTrades = symbolCompletedTrades.length + openBuys.length + openSells.length;
-    const commissionPerTrade = totalTrades > 0 ? totalCommissions / totalTrades : 0;
-    const feesPerTrade = totalTrades > 0 ? totalFees / totalTrades : 0;
-    
-    // Add completed trades with distributed commissions
-    symbolCompletedTrades.forEach(trade => {
-      trade.commission = commissionPerTrade;
-      trade.fees = feesPerTrade;
-      totalDistributedCommissions += commissionPerTrade;
-      totalDistributedFees += feesPerTrade;
-      completedTrades.push(trade);
-    });
-    
-    // Add remaining open positions as open trades with distributed commissions
-    openBuys.forEach(position => {
-      totalDistributedCommissions += commissionPerTrade;
-      totalDistributedFees += feesPerTrade;
-      completedTrades.push({
-        symbol: position.symbol,
-        tradeDate: position.tradeDate,
-        entryTime: position.entryTime,
-        exitTime: null,
-        entryPrice: position.entryPrice,
-        exitPrice: null,
-        quantity: position.quantity,
-        side: 'long',
-        commission: commissionPerTrade,
-        fees: feesPerTrade,
-        broker: 'lightspeed',
-        notes: position.notes + ' | Open'
-      });
-    });
-    
-    openSells.forEach(position => {
-      totalDistributedCommissions += commissionPerTrade;
-      totalDistributedFees += feesPerTrade;
-      completedTrades.push({
-        symbol: position.symbol,
-        tradeDate: position.tradeDate,
-        entryTime: position.entryTime,
-        exitTime: null,
-        entryPrice: position.entryPrice,
-        exitPrice: null,
-        quantity: position.quantity,
-        side: 'short',
-        commission: commissionPerTrade,
-        fees: feesPerTrade,
-        broker: 'lightspeed',
-        notes: position.notes + ' | Open'
-      });
-    });
+    console.log(`\n${symbol} Final Position: ${currentPosition} shares`);
+    if (currentTrade) {
+      console.log(`Active trade: ${currentTrade.side} ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions`);
+      
+      // Add open position as incomplete trade
+      currentTrade.entryPrice = currentTrade.entryValue / currentTrade.totalQuantity;
+      currentTrade.exitPrice = null;
+      currentTrade.quantity = currentTrade.totalQuantity;
+      currentTrade.commission = currentTrade.totalFees;
+      currentTrade.fees = 0;
+      currentTrade.exitTime = null;
+      currentTrade.pnl = 0;
+      currentTrade.pnlPercent = 0;
+      currentTrade.notes = `Open position: ${currentTrade.executions.length} executions`;
+      // Store executions for display in trade details
+      currentTrade.executionData = currentTrade.executions;
+      
+      completedTrades.push(currentTrade);
+      console.log(`  → Added open ${currentTrade.side} position: ${currentTrade.totalQuantity} shares`);
+    }
   });
 
   console.log(`Created ${completedTrades.length} trades from ${transactions.length} transactions`);
-  console.log(`Total distributed commissions: $${totalDistributedCommissions.toFixed(2)} (should match CSV total: $${totalCSVCommissions.toFixed(2)})`);
-  console.log(`Total distributed fees: $${totalDistributedFees.toFixed(2)} (should match CSV total: $${totalCSVFees.toFixed(2)})`);
   
   // Include unresolved CUSIPs in the result for background processing
   const result = { trades: completedTrades };
@@ -544,17 +528,19 @@ async function parseLightspeedTransactions(records) {
 async function parseSchwabTrades(records) {
   console.log(`Processing ${records.length} Schwab trade records`);
   
-  // Debug: Show available columns in the first record
-  if (records.length > 0) {
-    if (Array.isArray(records[0])) {
-      console.log('Schwab data is array format (no headers), first record length:', records[0].length);
-      console.log('First record sample:', records[0]);
-    } else {
-      console.log('Available Schwab CSV columns:', Object.keys(records[0]));
-      console.log('First record sample:', records[0]);
+  // Check if this is the new transaction format: Date,Action,Symbol,Description,Quantity,Price,Fees & Comm,Amount
+  if (records.length > 0 && !Array.isArray(records[0])) {
+    const columns = Object.keys(records[0]);
+    console.log('Available columns:', columns);
+    
+    // Check for the new transaction format
+    if (columns.includes('Date') && columns.includes('Action') && columns.includes('Symbol') && columns.includes('Price')) {
+      console.log('Detected new Schwab transaction format - processing buy/sell transactions');
+      return await parseSchwabTransactions(records);
     }
   }
   
+  // Fall back to original format processing
   const completedTrades = [];
   let totalCommissions = 0;
   let totalFees = 0;
@@ -566,8 +552,6 @@ async function parseSchwabTrades(records) {
       
       // Handle array format (positional data without headers)
       if (Array.isArray(record)) {
-        // Based on your sample: [0]=Symbol, [1]=Name, [2]=ClosedDate, [3]=OpenedDate, 
-        // [4]=Quantity, [5]=ProceedsPerShare, [6]=CostPerShare, [7]=Proceeds, [8]=CostBasis, [9]=GainLoss
         symbol = record[0];
         openedDate = record[3];
         closedDate = record[2];
@@ -579,7 +563,7 @@ async function parseSchwabTrades(records) {
         term = record[13] || 'Unknown';
         washSale = record[15] === 'Yes';
       } else {
-        // Handle named columns format
+        // Handle original named columns format
         symbol = record['Symbol'];
         quantity = Math.abs(parseInt(record['Quantity']?.replace(/,/g, '') || 0));
         costPerShare = parseFloat(record['Cost Per Share']?.replace(/[$,]/g, '') || 0);
@@ -592,16 +576,7 @@ async function parseSchwabTrades(records) {
         washSale = record['Wash Sale?'] === 'Yes';
       }
       
-      // Determine if this is a short trade based on the data
-      // For short trades in Schwab data, they might indicate it differently
-      // We'll assume it's a long trade unless there's clear indication otherwise
-      // You may need to check the "Name" field or other indicators for short positions
-      const isShort = false; // Default to long trades for now
-      
-      // Schwab doesn't provide commission data separately in their export
       const estimatedCommission = 0;
-      
-      // Get the gain/loss percentage
       let gainLossPercent = 0;
       if (Array.isArray(record)) {
         gainLossPercent = parseFloat(record[10]?.replace(/[%,]/g, '') || 0);
@@ -614,43 +589,23 @@ async function parseSchwabTrades(records) {
         tradeDate: parseDate(openedDate),
         entryTime: parseDateTime(openedDate + ' 09:30'),
         exitTime: parseDateTime(closedDate + ' 16:00'),
-        entryPrice: costPerShare,  // Cost is always entry for Schwab
-        exitPrice: proceedsPerShare,  // Proceeds is always exit for Schwab
+        entryPrice: costPerShare,
+        exitPrice: proceedsPerShare,
         quantity: quantity,
-        side: 'long',  // Schwab doesn't clearly indicate short vs long in this format
+        side: 'long',
         commission: estimatedCommission,
         fees: 0,
-        pnl: gainLoss,  // Use Schwab's calculated gain/loss
-        pnlPercent: gainLossPercent,  // Use Schwab's calculated percentage
+        pnl: gainLoss,
+        pnlPercent: gainLossPercent,
         broker: 'schwab',
         notes: `${term} - ${washSale ? 'Wash Sale' : 'Normal'}`
       };
-      
-      console.log('Parsed Schwab trade:', {
-        symbol: trade.symbol,
-        entryPrice: trade.entryPrice,
-        exitPrice: trade.exitPrice,
-        quantity: trade.quantity,
-        side: trade.side,
-        pnl: trade.pnl,
-        pnlPercent: trade.pnlPercent,
-        commission: trade.commission,
-        rawGainLoss: Array.isArray(record) ? record[9] : record['Gain/Loss ($)'],
-        rawGainLossPercent: Array.isArray(record) ? record[10] : record['Gain/Loss (%)']
-      });
       
       if (trade.symbol && trade.entryPrice > 0 && trade.exitPrice > 0 && trade.quantity > 0) {
         completedTrades.push(trade);
         totalCommissions += estimatedCommission;
         totalPnL += gainLoss;
         console.log(`Valid trade added: ${trade.symbol} - P&L: $${gainLoss.toFixed(2)}`);
-      } else {
-        console.log('Trade rejected - validation failed:', {
-          hasSymbol: !!trade.symbol,
-          entryPrice: trade.entryPrice,
-          exitPrice: trade.exitPrice,
-          quantity: trade.quantity
-        });
       }
     } catch (error) {
       console.error('Error parsing Schwab trade:', error, record);
@@ -658,8 +613,229 @@ async function parseSchwabTrades(records) {
   }
   
   console.log(`Created ${completedTrades.length} Schwab trades`);
-  console.log(`Total P&L from Schwab data: $${totalPnL.toFixed(2)}`);
-  console.log(`Commissions not available in Schwab export format`);
+  return completedTrades;
+}
+
+async function parseSchwabTransactions(records) {
+  console.log(`Processing ${records.length} Schwab transaction records`);
+  
+  const transactions = [];
+  const completedTrades = [];
+  
+  // First, parse all transactions - only process Buy and Sell actions
+  for (const record of records) {
+    try {
+      const action = (record['Action'] || '').toLowerCase();
+      const symbol = cleanString(record['Symbol'] || '');
+      const quantityStr = (record['Quantity'] || '').toString().replace(/,/g, '');
+      const priceStr = (record['Price'] || '').toString().replace(/[$,]/g, '');
+      const amountStr = (record['Amount'] || '').toString().replace(/[$,]/g, '');
+      const feesStr = (record['Fees & Comm'] || '').toString().replace(/[$,]/g, '');
+      const date = record['Date'] || '';
+      const description = record['Description'] || '';
+      
+      // Only process buy and sell transactions
+      if (!action.includes('buy') && !action.includes('sell')) {
+        console.log(`Skipping non-trade action: ${action}`);
+        continue;
+      }
+      
+      // Skip if missing essential data
+      if (!symbol || !quantityStr || !priceStr) {
+        console.log(`Skipping transaction missing data:`, { symbol, quantityStr, priceStr, action });
+        continue;
+      }
+      
+      const quantity = Math.abs(parseInt(quantityStr));
+      const price = parseFloat(priceStr);
+      const amount = Math.abs(parseFloat(amountStr));
+      const fees = parseFloat(feesStr) || 0;
+      
+      if (quantity === 0 || price === 0) {
+        console.log(`Skipping transaction with zero values:`, { symbol, quantity, price });
+        continue;
+      }
+      
+      // Detect short sales - check both action and description
+      const isShort = action.includes('sell short') || 
+                     description.toLowerCase().includes('short') ||
+                     action.includes('short');
+      
+      let transactionType;
+      if (action.includes('buy')) {
+        transactionType = isShort ? 'cover' : 'buy';  // Buy to cover vs regular buy
+      } else {
+        transactionType = isShort ? 'short' : 'sell'; // Short sell vs regular sell
+      }
+      
+      transactions.push({
+        symbol,
+        date: parseDate(date),
+        datetime: parseDateTime(date + ' 09:30'),
+        action: transactionType,
+        quantity,
+        price,
+        amount,
+        fees,
+        description,
+        isShort,
+        raw: record
+      });
+      
+      console.log(`Parsed transaction: ${transactionType} ${quantity} ${symbol} @ $${price} ${isShort ? '(SHORT)' : ''}`);
+    } catch (error) {
+      console.error('Error parsing Schwab transaction:', error, record);
+    }
+  }
+  
+  // Sort transactions by symbol and date
+  transactions.sort((a, b) => {
+    if (a.symbol !== b.symbol) return a.symbol.localeCompare(b.symbol);
+    return new Date(a.datetime) - new Date(b.datetime);
+  });
+  
+  console.log(`Parsed ${transactions.length} valid transactions`);
+  
+  // Group transactions by symbol
+  const transactionsBySymbol = {};
+  for (const transaction of transactions) {
+    if (!transactionsBySymbol[transaction.symbol]) {
+      transactionsBySymbol[transaction.symbol] = [];
+    }
+    transactionsBySymbol[transaction.symbol].push(transaction);
+  }
+  
+  // Process transactions using round-trip trade grouping (like TradersVue)
+  for (const symbol in transactionsBySymbol) {
+    const symbolTransactions = transactionsBySymbol[symbol];
+    
+    console.log(`\n=== Processing ${symbolTransactions.length} transactions for ${symbol} ===`);
+    
+    // Track position and round-trip trades
+    let currentPosition = 0;
+    let currentTrade = null; // Active round-trip trade being built
+    const openLots = []; // FIFO queue of position lots
+    
+    for (const transaction of symbolTransactions) {
+      const qty = transaction.quantity;
+      const prevPosition = currentPosition;
+      
+      console.log(`\n${transaction.action} ${qty} @ $${transaction.price} | Position: ${currentPosition}`);
+      
+      // Start new trade if going from flat to position
+      if (currentPosition === 0) {
+        currentTrade = {
+          symbol: symbol,
+          entryTime: transaction.datetime,
+          tradeDate: transaction.date,
+          side: transaction.action === 'buy' ? 'long' : 'short',
+          executions: [],
+          totalQuantity: 0,
+          totalFees: 0,
+          weightedEntryPrice: 0,
+          weightedExitPrice: 0,
+          entryValue: 0,
+          exitValue: 0,
+          broker: 'schwab'
+        };
+        console.log(`  → Started new ${currentTrade.side} trade`);
+      }
+      
+      // Add execution to current trade
+      if (currentTrade) {
+        currentTrade.executions.push({
+          action: transaction.action,
+          quantity: qty,
+          price: transaction.price,
+          datetime: transaction.datetime,
+          fees: transaction.fees || 0
+        });
+        currentTrade.totalFees += (transaction.fees || 0);
+      }
+      
+      // Process the transaction
+      if (transaction.action === 'buy') {
+        currentPosition += qty;
+        
+        // Add to entry or exit value based on trade direction
+        if (currentTrade && currentTrade.side === 'long') {
+          currentTrade.entryValue += qty * transaction.price;
+          currentTrade.totalQuantity += qty;
+        } else if (currentTrade && currentTrade.side === 'short') {
+          currentTrade.exitValue += qty * transaction.price;
+        }
+        
+        openLots.push({
+          type: 'long',
+          quantity: qty,
+          price: transaction.price,
+          date: transaction.date,
+          datetime: transaction.datetime
+        });
+        
+      } else if (transaction.action === 'short' || transaction.action === 'sell') {
+        currentPosition -= qty;
+        
+        // Add to entry or exit value based on trade direction
+        if (currentTrade && currentTrade.side === 'short') {
+          currentTrade.entryValue += qty * transaction.price;
+          currentTrade.totalQuantity += qty;
+        } else if (currentTrade && currentTrade.side === 'long') {
+          currentTrade.exitValue += qty * transaction.price;
+        }
+        
+        if (transaction.action === 'short') {
+          openLots.push({
+            type: 'short',
+            quantity: qty,
+            price: transaction.price,
+            date: transaction.date,
+            datetime: transaction.datetime
+          });
+        }
+      }
+      
+      console.log(`  Position: ${prevPosition} → ${currentPosition}`);
+      
+      // Close trade if position goes to zero
+      if (currentPosition === 0 && currentTrade && currentTrade.totalQuantity > 0) {
+        // Calculate weighted average prices
+        currentTrade.entryPrice = currentTrade.entryValue / currentTrade.totalQuantity;
+        currentTrade.exitPrice = currentTrade.exitValue / currentTrade.totalQuantity;
+        
+        // Calculate P/L
+        if (currentTrade.side === 'long') {
+          currentTrade.pnl = currentTrade.exitValue - currentTrade.entryValue - currentTrade.totalFees;
+        } else {
+          currentTrade.pnl = currentTrade.entryValue - currentTrade.exitValue - currentTrade.totalFees;
+        }
+        
+        currentTrade.pnlPercent = (currentTrade.pnl / currentTrade.entryValue) * 100;
+        currentTrade.quantity = currentTrade.totalQuantity;
+        currentTrade.commission = currentTrade.totalFees;
+        currentTrade.fees = 0;
+        currentTrade.exitTime = transaction.datetime;
+        currentTrade.notes = `Round trip: ${currentTrade.executions.length} executions`;
+        // Store executions for display in trade details
+        currentTrade.executionData = currentTrade.executions;
+        // Store executions for display in trade details
+        currentTrade.executionData = currentTrade.executions;
+        
+        completedTrades.push(currentTrade);
+        console.log(`  ✓ Completed ${currentTrade.side} trade: ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions, P/L: $${currentTrade.pnl.toFixed(2)}`);
+        
+        currentTrade = null;
+        openLots.length = 0; // Clear lots when trade completes
+      }
+    }
+    
+    console.log(`\n${symbol} Final Position: ${currentPosition} shares`);
+    if (currentTrade) {
+      console.log(`Active trade: ${currentTrade.side} ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions`);
+    }
+  }
+  
+  console.log(`Created ${completedTrades.length} completed trades from transaction pairing`);
   
   return completedTrades;
 }
