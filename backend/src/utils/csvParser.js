@@ -476,7 +476,7 @@ async function parseLightspeedTransactions(records) {
         }
         
         currentTrade.pnlPercent = (currentTrade.pnl / currentTrade.entryValue) * 100;
-        currentTrade.quantity = currentTrade.totalQuantity;
+        currentTrade.quantity = Math.abs(currentPosition);
         currentTrade.commission = currentTrade.totalFees;
         currentTrade.fees = 0;
         currentTrade.exitTime = transaction.entryTime;
@@ -498,7 +498,7 @@ async function parseLightspeedTransactions(records) {
       // Add open position as incomplete trade
       currentTrade.entryPrice = currentTrade.entryValue / currentTrade.totalQuantity;
       currentTrade.exitPrice = null;
-      currentTrade.quantity = currentTrade.totalQuantity;
+      currentTrade.quantity = Math.abs(currentPosition); // Use actual net position, not totalQuantity
       currentTrade.commission = currentTrade.totalFees;
       currentTrade.fees = 0;
       currentTrade.exitTime = null;
@@ -811,7 +811,7 @@ async function parseSchwabTransactions(records) {
         }
         
         currentTrade.pnlPercent = (currentTrade.pnl / currentTrade.entryValue) * 100;
-        currentTrade.quantity = currentTrade.totalQuantity;
+        currentTrade.quantity = Math.abs(currentPosition);
         currentTrade.commission = currentTrade.totalFees;
         currentTrade.fees = 0;
         currentTrade.exitTime = transaction.datetime;
