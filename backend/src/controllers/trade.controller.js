@@ -884,11 +884,9 @@ const tradeController = {
       const cleanCusip = cusip.replace(/\s/g, '').toUpperCase();
       const cleanTicker = ticker.toUpperCase();
 
-      // Cache the mapping in Finnhub
-      finnhub.cache.set(`cusip_${cleanCusip}`, {
-        data: cleanTicker,
-        timestamp: Date.now()
-      });
+      // Cache the mapping in the cache module
+      const cache = require('../utils/cache');
+      await cache.set('cusip_resolution', cleanCusip, cleanTicker);
       
       // Retroactively update existing trades that have this CUSIP as symbol
       const updateResult = await Trade.updateSymbolForCusip(req.user.id, cleanCusip, cleanTicker);
@@ -906,13 +904,22 @@ const tradeController = {
 
   async getCusipMappings(req, res, next) {
     try {
-      // Get Finnhub cached mappings
+      // Get cached CUSIP mappings from database cache
+      const cache = require('../utils/cache');
       const mappings = {};
-      for (const [key, value] of finnhub.cache.entries()) {
-        if (key.startsWith('cusip_')) {
-          const cusip = key.replace('cusip_', '');
-          mappings[cusip] = value.data;
-        }
+      
+      // Since we can't iterate over cache entries easily, we'll get this from the database directly
+      const db = require('../config/database');
+      const query = `
+        SELECT cache_key, data 
+        FROM api_cache 
+        WHERE cache_type = 'cusip_resolution' AND expires_at > NOW()
+      `;
+      const result = await db.query(query);
+      
+      for (const row of result.rows) {
+        const cusip = row.cache_key.replace('cusip_resolution:', '');
+        mappings[cusip] = JSON.parse(row.data);
       }
       res.json({ mappings });
     } catch (error) {
@@ -1299,6 +1306,63 @@ const tradeController = {
           details: process.env.NODE_ENV === 'development' ? error.stack : undefined
         });
       }
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  // CUSIP Queue Management
+  async getCusipQueueStats(req, res, next) {
+    try {
+      const cusipQueue = require('../utils/cusipQueue');
+      const stats = await cusipQueue.getQueueStats();
+      res.json({ stats });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async addCusipToQueue(req, res, next) {
+    try {
+      const { cusips, priority = 1 } = req.body;
+      
+      if (!cusips || (Array.isArray(cusips) && cusips.length === 0)) {
+        return res.status(400).json({ error: 'CUSIPs are required' });
+      }
+
+      const cusipQueue = require('../utils/cusipQueue');
+      await cusipQueue.addToQueue(cusips, priority);
+      
+      res.json({ 
+        message: 'CUSIPs added to processing queue',
+        cusips: Array.isArray(cusips) ? cusips : [cusips],
+        priority
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async retryFailedCusips(req, res, next) {
+    try {
+      const cusipQueue = require('../utils/cusipQueue');
+      const db = require('../config/database');
+      
+      // Reset failed CUSIPs to pending
+      const query = `
+        UPDATE cusip_lookup_queue 
+        SET status = 'pending', attempts = 0, error_message = NULL
+        WHERE status = 'failed'
+        RETURNING cusip
+      `;
+      
+      const result = await db.query(query);
+      const retriedCusips = result.rows.map(row => row.cusip);
+      
+      res.json({ 
+        message: `Reset ${retriedCusips.length} failed CUSIPs for retry`,
+        cusips: retriedCusips
+      });
     } catch (error) {
       next(error);
     }
