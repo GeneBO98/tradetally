@@ -364,43 +364,56 @@ const analyticsController = {
 
       // Performance by Volume
       const performanceByVolumeQuery = `
-        WITH volume_ranges AS (
+        WITH trade_volumes AS (
           SELECT 
             CASE 
-              WHEN quantity BETWEEN 2 AND 4 THEN '2-4'
-              WHEN quantity BETWEEN 5 AND 9 THEN '5-9'
-              WHEN quantity BETWEEN 10 AND 19 THEN '10-19'
-              WHEN quantity BETWEEN 20 AND 49 THEN '20-49'
-              WHEN quantity BETWEEN 50 AND 99 THEN '50-99'
-              WHEN quantity BETWEEN 100 AND 499 THEN '100-500'
-              WHEN quantity BETWEEN 500 AND 999 THEN '500-999'
-              WHEN quantity BETWEEN 1000 AND 1999 THEN '1K-2K'
-              WHEN quantity BETWEEN 2000 AND 2999 THEN '2K-3K'
-              WHEN quantity BETWEEN 3000 AND 4999 THEN '3K-5K'
-              WHEN quantity BETWEEN 5000 AND 9999 THEN '5K-10K'
-              WHEN quantity BETWEEN 10000 AND 19999 THEN '10K-20K'
-              WHEN quantity >= 20000 THEN '20K+'
-              ELSE 'Other'
-            END as volume_range,
-            CASE 
-              WHEN quantity BETWEEN 2 AND 4 THEN 1
-              WHEN quantity BETWEEN 5 AND 9 THEN 2
-              WHEN quantity BETWEEN 10 AND 19 THEN 3
-              WHEN quantity BETWEEN 20 AND 49 THEN 4
-              WHEN quantity BETWEEN 50 AND 99 THEN 5
-              WHEN quantity BETWEEN 100 AND 499 THEN 6
-              WHEN quantity BETWEEN 500 AND 999 THEN 7
-              WHEN quantity BETWEEN 1000 AND 1999 THEN 8
-              WHEN quantity BETWEEN 2000 AND 2999 THEN 9
-              WHEN quantity BETWEEN 3000 AND 4999 THEN 10
-              WHEN quantity BETWEEN 5000 AND 9999 THEN 11
-              WHEN quantity BETWEEN 10000 AND 19999 THEN 12
-              WHEN quantity >= 20000 THEN 13
-              ELSE 14
-            END as range_order,
+              WHEN executions IS NOT NULL AND jsonb_array_length(executions) > 0 THEN
+                (
+                  SELECT COALESCE(SUM((exec->>'quantity')::integer), 0)
+                  FROM jsonb_array_elements(executions) AS exec
+                )
+              ELSE quantity  -- Fallback to trade quantity if no executions data
+            END as total_volume,
             pnl
           FROM trades
           WHERE user_id = $1 ${dateFilter}
+        ),
+        volume_ranges AS (
+          SELECT 
+            CASE 
+              WHEN total_volume BETWEEN 2 AND 4 THEN '2-4'
+              WHEN total_volume BETWEEN 5 AND 9 THEN '5-9'
+              WHEN total_volume BETWEEN 10 AND 19 THEN '10-19'
+              WHEN total_volume BETWEEN 20 AND 49 THEN '20-49'
+              WHEN total_volume BETWEEN 50 AND 99 THEN '50-99'
+              WHEN total_volume BETWEEN 100 AND 499 THEN '100-500'
+              WHEN total_volume BETWEEN 500 AND 999 THEN '500-999'
+              WHEN total_volume BETWEEN 1000 AND 1999 THEN '1K-2K'
+              WHEN total_volume BETWEEN 2000 AND 2999 THEN '2K-3K'
+              WHEN total_volume BETWEEN 3000 AND 4999 THEN '3K-5K'
+              WHEN total_volume BETWEEN 5000 AND 9999 THEN '5K-10K'
+              WHEN total_volume BETWEEN 10000 AND 19999 THEN '10K-20K'
+              WHEN total_volume >= 20000 THEN '20K+'
+              ELSE 'Other'
+            END as volume_range,
+            CASE 
+              WHEN total_volume BETWEEN 2 AND 4 THEN 1
+              WHEN total_volume BETWEEN 5 AND 9 THEN 2
+              WHEN total_volume BETWEEN 10 AND 19 THEN 3
+              WHEN total_volume BETWEEN 20 AND 49 THEN 4
+              WHEN total_volume BETWEEN 50 AND 99 THEN 5
+              WHEN total_volume BETWEEN 100 AND 499 THEN 6
+              WHEN total_volume BETWEEN 500 AND 999 THEN 7
+              WHEN total_volume BETWEEN 1000 AND 1999 THEN 8
+              WHEN total_volume BETWEEN 2000 AND 2999 THEN 9
+              WHEN total_volume BETWEEN 3000 AND 4999 THEN 10
+              WHEN total_volume BETWEEN 5000 AND 9999 THEN 11
+              WHEN total_volume BETWEEN 10000 AND 19999 THEN 12
+              WHEN total_volume >= 20000 THEN 13
+              ELSE 14
+            END as range_order,
+            pnl
+          FROM trade_volumes
         )
         SELECT volume_range, COALESCE(SUM(pnl), 0) as total_pnl
         FROM volume_ranges
@@ -484,10 +497,27 @@ const analyticsController = {
         return found ? parseFloat(found.total_pnl) : 0;
       });
 
-      const performanceByVolume = volumeLabels.map(label => {
-        const found = perfByVolumeResult.rows.find(row => row.volume_range === label);
-        return found ? parseFloat(found.total_pnl) : 0;
+      // Dynamic volume categories - only include categories with data
+      const volumeDataMap = new Map();
+      const volumeOrderMap = {
+        '2-4': 1, '5-9': 2, '10-19': 3, '20-49': 4, '50-99': 5, '100-500': 6,
+        '500-999': 7, '1K-2K': 8, '2K-3K': 9, '3K-5K': 10, '5K-10K': 11, 
+        '10K-20K': 12, '20K+': 13
+      };
+
+      // Collect data and filter out empty categories
+      perfByVolumeResult.rows.forEach(row => {
+        if (row.volume_range && row.volume_range !== 'Other' && parseFloat(row.total_pnl) !== 0) {
+          volumeDataMap.set(row.volume_range, parseFloat(row.total_pnl));
+        }
       });
+
+      // Sort by order and create arrays
+      const sortedVolumeEntries = Array.from(volumeDataMap.entries())
+        .sort((a, b) => (volumeOrderMap[a[0]] || 999) - (volumeOrderMap[b[0]] || 999));
+
+      const dynamicVolumeLabels = sortedVolumeEntries.map(([label]) => label);
+      const performanceByVolume = sortedVolumeEntries.map(([, pnl]) => pnl);
 
       const performanceByHoldTime = holdTimeLabels.map(label => {
         const found = perfByHoldTimeResult.rows.find(row => row.hold_time_range === label);
@@ -518,14 +548,27 @@ const analyticsController = {
         });
       }
 
-      // Daily Volume Data
+      // Daily Volume Data - Calculate from executions for accurate trading volume
       const dailyVolumeQuery = `
+        WITH execution_volumes AS (
+          SELECT 
+            trade_date,
+            CASE 
+              WHEN executions IS NOT NULL AND jsonb_array_length(executions) > 0 THEN
+                (
+                  SELECT COALESCE(SUM((exec->>'quantity')::integer), 0)
+                  FROM jsonb_array_elements(executions) AS exec
+                )
+              ELSE quantity  -- Fallback to trade quantity if no executions data
+            END as trade_volume
+          FROM trades
+          WHERE user_id = $1 ${dateFilter}
+        )
         SELECT 
           trade_date,
-          COALESCE(SUM(quantity), 0) as total_volume,
+          COALESCE(SUM(trade_volume), 0) as total_volume,
           COUNT(*) as trade_count
-        FROM trades
-        WHERE user_id = $1 ${dateFilter}
+        FROM execution_volumes
         GROUP BY trade_date
         ORDER BY trade_date
       `;
@@ -538,7 +581,13 @@ const analyticsController = {
         performanceByVolume,
         performanceByHoldTime,
         dayOfWeek: dayOfWeekData,
-        dailyVolume: dailyVolumeResult.rows
+        dailyVolume: dailyVolumeResult.rows,
+        // Include dynamic labels for charts
+        labels: {
+          volume: dynamicVolumeLabels,
+          price: priceLabels,
+          holdTime: holdTimeLabels
+        }
       });
     } catch (error) {
       next(error);
