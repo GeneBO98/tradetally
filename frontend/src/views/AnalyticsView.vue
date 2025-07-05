@@ -111,50 +111,59 @@
         <div class="card">
           <div class="card-body">
             <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Win/Loss Breakdown</h3>
-            <dl class="space-y-4">
-              <div class="flex justify-between">
-                <dt class="text-sm text-gray-500 dark:text-gray-400">Winning Trades</dt>
-                <dd class="text-sm font-medium text-green-600">
-                  {{ overview.winning_trades }} ({{ getWinPercentage() }}%)
-                </dd>
+            <div>
+              <!-- Column Headers -->
+              <div class="flex items-center justify-between pb-2 mb-2 border-b border-gray-200 dark:border-gray-700">
+                <span class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Metric</span>
+                <span class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Value</span>
               </div>
-              <div class="flex justify-between">
-                <dt class="text-sm text-gray-500 dark:text-gray-400">Losing Trades</dt>
-                <dd class="text-sm font-medium text-red-600">
-                  {{ overview.losing_trades }} ({{ getLossPercentage() }}%)
-                </dd>
+              
+              <!-- Data Rows -->
+              <div class="space-y-1">
+                <div class="flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800 rounded p-1 -m-1">
+                  <span class="text-sm text-gray-500 dark:text-gray-400">Winning Trades</span>
+                  <span class="text-sm font-medium text-green-600">
+                    {{ overview.winning_trades }} ({{ getWinPercentage() }}%)
+                  </span>
+                </div>
+                <div class="flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800 rounded p-1 -m-1">
+                  <span class="text-sm text-gray-500 dark:text-gray-400">Losing Trades</span>
+                  <span class="text-sm font-medium text-red-600">
+                    {{ overview.losing_trades }} ({{ getLossPercentage() }}%)
+                  </span>
+                </div>
+                <div class="flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800 rounded p-1 -m-1">
+                  <span class="text-sm text-gray-500 dark:text-gray-400">Breakeven Trades</span>
+                  <span class="text-sm font-medium text-gray-500">
+                    {{ overview.breakeven_trades }}
+                  </span>
+                </div>
+                <div class="flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800 rounded p-1 -m-1">
+                  <span class="text-sm text-gray-500 dark:text-gray-400">Average Win</span>
+                  <span class="text-sm font-medium text-green-600">
+                    ${{ formatNumber(overview.avg_win) }}
+                  </span>
+                </div>
+                <div class="flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800 rounded p-1 -m-1">
+                  <span class="text-sm text-gray-500 dark:text-gray-400">Average Loss</span>
+                  <span class="text-sm font-medium text-red-600">
+                    ${{ formatNumber(Math.abs(overview.avg_loss)) }}
+                  </span>
+                </div>
+                <div class="flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800 rounded p-1 -m-1">
+                  <span class="text-sm text-gray-500 dark:text-gray-400">Best Trade</span>
+                  <span class="text-sm font-medium text-green-600">
+                    ${{ formatNumber(overview.best_trade) }}
+                  </span>
+                </div>
+                <div class="flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800 rounded p-1 -m-1">
+                  <span class="text-sm text-gray-500 dark:text-gray-400">Worst Trade</span>
+                  <span class="text-sm font-medium text-red-600">
+                    ${{ formatNumber(overview.worst_trade) }}
+                  </span>
+                </div>
               </div>
-              <div class="flex justify-between">
-                <dt class="text-sm text-gray-500 dark:text-gray-400">Breakeven Trades</dt>
-                <dd class="text-sm font-medium text-gray-500">
-                  {{ overview.breakeven_trades }}
-                </dd>
-              </div>
-              <div class="flex justify-between">
-                <dt class="text-sm text-gray-500 dark:text-gray-400">Average Win</dt>
-                <dd class="text-sm font-medium text-green-600">
-                  ${{ formatNumber(overview.avg_win) }}
-                </dd>
-              </div>
-              <div class="flex justify-between">
-                <dt class="text-sm text-gray-500 dark:text-gray-400">Average Loss</dt>
-                <dd class="text-sm font-medium text-red-600">
-                  ${{ formatNumber(Math.abs(overview.avg_loss)) }}
-                </dd>
-              </div>
-              <div class="flex justify-between">
-                <dt class="text-sm text-gray-500 dark:text-gray-400">Best Trade</dt>
-                <dd class="text-sm font-medium text-green-600">
-                  ${{ formatNumber(overview.best_trade) }}
-                </dd>
-              </div>
-              <div class="flex justify-between">
-                <dt class="text-sm text-gray-500 dark:text-gray-400">Worst Trade</dt>
-                <dd class="text-sm font-medium text-red-600">
-                  ${{ formatNumber(overview.worst_trade) }}
-                </dd>
-              </div>
-            </dl>
+            </div>
           </div>
         </div>
 
@@ -227,7 +236,7 @@
       </div>
 
       <!-- Drawdown Chart -->
-      <div class="card">
+      <div id="drawdown" class="card">
         <div class="card-body">
           <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Drawdown Analysis</h3>
           <div class="h-80 relative">
@@ -374,7 +383,7 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import api from '@/services/api'
 import PerformanceChart from '@/components/charts/PerformanceChart.vue'
 import Chart from 'chart.js/auto'
@@ -382,6 +391,7 @@ import Chart from 'chart.js/auto'
 const loading = ref(true)
 const performancePeriod = ref('daily')
 const router = useRouter()
+const route = useRoute()
 
 const filters = ref({
   startDate: '',
@@ -441,6 +451,10 @@ const chartLabels = ref({
   holdTime: ['< 1 min', '1-5 min', '5-15 min', '15-30 min', '30-60 min', '1-2 hours', '2-4 hours', '4-24 hours', '1-7 days', '1-4 weeks', '1+ months']
 })
 
+// Price and hold time labels for navigation
+const priceLabels = ['< $2', '$2-4.99', '$5-9.99', '$10-19.99', '$20-49.99', '$50-99.99', '$100-199.99', '$200+']
+const holdTimeLabels = ['< 1 min', '1-5 min', '5-15 min', '15-30 min', '30-60 min', '1-2 hours', '2-4 hours', '4-24 hours', '1-7 days', '1-4 weeks', '1+ months']
+
 function formatNumber(num) {
   return new Intl.NumberFormat('en-US', {
     minimumFractionDigits: 2,
@@ -490,6 +504,13 @@ function createTradeDistributionChart() {
       responsive: true,
       maintainAspectRatio: false,
       indexAxis: 'y',
+      onClick: (event, elements) => {
+        if (elements.length > 0) {
+          const index = elements[0].index
+          const priceRange = labels[index]
+          navigateToTradesByPriceRange(priceRange)
+        }
+      },
       scales: {
         x: {
           beginAtZero: true,
@@ -503,6 +524,11 @@ function createTradeDistributionChart() {
             display: true,
             text: 'Price Range'
           }
+        }
+      },
+      plugins: {
+        legend: {
+          onClick: null // Disable legend clicking
         }
       }
     }
@@ -532,6 +558,13 @@ function createPerformanceByPriceChart() {
       responsive: true,
       maintainAspectRatio: false,
       indexAxis: 'y',
+      onClick: (event, elements) => {
+        if (elements.length > 0) {
+          const index = elements[0].index
+          const priceRange = priceLabels[index]
+          navigateToTradesByPriceRange(priceRange)
+        }
+      },
       scales: {
         x: {
           title: {
@@ -555,6 +588,9 @@ function createPerformanceByPriceChart() {
         }
       },
       plugins: {
+        legend: {
+          onClick: null // Disable legend clicking
+        },
         tooltip: {
           callbacks: {
             label: function(context) {
@@ -596,6 +632,13 @@ function createPerformanceByVolumeChart() {
       responsive: true,
       maintainAspectRatio: false,
       indexAxis: 'y',
+      onClick: (event, elements) => {
+        if (elements.length > 0) {
+          const index = elements[0].index
+          const volumeRange = labels[index]
+          navigateToTradesByVolumeRange(volumeRange)
+        }
+      },
       scales: {
         x: {
           title: {
@@ -619,6 +662,9 @@ function createPerformanceByVolumeChart() {
         }
       },
       plugins: {
+        legend: {
+          onClick: null // Disable legend clicking
+        },
         tooltip: {
           callbacks: {
             label: function(context) {
@@ -661,6 +707,13 @@ function createDayOfWeekChart() {
       responsive: true,
       maintainAspectRatio: false,
       indexAxis: 'y',
+      onClick: (event, elements) => {
+        if (elements.length > 0) {
+          const index = elements[0].index
+          const dayOfWeek = index // 0 = Sunday, 1 = Monday, etc.
+          navigateToTradesByDayOfWeek(dayOfWeek)
+        }
+      },
       scales: {
         x: {
           beginAtZero: true,
@@ -730,6 +783,13 @@ function createPerformanceByHoldTimeChart() {
       responsive: true,
       maintainAspectRatio: false,
       indexAxis: 'y',
+      onClick: (event, elements) => {
+        if (elements.length > 0) {
+          const index = elements[0].index
+          const holdTimeRange = holdTimeLabels[index]
+          navigateToTradesByHoldTime(holdTimeRange)
+        }
+      },
       layout: {
         padding: {
           top: 20,
@@ -762,6 +822,9 @@ function createPerformanceByHoldTimeChart() {
         }
       },
       plugins: {
+        legend: {
+          onClick: null // Disable legend clicking
+        },
         tooltip: {
           callbacks: {
             label: function(context) {
@@ -806,6 +869,13 @@ function createDailyVolumeChart() {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      onClick: (event, elements) => {
+        if (elements.length > 0) {
+          const index = elements[0].index
+          const clickedDate = dailyVolumeData.value[index].trade_date
+          navigateToTradesByDate(clickedDate)
+        }
+      },
       scales: {
         x: {
           title: {
@@ -833,6 +903,9 @@ function createDailyVolumeChart() {
         }
       },
       plugins: {
+        legend: {
+          onClick: null // Disable legend clicking
+        },
         tooltip: {
           callbacks: {
             label: function(context) {
@@ -872,6 +945,14 @@ function createDrawdownChart() {
   })
   const drawdowns = drawdownData.value.map(d => d.drawdown)
   
+  // Log drawdown data for debugging
+  console.log('Drawdown chart data:', {
+    maxDrawdown: Math.min(...drawdowns),
+    drawdownCount: drawdowns.length,
+    firstFewDrawdowns: drawdowns.slice(0, 5),
+    lastFewDrawdowns: drawdowns.slice(-5)
+  })
+  
   drawdownChartInstance = new Chart(ctx, {
     type: 'line',
     data: {
@@ -889,6 +970,13 @@ function createDrawdownChart() {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      onClick: (event, elements) => {
+        if (elements.length > 0) {
+          const index = elements[0].index
+          const clickedDate = drawdownData.value[index].trade_date
+          navigateToTradesByDate(clickedDate)
+        }
+      },
       scales: {
         x: {
           title: {
@@ -921,6 +1009,9 @@ function createDrawdownChart() {
         }
       },
       plugins: {
+        legend: {
+          onClick: null // Disable legend clicking
+        },
         tooltip: {
           callbacks: {
             label: function(context) {
@@ -1105,11 +1196,141 @@ function navigateToSymbolTrades(symbol) {
   router.push({
     path: '/trades',
     query: { symbol: symbol }
+  }).then(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   })
 }
 
-onMounted(() => {
-  loadData()
+// Navigation functions for chart clicks
+function navigateToTradesByPriceRange(priceRange) {
+  // Convert price range to min/max price values
+  let minPrice = null
+  let maxPrice = null
+  
+  switch (priceRange) {
+    case '< $2':
+      minPrice = 0
+      maxPrice = 1.99
+      break
+    case '$2-4.99':
+      minPrice = 2
+      maxPrice = 4.99
+      break
+    case '$5-9.99':
+      minPrice = 5
+      maxPrice = 9.99
+      break
+    case '$10-19.99':
+      minPrice = 10
+      maxPrice = 19.99
+      break
+    case '$20-49.99':
+      minPrice = 20
+      maxPrice = 49.99
+      break
+    case '$50-99.99':
+      minPrice = 50
+      maxPrice = 99.99
+      break
+    case '$100-199.99':
+      minPrice = 100
+      maxPrice = 199.99
+      break
+    case '$200+':
+      minPrice = 200
+      maxPrice = null
+      break
+  }
+  
+  const query = {}
+  if (minPrice !== null) query.minPrice = minPrice
+  if (maxPrice !== null) query.maxPrice = maxPrice
+  
+  router.push({
+    path: '/trades',
+    query
+  }).then(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  })
+}
+
+function navigateToTradesByVolumeRange(volumeRange) {
+  // Convert volume range to min/max quantity values
+  let minQuantity = null
+  let maxQuantity = null
+  
+  // Parse the volume range string (e.g., "1-100", "1000+", etc.)
+  if (volumeRange.includes('-')) {
+    const [min, max] = volumeRange.split('-').map(v => parseInt(v.replace(/[^0-9]/g, '')))
+    minQuantity = min
+    maxQuantity = max
+  } else if (volumeRange.includes('+')) {
+    minQuantity = parseInt(volumeRange.replace(/[^0-9]/g, ''))
+    maxQuantity = null
+  } else if (volumeRange.includes('<')) {
+    minQuantity = 0
+    maxQuantity = parseInt(volumeRange.replace(/[^0-9]/g, '')) - 1
+  }
+  
+  const query = {}
+  if (minQuantity !== null) query.minQuantity = minQuantity
+  if (maxQuantity !== null) query.maxQuantity = maxQuantity
+  
+  router.push({
+    path: '/trades',
+    query
+  }).then(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  })
+}
+
+function navigateToTradesByDayOfWeek(dayOfWeek) {
+  // For day of week filtering, we'll use a custom filter approach
+  // Since there's no direct day-of-week filter, we could either:
+  // 1. Add a custom filter to the backend
+  // 2. Navigate to trades page and let user know to filter manually
+  // For now, let's just navigate to all trades
+  router.push({
+    path: '/trades'
+  }).then(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  })
+}
+
+function navigateToTradesByHoldTime(holdTimeRange) {
+  router.push({
+    path: '/trades',
+    query: {
+      holdTime: holdTimeRange
+    }
+  }).then(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  })
+}
+
+function navigateToTradesByDate(date) {
+  router.push({
+    path: '/trades',
+    query: {
+      startDate: date,
+      endDate: date
+    }
+  }).then(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  })
+}
+
+onMounted(async () => {
+  await loadData()
+  
+  // Scroll to hash if present
+  if (route.hash) {
+    await nextTick()
+    const element = document.querySelector(route.hash)
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }
 })
 
 // Clean up charts on unmount

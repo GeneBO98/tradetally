@@ -166,6 +166,11 @@ class Trade {
       query += ` AND t.pnl < 0`;
     }
 
+    // Hold time filter
+    if (filters.holdTime) {
+      query += this.getHoldTimeFilter(filters.holdTime);
+    }
+
     query += ` GROUP BY t.id ORDER BY t.trade_date DESC, t.entry_time DESC`;
 
     if (filters.limit) {
@@ -475,12 +480,24 @@ class Trade {
           MAX(cumulative_pnl) OVER (ORDER BY trade_date ROWS UNBOUNDED PRECEDING) as peak,
           cumulative_pnl - MAX(cumulative_pnl) OVER (ORDER BY trade_date ROWS UNBOUNDED PRECEDING) as drawdown
         FROM daily_pnl
+      ),
+      drawdown_debug AS (
+        SELECT 
+          MIN(drawdown) as calculated_max_drawdown,
+          COUNT(*) as drawdown_days,
+          MIN(cumulative_pnl) as min_cumulative_pnl,
+          MAX(peak) as max_peak
+        FROM drawdown_calc
       )
       SELECT 
         ts.*,
         COALESCE(dp.max_daily_gain, 0) as max_daily_gain,
         COALESCE(dp.max_daily_loss, 0) as max_daily_loss,
         COALESCE(dd.max_drawdown, 0) as max_drawdown,
+        ddb.calculated_max_drawdown as debug_max_drawdown,
+        ddb.drawdown_days,
+        ddb.min_cumulative_pnl,
+        ddb.max_peak,
         CASE 
           WHEN ts.avg_loss = 0 OR ts.avg_loss IS NULL THEN 0
           ELSE ABS(ts.avg_win / ts.avg_loss)
@@ -501,9 +518,12 @@ class Trade {
         FROM daily_pnl
       ) dp ON true
       LEFT JOIN (
-        SELECT MIN(drawdown) as max_drawdown
+        SELECT 
+          MIN(drawdown) as max_drawdown,
+          COUNT(*) as dd_count
         FROM drawdown_calc
       ) dd ON true
+      LEFT JOIN drawdown_debug ddb ON true
     `;
 
     const analyticsResult = await db.query(analyticsQuery, values);
@@ -517,6 +537,49 @@ class Trade {
       losingTrades: analytics.losing_trades,
       totalPnL: analytics.total_pnl
     });
+    console.log('Drawdown debug info:', {
+      max_drawdown: analytics.max_drawdown,
+      debug_max_drawdown: analytics.debug_max_drawdown,
+      drawdown_days: analytics.drawdown_days,
+      min_cumulative_pnl: analytics.min_cumulative_pnl,
+      max_peak: analytics.max_peak,
+      dd_count: analytics.dd_count
+    });
+    
+    // Debug: Get first few days of drawdown data
+    const drawdownSampleQuery = `
+      WITH daily_pnl AS (
+        SELECT 
+          trade_date,
+          COALESCE(SUM(pnl), 0) as daily_pnl
+        FROM trades
+        WHERE user_id = $1
+        GROUP BY trade_date
+        ORDER BY trade_date
+      ),
+      cumulative_pnl AS (
+        SELECT 
+          trade_date,
+          daily_pnl,
+          SUM(daily_pnl) OVER (ORDER BY trade_date) as cumulative_pnl
+        FROM daily_pnl
+      ),
+      drawdown_calc AS (
+        SELECT 
+          trade_date,
+          daily_pnl,
+          cumulative_pnl,
+          MAX(cumulative_pnl) OVER (ORDER BY trade_date ROWS UNBOUNDED PRECEDING) as peak,
+          cumulative_pnl - MAX(cumulative_pnl) OVER (ORDER BY trade_date ROWS UNBOUNDED PRECEDING) as drawdown
+        FROM cumulative_pnl
+      )
+      SELECT * FROM drawdown_calc
+      ORDER BY drawdown ASC
+      LIMIT 5
+    `;
+    
+    const drawdownSample = await db.query(drawdownSampleQuery, [userId]);
+    console.log('Worst drawdown days:', drawdownSample.rows);
 
     // Get performance by symbol using simple grouping
     const symbolQuery = `
@@ -588,38 +651,51 @@ class Trade {
     console.log('Analytics: Daily win rate query returned', dailyWinRateResult.rows.length, 'rows');
     console.log('Analytics: Daily win rate sample data:', dailyWinRateResult.rows.slice(0, 3));
 
-    // Get best and worst trades using simple grouping
+    // Get best and worst individual trades (not grouped)
     const topTradesQuery = `
-      WITH trade_summary AS (
-        SELECT 
-          symbol,
-          trade_date,
-          SUM(pnl) as trade_pnl,
-          AVG(entry_price) as avg_entry_price,
-          AVG(exit_price) as avg_exit_price,
-          SUM(quantity) as total_quantity
+      (
+        SELECT 'best' as type, id, symbol, entry_price, exit_price, 
+               quantity, pnl, trade_date
         FROM trades t
         ${whereClause} AND pnl IS NOT NULL
-        GROUP BY symbol, trade_date
-      )
-      (
-        SELECT 'best' as type, symbol, avg_entry_price as entry_price, avg_exit_price as exit_price, 
-               total_quantity as quantity, trade_pnl as pnl, trade_date
-        FROM trade_summary
-        ORDER BY trade_pnl DESC
+        ORDER BY pnl DESC
         LIMIT 5
       )
       UNION ALL
       (
-        SELECT 'worst' as type, symbol, avg_entry_price as entry_price, avg_exit_price as exit_price, 
-               total_quantity as quantity, trade_pnl as pnl, trade_date
-        FROM trade_summary
-        ORDER BY trade_pnl ASC
+        SELECT 'worst' as type, id, symbol, entry_price, exit_price, 
+               quantity, pnl, trade_date
+        FROM trades t
+        ${whereClause} AND pnl IS NOT NULL
+        ORDER BY pnl ASC
         LIMIT 5
       )
     `;
 
     const topTradesResult = await db.query(topTradesQuery, values);
+
+    // Get individual best and worst trades for the metric cards
+    const bestWorstTradesQuery = `
+      (
+        SELECT 'best' as type, id, symbol, pnl, trade_date
+        FROM trades t
+        ${whereClause} AND pnl IS NOT NULL
+        ORDER BY pnl DESC
+        LIMIT 1
+      )
+      UNION ALL
+      (
+        SELECT 'worst' as type, id, symbol, pnl, trade_date
+        FROM trades t
+        ${whereClause} AND pnl IS NOT NULL
+        ORDER BY pnl ASC
+        LIMIT 1
+      )
+    `;
+
+    const bestWorstResult = await db.query(bestWorstTradesQuery, values);
+    const bestTrade = bestWorstResult.rows.find(t => t.type === 'best') || null;
+    const worstTrade = bestWorstResult.rows.find(t => t.type === 'worst') || null;
 
     return {
       summary: {
@@ -651,7 +727,9 @@ class Trade {
       topTrades: {
         best: topTradesResult.rows.filter(t => t.type === 'best'),
         worst: topTradesResult.rows.filter(t => t.type === 'worst')
-      }
+      },
+      bestTradeDetails: bestTrade,
+      worstTradeDetails: worstTrade
     };
   }
 
@@ -686,6 +764,52 @@ class Trade {
     const result = await db.query(query, [userId, cusip, ticker]);
     console.log(`Updated ${result.rowCount} trades: changed symbol from ${cusip} to ${ticker}`);
     return { affectedRows: result.rowCount };
+  }
+
+  static getHoldTimeFilter(holdTimeRange) {
+    // Calculate hold time as the difference between entry_time and exit_time
+    // For open trades (no exit_time), use current time
+    let timeCondition = '';
+    
+    switch (holdTimeRange) {
+      case '< 1 min':
+        timeCondition = ` AND EXTRACT(EPOCH FROM (COALESCE(t.exit_time, NOW()) - t.entry_time)) < 60`;
+        break;
+      case '1-5 min':
+        timeCondition = ` AND EXTRACT(EPOCH FROM (COALESCE(t.exit_time, NOW()) - t.entry_time)) BETWEEN 60 AND 300`;
+        break;
+      case '5-15 min':
+        timeCondition = ` AND EXTRACT(EPOCH FROM (COALESCE(t.exit_time, NOW()) - t.entry_time)) BETWEEN 300 AND 900`;
+        break;
+      case '15-30 min':
+        timeCondition = ` AND EXTRACT(EPOCH FROM (COALESCE(t.exit_time, NOW()) - t.entry_time)) BETWEEN 900 AND 1800`;
+        break;
+      case '30-60 min':
+        timeCondition = ` AND EXTRACT(EPOCH FROM (COALESCE(t.exit_time, NOW()) - t.entry_time)) BETWEEN 1800 AND 3600`;
+        break;
+      case '1-2 hours':
+        timeCondition = ` AND EXTRACT(EPOCH FROM (COALESCE(t.exit_time, NOW()) - t.entry_time)) BETWEEN 3600 AND 7200`;
+        break;
+      case '2-4 hours':
+        timeCondition = ` AND EXTRACT(EPOCH FROM (COALESCE(t.exit_time, NOW()) - t.entry_time)) BETWEEN 7200 AND 14400`;
+        break;
+      case '4-24 hours':
+        timeCondition = ` AND EXTRACT(EPOCH FROM (COALESCE(t.exit_time, NOW()) - t.entry_time)) BETWEEN 14400 AND 86400`;
+        break;
+      case '1-7 days':
+        timeCondition = ` AND EXTRACT(EPOCH FROM (COALESCE(t.exit_time, NOW()) - t.entry_time)) BETWEEN 86400 AND 604800`;
+        break;
+      case '1-4 weeks':
+        timeCondition = ` AND EXTRACT(EPOCH FROM (COALESCE(t.exit_time, NOW()) - t.entry_time)) BETWEEN 604800 AND 2419200`;
+        break;
+      case '1+ months':
+        timeCondition = ` AND EXTRACT(EPOCH FROM (COALESCE(t.exit_time, NOW()) - t.entry_time)) >= 2419200`;
+        break;
+      default:
+        timeCondition = '';
+    }
+    
+    return timeCondition;
   }
 }
 
