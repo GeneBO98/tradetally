@@ -2,10 +2,23 @@
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
     <div class="sm:flex sm:items-center">
       <div class="sm:flex-auto">
-        <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Trades</h1>
-        <p class="mt-2 text-sm text-gray-700 dark:text-gray-300">
-          A list of all your trades including their details and performance.
-        </p>
+        <div class="flex items-center space-x-3">
+          <button 
+            @click="goBack" 
+            class="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+          >
+            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+            </svg>
+            Back
+          </button>
+          <div>
+            <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Trades</h1>
+            <p class="mt-2 text-sm text-gray-700 dark:text-gray-300">
+              A list of all your trades including their details and performance.
+            </p>
+          </div>
+        </div>
       </div>
       <div class="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
         <router-link to="/trades/new" class="btn-primary">
@@ -421,6 +434,11 @@ function handleCommentDeleted() {
   if (tradeIndex !== -1) {
     tradesStore.trades[tradeIndex].comment_count = Math.max((tradesStore.trades[tradeIndex].comment_count || 0) - 1, 0)
   }
+}
+
+function goBack() {
+  // Use the browser's back button to preserve scroll position and state
+  window.history.back()
 }
 
 onMounted(() => {

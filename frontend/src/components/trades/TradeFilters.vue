@@ -190,6 +190,24 @@
             <option value="loss">Loss Only</option>
           </select>
         </div>
+        
+        <div>
+          <label class="label">Hold Time</label>
+          <select v-model="filters.holdTime" class="input">
+            <option value="">All</option>
+            <option value="< 1 min">< 1 minute</option>
+            <option value="1-5 min">1-5 minutes</option>
+            <option value="5-15 min">5-15 minutes</option>
+            <option value="15-30 min">15-30 minutes</option>
+            <option value="30-60 min">30-60 minutes</option>
+            <option value="1-2 hours">1-2 hours</option>
+            <option value="2-4 hours">2-4 hours</option>
+            <option value="4-24 hours">4-24 hours</option>
+            <option value="1-7 days">1-7 days</option>
+            <option value="1-4 weeks">1-4 weeks</option>
+            <option value="1+ months">1+ months</option>
+          </select>
+        </div>
       </div>
     </div>
     
@@ -211,10 +229,12 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { ChevronRightIcon } from '@heroicons/vue/24/outline'
 
 const emit = defineEmits(['filter'])
+const route = useRoute()
 
 const showAdvanced = ref(false)
 
@@ -233,7 +253,8 @@ const filters = ref({
   status: '',
   minPnl: null,
   maxPnl: null,
-  pnlType: ''
+  pnlType: '',
+  holdTime: ''
 })
 
 // Count active filters
@@ -252,6 +273,7 @@ const activeFiltersCount = computed(() => {
   if (filters.value.minPnl !== null) count++
   if (filters.value.maxPnl !== null) count++
   if (filters.value.pnlType) count++
+  if (filters.value.holdTime) count++
   return count
 })
 
@@ -267,6 +289,7 @@ const activeAdvancedCount = computed(() => {
   if (filters.value.minPnl !== null) count++
   if (filters.value.maxPnl !== null) count++
   if (filters.value.pnlType) count++
+  if (filters.value.holdTime) count++
   return count
 })
 
@@ -290,6 +313,7 @@ function applyFilters() {
   if (filters.value.minPnl !== null && filters.value.minPnl !== '') cleanFilters.minPnl = filters.value.minPnl
   if (filters.value.maxPnl !== null && filters.value.maxPnl !== '') cleanFilters.maxPnl = filters.value.maxPnl
   if (filters.value.pnlType) cleanFilters.pnlType = filters.value.pnlType
+  if (filters.value.holdTime) cleanFilters.holdTime = filters.value.holdTime
   
   emit('filter', cleanFilters)
 }
@@ -308,9 +332,94 @@ function resetFilters() {
     status: '',
     minPnl: null,
     maxPnl: null,
-    pnlType: ''
+    pnlType: '',
+    holdTime: ''
   }
   // Emit empty filters to trigger immediate refresh
   emit('filter', {})
 }
+
+onMounted(() => {
+  // Initialize filters from query parameters if present
+  let shouldApply = false
+  
+  // First clear all filters to start fresh
+  filters.value = {
+    symbol: '',
+    startDate: '',
+    endDate: '',
+    strategy: '',
+    side: '',
+    minPrice: null,
+    maxPrice: null,
+    minQuantity: null,
+    maxQuantity: null,
+    status: '',
+    minPnl: null,
+    maxPnl: null,
+    pnlType: '',
+    holdTime: ''
+  }
+  
+  // Then set only the filters from query parameters
+  if (route.query.symbol) {
+    filters.value.symbol = route.query.symbol
+    shouldApply = true
+  }
+  
+  if (route.query.status) {
+    filters.value.status = route.query.status
+    shouldApply = true
+  }
+  
+  if (route.query.startDate) {
+    filters.value.startDate = route.query.startDate
+    shouldApply = true
+  }
+  
+  if (route.query.endDate) {
+    filters.value.endDate = route.query.endDate
+    shouldApply = true
+  }
+  
+  if (route.query.pnlType) {
+    filters.value.pnlType = route.query.pnlType
+    shouldApply = true
+  }
+  
+  if (route.query.minPrice) {
+    filters.value.minPrice = parseFloat(route.query.minPrice)
+    shouldApply = true
+  }
+  
+  if (route.query.maxPrice) {
+    filters.value.maxPrice = parseFloat(route.query.maxPrice)
+    shouldApply = true
+  }
+  
+  if (route.query.minQuantity) {
+    filters.value.minQuantity = parseInt(route.query.minQuantity)
+    shouldApply = true
+  }
+  
+  if (route.query.maxQuantity) {
+    filters.value.maxQuantity = parseInt(route.query.maxQuantity)
+    shouldApply = true
+  }
+  
+  if (route.query.holdTime) {
+    filters.value.holdTime = route.query.holdTime
+    shouldApply = true
+  }
+  
+  // Auto-expand advanced filters if any advanced filter is set
+  if (route.query.minPrice || route.query.maxPrice || route.query.minQuantity || route.query.maxQuantity || route.query.holdTime) {
+    showAdvanced.value = true
+  }
+  
+  // Auto-apply the filter when coming from dashboard/other pages
+  if (shouldApply) {
+    applyFilters()
+  }
+})
 </script>

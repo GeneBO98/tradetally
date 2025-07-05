@@ -70,7 +70,15 @@
       <div v-if="openTrades.length > 0" class="card">
         <div class="card-body">
           <div class="flex items-center justify-between mb-4">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white">Open Positions</h3>
+            <div class="flex items-center">
+              <h3 class="text-lg font-medium text-gray-900 dark:text-white">Open Positions</h3>
+              <button 
+                @click="navigateToOpenTrades"
+                class="ml-3 text-sm text-primary-600 hover:text-primary-900 dark:text-primary-400 dark:hover:text-primary-300"
+              >
+                View all →
+              </button>
+            </div>
             <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400">
               {{ openTrades.length }} {{ openTrades.length === 1 ? 'position' : 'positions' }}
             </span>
@@ -319,7 +327,7 @@
           </div>
         </div>
 
-        <div class="card">
+        <div class="card cursor-pointer hover:shadow-lg transition-shadow" @click="navigateToAnalytics('drawdown')">
           <div class="card-body">
             <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
               Max Drawdown
@@ -336,7 +344,7 @@
 
       <!-- Additional Metrics Row -->
       <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-        <div class="card">
+        <div class="card cursor-pointer hover:shadow-lg transition-shadow" @click="navigateToTradesFiltered('avgWin')">
           <div class="card-body">
             <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
               Average Win
@@ -347,7 +355,7 @@
           </div>
         </div>
 
-        <div class="card">
+        <div class="card cursor-pointer hover:shadow-lg transition-shadow" @click="navigateToTradesFiltered('avgLoss')">
           <div class="card-body">
             <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
               Average Loss
@@ -358,7 +366,7 @@
           </div>
         </div>
 
-        <div class="card">
+        <div class="card cursor-pointer hover:shadow-lg transition-shadow" @click="navigateToTradesFiltered('best')">
           <div class="card-body">
             <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
               Best Trade
@@ -369,7 +377,7 @@
           </div>
         </div>
 
-        <div class="card">
+        <div class="card cursor-pointer hover:shadow-lg transition-shadow" @click="navigateToTradesFiltered('worst')">
           <div class="card-body">
             <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
               Worst Trade
@@ -449,7 +457,9 @@
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-                  <tr v-for="symbol in analytics.performanceBySymbol.slice(0, 10)" :key="symbol.symbol">
+                  <tr v-for="symbol in analytics.performanceBySymbol.slice(0, 10)" :key="symbol.symbol" 
+                      @click="navigateToTradesWithSymbol(symbol.symbol)"
+                      class="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                     <td class="px-3 py-2 text-sm font-medium text-gray-900 dark:text-white">
                       {{ symbol.symbol }}
                     </td>
@@ -483,7 +493,8 @@
                 <h4 class="text-sm font-medium text-green-600 mb-2">Best Trades</h4>
                 <div class="space-y-1">
                   <div v-for="trade in analytics.topTrades.best" :key="`best-${trade.symbol}-${trade.trade_date}`" 
-                       class="flex justify-between items-center text-sm">
+                       @click="navigateToTradesBySymbolAndDate(trade.symbol, trade.trade_date)"
+                       class="flex justify-between items-center text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 rounded p-2 transition-colors">
                     <span class="text-gray-900 dark:text-white">
                       {{ trade.symbol }} {{ formatDate(trade.trade_date) }}
                     </span>
@@ -498,7 +509,8 @@
                 <h4 class="text-sm font-medium text-red-600 mb-2">Worst Trades</h4>
                 <div class="space-y-1">
                   <div v-for="trade in analytics.topTrades.worst" :key="`worst-${trade.symbol}-${trade.trade_date}`" 
-                       class="flex justify-between items-center text-sm">
+                       @click="navigateToTradesBySymbolAndDate(trade.symbol, trade.trade_date)"
+                       class="flex justify-between items-center text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 rounded p-2 transition-colors">
                     <span class="text-gray-900 dark:text-white">
                       {{ trade.symbol }} {{ formatDate(trade.trade_date) }}
                     </span>
@@ -562,6 +574,7 @@
 <script setup>
 import { ref, onMounted, nextTick, watch, computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { useRouter } from 'vue-router'
 import { format } from 'date-fns'
 import Chart from 'chart.js/auto'
 import api from '@/services/api'
@@ -569,6 +582,7 @@ import TradeNewsSection from '@/components/dashboard/TradeNewsSection.vue'
 import UpcomingEarningsSection from '@/components/dashboard/UpcomingEarningsSection.vue'
 
 const authStore = useAuthStore()
+const router = useRouter()
 
 const loading = ref(true)
 const analytics = ref({
@@ -711,6 +725,7 @@ async function fetchAnalytics() {
     console.log('Dashboard: Daily P&L data length:', analytics.value.dailyPnL?.length)
     console.log('Dashboard: Daily P&L data:', analytics.value.dailyPnL)
     console.log('Dashboard: Summary data:', analytics.value.summary)
+    console.log('Dashboard: Top trades data:', analytics.value.topTrades)
     console.log('Dashboard: Win/Loss counts:', {
       wins: analytics.value.summary?.winningTrades,
       losses: analytics.value.summary?.losingTrades,
@@ -835,6 +850,13 @@ function createPnLChart() {
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        onClick: (event, elements) => {
+          if (elements.length > 0) {
+            const index = elements[0].index
+            const clickedDate = dailyData[index].trade_date
+            navigateToTradesByDate(clickedDate)
+          }
+        },
         plugins: {
           legend: {
             display: false
@@ -906,9 +928,17 @@ function createDistributionChart() {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      onClick: (event, elements) => {
+        if (elements.length > 0) {
+          const index = elements[0].index
+          const clickedSegment = ['profit', 'loss', 'breakeven'][index]
+          navigateToTradesByPnLType(clickedSegment)
+        }
+      },
       plugins: {
         legend: {
-          position: 'bottom'
+          position: 'bottom',
+          onClick: null // Disable legend clicking
         }
       }
     }
@@ -944,6 +974,13 @@ function createWinRateChart() {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      onClick: (event, elements) => {
+        if (elements.length > 0) {
+          const index = elements[0].index
+          const clickedDate = winRateData[index].trade_date
+          navigateToTradesByDate(clickedDate)
+        }
+      },
       plugins: {
         legend: {
           display: false
@@ -995,6 +1032,143 @@ function createCharts() {
 
 function applyFilters() {
   fetchAnalytics()
+}
+
+function navigateToTradesWithSymbol(symbol) {
+  router.push({
+    name: 'trades',
+    query: { symbol }
+  }).then(() => {
+    // Scroll to top of the page
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  })
+}
+
+function navigateToTrade(tradeId) {
+  console.log('navigateToTrade called with:', tradeId)
+  if (!tradeId) {
+    console.error('Trade ID is missing! Cannot navigate.')
+    alert('This trade cannot be opened - ID is missing. The backend needs to be updated.')
+    return
+  }
+  router.push({
+    name: 'trade-detail',
+    params: { id: tradeId }
+  })
+}
+
+function navigateToAnalytics(section) {
+  router.push({
+    name: 'analytics',
+    hash: section ? `#${section}` : ''
+  })
+}
+
+function navigateToOpenTrades() {
+  router.push({
+    name: 'trades',
+    query: { status: 'open' }
+  }).then(() => {
+    // Scroll to top of the page
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  })
+}
+
+function navigateToTradesBySymbolAndDate(symbol, tradeDate) {
+  console.log('Navigating to trades for:', symbol, tradeDate)
+  const date = new Date(tradeDate)
+  const formattedDate = date.toISOString().split('T')[0]
+  
+  router.push({
+    name: 'trades',
+    query: { 
+      symbol: symbol,
+      startDate: formattedDate,
+      endDate: formattedDate
+    }
+  }).then(() => {
+    // Scroll to top of the page
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  })
+}
+
+function navigateToTradesFiltered(type) {
+  console.log('Navigating to trades filtered by:', type)
+  const queryParams = {}
+  
+  if (type === 'best' && analytics.value.bestTradeDetails) {
+    // Filter to show trades for the specific symbol and date of the best trade
+    const bestTrade = analytics.value.bestTradeDetails
+    queryParams.symbol = bestTrade.symbol
+    const date = new Date(bestTrade.trade_date)
+    const formattedDate = date.toISOString().split('T')[0]
+    queryParams.startDate = formattedDate
+    queryParams.endDate = formattedDate
+  } else if (type === 'worst' && analytics.value.worstTradeDetails) {
+    // Filter to show trades for the specific symbol and date of the worst trade
+    const worstTrade = analytics.value.worstTradeDetails
+    queryParams.symbol = worstTrade.symbol
+    const date = new Date(worstTrade.trade_date)
+    const formattedDate = date.toISOString().split('T')[0]
+    queryParams.startDate = formattedDate
+    queryParams.endDate = formattedDate
+  } else if (type === 'avgWin') {
+    // Filter to show only profitable trades
+    queryParams.pnlType = 'profit'
+  } else if (type === 'avgLoss') {
+    // Filter to show only losing trades
+    queryParams.pnlType = 'loss'
+  } else {
+    // Fallback to general filtering if trade details aren't available
+    if (type === 'best') {
+      queryParams.pnlType = 'profit'
+    } else if (type === 'worst') {
+      queryParams.pnlType = 'loss'
+    }
+  }
+  
+  router.push({
+    name: 'trades',
+    query: queryParams
+  }).then(() => {
+    // Scroll to top of the page
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  })
+}
+
+// Chart navigation functions
+function navigateToTradesByDate(date) {
+  router.push({
+    name: 'trades',
+    query: {
+      startDate: date,
+      endDate: date
+    }
+  }).then(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  })
+}
+
+function navigateToTradesByPnLType(type) {
+  let pnlType = ''
+  if (type === 'profit') {
+    pnlType = 'profit'
+  } else if (type === 'loss') {
+    pnlType = 'loss'
+  }
+  // For breakeven, we don't have a specific filter, so show all trades
+  
+  const query = {}
+  if (pnlType) {
+    query.pnlType = pnlType
+  }
+  
+  router.push({
+    name: 'trades',
+    query
+  }).then(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  })
 }
 
 // Watch for when loading finishes to try creating charts
