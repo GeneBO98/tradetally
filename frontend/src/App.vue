@@ -33,6 +33,13 @@
               </svg>
               View on GitHub
             </a>
+            <span>•</span>
+            <router-link 
+              to="/privacy"
+              class="hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+            >
+              Privacy Policy
+            </router-link>
           </div>
         </div>
       </div>
