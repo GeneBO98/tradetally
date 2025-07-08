@@ -166,6 +166,13 @@ class Trade {
       query += ` AND t.pnl < 0`;
     }
 
+    // Broker filter
+    if (filters.broker) {
+      query += ` AND t.broker = $${paramCount}`;
+      values.push(filters.broker);
+      paramCount++;
+    }
+
     // Hold time filter
     if (filters.holdTime) {
       query += this.getHoldTimeFilter(filters.holdTime);

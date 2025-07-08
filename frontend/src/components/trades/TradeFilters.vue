@@ -159,8 +159,21 @@
         </div>
       </div>
 
-      <!-- P&L Filters -->
+      <!-- P&L Filters and Broker -->
       <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div>
+          <label class="label">Broker</label>
+          <select v-model="filters.broker" class="input">
+            <option value="">All Brokers</option>
+            <option value="generic">Generic</option>
+            <option value="lightspeed">Lightspeed</option>
+            <option value="thinkorswim">thinkorswim</option>
+            <option value="ibkr">Interactive Brokers</option>
+            <option value="etrade">E*TRADE</option>
+            <option value="schwab">Schwab</option>
+          </select>
+        </div>
+
         <div>
           <label class="label">P&L Range ($)</label>
           <div class="flex items-center space-x-2">
@@ -254,7 +267,8 @@ const filters = ref({
   minPnl: null,
   maxPnl: null,
   pnlType: '',
-  holdTime: ''
+  holdTime: '',
+  broker: ''
 })
 
 // Count active filters
@@ -274,6 +288,7 @@ const activeFiltersCount = computed(() => {
   if (filters.value.maxPnl !== null) count++
   if (filters.value.pnlType) count++
   if (filters.value.holdTime) count++
+  if (filters.value.broker) count++
   return count
 })
 
@@ -290,6 +305,7 @@ const activeAdvancedCount = computed(() => {
   if (filters.value.maxPnl !== null) count++
   if (filters.value.pnlType) count++
   if (filters.value.holdTime) count++
+  if (filters.value.broker) count++
   return count
 })
 
@@ -314,6 +330,7 @@ function applyFilters() {
   if (filters.value.maxPnl !== null && filters.value.maxPnl !== '') cleanFilters.maxPnl = filters.value.maxPnl
   if (filters.value.pnlType) cleanFilters.pnlType = filters.value.pnlType
   if (filters.value.holdTime) cleanFilters.holdTime = filters.value.holdTime
+  if (filters.value.broker) cleanFilters.broker = filters.value.broker
   
   emit('filter', cleanFilters)
 }
@@ -333,7 +350,8 @@ function resetFilters() {
     minPnl: null,
     maxPnl: null,
     pnlType: '',
-    holdTime: ''
+    holdTime: '',
+    broker: ''
   }
   // Emit empty filters to trigger immediate refresh
   emit('filter', {})
@@ -358,7 +376,8 @@ onMounted(() => {
     minPnl: null,
     maxPnl: null,
     pnlType: '',
-    holdTime: ''
+    holdTime: '',
+    broker: ''
   }
   
   // Then set only the filters from query parameters
@@ -412,8 +431,13 @@ onMounted(() => {
     shouldApply = true
   }
   
+  if (route.query.broker) {
+    filters.value.broker = route.query.broker
+    shouldApply = true
+  }
+  
   // Auto-expand advanced filters if any advanced filter is set
-  if (route.query.minPrice || route.query.maxPrice || route.query.minQuantity || route.query.maxQuantity || route.query.holdTime) {
+  if (route.query.minPrice || route.query.maxPrice || route.query.minQuantity || route.query.maxQuantity || route.query.holdTime || route.query.broker) {
     showAdvanced.value = true
   }
   

@@ -11,7 +11,7 @@ const tradeController = {
       const { 
         symbol, startDate, endDate, tags, strategy, 
         side, minPrice, maxPrice, minQuantity, maxQuantity,
-        status, minPnl, maxPnl, pnlType,
+        status, minPnl, maxPnl, pnlType, broker,
         limit = 50, offset = 0 
       } = req.query;
       
@@ -31,6 +31,7 @@ const tradeController = {
         minPnl: minPnl ? parseFloat(minPnl) : undefined,
         maxPnl: maxPnl ? parseFloat(maxPnl) : undefined,
         pnlType,
+        broker,
         // Pagination
         limit: parseInt(limit),
         offset: parseInt(offset)
