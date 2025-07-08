@@ -1,4 +1,7 @@
 const db = require('../config/database');
+const gemini = require('../utils/gemini');
+const User = require('../models/User');
+const finnhub = require('../utils/finnhub');
 
 const analyticsController = {
   async getOverview(req, res, next) {
@@ -749,6 +752,330 @@ const analyticsController = {
         distribution: null
       });
     } catch (error) {
+      next(error);
+    }
+  },
+
+  async getRecommendations(req, res, next) {
+    try {
+      console.log('🤖 AI Recommendations request started');
+      
+      if (!gemini.isConfigured()) {
+        console.log('❌ Gemini API key not configured');
+        return res.status(400).json({ 
+          error: 'AI recommendations are not available. Gemini API key not configured.' 
+        });
+      }
+      
+      console.log('✅ Gemini API key is configured');
+
+      const { startDate, endDate } = req.query;
+      
+      // Get analytics overview data
+      let dateFilter = '';
+      const params = [req.user.id];
+      
+      if (startDate) {
+        dateFilter += ' AND trade_date >= $2';
+        params.push(startDate);
+      }
+      
+      if (endDate) {
+        dateFilter += ` AND trade_date <= $${params.length + 1}`;
+        params.push(endDate);
+      }
+
+      // Get overview metrics
+      console.log('📊 Fetching trade metrics...');
+      const overviewQuery = `
+        SELECT 
+          COUNT(*) as total_trades,
+          COUNT(CASE WHEN pnl > 0 THEN 1 END) as winning_trades,
+          COALESCE(SUM(pnl), 0) as total_pnl,
+          COALESCE(AVG(pnl), 0) as avg_pnl,
+          COALESCE(AVG(CASE WHEN pnl > 0 THEN pnl END), 0) as avg_win,
+          COALESCE(AVG(CASE WHEN pnl < 0 THEN pnl END), 0) as avg_loss,
+          COALESCE(MAX(pnl), 0) as best_trade,
+          COALESCE(MIN(pnl), 0) as worst_trade
+        FROM trades
+        WHERE user_id = $1 ${dateFilter}
+      `;
+
+      const overviewResult = await db.query(overviewQuery, params);
+      const metrics = overviewResult.rows[0];
+      console.log(`📈 Found ${metrics.total_trades} trades for analysis`);
+
+      // Calculate derived metrics
+      metrics.win_rate = metrics.total_trades > 0 
+        ? (metrics.winning_trades / metrics.total_trades * 100).toFixed(2)
+        : 0;
+      
+      metrics.profit_factor = metrics.avg_loss !== 0
+        ? Math.abs(metrics.avg_win / metrics.avg_loss).toFixed(2)
+        : 0;
+
+      // Get recent trade data for pattern analysis
+      const tradesQuery = `
+        SELECT 
+          symbol, entry_time, exit_time, entry_price, exit_price,
+          quantity, side, pnl, pnl_percent, commission, fees, broker,
+          trade_date, strategy, tags, notes
+        FROM trades
+        WHERE user_id = $1 ${dateFilter}
+        ORDER BY trade_date DESC, entry_time DESC
+        LIMIT 100
+      `;
+
+      const tradesResult = await db.query(tradesQuery, params);
+      const trades = tradesResult.rows;
+
+      // Get user's trading profile for personalized recommendations
+      console.log('👤 Fetching user trading profile...');
+      let userSettings = null;
+      let tradingProfile = null;
+      
+      try {
+        userSettings = await User.getSettings(req.user.id);
+        console.log('⚙️ User settings found:', !!userSettings);
+        
+        if (userSettings) {
+          // Check if trading profile columns exist before accessing them
+          tradingProfile = {
+            tradingStrategies: userSettings.trading_strategies || [],
+            tradingStyles: userSettings.trading_styles || [],
+            riskTolerance: userSettings.risk_tolerance || 'moderate',
+            primaryMarkets: userSettings.primary_markets || [],
+            experienceLevel: userSettings.experience_level || 'intermediate',
+            averagePositionSize: userSettings.average_position_size || 'medium',
+            tradingGoals: userSettings.trading_goals || [],
+            preferredSectors: userSettings.preferred_sectors || []
+          };
+          console.log('📋 Trading profile loaded with strategies:', tradingProfile.tradingStrategies.length);
+        }
+      } catch (settingsError) {
+        console.warn('⚠️ Failed to load user settings, continuing without trading profile:', settingsError.message);
+        console.warn('This might be because trading profile columns do not exist in database yet');
+        tradingProfile = null;
+      }
+
+      // Get sector performance data for AI analysis
+      console.log('🏭 Fetching sector performance for AI analysis...');
+      let sectorData = null;
+      try {
+        // Get symbols and their P&L
+        const symbolQuery = `
+          SELECT 
+            symbol,
+            COUNT(*) as total_trades,
+            COALESCE(SUM(pnl), 0) as total_pnl,
+            COUNT(CASE WHEN pnl > 0 THEN 1 END) as winning_trades
+          FROM trades
+          WHERE user_id = $1 ${dateFilter}
+          GROUP BY symbol
+          HAVING COUNT(*) > 0
+          ORDER BY total_pnl DESC
+          LIMIT 15
+        `;
+
+        const symbolResult = await db.query(symbolQuery, params);
+        const symbolData = symbolResult.rows;
+
+        if (symbolData.length > 0 && finnhub.isConfigured()) {
+          console.log(`📈 Analyzing ${symbolData.length} symbols for sector data...`);
+          const sectorMap = new Map();
+          
+          // Process top symbols for sector analysis (limit to avoid delays)
+          for (const symbolInfo of symbolData.slice(0, 10)) {
+            try {
+              const profile = await finnhub.getCompanyProfile(symbolInfo.symbol);
+              
+              if (profile && profile.finnhubIndustry) {
+                const industry = profile.finnhubIndustry;
+                
+                if (!sectorMap.has(industry)) {
+                  sectorMap.set(industry, {
+                    industry: industry,
+                    total_trades: 0,
+                    total_pnl: 0,
+                    winning_trades: 0,
+                    symbols: []
+                  });
+                }
+                
+                const sector = sectorMap.get(industry);
+                sector.total_trades += parseInt(symbolInfo.total_trades);
+                sector.total_pnl += parseFloat(symbolInfo.total_pnl);
+                sector.winning_trades += parseInt(symbolInfo.winning_trades);
+                sector.symbols.push(symbolInfo.symbol);
+              }
+              
+              // Shorter delay for AI analysis
+              await new Promise(resolve => setTimeout(resolve, 1000));
+              
+            } catch (error) {
+              console.warn(`⚠️ Failed to get sector for ${symbolInfo.symbol}:`, error.message);
+            }
+          }
+
+          // Convert to array with calculated metrics
+          sectorData = Array.from(sectorMap.values()).map(sector => ({
+            ...sector,
+            win_rate: sector.total_trades > 0 ? ((sector.winning_trades / sector.total_trades) * 100).toFixed(1) : 0,
+            avg_pnl: sector.total_trades > 0 ? (sector.total_pnl / sector.total_trades).toFixed(2) : 0
+          })).sort((a, b) => b.total_pnl - a.total_pnl);
+
+          console.log(`✅ Sector analysis complete: ${sectorData.length} sectors identified`);
+        } else {
+          console.log('📊 Skipping sector analysis - insufficient data or Finnhub not configured');
+        }
+      } catch (error) {
+        console.warn('⚠️ Failed to fetch sector data for AI analysis:', error.message);
+        sectorData = null;
+      }
+
+      // Generate AI recommendations with sector data
+      console.log('🧠 Generating AI recommendations with sector analysis...');
+      const recommendations = await gemini.generateTradeRecommendations(metrics, trades, tradingProfile, sectorData);
+      console.log('✅ AI recommendations generated successfully');
+
+      res.json({ 
+        recommendations,
+        analysisDate: new Date().toISOString(),
+        tradesAnalyzed: trades.length,
+        dateRange: {
+          startDate: startDate || null,
+          endDate: endDate || null
+        }
+      });
+
+    } catch (error) {
+      console.error('Error generating recommendations:', error);
+      next(error);
+    }
+  },
+
+  async getSectorPerformance(req, res, next) {
+    try {
+      console.log('📊 Starting sector performance analysis...');
+      
+      if (!finnhub.isConfigured()) {
+        console.log('❌ Finnhub API key not configured');
+        return res.status(400).json({ 
+          error: 'Sector analysis not available. Finnhub API key not configured.' 
+        });
+      }
+
+      const { startDate, endDate } = req.query;
+      
+      let dateFilter = '';
+      const params = [req.user.id];
+      
+      if (startDate) {
+        dateFilter += ' AND trade_date >= $2';
+        params.push(startDate);
+      }
+      
+      if (endDate) {
+        dateFilter += ` AND trade_date <= $${params.length + 1}`;
+        params.push(endDate);
+      }
+
+      // Get all symbols and their P&L from trades
+      console.log('🔍 Fetching symbols and P&L from trades...');
+      const symbolQuery = `
+        SELECT 
+          symbol,
+          COUNT(*) as total_trades,
+          COALESCE(SUM(pnl), 0) as total_pnl,
+          COALESCE(AVG(pnl), 0) as avg_pnl,
+          COUNT(CASE WHEN pnl > 0 THEN 1 END) as winning_trades
+        FROM trades
+        WHERE user_id = $1 ${dateFilter}
+        GROUP BY symbol
+        HAVING COUNT(*) > 0
+        ORDER BY total_pnl DESC
+      `;
+
+      const symbolResult = await db.query(symbolQuery, params);
+      const symbolData = symbolResult.rows;
+      
+      console.log(`📈 Found ${symbolData.length} unique symbols to analyze`);
+
+      if (symbolData.length === 0) {
+        return res.json({ 
+          sectors: [],
+          message: 'No trading data found for the selected date range'
+        });
+      }
+
+      // Get industry data for each symbol
+      console.log('🏭 Fetching industry data from Finnhub...');
+      const sectorMap = new Map();
+      const symbolsToProcess = symbolData.slice(0, 20); // Limit to top 20 symbols to avoid rate limits
+      
+      for (const symbolInfo of symbolsToProcess) {
+        try {
+          console.log(`🔍 Getting industry for ${symbolInfo.symbol}...`);
+          const profile = await finnhub.getCompanyProfile(symbolInfo.symbol);
+          
+          if (profile && profile.finnhubIndustry) {
+            const industry = profile.finnhubIndustry;
+            
+            if (!sectorMap.has(industry)) {
+              sectorMap.set(industry, {
+                industry: industry,
+                total_trades: 0,
+                total_pnl: 0,
+                winning_trades: 0,
+                symbols: []
+              });
+            }
+            
+            const sector = sectorMap.get(industry);
+            sector.total_trades += parseInt(symbolInfo.total_trades);
+            sector.total_pnl += parseFloat(symbolInfo.total_pnl);
+            sector.winning_trades += parseInt(symbolInfo.winning_trades);
+            sector.symbols.push({
+              symbol: symbolInfo.symbol,
+              trades: parseInt(symbolInfo.total_trades),
+              pnl: parseFloat(symbolInfo.total_pnl)
+            });
+            
+          } else {
+            console.warn(`⚠️ No industry data found for ${symbolInfo.symbol}`);
+          }
+          
+          // Add delay to respect rate limits
+          await new Promise(resolve => setTimeout(resolve, 2100)); // ~2 second delay
+          
+        } catch (error) {
+          console.warn(`❌ Failed to get industry for ${symbolInfo.symbol}:`, error.message);
+        }
+      }
+
+      // Convert map to array and calculate additional metrics
+      const sectors = Array.from(sectorMap.values()).map(sector => ({
+        ...sector,
+        win_rate: sector.total_trades > 0 ? ((sector.winning_trades / sector.total_trades) * 100).toFixed(2) : 0,
+        avg_pnl: sector.total_trades > 0 ? (sector.total_pnl / sector.total_trades).toFixed(2) : 0,
+        symbol_count: sector.symbols.length
+      })).sort((a, b) => b.total_pnl - a.total_pnl);
+
+      console.log(`✅ Sector analysis complete. Found ${sectors.length} sectors.`);
+
+      res.json({ 
+        sectors,
+        analysisDate: new Date().toISOString(),
+        symbolsAnalyzed: symbolsToProcess.length,
+        totalSymbols: symbolData.length,
+        dateRange: {
+          startDate: startDate || null,
+          endDate: endDate || null
+        }
+      });
+
+    } catch (error) {
+      console.error('Error generating sector performance:', error);
       next(error);
     }
   }

@@ -26,6 +26,8 @@ router.put('/password', authenticate, userController.changePassword);
 
 // Admin-only user management routes
 router.get('/admin/users', requireAdmin, userController.getAllUsers);
+router.get('/admin/users/pending', requireAdmin, userController.getPendingUsers);
+router.post('/admin/users/:userId/approve', requireAdmin, userController.approveUser);
 router.put('/admin/users/:userId/role', requireAdmin, userController.updateUserRole);
 router.put('/admin/users/:userId/status', requireAdmin, userController.toggleUserStatus);
 router.delete('/admin/users/:userId', requireAdmin, userController.deleteUser);

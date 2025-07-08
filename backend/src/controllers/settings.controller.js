@@ -142,6 +142,95 @@ const settingsController = {
     } catch (error) {
       next(error);
     }
+  },
+
+  async getTradingProfile(req, res, next) {
+    try {
+      const settings = await User.getSettings(req.user.id);
+      
+      if (!settings) {
+        const newSettings = await User.createSettings(req.user.id);
+        return res.json({ 
+          tradingProfile: {
+            tradingStrategies: [],
+            tradingStyles: [],
+            riskTolerance: 'moderate',
+            primaryMarkets: [],
+            experienceLevel: 'intermediate',
+            averagePositionSize: 'medium',
+            tradingGoals: [],
+            preferredSectors: []
+          }
+        });
+      }
+
+      const tradingProfile = {
+        tradingStrategies: settings.trading_strategies || [],
+        tradingStyles: settings.trading_styles || [],
+        riskTolerance: settings.risk_tolerance || 'moderate',
+        primaryMarkets: settings.primary_markets || [],
+        experienceLevel: settings.experience_level || 'intermediate',
+        averagePositionSize: settings.average_position_size || 'medium',
+        tradingGoals: settings.trading_goals || [],
+        preferredSectors: settings.preferred_sectors || []
+      };
+
+      res.json({ tradingProfile });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async updateTradingProfile(req, res, next) {
+    try {
+      const {
+        tradingStrategies,
+        tradingStyles,
+        riskTolerance,
+        primaryMarkets,
+        experienceLevel,
+        averagePositionSize,
+        tradingGoals,
+        preferredSectors
+      } = req.body;
+
+      // Validate the data
+      const validRiskLevels = ['conservative', 'moderate', 'aggressive'];
+      const validExperienceLevels = ['beginner', 'intermediate', 'advanced', 'expert'];
+      const validPositionSizes = ['small', 'medium', 'large'];
+
+      if (riskTolerance && !validRiskLevels.includes(riskTolerance)) {
+        return res.status(400).json({ error: 'Invalid risk tolerance level' });
+      }
+
+      if (experienceLevel && !validExperienceLevels.includes(experienceLevel)) {
+        return res.status(400).json({ error: 'Invalid experience level' });
+      }
+
+      if (averagePositionSize && !validPositionSizes.includes(averagePositionSize)) {
+        return res.status(400).json({ error: 'Invalid position size' });
+      }
+
+      const profileData = {
+        tradingStrategies: tradingStrategies || [],
+        tradingStyles: tradingStyles || [],
+        riskTolerance: riskTolerance || 'moderate',
+        primaryMarkets: primaryMarkets || [],
+        experienceLevel: experienceLevel || 'intermediate',
+        averagePositionSize: averagePositionSize || 'medium',
+        tradingGoals: tradingGoals || [],
+        preferredSectors: preferredSectors || []
+      };
+
+      const updatedSettings = await User.updateSettings(req.user.id, profileData);
+      
+      res.json({ 
+        message: 'Trading profile updated successfully',
+        tradingProfile: profileData
+      });
+    } catch (error) {
+      next(error);
+    }
   }
 };
 
