@@ -15,8 +15,25 @@
           </router-link>
         </p>
       </div>
+
+      <!-- Registration disabled message -->
+      <div v-if="registrationDisabled" class="rounded-md bg-yellow-50 dark:bg-yellow-900/20 p-4">
+        <div class="text-center">
+          <h3 class="text-lg font-medium text-yellow-800 dark:text-yellow-400 mb-2">
+            Registration Currently Disabled
+          </h3>
+          <p class="text-sm text-yellow-700 dark:text-yellow-300">
+            User registration is currently disabled by the administrator. Please contact an administrator for assistance.
+          </p>
+          <div class="mt-4">
+            <router-link to="/login" class="btn-primary">
+              Sign In Instead
+            </router-link>
+          </div>
+        </div>
+      </div>
       
-      <form class="mt-8 space-y-6" @submit.prevent="handleRegister">
+      <form v-if="!registrationDisabled" class="mt-8 space-y-6" @submit.prevent="handleRegister">
         <div class="space-y-4">
           <div>
             <label for="fullName" class="label">Full Name</label>
@@ -94,7 +111,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useNotification } from '@/composables/useNotification'
@@ -110,6 +127,24 @@ const form = ref({
   password: ''
 })
 
+const registrationDisabled = ref(false)
+
+onMounted(async () => {
+  try {
+    const config = await authStore.getRegistrationConfig()
+    registrationDisabled.value = !config.allowRegistration
+    
+    // If registration is disabled, redirect to login after 3 seconds
+    if (registrationDisabled.value) {
+      setTimeout(() => {
+        router.push('/login')
+      }, 5000)
+    }
+  } catch (error) {
+    console.error('Failed to fetch registration config:', error)
+  }
+})
+
 async function handleRegister() {
   try {
     const response = await authStore.register(form.value)
@@ -117,12 +152,14 @@ async function handleRegister() {
     // Show success message
     showSuccess('Registration Successful', response.message)
     
-    // Check if email verification is required
-    if (response.requiresVerification) {
-      // Redirect to login page with verification message
+    // Check if email verification or admin approval is required
+    if (response.requiresVerification && response.requiresApproval) {
+      router.push({ name: 'login', query: { message: 'Please check your email to verify your account and wait for admin approval' } })
+    } else if (response.requiresVerification) {
       router.push({ name: 'login', query: { message: 'Please check your email to verify your account' } })
+    } else if (response.requiresApproval) {
+      router.push({ name: 'login', query: { message: 'Your account is pending admin approval' } })
     } else {
-      // Email verification not required, can proceed to login
       router.push({ name: 'login', query: { message: 'You can now sign in to your account' } })
     }
   } catch (error) {

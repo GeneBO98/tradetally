@@ -242,6 +242,159 @@
         </div>
       </div>
 
+      <!-- Trading Profile -->
+      <div class="card">
+        <div class="card-body">
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-6">Trading Profile</h3>
+          <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
+            Customize your trading preferences to get more personalized AI analytics and recommendations.
+          </p>
+          
+          <form @submit.prevent="updateTradingProfile" class="space-y-6">
+            <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+              <!-- Trading Strategies -->
+              <div>
+                <label class="label">Trading Strategies</label>
+                <div class="space-y-2 mt-2">
+                  <div v-for="strategy in strategyOptions" :key="strategy" class="flex items-center">
+                    <input
+                      :id="`strategy-${strategy}`"
+                      v-model="tradingProfileForm.tradingStrategies"
+                      :value="strategy"
+                      type="checkbox"
+                      class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                    />
+                    <label :for="`strategy-${strategy}`" class="ml-2 text-sm text-gray-700 dark:text-gray-300">
+                      {{ strategy }}
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Trading Styles -->
+              <div>
+                <label class="label">Trading Styles</label>
+                <div class="space-y-2 mt-2">
+                  <div v-for="style in styleOptions" :key="style" class="flex items-center">
+                    <input
+                      :id="`style-${style}`"
+                      v-model="tradingProfileForm.tradingStyles"
+                      :value="style"
+                      type="checkbox"
+                      class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                    />
+                    <label :for="`style-${style}`" class="ml-2 text-sm text-gray-700 dark:text-gray-300">
+                      {{ style }}
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Risk Tolerance -->
+              <div>
+                <label for="riskTolerance" class="label">Risk Tolerance</label>
+                <select id="riskTolerance" v-model="tradingProfileForm.riskTolerance" class="input">
+                  <option value="conservative">Conservative</option>
+                  <option value="moderate">Moderate</option>
+                  <option value="aggressive">Aggressive</option>
+                </select>
+              </div>
+
+              <!-- Experience Level -->
+              <div>
+                <label for="experienceLevel" class="label">Experience Level</label>
+                <select id="experienceLevel" v-model="tradingProfileForm.experienceLevel" class="input">
+                  <option value="beginner">Beginner (0-1 years)</option>
+                  <option value="intermediate">Intermediate (1-3 years)</option>
+                  <option value="advanced">Advanced (3-5 years)</option>
+                  <option value="expert">Expert (5+ years)</option>
+                </select>
+              </div>
+
+              <!-- Average Position Size -->
+              <div>
+                <label for="averagePositionSize" class="label">Average Position Size</label>
+                <select id="averagePositionSize" v-model="tradingProfileForm.averagePositionSize" class="input">
+                  <option value="small">Small ($100 - $1,000)</option>
+                  <option value="medium">Medium ($1,000 - $10,000)</option>
+                  <option value="large">Large ($10,000+)</option>
+                </select>
+              </div>
+
+              <!-- Primary Markets -->
+              <div>
+                <label class="label">Primary Markets</label>
+                <div class="space-y-2 mt-2">
+                  <div v-for="market in marketOptions" :key="market" class="flex items-center">
+                    <input
+                      :id="`market-${market}`"
+                      v-model="tradingProfileForm.primaryMarkets"
+                      :value="market"
+                      type="checkbox"
+                      class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                    />
+                    <label :for="`market-${market}`" class="ml-2 text-sm text-gray-700 dark:text-gray-300">
+                      {{ market }}
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+              <!-- Trading Goals -->
+              <div>
+                <label class="label">Trading Goals</label>
+                <div class="space-y-2 mt-2">
+                  <div v-for="goal in goalOptions" :key="goal" class="flex items-center">
+                    <input
+                      :id="`goal-${goal}`"
+                      v-model="tradingProfileForm.tradingGoals"
+                      :value="goal"
+                      type="checkbox"
+                      class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                    />
+                    <label :for="`goal-${goal}`" class="ml-2 text-sm text-gray-700 dark:text-gray-300">
+                      {{ goal }}
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Preferred Sectors -->
+              <div>
+                <label class="label">Preferred Sectors</label>
+                <div class="space-y-2 mt-2">
+                  <div v-for="sector in sectorOptions" :key="sector" class="flex items-center">
+                    <input
+                      :id="`sector-${sector}`"
+                      v-model="tradingProfileForm.preferredSectors"
+                      :value="sector"
+                      type="checkbox"
+                      class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                    />
+                    <label :for="`sector-${sector}`" class="ml-2 text-sm text-gray-700 dark:text-gray-300">
+                      {{ sector }}
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="flex justify-end">
+              <button
+                type="submit"
+                :disabled="tradingProfileLoading"
+                class="btn-primary"
+              >
+                <span v-if="tradingProfileLoading">Updating...</span>
+                <span v-else>Update Trading Profile</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
       <!-- Change Password -->
       <div class="card">
         <div class="card-body">
@@ -315,6 +468,7 @@ const { showSuccess, showError } = useNotification()
 const profileLoading = ref(false)
 const settingsLoading = ref(false)
 const passwordLoading = ref(false)
+const tradingProfileLoading = ref(false)
 const passwordError = ref(null)
 const showAddTag = ref(false)
 
@@ -345,6 +499,46 @@ const newTag = ref({
   name: '',
   color: '#3B82F6'
 })
+
+const tradingProfileForm = ref({
+  tradingStrategies: [],
+  tradingStyles: [],
+  riskTolerance: 'moderate',
+  primaryMarkets: [],
+  experienceLevel: 'intermediate',
+  averagePositionSize: 'medium',
+  tradingGoals: [],
+  preferredSectors: []
+})
+
+// Trading profile options
+const strategyOptions = [
+  'Breakouts', 'Earnings Plays', 'Momentum Trading', 'Scalping', 'Swing Trading',
+  'Gap Trading', 'Mean Reversion', 'Technical Analysis', 'Fundamental Analysis',
+  'Options Trading', 'News Trading', 'Support/Resistance', 'Trend Following'
+]
+
+const styleOptions = [
+  'Day Trading', 'Swing Trading', 'Position Trading', 'Long-term Investing',
+  'Short-term Trading', 'Intraday Trading'
+]
+
+const marketOptions = [
+  'US Stocks', 'International Stocks', 'ETFs', 'Options', 'Futures',
+  'Forex', 'Crypto', 'Commodities', 'Bonds'
+]
+
+const goalOptions = [
+  'Income Generation', 'Capital Appreciation', 'Risk Management',
+  'Portfolio Diversification', 'Learning & Education', 'Quick Profits',
+  'Steady Growth', 'Beat Market'
+]
+
+const sectorOptions = [
+  'Technology', 'Healthcare', 'Financials', 'Consumer Discretionary',
+  'Consumer Staples', 'Energy', 'Industrials', 'Materials',
+  'Utilities', 'Real Estate', 'Communication Services'
+]
 
 async function updateProfile() {
   profileLoading.value = true
@@ -451,6 +645,39 @@ async function deleteTag(tagId) {
   }
 }
 
+async function updateTradingProfile() {
+  tradingProfileLoading.value = true
+  
+  try {
+    await api.put('/settings/trading-profile', tradingProfileForm.value)
+    showSuccess('Success', 'Trading profile updated successfully')
+  } catch (error) {
+    showError('Error', 'Failed to update trading profile')
+  } finally {
+    tradingProfileLoading.value = false
+  }
+}
+
+async function fetchTradingProfile() {
+  try {
+    const response = await api.get('/settings/trading-profile')
+    const profile = response.data.tradingProfile
+    
+    tradingProfileForm.value = {
+      tradingStrategies: profile.tradingStrategies || [],
+      tradingStyles: profile.tradingStyles || [],
+      riskTolerance: profile.riskTolerance || 'moderate',
+      primaryMarkets: profile.primaryMarkets || [],
+      experienceLevel: profile.experienceLevel || 'intermediate',
+      averagePositionSize: profile.averagePositionSize || 'medium',
+      tradingGoals: profile.tradingGoals || [],
+      preferredSectors: profile.preferredSectors || []
+    }
+  } catch (error) {
+    console.error('Failed to fetch trading profile:', error)
+  }
+}
+
 async function loadData() {
   try {
     const [userResponse, settingsResponse] = await Promise.all([
@@ -477,6 +704,7 @@ async function loadData() {
     defaultTagsInput.value = settings.default_tags ? settings.default_tags.join(', ') : ''
     
     fetchTags()
+    fetchTradingProfile()
   } catch (error) {
     showError('Error', 'Failed to load settings')
   }

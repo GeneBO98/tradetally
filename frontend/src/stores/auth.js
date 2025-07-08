@@ -8,6 +8,7 @@ export const useAuthStore = defineStore('auth', () => {
   const token = ref(localStorage.getItem('token'))
   const loading = ref(false)
   const error = ref(null)
+  const registrationConfig = ref(null)
 
   const isAuthenticated = computed(() => !!token.value)
 
@@ -25,6 +26,15 @@ export const useAuthStore = defineStore('auth', () => {
         verificationError.requiresVerification = true
         verificationError.email = response.data.email
         throw verificationError
+      }
+
+      // Check if admin approval is required
+      if (response.data.requiresApproval) {
+        error.value = response.data.error
+        const approvalError = new Error('Admin approval required')
+        approvalError.requiresApproval = true
+        approvalError.email = response.data.email
+        throw approvalError
       }
       
       const { user: userData, token: authToken } = response.data
@@ -50,8 +60,8 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const response = await api.post('/auth/register', userData)
       
-      // Check if email verification is required (new flow)
-      if (response.data.requiresVerification) {
+      // Check if email verification or admin approval is required (new flow)
+      if (response.data.requiresVerification || response.data.requiresApproval) {
         // Don't auto-login, just return the response
         return response.data
       }
@@ -157,11 +167,28 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  async function getRegistrationConfig() {
+    try {
+      const response = await api.get('/auth/config')
+      registrationConfig.value = response.data
+      return response.data
+    } catch (err) {
+      console.error('Failed to fetch registration config:', err)
+      // Return default values as fallback
+      return {
+        registrationMode: 'open',
+        emailVerificationEnabled: false,
+        allowRegistration: true
+      }
+    }
+  }
+
   return {
     user,
     token,
     loading,
     error,
+    registrationConfig,
     isAuthenticated,
     login,
     register,
@@ -170,6 +197,7 @@ export const useAuthStore = defineStore('auth', () => {
     checkAuth,
     resendVerification,
     forgotPassword,
-    resetPassword
+    resetPassword,
+    getRegistrationConfig
   }
 })

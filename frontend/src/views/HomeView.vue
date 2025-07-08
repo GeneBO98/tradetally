@@ -10,7 +10,11 @@
             Professional trade journaling and analytics platform to help you become a better trader.
           </p>
           <div class="mt-8 flex justify-center space-x-4">
-            <router-link to="/register" class="btn-primary text-lg px-8 py-3">
+            <router-link 
+              v-if="showRegisterButton" 
+              to="/register" 
+              class="btn-primary text-lg px-8 py-3"
+            >
               Get Started Free
             </router-link>
             <router-link to="/public" class="btn-secondary text-lg px-8 py-3">
@@ -60,5 +64,21 @@
 </template>
 
 <script setup>
+import { ref, onMounted } from 'vue'
 import { ChartBarIcon, DocumentTextIcon, ArrowUpTrayIcon } from '@heroicons/vue/24/outline'
+import { useAuthStore } from '@/stores/auth'
+
+const authStore = useAuthStore()
+const showRegisterButton = ref(true)
+
+onMounted(async () => {
+  try {
+    const config = await authStore.getRegistrationConfig()
+    showRegisterButton.value = config.allowRegistration
+  } catch (error) {
+    console.error('Failed to fetch registration config:', error)
+    // Default to showing the button if we can't determine the config
+    showRegisterButton.value = true
+  }
+})
 </script>

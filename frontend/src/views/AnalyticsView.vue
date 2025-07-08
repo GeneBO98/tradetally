@@ -35,8 +35,21 @@
               />
             </div>
             <div class="flex items-end">
-              <button @click="applyFilters" class="btn-primary">
-                Apply Filters
+              <button 
+                @click="getRecommendations" 
+                :disabled="loadingRecommendations"
+                class="btn-primary"
+              >
+                <span v-if="loadingRecommendations" class="flex items-center">
+                  <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></div>
+                  Analyzing...
+                </span>
+                <span v-else class="flex items-center">
+                  <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  </svg>
+                  AI Recommendations
+                </span>
               </button>
             </div>
           </div>
@@ -235,6 +248,103 @@
         </div>
       </div>
 
+      <!-- Sector Performance -->
+      <div class="card">
+        <div class="card-body">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white">Sector Performance</h3>
+            <div v-if="loadingSectors" class="animate-spin rounded-full h-5 w-5 border-b-2 border-primary-600"></div>
+          </div>
+          
+          <div v-if="loadingSectors" class="space-y-4">
+            <div class="text-center py-4 text-sm text-gray-500 dark:text-gray-400">
+              <div class="flex items-center justify-center gap-2 mb-4">
+                <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-600"></div>
+                <span>Fetching industry data for your symbols...</span>
+              </div>
+              <p class="text-xs">This may take a moment as we gather sector information from financial data providers.</p>
+            </div>
+            
+            <!-- Loading skeleton -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div v-for="i in 4" :key="i" class="border border-gray-200 dark:border-gray-700 rounded-lg p-3 animate-pulse">
+                <div class="flex items-center justify-between mb-2">
+                  <div class="h-4 bg-gray-300 dark:bg-gray-600 rounded w-24"></div>
+                  <div class="h-5 bg-gray-300 dark:bg-gray-600 rounded w-16"></div>
+                </div>
+                <div class="grid grid-cols-2 gap-2 mb-2">
+                  <div class="h-3 bg-gray-200 dark:bg-gray-700 rounded w-12"></div>
+                  <div class="h-3 bg-gray-200 dark:bg-gray-700 rounded w-12"></div>
+                </div>
+                <div class="flex gap-1">
+                  <div class="h-6 bg-gray-200 dark:bg-gray-700 rounded w-12"></div>
+                  <div class="h-6 bg-gray-200 dark:bg-gray-700 rounded w-12"></div>
+                  <div class="h-6 bg-gray-200 dark:bg-gray-700 rounded w-12"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div v-else-if="sectorData.length > 0" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div 
+              v-for="sector in sectorData" 
+              :key="sector.industry"
+              class="border border-gray-200 dark:border-gray-700 rounded-lg p-3 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+            >
+              <div class="flex items-center justify-between mb-2">
+                <h4 class="font-medium text-gray-900 dark:text-white text-sm truncate pr-2">{{ sector.industry }}</h4>
+                <span 
+                  class="text-xs font-semibold px-2 py-1 rounded whitespace-nowrap"
+                  :class="sector.total_pnl >= 0 ? 'text-green-700 bg-green-100 dark:text-green-400 dark:bg-green-900/30' : 'text-red-700 bg-red-100 dark:text-red-400 dark:bg-red-900/30'"
+                >
+                  ${{ formatNumber(sector.total_pnl) }}
+                </span>
+              </div>
+              
+              <div class="grid grid-cols-2 gap-2 text-xs mb-2">
+                <div class="flex justify-between">
+                  <span class="text-gray-500 dark:text-gray-400">Trades:</span>
+                  <span class="font-medium">{{ sector.total_trades }}</span>
+                </div>
+                <div class="flex justify-between">
+                  <span class="text-gray-500 dark:text-gray-400">Win Rate:</span>
+                  <span class="font-medium">{{ sector.win_rate }}%</span>
+                </div>
+              </div>
+              
+              <div v-if="sector.symbols && sector.symbols.length > 0" class="border-t border-gray-200 dark:border-gray-700 pt-2">
+                <div class="flex flex-wrap gap-1">
+                  <span 
+                    v-for="symbol in sector.symbols.slice(0, 6)" 
+                    :key="symbol.symbol"
+                    class="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300"
+                    :title="`${symbol.trades} trades, $${formatNumber(symbol.pnl)} P&L`"
+                  >
+                    {{ symbol.symbol }}
+                    <span 
+                      class="ml-1 text-xs"
+                      :class="symbol.pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
+                    >
+                      ${{ Math.abs(symbol.pnl) >= 1000 ? (symbol.pnl/1000).toFixed(1) + 'k' : symbol.pnl.toFixed(0) }}
+                    </span>
+                  </span>
+                  <span v-if="sector.symbols.length > 6" class="text-xs text-gray-500 dark:text-gray-400 px-1">
+                    +{{ sector.symbols.length - 6 }} more
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div v-else-if="!loadingSectors" class="text-center py-8 text-gray-500 dark:text-gray-400">
+            <svg class="w-12 h-12 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            </svg>
+            <p>No sector data available. Industry information will be fetched automatically from your trades.</p>
+          </div>
+        </div>
+      </div>
+
       <!-- Drawdown Chart -->
       <div id="drawdown" class="card">
         <div class="card-body">
@@ -378,6 +488,91 @@
         </div>
       </div>
     </div>
+
+    <!-- Recommendations Modal -->
+    <div v-if="showRecommendations" class="fixed inset-0 z-50 overflow-y-auto" @click="showRecommendations = false">
+      <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"></div>
+        
+        <span class="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
+        
+        <div 
+          class="inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full sm:p-6"
+          @click.stop
+        >
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white">
+              AI Performance Recommendations
+            </h3>
+            <button 
+              @click="showRecommendations = false"
+              class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+            >
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          
+          <div v-if="recommendations" class="max-h-[70vh] overflow-y-auto">
+            <div class="ai-recommendations max-w-none">
+              <div v-if="recommendations.recommendations">
+                <div 
+                  class="text-gray-700 dark:text-gray-300"
+                  v-html="parseMarkdown(recommendations.recommendations)"
+                ></div>
+              </div>
+              <div v-else class="text-red-500 p-4">
+                No recommendations content found. Raw data: {{ JSON.stringify(recommendations) }}
+              </div>
+            </div>
+            
+            <div class="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
+              <div class="text-xs text-gray-500 dark:text-gray-400 space-y-1">
+                <p>Analysis completed: {{ formatDate(recommendations.analysisDate) }}</p>
+                <p>Trades analyzed: {{ recommendations.tradesAnalyzed }}</p>
+                <p v-if="recommendations.dateRange.startDate || recommendations.dateRange.endDate">
+                  Date range: {{ recommendations.dateRange.startDate || 'Beginning' }} to {{ recommendations.dateRange.endDate || 'Present' }}
+                </p>
+              </div>
+            </div>
+          </div>
+          
+          <div v-else-if="recommendationError" class="text-center py-8">
+            <div class="text-red-600 dark:text-red-400 mb-2">
+              <svg class="w-12 h-12 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+              </svg>
+            </div>
+            <p class="text-gray-600 dark:text-gray-400">{{ recommendationError }}</p>
+          </div>
+          
+          <div v-else class="text-center py-8">
+            <div class="text-gray-500 dark:text-gray-400">
+              <svg class="w-12 h-12 mx-auto mb-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </div>
+            <div class="text-gray-600 dark:text-gray-400 text-xs space-y-1">
+              <p>Debug: showRecommendations={{ showRecommendations }}, recommendations={{ !!recommendations }}, error={{ !!recommendationError }}</p>
+              <p v-if="recommendations">Recommendations keys: {{ Object.keys(recommendations) }}</p>
+              <p v-if="recommendations">Has recommendations field: {{ !!recommendations.recommendations }}</p>
+              <p v-if="recommendations && recommendations.recommendations">Content length: {{ recommendations.recommendations.length }}</p>
+              <p v-if="recommendations && recommendations.recommendations">Content preview: {{ recommendations.recommendations.substring(0, 50) }}...</p>
+            </div>
+          </div>
+          
+          <div class="mt-5 sm:mt-6 flex justify-end">
+            <button 
+              @click="showRecommendations = false"
+              class="btn-secondary"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -387,6 +582,7 @@ import { useRouter, useRoute } from 'vue-router'
 import api from '@/services/api'
 import PerformanceChart from '@/components/charts/PerformanceChart.vue'
 import Chart from 'chart.js/auto'
+import { marked } from 'marked'
 
 const loading = ref(true)
 const performancePeriod = ref('daily')
@@ -416,6 +612,16 @@ const overview = ref({
 const performanceData = ref([])
 const symbolStats = ref([])
 const tagStats = ref([])
+
+// Recommendations
+const loadingRecommendations = ref(false)
+const showRecommendations = ref(false)
+const recommendations = ref(null)
+const recommendationError = ref(null)
+
+// Sector Performance
+const sectorData = ref([])
+const loadingSectors = ref(false)
 
 // Chart refs
 const tradeDistributionChart = ref(null)
@@ -1156,7 +1362,142 @@ async function applyFilters() {
     fetchChartData(),
     fetchDrawdownData()
   ])
+  
+  // Load sector data asynchronously after page loads
+  fetchSectorData()
   loading.value = false
+}
+
+async function getRecommendations() {
+  try {
+    console.log('🚀 Starting AI recommendations request...')
+    loadingRecommendations.value = true
+    recommendationError.value = null
+    recommendations.value = null
+    
+    const params = new URLSearchParams()
+    if (filters.value.startDate) params.append('startDate', filters.value.startDate)
+    if (filters.value.endDate) params.append('endDate', filters.value.endDate)
+    
+    console.log('📡 Making API call to:', `/analytics/recommendations?${params}`)
+    
+    // Add timeout to the request
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 60000) // 60 second timeout
+    
+    try {
+      const response = await api.get(`/analytics/recommendations?${params}`, {
+        signal: controller.signal
+      })
+      clearTimeout(timeoutId)
+      
+      console.log('✅ API response received:', response)
+      console.log('📊 Response status:', response.status)
+      console.log('📦 Response data keys:', Object.keys(response.data || {}))
+      console.log('📝 Recommendations content preview:', response.data?.recommendations?.substring(0, 100) + '...')
+      
+      if (!response.data) {
+        throw new Error('No data received from API')
+      }
+      
+      if (!response.data.recommendations) {
+        throw new Error('No recommendations field in response')
+      }
+      
+      recommendations.value = response.data
+      console.log('💾 Recommendations stored in state:', !!recommendations.value)
+      console.log('🎯 Setting showRecommendations to true...')
+      
+      // Force reactivity update with nextTick
+      await nextTick()
+      showRecommendations.value = true
+      
+      console.log('👁️ showRecommendations is now:', showRecommendations.value)
+      
+      // Double-check modal state after a small delay
+      setTimeout(() => {
+        console.log('🔍 Double-checking modal state after 100ms:', showRecommendations.value)
+      }, 100)
+      
+    } catch (timeoutError) {
+      clearTimeout(timeoutId)
+      if (timeoutError.name === 'AbortError') {
+        throw new Error('Request timed out after 60 seconds')
+      }
+      throw timeoutError
+    }
+    
+  } catch (error) {
+    console.error('❌ Error fetching recommendations:', error)
+    console.error('Error response:', error.response)
+    console.error('Error status:', error.response?.status)
+    console.error('Error data:', error.response?.data)
+    
+    recommendationError.value = error.response?.data?.error || 'Failed to generate recommendations. Please try again.'
+    await nextTick()
+    showRecommendations.value = true
+  } finally {
+    loadingRecommendations.value = false
+  }
+}
+
+async function fetchSectorData() {
+  try {
+    loadingSectors.value = true
+    const params = new URLSearchParams()
+    if (filters.value.startDate) params.append('startDate', filters.value.startDate)
+    if (filters.value.endDate) params.append('endDate', filters.value.endDate)
+    
+    console.log('🏭 Fetching sector performance data...')
+    const response = await api.get(`/analytics/sectors?${params}`)
+    sectorData.value = response.data.sectors || []
+    console.log('✅ Sector data loaded:', sectorData.value.length, 'sectors')
+  } catch (error) {
+    console.error('❌ Error fetching sector data:', error)
+    sectorData.value = []
+  } finally {
+    loadingSectors.value = false
+  }
+}
+
+function formatDate(dateString) {
+  return new Date(dateString).toLocaleString()
+}
+
+function parseMarkdown(text) {
+  if (!text) return ''
+  
+  try {
+    console.log('🎨 Parsing markdown, text length:', text.length)
+    
+    // Use basic marked parsing with post-processing for styling
+    let result = marked.parse(text, {
+      breaks: true,
+      gfm: true
+    })
+    
+    // Post-process the HTML to add custom classes
+    result = result
+      .replace(/<h1>/g, '<h1 class="ai-section-header level-1"><span class="section-icon">🎯</span><span class="section-text">')
+      .replace(/<\/h1>/g, '</span></h1>')
+      .replace(/<h2>/g, '<h2 class="ai-section-header level-2"><span class="section-icon">📊</span><span class="section-text">')
+      .replace(/<\/h2>/g, '</span></h2>')
+      .replace(/<h3>/g, '<h3 class="ai-section-header level-3"><span class="section-icon">⚠️</span><span class="section-text">')
+      .replace(/<\/h3>/g, '</span></h3>')
+      .replace(/<p>/g, '<p class="ai-paragraph">')
+      .replace(/<ul>/g, '<ul class="ai-unordered-list">')
+      .replace(/<ol>/g, '<ol class="ai-ordered-list">')
+      .replace(/<li>/g, '<li class="ai-list-item">')
+      .replace(/<strong>/g, '<strong class="ai-emphasis">')
+    
+    console.log('✅ Markdown parsed and styled successfully, result length:', result.length)
+    return result
+  
+  } catch (error) {
+    console.error('❌ Error parsing markdown:', error)
+    console.error('Text that failed:', text.substring(0, 200) + '...')
+    return `<div class="text-red-500 p-4">Error parsing markdown: ${error.message}<br><br>Raw text:<br><pre class="whitespace-pre-wrap">${text}</pre></div>`
+  }
 }
 
 async function loadData() {
@@ -1358,3 +1699,161 @@ onUnmounted(() => {
   }
 })
 </script>
+
+<style scoped>
+/* AI Recommendations Styling */
+.ai-recommendations {
+  line-height: 1.8;
+  font-size: 16px;
+  color: #374151;
+  max-width: none;
+}
+
+.dark .ai-recommendations {
+  color: #d1d5db;
+}
+
+/* Section Headers */
+.ai-section-header {
+  @apply flex items-center gap-3 mb-6 mt-8 pb-3 border-b border-gray-300 dark:border-gray-600;
+  scroll-margin-top: 1rem;
+  letter-spacing: -0.025em;
+}
+
+.ai-section-header.level-1 {
+  @apply text-2xl font-bold text-gray-900 dark:text-white;
+  margin-top: 2rem;
+  margin-bottom: 1.5rem;
+}
+
+.ai-section-header.level-2 {
+  @apply text-xl font-semibold text-gray-800 dark:text-gray-100;
+  margin-top: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.ai-section-header.level-3 {
+  @apply text-lg font-medium text-gray-700 dark:text-gray-200;
+  margin-top: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.section-icon {
+  @apply text-xl flex-shrink-0;
+}
+
+.section-text {
+  @apply flex-1;
+}
+
+/* Paragraphs */
+.ai-paragraph {
+  @apply mb-6 text-gray-700 dark:text-gray-300;
+  line-height: 1.75;
+  font-size: 16px;
+  margin-top: 0;
+}
+
+.ai-paragraph + .ai-paragraph {
+  margin-top: 1.5rem;
+}
+
+/* Lists */
+.ai-unordered-list {
+  @apply mb-6 ml-0 space-y-3;
+  padding-left: 1.5rem;
+}
+
+.ai-ordered-list {
+  @apply mb-6 ml-0 space-y-3;
+  padding-left: 1.5rem;
+}
+
+.ai-list-item {
+  @apply text-gray-700 dark:text-gray-300;
+  line-height: 1.7;
+  font-size: 16px;
+  position: relative;
+  padding-left: 0.5rem;
+}
+
+.ai-unordered-list .ai-list-item::before {
+  content: '▸';
+  @apply text-primary-600 dark:text-primary-400 font-bold absolute;
+  left: -1.25rem;
+  top: 0.1rem;
+}
+
+.ai-ordered-list .ai-list-item {
+  @apply list-decimal;
+  margin-left: 0;
+}
+
+/* Emphasis */
+.ai-emphasis {
+  @apply font-semibold text-primary-800 dark:text-primary-200 bg-primary-100 dark:bg-primary-900/40 px-2 py-1 rounded;
+  font-size: 0.95em;
+  letter-spacing: -0.015em;
+}
+
+/* Override default prose styles for better spacing */
+.ai-recommendations h1:first-child,
+.ai-recommendations h2:first-child,
+.ai-recommendations h3:first-child {
+  @apply mt-0;
+}
+
+.ai-recommendations h1:last-child,
+.ai-recommendations h2:last-child,
+.ai-recommendations h3:last-child,
+.ai-recommendations p:last-child,
+.ai-recommendations ul:last-child,
+.ai-recommendations ol:last-child {
+  @apply mb-0;
+}
+
+/* Responsive adjustments */
+@media (max-width: 640px) {
+  .ai-section-header {
+    @apply text-sm gap-2;
+  }
+  
+  .ai-section-header.level-1 {
+    @apply text-lg;
+  }
+  
+  .ai-section-header.level-2 {
+    @apply text-base;
+  }
+  
+  .section-icon {
+    @apply text-lg;
+  }
+}
+
+/* Modal improvements */
+.ai-recommendations {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 #f1f5f9;
+  padding: 1.5rem;
+  background: #fafafa;
+  border-radius: 0.5rem;
+  margin: -0.5rem;
+}
+
+.dark .ai-recommendations {
+  background: #1f2937;
+}
+
+.ai-recommendations::-webkit-scrollbar {
+  width: 8px;
+}
+
+.ai-recommendations::-webkit-scrollbar-track {
+  @apply bg-gray-100 dark:bg-gray-800 rounded;
+}
+
+.ai-recommendations::-webkit-scrollbar-thumb {
+  @apply bg-gray-400 dark:bg-gray-600 rounded hover:bg-gray-500 dark:hover:bg-gray-500;
+}
+</style>

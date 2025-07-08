@@ -26,11 +26,15 @@ Password: DemoUser25
 - **CUSIP Resolution**: Automatic conversion of CUSIP codes to ticker symbols using Finnhub API and Google Gemini AI
 - **Real-time Market Data**: Live stock quotes and unrealized P&L tracking for open positions using Finnhub API
 - **Trade Chart Visualization**: Interactive candlestick charts with entry/exit markers using Alpha Vantage API
+- **AI-Powered Analytics**: Personalized trading recommendations using Google Gemini AI with sector performance analysis
+- **Sector Performance Analysis**: Industry-based performance breakdown using Finnhub company profiles
 - **Comprehensive Analytics**: Dashboard with P&L tracking, win rates, performance metrics, and hold time analysis
+- **Trading Profile Customization**: Configure your strategies, styles, and preferences for personalized AI recommendations
+- **Registration Control**: Flexible user registration modes (open, admin approval, or disabled) for self-hosting
 - **Trade Management**: Add, edit, and categorize trades with tags and strategies
-- **Advanced Charts**: Performance analysis by hold time, day of week, price ranges, and volume
+- **Advanced Charts**: Performance analysis by hold time, day of week, price ranges, volume, and industry sectors
 - **File Uploads**: Support for CSV imports with detailed validation and error reporting
-- **Responsive Design**: Modern UI built with Vue 3 and Tailwind CSS
+- **Responsive Design**: Modern UI built with Vue 3 and Tailwind CSS with enhanced readability
 - **Secure Authentication**: JWT-based user authentication and authorization with owner/admin roles
 
 ## 📋 Prerequisites
@@ -206,6 +210,11 @@ DB_PASSWORD=your_secure_password
 JWT_SECRET=your_super_secret_jwt_key_here_make_it_long_and_random
 JWT_EXPIRE=7d
 
+# Registration Control
+# Controls who can sign up for the application
+# Options: 'open' (default - anyone can sign up), 'approval' (admin must approve), 'disabled' (no signups)
+REGISTRATION_MODE=open
+
 # Email Configuration (Optional - for user registration/notifications)
 # Leave these empty for self-hosted setups without email verification
 EMAIL_HOST=smtp.gmail.com
@@ -225,7 +234,7 @@ FRONTEND_URL=http://localhost:5173
 MAX_FILE_SIZE=52428800
 
 # API Keys (Optional but recommended)
-# Finnhub API Key - For real-time stock quotes and CUSIP resolution
+# Finnhub API Key - For real-time stock quotes, CUSIP resolution, and sector analysis
 # Get your free API key at: https://finnhub.io/register
 FINNHUB_API_KEY=your_finnhub_api_key
 
@@ -233,7 +242,8 @@ FINNHUB_API_KEY=your_finnhub_api_key
 # Get your free API key at: https://www.alphavantage.co/support/#api-key
 ALPHA_VANTAGE_API_KEY=your_alpha_vantage_api_key
 
-# Google Gemini API Key - For AI-powered CUSIP resolution (backup)
+# Google Gemini API Key - For AI-powered trading recommendations and CUSIP resolution
+# Get your free API key at: https://aistudio.google.com/app/apikey
 GEMINI_API_KEY=your_gemini_api_key
 ```
 
@@ -289,7 +299,7 @@ VITE_SHOW_DONATION_BUTTON=true
 - **Free tier**: 25 API calls/day, 5 calls/minute (sufficient for chart analysis)
 - **Smart caching**: Reduces API usage with intelligent data caching
 
-### Google Gemini API (Backup for CUSIP Resolution)
+### Google Gemini API (AI Recommendations & CUSIP Resolution)
 
 1. Visit [Google AI Studio](https://aistudio.google.com/app/apikey)
 2. Sign in with your Google account
@@ -297,10 +307,12 @@ VITE_SHOW_DONATION_BUTTON=true
 4. Add the key to your `.env` file as `GEMINI_API_KEY`
 
 **Features:**
-- AI-powered CUSIP to ticker symbol resolution
-- High accuracy for modern securities
-- Free tier available with generous limits
-- Used as fallback when Finnhub cannot resolve a CUSIP
+- **AI-powered trading recommendations**: Personalized analysis based on your trading profile and performance
+- **Sector performance analysis**: Industry-specific insights and recommendations
+- **Trading pattern analysis**: AI identifies strengths, weaknesses, and improvement opportunities
+- **CUSIP resolution backup**: AI-powered symbol resolution when Finnhub cannot resolve a CUSIP
+- **Free tier available**: Generous limits for AI analysis and recommendations
+- **Personalized insights**: Compares your trading performance vs stated preferences
 
 ### CUSIP Resolution & Market Data Priority
 
@@ -578,9 +590,10 @@ sudo tail -f /var/log/postgresql/postgresql-*.log
 | `DETAILED_AUTH_ERRORS` | Show specific auth errors | `false` | No |
 | `FRONTEND_URL` | Frontend URL | `http://localhost:5173` | No |
 | `MAX_FILE_SIZE` | Max upload size (bytes) | `52428800` (50MB) | No |
-| `FINNHUB_API_KEY` | Finnhub API key for quotes/CUSIP | - | No |
+| `REGISTRATION_MODE` | Registration control | `open` | No |
+| `FINNHUB_API_KEY` | Finnhub API key for quotes/CUSIP/sectors | - | No |
 | `ALPHA_VANTAGE_API_KEY` | Alpha Vantage API key for charts | - | No |
-| `GEMINI_API_KEY` | Google Gemini API key (backup) | - | No |
+| `GEMINI_API_KEY` | Google Gemini API key for AI recommendations | - | No |
 
 **Self-Hosted Configuration Notes:**
 - Email settings marked with * are optional for self-hosted setups
@@ -608,26 +621,76 @@ For larger deployments with email verification:
 2. **Email Verification**: New users must verify their email before signing in
 3. **Enhanced Security**: Email-based password resets and notifications available
 
+### Registration Control
+
+TradeTally includes flexible registration control for different deployment scenarios:
+
+#### Registration Modes
+
+**Open Registration (Default)**
+```env
+REGISTRATION_MODE=open
+```
+- Anyone can sign up and immediately access the application
+- Best for personal use or open communities
+- No admin intervention required
+
+**Admin Approval Required**
+```env
+REGISTRATION_MODE=approval
+```
+- Users can register but need admin approval before accessing the application
+- Admins receive notifications of pending registrations
+- Best for controlled access environments
+
+**Registration Disabled**
+```env
+REGISTRATION_MODE=disabled
+```
+- No new registrations allowed
+- Signup forms and buttons are hidden from the interface
+- Best for closed systems or temporary registration freezes
+
+#### Managing User Approvals
+
+When `REGISTRATION_MODE=approval`, admins can approve pending users:
+
+```bash
+cd backend
+node scripts/approve-user.js user@example.com
+```
+
 ### First Run
 
 1. **Create Admin Account**:
    - Navigate to `http://localhost:5173`
-   - Click "Sign Up" and create your account
+   - Click "Sign Up" and create your account (if registration is enabled)
    - Verify your email if email is configured (automatic if not configured)
+   - First user automatically becomes admin
 
-2. **Import Your First Trades**:
+2. **Configure Trading Profile** (Optional but recommended):
+   - Go to "Settings" → "Trading Profile"
+   - Select your trading strategies (breakouts, momentum, scalping, etc.)
+   - Choose your trading styles (day trading, swing trading, etc.)
+   - Set your risk tolerance and experience level
+   - Configure preferred sectors and markets
+   - This enables personalized AI recommendations
+
+3. **Import Your First Trades**:
    - Go to "Import" tab
    - Select your broker format
    - Upload your CSV file
    - Review and confirm the import
 
-3. **View Analytics**:
+4. **View Analytics**:
    - Navigate to "Dashboard" for overview with real-time open positions
    - Visit "Analytics" for detailed metrics including:
      - Performance by hold time (< 1 min to 1+ months)
      - Performance by day of week
      - Performance by price ranges and volume
+     - **Sector performance analysis** (automatically populated after import)
    - Use date range filters to analyze specific periods
+   - Click "AI Recommendations" for personalized trading insights
 
 ### CUSIP Resolution
 
@@ -834,13 +897,20 @@ pm2 restart tradetally-backend
 
 ### Recent Updates
 
-**v1.1.2 - Trade Chart Visualization**
-- **Interactive Candlestick Charts**: Visual trade analysis with entry/exit markers using TradingView's lightweight-charts
-- **Alpha Vantage Integration**: Historical market data for chart visualization (25 calls/day free tier)
-- **Trade Performance Overlay**: Entry/exit price lines with P&L visualization and color coding
-- **Short Position P&L Fix**: Corrected profit/loss calculations for short positions
-- **Smart Caching**: Intelligent data caching to reduce API usage
-- **Chart Controls**: On-demand chart loading to conserve API calls
+**v2.3.0 - AI-Powered Analytics & Sector Analysis**
+- **AI Trading Recommendations**: Personalized trading insights using Google Gemini AI
+- **Sector Performance Analysis**: Industry-based performance breakdown with Finnhub company profiles
+- **Trading Profile Customization**: Configure your strategies, styles, and preferences for personalized AI
+- **Registration Control System**: Flexible user registration modes (open, approval, disabled) for self-hosting
+- **Enhanced Analytics UI**: Improved readability with better typography and spacing
+- **Sector-based Insights**: Compare your performance across different industries and sectors
+- **Progressive Loading**: Analytics page loads immediately while sector data loads in background
+
+**v2.2.0 - Enhanced User Experience**
+- **Improved Import Process**: Better error handling and validation for CSV imports
+- **Real-time Dashboard Updates**: Live market data integration with automatic refresh
+- **Performance Optimizations**: Faster page loads and reduced API usage
+- **Mobile Responsiveness**: Enhanced mobile and tablet experience
 
 **v2.1.0 - Market Data Integration**
 - **Finnhub API Integration**: Replaced OpenFIGI with Finnhub for consolidated market data
@@ -851,11 +921,24 @@ pm2 restart tradetally-backend
 - **Port Change**: Backend now runs on port 3000 (update your configs)
 - **Owner Role**: First user becomes owner with enhanced permissions
 
+**v1.1.2 - Trade Chart Visualization**
+- **Interactive Candlestick Charts**: Visual trade analysis with entry/exit markers using TradingView's lightweight-charts
+- **Alpha Vantage Integration**: Historical market data for chart visualization (25 calls/day free tier)
+- **Trade Performance Overlay**: Entry/exit price lines with P&L visualization and color coding
+- **Short Position P&L Fix**: Corrected profit/loss calculations for short positions
+- **Smart Caching**: Intelligent data caching to reduce API usage
+- **Chart Controls**: On-demand chart loading to conserve API calls
+
 **Migration Notes:**
-- Update your `.env` to include `ALPHA_VANTAGE_API_KEY` for chart visualization
-- Update your `.env` to include `FINNHUB_API_KEY`
-- Remove `OPENFIGI_API_KEY` (no longer used)
-- Update frontend proxy to point to port 3000
+- Update your `.env` to include `REGISTRATION_MODE=open` for new registration control
+- Update your `.env` to include `GEMINI_API_KEY` for AI recommendations
+- Ensure `FINNHUB_API_KEY` is set for sector analysis
+- Run database migrations for trading profile features:
+  ```bash
+  cd backend
+  psql -U your_user -d your_db -f migrations/add_admin_approved_column.sql
+  psql -U your_user -d your_db -f migrations/add_trading_profile_fields.sql
+  ```
 - Restart both frontend and backend after update
 
 ---
