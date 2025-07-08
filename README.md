@@ -897,7 +897,7 @@ pm2 restart tradetally-backend
 
 ### Recent Updates
 
-**v2.3.0 - AI-Powered Analytics & Sector Analysis**
+**v1.1.6 - AI-Powered Analytics & Sector Analysis**
 - **AI Trading Recommendations**: Personalized trading insights using Google Gemini AI
 - **Sector Performance Analysis**: Industry-based performance breakdown with Finnhub company profiles
 - **Trading Profile Customization**: Configure your strategies, styles, and preferences for personalized AI
@@ -906,13 +906,13 @@ pm2 restart tradetally-backend
 - **Sector-based Insights**: Compare your performance across different industries and sectors
 - **Progressive Loading**: Analytics page loads immediately while sector data loads in background
 
-**v2.2.0 - Enhanced User Experience**
+**v1.1.5 - Enhanced User Experience**
 - **Improved Import Process**: Better error handling and validation for CSV imports
 - **Real-time Dashboard Updates**: Live market data integration with automatic refresh
 - **Performance Optimizations**: Faster page loads and reduced API usage
 - **Mobile Responsiveness**: Enhanced mobile and tablet experience
 
-**v2.1.0 - Market Data Integration**
+**v1.1.4 - Market Data Integration**
 - **Finnhub API Integration**: Replaced OpenFIGI with Finnhub for consolidated market data
 - **Real-time Quotes**: Live stock quotes for open positions with unrealized P&L
 - **Enhanced CUSIP Resolution**: Improved symbol resolution using Finnhub's search API
@@ -921,7 +921,7 @@ pm2 restart tradetally-backend
 - **Port Change**: Backend now runs on port 3000 (update your configs)
 - **Owner Role**: First user becomes owner with enhanced permissions
 
-**v1.1.2 - Trade Chart Visualization**
+**v1.1.3 - Trade Chart Visualization**
 - **Interactive Candlestick Charts**: Visual trade analysis with entry/exit markers using TradingView's lightweight-charts
 - **Alpha Vantage Integration**: Historical market data for chart visualization (25 calls/day free tier)
 - **Trade Performance Overlay**: Entry/exit price lines with P&L visualization and color coding
