@@ -2,16 +2,16 @@ const db = require('../config/database');
 const bcrypt = require('bcryptjs');
 
 class User {
-  static async create({ email, username, password, fullName, verificationToken, verificationExpires, role = 'user', isVerified = false }) {
+  static async create({ email, username, password, fullName, verificationToken, verificationExpires, role = 'user', isVerified = false, adminApproved = true }) {
     const hashedPassword = await bcrypt.hash(password, 10);
     
     const query = `
-      INSERT INTO users (email, username, password_hash, full_name, verification_token, verification_expires, role, is_verified)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      RETURNING id, email, username, full_name, avatar_url, role, is_verified, is_active, timezone, created_at
+      INSERT INTO users (email, username, password_hash, full_name, verification_token, verification_expires, role, is_verified, admin_approved)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      RETURNING id, email, username, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone, created_at
     `;
     
-    const values = [email.toLowerCase(), username, hashedPassword, fullName, verificationToken, verificationExpires, role, isVerified];
+    const values = [email.toLowerCase(), username, hashedPassword, fullName, verificationToken, verificationExpires, role, isVerified, adminApproved];
     const result = await db.query(query, values);
     
     return result.rows[0];
@@ -19,7 +19,7 @@ class User {
 
   static async findById(id) {
     const query = `
-      SELECT id, email, username, full_name, avatar_url, role, is_verified, is_active, timezone, created_at, updated_at
+      SELECT id, email, username, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone, created_at, updated_at
       FROM users
       WHERE id = $1 AND is_active = true
     `;
@@ -30,7 +30,7 @@ class User {
 
   static async findByEmail(email) {
     const query = `
-      SELECT id, email, username, password_hash, full_name, avatar_url, role, is_verified, is_active, timezone, created_at
+      SELECT id, email, username, password_hash, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone, created_at
       FROM users
       WHERE email = $1
     `;
@@ -41,7 +41,7 @@ class User {
 
   static async findByUsername(username) {
     const query = `
-      SELECT id, email, username, full_name, avatar_url, is_verified, is_active, timezone, created_at
+      SELECT id, email, username, full_name, avatar_url, is_verified, admin_approved, is_active, timezone, created_at
       FROM users
       WHERE username = $1 AND is_active = true
     `;
@@ -76,7 +76,7 @@ class User {
       UPDATE users
       SET ${fields.join(', ')}
       WHERE id = $${paramCount}
-      RETURNING id, email, username, full_name, avatar_url, is_verified, is_active, timezone, updated_at
+      RETURNING id, email, username, full_name, avatar_url, is_verified, admin_approved, is_active, timezone, updated_at
     `;
 
     const result = await db.query(query, values);
@@ -126,7 +126,15 @@ class User {
       publicProfile: 'public_profile',
       defaultTags: 'default_tags',
       importSettings: 'import_settings',
-      theme: 'theme'
+      theme: 'theme',
+      tradingStrategies: 'trading_strategies',
+      tradingStyles: 'trading_styles',
+      riskTolerance: 'risk_tolerance',
+      primaryMarkets: 'primary_markets',
+      experienceLevel: 'experience_level',
+      averagePositionSize: 'average_position_size',
+      tradingGoals: 'trading_goals',
+      preferredSectors: 'preferred_sectors'
     };
 
     Object.entries(settings).forEach(([key, value]) => {
@@ -230,7 +238,7 @@ class User {
   // Admin user management methods
   static async getAllUsers() {
     const query = `
-      SELECT id, email, username, full_name, avatar_url, role, is_verified, is_active, timezone, created_at, updated_at
+      SELECT id, email, username, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone, created_at, updated_at
       FROM users
       ORDER BY created_at DESC
     `;
@@ -299,6 +307,30 @@ class User {
     const result = await db.query(query, [userId]);
     
     return result.rowCount > 0;
+  }
+
+  static async approveUser(userId) {
+    const query = `
+      UPDATE users
+      SET admin_approved = true, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $1
+      RETURNING id, email, username, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone, created_at, updated_at
+    `;
+    
+    const result = await db.query(query, [userId]);
+    return result.rows[0];
+  }
+
+  static async getPendingUsers() {
+    const query = `
+      SELECT id, email, username, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone, created_at, updated_at
+      FROM users
+      WHERE admin_approved = false AND is_active = true
+      ORDER BY created_at ASC
+    `;
+    
+    const result = await db.query(query);
+    return result.rows;
   }
 }
 

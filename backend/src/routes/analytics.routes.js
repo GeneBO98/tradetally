@@ -11,5 +11,7 @@ router.get('/calendar', authenticate, analyticsController.getCalendarData);
 router.get('/export', authenticate, analyticsController.exportData);
 router.get('/charts', authenticate, analyticsController.getChartData);
 router.get('/drawdown', authenticate, analyticsController.getDrawdownAnalysis);
+router.get('/recommendations', authenticate, analyticsController.getRecommendations);
+router.get('/sectors', authenticate, analyticsController.getSectorPerformance);
 
 module.exports = router;

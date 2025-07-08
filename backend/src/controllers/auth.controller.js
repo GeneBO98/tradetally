@@ -14,11 +14,27 @@ function useDetailedErrors() {
   return process.env.DETAILED_AUTH_ERRORS === 'true' || !isEmailConfigured();
 }
 
+// Get registration mode from environment
+function getRegistrationMode() {
+  const mode = process.env.REGISTRATION_MODE || 'open';
+  const validModes = ['disabled', 'approval', 'open'];
+  return validModes.includes(mode) ? mode : 'open';
+}
+
 const authController = {
   async register(req, res, next) {
     try {
       console.log('Registration request body:', req.body);
       const { email, username, password, fullName } = req.body;
+
+      // Check registration mode
+      const registrationMode = getRegistrationMode();
+      if (registrationMode === 'disabled') {
+        return res.status(403).json({ 
+          error: 'User registration is currently disabled. Please contact an administrator.',
+          registrationMode: 'disabled'
+        });
+      }
 
       // Validate required fields
       if (!email || !username || !password) {
@@ -47,6 +63,12 @@ const authController = {
       let verificationToken = null;
       let verificationExpires = null;
       let isVerified = !emailConfigured; // Auto-verify if email not configured
+      let adminApproved = true; // Default to approved
+
+      // Set admin approval based on registration mode
+      if (registrationMode === 'approval' && !isFirstUser) {
+        adminApproved = false; // Require admin approval for non-first users
+      }
 
       if (emailConfigured) {
         // Generate verification token only if email is configured
@@ -62,7 +84,8 @@ const authController = {
         verificationToken,
         verificationExpires,
         role: isFirstUser ? 'admin' : 'user',
-        isVerified
+        isVerified,
+        adminApproved
       });
       await User.createSettings(user.id);
 
@@ -88,6 +111,10 @@ const authController = {
         message = 'Registration successful. As the first user, you have been granted admin privileges. Please check your email to verify your account.';
       } else if (isFirstUser && !emailConfigured) {
         message = 'Registration successful. As the first user, you have been granted admin privileges. Your account is ready to use.';
+      } else if (registrationMode === 'approval' && !adminApproved) {
+        message = emailConfigured 
+          ? 'Registration successful. Please check your email to verify your account, and wait for admin approval before you can sign in.'
+          : 'Registration successful. Please wait for admin approval before you can sign in.';
       } else if (!isFirstUser && emailConfigured) {
         message = 'Registration successful. Please check your email to verify your account.';
       } else {
@@ -97,6 +124,8 @@ const authController = {
       res.status(201).json({
         message,
         requiresVerification: emailConfigured,
+        requiresApproval: !adminApproved,
+        registrationMode,
         isFirstUser,
         emailConfigured,
         user: {
@@ -106,7 +135,8 @@ const authController = {
           fullName: user.full_name,
           avatarUrl: user.avatar_url,
           role: user.role,
-          isVerified: user.is_verified
+          isVerified: user.is_verified,
+          adminApproved: user.admin_approved
         }
       });
     } catch (error) {
@@ -145,6 +175,16 @@ const authController = {
         });
       }
 
+      // Check if user is approved by admin (if approval mode is enabled)
+      const registrationMode = getRegistrationMode();
+      if (registrationMode === 'approval' && !user.admin_approved) {
+        return res.status(403).json({ 
+          error: 'Your account is pending admin approval. Please wait for an administrator to approve your registration.',
+          requiresApproval: true,
+          email: user.email
+        });
+      }
+
       const token = generateToken(user);
 
       res.json({
@@ -156,7 +196,8 @@ const authController = {
           fullName: user.full_name,
           avatarUrl: user.avatar_url,
           role: user.role,
-          isVerified: user.is_verified
+          isVerified: user.is_verified,
+          adminApproved: user.admin_approved
         },
         token
       });
@@ -187,6 +228,7 @@ const authController = {
           avatarUrl: user.avatar_url,
           role: user.role,
           isVerified: user.is_verified,
+          adminApproved: user.admin_approved,
           timezone: user.timezone,
           createdAt: user.created_at
         },
@@ -302,6 +344,21 @@ const authController = {
       await sendVerificationEmail(email, verificationToken);
 
       res.json({ message: 'Verification email has been resent.' });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async getRegistrationConfig(req, res, next) {
+    try {
+      const registrationMode = getRegistrationMode();
+      const emailConfigured = isEmailConfigured();
+      
+      res.json({
+        registrationMode,
+        emailVerificationEnabled: emailConfigured,
+        allowRegistration: registrationMode !== 'disabled'
+      });
     } catch (error) {
       next(error);
     }
