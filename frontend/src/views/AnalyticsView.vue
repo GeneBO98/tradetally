@@ -34,7 +34,35 @@
                 class="input"
               />
             </div>
-            <div class="flex items-end">
+            <div class="flex items-end space-x-3">
+              <button 
+                @click="applyFilters"
+                :disabled="loading"
+                class="btn-secondary"
+              >
+                <span v-if="loading" class="flex items-center">
+                  <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></div>
+                  Applying...
+                </span>
+                <span v-else class="flex items-center">
+                  <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                  </svg>
+                  Apply Filters
+                </span>
+              </button>
+              <button 
+                @click="clearFilters"
+                :disabled="loading"
+                class="btn-secondary"
+              >
+                <span class="flex items-center">
+                  <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                  Clear Filters
+                </span>
+              </button>
               <button 
                 @click="getRecommendations" 
                 :disabled="loadingRecommendations"
@@ -1366,6 +1394,14 @@ async function applyFilters() {
   // Load sector data asynchronously after page loads
   fetchSectorData()
   loading.value = false
+}
+
+async function clearFilters() {
+  filters.value.startDate = ''
+  filters.value.endDate = ''
+  
+  // Apply the cleared filters
+  await applyFilters()
 }
 
 async function getRecommendations() {
