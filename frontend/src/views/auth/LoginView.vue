@@ -62,6 +62,11 @@
               Resend verification email
             </button>
           </div>
+          <div v-if="showApprovalMessage" class="mt-3">
+            <p class="text-xs text-red-700 dark:text-red-300">
+              Your account is pending approval from an administrator. You will be able to sign in once approved.
+            </p>
+          </div>
         </div>
 
         <div>
@@ -97,6 +102,7 @@ const { showError, showSuccess } = useNotification()
 
 const verificationMessage = ref('')
 const showResendVerification = ref(false)
+const showApprovalMessage = ref(false)
 const userEmail = ref('')
 
 const form = ref({
@@ -110,6 +116,9 @@ async function handleLogin() {
   } catch (error) {
     if (error.requiresVerification) {
       showResendVerification.value = true
+      userEmail.value = error.email
+    } else if (error.requiresApproval) {
+      showApprovalMessage.value = true
       userEmail.value = error.email
     }
     // Error will be displayed via authStore.error in the template
