@@ -21,7 +21,8 @@ Password: DemoUser25
 [Click here for the invitation](https://testflight.apple.com/join/11shUY3t)
 ## 🚀 Features
 
-- **Multi-Broker Support**: Import trades from Lightspeed, Charles Schwab, ThinkorSwim, Interactive Brokers, and E*TRADE
+- **Multi-Broker Support**: Import trades from Lightspeed (confirmed), Charles Schwab (confirmed), ThinkorSwim (confirmed), Interactive Brokers, and E*TRADE
+   - If you have issues with import or have a broker you want support for, please provide a sample .csv so that I can setup a parser for it. 
 - **CUSIP Resolution**: Automatic conversion of CUSIP codes to ticker symbols using Finnhub API and Google Gemini AI
 - **Real-time Market Data**: Live stock quotes and unrealized P&L tracking for open positions using Finnhub API
 - **Trade Chart Visualization**: Interactive candlestick charts with entry/exit markers using Alpha Vantage API
