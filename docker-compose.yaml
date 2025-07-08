@@ -24,7 +24,7 @@ services:
   # Application (Frontend + Backend)
   # Build locally to ensure latest features including chart fixes
   app:
-    image: potentialmidas:latest
+    image: potentialmidas/tradetally:latest
     container_name: tradetally-app
     depends_on:
       postgres:
