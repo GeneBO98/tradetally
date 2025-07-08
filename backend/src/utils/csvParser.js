@@ -34,17 +34,48 @@ const brokerParsers = {
     notes: `Trade #${row['Trade Number']} - ${row['Security Type']}`
   }),
 
-  thinkorswim: (row) => ({
-    symbol: row.Symbol,
-    tradeDate: parseDate(row['Exec Time']),
-    entryTime: parseDateTime(row['Exec Time']),
-    entryPrice: parseFloat(row.Price),
-    quantity: parseInt(row.Qty),
-    side: row.Side === 'BUY' ? 'long' : 'short',
-    commission: parseFloat(row.Commission || 0),
-    fees: parseFloat(row.Fees || 0),
-    broker: 'thinkorswim'
-  }),
+  thinkorswim: (row) => {
+    // Parse the DESCRIPTION field to extract trade details
+    const description = row.DESCRIPTION || row.Description || '';
+    const type = row.TYPE || row.Type || '';
+    
+    // Skip non-trade rows
+    if (type !== 'TRD') {
+      return null;
+    }
+    
+    // Parse trade details from description (e.g., "BOT +1,000 82655M107 @.77")
+    const tradeMatch = description.match(/(BOT|SOLD)\s+([\+\-]?[\d,]+)\s+(\S+)\s+@([\d.]+)/);
+    if (!tradeMatch) {
+      return null;
+    }
+    
+    const [_, action, quantityStr, symbol, priceStr] = tradeMatch;
+    const quantity = Math.abs(parseInt(quantityStr.replace(/,/g, '')));
+    const price = parseFloat(priceStr);
+    const side = action === 'BOT' ? 'long' : 'short';
+    
+    // Parse date and time
+    const date = row.DATE || row.Date || '';
+    const time = row.TIME || row.Time || '';
+    const dateTime = `${date} ${time}`;
+    
+    // Parse fees
+    const miscFees = parseFloat((row['Misc Fees'] || '0').replace(/[$,]/g, '')) || 0;
+    const commissionsFees = parseFloat((row['Commissions & Fees'] || '0').replace(/[$,]/g, '')) || 0;
+    
+    return {
+      symbol: symbol,
+      tradeDate: parseDate(date),
+      entryTime: parseDateTime(dateTime),
+      entryPrice: price,
+      quantity: quantity,
+      side: side,
+      commission: commissionsFees,
+      fees: miscFees,
+      broker: 'thinkorswim'
+    };
+  },
 
   ibkr: (row) => ({
     symbol: row.Symbol,
@@ -133,7 +164,84 @@ async function parseCSV(fileBuffer, broker = 'generic') {
       }
     }
     
-    const records = parse(csvString, parseOptions);
+    // Special handling for thinkorswim CSV format
+    if (broker === 'thinkorswim') {
+      // Thinkorswim CSVs have account statement header rows that need to be removed
+      const lines = csvString.split('\n');
+      
+      // Find the actual header line (contains "DATE,TIME,TYPE")
+      let headerIndex = -1;
+      for (let i = 0; i < lines.length && i < 10; i++) {
+        if (lines[i].includes('DATE,TIME,TYPE')) {
+          headerIndex = i;
+          break;
+        }
+      }
+      
+      if (headerIndex >= 0) {
+        // Keep only the header line and data rows
+        csvString = lines.slice(headerIndex).join('\n');
+        console.log(`Skipped ${headerIndex} header rows in thinkorswim CSV`);
+      }
+      
+      // Thinkorswim CSVs have quoted fields with commas inside
+      parseOptions = {
+        columns: true,
+        skip_empty_lines: true,
+        trim: true,
+        delimiter: ',',
+        relax_column_count: true, // Allow variable column counts
+        quote: '"', // Handle quoted fields
+        escape: '"', // Handle escaped quotes
+        skip_records_with_empty_values: false,
+        skip_records_with_error: true // Skip problematic records
+      };
+      console.log('Using special parsing options for thinkorswim CSV');
+      
+      // Log first few lines for debugging
+      const debugLines = csvString.split('\n').slice(0, 5);
+      console.log('First few lines after cleanup:');
+      debugLines.forEach((line, i) => console.log(`Line ${i}: ${line}`));
+    }
+    
+    let records;
+    try {
+      records = parse(csvString, parseOptions);
+    } catch (parseError) {
+      console.error('CSV parsing error:', parseError.message);
+      
+      // If thinkorswim parsing fails, try alternative approach
+      if (broker === 'thinkorswim') {
+        console.log('Trying alternative parsing approach for thinkorswim');
+        
+        // Try with different options
+        parseOptions = {
+          columns: true,
+          skip_empty_lines: true,
+          trim: true,
+          delimiter: ',',
+          relax: true, // Relax parsing rules
+          relax_column_count: true,
+          skip_records_with_error: true,
+          on_record: (record, context) => {
+            // Log problematic records
+            if (context.error) {
+              console.log(`Error on line ${context.lines}: ${context.error.message}`);
+            }
+            return record;
+          }
+        };
+        
+        try {
+          records = parse(csvString, parseOptions);
+        } catch (retryError) {
+          console.error('Alternative parsing also failed:', retryError.message);
+          throw new Error(`CSV parsing failed for thinkorswim: ${retryError.message}`);
+        }
+      } else {
+        throw parseError;
+      }
+    }
     
     console.log(`Parsing ${records.length} records with ${broker} parser`);
 
@@ -148,6 +256,13 @@ async function parseCSV(fileBuffer, broker = 'generic') {
       console.log('Starting Schwab trade parsing');
       const result = await parseSchwabTrades(records);
       console.log('Finished Schwab trade parsing');
+      return result;
+    }
+
+    if (broker === 'thinkorswim') {
+      console.log('Starting thinkorswim transaction parsing');
+      const result = await parseThinkorswimTransactions(records);
+      console.log('Finished thinkorswim transaction parsing');
       return result;
     }
 
@@ -830,6 +945,211 @@ async function parseSchwabTransactions(records) {
   
   console.log(`Created ${completedTrades.length} completed trades from transaction pairing`);
   
+  return completedTrades;
+}
+
+async function parseThinkorswimTransactions(records) {
+  console.log(`Processing ${records.length} thinkorswim transaction records`);
+  
+  const transactions = [];
+  const completedTrades = [];
+  
+  // Debug: Log first few records to see structure
+  console.log('Sample records:');
+  records.slice(0, 5).forEach((record, i) => {
+    console.log(`Record ${i}:`, JSON.stringify(record));
+  });
+  
+  // Count record types
+  const typeCounts = {};
+  records.forEach(record => {
+    const type = record.TYPE || record.Type || 'UNKNOWN';
+    typeCounts[type] = (typeCounts[type] || 0) + 1;
+  });
+  console.log('Record type counts:', typeCounts);
+  
+  // First, parse all trade transactions
+  for (const record of records) {
+    try {
+      const type = record.TYPE || record.Type || '';
+      
+      // Only process TRD (trade) rows
+      if (type !== 'TRD') {
+        continue;
+      }
+      
+      const description = record.DESCRIPTION || record.Description || '';
+      const date = record.DATE || record.Date || '';
+      const time = record.TIME || record.Time || '';
+      
+      // Parse trade details from description (e.g., "BOT +1,000 82655M107 @.77")
+      const tradeMatch = description.match(/(BOT|SOLD)\s+([\+\-]?[\d,]+)\s+(\S+)\s+@([\d.]+)/);
+      if (!tradeMatch) {
+        console.log(`Skipping unparseable trade description: ${description}`);
+        continue;
+      }
+      
+      const [_, action, quantityStr, symbol, priceStr] = tradeMatch;
+      const quantity = Math.abs(parseInt(quantityStr.replace(/,/g, '')));
+      const price = parseFloat(priceStr);
+      
+      // Parse fees
+      const miscFees = parseFloat((record['Misc Fees'] || '0').replace(/[$,]/g, '')) || 0;
+      const commissionsFees = parseFloat((record['Commissions & Fees'] || '0').replace(/[$,]/g, '')) || 0;
+      const totalFees = miscFees + commissionsFees;
+      
+      transactions.push({
+        symbol,
+        date: parseDate(date),
+        datetime: parseDateTime(`${date} ${time}`),
+        action: action.toLowerCase() === 'bot' ? 'buy' : 'sell',
+        quantity,
+        price,
+        fees: totalFees,
+        description,
+        raw: record
+      });
+      
+      console.log(`Parsed transaction: ${action} ${quantity} ${symbol} @ $${price}`);
+    } catch (error) {
+      console.error('Error parsing thinkorswim transaction:', error, record);
+    }
+  }
+  
+  // Sort transactions by symbol and datetime
+  transactions.sort((a, b) => {
+    if (a.symbol !== b.symbol) return a.symbol.localeCompare(b.symbol);
+    return new Date(a.datetime) - new Date(b.datetime);
+  });
+  
+  console.log(`Parsed ${transactions.length} valid trade transactions`);
+  
+  // Group transactions by symbol
+  const transactionsBySymbol = {};
+  for (const transaction of transactions) {
+    if (!transactionsBySymbol[transaction.symbol]) {
+      transactionsBySymbol[transaction.symbol] = [];
+    }
+    transactionsBySymbol[transaction.symbol].push(transaction);
+  }
+  
+  // Process transactions using round-trip trade grouping
+  for (const symbol in transactionsBySymbol) {
+    const symbolTransactions = transactionsBySymbol[symbol];
+    
+    console.log(`\n=== Processing ${symbolTransactions.length} transactions for ${symbol} ===`);
+    
+    // Track position and round-trip trades
+    let currentPosition = 0;
+    let currentTrade = null;
+    
+    for (const transaction of symbolTransactions) {
+      const qty = transaction.quantity;
+      const prevPosition = currentPosition;
+      
+      console.log(`\n${transaction.action} ${qty} @ $${transaction.price} | Position: ${currentPosition}`);
+      
+      // Start new trade if going from flat to position
+      if (currentPosition === 0) {
+        currentTrade = {
+          symbol: symbol,
+          entryTime: transaction.datetime,
+          tradeDate: transaction.date,
+          side: transaction.action === 'buy' ? 'long' : 'short',
+          executions: [],
+          totalQuantity: 0,
+          totalFees: 0,
+          entryValue: 0,
+          exitValue: 0,
+          broker: 'thinkorswim'
+        };
+        console.log(`  → Started new ${currentTrade.side} trade`);
+      }
+      
+      // Add execution to current trade
+      if (currentTrade) {
+        currentTrade.executions.push({
+          action: transaction.action,
+          quantity: qty,
+          price: transaction.price,
+          datetime: transaction.datetime,
+          fees: transaction.fees
+        });
+        currentTrade.totalFees += transaction.fees;
+      }
+      
+      // Update position and values
+      if (transaction.action === 'buy') {
+        currentPosition += qty;
+        
+        if (currentTrade && currentTrade.side === 'long') {
+          currentTrade.entryValue += qty * transaction.price;
+          currentTrade.totalQuantity += qty;
+        } else if (currentTrade && currentTrade.side === 'short') {
+          currentTrade.exitValue += qty * transaction.price;
+        }
+      } else if (transaction.action === 'sell') {
+        currentPosition -= qty;
+        
+        if (currentTrade && currentTrade.side === 'short') {
+          currentTrade.entryValue += qty * transaction.price;
+          currentTrade.totalQuantity += qty;
+        } else if (currentTrade && currentTrade.side === 'long') {
+          currentTrade.exitValue += qty * transaction.price;
+        }
+      }
+      
+      console.log(`  Position: ${prevPosition} → ${currentPosition}`);
+      
+      // Close trade if position goes to zero
+      if (currentPosition === 0 && currentTrade && currentTrade.totalQuantity > 0) {
+        // Calculate weighted average prices
+        currentTrade.entryPrice = currentTrade.entryValue / currentTrade.totalQuantity;
+        currentTrade.exitPrice = currentTrade.exitValue / currentTrade.totalQuantity;
+        
+        // Calculate P/L
+        if (currentTrade.side === 'long') {
+          currentTrade.pnl = currentTrade.exitValue - currentTrade.entryValue - currentTrade.totalFees;
+        } else {
+          currentTrade.pnl = currentTrade.entryValue - currentTrade.exitValue - currentTrade.totalFees;
+        }
+        
+        currentTrade.pnlPercent = (currentTrade.pnl / currentTrade.entryValue) * 100;
+        currentTrade.quantity = currentTrade.totalQuantity;
+        currentTrade.commission = currentTrade.totalFees;
+        currentTrade.fees = 0;
+        currentTrade.exitTime = transaction.datetime;
+        currentTrade.notes = `Round trip: ${currentTrade.executions.length} executions`;
+        currentTrade.executionData = currentTrade.executions;
+        
+        completedTrades.push(currentTrade);
+        console.log(`  ✓ Completed ${currentTrade.side} trade: ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions, P/L: $${currentTrade.pnl.toFixed(2)}`);
+        
+        currentTrade = null;
+      }
+    }
+    
+    console.log(`\n${symbol} Final Position: ${currentPosition} shares`);
+    if (currentTrade) {
+      console.log(`Active trade: ${currentTrade.side} ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions`);
+      
+      // Add open position as incomplete trade
+      currentTrade.entryPrice = currentTrade.entryValue / currentTrade.totalQuantity;
+      currentTrade.exitPrice = null;
+      currentTrade.quantity = currentTrade.totalQuantity;
+      currentTrade.commission = currentTrade.totalFees;
+      currentTrade.fees = 0;
+      currentTrade.exitTime = null;
+      currentTrade.pnl = 0;
+      currentTrade.pnlPercent = 0;
+      currentTrade.notes = `Open position: ${currentTrade.executions.length} executions`;
+      currentTrade.executionData = currentTrade.executions;
+      
+      completedTrades.push(currentTrade);
+    }
+  }
+  
+  console.log(`Created ${completedTrades.length} trades from ${transactions.length} transactions`);
   return completedTrades;
 }
 
