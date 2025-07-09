@@ -773,6 +773,130 @@ class Trade {
     return { affectedRows: result.rowCount };
   }
 
+  static async getRoundTripTradeCount(userId, filters = {}) {
+    // Build the same WHERE clause as findByUser method
+    let whereClause = 'WHERE t.user_id = $1';
+    const values = [userId];
+    let paramCount = 2;
+
+    if (filters.symbol) {
+      whereClause += ` AND t.symbol = $${paramCount}`;
+      values.push(filters.symbol.toUpperCase());
+      paramCount++;
+    }
+
+    if (filters.startDate) {
+      whereClause += ` AND t.trade_date >= $${paramCount}`;
+      values.push(filters.startDate);
+      paramCount++;
+    }
+
+    if (filters.endDate) {
+      whereClause += ` AND t.trade_date <= $${paramCount}`;
+      values.push(filters.endDate);
+      paramCount++;
+    }
+
+    if (filters.tags && filters.tags.length > 0) {
+      whereClause += ` AND t.tags && $${paramCount}`;
+      values.push(filters.tags);
+      paramCount++;
+    }
+
+    if (filters.strategy) {
+      whereClause += ` AND t.strategy = $${paramCount}`;
+      values.push(filters.strategy);
+      paramCount++;
+    }
+
+    // Add all other filters from findByUser
+    if (filters.side) {
+      whereClause += ` AND t.side = $${paramCount}`;
+      values.push(filters.side);
+      paramCount++;
+    }
+
+    if (filters.minPrice !== undefined) {
+      whereClause += ` AND t.entry_price >= $${paramCount}`;
+      values.push(filters.minPrice);
+      paramCount++;
+    }
+
+    if (filters.maxPrice !== undefined) {
+      whereClause += ` AND t.entry_price <= $${paramCount}`;
+      values.push(filters.maxPrice);
+      paramCount++;
+    }
+
+    if (filters.minQuantity !== undefined) {
+      whereClause += ` AND t.quantity >= $${paramCount}`;
+      values.push(filters.minQuantity);
+      paramCount++;
+    }
+
+    if (filters.maxQuantity !== undefined) {
+      whereClause += ` AND t.quantity <= $${paramCount}`;
+      values.push(filters.maxQuantity);
+      paramCount++;
+    }
+
+    if (filters.status === 'open') {
+      whereClause += ` AND t.exit_price IS NULL`;
+    } else if (filters.status === 'closed') {
+      whereClause += ` AND t.exit_price IS NOT NULL`;
+    }
+
+    if (filters.minPnl !== undefined) {
+      whereClause += ` AND t.pnl >= $${paramCount}`;
+      values.push(filters.minPnl);
+      paramCount++;
+    }
+
+    if (filters.maxPnl !== undefined) {
+      whereClause += ` AND t.pnl <= $${paramCount}`;
+      values.push(filters.maxPnl);
+      paramCount++;
+    }
+
+    if (filters.pnlType === 'profit') {
+      whereClause += ` AND t.pnl > 0`;
+    } else if (filters.pnlType === 'loss') {
+      whereClause += ` AND t.pnl < 0`;
+    }
+
+    if (filters.broker) {
+      whereClause += ` AND t.broker = $${paramCount}`;
+      values.push(filters.broker);
+      paramCount++;
+    }
+
+    if (filters.holdTime) {
+      whereClause += this.getHoldTimeFilter(filters.holdTime);
+    }
+
+    // Use the same round-trip counting logic as analytics
+    const query = `
+      WITH simple_trades AS (
+        -- Group by symbol and date to create round-trip trades
+        SELECT 
+          symbol,
+          trade_date,
+          SUM(COALESCE(pnl, 0)) as trade_pnl,
+          -- Only count as a completed trade if there's P&L
+          CASE WHEN SUM(pnl) IS NOT NULL THEN 1 ELSE 0 END as is_completed
+        FROM trades t
+        ${whereClause}
+        GROUP BY symbol, trade_date
+      )
+      SELECT 
+        COUNT(*) FILTER (WHERE is_completed = 1)::integer as round_trip_count
+      FROM simple_trades
+    `;
+
+    const result = await db.query(query, values);
+    return parseInt(result.rows[0].round_trip_count) || 0;
+  }
+
   static getHoldTimeFilter(holdTimeRange) {
     // Calculate hold time as the difference between entry_time and exit_time
     // For open trades (no exit_time), use current time

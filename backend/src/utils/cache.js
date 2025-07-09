@@ -26,6 +26,9 @@ class CacheManager {
       
       // Market news - medium TTL
       'market_news': 30 * 60 * 1000, // 30 minutes
+      
+      // Sector performance - medium TTL as trade data changes infrequently
+      'sector_performance': 2 * 60 * 60 * 1000, // 2 hours
     };
   }
 

@@ -40,12 +40,14 @@ const tradeController = {
       // Get trades with pagination
       const trades = await Trade.findByUser(req.user.id, filters);
       
-      // Get total count without pagination for pagination metadata
+      // Get total count using round-trip counting methodology for consistency with analytics
       const totalCountFilters = { ...filters };
       delete totalCountFilters.limit;
       delete totalCountFilters.offset;
-      const allTrades = await Trade.findByUser(req.user.id, totalCountFilters);
-      const total = allTrades.length;
+      
+      // Use the same round-trip counting logic as analytics
+      const roundTripTotal = await Trade.getRoundTripTradeCount(req.user.id, totalCountFilters);
+      const total = roundTripTotal;
       
       res.json({
         trades,

@@ -2,6 +2,7 @@ const db = require('../config/database');
 const gemini = require('../utils/gemini');
 const User = require('../models/User');
 const finnhub = require('../utils/finnhub');
+const cache = require('../utils/cache');
 
 const analyticsController = {
   async getOverview(req, res, next) {
@@ -22,23 +23,52 @@ const analyticsController = {
       }
 
       const overviewQuery = `
+        WITH simple_trades AS (
+          -- Group by symbol and date to create round-trip trades
+          SELECT 
+            symbol,
+            trade_date,
+            SUM(COALESCE(pnl, 0)) as trade_pnl,
+            SUM(commission + fees) as trade_costs,
+            COUNT(*) as execution_count,
+            -- Only count as a completed trade if there's P&L
+            CASE WHEN SUM(pnl) IS NOT NULL THEN 1 ELSE 0 END as is_completed
+          FROM trades t
+          WHERE user_id = $1 ${dateFilter}
+          GROUP BY symbol, trade_date
+        )
         SELECT 
-          COUNT(*) as total_trades,
-          COUNT(CASE WHEN pnl > 0 THEN 1 END) as winning_trades,
-          COUNT(CASE WHEN pnl < 0 THEN 1 END) as losing_trades,
-          COUNT(CASE WHEN pnl = 0 THEN 1 END) as breakeven_trades,
-          COALESCE(SUM(pnl), 0) as total_pnl,
-          COALESCE(AVG(pnl), 0) as avg_pnl,
-          COALESCE(AVG(CASE WHEN pnl > 0 THEN pnl END), 0) as avg_win,
-          COALESCE(AVG(CASE WHEN pnl < 0 THEN pnl END), 0) as avg_loss,
-          COALESCE(MAX(pnl), 0) as best_trade,
-          COALESCE(MIN(pnl), 0) as worst_trade
-        FROM trades
-        WHERE user_id = $1 ${dateFilter}
+          -- Only count completed trades for win/loss stats  
+          COUNT(*) FILTER (WHERE is_completed = 1)::integer as total_trades,
+          COUNT(*) FILTER (WHERE is_completed = 1 AND trade_pnl > 0)::integer as winning_trades,
+          COUNT(*) FILTER (WHERE is_completed = 1 AND trade_pnl < 0)::integer as losing_trades,
+          COUNT(*) FILTER (WHERE is_completed = 1 AND trade_pnl = 0)::integer as breakeven_trades,
+          COALESCE(SUM(trade_pnl), 0)::numeric as total_pnl,
+          COALESCE(AVG(trade_pnl) FILTER (WHERE is_completed = 1), 0)::numeric as avg_pnl,
+          COALESCE(AVG(trade_pnl) FILTER (WHERE is_completed = 1 AND trade_pnl > 0), 0)::numeric as avg_win,
+          COALESCE(AVG(trade_pnl) FILTER (WHERE is_completed = 1 AND trade_pnl < 0), 0)::numeric as avg_loss,
+          COALESCE(MAX(trade_pnl) FILTER (WHERE is_completed = 1), 0)::numeric as best_trade,
+          COALESCE(MIN(trade_pnl) FILTER (WHERE is_completed = 1), 0)::numeric as worst_trade,
+          COALESCE(SUM(execution_count), 0)::integer as total_executions
+        FROM simple_trades
       `;
 
       const result = await db.query(overviewQuery, params);
       const overview = result.rows[0];
+
+      // Convert numeric values to proper format
+      overview.total_trades = parseInt(overview.total_trades) || 0;
+      overview.winning_trades = parseInt(overview.winning_trades) || 0;
+      overview.losing_trades = parseInt(overview.losing_trades) || 0;
+      overview.breakeven_trades = parseInt(overview.breakeven_trades) || 0;
+      overview.total_executions = parseInt(overview.total_executions) || 0;
+      
+      overview.total_pnl = parseFloat(overview.total_pnl) || 0;
+      overview.avg_pnl = parseFloat(overview.avg_pnl) || 0;
+      overview.avg_win = parseFloat(overview.avg_win) || 0;
+      overview.avg_loss = parseFloat(overview.avg_loss) || 0;
+      overview.best_trade = parseFloat(overview.best_trade) || 0;
+      overview.worst_trade = parseFloat(overview.worst_trade) || 0;
 
       overview.win_rate = overview.total_trades > 0 
         ? (overview.winning_trades / overview.total_trades * 100).toFixed(2)
@@ -967,6 +997,16 @@ const analyticsController = {
 
       const { startDate, endDate } = req.query;
       
+      // Check for cached sector performance results first
+      const cacheKey = `${req.user.id}:${startDate || 'all'}:${endDate || 'all'}`;
+      const cachedSectorResults = await cache.get('sector_performance', cacheKey);
+      if (cachedSectorResults) {
+        console.log('✅ Using cached sector performance results');
+        return res.json(cachedSectorResults);
+      }
+      
+      console.log('🔄 No cached results found, generating sector performance...');
+      
       let dateFilter = '';
       const params = [req.user.id];
       
@@ -1090,7 +1130,7 @@ const analyticsController = {
 
       console.log(`✅ Sector analysis complete. Found ${sectors.length} sectors.`);
 
-      res.json({ 
+      const resultData = { 
         sectors,
         analysisDate: new Date().toISOString(),
         symbolsAnalyzed: symbolData.length - failedSymbols.length,
@@ -1102,7 +1142,17 @@ const analyticsController = {
           startDate: startDate || null,
           endDate: endDate || null
         }
-      });
+      };
+
+      // Cache the sector performance results for 2 hours
+      try {
+        await cache.set('sector_performance', cacheKey, resultData);
+        console.log(`💾 Cached sector performance results for user ${req.user.id}`);
+      } catch (cacheError) {
+        console.warn('⚠️ Failed to cache sector performance results:', cacheError.message);
+      }
+
+      res.json(resultData);
 
     } catch (error) {
       console.error('Error generating sector performance:', error);
