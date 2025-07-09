@@ -388,7 +388,41 @@ const tradeController = {
         
         try {
           logger.logImport(`Starting import for user ${req.user.id}, broker: ${broker}, file: ${req.file.originalname}`);
-          const parseResult = await parseCSV(req.file.buffer, broker);
+          
+          // Fetch existing open positions for context-aware parsing
+          logger.logImport(`Fetching existing open positions for context-aware import...`);
+          const openPositionsQuery = `
+            SELECT id, symbol, side, quantity, entry_price, entry_time, trade_date, commission, broker
+            FROM trades 
+            WHERE user_id = $1 
+            AND exit_price IS NULL 
+            AND exit_time IS NULL
+            ORDER BY symbol, entry_time
+          `;
+          const openPositionsResult = await db.query(openPositionsQuery, [req.user.id]);
+          
+          // Convert to context format
+          const existingPositions = {};
+          openPositionsResult.rows.forEach(row => {
+            existingPositions[row.symbol] = {
+              id: row.id,
+              symbol: row.symbol,
+              side: row.side,
+              quantity: parseInt(row.quantity),
+              entryPrice: parseFloat(row.entry_price),
+              entryTime: row.entry_time,
+              tradeDate: row.trade_date,
+              commission: parseFloat(row.commission) || 0,
+              broker: row.broker
+            };
+          });
+          
+          logger.logImport(`Found ${Object.keys(existingPositions).length} existing open positions`);
+          Object.entries(existingPositions).forEach(([symbol, pos]) => {
+            logger.logImport(`  ${symbol}: ${pos.side} ${pos.quantity} shares @ $${pos.entryPrice}`);
+          });
+          
+          const parseResult = await parseCSV(req.file.buffer, broker, { existingPositions });
           
           // Handle both old format (array) and new format (object with trades and unresolvedCusips)
           const trades = Array.isArray(parseResult) ? parseResult : parseResult.trades;
@@ -459,7 +493,23 @@ const tradeController = {
                   WHERE id = $2
                 `, [imported, importId]);
               }
-              await Trade.create(req.user.id, tradeData);
+              // Handle updates to existing positions vs creating new trades
+              if (tradeData.isUpdate && tradeData.existingTradeId) {
+                logger.logImport(`Updating existing trade ${tradeData.existingTradeId}: ${tradeData.symbol} closed with P/L: $${tradeData.pnl}`);
+                
+                // Filter out non-database fields and calculated fields before updating
+                // The Trade.update method will recalculate pnl and pnlPercent automatically
+                const {
+                  totalQuantity, executions, entryValue, exitValue, isExistingPosition,
+                  existingTradeId, isUpdate, executionData, totalFees, totalFeesForSymbol,
+                  pnl, pnlPercent,
+                  ...cleanTradeData
+                } = tradeData;
+                
+                await Trade.update(tradeData.existingTradeId, req.user.id, cleanTradeData);
+              } else {
+                await Trade.create(req.user.id, tradeData);
+              }
               imported++;
             } catch (error) {
               logger.logError(`Failed to import trade: ${JSON.stringify(tradeData)} - ${error.message}`);

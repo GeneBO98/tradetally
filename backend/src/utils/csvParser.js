@@ -125,8 +125,16 @@ const brokerParsers = {
   }
 };
 
-async function parseCSV(fileBuffer, broker = 'generic') {
+async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
   try {
+    const existingPositions = context.existingPositions || {};
+    console.log(`\n=== IMPORT CONTEXT ===`);
+    console.log(`Existing open positions: ${Object.keys(existingPositions).length}`);
+    Object.entries(existingPositions).forEach(([symbol, position]) => {
+      console.log(`  ${symbol}: ${position.side} ${position.quantity} shares @ $${position.entryPrice}`);
+    });
+    console.log(`=====================\n`);
+    
     let csvString = fileBuffer.toString('utf-8');
     
     // Handle Lightspeed CSV files that start with a title row
@@ -247,21 +255,21 @@ async function parseCSV(fileBuffer, broker = 'generic') {
 
     if (broker === 'lightspeed') {
       console.log('Starting Lightspeed transaction parsing');
-      const result = await parseLightspeedTransactions(records);
+      const result = await parseLightspeedTransactions(records, existingPositions);
       console.log('Finished Lightspeed transaction parsing');
       return result;
     }
 
     if (broker === 'schwab') {
       console.log('Starting Schwab trade parsing');
-      const result = await parseSchwabTrades(records);
+      const result = await parseSchwabTrades(records, existingPositions);
       console.log('Finished Schwab trade parsing');
       return result;
     }
 
     if (broker === 'thinkorswim') {
       console.log('Starting thinkorswim transaction parsing');
-      const result = await parseThinkorswimTransactions(records);
+      const result = await parseThinkorswimTransactions(records, existingPositions);
       console.log('Finished thinkorswim transaction parsing');
       return result;
     }
@@ -307,25 +315,25 @@ function parseSide(sideStr) {
 
 function parseLightspeedSide(sideCode, buySell, principalAmount, netAmount, quantity) {
   
-  // PRIORITY 1: Check quantity sign (negative = sell, positive = buy)
+  // PRIORITY 1: Check Side column (B/S indicator) - this is most reliable
+  if (sideCode) {
+    const cleanSide = sideCode.toString().trim().toUpperCase();
+    
+    if (cleanSide === 'S' || cleanSide === 'SELL') {
+      return 'sell';
+    }
+    if (cleanSide === 'B' || cleanSide === 'BUY') {
+      return 'buy';
+    }
+  }
+  
+  // PRIORITY 2: Check quantity sign (negative = sell, positive = buy)
   if (quantity !== undefined && quantity !== null) {
     const qty = parseInt(quantity);
     if (qty < 0) {
       return 'sell';
     }
     if (qty > 0) {
-      return 'buy';
-    }
-  }
-  
-  // PRIORITY 2: Check Side column (B/S indicator)
-  if (sideCode) {
-    const cleanSide = sideCode.toString().trim().toUpperCase();
-    
-    if (cleanSide === 'S') {
-      return 'sell';
-    }
-    if (cleanSide === 'B') {
       return 'buy';
     }
   }
@@ -370,7 +378,7 @@ function calculateLightspeedFees(row) {
 
 
 
-async function parseLightspeedTransactions(records) {
+async function parseLightspeedTransactions(records, existingPositions = {}) {
   console.log(`Processing ${records.length} Lightspeed records`);
   
   if (records.length === 0) {
@@ -511,8 +519,29 @@ async function parseLightspeedTransactions(records) {
     symbolTransactions.sort((a, b) => new Date(a.entryTime) - new Date(b.entryTime));
     
     // Track position and round-trip trades
-    let currentPosition = 0;
-    let currentTrade = null; // Active round-trip trade being built
+    // Start with existing position if we have one for this symbol
+    const existingPosition = existingPositions[symbol];
+    let currentPosition = existingPosition ? 
+      (existingPosition.side === 'long' ? existingPosition.quantity : -existingPosition.quantity) : 0;
+    let currentTrade = existingPosition ? {
+      symbol: symbol,
+      entryTime: existingPosition.entryTime,
+      tradeDate: existingPosition.tradeDate,
+      side: existingPosition.side,
+      executions: [],
+      totalQuantity: existingPosition.quantity,
+      totalFees: existingPosition.commission || 0,
+      entryValue: existingPosition.quantity * existingPosition.entryPrice,
+      exitValue: 0,
+      broker: existingPosition.broker || 'lightspeed',
+      isExistingPosition: true, // Flag to identify this came from database
+      existingTradeId: existingPosition.id // Store original trade ID for updates
+    } : null;
+    
+    if (existingPosition) {
+      console.log(`  → Starting with existing ${existingPosition.side} position: ${existingPosition.quantity} shares @ $${existingPosition.entryPrice}`);
+      console.log(`  → Initial position: ${currentPosition}`);
+    }
     
     for (const transaction of symbolTransactions) {
       const qty = transaction.quantity;
@@ -596,13 +625,20 @@ async function parseLightspeedTransactions(records) {
         currentTrade.commission = currentTrade.totalFees;
         currentTrade.fees = 0;
         currentTrade.exitTime = transaction.entryTime;
-        currentTrade.notes = `Round trip: ${currentTrade.executions.length} executions`;
         // Store executions for display in trade details
         currentTrade.executionData = currentTrade.executions;
         
-        completedTrades.push(currentTrade);
-        console.log(`  ✓ Completed ${currentTrade.side} trade: ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions, P/L: $${currentTrade.pnl.toFixed(2)}`);
+        // Mark as update if this was an existing position
+        if (currentTrade.isExistingPosition) {
+          currentTrade.isUpdate = true;
+          currentTrade.notes = `Closed existing position: ${currentTrade.executions.length} closing executions`;
+          console.log(`  ✓ CLOSED existing ${currentTrade.side} position: ${currentTrade.totalQuantity} shares, P/L: $${currentTrade.pnl.toFixed(2)}`);
+        } else {
+          currentTrade.notes = `Round trip: ${currentTrade.executions.length} executions`;
+          console.log(`  ✓ Completed ${currentTrade.side} trade: ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions, P/L: $${currentTrade.pnl.toFixed(2)}`);
+        }
         
+        completedTrades.push(currentTrade);
         currentTrade = null;
       }
     }
@@ -633,7 +669,7 @@ async function parseLightspeedTransactions(records) {
   return { trades: completedTrades };
 }
 
-async function parseSchwabTrades(records) {
+async function parseSchwabTrades(records, existingPositions = {}) {
   console.log(`Processing ${records.length} Schwab trade records`);
   
   // Check if this is the new transaction format: Date,Action,Symbol,Description,Quantity,Price,Fees & Comm,Amount
@@ -644,7 +680,7 @@ async function parseSchwabTrades(records) {
     // Check for the new transaction format
     if (columns.includes('Date') && columns.includes('Action') && columns.includes('Symbol') && columns.includes('Price')) {
       console.log('Detected new Schwab transaction format - processing buy/sell transactions');
-      return await parseSchwabTransactions(records);
+      return await parseSchwabTransactions(records, existingPositions);
     }
   }
   
@@ -724,7 +760,7 @@ async function parseSchwabTrades(records) {
   return completedTrades;
 }
 
-async function parseSchwabTransactions(records) {
+async function parseSchwabTransactions(records, existingPositions = {}) {
   console.log(`Processing ${records.length} Schwab transaction records`);
   
   const transactions = [];
@@ -948,7 +984,7 @@ async function parseSchwabTransactions(records) {
   return completedTrades;
 }
 
-async function parseThinkorswimTransactions(records) {
+async function parseThinkorswimTransactions(records, existingPositions = {}) {
   console.log(`Processing ${records.length} thinkorswim transaction records`);
   
   const transactions = [];
@@ -1040,8 +1076,29 @@ async function parseThinkorswimTransactions(records) {
     console.log(`\n=== Processing ${symbolTransactions.length} transactions for ${symbol} ===`);
     
     // Track position and round-trip trades
-    let currentPosition = 0;
-    let currentTrade = null;
+    // Start with existing position if we have one for this symbol
+    const existingPosition = existingPositions[symbol];
+    let currentPosition = existingPosition ? 
+      (existingPosition.side === 'long' ? existingPosition.quantity : -existingPosition.quantity) : 0;
+    let currentTrade = existingPosition ? {
+      symbol: symbol,
+      entryTime: existingPosition.entryTime,
+      tradeDate: existingPosition.tradeDate,
+      side: existingPosition.side,
+      executions: [],
+      totalQuantity: existingPosition.quantity,
+      totalFees: existingPosition.commission || 0,
+      entryValue: existingPosition.quantity * existingPosition.entryPrice,
+      exitValue: 0,
+      broker: existingPosition.broker || 'thinkorswim',
+      isExistingPosition: true,
+      existingTradeId: existingPosition.id
+    } : null;
+    
+    if (existingPosition) {
+      console.log(`  → Starting with existing ${existingPosition.side} position: ${existingPosition.quantity} shares @ $${existingPosition.entryPrice}`);
+      console.log(`  → Initial position: ${currentPosition}`);
+    }
     
     for (const transaction of symbolTransactions) {
       const qty = transaction.quantity;
@@ -1119,12 +1176,19 @@ async function parseThinkorswimTransactions(records) {
         currentTrade.commission = currentTrade.totalFees;
         currentTrade.fees = 0;
         currentTrade.exitTime = transaction.datetime;
-        currentTrade.notes = `Round trip: ${currentTrade.executions.length} executions`;
         currentTrade.executionData = currentTrade.executions;
         
-        completedTrades.push(currentTrade);
-        console.log(`  ✓ Completed ${currentTrade.side} trade: ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions, P/L: $${currentTrade.pnl.toFixed(2)}`);
+        // Mark as update if this was an existing position
+        if (currentTrade.isExistingPosition) {
+          currentTrade.isUpdate = true;
+          currentTrade.notes = `Closed existing position: ${currentTrade.executions.length} closing executions`;
+          console.log(`  ✓ CLOSED existing ${currentTrade.side} position: ${currentTrade.totalQuantity} shares, P/L: $${currentTrade.pnl.toFixed(2)}`);
+        } else {
+          currentTrade.notes = `Round trip: ${currentTrade.executions.length} executions`;
+          console.log(`  ✓ Completed ${currentTrade.side} trade: ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions, P/L: $${currentTrade.pnl.toFixed(2)}`);
+        }
         
+        completedTrades.push(currentTrade);
         currentTrade = null;
       }
     }

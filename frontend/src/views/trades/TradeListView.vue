@@ -1,30 +1,27 @@
 <template>
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-    <div class="sm:flex sm:items-center">
-      <div class="sm:flex-auto">
-        <div class="flex items-center space-x-3">
-          <button 
-            @click="goBack" 
-            class="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-          >
-            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
-            </svg>
-            Back
-          </button>
-          <div>
-            <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Trades</h1>
-            <p class="mt-2 text-sm text-gray-700 dark:text-gray-300">
-              A list of all your trades including their details and performance.
-            </p>
-          </div>
-        </div>
-      </div>
-      <div class="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
-        <router-link to="/trades/new" class="btn-primary">
-          Add trade
-        </router-link>
-      </div>
+    <!-- Title -->
+    <div class="mb-6">
+      <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Trades</h1>
+      <p class="mt-2 text-sm text-gray-700 dark:text-gray-300">
+        A list of all your trades including their details and performance.
+      </p>
+    </div>
+    
+    <!-- Buttons Row -->
+    <div class="flex items-center justify-between mb-6">
+      <button 
+        @click="goBack" 
+        class="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+      >
+        <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+        </svg>
+        Back
+      </button>
+      <router-link to="/trades/new" class="btn-primary">
+        Add trade
+      </router-link>
     </div>
 
     <div class="mt-8 card">
@@ -36,7 +33,28 @@
     <!-- Total P/L Summary for Filtered Results -->
     <div v-if="tradesStore.trades.length > 0" class="mt-6">
       <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-4">
-        <div class="flex items-center justify-between">
+        <!-- Mobile Layout: Stack vertically -->
+        <div class="block sm:hidden space-y-4">
+          <div>
+            <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
+              Total P&L ({{ tradesStore.pagination.total }} {{ tradesStore.pagination.total === 1 ? 'trade' : 'trades' }})
+            </h3>
+            <div class="text-lg font-semibold" :class="[
+              tradesStore.totalPnL >= 0 
+                ? 'text-green-600 dark:text-green-400' 
+                : 'text-red-600 dark:text-red-400'
+            ]">
+              {{ tradesStore.totalPnL >= 0 ? '+' : '' }}${{ formatNumber(Math.abs(tradesStore.totalPnL)) }}
+            </div>
+          </div>
+          <div>
+            <div class="text-sm text-gray-500 dark:text-gray-400 mb-1">Win Rate</div>
+            <div class="text-lg font-medium text-gray-900 dark:text-white">{{ tradesStore.winRate }}%</div>
+          </div>
+        </div>
+        
+        <!-- Desktop Layout: Side by side -->
+        <div class="hidden sm:flex items-center justify-between">
           <div class="flex items-center space-x-4">
             <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
               Total P&L ({{ tradesStore.pagination.total }} {{ tradesStore.pagination.total === 1 ? 'trade' : 'trades' }})
