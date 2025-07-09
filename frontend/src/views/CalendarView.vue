@@ -46,9 +46,9 @@
               </div>
             </div>
 
-            <!-- Calendar Grid -->
-            <div class="grid grid-cols-8 gap-1 mb-2">
-              <div v-for="day in ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']" :key="day"
+            <!-- Calendar Grid - Weekdays Only -->
+            <div class="grid grid-cols-6 gap-1 mb-2">
+              <div v-for="day in ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']" :key="day"
                 class="text-center text-xs font-medium text-gray-500 dark:text-gray-400 py-2">
                 {{ day }}
               </div>
@@ -56,18 +56,18 @@
                 Week P/L
               </div>
             </div>
-            <div v-for="(week, weekIndex) in expandedMonthWeeks" :key="weekIndex" class="grid grid-cols-8 gap-1 mb-1">
+            <div v-for="(week, weekIndex) in expandedMonthWeekdays" :key="weekIndex" class="grid grid-cols-6 gap-1 mb-1">
               <div v-for="(day, dayIndex) in week.days" :key="dayIndex"
-                class="border border-gray-200 dark:border-gray-700 rounded-lg p-3 min-h-[80px] cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                class="border border-gray-200 dark:border-gray-700 rounded-lg p-2 sm:p-3 min-h-[70px] sm:min-h-[80px] cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                 :class="getDayClass(day)"
                 @click="day.date && day.trades > 0 ? selectDay(day) : null">
                 <div v-if="day.date">
-                  <div class="text-sm font-medium text-gray-900 dark:text-white">
+                  <div class="text-xs sm:text-sm font-medium text-gray-900 dark:text-white">
                     {{ day.date.getDate() }}
                   </div>
                   <div v-if="day.pnl !== undefined && day.trades > 0" class="mt-1">
-                    <p class="text-sm font-semibold" :class="day.pnl >= 0 ? 'text-green-600' : 'text-red-600'">
-                      ${{ formatNumber(day.pnl) }}
+                    <p class="text-xs sm:text-sm font-semibold truncate" :class="day.pnl >= 0 ? 'text-green-600' : 'text-red-600'">
+                      ${{ formatNumber(day.pnl, 0) }}
                     </p>
                     <p class="text-xs text-gray-500 dark:text-gray-400">
                       {{ day.trades }} {{ day.trades === 1 ? 'trade' : 'trades' }}
@@ -76,9 +76,9 @@
                 </div>
               </div>
               <!-- Week P/L Column -->
-              <div class="flex items-center justify-center border border-gray-200 dark:border-gray-700 rounded-lg p-3 bg-gray-50 dark:bg-gray-800">
-                <p class="text-sm font-semibold" :class="week.weekPnl >= 0 ? 'text-green-600' : 'text-red-600'">
-                  ${{ formatNumber(week.weekPnl) }}
+              <div class="flex items-center justify-center border border-gray-200 dark:border-gray-700 rounded-lg p-2 sm:p-3 bg-gray-50 dark:bg-gray-800">
+                <p class="text-xs sm:text-sm font-semibold" :class="week.weekPnl >= 0 ? 'text-green-600' : 'text-red-600'">
+                  ${{ formatNumber(week.weekPnl, 0) }}
                 </p>
               </div>
             </div>
@@ -238,10 +238,54 @@ const expandedMonthWeeks = computed(() => {
   return weeks
 })
 
+const expandedMonthWeekdays = computed(() => {
+  if (!expandedMonth.value) return []
+  const days = expandedMonthDays.value
+  const weeks = []
+  let currentWeek = { days: [], weekPnl: 0 }
+  
+  days.forEach((day, index) => {
+    if (day.date) {
+      const dayOfWeek = getDay(day.date)
+      // Skip weekends (0 = Sunday, 6 = Saturday)
+      if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+        currentWeek.days.push(day)
+        if (day.pnl !== undefined) {
+          currentWeek.weekPnl += day.pnl
+        }
+      }
+      
+      // Start new week on Monday or if it's the last day
+      if (dayOfWeek === 0 || index === days.length - 1) {
+        if (currentWeek.days.length > 0) {
+          // Pad the week if it has less than 5 days
+          while (currentWeek.days.length < 5) {
+            currentWeek.days.push({ date: null })
+          }
+          weeks.push(currentWeek)
+          currentWeek = { days: [], weekPnl: 0 }
+        }
+      }
+    }
+  })
+  
+  // Add any remaining days
+  if (currentWeek.days.length > 0) {
+    while (currentWeek.days.length < 5) {
+      currentWeek.days.push({ date: null })
+    }
+    weeks.push(currentWeek)
+  }
+  
+  return weeks
+})
+
 const selectedDayTrades = computed(() => {
   if (!selectedDay.value || !selectedDay.value.date) return []
   return trades.value.filter(trade => {
-    const tradeDate = new Date(trade.trade_date)
+    // Parse date as local date to avoid timezone issues
+    const [year, month, day] = trade.trade_date.split('T')[0].split('-')
+    const tradeDate = new Date(year, month - 1, day)
     return tradeDate.toDateString() === selectedDay.value.date.toDateString()
   })
 })
@@ -250,10 +294,19 @@ const expandedMonthTrades = computed(() => {
   if (!expandedMonth.value) return []
   return trades.value
     .filter(trade => {
-      const tradeDate = new Date(trade.trade_date)
+      // Parse date as local date to avoid timezone issues
+      const [year, month, day] = trade.trade_date.split('T')[0].split('-')
+      const tradeDate = new Date(year, month - 1, day)
       return isSameMonth(tradeDate, expandedMonth.value)
     })
-    .sort((a, b) => new Date(b.trade_date) - new Date(a.trade_date))
+    .sort((a, b) => {
+      // Also fix sorting to use proper date parsing
+      const [yearA, monthA, dayA] = a.trade_date.split('T')[0].split('-')
+      const [yearB, monthB, dayB] = b.trade_date.split('T')[0].split('-')
+      const dateA = new Date(yearA, monthA - 1, dayA)
+      const dateB = new Date(yearB, monthB - 1, dayB)
+      return dateB - dateA
+    })
 })
 
 const monthlyPnl = computed(() => {
@@ -276,7 +329,9 @@ function generateMonthDays(monthStart, monthEnd) {
   const monthDays = eachDayOfInterval({ start: monthStart, end: monthEnd })
   monthDays.forEach(date => {
     const dayTrades = trades.value.filter(trade => {
-      const tradeDate = new Date(trade.trade_date)
+      // Parse date as local date to avoid timezone issues
+      const [year, month, day] = trade.trade_date.split('T')[0].split('-')
+      const tradeDate = new Date(year, month - 1, day)
       return tradeDate.toDateString() === date.toDateString()
     })
 

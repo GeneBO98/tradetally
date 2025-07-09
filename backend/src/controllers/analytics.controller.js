@@ -1009,14 +1009,41 @@ const analyticsController = {
       }
 
       // Get industry data for each symbol
-      console.log('🏭 Fetching industry data from Finnhub...');
+      console.log('🏭 Fetching industry data (using cache where possible)...');
       const sectorMap = new Map();
-      const symbolsToProcess = symbolData.slice(0, 20); // Limit to top 20 symbols to avoid rate limits
       
-      for (const symbolInfo of symbolsToProcess) {
+      // Process ALL symbols to ensure accurate totals
+      let cachedCount = 0;
+      let fetchedCount = 0;
+      let failedSymbols = [];
+      
+      for (const symbolInfo of symbolData) {
         try {
-          console.log(`🔍 Getting industry for ${symbolInfo.symbol}...`);
-          const profile = await finnhub.getCompanyProfile(symbolInfo.symbol);
+          // Check if we already have this in cache first
+          const cacheKey = `company_profile:${symbolInfo.symbol.toUpperCase()}`;
+          const cache = require('../utils/cache');
+          const cached = await cache.get('company_profile', symbolInfo.symbol.toUpperCase());
+          
+          let profile;
+          if (cached) {
+            profile = cached;
+            cachedCount++;
+            console.log(`✅ Using cached industry data for ${symbolInfo.symbol}`);
+          } else {
+            // Only fetch if not in cache and we haven't hit our limit
+            if (fetchedCount < 20) { // Limit API calls to 20 per request
+              console.log(`🔍 Fetching industry for ${symbolInfo.symbol} from API...`);
+              profile = await finnhub.getCompanyProfile(symbolInfo.symbol);
+              fetchedCount++;
+              
+              // Add delay only for API calls, not cached data
+              await new Promise(resolve => setTimeout(resolve, 2100));
+            } else {
+              // Skip remaining symbols that aren't cached
+              failedSymbols.push(symbolInfo.symbol);
+              continue;
+            }
+          }
           
           if (profile && profile.finnhubIndustry) {
             const industry = profile.finnhubIndustry;
@@ -1045,13 +1072,13 @@ const analyticsController = {
             console.warn(`⚠️ No industry data found for ${symbolInfo.symbol}`);
           }
           
-          // Add delay to respect rate limits
-          await new Promise(resolve => setTimeout(resolve, 2100)); // ~2 second delay
-          
         } catch (error) {
           console.warn(`❌ Failed to get industry for ${symbolInfo.symbol}:`, error.message);
+          failedSymbols.push(symbolInfo.symbol);
         }
       }
+      
+      console.log(`📊 Sector analysis stats: ${cachedCount} cached, ${fetchedCount} fetched, ${failedSymbols.length} skipped`);
 
       // Convert map to array and calculate additional metrics
       const sectors = Array.from(sectorMap.values()).map(sector => ({
@@ -1066,8 +1093,11 @@ const analyticsController = {
       res.json({ 
         sectors,
         analysisDate: new Date().toISOString(),
-        symbolsAnalyzed: symbolsToProcess.length,
+        symbolsAnalyzed: symbolData.length - failedSymbols.length,
         totalSymbols: symbolData.length,
+        cachedSymbols: cachedCount,
+        fetchedSymbols: fetchedCount,
+        skippedSymbols: failedSymbols.length,
         dateRange: {
           startDate: startDate || null,
           endDate: endDate || null
