@@ -3,11 +3,85 @@ const gemini = require('../utils/gemini');
 const User = require('../models/User');
 const finnhub = require('../utils/finnhub');
 const cache = require('../utils/cache');
+const MAEEstimator = require('../utils/maeEstimator');
+
+// Async MAE/MFE calculation function
+async function calculateMAEMFEAsync(userId, dateFilter, params) {
+  try {
+    // First try to get actual MAE/MFE if available
+    const actualMaeQuery = `
+      SELECT 
+        COALESCE(AVG(mae), 0) as avg_mae,
+        COALESCE(AVG(mfe), 0) as avg_mfe,
+        COUNT(mae) as mae_count,
+        COUNT(mfe) as mfe_count
+      FROM trades
+      WHERE user_id = $1 ${dateFilter}
+        AND mae IS NOT NULL 
+        AND mfe IS NOT NULL
+    `;
+    
+    const actualMaeResult = await db.query(actualMaeQuery, params);
+    const actualMaeData = actualMaeResult.rows[0];
+    
+    if (actualMaeData && actualMaeData.mae_count > 0) {
+      // Use actual data if available
+      return {
+        avgMAE: parseFloat(actualMaeData.avg_mae).toFixed(2),
+        avgMFE: parseFloat(actualMaeData.avg_mfe).toFixed(2),
+        count: actualMaeData.mae_count
+      };
+    } else {
+      // Estimate MAE/MFE from available trade data
+      const estimateQuery = `
+        SELECT
+          id,
+          symbol,
+          entry_price,
+          exit_price,
+          CAST(quantity AS DECIMAL) as quantity,
+          side,
+          pnl,
+          commission,
+          fees,
+          trade_date,
+          entry_time,
+          exit_time
+        FROM trades
+        WHERE user_id = $1 ${dateFilter}
+          AND entry_price IS NOT NULL
+          AND exit_price IS NOT NULL
+          AND pnl IS NOT NULL
+          AND quantity IS NOT NULL
+          AND entry_time IS NOT NULL
+          AND exit_time IS NOT NULL
+      `;
+      
+      const tradesResult = await db.query(estimateQuery, params);
+      const trades = tradesResult.rows.map(trade => ({
+        ...trade,
+        quantity: parseFloat(trade.quantity)
+      }));
+      
+      if (trades.length > 0) {
+        const estimates = await MAEEstimator.estimateForTrades(trades);
+        return estimates;
+      } else {
+        return { avgMAE: 'N/A', avgMFE: 'N/A', count: 0 };
+      }
+    }
+  } catch (error) {
+    console.error('MAE/MFE calculation error:', error);
+    return { avgMAE: 'N/A', avgMFE: 'N/A', count: 0 };
+  }
+}
 
 const analyticsController = {
   async getOverview(req, res, next) {
     try {
       const { startDate, endDate } = req.query;
+      
+      console.log('Date filters received:', { startDate, endDate });
       
       let dateFilter = '';
       const params = [req.user.id];
@@ -21,40 +95,104 @@ const analyticsController = {
         dateFilter += ` AND trade_date <= $${params.length + 1}`;
         params.push(endDate);
       }
+      
+      console.log('Final date filter:', dateFilter);
+      console.log('Query params:', params);
+
+      // Test simple query first to debug
+      const testQuery = `SELECT COUNT(*) as count FROM trades WHERE user_id = $1 ${dateFilter}`;
+      console.log('Test query:', testQuery);
+      const testResult = await db.query(testQuery, params);
+      console.log('Test result:', testResult.rows[0]);
 
       const overviewQuery = `
-        WITH simple_trades AS (
-          -- Group by symbol and date to create round-trip trades
-          SELECT 
-            symbol,
-            trade_date,
-            SUM(COALESCE(pnl, 0)) as trade_pnl,
-            SUM(commission + fees) as trade_costs,
-            COUNT(*) as execution_count,
-            -- Only count as a completed trade if there's P&L
-            CASE WHEN SUM(pnl) IS NOT NULL THEN 1 ELSE 0 END as is_completed
-          FROM trades t
-          WHERE user_id = $1 ${dateFilter}
-          GROUP BY symbol, trade_date
+        WITH trades_with_starts AS (
+            SELECT
+                *,
+                CASE
+                    WHEN LAG(position, 1, 0) OVER (PARTITION BY symbol ORDER BY trade_date, entry_time) = 0 THEN 1
+                    ELSE 0
+                END as is_trade_start
+            FROM (
+                SELECT
+                    *,
+                    SUM(CASE WHEN side = 'long' THEN quantity ELSE -quantity END) OVER (PARTITION BY symbol ORDER BY trade_date, entry_time) as position
+                FROM trades
+                WHERE user_id = $1 ${dateFilter}
+            ) as positions
+        ),
+        trades_with_groups AS (
+            SELECT
+                *,
+                SUM(is_trade_start) OVER (PARTITION BY symbol ORDER BY trade_date, entry_time) as trade_group
+            FROM trades_with_starts
+        ),
+        completed_trades AS (
+            SELECT
+                symbol,
+                trade_group,
+                SUM(pnl) as pnl,
+                SUM(commission) as commission,
+                SUM(fees) as fees,
+                MIN(trade_date) as trade_date,
+                MIN(entry_time) as entry_time
+            FROM trades_with_groups
+            GROUP BY symbol, trade_group
         )
         SELECT 
-          -- Only count completed trades for win/loss stats  
-          COUNT(*) FILTER (WHERE is_completed = 1)::integer as total_trades,
-          COUNT(*) FILTER (WHERE is_completed = 1 AND trade_pnl > 0)::integer as winning_trades,
-          COUNT(*) FILTER (WHERE is_completed = 1 AND trade_pnl < 0)::integer as losing_trades,
-          COUNT(*) FILTER (WHERE is_completed = 1 AND trade_pnl = 0)::integer as breakeven_trades,
-          COALESCE(SUM(trade_pnl), 0)::numeric as total_pnl,
-          COALESCE(AVG(trade_pnl) FILTER (WHERE is_completed = 1), 0)::numeric as avg_pnl,
-          COALESCE(AVG(trade_pnl) FILTER (WHERE is_completed = 1 AND trade_pnl > 0), 0)::numeric as avg_win,
-          COALESCE(AVG(trade_pnl) FILTER (WHERE is_completed = 1 AND trade_pnl < 0), 0)::numeric as avg_loss,
-          COALESCE(MAX(trade_pnl) FILTER (WHERE is_completed = 1), 0)::numeric as best_trade,
-          COALESCE(MIN(trade_pnl) FILTER (WHERE is_completed = 1), 0)::numeric as worst_trade,
-          COALESCE(SUM(execution_count), 0)::integer as total_executions
-        FROM simple_trades
+          (SELECT COUNT(*) FROM completed_trades)::integer as total_trades,
+          (SELECT COUNT(*) FROM completed_trades WHERE pnl > 0)::integer as winning_trades,
+          (SELECT COUNT(*) FROM completed_trades WHERE pnl < 0)::integer as losing_trades,
+          (SELECT COUNT(*) FROM completed_trades WHERE pnl = 0)::integer as breakeven_trades,
+          COALESCE(SUM(pnl), 0)::numeric as total_pnl,
+          COALESCE(AVG(pnl), 0)::numeric as avg_pnl,
+          COALESCE(AVG(pnl) FILTER (WHERE pnl > 0), 0)::numeric as avg_win,
+          COALESCE(AVG(pnl) FILTER (WHERE pnl < 0), 0)::numeric as avg_loss,
+          COALESCE(MAX(pnl), 0)::numeric as best_trade,
+          COALESCE(MIN(pnl), 0)::numeric as worst_trade,
+          (SELECT COUNT(*) FROM trades WHERE user_id = $1 ${dateFilter})::integer as total_executions,
+          COALESCE(SUM(pnl) FILTER (WHERE pnl > 0), 0) as total_gross_wins,
+          COALESCE(ABS(SUM(pnl) FILTER (WHERE pnl < 0)), 0) as total_gross_losses,
+          COALESCE(SUM(commission), 0) as total_commissions,
+          COALESCE(SUM(fees), 0) as total_fees,
+          COALESCE(STDDEV(pnl), 0) as pnl_stddev,
+          (SELECT array_agg(pnl ORDER BY trade_date, entry_time) FROM completed_trades) as pnl_array
+        FROM completed_trades
       `;
 
       const result = await db.query(overviewQuery, params);
       const overview = result.rows[0];
+
+      // --- BEGIN DEBUG LOGGING ---
+      console.log('--- Analytics Overview Debug ---');
+      console.log('Query Parameters:', { startDate, endDate, userId: req.user.id });
+      console.log('Raw Query Result:', result.rows);
+      if (overview) {
+        console.log('Initial Overview Object:', JSON.parse(JSON.stringify(overview)));
+        console.log('Total trades found:', overview.total_trades);
+      } else {
+        console.log('No overview data returned from query.');
+        // Send a valid empty response if overview is missing
+        return res.json({ 
+          overview: { 
+            total_pnl: 0, win_rate: 0, total_trades: 0, winning_trades: 0, losing_trades: 0, 
+            breakeven_trades: 0, avg_pnl: 0, avg_win: 0, avg_loss: 0, best_trade: 0, 
+            worst_trade: 0, profit_factor: 0, sqn: '0.00', probability_random: 'N/A', 
+            kelly_percentage: '0.00', k_ratio: '0.00', total_commissions: 0, total_fees: 0, 
+            avg_mae: 'N/A', avg_mfe: 'N/A' 
+          }
+        });
+      }
+      // --- END DEBUG LOGGING ---
+
+      // Debug logging
+      console.log('Overview query result:', {
+        total_trades: overview.total_trades,
+        has_pnl_array: !!overview.pnl_array,
+        pnl_array_length: overview.pnl_array ? overview.pnl_array.length : 0,
+        total_gross_wins: overview.total_gross_wins,
+        total_gross_losses: overview.total_gross_losses
+      });
 
       // Convert numeric values to proper format
       overview.total_trades = parseInt(overview.total_trades) || 0;
@@ -74,13 +212,276 @@ const analyticsController = {
         ? (overview.winning_trades / overview.total_trades * 100).toFixed(2)
         : 0;
 
-      overview.profit_factor = overview.avg_loss !== 0
-        ? Math.abs(overview.avg_win / overview.avg_loss).toFixed(2)
-        : 0;
+      // Calculate advanced trading metrics
+      
+      // 1. Profit Factor (ratio) - Total gross wins divided by total gross losses
+      overview.profit_factor = overview.total_gross_losses > 0
+        ? (overview.total_gross_wins / overview.total_gross_losses).toFixed(2)
+        : overview.total_gross_wins > 0 ? 'Infinite' : '0.00';
 
+      // 2. System Quality Number (ratio) - Measures trading system quality
+      // SQN = (Average Trade / Standard Deviation) * sqrt(Number of Trades)
+      const stdDev = parseFloat(overview.pnl_stddev) || 0;
+      const avgTrade = parseFloat(overview.avg_pnl) || 0;
+      const sqrtTrades = Math.sqrt(overview.total_trades);
+      
+      if (stdDev > 0 && overview.total_trades > 0) {
+        overview.sqn = ((avgTrade / stdDev) * sqrtTrades).toFixed(2);
+      } else {
+        overview.sqn = '0.00';
+      }
+
+      // 3. Kelly Percentage (% of capital) - Optimal position size for maximum growth
+      // Kelly % = (Win Rate × Avg Win/Avg Loss - Loss Rate) / (Avg Win/Avg Loss)
+      const winRate = overview.winning_trades / overview.total_trades;
+      const lossRate = overview.losing_trades / overview.total_trades;
+      const avgWin = Math.abs(parseFloat(overview.avg_win)) || 0;
+      const avgLoss = Math.abs(parseFloat(overview.avg_loss)) || 0;
+      
+      if (avgLoss > 0 && overview.total_trades > 0) {
+        const winLossRatio = avgWin / avgLoss;
+        const kellyDecimal = (winRate * winLossRatio - lossRate) / winLossRatio;
+        overview.kelly_percentage = (kellyDecimal * 100).toFixed(2);
+        
+        // Debug info
+        console.log('Kelly % calculation:', {
+          winRate: winRate.toFixed(4),
+          lossRate: lossRate.toFixed(4),
+          avgWin: avgWin.toFixed(2),
+          avgLoss: avgLoss.toFixed(2),
+          winLossRatio: winLossRatio.toFixed(4),
+          kellyDecimal: kellyDecimal.toFixed(4),
+          kellyPercentage: overview.kelly_percentage
+        });
+      } else {
+        overview.kelly_percentage = '0.00';
+      }
+
+      // 4. K-Ratio (ratio) - Measures consistency of returns over time
+      // K-Ratio = (Slope of cumulative returns vs time) / (Standard Error of slope)
+      // Should use round-trip trades, not individual executions
+      
+      try {
+        console.log('Starting K-Ratio calculation...');
+        // Get round-trip trade P&L for K-Ratio calculation
+        const roundTripQuery = `
+          WITH trades_with_starts AS (
+              SELECT
+                  *,
+                  CASE
+                      WHEN LAG(position, 1, 0) OVER (PARTITION BY symbol ORDER BY trade_date, entry_time) = 0 THEN 1
+                      ELSE 0
+                  END as is_trade_start
+              FROM (
+                  SELECT
+                      *,
+                      SUM(CASE WHEN side = 'long' THEN quantity ELSE -quantity END) OVER (PARTITION BY symbol ORDER BY trade_date, entry_time) as position
+                  FROM trades
+                  WHERE user_id = $1 ${dateFilter} AND pnl IS NOT NULL
+              ) as positions
+          ),
+          trades_with_groups AS (
+              SELECT
+                  *,
+                  SUM(is_trade_start) OVER (PARTITION BY symbol ORDER BY trade_date, entry_time) as trade_group
+              FROM trades_with_starts
+          )
+          SELECT
+              SUM(pnl) as trade_pnl,
+              MIN(trade_date) as trade_date,
+              MIN(entry_time) as entry_time
+          FROM trades_with_groups
+          GROUP BY symbol, trade_group
+          ORDER BY MIN(trade_date), MIN(entry_time)
+        `;
+        
+        console.log('Executing K-Ratio query...');
+        const roundTripResult = await db.query(roundTripQuery, params);
+        const roundTripTrades = roundTripResult.rows;
+        console.log('K-Ratio query completed');
+        
+        console.log('K-Ratio round trip trades:', roundTripTrades.length);
+        console.log('Sample round trip data:', roundTripTrades.slice(0, 3));
+        
+        if (roundTripTrades && roundTripTrades.length > 2) {
+          // Use actual P&L values but normalize by total performance
+          const pnlValues = roundTripTrades.map(t => parseFloat(t.trade_pnl));
+          
+          // Calculate total and average performance
+          const totalPnL = pnlValues.reduce((a, b) => a + b, 0);
+          const avgPnL = totalPnL / pnlValues.length;
+          
+          // If overall performance is negative, cap K-Ratio at 0 or make it negative
+          if (totalPnL < 0) {
+            console.log('Overall performance is negative, adjusting K-Ratio accordingly');
+            console.log('Total P&L:', totalPnL.toFixed(2), 'Avg P&L:', avgPnL.toFixed(2));
+            
+            // For losing systems, calculate K-Ratio based on consistency of losses
+            const volatility = Math.sqrt(pnlValues.reduce((a, b) => a + Math.pow(b - avgPnL, 2), 0) / pnlValues.length);
+            const consistencyRatio = Math.abs(avgPnL) / volatility;
+            
+            // Negative K-Ratio for losing systems, scaled by consistency
+            overview.k_ratio = (-consistencyRatio).toFixed(2);
+            
+            console.log('Losing system K-Ratio:', overview.k_ratio);
+          } else {
+          
+          // Original calculation for winning systems
+          const cumulativeReturns = pnlValues.reduce((acc, val) => [...acc, (acc.length > 0 ? acc[acc.length - 1] : 0) + val], []);
+          
+          console.log('K-Ratio P&L values:', pnlValues.slice(0, 5));
+          console.log('K-Ratio cumulative:', cumulativeReturns.slice(0, 5));
+          
+          const n = cumulativeReturns.length;
+          
+          // Simple linear regression: y = a + bx
+          let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+          for (let i = 0; i < n; i++) {
+            const x = i + 1;
+            const y = cumulativeReturns[i];
+            sumX += x;
+            sumY += y;
+            sumXY += x * y;
+            sumX2 += x * x;
+          }
+          
+          const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+          const intercept = (sumY - slope * sumX) / n;
+          
+          let sumSquaredResiduals = 0;
+          for (let i = 0; i < n; i++) {
+            const yPredicted = intercept + slope * (i + 1);
+            sumSquaredResiduals += Math.pow(cumulativeReturns[i] - yPredicted, 2);
+          }
+          
+          const stdErrOfSlope = Math.sqrt((sumSquaredResiduals / (n - 2)) / (sumX2 - Math.pow(sumX, 2) / n));
+          
+          // Scale K-Ratio to be dimensionless and in expected range
+          const rawKRatio = stdErrOfSlope > 0 ? slope / stdErrOfSlope : 0;
+          
+          // Calculate average P&L to normalize the K-Ratio
+          const avgAbsPnL = pnlValues.reduce((a, b) => a + Math.abs(b), 0) / pnlValues.length;
+          const scaledKRatio = rawKRatio / (avgAbsPnL / 100); // Scale to reasonable range
+          
+          console.log('K-Ratio final calculation:');
+          console.log('  slope:', slope.toFixed(6));
+          console.log('  stdErrOfSlope:', stdErrOfSlope.toFixed(6));
+          console.log('  avgAbsPnL:', avgAbsPnL.toFixed(2));
+          console.log('  rawKRatio:', rawKRatio.toFixed(6));
+          console.log('  scaledKRatio:', scaledKRatio.toFixed(6));
+          
+          if (stdErrOfSlope > 0) {
+            overview.k_ratio = scaledKRatio.toFixed(2);
+          } else {
+            overview.k_ratio = '0.00';
+          }
+          }
+        } else {
+          overview.k_ratio = '0.00';
+        }
+      } catch (error) {
+        console.error('K-Ratio calculation error:', error);
+        overview.k_ratio = '0.00';
+      }
+
+      // 5. Probability of Random Chance (probability) - Statistical significance of results
+      // Uses chi-square test based on win rate deviation from 50%
+      if (overview.total_trades > 0) {
+        const expectedWins = overview.total_trades * 0.5;
+        const chiSquare = Math.pow(overview.winning_trades - expectedWins, 2) / expectedWins +
+                         Math.pow(overview.losing_trades - expectedWins, 2) / expectedWins;
+        
+        // Convert chi-square to probability (simplified)
+        // For df=1, critical value at 95% confidence is 3.841
+        if (chiSquare > 3.841) {
+          overview.probability_random = '< 5%';
+        } else if (chiSquare > 2.706) {
+          overview.probability_random = '< 10%';
+        } else if (chiSquare > 1.642) {
+          overview.probability_random = '< 20%';
+        } else {
+          overview.probability_random = '> 20%';
+        }
+      } else {
+        overview.probability_random = 'N/A';
+      }
+
+      // 6. Total Commissions and Fees (USD) - Total trading costs
+      overview.total_commissions = parseFloat(overview.total_commissions) || 0;
+      overview.total_fees = parseFloat(overview.total_fees) || 0;
+
+      // 7. Average Position MAE and MFE - Calculate quickly with simple estimation
+      try {
+        console.log('Starting MAE/MFE calculation...');
+        const estimates = await Promise.race([
+          calculateMAEMFEAsync(req.user.id, dateFilter, params),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('MAE/MFE calculation timeout')), 5000)
+          )
+        ]);
+        console.log('MAE/MFE calculation completed');
+        overview.avg_mae = estimates.avgMAE;
+        overview.avg_mfe = estimates.avgMFE;
+      } catch (error) {
+        console.error('MAE/MFE calculation error:', error);
+        overview.avg_mae = 'N/A';
+        overview.avg_mfe = 'N/A';
+      }
+
+      // Clean up temporary fields
+      delete overview.pnl_array;
+      delete overview.pnl_stddev;
+      delete overview.total_gross_wins;
+      delete overview.total_gross_losses;
+
+      // Debug logging before sending response
+      console.log('Final overview object keys:', Object.keys(overview));
+      console.log('Advanced metrics values:', {
+        sqn: overview.sqn,
+        k_ratio: overview.k_ratio,
+        kelly_percentage: overview.kelly_percentage,
+        probability_random: overview.probability_random,
+        avg_mae: overview.avg_mae,
+        avg_mfe: overview.avg_mfe
+      });
+
+      console.log('Analytics overview calculation completed, sending response');
       res.json({ overview });
     } catch (error) {
+      console.error('Analytics overview error:', error);
       next(error);
+    }
+  },
+
+  async getMAEMFE(req, res, next) {
+    try {
+      const { startDate, endDate } = req.query;
+      
+      let dateFilter = '';
+      const params = [req.user.id];
+      
+      if (startDate) {
+        dateFilter += ' AND trade_date >= $2';
+        params.push(startDate);
+      }
+      
+      if (endDate) {
+        dateFilter += ` AND trade_date <= $${params.length + 1}`;
+        params.push(endDate);
+      }
+
+      const estimates = await calculateMAEMFEAsync(req.user.id, dateFilter, params);
+      
+      res.json({
+        success: true,
+        data: estimates
+      });
+    } catch (error) {
+      console.error('Error getting MAE/MFE:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to calculate MAE/MFE'
+      });
     }
   },
 

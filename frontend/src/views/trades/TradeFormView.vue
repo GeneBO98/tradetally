@@ -123,6 +123,36 @@
           </div>
 
           <div>
+            <label for="mae" class="label">
+              MAE (Max Adverse Excursion)
+              <span class="text-xs text-gray-500">Maximum loss during trade</span>
+            </label>
+            <input
+              id="mae"
+              v-model="form.mae"
+              type="number"
+              step="0.01"
+              class="input"
+              placeholder="0.00"
+            />
+          </div>
+
+          <div>
+            <label for="mfe" class="label">
+              MFE (Max Favorable Excursion)
+              <span class="text-xs text-gray-500">Maximum profit during trade</span>
+            </label>
+            <input
+              id="mfe"
+              v-model="form.mfe"
+              type="number"
+              step="0.01"
+              class="input"
+              placeholder="0.00"
+            />
+          </div>
+
+          <div>
             <label for="broker" class="label">Broker</label>
             <input
               id="broker"
@@ -245,6 +275,8 @@ const form = ref({
   side: '',
   commission: 0,
   fees: 0,
+  mae: null,
+  mfe: null,
   broker: '',
   strategy: '',
   setup: '',
@@ -282,6 +314,8 @@ async function loadTrade() {
       side: trade.side,
       commission: trade.commission || 0,
       fees: trade.fees || 0,
+      mae: trade.mae || null,
+      mfe: trade.mfe || null,
       broker: trade.broker || '',
       strategy: trade.strategy || '',
       setup: trade.setup || '',
@@ -317,6 +351,8 @@ async function handleSubmit() {
       quantity: parseInt(form.value.quantity),
       commission: parseFloat(form.value.commission) || 0,
       fees: parseFloat(form.value.fees) || 0,
+      mae: form.value.mae ? parseFloat(form.value.mae) : null,
+      mfe: form.value.mfe ? parseFloat(form.value.mfe) : null,
       tags: tagsInput.value ? tagsInput.value.split(',').map(tag => tag.trim()).filter(Boolean) : []
     }
 

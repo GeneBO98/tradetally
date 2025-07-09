@@ -338,6 +338,41 @@ class FinnhubClient {
     return results;
   }
 
+  async getCandles(symbol, resolution, from, to) {
+    const symbolUpper = symbol.toUpperCase();
+    
+    // Create cache key with all parameters
+    const cacheKey = `${symbolUpper}_${resolution}_${from}_${to}`;
+    
+    // Check cache first (1 hour TTL for candle data)
+    const cached = await cache.get('candles', cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    try {
+      const candles = await this.makeRequest('/stock/candle', {
+        symbol: symbolUpper,
+        resolution,
+        from,
+        to
+      });
+      
+      // Validate candle data
+      if (!candles || candles.s !== 'ok' || !candles.c || candles.c.length === 0) {
+        throw new Error(`No candle data available for ${symbol} from ${from} to ${to}`);
+      }
+
+      // Cache the result
+      await cache.set('candles', cacheKey, candles);
+
+      return candles;
+    } catch (error) {
+      console.warn(`Failed to get candles for ${symbol}: ${error.message}`);
+      throw error;
+    }
+  }
+
   // Get cache stats
   async getCacheStats() {
     const now = Date.now();
