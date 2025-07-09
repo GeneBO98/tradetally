@@ -172,8 +172,108 @@
               Profit Factor
             </dt>
             <dd class="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">
-              {{ overview.profit_factor }}
+              {{ overview.profit_factor ?? '0.00' }}
             </dd>
+          </div>
+        </div>
+      </div>
+
+      <!-- Advanced Trading Metrics -->
+      <div class="card mb-8">
+        <div class="card-body">
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Advanced Trading Metrics</h3>
+          <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+            <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+              <dt class="text-xs font-medium text-gray-500 dark:text-gray-400 truncate">
+                System Quality Number
+              </dt>
+              <dd class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
+                {{ overview.sqn ?? '0.00' }} <span class="text-sm text-gray-500">(ratio)</span>
+              </dd>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                {{ getSQNInterpretation(overview.sqn) }}
+              </p>
+            </div>
+            
+            <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+              <dt class="text-xs font-medium text-gray-500 dark:text-gray-400 truncate">
+                Probability of Random
+              </dt>
+              <dd class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
+                {{ overview.probability_random ?? 'N/A' }} <span class="text-sm text-gray-500">(probability)</span>
+              </dd>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                Statistical significance
+              </p>
+            </div>
+            
+            <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+              <dt class="text-xs font-medium text-gray-500 dark:text-gray-400 truncate">
+                Kelly Percentage
+              </dt>
+              <dd class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
+                {{ overview.kelly_percentage ?? '0.00' }}% <span class="text-sm text-gray-500">(of capital)</span>
+              </dd>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                Optimal position size
+              </p>
+            </div>
+            
+            <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+              <dt class="text-xs font-medium text-gray-500 dark:text-gray-400 truncate">
+                K-Ratio
+              </dt>
+              <dd class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
+                {{ overview.k_ratio ?? '0.00' }} <span class="text-sm text-gray-500">(ratio)</span>
+              </dd>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                {{ getKRatioInterpretation(overview.k_ratio) }}
+              </p>
+            </div>
+            
+            <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+              <dt class="text-xs font-medium text-gray-500 dark:text-gray-400 truncate">
+                Total Commissions
+              </dt>
+              <dd class="mt-1 text-lg font-semibold text-red-600">
+                ${{ formatNumber(overview.total_commissions ?? 0) }} <span class="text-sm text-gray-500">(USD)</span>
+              </dd>
+            </div>
+            
+            <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+              <dt class="text-xs font-medium text-gray-500 dark:text-gray-400 truncate">
+                Total Fees
+              </dt>
+              <dd class="mt-1 text-lg font-semibold text-red-600">
+                ${{ formatNumber(overview.total_fees ?? 0) }} <span class="text-sm text-gray-500">(USD)</span>
+              </dd>
+            </div>
+            
+            <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+              <dt class="text-xs font-medium text-gray-500 dark:text-gray-400 truncate">
+                Avg Position MAE
+              </dt>
+              <dd class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
+                <span v-if="overview.avg_mae !== 'N/A'">${{ overview.avg_mae }} <span class="text-sm text-gray-500">(USD)</span></span>
+                <span v-else>{{ overview.avg_mae }}</span>
+              </dd>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                Max adverse excursion (est.)
+              </p>
+            </div>
+            
+            <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+              <dt class="text-xs font-medium text-gray-500 dark:text-gray-400 truncate">
+                Avg Position MFE
+              </dt>
+              <dd class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
+                <span v-if="overview.avg_mfe !== 'N/A'">${{ overview.avg_mfe }} <span class="text-sm text-gray-500">(USD)</span></span>
+                <span v-else>{{ overview.avg_mfe }}</span>
+              </dd>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                Max favorable excursion (est.)
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -316,36 +416,20 @@
             <div v-if="loadingSectors" class="animate-spin rounded-full h-5 w-5 border-b-2 border-primary-600"></div>
           </div>
           
-          <div v-if="loadingSectors" class="space-y-4">
-            <div class="text-center py-4 text-sm text-gray-500 dark:text-gray-400">
-              <div class="flex items-center justify-center gap-2 mb-4">
-                <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-600"></div>
-                <span>Fetching industry data for your symbols...</span>
+          <!-- Always show content area with relative positioning for loading overlay -->
+          <div class="relative min-h-[200px]">
+            
+            <!-- Loading overlay -->
+            <div v-if="loadingSectors" class="absolute inset-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm z-10 flex items-center justify-center">
+              <div class="text-center">
+                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto mb-4"></div>
+                <p class="text-sm text-gray-600 dark:text-gray-400">Fetching industry data...</p>
+                <p class="text-xs text-gray-500 dark:text-gray-500 mt-1">This may take a moment</p>
               </div>
-              <p class="text-xs">This may take a moment as we gather sector information from financial data providers.</p>
             </div>
             
-            <!-- Loading skeleton -->
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <div v-for="i in 4" :key="i" class="border border-gray-200 dark:border-gray-700 rounded-lg p-3 animate-pulse">
-                <div class="flex items-center justify-between mb-2">
-                  <div class="h-4 bg-gray-300 dark:bg-gray-600 rounded w-24"></div>
-                  <div class="h-5 bg-gray-300 dark:bg-gray-600 rounded w-16"></div>
-                </div>
-                <div class="grid grid-cols-2 gap-2 mb-2">
-                  <div class="h-3 bg-gray-200 dark:bg-gray-700 rounded w-12"></div>
-                  <div class="h-3 bg-gray-200 dark:bg-gray-700 rounded w-12"></div>
-                </div>
-                <div class="flex gap-1">
-                  <div class="h-6 bg-gray-200 dark:bg-gray-700 rounded w-12"></div>
-                  <div class="h-6 bg-gray-200 dark:bg-gray-700 rounded w-12"></div>
-                  <div class="h-6 bg-gray-200 dark:bg-gray-700 rounded w-12"></div>
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          <div v-else-if="sectorData.length > 0" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <!-- Content (always present) -->
+            <div v-if="sectorData.length > 0" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div 
               v-for="sector in sectorData" 
               :key="sector.industry"
@@ -394,13 +478,26 @@
                 </div>
               </div>
             </div>
-          </div>
-          
-          <div v-else-if="!loadingSectors" class="text-center py-8 text-gray-500 dark:text-gray-400">
-            <svg class="w-12 h-12 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-            </svg>
-            <p>No sector data available. Industry information will be fetched automatically from your trades.</p>
+            </div>
+            
+            <!-- Empty state -->
+            <div v-else-if="!loadingSectors" class="text-center py-8 text-gray-500 dark:text-gray-400">
+              <svg class="w-12 h-12 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+              <p>No sector data available. Industry information will be fetched automatically from your trades.</p>
+            </div>
+            
+            <!-- Initial placeholder while waiting for first load -->
+            <div v-else class="text-center py-8 text-gray-400 dark:text-gray-500">
+              <div class="w-12 h-12 mx-auto mb-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg flex items-center justify-center">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+              </div>
+              <p class="text-sm">Sector data will appear here</p>
+            </div>
+            
           </div>
         </div>
       </div>
@@ -666,7 +763,15 @@ const overview = ref({
   avg_loss: 0,
   best_trade: 0,
   worst_trade: 0,
-  profit_factor: 0
+  profit_factor: 0,
+  sqn: '0.00',
+  probability_random: 'N/A',
+  kelly_percentage: '0.00',
+  k_ratio: '0.00',
+  total_commissions: 0,
+  total_fees: 0,
+  avg_mae: 'N/A',
+  avg_mfe: 'N/A'
 })
 
 const performanceData = ref([])
@@ -738,18 +843,44 @@ function getLossPercentage() {
   return ((overview.value.losing_trades / overview.value.total_trades) * 100).toFixed(1)
 }
 
+function getSQNInterpretation(sqn) {
+  const sqnValue = parseFloat(sqn) || 0
+  if (sqnValue < 1.6) return 'Poor system'
+  if (sqnValue < 2.0) return 'Below average'
+  if (sqnValue < 2.5) return 'Average'
+  if (sqnValue < 3.0) return 'Good'
+  if (sqnValue < 5.0) return 'Excellent'
+  if (sqnValue < 7.0) return 'Superb'
+  return 'Holy Grail'
+}
+
+function getKRatioInterpretation(kRatio) {
+  const kValue = parseFloat(kRatio) || 0
+  if (kValue < -1.0) return 'Very inconsistent returns'
+  if (kValue < 0) return 'Inconsistent returns'
+  if (kValue < 0.5) return 'Somewhat consistent'
+  if (kValue < 1.0) return 'Consistent returns'
+  if (kValue < 2.0) return 'Very consistent'
+  return 'Extremely consistent'
+}
+
 // Chart creation functions
 function createTradeDistributionChart() {
-  if (!tradeDistributionChart.value) {
+  const canvas = tradeDistributionChart.value
+  if (!canvas) {
     console.error('Trade distribution chart canvas not found')
+    return
+  }
+
+  const ctx = canvas.getContext('2d')
+  if (!ctx) {
+    console.error('Trade distribution chart canvas context not available')
     return
   }
 
   if (tradeDistributionChartInstance) {
     tradeDistributionChartInstance.destroy()
   }
-
-  const ctx = tradeDistributionChart.value.getContext('2d')
   const labels = ['< $2', '$2-4.99', '$5-9.99', '$10-19.99', '$20-49.99', '$50-99.99', '$100-199.99', '$200+']
   
   console.log('Creating trade distribution chart with data:', tradeDistributionData.value)
@@ -802,11 +933,21 @@ function createTradeDistributionChart() {
 }
 
 function createPerformanceByPriceChart() {
+  const canvas = performanceByPriceChart.value
+  if (!canvas) {
+    console.error('Performance by price chart canvas not found')
+    return
+  }
+
+  const ctx = canvas.getContext('2d')
+  if (!ctx) {
+    console.error('Performance by price chart canvas context not available')
+    return
+  }
+
   if (performanceByPriceChartInstance) {
     performanceByPriceChartInstance.destroy()
   }
-
-  const ctx = performanceByPriceChart.value.getContext('2d')
   const labels = ['< $2', '$2-4.99', '$5-9.99', '$10-19.99', '$20-49.99', '$50-99.99', '$100-199.99', '$200+']
   
   performanceByPriceChartInstance = new Chart(ctx, {
@@ -1325,19 +1466,8 @@ async function fetchChartData() {
       }
     }
 
-    // Create charts after data is loaded and DOM is updated
-    await nextTick()
-    
-    // Small delay to ensure canvases are ready
-    setTimeout(() => {
-      createTradeDistributionChart()
-      createPerformanceByPriceChart()
-      createPerformanceByVolumeChart()
-      createPerformanceByHoldTimeChart()
-      createDayOfWeekChart()
-      createDailyVolumeChart()
-      createDrawdownChart()
-    }, 100)
+    // Chart creation is now handled in applyFilters after loading is complete
+    console.log('Chart data loaded successfully')
   } catch (error) {
     console.error('Error fetching chart data:', error)
   }
@@ -1350,6 +1480,8 @@ async function fetchOverview() {
     if (filters.value.endDate) params.endDate = filters.value.endDate
 
     const response = await api.get('/analytics/overview', { params })
+    console.log('Analytics API response:', response.data)
+    console.log('Overview data received:', response.data.overview)
     overview.value = response.data.overview
   } catch (error) {
     console.error('Failed to fetch overview:', error)
@@ -1426,11 +1558,30 @@ async function applyFilters() {
   // Load sector data asynchronously after page loads
   fetchSectorData()
   loading.value = false
+  
+  // Create charts after loading is complete and DOM is updated
+  await nextTick()
+  setTimeout(() => {
+    try {
+      createTradeDistributionChart()
+      createPerformanceByPriceChart()
+      createPerformanceByVolumeChart()
+      createPerformanceByHoldTimeChart()
+      createDayOfWeekChart()
+      createDailyVolumeChart()
+      createDrawdownChart()
+    } catch (error) {
+      console.error('Error creating charts:', error)
+    }
+  }, 100)
 }
 
 async function clearFilters() {
   filters.value.startDate = ''
   filters.value.endDate = ''
+  
+  // Clear localStorage to ensure fresh defaults
+  localStorage.removeItem('analyticsFilters')
   
   // Apply the cleared filters
   await applyFilters()
@@ -1590,11 +1741,9 @@ async function loadData() {
 }
 
 function setDefaultDateRange() {
-  const today = new Date()
-  const thirtyDaysAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000)
-  
-  filters.value.endDate = today.toISOString().split('T')[0]
-  filters.value.startDate = thirtyDaysAgo.toISOString().split('T')[0]
+  // Set default to cover actual trade data (2024) instead of current date (2025)
+  filters.value.endDate = '2024-12-31'
+  filters.value.startDate = '2024-01-01'
 }
 
 function saveFilters() {

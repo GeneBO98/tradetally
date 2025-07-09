@@ -4,6 +4,7 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../config/database');
 const logger = require('../utils/logger');
 const finnhub = require('../utils/finnhub');
+const cache = require('../utils/cache');
 
 const tradeController = {
   async getUserTrades(req, res, next) {
@@ -65,6 +66,15 @@ const tradeController = {
   async createTrade(req, res, next) {
     try {
       const trade = await Trade.create(req.user.id, req.body);
+      
+      // Invalidate sector performance cache for this user since new trade was added
+      try {
+        await cache.invalidate('sector_performance');
+        console.log('✅ Sector performance cache invalidated after trade creation');
+      } catch (cacheError) {
+        console.warn('⚠️ Failed to invalidate sector performance cache:', cacheError.message);
+      }
+      
       res.status(201).json({ trade });
     } catch (error) {
       next(error);
@@ -103,6 +113,14 @@ const tradeController = {
         return res.status(404).json({ error: 'Trade not found' });
       }
 
+      // Invalidate sector performance cache for this user since trade data changed
+      try {
+        await cache.invalidate('sector_performance');
+        console.log('✅ Sector performance cache invalidated after trade update');
+      } catch (cacheError) {
+        console.warn('⚠️ Failed to invalidate sector performance cache:', cacheError.message);
+      }
+
       res.json({ trade });
     } catch (error) {
       next(error);
@@ -123,6 +141,14 @@ const tradeController = {
       
       if (!result) {
         return res.status(404).json({ error: 'Trade not found' });
+      }
+
+      // Invalidate sector performance cache for this user
+      try {
+        await cache.invalidate('sector_performance');
+        console.log('✅ Sector performance cache invalidated after trade deletion');
+      } catch (cacheError) {
+        console.warn('⚠️ Failed to invalidate sector performance cache:', cacheError.message);
       }
 
       res.json({ message: 'Trade deleted successfully' });
@@ -541,6 +567,14 @@ const tradeController = {
             SET status = 'completed', trades_imported = $1, trades_failed = $2, completed_at = CURRENT_TIMESTAMP, error_details = $4
             WHERE id = $3
           `, [imported, failed, importId, failedTrades.length > 0 ? { failedTrades, duplicates } : { duplicates }]);
+          
+          // Invalidate sector performance cache after successful import
+          try {
+            await cache.invalidate('sector_performance');
+            console.log('✅ Sector performance cache invalidated after import completion');
+          } catch (cacheError) {
+            console.warn('⚠️ Failed to invalidate sector performance cache:', cacheError.message);
+          }
         } catch (error) {
           // Clear timeout on error
           clearTimeout(importTimeout);
@@ -815,6 +849,14 @@ const tradeController = {
 
       // Delete the import log
       await db.query(`DELETE FROM import_logs WHERE id = $1`, [importId]);
+
+      // Invalidate sector performance cache for this user
+      try {
+        await cache.invalidate('sector_performance');
+        console.log('✅ Sector performance cache invalidated after import deletion');
+      } catch (cacheError) {
+        console.warn('⚠️ Failed to invalidate sector performance cache:', cacheError.message);
+      }
 
       logger.logImport(`Deleted ${deletedTrades.rows.length} trades from import ${importId}`);
 

@@ -1,0 +1,2 @@
+ALTER TABLE trades
+ALTER COLUMN quantity TYPE DECIMAL(10, 4);
