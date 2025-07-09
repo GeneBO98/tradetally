@@ -161,6 +161,60 @@
         </div>
       </div>
 
+      <!-- Account Equity -->
+      <div class="card">
+        <div class="card-body">
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-6">Account Equity</h3>
+          
+          <form @submit.prevent="updateAccountEquity">
+            <div class="mb-6">
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Current Account Equity
+              </label>
+              <div class="relative">
+                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <span class="text-gray-500 dark:text-gray-400">$</span>
+                </div>
+                <input
+                  v-model="accountEquity"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="Enter your current account equity"
+                  class="block w-full pl-8 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
+                />
+              </div>
+              <p class="text-sm text-gray-500 dark:text-gray-400 mt-2">
+                This will be used to calculate your K Ratio and track equity changes over time.
+              </p>
+            </div>
+
+            <div class="flex items-center justify-between">
+              <div class="text-sm text-gray-500 dark:text-gray-400">
+                Last updated: {{ lastEquityUpdate || 'Never' }}
+              </div>
+              <button
+                type="submit"
+                :disabled="loadingEquity"
+                class="btn-primary"
+              >
+                {{ loadingEquity ? 'Updating...' : 'Update Equity' }}
+              </button>
+            </div>
+          </form>
+
+          <!-- Equity History Link -->
+          <div class="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
+            <router-link
+              to="/equity-history"
+              class="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 text-sm font-medium"
+            >
+              View Equity History →
+            </router-link>
+          </div>
+        </div>
+      </div>
+
       <!-- Tags Management -->
       <div class="card">
         <div class="card-body">
@@ -445,7 +499,7 @@
                 class="btn-primary"
               >
                 <span v-if="passwordLoading">Changing...</span>
-                <span v-else">Change Password</span>
+                <span v-else>Change Password</span>
               </button>
             </div>
           </form>
@@ -469,6 +523,7 @@ const profileLoading = ref(false)
 const settingsLoading = ref(false)
 const passwordLoading = ref(false)
 const tradingProfileLoading = ref(false)
+const loadingEquity = ref(false)
 const passwordError = ref(null)
 const showAddTag = ref(false)
 
@@ -486,6 +541,8 @@ const settingsForm = ref({
 })
 
 const defaultTagsInput = ref('')
+const accountEquity = ref('')
+const lastEquityUpdate = ref(null)
 
 const passwordForm = ref({
   currentPassword: '',
@@ -702,11 +759,35 @@ async function loadData() {
     }
     
     defaultTagsInput.value = settings.default_tags ? settings.default_tags.join(', ') : ''
+    accountEquity.value = settings.account_equity || ''
+    lastEquityUpdate.value = settings.account_equity ? 'Recently' : null
     
     fetchTags()
     fetchTradingProfile()
   } catch (error) {
     showError('Error', 'Failed to load settings')
+  }
+}
+
+async function updateAccountEquity() {
+  if (!accountEquity.value) {
+    showError('Error', 'Please enter your account equity')
+    return
+  }
+
+  loadingEquity.value = true
+  
+  try {
+    await api.put('/equity/current', {
+      accountEquity: parseFloat(accountEquity.value)
+    })
+    
+    showSuccess('Success', 'Account equity updated successfully')
+    lastEquityUpdate.value = 'Just now'
+  } catch (error) {
+    showError('Error', 'Failed to update account equity')
+  } finally {
+    loadingEquity.value = false
   }
 }
 
