@@ -11,6 +11,7 @@ const userRoutes = require('./routes/user.routes');
 const tradeRoutes = require('./routes/trade.routes');
 const analyticsRoutes = require('./routes/analytics.routes');
 const settingsRoutes = require('./routes/settings.routes');
+const equityRoutes = require('./routes/equity.routes');
 const v1Routes = require('./routes/v1');
 const wellKnownRoutes = require('./routes/well-known.routes');
 const errorHandler = require('./middleware/errorHandler');
@@ -146,6 +147,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/trades', tradeRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/equity', equityRoutes);
 
 // Well-known endpoints for mobile discovery
 app.use('/.well-known', wellKnownRoutes);

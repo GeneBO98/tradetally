@@ -178,13 +178,40 @@
         </div>
       </div>
 
+      <!-- Equity Notice for K-Ratio -->
+      <div v-if="overview.k_ratio === '0.00'" class="card mb-6">
+        <div class="card-body">
+          <div class="flex items-start space-x-3">
+            <div class="flex-shrink-0">
+              <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div>
+              <h4 class="text-sm font-medium text-gray-900 dark:text-white">K-Ratio Requires Account Equity Tracking</h4>
+              <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                To calculate your K-Ratio, you need to track your account equity over time. The K-Ratio requires at least 3 equity entries to calculate meaningful consistency metrics.
+              </p>
+              <div class="mt-2 flex flex-wrap gap-2">
+                <router-link to="/settings" class="inline-flex items-center px-3 py-1 text-xs font-medium text-blue-700 bg-blue-100 rounded-full hover:bg-blue-200 dark:bg-blue-900/20 dark:text-blue-400 dark:hover:bg-blue-900/40">
+                  Update Current Equity
+                </router-link>
+                <router-link to="/equity-history" class="inline-flex items-center px-3 py-1 text-xs font-medium text-green-700 bg-green-100 rounded-full hover:bg-green-200 dark:bg-green-900/20 dark:text-green-400 dark:hover:bg-green-900/40">
+                  View Equity History
+                </router-link>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Advanced Trading Metrics -->
       <div class="card mb-8">
         <div class="card-body">
           <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Advanced Trading Metrics</h3>
           <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-            <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
-              <dt class="text-xs font-medium text-gray-500 dark:text-gray-400 truncate">
+            <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-3 relative group">
+              <dt class="text-xs font-medium text-gray-500 dark:text-gray-400 truncate cursor-help">
                 System Quality Number
               </dt>
               <dd class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
@@ -193,10 +220,18 @@
               <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
                 {{ getSQNInterpretation(overview.sqn) }}
               </p>
+              <!-- Tooltip -->
+              <div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 delay-1500 z-10 w-64">
+                <div class="text-center">
+                  <strong>System Quality Number (SQN)</strong><br>
+                  Measures the quality of your trading system by calculating (Average Trade / Standard Deviation) × √Number of Trades. Higher values indicate more consistent performance.
+                </div>
+                <div class="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
+              </div>
             </div>
             
-            <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
-              <dt class="text-xs font-medium text-gray-500 dark:text-gray-400 truncate">
+            <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-3 relative group">
+              <dt class="text-xs font-medium text-gray-500 dark:text-gray-400 truncate cursor-help">
                 Probability of Random
               </dt>
               <dd class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
@@ -205,10 +240,18 @@
               <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
                 Statistical significance
               </p>
+              <!-- Tooltip -->
+              <div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 delay-1500 z-10 w-64">
+                <div class="text-center">
+                  <strong>Probability of Random</strong><br>
+                  The likelihood that your trading results could have occurred by random chance. Lower percentages indicate more statistically significant results.
+                </div>
+                <div class="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
+              </div>
             </div>
             
-            <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
-              <dt class="text-xs font-medium text-gray-500 dark:text-gray-400 truncate">
+            <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-3 relative group">
+              <dt class="text-xs font-medium text-gray-500 dark:text-gray-400 truncate cursor-help">
                 Kelly Percentage
               </dt>
               <dd class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
@@ -217,18 +260,39 @@
               <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
                 Optimal position size
               </p>
+              <!-- Tooltip -->
+              <div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 delay-1500 z-10 w-64">
+                <div class="text-center">
+                  <strong>Kelly Percentage</strong><br>
+                  The optimal percentage of your capital to risk per trade to maximize long-term growth, based on your win rate and average win/loss ratio.
+                </div>
+                <div class="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
+              </div>
             </div>
             
-            <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
-              <dt class="text-xs font-medium text-gray-500 dark:text-gray-400 truncate">
+            <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-3 relative group">
+              <dt class="text-xs font-medium text-gray-500 dark:text-gray-400 truncate cursor-help">
                 K-Ratio
               </dt>
               <dd class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
                 {{ overview.k_ratio ?? '0.00' }} <span class="text-sm text-gray-500">(ratio)</span>
               </dd>
               <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                {{ getKRatioInterpretation(overview.k_ratio) }}
+                <span v-if="overview.k_ratio === '0.00'">
+                  Requires 3+ equity entries
+                </span>
+                <span v-else>
+                  {{ getKRatioInterpretation(overview.k_ratio) }} (equity-based)
+                </span>
               </p>
+              <!-- Tooltip -->
+              <div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 delay-1500 z-10 w-64">
+                <div class="text-center">
+                  <strong>K-Ratio</strong><br>
+                  Measures the consistency of your equity curve by calculating Average Return / Standard Deviation of Returns. Higher values indicate smoother, more consistent performance.
+                </div>
+                <div class="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
+              </div>
             </div>
             
             <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
@@ -249,8 +313,8 @@
               </dd>
             </div>
             
-            <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
-              <dt class="text-xs font-medium text-gray-500 dark:text-gray-400 truncate">
+            <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-3 relative group">
+              <dt class="text-xs font-medium text-gray-500 dark:text-gray-400 truncate cursor-help">
                 Avg Position MAE
               </dt>
               <dd class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
@@ -260,10 +324,18 @@
               <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
                 Max adverse excursion (est.)
               </p>
+              <!-- Tooltip -->
+              <div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 delay-1500 z-10 w-64">
+                <div class="text-center">
+                  <strong>Maximum Adverse Excursion (MAE)</strong><br>
+                  The largest unrealized loss your position experienced during the trade. Helps assess risk management and stop-loss placement.
+                </div>
+                <div class="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
+              </div>
             </div>
             
-            <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
-              <dt class="text-xs font-medium text-gray-500 dark:text-gray-400 truncate">
+            <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-3 relative group">
+              <dt class="text-xs font-medium text-gray-500 dark:text-gray-400 truncate cursor-help">
                 Avg Position MFE
               </dt>
               <dd class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
@@ -273,6 +345,14 @@
               <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
                 Max favorable excursion (est.)
               </p>
+              <!-- Tooltip -->
+              <div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 delay-1500 z-10 w-64">
+                <div class="text-center">
+                  <strong>Maximum Favorable Excursion (MFE)</strong><br>
+                  The largest unrealized profit your position experienced during the trade. Helps assess profit-taking strategies and potential missed opportunities.
+                </div>
+                <div class="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
+              </div>
             </div>
           </div>
         </div>

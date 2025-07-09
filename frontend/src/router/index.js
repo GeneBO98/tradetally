@@ -94,6 +94,12 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
+      path: '/equity-history',
+      name: 'equity-history',
+      component: () => import('@/views/EquityHistoryView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
       path: '/admin/users',
       name: 'admin-users',
       component: () => import('@/views/admin/UserManagementView.vue'),

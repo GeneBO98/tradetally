@@ -257,127 +257,67 @@ const analyticsController = {
         overview.kelly_percentage = '0.00';
       }
 
-      // 4. K-Ratio (ratio) - Measures consistency of returns over time
-      // K-Ratio = (Slope of cumulative returns vs time) / (Standard Error of slope)
-      // Should use round-trip trades, not individual executions
+      // 4. K-Ratio (ratio) - Measures consistency of returns over time using user-entered equity values
+      // K-Ratio = Average Return / Standard Deviation of Returns
+      // Uses only user-entered equity snapshots, not calculated trade data
       
       try {
-        console.log('Starting K-Ratio calculation...');
-        // Get round-trip trade P&L for K-Ratio calculation
-        const roundTripQuery = `
-          WITH trades_with_starts AS (
-              SELECT
-                  *,
-                  CASE
-                      WHEN LAG(position, 1, 0) OVER (PARTITION BY symbol ORDER BY trade_date, entry_time) = 0 THEN 1
-                      ELSE 0
-                  END as is_trade_start
-              FROM (
-                  SELECT
-                      *,
-                      SUM(CASE WHEN side = 'long' THEN quantity ELSE -quantity END) OVER (PARTITION BY symbol ORDER BY trade_date, entry_time) as position
-                  FROM trades
-                  WHERE user_id = $1 ${dateFilter} AND pnl IS NOT NULL
-              ) as positions
-          ),
-          trades_with_groups AS (
-              SELECT
-                  *,
-                  SUM(is_trade_start) OVER (PARTITION BY symbol ORDER BY trade_date, entry_time) as trade_group
-              FROM trades_with_starts
-          )
-          SELECT
-              SUM(pnl) as trade_pnl,
-              MIN(trade_date) as trade_date,
-              MIN(entry_time) as entry_time
-          FROM trades_with_groups
-          GROUP BY symbol, trade_group
-          ORDER BY MIN(trade_date), MIN(entry_time)
+        console.log('Starting K-Ratio calculation using equity snapshots...');
+        // Get user-entered equity snapshots only
+        const equityQuery = `
+          SELECT 
+            equity_amount,
+            snapshot_date
+          FROM equity_snapshots
+          WHERE user_id = $1
+          ORDER BY snapshot_date ASC
         `;
         
-        console.log('Executing K-Ratio query...');
-        const roundTripResult = await db.query(roundTripQuery, params);
-        const roundTripTrades = roundTripResult.rows;
-        console.log('K-Ratio query completed');
+        const equityResult = await db.query(equityQuery, [req.user.id]);
+        const equitySnapshots = equityResult.rows;
         
-        console.log('K-Ratio round trip trades:', roundTripTrades.length);
-        console.log('Sample round trip data:', roundTripTrades.slice(0, 3));
+        console.log('K-Ratio equity snapshots found:', equitySnapshots.length);
+        console.log('K-Ratio equity snapshots data:', equitySnapshots);
         
-        if (roundTripTrades && roundTripTrades.length > 2) {
-          // Use actual P&L values but normalize by total performance
-          const pnlValues = roundTripTrades.map(t => parseFloat(t.trade_pnl));
-          
-          // Calculate total and average performance
-          const totalPnL = pnlValues.reduce((a, b) => a + b, 0);
-          const avgPnL = totalPnL / pnlValues.length;
-          
-          // If overall performance is negative, cap K-Ratio at 0 or make it negative
-          if (totalPnL < 0) {
-            console.log('Overall performance is negative, adjusting K-Ratio accordingly');
-            console.log('Total P&L:', totalPnL.toFixed(2), 'Avg P&L:', avgPnL.toFixed(2));
-            
-            // For losing systems, calculate K-Ratio based on consistency of losses
-            const volatility = Math.sqrt(pnlValues.reduce((a, b) => a + Math.pow(b - avgPnL, 2), 0) / pnlValues.length);
-            const consistencyRatio = Math.abs(avgPnL) / volatility;
-            
-            // Negative K-Ratio for losing systems, scaled by consistency
-            overview.k_ratio = (-consistencyRatio).toFixed(2);
-            
-            console.log('Losing system K-Ratio:', overview.k_ratio);
-          } else {
-          
-          // Original calculation for winning systems
-          const cumulativeReturns = pnlValues.reduce((acc, val) => [...acc, (acc.length > 0 ? acc[acc.length - 1] : 0) + val], []);
-          
-          console.log('K-Ratio P&L values:', pnlValues.slice(0, 5));
-          console.log('K-Ratio cumulative:', cumulativeReturns.slice(0, 5));
-          
-          const n = cumulativeReturns.length;
-          
-          // Simple linear regression: y = a + bx
-          let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
-          for (let i = 0; i < n; i++) {
-            const x = i + 1;
-            const y = cumulativeReturns[i];
-            sumX += x;
-            sumY += y;
-            sumXY += x * y;
-            sumX2 += x * x;
+        if (equitySnapshots && equitySnapshots.length >= 3) {
+          // Calculate daily returns from user-entered equity values
+          const returns = [];
+          for (let i = 1; i < equitySnapshots.length; i++) {
+            const prevEquity = parseFloat(equitySnapshots[i - 1].equity_amount);
+            const currentEquity = parseFloat(equitySnapshots[i].equity_amount);
+            console.log(`K-Ratio: Processing ${equitySnapshots[i].snapshot_date}: ${prevEquity} -> ${currentEquity}`);
+            if (prevEquity > 0) {
+              const dailyReturn = (currentEquity - prevEquity) / prevEquity;
+              returns.push(dailyReturn);
+              console.log(`K-Ratio: Daily return: ${dailyReturn.toFixed(6)}`);
+            }
           }
           
-          const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
-          const intercept = (sumY - slope * sumX) / n;
+          console.log('K-Ratio daily returns calculated:', returns.length);
           
-          let sumSquaredResiduals = 0;
-          for (let i = 0; i < n; i++) {
-            const yPredicted = intercept + slope * (i + 1);
-            sumSquaredResiduals += Math.pow(cumulativeReturns[i] - yPredicted, 2);
-          }
-          
-          const stdErrOfSlope = Math.sqrt((sumSquaredResiduals / (n - 2)) / (sumX2 - Math.pow(sumX, 2) / n));
-          
-          // Scale K-Ratio to be dimensionless and in expected range
-          const rawKRatio = stdErrOfSlope > 0 ? slope / stdErrOfSlope : 0;
-          
-          // Calculate average P&L to normalize the K-Ratio
-          const avgAbsPnL = pnlValues.reduce((a, b) => a + Math.abs(b), 0) / pnlValues.length;
-          const scaledKRatio = rawKRatio / (avgAbsPnL / 100); // Scale to reasonable range
-          
-          console.log('K-Ratio final calculation:');
-          console.log('  slope:', slope.toFixed(6));
-          console.log('  stdErrOfSlope:', stdErrOfSlope.toFixed(6));
-          console.log('  avgAbsPnL:', avgAbsPnL.toFixed(2));
-          console.log('  rawKRatio:', rawKRatio.toFixed(6));
-          console.log('  scaledKRatio:', scaledKRatio.toFixed(6));
-          
-          if (stdErrOfSlope > 0) {
-            overview.k_ratio = scaledKRatio.toFixed(2);
+          if (returns.length > 0) {
+            // Calculate average return and standard deviation
+            const avgReturn = returns.reduce((sum, ret) => sum + ret, 0) / returns.length;
+            const variance = returns.reduce((sum, ret) => sum + Math.pow(ret - avgReturn, 2), 0) / returns.length;
+            const stdDev = Math.sqrt(variance);
+            
+            // Calculate K-Ratio
+            const kRatio = stdDev === 0 ? 0 : avgReturn / stdDev;
+            overview.k_ratio = kRatio.toFixed(2);
+            
+            console.log('K-Ratio calculation details:');
+            console.log('  equity snapshots:', equitySnapshots.length);
+            console.log('  returns count:', returns.length);
+            console.log('  avgReturn:', avgReturn.toFixed(6));
+            console.log('  stdDev:', stdDev.toFixed(6));
+            console.log('  kRatio:', kRatio.toFixed(6));
           } else {
             overview.k_ratio = '0.00';
-          }
+            console.log('K-Ratio: No valid returns calculated');
           }
         } else {
           overview.k_ratio = '0.00';
+          console.log('K-Ratio: Insufficient equity snapshots (need at least 2)');
         }
       } catch (error) {
         console.error('K-Ratio calculation error:', error);
