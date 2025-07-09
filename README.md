@@ -5,7 +5,7 @@ Visit [TradeTally](https://tradetally.io)
 <img width="1340" alt="SCR-20250703-qdty" src="https://github.com/user-attachments/assets/c7281791-53f6-43c4-937d-ebc9c679f32f" />
 <img width="1282" alt="SCR-20250703-qdvz" src="https://github.com/user-attachments/assets/9eadee5c-5b71-4d38-baf9-b335080d4cae" />
 <img width="1336" alt="SCR-20250703-qeal" src="https://github.com/user-attachments/assets/6057c9a2-ac33-4aa1-8946-388628e6b8cc" />
-<img width="1416" alt="SCR-20250703-qech" src="https://github.com/user-attachments/assets/d7e35549-46ef-4e6a-b878-e47fd1ae08ba" />
+<img width="1422" alt="SCR-20250709-mmbi" src="https://github.com/user-attachments/assets/55bb4503-1528-4c35-81ba-e100c6a58d9d" />
 <img width="1285" alt="SCR-20250703-qeed" src="https://github.com/user-attachments/assets/801e3b90-d677-48c3-a685-622b6c31f6df" />
 <img width="1335" alt="SCR-20250703-qegs" src="https://github.com/user-attachments/assets/d19ff676-dec3-4b72-a14f-a701a38c23ab" />
 <img width="1357" alt="SCR-20250703-qeih" src="https://github.com/user-attachments/assets/10439cfa-1f29-4c1a-b5d8-0ed53255b50b" />
