@@ -45,11 +45,16 @@
                   id="email"
                   v-model="profileForm.email"
                   type="email"
-                  disabled
-                  class="input bg-gray-50 dark:bg-gray-700"
+                  :disabled="!twoFactorStatus.enabled"
+                  :class="twoFactorStatus.enabled ? 'input' : 'input bg-gray-50 dark:bg-gray-700'"
                 />
                 <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                  Email cannot be changed.
+                  <span v-if="twoFactorStatus.enabled">
+                    Email can be changed when 2FA is enabled.
+                  </span>
+                  <span v-else>
+                    Enable 2FA to change your email address.
+                  </span>
                 </p>
               </div>
               
@@ -76,6 +81,150 @@
               </button>
             </div>
           </form>
+        </div>
+      </div>
+
+      <!-- Two-Factor Authentication -->
+      <div class="card">
+        <div class="card-body">
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-6">Two-Factor Authentication</h3>
+          <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
+            Add an extra layer of security to your account with two-factor authentication.
+          </p>
+          
+          <div v-if="twoFactorStatus.enabled" class="space-y-4">
+            <!-- 2FA is enabled -->
+            <div class="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
+              <div class="flex items-center">
+                <svg class="w-5 h-5 text-green-600 dark:text-green-400 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                <div>
+                  <h4 class="text-sm font-medium text-green-800 dark:text-green-300">2FA is enabled</h4>
+                  <p class="text-sm text-green-700 dark:text-green-400 mt-1">
+                    Your account is protected with two-factor authentication.
+                    {{ twoFactorStatus.backupCodesRemaining }} backup codes remaining.
+                  </p>
+                </div>
+              </div>
+            </div>
+            
+            <div class="flex space-x-3">
+              <button
+                @click="disable2FA"
+                :disabled="twoFactorLoading"
+                class="btn-danger"
+              >
+                <span v-if="twoFactorLoading">Disabling...</span>
+                <span v-else>Disable 2FA</span>
+              </button>
+            </div>
+          </div>
+          
+          <div v-else class="space-y-4">
+            <!-- 2FA is not enabled -->
+            <div class="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
+              <div class="flex items-center">
+                <svg class="w-5 h-5 text-yellow-600 dark:text-yellow-400 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+                </svg>
+                <div>
+                  <h4 class="text-sm font-medium text-yellow-800 dark:text-yellow-300">2FA is not enabled</h4>
+                  <p class="text-sm text-yellow-700 dark:text-yellow-400 mt-1">
+                    Enhance your account security by enabling two-factor authentication.
+                  </p>
+                </div>
+              </div>
+            </div>
+            
+            <button
+              @click="setup2FA"
+              :disabled="twoFactorLoading"
+              class="btn-primary"
+            >
+              <span v-if="twoFactorLoading">Setting up...</span>
+              <span v-else>Enable 2FA</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2FA Setup Modal -->
+      <div v-if="show2FASetup" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+        <div class="relative top-20 mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white dark:bg-gray-800">
+          <div class="mt-3">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Set Up Two-Factor Authentication</h3>
+            
+            <div class="space-y-6">
+              <!-- Step 1: Scan QR Code -->
+              <div>
+                <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Step 1: Scan QR Code</h4>
+                <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                  Scan this QR code with your authenticator app (Google Authenticator, Authy, etc.)
+                </p>
+                <div class="flex justify-center mb-4">
+                  <img :src="qrCodeUrl" alt="2FA QR Code" class="border rounded-lg" />
+                </div>
+                <div class="text-center">
+                  <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">Or enter this code manually:</p>
+                  <code class="text-xs bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded break-all">{{ setupSecret }}</code>
+                </div>
+              </div>
+
+              <!-- Step 2: Enter Verification Code -->
+              <div>
+                <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Step 2: Enter Verification Code</h4>
+                <p class="text-sm text-gray-600 dark:text-gray-400 mb-3">
+                  Enter the 6-digit code from your authenticator app
+                </p>
+                <input
+                  v-model="verificationCode"
+                  type="text"
+                  maxlength="6"
+                  placeholder="000000"
+                  class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white text-center text-lg tracking-widest"
+                />
+              </div>
+
+              <!-- Backup Codes -->
+              <div>
+                <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Backup Codes</h4>
+                <p class="text-sm text-gray-600 dark:text-gray-400 mb-3">
+                  Save these backup codes in a secure place. You can use them to access your account if you lose your authenticator device.
+                </p>
+                <div class="bg-gray-50 dark:bg-gray-700 p-3 rounded-md max-h-32 overflow-y-auto">
+                  <div class="grid grid-cols-2 gap-2">
+                    <code
+                      v-for="code in backupCodes"
+                      :key="code"
+                      class="text-xs bg-white dark:bg-gray-800 px-2 py-1 rounded text-center"
+                    >
+                      {{ code }}
+                    </code>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Action Buttons -->
+              <div class="flex justify-end space-x-3">
+                <button
+                  type="button"
+                  @click="cancel2FASetup"
+                  class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600"
+                >
+                  Cancel
+                </button>
+                <button
+                  @click="enable2FA"
+                  :disabled="twoFactorLoading || !verificationCode"
+                  class="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <span v-if="twoFactorLoading">Enabling...</span>
+                  <span v-else>Enable 2FA</span>
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -123,14 +272,6 @@
                 </div>
               </div>
 
-              <div>
-                <label for="theme" class="label">Theme</label>
-                <select id="theme" v-model="settingsForm.theme" class="input w-auto">
-                  <option value="light">Light</option>
-                  <option value="dark">Dark</option>
-                  <option value="system">System</option>
-                </select>
-              </div>
 
               <div>
                 <label for="defaultTags" class="label">Default Tags</label>
@@ -304,132 +445,146 @@
             Customize your trading preferences to get more personalized AI analytics and recommendations.
           </p>
           
-          <form @submit.prevent="updateTradingProfile" class="space-y-6">
-            <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
-              <!-- Trading Strategies -->
-              <div>
-                <label class="label">Trading Strategies</label>
-                <div class="space-y-2 mt-2">
-                  <div v-for="strategy in strategyOptions" :key="strategy" class="flex items-center">
-                    <input
-                      :id="`strategy-${strategy}`"
-                      v-model="tradingProfileForm.tradingStrategies"
-                      :value="strategy"
-                      type="checkbox"
-                      class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                    />
-                    <label :for="`strategy-${strategy}`" class="ml-2 text-sm text-gray-700 dark:text-gray-300">
-                      {{ strategy }}
-                    </label>
-                  </div>
+          <form @submit.prevent="updateTradingProfile" class="space-y-8">
+            <!-- General Trading Information -->
+            <div>
+              <h4 class="text-md font-medium text-gray-900 dark:text-white mb-4">General Information</h4>
+              <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                <!-- Risk Tolerance -->
+                <div>
+                  <label for="riskTolerance" class="label">Risk Tolerance</label>
+                  <select id="riskTolerance" v-model="tradingProfileForm.riskTolerance" class="input">
+                    <option value="conservative">Conservative</option>
+                    <option value="moderate">Moderate</option>
+                    <option value="aggressive">Aggressive</option>
+                  </select>
+                </div>
+
+                <!-- Experience Level -->
+                <div>
+                  <label for="experienceLevel" class="label">Experience Level</label>
+                  <select id="experienceLevel" v-model="tradingProfileForm.experienceLevel" class="input">
+                    <option value="beginner">Beginner (0-1 years)</option>
+                    <option value="intermediate">Intermediate (1-3 years)</option>
+                    <option value="advanced">Advanced (3-5 years)</option>
+                    <option value="expert">Expert (5+ years)</option>
+                  </select>
+                </div>
+
+                <!-- Average Position Size -->
+                <div>
+                  <label for="averagePositionSize" class="label">Average Position Size</label>
+                  <select id="averagePositionSize" v-model="tradingProfileForm.averagePositionSize" class="input">
+                    <option value="small">Small ($100 - $1,000)</option>
+                    <option value="medium">Medium ($1,000 - $10,000)</option>
+                    <option value="large">Large ($10,000+)</option>
+                  </select>
                 </div>
               </div>
+            </div>
 
-              <!-- Trading Styles -->
-              <div>
-                <label class="label">Trading Styles</label>
-                <div class="space-y-2 mt-2">
-                  <div v-for="style in styleOptions" :key="style" class="flex items-center">
-                    <input
-                      :id="`style-${style}`"
-                      v-model="tradingProfileForm.tradingStyles"
-                      :value="style"
-                      type="checkbox"
-                      class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                    />
-                    <label :for="`style-${style}`" class="ml-2 text-sm text-gray-700 dark:text-gray-300">
-                      {{ style }}
-                    </label>
+            <!-- Trading Preferences -->
+            <div>
+              <h4 class="text-md font-medium text-gray-900 dark:text-white mb-4">Trading Preferences</h4>
+              <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                <!-- Trading Strategies -->
+                <div>
+                  <label class="label">Trading Strategies</label>
+                  <div class="space-y-2 mt-2">
+                    <div v-for="strategy in strategyOptions" :key="strategy" class="flex items-center">
+                      <input
+                        :id="`strategy-${strategy}`"
+                        v-model="tradingProfileForm.tradingStrategies"
+                        :value="strategy"
+                        type="checkbox"
+                        class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                      />
+                      <label :for="`strategy-${strategy}`" class="ml-2 text-sm text-gray-700 dark:text-gray-300">
+                        {{ strategy }}
+                      </label>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <!-- Risk Tolerance -->
-              <div>
-                <label for="riskTolerance" class="label">Risk Tolerance</label>
-                <select id="riskTolerance" v-model="tradingProfileForm.riskTolerance" class="input">
-                  <option value="conservative">Conservative</option>
-                  <option value="moderate">Moderate</option>
-                  <option value="aggressive">Aggressive</option>
-                </select>
-              </div>
+                <!-- Trading Styles -->
+                <div>
+                  <label class="label">Trading Styles</label>
+                  <div class="space-y-2 mt-2">
+                    <div v-for="style in styleOptions" :key="style" class="flex items-center">
+                      <input
+                        :id="`style-${style}`"
+                        v-model="tradingProfileForm.tradingStyles"
+                        :value="style"
+                        type="checkbox"
+                        class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                      />
+                      <label :for="`style-${style}`" class="ml-2 text-sm text-gray-700 dark:text-gray-300">
+                        {{ style }}
+                      </label>
+                    </div>
+                  </div>
+                </div>
 
-              <!-- Experience Level -->
-              <div>
-                <label for="experienceLevel" class="label">Experience Level</label>
-                <select id="experienceLevel" v-model="tradingProfileForm.experienceLevel" class="input">
-                  <option value="beginner">Beginner (0-1 years)</option>
-                  <option value="intermediate">Intermediate (1-3 years)</option>
-                  <option value="advanced">Advanced (3-5 years)</option>
-                  <option value="expert">Expert (5+ years)</option>
-                </select>
-              </div>
+                <!-- Primary Markets -->
+                <div>
+                  <label class="label">Primary Markets</label>
+                  <div class="space-y-2 mt-2">
+                    <div v-for="market in marketOptions" :key="market" class="flex items-center">
+                      <input
+                        :id="`market-${market}`"
+                        v-model="tradingProfileForm.primaryMarkets"
+                        :value="market"
+                        type="checkbox"
+                        class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                      />
+                      <label :for="`market-${market}`" class="ml-2 text-sm text-gray-700 dark:text-gray-300">
+                        {{ market }}
+                      </label>
+                    </div>
+                  </div>
+                </div>
 
-              <!-- Average Position Size -->
-              <div>
-                <label for="averagePositionSize" class="label">Average Position Size</label>
-                <select id="averagePositionSize" v-model="tradingProfileForm.averagePositionSize" class="input">
-                  <option value="small">Small ($100 - $1,000)</option>
-                  <option value="medium">Medium ($1,000 - $10,000)</option>
-                  <option value="large">Large ($10,000+)</option>
-                </select>
-              </div>
-
-              <!-- Primary Markets -->
-              <div>
-                <label class="label">Primary Markets</label>
-                <div class="space-y-2 mt-2">
-                  <div v-for="market in marketOptions" :key="market" class="flex items-center">
-                    <input
-                      :id="`market-${market}`"
-                      v-model="tradingProfileForm.primaryMarkets"
-                      :value="market"
-                      type="checkbox"
-                      class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                    />
-                    <label :for="`market-${market}`" class="ml-2 text-sm text-gray-700 dark:text-gray-300">
-                      {{ market }}
-                    </label>
+                <!-- Trading Goals -->
+                <div>
+                  <label class="label">Trading Goals</label>
+                  <div class="space-y-2 mt-2">
+                    <div v-for="goal in goalOptions" :key="goal" class="flex items-center">
+                      <input
+                        :id="`goal-${goal}`"
+                        v-model="tradingProfileForm.tradingGoals"
+                        :value="goal"
+                        type="checkbox"
+                        class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                      />
+                      <label :for="`goal-${goal}`" class="ml-2 text-sm text-gray-700 dark:text-gray-300">
+                        {{ goal }}
+                      </label>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
 
-            <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
-              <!-- Trading Goals -->
-              <div>
-                <label class="label">Trading Goals</label>
-                <div class="space-y-2 mt-2">
-                  <div v-for="goal in goalOptions" :key="goal" class="flex items-center">
-                    <input
-                      :id="`goal-${goal}`"
-                      v-model="tradingProfileForm.tradingGoals"
-                      :value="goal"
-                      type="checkbox"
-                      class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                    />
-                    <label :for="`goal-${goal}`" class="ml-2 text-sm text-gray-700 dark:text-gray-300">
-                      {{ goal }}
-                    </label>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Preferred Sectors -->
-              <div>
-                <label class="label">Preferred Sectors</label>
-                <div class="space-y-2 mt-2">
-                  <div v-for="sector in sectorOptions" :key="sector" class="flex items-center">
-                    <input
-                      :id="`sector-${sector}`"
-                      v-model="tradingProfileForm.preferredSectors"
-                      :value="sector"
-                      type="checkbox"
-                      class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                    />
-                    <label :for="`sector-${sector}`" class="ml-2 text-sm text-gray-700 dark:text-gray-300">
-                      {{ sector }}
-                    </label>
+            <!-- Sector Preferences -->
+            <div>
+              <h4 class="text-md font-medium text-gray-900 dark:text-white mb-4">Sector Preferences</h4>
+              <div class="grid grid-cols-1 gap-6">
+                <!-- Preferred Sectors -->
+                <div>
+                  <label class="label">Preferred Sectors</label>
+                  <div class="grid grid-cols-2 gap-2 mt-2 sm:grid-cols-3 lg:grid-cols-4">
+                    <div v-for="sector in sectorOptions" :key="sector" class="flex items-center">
+                      <input
+                        :id="`sector-${sector}`"
+                        v-model="tradingProfileForm.preferredSectors"
+                        :value="sector"
+                        type="checkbox"
+                        class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                      />
+                      <label :for="`sector-${sector}`" class="ml-2 text-sm text-gray-700 dark:text-gray-300">
+                        {{ sector }}
+                      </label>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -526,6 +681,17 @@ const tradingProfileLoading = ref(false)
 const loadingEquity = ref(false)
 const passwordError = ref(null)
 const showAddTag = ref(false)
+const twoFactorLoading = ref(false)
+const show2FASetup = ref(false)
+const qrCodeUrl = ref('')
+const setupSecret = ref('')
+const backupCodes = ref([])
+const verificationCode = ref('')
+
+const twoFactorStatus = ref({
+  enabled: false,
+  backupCodesRemaining: 0
+})
 
 const profileForm = ref({
   fullName: '',
@@ -536,8 +702,7 @@ const profileForm = ref({
 
 const settingsForm = ref({
   emailNotifications: true,
-  publicProfile: false,
-  theme: 'light'
+  publicProfile: false
 })
 
 const defaultTagsInput = ref('')
@@ -570,7 +735,7 @@ const tradingProfileForm = ref({
 
 // Trading profile options
 const strategyOptions = [
-  'Breakouts', 'Earnings Plays', 'Momentum Trading', 'Scalping', 'Swing Trading',
+  'Breakouts', 'Earnings Plays', 'Momentum Trading', 'Scalping',
   'Gap Trading', 'Mean Reversion', 'Technical Analysis', 'Fundamental Analysis',
   'Options Trading', 'News Trading', 'Support/Resistance', 'Trend Following'
 ]
@@ -601,15 +766,27 @@ async function updateProfile() {
   profileLoading.value = true
   
   try {
-    await api.put('/users/profile', {
+    const payload = {
       fullName: profileForm.value.fullName,
       timezone: profileForm.value.timezone
-    })
+    }
     
-    showSuccess('Success', 'Profile updated successfully')
+    // Only include email if 2FA is enabled and email has changed
+    if (twoFactorStatus.value.enabled && profileForm.value.email !== authStore.user?.email) {
+      payload.email = profileForm.value.email
+    }
+    
+    await api.put('/users/profile', payload)
+    
+    if (payload.email) {
+      showSuccess('Success', 'Profile updated successfully. Please check your new email for verification.')
+    } else {
+      showSuccess('Success', 'Profile updated successfully')
+    }
+    
     await authStore.fetchUser()
   } catch (error) {
-    showError('Error', 'Failed to update profile')
+    showError('Error', error.response?.data?.error || 'Failed to update profile')
   } finally {
     profileLoading.value = false
   }
@@ -754,8 +931,7 @@ async function loadData() {
     
     settingsForm.value = {
       emailNotifications: settings.email_notifications ?? true,
-      publicProfile: settings.public_profile ?? false,
-      theme: settings.theme || 'light'
+      publicProfile: settings.public_profile ?? false
     }
     
     defaultTagsInput.value = settings.default_tags ? settings.default_tags.join(', ') : ''
@@ -791,7 +967,73 @@ async function updateAccountEquity() {
   }
 }
 
+// 2FA Functions
+async function fetch2FAStatus() {
+  try {
+    const response = await api.get('/2fa/status')
+    twoFactorStatus.value = response.data
+  } catch (error) {
+    console.error('Failed to fetch 2FA status:', error)
+  }
+}
+
+async function setup2FA() {
+  twoFactorLoading.value = true
+  
+  try {
+    const response = await api.post('/2fa/setup')
+    show2FASetup.value = true
+    qrCodeUrl.value = response.data.qrCode
+    setupSecret.value = response.data.secret
+    backupCodes.value = response.data.backupCodes || []
+  } catch (error) {
+    showError('Error', 'Failed to set up 2FA')
+  } finally {
+    twoFactorLoading.value = false
+  }
+}
+
+async function enable2FA() {
+  if (!verificationCode.value) {
+    showError('Error', 'Please enter the verification code')
+    return
+  }
+  
+  twoFactorLoading.value = true
+  
+  try {
+    await api.post('/2fa/enable', {
+      secret: setupSecret.value,
+      token: verificationCode.value,
+      backupCodes: backupCodes.value
+    })
+    
+    showSuccess('Success', '2FA has been enabled successfully')
+    show2FASetup.value = false
+    verificationCode.value = ''
+    await fetch2FAStatus()
+  } catch (error) {
+    showError('Error', error.response?.data?.error || 'Failed to enable 2FA')
+  } finally {
+    twoFactorLoading.value = false
+  }
+}
+
+async function disable2FA() {
+  // TODO: Implement 2FA disable with password + 2FA verification
+  showError('Coming Soon', '2FA disable will be implemented next')
+}
+
+function cancel2FASetup() {
+  show2FASetup.value = false
+  verificationCode.value = ''
+  qrCodeUrl.value = ''
+  setupSecret.value = ''
+  backupCodes.value = []
+}
+
 onMounted(() => {
   loadData()
+  fetch2FAStatus()
 })
 </script>

@@ -17,15 +17,58 @@ const userController = {
 
   async updateProfile(req, res, next) {
     try {
-      const { fullName, timezone } = req.body;
+      const { fullName, timezone, email } = req.body;
       
       const updates = {};
       if (fullName !== undefined) updates.full_name = fullName;
       if (timezone !== undefined) updates.timezone = timezone;
 
+      // Check if email change is requested
+      if (email !== undefined && email !== req.user.email) {
+        // Verify user has 2FA enabled
+        const currentUser = await User.findById(req.user.id);
+        if (!currentUser.two_factor_enabled) {
+          return res.status(403).json({ 
+            error: 'Two-factor authentication must be enabled to change email address' 
+          });
+        }
+
+        // Check if new email is already in use
+        const existingUser = await User.findByEmail(email);
+        if (existingUser && existingUser.id !== req.user.id) {
+          return res.status(409).json({ error: 'Email address is already in use' });
+        }
+
+        // Generate email verification token
+        const crypto = require('crypto');
+        const verificationToken = crypto.randomBytes(32).toString('hex');
+        const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+
+        updates.email = email.toLowerCase();
+        updates.is_verified = false; // Require re-verification
+        updates.verification_token = verificationToken;
+        updates.verification_expires = verificationExpires;
+
+        // Send verification email to new address
+        try {
+          await sendEmailChangeVerification(email, verificationToken);
+        } catch (emailError) {
+          console.warn('Failed to send email change verification:', emailError.message);
+          return res.status(500).json({ 
+            error: 'Failed to send verification email. Please try again.' 
+          });
+        }
+      }
+
       const user = await User.update(req.user.id, updates);
       
-      res.json({ user });
+      const response = { user };
+      if (email !== undefined && email !== req.user.email) {
+        response.message = 'Profile updated. Please check your new email address for verification.';
+        response.emailChanged = true;
+      }
+      
+      res.json(response);
     } catch (error) {
       next(error);
     }
@@ -239,5 +282,61 @@ const userController = {
     }
   }
 };
+
+// Email change verification function
+async function sendEmailChangeVerification(email, token) {
+  // Only send emails if email configuration is provided
+  if (!process.env.EMAIL_HOST || !process.env.EMAIL_USER) {
+    console.log('Email not configured, skipping email change verification email');
+    return;
+  }
+
+  const nodemailer = require('nodemailer');
+  
+  const transporter = nodemailer.createTransporter({
+    host: process.env.EMAIL_HOST,
+    port: process.env.EMAIL_PORT || 587,
+    secure: false,
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS
+    }
+  });
+
+  const verificationUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/verify-email/${token}`;
+
+  const mailOptions = {
+    from: process.env.EMAIL_FROM || 'noreply@tradetally.io',
+    to: email,
+    subject: 'Verify your new email address - TradeTally',
+    html: `
+      <div style="max-width: 600px; margin: 0 auto; padding: 20px; font-family: Arial, sans-serif;">
+        <h1 style="color: #4F46E5;">Email Address Change</h1>
+        <p>You have requested to change your email address for your TradeTally account. Please verify your new email address by clicking the button below:</p>
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${verificationUrl}" 
+             style="background-color: #4F46E5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
+            Verify New Email Address
+          </a>
+        </div>
+        <p>Or copy and paste this link into your browser:</p>
+        <p style="word-break: break-all; color: #6B7280;">${verificationUrl}</p>
+        <p>This link will expire in 24 hours for security reasons.</p>
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #E5E7EB;">
+        <p style="color: #6B7280; font-size: 12px;">
+          If you didn't request this email change, please secure your account immediately and contact support.
+        </p>
+      </div>
+    `
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    console.log('Email change verification email sent to:', email);
+  } catch (error) {
+    console.error('Failed to send email change verification email:', error);
+    throw error;
+  }
+}
 
 module.exports = userController;
