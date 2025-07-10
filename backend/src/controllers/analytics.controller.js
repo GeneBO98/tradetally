@@ -4,6 +4,7 @@ const User = require('../models/User');
 const finnhub = require('../utils/finnhub');
 const cache = require('../utils/cache');
 const MAEEstimator = require('../utils/maeEstimator');
+const symbolCategories = require('../utils/symbolCategories');
 
 // Async MAE/MFE calculation function
 async function calculateMAEMFEAsync(userId, dateFilter, params) {
@@ -1338,16 +1339,6 @@ const analyticsController = {
 
       const { startDate, endDate } = req.query;
       
-      // Check for cached sector performance results first
-      const cacheKey = `${req.user.id}:${startDate || 'all'}:${endDate || 'all'}`;
-      const cachedSectorResults = await cache.get('sector_performance', cacheKey);
-      if (cachedSectorResults) {
-        console.log('✅ Using cached sector performance results');
-        return res.json(cachedSectorResults);
-      }
-      
-      console.log('🔄 No cached results found, generating sector performance...');
-      
       let dateFilter = '';
       const params = [req.user.id];
       
@@ -1389,45 +1380,40 @@ const analyticsController = {
         });
       }
 
-      // Get industry data for each symbol
-      console.log('🏭 Fetching industry data (using cache where possible)...');
+      // Get industry data from permanent storage first (fast)
+      console.log('🏭 Fetching industry data from permanent storage...');
+      const symbols = symbolData.map(s => s.symbol);
+      
+      // Get all categories from storage (including those that failed categorization)
+      const storedQuery = `
+        SELECT symbol, finnhub_industry, company_name
+        FROM symbol_categories 
+        WHERE symbol = ANY($1::text[])
+      `;
+      const storedResult = await db.query(storedQuery, [symbols]);
+      const storedCategories = new Map();
+      
+      for (const row of storedResult.rows) {
+        storedCategories.set(row.symbol, row);
+      }
+      
+      console.log(`📊 Found ${storedCategories.size} stored symbols in permanent storage`);
+      
       const sectorMap = new Map();
+      let categorizedCount = 0;
+      let uncategorizedSymbols = [];
+      let failedSymbols = 0;
       
-      // Process ALL symbols to ensure accurate totals
-      let cachedCount = 0;
-      let fetchedCount = 0;
-      let failedSymbols = [];
-      
+      // Process symbols with stored categories first
       for (const symbolInfo of symbolData) {
-        try {
-          // Check if we already have this in cache first
-          const cacheKey = `company_profile:${symbolInfo.symbol.toUpperCase()}`;
-          const cache = require('../utils/cache');
-          const cached = await cache.get('company_profile', symbolInfo.symbol.toUpperCase());
-          
-          let profile;
-          if (cached) {
-            profile = cached;
-            cachedCount++;
-            console.log(`✅ Using cached industry data for ${symbolInfo.symbol}`);
-          } else {
-            // Only fetch if not in cache and we haven't hit our limit
-            if (fetchedCount < 20) { // Limit API calls to 20 per request
-              console.log(`🔍 Fetching industry for ${symbolInfo.symbol} from API...`);
-              profile = await finnhub.getCompanyProfile(symbolInfo.symbol);
-              fetchedCount++;
-              
-              // Add delay only for API calls, not cached data
-              await new Promise(resolve => setTimeout(resolve, 2100));
-            } else {
-              // Skip remaining symbols that aren't cached
-              failedSymbols.push(symbolInfo.symbol);
-              continue;
-            }
-          }
-          
-          if (profile && profile.finnhubIndustry) {
-            const industry = profile.finnhubIndustry;
+        const category = storedCategories.get(symbolInfo.symbol.toUpperCase());
+        
+        if (category) {
+          // Symbol has been processed
+          if (category.finnhub_industry) {
+            // Successfully categorized
+            const industry = category.finnhub_industry;
+            categorizedCount++;
             
             if (!sectorMap.has(industry)) {
               sectorMap.set(industry, {
@@ -1448,18 +1434,17 @@ const analyticsController = {
               trades: parseInt(symbolInfo.total_trades),
               pnl: parseFloat(symbolInfo.total_pnl)
             });
-            
           } else {
-            console.warn(`⚠️ No industry data found for ${symbolInfo.symbol}`);
+            // Processed but no industry data available
+            failedSymbols++;
           }
-          
-        } catch (error) {
-          console.warn(`❌ Failed to get industry for ${symbolInfo.symbol}:`, error.message);
-          failedSymbols.push(symbolInfo.symbol);
+        } else {
+          // Not yet processed
+          uncategorizedSymbols.push(symbolInfo.symbol);
         }
       }
       
-      console.log(`📊 Sector analysis stats: ${cachedCount} cached, ${fetchedCount} fetched, ${failedSymbols.length} skipped`);
+      console.log(`📊 Immediate sector analysis: ${categorizedCount} categorized, ${uncategorizedSymbols.length} uncategorized`);
 
       // Convert map to array and calculate additional metrics
       const sectors = Array.from(sectorMap.values()).map(sector => ({
@@ -1469,34 +1454,231 @@ const analyticsController = {
         symbol_count: sector.symbols.length
       })).sort((a, b) => b.total_pnl - a.total_pnl);
 
-      console.log(`✅ Sector analysis complete. Found ${sectors.length} sectors.`);
+      console.log(`✅ Returning ${sectors.length} sectors immediately`);
 
       const resultData = { 
         sectors,
         analysisDate: new Date().toISOString(),
-        symbolsAnalyzed: symbolData.length - failedSymbols.length,
+        symbolsAnalyzed: categorizedCount,
         totalSymbols: symbolData.length,
-        cachedSymbols: cachedCount,
-        fetchedSymbols: fetchedCount,
-        skippedSymbols: failedSymbols.length,
+        uncategorizedSymbols: uncategorizedSymbols.length,
+        failedSymbols: failedSymbols,
+        processedSymbols: categorizedCount + failedSymbols,
         dateRange: {
           startDate: startDate || null,
           endDate: endDate || null
         }
       };
 
-      // Cache the sector performance results for 2 hours
-      try {
-        await cache.set('sector_performance', cacheKey, resultData);
-        console.log(`💾 Cached sector performance results for user ${req.user.id}`);
-      } catch (cacheError) {
-        console.warn('⚠️ Failed to cache sector performance results:', cacheError.message);
+      // Start background categorization for uncategorized symbols (don't await)
+      if (uncategorizedSymbols.length > 0 && finnhub.isConfigured()) {
+        console.log(`🔄 Starting background categorization for ${uncategorizedSymbols.length} symbols...`);
+        symbolCategories.getSymbolCategories(uncategorizedSymbols).then(() => {
+          console.log(`✅ Background categorization complete for ${uncategorizedSymbols.length} symbols`);
+        }).catch(error => {
+          console.warn('⚠️ Background categorization failed:', error.message);
+        });
       }
 
       res.json(resultData);
 
     } catch (error) {
       console.error('Error generating sector performance:', error);
+      next(error);
+    }
+  },
+
+  async categorizeSymbols(req, res, next) {
+    try {
+      console.log('🔄 Starting symbol categorization process...');
+      
+      if (!finnhub.isConfigured()) {
+        return res.status(400).json({ 
+          error: 'Symbol categorization not available. Finnhub API key not configured.' 
+        });
+      }
+
+      // Run categorization for the current user's trades
+      const result = await symbolCategories.categorizeNewSymbols(req.user.id);
+      
+      // Get current stats
+      const stats = await symbolCategories.getStats();
+      
+      res.json({
+        success: true,
+        result,
+        stats,
+        message: `Categorized ${result.processed} of ${result.total} new symbols`
+      });
+
+    } catch (error) {
+      console.error('Error categorizing symbols:', error);
+      next(error);
+    }
+  },
+
+  async getSymbolCategoryStats(req, res, next) {
+    try {
+      const stats = await symbolCategories.getStats();
+      res.json({
+        success: true,
+        stats
+      });
+    } catch (error) {
+      console.error('Error getting symbol category stats:', error);
+      next(error);
+    }
+  },
+
+  async getAvailableSectors(req, res, next) {
+    try {
+      const query = `
+        SELECT DISTINCT finnhub_industry
+        FROM symbol_categories 
+        WHERE finnhub_industry IS NOT NULL
+        ORDER BY finnhub_industry
+      `;
+      
+      const result = await db.query(query);
+      const sectors = result.rows.map(row => row.finnhub_industry);
+      
+      res.json({ sectors });
+    } catch (error) {
+      console.error('Error getting available sectors:', error);
+      next(error);
+    }
+  },
+
+  async refreshSectorPerformance(req, res, next) {
+    try {
+      console.log('🔄 Refreshing sector performance data...');
+      
+      const { startDate, endDate } = req.query;
+      
+      let dateFilter = '';
+      const params = [req.user.id];
+      
+      if (startDate) {
+        dateFilter += ' AND trade_date >= $2';
+        params.push(startDate);
+      }
+      
+      if (endDate) {
+        dateFilter += ` AND trade_date <= $${params.length + 1}`;
+        params.push(endDate);
+      }
+
+      // Get all symbols and their P&L from trades
+      const symbolQuery = `
+        SELECT 
+          symbol,
+          COUNT(*) as total_trades,
+          COALESCE(SUM(pnl), 0) as total_pnl,
+          COALESCE(AVG(pnl), 0) as avg_pnl,
+          COUNT(CASE WHEN pnl > 0 THEN 1 END) as winning_trades
+        FROM trades
+        WHERE user_id = $1 ${dateFilter}
+        GROUP BY symbol
+        HAVING COUNT(*) > 0
+        ORDER BY total_pnl DESC
+      `;
+
+      const symbolResult = await db.query(symbolQuery, params);
+      const symbolData = symbolResult.rows;
+      
+      if (symbolData.length === 0) {
+        return res.json({ 
+          sectors: [],
+          message: 'No trading data found for the selected date range'
+        });
+      }
+
+      const symbols = symbolData.map(s => s.symbol);
+      
+      // Get all categories from storage (including those that failed categorization)
+      const storedQuery = `
+        SELECT symbol, finnhub_industry, company_name
+        FROM symbol_categories 
+        WHERE symbol = ANY($1::text[])
+      `;
+      const storedResult = await db.query(storedQuery, [symbols]);
+      const storedCategories = new Map();
+      
+      for (const row of storedResult.rows) {
+        storedCategories.set(row.symbol, row);
+      }
+      
+      const sectorMap = new Map();
+      let categorizedCount = 0;
+      let uncategorizedSymbols = [];
+      let failedSymbols = 0;
+      
+      // Process all symbols with their categories
+      for (const symbolInfo of symbolData) {
+        const category = storedCategories.get(symbolInfo.symbol.toUpperCase());
+        
+        if (category) {
+          // Symbol has been processed
+          if (category.finnhub_industry) {
+            // Successfully categorized
+            const industry = category.finnhub_industry;
+            categorizedCount++;
+            
+            if (!sectorMap.has(industry)) {
+              sectorMap.set(industry, {
+                industry: industry,
+                total_trades: 0,
+                total_pnl: 0,
+                winning_trades: 0,
+                symbols: []
+              });
+            }
+            
+            const sector = sectorMap.get(industry);
+            sector.total_trades += parseInt(symbolInfo.total_trades);
+            sector.total_pnl += parseFloat(symbolInfo.total_pnl);
+            sector.winning_trades += parseInt(symbolInfo.winning_trades);
+            sector.symbols.push({
+              symbol: symbolInfo.symbol,
+              trades: parseInt(symbolInfo.total_trades),
+              pnl: parseFloat(symbolInfo.total_pnl)
+            });
+          } else {
+            // Processed but no industry data available
+            failedSymbols++;
+          }
+        } else {
+          // Not yet processed
+          uncategorizedSymbols.push(symbolInfo.symbol);
+        }
+      }
+
+      // Convert map to array and calculate additional metrics
+      const sectors = Array.from(sectorMap.values()).map(sector => ({
+        ...sector,
+        win_rate: sector.total_trades > 0 ? ((sector.winning_trades / sector.total_trades) * 100).toFixed(2) : 0,
+        avg_pnl: sector.total_trades > 0 ? (sector.total_pnl / sector.total_trades).toFixed(2) : 0,
+        symbol_count: sector.symbols.length
+      })).sort((a, b) => b.total_pnl - a.total_pnl);
+
+      const resultData = { 
+        sectors,
+        analysisDate: new Date().toISOString(),
+        symbolsAnalyzed: categorizedCount,
+        totalSymbols: symbolData.length,
+        uncategorizedSymbols: uncategorizedSymbols.length,
+        failedSymbols: failedSymbols,
+        processedSymbols: categorizedCount + failedSymbols,
+        dateRange: {
+          startDate: startDate || null,
+          endDate: endDate || null
+        }
+      };
+
+      res.json(resultData);
+
+    } catch (error) {
+      console.error('Error refreshing sector performance:', error);
       next(error);
     }
   }

@@ -1,7 +1,7 @@
 <template>
   <div class="space-y-4">
     <!-- Basic filters always visible -->
-    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
       <div>
         <label for="symbol" class="label">Symbol</label>
         <input
@@ -46,6 +46,25 @@
           placeholder="e.g., Scalping"
           @keydown.enter="applyFilters"
         />
+      </div>
+      
+      <div>
+        <label for="sector" class="label">Sector</label>
+        <select
+          id="sector"
+          v-model="filters.sector"
+          class="input"
+          :disabled="loadingSectors"
+        >
+          <option value="">{{ loadingSectors ? 'Loading sectors...' : 'All Sectors' }}</option>
+          <option 
+            v-for="sector in availableSectors" 
+            :key="sector"
+            :value="sector"
+          >
+            {{ sector }}
+          </option>
+        </select>
       </div>
     </div>
 
@@ -245,11 +264,14 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ChevronRightIcon } from '@heroicons/vue/24/outline'
+import api from '@/services/api'
 
 const emit = defineEmits(['filter'])
 const route = useRoute()
 
 const showAdvanced = ref(false)
+const availableSectors = ref([])
+const loadingSectors = ref(false)
 
 const filters = ref({
   // Basic filters
@@ -257,6 +279,7 @@ const filters = ref({
   startDate: '',
   endDate: '',
   strategy: '',
+  sector: '',
   // Advanced filters
   side: '',
   minPrice: null,
@@ -278,6 +301,7 @@ const activeFiltersCount = computed(() => {
   if (filters.value.startDate) count++
   if (filters.value.endDate) count++
   if (filters.value.strategy) count++
+  if (filters.value.sector) count++
   if (filters.value.side) count++
   if (filters.value.minPrice !== null) count++
   if (filters.value.maxPrice !== null) count++
@@ -318,6 +342,7 @@ function applyFilters() {
   if (filters.value.startDate) cleanFilters.startDate = filters.value.startDate
   if (filters.value.endDate) cleanFilters.endDate = filters.value.endDate
   if (filters.value.strategy) cleanFilters.strategy = filters.value.strategy
+  if (filters.value.sector) cleanFilters.sector = filters.value.sector
   
   // Advanced filters
   if (filters.value.side) cleanFilters.side = filters.value.side
@@ -341,6 +366,7 @@ function resetFilters() {
     startDate: '',
     endDate: '',
     strategy: '',
+    sector: '',
     side: '',
     minPrice: null,
     maxPrice: null,
@@ -357,7 +383,23 @@ function resetFilters() {
   emit('filter', {})
 }
 
+async function fetchAvailableSectors() {
+  try {
+    loadingSectors.value = true
+    const response = await api.get('/analytics/sectors/available')
+    availableSectors.value = response.data.sectors || []
+  } catch (error) {
+    console.warn('Failed to fetch available sectors:', error)
+    availableSectors.value = []
+  } finally {
+    loadingSectors.value = false
+  }
+}
+
 onMounted(() => {
+  // Fetch available sectors for dropdown
+  fetchAvailableSectors()
+  
   // Initialize filters from query parameters if present
   let shouldApply = false
   
@@ -367,6 +409,7 @@ onMounted(() => {
     startDate: '',
     endDate: '',
     strategy: '',
+    sector: '',
     side: '',
     minPrice: null,
     maxPrice: null,
@@ -383,6 +426,11 @@ onMounted(() => {
   // Then set only the filters from query parameters
   if (route.query.symbol) {
     filters.value.symbol = route.query.symbol
+    shouldApply = true
+  }
+  
+  if (route.query.sector) {
+    filters.value.sector = route.query.sector
     shouldApply = true
   }
   

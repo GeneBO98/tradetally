@@ -75,6 +75,7 @@ class Trade {
       FROM trades t
       LEFT JOIN trade_attachments ta ON t.id = ta.trade_id
       LEFT JOIN trade_comments tc ON t.id = tc.trade_id
+      ${filters.sector ? 'LEFT JOIN symbol_categories sc ON t.symbol = sc.symbol' : ''}
       WHERE t.user_id = $1
     `;
 
@@ -108,6 +109,12 @@ class Trade {
     if (filters.strategy) {
       query += ` AND t.strategy = $${paramCount}`;
       values.push(filters.strategy);
+      paramCount++;
+    }
+
+    if (filters.sector) {
+      query += ` AND sc.finnhub_industry = $${paramCount}`;
+      values.push(filters.sector);
       paramCount++;
     }
 
@@ -806,6 +813,12 @@ class Trade {
     if (filters.strategy) {
       whereClause += ` AND t.strategy = $${paramCount}`;
       values.push(filters.strategy);
+      paramCount++;
+    }
+
+    if (filters.sector) {
+      whereClause += ` AND t.symbol IN (SELECT symbol FROM symbol_categories WHERE finnhub_industry = $${paramCount})`;
+      values.push(filters.sector);
       paramCount++;
     }
 

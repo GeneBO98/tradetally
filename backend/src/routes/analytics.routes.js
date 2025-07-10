@@ -14,5 +14,9 @@ router.get('/charts', authenticate, analyticsController.getChartData);
 router.get('/drawdown', authenticate, analyticsController.getDrawdownAnalysis);
 router.get('/recommendations', authenticate, analyticsController.getRecommendations);
 router.get('/sectors', authenticate, analyticsController.getSectorPerformance);
+router.get('/sectors/available', authenticate, analyticsController.getAvailableSectors);
+router.get('/sectors/refresh', authenticate, analyticsController.refreshSectorPerformance);
+router.post('/categorize-symbols', authenticate, analyticsController.categorizeSymbols);
+router.get('/symbol-stats', authenticate, analyticsController.getSymbolCategoryStats);
 
 module.exports = router;
