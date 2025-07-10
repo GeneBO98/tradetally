@@ -185,6 +185,17 @@ const authController = {
         });
       }
 
+      // Check if 2FA is enabled for this user
+      if (user.two_factor_enabled) {
+        // Generate a temporary token for 2FA verification
+        const tempToken = generateToken(user, '15m'); // Short-lived token
+        return res.json({
+          requires2FA: true,
+          tempToken: tempToken,
+          message: 'Please provide your 2FA verification code'
+        });
+      }
+
       const token = generateToken(user);
 
       res.json({
@@ -197,7 +208,76 @@ const authController = {
           avatarUrl: user.avatar_url,
           role: user.role,
           isVerified: user.is_verified,
-          adminApproved: user.admin_approved
+          adminApproved: user.admin_approved,
+          twoFactorEnabled: user.two_factor_enabled || false
+        },
+        token
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async verify2FA(req, res, next) {
+    try {
+      const { tempToken, twoFactorCode } = req.body;
+
+      if (!tempToken || !twoFactorCode) {
+        return res.status(400).json({ error: 'Temporary token and 2FA code are required' });
+      }
+
+      // Verify the temporary token
+      const jwt = require('jsonwebtoken');
+      const speakeasy = require('speakeasy');
+      
+      let decoded;
+      try {
+        decoded = jwt.verify(tempToken, process.env.JWT_SECRET);
+      } catch (error) {
+        return res.status(401).json({ error: 'Invalid or expired temporary token' });
+      }
+
+      const user = await User.findByEmail(decoded.email);
+      if (!user || !user.two_factor_enabled) {
+        return res.status(400).json({ error: 'Invalid request' });
+      }
+
+      // Verify 2FA code
+      const verified = speakeasy.totp.verify({
+        secret: user.two_factor_secret,
+        encoding: 'base32',
+        token: twoFactorCode,
+        window: 2
+      });
+
+      if (!verified) {
+        // Check if it's a backup code
+        const backupCodes = user.two_factor_backup_codes || [];
+        if (backupCodes.includes(twoFactorCode.toUpperCase())) {
+          // Remove used backup code
+          const updatedBackupCodes = backupCodes.filter(code => code !== twoFactorCode.toUpperCase());
+          await User.updateBackupCodes(user.id, updatedBackupCodes);
+        } else {
+          return res.status(400).json({ error: 'Invalid 2FA code' });
+        }
+      }
+
+      // Generate full access token
+      const token = generateToken(user);
+
+      res.json({
+        message: 'Login successful',
+        user: {
+          id: user.id,
+          email: user.email,
+          username: user.username,
+          fullName: user.full_name,
+          avatarUrl: user.avatar_url,
+          role: user.role,
+          timezone: user.timezone,
+          isVerified: user.is_verified,
+          adminApproved: user.admin_approved,
+          twoFactorEnabled: user.two_factor_enabled
         },
         token
       });

@@ -7,6 +7,7 @@ const { authenticate } = require('../middleware/auth');
 router.get('/config', authController.getRegistrationConfig);
 router.post('/register', validate(schemas.register), authController.register);
 router.post('/login', validate(schemas.login), authController.login);
+router.post('/verify-2fa', authController.verify2FA);
 router.post('/logout', authenticate, authController.logout);
 router.get('/me', authenticate, authController.getMe);
 router.post('/refresh', authController.refreshToken);

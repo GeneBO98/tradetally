@@ -19,7 +19,8 @@ class User {
 
   static async findById(id) {
     const query = `
-      SELECT id, email, username, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone, created_at, updated_at
+      SELECT id, email, username, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone, 
+             two_factor_enabled, created_at, updated_at
       FROM users
       WHERE id = $1 AND is_active = true
     `;
@@ -30,7 +31,8 @@ class User {
 
   static async findByEmail(email) {
     const query = `
-      SELECT id, email, username, password_hash, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone, created_at
+      SELECT id, email, username, password_hash, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone, 
+             two_factor_enabled, two_factor_secret, created_at
       FROM users
       WHERE email = $1
     `;
@@ -331,6 +333,18 @@ class User {
     
     const result = await db.query(query);
     return result.rows;
+  }
+
+  static async updateBackupCodes(userId, backupCodes) {
+    const query = `
+      UPDATE users
+      SET two_factor_backup_codes = $1, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $2
+      RETURNING id
+    `;
+    
+    const result = await db.query(query, [backupCodes, userId]);
+    return result.rows[0];
   }
 }
 

@@ -90,6 +90,10 @@
                     </span>
                   </dd>
                 </div>
+                <div v-if="trade.sector">
+                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Sector</dt>
+                  <dd class="mt-1 text-sm text-gray-900 dark:text-white">{{ trade.sector }}</dd>
+                </div>
                 <div v-if="trade.broker">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Broker</dt>
                   <dd class="mt-1 text-sm text-gray-900 dark:text-white">{{ trade.broker }}</dd>

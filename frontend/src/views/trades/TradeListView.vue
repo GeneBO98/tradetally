@@ -152,6 +152,12 @@
             </div>
           </div>
           
+          <!-- Sector Information -->
+          <div v-if="trade.sector" class="mt-3 pt-2 border-t border-gray-200 dark:border-gray-700">
+            <div class="text-xs text-gray-500 dark:text-gray-400">Sector</div>
+            <div class="text-sm text-gray-900 dark:text-white">{{ trade.sector }}</div>
+          </div>
+          
           <div class="flex justify-between items-center mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
             <button
               @click.stop="openComments(trade)"
@@ -190,6 +196,9 @@
               </th>
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                 P&L
+              </th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                Sector
               </th>
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                 Status
@@ -240,6 +249,11 @@
                 </div>
                 <div v-if="trade.pnl_percent" class="text-xs text-gray-500 dark:text-gray-400">
                   {{ trade.pnl_percent > 0 ? '+' : '' }}{{ formatNumber(trade.pnl_percent) }}%
+                </div>
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap">
+                <div class="text-sm text-gray-900 dark:text-white">
+                  {{ trade.sector || '-' }}
                 </div>
               </td>
               <td class="px-6 py-4 whitespace-nowrap">

@@ -44,11 +44,14 @@ class Trade {
     let query = `
       SELECT t.*, u.username, u.avatar_url,
         array_agg(DISTINCT ta.*) FILTER (WHERE ta.id IS NOT NULL) as attachments,
-        count(DISTINCT tc.id)::integer as comment_count
+        count(DISTINCT tc.id)::integer as comment_count,
+        sc.finnhub_industry as sector,
+        sc.company_name as company_name
       FROM trades t
       LEFT JOIN users u ON t.user_id = u.id
       LEFT JOIN trade_attachments ta ON t.id = ta.trade_id
       LEFT JOIN trade_comments tc ON t.id = tc.trade_id
+      LEFT JOIN symbol_categories sc ON t.symbol = sc.symbol
       WHERE t.id = $1
     `;
 
@@ -61,7 +64,7 @@ class Trade {
       query += ` AND t.is_public = true`;
     }
 
-    query += ` GROUP BY t.id, u.username, u.avatar_url`;
+    query += ` GROUP BY t.id, u.username, u.avatar_url, sc.finnhub_industry, sc.company_name`;
 
     const result = await db.query(query, values);
     return result.rows[0];
@@ -71,11 +74,13 @@ class Trade {
     let query = `
       SELECT t.*, 
         array_agg(DISTINCT ta.file_url) FILTER (WHERE ta.id IS NOT NULL) as attachment_urls,
-        count(DISTINCT tc.id)::integer as comment_count
+        count(DISTINCT tc.id)::integer as comment_count,
+        sc.finnhub_industry as sector,
+        sc.company_name as company_name
       FROM trades t
       LEFT JOIN trade_attachments ta ON t.id = ta.trade_id
       LEFT JOIN trade_comments tc ON t.id = tc.trade_id
-      ${filters.sector ? 'LEFT JOIN symbol_categories sc ON t.symbol = sc.symbol' : ''}
+      LEFT JOIN symbol_categories sc ON t.symbol = sc.symbol
       WHERE t.user_id = $1
     `;
 
@@ -185,7 +190,7 @@ class Trade {
       query += this.getHoldTimeFilter(filters.holdTime);
     }
 
-    query += ` GROUP BY t.id ORDER BY t.trade_date DESC, t.entry_time DESC`;
+    query += ` GROUP BY t.id, sc.finnhub_industry, sc.company_name ORDER BY t.trade_date DESC, t.entry_time DESC`;
 
     if (filters.limit) {
       query += ` LIMIT $${paramCount}`;
