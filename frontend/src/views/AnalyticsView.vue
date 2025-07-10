@@ -492,8 +492,41 @@
       <div class="card">
         <div class="card-body">
           <div class="flex items-center justify-between mb-4">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white">Sector Performance</h3>
-            <div v-if="loadingSectors" class="animate-spin rounded-full h-5 w-5 border-b-2 border-primary-600"></div>
+            <div>
+              <h3 class="text-lg font-medium text-gray-900 dark:text-white">Sector Performance</h3>
+              <div v-if="sectorStats.uncategorizedSymbols > 0 || showCompletionMessage" class="mt-2">
+                <div class="flex items-center justify-between text-xs mb-1" 
+                     :class="showCompletionMessage ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'">
+                  <span>
+                    {{ showCompletionMessage ? '✅ All symbols processed!' : 'Processing symbols in background...' }}
+                  </span>
+                  <span>{{ categorizationProgress.completed }}/{{ categorizationProgress.total }}</span>
+                </div>
+                <div v-if="!showCompletionMessage && sectorStats.failedSymbols > 0" class="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                  {{ sectorStats.symbolsAnalyzed }} categorized, {{ sectorStats.failedSymbols }} failed, {{ sectorStats.uncategorizedSymbols }} pending
+                </div>
+                <div class="w-full rounded-full h-1.5"
+                     :class="showCompletionMessage ? 'bg-green-200 dark:bg-green-800' : 'bg-amber-200 dark:bg-amber-800'">
+                  <div 
+                    class="h-1.5 rounded-full transition-all duration-500 ease-out"
+                    :class="showCompletionMessage ? 'bg-green-500 dark:bg-green-400' : 'bg-amber-500 dark:bg-amber-400'"
+                    :style="{ width: `${categorizationProgress.percentage}%` }"
+                  ></div>
+                </div>
+              </div>
+            </div>
+            <div class="flex items-center gap-2">
+              <button 
+                v-if="sectorStats.uncategorizedSymbols > 0"
+                @click="refreshSectorData"
+                :disabled="loadingSectorRefresh"
+                class="px-3 py-1 text-xs bg-blue-100 hover:bg-blue-200 dark:bg-blue-900 dark:hover:bg-blue-800 text-blue-700 dark:text-blue-300 rounded-md transition-colors disabled:opacity-50"
+              >
+                <div v-if="loadingSectorRefresh" class="animate-spin rounded-full h-3 w-3 border-b border-current"></div>
+                <span v-else>Refresh</span>
+              </button>
+              <div v-if="loadingSectors" class="animate-spin rounded-full h-5 w-5 border-b-2 border-primary-600"></div>
+            </div>
           </div>
           
           <!-- Always show content area with relative positioning for loading overlay -->
@@ -513,10 +546,17 @@
             <div 
               v-for="sector in sectorData" 
               :key="sector.industry"
-              class="border border-gray-200 dark:border-gray-700 rounded-lg p-3 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+              class="group border border-gray-200 dark:border-gray-700 rounded-lg p-3 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer"
+              @click="navigateToSectorTrades(sector.industry)"
+              :title="`Click to view trades in ${sector.industry} sector`"
             >
               <div class="flex items-center justify-between mb-2">
-                <h4 class="font-medium text-gray-900 dark:text-white text-sm truncate pr-2">{{ sector.industry }}</h4>
+                <div class="flex items-center">
+                  <h4 class="font-medium text-gray-900 dark:text-white text-sm truncate pr-2">{{ sector.industry }}</h4>
+                  <svg class="w-3 h-3 text-gray-400 dark:text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+                  </svg>
+                </div>
                 <span 
                   class="text-xs font-semibold px-2 py-1 rounded whitespace-nowrap"
                   :class="sector.total_pnl >= 0 ? 'text-green-700 bg-green-100 dark:text-green-400 dark:bg-green-900/30' : 'text-red-700 bg-red-100 dark:text-red-400 dark:bg-red-900/30'"
@@ -867,6 +907,22 @@ const recommendationError = ref(null)
 // Sector Performance
 const sectorData = ref([])
 const loadingSectors = ref(false)
+const loadingSectorRefresh = ref(false)
+const sectorStats = ref({
+  symbolsAnalyzed: 0,
+  totalSymbols: 0,
+  uncategorizedSymbols: 0,
+  failedSymbols: 0,
+  processedSymbols: 0
+})
+
+const categorizationProgress = ref({
+  total: 0,
+  completed: 0,
+  percentage: 0
+})
+
+const showCompletionMessage = ref(false)
 
 // Chart refs
 const tradeDistributionChart = ref(null)
@@ -1750,13 +1806,146 @@ async function fetchSectorData() {
     console.log('🏭 Fetching sector performance data...')
     const response = await api.get(`/analytics/sectors?${params}`)
     sectorData.value = response.data.sectors || []
+    
+    // Update sector stats
+    sectorStats.value = {
+      symbolsAnalyzed: response.data.symbolsAnalyzed || 0,
+      totalSymbols: response.data.totalSymbols || 0,
+      uncategorizedSymbols: response.data.uncategorizedSymbols || 0,
+      failedSymbols: response.data.failedSymbols || 0,
+      processedSymbols: response.data.processedSymbols || 0
+    }
+    
+    // Initialize progress tracking (use processedSymbols to account for failed ones)
+    categorizationProgress.value = {
+      total: sectorStats.value.totalSymbols,
+      completed: sectorStats.value.processedSymbols,
+      percentage: sectorStats.value.totalSymbols > 0 
+        ? Math.round((sectorStats.value.processedSymbols / sectorStats.value.totalSymbols) * 100)
+        : 0
+    }
+    
     console.log('✅ Sector data loaded:', sectorData.value.length, 'sectors')
+    console.log('📊 Sector stats:', sectorStats.value)
+    console.log('📈 Progress:', categorizationProgress.value)
+    
+    // If there are uncategorized symbols, set up auto-refresh with progress updates
+    if (sectorStats.value.uncategorizedSymbols > 0) {
+      console.log('⏳ Setting up auto-refresh for uncategorized symbols...')
+      startProgressTracking()
+    }
   } catch (error) {
     console.error('❌ Error fetching sector data:', error)
     sectorData.value = []
+    sectorStats.value = { symbolsAnalyzed: 0, totalSymbols: 0, uncategorizedSymbols: 0 }
   } finally {
     loadingSectors.value = false
   }
+}
+
+function navigateToSectorTrades(sectorName) {
+  console.log(`📊 Navigating to trades for sector: ${sectorName}`)
+  router.push({
+    path: '/trades',
+    query: {
+      sector: sectorName
+    }
+  })
+}
+
+async function refreshSectorData() {
+  try {
+    loadingSectorRefresh.value = true
+    const params = new URLSearchParams()
+    if (filters.value.startDate) params.append('startDate', filters.value.startDate)
+    if (filters.value.endDate) params.append('endDate', filters.value.endDate)
+    
+    console.log('🔄 Refreshing sector performance data...')
+    const response = await api.get(`/analytics/sectors/refresh?${params}`)
+    sectorData.value = response.data.sectors || []
+    
+    // Update sector stats
+    const oldUncategorized = sectorStats.value.uncategorizedSymbols
+    sectorStats.value = {
+      symbolsAnalyzed: response.data.symbolsAnalyzed || 0,
+      totalSymbols: response.data.totalSymbols || 0,
+      uncategorizedSymbols: response.data.uncategorizedSymbols || 0,
+      failedSymbols: response.data.failedSymbols || 0,
+      processedSymbols: response.data.processedSymbols || 0
+    }
+    
+    // Update progress (use processedSymbols to account for failed ones)
+    categorizationProgress.value = {
+      total: sectorStats.value.totalSymbols,
+      completed: sectorStats.value.processedSymbols,
+      percentage: sectorStats.value.totalSymbols > 0 
+        ? Math.round((sectorStats.value.processedSymbols / sectorStats.value.totalSymbols) * 100)
+        : 0
+    }
+    
+    console.log('✅ Sector data refreshed:', sectorData.value.length, 'sectors')
+    console.log('📊 Updated sector stats:', sectorStats.value)
+    console.log('📈 Updated progress:', categorizationProgress.value)
+    
+    // Show success message if more symbols were categorized
+    if (oldUncategorized > sectorStats.value.uncategorizedSymbols) {
+      const newlyCategorized = oldUncategorized - sectorStats.value.uncategorizedSymbols
+      console.log(`🎉 ${newlyCategorized} additional symbols categorized!`)
+    }
+    
+    // Check if all symbols are now categorized
+    if (sectorStats.value.uncategorizedSymbols === 0 && sectorStats.value.totalSymbols > 0) {
+      console.log('🎉 All symbols categorized!')
+      showCompletionMessage.value = true
+      
+      // Hide completion message after 3 seconds
+      setTimeout(() => {
+        showCompletionMessage.value = false
+      }, 3000)
+      
+      // Clear progress interval
+      if (progressInterval) {
+        clearInterval(progressInterval)
+        progressInterval = null
+      }
+    } else if (sectorStats.value.uncategorizedSymbols > 0) {
+      // Continue tracking if there are still uncategorized symbols
+      startProgressTracking()
+    }
+    
+  } catch (error) {
+    console.error('❌ Error refreshing sector data:', error)
+  } finally {
+    loadingSectorRefresh.value = false
+  }
+}
+
+let progressInterval = null
+
+function startProgressTracking() {
+  // Clear any existing interval
+  if (progressInterval) {
+    clearInterval(progressInterval)
+  }
+  
+  // Set up periodic progress checks
+  progressInterval = setInterval(async () => {
+    if (sectorStats.value.uncategorizedSymbols === 0) {
+      clearInterval(progressInterval)
+      progressInterval = null
+      return
+    }
+    
+    // Check progress every 10 seconds
+    await refreshSectorData()
+  }, 10000)
+  
+  // Also set up the 30-second refresh as backup
+  setTimeout(() => {
+    if (sectorStats.value.uncategorizedSymbols > 0) {
+      refreshSectorData()
+    }
+  }, 30000)
 }
 
 function formatDate(dateString) {
@@ -1971,7 +2160,7 @@ onMounted(async () => {
   }
 })
 
-// Clean up charts on unmount
+// Clean up charts and intervals on unmount
 onUnmounted(() => {
   if (tradeDistributionChartInstance) {
     tradeDistributionChartInstance.destroy()
@@ -1993,6 +2182,12 @@ onUnmounted(() => {
   }
   if (drawdownChartInstance) {
     drawdownChartInstance.destroy()
+  }
+  
+  // Clean up progress tracking interval
+  if (progressInterval) {
+    clearInterval(progressInterval)
+    progressInterval = null
   }
 })
 </script>

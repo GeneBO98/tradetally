@@ -5,12 +5,13 @@ const db = require('../config/database');
 const logger = require('../utils/logger');
 const finnhub = require('../utils/finnhub');
 const cache = require('../utils/cache');
+const symbolCategories = require('../utils/symbolCategories');
 
 const tradeController = {
   async getUserTrades(req, res, next) {
     try {
       const { 
-        symbol, startDate, endDate, tags, strategy, 
+        symbol, startDate, endDate, tags, strategy, sector,
         side, minPrice, maxPrice, minQuantity, maxQuantity,
         status, minPnl, maxPnl, pnlType, broker,
         limit = 50, offset = 0 
@@ -22,6 +23,7 @@ const tradeController = {
         endDate,
         tags: tags ? tags.split(',') : undefined,
         strategy,
+        sector,
         // New advanced filters
         side,
         minPrice: minPrice ? parseFloat(minPrice) : undefined,
@@ -574,6 +576,19 @@ const tradeController = {
             console.log('✅ Sector performance cache invalidated after import completion');
           } catch (cacheError) {
             console.warn('⚠️ Failed to invalidate sector performance cache:', cacheError.message);
+          }
+
+          // Background categorization of new symbols
+          try {
+            console.log('🔄 Starting background symbol categorization after import...');
+            // Run categorization in background without blocking the response
+            symbolCategories.categorizeNewSymbols(req.user.id).then(result => {
+              console.log(`✅ Background categorization complete: ${result.processed} of ${result.total} symbols categorized`);
+            }).catch(error => {
+              console.warn('⚠️ Background symbol categorization failed:', error.message);
+            });
+          } catch (error) {
+            console.warn('⚠️ Failed to start background symbol categorization:', error.message);
           }
         } catch (error) {
           // Clear timeout on error
