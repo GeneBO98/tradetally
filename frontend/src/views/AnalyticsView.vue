@@ -542,9 +542,9 @@
             </div>
             
             <!-- Content (always present) -->
-            <div v-if="sectorData.length > 0" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div v-if="allSectorData.length > 0" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div 
-              v-for="sector in sectorData" 
+              v-for="sector in displayedSectorData" 
               :key="sector.industry"
               class="group border border-gray-200 dark:border-gray-700 rounded-lg p-3 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer"
               @click="navigateToSectorTrades(sector.industry)"
@@ -598,6 +598,7 @@
                 </div>
               </div>
             </div>
+            
             </div>
             
             <!-- Empty state -->
@@ -618,6 +619,26 @@
               <p class="text-sm">Sector data will appear here</p>
             </div>
             
+          </div>
+          
+          <!-- Load More / Collapse Buttons at bottom right of widget -->
+          <div v-if="allSectorData.length > 10" class="flex justify-end mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+            <div class="flex space-x-2">
+              <button 
+                v-if="sectorsToShow > 10"
+                @click="collapseSectors"
+                class="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700"
+              >
+                Show Less
+              </button>
+              <button 
+                v-if="hasMoreSectors"
+                @click="loadMoreSectors"
+                class="px-3 py-1.5 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors"
+              >
+                Show More
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -854,7 +875,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import api from '@/services/api'
 import PerformanceChart from '@/components/charts/PerformanceChart.vue'
@@ -906,6 +927,8 @@ const recommendationError = ref(null)
 
 // Sector Performance
 const sectorData = ref([])
+const allSectorData = ref([]) // Store all sectors
+const sectorsToShow = ref(10) // Number of sectors to display
 const loadingSectors = ref(false)
 const loadingSectorRefresh = ref(false)
 const sectorStats = ref({
@@ -923,6 +946,15 @@ const categorizationProgress = ref({
 })
 
 const showCompletionMessage = ref(false)
+
+// Computed property for displayed sectors
+const displayedSectorData = computed(() => {
+  return allSectorData.value.slice(0, sectorsToShow.value)
+})
+
+const hasMoreSectors = computed(() => {
+  return allSectorData.value.length > sectorsToShow.value
+})
 
 // Chart refs
 const tradeDistributionChart = ref(null)
@@ -1806,6 +1838,7 @@ async function fetchSectorData() {
     console.log('🏭 Fetching sector performance data...')
     const response = await api.get(`/analytics/sectors?${params}`)
     sectorData.value = response.data.sectors || []
+    allSectorData.value = response.data.sectors || []
     
     // Update sector stats
     sectorStats.value = {
@@ -1863,6 +1896,7 @@ async function refreshSectorData() {
     console.log('🔄 Refreshing sector performance data...')
     const response = await api.get(`/analytics/sectors/refresh?${params}`)
     sectorData.value = response.data.sectors || []
+    allSectorData.value = response.data.sectors || []
     
     // Update sector stats
     const oldUncategorized = sectorStats.value.uncategorizedSymbols
@@ -2190,6 +2224,18 @@ onUnmounted(() => {
     progressInterval = null
   }
 })
+
+// Load More function
+function loadMoreSectors() {
+  sectorsToShow.value += 10
+  console.log(`📊 Showing ${sectorsToShow.value} sectors out of ${allSectorData.value.length}`)
+}
+
+// Collapse function
+function collapseSectors() {
+  sectorsToShow.value = 10
+  console.log(`📊 Collapsed to show ${sectorsToShow.value} sectors`)
+}
 </script>
 
 <style scoped>
