@@ -20,6 +20,14 @@ const cache = {
   flush() {
     this.data = {};
   },
+  getStats() {
+    return {
+      keys: Object.keys(this.data).length,
+      totalSize: Object.keys(this.data).reduce((size, key) => {
+        return size + JSON.stringify(this.data[key]).length;
+      }, 0)
+    };
+  },
 };
 
 module.exports = cache;
