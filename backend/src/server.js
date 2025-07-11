@@ -42,99 +42,44 @@ const skipRateLimit = (req, res, next) => {
 };
 
 app.use(helmet());
-// CORS configuration for multiple origins (web + mobile)
-const configureCors = () => {
-  const allowedOrigins = [];
-  
-  // Add main frontend URL
-  if (process.env.FRONTEND_URL) {
-    allowedOrigins.push(process.env.FRONTEND_URL);
-  } else {
-    allowedOrigins.push('http://localhost:5173');
-  }
-  
-  // Add additional CORS origins for mobile apps
-  if (process.env.CORS_ORIGINS) {
-    const additionalOrigins = process.env.CORS_ORIGINS.split(',').map(origin => origin.trim());
-    allowedOrigins.push(...additionalOrigins);
-  }
-  
-  // Add mobile app schemes and localhost for development
-  if (process.env.NODE_ENV !== 'production') {
-    allowedOrigins.push(
-      'http://localhost:3000',
-      'http://localhost:5173',
-      'http://localhost:8080',
-      'http://127.0.0.1:3000',
-      'http://127.0.0.1:5173',
-      'http://127.0.0.1:8080'
-    );
-  }
-  
-  // Mobile app schemes (for React Native/Capacitor)
+
+// Optimized CORS configuration
+const allowedOrigins = [
+  process.env.FRONTEND_URL || 'http://localhost:5173',
+  ...(process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',') : [])
+];
+
+if (process.env.NODE_ENV !== 'production') {
   allowedOrigins.push(
+    'http://localhost:3000',
+    'http://localhost:8080',
     'capacitor://localhost',
     'ionic://localhost',
-    'http://localhost',
-    'https://localhost'
+    'http://localhost'
   );
-  
-  return {
-    origin: (origin, callback) => {
-      // Allow requests with no origin (mobile apps, Postman, etc.)
-      if (!origin) return callback(null, true);
-      
-      // Check if origin is in allowed list
-      if (allowedOrigins.some(allowedOrigin => {
-        // Exact match
-        if (origin === allowedOrigin) return true;
-        
-        // Pattern matching for mobile schemes
-        if (allowedOrigin.includes('localhost') && origin.includes('localhost')) return true;
-        if (allowedOrigin.includes('127.0.0.1') && origin.includes('127.0.0.1')) return true;
-        
-        // Mobile scheme matching
-        if (origin.startsWith('capacitor://') || origin.startsWith('ionic://')) return true;
-        if (origin.startsWith('file://')) return true; // Cordova apps
-        
-        return false;
-      })) {
-        return callback(null, true);
-      }
-      
-      // Log rejected origins in development
-      if (process.env.NODE_ENV !== 'production') {
-        console.warn(`CORS: Rejected origin: ${origin}`);
-        console.warn(`CORS: Allowed origins: ${allowedOrigins.join(', ')}`);
-      }
-      
+}
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
       callback(new Error('Not allowed by CORS'));
-    },
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: [
-      'Origin',
-      'X-Requested-With', 
-      'Content-Type',
-      'Accept',
-      'Authorization',
-      'X-Device-ID',
-      'X-App-Version',
-      'X-Platform',
-      'X-Request-ID'
-    ],
-    exposedHeaders: [
-      'X-API-Version',
-      'X-Rate-Limit-Remaining',
-      'X-Rate-Limit-Reset',
-      'X-Request-ID'
-    ],
-    optionsSuccessStatus: 200 // For legacy browser support
-  };
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization', 'X-Device-ID', 'X-App-Version', 'X-Platform', 'X-Request-ID'],
+  exposedHeaders: ['X-API-Version', 'X-Rate-Limit-Remaining', 'X-Rate-Limit-Reset', 'X-Request-ID'],
+  optionsSuccessStatus: 200
 };
 
-app.use(cors(configureCors()));
-app.use(morgan('combined'));
+app.use(cors(corsOptions));
+
+// Use morgan for logging in development, but not in production
+if (process.env.NODE_ENV !== 'production') {
+  app.use(morgan('dev'));
+}
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use('/api', skipRateLimit);
