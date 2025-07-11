@@ -20,9 +20,10 @@ const cache = {
   flush() {
     this.data = {};
   },
-  getStats() {
+  async getStats() {
     return {
-      keys: Object.keys(this.data).length,
+      memoryEntries: Object.keys(this.data).length,
+      databaseEntries: 0, // This is a simple in-memory cache, no database
       totalSize: Object.keys(this.data).reduce((size, key) => {
         return size + JSON.stringify(this.data[key]).length;
       }, 0)
