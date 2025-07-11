@@ -81,7 +81,13 @@ const analyticsController = {
   async getOverview(req, res, next) {
     try {
       const { startDate, endDate } = req.query;
-      
+      const cacheKey = `analytics_overview_${req.user.id}_${startDate}_${endDate}`;
+      const cachedData = cache.get(cacheKey);
+
+      if (cachedData) {
+        return res.json(cachedData);
+      }
+
       console.log('Date filters received:', { startDate, endDate });
       
       let dateFilter = '';
@@ -93,7 +99,7 @@ const analyticsController = {
       }
       
       if (endDate) {
-        dateFilter += ` AND trade_date <= $${params.length + 1}`;
+        dateFilter += ` AND trade_date <= ${params.length + 1}`;
         params.push(endDate);
       }
       
@@ -387,6 +393,7 @@ const analyticsController = {
       });
 
       console.log('Analytics overview calculation completed, sending response');
+      cache.set(cacheKey, { overview });
       res.json({ overview });
     } catch (error) {
       console.error('Analytics overview error:', error);
@@ -656,7 +663,13 @@ const analyticsController = {
   async getChartData(req, res, next) {
     try {
       const { startDate, endDate } = req.query;
-      
+      const cacheKey = `analytics_chart_data_${req.user.id}_${startDate}_${endDate}`;
+      const cachedData = cache.get(cacheKey);
+
+      if (cachedData) {
+        return res.json(cachedData);
+      }
+
       let dateFilter = '';
       const params = [req.user.id];
       
@@ -950,7 +963,7 @@ const analyticsController = {
 
       const dailyVolumeResult = await db.query(dailyVolumeQuery, params);
 
-      res.json({
+      const responseData = {
         tradeDistribution,
         performanceByPrice,
         performanceByVolume,
@@ -963,7 +976,11 @@ const analyticsController = {
           price: priceLabels,
           holdTime: holdTimeLabels
         }
-      });
+      };
+
+      cache.set(cacheKey, responseData);
+
+      res.json(responseData);
     } catch (error) {
       next(error);
     }

@@ -171,7 +171,7 @@
                           {{ position.unrealizedPnL >= 0 ? '+' : '' }}${{ formatCurrency(Math.abs(position.unrealizedPnL)) }}
                         </div>
                         <div class="text-xs" :class="[
-                          position.unrealizedPnL >= 0 ? 'text-green-500' : 'text-red-500'
+                          position.unrealizedPnLPercent >= 0 ? 'text-green-500' : 'text-red-500'
                         ]">
                           {{ position.unrealizedPnLPercent >= 0 ? '+' : '' }}{{ formatNumber(position.unrealizedPnLPercent) }}%
                         </div>
@@ -816,23 +816,20 @@ async function fetchFilterOptions() {
 }
 
 function createPnLChart() {
-  console.log('Dashboard: Creating P&L chart...')
-  console.log('Dashboard: pnlChart.value exists:', !!pnlChart.value)
-  console.log('Dashboard: dailyPnL data:', analytics.value.dailyPnL)
-  
+  console.log('Dashboard: Creating P&L chart...');
   if (pnlChartInstance) {
-    pnlChartInstance.destroy()
+    pnlChartInstance.destroy();
   }
-  
-  const ctx = pnlChart.value.getContext('2d')
-  const dailyData = analytics.value.dailyPnL || []
-  
-  console.log('Dashboard: Processed dailyData for chart:', dailyData)
-  console.log('Dashboard: Chart data will be:', {
-    labels: dailyData.map(d => format(new Date(d.trade_date), 'MMM dd')),
-    data: dailyData.map(d => parseFloat(d.cumulative_pnl) || 0)
-  })
-  
+
+  const ctx = pnlChart.value.getContext('2d');
+  const dailyData = analytics.value.dailyPnL || [];
+  const pnlValues = dailyData.map(d => parseFloat(d.cumulative_pnl) || 0);
+
+  const positiveColor = 'rgba(16, 185, 129, 1)'; // Solid green
+  const negativeColor = 'rgba(239, 68, 68, 1)'; // Solid red
+  const positiveFillColor = 'rgba(16, 185, 129, 0.2)'; // Lighter green fill
+  const negativeFillColor = 'rgba(239, 68, 68, 0.2)'; // Lighter red fill
+
   try {
     pnlChartInstance = new Chart(ctx, {
       type: 'line',
@@ -840,11 +837,21 @@ function createPnLChart() {
         labels: dailyData.map(d => format(new Date(d.trade_date), 'MMM dd')),
         datasets: [{
           label: 'Cumulative P&L',
-          data: dailyData.map(d => parseFloat(d.cumulative_pnl) || 0),
-          borderColor: '#10b981',
-          backgroundColor: 'rgba(16, 185, 129, 0.1)',
-          fill: true,
-          tension: 0.1
+          data: pnlValues,
+          fill: {
+            target: 'origin',
+            above: positiveFillColor, 
+            below: negativeFillColor
+          },
+          segment: {
+            borderColor: ctx => {
+              const y = ctx.p1.parsed.y;
+              return y >= 0 ? positiveColor : negativeColor;
+            },
+          },
+          tension: 0.1,
+          pointBackgroundColor: 'orange',
+          pointBorderColor: 'orange',
         }]
       },
       options: {
@@ -852,9 +859,9 @@ function createPnLChart() {
         maintainAspectRatio: false,
         onClick: (event, elements) => {
           if (elements.length > 0) {
-            const index = elements[0].index
-            const clickedDate = dailyData[index].trade_date
-            navigateToTradesByDate(clickedDate)
+            const index = elements[0].index;
+            const clickedDate = dailyData[index].trade_date;
+            navigateToTradesByDate(clickedDate);
           }
         },
         plugins: {
@@ -870,7 +877,7 @@ function createPnLChart() {
             },
             ticks: {
               callback: function(value) {
-                return '$' + value.toLocaleString()
+                return '$' + value.toLocaleString();
               }
             }
           },
@@ -881,10 +888,10 @@ function createPnLChart() {
           }
         }
       }
-    })
-    console.log('Dashboard: P&L chart created successfully')
+    });
+    console.log('Dashboard: P&L chart created successfully');
   } catch (error) {
-    console.error('Dashboard: Error creating P&L chart:', error)
+    console.error('Dashboard: Error creating P&L chart:', error);
   }
 }
 

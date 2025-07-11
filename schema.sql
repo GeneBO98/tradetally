@@ -106,6 +106,11 @@ CREATE INDEX IF NOT EXISTS idx_trade_attachments_trade_id ON trade_attachments(t
 CREATE INDEX IF NOT EXISTS idx_trade_comments_trade_id ON trade_comments(trade_id);
 CREATE INDEX IF NOT EXISTS idx_import_logs_user_id ON import_logs(user_id);
 
+-- Additional composite and specific indexes for analytics
+CREATE INDEX IF NOT EXISTS idx_trades_user_id_trade_date ON trades(user_id, trade_date);
+CREATE INDEX IF NOT EXISTS idx_trades_pnl ON trades(pnl);
+CREATE INDEX IF NOT EXISTS idx_trades_tags ON trades USING GIN(tags);
+
 -- Insert demo user (optional)
 -- Password is: DemoUser25 (hashed with bcrypt)
 INSERT INTO users (email, username, password_hash, full_name, is_verified, is_active)
