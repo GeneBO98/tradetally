@@ -99,7 +99,7 @@ const analyticsController = {
       }
       
       if (endDate) {
-        dateFilter += ` AND trade_date <= ${params.length + 1}`;
+        dateFilter += ` AND trade_date <= $${params.length + 1}`;
         params.push(endDate);
       }
       
@@ -490,6 +490,8 @@ const analyticsController = {
     try {
       const { startDate, endDate, limit = 10 } = req.query;
       
+      console.log('Symbol stats request - Date filters:', { startDate, endDate });
+      
       let dateFilter = '';
       const params = [req.user.id];
       
@@ -502,6 +504,9 @@ const analyticsController = {
         dateFilter += ` AND trade_date <= $${params.length + 1}`;
         params.push(endDate);
       }
+      
+      console.log('Symbol stats - Final dateFilter:', dateFilter);
+      console.log('Symbol stats - Query params:', params);
 
       // Validate and sanitize limit parameter
       const sanitizedLimit = parseInt(limit);
@@ -1356,6 +1361,8 @@ const analyticsController = {
 
       const { startDate, endDate } = req.query;
       
+      console.log('Sector performance request - Date filters:', { startDate, endDate });
+      
       let dateFilter = '';
       const params = [req.user.id];
       
@@ -1368,6 +1375,9 @@ const analyticsController = {
         dateFilter += ` AND trade_date <= $${params.length + 1}`;
         params.push(endDate);
       }
+      
+      console.log('Sector performance - Final dateFilter:', dateFilter);
+      console.log('Sector performance - Query params:', params);
 
       // Get all symbols and their P&L from trades
       console.log('🔍 Fetching symbols and P&L from trades...');

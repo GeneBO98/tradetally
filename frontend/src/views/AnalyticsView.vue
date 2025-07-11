@@ -1675,7 +1675,9 @@ async function fetchSymbolStats() {
     if (filters.value.startDate) params.startDate = filters.value.startDate
     if (filters.value.endDate) params.endDate = filters.value.endDate
 
+    console.log('📊 Fetching symbol stats with filters:', params)
     const response = await api.get('/analytics/symbols', { params })
+    console.log('📊 Symbol stats response:', response.data)
     symbolStats.value = response.data.symbols
   } catch (error) {
     console.error('Failed to fetch symbol stats:', error)
@@ -1835,8 +1837,9 @@ async function fetchSectorData() {
     if (filters.value.startDate) params.append('startDate', filters.value.startDate)
     if (filters.value.endDate) params.append('endDate', filters.value.endDate)
     
-    console.log('🏭 Fetching sector performance data...')
+    console.log('🏭 Fetching sector performance data with filters:', params.toString())
     const response = await api.get(`/analytics/sectors?${params}`)
+    console.log('🏭 Sector response:', response.data)
     sectorData.value = response.data.sectors || []
     allSectorData.value = response.data.sectors || []
     
