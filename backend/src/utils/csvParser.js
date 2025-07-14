@@ -621,7 +621,7 @@ async function parseLightspeedTransactions(records, existingPositions = {}) {
         }
         
         currentTrade.pnlPercent = (currentTrade.pnl / currentTrade.entryValue) * 100;
-        currentTrade.quantity = Math.abs(currentPosition);
+        currentTrade.quantity = currentTrade.totalQuantity;
         currentTrade.commission = currentTrade.totalFees;
         currentTrade.fees = 0;
         currentTrade.exitTime = transaction.entryTime;
@@ -955,7 +955,7 @@ async function parseSchwabTransactions(records, existingPositions = {}) {
         }
         
         currentTrade.pnlPercent = (currentTrade.pnl / currentTrade.entryValue) * 100;
-        currentTrade.quantity = Math.abs(currentPosition);
+        currentTrade.quantity = currentTrade.totalQuantity;
         currentTrade.commission = currentTrade.totalFees;
         currentTrade.fees = 0;
         currentTrade.exitTime = transaction.datetime;
