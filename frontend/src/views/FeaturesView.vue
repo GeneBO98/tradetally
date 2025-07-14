@@ -76,6 +76,28 @@
           Export all your TradeTally data as JSON from the Settings page. Perfect for migrating between instances or backup purposes.
         </p>
       </div>
+
+      <!-- Mobile App -->
+      <div class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm hover:shadow-lg transition-shadow">
+        <div class="flex items-center mb-4">
+          <DevicePhoneMobileIcon class="h-8 w-8 text-primary-600 mr-3" />
+          <h3 class="text-xl font-semibold text-gray-900 dark:text-white">iOS Mobile App</h3>
+        </div>
+        <p class="text-gray-600 dark:text-gray-400">
+          Track your trades on the go with our iOS mobile application. Full sync with your web account for seamless trading journal management.
+        </p>
+      </div>
+
+      <!-- API Access -->
+      <div class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm hover:shadow-lg transition-shadow">
+        <div class="flex items-center mb-4">
+          <CodeBracketIcon class="h-8 w-8 text-primary-600 mr-3" />
+          <h3 class="text-xl font-semibold text-gray-900 dark:text-white">Developer API</h3>
+        </div>
+        <p class="text-gray-600 dark:text-gray-400">
+          Integrate TradeTally with your trading tools and custom applications using our comprehensive REST API.
+        </p>
+      </div>
     </div>
 
     <!-- Premium Features Section -->
@@ -197,7 +219,8 @@ import {
   ServerIcon,
   ShieldCheckIcon,
   CodeBracketIcon,
-  ArrowRightIcon
+  ArrowRightIcon,
+  DevicePhoneMobileIcon
 } from '@heroicons/vue/24/outline'
 import { onMounted } from 'vue'
 
