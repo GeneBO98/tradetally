@@ -7,7 +7,8 @@
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "test": "jest",
-    "migrate": "node src/utils/migrate.js"
+    "migrate": "node src/utils/migrate.js",
+    "migrate:export": "node run-export-migration.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

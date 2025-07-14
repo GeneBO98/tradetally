@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useRegistrationMode } from '@/composables/useRegistrationMode'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -119,12 +120,46 @@ const router = createRouter({
       path: '/privacy',
       name: 'privacy-policy',
       component: () => import('@/views/PrivacyPolicyView.vue')
+    },
+    {
+      path: '/faq',
+      name: 'faq',
+      component: () => import('@/views/FAQView.vue'),
+      meta: { requiresOpen: true }
+    },
+    {
+      path: '/compare/tradervue',
+      name: 'compare-tradervue',
+      component: () => import('@/views/CompareTraderVueView.vue'),
+      meta: { requiresOpen: true }
+    },
+    {
+      path: '/features',
+      name: 'features',
+      component: () => import('@/views/FeaturesView.vue'),
+      meta: { requiresOpen: true }
     }
   ]
 })
 
 router.beforeEach(async (to, from, next) => {
   const authStore = useAuthStore()
+  const { fetchRegistrationConfig, isClosedMode, showSEOPages } = useRegistrationMode()
+  
+  // Fetch registration config for all routes
+  await fetchRegistrationConfig()
+  
+  // Handle closed mode - redirect home to login
+  if (isClosedMode.value && to.name === 'home' && !authStore.isAuthenticated) {
+    next({ name: 'login' })
+    return
+  }
+  
+  // Handle SEO pages - only show when registration mode is 'open'
+  if (to.meta.requiresOpen && !showSEOPages.value) {
+    next({ name: 'home' })
+    return
+  }
   
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
     next({ name: 'login', query: { redirect: to.fullPath } })

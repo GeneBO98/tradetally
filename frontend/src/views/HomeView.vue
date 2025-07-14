@@ -61,7 +61,7 @@
       </div>
     </section>
 
-    <section class="bg-white dark:bg-gray-800 py-16">
+    <section v-if="showSEOPages" class="bg-white dark:bg-gray-800 py-16">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="text-center">
           <h2 class="text-3xl font-extrabold text-gray-900 dark:text-white">
@@ -101,8 +101,10 @@
 import { ref, onMounted } from 'vue'
 import { ChartBarIcon, DocumentTextIcon, ArrowUpTrayIcon } from '@heroicons/vue/24/outline'
 import { useAuthStore } from '@/stores/auth'
+import { useRegistrationMode } from '@/composables/useRegistrationMode'
 
 const authStore = useAuthStore()
+const { showSEOPages } = useRegistrationMode()
 const showRegisterButton = ref(true)
 
 onMounted(async () => {
@@ -113,6 +115,42 @@ onMounted(async () => {
     console.error('Failed to fetch registration config:', error)
     // Default to showing the button if we can't determine the config
     showRegisterButton.value = true
+  }
+  
+  // Add structured data for SEO
+  if (showSEOPages.value) {
+    const script = document.createElement('script')
+    script.type = 'application/ld+json'
+    script.textContent = JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "TradeTally",
+      "applicationCategory": "FinanceApplication",
+      "operatingSystem": "Web",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "description": "Professional trading journal and analytics platform. Track trades, analyze performance, and improve your trading with comprehensive charts, multi-broker support, and real-time insights.",
+      "url": "https://tradetally.io",
+      "author": {
+        "@type": "Organization",
+        "name": "TradeTally"
+      },
+      "softwareVersion": "2.0",
+      "datePublished": "2024-01-01",
+      "featureList": [
+        "Trade Import from Any Broker",
+        "Advanced Analytics Dashboard",
+        "Detailed Trade Journal",
+        "Public Trade Sharing",
+        "Calendar View",
+        "Unlimited Data Export",
+        "Self-Hosting Option"
+      ]
+    })
+    document.head.appendChild(script)
   }
 })
 </script>

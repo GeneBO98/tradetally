@@ -280,6 +280,55 @@ const userController = {
     } catch (error) {
       next(error);
     }
+  },
+
+  // Admin user management functions
+  async getAllUsers(req, res, next) {
+    try {
+      const users = await User.getAllUsers();
+      res.json({ users });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async getPendingUsers(req, res, next) {
+    try {
+      const users = await User.getPendingUsers();
+      res.json({ users });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async approveUser(req, res, next) {
+    try {
+      const { userId } = req.params;
+      
+      const user = await User.approveUser(userId);
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      
+      res.json({ user, message: 'User approved successfully' });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async verifyUser(req, res, next) {
+    try {
+      const { userId } = req.params;
+      
+      const user = await User.verifyUser(userId);
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      
+      res.json({ user, message: 'User verified successfully' });
+    } catch (error) {
+      next(error);
+    }
   }
 };
 

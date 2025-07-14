@@ -3,12 +3,12 @@
     <div class="max-w-md w-full space-y-8">
       <div>
         <div class="flex justify-center mb-6">
-          <img src="/tradetally-logo.svg" alt="TradeTally" class="h-16 w-auto" />
+          <img src="https://zipline.id10tips.com/u/tradetally-banner.svg" alt="TradeTally" class="h-16 w-auto" />
         </div>
         <h2 class="mt-6 text-center text-3xl font-extrabold text-gray-900 dark:text-white">
           Sign in to your account
         </h2>
-        <p class="mt-2 text-center text-sm text-gray-600 dark:text-gray-400">
+        <p v-if="allowRegistration" class="mt-2 text-center text-sm text-gray-600 dark:text-gray-400">
           Or
           <router-link to="/register" class="font-medium text-primary-600 hover:text-primary-500">
             create a new account
@@ -56,10 +56,12 @@
           <div v-if="showResendVerification" class="mt-3">
             <button
               @click="handleResendVerification"
-              :disabled="authStore.loading"
-              class="text-sm text-primary-600 hover:text-primary-500 font-medium"
+              :disabled="resendLoading || resendCooldown > 0"
+              class="text-sm text-primary-600 hover:text-primary-500 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Resend verification email
+              <span v-if="resendLoading">Sending...</span>
+              <span v-else-if="resendCooldown > 0">Resend in {{ resendCooldown }}s</span>
+              <span v-else>Resend verification email</span>
             </button>
           </div>
           <div v-if="showApprovalMessage" class="mt-3">
@@ -67,6 +69,13 @@
               Your account is pending approval from an administrator. You will be able to sign in once approved.
             </p>
           </div>
+        </div>
+        
+        <!-- Resend verification success message -->
+        <div v-if="resendSuccess" class="rounded-md bg-green-50 dark:bg-green-900/20 p-4">
+          <p class="text-sm text-green-800 dark:text-green-400">
+            Verification email sent successfully! Please check your inbox.
+          </p>
         </div>
 
         <div>
@@ -95,15 +104,21 @@ import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useNotification } from '@/composables/useNotification'
+import { useRegistrationMode } from '@/composables/useRegistrationMode'
+import api from '@/services/api'
 
 const route = useRoute()
 const authStore = useAuthStore()
 const { showError, showSuccess } = useNotification()
+const { allowRegistration, fetchRegistrationConfig } = useRegistrationMode()
 
 const verificationMessage = ref('')
 const showResendVerification = ref(false)
 const showApprovalMessage = ref(false)
 const userEmail = ref('')
+const resendLoading = ref(false)
+const resendCooldown = ref(0)
+const resendSuccess = ref(false)
 
 const form = ref({
   email: '',
@@ -111,31 +126,71 @@ const form = ref({
 })
 
 async function handleLogin() {
+  // Reset state
+  showResendVerification.value = false
+  showApprovalMessage.value = false
+  resendSuccess.value = false
+  userEmail.value = ''
+  
   try {
     await authStore.login(form.value)
   } catch (error) {
     if (error.requiresVerification) {
       showResendVerification.value = true
-      userEmail.value = error.email
+      userEmail.value = error.email || form.value.email
     } else if (error.requiresApproval) {
       showApprovalMessage.value = true
-      userEmail.value = error.email
+      userEmail.value = error.email || form.value.email
+    } else if (authStore.error && authStore.error.includes('verify your email')) {
+      // Fallback for other email verification error patterns
+      showResendVerification.value = true
+      userEmail.value = form.value.email
     }
     // Error will be displayed via authStore.error in the template
   }
 }
 
 async function handleResendVerification() {
+  const emailToUse = userEmail.value || form.value.email
+  if (!emailToUse) {
+    showError('Error', 'Please enter your email address')
+    return
+  }
+  
+  resendLoading.value = true
+  resendSuccess.value = false
+  
   try {
-    await authStore.resendVerification(userEmail.value)
-    showSuccess('Success', 'Verification email has been resent. Please check your inbox.')
-    showResendVerification.value = false
+    const response = await api.post('/auth/resend-verification', {
+      email: emailToUse
+    })
+    
+    resendSuccess.value = true
+    showSuccess('Success', response.data.message)
+    
+    // Clear the auth error since we've sent a new verification email
+    authStore.error = null
+    
+    // Start cooldown timer
+    resendCooldown.value = 60
+    const cooldownInterval = setInterval(() => {
+      resendCooldown.value--
+      if (resendCooldown.value <= 0) {
+        clearInterval(cooldownInterval)
+      }
+    }, 1000)
+    
   } catch (error) {
-    showError('Error', 'Failed to resend verification email')
+    showError('Error', error.response?.data?.error || 'Failed to resend verification email')
+  } finally {
+    resendLoading.value = false
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
+  // Fetch registration config to determine if registration is allowed
+  await fetchRegistrationConfig()
+  
   // Check for verification message from registration
   if (route.query.message) {
     verificationMessage.value = route.query.message

@@ -8,20 +8,37 @@
             TradeTally
           </router-link>
           
-          <div v-if="authStore.isAuthenticated" class="hidden sm:ml-6 sm:flex sm:space-x-8">
-            <router-link
-              v-for="item in navigation"
-              :key="item.name"
-              :to="item.to"
-              class="inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
-              :class="[
-                $route.name === item.route
-                  ? 'border-primary-500 text-gray-900 dark:text-white'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-300 dark:hover:text-white'
-              ]"
-            >
-              {{ item.name }}
-            </router-link>
+          <div class="hidden sm:ml-6 sm:flex sm:space-x-8">
+            <template v-if="authStore.isAuthenticated">
+              <router-link
+                v-for="item in navigation"
+                :key="item.name"
+                :to="item.to"
+                class="inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
+                :class="[
+                  $route.name === item.route
+                    ? 'border-primary-500 text-gray-900 dark:text-white'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-300 dark:hover:text-white'
+                ]"
+              >
+                {{ item.name }}
+              </router-link>
+            </template>
+            <template v-else>
+              <router-link
+                v-for="item in publicNavigation"
+                :key="item.name"
+                :to="item.to"
+                class="inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
+                :class="[
+                  $route.name === item.route
+                    ? 'border-primary-500 text-gray-900 dark:text-white'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-300 dark:hover:text-white'
+                ]"
+              >
+                {{ item.name }}
+              </router-link>
+            </template>
           </div>
         </div>
 
@@ -125,19 +142,35 @@
           </template>
           <template v-else>
             <router-link
-              to="/login"
+              v-for="item in publicNavigation"
+              :key="item.name"
+              :to="item.to"
               @click="isMobileMenuOpen = false"
-              class="block px-3 py-2 text-base font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700"
+              class="block px-3 py-2 text-base font-medium"
+              :class="[
+                $route.name === item.route
+                  ? 'text-primary-600 bg-primary-50 dark:text-primary-400 dark:bg-gray-700'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700'
+              ]"
             >
-              Login
+              {{ item.name }}
             </router-link>
-            <router-link
-              to="/register"
-              @click="isMobileMenuOpen = false"
-              class="block px-3 py-2 text-base font-medium text-primary-600 hover:text-primary-700 hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-gray-700"
-            >
-              Sign Up
-            </router-link>
+            <div class="border-t border-gray-200 dark:border-gray-700 pt-4">
+              <router-link
+                to="/login"
+                @click="isMobileMenuOpen = false"
+                class="block px-3 py-2 text-base font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700"
+              >
+                Login
+              </router-link>
+              <router-link
+                to="/register"
+                @click="isMobileMenuOpen = false"
+                class="block px-3 py-2 text-base font-medium text-primary-600 hover:text-primary-700 hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-gray-700"
+              >
+                Sign Up
+              </router-link>
+            </div>
           </template>
           
           <!-- Donation link (subtle placement at bottom) -->
@@ -162,10 +195,12 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { useRegistrationMode } from '@/composables/useRegistrationMode'
 import { SunIcon, MoonIcon, Bars3Icon, XMarkIcon } from '@heroicons/vue/24/outline'
 import config from '@/config'
 
 const authStore = useAuthStore()
+const { showSEOPages } = useRegistrationMode()
 const isDark = ref(false)
 const isMobileMenuOpen = ref(false)
 
@@ -177,6 +212,23 @@ const baseNavigation = [
   { name: 'Import', to: '/import', route: 'import' },
   { name: 'Settings', to: '/settings', route: 'settings' }
 ]
+
+const publicNavigation = computed(() => {
+  const nav = [
+    { name: 'Public Trades', to: '/public', route: 'public-trades' }
+  ]
+  
+  // Add SEO pages only when in open mode
+  if (showSEOPages.value) {
+    nav.push(
+      { name: 'Features', to: '/features', route: 'features' },
+      { name: 'FAQ', to: '/faq', route: 'faq' },
+      { name: 'vs TraderVue', to: '/compare/tradervue', route: 'compare-tradervue' }
+    )
+  }
+  
+  return nav
+})
 
 const navigation = computed(() => {
   const nav = [...baseNavigation]
