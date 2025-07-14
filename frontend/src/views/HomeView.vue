@@ -60,6 +60,40 @@
         </div>
       </div>
     </section>
+
+    <section class="bg-white dark:bg-gray-800 py-16">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center">
+          <h2 class="text-3xl font-extrabold text-gray-900 dark:text-white">
+            The Modern Alternative to TraderVue
+          </h2>
+          <p class="mt-4 max-w-3xl mx-auto text-lg text-gray-500 dark:text-gray-400">
+            Looking for a TraderVue alternative? TradeTally offers all the trade journaling features you need with a modern interface, 
+            advanced analytics, and competitive pricing. Switch from TraderVue to TradeTally and experience the next generation of trade tracking.
+          </p>
+          <div class="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 max-w-5xl mx-auto">
+            <div class="bg-gray-50 dark:bg-gray-900 rounded-lg p-6">
+              <h3 class="text-lg font-medium text-gray-900 dark:text-white">Free Forever Plan</h3>
+              <p class="mt-2 text-gray-600 dark:text-gray-400">
+                Unlike TraderVue's limited free tier, enjoy comprehensive features without cost constraints.
+              </p>
+            </div>
+            <div class="bg-gray-50 dark:bg-gray-900 rounded-lg p-6">
+              <h3 class="text-lg font-medium text-gray-900 dark:text-white">Modern Tech Stack</h3>
+              <p class="mt-2 text-gray-600 dark:text-gray-400">
+                Built with Vue 3 and modern web technologies for a faster, more responsive experience.
+              </p>
+            </div>
+            <div class="bg-gray-50 dark:bg-gray-900 rounded-lg p-6">
+              <h3 class="text-lg font-medium text-gray-900 dark:text-white">Self-Hosted Option</h3>
+              <p class="mt-2 text-gray-600 dark:text-gray-400">
+                Full control over your data with our open-source self-hosted deployment option.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
   </div>
 </template>
 
