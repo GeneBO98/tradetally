@@ -199,19 +199,6 @@
       </div>
     </div>
 
-    <!-- Testimonial Section -->
-    <div class="bg-gray-50 dark:bg-gray-900 rounded-lg p-8 text-center">
-      <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-4">
-        Join Traders Who Made the Switch
-      </h2>
-      <p class="text-lg text-gray-600 dark:text-gray-400 mb-6 max-w-3xl mx-auto">
-        "After hitting TraderVue's monthly limit again, I discovered TradeTally. The unlimited free plan and self-hosting option sealed the deal. 
-        It has all the features I need without the artificial restrictions."
-      </p>
-      <p class="text-gray-500 dark:text-gray-500">
-        - Active Day Trader
-      </p>
-    </div>
   </div>
 </template>
 

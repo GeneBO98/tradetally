@@ -84,49 +84,51 @@
         Advanced Trading Tools
       </h2>
       
-      <div class="grid md:grid-cols-2 gap-8">
-        <div>
-          <h3 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">Performance Metrics</h3>
-          <ul class="space-y-2">
-            <li class="flex items-center text-gray-700 dark:text-gray-300">
-              <CheckIcon class="h-5 w-5 text-green-500 mr-2" />
-              Win rate and profit factor analysis
-            </li>
-            <li class="flex items-center text-gray-700 dark:text-gray-300">
-              <CheckIcon class="h-5 w-5 text-green-500 mr-2" />
-              Average win/loss calculations
-            </li>
-            <li class="flex items-center text-gray-700 dark:text-gray-300">
-              <CheckIcon class="h-5 w-5 text-green-500 mr-2" />
-              Maximum drawdown tracking
-            </li>
-            <li class="flex items-center text-gray-700 dark:text-gray-300">
-              <CheckIcon class="h-5 w-5 text-green-500 mr-2" />
-              Risk/reward ratio analysis
-            </li>
-          </ul>
-        </div>
-        
-        <div>
-          <h3 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">Trade Analysis</h3>
-          <ul class="space-y-2">
-            <li class="flex items-center text-gray-700 dark:text-gray-300">
-              <CheckIcon class="h-5 w-5 text-green-500 mr-2" />
-              Symbol performance breakdown
-            </li>
-            <li class="flex items-center text-gray-700 dark:text-gray-300">
-              <CheckIcon class="h-5 w-5 text-green-500 mr-2" />
-              Strategy effectiveness tracking
-            </li>
-            <li class="flex items-center text-gray-700 dark:text-gray-300">
-              <CheckIcon class="h-5 w-5 text-green-500 mr-2" />
-              Time-based performance analysis
-            </li>
-            <li class="flex items-center text-gray-700 dark:text-gray-300">
-              <CheckIcon class="h-5 w-5 text-green-500 mr-2" />
-              MAE/MFE calculations
-            </li>
-          </ul>
+      <div class="flex justify-center">
+        <div class="grid md:grid-cols-2 gap-4 max-w-4xl">
+          <div>
+            <h3 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">Performance Metrics</h3>
+            <ul class="space-y-2">
+              <li class="flex items-center text-gray-700 dark:text-gray-300">
+                <CheckIcon class="h-5 w-5 text-green-500 mr-2" />
+                Win rate and profit factor analysis
+              </li>
+              <li class="flex items-center text-gray-700 dark:text-gray-300">
+                <CheckIcon class="h-5 w-5 text-green-500 mr-2" />
+                Average win/loss calculations
+              </li>
+              <li class="flex items-center text-gray-700 dark:text-gray-300">
+                <CheckIcon class="h-5 w-5 text-green-500 mr-2" />
+                Maximum drawdown tracking
+              </li>
+              <li class="flex items-center text-gray-700 dark:text-gray-300">
+                <CheckIcon class="h-5 w-5 text-green-500 mr-2" />
+                Risk/reward ratio analysis
+              </li>
+            </ul>
+          </div>
+          
+          <div>
+            <h3 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">Trade Analysis</h3>
+            <ul class="space-y-2">
+              <li class="flex items-center text-gray-700 dark:text-gray-300">
+                <CheckIcon class="h-5 w-5 text-green-500 mr-2" />
+                Symbol performance breakdown
+              </li>
+              <li class="flex items-center text-gray-700 dark:text-gray-300">
+                <CheckIcon class="h-5 w-5 text-green-500 mr-2" />
+                Strategy effectiveness tracking
+              </li>
+              <li class="flex items-center text-gray-700 dark:text-gray-300">
+                <CheckIcon class="h-5 w-5 text-green-500 mr-2" />
+                Time-based performance analysis
+              </li>
+              <li class="flex items-center text-gray-700 dark:text-gray-300">
+                <CheckIcon class="h-5 w-5 text-green-500 mr-2" />
+                MAE/MFE calculations
+              </li>
+            </ul>
+          </div>
         </div>
       </div>
     </div>
