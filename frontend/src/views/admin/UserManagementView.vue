@@ -25,117 +25,161 @@
             <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
               <thead class="bg-gray-50 dark:bg-gray-700">
                 <tr>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-1/6">
                     User
                   </th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-1/6">
                     Email
                   </th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-20">
                     Role
                   </th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-20">
                     Status
                   </th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-20">
                     Verified
                   </th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-20">
+                    Approved
+                  </th>
+                  <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-24">
                     Joined
                   </th>
-                  <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider" style="width: 200px;">
                     Actions
                   </th>
                 </tr>
               </thead>
               <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                 <tr v-for="user in users" :key="user.id" class="hover:bg-gray-50 dark:hover:bg-gray-700">
-                  <td class="px-6 py-4 whitespace-nowrap">
+                  <td class="px-3 py-3 whitespace-nowrap">
                     <div class="flex items-center">
-                      <div class="flex-shrink-0 h-10 w-10">
+                      <div class="flex-shrink-0 h-8 w-8">
                         <img
                           v-if="user.avatar_url"
-                          class="h-10 w-10 rounded-full"
+                          class="h-8 w-8 rounded-full"
                           :src="user.avatar_url"
                           :alt="user.username"
                         />
                         <div
                           v-else
-                          class="h-10 w-10 rounded-full bg-primary-500 flex items-center justify-center"
+                          class="h-8 w-8 rounded-full bg-primary-500 flex items-center justify-center"
                         >
-                          <span class="text-sm font-medium text-white">
+                          <span class="text-xs font-medium text-white">
                             {{ user.username.charAt(0).toUpperCase() }}
                           </span>
                         </div>
                       </div>
-                      <div class="ml-4">
-                        <div class="text-sm font-medium text-gray-900 dark:text-white">
+                      <div class="ml-2">
+                        <div class="text-sm font-medium text-gray-900 dark:text-white truncate">
                           {{ user.username }}
                         </div>
-                        <div class="text-sm text-gray-500 dark:text-gray-400">
+                        <div class="text-xs text-gray-500 dark:text-gray-400 truncate">
                           {{ user.full_name || 'No name set' }}
                         </div>
                       </div>
                     </div>
                   </td>
-                  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                    {{ user.email }}
+                  <td class="px-3 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                    <div class="truncate">{{ user.email }}</div>
                   </td>
-                  <td class="px-6 py-4 whitespace-nowrap">
+                  <td class="px-3 py-3 whitespace-nowrap">
                     <select
                       :value="user.role"
                       @change="updateUserRole(user, $event.target.value)"
                       :disabled="isUpdating || (user.role === 'admin' && adminCount <= 1)"
-                      class="text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md focus:ring-primary-500 focus:border-primary-500 disabled:opacity-50"
+                      class="text-xs border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded focus:ring-primary-500 focus:border-primary-500 disabled:opacity-50"
                     >
                       <option value="user">User</option>
                       <option value="admin">Admin</option>
                     </select>
                   </td>
-                  <td class="px-6 py-4 whitespace-nowrap">
+                  <td class="px-3 py-3 whitespace-nowrap">
                     <span
                       :class="{
                         'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400': user.is_active,
                         'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400': !user.is_active
                       }"
-                      class="inline-flex px-2 py-1 text-xs font-semibold rounded-full"
+                      class="inline-flex px-1 py-1 text-xs font-semibold rounded-full"
                     >
-                      {{ user.is_active ? 'Active' : 'Inactive' }}
+                      {{ user.is_active ? '✓' : '✗' }}
                     </span>
                   </td>
-                  <td class="px-6 py-4 whitespace-nowrap">
+                  <td class="px-3 py-3 whitespace-nowrap">
                     <span
                       :class="{
                         'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400': user.is_verified,
                         'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400': !user.is_verified
                       }"
-                      class="inline-flex px-2 py-1 text-xs font-semibold rounded-full"
+                      class="inline-flex px-1 py-1 text-xs font-semibold rounded-full"
                     >
-                      {{ user.is_verified ? 'Verified' : 'Unverified' }}
+                      {{ user.is_verified ? '✓' : '✗' }}
                     </span>
                   </td>
-                  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                  <td class="px-3 py-3 whitespace-nowrap">
+                    <span
+                      :class="{
+                        'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400': user.admin_approved,
+                        'bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400': !user.admin_approved
+                      }"
+                      class="inline-flex px-1 py-1 text-xs font-semibold rounded-full"
+                    >
+                      {{ user.admin_approved ? '✓' : '✗' }}
+                    </span>
+                  </td>
+                  <td class="px-3 py-3 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">
                     {{ formatDate(user.created_at) }}
                   </td>
-                  <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
-                    <button
-                      @click="toggleUserStatus(user)"
-                      :disabled="isUpdating || (user.role === 'admin' && adminCount <= 1 && user.is_active)"
-                      :class="{
-                        'text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300': user.is_active,
-                        'text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300': !user.is_active
-                      }"
-                      class="disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {{ user.is_active ? 'Deactivate' : 'Activate' }}
-                    </button>
-                    <button
-                      @click="confirmDeleteUser(user)"
-                      :disabled="isUpdating || user.id === currentUserId || (user.role === 'admin' && adminCount <= 1)"
-                      class="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Delete
-                    </button>
+                  <td class="px-3 py-3 whitespace-nowrap text-right text-sm font-medium" style="width: 200px;">
+                    <div class="flex justify-end space-x-1">
+                      <!-- Blue: Verify -->
+                      <button
+                        v-if="!user.is_verified"
+                        @click="verifyUser(user)"
+                        :disabled="isUpdating"
+                        class="px-2 py-1 text-xs bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/20 dark:text-blue-400 dark:hover:bg-blue-800/30 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Verify
+                      </button>
+                      
+                      <!-- Green: Approve or Activate -->
+                      <button
+                        v-if="!user.admin_approved"
+                        @click="approveUser(user)"
+                        :disabled="isUpdating"
+                        class="px-2 py-1 text-xs bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/20 dark:text-green-400 dark:hover:bg-green-800/30 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Approve
+                      </button>
+                      <button
+                        v-else-if="!user.is_active"
+                        @click="toggleUserStatus(user)"
+                        :disabled="isUpdating || (user.role === 'admin' && adminCount <= 1 && user.is_active)"
+                        class="px-2 py-1 text-xs bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/20 dark:text-green-400 dark:hover:bg-green-800/30 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Activate
+                      </button>
+                      
+                      <!-- Orange: Deactivate -->
+                      <button
+                        v-if="user.is_active && user.admin_approved"
+                        @click="toggleUserStatus(user)"
+                        :disabled="isUpdating || (user.role === 'admin' && adminCount <= 1 && user.is_active)"
+                        class="px-2 py-1 text-xs bg-orange-100 text-orange-700 hover:bg-orange-200 dark:bg-orange-900/20 dark:text-orange-400 dark:hover:bg-orange-800/30 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Deactivate
+                      </button>
+                      
+                      <!-- Red: Delete -->
+                      <button
+                        @click="confirmDeleteUser(user)"
+                        :disabled="isUpdating || user.id === currentUserId || (user.role === 'admin' && adminCount <= 1)"
+                        class="px-2 py-1 text-xs bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-800/30 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               </tbody>
@@ -145,7 +189,7 @@
       </div>
 
       <!-- Stats cards -->
-      <div class="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-3">
+      <div class="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-5">
         <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
           <div class="p-5">
             <div class="flex items-center">
@@ -194,6 +238,42 @@
                 <dl>
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Active Users</dt>
                   <dd class="text-lg font-medium text-gray-900 dark:text-white">{{ activeUserCount }}</dd>
+                </dl>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
+          <div class="p-5">
+            <div class="flex items-center">
+              <div class="flex-shrink-0">
+                <svg class="h-6 w-6 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div class="ml-5 w-0 flex-1">
+                <dl>
+                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Pending Approval</dt>
+                  <dd class="text-lg font-medium text-orange-600 dark:text-orange-400">{{ pendingApprovalCount }}</dd>
+                </dl>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
+          <div class="p-5">
+            <div class="flex items-center">
+              <div class="flex-shrink-0">
+                <svg class="h-6 w-6 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207" />
+                </svg>
+              </div>
+              <div class="ml-5 w-0 flex-1">
+                <dl>
+                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Unverified</dt>
+                  <dd class="text-lg font-medium text-yellow-600 dark:text-yellow-400">{{ unverifiedCount }}</dd>
                 </dl>
               </div>
             </div>
@@ -263,6 +343,14 @@ const adminCount = computed(() => {
 
 const activeUserCount = computed(() => {
   return users.value.filter(user => user.is_active).length
+})
+
+const pendingApprovalCount = computed(() => {
+  return users.value.filter(user => !user.admin_approved).length
+})
+
+const unverifiedCount = computed(() => {
+  return users.value.filter(user => !user.is_verified).length
 })
 
 async function fetchUsers() {
@@ -349,6 +437,46 @@ async function deleteUser() {
     userToDelete.value = null
   } catch (err) {
     showError('Error', err.response?.data?.error || 'Failed to delete user')
+  } finally {
+    isUpdating.value = false
+  }
+}
+
+async function verifyUser(user) {
+  try {
+    isUpdating.value = true
+    
+    const response = await api.post(`/users/admin/users/${user.id}/verify`)
+    
+    // Update the user in the local array
+    const userIndex = users.value.findIndex(u => u.id === user.id)
+    if (userIndex !== -1) {
+      users.value[userIndex] = response.data.user
+    }
+    
+    showSuccess('Success', response.data.message)
+  } catch (err) {
+    showError('Error', err.response?.data?.error || 'Failed to verify user')
+  } finally {
+    isUpdating.value = false
+  }
+}
+
+async function approveUser(user) {
+  try {
+    isUpdating.value = true
+    
+    const response = await api.post(`/users/admin/users/${user.id}/approve`)
+    
+    // Update the user in the local array
+    const userIndex = users.value.findIndex(u => u.id === user.id)
+    if (userIndex !== -1) {
+      users.value[userIndex] = response.data.user
+    }
+    
+    showSuccess('Success', response.data.message)
+  } catch (err) {
+    showError('Error', err.response?.data?.error || 'Failed to approve user')
   } finally {
     isUpdating.value = false
   }

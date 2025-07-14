@@ -437,6 +437,78 @@
         </div>
       </div>
 
+      <!-- Data Export/Import -->
+      <div class="card">
+        <div class="card-body">
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-6">Data Export & Import</h3>
+          <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
+            Export all your TradeTally data or import from a previous TradeTally export.
+          </p>
+          
+          <div class="space-y-6">
+            <!-- Export Section -->
+            <div class="bg-gray-50 dark:bg-gray-900 rounded-lg p-4">
+              <h4 class="text-md font-medium text-gray-900 dark:text-white mb-3">Export Your Data</h4>
+              <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                Download all your trades, tags, settings, and trading profile as a JSON file. This export can be re-imported into any TradeTally instance.
+              </p>
+              <button
+                @click="exportData"
+                :disabled="exportLoading"
+                class="btn-primary"
+              >
+                <span v-if="exportLoading">Exporting...</span>
+                <span v-else>Export All Data</span>
+              </button>
+            </div>
+            
+            <!-- Import Section -->
+            <div class="bg-gray-50 dark:bg-gray-900 rounded-lg p-4">
+              <h4 class="text-md font-medium text-gray-900 dark:text-white mb-3">Import TradeTally Data</h4>
+              <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                Import data from a TradeTally export file. This will merge with your existing data.
+              </p>
+              <div class="space-y-4">
+                <div>
+                  <input
+                    ref="importFileInput"
+                    type="file"
+                    accept=".json"
+                    @change="handleImportFile"
+                    class="hidden"
+                  />
+                  <button
+                    @click="$refs.importFileInput.click()"
+                    class="btn-secondary"
+                  >
+                    Select Import File
+                  </button>
+                  <span v-if="importFile" class="ml-3 text-sm text-gray-600 dark:text-gray-400">
+                    {{ importFile.name }}
+                  </span>
+                </div>
+                
+                <div v-if="importFile" class="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3">
+                  <p class="text-sm text-yellow-800 dark:text-yellow-200">
+                    <strong>Important:</strong> This will add trades and merge settings. Existing data will not be deleted.
+                  </p>
+                </div>
+                
+                <button
+                  v-if="importFile"
+                  @click="importData"
+                  :disabled="importLoading"
+                  class="btn-primary"
+                >
+                  <span v-if="importLoading">Importing...</span>
+                  <span v-else>Import Data</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Trading Profile -->
       <div class="card">
         <div class="card-body">
@@ -687,6 +759,10 @@ const qrCodeUrl = ref('')
 const setupSecret = ref('')
 const backupCodes = ref([])
 const verificationCode = ref('')
+const exportLoading = ref(false)
+const importLoading = ref(false)
+const importFile = ref(null)
+const importFileInput = ref(null)
 
 const twoFactorStatus = ref({
   enabled: false,
@@ -1030,6 +1106,77 @@ function cancel2FASetup() {
   qrCodeUrl.value = ''
   setupSecret.value = ''
   backupCodes.value = []
+}
+
+async function exportData() {
+  exportLoading.value = true
+  
+  try {
+    const response = await api.get('/settings/export', { responseType: 'blob' })
+    
+    // Create download link
+    const url = window.URL.createObjectURL(new Blob([response.data]))
+    const link = document.createElement('a')
+    link.href = url
+    
+    // Generate filename with timestamp
+    const timestamp = new Date().toISOString().split('T')[0]
+    link.download = `tradetally-export-${timestamp}.json`
+    
+    // Trigger download
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+    
+    showSuccess('Success', 'Data exported successfully')
+  } catch (error) {
+    showError('Error', 'Failed to export data')
+  } finally {
+    exportLoading.value = false
+  }
+}
+
+function handleImportFile(event) {
+  const file = event.target.files[0]
+  if (file) {
+    importFile.value = file
+  }
+}
+
+async function importData() {
+  if (!importFile.value) {
+    showError('Error', 'Please select a file to import')
+    return
+  }
+  
+  importLoading.value = true
+  
+  try {
+    const formData = new FormData()
+    formData.append('file', importFile.value)
+    
+    const response = await api.post('/settings/import', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+    
+    const result = response.data
+    const message = `Data imported successfully! Added ${result.tradesAdded} trades, ${result.tagsAdded} tags` + 
+                   (result.equityAdded ? `, and ${result.equityAdded} equity records` : '') + '.'
+    showSuccess('Success', message)
+    
+    // Clear import file and refresh data
+    importFile.value = null
+    importFileInput.value.value = ''
+    await loadData()
+    
+  } catch (error) {
+    showError('Error', error.response?.data?.error || 'Failed to import data')
+  } finally {
+    importLoading.value = false
+  }
 }
 
 onMounted(() => {

@@ -28,6 +28,7 @@ router.put('/password', authenticate, userController.changePassword);
 router.get('/admin/users', requireAdmin, userController.getAllUsers);
 router.get('/admin/users/pending', requireAdmin, userController.getPendingUsers);
 router.post('/admin/users/:userId/approve', requireAdmin, userController.approveUser);
+router.post('/admin/users/:userId/verify', requireAdmin, userController.verifyUser);
 router.put('/admin/users/:userId/role', requireAdmin, userController.updateUserRole);
 router.put('/admin/users/:userId/status', requireAdmin, userController.toggleUserStatus);
 router.delete('/admin/users/:userId', requireAdmin, userController.deleteUser);
