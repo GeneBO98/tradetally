@@ -361,11 +361,3 @@ For API support, please:
 2. Review error messages and status codes
 3. Verify your API key permissions
 4. Contact support with specific error messages and request details
-
-## Changelog
-
-### v2.0.0
-- Added API key authentication
-- Introduced `/api/v2/` endpoints with flexible authentication
-- Enhanced error handling and validation
-- Added comprehensive analytics endpoints
