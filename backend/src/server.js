@@ -13,6 +13,7 @@ const analyticsRoutes = require('./routes/analytics.routes');
 const settingsRoutes = require('./routes/settings.routes');
 const equityRoutes = require('./routes/equity.routes');
 const twoFactorRoutes = require('./routes/twoFactor');
+const apiKeyRoutes = require('./routes/apiKey.routes');
 const v1Routes = require('./routes/v1');
 const wellKnownRoutes = require('./routes/well-known.routes');
 const errorHandler = require('./middleware/errorHandler');
@@ -69,7 +70,7 @@ const corsOptions = {
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization', 'X-Device-ID', 'X-App-Version', 'X-Platform', 'X-Request-ID'],
+  allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization', 'X-API-Key', 'X-Device-ID', 'X-App-Version', 'X-Platform', 'X-Request-ID'],
   exposedHeaders: ['X-API-Version', 'X-Rate-Limit-Remaining', 'X-Rate-Limit-Reset', 'X-Request-ID'],
   optionsSuccessStatus: 200
 };
@@ -95,6 +96,7 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/equity', equityRoutes);
 app.use('/api/2fa', twoFactorRoutes);
+app.use('/api/api-keys', apiKeyRoutes);
 
 // Well-known endpoints for mobile discovery
 app.use('/.well-known', wellKnownRoutes);
