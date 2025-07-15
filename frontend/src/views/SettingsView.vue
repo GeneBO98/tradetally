@@ -228,6 +228,73 @@
         </div>
       </div>
 
+      <!-- API Key Management -->
+      <div class="card">
+        <div class="card-body">
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-6">API Keys</h3>
+          <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
+            Generate API keys to access your TradeTally data programmatically. Keep your keys secure and don't share them.
+          </p>
+
+          <!-- API Keys List -->
+          <div v-if="apiKeys.length > 0" class="mb-6">
+            <div class="space-y-4">
+              <div v-for="apiKey in apiKeys" :key="apiKey.id" 
+                   class="flex items-center justify-between p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
+                <div class="flex-1">
+                  <div class="flex items-center space-x-3">
+                    <h4 class="text-sm font-medium text-gray-900 dark:text-white">{{ apiKey.name }}</h4>
+                    <span v-if="!apiKey.isActive" 
+                          class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400">
+                      Inactive
+                    </span>
+                    <span v-else-if="apiKey.expiresAt && new Date(apiKey.expiresAt) < new Date()" 
+                          class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400">
+                      Expired
+                    </span>
+                  </div>
+                  <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    <span>{{ apiKey.keyPrefix }}...</span>
+                    <span class="mx-2">•</span>
+                    <span>{{ apiKey.permissions.join(', ') }}</span>
+                    <span v-if="apiKey.lastUsedAt" class="mx-2">•</span>
+                    <span v-if="apiKey.lastUsedAt">Last used {{ formatDate(apiKey.lastUsedAt) }}</span>
+                    <span v-else class="mx-2">• Never used</span>
+                    <span v-if="apiKey.expiresAt" class="mx-2">•</span>
+                    <span v-if="apiKey.expiresAt">Expires {{ formatDate(apiKey.expiresAt) }}</span>
+                  </div>
+                </div>
+                <div class="flex items-center space-x-2">
+                  <button @click="toggleApiKey(apiKey)" 
+                          :disabled="apiKeysLoading"
+                          class="btn-secondary text-xs py-1 px-2">
+                    {{ apiKey.isActive ? 'Deactivate' : 'Activate' }}
+                  </button>
+                  <button @click="deleteApiKey(apiKey)" 
+                          :disabled="apiKeysLoading"
+                          class="btn-danger text-xs py-1 px-2">
+                    Delete
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div v-else class="text-center py-8">
+            <p class="text-sm text-gray-500 dark:text-gray-400">No API keys created yet.</p>
+          </div>
+
+          <!-- Create API Key Button -->
+          <div class="flex justify-end">
+            <button @click="showCreateApiKeyModal = true" 
+                    :disabled="apiKeysLoading"
+                    class="btn-primary">
+              Create API Key
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- Preferences -->
       <div class="card">
         <div class="card-body">
@@ -733,6 +800,153 @@
         </div>
       </div>
     </div>
+
+    <!-- Create API Key Modal -->
+    <div v-if="showCreateApiKeyModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+      <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white dark:bg-gray-800">
+        <div class="mt-3">
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Create API Key</h3>
+          
+          <form @submit.prevent="createApiKey" class="space-y-4">
+            <div>
+              <label for="apiKeyName" class="label">Name</label>
+              <input
+                id="apiKeyName"
+                v-model="createApiKeyForm.name"
+                type="text"
+                required
+                class="input"
+                placeholder="My API Key"
+              />
+            </div>
+
+            <div>
+              <label for="apiKeyPermissions" class="label">Permissions</label>
+              <div class="space-y-2">
+                <div class="flex items-center">
+                  <input
+                    id="permRead"
+                    v-model="createApiKeyForm.permissions"
+                    type="checkbox"
+                    value="read"
+                    class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                  />
+                  <label for="permRead" class="ml-2 block text-sm text-gray-900 dark:text-white">
+                    Read - View trades and analytics
+                  </label>
+                </div>
+                <div class="flex items-center">
+                  <input
+                    id="permWrite"
+                    v-model="createApiKeyForm.permissions"
+                    type="checkbox"
+                    value="write"
+                    class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                  />
+                  <label for="permWrite" class="ml-2 block text-sm text-gray-900 dark:text-white">
+                    Write - Create and modify trades
+                  </label>
+                </div>
+                <div v-if="authStore.user?.role === 'admin'" class="flex items-center">
+                  <input
+                    id="permAdmin"
+                    v-model="createApiKeyForm.permissions"
+                    type="checkbox"
+                    value="admin"
+                    class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                  />
+                  <label for="permAdmin" class="ml-2 block text-sm text-gray-900 dark:text-white">
+                    Admin - Full administrative access
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label for="apiKeyExpiry" class="label">Expires in (days)</label>
+              <select
+                id="apiKeyExpiry"
+                v-model="createApiKeyForm.expiresIn"
+                class="input"
+              >
+                <option :value="null">Never</option>
+                <option :value="30">30 days</option>
+                <option :value="90">90 days</option>
+                <option :value="180">180 days</option>
+                <option :value="365">1 year</option>
+              </select>
+            </div>
+
+            <div class="flex justify-end space-x-3 pt-4">
+              <button
+                type="button"
+                @click="closeCreateApiKeyModal"
+                class="btn-secondary"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                :disabled="createApiKeyLoading || createApiKeyForm.permissions.length === 0"
+                class="btn-primary"
+              >
+                <span v-if="createApiKeyLoading">Creating...</span>
+                <span v-else>Create API Key</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- API Key Created Modal -->
+    <div v-if="showApiKeyCreatedModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+      <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white dark:bg-gray-800">
+        <div class="mt-3">
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">API Key Created</h3>
+          
+          <div class="space-y-4">
+            <div class="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md p-4">
+              <p class="text-sm text-yellow-800 dark:text-yellow-400">
+                <strong>Important:</strong> This is the only time you'll see this key. Copy it now and store it securely.
+              </p>
+            </div>
+
+            <div>
+              <label class="label">API Key</label>
+              <div class="flex">
+                <input
+                  :value="createdApiKey.key"
+                  readonly
+                  class="input font-mono text-xs flex-1"
+                />
+                <button
+                  @click="copyApiKey"
+                  class="ml-2 btn-secondary text-xs px-3"
+                >
+                  Copy
+                </button>
+              </div>
+            </div>
+
+            <div class="text-sm text-gray-600 dark:text-gray-400">
+              <p><strong>Name:</strong> {{ createdApiKey.name }}</p>
+              <p><strong>Permissions:</strong> {{ createdApiKey.permissions.join(', ') }}</p>
+              <p v-if="createdApiKey.expiresAt"><strong>Expires:</strong> {{ formatDate(createdApiKey.expiresAt) }}</p>
+            </div>
+
+            <div class="flex justify-end pt-4">
+              <button
+                @click="closeApiKeyCreatedModal"
+                class="btn-primary"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -763,6 +977,14 @@ const exportLoading = ref(false)
 const importLoading = ref(false)
 const importFile = ref(null)
 const importFileInput = ref(null)
+
+// API Keys
+const apiKeys = ref([])
+const apiKeysLoading = ref(false)
+const showCreateApiKeyModal = ref(false)
+const showApiKeyCreatedModal = ref(false)
+const createApiKeyLoading = ref(false)
+const createdApiKey = ref(null)
 
 const twoFactorStatus = ref({
   enabled: false,
@@ -837,6 +1059,12 @@ const sectorOptions = [
   'Consumer Staples', 'Energy', 'Industrials', 'Materials',
   'Utilities', 'Real Estate', 'Communication Services'
 ]
+
+const createApiKeyForm = ref({
+  name: '',
+  permissions: ['read'],
+  expiresIn: null
+})
 
 async function updateProfile() {
   profileLoading.value = true
@@ -1179,8 +1407,118 @@ async function importData() {
   }
 }
 
+// API Key Management Functions
+async function fetchApiKeys() {
+  try {
+    apiKeysLoading.value = true
+    const response = await api.get('/api-keys')
+    apiKeys.value = response.data.apiKeys
+  } catch (error) {
+    showError('Error', 'Failed to load API keys')
+  } finally {
+    apiKeysLoading.value = false
+  }
+}
+
+function closeCreateApiKeyModal() {
+  showCreateApiKeyModal.value = false
+  createApiKeyForm.value = {
+    name: '',
+    permissions: ['read'],
+    expiresIn: null
+  }
+}
+
+async function createApiKey() {
+  try {
+    createApiKeyLoading.value = true
+    const response = await api.post('/api-keys', createApiKeyForm.value)
+    
+    createdApiKey.value = response.data.apiKey
+    showCreateApiKeyModal.value = false
+    showApiKeyCreatedModal.value = true
+    
+    // Refresh the API keys list
+    await fetchApiKeys()
+    
+    showSuccess('Success', 'API key created successfully')
+  } catch (error) {
+    showError('Error', error.response?.data?.error || 'Failed to create API key')
+  } finally {
+    createApiKeyLoading.value = false
+  }
+}
+
+function closeApiKeyCreatedModal() {
+  showApiKeyCreatedModal.value = false
+  createdApiKey.value = null
+  // Reset the form
+  createApiKeyForm.value = {
+    name: '',
+    permissions: ['read'],
+    expiresIn: null
+  }
+}
+
+async function copyApiKey() {
+  try {
+    await navigator.clipboard.writeText(createdApiKey.value.key)
+    showSuccess('Success', 'API key copied to clipboard')
+  } catch (error) {
+    showError('Error', 'Failed to copy API key')
+  }
+}
+
+async function toggleApiKey(apiKey) {
+  try {
+    apiKeysLoading.value = true
+    await api.put(`/api-keys/${apiKey.id}`, {
+      isActive: !apiKey.isActive
+    })
+    
+    // Refresh the API keys list
+    await fetchApiKeys()
+    
+    showSuccess('Success', `API key ${apiKey.isActive ? 'deactivated' : 'activated'}`)
+  } catch (error) {
+    showError('Error', error.response?.data?.error || 'Failed to update API key')
+  } finally {
+    apiKeysLoading.value = false
+  }
+}
+
+async function deleteApiKey(apiKey) {
+  if (!confirm(`Are you sure you want to delete the API key "${apiKey.name}"? This action cannot be undone.`)) {
+    return
+  }
+  
+  try {
+    apiKeysLoading.value = true
+    await api.delete(`/api-keys/${apiKey.id}`)
+    
+    // Refresh the API keys list
+    await fetchApiKeys()
+    
+    showSuccess('Success', 'API key deleted successfully')
+  } catch (error) {
+    showError('Error', error.response?.data?.error || 'Failed to delete API key')
+  } finally {
+    apiKeysLoading.value = false
+  }
+}
+
+function formatDate(dateString) {
+  if (!dateString) return 'Never'
+  return new Date(dateString).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  })
+}
+
 onMounted(() => {
   loadData()
   fetch2FAStatus()
+  fetchApiKeys()
 })
 </script>

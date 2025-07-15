@@ -171,7 +171,21 @@ const schemas = {
     currentPassword: Joi.string().required(),
     newPassword: Joi.string().min(6).required()
   }),
-  settings: Joi.ref('updateSettings')
+  settings: Joi.ref('updateSettings'),
+
+  // API Key validation schemas
+  createApiKey: Joi.object({
+    name: Joi.string().min(1).max(255).required(),
+    permissions: Joi.array().items(Joi.string().valid('read', 'write', 'admin')).default(['read']),
+    expiresIn: Joi.number().integer().min(1).max(365).allow(null)
+  }),
+
+  updateApiKey: Joi.object({
+    name: Joi.string().min(1).max(255),
+    permissions: Joi.array().items(Joi.string().valid('read', 'write', 'admin')),
+    expiresIn: Joi.number().integer().min(1).max(365).allow(null),
+    isActive: Joi.boolean()
+  }).min(1)
 };
 
 module.exports = { validate, schemas };
