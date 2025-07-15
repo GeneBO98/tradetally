@@ -65,6 +65,59 @@ const tradeController = {
     }
   },
 
+  async getRoundTripTrades(req, res, next) {
+    try {
+      const { 
+        symbol, startDate, endDate, tags, strategy, sector,
+        side, minPrice, maxPrice, minQuantity, maxQuantity,
+        status, minPnl, maxPnl, pnlType, broker,
+        limit = 50, offset = 0 
+      } = req.query;
+      
+      const filters = {
+        symbol,
+        startDate,
+        endDate,
+        tags: tags ? tags.split(',') : undefined,
+        strategy,
+        sector,
+        side,
+        minPrice: minPrice ? parseFloat(minPrice) : undefined,
+        maxPrice: maxPrice ? parseFloat(maxPrice) : undefined,
+        minQuantity: minQuantity ? parseInt(minQuantity) : undefined,
+        maxQuantity: maxQuantity ? parseInt(maxQuantity) : undefined,
+        status,
+        minPnl: minPnl ? parseFloat(minPnl) : undefined,
+        maxPnl: maxPnl ? parseFloat(maxPnl) : undefined,
+        pnlType,
+        broker,
+        limit: parseInt(limit),
+        offset: parseInt(offset)
+      };
+
+      // Get round-trip trades
+      const trades = await Trade.getRoundTripTrades(req.user.id, filters);
+      
+      // Get total count
+      const totalCountFilters = { ...filters };
+      delete totalCountFilters.limit;
+      delete totalCountFilters.offset;
+      
+      const total = await Trade.getRoundTripTradeCount(req.user.id, totalCountFilters);
+      
+      res.json({
+        trades,
+        count: trades.length,
+        total: total,
+        limit: filters.limit,
+        offset: filters.offset,
+        totalPages: Math.ceil(total / filters.limit)
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
   async createTrade(req, res, next) {
     try {
       const trade = await Trade.create(req.user.id, req.body);

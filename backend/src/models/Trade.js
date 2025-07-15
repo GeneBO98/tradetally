@@ -915,6 +915,118 @@ class Trade {
     return parseInt(result.rows[0].round_trip_count) || 0;
   }
 
+  static async getRoundTripTrades(userId, filters = {}) {
+    // Build the same WHERE clause as findByUser method
+    let whereClause = 'WHERE t.user_id = $1';
+    const values = [userId];
+    let paramCount = 2;
+
+    if (filters.symbol) {
+      whereClause += ` AND t.symbol = $${paramCount}`;
+      values.push(filters.symbol.toUpperCase());
+      paramCount++;
+    }
+
+    if (filters.startDate) {
+      whereClause += ` AND t.trade_date >= $${paramCount}`;
+      values.push(filters.startDate);
+      paramCount++;
+    }
+
+    if (filters.endDate) {
+      whereClause += ` AND t.trade_date <= $${paramCount}`;
+      values.push(filters.endDate);
+      paramCount++;
+    }
+
+    if (filters.tags && filters.tags.length > 0) {
+      whereClause += ` AND t.tags && $${paramCount}`;
+      values.push(filters.tags);
+      paramCount++;
+    }
+
+    if (filters.strategy) {
+      whereClause += ` AND t.strategy = $${paramCount}`;
+      values.push(filters.strategy);
+      paramCount++;
+    }
+
+    if (filters.sector) {
+      whereClause += ` AND t.symbol IN (SELECT symbol FROM symbol_categories WHERE finnhub_industry = $${paramCount})`;
+      values.push(filters.sector);
+      paramCount++;
+    }
+
+    // Add pagination
+    const limit = filters.limit || 50;
+    const offset = filters.offset || 0;
+
+    const query = `
+      WITH simple_trades AS (
+        SELECT 
+          t.symbol,
+          t.trade_date,
+          SUM(COALESCE(t.pnl, 0)) as pnl,
+          SUM(t.commission + t.fees) as total_costs,
+          COUNT(*) as execution_count,
+          AVG(t.pnl_percent) as avg_return_pct,
+          MIN(t.entry_time) as first_entry_time,
+          MAX(COALESCE(t.exit_time, t.entry_time)) as last_exit_time,
+          MIN(t.entry_price) as min_entry_price,
+          MAX(t.exit_price) as max_exit_price,
+          SUM(t.quantity) as total_quantity,
+          array_agg(DISTINCT t.side) as sides,
+          array_agg(DISTINCT t.strategy) FILTER (WHERE t.strategy IS NOT NULL) as strategies,
+          array_agg(DISTINCT t.broker) FILTER (WHERE t.broker IS NOT NULL) as brokers,
+          string_agg(DISTINCT t.notes, ' | ') FILTER (WHERE t.notes IS NOT NULL) as combined_notes,
+          -- Only count as a completed trade if there's P&L
+          CASE WHEN SUM(t.pnl) IS NOT NULL THEN 1 ELSE 0 END as is_completed
+        FROM trades t
+        ${whereClause}
+        GROUP BY t.symbol, t.trade_date
+        ORDER BY t.trade_date DESC, t.symbol
+      ),
+      trades_with_sectors AS (
+        SELECT 
+          st.*,
+          sc.finnhub_industry as sector
+        FROM simple_trades st
+        LEFT JOIN symbol_categories sc ON st.symbol = sc.symbol
+        WHERE st.is_completed = 1
+      )
+      SELECT 
+        md5(symbol || trade_date) as id,
+        symbol,
+        trade_date,
+        pnl,
+        CASE WHEN pnl > 0 THEN (pnl / NULLIF(min_entry_price * total_quantity, 0)) * 100 ELSE 0 END as pnl_percent,
+        total_costs as commission,
+        0 as fees,
+        execution_count,
+        avg_return_pct,
+        first_entry_time as entry_time,
+        last_exit_time as exit_time,
+        min_entry_price as entry_price,
+        max_exit_price as exit_price,
+        total_quantity as quantity,
+        CASE WHEN 'long' = ANY(sides) THEN 'long' ELSE 'short' END as side,
+        COALESCE(array_to_string(strategies, ', '), '') as strategy,
+        COALESCE(array_to_string(brokers, ', '), '') as broker,
+        COALESCE(sector, '') as sector,
+        combined_notes as notes,
+        is_completed,
+        'round-trip' as trade_type,
+        0 as comment_count
+      FROM trades_with_sectors
+      LIMIT $${paramCount} OFFSET $${paramCount + 1}
+    `;
+
+    values.push(limit, offset);
+
+    const result = await db.query(query, values);
+    return result.rows;
+  }
+
   static getHoldTimeFilter(holdTimeRange) {
     // Calculate hold time as the difference between entry_time and exit_time
     // For open trades (no exit_time), use current time

@@ -31,6 +31,7 @@ const upload = multer({
 });
 
 router.get('/', authenticate, tradeController.getUserTrades);
+router.get('/round-trip', authenticate, tradeController.getRoundTripTrades);
 router.get('/open-positions-quotes', authenticate, tradeController.getOpenPositionsWithQuotes);
 router.get('/news', authenticate, tradeController.getTradeNews);
 router.get('/earnings', authenticate, tradeController.getUpcomingEarnings);

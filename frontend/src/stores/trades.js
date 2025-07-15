@@ -21,12 +21,20 @@ export const useTradesStore = defineStore('trades', () => {
     strategy: ''
   })
 
+  // Store analytics data for consistent P&L calculations
+  const analytics = ref(null)
+
   const totalPnL = computed(() => {
+    // Use analytics data if available, otherwise fall back to trade summation
+    if (analytics.value && analytics.value.summary && analytics.value.summary.totalPnL !== undefined) {
+      return parseFloat(analytics.value.summary.totalPnL)
+    }
+    
     const total = trades.value.reduce((sum, trade) => {
       const pnl = parseFloat(trade.pnl) || 0
       return sum + pnl
     }, 0)
-    console.log('Total P/L calculation:', {
+    console.log('Total P/L calculation (fallback):', {
       tradesCount: trades.value.length,
       totalPnL: total,
       sampleTrades: trades.value.slice(0, 3).map(t => ({ symbol: t.symbol, pnl: t.pnl, type: typeof t.pnl }))
@@ -35,9 +43,24 @@ export const useTradesStore = defineStore('trades', () => {
   })
 
   const winRate = computed(() => {
+    // Use analytics data if available, otherwise fall back to trade calculation
+    if (analytics.value && analytics.value.summary && analytics.value.summary.winRate !== undefined) {
+      return parseFloat(analytics.value.summary.winRate).toFixed(2)
+    }
+    
     const winning = trades.value.filter(t => t.pnl > 0).length
     const total = trades.value.length
     return total > 0 ? (winning / total * 100).toFixed(2) : 0
+  })
+
+  const totalTrades = computed(() => {
+    // Use analytics data if available for total trades count
+    if (analytics.value && analytics.value.summary && analytics.value.summary.totalTrades !== undefined) {
+      return analytics.value.summary.totalTrades
+    }
+    
+    // Fall back to pagination total
+    return pagination.value.total
   })
 
   async function fetchTrades(params = {}) {
@@ -65,6 +88,56 @@ export const useTradesStore = defineStore('trades', () => {
       return response.data
     } catch (err) {
       error.value = err.response?.data?.error || 'Failed to fetch trades'
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function fetchRoundTripTrades(params = {}) {
+    loading.value = true
+    error.value = null
+    
+    try {
+      const offset = (pagination.value.page - 1) * pagination.value.limit
+      
+      // Fetch both round-trip trades and analytics data for consistent P&L
+      const [tradesResponse, analyticsResponse] = await Promise.all([
+        api.get('/trades/round-trip', { 
+          params: { 
+            ...filters.value, 
+            ...params,
+            limit: pagination.value.limit,
+            offset: offset
+          }
+        }),
+        api.get('/trades/analytics', { 
+          params: { 
+            ...filters.value, 
+            ...params
+          }
+        })
+      ])
+      
+      trades.value = tradesResponse.data.trades || tradesResponse.data
+      
+      // Store analytics data for consistent P&L calculations
+      analytics.value = analyticsResponse.data
+      console.log('Analytics data received:', {
+        summary: analyticsResponse.data.summary,
+        totalPnL: analyticsResponse.data.summary?.totalPnL,
+        winRate: analyticsResponse.data.summary?.winRate
+      })
+      
+      // If the response includes pagination metadata, update it
+      if (tradesResponse.data.total !== undefined) {
+        pagination.value.total = tradesResponse.data.total
+        pagination.value.totalPages = Math.ceil(tradesResponse.data.total / pagination.value.limit)
+      }
+      
+      return tradesResponse.data
+    } catch (err) {
+      error.value = err.response?.data?.error || 'Failed to fetch round-trip trades'
       throw err
     } finally {
       loading.value = false
@@ -228,9 +301,12 @@ export const useTradesStore = defineStore('trades', () => {
     error,
     filters,
     pagination,
+    analytics,
     totalPnL,
     winRate,
+    totalTrades,
     fetchTrades,
+    fetchRoundTripTrades,
     fetchTrade,
     createTrade,
     updateTrade,
