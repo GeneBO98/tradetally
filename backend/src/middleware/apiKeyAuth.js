@@ -106,13 +106,21 @@ const flexibleAuth = async (req, res, next) => {
           req.user = user;
           return next();
         }
+        // If user not found or inactive, return unauthorized
+        return res.status(401).json({ error: 'Invalid or expired token' });
       } catch (jwtError) {
-        // JWT failed, continue to API key check
+        // JWT failed, return unauthorized instead of trying API key
+        return res.status(401).json({ error: 'Invalid or expired token' });
       }
     }
     
-    // Try API key authentication
-    return apiKeyAuth(req, res, next);
+    // If we have an X-API-Key header, try API key authentication
+    if (apiKeyHeader) {
+      return apiKeyAuth(req, res, next);
+    }
+    
+    // No valid authentication method found
+    return res.status(401).json({ error: 'Authentication required' });
     
   } catch (error) {
     logger.logError('Flexible authentication error: ' + error.message);
