@@ -30,11 +30,11 @@ const upload = multer({
   }
 });
 
-router.get('/', flexibleAuth, tradeController.getUserTrades);
-router.get('/open-positions-quotes', flexibleAuth, tradeController.getOpenPositionsWithQuotes);
-router.get('/news', flexibleAuth, tradeController.getTradeNews);
-router.get('/earnings', flexibleAuth, tradeController.getUpcomingEarnings);
-router.post('/', flexibleAuth, validate(schemas.createTrade), tradeController.createTrade);
+router.get('/', authenticate, tradeController.getUserTrades);
+router.get('/open-positions-quotes', authenticate, tradeController.getOpenPositionsWithQuotes);
+router.get('/news', authenticate, tradeController.getTradeNews);
+router.get('/earnings', authenticate, tradeController.getUpcomingEarnings);
+router.post('/', authenticate, validate(schemas.createTrade), tradeController.createTrade);
 router.get('/public', optionalAuth, tradeController.getPublicTrades);
 router.get('/analytics', authenticate, tradeController.getAnalytics);
 router.get('/symbols', authenticate, tradeController.getSymbolList);
@@ -55,9 +55,9 @@ router.get('/cusip/queue/stats', authenticate, tradeController.getCusipQueueStat
 router.post('/cusip/queue', authenticate, tradeController.addCusipToQueue);
 router.post('/cusip/queue/retry-failed', authenticate, tradeController.retryFailedCusips);
 router.get('/:id', optionalAuth, tradeController.getTrade);
-router.get('/:id/chart-data', flexibleAuth, tradeController.getTradeChartData);
-router.put('/:id', flexibleAuth, validate(schemas.updateTrade), tradeController.updateTrade);
-router.delete('/:id', flexibleAuth, tradeController.deleteTrade);
+router.get('/:id/chart-data', authenticate, tradeController.getTradeChartData);
+router.put('/:id', authenticate, validate(schemas.updateTrade), tradeController.updateTrade);
+router.delete('/:id', authenticate, tradeController.deleteTrade);
 router.post('/:id/attachments', authenticate, upload.single('file'), tradeController.uploadAttachment);
 router.delete('/:id/attachments/:attachmentId', authenticate, tradeController.deleteAttachment);
 router.post('/:id/comments', authenticate, tradeController.addComment);

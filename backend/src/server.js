@@ -14,6 +14,7 @@ const settingsRoutes = require('./routes/settings.routes');
 const equityRoutes = require('./routes/equity.routes');
 const twoFactorRoutes = require('./routes/twoFactor');
 const apiKeyRoutes = require('./routes/apiKey.routes');
+const apiRoutes = require('./routes/api.routes');
 const v1Routes = require('./routes/v1');
 const wellKnownRoutes = require('./routes/well-known.routes');
 const errorHandler = require('./middleware/errorHandler');
@@ -97,6 +98,7 @@ app.use('/api/settings', settingsRoutes);
 app.use('/api/equity', equityRoutes);
 app.use('/api/2fa', twoFactorRoutes);
 app.use('/api/api-keys', apiKeyRoutes);
+app.use('/api/v2', apiRoutes);
 
 // Well-known endpoints for mobile discovery
 app.use('/.well-known', wellKnownRoutes);
