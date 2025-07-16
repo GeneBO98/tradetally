@@ -2,21 +2,27 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 class GeminiRecommendations {
   constructor() {
-    this.apiKey = process.env.GEMINI_API_KEY;
-    if (this.apiKey) {
-      this.genAI = new GoogleGenerativeAI(this.apiKey);
-      this.model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-    }
+    // API key is now passed per request rather than stored in constructor
+    this.genAI = null;
+    this.model = null;
   }
 
-  isConfigured() {
-    return !!this.apiKey;
+  isConfigured(apiKey = null) {
+    // Check if API key is provided either in parameter or environment (for backward compatibility)
+    return !!(apiKey || process.env.GEMINI_API_KEY);
   }
 
-  async generateTradeRecommendations(tradeMetrics, tradeData, tradingProfile = null, sectorData = null) {
-    if (!this.isConfigured()) {
+  async generateTradeRecommendations(tradeMetrics, tradeData, tradingProfile = null, sectorData = null, apiKey = null) {
+    // Use provided API key or fallback to environment variable
+    const effectiveApiKey = apiKey || process.env.GEMINI_API_KEY;
+    
+    if (!effectiveApiKey) {
       throw new Error('Gemini API key not configured');
     }
+
+    // Initialize client with the provided API key
+    this.genAI = new GoogleGenerativeAI(effectiveApiKey);
+    this.model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
     console.log('🔧 Building analysis prompt...');
     const prompt = this.buildAnalysisPrompt(tradeMetrics, tradeData, tradingProfile, sectorData);
@@ -170,6 +176,28 @@ REMEMBER: This trader chose their profile for a reason. Help them trade consiste
 Keep recommendations highly specific and personalized. Use bullet points for clarity. Focus on alignment between their stated trading approach and actual performance data.`;
 
     return prompt;
+  }
+
+  async generateResponse(prompt, apiKey = null, options = {}) {
+    // Use provided API key or fallback to environment variable
+    const effectiveApiKey = apiKey || process.env.GEMINI_API_KEY;
+    
+    if (!effectiveApiKey) {
+      throw new Error('Gemini API key not configured');
+    }
+
+    // Initialize client with the provided API key
+    const genAI = new GoogleGenerativeAI(effectiveApiKey);
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+
+    try {
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      return response.text();
+    } catch (error) {
+      console.error('Gemini API error:', error);
+      throw new Error(`Failed to generate response: ${error.message}`);
+    }
   }
 
   calculateAverageHoldTime(trades) {

@@ -1,5 +1,5 @@
 const db = require('../config/database');
-const gemini = require('../utils/gemini');
+const aiService = require('../utils/aiService');
 const User = require('../models/User');
 const finnhub = require('../utils/finnhub');
 const cache = require('../utils/cache');
@@ -1154,14 +1154,34 @@ const analyticsController = {
     try {
       console.log('🤖 AI Recommendations request started');
       
-      if (!gemini.isConfigured()) {
-        console.log('❌ Gemini API key not configured');
+      const userSettings = await aiService.getUserSettings(req.user.id);
+      
+      if (!userSettings.provider) {
+        console.log('❌ AI provider not configured');
         return res.status(400).json({ 
-          error: 'AI recommendations are not available. Gemini API key not configured.' 
+          error: 'AI recommendations are not available. AI provider not configured in settings.' 
         });
       }
       
-      console.log('✅ Gemini API key is configured');
+      // Check if API key is required for this provider
+      const providersRequiringApiKey = ['gemini', 'claude', 'openai'];
+      if (providersRequiringApiKey.includes(userSettings.provider) && !userSettings.apiKey) {
+        console.log(`❌ API key required for ${userSettings.provider} provider`);
+        return res.status(400).json({ 
+          error: `AI recommendations are not available. API key required for ${userSettings.provider} provider.` 
+        });
+      }
+      
+      // Check if API URL is required for this provider
+      const providersRequiringApiUrl = ['ollama', 'local'];
+      if (providersRequiringApiUrl.includes(userSettings.provider) && !userSettings.apiUrl) {
+        console.log(`❌ API URL required for ${userSettings.provider} provider`);
+        return res.status(400).json({ 
+          error: `AI recommendations are not available. API URL required for ${userSettings.provider} provider.` 
+        });
+      }
+      
+      console.log(`✅ AI provider configured: ${userSettings.provider}`);
 
       const { startDate, endDate } = req.query;
       
@@ -1225,24 +1245,24 @@ const analyticsController = {
 
       // Get user's trading profile for personalized recommendations
       console.log('👤 Fetching user trading profile...');
-      let userSettings = null;
+      let userProfileSettings = null;
       let tradingProfile = null;
       
       try {
-        userSettings = await User.getSettings(req.user.id);
-        console.log('⚙️ User settings found:', !!userSettings);
+        userProfileSettings = await User.getSettings(req.user.id);
+        console.log('⚙️ User settings found:', !!userProfileSettings);
         
-        if (userSettings) {
+        if (userProfileSettings) {
           // Check if trading profile columns exist before accessing them
           tradingProfile = {
-            tradingStrategies: userSettings.trading_strategies || [],
-            tradingStyles: userSettings.trading_styles || [],
-            riskTolerance: userSettings.risk_tolerance || 'moderate',
-            primaryMarkets: userSettings.primary_markets || [],
-            experienceLevel: userSettings.experience_level || 'intermediate',
-            averagePositionSize: userSettings.average_position_size || 'medium',
-            tradingGoals: userSettings.trading_goals || [],
-            preferredSectors: userSettings.preferred_sectors || []
+            tradingStrategies: userProfileSettings.trading_strategies || [],
+            tradingStyles: userProfileSettings.trading_styles || [],
+            riskTolerance: userProfileSettings.risk_tolerance || 'moderate',
+            primaryMarkets: userProfileSettings.primary_markets || [],
+            experienceLevel: userProfileSettings.experience_level || 'intermediate',
+            averagePositionSize: userProfileSettings.average_position_size || 'medium',
+            tradingGoals: userProfileSettings.trading_goals || [],
+            preferredSectors: userProfileSettings.preferred_sectors || []
           };
           console.log('📋 Trading profile loaded with strategies:', tradingProfile.tradingStrategies.length);
         }
@@ -1329,7 +1349,7 @@ const analyticsController = {
 
       // Generate AI recommendations with sector data
       console.log('🧠 Generating AI recommendations with sector analysis...');
-      const recommendations = await gemini.generateTradeRecommendations(metrics, trades, tradingProfile, sectorData);
+      const recommendations = await aiService.generateResponse(req.user.id, analyticsController.buildRecommendationPrompt(metrics, trades, tradingProfile, sectorData));
       console.log('✅ AI recommendations generated successfully');
 
       res.json({ 
@@ -1708,6 +1728,86 @@ const analyticsController = {
       console.error('Error refreshing sector performance:', error);
       next(error);
     }
+  },
+
+  buildRecommendationPrompt(metrics, trades, tradingProfile, sectorData) {
+    const sectorAnalysis = sectorData && sectorData.length > 0 
+      ? `\n\nSector Performance Analysis:\n${sectorData.map(s => 
+          `- ${s.industry}: ${s.total_trades} trades, ${s.total_pnl > 0 ? '+' : ''}$${s.total_pnl.toFixed(2)} P&L, ${s.win_rate}% win rate`
+        ).join('\n')}`
+      : '';
+
+    const tradingProfileInfo = tradingProfile 
+      ? `\n\nTrading Profile:\n- Experience: ${tradingProfile.experienceLevel}\n- Risk Tolerance: ${tradingProfile.riskTolerance}\n- Trading Styles: ${tradingProfile.tradingStyles.join(', ')}\n- Strategies: ${tradingProfile.tradingStrategies.join(', ')}`
+      : '';
+
+    return `As a professional trading analyst, provide personalized trading recommendations based on this performance data:
+
+PERFORMANCE METRICS:
+- Total Trades: ${metrics.total_trades}
+- Win Rate: ${metrics.win_rate}%
+- Total P&L: $${parseFloat(metrics.total_pnl).toFixed(2)}
+- Average P&L: $${parseFloat(metrics.avg_pnl).toFixed(2)}
+- Average Win: $${parseFloat(metrics.avg_win).toFixed(2)}
+- Average Loss: $${parseFloat(metrics.avg_loss).toFixed(2)}
+- Best Trade: $${parseFloat(metrics.best_trade).toFixed(2)}
+- Worst Trade: $${parseFloat(metrics.worst_trade).toFixed(2)}
+- Profit Factor: ${metrics.profit_factor}${tradingProfileInfo}${sectorAnalysis}
+
+RECENT TRADES SAMPLE:
+${trades.slice(0, 10).map(t => 
+  `${t.symbol} - ${t.side} - Entry: $${t.entry_price} - Exit: $${t.exit_price} - P&L: $${t.pnl}`
+).join('\n')}
+
+IMPORTANT: Format your response using proper markdown with clear headers and paragraphs. Use this exact structure:
+
+# Performance Assessment
+
+[Analyze strengths and weaknesses in detail]
+
+## Key Strengths
+- [Specific strength 1]
+- [Specific strength 2]
+
+## Areas for Improvement
+- [Specific weakness 1]
+- [Specific weakness 2]
+
+# Risk Management
+
+[Recommendations for position sizing and risk control]
+
+## Position Sizing Strategy
+[Detailed recommendations]
+
+## Risk Control Measures
+[Specific risk management techniques]
+
+# Strategy Optimization
+
+[Specific actionable improvements]
+
+## Trading Approach
+[Recommendations for trading methodology]
+
+## Execution Improvements
+[Specific execution tips]
+
+# Sector Insights
+
+[Analysis of sector performance if data available]
+
+# Next Steps
+
+[3-5 concrete actions to improve performance]
+
+1. [Action 1]
+2. [Action 2]
+3. [Action 3]
+4. [Action 4]
+5. [Action 5]
+
+Keep recommendations practical, specific, and actionable. Focus on data-driven insights. Use proper markdown formatting with clear headers (#, ##) and proper paragraph breaks.`;
   }
 };
 

@@ -36,6 +36,15 @@ export const useAuthStore = defineStore('auth', () => {
         approvalError.email = response.data.email
         throw approvalError
       }
+
+      // Check if 2FA is required
+      if (response.data.requires2FA) {
+        const twoFactorError = new Error('Two-factor authentication required')
+        twoFactorError.requires2FA = true
+        twoFactorError.tempToken = response.data.tempToken
+        twoFactorError.message = response.data.message
+        throw twoFactorError
+      }
       
       const { user: userData, token: authToken } = response.data
       
@@ -46,7 +55,10 @@ export const useAuthStore = defineStore('auth', () => {
       router.push({ name: 'dashboard' })
       return response.data
     } catch (err) {
-      error.value = err.response?.data?.error || 'Login failed'
+      // Don't set error for 2FA, verification, or approval - these are normal flows
+      if (!err.requires2FA && !err.requiresVerification && !err.requiresApproval) {
+        error.value = err.response?.data?.error || 'Login failed'
+      }
       throw err
     } finally {
       loading.value = false
@@ -167,6 +179,32 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  async function verify2FA(tempToken, twoFactorCode) {
+    loading.value = true
+    error.value = null
+    
+    try {
+      const response = await api.post('/auth/verify-2fa', { 
+        tempToken,
+        twoFactorCode 
+      })
+      
+      const { user: userData, token: authToken } = response.data
+      
+      user.value = userData
+      token.value = authToken
+      localStorage.setItem('token', authToken)
+      
+      router.push({ name: 'dashboard' })
+      return response.data
+    } catch (err) {
+      error.value = err.response?.data?.error || '2FA verification failed'
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
   async function getRegistrationConfig() {
     try {
       const response = await api.get('/auth/config')
@@ -198,6 +236,7 @@ export const useAuthStore = defineStore('auth', () => {
     resendVerification,
     forgotPassword,
     resetPassword,
+    verify2FA,
     getRegistrationConfig
   }
 })

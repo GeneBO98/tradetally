@@ -1772,7 +1772,7 @@ async function getRecommendations() {
     
     // Add timeout to the request
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 60000) // 60 second timeout
+    const timeoutId = setTimeout(() => controller.abort(), 180000) // 3 minute timeout for AI processing
     
     try {
       const response = await api.get(`/analytics/recommendations?${params}`, {

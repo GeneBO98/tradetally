@@ -28,6 +28,8 @@ router.put('/tags/:id', authenticate, settingsController.updateTag);
 router.delete('/tags/:id', authenticate, settingsController.deleteTag);
 router.get('/trading-profile', authenticate, settingsController.getTradingProfile);
 router.put('/trading-profile', authenticate, settingsController.updateTradingProfile);
+router.get('/ai-provider', authenticate, settingsController.getAIProviderSettings);
+router.put('/ai-provider', authenticate, settingsController.updateAIProviderSettings);
 router.get('/export', authenticate, settingsController.exportUserData);
 router.post('/import', authenticate, upload.single('file'), settingsController.importUserData);
 
