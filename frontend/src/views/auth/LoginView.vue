@@ -20,8 +20,18 @@
       <div v-if="verificationMessage" class="rounded-md bg-blue-50 dark:bg-blue-900/20 p-4">
         <p class="text-sm text-blue-800 dark:text-blue-400">{{ verificationMessage }}</p>
       </div>
+
+      <!-- 2FA verification form -->
+      <div v-if="showTwoFactor">
+        <TwoFactorAuth
+          :loading="authStore.loading"
+          :error="authStore.error"
+          @submit="handleTwoFactorSubmit"
+          @cancel="handleTwoFactorCancel"
+        />
+      </div>
       
-      <form class="mt-8 space-y-6" @submit.prevent="handleLogin">
+      <form v-else class="mt-8 space-y-6" @submit.prevent="handleLogin">
         <div class="rounded-md shadow-sm -space-y-px">
           <div>
             <label for="email" class="sr-only">Email address</label>
@@ -106,6 +116,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useNotification } from '@/composables/useNotification'
 import { useRegistrationMode } from '@/composables/useRegistrationMode'
 import api from '@/services/api'
+import TwoFactorAuth from '@/components/TwoFactorAuth.vue'
 
 const route = useRoute()
 const authStore = useAuthStore()
@@ -119,6 +130,8 @@ const userEmail = ref('')
 const resendLoading = ref(false)
 const resendCooldown = ref(0)
 const resendSuccess = ref(false)
+const showTwoFactor = ref(false)
+const tempToken = ref('')
 
 const form = ref({
   email: '',
@@ -130,7 +143,9 @@ async function handleLogin() {
   showResendVerification.value = false
   showApprovalMessage.value = false
   resendSuccess.value = false
+  showTwoFactor.value = false
   userEmail.value = ''
+  tempToken.value = ''
   
   try {
     await authStore.login(form.value)
@@ -141,6 +156,11 @@ async function handleLogin() {
     } else if (error.requiresApproval) {
       showApprovalMessage.value = true
       userEmail.value = error.email || form.value.email
+    } else if (error.requires2FA) {
+      showTwoFactor.value = true
+      tempToken.value = error.tempToken
+      // Clear any error message since 2FA is a normal flow
+      authStore.error = null
     } else if (authStore.error && authStore.error.includes('verify your email')) {
       // Fallback for other email verification error patterns
       showResendVerification.value = true
@@ -185,6 +205,20 @@ async function handleResendVerification() {
   } finally {
     resendLoading.value = false
   }
+}
+
+async function handleTwoFactorSubmit(code) {
+  try {
+    await authStore.verify2FA(tempToken.value, code)
+  } catch (error) {
+    // Error will be displayed via authStore.error in the template
+  }
+}
+
+function handleTwoFactorCancel() {
+  showTwoFactor.value = false
+  tempToken.value = ''
+  authStore.error = null
 }
 
 onMounted(async () => {

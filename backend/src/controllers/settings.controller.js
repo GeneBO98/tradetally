@@ -133,6 +133,76 @@ const settingsController = {
     }
   },
 
+  async getAIProviderSettings(req, res, next) {
+    try {
+      const settings = await User.getSettings(req.user.id);
+      
+      if (!settings) {
+        return res.json({
+          aiProvider: 'gemini',
+          aiApiKey: '',
+          aiApiUrl: '',
+          aiModel: ''
+        });
+      }
+
+      res.json({
+        aiProvider: settings.ai_provider || 'gemini',
+        aiApiKey: settings.ai_api_key || '',
+        aiApiUrl: settings.ai_api_url || '',
+        aiModel: settings.ai_model || ''
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async updateAIProviderSettings(req, res, next) {
+    try {
+      const { aiProvider, aiApiKey, aiApiUrl, aiModel } = req.body;
+
+      // Validate AI provider
+      const validProviders = ['gemini', 'claude', 'openai', 'ollama', 'local'];
+      if (aiProvider && !validProviders.includes(aiProvider)) {
+        return res.status(400).json({ 
+          error: 'Invalid AI provider. Must be one of: ' + validProviders.join(', ')
+        });
+      }
+
+      // Validate required fields
+      if (aiProvider && aiProvider !== 'local' && aiProvider !== 'ollama' && !aiApiKey) {
+        return res.status(400).json({ 
+          error: 'API key is required for ' + aiProvider 
+        });
+      }
+
+      if ((aiProvider === 'local' || aiProvider === 'ollama') && !aiApiUrl) {
+        return res.status(400).json({ 
+          error: 'API URL is required for ' + aiProvider 
+        });
+      }
+
+      const aiSettings = {
+        ai_provider: aiProvider,
+        ai_api_key: aiApiKey,
+        ai_api_url: aiApiUrl,
+        ai_model: aiModel
+      };
+
+      const settings = await User.updateSettings(req.user.id, aiSettings);
+      
+      res.json({
+        message: 'AI provider settings updated successfully',
+        aiProvider: settings.ai_provider,
+        aiApiKey: settings.ai_api_key ? '***' : '', // Mask the API key in response
+        aiApiUrl: settings.ai_api_url,
+        aiModel: settings.ai_model
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
   async resetSettings(req, res, next) {
     try {
       res.json({
