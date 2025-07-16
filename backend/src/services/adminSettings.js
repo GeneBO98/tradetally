@@ -70,7 +70,7 @@ class AdminSettingsService {
    * @returns {Promise<boolean>} Success status
    */
   async updateSettings(settings) {
-    const client = await db.connect();
+    const client = await db.pool.connect();
     
     try {
       await client.query('BEGIN');
