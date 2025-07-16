@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const db = require('../config/database');
+const adminSettingsService = require('../services/adminSettings');
 
 const settingsController = {
   async getSettings(req, res, next) {
@@ -644,6 +645,103 @@ const settingsController = {
       } finally {
         client.release();
       }
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  // Admin Settings Endpoints
+  async getAdminAISettings(req, res, next) {
+    try {
+      // Check if user is admin
+      if (req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'Admin access required' });
+      }
+
+      const settings = await adminSettingsService.getDefaultAISettings();
+      
+      res.json({
+        aiProvider: settings.provider,
+        aiApiKey: settings.apiKey ? '***' : '', // Mask the API key in response
+        aiApiUrl: settings.apiUrl,
+        aiModel: settings.model
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async updateAdminAISettings(req, res, next) {
+    try {
+      // Check if user is admin
+      if (req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'Admin access required' });
+      }
+
+      const { aiProvider, aiApiKey, aiApiUrl, aiModel } = req.body;
+
+      // Validate AI provider
+      const validProviders = ['gemini', 'claude', 'openai', 'ollama', 'local'];
+      if (aiProvider && !validProviders.includes(aiProvider)) {
+        return res.status(400).json({ 
+          error: 'Invalid AI provider. Must be one of: ' + validProviders.join(', ')
+        });
+      }
+
+      // Validate required fields
+      if (aiProvider && aiProvider !== 'local' && aiProvider !== 'ollama' && !aiApiKey) {
+        return res.status(400).json({ 
+          error: 'API key is required for ' + aiProvider 
+        });
+      }
+
+      if ((aiProvider === 'local' || aiProvider === 'ollama') && !aiApiUrl) {
+        return res.status(400).json({ 
+          error: 'API URL is required for ' + aiProvider 
+        });
+      }
+
+      const aiSettings = {
+        provider: aiProvider,
+        apiKey: aiApiKey,
+        apiUrl: aiApiUrl,
+        model: aiModel
+      };
+
+      const success = await adminSettingsService.updateDefaultAISettings(aiSettings);
+      
+      if (!success) {
+        return res.status(500).json({ error: 'Failed to update admin AI settings' });
+      }
+      
+      res.json({
+        message: 'Admin AI provider settings updated successfully',
+        aiProvider: aiProvider,
+        aiApiKey: aiApiKey ? '***' : '', // Mask the API key in response
+        aiApiUrl: aiApiUrl,
+        aiModel: aiModel
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async getAllAdminSettings(req, res, next) {
+    try {
+      // Check if user is admin
+      if (req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'Admin access required' });
+      }
+
+      const settings = await adminSettingsService.getAllSettings();
+      
+      // Mask sensitive settings
+      const maskedSettings = { ...settings };
+      if (maskedSettings.default_ai_api_key) {
+        maskedSettings.default_ai_api_key = '***';
+      }
+      
+      res.json({ settings: maskedSettings });
     } catch (error) {
       next(error);
     }

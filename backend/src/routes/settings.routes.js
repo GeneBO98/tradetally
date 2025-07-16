@@ -33,4 +33,9 @@ router.put('/ai-provider', authenticate, settingsController.updateAIProviderSett
 router.get('/export', authenticate, settingsController.exportUserData);
 router.post('/import', authenticate, upload.single('file'), settingsController.importUserData);
 
+// Admin Settings Routes
+router.get('/admin/ai', authenticate, settingsController.getAdminAISettings);
+router.put('/admin/ai', authenticate, settingsController.updateAdminAISettings);
+router.get('/admin/all', authenticate, settingsController.getAllAdminSettings);
+
 module.exports = router;

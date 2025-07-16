@@ -1,5 +1,6 @@
 const gemini = require('./gemini');
 const User = require('../models/User');
+const adminSettingsService = require('../services/adminSettings');
 
 class AIService {
   constructor() {
@@ -15,21 +16,31 @@ class AIService {
   async getUserSettings(userId) {
     try {
       const settings = await User.getSettings(userId);
+      
+      // Get admin default settings
+      const adminDefaults = await adminSettingsService.getDefaultAISettings();
+      
       return {
-        provider: settings?.ai_provider || 'gemini',
-        apiKey: settings?.ai_api_key || '',
-        apiUrl: settings?.ai_api_url || '',
-        model: settings?.ai_model || ''
+        provider: settings?.ai_provider || adminDefaults.provider,
+        apiKey: settings?.ai_api_key || adminDefaults.apiKey,
+        apiUrl: settings?.ai_api_url || adminDefaults.apiUrl,
+        model: settings?.ai_model || adminDefaults.model
       };
     } catch (error) {
       console.error('Failed to get user AI settings:', error);
-      // Fallback to default
-      return {
-        provider: 'gemini',
-        apiKey: '',
-        apiUrl: '',
-        model: ''
-      };
+      // Fallback to admin defaults, then hardcoded defaults
+      try {
+        const adminDefaults = await adminSettingsService.getDefaultAISettings();
+        return adminDefaults;
+      } catch (adminError) {
+        console.error('Failed to get admin default AI settings:', adminError);
+        return {
+          provider: 'gemini',
+          apiKey: '',
+          apiUrl: '',
+          model: ''
+        };
+      }
     }
   }
 
