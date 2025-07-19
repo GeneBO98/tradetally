@@ -20,7 +20,11 @@ const wellKnownRoutes = require('./routes/well-known.routes');
 const featuresRoutes = require('./routes/features.routes');
 const behavioralAnalyticsRoutes = require('./routes/behavioralAnalytics.routes');
 const billingRoutes = require('./routes/billing.routes');
+const watchlistRoutes = require('./routes/watchlist.routes');
+const priceAlertsRoutes = require('./routes/priceAlerts.routes');
+const notificationsRoutes = require('./routes/notifications.routes');
 const BillingService = require('./services/billingService');
+const priceMonitoringService = require('./services/priceMonitoringService');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
@@ -106,6 +110,9 @@ app.use('/api/v2', apiRoutes);
 app.use('/api/features', featuresRoutes);
 app.use('/api/behavioral-analytics', behavioralAnalyticsRoutes);
 app.use('/api/billing', billingRoutes);
+app.use('/api/watchlists', watchlistRoutes);
+app.use('/api/price-alerts', priceAlertsRoutes);
+app.use('/api/notifications', notificationsRoutes);
 
 // Well-known endpoints for mobile discovery
 app.use('/.well-known', wellKnownRoutes);
@@ -137,6 +144,14 @@ async function startServer() {
     // Initialize billing service (conditional)
     await BillingService.initialize();
     
+    // Start price monitoring service for Pro users
+    if (process.env.ENABLE_PRICE_MONITORING !== 'false') {
+      console.log('Starting price monitoring service...');
+      await priceMonitoringService.start();
+    } else {
+      console.log('Price monitoring disabled (ENABLE_PRICE_MONITORING=false)');
+    }
+    
     // Start the server
     app.listen(PORT, () => {
       console.log(`✓ TradeTally server running on port ${PORT}`);
@@ -147,6 +162,19 @@ async function startServer() {
     process.exit(1);
   }
 }
+
+// Graceful shutdown
+process.on('SIGTERM', async () => {
+  console.log('SIGTERM received, shutting down gracefully...');
+  await priceMonitoringService.stop();
+  process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+  console.log('SIGINT received, shutting down gracefully...');
+  await priceMonitoringService.stop();
+  process.exit(0);
+});
 
 // Start the server
 startServer();

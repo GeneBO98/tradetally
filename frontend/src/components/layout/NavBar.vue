@@ -270,6 +270,26 @@ const baseNavigation = [
       }
     ]
   },
+  { 
+    name: 'Watchlists', 
+    type: 'dropdown',
+    items: [
+      { 
+        name: 'Stock Watchlists', 
+        to: '/watchlists', 
+        route: 'watchlists',
+        description: 'Track your favorite stocks and monitor prices',
+        badge: { type: 'pro', text: 'Pro' }
+      },
+      { 
+        name: 'Price Alerts', 
+        to: '/price-alerts', 
+        route: 'price-alerts',
+        description: 'Set email and browser notifications for price targets',
+        badge: { type: 'pro', text: 'Pro' }
+      }
+    ]
+  },
   { name: 'Calendar', to: '/calendar', route: 'calendar' },
   { name: 'Import', to: '/import', route: 'import' },
   { name: 'Settings', to: '/settings', route: 'settings' }

@@ -43,8 +43,22 @@ class Logger {
     this.writeLog(`[MATCHING] ${message}`, 'import');
   }
 
-  logError(message) {
-    this.writeLog(`[ERROR] ${message}`, 'error');
+  logError(message, error = null) {
+    let logMessage = `[ERROR] ${message}`;
+    if (error) {
+      logMessage += `\nMessage: ${error.message}\nStack: ${error.stack}`;
+    }
+    this.writeLog(logMessage, 'error');
+  }
+
+  logDebug(message) {
+    if (process.env.NODE_ENV === 'development' || process.env.DEBUG === 'true') {
+      this.writeLog(`[DEBUG] ${message}`, 'debug');
+    }
+  }
+
+  logWarn(message) {
+    this.writeLog(`[WARN] ${message}`, 'warn');
   }
 
   getLogFiles() {

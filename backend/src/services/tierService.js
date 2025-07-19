@@ -4,13 +4,25 @@ const db = require('../config/database');
 class TierService {
   // Check if billing is enabled (for self-hosted vs SaaS)
   static async isBillingEnabled() {
+    // First check environment variable
+    if (process.env.BILLING_ENABLED !== undefined) {
+      return process.env.BILLING_ENABLED === 'true';
+    }
+    
+    // Fallback to database config
     const query = `SELECT value FROM instance_config WHERE key = 'billing_enabled'`;
     const result = await db.query(query);
     
     if (!result.rows[0]) return false;
     const value = result.rows[0].value;
-    // Handle both string and boolean values
-    return value === 'true' || value === true;
+    
+    // Handle JSONB, string, and boolean values
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'string') return value === 'true';
+    if (value === null || value === undefined) return false;
+    
+    // For JSONB stored as object
+    return value === true || value === 'true';
   }
 
   // Get effective tier for a user
@@ -24,6 +36,7 @@ class TierService {
     // Get user info to check role
     const user = await User.findById(userId);
     if (!user) return 'free';
+
 
     // Admins get Pro tier by default
     if (user.role === 'admin' || user.role === 'owner') {
