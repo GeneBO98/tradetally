@@ -197,6 +197,10 @@ const authController = {
       }
 
       const token = generateToken(user);
+      
+      // Get user tier for response
+      const TierService = require('../services/tierService');
+      const userTier = await TierService.getUserTier(user.id);
 
       res.json({
         message: 'Login successful',
@@ -207,6 +211,7 @@ const authController = {
           fullName: user.full_name,
           avatarUrl: user.avatar_url,
           role: user.role,
+          tier: userTier,
           isVerified: user.is_verified,
           adminApproved: user.admin_approved,
           twoFactorEnabled: user.two_factor_enabled || false
@@ -307,6 +312,7 @@ const authController = {
           fullName: user.full_name,
           avatarUrl: user.avatar_url,
           role: user.role,
+          tier: user.tier,
           isVerified: user.is_verified,
           adminApproved: user.admin_approved,
           timezone: user.timezone,

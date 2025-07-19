@@ -155,6 +155,24 @@ const router = createRouter({
       name: 'features',
       component: () => import('@/views/FeaturesView.vue'),
       meta: { requiresOpen: true }
+    },
+    {
+      path: '/watchlists',
+      name: 'watchlists',
+      component: () => import('@/views/WatchlistView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/watchlists/:id',
+      name: 'watchlist-detail',
+      component: () => import('@/views/WatchlistDetailView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/price-alerts',
+      name: 'price-alerts',
+      component: () => import('@/views/PriceAlertsView.vue'),
+      meta: { requiresAuth: true }
     }
   ]
 })

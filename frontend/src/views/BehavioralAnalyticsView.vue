@@ -912,7 +912,7 @@
               </div>
 
               <!-- Price History Analysis Examples -->
-              <div v-if="lossAversionData.analysis.priceHistoryAnalysis && lossAversionData.analysis.priceHistoryAnalysis.exampleTrades.length > 0" class="mt-6">
+              <div v-if="lossAversionData.analysis.priceHistoryAnalysis?.exampleTrades?.length > 0" class="mt-6">
                 <h4 class="text-lg font-medium text-gray-700 dark:text-gray-300 mb-4">Trades That Could Have Been More Profitable</h4>
                 
                 <div class="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 mb-4">
@@ -1961,12 +1961,13 @@ const formatMinutes = (minutes) => {
 
 // Generate loss aversion message based on hold time ratio
 const generateLossAversionMessage = (holdTimeRatio, estimatedMonthlyCost) => {
+  const cost = Number(estimatedMonthlyCost) || 0;
   if (holdTimeRatio > 3) {
-    return `You exit winners ${holdTimeRatio.toFixed(1)}x faster than losers - this is costing you $${estimatedMonthlyCost.toFixed(2)}/month`
+    return `You exit winners ${holdTimeRatio.toFixed(1)}x faster than losers - this is costing you $${cost.toFixed(2)}/month`
   } else if (holdTimeRatio > 2) {
-    return `You hold losers ${holdTimeRatio.toFixed(1)}x longer than winners - consider using tighter stops to save $${estimatedMonthlyCost.toFixed(2)}/month`
+    return `You hold losers ${holdTimeRatio.toFixed(1)}x longer than winners - consider using tighter stops to save $${cost.toFixed(2)}/month`
   } else if (holdTimeRatio > 1.5) {
-    return `Slight loss aversion detected - you could save $${estimatedMonthlyCost.toFixed(2)}/month with better exit timing`
+    return `Slight loss aversion detected - you could save $${cost.toFixed(2)}/month with better exit timing`
   } else {
     return `Good exit discipline - your hold time ratio of ${holdTimeRatio.toFixed(1)}x is within healthy range`
   }
@@ -1986,18 +1987,23 @@ onMounted(async () => {
         lossAversionData.value = {
           analysis: {
             message: generateLossAversionMessage(metrics.hold_time_ratio, metrics.estimated_monthly_cost),
-            avgWinnerHoldTime: metrics.avg_winner_hold_time_minutes,
-            avgLoserHoldTime: metrics.avg_loser_hold_time_minutes,
-            holdTimeRatio: metrics.hold_time_ratio,
-            totalTrades: metrics.total_winning_trades + metrics.total_losing_trades,
-            winners: metrics.total_winning_trades,
-            losers: metrics.total_losing_trades,
+            avgWinnerHoldTime: Number(metrics.avg_winner_hold_time_minutes) || 0,
+            avgLoserHoldTime: Number(metrics.avg_loser_hold_time_minutes) || 0,
+            holdTimeRatio: Number(metrics.hold_time_ratio) || 0,
+            totalTrades: Number(metrics.total_winning_trades || 0) + Number(metrics.total_losing_trades || 0),
+            winners: Number(metrics.total_winning_trades) || 0,
+            losers: Number(metrics.total_losing_trades) || 0,
             financialImpact: {
-              estimatedMonthlyCost: metrics.estimated_monthly_cost,
-              missedProfitPotential: metrics.missed_profit_potential,
-              unnecessaryLossExtension: metrics.unnecessary_loss_extension,
-              avgPlannedRiskReward: metrics.avg_planned_risk_reward || 2.0,
-              avgActualRiskReward: metrics.avg_actual_risk_reward || 1.0
+              estimatedMonthlyCost: Number(metrics.estimated_monthly_cost) || 0,
+              missedProfitPotential: Number(metrics.missed_profit_potential) || 0,
+              unnecessaryLossExtension: Number(metrics.unnecessary_loss_extension) || 0,
+              avgPlannedRiskReward: Number(metrics.avg_planned_risk_reward) || 2.0,
+              avgActualRiskReward: Number(metrics.avg_actual_risk_reward) || 1.0
+            },
+            priceHistoryAnalysis: {
+              totalMissedProfit: Number(metrics.total_missed_profit) || 0,
+              avgMissedProfitPercent: Number(metrics.avg_missed_profit_percent) || 0,
+              exampleTrades: metrics.example_trades || []
             }
           }
         }
