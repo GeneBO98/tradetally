@@ -7,8 +7,12 @@
           <span class="text-xs text-gray-500 dark:text-gray-400">
             {{ chartData.interval === 'daily' ? 'Daily' : chartData.interval }} chart
           </span>
-          <div v-if="chartData.usage" class="text-xs text-gray-500 dark:text-gray-400">
-            ({{ chartData.usage.dailyCallsRemaining }}/25 API calls remaining today)
+          <span v-if="chartData.source" class="text-xs px-2 py-1 rounded-full" 
+                :class="getSourceBadgeClass(chartData.source)">
+            {{ getSourceLabel(chartData.source) }}
+          </span>
+          <div v-if="chartData.usage && chartData.usage.alphaVantage" class="text-xs text-gray-500 dark:text-gray-400">
+            ({{ chartData.usage.alphaVantage.dailyCallsRemaining }}/25 API calls remaining today)
           </div>
         </div>
       </div>
@@ -26,6 +30,9 @@
         <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
           See your entry and exit points on a candlestick chart with market context
         </p>
+        <div v-if="userTier === 'pro'" class="text-xs text-blue-600 dark:text-blue-400 mb-4">
+          🔹 Pro Feature: High-resolution Finnhub data with 1-minute precision
+        </div>
         <button 
           @click="loadChart" 
           class="btn-primary"
@@ -36,7 +43,8 @@
           Load Chart
         </button>
         <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
-          Uses 1 API call (25 free per day)
+          <span v-if="userTier === 'pro'">Uses Finnhub Pro API (unlimited)</span>
+          <span v-else>Uses 1 API call (25 free per day)</span>
         </p>
       </div>
 
@@ -116,10 +124,11 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted, watch, computed } from 'vue'
 import * as LightweightCharts from 'lightweight-charts'
 import api from '@/services/api'
 import { useNotification } from '@/composables/useNotification'
+import { useAuthStore } from '@/stores/auth'
 
 const props = defineProps({
   tradeId: {
@@ -129,6 +138,7 @@ const props = defineProps({
 })
 
 const { showError, showWarning } = useNotification()
+const authStore = useAuthStore()
 
 const chartContainer = ref(null)
 const loading = ref(false)
@@ -138,6 +148,36 @@ const chartData = ref(null)
 const showChart = ref(false)
 let chart = null
 let candleSeries = null
+
+// Computed properties
+const userTier = computed(() => authStore.user?.tier?.tier_name || 'free')
+
+// Helper methods for source display
+const getSourceLabel = (source) => {
+  switch (source) {
+    case 'finnhub':
+      return 'Finnhub Pro'
+    case 'alphavantage':
+      return 'Alpha Vantage'
+    case 'alphavantage_fallback':
+      return 'Alpha Vantage (Fallback)'
+    default:
+      return 'Unknown'
+  }
+}
+
+const getSourceBadgeClass = (source) => {
+  switch (source) {
+    case 'finnhub':
+      return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+    case 'alphavantage':
+      return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+    case 'alphavantage_fallback':
+      return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
+    default:
+      return 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200'
+  }
+}
 
 const formatNumber = (num) => {
   return parseFloat(num).toFixed(2)

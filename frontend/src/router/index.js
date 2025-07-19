@@ -77,6 +77,12 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
+      path: '/analytics/behavioral',
+      name: 'behavioral-analytics',
+      component: () => import('@/views/BehavioralAnalyticsView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
       path: '/calendar',
       name: 'calendar',
       component: () => import('@/views/CalendarView.vue'),
@@ -105,6 +111,17 @@ const router = createRouter({
       name: 'admin-users',
       component: () => import('@/views/admin/UserManagementView.vue'),
       meta: { requiresAuth: true, requiresAdmin: true }
+    },
+    {
+      path: '/pricing',
+      name: 'pricing',
+      component: () => import('@/views/PricingView.vue')
+    },
+    {
+      path: '/billing',
+      name: 'billing',
+      component: () => import('@/views/BillingView.vue'),
+      meta: { requiresAuth: true }
     },
     {
       path: '/public',

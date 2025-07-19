@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const TierService = require('../services/tierService');
 
 const userController = {
   async getProfile(req, res, next) {
@@ -326,6 +327,107 @@ const userController = {
       }
       
       res.json({ user, message: 'User verified successfully' });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  // Tier management functions
+  async updateUserTier(req, res, next) {
+    try {
+      const { userId } = req.params;
+      const { tier } = req.body;
+
+      if (!['free', 'pro'].includes(tier)) {
+        return res.status(400).json({ error: 'Invalid tier. Must be "free" or "pro"' });
+      }
+
+      const user = await User.updateTier(userId, tier);
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      res.json({ user, message: `User tier updated to ${tier}` });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async setTierOverride(req, res, next) {
+    try {
+      const { userId } = req.params;
+      const { tier, reason, expiresAt } = req.body;
+
+      if (!['free', 'pro'].includes(tier)) {
+        return res.status(400).json({ error: 'Invalid tier. Must be "free" or "pro"' });
+      }
+
+      const override = await User.setTierOverride(
+        userId,
+        tier,
+        reason,
+        expiresAt,
+        req.user.id // Admin who created the override
+      );
+
+      res.json({ 
+        override, 
+        message: `Tier override set to ${tier}${expiresAt ? ' until ' + new Date(expiresAt).toLocaleDateString() : ' permanently'}` 
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async removeTierOverride(req, res, next) {
+    try {
+      const { userId } = req.params;
+
+      const removed = await User.removeTierOverride(userId);
+      if (!removed) {
+        return res.status(404).json({ error: 'No tier override found for this user' });
+      }
+
+      res.json({ message: 'Tier override removed successfully' });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async getTierOverride(req, res, next) {
+    try {
+      const { userId } = req.params;
+
+      const override = await User.getTierOverride(userId);
+      res.json({ override });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async getUserTier(req, res, next) {
+    try {
+      const { userId } = req.params;
+
+      const tier = await TierService.getUserTier(userId);
+      const subscription = await User.getSubscription(userId);
+      const override = await User.getTierOverride(userId);
+
+      res.json({ 
+        tier,
+        subscription,
+        override,
+        billingEnabled: await TierService.isBillingEnabled()
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async getTierStats(req, res, next) {
+    try {
+      const stats = await TierService.getTierStats();
+      res.json({ stats });
     } catch (error) {
       next(error);
     }

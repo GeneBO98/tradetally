@@ -35,6 +35,9 @@
                     Role
                   </th>
                   <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-20">
+                    Tier
+                  </th>
+                  <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-20">
                     Status
                   </th>
                   <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-20">
@@ -94,6 +97,31 @@
                       <option value="user">User</option>
                       <option value="admin">Admin</option>
                     </select>
+                  </td>
+                  <td class="px-3 py-3 whitespace-nowrap">
+                    <div class="flex items-center space-x-1">
+                      <span
+                        :class="{
+                          'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400': getUserDisplayTier(user) === 'free',
+                          'bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400': getUserDisplayTier(user) === 'pro'
+                        }"
+                        class="inline-flex px-2 py-1 text-xs font-semibold rounded-full"
+                      >
+                        {{ getUserDisplayTier(user) }}
+                        <span v-if="user.role === 'admin' || user.role === 'owner'" class="ml-1 text-xs opacity-75">
+                          (admin)
+                        </span>
+                      </span>
+                      <button
+                        @click="openTierModal(user)"
+                        class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                        title="Manage tier"
+                      >
+                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                        </svg>
+                      </button>
+                    </div>
                   </td>
                   <td class="px-3 py-3 whitespace-nowrap">
                     <span
@@ -279,6 +307,24 @@
             </div>
           </div>
         </div>
+
+        <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
+          <div class="p-5">
+            <div class="flex items-center">
+              <div class="flex-shrink-0">
+                <svg class="h-6 w-6 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                </svg>
+              </div>
+              <div class="ml-5 w-0 flex-1">
+                <dl>
+                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Pro Users</dt>
+                  <dd class="text-lg font-medium text-purple-600 dark:text-purple-400">{{ proUserCount }}</dd>
+                </dl>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -316,6 +362,153 @@
         </div>
       </div>
     </div>
+
+    <!-- Tier Management Modal -->
+    <div v-if="showTierModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+      <div class="relative top-20 mx-auto p-5 border w-[600px] shadow-lg rounded-md bg-white dark:bg-gray-800">
+        <div class="mt-3">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white">Manage User Tier</h3>
+            <button
+              @click="closeTierModal"
+              class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+            >
+              <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          <div v-if="selectedUser" class="space-y-4">
+            <!-- User Info -->
+            <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+              <div class="flex items-center space-x-3">
+                <img
+                  v-if="selectedUser.avatar_url"
+                  class="h-10 w-10 rounded-full"
+                  :src="selectedUser.avatar_url"
+                  :alt="selectedUser.username"
+                />
+                <div
+                  v-else
+                  class="h-10 w-10 rounded-full bg-primary-500 flex items-center justify-center"
+                >
+                  <span class="text-sm font-medium text-white">
+                    {{ selectedUser.username.charAt(0).toUpperCase() }}
+                  </span>
+                </div>
+                <div>
+                  <p class="text-sm font-medium text-gray-900 dark:text-white">{{ selectedUser.username }}</p>
+                  <p class="text-xs text-gray-500 dark:text-gray-400">{{ selectedUser.email }}</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Current Tier Info -->
+            <div v-if="tierInfo" class="space-y-3">
+              <div>
+                <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Current Tier</h4>
+                <div class="flex items-center space-x-2">
+                  <span
+                    :class="{
+                      'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400': tierInfo.tier === 'free',
+                      'bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400': tierInfo.tier === 'pro'
+                    }"
+                    class="inline-flex px-3 py-1 text-sm font-semibold rounded-full"
+                  >
+                    {{ tierInfo.tier }}
+                  </span>
+                  <span v-if="tierInfo.override" class="text-xs text-amber-600 dark:text-amber-400">
+                    (Override active)
+                  </span>
+                  <span v-if="selectedUser && (selectedUser.role === 'admin' || selectedUser.role === 'owner')" class="text-xs text-blue-600 dark:text-blue-400">
+                    (Admin - Pro by default)
+                  </span>
+                </div>
+              </div>
+
+              <!-- Override Info -->
+              <div v-if="tierInfo.override" class="bg-amber-50 dark:bg-amber-900/20 rounded-lg p-3">
+                <p class="text-sm text-amber-800 dark:text-amber-300">
+                  <strong>Override:</strong> {{ tierInfo.override.tier }} tier
+                  <span v-if="tierInfo.override.expires_at">
+                    until {{ new Date(tierInfo.override.expires_at).toLocaleDateString() }}
+                  </span>
+                </p>
+                <p v-if="tierInfo.override.reason" class="text-xs text-amber-700 dark:text-amber-400 mt-1">
+                  Reason: {{ tierInfo.override.reason }}
+                </p>
+                <p v-if="tierInfo.override.created_by_username" class="text-xs text-amber-700 dark:text-amber-400">
+                  Set by: {{ tierInfo.override.created_by_username }}
+                </p>
+              </div>
+
+              <!-- Subscription Info -->
+              <div v-if="tierInfo.subscription && tierInfo.subscription.status === 'active'" class="bg-green-50 dark:bg-green-900/20 rounded-lg p-3">
+                <p class="text-sm text-green-800 dark:text-green-300">
+                  <strong>Active Subscription</strong>
+                </p>
+                <p class="text-xs text-green-700 dark:text-green-400 mt-1">
+                  Renews: {{ new Date(tierInfo.subscription.current_period_end).toLocaleDateString() }}
+                </p>
+              </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="space-y-3 pt-4 border-t dark:border-gray-700">
+              <!-- Set Override -->
+              <div>
+                <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Set Tier Override</h4>
+                <div class="flex items-end space-x-2">
+                  <div class="flex-1">
+                    <select
+                      v-model="overrideTier"
+                      class="w-full text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded focus:ring-primary-500 focus:border-primary-500"
+                    >
+                      <option value="free">Free</option>
+                      <option value="pro">Pro</option>
+                    </select>
+                  </div>
+                  <div class="flex-1">
+                    <input
+                      v-model="overrideExpiry"
+                      type="date"
+                      placeholder="Expiry (optional)"
+                      class="w-full text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded focus:ring-primary-500 focus:border-primary-500"
+                    />
+                  </div>
+                  <button
+                    @click="setTierOverride"
+                    :disabled="isUpdating"
+                    class="px-3 py-2 bg-primary-600 text-white text-sm font-medium rounded hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
+                  >
+                    Set Override
+                  </button>
+                </div>
+                <input
+                  v-model="overrideReason"
+                  type="text"
+                  placeholder="Reason for override (optional)"
+                  class="w-full mt-2 text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded focus:ring-primary-500 focus:border-primary-500"
+                />
+              </div>
+
+              <!-- Remove Override -->
+              <div v-if="tierInfo.override" class="flex justify-between items-center">
+                <span class="text-sm text-gray-600 dark:text-gray-400">Remove tier override</span>
+                <button
+                  @click="removeTierOverride"
+                  :disabled="isUpdating"
+                  class="px-3 py-1 bg-red-600 text-white text-sm font-medium rounded hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50"
+                >
+                  Remove Override
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -335,6 +528,14 @@ const isUpdating = ref(false)
 const showDeleteConfirm = ref(false)
 const userToDelete = ref(null)
 
+// Tier management
+const showTierModal = ref(false)
+const selectedUser = ref(null)
+const tierInfo = ref(null)
+const overrideTier = ref('pro')
+const overrideExpiry = ref('')
+const overrideReason = ref('')
+
 const currentUserId = computed(() => authStore.user?.id)
 
 const adminCount = computed(() => {
@@ -352,6 +553,19 @@ const pendingApprovalCount = computed(() => {
 const unverifiedCount = computed(() => {
   return users.value.filter(user => !user.is_verified).length
 })
+
+const proUserCount = computed(() => {
+  return users.value.filter(user => getUserDisplayTier(user) === 'pro').length
+})
+
+// Helper function to get the display tier for a user
+function getUserDisplayTier(user) {
+  // Admins get Pro tier by default
+  if (user.role === 'admin' || user.role === 'owner') {
+    return 'pro';
+  }
+  return user.tier || 'free';
+}
 
 async function fetchUsers() {
   try {
@@ -488,6 +702,79 @@ function formatDate(dateString) {
     month: 'short',
     day: 'numeric'
   })
+}
+
+// Tier management functions
+async function openTierModal(user) {
+  selectedUser.value = user
+  showTierModal.value = true
+  overrideTier.value = 'pro'
+  overrideExpiry.value = ''
+  overrideReason.value = ''
+  
+  // Fetch tier info
+  try {
+    const response = await api.get(`/users/admin/users/${user.id}/tier`)
+    tierInfo.value = response.data
+  } catch (err) {
+    showError('Error', 'Failed to load tier information')
+  }
+}
+
+function closeTierModal() {
+  showTierModal.value = false
+  selectedUser.value = null
+  tierInfo.value = null
+}
+
+async function setTierOverride() {
+  if (!selectedUser.value) return
+  
+  try {
+    isUpdating.value = true
+    
+    const payload = {
+      tier: overrideTier.value,
+      reason: overrideReason.value || undefined,
+      expiresAt: overrideExpiry.value || undefined
+    }
+    
+    const response = await api.post(`/users/admin/users/${selectedUser.value.id}/tier-override`, payload)
+    
+    showSuccess('Success', response.data.message)
+    
+    // Update the user's tier in the list
+    const userIndex = users.value.findIndex(u => u.id === selectedUser.value.id)
+    if (userIndex !== -1) {
+      users.value[userIndex].tier = overrideTier.value
+    }
+    
+    // Refresh tier info
+    await openTierModal(selectedUser.value)
+  } catch (err) {
+    showError('Error', err.response?.data?.error || 'Failed to set tier override')
+  } finally {
+    isUpdating.value = false
+  }
+}
+
+async function removeTierOverride() {
+  if (!selectedUser.value) return
+  
+  try {
+    isUpdating.value = true
+    
+    const response = await api.delete(`/users/admin/users/${selectedUser.value.id}/tier-override`)
+    
+    showSuccess('Success', response.data.message)
+    
+    // Refresh tier info
+    await openTierModal(selectedUser.value)
+  } catch (err) {
+    showError('Error', err.response?.data?.error || 'Failed to remove tier override')
+  } finally {
+    isUpdating.value = false
+  }
 }
 
 onMounted(() => {
