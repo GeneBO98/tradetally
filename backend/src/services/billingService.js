@@ -9,22 +9,30 @@ class BillingService {
   // Initialize Stripe with conditional loading
   static async initialize() {
     const billingEnabled = await TierService.isBillingEnabled();
+    
     if (!billingEnabled) {
       console.log('Billing is disabled - Stripe not initialized');
       return false;
     }
 
     try {
-      // Get Stripe secret key from admin settings
-      const secretKeyQuery = `SELECT setting_value FROM admin_settings WHERE setting_key = 'stripe_secret_key'`;
-      const result = await db.query(secretKeyQuery);
+      // Get Stripe secret key from environment or admin settings
+      let secretKey = process.env.STRIPE_SECRET_KEY;
       
-      if (!result.rows[0] || !result.rows[0].setting_value) {
+      // Fall back to database if not in environment
+      if (!secretKey) {
+        const secretKeyQuery = `SELECT setting_value FROM admin_settings WHERE setting_key = 'stripe_secret_key'`;
+        const result = await db.query(secretKeyQuery);
+        
+        if (result.rows[0] && result.rows[0].setting_value) {
+          secretKey = result.rows[0].setting_value;
+        }
+      }
+      
+      if (!secretKey) {
         console.warn('Stripe secret key not configured - billing unavailable');
         return false;
       }
-
-      const secretKey = result.rows[0].setting_value;
       
       // Dynamically import Stripe
       const Stripe = (await import('stripe')).default;
@@ -84,7 +92,8 @@ class BillingService {
 
     // Store customer ID in database
     await this.createOrUpdateSubscription(userId, {
-      stripe_customer_id: customer.id
+      stripe_customer_id: customer.id,
+      status: 'inactive'
     });
 
     return customer.id;
@@ -113,6 +122,11 @@ class BillingService {
       cancel_url: cancelUrl,
       metadata: {
         user_id: userId
+      },
+      subscription_data: {
+        metadata: {
+          user_id: userId
+        }
       }
     });
 
@@ -128,12 +142,54 @@ class BillingService {
 
     const customerId = await this.createOrGetCustomer(userId);
 
-    const portalSession = await stripe.billingPortal.sessions.create({
-      customer: customerId,
-      return_url: returnUrl,
-    });
-
-    return portalSession;
+    try {
+      const portalSession = await stripe.billingPortal.sessions.create({
+        customer: customerId,
+        return_url: returnUrl,
+      });
+      return portalSession;
+    } catch (error) {
+      // If customer portal configuration is missing, create a default one
+      if (error.message.includes('No configuration provided')) {
+        console.log('Creating default customer portal configuration...');
+        
+        try {
+          // Create a default customer portal configuration
+          await stripe.billingPortal.configurations.create({
+            features: {
+              invoice_history: { enabled: true },
+              payment_method_update: { enabled: true },
+              subscription_cancel: { 
+                enabled: true,
+                mode: 'at_period_end'
+              },
+              subscription_pause: { enabled: false },
+              subscription_update: {
+                enabled: false  // Disable subscription updates to avoid products requirement
+              }
+            },
+            business_profile: {
+              privacy_policy_url: process.env.FRONTEND_URL + '/privacy',
+              terms_of_service_url: process.env.FRONTEND_URL + '/terms'
+            }
+          });
+          
+          console.log('Default customer portal configuration created successfully');
+          
+          // Now try creating the portal session again
+          const portalSession = await stripe.billingPortal.sessions.create({
+            customer: customerId,
+            return_url: returnUrl,
+          });
+          return portalSession;
+        } catch (configError) {
+          console.error('Failed to create customer portal configuration:', configError);
+          throw new Error('Customer portal is not properly configured. Please contact support.');
+        }
+      } else {
+        throw error;
+      }
+    }
   }
 
   // Get subscription details
@@ -192,6 +248,8 @@ class BillingService {
 
   // Handle webhook events
   static async handleWebhook(payload, signature) {
+    console.log('Webhook received - signature:', signature ? 'present' : 'missing');
+    
     const billingAvailable = await this.isBillingAvailable();
     if (!billingAvailable) {
       throw new Error('Billing not available for webhook processing');
@@ -209,12 +267,17 @@ class BillingService {
     let event;
     try {
       event = stripe.webhooks.constructEvent(payload, signature, endpointSecret);
+      console.log('Webhook event verified:', event.type, 'ID:', event.id);
     } catch (err) {
       throw new Error(`Webhook signature verification failed: ${err.message}`);
     }
 
     // Handle the event
+    console.log('Processing webhook event:', event.type);
     switch (event.type) {
+      case 'checkout.session.completed':
+        await this.handleCheckoutCompleted(event.data.object);
+        break;
       case 'customer.subscription.created':
       case 'customer.subscription.updated':
         await this.handleSubscriptionUpdated(event.data.object);
@@ -235,25 +298,58 @@ class BillingService {
     return { received: true };
   }
 
+  // Handle checkout session completed
+  static async handleCheckoutCompleted(session) {
+    console.log('Checkout completed:', session.id, 'mode:', session.mode, 'subscription:', session.subscription);
+    if (session.mode === 'subscription' && session.subscription) {
+      // Fetch the subscription from Stripe
+      const subscription = await stripe.subscriptions.retrieve(session.subscription);
+      console.log('Retrieved subscription:', subscription.id, 'status:', subscription.status);
+      await this.handleSubscriptionUpdated(subscription);
+    }
+  }
+
   // Handle subscription created/updated
   static async handleSubscriptionUpdated(subscription) {
+    console.log('Updating subscription:', subscription.id, 'customer:', subscription.customer, 'status:', subscription.status);
     const customerId = subscription.customer;
     
-    // Find user by customer ID
-    const userQuery = `
-      SELECT user_id FROM subscriptions WHERE stripe_customer_id = $1
-    `;
-    const userResult = await db.query(userQuery, [customerId]);
+    let userId;
     
-    if (!userResult.rows[0]) {
-      console.error('User not found for customer:', customerId);
-      return;
+    // First try to get user ID from subscription metadata
+    if (subscription.metadata && subscription.metadata.user_id) {
+      userId = subscription.metadata.user_id;
+      console.log('Found user ID in subscription metadata:', userId);
+    } else {
+      // Otherwise find user by customer ID
+      const userQuery = `
+        SELECT user_id FROM subscriptions WHERE stripe_customer_id = $1
+      `;
+      const userResult = await db.query(userQuery, [customerId]);
+      
+      if (!userResult.rows[0]) {
+        // Try one more approach - fetch the customer from Stripe
+        try {
+          const customer = await stripe.customers.retrieve(customerId);
+          if (customer.metadata && customer.metadata.user_id) {
+            userId = customer.metadata.user_id;
+            console.log('Found user ID in customer metadata:', userId);
+          } else {
+            console.error('User not found for customer:', customerId);
+            return;
+          }
+        } catch (error) {
+          console.error('Error fetching customer:', error);
+          return;
+        }
+      } else {
+        userId = userResult.rows[0].user_id;
+      }
     }
 
-    const userId = userResult.rows[0].user_id;
-
     // Update subscription in database
-    await this.createOrUpdateSubscription(userId, {
+    console.log('Updating subscription for user:', userId);
+    const subscriptionData = {
       stripe_subscription_id: subscription.id,
       stripe_price_id: subscription.items.data[0]?.price.id,
       status: subscription.status,
@@ -261,10 +357,16 @@ class BillingService {
       current_period_end: new Date(subscription.current_period_end * 1000),
       cancel_at_period_end: subscription.cancel_at_period_end,
       canceled_at: subscription.canceled_at ? new Date(subscription.canceled_at * 1000) : null
-    });
+    };
+    console.log('Subscription data:', subscriptionData);
+    
+    await this.createOrUpdateSubscription(userId, subscriptionData);
+    console.log('Subscription updated in database');
 
     // Update user tier
+    console.log('Updating user tier for subscription:', subscription.id, 'status:', subscription.status);
     await TierService.handleSubscriptionUpdate(subscription.id, subscription.status);
+    console.log('User tier updated');
   }
 
   // Handle subscription deleted
@@ -302,7 +404,7 @@ class BillingService {
         status, current_period_start, current_period_end, cancel_at_period_end, canceled_at
       )
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-      ON CONFLICT (user_id)
+      ON CONFLICT (stripe_customer_id)
       DO UPDATE SET
         stripe_customer_id = COALESCE(EXCLUDED.stripe_customer_id, subscriptions.stripe_customer_id),
         stripe_subscription_id = COALESCE(EXCLUDED.stripe_subscription_id, subscriptions.stripe_subscription_id),

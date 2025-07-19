@@ -22,22 +22,11 @@
       </div>
 
       <!-- Pro Tier Gate -->
-      <div v-if="!hasAccess" class="card mb-8">
-        <div class="card-body text-center py-12">
-          <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-purple-100 dark:bg-purple-900/20 mb-4">
-            <svg class="h-6 w-6 text-purple-600 dark:text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
-            </svg>
-          </div>
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">Pro Feature</h3>
-          <p class="text-gray-600 dark:text-gray-400 mb-6">
-            Behavioral Analytics is a Pro feature that helps identify emotional trading patterns like revenge trading, overtrading, and FOMO.
-          </p>
-          <button class="btn btn-primary">
-            Upgrade to Pro
-          </button>
-        </div>
-      </div>
+      <ProUpgradePrompt 
+        v-if="!hasAccess" 
+        variant="card"
+        description="Behavioral Analytics is a Pro feature that helps identify emotional trading patterns like revenge trading, overtrading, and FOMO."
+      />
 
       <!-- Loading State -->
       <div v-else-if="loading" class="flex justify-center py-12">
@@ -1528,6 +1517,7 @@ import { useRouter } from 'vue-router'
 import api from '@/services/api'
 import { useNotification } from '@/composables/useNotification'
 import { useAuthStore } from '@/stores/auth'
+import ProUpgradePrompt from '@/components/ProUpgradePrompt.vue'
 
 const { showSuccess, showError } = useNotification()
 const authStore = useAuthStore()

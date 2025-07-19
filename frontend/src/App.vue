@@ -50,20 +50,35 @@
 </template>
 
 <script setup>
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { usePriceAlertNotifications } from '@/composables/usePriceAlertNotifications'
 import NavBar from '@/components/layout/NavBar.vue'
 import Notification from '@/components/common/Notification.vue'
 
 const route = useRoute()
 const authStore = useAuthStore()
 
+// Initialize price alert notifications globally
+const { isConnected, connect, disconnect } = usePriceAlertNotifications()
+
 const isAuthRoute = computed(() => {
   return ['login', 'register'].includes(route.name)
 })
 
-onMounted(() => {
-  authStore.checkAuth()
+// Watch for authentication changes and user tier changes
+watch(() => [authStore.user?.tier, authStore.token], ([tier, token]) => {
+  if (token && tier === 'pro') {
+    console.log('Connecting to notification stream (user is Pro)')
+    connect()
+  } else {
+    console.log('Disconnecting from notification stream (user not Pro or not authenticated)')
+    disconnect()
+  }
+}, { immediate: true })
+
+onMounted(async () => {
+  await authStore.checkAuth()
 })
 </script>

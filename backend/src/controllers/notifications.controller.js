@@ -24,8 +24,10 @@ const notificationsController = {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive',
-        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Origin': req.headers.origin || '*',
         'Access-Control-Allow-Headers': 'Cache-Control',
+        'Access-Control-Allow-Credentials': 'true',
+        'X-Accel-Buffering': 'no' // Disable proxy buffering
       });
 
       // Send initial connection event
@@ -38,7 +40,24 @@ const notificationsController = {
       // Store connection
       sseConnections.set(userId, res);
       
-      logger.info(`User ${userId} connected to notifications stream`);
+      // Send heartbeat every 30 seconds to keep connection alive
+      const heartbeatInterval = setInterval(() => {
+        if (sseConnections.has(userId)) {
+          try {
+            res.write(`data: ${JSON.stringify({
+              type: 'heartbeat',
+              timestamp: new Date().toISOString()
+            })}\n\n`);
+          } catch (error) {
+            clearInterval(heartbeatInterval);
+            sseConnections.delete(userId);
+          }
+        } else {
+          clearInterval(heartbeatInterval);
+        }
+      }, 30000);
+      
+      console.log(`User ${userId} connected to notifications stream`);
 
       // Send recent unread notifications
       try {
@@ -74,17 +93,55 @@ const notificationsController = {
 
       // Handle client disconnect
       req.on('close', () => {
+        clearInterval(heartbeatInterval);
         sseConnections.delete(userId);
-        logger.info(`User ${userId} disconnected from notifications stream`);
+        console.log(`User ${userId} disconnected from notifications stream`);
       });
 
       req.on('error', (error) => {
         logger.logError(`SSE connection error for user ${userId}:`, error);
+        clearInterval(heartbeatInterval);
         sseConnections.delete(userId);
       });
 
     } catch (error) {
       logger.logError('Error setting up SSE connection:', error);
+      next(error);
+    }
+  },
+
+  // Test notification endpoint
+  async sendTestNotification(req, res, next) {
+    try {
+      const userId = req.user.id;
+      const userTier = req.user.tier;
+      
+      // Only allow Pro users
+      if (userTier !== 'pro') {
+        return res.status(403).json({
+          success: false,
+          error: 'Real-time notifications require Pro tier'
+        });
+      }
+
+      const testNotification = {
+        id: 'test-' + Date.now(),
+        symbol: 'TEST',
+        message: 'This is a test notification to check if browser notifications are working',
+        alert_type: 'above',
+        target_price: 100.00,
+        current_price: 101.00,
+        triggered_at: new Date().toISOString()
+      };
+
+      const sent = await notificationsController.sendNotificationToUser(userId, testNotification);
+      
+      res.json({
+        success: true,
+        message: 'Test notification sent',
+        notificationSent: sent
+      });
+    } catch (error) {
       next(error);
     }
   },
@@ -142,7 +199,7 @@ const notificationsController = {
         sseConnections.delete(userId);
       });
 
-      logger.info(`Broadcast notification sent to ${sentCount} users`);
+      console.log(`Broadcast notification sent to ${sentCount} users`);
       return sentCount;
     } catch (error) {
       logger.logError('Error broadcasting notification:', error);

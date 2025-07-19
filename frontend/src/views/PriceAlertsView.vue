@@ -7,6 +7,7 @@
         <p class="text-gray-600">Get notified when your stocks reach target prices</p>
       </div>
       <button
+        v-if="isProUser"
         @click="showCreateAlertModal = true"
         class="mt-4 sm:mt-0 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
       >
@@ -19,24 +20,58 @@
     </div>
 
     <!-- Pro Feature Notice -->
-    <div v-if="!isProUser" class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-8">
-      <div class="flex">
-        <div class="flex-shrink-0">
-          <svg class="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
-            <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
-          </svg>
+    <ProUpgradePrompt 
+      v-if="!isProUser" 
+      variant="card"
+      description="Price alerts are available for Pro users only."
+    />
+
+    <!-- Notification Status (for Pro users) -->
+    <div v-if="isProUser" class="mb-6 bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+      <!-- Market Status -->
+      <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center space-x-3">
+          <div :class="['w-3 h-3 rounded-full', marketStatus.isOpen ? 'bg-green-500' : 'bg-yellow-500']"></div>
+          <span class="text-sm text-gray-700 dark:text-gray-300">
+            {{ marketStatus.status }}
+          </span>
+          <span v-if="!marketStatus.isOpen && marketStatus.nextOpen" class="text-xs text-gray-500 dark:text-gray-400">
+            (Opens {{ marketStatus.nextOpen }})
+          </span>
+          <span v-else-if="marketStatus.isOpen && marketStatus.closesAt" class="text-xs text-gray-500 dark:text-gray-400">
+            (Closes {{ marketStatus.closesAt }})
+          </span>
         </div>
-        <div class="ml-3">
-          <p class="text-sm text-yellow-700">
-            <strong>Pro Feature:</strong> Price alerts are available for Pro users only.
-            <router-link to="/billing" class="font-medium underline">Upgrade to Pro</router-link>
-          </p>
+      </div>
+      
+      <!-- Connection Status -->
+      <div class="flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+          <div :class="['w-3 h-3 rounded-full', getConnectionStatusColor()]"></div>
+          <span class="text-sm text-gray-700 dark:text-gray-300">
+            {{ getConnectionStatusText() }}
+          </span>
+        </div>
+        <button
+          v-if="!notificationPermissionGranted"
+          @click="requestBrowserNotifications"
+          class="text-sm text-blue-600 hover:text-blue-800 font-medium"
+        >
+          Enable browser notifications
+        </button>
+      </div>
+      <div v-if="notifications.length > 0" class="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+        <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Recent Alerts</h4>
+        <div class="space-y-1">
+          <div v-for="notification in notifications.slice(0, 3)" :key="notification.id" class="text-xs text-gray-600 dark:text-gray-400">
+            {{ notification.symbol }} - {{ notification.message }}
+          </div>
         </div>
       </div>
     </div>
 
     <!-- Filters -->
-    <div class="mb-6 flex flex-wrap items-center gap-4">
+    <div v-if="isProUser" class="mb-6 flex flex-wrap items-center gap-4">
       <div class="flex items-center space-x-2">
         <label for="symbolFilter" class="text-sm font-medium text-gray-700">Symbol:</label>
         <input
@@ -66,12 +101,12 @@
     </div>
 
     <!-- Loading State -->
-    <div v-if="loading" class="flex justify-center items-center py-12">
+    <div v-if="isProUser && loading" class="flex justify-center items-center py-12">
       <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
     </div>
 
     <!-- Alerts Table -->
-    <div v-else-if="alerts.length > 0" class="bg-white shadow-sm rounded-lg overflow-hidden">
+    <div v-else-if="isProUser && alerts.length > 0" class="bg-white shadow-sm rounded-lg overflow-hidden">
       <div class="overflow-x-auto">
         <table class="min-w-full divide-y divide-gray-200">
           <thead class="bg-gray-50">
@@ -146,7 +181,7 @@
     </div>
 
     <!-- Empty State -->
-    <div v-else-if="!loading" class="text-center py-12">
+    <div v-else-if="isProUser && !loading" class="text-center py-12">
       <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-5 5v-5z"></path>
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4"></path>
@@ -282,21 +317,36 @@
 import { ref, onMounted, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useNotification } from '@/composables/useNotification'
+import { usePriceAlertNotifications } from '@/composables/usePriceAlertNotifications'
 import { useAuthStore } from '@/stores/auth'
 import api from '@/services/api'
+import ProUpgradePrompt from '@/components/ProUpgradePrompt.vue'
+import { getMarketStatus } from '@/utils/marketStatus'
 
 export default {
   name: 'PriceAlertsView',
+  components: {
+    ProUpgradePrompt
+  },
   setup() {
     const route = useRoute()
     const { showSuccess, showError } = useNotification()
     const authStore = useAuthStore()
+    const { isConnected, notifications, requestNotificationPermission } = usePriceAlertNotifications()
 
     const alerts = ref([])
     const loading = ref(true)
     const saving = ref(false)
     const showCreateAlertModal = ref(false)
     const editingAlert = ref(null)
+
+    // Market status tracking
+    const marketStatus = ref(getMarketStatus())
+    
+    // Update market status every minute
+    setInterval(() => {
+      marketStatus.value = getMarketStatus()
+    }, 60000)
 
     const filters = ref({
       symbol: '',
@@ -448,6 +498,34 @@ export default {
       })
     }
 
+    const getConnectionStatusColor = () => {
+      if (!marketStatus.value.isOpen) {
+        return 'bg-gray-400' // Gray when market is closed
+      }
+      return isConnected.value ? 'bg-green-500' : 'bg-red-500'
+    }
+
+    const getConnectionStatusText = () => {
+      if (!marketStatus.value.isOpen) {
+        return 'Notifications paused (market closed)'
+      }
+      return `Real-time notifications: ${isConnected.value ? 'Connected' : 'Disconnected'}`
+    }
+
+    const notificationPermissionGranted = ref(
+      'Notification' in window && Notification.permission === 'granted'
+    )
+
+    const requestBrowserNotifications = async () => {
+      const granted = await requestNotificationPermission()
+      notificationPermissionGranted.value = granted
+      if (granted) {
+        showSuccess('Success', 'Browser notifications enabled!')
+      } else {
+        showError('Permission Denied', 'Please enable notifications in your browser settings')
+      }
+    }
+
     // Pre-fill symbol from query params
     watch(() => route.query.symbol, (symbol) => {
       if (symbol && !editingAlert.value) {
@@ -482,7 +560,14 @@ export default {
       saveAlert,
       cancelEdit,
       formatPrice,
-      formatDate
+      formatDate,
+      isConnected,
+      notifications,
+      notificationPermissionGranted,
+      requestBrowserNotifications,
+      marketStatus,
+      getConnectionStatusColor,
+      getConnectionStatusText
     }
   }
 }

@@ -69,7 +69,7 @@ class PriceMonitoringService {
       this.monitoringInterval = null;
     }
 
-    logger.info('Price monitoring service stopped');
+    console.log('Price monitoring service stopped');
   }
 
   async monitorPrices() {
@@ -121,7 +121,7 @@ class PriceMonitoringService {
           throw new Error('Invalid price data from Finnhub');
         }
       } catch (finnhubError) {
-        logger.warn(`Finnhub failed for ${symbol}, trying Alpha Vantage:`, finnhubError.message);
+        logger.logWarn(`Finnhub failed for ${symbol}, trying Alpha Vantage: ${finnhubError.message}`);
         
         // Fallback to Alpha Vantage
         try {
@@ -250,21 +250,20 @@ class PriceMonitoringService {
 
       // Create notification message
       let message = '';
+      const currentPriceNum = parseFloat(current_price);
+      const targetPriceNum = parseFloat(target_price);
+      const changePercentNum = parseFloat(change_percent);
+      const percentChangeNum = parseFloat(alert.percent_change);
+      
       switch (alert_type) {
         case 'above':
-          message = `${symbol} has reached ${typeof current_price === 'number' ? current_price.toFixed(2) : 'N/A'}, which is above your target of ${typeof target_price === 'number' ? target_price.toFixed(2) : 'N/A'}`;
+          message = `${symbol} has reached $${currentPriceNum.toFixed(2)}, which is above your target of $${targetPriceNum.toFixed(2)}`;
           break;
         case 'below':
-          message = `${symbol} has dropped to ${typeof current_price === 'number' ? current_price.toFixed(2) : 'N/A'}, which is below your target of ${typeof target_price === 'number' ? target_price.toFixed(2) : 'N/A'}`;
+          message = `${symbol} has dropped to $${currentPriceNum.toFixed(2)}, which is below your target of $${targetPriceNum.toFixed(2)}`;
           break;
         case 'change_percent':
-          message = `${symbol} has moved ${typeof alert.percent_change === 'number' ? (alert.percent_change >= 0 ? '+' : '') + alert.percent_change.toFixed(2) : 'N/A'}%, reaching your threshold of ${typeof change_percent === 'number' ? (change_percent >= 0 ? '+' : '') + change_percent.toFixed(2) : 'N/A'}%`;
-          break;
-        case 'below':
-          message = `${symbol} has dropped to $${current_price.toFixed(2)}, which is below your target of $${target_price.toFixed(2)}`;
-          break;
-        case 'change_percent':
-          message = `${symbol} has moved ${alert.percent_change >= 0 ? '+' : ''}${alert.percent_change.toFixed(2)}%, reaching your threshold of ${change_percent >= 0 ? '+' : ''}${change_percent.toFixed(2)}%`;
+          message = `${symbol} has moved ${percentChangeNum >= 0 ? '+' : ''}${percentChangeNum.toFixed(2)}%, reaching your threshold of ${changePercentNum >= 0 ? '+' : ''}${changePercentNum.toFixed(2)}%`;
           break;
       }
 
@@ -284,7 +283,7 @@ class PriceMonitoringService {
         [id]
       );
 
-      logger.info(`Alert triggered for ${symbol}: ${message}`);
+      console.log(`Alert triggered for ${symbol}: ${message}`);
 
     } catch (error) {
       logger.logError('Error triggering alert:', error);
@@ -306,9 +305,9 @@ class PriceMonitoringService {
         <h3>Alert Details:</h3>
         <ul>
           <li><strong>Symbol:</strong> ${symbol}</li>
-          <li><strong>Current Price:</strong> $${alert.current_price.toFixed(2)}</li>
+          <li><strong>Current Price:</strong> $${parseFloat(alert.current_price).toFixed(2)}</li>
           <li><strong>Alert Type:</strong> ${alert.alert_type}</li>
-          ${alert.target_price ? `<li><strong>Target Price:</strong> $${alert.target_price.toFixed(2)}</li>` : ''}
+          ${alert.target_price ? `<li><strong>Target Price:</strong> $${parseFloat(alert.target_price).toFixed(2)}</li>` : ''}
           ${alert.change_percent ? `<li><strong>Target Change:</strong> ${alert.change_percent}%</li>` : ''}
           <li><strong>Time:</strong> ${new Date().toLocaleString()}</li>
         </ul>
@@ -325,7 +324,7 @@ class PriceMonitoringService {
       // Log notification
       await this.logNotification(alert.id, alert.user_id, symbol, 'email', message, alert, 'sent');
 
-      logger.info(`Email notification sent to ${email} for ${symbol} alert`);
+      console.log(`Email notification sent to ${email} for ${symbol} alert`);
 
     } catch (error) {
       logger.logError('Error sending email notification:', error);
@@ -356,7 +355,7 @@ class PriceMonitoringService {
       // Log browser notification
       await this.logNotification(alert.id, alert.user_id, alert.symbol, 'browser', message, alert, sent ? 'sent' : 'failed');
       
-      logger.info(`Browser notification ${sent ? 'sent' : 'failed'} for ${alert.symbol} alert`);
+      console.log(`Browser notification ${sent ? 'sent' : 'failed'} for ${alert.symbol} alert`);
 
     } catch (error) {
       logger.logError('Error creating browser notification:', error);

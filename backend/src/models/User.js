@@ -396,7 +396,11 @@ class User {
     const query = `
       SELECT * FROM subscriptions
       WHERE user_id = $1
-      ORDER BY created_at DESC
+      ORDER BY 
+        CASE WHEN status = 'active' THEN 1 
+             WHEN status = 'trialing' THEN 2 
+             ELSE 3 END,
+        created_at DESC
       LIMIT 1
     `;
     
@@ -486,6 +490,24 @@ class User {
     `;
     
     const result = await db.query(query, [userId]);
+    return result.rows[0];
+  }
+
+  static async createTierOverride(userId, tier, reason, expiresAt, createdBy = null) {
+    const query = `
+      INSERT INTO tier_overrides (user_id, tier, reason, expires_at, created_by)
+      VALUES ($1, $2, $3, $4, $5)
+      ON CONFLICT (user_id) 
+      DO UPDATE SET
+        tier = EXCLUDED.tier,
+        reason = EXCLUDED.reason,
+        expires_at = EXCLUDED.expires_at,
+        created_by = EXCLUDED.created_by,
+        updated_at = CURRENT_TIMESTAMP
+      RETURNING *
+    `;
+    
+    const result = await db.query(query, [userId, tier, reason, expiresAt, createdBy]);
     return result.rows[0];
   }
 }
