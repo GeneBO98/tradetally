@@ -10,19 +10,27 @@
           
           <div class="hidden sm:ml-6 sm:flex sm:space-x-8">
             <template v-if="authStore.isAuthenticated">
-              <router-link
-                v-for="item in navigation"
-                :key="item.name"
-                :to="item.to"
-                class="inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
-                :class="[
-                  $route.name === item.route
-                    ? 'border-primary-500 text-gray-900 dark:text-white'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-300 dark:hover:text-white'
-                ]"
-              >
-                {{ item.name }}
-              </router-link>
+              <template v-for="item in navigation" :key="item.name">
+                <!-- Dropdown navigation item -->
+                <NavDropdown 
+                  v-if="item.type === 'dropdown'"
+                  :title="item.name"
+                  :items="item.items"
+                />
+                <!-- Regular navigation item -->
+                <router-link
+                  v-else
+                  :to="item.to"
+                  class="inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
+                  :class="[
+                    $route.name === item.route
+                      ? 'border-primary-500 text-gray-900 dark:text-white'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-300 dark:hover:text-white'
+                  ]"
+                >
+                  {{ item.name }}
+                </router-link>
+              </template>
             </template>
             <template v-else>
               <router-link
@@ -112,20 +120,55 @@
       <div v-if="isMobileMenuOpen" class="sm:hidden border-t border-gray-200 dark:border-gray-700">
         <div class="pt-2 pb-3 space-y-1">
           <template v-if="authStore.isAuthenticated">
-            <router-link
-              v-for="item in navigation"
-              :key="item.name"
-              :to="item.to"
-              @click="isMobileMenuOpen = false"
-              class="block px-3 py-2 text-base font-medium"
-              :class="[
-                $route.name === item.route
-                  ? 'text-primary-600 bg-primary-50 dark:text-primary-400 dark:bg-gray-700'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700'
-              ]"
-            >
-              {{ item.name }}
-            </router-link>
+            <template v-for="item in navigation" :key="item.name">
+              <!-- Dropdown items - expanded in mobile -->
+              <template v-if="item.type === 'dropdown'">
+                <div class="px-3 py-2">
+                  <div class="text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    {{ item.name }}
+                  </div>
+                </div>
+                <router-link
+                  v-for="subItem in item.items"
+                  :key="subItem.name"
+                  :to="subItem.to"
+                  @click="isMobileMenuOpen = false"
+                  class="block pl-6 pr-3 py-2 text-base font-medium"
+                  :class="[
+                    $route.name === subItem.route
+                      ? 'text-primary-600 bg-primary-50 dark:text-primary-400 dark:bg-gray-700'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700'
+                  ]"
+                >
+                  <div class="flex items-center">
+                    {{ subItem.name }}
+                    <span 
+                      v-if="subItem.badge"
+                      class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
+                      :class="{
+                        'bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400': subItem.badge.type === 'pro'
+                      }"
+                    >
+                      {{ subItem.badge.text }}
+                    </span>
+                  </div>
+                </router-link>
+              </template>
+              <!-- Regular navigation item -->
+              <router-link
+                v-else
+                :to="item.to"
+                @click="isMobileMenuOpen = false"
+                class="block px-3 py-2 text-base font-medium"
+                :class="[
+                  $route.name === item.route
+                    ? 'text-primary-600 bg-primary-50 dark:text-primary-400 dark:bg-gray-700'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700'
+                ]"
+              >
+                {{ item.name }}
+              </router-link>
+            </template>
             <div class="border-t border-gray-200 dark:border-gray-700 pt-4 pb-3">
               <div class="px-3 mb-3">
                 <div class="text-base font-medium text-gray-800 dark:text-gray-200">
@@ -198,6 +241,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useRegistrationMode } from '@/composables/useRegistrationMode'
 import { SunIcon, MoonIcon, Bars3Icon, XMarkIcon } from '@heroicons/vue/24/outline'
 import config from '@/config'
+import NavDropdown from '@/components/common/NavDropdown.vue'
 
 const authStore = useAuthStore()
 const { showSEOPages } = useRegistrationMode()
@@ -207,7 +251,25 @@ const isMobileMenuOpen = ref(false)
 const baseNavigation = [
   { name: 'Dashboard', to: '/dashboard', route: 'dashboard' },
   { name: 'Trades', to: '/trades', route: 'trades' },
-  { name: 'Analytics', to: '/analytics', route: 'analytics' },
+  { 
+    name: 'Analytics', 
+    type: 'dropdown',
+    items: [
+      { 
+        name: 'Performance Analytics', 
+        to: '/analytics', 
+        route: 'analytics',
+        description: 'Trading performance metrics and statistics'
+      },
+      { 
+        name: 'Behavioral Analytics', 
+        to: '/analytics/behavioral', 
+        route: 'behavioral-analytics',
+        description: 'Detect revenge trading and emotional patterns',
+        badge: { type: 'pro', text: 'Pro' }
+      }
+    ]
+  },
   { name: 'Calendar', to: '/calendar', route: 'calendar' },
   { name: 'Import', to: '/import', route: 'import' },
   { name: 'Settings', to: '/settings', route: 'settings' }

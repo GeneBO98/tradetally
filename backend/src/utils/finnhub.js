@@ -6,8 +6,8 @@ class FinnhubClient {
     this.apiKey = process.env.FINNHUB_API_KEY;
     this.baseURL = 'https://finnhub.io/api/v1';
     
-    // Rate limiting: Conservative limits for free tier (30 calls per minute)
-    this.maxCallsPerMinute = 30;
+    // Rate limiting: Higher limits for paid tier (60 calls per minute)
+    this.maxCallsPerMinute = 60;
     this.callTimestamps = [];
   }
 
@@ -208,6 +208,107 @@ class FinnhubClient {
     }
   }
 
+  async getStockCandles(symbol, resolution = '1', from, to) {
+    const symbolUpper = symbol.toUpperCase();
+    
+    // Create cache key with parameters
+    const cacheKey = `${symbolUpper}_${resolution}_${from}_${to}`;
+    
+    // Check cache first (5 minute TTL for recent candle data)
+    const cached = await cache.get('stock_candles', cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    try {
+      const candles = await this.makeRequest('/stock/candle', {
+        symbol: symbolUpper,
+        resolution,
+        from,
+        to
+      });
+      
+      // Validate candles data
+      if (!candles || candles.s !== 'ok' || !candles.c || candles.c.length === 0) {
+        throw new Error(`No candle data available for ${symbol}`);
+      }
+
+      // Convert to standard format
+      const formattedCandles = [];
+      for (let i = 0; i < candles.c.length; i++) {
+        formattedCandles.push({
+          time: candles.t[i],
+          open: candles.o[i],
+          high: candles.h[i],
+          low: candles.l[i],
+          close: candles.c[i],
+          volume: candles.v[i]
+        });
+      }
+      
+      // Cache the result
+      await cache.set('stock_candles', cacheKey, formattedCandles);
+      
+      return formattedCandles;
+    } catch (error) {
+      console.warn(`Failed to get stock candles for ${symbol}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  // Get appropriate candle data based on trade duration for Pro users
+  async getTradeChartData(symbol, entryDate, exitDate = null) {
+    const entryTime = new Date(entryDate);
+    const exitTime = exitDate ? new Date(exitDate) : new Date();
+    const tradeDuration = exitTime - entryTime;
+    const oneDayMs = 24 * 60 * 60 * 1000;
+
+    // Convert to Unix timestamps
+    const fromTimestamp = Math.floor((entryTime.getTime() - oneDayMs) / 1000); // 1 day before entry
+    const toTimestamp = Math.floor((exitTime.getTime() + oneDayMs) / 1000); // 1 day after exit
+
+    try {
+      let resolution, intervalName;
+      
+      // For same-day trades, use 1-minute data
+      if (tradeDuration <= oneDayMs) {
+        resolution = '1';
+        intervalName = '1min';
+        console.log(`Fetching 1-minute Finnhub data for ${symbol} (same-day trade)`);
+      }
+      // For trades up to 5 days, use 5-minute data
+      else if (tradeDuration <= 5 * oneDayMs) {
+        resolution = '5';
+        intervalName = '5min';
+        console.log(`Fetching 5-minute Finnhub data for ${symbol} (${Math.ceil(tradeDuration / oneDayMs)} day trade)`);
+      }
+      // For longer trades, use 15-minute data
+      else if (tradeDuration <= 30 * oneDayMs) {
+        resolution = '15';
+        intervalName = '15min';
+        console.log(`Fetching 15-minute Finnhub data for ${symbol} (multi-day trade)`);
+      }
+      // For very long trades, use daily data
+      else {
+        resolution = 'D';
+        intervalName = 'daily';
+        console.log(`Fetching daily Finnhub data for ${symbol} (long-term trade)`);
+      }
+      
+      const candles = await this.getStockCandles(symbol, resolution, fromTimestamp, toTimestamp);
+      
+      return {
+        type: resolution === 'D' ? 'daily' : 'intraday',
+        interval: intervalName,
+        data: candles,
+        source: 'finnhub'
+      };
+    } catch (error) {
+      console.error(`Error fetching Finnhub chart data for ${symbol}:`, error);
+      throw error;
+    }
+  }
+
   async getEarningsCalendar(fromDate = null, toDate = null, symbol = null) {
     const from = fromDate || new Date().toISOString().split('T')[0];
     const to = toDate || new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
@@ -369,6 +470,202 @@ class FinnhubClient {
       return candles;
     } catch (error) {
       console.warn(`Failed to get candles for ${symbol}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  async getTicks(symbol, date, limit = 1000, skip = 0) {
+    const symbolUpper = symbol.toUpperCase();
+    
+    // Format date as YYYY-MM-DD
+    const formattedDate = date instanceof Date ? date.toISOString().split('T')[0] : date;
+    
+    // Create cache key with all parameters
+    const cacheKey = `${symbolUpper}_${formattedDate}_${limit}_${skip}`;
+    
+    // Check cache first (24 hour TTL for tick data since it's historical)
+    const cached = await cache.get('ticks', cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    try {
+      const ticks = await this.makeRequest('/stock/tick', {
+        symbol: symbolUpper,
+        date: formattedDate,
+        limit,
+        skip
+      });
+      
+      // Validate tick data
+      if (!ticks || !ticks.t || ticks.t.length === 0) {
+        throw new Error(`No tick data available for ${symbol} on ${formattedDate}`);
+      }
+
+      // Cache the result
+      await cache.set('ticks', cacheKey, ticks);
+
+      return ticks;
+    } catch (error) {
+      console.warn(`Failed to get ticks for ${symbol} on ${formattedDate}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  async getTicksAroundTime(symbol, datetime, windowMinutes = 30) {
+    const symbolUpper = symbol.toUpperCase();
+    const targetTime = new Date(datetime);
+    const targetDate = targetTime.toISOString().split('T')[0];
+    
+    // Create cache key
+    const cacheKey = `${symbolUpper}_${targetDate}_${targetTime.getTime()}_${windowMinutes}`;
+    
+    // Check cache first
+    const cached = await cache.get('ticks_around_time', cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    try {
+      // Get all ticks for the day
+      const allTicks = await this.getTicks(symbol, targetDate, 10000, 0);
+      
+      if (!allTicks || !allTicks.t || allTicks.t.length === 0) {
+        throw new Error(`No tick data available for ${symbol} on ${targetDate}`);
+      }
+
+      // Filter ticks within the time window
+      const targetTimestamp = targetTime.getTime();
+      const windowMs = windowMinutes * 60 * 1000;
+      const startTime = targetTimestamp - windowMs;
+      const endTime = targetTimestamp + windowMs;
+      
+      const filteredTicks = {
+        t: [],
+        p: [],
+        v: [],
+        c: [],
+        x: []
+      };
+      
+      for (let i = 0; i < allTicks.t.length; i++) {
+        const tickTime = allTicks.t[i] * 1000; // Convert to milliseconds
+        
+        if (tickTime >= startTime && tickTime <= endTime) {
+          filteredTicks.t.push(allTicks.t[i]);
+          filteredTicks.p.push(allTicks.p[i]);
+          filteredTicks.v.push(allTicks.v[i]);
+          if (allTicks.c && allTicks.c[i]) filteredTicks.c.push(allTicks.c[i]);
+          if (allTicks.x && allTicks.x[i]) filteredTicks.x.push(allTicks.x[i]);
+        }
+      }
+      
+      // Add metadata
+      filteredTicks.count = filteredTicks.t.length;
+      filteredTicks.symbol = symbolUpper;
+      filteredTicks.date = targetDate;
+      filteredTicks.targetTime = targetTimestamp;
+      filteredTicks.windowMinutes = windowMinutes;
+      
+      // Cache the result
+      await cache.set('ticks_around_time', cacheKey, filteredTicks);
+
+      return filteredTicks;
+    } catch (error) {
+      console.warn(`Failed to get ticks around time for ${symbol} at ${datetime}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  // Get technical indicators
+  async getTechnicalIndicator(symbol, resolution, from, to, indicator, indicatorFields = {}) {
+    const symbolUpper = symbol.toUpperCase();
+    
+    // Create cache key with all parameters
+    const cacheKey = `${symbolUpper}_${resolution}_${from}_${to}_${indicator}_${JSON.stringify(indicatorFields)}`;
+    
+    // Check cache first (1 hour TTL for technical indicators)
+    const cached = await cache.get('technical_indicator', cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    try {
+      const params = {
+        symbol: symbolUpper,
+        resolution,
+        from,
+        to,
+        indicator,
+        ...indicatorFields
+      };
+
+      const result = await this.makeRequest('/indicator', params);
+      
+      // Cache the result
+      await cache.set('technical_indicator', cacheKey, result);
+
+      return result;
+    } catch (error) {
+      console.warn(`Failed to get technical indicator ${indicator} for ${symbol}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  // Get pattern recognition
+  async getPatternRecognition(symbol, resolution) {
+    const symbolUpper = symbol.toUpperCase();
+    
+    // Create cache key
+    const cacheKey = `${symbolUpper}_${resolution}`;
+    
+    // Check cache first (4 hour TTL for patterns)
+    const cached = await cache.get('pattern_recognition', cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    try {
+      const patterns = await this.makeRequest('/scan/pattern', {
+        symbol: symbolUpper,
+        resolution
+      });
+      
+      // Cache the result
+      await cache.set('pattern_recognition', cacheKey, patterns);
+
+      return patterns;
+    } catch (error) {
+      console.warn(`Failed to get pattern recognition for ${symbol}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  // Get support and resistance levels
+  async getSupportResistance(symbol, resolution) {
+    const symbolUpper = symbol.toUpperCase();
+    
+    // Create cache key
+    const cacheKey = `${symbolUpper}_${resolution}`;
+    
+    // Check cache first (4 hour TTL for support/resistance)
+    const cached = await cache.get('support_resistance', cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    try {
+      const levels = await this.makeRequest('/scan/support-resistance', {
+        symbol: symbolUpper,
+        resolution
+      });
+      
+      // Cache the result
+      await cache.set('support_resistance', cacheKey, levels);
+
+      return levels;
+    } catch (error) {
+      console.warn(`Failed to get support/resistance for ${symbol}: ${error.message}`);
       throw error;
     }
   }

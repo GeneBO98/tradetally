@@ -33,6 +33,14 @@ router.put('/admin/users/:userId/role', requireAdmin, userController.updateUserR
 router.put('/admin/users/:userId/status', requireAdmin, userController.toggleUserStatus);
 router.delete('/admin/users/:userId', requireAdmin, userController.deleteUser);
 
+// Tier management routes
+router.get('/admin/tier-stats', requireAdmin, userController.getTierStats);
+router.get('/admin/users/:userId/tier', requireAdmin, userController.getUserTier);
+router.put('/admin/users/:userId/tier', requireAdmin, userController.updateUserTier);
+router.post('/admin/users/:userId/tier-override', requireAdmin, userController.setTierOverride);
+router.delete('/admin/users/:userId/tier-override', requireAdmin, userController.removeTierOverride);
+router.get('/admin/users/:userId/tier-override', requireAdmin, userController.getTierOverride);
+
 // Public profile routes (must be last to avoid conflicts)
 router.get('/:username', userController.getPublicProfile);
 router.get('/:username/trades', userController.getUserPublicTrades);

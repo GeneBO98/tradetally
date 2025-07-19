@@ -4,7 +4,7 @@
     <div class="mb-6">
       <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Trades</h1>
       <p class="mt-2 text-sm text-gray-700 dark:text-gray-300">
-        Round-trip trades grouped by symbol and date for consistent P&L calculations.
+        A list of all your trades including their details and performance.
       </p>
     </div>
     
@@ -37,7 +37,7 @@
         <div class="block sm:hidden space-y-4">
           <div>
             <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
-              Total P&L ({{ tradesStore.totalTrades }} {{ tradesStore.totalTrades === 1 ? 'trade' : 'trades' }})
+              Total P&L ({{ tradesStore.pagination.total }} {{ tradesStore.pagination.total === 1 ? 'trade' : 'trades' }})
             </h3>
             <div class="text-lg font-semibold" :class="[
               tradesStore.totalPnL >= 0 
@@ -57,7 +57,7 @@
         <div class="hidden sm:flex items-center justify-between">
           <div class="flex items-center space-x-4">
             <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-              Total P&L ({{ tradesStore.totalTrades }} {{ tradesStore.totalTrades === 1 ? 'trade' : 'trades' }})
+              Total P&L ({{ tradesStore.pagination.total }} {{ tradesStore.pagination.total === 1 ? 'trade' : 'trades' }})
             </h3>
             <div class="text-lg font-semibold" :class="[
               tradesStore.totalPnL >= 0 
@@ -98,7 +98,8 @@
         <!-- Mobile view (cards) -->
         <div class="block md:hidden space-y-4">
         <div v-for="trade in tradesStore.trades" :key="trade.id" 
-             class="bg-white dark:bg-gray-800 shadow rounded-lg p-4">
+             @click="$router.push(`/trades/${trade.id}`)"
+             class="bg-white dark:bg-gray-800 shadow rounded-lg p-4 cursor-pointer hover:shadow-md transition-shadow">
           <div class="flex justify-between items-start mb-3">
             <div class="flex items-center space-x-3">
               <div class="text-lg font-semibold text-gray-900 dark:text-white">
@@ -129,10 +130,6 @@
               <div class="text-gray-900 dark:text-white">{{ formatDate(trade.trade_date) }}</div>
             </div>
             <div>
-              <div class="text-gray-500 dark:text-gray-400">Executions</div>
-              <div class="text-gray-900 dark:text-white">{{ trade.execution_count || 1 }}</div>
-            </div>
-            <div>
               <div class="text-gray-500 dark:text-gray-400">Entry</div>
               <div class="text-gray-900 dark:text-white">${{ formatNumber(trade.entry_price) }}</div>
             </div>
@@ -142,7 +139,7 @@
                 {{ trade.exit_price ? `$${formatNumber(trade.exit_price)}` : '-' }}
               </div>
             </div>
-            <div class="col-span-2">
+            <div>
               <div class="text-gray-500 dark:text-gray-400">P&L</div>
               <div class="font-medium" :class="[
                 trade.pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
@@ -162,8 +159,16 @@
           </div>
           
           <div class="flex justify-between items-center mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
-            <span class="text-sm text-gray-500">{{ trade.execution_count || 1 }} executions</span>
-            <span class="text-sm text-gray-400">Round-trip</span>
+            <button
+              @click.stop="openComments(trade)"
+              class="inline-flex items-center text-gray-500 hover:text-primary-600 transition-colors"
+            >
+              <ChatBubbleLeftIcon class="h-4 w-4 mr-1" />
+              <span class="text-sm">{{ trade.comment_count || 0 }}</span>
+            </button>
+            <svg class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
           </div>
         </div>
         </div>
@@ -190,9 +195,6 @@
                 Exit
               </th>
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                Executions
-              </th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                 P&L
               </th>
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
@@ -202,7 +204,7 @@
                 Status
               </th>
               <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                Executions
+                Comments
               </th>
               <th class="relative px-6 py-3">
                 <span class="sr-only">Actions</span>
@@ -211,8 +213,8 @@
           </thead>
           <tbody class="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
             <tr v-for="trade in tradesStore.trades" :key="trade.id" 
-                class="hover:bg-gray-50 dark:hover:bg-gray-800 "
-                >
+                class="hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer"
+                @click="$router.push(`/trades/${trade.id}`)">
               <td class="px-6 py-4 whitespace-nowrap">
                 <div class="text-sm font-medium text-gray-900 dark:text-white">
                   {{ trade.symbol }}
@@ -238,9 +240,6 @@
               </td>
               <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                 {{ trade.exit_price ? `$${formatNumber(trade.exit_price)}` : '-' }}
-              </td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                {{ trade.execution_count || 1 }}
               </td>
               <td class="px-6 py-4 whitespace-nowrap">
                 <div class="text-sm font-medium" :class="[
@@ -268,10 +267,22 @@
                 </span>
               </td>
               <td class="px-6 py-4 whitespace-nowrap text-center">
-                <span class="text-sm text-gray-500">{{ trade.execution_count || 1 }}</span>
+                <button
+                  @click.stop="openComments(trade)"
+                  class="inline-flex items-center text-gray-500 hover:text-primary-600 transition-colors"
+                >
+                  <ChatBubbleLeftIcon class="h-4 w-4 mr-1" />
+                  <span class="text-sm">{{ trade.comment_count || 0 }}</span>
+                </button>
               </td>
               <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                <span class="text-gray-400 text-sm">Round-trip</span>
+                <router-link
+                  :to="`/trades/${trade.id}`"
+                  class="text-primary-600 hover:text-primary-900 dark:hover:text-primary-400"
+                  @click.stop
+                >
+                  View
+                </router-link>
               </td>
             </tr>
           </tbody>
@@ -404,7 +415,7 @@ const visiblePages = computed(() => {
 watch(
   () => tradesStore.pagination.page,
   () => {
-    tradesStore.fetchRoundTripTrades()
+    tradesStore.fetchTrades()
   }
 )
 
@@ -421,7 +432,7 @@ function formatDate(date) {
 
 function handleFilter(filters) {
   tradesStore.setFilters(filters)
-  tradesStore.fetchRoundTripTrades()
+  tradesStore.fetchTrades()
 }
 
 function goToPage(page) {
@@ -468,6 +479,6 @@ onMounted(() => {
     tradesStore.setFilters({ symbol: route.query.symbol })
   }
   
-  tradesStore.fetchRoundTripTrades()
+  tradesStore.fetchTrades()
 })
 </script>

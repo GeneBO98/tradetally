@@ -17,6 +17,10 @@ const apiKeyRoutes = require('./routes/apiKey.routes');
 const apiRoutes = require('./routes/api.routes');
 const v1Routes = require('./routes/v1');
 const wellKnownRoutes = require('./routes/well-known.routes');
+const featuresRoutes = require('./routes/features.routes');
+const behavioralAnalyticsRoutes = require('./routes/behavioralAnalytics.routes');
+const billingRoutes = require('./routes/billing.routes');
+const BillingService = require('./services/billingService');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
@@ -99,6 +103,9 @@ app.use('/api/equity', equityRoutes);
 app.use('/api/2fa', twoFactorRoutes);
 app.use('/api/api-keys', apiKeyRoutes);
 app.use('/api/v2', apiRoutes);
+app.use('/api/features', featuresRoutes);
+app.use('/api/behavioral-analytics', behavioralAnalyticsRoutes);
+app.use('/api/billing', billingRoutes);
 
 // Well-known endpoints for mobile discovery
 app.use('/.well-known', wellKnownRoutes);
@@ -126,6 +133,9 @@ async function startServer() {
     } else {
       console.log('Skipping migrations (RUN_MIGRATIONS=false)');
     }
+    
+    // Initialize billing service (conditional)
+    await BillingService.initialize();
     
     // Start the server
     app.listen(PORT, () => {

@@ -6,6 +6,8 @@ const logger = require('../utils/logger');
 const finnhub = require('../utils/finnhub');
 const cache = require('../utils/cache');
 const symbolCategories = require('../utils/symbolCategories');
+const RevengeTradeDetector = require('../services/revengeTradeDetector');
+const OverconfidenceAnalyticsService = require('../services/overconfidenceAnalyticsService');
 
 const tradeController = {
   async getUserTrades(req, res, next) {
@@ -130,7 +132,43 @@ const tradeController = {
         console.warn('⚠️ Failed to invalidate sector performance cache:', cacheError.message);
       }
       
-      res.status(201).json({ trade });
+      // Real-time behavioral analytics - only run if trade is complete
+      let behavioralAlerts = [];
+      if (trade.exit_time && trade.pnl !== null) {
+        try {
+          // Check for revenge trading patterns
+          const revengeAlert = await RevengeTradeDetector.analyzeNewTrade(req.user.id, trade);
+          if (revengeAlert && revengeAlert.isRevengeTrading) {
+            behavioralAlerts.push({
+              type: 'revenge_trading',
+              severity: revengeAlert.severity,
+              message: revengeAlert.message || 'Revenge trading pattern detected',
+              recommendations: revengeAlert.recommendations || []
+            });
+          }
+          
+          // Check for overconfidence patterns
+          const overconfidenceAlert = await OverconfidenceAnalyticsService.detectOverconfidenceInRealTime(req.user.id, trade);
+          if (overconfidenceAlert && overconfidenceAlert.detected) {
+            behavioralAlerts.push({
+              type: 'overconfidence',
+              severity: overconfidenceAlert.severity,
+              message: overconfidenceAlert.message || 'Overconfidence pattern detected',
+              recommendations: overconfidenceAlert.recommendations || []
+            });
+          }
+        } catch (behavioralError) {
+          console.warn('⚠️ Failed to run real-time behavioral analysis:', behavioralError.message);
+          // Don't fail the trade creation if behavioral analysis fails
+        }
+      }
+      
+      const response = { trade };
+      if (behavioralAlerts.length > 0) {
+        response.behavioralAlerts = behavioralAlerts;
+      }
+      
+      res.status(201).json(response);
     } catch (error) {
       next(error);
     }
@@ -138,9 +176,18 @@ const tradeController = {
 
   async getTrade(req, res, next) {
     try {
+      console.log('getTrade called with:', {
+        tradeId: req.params.id,
+        userId: req.user?.id,
+        userExists: !!req.user
+      });
+      
       const trade = await Trade.findById(req.params.id, req.user?.id);
       
+      console.log('Trade found:', !!trade);
+      
       if (!trade) {
+        console.log('Trade not found - possible auth issue or trade does not belong to user');
         return res.status(404).json({ error: 'Trade not found' });
       }
 
@@ -176,7 +223,43 @@ const tradeController = {
         console.warn('⚠️ Failed to invalidate sector performance cache:', cacheError.message);
       }
 
-      res.json({ trade });
+      // Real-time behavioral analytics - only run if trade is complete (has exit data)
+      let behavioralAlerts = [];
+      if (trade.exit_time && trade.pnl !== null) {
+        try {
+          // Check for revenge trading patterns
+          const revengeAlert = await RevengeTradeDetector.analyzeNewTrade(req.user.id, trade);
+          if (revengeAlert && revengeAlert.isRevengeTrading) {
+            behavioralAlerts.push({
+              type: 'revenge_trading',
+              severity: revengeAlert.severity,
+              message: revengeAlert.message || 'Revenge trading pattern detected',
+              recommendations: revengeAlert.recommendations || []
+            });
+          }
+          
+          // Check for overconfidence patterns
+          const overconfidenceAlert = await OverconfidenceAnalyticsService.detectOverconfidenceInRealTime(req.user.id, trade);
+          if (overconfidenceAlert && overconfidenceAlert.detected) {
+            behavioralAlerts.push({
+              type: 'overconfidence',
+              severity: overconfidenceAlert.severity,
+              message: overconfidenceAlert.message || 'Overconfidence pattern detected',
+              recommendations: overconfidenceAlert.recommendations || []
+            });
+          }
+        } catch (behavioralError) {
+          console.warn('⚠️ Failed to run real-time behavioral analysis:', behavioralError.message);
+          // Don't fail the trade update if behavioral analysis fails
+        }
+      }
+
+      const response = { trade };
+      if (behavioralAlerts.length > 0) {
+        response.behavioralAlerts = behavioralAlerts;
+      }
+
+      res.json(response);
     } catch (error) {
       next(error);
     }
@@ -1393,25 +1476,26 @@ const tradeController = {
         return res.status(404).json({ error: 'Trade not found' });
       }
 
-      // Access control is already handled by findById with userId parameter
-
       // Only show charts for closed trades
       if (!trade.exit_price || !trade.exit_time) {
         return res.status(400).json({ error: 'Chart data only available for closed trades' });
       }
 
-      const alphaVantage = require('../utils/alphaVantage');
+      const ChartService = require('../services/chartService');
       
-      if (!alphaVantage.isConfigured()) {
+      // Check if any chart service is configured
+      const serviceStatus = await ChartService.getServiceStatus();
+      if (!serviceStatus.finnhub.configured && !serviceStatus.alphaVantage.configured) {
         return res.status(503).json({ 
-          error: 'Chart service not configured. Alpha Vantage API key is required.',
-          details: 'Add ALPHA_VANTAGE_API_KEY to your environment variables'
+          error: 'No chart service configured. Please configure Finnhub (Pro) or Alpha Vantage API keys.',
+          services: serviceStatus
         });
       }
 
       try {
-        // Get chart data based on trade duration
-        const chartData = await alphaVantage.getTradeChartData(
+        // Get chart data using the appropriate service based on user tier
+        const chartData = await ChartService.getTradeChartData(
+          userId,
           trade.symbol,
           trade.entry_time,
           trade.exit_time
@@ -1427,11 +1511,15 @@ const tradeController = {
           candle.time <= (exitTime + oneDaySec)
         );
 
+        // Get usage stats
+        const usageStats = await ChartService.getUsageStats(userId);
+
         // Prepare response with trade markers
         res.json({
           symbol: trade.symbol,
           type: chartData.type,
           interval: chartData.interval,
+          source: chartData.source,
           candles: filteredData,
           trade: {
             entryPrice: trade.entry_price,
@@ -1443,7 +1531,7 @@ const tradeController = {
             pnl: trade.pnl,
             pnlPercent: trade.pnl_percent
           },
-          usage: alphaVantage.getUsageStats()
+          usage: usageStats
         });
       } catch (error) {
         console.error('Failed to fetch chart data:', error);
@@ -1457,9 +1545,10 @@ const tradeController = {
         
         // If it's a rate limit error, return appropriate status
         if (error.message.includes('limit')) {
+          const usageStats = await ChartService.getUsageStats(userId);
           return res.status(429).json({ 
             error: error.message,
-            usage: await alphaVantage.getUsageStats()
+            usage: usageStats
           });
         }
         
