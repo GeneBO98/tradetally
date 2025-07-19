@@ -3,7 +3,20 @@ const db = require('../config/database');
 
 class TierService {
   // Check if billing is enabled (for self-hosted vs SaaS)
-  static async isBillingEnabled() {
+  static async isBillingEnabled(hostHeader = null) {
+    // Auto-disable billing for non-tradetally.io domains (self-hosted)
+    const frontendUrl = process.env.FRONTEND_URL || '';
+    
+    // Check host header if provided (for runtime domain detection)
+    if (hostHeader && !hostHeader.includes('tradetally.io')) {
+      return false;
+    }
+    
+    // Check frontend URL if no host header provided
+    if (!hostHeader && frontendUrl && !frontendUrl.includes('tradetally.io')) {
+      return false;
+    }
+    
     // First check environment variable
     if (process.env.BILLING_ENABLED !== undefined) {
       return process.env.BILLING_ENABLED === 'true';

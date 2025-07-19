@@ -53,10 +53,10 @@
           </div>
         </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 max-w-6xl mx-auto">
           <!-- Free Plan -->
-          <div class="card relative">
-            <div class="card-body">
+          <div class="card relative flex flex-col">
+            <div class="card-body flex flex-col flex-1">
               <div class="text-center">
                 <h3 class="text-2xl font-bold text-gray-900 dark:text-white">Free</h3>
                 <div class="mt-4">
@@ -68,7 +68,7 @@
                 </p>
               </div>
 
-              <ul class="mt-8 space-y-4">
+              <ul class="mt-8 space-y-4 flex-1">
                 <li class="flex items-center">
                   <svg class="w-5 h-5 text-green-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
@@ -96,30 +96,102 @@
               </ul>
 
               <div class="mt-8">
-                <button 
-                  :disabled="!currentSubscription"
-                  class="btn btn-outline w-full"
-                  :class="{ 'opacity-50 cursor-not-allowed': !currentSubscription }"
+                <div 
+                  v-if="!currentSubscription"
+                  class="text-center py-3 px-4 bg-gray-100 dark:bg-gray-700 rounded-lg"
                 >
-                  {{ currentSubscription ? 'Current Plan' : 'Current Plan' }}
+                  <span class="text-gray-600 dark:text-gray-400 font-medium">Current Plan</span>
+                </div>
+                <div 
+                  v-else
+                  class="text-center py-3 px-4 bg-gray-100 dark:bg-gray-700 rounded-lg"
+                >
+                  <span class="text-gray-600 dark:text-gray-400 font-medium">Already on Pro</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Trial Plan -->
+          <div class="card relative border-2 border-green-500 flex flex-col">
+            <div class="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
+              <span class="bg-green-500 text-white px-4 py-1 rounded-full text-sm font-medium">
+                Try Free
+              </span>
+            </div>
+            
+            <div class="card-body flex flex-col flex-1">
+              <div class="text-center">
+                <h3 class="text-2xl font-bold text-gray-900 dark:text-white">14-Day Trial</h3>
+                <div class="mt-4">
+                  <span class="text-4xl font-bold text-gray-900 dark:text-white">Free</span>
+                </div>
+                <p class="mt-4 text-gray-600 dark:text-gray-400">
+                  Try Pro features risk-free with no payment method required
+                </p>
+              </div>
+
+              <ul class="mt-8 space-y-4 flex-1">
+                <li class="flex items-center">
+                  <svg class="w-5 h-5 text-green-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span class="text-gray-600 dark:text-gray-400">All Pro features</span>
+                </li>
+                <li class="flex items-center">
+                  <svg class="w-5 h-5 text-green-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span class="text-gray-600 dark:text-gray-400">No payment method required</span>
+                </li>
+                <li class="flex items-center">
+                  <svg class="w-5 h-5 text-green-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span class="text-gray-600 dark:text-gray-400">Cancel anytime</span>
+                </li>
+                <li class="flex items-center">
+                  <svg class="w-5 h-5 text-green-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span class="text-gray-600 dark:text-gray-400">Upgrade to Pro anytime</span>
+                </li>
+              </ul>
+
+              <div class="mt-8">
+                <button 
+                  v-if="!currentSubscription"
+                  @click="startTrial()"
+                  :disabled="subscribing"
+                  :class="getTrialButtonClass()"
+                  class="w-full"
+                >
+                  <span v-if="subscribing" class="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></span>
+                  {{ getTrialButtonText() }}
                 </button>
+                <div 
+                  v-else
+                  class="text-center py-3 px-4 bg-gray-100 dark:bg-gray-700 rounded-lg"
+                >
+                  <span class="text-gray-600 dark:text-gray-400 font-medium">Already on Pro</span>
+                </div>
               </div>
             </div>
           </div>
 
           <!-- Pro Plan -->
-          <div class="card relative border-2 border-blue-500">
+          <div class="card relative border-2 border-blue-500 flex flex-col">
             <div class="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
               <span class="bg-blue-500 text-white px-4 py-1 rounded-full text-sm font-medium">
                 Most Popular
               </span>
             </div>
             
-            <div class="card-body">
+            <div class="card-body flex flex-col flex-1">
               <div class="text-center">
                 <h3 class="text-2xl font-bold text-gray-900 dark:text-white">Pro</h3>
                 <div class="mt-4">
-                  <span class="text-4xl font-bold text-gray-900 dark:text-white">$29</span>
+                  <span class="text-4xl font-bold text-gray-900 dark:text-white">$8</span>
                   <span class="text-gray-600 dark:text-gray-400">/month</span>
                 </div>
                 <p class="mt-4 text-gray-600 dark:text-gray-400">
@@ -127,7 +199,7 @@
                 </p>
               </div>
 
-              <ul class="mt-8 space-y-4">
+              <ul class="mt-8 space-y-4 flex-1">
                 <li class="flex items-center">
                   <svg class="w-5 h-5 text-green-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
@@ -168,6 +240,7 @@
 
               <div class="mt-8">
                 <button 
+                  v-if="!currentSubscription"
                   @click="subscribe('pro')"
                   :disabled="subscribing"
                   :class="getSubscribeButtonClass('pro')"
@@ -176,69 +249,16 @@
                   <span v-if="subscribing" class="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></span>
                   {{ getSubscribeButtonText('pro') }}
                 </button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Enterprise Plan -->
-          <div class="card relative">
-            <div class="card-body">
-              <div class="text-center">
-                <h3 class="text-2xl font-bold text-gray-900 dark:text-white">Enterprise</h3>
-                <div class="mt-4">
-                  <span class="text-4xl font-bold text-gray-900 dark:text-white">Custom</span>
+                <div 
+                  v-else
+                  class="text-center py-3 px-4 bg-gray-100 dark:bg-gray-700 rounded-lg"
+                >
+                  <span class="text-gray-600 dark:text-gray-400 font-medium">Current Plan</span>
                 </div>
-                <p class="mt-4 text-gray-600 dark:text-gray-400">
-                  Custom solutions for trading firms and institutions
-                </p>
-              </div>
-
-              <ul class="mt-8 space-y-4">
-                <li class="flex items-center">
-                  <svg class="w-5 h-5 text-green-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                  </svg>
-                  <span class="text-gray-600 dark:text-gray-400">Everything in Pro</span>
-                </li>
-                <li class="flex items-center">
-                  <svg class="w-5 h-5 text-green-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                  </svg>
-                  <span class="text-gray-600 dark:text-gray-400">Multi-user management</span>
-                </li>
-                <li class="flex items-center">
-                  <svg class="w-5 h-5 text-green-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                  </svg>
-                  <span class="text-gray-600 dark:text-gray-400">Custom integrations</span>
-                </li>
-                <li class="flex items-center">
-                  <svg class="w-5 h-5 text-green-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                  </svg>
-                  <span class="text-gray-600 dark:text-gray-400">Advanced compliance tools</span>
-                </li>
-                <li class="flex items-center">
-                  <svg class="w-5 h-5 text-green-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                  </svg>
-                  <span class="text-gray-600 dark:text-gray-400">24/7 dedicated support</span>
-                </li>
-                <li class="flex items-center">
-                  <svg class="w-5 h-5 text-green-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                  </svg>
-                  <span class="text-gray-600 dark:text-gray-400">On-premise deployment</span>
-                </li>
-              </ul>
-
-              <div class="mt-8">
-                <button class="btn btn-outline w-full">
-                  Contact Sales
-                </button>
               </div>
             </div>
           </div>
+
         </div>
 
         <!-- FAQ Section -->
@@ -289,11 +309,16 @@
 
 <script>
 import { ref, onMounted } from 'vue'
-import axios from 'axios'
+import { useRouter, useRoute } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
+import api from '@/services/api'
 
 export default {
   name: 'PricingView',
   setup() {
+    const router = useRouter()
+    const route = useRoute()
+    const authStore = useAuthStore()
     const loading = ref(true)
     const subscribing = ref(false)
     const billingStatus = ref({
@@ -302,10 +327,11 @@ export default {
     })
     const pricingPlans = ref([])
     const currentSubscription = ref(null)
+    const redirectUrl = ref(route.query.redirect || null)
 
     const loadBillingStatus = async () => {
       try {
-        const response = await axios.get('/api/billing/status')
+        const response = await api.get('/billing/status')
         billingStatus.value = response.data.data
       } catch (error) {
         console.error('Error loading billing status:', error)
@@ -319,7 +345,7 @@ export default {
       }
 
       try {
-        const response = await axios.get('/api/billing/pricing')
+        const response = await api.get('/billing/pricing')
         pricingPlans.value = response.data.data
       } catch (error) {
         console.error('Error loading pricing plans:', error)
@@ -335,7 +361,7 @@ export default {
       }
 
       try {
-        const response = await axios.get('/api/billing/subscription')
+        const response = await api.get('/billing/subscription')
         currentSubscription.value = response.data.data.subscription
       } catch (error) {
         console.error('Error loading current subscription:', error)
@@ -349,23 +375,91 @@ export default {
         return
       }
 
+      // Check if user is authenticated
+      if (!authStore.token || !authStore.isAuthenticated) {
+        alert('Please log in to subscribe to Pro features.')
+        router.push('/login?redirect=' + encodeURIComponent('/pricing'))
+        return
+      }
+
       subscribing.value = true
       try {
-        // For now, use a hardcoded price ID - in a real app, you'd get this from the pricing plans
-        const priceId = 'price_pro_monthly' // This should come from your Stripe dashboard
+        // Get the price ID from pricing plans
+        let priceId = null
+        if (pricingPlans.value && pricingPlans.value.length > 0) {
+          const proPlan = pricingPlans.value.find(plan => plan.interval === 'month')
+          priceId = proPlan ? proPlan.id : null
+        }
+        
+        if (!priceId) {
+          throw new Error('Price ID not found. Please contact support.')
+        }
 
-        const response = await axios.post('/api/billing/checkout', {
-          priceId
-        })
+        const payload = { priceId }
+        if (redirectUrl.value) {
+          payload.redirectUrl = redirectUrl.value
+        }
+        
+        const response = await api.post('/billing/checkout', payload)
 
         // Redirect to Stripe checkout
         window.location.href = response.data.data.checkout_url
       } catch (error) {
         console.error('Error creating checkout session:', error)
-        alert('Failed to start checkout process. Please try again.')
+        
+        let errorMessage = 'Failed to start checkout process. Please try again.'
+        
+        if (error.response?.status === 401) {
+          errorMessage = 'Please log in to subscribe to Pro features.'
+          // Redirect to login page
+          router.push('/login?redirect=' + encodeURIComponent('/pricing'))
+        } else if (error.response?.data?.error) {
+          errorMessage = error.response.data.error
+        }
+        
+        alert(errorMessage)
       } finally {
         subscribing.value = false
       }
+    }
+
+    const startTrial = async () => {
+      try {
+        subscribing.value = true
+        
+        const response = await api.post('/billing/trial')
+        
+        if (response.data.success) {
+          alert('14-day trial started successfully! You now have access to Pro features.')
+          // Refresh the page or redirect to dashboard
+          window.location.reload()
+        }
+      } catch (error) {
+        console.error('Error starting trial:', error)
+        
+        let errorMessage = 'Failed to start trial. Please try again.'
+        
+        if (error.response?.status === 401) {
+          errorMessage = 'Please log in to start your trial.'
+          router.push('/login?redirect=' + encodeURIComponent('/pricing'))
+        } else if (error.response?.data?.message) {
+          errorMessage = error.response.data.message
+        }
+        
+        alert(errorMessage)
+      } finally {
+        subscribing.value = false
+      }
+    }
+
+    const getTrialButtonClass = () => {
+      // Check if user already has trial or subscription
+      return 'btn btn-primary'
+    }
+
+    const getTrialButtonText = () => {
+      // You can add logic here to check if trial is already used
+      return 'Start Free Trial'
     }
 
     const getSubscribeButtonClass = (planType) => {
@@ -379,7 +473,7 @@ export default {
       if (currentSubscription.value && planType === 'pro') {
         return 'Current Plan'
       }
-      return planType === 'pro' ? 'Start Pro Trial' : 'Get Started'
+      return planType === 'pro' ? 'Subscribe to Pro' : 'Get Started'
     }
 
     onMounted(async () => {
@@ -395,8 +489,11 @@ export default {
       pricingPlans,
       currentSubscription,
       subscribe,
+      startTrial,
       getSubscribeButtonClass,
-      getSubscribeButtonText
+      getSubscribeButtonText,
+      getTrialButtonClass,
+      getTrialButtonText
     }
   }
 }

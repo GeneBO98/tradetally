@@ -7,6 +7,7 @@
         <p class="text-gray-600">Track your favorite stocks and set price alerts</p>
       </div>
       <button
+        v-if="isProUser"
         @click="showCreateWatchlistModal = true"
         class="mt-4 sm:mt-0 btn-primary"
       >
@@ -18,29 +19,19 @@
     </div>
 
     <!-- Pro Feature Notice -->
-    <div v-if="!isProUser" class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-8">
-      <div class="flex">
-        <div class="flex-shrink-0">
-          <svg class="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
-            <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
-          </svg>
-        </div>
-        <div class="ml-3">
-          <p class="text-sm text-yellow-700">
-            <strong>Pro Feature:</strong> Stock watchlists and price alerts are available for Pro users only.
-            <router-link to="/billing" class="font-medium underline">Upgrade to Pro</router-link>
-          </p>
-        </div>
-      </div>
-    </div>
+    <ProUpgradePrompt 
+      v-if="!isProUser" 
+      variant="card"
+      description="Stock watchlists and price alerts are available for Pro users only."
+    />
 
     <!-- Loading State -->
-    <div v-if="loading" class="flex justify-center items-center py-12">
+    <div v-if="isProUser && loading" class="flex justify-center items-center py-12">
       <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
     </div>
 
     <!-- Watchlists Grid -->
-    <div v-else-if="watchlists.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    <div v-else-if="isProUser && watchlists.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
       <div
         v-for="watchlist in watchlists"
         :key="watchlist.id"
@@ -79,7 +70,7 @@
     </div>
 
     <!-- Empty State -->
-    <div v-else-if="!loading" class="text-center py-12">
+    <div v-else-if="isProUser && !loading" class="text-center py-12">
       <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
       </svg>
@@ -163,9 +154,13 @@ import { useRouter } from 'vue-router'
 import { useNotification } from '@/composables/useNotification'
 import { useAuthStore } from '@/stores/auth'
 import api from '@/services/api'
+import ProUpgradePrompt from '@/components/ProUpgradePrompt.vue'
 
 export default {
   name: 'WatchlistView',
+  components: {
+    ProUpgradePrompt
+  },
   setup() {
     const router = useRouter()
     const { showSuccess, showError } = useNotification()

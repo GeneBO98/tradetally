@@ -6,7 +6,7 @@ const billingController = {
   // Get billing status
   async getBillingStatus(req, res, next) {
     try {
-      const billingEnabled = await TierService.isBillingEnabled();
+      const billingEnabled = await TierService.isBillingEnabled(req.headers.host);
       const billingAvailable = await BillingService.isBillingAvailable();
       
       res.json({
@@ -72,7 +72,7 @@ const billingController = {
   async createCheckoutSession(req, res, next) {
     try {
       const userId = req.user.id;
-      const { priceId } = req.body;
+      const { priceId, redirectUrl } = req.body;
       
       if (!priceId) {
         return res.status(400).json({
@@ -82,12 +82,15 @@ const billingController = {
       }
 
       // Get base URL for redirect URLs
-      const protocol = req.headers['x-forwarded-proto'] || 'http';
-      const host = req.headers.host;
-      const baseUrl = `${protocol}://${host}`;
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
       
-      const successUrl = `${baseUrl}/billing?session_id={CHECKOUT_SESSION_ID}`;
-      const cancelUrl = `${baseUrl}/pricing`;
+      // Include redirect URL in success URL if provided
+      let successUrl = `${frontendUrl}/billing?session_id={CHECKOUT_SESSION_ID}`;
+      if (redirectUrl) {
+        successUrl += `&redirect=${encodeURIComponent(redirectUrl)}`;
+      }
+      
+      const cancelUrl = `${frontendUrl}/pricing`;
 
       const session = await BillingService.createCheckoutSession(
         userId,
@@ -115,15 +118,54 @@ const billingController = {
     }
   },
 
+  // Start 14-day trial
+  async startTrial(req, res, next) {
+    try {
+      const userId = req.user.id;
+      
+      // Check if user already had a trial
+      const existingOverride = await User.getTierOverride(userId);
+      if (existingOverride) {
+        return res.status(400).json({
+          error: 'trial_already_used',
+          message: 'You have already used your free trial'
+        });
+      }
+
+      // Check if user already has a subscription
+      const subscription = await User.getSubscription(userId);
+      if (subscription && subscription.status === 'active') {
+        return res.status(400).json({
+          error: 'already_subscribed',
+          message: 'You already have an active subscription'
+        });
+      }
+
+      // Create 14-day trial tier override
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 14);
+
+      await User.createTierOverride(userId, 'pro', 'Free 14-day trial', expiresAt);
+
+      res.json({
+        success: true,
+        message: 'Free trial started successfully',
+        trial_expires_at: expiresAt
+      });
+    } catch (error) {
+      console.error('Error starting trial:', error);
+      next(error);
+    }
+  },
+
   // Create customer portal session
   async createPortalSession(req, res, next) {
     try {
       const userId = req.user.id;
       
       // Get base URL for return URL
-      const protocol = req.headers['x-forwarded-proto'] || 'http';
-      const host = req.headers.host;
-      const returnUrl = `${protocol}://${host}/billing`;
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+      const returnUrl = `${frontendUrl}/billing`;
 
       const portalSession = await BillingService.createPortalSession(userId, returnUrl);
 
@@ -147,10 +189,20 @@ const billingController = {
 
   // Handle Stripe webhooks
   async handleWebhook(req, res, next) {
+    console.log('Webhook received:', {
+      method: req.method,
+      url: req.originalUrl,
+      headers: req.headers,
+      bodyType: typeof req.body,
+      bodyIsBuffer: Buffer.isBuffer(req.body),
+      signature: req.headers['stripe-signature'] ? 'present' : 'missing'
+    });
+    
     try {
       const signature = req.headers['stripe-signature'];
       
       if (!signature) {
+        console.error('Webhook missing signature');
         return res.status(400).json({
           error: 'missing_signature',
           message: 'Stripe signature header is required'
@@ -162,6 +214,7 @@ const billingController = {
       
       const result = await BillingService.handleWebhook(payload, signature);
       
+      console.log('Webhook processed successfully');
       res.json(result);
     } catch (error) {
       console.error('Webhook error:', error);
@@ -212,6 +265,24 @@ const billingController = {
         });
       }
 
+      // If session is complete and has a subscription, ensure it's synced
+      if (session.status === 'complete' && session.subscription) {
+        console.log('Checkout session complete, syncing subscription:', session.subscription);
+        
+        try {
+          // Fetch the subscription from Stripe
+          const subscription = await stripe.subscriptions.retrieve(session.subscription);
+          
+          // Update our database with the subscription
+          await BillingService.handleSubscriptionUpdated(subscription);
+          
+          console.log('Subscription synced successfully');
+        } catch (syncError) {
+          console.error('Error syncing subscription:', syncError);
+          // Continue anyway - webhook might process it later
+        }
+      }
+
       res.json({
         success: true,
         data: {
@@ -239,7 +310,7 @@ const billingController = {
         });
       }
 
-      const billingEnabled = await TierService.isBillingEnabled();
+      const billingEnabled = await TierService.isBillingEnabled(req.headers.host);
       const billingAvailable = await BillingService.isBillingAvailable();
 
       res.json({

@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const TierService = require('../services/tierService');
+const EmailService = require('../services/emailService');
 
 const userController = {
   async getProfile(req, res, next) {
@@ -436,58 +437,7 @@ const userController = {
 
 // Email change verification function
 async function sendEmailChangeVerification(email, token) {
-  // Only send emails if email configuration is provided
-  if (!process.env.EMAIL_HOST || !process.env.EMAIL_USER) {
-    console.log('Email not configured, skipping email change verification email');
-    return;
-  }
-
-  const nodemailer = require('nodemailer');
-  
-  const transporter = nodemailer.createTransporter({
-    host: process.env.EMAIL_HOST,
-    port: process.env.EMAIL_PORT || 587,
-    secure: false,
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS
-    }
-  });
-
-  const verificationUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/verify-email/${token}`;
-
-  const mailOptions = {
-    from: process.env.EMAIL_FROM || 'noreply@tradetally.io',
-    to: email,
-    subject: 'Verify your new email address - TradeTally',
-    html: `
-      <div style="max-width: 600px; margin: 0 auto; padding: 20px; font-family: Arial, sans-serif;">
-        <h1 style="color: #4F46E5;">Email Address Change</h1>
-        <p>You have requested to change your email address for your TradeTally account. Please verify your new email address by clicking the button below:</p>
-        <div style="text-align: center; margin: 30px 0;">
-          <a href="${verificationUrl}" 
-             style="background-color: #4F46E5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
-            Verify New Email Address
-          </a>
-        </div>
-        <p>Or copy and paste this link into your browser:</p>
-        <p style="word-break: break-all; color: #6B7280;">${verificationUrl}</p>
-        <p>This link will expire in 24 hours for security reasons.</p>
-        <hr style="margin: 30px 0; border: none; border-top: 1px solid #E5E7EB;">
-        <p style="color: #6B7280; font-size: 12px;">
-          If you didn't request this email change, please secure your account immediately and contact support.
-        </p>
-      </div>
-    `
-  };
-
-  try {
-    await transporter.sendMail(mailOptions);
-    console.log('Email change verification email sent to:', email);
-  } catch (error) {
-    console.error('Failed to send email change verification email:', error);
-    throw error;
-  }
+  await EmailService.sendEmailChangeVerification(email, token);
 }
 
 module.exports = userController;

@@ -90,7 +90,15 @@ app.use(cors(corsOptions));
 if (process.env.NODE_ENV !== 'production') {
   app.use(morgan('dev'));
 }
-app.use(express.json());
+
+// Body parsing middleware (skip for webhook routes that need raw body)
+app.use((req, res, next) => {
+  if (req.originalUrl === '/api/billing/webhooks/stripe') {
+    next();
+  } else {
+    express.json()(req, res, next);
+  }
+});
 app.use(express.urlencoded({ extended: true }));
 app.use('/api', skipRateLimit);
 

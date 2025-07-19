@@ -54,11 +54,7 @@
                 </div>
                 <div class="flex justify-between">
                   <span>Price:</span>
-                  <span class="font-medium">${{ subscription.subscription.amount || 0 }}/{{ subscription.subscription.interval || 'month' }}</span>
-                </div>
-                <div class="flex justify-between">
-                  <span>Current Tier:</span>
-                  <span class="font-medium capitalize">{{ subscription.tier.tier_name }}</span>
+                  <span class="font-medium">${{ getSubscriptionPrice() }}/{{ getSubscriptionInterval() }}</span>
                 </div>
               </div>
             </div>
@@ -138,6 +134,7 @@
             <div>
               <h4 class="text-lg font-medium text-green-800 dark:text-green-200">Subscription Activated!</h4>
               <p class="text-green-700 dark:text-green-300">Your subscription has been successfully activated. Welcome to TradeTally Pro!</p>
+              <p v-if="redirectMessage" class="text-green-700 dark:text-green-300 mt-2">{{ redirectMessage }}</p>
             </div>
           </div>
         </div>
@@ -148,13 +145,14 @@
 
 <script>
 import { ref, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
-import axios from 'axios'
+import { useRoute, useRouter } from 'vue-router'
+import api from '@/services/api'
 
 export default {
   name: 'BillingView',
   setup() {
     const route = useRoute()
+    const router = useRouter()
     const loading = ref(true)
     const portalLoading = ref(false)
     const billingStatus = ref({
@@ -166,10 +164,11 @@ export default {
       tier: { tier_name: 'free' }
     })
     const checkoutSuccess = ref(false)
+    const redirectMessage = ref('')
 
     const loadBillingStatus = async () => {
       try {
-        const response = await axios.get('/api/billing/status')
+        const response = await api.get('/billing/status')
         billingStatus.value = response.data.data
       } catch (error) {
         console.error('Error loading billing status:', error)
@@ -183,7 +182,7 @@ export default {
       }
 
       try {
-        const response = await axios.get('/api/billing/subscription')
+        const response = await api.get('/billing/subscription')
         subscription.value = response.data.data
       } catch (error) {
         console.error('Error loading subscription:', error)
@@ -198,7 +197,7 @@ export default {
     const openCustomerPortal = async () => {
       portalLoading.value = true
       try {
-        const response = await axios.post('/api/billing/portal')
+        const response = await api.post('/billing/portal')
         window.location.href = response.data.data.portal_url
       } catch (error) {
         console.error('Error opening customer portal:', error)
@@ -210,13 +209,23 @@ export default {
 
     const checkCheckoutSuccess = async () => {
       const sessionId = route.query.session_id
+      const redirectUrl = route.query.redirect
+      
       if (sessionId) {
         try {
-          const response = await axios.get(`/api/billing/checkout/${sessionId}`)
+          const response = await api.get(`/billing/checkout/${sessionId}`)
           if (response.data.data.status === 'complete') {
             checkoutSuccess.value = true
             // Reload subscription data
             await loadSubscription()
+            
+            // If there's a redirect URL, navigate to it after a short delay
+            if (redirectUrl) {
+              redirectMessage.value = 'Redirecting you back to your requested page...'
+              setTimeout(() => {
+                router.push(redirectUrl)
+              }, 2000) // Give user 2 seconds to see success message
+            }
           }
         } catch (error) {
           console.error('Error checking checkout session:', error)
@@ -255,6 +264,19 @@ export default {
       })
     }
 
+    const getSubscriptionPrice = () => {
+      if (!subscription.value.subscription || !subscription.value.subscription.items) return '0'
+      const firstItem = subscription.value.subscription.items[0]
+      if (!firstItem || !firstItem.amount) return '0'
+      return (firstItem.amount / 100).toFixed(0) // Convert from cents to dollars
+    }
+
+    const getSubscriptionInterval = () => {
+      if (!subscription.value.subscription || !subscription.value.subscription.items) return 'month'
+      const firstItem = subscription.value.subscription.items[0]
+      return firstItem?.interval || 'month'
+    }
+
     onMounted(async () => {
       await loadBillingStatus()
       await loadSubscription()
@@ -267,10 +289,13 @@ export default {
       billingStatus,
       subscription,
       checkoutSuccess,
+      redirectMessage,
       openCustomerPortal,
       getStatusBadgeClass,
       formatStatus,
-      formatDate
+      formatDate,
+      getSubscriptionPrice,
+      getSubscriptionInterval
     }
   }
 }

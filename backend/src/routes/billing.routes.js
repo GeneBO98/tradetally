@@ -18,6 +18,7 @@ router.use(authenticate); // Apply auth middleware to all routes below
 
 router.get('/subscription', billingController.getSubscription);
 router.post('/checkout', billingController.createCheckoutSession);
+router.post('/trial', billingController.startTrial);
 router.post('/portal', billingController.createPortalSession);
 router.get('/checkout/:sessionId', billingController.getCheckoutSession);
 
