@@ -9,11 +9,10 @@
       <button
         v-if="isProUser"
         @click="showCreateAlertModal = true"
-        class="mt-4 sm:mt-0 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+        class="mt-4 sm:mt-0 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
       >
         <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-5 5v-5z"></path>
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4"></path>
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
         </svg>
         Create Alert
       </button>
@@ -55,7 +54,7 @@
         <button
           v-if="!notificationPermissionGranted"
           @click="requestBrowserNotifications"
-          class="text-sm text-blue-600 hover:text-blue-800 font-medium"
+          class="text-sm text-primary-600 hover:text-primary-700 font-medium"
         >
           Enable browser notifications
         </button>
@@ -183,15 +182,14 @@
     <!-- Empty State -->
     <div v-else-if="isProUser && !loading" class="text-center py-12">
       <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-5 5v-5z"></path>
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4"></path>
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
       </svg>
       <h3 class="mt-2 text-sm font-medium text-gray-900">No price alerts</h3>
       <p class="mt-1 text-sm text-gray-500">Get started by creating your first price alert.</p>
       <div class="mt-6">
         <button
           @click="showCreateAlertModal = true"
-          class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+          class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700"
         >
           Create Alert
         </button>
@@ -267,7 +265,7 @@
                   <input
                     v-model="alertForm.email_enabled"
                     type="checkbox"
-                    class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
                   >
                   <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">Email notifications</span>
                 </label>
@@ -275,7 +273,7 @@
                   <input
                     v-model="alertForm.browser_enabled"
                     type="checkbox"
-                    class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
                   >
                   <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">Browser notifications</span>
                 </label>
@@ -283,7 +281,7 @@
                   <input
                     v-model="alertForm.repeat_enabled"
                     type="checkbox"
-                    class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
                   >
                   <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">Repeat alerts (re-trigger after 1 hour)</span>
                 </label>
@@ -364,6 +362,10 @@ export default {
     })
 
     const isProUser = computed(() => {
+      // If billing is disabled (self-hosted), all users have pro access
+      if (authStore.user?.billingEnabled === false) {
+        return true
+      }
       return authStore.user?.tier === 'pro'
     })
 

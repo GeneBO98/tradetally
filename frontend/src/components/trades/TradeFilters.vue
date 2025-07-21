@@ -38,14 +38,23 @@
       
       <div>
         <label for="strategy" class="label">Strategy</label>
-        <input
+        <select
           id="strategy"
           v-model="filters.strategy"
-          type="text"
           class="input"
-          placeholder="e.g., Scalping"
-          @keydown.enter="applyFilters"
-        />
+        >
+          <option value="">All Strategies</option>
+          <option value="scalper">Scalper</option>
+          <option value="momentum">Momentum</option>
+          <option value="mean_reversion">Mean Reversion</option>
+          <option value="swing">Swing</option>
+          <option value="day_trading">Day Trading</option>
+          <option value="position">Position Trading</option>
+          <option value="breakout">Breakout</option>
+          <option value="reversal">Reversal</option>
+          <option value="trend_following">Trend Following</option>
+          <option value="contrarian">Contrarian</option>
+        </select>
       </div>
       
       <div>
@@ -396,6 +405,27 @@ async function fetchAvailableSectors() {
   }
 }
 
+// Convert minHoldTime/maxHoldTime to holdTime range option
+const convertHoldTimeRange = (minMinutes, maxMinutes) => {
+  // Handle specific strategy ranges first (more inclusive approach)
+  if (maxMinutes <= 15) return '5-15 min' // Scalper: trades under 15 minutes
+  if (maxMinutes <= 240) return '2-4 hours' // Momentum: up to 4 hours (more inclusive)
+  if (maxMinutes <= 480) return '4-24 hours' // Mean reversion: up to 8 hours (more inclusive) 
+  if (minMinutes >= 1440) return '1-7 days' // Swing: over 1 day
+  
+  // Fallback to exact mapping for edge cases
+  if (maxMinutes < 1) return '< 1 min'
+  if (maxMinutes <= 5) return '1-5 min'
+  if (maxMinutes <= 30) return '15-30 min'
+  if (maxMinutes <= 60) return '30-60 min'
+  if (maxMinutes <= 120) return '1-2 hours'
+  if (maxMinutes <= 1440) return '4-24 hours'
+  if (maxMinutes <= 10080) return '1-7 days'
+  if (maxMinutes <= 40320) return '1-4 weeks'
+  
+  return '1+ months' // Default for very long trades
+}
+
 onMounted(() => {
   // Fetch available sectors for dropdown
   fetchAvailableSectors()
@@ -484,8 +514,26 @@ onMounted(() => {
     shouldApply = true
   }
   
+  // Handle strategy from query parameters 
+  if (route.query.strategy) {
+    filters.value.strategy = route.query.strategy
+    shouldApply = true
+  }
+  
+  // Convert minHoldTime/maxHoldTime to holdTime range
+  if (route.query.minHoldTime || route.query.maxHoldTime) {
+    const minTime = parseInt(route.query.minHoldTime) || 0
+    const maxTime = parseInt(route.query.maxHoldTime) || Infinity
+    const holdTimeRange = convertHoldTimeRange(minTime, maxTime)
+    
+    if (holdTimeRange) {
+      filters.value.holdTime = holdTimeRange
+      shouldApply = true
+    }
+  }
+  
   // Auto-expand advanced filters if any advanced filter is set
-  if (route.query.minPrice || route.query.maxPrice || route.query.minQuantity || route.query.maxQuantity || route.query.holdTime || route.query.broker) {
+  if (route.query.minPrice || route.query.maxPrice || route.query.minQuantity || route.query.maxQuantity || route.query.holdTime || route.query.broker || route.query.minHoldTime || route.query.maxHoldTime) {
     showAdvanced.value = true
   }
   

@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const db = require('../config/database');
+const TierService = require('../services/tierService');
 
 const sseAuthenticate = async (req, res, next) => {
   try {
@@ -23,8 +24,16 @@ const sseAuthenticate = async (req, res, next) => {
       return res.status(401).json({ error: 'User not found' });
     }
     
-    // Attach user to request
-    req.user = result.rows[0];
+    // Get effective tier and billing status
+    const effectiveTier = await TierService.getUserTier(decoded.id);
+    const billingEnabled = await TierService.isBillingEnabled();
+    
+    // Attach user to request with effective tier
+    req.user = {
+      ...result.rows[0],
+      tier: effectiveTier,
+      billingEnabled: billingEnabled
+    };
     next();
   } catch (error) {
     if (error.name === 'JsonWebTokenError') {

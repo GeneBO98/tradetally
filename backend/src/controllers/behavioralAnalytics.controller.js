@@ -619,6 +619,58 @@ const behavioralAnalyticsController = {
     }
   },
 
+  // Get trade details for a specific overconfidence event
+  async getOverconfidenceEventTrades(req, res, next) {
+    try {
+      const userId = req.user.id;
+      const { eventId } = req.params;
+      
+      // Get the overconfidence event details
+      const eventQuery = `
+        SELECT streak_trades
+        FROM overconfidence_events
+        WHERE id = $1 AND user_id = $2
+      `;
+      
+      const eventResult = await db.query(eventQuery, [eventId, userId]);
+      if (eventResult.rows.length === 0) {
+        return res.status(404).json({
+          error: 'Event not found',
+          message: 'Overconfidence event not found'
+        });
+      }
+      
+      const streakTrades = eventResult.rows[0].streak_trades;
+      if (!streakTrades || streakTrades.length === 0) {
+        return res.json({
+          success: true,
+          data: []
+        });
+      }
+      
+      // Get trade details
+      const tradesQuery = `
+        SELECT 
+          id, symbol, entry_time, exit_time, entry_price, exit_price, 
+          quantity, side, pnl, commission, fees,
+          (quantity * entry_price) as position_size
+        FROM trades 
+        WHERE id = ANY($1)
+        ORDER BY entry_time ASC
+      `;
+      
+      const tradesResult = await db.query(tradesQuery, [streakTrades]);
+      
+      res.json({
+        success: true,
+        data: tradesResult.rows
+      });
+    } catch (error) {
+      console.error('Error getting overconfidence event trades:', error);
+      next(error);
+    }
+  },
+
   // Get overconfidence analysis for a user
   async getOverconfidenceAnalysis(req, res, next) {
     try {
@@ -636,10 +688,32 @@ const behavioralAnalyticsController = {
 
       const analysis = await OverconfidenceAnalyticsService.getOverconfidenceAnalysis(userId, dateFilter, paginationOptions);
       
-      res.json({
-        success: true,
-        data: analysis
-      });
+      // First, run historical analysis if no events exist
+      if (!analysis.events || analysis.events.length === 0) {
+        console.log('No overconfidence events found, running historical analysis...');
+        const historicalAnalysis = await OverconfidenceAnalyticsService.analyzeHistoricalTrades(userId);
+        console.log(`Historical analysis complete: ${historicalAnalysis.overconfidenceEventsCreated} events created`);
+        
+        // Fetch the analysis again after historical analysis
+        const updatedAnalysis = await OverconfidenceAnalyticsService.getOverconfidenceAnalysis(userId, dateFilter, paginationOptions);
+        
+        res.json({
+          success: true,
+          data: {
+            analysis: updatedAnalysis,
+            message: historicalAnalysis.overconfidenceEventsCreated > 0 
+              ? `Detected ${historicalAnalysis.overconfidenceEventsCreated} overconfidence events in your trading history`
+              : 'No overconfidence patterns detected in your trading history'
+          }
+        });
+      } else {
+        res.json({
+          success: true,
+          data: {
+            analysis: analysis
+          }
+        });
+      }
     } catch (error) {
       if (error.message.includes('requires Pro tier')) {
         return res.status(403).json({
@@ -853,6 +927,60 @@ const behavioralAnalyticsController = {
     }
   },
 
+  // Get complete loss aversion analysis (with stored trade patterns)
+  async getCompleteLossAversionAnalysis(req, res, next) {
+    try {
+      const userId = req.user.id;
+      
+      const analysis = await LossAversionAnalyticsService.getCompleteAnalysis(userId);
+      
+      if (!analysis) {
+        return res.json({
+          success: true,
+          data: null,
+          message: 'No loss aversion analysis available. Run analysis first.'
+        });
+      }
+      
+      res.json({
+        success: true,
+        data: analysis
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  // Get top missed trades by percentage of missed opportunity
+  async getTopMissedTrades(req, res, next) {
+    try {
+      const userId = req.user.id;
+      const { limit = 20 } = req.query;
+      
+      console.log(`Top missed trades requested for user ${userId}, limit: ${limit}`);
+      
+      const analysis = await LossAversionAnalyticsService.getTopMissedTrades(userId, parseInt(limit));
+      
+      res.json({
+        success: true,
+        data: analysis
+      });
+    } catch (error) {
+      console.error('Top missed trades analysis error:', error);
+      if (error.message.includes('requires Pro tier')) {
+        return res.status(403).json({
+          error: 'Pro tier required',
+          message: error.message,
+          upgradeRequired: true
+        });
+      }
+      res.status(500).json({
+        error: 'Analysis failed',
+        message: error.message
+      });
+    }
+  },
+
   // Get trading personality analysis
   async getPersonalityAnalysis(req, res, next) {
     try {
@@ -891,24 +1019,24 @@ const behavioralAnalyticsController = {
     }
   },
 
-  // Get latest personality profile
+  // Get latest personality profile (with complete analysis data)
   async getLatestPersonalityProfile(req, res, next) {
     try {
       const userId = req.user.id;
       
-      const profile = await TradingPersonalityService.getLatestProfile(userId);
+      const analysis = await TradingPersonalityService.getCompleteAnalysis(userId);
       
-      if (!profile) {
+      if (!analysis) {
         return res.json({
           success: true,
           data: null,
-          message: 'No personality profile available. Run analysis first.'
+          message: 'No personality analysis available. Run analysis first.'
         });
       }
       
       res.json({
         success: true,
-        data: profile
+        data: analysis
       });
     } catch (error) {
       next(error);

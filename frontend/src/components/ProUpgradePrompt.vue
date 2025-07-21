@@ -1,6 +1,8 @@
 <template>
-  <!-- Centered Card Style (for full page replacements) -->
-  <div v-if="variant === 'card'" class="card mb-8">
+  <!-- Only show upgrade prompts if billing is enabled -->
+  <div v-if="shouldShowUpgradePrompt">
+    <!-- Centered Card Style (for full page replacements) -->
+    <div v-if="variant === 'card'" class="card mb-8">
     <div class="card-body text-center py-12">
       <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-purple-100 dark:bg-purple-900/20 mb-4">
         <svg class="h-6 w-6 text-purple-600 dark:text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -45,12 +47,14 @@
     <router-link :to="pricingLink" class="btn btn-sm btn-primary">
       Upgrade to Pro
     </router-link>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 
 const props = defineProps({
   // Style variant: 'card', 'banner', or 'compact'
@@ -67,6 +71,16 @@ const props = defineProps({
 })
 
 const route = useRoute()
+const authStore = useAuthStore()
+
+// Only show upgrade prompts if billing is enabled (not self-hosted)
+const shouldShowUpgradePrompt = computed(() => {
+  // If user data hasn't loaded yet, don't show the prompt
+  if (!authStore.user) return false
+  
+  // If billing is disabled (self-hosted), don't show upgrade prompts
+  return authStore.user.billingEnabled !== false
+})
 
 // Create pricing link with redirect parameter
 const pricingLink = computed(() => {

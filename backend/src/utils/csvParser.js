@@ -1225,4 +1225,11 @@ function isValidTrade(trade) {
          trade.quantity > 0;
 }
 
-module.exports = { parseCSV };
+module.exports = { 
+  parseCSV,
+  brokerParsers,
+  parseDate,
+  parseDateTime,
+  parseSide,
+  cleanString
+};

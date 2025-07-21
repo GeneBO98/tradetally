@@ -1,5 +1,7 @@
 const db = require('../config/database');
 const TierService = require('./tierService');
+const aiService = require('../utils/aiService');
+const adminSettingsService = require('./adminSettings');
 
 class OverconfidenceAnalyticsService {
   
@@ -44,8 +46,12 @@ class OverconfidenceAnalyticsService {
 
     if (trades.length < 10) {
       return {
-        message: 'Not enough completed trades for overconfidence analysis',
+        error: 'Insufficient trades for analysis',
+        message: `You currently have ${trades.length} completed trades. To detect overconfidence patterns, you need at least 10 completed trades. Keep trading and check back once you've reached this milestone!`,
         tradesAnalyzed: trades.length,
+        currentTrades: trades.length,
+        requiredTrades: 10,
+        tradesNeeded: 10 - trades.length,
         overconfidenceEventsCreated: 0
       };
     }
@@ -181,7 +187,13 @@ class OverconfidenceAnalyticsService {
     const effectiveBaseline = baselinePositionSize || 
       (positionSizes.slice(0, 3).reduce((a, b) => a + b, 0) / 3);
     
-    const positionIncreasePercent = ((peakPositionSize - effectiveBaseline) / effectiveBaseline) * 100;
+    let positionIncreasePercent = ((peakPositionSize - effectiveBaseline) / effectiveBaseline) * 100;
+    
+    // Cap the percentage to prevent database overflow (max 9999.99%)
+    if (positionIncreasePercent > 9999.99) {
+      console.warn(`Position increase percent capped from ${positionIncreasePercent}% to 9999.99%`);
+      positionIncreasePercent = 9999.99;
+    }
 
     // Only flag as overconfidence if position size increased significantly
     if (positionIncreasePercent < positionIncreaseThreshold) {
@@ -341,8 +353,59 @@ class OverconfidenceAnalyticsService {
     const eventsParams = [...baseParams, limit, offset];
     const eventsResult = await db.query(eventsQuery, eventsParams);
 
-    // Enhance events with trade details
-    for (let event of eventsResult.rows) {
+    // Transform events to camelCase for frontend with AI recommendations
+    const transformedEvents = [];
+    
+    // Process AI recommendations in batches to respect rate limits
+    const batchSize = 3; // Process max 3 events at a time
+    const fallbackRecommendations = [
+      'Consider implementing position sizing rules to limit increases during win streaks',
+      'Set a maximum position size relative to your account',
+      'Take partial profits during extended win streaks'
+    ];
+
+    for (let i = 0; i < eventsResult.rows.length; i += batchSize) {
+      const batch = eventsResult.rows.slice(i, i + batchSize);
+      
+      // Process batch with delay between batches to respect rate limits
+      if (i > 0) {
+        await new Promise(resolve => setTimeout(resolve, 2000)); // 2 second delay between batches
+      }
+
+      for (const event of batch) {
+        // Generate AI recommendations for each event
+        const aiRecommendations = await this.generateAIRecommendations(event, userId).catch((error) => {
+          console.warn(`Failed to generate AI recommendations for event ${event.id}:`, error.message);
+          return fallbackRecommendations;
+        });
+
+        transformedEvents.push({
+          id: event.id,
+          winStreakLength: parseInt(event.win_streak_length),
+          detectionDate: event.created_at,
+          winStreakStartDate: event.win_streak_start_date,
+          winStreakEndDate: event.win_streak_end_date,
+          baselinePositionSize: parseFloat(event.baseline_position_size),
+          peakPositionSize: parseFloat(event.peak_position_size),
+          positionSizeIncrease: parseFloat(event.position_size_increase_percent),
+          streakPnl: parseFloat(event.total_streak_profit || 0),
+          severity: event.severity,
+          confidenceScore: parseFloat(event.confidence_score),
+          outcomeAfterStreak: event.outcome_after_streak,
+          outcomeTradeId: event.outcome_trade_id,
+          subsequentTradeResult: parseFloat(event.outcome_amount || 0),
+          totalImpact: parseFloat(event.outcome_amount || 0),
+          streakTrades: event.streak_trades,
+          outcomeStatus: event.outcome_status,
+          recommendations: aiRecommendations || fallbackRecommendations
+        });
+      }
+    }
+
+    // Add trade details if needed
+    for (let i = 0; i < transformedEvents.length; i++) {
+      const event = eventsResult.rows[i];
+      
       if (event.streak_trades && event.streak_trades.length > 0) {
         const tradesQuery = `
           SELECT 
@@ -355,7 +418,7 @@ class OverconfidenceAnalyticsService {
         `;
         
         const tradesResult = await db.query(tradesQuery, [event.streak_trades]);
-        event.streak_trade_details = tradesResult.rows;
+        transformedEvents[i].streakTradeDetails = tradesResult.rows;
       }
 
       // Get outcome trade details if available
@@ -370,7 +433,7 @@ class OverconfidenceAnalyticsService {
         
         const outcomeResult = await db.query(outcomeQuery, [event.outcome_trade_id]);
         if (outcomeResult.rows[0]) {
-          event.outcome_trade_details = outcomeResult.rows[0];
+          transformedEvents[i].outcomeTradeDetails = outcomeResult.rows[0];
         }
       }
     }
@@ -396,13 +459,47 @@ class OverconfidenceAnalyticsService {
     const stats = statsResult.rows[0];
     const totalEvents = parseInt(stats.total_events);
 
+    // Get win streak analysis
+    const winStreakQuery = `
+      SELECT 
+        MAX(win_streak_length) as longest_streak,
+        AVG(win_streak_length) as avg_streak_length,
+        AVG(position_size_increase_percent) as avg_position_growth,
+        COUNT(DISTINCT user_id) as unique_users
+      FROM overconfidence_events
+      WHERE user_id = $1 ${dateCondition}
+    `;
+    
+    const winStreakResult = await db.query(winStreakQuery, baseParams);
+    const winStreakStats = winStreakResult.rows[0];
+
+    // Calculate performance impact and success rate
+    const performanceImpact = parseFloat(stats.total_losses_after_streaks || 0) - parseFloat(stats.total_streak_profits || 0);
+    const successRate = totalEvents > 0 ? 
+      (parseFloat(stats.streaks_ending_in_profit || 0) / totalEvents * 100) : 0;
+
     return {
-      events: eventsResult.rows,
+      events: transformedEvents,
       statistics: {
-        ...stats,
-        loss_rate: totalEvents > 0 ? ((stats.streaks_ending_in_loss / totalEvents) * 100).toFixed(1) : 0,
-        profit_rate: totalEvents > 0 ? ((stats.streaks_ending_in_profit / totalEvents) * 100).toFixed(1) : 0,
-        net_overconfidence_cost: (stats.total_losses_after_streaks || 0) - (stats.total_streak_profits || 0)
+        totalEvents: totalEvents,
+        avgStreakLength: parseFloat(stats.avg_streak_length || 0),
+        avgPositionIncrease: parseFloat(stats.avg_position_increase || 0),
+        totalStreakProfits: parseFloat(stats.total_streak_profits || 0),
+        totalLossesAfterStreaks: parseFloat(stats.total_losses_after_streaks || 0),
+        streaksEndingInLoss: parseInt(stats.streaks_ending_in_loss || 0),
+        streaksEndingInProfit: parseInt(stats.streaks_ending_in_profit || 0),
+        highSeverityCount: parseInt(stats.high_severity_count || 0),
+        mediumSeverityCount: parseInt(stats.medium_severity_count || 0),
+        lowSeverityCount: parseInt(stats.low_severity_count || 0),
+        lossRate: totalEvents > 0 ? parseFloat(((stats.streaks_ending_in_loss / totalEvents) * 100).toFixed(1)) : 0,
+        profitRate: totalEvents > 0 ? parseFloat(((stats.streaks_ending_in_profit / totalEvents) * 100).toFixed(1)) : 0,
+        performanceImpact: performanceImpact,
+        successRate: successRate
+      },
+      winStreakAnalysis: {
+        longestStreak: parseInt(winStreakStats.longest_streak || 0),
+        avgStreakLength: parseFloat(winStreakStats.avg_streak_length || 0),
+        avgPositionGrowth: parseFloat(winStreakStats.avg_position_growth || 0)
       },
       pagination: {
         page: page,
@@ -625,6 +722,407 @@ class OverconfidenceAnalyticsService {
     `;
     
     await db.query(query, [streakId, userId]);
+  }
+
+  // Generate AI-powered recommendations for overconfidence events
+  static async generateAIRecommendations(event, userId) {
+    try {
+      // First check if we already have cached AI recommendations for this event
+      const cachedRecommendations = await this.getCachedAIRecommendations(event.id);
+      if (cachedRecommendations && cachedRecommendations.length > 0) {
+        console.log(`Using cached AI recommendations for event ${event.id}`);
+        return cachedRecommendations;
+      }
+
+      // Check for similar events with existing AI recommendations
+      const similarEventRecommendations = await this.findSimilarEventRecommendations(event, userId);
+      if (similarEventRecommendations && similarEventRecommendations.length > 0) {
+        console.log(`Using recommendations from similar event for event ${event.id}`);
+        // Store these recommendations for this event too
+        await this.storeAIRecommendations(event.id, similarEventRecommendations, 'cached_similar');
+        return similarEventRecommendations;
+      }
+
+      // Get admin default AI settings
+      const aiSettings = await adminSettingsService.getDefaultAISettings();
+      
+      if (!aiSettings.provider || !aiSettings.apiKey) {
+        console.log('AI recommendations not available - no AI provider configured');
+        return null;
+      }
+
+      // Check rate limiting for AI provider (especially for free tier)
+      const canMakeRequest = await this.checkAIRateLimit(aiSettings.provider);
+      if (!canMakeRequest) {
+        console.log(`AI rate limit exceeded for ${aiSettings.provider}, using cached or fallback recommendations`);
+        return null; // Will trigger fallback to static recommendations
+      }
+
+      // Get additional context about the user's trading patterns
+      const userContext = await this.getUserTradingContext(userId);
+      
+      // Check for similarity hash based recommendations (most efficient)
+      const similarityHash = this.generateEventSimilarityHash(event, userContext);
+      const hashBasedRecommendations = await this.getRecommendationsByHash(similarityHash, userId);
+      if (hashBasedRecommendations && hashBasedRecommendations.length > 0) {
+        console.log(`Using hash-based recommendations for event ${event.id}, hash: ${similarityHash}`);
+        // Store these recommendations for this event with the hash
+        const recommendationsWithHash = {
+          recommendations: hashBasedRecommendations,
+          similarity_hash: similarityHash,
+          source: 'hash_match'
+        };
+        await this.storeAIRecommendations(event.id, hashBasedRecommendations, 'cached_hash');
+        return hashBasedRecommendations;
+      }
+      
+      // Create a comprehensive prompt for the AI
+      const prompt = this.buildOverconfidencePrompt(event, userContext);
+      
+      // Use AI provider to generate recommendations
+      const provider = aiService.providers[aiSettings.provider];
+      if (!provider) {
+        console.log(`AI provider ${aiSettings.provider} not supported for recommendations`);
+        return null;
+      }
+
+      const response = await provider(prompt, aiSettings, { 
+        maxTokens: 500,
+        temperature: 0.7 
+      });
+      
+      // Parse the AI response into an array of recommendations
+      const recommendations = this.parseAIRecommendations(response);
+      
+      // Store the AI recommendations for future use and caching with event data for similarity hashing
+      await this.storeAIRecommendations(event.id, recommendations, aiSettings.provider, event);
+      
+      // Update rate limiting tracking
+      await this.updateAIRateLimit(aiSettings.provider);
+      
+      return recommendations;
+      
+    } catch (error) {
+      console.error('Error generating AI recommendations:', error.message);
+      
+      // If it's a rate limit error, track it
+      if (error.message.includes('429') || error.message.includes('quota') || error.message.includes('rate limit')) {
+        await this.handleAIRateLimit(error);
+      }
+      
+      return null;
+    }
+  }
+
+  // Get additional trading context for the user
+  static async getUserTradingContext(userId) {
+    const contextQuery = `
+      SELECT 
+        COUNT(*) as total_trades,
+        AVG(pnl) as avg_pnl,
+        (COUNT(*) FILTER (WHERE pnl > 0))::float / COUNT(*) as win_rate,
+        AVG(quantity * entry_price) as avg_position_size,
+        COUNT(DISTINCT symbol) as symbols_traded,
+        EXTRACT(DAYS FROM (MAX(entry_time) - MIN(entry_time))) as trading_days
+      FROM trades 
+      WHERE user_id = $1 AND exit_price IS NOT NULL
+    `;
+    
+    const result = await db.query(contextQuery, [userId]);
+    return result.rows[0];
+  }
+
+  // Build a comprehensive prompt for overconfidence analysis
+  static buildOverconfidencePrompt(event, userContext) {
+    return `You are an expert trading psychology consultant analyzing overconfidence behavior. A trader has exhibited the following overconfidence pattern:
+
+OVERCONFIDENCE EVENT DETAILS:
+- Win streak length: ${event.win_streak_length} consecutive profitable trades
+- Position size increase: ${event.position_size_increase_percent}% above baseline
+- Total profit from streak: $${event.total_streak_profit || 0}
+- Severity level: ${event.severity}
+- Confidence score: ${event.confidence_score}
+- Outcome after streak: ${event.outcome_after_streak || 'ongoing'}
+- Subsequent trade result: $${event.outcome_amount || 0}
+
+TRADER'S OVERALL PROFILE:
+- Total trades: ${userContext.total_trades || 0}
+- Average P&L per trade: $${parseFloat(userContext.avg_pnl || 0).toFixed(2)}
+- Win rate: ${(parseFloat(userContext.win_rate || 0) * 100).toFixed(1)}%
+- Average position size: $${parseFloat(userContext.avg_position_size || 0).toFixed(2)}
+- Symbols traded: ${userContext.symbols_traded || 0}
+- Trading experience: ${Math.max(1, Math.floor(userContext.trading_days / 30) || 1)} months
+
+Based on this overconfidence event and the trader's profile, provide 3-4 specific, actionable recommendations to help prevent future overconfidence episodes. Focus on:
+
+1. Position sizing discipline
+2. Risk management techniques  
+3. Psychological awareness strategies
+4. Practical implementation steps
+
+Format your response as a simple list where each recommendation is on a new line and starts with a dash (-). Keep each recommendation concise (1-2 sentences) but specific to this trader's situation.
+
+Example format:
+- Implement a maximum position size rule of 2x your baseline to prevent emotional scaling
+- Set profit-taking targets at 3 consecutive wins to lock in gains before overconfidence peaks
+- Use a trading journal to track emotional state during win streaks
+- Consider reducing position size by 25% after any 4-trade win streak`;
+  }
+
+  // Parse AI response into an array of recommendations
+  static parseAIRecommendations(aiResponse) {
+    if (!aiResponse) return [];
+    
+    // Split by lines and filter for lines that start with dash or bullet
+    const lines = aiResponse.split('\n')
+      .map(line => line.trim())
+      .filter(line => line.startsWith('-') || line.startsWith('•') || line.startsWith('*'))
+      .map(line => line.replace(/^[-•*]\s*/, '').trim())
+      .filter(line => line.length > 10); // Filter out very short lines
+    
+    // If no structured format found, try to extract sentences
+    if (lines.length === 0) {
+      const sentences = aiResponse.split(/[.!?]+/)
+        .map(s => s.trim())
+        .filter(s => s.length > 20 && s.length < 200)
+        .slice(0, 4); // Max 4 recommendations
+      
+      return sentences.length > 0 ? sentences : [];
+    }
+    
+    return lines.slice(0, 4); // Max 4 recommendations
+  }
+
+  // Store AI recommendations for analysis and improvement
+  static async storeAIRecommendations(eventId, recommendations, aiProvider, event = null) {
+    try {
+      let recommendationsData = recommendations;
+      
+      // If event data is provided, generate similarity hash and include it
+      if (event) {
+        const userContext = await this.getUserTradingContext(event.user_id || null);
+        const similarityHash = this.generateEventSimilarityHash(event, userContext);
+        
+        // Store recommendations with similarity hash for efficient future matching
+        recommendationsData = {
+          recommendations: Array.isArray(recommendations) ? recommendations : [recommendations],
+          similarity_hash: similarityHash,
+          generated_at: new Date().toISOString(),
+          source: 'ai_generated'
+        };
+      } else if (!Array.isArray(recommendations)) {
+        // Ensure recommendations is always in a consistent format
+        recommendationsData = Array.isArray(recommendations) ? recommendations : [recommendations];
+      }
+      
+      const query = `
+        UPDATE overconfidence_events 
+        SET ai_recommendations = $1, ai_provider = $2, ai_generated_at = CURRENT_TIMESTAMP
+        WHERE id = $3
+      `;
+      
+      await db.query(query, [JSON.stringify(recommendationsData), aiProvider, eventId]);
+    } catch (error) {
+      console.warn('Failed to store AI recommendations:', error.message);
+    }
+  }
+
+  // Get cached AI recommendations from database
+  static async getCachedAIRecommendations(eventId) {
+    try {
+      const query = `
+        SELECT ai_recommendations 
+        FROM overconfidence_events 
+        WHERE id = $1 AND ai_recommendations IS NOT NULL
+      `;
+      
+      const result = await db.query(query, [eventId]);
+      if (result.rows.length > 0 && result.rows[0].ai_recommendations) {
+        const recommendationsData = JSON.parse(result.rows[0].ai_recommendations);
+        
+        // Handle both old and new formats
+        if (Array.isArray(recommendationsData)) {
+          return recommendationsData; // Old format
+        } else if (recommendationsData.recommendations) {
+          return recommendationsData.recommendations; // New format
+        } else {
+          return [recommendationsData]; // Single recommendation
+        }
+      }
+      
+      return null;
+    } catch (error) {
+      console.warn('Failed to get cached AI recommendations:', error.message);
+      return null;
+    }
+  }
+
+  // Check if we can make an AI request (rate limiting)
+  static async checkAIRateLimit(provider) {
+    try {
+      // For Gemini free tier: 15 requests per minute
+      // For other providers, we'll be more conservative
+      const limits = {
+        'gemini': { requests: 10, windowMinutes: 1 }, // Conservative limit
+        'claude': { requests: 50, windowMinutes: 1 },
+        'openai': { requests: 50, windowMinutes: 1 },
+        'ollama': { requests: 100, windowMinutes: 1 } // Local, no limit
+      };
+
+      const limit = limits[provider] || limits['gemini']; // Default to Gemini's conservative limit
+      const windowStart = new Date(Date.now() - (limit.windowMinutes * 60 * 1000));
+
+      // Check recent AI requests for this provider
+      const query = `
+        SELECT COUNT(*) as request_count
+        FROM overconfidence_events 
+        WHERE ai_provider = $1 
+          AND ai_generated_at >= $2
+      `;
+
+      const result = await db.query(query, [provider, windowStart]);
+      const requestCount = parseInt(result.rows[0].request_count || 0);
+
+      console.log(`AI rate limit check for ${provider}: ${requestCount}/${limit.requests} requests in last ${limit.windowMinutes} minute(s)`);
+      
+      return requestCount < limit.requests;
+    } catch (error) {
+      console.warn('Error checking AI rate limit:', error.message);
+      return true; // Allow request if check fails
+    }
+  }
+
+  // Update rate limiting tracking
+  static async updateAIRateLimit(provider) {
+    // This is automatically handled by storeAIRecommendations
+    // which updates ai_generated_at timestamp
+    console.log(`Updated rate limit tracking for ${provider}`);
+  }
+
+  // Handle rate limit errors
+  static async handleAIRateLimit(error) {
+    try {
+      console.warn('AI rate limit exceeded, implementing backoff strategy');
+      
+      // Log the rate limit event for monitoring
+      const logQuery = `
+        INSERT INTO admin_logs (log_level, message, context, created_at)
+        VALUES ('warning', 'AI rate limit exceeded', $1, CURRENT_TIMESTAMP)
+      `;
+      
+      const context = {
+        error_type: 'ai_rate_limit',
+        error_message: error.message,
+        timestamp: new Date().toISOString()
+      };
+
+      await db.query(logQuery, [JSON.stringify(context)]).catch(() => {
+        // Ignore if admin_logs table doesn't exist
+      });
+
+    } catch (logError) {
+      console.warn('Failed to log rate limit event:', logError.message);
+    }
+  }
+
+  // Find similar overconfidence events with existing AI recommendations
+  static async findSimilarEventRecommendations(event, userId) {
+    try {
+      // Define similarity criteria for overconfidence events
+      const winStreakTolerance = 1; // ±1 trade
+      const positionSizeTolerance = 15; // ±15%
+      const severityMatch = event.severity;
+
+      const query = `
+        SELECT ai_recommendations
+        FROM overconfidence_events
+        WHERE user_id = $1
+          AND id != $2
+          AND ai_recommendations IS NOT NULL
+          AND ai_provider != 'cached_similar'
+          AND severity = $3
+          AND ABS(win_streak_length - $4) <= $5
+          AND ABS(position_size_increase_percent - $6) <= $7
+          AND ai_generated_at >= NOW() - INTERVAL '30 days'
+        ORDER BY ai_generated_at DESC
+        LIMIT 1
+      `;
+
+      const result = await db.query(query, [
+        userId,
+        event.id,
+        severityMatch,
+        parseInt(event.win_streak_length),
+        winStreakTolerance,
+        parseFloat(event.position_size_increase_percent),
+        positionSizeTolerance
+      ]);
+
+      if (result.rows.length > 0) {
+        const recommendations = JSON.parse(result.rows[0].ai_recommendations);
+        console.log(`Found similar event with recommendations for user ${userId}, event ${event.id}`);
+        return recommendations;
+      }
+
+      return null;
+    } catch (error) {
+      console.warn('Error finding similar event recommendations:', error.message);
+      return null;
+    }
+  }
+
+  // Generate event similarity hash for even more efficient caching
+  static generateEventSimilarityHash(event, userContext) {
+    // Create a hash based on key characteristics that affect recommendations
+    const characteristics = {
+      severity: event.severity,
+      streakLength: Math.floor(parseInt(event.win_streak_length) / 2) * 2, // Round to even numbers
+      positionIncrease: Math.floor(parseFloat(event.position_size_increase_percent) / 10) * 10, // Round to nearest 10%
+      experienceLevel: userContext.total_trades > 100 ? 'experienced' : userContext.total_trades > 20 ? 'intermediate' : 'beginner',
+      tradeSize: userContext.avg_position_size > 10000 ? 'large' : userContext.avg_position_size > 1000 ? 'medium' : 'small'
+    };
+
+    // Create a simple hash from the characteristics
+    const hashString = Object.values(characteristics).join('|');
+    return Buffer.from(hashString).toString('base64').substring(0, 16);
+  }
+
+  // Get recommendations by similarity hash (even more efficient than event matching)
+  static async getRecommendationsByHash(similarityHash, userId) {
+    try {
+      const query = `
+        SELECT ai_recommendations
+        FROM overconfidence_events
+        WHERE user_id = $1
+          AND ai_recommendations IS NOT NULL
+          AND ai_provider != 'cached_similar'
+          AND ai_generated_at >= NOW() - INTERVAL '30 days'
+          AND (ai_recommendations->>'similarity_hash') = $2
+        ORDER BY ai_generated_at DESC
+        LIMIT 1
+      `;
+
+      const result = await db.query(query, [userId, similarityHash]);
+      
+      if (result.rows.length > 0) {
+        const recommendationsData = JSON.parse(result.rows[0].ai_recommendations);
+        console.log(`Found recommendations by similarity hash: ${similarityHash}`);
+        
+        // Return recommendations array, handling both old and new formats
+        if (Array.isArray(recommendationsData)) {
+          return recommendationsData; // Old format
+        } else if (recommendationsData.recommendations) {
+          return recommendationsData.recommendations; // New format
+        } else {
+          return [recommendationsData]; // Single recommendation
+        }
+      }
+
+      return null;
+    } catch (error) {
+      console.warn('Error getting recommendations by hash:', error.message);
+      return null;
+    }
   }
 }
 

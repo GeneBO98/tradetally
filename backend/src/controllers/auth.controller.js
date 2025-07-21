@@ -3,6 +3,7 @@ const { generateToken } = require('../middleware/auth');
 const crypto = require('crypto');
 const EmailService = require('../services/emailService');
 const bcrypt = require('bcryptjs');
+const TierService = require('../services/tierService');
 
 // Check if email configuration is available
 function isEmailConfigured() {
@@ -312,11 +313,12 @@ const authController = {
           fullName: user.full_name,
           avatarUrl: user.avatar_url,
           role: user.role,
-          tier: user.tier,
+          tier: req.user.tier, // Use effective tier from middleware
           isVerified: user.is_verified,
           adminApproved: user.admin_approved,
           timezone: user.timezone,
-          createdAt: user.created_at
+          createdAt: user.created_at,
+          billingEnabled: req.user.billingEnabled
         },
         settings
       });

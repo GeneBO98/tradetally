@@ -90,19 +90,39 @@
       <!-- Format Examples -->
       <div class="card">
         <div class="card-body">
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Supported CSV Formats</h3>
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white">Supported CSV Formats</h3>
+            <button
+              @click="showFormats = !showFormats"
+              class="flex items-center space-x-2 text-sm text-primary-600 dark:text-primary-400 hover:text-primary-500"
+            >
+              <span>{{ showFormats ? 'Hide' : 'Show' }} Formats</span>
+              <svg 
+                class="w-4 h-4 transition-transform duration-200"
+                :class="{ 'rotate-180': showFormats }"
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+              >
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+          </div>
           
-          <div class="space-y-6">
+          <div v-show="showFormats" class="space-y-6">
             <div>
               <h4 class="font-medium text-gray-900 dark:text-white">Generic CSV</h4>
               <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
-                Use this format if your broker isn't listed or for custom CSV files.
+                Use this format if your broker isn't listed or for custom CSV files. Supports comma, semicolon, or tab separators.
               </p>
               <div class="bg-gray-50 dark:bg-gray-800 rounded-md p-3 text-xs font-mono overflow-x-auto">
                 Symbol,Date,Entry Price,Exit Price,Quantity,Side,Commission,Fees<br>
                 AAPL,2024-01-15,150.25,155.50,100,long,1.00,0.50<br>
                 TSLA,2024-01-16,200.00,,50,short,1.00,0.50
               </div>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                <strong>Alternative column names:</strong> Symbol/symbol, Date/Trade Date, Entry Price/Buy Price/Price, Exit Price/Sell Price, Quantity/Shares/Size, Side/Direction/Type, Commission/Fees
+              </p>
             </div>
 
             <div>
@@ -111,22 +131,28 @@
                 Export from Lightspeed's "Reports" > "Trade Blotter" section as CSV.
               </p>
               <div class="bg-gray-50 dark:bg-gray-800 rounded-md p-3 text-xs font-mono overflow-x-auto">
-                Account Number,Side,Symbol,Trade Date,Price,Qty,Commission Amount<br>
-                12345,B,AAPL,02/03/2025,150.25,100,1.00<br>
-                12345,S,AAPL,02/03/2025,155.50,100,1.00
+                Symbol,Trade Date,Price,Qty,Side,Commission Amount,Execution Time,Trade Number<br>
+                AAPL,02/03/2025,150.25,100,B,1.00,09:30,12345<br>
+                AAPL,02/03/2025,155.50,100,S,1.00,14:30,12346
               </div>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                <strong>Required columns:</strong> Symbol, Trade Date, Price, Qty, Side (B/S), Commission Amount. Optional: Execution Time, Buy/Sell, Security Type, fee columns (FeeSEC, FeeMF, etc.)
+              </p>
             </div>
 
             <div>
               <h4 class="font-medium text-gray-900 dark:text-white">ThinkorSwim</h4>
               <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
-                Export from ThinkorSwim's "Account Statement" section.
+                Export from ThinkorSwim's "Account Statement" section. Only processes trade (TRD) records.
               </p>
               <div class="bg-gray-50 dark:bg-gray-800 rounded-md p-3 text-xs font-mono overflow-x-auto">
-                Exec Time,Symbol,Side,Qty,Price,Commission<br>
-                2024-01-15 09:30:00,AAPL,BUY,100,150.25,1.00<br>
-                2024-01-15 10:45:00,AAPL,SELL,100,155.50,1.00
+                DATE,TIME,TYPE,DESCRIPTION,Commissions & Fees,Misc Fees<br>
+                01/15/2024,09:30:00,TRD,"BOT +100 AAPL @150.25",1.00,0.00<br>
+                01/15/2024,10:45:00,TRD,"SOLD -100 AAPL @155.50",1.00,0.00
               </div>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                <strong>Required columns:</strong> DATE, TIME, TYPE (must be "TRD"), DESCRIPTION (BOT/SOLD format). Optional: Commissions & Fees, Misc Fees
+              </p>
             </div>
 
             <div>
@@ -135,10 +161,47 @@
                 Export from IBKR's "Reports" > "Trade Confirmation" section.
               </p>
               <div class="bg-gray-50 dark:bg-gray-800 rounded-md p-3 text-xs font-mono overflow-x-auto">
-                DateTime,Symbol,Quantity,Price,Commission<br>
-                2024-01-15 09:30:00,AAPL,100,150.25,1.00<br>
-                2024-01-15 10:45:00,AAPL,-100,155.50,1.00
+                Symbol,DateTime,Quantity,Price,Commission,Fees<br>
+                AAPL,2024-01-15 09:30:00,100,150.25,1.00,0.00<br>
+                AAPL,2024-01-15 10:45:00,-100,155.50,1.00,0.00
               </div>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                <strong>Required columns:</strong> Symbol, DateTime, Quantity (positive=buy, negative=sell), Price. Optional: Commission, Fees
+              </p>
+            </div>
+
+            <div>
+              <h4 class="font-medium text-gray-900 dark:text-white">E*TRADE</h4>
+              <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
+                Export from E*TRADE's transaction history.
+              </p>
+              <div class="bg-gray-50 dark:bg-gray-800 rounded-md p-3 text-xs font-mono overflow-x-auto">
+                Symbol,Transaction Date,Transaction Type,Quantity,Price,Commission,Fees<br>
+                AAPL,01/15/2024,Buy,100,150.25,1.00,0.00<br>
+                AAPL,01/15/2024,Sell,100,155.50,1.00,0.00
+              </div>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                <strong>Required columns:</strong> Symbol, Transaction Date, Transaction Type (Buy/Sell), Quantity, Price. Optional: Commission, Fees
+              </p>
+            </div>
+
+            <div>
+              <h4 class="font-medium text-gray-900 dark:text-white">Charles Schwab</h4>
+              <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
+                Supports both completed trades export and transaction history. Tab-separated files are automatically detected.
+              </p>
+              <div class="bg-gray-50 dark:bg-gray-800 rounded-md p-3 text-xs font-mono overflow-x-auto">
+                <strong>Completed Trades:</strong><br>
+                Symbol,Opened Date,Closed Date,Quantity,Cost Per Share,Proceeds Per Share,Gain/Loss ($)<br>
+                AAPL,01/15/2024,01/15/2024,100,150.25,155.50,525.00<br><br>
+                <strong>Transaction History:</strong><br>
+                Date,Action,Symbol,Description,Quantity,Price,Fees & Comm,Amount<br>
+                01/15/2024,Buy,AAPL,Buy,100,150.25,1.00,15026.00<br>
+                01/15/2024,Sell,AAPL,Sell,100,155.50,1.00,15549.00
+              </div>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                <strong>Supports both formats:</strong> Completed trades with P&L or individual transactions. Auto-detects format and delimiter.
+              </p>
             </div>
           </div>
         </div>
@@ -291,7 +354,7 @@
                 <button
                   @click="lookupCusip"
                   :disabled="!lookupForm.cusip || cusipLoading"
-                  class="btn-secondary w-full"
+                  class="btn-primary w-full"
                 >
                   <span v-if="cusipLoading">Looking up...</span>
                   <span v-else>Lookup</span>
@@ -380,6 +443,7 @@ const dragOver = ref(false)
 const importHistory = ref([])
 const deleting = ref(false)
 const showLogs = ref(false)
+const showFormats = ref(false)
 const logFiles = ref([])
 const logContent = ref('')
 const selectedLogFile = ref('')

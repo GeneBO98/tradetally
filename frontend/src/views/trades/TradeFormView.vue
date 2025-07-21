@@ -219,6 +219,39 @@
             />
           </div>
 
+          <!-- Confidence Level -->
+          <div class="sm:col-span-2">
+            <label for="confidence" class="label">Confidence Level (1-10)</label>
+            <div class="mt-2">
+              <div class="flex items-center space-x-4">
+                <span class="text-sm text-gray-500 dark:text-gray-400">1</span>
+                <div class="flex-1 relative">
+                  <input
+                    id="confidence"
+                    v-model="form.confidence"
+                    type="range"
+                    min="1"
+                    max="10"
+                    step="1"
+                    class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700 slider"
+                    :style="{ background: `linear-gradient(to right, #F0812A 0%, #F0812A ${(form.confidence - 1) * 11.11}%, #e5e7eb ${(form.confidence - 1) * 11.11}%, #e5e7eb 100%)` }"
+                  />
+                  <div class="flex justify-between text-xs text-gray-400 mt-1">
+                    <span v-for="i in 10" :key="i" class="w-4 text-center">{{ i }}</span>
+                  </div>
+                </div>
+                <span class="text-sm text-gray-500 dark:text-gray-400">10</span>
+              </div>
+              <div class="mt-2 text-center">
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-300">
+                  Confidence: {{ form.confidence }}/10
+                </span>
+              </div>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Rate your confidence level in this trade setup from 1 (very low) to 10 (very high)
+              </p>
+            </div>
+          </div>
           
         </div>
       
@@ -342,7 +375,8 @@ const form = ref({
   strategy: '',
   setup: '',
   notes: '',
-  isPublic: false
+  isPublic: false,
+  confidence: 5
 })
 
 const tagsInput = ref('')
@@ -381,7 +415,8 @@ async function loadTrade() {
       strategy: trade.strategy || '',
       setup: trade.setup || '',
       notes: trade.notes || '',
-      isPublic: trade.is_public || false
+      isPublic: trade.is_public || false,
+      confidence: trade.confidence || 5
     }
     
     tagsInput.value = trade.tags ? trade.tags.join(', ') : ''
@@ -422,6 +457,7 @@ async function handleSubmit() {
       fees: parseFloat(form.value.fees) || 0,
       mae: form.value.mae ? parseFloat(form.value.mae) : null,
       mfe: form.value.mfe ? parseFloat(form.value.mfe) : null,
+      confidence: parseInt(form.value.confidence) || 5,
       tags: tagsInput.value ? tagsInput.value.split(',').map(tag => tag.trim()).filter(Boolean) : []
     }
 

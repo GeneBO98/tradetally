@@ -179,6 +179,12 @@ const router = createRouter({
       name: 'price-alerts',
       component: () => import('@/views/PriceAlertsView.vue'),
       meta: { requiresAuth: true }
+    },
+    {
+      path: '/gamification',
+      name: 'gamification',
+      component: () => import('@/views/GamificationView.vue'),
+      meta: { requiresAuth: true }
     }
   ]
 })

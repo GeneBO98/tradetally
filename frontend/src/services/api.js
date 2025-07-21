@@ -1,7 +1,7 @@
 import axios from 'axios'
 
 const api = axios.create({
-  baseURL: '/api'
+  baseURL: import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : '/api'
   // Don't set default Content-Type - let each request set its own
 })
 
@@ -41,5 +41,10 @@ api.interceptors.response.use(
     return Promise.reject(error)
   }
 )
+
+// Add CUSIP resolution utility
+api.resolveCusip = async (cusip) => {
+  return api.post('/trades/cusip/resolve', { cusip })
+}
 
 export default api

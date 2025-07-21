@@ -508,15 +508,22 @@
               <div>
                 <h4 class="text-sm font-medium text-red-600 mb-2">Worst Trades</h4>
                 <div class="space-y-1">
-                  <div v-for="trade in analytics.topTrades.worst" :key="`worst-${trade.symbol}-${trade.trade_date}`" 
+                  <div v-if="analytics.topTrades.worst && analytics.topTrades.worst.length > 0"
+                       v-for="trade in analytics.topTrades.worst" :key="`worst-${trade.symbol}-${trade.trade_date}`" 
                        @click="navigateToTradesBySymbolAndDate(trade.symbol, trade.trade_date)"
                        class="flex justify-between items-center text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 rounded p-2 transition-colors">
                     <span class="text-gray-900 dark:text-white">
                       {{ trade.symbol }} {{ formatDate(trade.trade_date) }}
                     </span>
-                    <span class="text-red-600 font-medium">
+                    <span :class="[
+                      trade.pnl >= 0 ? 'text-green-600' : 'text-red-600',
+                      'font-medium'
+                    ]">
                       ${{ formatCurrency(trade.pnl) }}
                     </span>
+                  </div>
+                  <div v-else class="text-sm text-gray-500 dark:text-gray-400 italic py-2">
+                    No losing trades found 🎉
                   </div>
                 </div>
               </div>

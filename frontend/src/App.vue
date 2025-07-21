@@ -68,13 +68,21 @@ const isAuthRoute = computed(() => {
 })
 
 // Watch for authentication changes and user tier changes
-watch(() => [authStore.user?.tier, authStore.token], ([tier, token]) => {
-  if (token && tier === 'pro') {
-    console.log('Connecting to notification stream (user is Pro)')
-    connect()
-  } else {
-    console.log('Disconnecting from notification stream (user not Pro or not authenticated)')
-    disconnect()
+let lastConnectionState = false
+watch(() => [authStore.user?.tier, authStore.token, authStore.user?.billingEnabled], ([tier, token, billingEnabled]) => {
+  const shouldConnect = token && (tier === 'pro' || billingEnabled === false)
+  
+  // Only connect/disconnect if the state actually changed
+  if (shouldConnect !== lastConnectionState) {
+    lastConnectionState = shouldConnect
+    
+    if (shouldConnect) {
+      console.log('Connecting to notification stream (user is Pro or billing disabled)')
+      connect()
+    } else {
+      console.log('Disconnecting from notification stream (user not Pro or not authenticated)')
+      disconnect()
+    }
   }
 }, { immediate: true })
 

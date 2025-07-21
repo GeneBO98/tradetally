@@ -56,11 +56,14 @@ router.post('/overconfidence/analyze-historical', behavioralAnalyticsController.
 router.get('/overconfidence/settings', behavioralAnalyticsController.getOverconfidenceSettings);
 router.put('/overconfidence/settings', behavioralAnalyticsController.updateOverconfidenceSettings);
 router.post('/overconfidence/detect-realtime', behavioralAnalyticsController.detectOverconfidenceInRealTime);
+router.get('/overconfidence/:eventId/trades', behavioralAnalyticsController.getOverconfidenceEventTrades);
 
 // Loss aversion analytics routes
 router.get('/loss-aversion', behavioralAnalyticsController.getLossAversionAnalysis);
 router.get('/loss-aversion/trends', behavioralAnalyticsController.getLossAversionTrends);
 router.get('/loss-aversion/latest', behavioralAnalyticsController.getLatestLossAversionMetrics);
+router.get('/loss-aversion/complete', behavioralAnalyticsController.getCompleteLossAversionAnalysis);
+router.get('/loss-aversion/top-missed-trades', behavioralAnalyticsController.getTopMissedTrades);
 
 // Trading personality profiling routes
 router.get('/personality', behavioralAnalyticsController.getPersonalityAnalysis);

@@ -1,6 +1,9 @@
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, reactive } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useNotification } from './useNotification'
+
+// Global reactive state for CUSIP mappings
+const cusipMappings = reactive({})
 
 export function usePriceAlertNotifications() {
   const authStore = useAuthStore()
@@ -18,7 +21,7 @@ export function usePriceAlertNotifications() {
       user: authStore.user 
     })
     
-    if (!authStore.token || authStore.user?.tier !== 'pro') {
+    if (!authStore.token || (authStore.user?.tier !== 'pro' && authStore.user?.billingEnabled !== false)) {
       console.log('SSE notifications require Pro tier - not connecting')
       return
     }
@@ -66,7 +69,7 @@ export function usePriceAlertNotifications() {
       if (!reconnectTimeout.value) {
         reconnectTimeout.value = setTimeout(() => {
           reconnectTimeout.value = null
-          if (authStore.token && authStore.user?.tier === 'pro') {
+          if (authStore.token && (authStore.user?.tier === 'pro' || authStore.user?.billingEnabled === false)) {
             connect()
           }
         }, 3000)
@@ -111,6 +114,10 @@ export function usePriceAlertNotifications() {
         
       case 'system_announcement':
         showWarning('System Announcement', data.data.message)
+        break
+        
+      case 'cusip_resolved':
+        handleCusipResolution(data.data)
         break
     }
   }
@@ -159,6 +166,25 @@ export function usePriceAlertNotifications() {
       // Ignore audio errors
     }
   }
+
+  const handleCusipResolution = (data) => {
+    console.log('CUSIP resolution received:', data)
+    
+    // Update global CUSIP mappings
+    const mappings = data.mappings
+    Object.assign(cusipMappings, mappings)
+    
+    // Show notification for each resolved CUSIP
+    const count = Object.keys(mappings).length
+    
+    if (count === 1) {
+      const cusip = Object.keys(mappings)[0]
+      const symbol = mappings[cusip]
+      showSuccess('CUSIP Resolved', `${cusip} → ${symbol}`)
+    } else {
+      showSuccess('CUSIPs Resolved', `${count} CUSIPs have been resolved to symbols`)
+    }
+  }
   
   const requestNotificationPermission = async () => {
     if ('Notification' in window && Notification.permission === 'default') {
@@ -185,5 +211,16 @@ export function usePriceAlertNotifications() {
     connect,
     disconnect,
     requestNotificationPermission
+  }
+}
+
+// Export CUSIP mapping utilities
+export function useCusipMappings() {
+  return {
+    cusipMappings,
+    // Function to get current symbol for a CUSIP
+    getSymbolForCusip: (cusip) => cusipMappings[cusip] || cusip,
+    // Function to check if a string is a CUSIP that has been resolved
+    isResolvedCusip: (symbol) => symbol in cusipMappings
   }
 }
