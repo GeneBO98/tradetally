@@ -23,8 +23,11 @@ const billingRoutes = require('./routes/billing.routes');
 const watchlistRoutes = require('./routes/watchlist.routes');
 const priceAlertsRoutes = require('./routes/priceAlerts.routes');
 const notificationsRoutes = require('./routes/notifications.routes');
+const gamificationRoutes = require('./routes/gamification.routes');
 const BillingService = require('./services/billingService');
 const priceMonitoringService = require('./services/priceMonitoringService');
+const GamificationScheduler = require('./services/gamificationScheduler');
+const backgroundWorker = require('./workers/backgroundWorker');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
@@ -121,6 +124,7 @@ app.use('/api/billing', billingRoutes);
 app.use('/api/watchlists', watchlistRoutes);
 app.use('/api/price-alerts', priceAlertsRoutes);
 app.use('/api/notifications', notificationsRoutes);
+app.use('/api/gamification', gamificationRoutes);
 
 // Well-known endpoints for mobile discovery
 app.use('/.well-known', wellKnownRoutes);
@@ -160,6 +164,22 @@ async function startServer() {
       console.log('Price monitoring disabled (ENABLE_PRICE_MONITORING=false)');
     }
     
+    // Start gamification scheduler
+    if (process.env.ENABLE_GAMIFICATION !== 'false') {
+      console.log('Starting gamification scheduler...');
+      GamificationScheduler.startScheduler();
+    } else {
+      console.log('Gamification disabled (ENABLE_GAMIFICATION=false)');
+    }
+
+    // Start background worker for trade enrichment
+    try {
+      await backgroundWorker.start();
+      console.log('✓ Background worker started for trade enrichment');
+    } catch (error) {
+      console.warn('⚠️ Failed to start background worker:', error.message);
+    }
+    
     // Start the server
     app.listen(PORT, () => {
       console.log(`✓ TradeTally server running on port ${PORT}`);
@@ -175,6 +195,14 @@ async function startServer() {
 process.on('SIGTERM', async () => {
   console.log('SIGTERM received, shutting down gracefully...');
   await priceMonitoringService.stop();
+  await backgroundWorker.stop();
+  process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+  console.log('SIGINT received, shutting down gracefully...');
+  await priceMonitoringService.stop();
+  await backgroundWorker.stop();
   process.exit(0);
 });
 

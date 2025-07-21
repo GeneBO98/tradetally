@@ -6,8 +6,6 @@ const logger = require('../utils/logger');
 const finnhub = require('../utils/finnhub');
 const cache = require('../utils/cache');
 const symbolCategories = require('../utils/symbolCategories');
-const RevengeTradeDetector = require('../services/revengeTradeDetector');
-const OverconfidenceAnalyticsService = require('../services/overconfidenceAnalyticsService');
 
 const tradeController = {
   async getUserTrades(req, res, next) {
@@ -45,14 +43,19 @@ const tradeController = {
       // Get trades with pagination
       const trades = await Trade.findByUser(req.user.id, filters);
       
-      // Get total count using round-trip counting methodology for consistency with analytics
+      // Get total count of individual trades
       const totalCountFilters = { ...filters };
       delete totalCountFilters.limit;
       delete totalCountFilters.offset;
       
-      // Use the same round-trip counting logic as analytics
-      const roundTripTotal = await Trade.getRoundTripTradeCount(req.user.id, totalCountFilters);
-      const total = roundTripTotal;
+      // Get actual trade count from database
+      const countQuery = `
+        SELECT COUNT(*) as total 
+        FROM trades 
+        WHERE user_id = $1
+      `;
+      const countResult = await db.query(countQuery, [req.user.id]);
+      const total = parseInt(countResult.rows[0].total) || 0;
       
       res.json({
         trades,
@@ -132,43 +135,7 @@ const tradeController = {
         console.warn('⚠️ Failed to invalidate sector performance cache:', cacheError.message);
       }
       
-      // Real-time behavioral analytics - only run if trade is complete
-      let behavioralAlerts = [];
-      if (trade.exit_time && trade.pnl !== null) {
-        try {
-          // Check for revenge trading patterns
-          const revengeAlert = await RevengeTradeDetector.analyzeNewTrade(req.user.id, trade);
-          if (revengeAlert && revengeAlert.isRevengeTrading) {
-            behavioralAlerts.push({
-              type: 'revenge_trading',
-              severity: revengeAlert.severity,
-              message: revengeAlert.message || 'Revenge trading pattern detected',
-              recommendations: revengeAlert.recommendations || []
-            });
-          }
-          
-          // Check for overconfidence patterns
-          const overconfidenceAlert = await OverconfidenceAnalyticsService.detectOverconfidenceInRealTime(req.user.id, trade);
-          if (overconfidenceAlert && overconfidenceAlert.detected) {
-            behavioralAlerts.push({
-              type: 'overconfidence',
-              severity: overconfidenceAlert.severity,
-              message: overconfidenceAlert.message || 'Overconfidence pattern detected',
-              recommendations: overconfidenceAlert.recommendations || []
-            });
-          }
-        } catch (behavioralError) {
-          console.warn('⚠️ Failed to run real-time behavioral analysis:', behavioralError.message);
-          // Don't fail the trade creation if behavioral analysis fails
-        }
-      }
-      
-      const response = { trade };
-      if (behavioralAlerts.length > 0) {
-        response.behavioralAlerts = behavioralAlerts;
-      }
-      
-      res.status(201).json(response);
+      res.status(201).json({ trade });
     } catch (error) {
       next(error);
     }
@@ -176,18 +143,26 @@ const tradeController = {
 
   async getTrade(req, res, next) {
     try {
-      console.log('getTrade called with:', {
-        tradeId: req.params.id,
-        userId: req.user?.id,
-        userExists: !!req.user
-      });
+      const userId = req.user?.id;
+      const tradeId = req.params.id;
+      let trade = null;
       
-      const trade = await Trade.findById(req.params.id, req.user?.id);
+      // Validate UUID format
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
       
-      console.log('Trade found:', !!trade);
+      if (!uuidRegex.test(tradeId)) {
+        return res.status(400).json({ error: 'Invalid trade ID format' });
+      }
+      
+      // Try individual trade first
+      trade = await Trade.findById(tradeId, userId);
+      
+      // If not found, try round-trip trade
+      if (!trade && userId) {
+        trade = await Trade.findRoundTripById(tradeId, userId);
+      }
       
       if (!trade) {
-        console.log('Trade not found - possible auth issue or trade does not belong to user');
         return res.status(404).json({ error: 'Trade not found' });
       }
 
@@ -223,43 +198,7 @@ const tradeController = {
         console.warn('⚠️ Failed to invalidate sector performance cache:', cacheError.message);
       }
 
-      // Real-time behavioral analytics - only run if trade is complete (has exit data)
-      let behavioralAlerts = [];
-      if (trade.exit_time && trade.pnl !== null) {
-        try {
-          // Check for revenge trading patterns
-          const revengeAlert = await RevengeTradeDetector.analyzeNewTrade(req.user.id, trade);
-          if (revengeAlert && revengeAlert.isRevengeTrading) {
-            behavioralAlerts.push({
-              type: 'revenge_trading',
-              severity: revengeAlert.severity,
-              message: revengeAlert.message || 'Revenge trading pattern detected',
-              recommendations: revengeAlert.recommendations || []
-            });
-          }
-          
-          // Check for overconfidence patterns
-          const overconfidenceAlert = await OverconfidenceAnalyticsService.detectOverconfidenceInRealTime(req.user.id, trade);
-          if (overconfidenceAlert && overconfidenceAlert.detected) {
-            behavioralAlerts.push({
-              type: 'overconfidence',
-              severity: overconfidenceAlert.severity,
-              message: overconfidenceAlert.message || 'Overconfidence pattern detected',
-              recommendations: overconfidenceAlert.recommendations || []
-            });
-          }
-        } catch (behavioralError) {
-          console.warn('⚠️ Failed to run real-time behavioral analysis:', behavioralError.message);
-          // Don't fail the trade update if behavioral analysis fails
-        }
-      }
-
-      const response = { trade };
-      if (behavioralAlerts.length > 0) {
-        response.behavioralAlerts = behavioralAlerts;
-      }
-
-      res.json(response);
+      res.json({ trade });
     } catch (error) {
       next(error);
     }
@@ -290,6 +229,50 @@ const tradeController = {
       }
 
       res.json({ message: 'Trade deleted successfully' });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async bulkDeleteTrades(req, res, next) {
+    try {
+      const { tradeIds } = req.body;
+      
+      if (!tradeIds || !Array.isArray(tradeIds) || tradeIds.length === 0) {
+        return res.status(400).json({ error: 'Trade IDs array is required' });
+      }
+
+      // Verify all trades belong to the user before deleting any
+      const trades = await Promise.all(
+        tradeIds.map(id => Trade.findById(id, req.user.id))
+      );
+
+      const invalidTrades = trades.filter(trade => !trade);
+      if (invalidTrades.length > 0) {
+        return res.status(404).json({ 
+          error: 'One or more trades not found or access denied' 
+        });
+      }
+
+      // Delete all trades
+      const deleteResults = await Promise.all(
+        tradeIds.map(id => Trade.delete(id, req.user.id))
+      );
+
+      const deletedCount = deleteResults.filter(result => result).length;
+
+      // Invalidate sector performance cache for this user
+      try {
+        await cache.invalidate('sector_performance');
+        console.log('✅ Sector performance cache invalidated after bulk trade deletion');
+      } catch (cacheError) {
+        console.warn('⚠️ Failed to invalidate sector performance cache:', cacheError.message);
+      }
+
+      res.json({ 
+        message: `${deletedCount} trade${deletedCount === 1 ? '' : 's'} deleted successfully`,
+        deletedCount 
+      });
     } catch (error) {
       next(error);
     }
@@ -397,7 +380,24 @@ const tradeController = {
 
   async getComments(req, res, next) {
     try {
-      const trade = await Trade.findById(req.params.id, req.user?.id);
+      const userId = req.user?.id;
+      const tradeId = req.params.id;
+      
+      // Validate UUID format
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      
+      if (!uuidRegex.test(tradeId)) {
+        return res.status(400).json({ error: 'Invalid trade ID format' });
+      }
+      
+      // Try individual trade first
+      let trade = await Trade.findById(tradeId, userId);
+      
+      // If not found, try round-trip trade
+      if (!trade && userId) {
+        trade = await Trade.findRoundTripById(tradeId, userId);
+      }
+      
       if (!trade) {
         return res.status(404).json({ error: 'Trade not found' });
       }
@@ -410,7 +410,7 @@ const tradeController = {
         ORDER BY tc.created_at DESC
       `;
 
-      const result = await db.query(query, [req.params.id]);
+      const result = await db.query(query, [tradeId]);
       
       res.json({ comments: result.rows });
     } catch (error) {
@@ -427,9 +427,22 @@ const tradeController = {
       if (!comment || !comment.trim()) {
         return res.status(400).json({ error: 'Comment content is required' });
       }
-
-      // Check if trade exists
-      const trade = await Trade.findById(tradeId);
+      
+      // Validate UUID format
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      
+      if (!uuidRegex.test(tradeId)) {
+        return res.status(400).json({ error: 'Invalid trade ID format' });
+      }
+      
+      // Try individual trade first
+      let trade = await Trade.findById(tradeId, userId);
+      
+      // If not found, try round-trip trade
+      if (!trade) {
+        trade = await Trade.findRoundTripById(tradeId, userId);
+      }
+      
       if (!trade) {
         return res.status(404).json({ error: 'Trade not found' });
       }
@@ -473,9 +486,22 @@ const tradeController = {
     try {
       const { id: tradeId, commentId } = req.params;
       const userId = req.user.id;
-
-      // Check if trade exists
-      const trade = await Trade.findById(tradeId);
+      
+      // Validate UUID format
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      
+      if (!uuidRegex.test(tradeId)) {
+        return res.status(400).json({ error: 'Invalid trade ID format' });
+      }
+      
+      // Try individual trade first
+      let trade = await Trade.findById(tradeId, userId);
+      
+      // If not found, try round-trip trade
+      if (!trade) {
+        trade = await Trade.findRoundTripById(tradeId, userId);
+      }
+      
       if (!trade) {
         return res.status(404).json({ error: 'Trade not found' });
       }
@@ -674,7 +700,7 @@ const tradeController = {
                 
                 await Trade.update(tradeData.existingTradeId, req.user.id, cleanTradeData);
               } else {
-                await Trade.create(req.user.id, tradeData);
+                await Trade.create(req.user.id, tradeData, { skipApiCalls: true });
               }
               imported++;
             } catch (error) {
@@ -1047,28 +1073,28 @@ const tradeController = {
 
   async getAnalytics(req, res, next) {
     try {
-      console.log('=== ANALYTICS ENDPOINT CALLED ===');
-      console.log('User ID:', req.user.id);
-      console.log('Query params:', req.query);
-      
-      const { startDate, endDate, symbol, strategy } = req.query;
+      const { startDate, endDate, symbol, strategy, holdTime, minHoldTime, maxHoldTime } = req.query;
       
       const filters = {
         startDate,
         endDate,
         symbol,
-        strategy
+        strategy,
+        holdTime
       };
 
-      console.log('Filters:', filters);
+      // Convert minHoldTime/maxHoldTime to holdTime range if provided
+      if (minHoldTime || maxHoldTime) {
+        const minTime = parseInt(minHoldTime) || 0;
+        const maxTime = parseInt(maxHoldTime) || Infinity;
+        const holdTimeRange = Trade.convertHoldTimeRange(minTime, maxTime);
+        
+        if (holdTimeRange) {
+          filters.holdTime = holdTimeRange;
+        }
+      }
       
       const analytics = await Trade.getAnalytics(req.user.id, filters);
-      
-      console.log('Analytics response summary:', {
-        totalTrades: analytics.summary.totalTrades,
-        totalPnL: analytics.summary.totalPnL,
-        winRate: analytics.summary.winRate
-      });
       
       res.json(analytics);
     } catch (error) {
@@ -1362,258 +1388,22 @@ const tradeController = {
     }
   },
 
-  async getTradeNews(req, res, next) {
+  async getEnrichmentStatus(req, res, next) {
     try {
-      const { symbols } = req.query;
-      
-      if (!symbols) {
-        return res.status(400).json({ error: 'Symbols parameter is required' });
-      }
-
-      const symbolList = symbols.split(',').map(s => s.trim()).filter(s => s);
-      
-      if (symbolList.length === 0) {
-        return res.json([]);
-      }
-
-      const finnhub = require('../utils/finnhub');
-      
-      if (!finnhub.isConfigured()) {
-        return res.status(503).json({ error: 'News service not configured' });
-      }
-
-      const allNews = [];
-      const errors = [];
-
-      // Fetch news for each symbol
-      for (const symbol of symbolList) {
-        try {
-          const news = await finnhub.getCompanyNews(symbol);
-          
-          // Add symbol to each news item and filter to last 7 days
-          const enrichedNews = news
-            .map(item => ({ ...item, symbol }))
-            .filter(item => {
-              // Ensure news is from last 7 days
-              const newsDate = new Date(item.datetime * 1000);
-              const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-              return newsDate >= sevenDaysAgo;
-            })
-            .slice(0, 5); // Limit to 5 news items per symbol
-          
-          allNews.push(...enrichedNews);
-        } catch (error) {
-          console.error(`Failed to fetch news for ${symbol}:`, error);
-          errors.push({ symbol, error: error.message });
-        }
-      }
-
-      // Sort all news by datetime descending
-      allNews.sort((a, b) => b.datetime - a.datetime);
-
-      res.json(allNews);
-    } catch (error) {
-      next(error);
-    }
-  },
-
-  async getUpcomingEarnings(req, res, next) {
-    try {
-      const { symbols } = req.query;
-      
-      if (!symbols) {
-        return res.status(400).json({ error: 'Symbols parameter is required' });
-      }
-
-      const symbolList = symbols.split(',').map(s => s.trim()).filter(s => s);
-      
-      if (symbolList.length === 0) {
-        return res.json([]);
-      }
-
-      const finnhub = require('../utils/finnhub');
-      
-      if (!finnhub.isConfigured()) {
-        return res.status(503).json({ error: 'Earnings service not configured' });
-      }
-
-      // Get earnings for next 2 weeks
-      const from = new Date().toISOString().split('T')[0];
-      const to = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-      
-      try {
-        // Fetch all earnings for the date range
-        const allEarnings = await finnhub.getEarningsCalendar(from, to);
-        
-        // Filter to only include symbols in user's open positions
-        const symbolSet = new Set(symbolList.map(s => s.toUpperCase()));
-        const relevantEarnings = allEarnings.filter(earning => 
-          symbolSet.has(earning.symbol.toUpperCase())
-        );
-        
-        // Sort by date
-        relevantEarnings.sort((a, b) => new Date(a.date) - new Date(b.date));
-        
-        res.json(relevantEarnings);
-      } catch (error) {
-        console.error('Failed to fetch earnings calendar:', error);
-        res.json([]); // Return empty array on error to not break the UI
-      }
-    } catch (error) {
-      next(error);
-    }
-  },
-
-  async getTradeChartData(req, res, next) {
-    try {
-      const { id } = req.params;
-      const userId = req.user.id;
-
-      // Get the trade
-      const trade = await Trade.findById(id, userId);
-      
-      if (!trade) {
-        return res.status(404).json({ error: 'Trade not found' });
-      }
-
-      // Only show charts for closed trades
-      if (!trade.exit_price || !trade.exit_time) {
-        return res.status(400).json({ error: 'Chart data only available for closed trades' });
-      }
-
-      const ChartService = require('../services/chartService');
-      
-      // Check if any chart service is configured
-      const serviceStatus = await ChartService.getServiceStatus();
-      if (!serviceStatus.finnhub.configured && !serviceStatus.alphaVantage.configured) {
-        return res.status(503).json({ 
-          error: 'No chart service configured. Please configure Finnhub (Pro) or Alpha Vantage API keys.',
-          services: serviceStatus
-        });
-      }
-
-      try {
-        // Get chart data using the appropriate service based on user tier
-        const chartData = await ChartService.getTradeChartData(
-          userId,
-          trade.symbol,
-          trade.entry_time,
-          trade.exit_time
-        );
-
-        // Filter data to relevant date range (1 day before entry to 1 day after exit)
-        const entryTime = new Date(trade.entry_time).getTime() / 1000;
-        const exitTime = new Date(trade.exit_time).getTime() / 1000;
-        const oneDaySec = 24 * 60 * 60;
-        
-        const filteredData = chartData.data.filter(candle => 
-          candle.time >= (entryTime - oneDaySec) && 
-          candle.time <= (exitTime + oneDaySec)
-        );
-
-        // Get usage stats
-        const usageStats = await ChartService.getUsageStats(userId);
-
-        // Prepare response with trade markers
-        res.json({
-          symbol: trade.symbol,
-          type: chartData.type,
-          interval: chartData.interval,
-          source: chartData.source,
-          candles: filteredData,
-          trade: {
-            entryPrice: trade.entry_price,
-            entryTime: entryTime,
-            exitPrice: trade.exit_price,
-            exitTime: exitTime,
-            side: trade.side,
-            quantity: trade.quantity,
-            pnl: trade.pnl,
-            pnlPercent: trade.pnl_percent
-          },
-          usage: usageStats
-        });
-      } catch (error) {
-        console.error('Failed to fetch chart data:', error);
-        console.error('Error details:', {
-          message: error.message,
-          stack: error.stack,
-          tradeSymbol: trade.symbol,
-          entryTime: trade.entry_time,
-          exitTime: trade.exit_time
-        });
-        
-        // If it's a rate limit error, return appropriate status
-        if (error.message.includes('limit')) {
-          const usageStats = await ChartService.getUsageStats(userId);
-          return res.status(429).json({ 
-            error: error.message,
-            usage: usageStats
-          });
-        }
-        
-        // Return more specific error message
-        res.status(500).json({ 
-          error: error.message || 'Failed to load chart data',
-          details: process.env.NODE_ENV === 'development' ? error.stack : undefined
-        });
-      }
-    } catch (error) {
-      next(error);
-    }
-  },
-
-  // CUSIP Queue Management
-  async getCusipQueueStats(req, res, next) {
-    try {
-      const cusipQueue = require('../utils/cusipQueue');
-      const stats = await cusipQueue.getQueueStats();
-      res.json({ stats });
-    } catch (error) {
-      next(error);
-    }
-  },
-
-  async addCusipToQueue(req, res, next) {
-    try {
-      const { cusips, priority = 1 } = req.body;
-      
-      if (!cusips || (Array.isArray(cusips) && cusips.length === 0)) {
-        return res.status(400).json({ error: 'CUSIPs are required' });
-      }
-
-      const cusipQueue = require('../utils/cusipQueue');
-      await cusipQueue.addToQueue(cusips, priority);
-      
-      res.json({ 
-        message: 'CUSIPs added to processing queue',
-        cusips: Array.isArray(cusips) ? cusips : [cusips],
-        priority
-      });
-    } catch (error) {
-      next(error);
-    }
-  },
-
-  async retryFailedCusips(req, res, next) {
-    try {
-      const cusipQueue = require('../utils/cusipQueue');
-      const db = require('../config/database');
-      
-      // Reset failed CUSIPs to pending
+      // Get enrichment status for the user's trades
       const query = `
-        UPDATE cusip_lookup_queue 
-        SET status = 'pending', attempts = 0, error_message = NULL
-        WHERE status = 'failed'
-        RETURNING cusip
+        SELECT 
+          enrichment_status,
+          COUNT(*) as count
+        FROM trades 
+        WHERE user_id = $1 
+        GROUP BY enrichment_status
       `;
       
-      const result = await db.query(query);
-      const retriedCusips = result.rows.map(row => row.cusip);
+      const result = await db.query(query, [req.user.id]);
       
-      res.json({ 
-        message: `Reset ${retriedCusips.length} failed CUSIPs for retry`,
-        cusips: retriedCusips
+      res.json({
+        tradeEnrichment: result.rows
       });
     } catch (error) {
       next(error);

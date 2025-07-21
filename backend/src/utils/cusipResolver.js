@@ -1,6 +1,7 @@
 const finnhub = require('./finnhub');
 const Trade = require('../models/Trade');
 const logger = require('./logger');
+const NotificationService = require('../services/notificationService');
 
 class CusipResolver {
   constructor() {
@@ -14,16 +15,22 @@ class CusipResolver {
     
     logger.logImport(`Scheduling CUSIP resolution for ${cusips.length} CUSIPs for user ${userId}`);
     
-    this.queue.push({
-      userId,
-      cusips: [...new Set(cusips)], // Remove duplicates
-      timestamp: new Date()
-    });
-
-    // Start processing if not already running
-    if (!this.isRunning) {
-      this.processQueue();
-    }
+    // Use the job queue instead of local queue
+    const jobQueue = require('./jobQueue');
+    const uniqueCusips = [...new Set(cusips)]; // Remove duplicates
+    
+    // Add job to the queue
+    await jobQueue.addJob(
+      'cusip_resolution',
+      {
+        cusips: uniqueCusips,
+        userId: userId
+      },
+      2, // High priority
+      userId
+    );
+    
+    logger.logImport(`Added CUSIP resolution job to queue for ${uniqueCusips.length} unique CUSIPs`);
   }
 
   async processQueue() {
@@ -117,16 +124,27 @@ class CusipResolver {
 
   async updateTradeSymbols(userId, cusipToTickerMap) {
     const updates = [];
+    const successfulMappings = {};
     
     for (const [cusip, ticker] of Object.entries(cusipToTickerMap)) {
       try {
         const result = await Trade.updateSymbolForCusip(userId, cusip, ticker);
         if (result.affectedRows > 0) {
           updates.push({ cusip, ticker, trades: result.affectedRows });
+          successfulMappings[cusip] = ticker;
           logger.logImport(`Updated ${result.affectedRows} trades: ${cusip} -> ${ticker}`);
         }
       } catch (error) {
         logger.logError(`Failed to update symbol for CUSIP ${cusip}: ${error.message}`);
+      }
+    }
+    
+    // Send real-time notification for successful mappings
+    if (Object.keys(successfulMappings).length > 0) {
+      try {
+        await NotificationService.sendCusipResolutionNotification(userId, successfulMappings);
+      } catch (error) {
+        logger.logError(`Failed to send CUSIP resolution notification: ${error.message}`);
       }
     }
     

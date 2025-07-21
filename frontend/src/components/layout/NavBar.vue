@@ -252,7 +252,24 @@ const isDark = ref(false)
 const isMobileMenuOpen = ref(false)
 
 const baseNavigation = [
-  { name: 'Dashboard', to: '/dashboard', route: 'dashboard' },
+  { 
+    name: 'Dashboard', 
+    type: 'dropdown',
+    items: [
+      { 
+        name: 'Trading Dashboard', 
+        to: '/dashboard', 
+        route: 'dashboard',
+        description: 'Overview of your trading performance and statistics'
+      },
+      { 
+        name: 'Leaderboard', 
+        to: '/gamification', 
+        route: 'gamification',
+        description: 'Track achievements, challenges, and compete with peers'
+      }
+    ]
+  },
   { name: 'Trades', to: '/trades', route: 'trades' },
   { 
     name: 'Analytics', 

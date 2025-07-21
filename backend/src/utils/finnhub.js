@@ -6,9 +6,18 @@ class FinnhubClient {
     this.apiKey = process.env.FINNHUB_API_KEY;
     this.baseURL = 'https://finnhub.io/api/v1';
     
-    // Rate limiting: Higher limits for paid tier (60 calls per minute)
-    this.maxCallsPerMinute = 60;
+    // Rate limiting configuration
+    // If API key is configured, assume Basic plan (150/min, 30/sec)
+    // If not configured, use conservative limits for self-hosted
+    if (this.apiKey) {
+      this.maxCallsPerMinute = 150;
+      this.maxCallsPerSecond = 30;
+    } else {
+      this.maxCallsPerMinute = 10;  // Conservative for self-hosted
+      this.maxCallsPerSecond = 2;   // Conservative for self-hosted
+    }
     this.callTimestamps = [];
+    this.secondTimestamps = [];
   }
 
   isConfigured() {
@@ -18,23 +27,37 @@ class FinnhubClient {
   async waitForRateLimit() {
     const now = Date.now();
     const oneMinuteAgo = now - 60000;
+    const oneSecondAgo = now - 1000;
     
-    // Remove timestamps older than 1 minute
+    // Remove old timestamps
     this.callTimestamps = this.callTimestamps.filter(timestamp => timestamp > oneMinuteAgo);
+    this.secondTimestamps = this.secondTimestamps.filter(timestamp => timestamp > oneSecondAgo);
     
-    // If we've made max calls in the last minute, wait
+    // Check per-second limit first (30 calls per second)
+    if (this.secondTimestamps.length >= this.maxCallsPerSecond) {
+      const oldestSecondCall = this.secondTimestamps[0];
+      const waitTime = 1000 - (now - oldestSecondCall) + 50; // Add 50ms buffer
+      
+      if (waitTime > 0) {
+        console.log(`Rate limit (per second) reached, waiting ${waitTime}ms`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+      }
+    }
+    
+    // Check per-minute limit (150 calls per minute)
     if (this.callTimestamps.length >= this.maxCallsPerMinute) {
       const oldestCall = this.callTimestamps[0];
       const waitTime = 60000 - (now - oldestCall) + 100; // Add 100ms buffer
       
       if (waitTime > 0) {
-        console.log(`Rate limit reached, waiting ${waitTime}ms`);
+        console.log(`Rate limit (per minute) reached, waiting ${waitTime}ms`);
         await new Promise(resolve => setTimeout(resolve, waitTime));
       }
     }
     
     // Record this call
-    this.callTimestamps.push(Date.now());
+    this.callTimestamps.push(now);
+    this.secondTimestamps.push(now);
   }
 
   async makeRequest(endpoint, params = {}) {
@@ -94,6 +117,62 @@ class FinnhubClient {
       console.warn(`Failed to get quote for ${symbol}: ${error.message}`);
       throw error;
     }
+  }
+
+  // Search for symbol by CUSIP or name
+  async searchSymbol(query) {
+    if (!this.isConfigured()) {
+      console.warn('Finnhub not configured, skipping symbol search');
+      return null;
+    }
+
+    console.log(`Searching for symbol: ${query}`);
+    
+    try {
+      const results = await this.makeRequest('/search', {
+        q: query
+      });
+      
+      if (results && results.result && results.result.length > 0) {
+        // Return the first match
+        const match = results.result[0];
+        console.log(`Found symbol match: ${match.symbol} (${match.description})`);
+        return {
+          symbol: match.symbol,
+          description: match.description,
+          type: match.type,
+          displaySymbol: match.displaySymbol
+        };
+      }
+      
+      return null;
+    } catch (error) {
+      console.warn(`Failed to search symbol ${query}: ${error.message}`);
+      return null;
+    }
+  }
+
+  // Map CUSIP to symbol
+  async mapCusipToSymbol(cusip) {
+    const cacheKey = `cusip_${cusip}`;
+    
+    // Check cache first (24 hour TTL for CUSIP mappings)
+    const cached = await cache.get('cusip_mapping', cacheKey);
+    if (cached) {
+      console.log(`Using cached mapping for CUSIP ${cusip}: ${cached.symbol}`);
+      return cached.symbol;
+    }
+    
+    // Search for the CUSIP
+    const result = await this.searchSymbol(cusip);
+    if (result && result.symbol) {
+      // Cache the mapping
+      await cache.set('cusip_mapping', cacheKey, { symbol: result.symbol, cusip }, 86400); // 24 hour TTL
+      return result.symbol;
+    }
+    
+    console.warn(`No symbol found for CUSIP ${cusip}`);
+    return null;
   }
 
   async getBatchQuotes(symbols) {
@@ -440,7 +519,20 @@ class FinnhubClient {
   }
 
   async getCandles(symbol, resolution, from, to) {
-    const symbolUpper = symbol.toUpperCase();
+    let symbolUpper = symbol.toUpperCase();
+    
+    // Check if this looks like a CUSIP (8-9 characters, alphanumeric)
+    if (symbolUpper.match(/^[A-Z0-9]{8,9}$/)) {
+      console.log(`Detected potential CUSIP: ${symbolUpper}, attempting to map to symbol`);
+      const mappedSymbol = await this.mapCusipToSymbol(symbolUpper);
+      if (mappedSymbol) {
+        console.log(`Successfully mapped CUSIP ${symbolUpper} to symbol ${mappedSymbol}`);
+        symbolUpper = mappedSymbol;
+      } else {
+        console.warn(`Could not map CUSIP ${symbolUpper} to a symbol`);
+        throw new Error(`CUSIP ${symbolUpper} could not be mapped to a tradeable symbol`);
+      }
+    }
     
     // Create cache key with all parameters
     const cacheKey = `${symbolUpper}_${resolution}_${from}_${to}`;
@@ -461,7 +553,7 @@ class FinnhubClient {
       
       // Validate candle data
       if (!candles || candles.s !== 'ok' || !candles.c || candles.c.length === 0) {
-        throw new Error(`No candle data available for ${symbol} from ${from} to ${to}`);
+        throw new Error(`No candle data available for ${symbolUpper}. This may be due to: 1) Symbol not supported by Finnhub, 2) No trading data for the requested time period, or 3) API limitations.`);
       }
 
       // Cache the result

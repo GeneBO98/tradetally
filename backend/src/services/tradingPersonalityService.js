@@ -13,9 +13,33 @@ class TradingPersonalityService {
         throw new Error('Trading personality analysis requires Pro tier');
       }
 
-      // Set date range (default: last 90 days)
-      const end = endDate ? new Date(endDate) : new Date();
-      const start = startDate ? new Date(startDate) : new Date(end.getTime() - (90 * 24 * 60 * 60 * 1000));
+      // Set date range (default: all available trades)
+      let end, start;
+      if (endDate && startDate) {
+        // Use specified date range
+        end = new Date(endDate);
+        start = new Date(startDate);
+      } else {
+        // Get all available trades - query the earliest and latest trade dates
+        const dateRangeQuery = `
+          SELECT 
+            MIN(entry_time) as earliest_date,
+            MAX(COALESCE(exit_time, entry_time)) as latest_date
+          FROM trades 
+          WHERE user_id = $1 
+            AND entry_time IS NOT NULL
+        `;
+        const dateRangeResult = await db.query(dateRangeQuery, [userId]);
+        
+        if (dateRangeResult.rows[0].earliest_date) {
+          start = new Date(dateRangeResult.rows[0].earliest_date);
+          end = new Date(dateRangeResult.rows[0].latest_date);
+        } else {
+          // Fallback if no trades found
+          end = new Date();
+          start = new Date(end.getTime() - (90 * 24 * 60 * 60 * 1000));
+        }
+      }
 
       // Get all completed trades for analysis
       const tradesQuery = `
@@ -41,7 +65,10 @@ class TradingPersonalityService {
       if (trades.length < 20) {
         return {
           error: 'Insufficient trades for personality analysis',
-          message: 'Need at least 20 completed trades for meaningful personality profiling'
+          message: `You currently have ${trades.length} completed trades. To generate a meaningful personality profile, you need at least 20 completed trades. Keep trading and check back once you've reached this milestone!`,
+          currentTrades: trades.length,
+          requiredTrades: 20,
+          tradesNeeded: 20 - trades.length
         };
       }
 
@@ -52,7 +79,7 @@ class TradingPersonalityService {
       const technicalAnalysis = await this.analyzeTechnicalPatterns(trades.slice(0, 10)); // Sample for API limits
       
       // Calculate personality scores
-      const personalityScores = this.calculatePersonalityScores(behaviorMetrics, technicalAnalysis);
+      const personalityScores = await this.calculatePersonalityScores(behaviorMetrics, technicalAnalysis);
       
       // Determine primary personality
       const primaryPersonality = this.determinePrimaryPersonality(personalityScores);
@@ -102,7 +129,7 @@ class TradingPersonalityService {
     if (trades.length === 0) return {};
 
     const holdTimes = trades.map(t => parseFloat(t.hold_time_minutes || 0));
-    const avgHoldTime = holdTimes.reduce((a, b) => a + b, 0) / holdTimes.length;
+    const medianHoldTime = this.calculateMedian(holdTimes);
     
     // Calculate trading frequency
     const firstTrade = new Date(trades[0].entry_time);
@@ -135,7 +162,7 @@ class TradingPersonalityService {
     const meanReversionScore = this.calculateMeanReversionScore(trades);
 
     return {
-      avgHoldTime: Math.round(avgHoldTime),
+      avgHoldTime: Math.round(medianHoldTime),
       avgTradesPerDay: Math.round(avgTradesPerDay * 100) / 100,
       shortTradeRatio: shortTrades / trades.length,
       mediumTradeRatio: mediumTrades / trades.length,
@@ -146,7 +173,8 @@ class TradingPersonalityService {
       momentumScore,
       meanReversionScore,
       totalTrades: trades.length,
-      tradingDays: Math.round(tradingDays)
+      tradingDays: Math.round(tradingDays),
+      trades: trades // Include actual trades data for strategy classification
     };
   }
 
@@ -165,16 +193,8 @@ class TradingPersonalityService {
 
     for (const symbol of symbols) {
       try {
-        // Get recent patterns and indicators
-        const [patterns, supportResistance] = await Promise.all([
-          this.getPatternRecognitionSafe(symbol, 'D'),
-          this.getSupportResistanceSafe(symbol, 'D')
-        ]);
-
-        if (patterns && patterns.points) {
-          technicalUsage.usesPatternRecognition = true;
-          technicalUsage.patternTypes.push(...patterns.points.map(p => p.patternname));
-        }
+        // Get support/resistance levels for mean reversion analysis
+        const supportResistance = await this.getSupportResistanceSafe(symbol, 'D');
 
         if (supportResistance && supportResistance.levels) {
           technicalUsage.usesMeanReversionIndicators = true;
@@ -182,8 +202,17 @@ class TradingPersonalityService {
 
         // Analyze if trades align with momentum or mean reversion
         const symbolTrades = sampleTrades.filter(t => t.symbol === symbol);
-        for (const trade of symbolTrades) {
+        // Limit RSI checks to avoid excessive API calls - only check first few trades per symbol
+        const limitedTrades = symbolTrades.slice(0, 2); // Max 2 trades per symbol for RSI check
+        
+        for (let i = 0; i < limitedTrades.length; i++) {
+          const trade = limitedTrades[i];
           const tradeTime = Math.floor(new Date(trade.entry_time).getTime() / 1000);
+          
+          // Add delay between RSI API calls
+          if (i > 0) {
+            await new Promise(resolve => setTimeout(resolve, 500)); // 0.5 second delay
+          }
           
           // Check RSI at trade time
           const rsiData = await this.getTechnicalIndicatorSafe(
@@ -211,8 +240,114 @@ class TradingPersonalityService {
     return technicalUsage;
   }
 
-  // Calculate personality scores based on behavior and technical analysis
-  static calculatePersonalityScores(behaviorMetrics, technicalAnalysis) {
+  // Calculate personality scores as actual percentages that add to 100%
+  static async calculatePersonalityScores(behaviorMetrics, technicalAnalysis) {
+    // Import Trade model to classify individual trades
+    const Trade = require('../models/Trade');
+    
+    // If we have actual trades data, use it for classification
+    if (behaviorMetrics.trades) {
+      const strategies = {
+        scalper: 0,
+        momentum: 0,
+        mean_reversion: 0,
+        swing: 0,
+        day_trading: 0,
+        position: 0
+      };
+
+      // Classify each trade and count
+      // For accurate classification, we should use technical analysis
+      // Limit sample size to avoid exceeding Finnhub rate limits (150 calls/min)
+      // With 4 API calls per trade, we can safely analyze ~10 trades in quick succession
+      const sampleSize = Math.min(behaviorMetrics.trades.length, 10); // Reduced to 10 trades to stay well under rate limit
+      const sampleTrades = behaviorMetrics.trades.slice(0, sampleSize);
+      
+      console.log(`Analyzing ${sampleSize} trades out of ${behaviorMetrics.trades.length} total for strategy classification`);
+      
+      // Analyze sampled trades with technical analysis
+      // Process sequentially to respect API rate limits (150 calls/minute)
+      const analysisResults = [];
+      for (let i = 0; i < sampleTrades.length; i++) {
+        const trade = sampleTrades[i];
+        
+        // Add delay between trades to avoid hitting rate limit
+        // Each trade makes 4 API calls (candles + 3 indicators)
+        // 150 calls/min = 2.5 calls/sec, so with 4 calls per trade, we can do ~37 trades/min
+        if (i > 0) {
+          await new Promise(resolve => setTimeout(resolve, 1600)); // 1.6 second delay between trades
+        }
+        
+        try {
+          const strategy = await Trade.classifyTradeStrategyWithAnalysis(trade);
+          analysisResults.push({ trade, strategy });
+        } catch (error) {
+          console.error(`Error analyzing trade ${trade.id}:`, error);
+          analysisResults.push({ trade, strategy: Trade.classifyTradeStrategy(trade) }); // Fallback
+        }
+      }
+      
+      // Count strategies from analyzed trades
+      analysisResults.forEach(({ strategy }) => {
+        if (strategies.hasOwnProperty(strategy)) {
+          strategies[strategy]++;
+        }
+      });
+      
+      // For remaining trades, use time-based classification
+      const remainingTrades = behaviorMetrics.trades.slice(sampleSize);
+      remainingTrades.forEach(trade => {
+        const strategy = Trade.classifyTradeStrategy(trade);
+        if (strategies.hasOwnProperty(strategy)) {
+          strategies[strategy]++;
+        }
+      });
+
+      const totalTrades = behaviorMetrics.trades.length;
+      
+      console.log('Strategy classification counts:', strategies);
+      console.log('Total trades analyzed:', totalTrades);
+      
+      // Convert counts to percentages - MUST add to 100%
+      const totalCount = strategies.scalper + strategies.momentum + strategies.mean_reversion + strategies.swing + strategies.day_trading + strategies.position;
+      
+      if (totalCount === 0) {
+        return { scalper: 25, momentum: 25, mean_reversion: 25, swing: 25 };
+      }
+      
+      // Combine similar strategies for the 4 main personalities
+      const combinedCounts = {
+        scalper: strategies.scalper,
+        momentum: strategies.momentum + Math.round(strategies.day_trading * 0.7), // Most day trading is momentum-like
+        mean_reversion: strategies.mean_reversion + Math.round(strategies.day_trading * 0.3), // Some day trading is mean reversion
+        swing: strategies.swing + strategies.position // Combine swing and position
+      };
+      
+      const combinedTotal = Object.values(combinedCounts).reduce((sum, val) => sum + val, 0);
+      
+      // Calculate exact percentages that MUST add to 100%
+      const percentages = {};
+      let runningTotal = 0;
+      const keys = Object.keys(combinedCounts);
+      
+      // Calculate percentages for first 3, ensuring no rounding errors
+      for (let i = 0; i < keys.length - 1; i++) {
+        const key = keys[i];
+        percentages[key] = Math.round((combinedCounts[key] / combinedTotal) * 100);
+        runningTotal += percentages[key];
+      }
+      
+      // Last percentage gets the remainder to ensure total = 100%
+      const lastKey = keys[keys.length - 1];
+      percentages[lastKey] = 100 - runningTotal;
+      
+      console.log('Final strategy percentages:', percentages);
+      console.log('Total percentage:', Object.values(percentages).reduce((a, b) => a + b, 0));
+      
+      return percentages;
+    }
+
+    // Fallback to behavior-based scoring if no trades data
     let scalperScore = 0;
     let momentumScore = 0;
     let meanReversionScore = 0;
@@ -245,11 +380,17 @@ class TradingPersonalityService {
     if (behaviorMetrics.avgTradesPerDay < 2) swingScore += 20;
     if (technicalAnalysis.usesPatternRecognition) swingScore += 10;
 
+    // Normalize scores to percentages that add to 100%
+    const totalScore = scalperScore + momentumScore + meanReversionScore + swingScore;
+    if (totalScore === 0) {
+      return { scalper: 25, momentum: 25, mean_reversion: 25, swing: 25 }; // Equal distribution if no clear signals
+    }
+
     return {
-      scalper: Math.min(100, scalperScore),
-      momentum: Math.min(100, momentumScore),
-      mean_reversion: Math.min(100, meanReversionScore),
-      swing: Math.min(100, swingScore)
+      scalper: Math.round((scalperScore / totalScore) * 100),
+      momentum: Math.round((momentumScore / totalScore) * 100),
+      mean_reversion: Math.round((meanReversionScore / totalScore) * 100),
+      swing: Math.round((swingScore / totalScore) * 100)
     };
   }
 
@@ -883,6 +1024,19 @@ class TradingPersonalityService {
     return Math.sqrt(avgSquareDiff);
   }
 
+  static calculateMedian(values) {
+    if (values.length === 0) return 0;
+    
+    const sorted = [...values].sort((a, b) => a - b);
+    const middle = Math.floor(sorted.length / 2);
+    
+    if (sorted.length % 2 === 0) {
+      return (sorted[middle - 1] + sorted[middle]) / 2;
+    } else {
+      return sorted[middle];
+    }
+  }
+
   static calculateMomentumScore(trades) {
     // Simplified momentum calculation based on trade timing and results
     let momentumTrades = 0;
@@ -968,6 +1122,59 @@ class TradingPersonalityService {
 
     const result = await db.query(query, [userId]);
     return result.rows[0];
+  }
+
+  // Get complete personality analysis (latest profile + all related data)
+  static async getCompleteAnalysis(userId) {
+    try {
+      const profile = await this.getLatestProfile(userId);
+      
+      if (!profile) {
+        return null;
+      }
+
+      // Reconstruct personality scores from stored data
+      const personalityScores = {
+        scalper: profile.scalper_score || 0,
+        momentum: profile.momentum_score || 0,
+        mean_reversion: profile.mean_reversion_score || 0,
+        swing: profile.swing_score || 0
+      };
+
+      // Reconstruct behavior metrics from stored data
+      const behaviorMetrics = {
+        avgHoldTime: profile.avg_hold_time_minutes || 0,
+        avgTradesPerDay: profile.avg_trade_frequency_per_day || 0,
+        positionConsistency: profile.position_sizing_consistency || 0
+      };
+
+      // Get latest drift analysis
+      const driftAnalysis = await this.analyzeBehavioralDrift(userId);
+
+      // Get peer comparison for this personality type
+      const peerComparison = await this.getPeerComparison(userId, profile.primary_personality);
+
+      // Get latest recommendations (could be stored or regenerated)
+      const recommendations = this.generatePersonalityRecommendations(
+        { type: profile.primary_personality, confidence: profile.personality_confidence },
+        behaviorMetrics,
+        profile.personality_performance_score || 0
+      );
+
+      return {
+        profile,
+        personalityScores,
+        behaviorMetrics,
+        performanceAlignment: profile.personality_performance_score || 0,
+        recommendations,
+        driftAnalysis,
+        peerComparison
+      };
+
+    } catch (error) {
+      console.error('Error getting complete personality analysis:', error);
+      return null;
+    }
   }
 }
 

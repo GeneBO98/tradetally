@@ -1,12 +1,12 @@
 const db = require('../config/database');
 
 class Trade {
-  static async create(userId, tradeData) {
+  static async create(userId, tradeData, options = {}) {
     const {
       symbol, entryTime, exitTime, entryPrice, exitPrice,
       quantity, side, commission, fees, notes, isPublic, broker,
       strategy, setup, tags, pnl: providedPnL, pnlPercent: providedPnLPercent,
-      executionData, mae, mfe
+      executionData, mae, mfe, confidence
     } = tradeData;
 
     // Convert empty strings to null for optional fields
@@ -20,24 +20,173 @@ class Trade {
     // Use exit date as trade date if available, otherwise use entry date
     const finalTradeDate = cleanExitTime ? new Date(cleanExitTime).toISOString().split('T')[0] : new Date(entryTime).toISOString().split('T')[0];
 
+    // Auto-assign strategy if not provided by user
+    let finalStrategy = strategy;
+    let strategyConfidence = null;
+    let classificationMethod = null;
+    let classificationMetadata = null;
+    let manualOverride = false;
+    let shouldQueueClassification = false;
+
+    if (!strategy || strategy.trim() === '') {
+      // Check if we should skip API calls (e.g., during import)
+      if (options.skipApiCalls) {
+        // Use basic time-based classification and queue full classification for later
+        const tempTrade = {
+          symbol: symbol.toUpperCase(),
+          entry_time: entryTime,
+          exit_time: cleanExitTime,
+          entry_price: entryPrice,
+          exit_price: cleanExitPrice,
+          quantity,
+          side,
+          pnl,
+          hold_time_minutes: cleanExitTime ? 
+            (new Date(cleanExitTime) - new Date(entryTime)) / (1000 * 60) : null
+        };
+
+        const basicClassification = await this.classifyTradeBasic(tempTrade);
+        finalStrategy = basicClassification.strategy || 'day_trading';
+        strategyConfidence = basicClassification.confidence ? Math.round(basicClassification.confidence * 100) : 60;
+        classificationMethod = 'basic_import';
+        classificationMetadata = {
+          holdTimeMinutes: tempTrade.hold_time_minutes,
+          analysisTimestamp: new Date().toISOString(),
+          needsFullClassification: true
+        };
+        
+        // Mark for background processing if complete trade
+        if (cleanExitTime && cleanExitPrice) {
+          shouldQueueClassification = true;
+        }
+      } else {
+        // Normal classification with API calls
+        const tempTrade = {
+          symbol: symbol.toUpperCase(),
+          entry_time: entryTime,
+          exit_time: cleanExitTime,
+          entry_price: entryPrice,
+          exit_price: cleanExitPrice,
+          quantity,
+          side,
+          pnl,
+          hold_time_minutes: cleanExitTime ? 
+            (new Date(cleanExitTime) - new Date(entryTime)) / (1000 * 60) : null
+        };
+
+        try {
+          // Use enhanced classification if trade is complete, otherwise basic classification
+          const classification = cleanExitTime && cleanExitPrice ? 
+            await this.classifyTradeStrategyWithAnalysis(tempTrade) :
+            await this.classifyTradeBasic(tempTrade);
+          
+          if (typeof classification === 'object') {
+            finalStrategy = classification.strategy;
+            strategyConfidence = Math.round((classification.confidence || 0.5) * 100);
+            classificationMethod = classification.method || (cleanExitTime ? 'technical_analysis' : 'time_based_partial');
+            classificationMetadata = {
+              signals: classification.signals || [],
+              holdTimeMinutes: classification.holdTimeMinutes,
+              priceMove: classification.priceMove,
+              analysisTimestamp: new Date().toISOString()
+            };
+          } else {
+            finalStrategy = classification;
+            strategyConfidence = 70; // Default confidence for basic classification
+            classificationMethod = 'time_based';
+            classificationMetadata = {
+              holdTimeMinutes: tempTrade.hold_time_minutes,
+              analysisTimestamp: new Date().toISOString()
+            };
+          }
+        } catch (error) {
+          console.warn('Error in automatic strategy classification:', error.message);
+          finalStrategy = 'day_trading'; // Default fallback
+          strategyConfidence = 50;
+          classificationMethod = 'fallback';
+          classificationMetadata = { error: error.message };
+        }
+      }
+    } else {
+      // User provided strategy - mark as manual override
+      manualOverride = true;
+      strategyConfidence = 100;
+      classificationMethod = 'manual';
+      classificationMetadata = { userProvided: true };
+    }
+
     const query = `
       INSERT INTO trades (
         user_id, symbol, trade_date, entry_time, exit_time, entry_price, exit_price,
         quantity, side, commission, fees, pnl, pnl_percent, notes, is_public,
-        broker, strategy, setup, tags, executions, mae, mfe
+        broker, strategy, setup, tags, executions, mae, mfe, confidence,
+        strategy_confidence, classification_method, classification_metadata, manual_override
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
       RETURNING *
     `;
 
     const values = [
       userId, symbol.toUpperCase(), finalTradeDate, entryTime, cleanExitTime, entryPrice, cleanExitPrice,
       quantity, side, commission || 0, fees || 0, pnl, pnlPercent, notes, isPublic || false,
-      broker, strategy, setup, tags || [], JSON.stringify(executionData || []), mae || null, mfe || null
+      broker, finalStrategy, setup, tags || [], JSON.stringify(executionData || []), mae || null, mfe || null, confidence || 5,
+      strategyConfidence, classificationMethod, JSON.stringify(classificationMetadata), manualOverride
     ];
 
     const result = await db.query(query, values);
-    return result.rows[0];
+    const createdTrade = result.rows[0];
+    
+    // Log the strategy assignment for debugging
+    console.log(`Auto-assigned strategy "${finalStrategy}" to trade ${createdTrade.id} with ${strategyConfidence}% confidence using ${classificationMethod}`);
+    
+    // Check if trade needs any enrichment
+    const needsEnrichment = shouldQueueClassification || 
+                           (symbol && symbol.match(/^[A-Z0-9]{8}[0-9]$/)); // CUSIP pattern
+    
+    // Queue strategy classification job if needed
+    if (shouldQueueClassification) {
+      try {
+        const jobQueue = require('../utils/jobQueue');
+        await jobQueue.addJob(
+          'strategy_classification',
+          {
+            tradeId: createdTrade.id,
+            symbol: symbol.toUpperCase(),
+            entry_time: entryTime,
+            exit_time: cleanExitTime,
+            entry_price: entryPrice,
+            exit_price: cleanExitPrice,
+            quantity,
+            side,
+            pnl,
+            hold_time_minutes: cleanExitTime ? 
+              (new Date(cleanExitTime) - new Date(entryTime)) / (1000 * 60) : null
+          },
+          3, // Medium priority
+          userId
+        );
+        console.log(`Queued strategy classification job for trade ${createdTrade.id}`);
+      } catch (error) {
+        console.warn(`Failed to queue strategy classification for trade ${createdTrade.id}:`, error.message);
+      }
+    }
+    
+    // If no enrichment is needed, mark as completed immediately
+    if (!needsEnrichment) {
+      try {
+        await db.query(`
+          UPDATE trades 
+          SET enrichment_status = 'completed', 
+              enrichment_completed_at = CURRENT_TIMESTAMP
+          WHERE id = $1
+        `, [createdTrade.id]);
+        console.log(`Trade ${createdTrade.id} marked as enrichment completed (no enrichment needed)`);
+      } catch (error) {
+        console.warn(`Failed to update enrichment status for trade ${createdTrade.id}:`, error.message);
+      }
+    }
+    
+    return createdTrade;
   }
 
   static async findById(id, userId = null) {
@@ -68,6 +217,48 @@ class Trade {
 
     const result = await db.query(query, values);
     return result.rows[0];
+  }
+
+  static async findRoundTripById(id, userId) {
+    // Query the round_trip_trades table using proper UUID
+    const query = `
+      SELECT 
+        rt.*,
+        array_agg(t.*) FILTER (WHERE t.id IS NOT NULL) as executions,
+        COUNT(t.id) as execution_count
+      FROM round_trip_trades rt
+      LEFT JOIN trades t ON rt.id = t.round_trip_id
+      WHERE rt.id = $1 AND rt.user_id = $2
+      GROUP BY rt.id
+    `;
+
+    const result = await db.query(query, [id, userId]);
+    if (result.rows.length === 0) return null;
+
+    const row = result.rows[0];
+    
+    return {
+      id: row.id,
+      symbol: row.symbol,
+      trade_date: row.entry_time ? new Date(row.entry_time).toISOString().split('T')[0] : null,
+      pnl: parseFloat(row.total_pnl) || 0,
+      pnl_percent: parseFloat(row.pnl_percent) || 0,
+      commission: parseFloat(row.total_commission) || 0,
+      fees: parseFloat(row.total_fees) || 0,
+      execution_count: parseInt(row.execution_count) || 0,
+      entry_time: row.entry_time,
+      exit_time: row.exit_time,
+      entry_price: parseFloat(row.entry_price) || 0,
+      exit_price: parseFloat(row.exit_price) || 0,
+      quantity: parseFloat(row.total_quantity) || 0,
+      side: row.side,
+      strategy: row.strategy || '',
+      notes: row.notes || '',
+      is_completed: row.is_completed,
+      trade_type: 'round-trip',
+      comment_count: 0,
+      executions: row.executions || []
+    };
   }
 
   static async findByUser(userId, filters = {}) {
@@ -111,11 +302,7 @@ class Trade {
       paramCount++;
     }
 
-    if (filters.strategy) {
-      query += ` AND t.strategy = $${paramCount}`;
-      values.push(filters.strategy);
-      paramCount++;
-    }
+    // Strategy filter will be handled later with hold time analysis
 
     if (filters.sector) {
       query += ` AND sc.finnhub_industry = $${paramCount}`;
@@ -190,6 +377,11 @@ class Trade {
       query += this.getHoldTimeFilter(filters.holdTime);
     }
 
+    // Strategy filter
+    if (filters.strategy) {
+      query += this.getStrategyFilter(filters.strategy);
+    }
+
     query += ` GROUP BY t.id, sc.finnhub_industry, sc.company_name ORDER BY t.trade_date DESC, t.entry_time DESC`;
 
     if (filters.limit) {
@@ -228,6 +420,84 @@ class Trade {
       if (!exitTime) {
         updates.tradeDate = new Date(updates.entryTime).toISOString().split('T')[0];
       }
+    }
+
+    // Check if we need to re-classify strategy
+    const shouldReclassify = !currentTrade.manual_override && (
+      updates.exitTime || updates.exitPrice || updates.entryTime || updates.entryPrice
+    );
+
+    if (shouldReclassify) {
+      // Create updated trade object for re-classification
+      const updatedTrade = {
+        symbol: currentTrade.symbol,
+        entry_time: updates.entryTime || currentTrade.entry_time,
+        exit_time: updates.exitTime || currentTrade.exit_time,
+        entry_price: updates.entryPrice || currentTrade.entry_price,
+        exit_price: updates.exitPrice || currentTrade.exit_price,
+        quantity: updates.quantity || currentTrade.quantity,
+        side: updates.side || currentTrade.side,
+        pnl: null, // Will be calculated
+        hold_time_minutes: null // Will be calculated
+      };
+
+      // Calculate updated P&L and hold time
+      updatedTrade.pnl = this.calculatePnL(
+        updatedTrade.entry_price,
+        updatedTrade.exit_price,
+        updatedTrade.quantity,
+        updatedTrade.side,
+        updates.commission || currentTrade.commission,
+        updates.fees || currentTrade.fees
+      );
+
+      if (updatedTrade.exit_time) {
+        updatedTrade.hold_time_minutes = 
+          (new Date(updatedTrade.exit_time) - new Date(updatedTrade.entry_time)) / (1000 * 60);
+      }
+
+      try {
+        // Re-classify with enhanced analysis if complete, otherwise basic
+        const classification = updatedTrade.exit_time && updatedTrade.exit_price ? 
+          await this.classifyTradeStrategyWithAnalysis(updatedTrade) :
+          await this.classifyTradeBasic(updatedTrade);
+
+        if (typeof classification === 'object') {
+          updates.strategy = classification.strategy;
+          updates.strategyConfidence = Math.round((classification.confidence || 0.5) * 100);
+          updates.classificationMethod = classification.method || (updatedTrade.exit_time ? 'technical_analysis' : 'time_based_partial');
+          updates.classificationMetadata = {
+            signals: classification.signals || [],
+            holdTimeMinutes: classification.holdTimeMinutes,
+            priceMove: classification.priceMove,
+            analysisTimestamp: new Date().toISOString(),
+            reclassified: true
+          };
+        } else {
+          updates.strategy = classification;
+          updates.strategyConfidence = 70;
+          updates.classificationMethod = 'time_based';
+          updates.classificationMetadata = {
+            holdTimeMinutes: updatedTrade.hold_time_minutes,
+            analysisTimestamp: new Date().toISOString(),
+            reclassified: true
+          };
+        }
+
+        console.log(`Re-classified trade ${id} as "${updates.strategy}" with ${updates.strategyConfidence}% confidence`);
+      } catch (error) {
+        console.warn('Error in trade re-classification:', error.message);
+        // Don't fail the update, just keep existing strategy
+      }
+    } else if (updates.strategy && !currentTrade.manual_override) {
+      // User is manually setting strategy - mark as override
+      updates.manualOverride = true;
+      updates.strategyConfidence = 100;
+      updates.classificationMethod = 'manual';
+      updates.classificationMetadata = { 
+        userProvided: true, 
+        overrideTimestamp: new Date().toISOString() 
+      };
     }
 
     Object.entries(updates).forEach(([key, value]) => {
@@ -427,6 +697,16 @@ class Trade {
       whereClause += ` AND t.strategy = $${paramCount}`;
       values.push(filters.strategy);
       paramCount++;
+    }
+
+    // Hold time filter for analytics
+    if (filters.holdTime) {
+      whereClause += this.getHoldTimeFilter(filters.holdTime);
+    }
+
+    // Strategy filter for analytics
+    if (filters.strategy) {
+      whereClause += this.getStrategyFilter(filters.strategy);
     }
 
     console.log('Analytics query - whereClause:', whereClause);
@@ -676,7 +956,7 @@ class Trade {
         SELECT 'best' as type, id, symbol, entry_price, exit_price, 
                quantity, pnl, trade_date
         FROM trades t
-        ${whereClause} AND pnl IS NOT NULL
+        ${whereClause} AND pnl IS NOT NULL AND pnl > 0
         ORDER BY pnl DESC
         LIMIT 5
       )
@@ -685,7 +965,7 @@ class Trade {
         SELECT 'worst' as type, id, symbol, entry_price, exit_price, 
                quantity, pnl, trade_date
         FROM trades t
-        ${whereClause} AND pnl IS NOT NULL
+        ${whereClause} AND pnl IS NOT NULL AND pnl < 0
         ORDER BY pnl ASC
         LIMIT 5
       )
@@ -698,7 +978,7 @@ class Trade {
       (
         SELECT 'best' as type, id, symbol, pnl, trade_date
         FROM trades t
-        ${whereClause} AND pnl IS NOT NULL
+        ${whereClause} AND pnl IS NOT NULL AND pnl > 0
         ORDER BY pnl DESC
         LIMIT 1
       )
@@ -706,7 +986,7 @@ class Trade {
       (
         SELECT 'worst' as type, id, symbol, pnl, trade_date
         FROM trades t
-        ${whereClause} AND pnl IS NOT NULL
+        ${whereClause} AND pnl IS NOT NULL AND pnl < 0
         ORDER BY pnl ASC
         LIMIT 1
       )
@@ -774,6 +1054,115 @@ class Trade {
     return result.rows.map(row => row.strategy);
   }
 
+  // Create a new round trip trade record
+  static async createRoundTrip(userId, roundTripData) {
+    const {
+      symbol, entry_time, exit_time, entry_price, exit_price,
+      total_quantity, side, strategy, notes
+    } = roundTripData;
+
+    // Calculate P&L and commission totals
+    const total_pnl = this.calculatePnL(entry_price, exit_price, total_quantity, side);
+    const pnl_percent = this.calculatePnLPercent(entry_price, exit_price, side);
+    const is_completed = !!exit_time && !!exit_price;
+
+    const query = `
+      INSERT INTO round_trip_trades (
+        user_id, symbol, entry_time, exit_time, entry_price, exit_price,
+        total_quantity, total_pnl, pnl_percent, side, strategy, notes, is_completed
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      RETURNING *
+    `;
+
+    const values = [
+      userId, symbol.toUpperCase(), entry_time, exit_time, entry_price, exit_price,
+      total_quantity, total_pnl, pnl_percent, side, strategy, notes, is_completed
+    ];
+
+    const result = await db.query(query, values);
+    return result.rows[0];
+  }
+
+  // Update a round trip trade record
+  static async updateRoundTrip(roundTripId, userId, updates) {
+    const fields = [];
+    const values = [];
+    let paramCount = 1;
+
+    // Handle allowed updates
+    const allowedFields = [
+      'exit_time', 'exit_price', 'total_quantity', 'strategy', 'notes'
+    ];
+
+    allowedFields.forEach(field => {
+      if (updates[field] !== undefined) {
+        fields.push(`${field} = $${paramCount}`);
+        values.push(updates[field]);
+        paramCount++;
+      }
+    });
+
+    // Recalculate P&L if prices/quantity changed
+    if (updates.exit_price !== undefined || updates.total_quantity !== undefined) {
+      // Get current round trip data to calculate P&L
+      const currentData = await this.findRoundTripById(roundTripId, userId);
+      if (currentData) {
+        const entry_price = currentData.entry_price;
+        const exit_price = updates.exit_price !== undefined ? updates.exit_price : currentData.exit_price;
+        const quantity = updates.total_quantity !== undefined ? updates.total_quantity : currentData.quantity;
+        const side = currentData.side;
+
+        if (exit_price) {
+          const total_pnl = this.calculatePnL(entry_price, exit_price, quantity, side);
+          const pnl_percent = this.calculatePnLPercent(entry_price, exit_price, side);
+          
+          fields.push(`total_pnl = $${paramCount}`);
+          values.push(total_pnl);
+          paramCount++;
+          
+          fields.push(`pnl_percent = $${paramCount}`);
+          values.push(pnl_percent);
+          paramCount++;
+          
+          fields.push(`is_completed = $${paramCount}`);
+          values.push(true);
+          paramCount++;
+        }
+      }
+    }
+
+    if (fields.length === 0) {
+      return null; // No updates to apply
+    }
+
+    values.push(roundTripId);
+    values.push(userId);
+
+    const query = `
+      UPDATE round_trip_trades
+      SET ${fields.join(', ')}
+      WHERE id = $${paramCount} AND user_id = $${paramCount + 1}
+      RETURNING *
+    `;
+
+    const result = await db.query(query, values);
+    return result.rows[0];
+  }
+
+  // Link individual trades to a round trip
+  static async linkTradesToRoundTrip(roundTripId, tradeIds) {
+    const query = `
+      UPDATE trades
+      SET round_trip_id = $1
+      WHERE id = ANY($2)
+      RETURNING id
+    `;
+
+    const result = await db.query(query, [roundTripId, tradeIds]);
+    return result.rows.map(row => row.id);
+  }
+
   static async updateSymbolForCusip(userId, cusip, ticker) {
     const query = `
       UPDATE trades 
@@ -786,129 +1175,39 @@ class Trade {
   }
 
   static async getRoundTripTradeCount(userId, filters = {}) {
-    // Build the same WHERE clause as findByUser method
-    let whereClause = 'WHERE t.user_id = $1';
+    // Build WHERE clause for round_trip_trades table
+    let whereClause = 'WHERE user_id = $1';
     const values = [userId];
     let paramCount = 2;
 
     if (filters.symbol) {
-      whereClause += ` AND t.symbol = $${paramCount}`;
+      whereClause += ` AND symbol = $${paramCount}`;
       values.push(filters.symbol.toUpperCase());
       paramCount++;
     }
 
     if (filters.startDate) {
-      whereClause += ` AND t.trade_date >= $${paramCount}`;
+      whereClause += ` AND DATE(entry_time) >= $${paramCount}`;
       values.push(filters.startDate);
       paramCount++;
     }
 
     if (filters.endDate) {
-      whereClause += ` AND t.trade_date <= $${paramCount}`;
+      whereClause += ` AND DATE(entry_time) <= $${paramCount}`;
       values.push(filters.endDate);
       paramCount++;
     }
 
-    if (filters.tags && filters.tags.length > 0) {
-      whereClause += ` AND t.tags && $${paramCount}`;
-      values.push(filters.tags);
-      paramCount++;
-    }
-
     if (filters.strategy) {
-      whereClause += ` AND t.strategy = $${paramCount}`;
+      whereClause += ` AND strategy = $${paramCount}`;
       values.push(filters.strategy);
       paramCount++;
     }
 
-    if (filters.sector) {
-      whereClause += ` AND t.symbol IN (SELECT symbol FROM symbol_categories WHERE finnhub_industry = $${paramCount})`;
-      values.push(filters.sector);
-      paramCount++;
-    }
-
-    // Add all other filters from findByUser
-    if (filters.side) {
-      whereClause += ` AND t.side = $${paramCount}`;
-      values.push(filters.side);
-      paramCount++;
-    }
-
-    if (filters.minPrice !== undefined) {
-      whereClause += ` AND t.entry_price >= $${paramCount}`;
-      values.push(filters.minPrice);
-      paramCount++;
-    }
-
-    if (filters.maxPrice !== undefined) {
-      whereClause += ` AND t.entry_price <= $${paramCount}`;
-      values.push(filters.maxPrice);
-      paramCount++;
-    }
-
-    if (filters.minQuantity !== undefined) {
-      whereClause += ` AND t.quantity >= $${paramCount}`;
-      values.push(filters.minQuantity);
-      paramCount++;
-    }
-
-    if (filters.maxQuantity !== undefined) {
-      whereClause += ` AND t.quantity <= $${paramCount}`;
-      values.push(filters.maxQuantity);
-      paramCount++;
-    }
-
-    if (filters.status === 'open') {
-      whereClause += ` AND t.exit_price IS NULL`;
-    } else if (filters.status === 'closed') {
-      whereClause += ` AND t.exit_price IS NOT NULL`;
-    }
-
-    if (filters.minPnl !== undefined) {
-      whereClause += ` AND t.pnl >= $${paramCount}`;
-      values.push(filters.minPnl);
-      paramCount++;
-    }
-
-    if (filters.maxPnl !== undefined) {
-      whereClause += ` AND t.pnl <= $${paramCount}`;
-      values.push(filters.maxPnl);
-      paramCount++;
-    }
-
-    if (filters.pnlType === 'profit') {
-      whereClause += ` AND t.pnl > 0`;
-    } else if (filters.pnlType === 'loss') {
-      whereClause += ` AND t.pnl < 0`;
-    }
-
-    if (filters.broker) {
-      whereClause += ` AND t.broker = $${paramCount}`;
-      values.push(filters.broker);
-      paramCount++;
-    }
-
-    if (filters.holdTime) {
-      whereClause += this.getHoldTimeFilter(filters.holdTime);
-    }
-
-    // Use the same round-trip counting logic as analytics
     const query = `
-      WITH simple_trades AS (
-        -- Group by symbol and date to create round-trip trades
-        SELECT 
-          symbol,
-          trade_date,
-          SUM(COALESCE(pnl, 0)) as trade_pnl,
-          -- Only count as a completed trade if there's P&L
-          CASE WHEN SUM(pnl) IS NOT NULL THEN 1 ELSE 0 END as is_completed
-        FROM trades t
-        ${whereClause}
-        GROUP BY symbol, trade_date
-      )
-      SELECT 
-        COUNT(*) FILTER (WHERE is_completed = 1)::integer as round_trip_count
-      FROM simple_trades
+      SELECT COUNT(*)::integer as round_trip_count
+      FROM round_trip_trades
+      ${whereClause}
     `;
 
     const result = await db.query(query, values);
@@ -916,44 +1215,32 @@ class Trade {
   }
 
   static async getRoundTripTrades(userId, filters = {}) {
-    // Build the same WHERE clause as findByUser method
-    let whereClause = 'WHERE t.user_id = $1';
+    // Build WHERE clause for round_trip_trades table
+    let whereClause = 'WHERE rt.user_id = $1';
     const values = [userId];
     let paramCount = 2;
 
     if (filters.symbol) {
-      whereClause += ` AND t.symbol = $${paramCount}`;
+      whereClause += ` AND rt.symbol = $${paramCount}`;
       values.push(filters.symbol.toUpperCase());
       paramCount++;
     }
 
     if (filters.startDate) {
-      whereClause += ` AND t.trade_date >= $${paramCount}`;
+      whereClause += ` AND DATE(rt.entry_time) >= $${paramCount}`;
       values.push(filters.startDate);
       paramCount++;
     }
 
     if (filters.endDate) {
-      whereClause += ` AND t.trade_date <= $${paramCount}`;
+      whereClause += ` AND DATE(rt.entry_time) <= $${paramCount}`;
       values.push(filters.endDate);
       paramCount++;
     }
 
-    if (filters.tags && filters.tags.length > 0) {
-      whereClause += ` AND t.tags && $${paramCount}`;
-      values.push(filters.tags);
-      paramCount++;
-    }
-
     if (filters.strategy) {
-      whereClause += ` AND t.strategy = $${paramCount}`;
+      whereClause += ` AND rt.strategy = $${paramCount}`;
       values.push(filters.strategy);
-      paramCount++;
-    }
-
-    if (filters.sector) {
-      whereClause += ` AND t.symbol IN (SELECT symbol FROM symbol_categories WHERE finnhub_industry = $${paramCount})`;
-      values.push(filters.sector);
       paramCount++;
     }
 
@@ -962,69 +1249,68 @@ class Trade {
     const offset = filters.offset || 0;
 
     const query = `
-      WITH simple_trades AS (
-        SELECT 
-          t.symbol,
-          t.trade_date,
-          SUM(COALESCE(t.pnl, 0)) as pnl,
-          SUM(t.commission + t.fees) as total_costs,
-          COUNT(*) as execution_count,
-          AVG(t.pnl_percent) as avg_return_pct,
-          MIN(t.entry_time) as first_entry_time,
-          MAX(COALESCE(t.exit_time, t.entry_time)) as last_exit_time,
-          MIN(t.entry_price) as min_entry_price,
-          MAX(t.exit_price) as max_exit_price,
-          SUM(t.quantity) as total_quantity,
-          array_agg(DISTINCT t.side) as sides,
-          array_agg(DISTINCT t.strategy) FILTER (WHERE t.strategy IS NOT NULL) as strategies,
-          array_agg(DISTINCT t.broker) FILTER (WHERE t.broker IS NOT NULL) as brokers,
-          string_agg(DISTINCT t.notes, ' | ') FILTER (WHERE t.notes IS NOT NULL) as combined_notes,
-          -- Only count as a completed trade if there's P&L
-          CASE WHEN SUM(t.pnl) IS NOT NULL THEN 1 ELSE 0 END as is_completed
-        FROM trades t
-        ${whereClause}
-        GROUP BY t.symbol, t.trade_date
-        ORDER BY t.trade_date DESC, t.symbol
-      ),
-      trades_with_sectors AS (
-        SELECT 
-          st.*,
-          sc.finnhub_industry as sector
-        FROM simple_trades st
-        LEFT JOIN symbol_categories sc ON st.symbol = sc.symbol
-        WHERE st.is_completed = 1
-      )
       SELECT 
-        md5(symbol || trade_date) as id,
-        symbol,
-        trade_date,
-        pnl,
-        CASE WHEN pnl > 0 THEN (pnl / NULLIF(min_entry_price * total_quantity, 0)) * 100 ELSE 0 END as pnl_percent,
-        total_costs as commission,
-        0 as fees,
-        execution_count,
-        avg_return_pct,
-        first_entry_time as entry_time,
-        last_exit_time as exit_time,
-        min_entry_price as entry_price,
-        max_exit_price as exit_price,
-        total_quantity as quantity,
-        CASE WHEN 'long' = ANY(sides) THEN 'long' ELSE 'short' END as side,
-        COALESCE(array_to_string(strategies, ', '), '') as strategy,
-        COALESCE(array_to_string(brokers, ', '), '') as broker,
-        COALESCE(sector, '') as sector,
-        combined_notes as notes,
-        is_completed,
-        'round-trip' as trade_type,
-        0 as comment_count
-      FROM trades_with_sectors
+        rt.*,
+        sc.finnhub_industry as sector,
+        COUNT(t.id) as execution_count,
+        DATE(rt.entry_time) as trade_date
+      FROM round_trip_trades rt
+      LEFT JOIN symbol_categories sc ON rt.symbol = sc.symbol
+      LEFT JOIN trades t ON rt.id = t.round_trip_id
+      ${whereClause}
+      GROUP BY rt.id, sc.finnhub_industry
+      ORDER BY rt.entry_time DESC
       LIMIT $${paramCount} OFFSET $${paramCount + 1}
     `;
 
     values.push(limit, offset);
 
     const result = await db.query(query, values);
-    return result.rows;
+    
+    return result.rows.map(row => ({
+      id: row.id,
+      symbol: row.symbol,
+      trade_date: row.trade_date,
+      pnl: parseFloat(row.total_pnl) || 0,
+      pnl_percent: parseFloat(row.pnl_percent) || 0,
+      commission: parseFloat(row.total_commission) || 0,
+      fees: parseFloat(row.total_fees) || 0,
+      execution_count: parseInt(row.execution_count) || 0,
+      entry_time: row.entry_time,
+      exit_time: row.exit_time,
+      entry_price: parseFloat(row.entry_price) || 0,
+      exit_price: parseFloat(row.exit_price) || 0,
+      quantity: parseFloat(row.total_quantity) || 0,
+      side: row.side,
+      strategy: row.strategy || '',
+      broker: '',
+      sector: row.sector || '',
+      notes: row.notes || '',
+      is_completed: row.is_completed,
+      trade_type: 'round-trip',
+      comment_count: 0
+    }));
+  }
+
+  // Convert minHoldTime/maxHoldTime (in minutes) to holdTime range option
+  static convertHoldTimeRange(minMinutes, maxMinutes) {
+    // Handle specific strategy ranges first (more inclusive approach)
+    if (maxMinutes <= 15) return '5-15 min' // Scalper: trades under 15 minutes
+    if (maxMinutes <= 240) return '2-4 hours' // Momentum: up to 4 hours (more inclusive)
+    if (maxMinutes <= 480) return '4-24 hours' // Mean reversion: up to 8 hours (more inclusive) 
+    if (minMinutes >= 1440) return '1-7 days' // Swing: over 1 day
+    
+    // Fallback to exact mapping for edge cases
+    if (maxMinutes < 1) return '< 1 min'
+    if (maxMinutes <= 5) return '1-5 min'
+    if (maxMinutes <= 30) return '15-30 min'
+    if (maxMinutes <= 60) return '30-60 min'
+    if (maxMinutes <= 120) return '1-2 hours'
+    if (maxMinutes <= 1440) return '4-24 hours'
+    if (maxMinutes <= 10080) return '1-7 days'
+    if (maxMinutes <= 40320) return '1-4 weeks'
+    
+    return '1+ months' // Default for very long trades
   }
 
   static getHoldTimeFilter(holdTimeRange) {
@@ -1071,6 +1357,491 @@ class Trade {
     }
     
     return timeCondition;
+  }
+
+  // Classify individual trades by strategy using technical analysis (basic fallback version)
+  static classifyTradeStrategy(trade) {
+    const holdTimeMinutes = parseFloat(trade.hold_time_minutes || 0);
+    const pnl = parseFloat(trade.pnl || 0);
+    const quantity = parseFloat(trade.quantity || 0);
+    
+    // Strategy classification based on hold time (primary factor) - this is a fallback
+    // The real classification should use classifyTradeStrategyWithAnalysis for accurate results
+    if (holdTimeMinutes < 15) {
+      return 'scalper'; // Ultra-short term trades
+    } else if (holdTimeMinutes < 240) { // < 4 hours
+      // Secondary classification for short-term trades
+      if (pnl > 0 && holdTimeMinutes < 60) {
+        return 'momentum'; // Quick profitable trades suggest momentum
+      } else {
+        return 'day_trading'; // Other short-term trades
+      }
+    } else if (holdTimeMinutes < 480) { // 4-8 hours
+      return 'momentum'; // Medium-term momentum/breakout trades
+    } else if (holdTimeMinutes < 1440) { // < 1 day
+      return 'mean_reversion'; // Intraday mean reversion
+    } else if (holdTimeMinutes < 10080) { // < 1 week
+      return 'swing'; // Multi-day swing trades
+    } else {
+      return 'position'; // Long-term position trades
+    }
+  }
+
+  // Enhanced strategy classification using Finnhub technical analysis
+  static async classifyTradeStrategyWithAnalysis(trade) {
+    const finnhub = require('../utils/finnhub');
+    
+    if (!finnhub.isConfigured()) {
+      console.log('Finnhub not configured, falling back to time-based classification');
+      return this.classifyTradeStrategy(trade);
+    }
+
+    try {
+      const symbol = trade.symbol;
+      const entryTime = new Date(trade.entry_time);
+      const exitTime = trade.exit_time ? new Date(trade.exit_time) : new Date();
+      const holdTimeMinutes = parseFloat(trade.hold_time_minutes || 0);
+      const pnl = parseFloat(trade.pnl || 0);
+      const entryPrice = parseFloat(trade.entry_price);
+      const exitPrice = parseFloat(trade.exit_price);
+      const side = trade.side;
+
+      // Get price data around the trade period
+      const entryTimestamp = Math.floor(entryTime.getTime() / 1000);
+      const exitTimestamp = Math.floor(exitTime.getTime() / 1000);
+      const analysisStart = entryTimestamp - (24 * 60 * 60); // 1 day before entry
+      const analysisEnd = exitTimestamp + (24 * 60 * 60); // 1 day after exit
+
+      // Get technical data in parallel with rate limiting (removed pattern recognition per user request)
+      const [candles, technicalData] = await Promise.all([
+        finnhub.getCandles(symbol, '60', analysisStart, analysisEnd).catch(() => null), // 1-hour candles
+        this.getTechnicalIndicators(symbol, entryTimestamp, exitTimestamp).catch(() => null)
+      ]);
+
+      // Analyze the trade based on price movement and technical indicators
+      const analysis = this.analyzeTradeCharacteristics({
+        trade,
+        patterns: null, // Pattern recognition removed per user request
+        candles,
+        technicalData,
+        entryTimestamp,
+        exitTimestamp
+      });
+
+      return analysis.strategy;
+
+    } catch (error) {
+      console.error(`Error analyzing trade ${trade.id} for strategy classification:`, error);
+      return this.classifyTradeStrategy(trade); // Fallback to time-based
+    }
+  }
+
+  // Get relevant technical indicators for trade analysis
+  static async getTechnicalIndicators(symbol, entryTimestamp, exitTimestamp) {
+    const finnhub = require('../utils/finnhub');
+    
+    // Calculate intelligent date range to avoid "increase from and to range" errors
+    const tradeStart = entryTimestamp;
+    const tradeEnd = exitTimestamp || entryTimestamp;
+    const tradeDurationDays = (tradeEnd - tradeStart) / (24 * 60 * 60);
+    
+    // Use adaptive range based on trade duration and technical indicator requirements
+    // RSI needs 14+ periods, MACD needs 26+ periods, BBands needs 20+ periods
+    // Use 5-minute resolution for more data points
+    let analysisStart, analysisEnd, resolution;
+    
+    if (tradeDurationDays < 1) {
+      // Short trades: use 30-90 days of 5-minute data for sufficient periods
+      analysisStart = tradeStart - (90 * 24 * 60 * 60); // 90 days before
+      analysisEnd = Math.max(tradeEnd, tradeStart + (7 * 24 * 60 * 60)); // At least 7 days after
+      resolution = '5'; // 5-minute bars
+    } else if (tradeDurationDays < 7) {
+      // Medium trades: use 60 days of 15-minute data
+      analysisStart = tradeStart - (60 * 24 * 60 * 60); // 60 days before
+      analysisEnd = tradeEnd + (7 * 24 * 60 * 60); // 7 days after
+      resolution = '15'; // 15-minute bars
+    } else {
+      // Long trades: use 90 days of 60-minute data
+      analysisStart = tradeStart - (90 * 24 * 60 * 60); // 90 days before
+      analysisEnd = tradeEnd + (14 * 24 * 60 * 60); // 14 days after
+      resolution = '60'; // 60-minute bars
+    }
+
+    try {
+      console.log(`Fetching technical indicators for ${symbol}: ${new Date(analysisStart * 1000).toISOString()} to ${new Date(analysisEnd * 1000).toISOString()} (${resolution}min resolution)`);
+      
+      // Fetch indicators with adaptive parameters
+      const indicators = {};
+      
+      // RSI - most reliable indicator
+      try {
+        indicators.rsi = await finnhub.getTechnicalIndicator(symbol, resolution, analysisStart, analysisEnd, 'rsi', { timeperiod: 14 });
+      } catch (error) {
+        console.warn(`RSI failed for ${symbol}: ${error.message}`);
+        indicators.rsi = null;
+      }
+      
+      // MACD - requires more data
+      try {
+        indicators.macd = await finnhub.getTechnicalIndicator(symbol, resolution, analysisStart, analysisEnd, 'macd', { 
+          fastperiod: 12, slowperiod: 26, signalperiod: 9 
+        });
+      } catch (error) {
+        console.warn(`MACD failed for ${symbol}: ${error.message}`);
+        indicators.macd = null;
+      }
+      
+      // Bollinger Bands - also requires significant data
+      try {
+        indicators.bbands = await finnhub.getTechnicalIndicator(symbol, resolution, analysisStart, analysisEnd, 'bbands', { 
+          timeperiod: 20, nbdevup: 2, nbdevdn: 2 
+        });
+      } catch (error) {
+        console.warn(`BBands failed for ${symbol}: ${error.message}`);
+        indicators.bbands = null;
+      }
+
+      // Return indicators with null placeholders for unused ones
+      return { 
+        ...indicators,
+        sma: null, 
+        ema: null, 
+        adx: null, 
+        stoch: null 
+      };
+    } catch (error) {
+      console.error('Error fetching technical indicators:', error);
+      return null;
+    }
+  }
+
+  // Analyze trade characteristics to determine strategy
+  static analyzeTradeCharacteristics({ trade, patterns, candles, technicalData, entryTimestamp, exitTimestamp }) {
+    const holdTimeMinutes = parseFloat(trade.hold_time_minutes || 0);
+    const pnl = parseFloat(trade.pnl || 0);
+    const entryPrice = parseFloat(trade.entry_price);
+    const exitPrice = parseFloat(trade.exit_price);
+    const side = trade.side;
+    const priceMove = side === 'long' ? (exitPrice - entryPrice) / entryPrice : (entryPrice - exitPrice) / entryPrice;
+
+    let strategy = 'day_trading'; // Default
+    let confidence = 0.5;
+    const signals = [];
+
+    // Time-based initial classification
+    if (holdTimeMinutes < 15) {
+      strategy = 'scalper';
+      confidence = 0.8;
+    } else if (holdTimeMinutes > 1440) {
+      strategy = 'swing';
+      confidence = 0.7;
+    }
+
+    // Skip pattern analysis - removed per user request to use only technical indicators
+
+    // Enhanced technical indicator analysis with comprehensive indicators
+    if (technicalData) {
+      const rsiSignals = this.analyzeRSI(technicalData.rsi, entryTimestamp, exitTimestamp);
+      const macdSignals = this.analyzeMACD(technicalData.macd, entryTimestamp, exitTimestamp);
+      
+      if (rsiSignals.indicates === 'momentum') {
+        strategy = 'momentum';
+        confidence = Math.max(confidence, 0.75);
+        signals.push('RSI momentum signals');
+      } else if (rsiSignals.indicates === 'mean_reversion') {
+        strategy = 'mean_reversion';
+        confidence = Math.max(confidence, 0.8);
+        signals.push('RSI oversold/overbought signals');
+      }
+
+      if (macdSignals.indicates === 'momentum') {
+        if (strategy !== 'mean_reversion') { // Don't override strong mean reversion signals
+          strategy = 'momentum';
+          confidence = Math.max(confidence, 0.8);
+          signals.push('MACD momentum crossover');
+        }
+      }
+
+      // Analyze Bollinger Bands for volatility breakouts or mean reversion
+      if (technicalData.bbands) {
+        const bbandAnalysis = this.analyzeBollingerBands(technicalData.bbands, entryTimestamp, exitTimestamp, side);
+        if (bbandAnalysis.indicates === 'breakout') {
+          strategy = 'momentum';
+          confidence = Math.max(confidence, 0.85);
+          signals.push('Bollinger Band breakout');
+        } else if (bbandAnalysis.indicates === 'mean_reversion') {
+          strategy = 'mean_reversion';
+          confidence = Math.max(confidence, 0.8);
+          signals.push('Bollinger Band touch and reversal');
+        }
+      }
+
+      // Analyze ADX for trend strength
+      if (technicalData.adx) {
+        const adxAnalysis = this.analyzeADX(technicalData.adx, entryTimestamp);
+        if (adxAnalysis.trendStrength === 'strong' && holdTimeMinutes < 480) {
+          if (strategy !== 'mean_reversion') { // Strong trends favor momentum
+            strategy = 'momentum';
+            confidence = Math.max(confidence, 0.8);
+            signals.push('Strong trend (ADX > 25)');
+          }
+        }
+      }
+
+      // Analyze Stochastic for overbought/oversold conditions
+      if (technicalData.stoch) {
+        const stochAnalysis = this.analyzeStochastic(technicalData.stoch, entryTimestamp, side);
+        if (stochAnalysis.indicates === 'mean_reversion') {
+          strategy = 'mean_reversion';
+          confidence = Math.max(confidence, 0.75);
+          signals.push('Stochastic oversold/overbought reversal');
+        }
+      }
+    }
+
+    // Price movement analysis
+    if (Math.abs(priceMove) > 0.05 && holdTimeMinutes < 60) { // >5% move in <1 hour
+      strategy = 'momentum';
+      confidence = Math.max(confidence, 0.85);
+      signals.push('Large quick price movement');
+    }
+
+    return {
+      strategy,
+      confidence: Math.round(confidence * 100) / 100,
+      signals,
+      holdTimeMinutes,
+      priceMove: Math.round(priceMove * 10000) / 100 // As percentage
+    };
+  }
+
+  // Pattern recognition methods removed - now using only technical indicators per user request
+
+  // Technical indicator analysis helpers
+  static analyzeRSI(rsiData, entryTime, exitTime) {
+    if (!rsiData || !rsiData.rsi || rsiData.rsi.length === 0) {
+      return { indicates: 'unknown' };
+    }
+
+    // Find RSI values around entry and exit
+    const entryRSI = this.findIndicatorAtTime(rsiData, entryTime);
+    const exitRSI = this.findIndicatorAtTime(rsiData, exitTime);
+
+    if (entryRSI < 30 || exitRSI > 70) {
+      return { indicates: 'mean_reversion', reason: 'RSI oversold/overbought levels' };
+    } else if (entryRSI > 50 && exitRSI > entryRSI) {
+      return { indicates: 'momentum', reason: 'RSI trending higher' };
+    }
+
+    return { indicates: 'neutral' };
+  }
+
+  static analyzeMACD(macdData, entryTime, exitTime) {
+    if (!macdData || !macdData.macd || !macdData.signal) {
+      return { indicates: 'unknown' };
+    }
+
+    const entryMACD = this.findIndicatorAtTime(macdData, entryTime);
+    const entrySignal = this.findIndicatorAtTime({ signal: macdData.signal }, entryTime);
+
+    if (entryMACD && entrySignal && entryMACD > entrySignal) {
+      return { indicates: 'momentum', reason: 'MACD above signal line' };
+    }
+
+    return { indicates: 'neutral' };
+  }
+
+  static findIndicatorAtTime(indicatorData, targetTime) {
+    if (!indicatorData.t || !indicatorData.t.length) return null;
+    
+    const targetTimestamp = Math.floor(targetTime);
+    let closestIndex = 0;
+    let closestDiff = Math.abs(indicatorData.t[0] - targetTimestamp);
+
+    for (let i = 1; i < indicatorData.t.length; i++) {
+      const diff = Math.abs(indicatorData.t[i] - targetTimestamp);
+      if (diff < closestDiff) {
+        closestDiff = diff;
+        closestIndex = i;
+      }
+    }
+
+    // Return the main indicator value (RSI, MACD, etc.)
+    const dataKeys = Object.keys(indicatorData).filter(key => key !== 't');
+    if (dataKeys.length > 0) {
+      return indicatorData[dataKeys[0]][closestIndex];
+    }
+    
+    return null;
+  }
+
+  // Analyze Bollinger Bands for breakout or mean reversion
+  static analyzeBollingerBands(bbandsData, entryTime, exitTime, side) {
+    if (!bbandsData || !bbandsData.lower || !bbandsData.middle || !bbandsData.upper) {
+      return { indicates: 'unknown' };
+    }
+
+    // Find values around entry
+    const entryLower = this.findIndicatorAtTime(bbandsData.lower, entryTime);
+    const entryMiddle = this.findIndicatorAtTime(bbandsData.middle, entryTime);
+    const entryUpper = this.findIndicatorAtTime(bbandsData.upper, entryTime);
+
+    // Simple analysis: if price near bands, it's either breakout or mean reversion
+    // This is simplified - real implementation would check actual price vs bands
+    const bandwidth = entryUpper - entryLower;
+    const narrowBand = bandwidth < (entryMiddle * 0.02); // Band squeeze
+
+    if (narrowBand) {
+      return { indicates: 'breakout', reason: 'Bollinger Band squeeze' };
+    }
+
+    return { indicates: 'neutral' };
+  }
+
+  // Analyze ADX for trend strength
+  static analyzeADX(adxData, entryTime) {
+    if (!adxData || !adxData.adx) {
+      return { trendStrength: 'unknown' };
+    }
+
+    const adxValue = this.findIndicatorAtTime(adxData, entryTime);
+    
+    if (adxValue > 25) {
+      return { trendStrength: 'strong', value: adxValue };
+    } else if (adxValue > 20) {
+      return { trendStrength: 'moderate', value: adxValue };
+    } else {
+      return { trendStrength: 'weak', value: adxValue };
+    }
+  }
+
+  // Analyze Stochastic for overbought/oversold
+  static analyzeStochastic(stochData, entryTime, side) {
+    if (!stochData || !stochData.k || !stochData.d) {
+      return { indicates: 'unknown' };
+    }
+
+    const kValue = this.findIndicatorAtTime(stochData.k, entryTime);
+    const dValue = this.findIndicatorAtTime(stochData.d, entryTime);
+
+    if (side === 'long' && kValue < 20) {
+      return { indicates: 'mean_reversion', reason: 'Stochastic oversold entry' };
+    } else if (side === 'short' && kValue > 80) {
+      return { indicates: 'mean_reversion', reason: 'Stochastic overbought entry' };
+    }
+
+    return { indicates: 'neutral' };
+  }
+
+  // Get strategy filter condition for SQL queries
+  static getStrategyFilter(strategy) {
+    if (!strategy) return '';
+
+    // Map strategy to hold time ranges
+    const strategyMappings = {
+      'scalper': 'EXTRACT(EPOCH FROM (COALESCE(t.exit_time, NOW()) - t.entry_time)) < 900', // < 15 min
+      'day_trading': 'EXTRACT(EPOCH FROM (COALESCE(t.exit_time, NOW()) - t.entry_time)) BETWEEN 900 AND 14400', // 15min - 4hrs (excluding quick profitable momentum)
+      'momentum': 'EXTRACT(EPOCH FROM (COALESCE(t.exit_time, NOW()) - t.entry_time)) BETWEEN 900 AND 28800', // 15min - 8hrs
+      'mean_reversion': 'EXTRACT(EPOCH FROM (COALESCE(t.exit_time, NOW()) - t.entry_time)) BETWEEN 14400 AND 86400', // 4hrs - 1day
+      'swing': 'EXTRACT(EPOCH FROM (COALESCE(t.exit_time, NOW()) - t.entry_time)) BETWEEN 86400 AND 604800', // 1day - 1week
+      'position': 'EXTRACT(EPOCH FROM (COALESCE(t.exit_time, NOW()) - t.entry_time)) >= 604800', // > 1 week
+      'breakout': 'EXTRACT(EPOCH FROM (COALESCE(t.exit_time, NOW()) - t.entry_time)) BETWEEN 900 AND 28800 AND t.pnl > 0', // Quick profitable trades
+      'reversal': 'EXTRACT(EPOCH FROM (COALESCE(t.exit_time, NOW()) - t.entry_time)) BETWEEN 14400 AND 86400', // Same as mean reversion
+      'trend_following': 'EXTRACT(EPOCH FROM (COALESCE(t.exit_time, NOW()) - t.entry_time)) BETWEEN 28800 AND 604800', // 8hrs - 1week
+      'contrarian': 'EXTRACT(EPOCH FROM (COALESCE(t.exit_time, NOW()) - t.entry_time)) BETWEEN 14400 AND 86400' // Same as mean reversion
+    };
+
+    const condition = strategyMappings[strategy];
+    return condition ? ` AND ${condition}` : '';
+  }
+
+  // Delete a round trip trade
+  static async deleteRoundTrip(roundTripId, userId) {
+    // First, unlink any associated trades
+    await db.query('UPDATE trades SET round_trip_id = NULL WHERE round_trip_id = $1', [roundTripId]);
+    
+    // Then delete the round trip record
+    const query = `
+      DELETE FROM round_trip_trades
+      WHERE id = $1 AND user_id = $2
+      RETURNING id
+    `;
+
+    const result = await db.query(query, [roundTripId, userId]);
+    return result.rows[0];
+  }
+
+  // Basic strategy classification for incomplete trades (no exit data)
+  static async classifyTradeBasic(trade) {
+    const entryTime = new Date(trade.entry_time);
+    const exitTime = trade.exit_time ? new Date(trade.exit_time) : new Date();
+    const holdTimeMinutes = trade.hold_time_minutes || ((exitTime - entryTime) / (1000 * 60));
+    const quantity = parseFloat(trade.quantity || 0);
+    const entryPrice = parseFloat(trade.entry_price || 0);
+    const positionSize = quantity * entryPrice;
+
+    // Basic classification primarily based on current hold time for open positions
+    let strategy = 'day_trading'; // Default
+    let confidence = 0.6; // Lower confidence for incomplete trades
+
+    if (holdTimeMinutes < 15) {
+      strategy = 'scalper';
+      confidence = 0.8; // High confidence for very short holds
+    } else if (holdTimeMinutes < 240) { // < 4 hours
+      strategy = 'day_trading';
+      confidence = 0.7;
+    } else if (holdTimeMinutes < 480) { // 4-8 hours
+      strategy = 'momentum';
+      confidence = 0.65;
+    } else if (holdTimeMinutes < 1440) { // < 1 day
+      strategy = 'mean_reversion';
+      confidence = 0.6;
+    } else if (holdTimeMinutes < 10080) { // < 1 week
+      strategy = 'swing';
+      confidence = 0.75;
+    } else {
+      strategy = 'position';
+      confidence = 0.8; // High confidence for very long holds
+    }
+
+    // Additional factors for partial classification
+    const signals = [];
+    
+    // Position size analysis (basic)
+    if (positionSize > 50000) {
+      signals.push('Large position size');
+      if (strategy === 'scalper') {
+        strategy = 'day_trading'; // Large positions less likely to be scalping
+        confidence = Math.max(confidence, 0.7);
+      }
+    } else if (positionSize < 1000) {
+      signals.push('Small position size');
+      if (strategy === 'swing' || strategy === 'position') {
+        confidence = Math.max(confidence - 0.1, 0.4); // Lower confidence for small swing trades
+      }
+    }
+
+    // Time of day patterns (basic heuristic)
+    const entryHour = entryTime.getHours();
+    if (entryHour >= 9 && entryHour <= 11) {
+      signals.push('Market open entry');
+      if (strategy === 'scalper' || strategy === 'day_trading') {
+        confidence = Math.min(confidence + 0.1, 0.9);
+      }
+    } else if (entryHour >= 15 && entryHour <= 16) {
+      signals.push('Market close entry');
+      if (strategy === 'scalper') {
+        confidence = Math.min(confidence + 0.1, 0.9);
+      }
+    }
+
+    return {
+      strategy,
+      confidence,
+      signals,
+      holdTimeMinutes: Math.round(holdTimeMinutes),
+      method: 'basic_time_based'
+    };
   }
 }
 
