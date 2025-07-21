@@ -5,6 +5,12 @@ import { useNotification } from './useNotification'
 // Global reactive state for CUSIP mappings
 const cusipMappings = reactive({})
 
+// Global reactive state for enrichment status
+const enrichmentStatus = reactive({
+  tradeEnrichment: [],
+  lastUpdate: null
+})
+
 export function usePriceAlertNotifications() {
   const authStore = useAuthStore()
   const { showSuccess, showWarning } = useNotification()
@@ -119,6 +125,10 @@ export function usePriceAlertNotifications() {
       case 'cusip_resolved':
         handleCusipResolution(data.data)
         break
+        
+      case 'enrichment_update':
+        handleEnrichmentUpdate(data.data)
+        break
     }
   }
   
@@ -185,6 +195,16 @@ export function usePriceAlertNotifications() {
       showSuccess('CUSIPs Resolved', `${count} CUSIPs have been resolved to symbols`)
     }
   }
+
+  const handleEnrichmentUpdate = (data) => {
+    console.log('Enrichment update received:', data)
+    
+    // Update global enrichment status
+    if (data.tradeEnrichment) {
+      enrichmentStatus.tradeEnrichment = data.tradeEnrichment
+      enrichmentStatus.lastUpdate = Date.now()
+    }
+  }
   
   const requestNotificationPermission = async () => {
     if ('Notification' in window && Notification.permission === 'default') {
@@ -222,5 +242,16 @@ export function useCusipMappings() {
     getSymbolForCusip: (cusip) => cusipMappings[cusip] || cusip,
     // Function to check if a string is a CUSIP that has been resolved
     isResolvedCusip: (symbol) => symbol in cusipMappings
+  }
+}
+
+// Export enrichment status utilities
+export function useEnrichmentStatus() {
+  return {
+    enrichmentStatus,
+    // Check if enrichment data is available from SSE
+    hasSSEData: () => enrichmentStatus.lastUpdate !== null,
+    // Get age of last SSE update in milliseconds
+    getDataAge: () => enrichmentStatus.lastUpdate ? Date.now() - enrichmentStatus.lastUpdate : null
   }
 }

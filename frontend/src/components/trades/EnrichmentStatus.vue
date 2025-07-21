@@ -49,29 +49,49 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import api from '@/services/api'
+import { useEnrichmentStatus } from '@/composables/usePriceAlertNotifications'
 
 const enrichmentStatus = ref(null)
 const dismissed = ref(false)
 const pollInterval = ref(null)
 
+// SSE enrichment status
+const { enrichmentStatus: sseEnrichmentStatus, hasSSEData, getDataAge } = useEnrichmentStatus()
+
+// Combined enrichment status - use SSE data if available and recent, otherwise fallback to API polling
+const currentEnrichmentStatus = computed(() => {
+  const dataAge = getDataAge()
+  const isSSEDataFresh = dataAge !== null && dataAge < 60000 // Less than 1 minute old
+  
+  if (hasSSEData() && isSSEDataFresh && sseEnrichmentStatus.tradeEnrichment.length > 0) {
+    console.log('Using SSE enrichment data (age:', dataAge, 'ms)')
+    return {
+      tradeEnrichment: sseEnrichmentStatus.tradeEnrichment
+    }
+  }
+  
+  // Fallback to API polling data
+  return enrichmentStatus.value
+})
+
 const showStatus = computed(() => {
-  return !dismissed.value && enrichmentStatus.value && (isEnriching.value || recentlyCompleted.value)
+  return !dismissed.value && currentEnrichmentStatus.value && (isEnriching.value || recentlyCompleted.value)
 })
 
 const isEnriching = computed(() => {
-  if (!enrichmentStatus.value) return false
+  if (!currentEnrichmentStatus.value) return false
   
-  const pending = enrichmentStatus.value.tradeEnrichment?.find(s => s.enrichment_status === 'pending')?.count || 0
-  const processing = enrichmentStatus.value.tradeEnrichment?.find(s => s.enrichment_status === 'processing')?.count || 0
+  const pending = currentEnrichmentStatus.value.tradeEnrichment?.find(s => s.enrichment_status === 'pending')?.count || 0
+  const processing = currentEnrichmentStatus.value.tradeEnrichment?.find(s => s.enrichment_status === 'processing')?.count || 0
   
   return pending > 0 || processing > 0
 })
 
 const recentlyCompleted = computed(() => {
   // Show for 30 seconds after completion
-  if (!enrichmentStatus.value || isEnriching.value) return false
+  if (!currentEnrichmentStatus.value || isEnriching.value) return false
   
-  const statuses = enrichmentStatus.value.tradeEnrichment || []
+  const statuses = currentEnrichmentStatus.value.tradeEnrichment || []
   const completed = parseInt(statuses.find(s => s.enrichment_status === 'completed')?.count || 0)
   const pending = parseInt(statuses.find(s => s.enrichment_status === 'pending')?.count || 0)
   const processing = parseInt(statuses.find(s => s.enrichment_status === 'processing')?.count || 0)
@@ -82,9 +102,9 @@ const recentlyCompleted = computed(() => {
 })
 
 const progress = computed(() => {
-  if (!enrichmentStatus.value) return 0
+  if (!currentEnrichmentStatus.value) return 0
   
-  const statuses = enrichmentStatus.value.tradeEnrichment || []
+  const statuses = currentEnrichmentStatus.value.tradeEnrichment || []
   const total = statuses.reduce((sum, s) => sum + parseInt(s.count), 0)
   const completed = parseInt(statuses.find(s => s.enrichment_status === 'completed')?.count || 0)
   const processing = parseInt(statuses.find(s => s.enrichment_status === 'processing')?.count || 0)
@@ -97,11 +117,11 @@ const progress = computed(() => {
 })
 
 const statusMessage = computed(() => {
-  if (!enrichmentStatus.value) return ''
+  if (!currentEnrichmentStatus.value) return ''
   
   if (isEnriching.value) {
-    const pending = enrichmentStatus.value.tradeEnrichment?.find(s => s.enrichment_status === 'pending')?.count || 0
-    const processing = enrichmentStatus.value.tradeEnrichment?.find(s => s.enrichment_status === 'processing')?.count || 0
+    const pending = currentEnrichmentStatus.value.tradeEnrichment?.find(s => s.enrichment_status === 'pending')?.count || 0
+    const processing = currentEnrichmentStatus.value.tradeEnrichment?.find(s => s.enrichment_status === 'processing')?.count || 0
     
     if (processing > 0) {
       return `Processing ${processing} trades for strategy classification, symbol data, and price analysis...`
@@ -163,6 +183,14 @@ watch(isEnriching, (newValue, oldValue) => {
     startPolling() // Restart polling with new interval
   }
 }, { flush: 'post' })
+
+// Watch for SSE enrichment updates
+watch(() => sseEnrichmentStatus.lastUpdate, (newValue) => {
+  if (newValue) {
+    lastUpdateTime.value = newValue
+    console.log('SSE enrichment update received, updated lastUpdateTime')
+  }
+})
 
 onMounted(async () => {
   await fetchEnrichmentStatus()

@@ -259,8 +259,8 @@ class JobQueue {
     const cusipResolver = require('./cusipResolver');
     const { cusips, userId } = data;
     
-    logger.logImport(`Resolving ${cusips.length} CUSIPs`);
-    const results = await cusipResolver.batchResolveCusips(cusips);
+    logger.logImport(`Resolving ${cusips.length} CUSIPs for user ${userId}`);
+    const results = await cusipResolver.batchResolveCusips(cusips, userId);
     
     // Update trades with resolved symbols and track affected trade IDs
     const affectedTradeIds = new Set();
@@ -296,6 +296,7 @@ class JobQueue {
    */
   async processStrategyClassification(data) {
     const Trade = require('../models/Trade');
+    const enrichmentCacheService = require('../services/enrichmentCacheService');
     
     // Handle both single trade and batch formats
     let tradesToProcess = [];
@@ -359,6 +360,19 @@ class JobQueue {
             ]);
             
             logger.logImport(`Updated strategy for trade ${trade.id}: ${classification.strategy} (${Math.round((classification.confidence || 0.5) * 100)}% confidence)`);
+            
+            // Store the classification data in enrichment cache
+            try {
+              await enrichmentCacheService.storeTradeEnrichmentData(trade, 'strategy_classification', {
+                strategy: classification.strategy,
+                confidence: classification.confidence,
+                method: classification.method,
+                signals: classification.signals,
+                api_provider: 'finnhub'
+              });
+            } catch (cacheError) {
+              logger.logError(`Failed to cache strategy classification for trade ${trade.id}: ${cacheError.message}`);
+            }
           }
         }
       } catch (error) {
@@ -394,6 +408,7 @@ class JobQueue {
    */
   async processMaeMfeEstimation(data) {
     const maeEstimator = require('./maeEstimator');
+    const enrichmentCacheService = require('../services/enrichmentCacheService');
     const { tradeIds } = data;
     
     logger.logImport(`Estimating MAE/MFE for ${tradeIds.length} trades`);
@@ -402,7 +417,8 @@ class JobQueue {
       try {
         const trade = await db.query('SELECT * FROM trades WHERE id = $1', [tradeId]);
         if (trade.rows[0]) {
-          const estimates = await maeEstimator.estimateMAEMFE(trade.rows[0]);
+          const tradeData = trade.rows[0];
+          const estimates = await maeEstimator.estimateMAEMFE(tradeData);
           
           if (estimates.mae !== null || estimates.mfe !== null) {
             await db.query(`
@@ -410,6 +426,18 @@ class JobQueue {
               SET mae = $1, mfe = $2
               WHERE id = $3
             `, [estimates.mae, estimates.mfe, tradeId]);
+            
+            // Store MAE/MFE data in enrichment cache
+            try {
+              await enrichmentCacheService.storeTradeEnrichmentData(tradeData, 'mae_mfe_estimation', {
+                typical_mae_percent: estimates.mae,
+                typical_mfe_percent: estimates.mfe,
+                confidence: estimates.confidence || 70, // Default confidence
+                api_provider: 'internal_calculation'
+              });
+            } catch (cacheError) {
+              logger.logError(`Failed to cache MAE/MFE data for trade ${tradeId}: ${cacheError.message}`);
+            }
           }
         }
       } catch (error) {
@@ -447,6 +475,15 @@ class JobQueue {
    */
   async checkAndUpdateTradeEnrichmentStatus(tradeId) {
     try {
+      // First check if the trade still exists
+      const tradeExistsQuery = `SELECT id FROM trades WHERE id = $1`;
+      const tradeExists = await db.query(tradeExistsQuery, [tradeId]);
+      
+      if (tradeExists.rows.length === 0) {
+        logger.logImport(`Trade ${tradeId} no longer exists - skipping enrichment status update`);
+        return;
+      }
+      
       // Check if there are any pending or processing jobs for this trade
       const pendingJobsQuery = `
         SELECT COUNT(*) as pending_count
@@ -475,10 +512,80 @@ class JobQueue {
         
         if (updateResult.rowCount > 0) {
           logger.logImport(`Trade ${tradeId} enrichment completed - all background jobs finished`);
+          
+          // Send real-time enrichment update notification
+          try {
+            const updatedTrade = updateResult.rows[0];
+            if (updatedTrade && updatedTrade.user_id) {
+              const notificationsController = require('../controllers/notifications.controller');
+              
+              // Get current enrichment status for this user
+              const enrichmentStatusQuery = `
+                SELECT enrichment_status, COUNT(*) as count
+                FROM trades 
+                WHERE user_id = $1
+                GROUP BY enrichment_status
+                ORDER BY enrichment_status
+              `;
+              const statusResult = await db.query(enrichmentStatusQuery, [updatedTrade.user_id]);
+              
+              await notificationsController.sendEnrichmentUpdateToUser(updatedTrade.user_id, {
+                tradeId: tradeId,
+                tradeEnrichment: statusResult.rows.map(row => ({
+                  enrichment_status: row.enrichment_status,
+                  count: row.count
+                }))
+              });
+            }
+          } catch (notificationError) {
+            logger.logError(`Failed to send enrichment notification for trade ${tradeId}: ${notificationError.message}`);
+          }
         }
       }
     } catch (error) {
       logger.logError(`Failed to update trade enrichment status for ${tradeId}: ${error.message}`);
+    }
+  }
+
+  /**
+   * Clean up jobs for deleted trades
+   */
+  async cleanupJobsForDeletedTrades() {
+    try {
+      // Find jobs that reference trades that no longer exist
+      const staleJobsQuery = `
+        SELECT DISTINCT jq.id, jq.data
+        FROM job_queue jq
+        WHERE jq.status IN ('pending', 'processing', 'completed')
+        AND (
+          (jq.data->>'tradeId' IS NOT NULL AND NOT EXISTS (
+            SELECT 1 FROM trades t WHERE t.id = (jq.data->>'tradeId')::uuid
+          ))
+        )
+      `;
+      
+      const staleJobs = await db.query(staleJobsQuery);
+      
+      if (staleJobs.rows.length > 0) {
+        // Update these jobs to 'cancelled' status
+        const jobIds = staleJobs.rows.map(job => job.id);
+        
+        await db.query(`
+          UPDATE job_queue 
+          SET status = 'failed', 
+              completed_at = CURRENT_TIMESTAMP,
+              error = 'Trade no longer exists'
+          WHERE id = ANY($1)
+        `, [jobIds]);
+        
+        logger.logImport(`Cancelled ${staleJobs.rows.length} jobs for deleted trades`);
+        return staleJobs.rows.length;
+      }
+      
+      return 0;
+    } catch (error) {
+      logger.logError(`Failed to cleanup jobs for deleted trades: ${error.message}`);
+      return 0;
     }
   }
 }

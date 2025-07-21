@@ -15,16 +15,29 @@ class AIService {
 
   async getUserSettings(userId) {
     try {
-      const settings = await User.getSettings(userId);
+      const db = require('../config/database');
       
-      // Get admin default settings
+      // Query user_settings table directly
+      const userSettingsQuery = `
+        SELECT ai_provider, ai_api_key, ai_api_url, ai_model
+        FROM user_settings 
+        WHERE user_id = $1
+      `;
+      const userSettingsResult = await db.query(userSettingsQuery, [userId]);
+      
+      let userSettings = null;
+      if (userSettingsResult.rows.length > 0) {
+        userSettings = userSettingsResult.rows[0];
+      }
+      
+      // Get admin default settings as fallback
       const adminDefaults = await adminSettingsService.getDefaultAISettings();
       
       return {
-        provider: settings?.ai_provider || adminDefaults.provider,
-        apiKey: settings?.ai_api_key || adminDefaults.apiKey,
-        apiUrl: settings?.ai_api_url || adminDefaults.apiUrl,
-        model: settings?.ai_model || adminDefaults.model
+        provider: userSettings?.ai_provider || adminDefaults.provider,
+        apiKey: userSettings?.ai_api_key || adminDefaults.apiKey,
+        apiUrl: userSettings?.ai_api_url || adminDefaults.apiUrl,
+        model: userSettings?.ai_model || adminDefaults.model
       };
     } catch (error) {
       console.error('Failed to get user AI settings:', error);
