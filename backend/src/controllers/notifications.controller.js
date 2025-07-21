@@ -172,6 +172,32 @@ const notificationsController = {
     }
   },
 
+  // Send enrichment status update to specific user
+  async sendEnrichmentUpdateToUser(userId, enrichmentData) {
+    try {
+      const connection = sseConnections.get(userId);
+      
+      if (connection) {
+        const eventData = {
+          type: 'enrichment_update',
+          data: enrichmentData,
+          timestamp: new Date().toISOString()
+        };
+
+        connection.write(`data: ${JSON.stringify(eventData)}\n\n`);
+        logger.logDebug(`Sent enrichment update to user ${userId}`);
+        return true;
+      }
+      
+      return false;
+    } catch (error) {
+      logger.logError(`Error sending enrichment update to user ${userId}:`, error);
+      // Remove broken connection
+      sseConnections.delete(userId);
+      return false;
+    }
+  },
+
   // Broadcast notification to all connected users (for system announcements)
   async broadcastNotification(notification) {
     try {

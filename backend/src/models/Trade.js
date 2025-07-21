@@ -139,8 +139,28 @@ class Trade {
     // Log the strategy assignment for debugging
     console.log(`Auto-assigned strategy "${finalStrategy}" to trade ${createdTrade.id} with ${strategyConfidence}% confidence using ${classificationMethod}`);
     
-    // Check if trade needs any enrichment
-    const needsEnrichment = shouldQueueClassification || 
+    // Check enrichment cache for existing data
+    let appliedCachedData = false;
+    if (!manualOverride && options.skipApiCalls) {
+      try {
+        const enrichmentCacheService = require('../services/enrichmentCacheService');
+        appliedCachedData = await enrichmentCacheService.applyEnrichmentDataToTrade(
+          createdTrade.id,
+          symbol.toUpperCase(),
+          entryTime,
+          new Date(entryTime).toTimeString().substring(0, 8) // Convert to HH:MM:SS format
+        );
+        
+        if (appliedCachedData) {
+          console.log(`Applied cached enrichment data to trade ${createdTrade.id}`);
+        }
+      } catch (cacheError) {
+        console.warn(`Failed to check enrichment cache for trade ${createdTrade.id}:`, cacheError.message);
+      }
+    }
+    
+    // Check if trade needs any enrichment (only if no cached data was applied)
+    const needsEnrichment = (!appliedCachedData && shouldQueueClassification) || 
                            (symbol && symbol.match(/^[A-Z0-9]{8}[0-9]$/)); // CUSIP pattern
     
     // Queue strategy classification job if needed

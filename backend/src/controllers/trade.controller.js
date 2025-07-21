@@ -1129,6 +1129,16 @@ const tradeController = {
         return res.status(400).json({ error: 'Valid CUSIP must be 9 characters' });
       }
 
+      // Check if Finnhub is configured
+      if (!finnhub.isConfigured()) {
+        return res.status(503).json({ 
+          error: 'CUSIP lookup service not available - Finnhub API key not configured',
+          cusip,
+          ticker: null,
+          found: false 
+        });
+      }
+
       const ticker = await finnhub.lookupCusip(cusip);
       
       if (ticker) {
@@ -1137,7 +1147,25 @@ const tradeController = {
         res.json({ cusip, ticker: null, found: false });
       }
     } catch (error) {
-      next(error);
+      console.error(`CUSIP lookup error for ${req.params.cusip}:`, error);
+      
+      // Return a user-friendly error instead of generic 500
+      if (error.message?.includes('API key')) {
+        return res.status(503).json({ 
+          error: 'CUSIP lookup service not available',
+          cusip: req.params.cusip,
+          ticker: null,
+          found: false 
+        });
+      }
+      
+      res.status(500).json({ 
+        error: 'Failed to lookup CUSIP',
+        cusip: req.params.cusip,
+        ticker: null,
+        found: false,
+        details: error.message 
+      });
     }
   },
 

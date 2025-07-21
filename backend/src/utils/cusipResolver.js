@@ -75,7 +75,7 @@ class CusipResolver {
         logger.logImport(`${stillUnresolved.length} CUSIPs still unresolved, trying additional sources`);
         
         // Try individual lookups for remaining CUSIPs (slower but more thorough)
-        const additionalResolved = await this.individualResolveCusips(stillUnresolved);
+        const additionalResolved = await this.individualResolveCusips(stillUnresolved, userId);
         
         if (Object.keys(additionalResolved).length > 0) {
           await this.updateTradeSymbols(userId, additionalResolved);
@@ -88,17 +88,17 @@ class CusipResolver {
     }
   }
 
-  async batchResolveCusips(cusips) {
+  async batchResolveCusips(cusips, userId = null) {
     try {
-      // Use Finnhub batch lookup
-      return await finnhub.batchLookupCusips(cusips);
+      // Use Finnhub batch lookup with user context for AI fallback
+      return await finnhub.batchLookupCusips(cusips, userId);
     } catch (error) {
       logger.logError(`Batch CUSIP lookup failed: ${error.message}`);
       return {};
     }
   }
 
-  async individualResolveCusips(cusips) {
+  async individualResolveCusips(cusips, userId = null) {
     const resolved = {};
     
     // Limit to avoid overwhelming APIs
@@ -107,7 +107,7 @@ class CusipResolver {
     
     for (const cusip of cusipsToProcess) {
       try {
-        const ticker = await finnhub.lookupCusip(cusip);
+        const ticker = await finnhub.lookupCusip(cusip, userId);
         if (ticker) {
           resolved[cusip] = ticker;
         }

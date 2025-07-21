@@ -1,5 +1,6 @@
 const axios = require('axios');
 const cache = require('./cache');
+const aiService = require('./aiService');
 
 class FinnhubClient {
   constructor() {
@@ -430,7 +431,7 @@ class FinnhubClient {
     }
   }
 
-  async lookupCusip(cusip) {
+  async lookupCusip(cusip, userId = null) {
     if (!cusip || cusip.length !== 9) {
       throw new Error('Invalid CUSIP format');
     }
@@ -479,19 +480,148 @@ class FinnhubClient {
         }
       }
       
-      throw new Error(`No symbol found for CUSIP ${cleanCusip}`);
+      // Finnhub didn't find the CUSIP, try AI fallback
+      console.log(`Finnhub could not resolve CUSIP ${cleanCusip} - trying AI fallback`);
+      
+      try {
+        const aiResult = await this.lookupCusipWithAI(cleanCusip, userId);
+        if (aiResult) {
+          // Cache the AI result
+          await cache.set('cusip_resolution', cleanCusip, aiResult);
+          console.log(`✅ AI resolved CUSIP ${cleanCusip} to ticker ${aiResult}`);
+          return aiResult;
+        } else {
+          console.log(`❌ AI could not resolve CUSIP ${cleanCusip}`);
+        }
+      } catch (aiError) {
+        if (aiError.message.includes('API key not valid') || aiError.message.includes('API_KEY_INVALID')) {
+          console.warn(`⚠️  AI fallback unavailable for CUSIP ${cleanCusip}: Invalid API key configured for user ${userId || 'unknown'}`);
+        } else {
+          console.warn(`❌ AI fallback failed for CUSIP ${cleanCusip}: ${aiError.message}`);
+        }
+      }
+      
+      // Neither Finnhub nor AI found the CUSIP - cache the null result to avoid repeated lookups
+      await cache.set('cusip_resolution', cleanCusip, null);
+      console.log(`Could not resolve CUSIP ${cleanCusip} - no matching symbol found via Finnhub or AI`);
+      return null;
       
     } catch (error) {
-      console.warn(`Failed to lookup CUSIP ${cleanCusip}: ${error.message}`);
+      // Only throw if it's an actual API error, not a "not found" case
+      if (!error.message?.includes('No symbol found')) {
+        console.warn(`Failed to lookup CUSIP ${cleanCusip}: ${error.message}`);
+        throw error;
+      }
+      return null;
+    }
+  }
+
+  async generateSystemAIResponse(prompt) {
+    try {
+      const db = require('../config/database');
+      
+      // Get admin AI settings from database
+      const settingsQuery = `
+        SELECT setting_key, setting_value 
+        FROM admin_settings 
+        WHERE setting_key IN ('default_ai_provider', 'default_ai_api_key', 'default_ai_model')
+      `;
+      const settingsResult = await db.query(settingsQuery);
+      
+      const settings = {};
+      settingsResult.rows.forEach(row => {
+        settings[row.setting_key] = row.setting_value;
+      });
+      
+      if (!settings.default_ai_api_key) {
+        throw new Error('System AI provider not configured - no admin API key found');
+      }
+      
+      // Use the configured AI provider
+      if (settings.default_ai_provider === 'gemini') {
+        const gemini = require('./gemini');
+        
+        const response = await gemini.generateResponse(prompt, {
+          apiKey: settings.default_ai_api_key,
+          model: settings.default_ai_model || 'gemini-1.5-flash',
+          temperature: 0.1, // Low temperature for factual responses
+          maxTokens: 50     // Short response expected
+        });
+        
+        return response;
+      } else {
+        throw new Error(`Unsupported system AI provider: ${settings.default_ai_provider}`);
+      }
+      
+    } catch (error) {
+      console.error('System AI response failed:', error.message);
+      throw new Error(`Failed to generate AI response: ${error.message}`);
+    }
+  }
+
+
+  async lookupCusipWithAI(cusip, userId = null) {
+    try {
+      if (userId) {
+        // Use the existing aiService which handles user-specific settings
+        const aiService = require('./aiService');
+        const ticker = await aiService.lookupCusip(userId, cusip);
+        
+        if (!ticker || ticker.trim() === 'NOT_FOUND' || ticker.trim().length === 0) {
+          return null;
+        }
+        
+        // Validate ticker format (1-10 characters, letters, numbers, dash, dot)
+        if (!/^[A-Z0-9\-\.]{1,10}$/.test(ticker)) {
+          console.warn(`AI returned invalid ticker format for CUSIP ${cusip}: ${ticker}`);
+          return null;
+        }
+        
+        return ticker;
+      } else {
+        // Fallback to system-level AI call with admin settings
+        const prompt = `You are a financial data assistant. I need to find the stock ticker symbol for a specific CUSIP number.
+
+CUSIP: ${cusip}
+
+Please provide ONLY the stock ticker symbol (e.g., AAPL, MSFT, TSLA) for this CUSIP. 
+
+If you cannot identify the ticker symbol for this CUSIP, respond with "NOT_FOUND".
+
+Your response should contain ONLY the ticker symbol or "NOT_FOUND" - no additional text, explanations, or formatting.`;
+
+        const response = await this.generateSystemAIResponse(prompt);
+        
+        if (!response || response.trim() === 'NOT_FOUND' || response.trim().length === 0) {
+          return null;
+        }
+        
+        // Clean up the response - extract just the ticker symbol
+        let ticker = response.trim().toUpperCase();
+        
+        // Remove any extra text or formatting
+        ticker = ticker.replace(/[^A-Z0-9\-\.]/g, '');
+        
+        // Validate ticker format (1-10 characters, letters, numbers, dash, dot)
+        if (!/^[A-Z0-9\-\.]{1,10}$/.test(ticker)) {
+          console.warn(`AI returned invalid ticker format for CUSIP ${cusip}: ${response.trim()}`);
+          return null;
+        }
+        
+        return ticker;
+      }
+      
+    } catch (error) {
+      console.error(`AI CUSIP lookup failed for ${cusip}:`, error.message);
       throw error;
     }
   }
 
-  async batchLookupCusips(cusips) {
+  async batchLookupCusips(cusips, userId = null) {
     const results = {};
     const uniqueCusips = [...new Set(cusips.map(c => c.replace(/\s/g, '').toUpperCase()))];
     
-    console.log(`Looking up ${uniqueCusips.length} CUSIPs with Finnhub`);
+    console.log(`Looking up ${uniqueCusips.length} CUSIPs with Finnhub for user ${userId || 'unknown'}`);
     
     // Process CUSIPs with automatic rate limiting
     // No need for manual batching since makeRequest handles rate limiting
@@ -499,7 +629,7 @@ class FinnhubClient {
     
     for (const cusip of uniqueCusips) {
       try {
-        const ticker = await this.lookupCusip(cusip);
+        const ticker = await this.lookupCusip(cusip, userId);
         if (ticker) {
           results[cusip] = ticker;
         }
