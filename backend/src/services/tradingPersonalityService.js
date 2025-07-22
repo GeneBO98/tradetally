@@ -7,19 +7,44 @@ class TradingPersonalityService {
   // Analyze and classify a user's trading personality
   static async analyzePersonality(userId, startDate = null, endDate = null) {
     try {
-      // Check tier access
-      const hasAccess = await TierService.hasFeatureAccess(userId, 'behavioral_analytics');
-      if (!hasAccess) {
-        throw new Error('Trading personality analysis requires Pro tier');
-      }
+      // Note: Basic personality analysis is available to all users
+      // Only advanced technical analysis features require Pro tier
 
       // Set date range (default: all available trades)
       let end, start;
+      let useProvidedDateRange = false;
+      
       if (endDate && startDate) {
-        // Use specified date range
-        end = new Date(endDate);
-        start = new Date(startDate);
-      } else {
+        // Check if provided date range has sufficient trades first
+        const testEnd = new Date(endDate);
+        const testStart = new Date(startDate);
+        
+        const testQuery = `
+          SELECT COUNT(*) as count
+          FROM trades 
+          WHERE user_id = $1 
+            AND entry_time >= $2
+            AND exit_time <= $3
+            AND exit_time IS NOT NULL
+            AND entry_time IS NOT NULL
+            AND pnl IS NOT NULL
+        `;
+        
+        const testResult = await db.query(testQuery, [userId, testStart, testEnd]);
+        const tradesInRange = parseInt(testResult.rows[0].count);
+        
+        if (tradesInRange >= 20) {
+          // Use specified date range if it has enough trades
+          end = testEnd;
+          start = testStart;
+          useProvidedDateRange = true;
+          console.log(`Using provided date range: ${tradesInRange} trades found`);
+        } else {
+          console.log(`Provided date range has only ${tradesInRange} trades, expanding to all available trades`);
+        }
+      }
+      
+      if (!useProvidedDateRange) {
         // Get all available trades - query the earliest and latest trade dates
         const dateRangeQuery = `
           SELECT 
@@ -34,6 +59,7 @@ class TradingPersonalityService {
         if (dateRangeResult.rows[0].earliest_date) {
           start = new Date(dateRangeResult.rows[0].earliest_date);
           end = new Date(dateRangeResult.rows[0].latest_date);
+          console.log(`Using full available date range: ${start.toISOString()} to ${end.toISOString()}`);
         } else {
           // Fallback if no trades found
           end = new Date();
@@ -79,7 +105,7 @@ class TradingPersonalityService {
       const technicalAnalysis = await this.analyzeTechnicalPatterns(trades.slice(0, 10)); // Sample for API limits
       
       // Calculate personality scores
-      const personalityScores = await this.calculatePersonalityScores(behaviorMetrics, technicalAnalysis);
+      const personalityScores = await this.calculatePersonalityScores(userId, behaviorMetrics, technicalAnalysis);
       
       // Determine primary personality
       const primaryPersonality = this.determinePrimaryPersonality(personalityScores);
@@ -241,7 +267,7 @@ class TradingPersonalityService {
   }
 
   // Calculate personality scores as actual percentages that add to 100%
-  static async calculatePersonalityScores(behaviorMetrics, technicalAnalysis) {
+  static async calculatePersonalityScores(userId, behaviorMetrics, technicalAnalysis) {
     // Import Trade model to classify individual trades
     const Trade = require('../models/Trade');
     
@@ -256,52 +282,71 @@ class TradingPersonalityService {
         position: 0
       };
 
+      // Check if user has Pro tier for advanced technical analysis
+      // Get actual user tier from database directly (bypass TierService billing logic)
+      const userTierQuery = await db.query('SELECT tier FROM users WHERE id = $1', [userId]);
+      const actualTier = userTierQuery.rows[0]?.tier || 'free';
+      const hasProAccess = actualTier === 'pro';
+      
+      console.log(`User ${userId} has tier: ${actualTier}, Pro access: ${hasProAccess}`);
+      
       // Classify each trade and count
-      // For accurate classification, we should use technical analysis
-      // Limit sample size to avoid exceeding Finnhub rate limits (150 calls/min)
-      // With 4 API calls per trade, we can safely analyze ~10 trades in quick succession
-      const sampleSize = Math.min(behaviorMetrics.trades.length, 10); // Reduced to 10 trades to stay well under rate limit
-      const sampleTrades = behaviorMetrics.trades.slice(0, sampleSize);
-      
-      console.log(`Analyzing ${sampleSize} trades out of ${behaviorMetrics.trades.length} total for strategy classification`);
-      
-      // Analyze sampled trades with technical analysis
-      // Process sequentially to respect API rate limits (150 calls/minute)
-      const analysisResults = [];
-      for (let i = 0; i < sampleTrades.length; i++) {
-        const trade = sampleTrades[i];
+      if (hasProAccess) {
+        // For Pro users: Use technical analysis with API calls
+        // Limit sample size to avoid exceeding Finnhub rate limits (150 calls/min)
+        // With 4 API calls per trade, we can safely analyze ~10 trades in quick succession
+        const sampleSize = Math.min(behaviorMetrics.trades.length, 10); // Reduced to 10 trades to stay well under rate limit
+        const sampleTrades = behaviorMetrics.trades.slice(0, sampleSize);
         
-        // Add delay between trades to avoid hitting rate limit
-        // Each trade makes 4 API calls (candles + 3 indicators)
-        // 150 calls/min = 2.5 calls/sec, so with 4 calls per trade, we can do ~37 trades/min
-        if (i > 0) {
-          await new Promise(resolve => setTimeout(resolve, 1600)); // 1.6 second delay between trades
+        console.log(`Analyzing ${sampleSize} trades out of ${behaviorMetrics.trades.length} total for strategy classification (Pro user)`);
+        
+        // Analyze sampled trades with technical analysis
+        // Process sequentially to respect API rate limits (150 calls/minute)
+        const analysisResults = [];
+        for (let i = 0; i < sampleTrades.length; i++) {
+          const trade = sampleTrades[i];
+          
+          // Add delay between trades to avoid hitting rate limit
+          // Each trade makes 4 API calls (candles + 3 indicators)
+          // 150 calls/min = 2.5 calls/sec, so with 4 calls per trade, we can do ~37 trades/min
+          if (i > 0) {
+            await new Promise(resolve => setTimeout(resolve, 1600)); // 1.6 second delay between trades
+          }
+          
+          try {
+            const strategy = await Trade.classifyTradeStrategyWithAnalysis(trade);
+            analysisResults.push({ trade, strategy });
+          } catch (error) {
+            console.error(`Error analyzing trade ${trade.id}:`, error);
+            analysisResults.push({ trade, strategy: Trade.classifyTradeStrategy(trade) }); // Fallback
+          }
         }
         
-        try {
-          const strategy = await Trade.classifyTradeStrategyWithAnalysis(trade);
-          analysisResults.push({ trade, strategy });
-        } catch (error) {
-          console.error(`Error analyzing trade ${trade.id}:`, error);
-          analysisResults.push({ trade, strategy: Trade.classifyTradeStrategy(trade) }); // Fallback
-        }
+        // Count strategies from analyzed trades
+        analysisResults.forEach(({ strategy }) => {
+          if (strategies.hasOwnProperty(strategy)) {
+            strategies[strategy]++;
+          }
+        });
+        
+        // For remaining trades, use time-based classification
+        const remainingTrades = behaviorMetrics.trades.slice(sampleSize);
+        remainingTrades.forEach(trade => {
+          const strategy = Trade.classifyTradeStrategy(trade);
+          if (strategies.hasOwnProperty(strategy)) {
+            strategies[strategy]++;
+          }
+        });
+      } else {
+        // For Free users: Use only time-based classification (no API calls)
+        console.log(`Using time-based strategy classification for ${behaviorMetrics.trades.length} trades (Free user)`);
+        behaviorMetrics.trades.forEach(trade => {
+          const strategy = Trade.classifyTradeStrategy(trade);
+          if (strategies.hasOwnProperty(strategy)) {
+            strategies[strategy]++;
+          }
+        });
       }
-      
-      // Count strategies from analyzed trades
-      analysisResults.forEach(({ strategy }) => {
-        if (strategies.hasOwnProperty(strategy)) {
-          strategies[strategy]++;
-        }
-      });
-      
-      // For remaining trades, use time-based classification
-      const remainingTrades = behaviorMetrics.trades.slice(sampleSize);
-      remainingTrades.forEach(trade => {
-        const strategy = Trade.classifyTradeStrategy(trade);
-        if (strategies.hasOwnProperty(strategy)) {
-          strategies[strategy]++;
-        }
-      });
 
       const totalTrades = behaviorMetrics.trades.length;
       
@@ -581,9 +626,12 @@ class TradingPersonalityService {
     const [current, previous] = result.rows;
     const driftScore = this.calculateDriftScore(current, previous);
     
-    // Calculate specific drift metrics
-    const holdTimeDriftPercent = ((current.avg_hold_time_minutes - previous.avg_hold_time_minutes) / previous.avg_hold_time_minutes) * 100;
-    const frequencyDriftPercent = ((current.avg_trade_frequency_per_day - previous.avg_trade_frequency_per_day) / previous.avg_trade_frequency_per_day) * 100;
+    // Calculate specific drift metrics (cap at 999.99 to avoid database overflow)
+    const rawHoldTimeDriftPercent = ((current.avg_hold_time_minutes - previous.avg_hold_time_minutes) / previous.avg_hold_time_minutes) * 100;
+    const rawFrequencyDriftPercent = ((current.avg_trade_frequency_per_day - previous.avg_trade_frequency_per_day) / previous.avg_trade_frequency_per_day) * 100;
+    
+    const holdTimeDriftPercent = Math.max(-999.99, Math.min(999.99, rawHoldTimeDriftPercent || 0));
+    const frequencyDriftPercent = Math.max(-999.99, Math.min(999.99, rawFrequencyDriftPercent || 0));
     const riskToleranceDrift = Math.abs(current.position_sizing_consistency - previous.position_sizing_consistency);
     
     // Determine drift severity

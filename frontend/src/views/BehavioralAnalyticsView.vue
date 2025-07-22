@@ -1082,11 +1082,32 @@
           </div>
         </div>
 
+        <!-- Info Banner Explaining the Difference -->
+        <div class="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 mb-6">
+          <div class="flex">
+            <div class="flex-shrink-0">
+              <svg class="h-5 w-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div class="ml-3">
+              <h3 class="text-sm font-medium text-blue-800 dark:text-blue-300">Understanding the Analytics</h3>
+              <div class="mt-2 text-sm text-blue-700 dark:text-blue-200">
+                <p class="mb-2">• <strong>Loss Aversion Analysis</strong>: Reveals your behavioral patterns - do you hold losers longer than winners?</p>
+                <p>• <strong>Missed Profit Opportunities</strong>: Shows specific trades where you exited early and left money on the table.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Loss Aversion Analysis -->
         <div class="card">
           <div class="card-body">
             <div class="flex items-center justify-between mb-6">
-              <h3 class="text-lg font-medium text-gray-900 dark:text-white">Loss Aversion Metrics</h3>
+              <div>
+                <h3 class="text-lg font-medium text-gray-900 dark:text-white">Loss Aversion Behavior Analysis</h3>
+                <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Identifies psychological patterns: Do you hold losers too long and exit winners too early?</p>
+              </div>
               <button
                 @click="analyzeLossAversion"
                 :disabled="loadingLossAversion"
@@ -1194,7 +1215,7 @@
                       @click="scrollToTopMissedTrades"
                       class="px-3 py-2 text-sm font-medium text-orange-600 bg-orange-50 border border-orange-200 rounded-md hover:bg-orange-100 dark:bg-orange-900/20 dark:text-orange-400 dark:border-orange-800 dark:hover:bg-orange-900/30 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500"
                     >
-                      🎯 View Top Missed Opportunities
+                      🎯 View Specific Trades You Exited Early
                     </button>
                     <button
                       @click="viewLossAversionTrades"
@@ -1314,10 +1335,13 @@
         </div>
 
         <!-- Top Missed Trades Analysis -->
-        <div class="card">
+        <div class="card" ref="topMissedTradesSection">
           <div class="card-body">
             <div class="flex items-center justify-between mb-6">
-              <h3 class="text-lg font-medium text-gray-900 dark:text-white">Top Missed Opportunities</h3>
+              <div>
+                <h3 class="text-lg font-medium text-gray-900 dark:text-white">Top Missed Profit Opportunities</h3>
+                <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Specific trades where you left money on the table by exiting too early</p>
+              </div>
               <div class="flex space-x-2">
                 <button
                   @click="loadTopMissedTrades"
@@ -1328,7 +1352,7 @@
                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
-                  {{ loadingTopMissedTrades ? 'Analyzing...' : 'Find Top Missed Trades' }}
+                  {{ loadingTopMissedTrades ? 'Analyzing...' : 'Find Early Exit Trades' }}
                 </button>
               </div>
             </div>
@@ -1344,7 +1368,7 @@
                     </p>
                   </div>
                   <div>
-                    <p class="text-sm text-orange-700 dark:text-orange-300">With Missed Opportunities</p>
+                    <p class="text-sm text-orange-700 dark:text-orange-300">Trades Exited Too Early</p>
                     <p class="text-xl font-bold text-orange-900 dark:text-orange-100">
                       {{ topMissedTrades.totalEligibleTrades }}
                     </p>
@@ -1376,7 +1400,7 @@
               <!-- Top Missed Trades List -->
               <div v-if="topMissedTrades.topMissedTrades.length > 0" class="space-y-4">
                 <h4 class="text-lg font-medium text-gray-700 dark:text-gray-300 mb-4">
-                  🎯 Your Biggest Missed Opportunities (Sorted by % Missed)
+                  🎯 Specific Trades Where You Exited Too Early (Sorted by % Profit Missed)
                 </h4>
                 
                 <div 
@@ -1564,7 +1588,7 @@
 
             <div v-else class="text-center py-8 text-gray-500 dark:text-gray-400">
               <p>No missed opportunities analysis available yet.</p>
-              <p class="text-sm mt-2">Click "Find Top Missed Trades" to analyze your biggest missed opportunities.</p>
+              <p class="text-sm mt-2">Click "Find Early Exit Trades" to see specific trades where you left profits on the table.</p>
             </div>
           </div>
         </div>
@@ -1949,6 +1973,7 @@ const overconfidenceData = ref(null)
 const personalityData = ref(null)
 const topMissedTrades = ref(null)
 const showAllMissedTrades = ref(false)
+const topMissedTradesSection = ref(null)
 const settings = ref({
   revengeTrading: { enabled: true, sensitivity: 'medium' },
   coolingPeriod: { minutes: 30 },
@@ -2267,19 +2292,18 @@ const viewLossAversionTrades = () => {
 // Scroll to top missed trades section
 const scrollToTopMissedTrades = async () => {
   // Load top missed trades if not already loaded
-  if (!topMissedTrades.value) {
+  if (!topMissedTrades.value || !topMissedTrades.value.topMissedTrades) {
     await loadTopMissedTrades()
   }
   
   // Scroll to the top missed trades section
   await nextTick()
-  const element = document.querySelector('h3').parentElement.parentElement.nextElementSibling
-  if (element) {
-    element.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  if (topMissedTradesSection.value) {
+    topMissedTradesSection.value.scrollIntoView({ behavior: 'smooth', block: 'start' })
     // Briefly highlight the section
-    element.classList.add('ring-2', 'ring-orange-300', 'ring-opacity-50')
+    topMissedTradesSection.value.classList.add('ring-2', 'ring-orange-400', 'ring-opacity-50')
     setTimeout(() => {
-      element.classList.remove('ring-2', 'ring-orange-300', 'ring-opacity-50')
+      topMissedTradesSection.value.classList.remove('ring-2', 'ring-orange-400', 'ring-opacity-50')
     }, 2000)
   }
 }

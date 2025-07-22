@@ -873,8 +873,31 @@ Example format:
   static parseAIRecommendations(aiResponse) {
     if (!aiResponse) return [];
     
+    // Handle object responses (convert to string first)
+    let responseText;
+    if (typeof aiResponse === 'object') {
+      // Handle different object response formats
+      if (aiResponse.content) {
+        responseText = aiResponse.content;
+      } else if (aiResponse.text) {
+        responseText = aiResponse.text;
+      } else if (aiResponse.message) {
+        responseText = aiResponse.message;
+      } else if (aiResponse.response) {
+        responseText = aiResponse.response;
+      } else {
+        // If it's an object with no known text property, convert to string
+        responseText = JSON.stringify(aiResponse);
+      }
+    } else if (typeof aiResponse === 'string') {
+      responseText = aiResponse;
+    } else {
+      console.warn('Unexpected AI response type:', typeof aiResponse);
+      return [];
+    }
+    
     // Split by lines and filter for lines that start with dash or bullet
-    const lines = aiResponse.split('\n')
+    const lines = responseText.split('\n')
       .map(line => line.trim())
       .filter(line => line.startsWith('-') || line.startsWith('•') || line.startsWith('*'))
       .map(line => line.replace(/^[-•*]\s*/, '').trim())
@@ -882,7 +905,7 @@ Example format:
     
     // If no structured format found, try to extract sentences
     if (lines.length === 0) {
-      const sentences = aiResponse.split(/[.!?]+/)
+      const sentences = responseText.split(/[.!?]+/)
         .map(s => s.trim())
         .filter(s => s.length > 20 && s.length < 200)
         .slice(0, 4); // Max 4 recommendations
@@ -938,7 +961,20 @@ Example format:
       
       const result = await db.query(query, [eventId]);
       if (result.rows.length > 0 && result.rows[0].ai_recommendations) {
-        const recommendationsData = JSON.parse(result.rows[0].ai_recommendations);
+        let recommendationsData;
+        
+        try {
+          // Try to parse as JSON
+          recommendationsData = JSON.parse(result.rows[0].ai_recommendations);
+        } catch (parseError) {
+          console.warn('Invalid JSON in ai_recommendations, treating as plain text:', parseError.message);
+          // If it's not valid JSON, treat as plain text and split into lines
+          const plainText = result.rows[0].ai_recommendations;
+          return plainText.split('\n')
+            .map(line => line.trim())
+            .filter(line => line.length > 10)
+            .slice(0, 4);
+        }
         
         // Handle both old and new formats
         if (Array.isArray(recommendationsData)) {
