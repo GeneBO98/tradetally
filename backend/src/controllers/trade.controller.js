@@ -15,6 +15,7 @@ const tradeController = {
         strategies, sectors, // New multi-select parameters
         side, minPrice, maxPrice, minQuantity, maxQuantity,
         status, minPnl, maxPnl, pnlType, broker, hasNews,
+        daysOfWeek, // New day of week filter
         limit = 50, offset = 0 
       } = req.query;
       
@@ -40,6 +41,7 @@ const tradeController = {
         pnlType,
         broker,
         hasNews,
+        daysOfWeek: daysOfWeek ? daysOfWeek.split(',').map(d => parseInt(d)) : undefined,
         // Pagination
         limit: parseInt(limit),
         offset: parseInt(offset)
@@ -79,6 +81,7 @@ const tradeController = {
         strategies, sectors, // Add multi-select parameters
         side, minPrice, maxPrice, minQuantity, maxQuantity,
         status, minPnl, maxPnl, pnlType, broker, hasNews,
+        daysOfWeek, // New day of week filter
         limit = 50, offset = 0 
       } = req.query;
       
@@ -103,6 +106,7 @@ const tradeController = {
         pnlType,
         broker,
         hasNews,
+        daysOfWeek: daysOfWeek ? daysOfWeek.split(',').map(d => parseInt(d)) : undefined,
         limit: parseInt(limit),
         offset: parseInt(offset)
       };
@@ -1090,7 +1094,7 @@ const tradeController = {
         strategies, sectors, // Add multi-select parameters
         side, minPrice, maxPrice, minQuantity, maxQuantity,
         status, minPnl, maxPnl, pnlType, broker, hasNews,
-        holdTime, minHoldTime, maxHoldTime 
+        holdTime, minHoldTime, maxHoldTime, daysOfWeek 
       } = req.query;
       
       const filters = {
@@ -1113,7 +1117,8 @@ const tradeController = {
         pnlType,
         broker,
         hasNews,
-        holdTime
+        holdTime,
+        daysOfWeek: daysOfWeek ? daysOfWeek.split(',').map(d => parseInt(d)) : undefined
       };
       
       console.log('🔍 getAnalytics RAW QUERY:', req.query);

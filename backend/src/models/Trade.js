@@ -1,5 +1,6 @@
 const db = require('../config/database');
 const AchievementService = require('../services/achievementService');
+const { getUserLocalDate } = require('../utils/timezone');
 
 class Trade {
   static async create(userId, tradeData, options = {}) {
@@ -19,7 +20,8 @@ class Trade {
     const pnlPercent = providedPnLPercent !== undefined ? providedPnLPercent : this.calculatePnLPercent(entryPrice, cleanExitPrice, side);
 
     // Use exit date as trade date if available, otherwise use entry date
-    const finalTradeDate = cleanExitTime ? new Date(cleanExitTime).toISOString().split('T')[0] : new Date(entryTime).toISOString().split('T')[0];
+    // Calculate trade date in user's timezone to avoid timezone conversion issues
+    const finalTradeDate = await getUserLocalDate(userId, cleanExitTime || entryTime);
 
     // Auto-assign strategy if not provided by user
     let finalStrategy = strategy;
@@ -313,6 +315,7 @@ class Trade {
   }
 
   static async findByUser(userId, filters = {}) {
+    const { getUserTimezone } = require('../utils/timezone');
     let query = `
       SELECT t.*, 
         array_agg(DISTINCT ta.file_url) FILTER (WHERE ta.id IS NOT NULL) as attachment_urls,
@@ -444,6 +447,28 @@ class Trade {
       query += ` AND t.pnl > 0`;
     } else if (filters.pnlType === 'loss') {
       query += ` AND t.pnl < 0`;
+    }
+
+    // Days of week filter (timezone-aware)
+    if (filters.daysOfWeek && filters.daysOfWeek.length > 0) {
+      // Get user's timezone for accurate day calculation
+      const userTimezone = await getUserTimezone(userId);
+      console.log(`🕒 Using timezone ${userTimezone} for day-of-week filtering`);
+      
+      // Use entry_time converted to user's timezone for day calculation
+      // This handles cases where trade_date might be wrong due to timezone issues
+      const placeholders = filters.daysOfWeek.map((_, index) => `$${paramCount + index}`).join(',');
+      if (userTimezone !== 'UTC') {
+        query += ` AND extract(dow from (t.entry_time AT TIME ZONE 'UTC' AT TIME ZONE $${paramCount + filters.daysOfWeek.length})) IN (${placeholders})`;
+        filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
+        values.push(userTimezone);
+        paramCount += filters.daysOfWeek.length + 1;
+      } else {
+        // UTC case - can use simpler extraction
+        query += ` AND extract(dow from t.entry_time) IN (${placeholders})`;
+        filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
+        paramCount += filters.daysOfWeek.length;
+      }
     }
 
     // Broker filter
@@ -740,6 +765,7 @@ class Trade {
   }
 
   static async getCountWithFilters(userId, filters = {}) {
+    const { getUserTimezone } = require('../utils/timezone');
     console.log('🔢 getCountWithFilters called with userId:', userId, 'filters:', filters);
     
     // Count query with optional join for sectors
@@ -826,6 +852,23 @@ class Trade {
       paramCount++;
     }
 
+    // Days of week filter for count (timezone-aware)
+    if (filters.daysOfWeek && filters.daysOfWeek.length > 0) {
+      const userTimezone = await getUserTimezone(userId);
+      const placeholders = filters.daysOfWeek.map((_, index) => `$${paramCount + index}`).join(',');
+      
+      if (userTimezone !== 'UTC') {
+        query += ` AND extract(dow from (${tablePrefix}entry_time AT TIME ZONE 'UTC' AT TIME ZONE $${paramCount + filters.daysOfWeek.length})) IN (${placeholders})`;
+        filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
+        values.push(userTimezone);
+        paramCount += filters.daysOfWeek.length + 1;
+      } else {
+        query += ` AND extract(dow from ${tablePrefix}entry_time) IN (${placeholders})`;
+        filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
+        paramCount += filters.daysOfWeek.length;
+      }
+    }
+
     console.log('🔢 Count query:', query);
     console.log('🔢 Count values:', values);
     
@@ -837,6 +880,7 @@ class Trade {
   }
 
   static async getAnalytics(userId, filters = {}) {
+    const { getUserTimezone } = require('../utils/timezone');
     console.log('Getting analytics for user:', userId, 'with filters:', filters);
     
     // First, check what data exists in the database
@@ -981,6 +1025,23 @@ class Trade {
         whereClause += ` AND t.has_news = true`;
       } else if (filters.hasNews === 'false' || filters.hasNews === false) {
         whereClause += ` AND (t.has_news = false OR t.has_news IS NULL)`;
+      }
+    }
+
+    // Days of week filter for analytics (timezone-aware)
+    if (filters.daysOfWeek && filters.daysOfWeek.length > 0) {
+      const userTimezone = await getUserTimezone(userId);
+      const placeholders = filters.daysOfWeek.map((_, index) => `$${paramCount + index}`).join(',');
+      
+      if (userTimezone !== 'UTC') {
+        whereClause += ` AND extract(dow from (t.entry_time AT TIME ZONE 'UTC' AT TIME ZONE $${paramCount + filters.daysOfWeek.length})) IN (${placeholders})`;
+        filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
+        values.push(userTimezone);
+        paramCount += filters.daysOfWeek.length + 1;
+      } else {
+        whereClause += ` AND extract(dow from t.entry_time) IN (${placeholders})`;
+        filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
+        paramCount += filters.daysOfWeek.length;
       }
     }
 
@@ -1462,6 +1523,7 @@ class Trade {
   }
 
   static async getRoundTripTradeCount(userId, filters = {}) {
+    const { getUserTimezone } = require('../utils/timezone');
     // Build WHERE clause for round_trip_trades table
     let whereClause = 'WHERE user_id = $1';
     const values = [userId];
@@ -1497,6 +1559,23 @@ class Trade {
       paramCount++;
     }
 
+    // Days of week filter for round-trip trade count (timezone-aware)
+    if (filters.daysOfWeek && filters.daysOfWeek.length > 0) {
+      const userTimezone = await getUserTimezone(userId);
+      const placeholders = filters.daysOfWeek.map((_, index) => `$${paramCount + index}`).join(',');
+      
+      if (userTimezone !== 'UTC') {
+        whereClause += ` AND extract(dow from (entry_time AT TIME ZONE 'UTC' AT TIME ZONE $${paramCount + filters.daysOfWeek.length})) IN (${placeholders})`;
+        filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
+        values.push(userTimezone);
+        paramCount += filters.daysOfWeek.length + 1;
+      } else {
+        whereClause += ` AND extract(dow from entry_time) IN (${placeholders})`;
+        filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
+        paramCount += filters.daysOfWeek.length;
+      }
+    }
+
     const query = `
       SELECT COUNT(*)::integer as round_trip_count
       FROM round_trip_trades
@@ -1508,6 +1587,7 @@ class Trade {
   }
 
   static async getRoundTripTrades(userId, filters = {}) {
+    const { getUserTimezone } = require('../utils/timezone');
     // Build WHERE clause for round_trip_trades table
     let whereClause = 'WHERE rt.user_id = $1';
     const values = [userId];
@@ -1549,6 +1629,23 @@ class Trade {
       whereClause += ` AND sc.finnhub_industry IN (${placeholders})`;
       filters.sectors.forEach(sector => values.push(sector));
       paramCount += filters.sectors.length;
+    }
+
+    // Days of week filter for round-trip trades (timezone-aware)
+    if (filters.daysOfWeek && filters.daysOfWeek.length > 0) {
+      const userTimezone = await getUserTimezone(userId);
+      const placeholders = filters.daysOfWeek.map((_, index) => `$${paramCount + index}`).join(',');
+      
+      if (userTimezone !== 'UTC') {
+        whereClause += ` AND extract(dow from (rt.entry_time AT TIME ZONE 'UTC' AT TIME ZONE $${paramCount + filters.daysOfWeek.length})) IN (${placeholders})`;
+        filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
+        values.push(userTimezone);
+        paramCount += filters.daysOfWeek.length + 1;
+      } else {
+        whereClause += ` AND extract(dow from rt.entry_time) IN (${placeholders})`;
+        filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
+        paramCount += filters.daysOfWeek.length;
+      }
     }
 
     // Add pagination
