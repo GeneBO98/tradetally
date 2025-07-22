@@ -52,7 +52,7 @@ import api from '@/services/api'
 import { useEnrichmentStatus } from '@/composables/usePriceAlertNotifications'
 
 const enrichmentStatus = ref(null)
-const dismissed = ref(false)
+const dismissed = ref(JSON.parse(localStorage.getItem('enrichmentBannerDismissed') || 'false'))
 const pollInterval = ref(null)
 
 // SSE enrichment status
@@ -75,7 +75,18 @@ const currentEnrichmentStatus = computed(() => {
 })
 
 const showStatus = computed(() => {
-  return !dismissed.value && currentEnrichmentStatus.value && (isEnriching.value || recentlyCompleted.value)
+  // If dismissed and no tasks are actively pending/processing, don't show
+  if (dismissed.value && !isEnriching.value) {
+    return false
+  }
+  
+  // Always show if there are pending/processing tasks, even if previously dismissed
+  if (isEnriching.value) {
+    return true
+  }
+  
+  // Show recently completed only if not dismissed
+  return !dismissed.value && currentEnrichmentStatus.value && recentlyCompleted.value
 })
 
 const isEnriching = computed(() => {
@@ -159,6 +170,7 @@ async function fetchEnrichmentStatus() {
 
 function dismiss() {
   dismissed.value = true
+  localStorage.setItem('enrichmentBannerDismissed', 'true')
 }
 
 function startPolling() {
@@ -177,8 +189,16 @@ function startPolling() {
   }, interval)
 }
 
-// Watch for changes in enrichment status to adjust polling frequency
+// Watch for changes in enrichment status to adjust polling frequency and reset dismissed state
 watch(isEnriching, (newValue, oldValue) => {
+  // If enrichment starts and we were previously not enriching, reset dismissed state
+  if (newValue && !oldValue) {
+    dismissed.value = false
+    localStorage.setItem('enrichmentBannerDismissed', 'false')
+    console.log('New enrichment tasks detected, showing banner again')
+  }
+  
+  // Restart polling with new interval if status changed
   if (newValue !== oldValue && showStatus.value) {
     startPolling() // Restart polling with new interval
   }

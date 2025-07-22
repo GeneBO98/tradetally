@@ -283,9 +283,9 @@ class TradingPersonalityService {
       };
 
       // Check if user has Pro tier for advanced technical analysis
-      // Get actual user tier from database directly (bypass TierService billing logic)
-      const userTierQuery = await db.query('SELECT tier FROM users WHERE id = $1', [userId]);
-      const actualTier = userTierQuery.rows[0]?.tier || 'free';
+      // Use TierService to respect self-hosted configuration
+      const TierService = require('./tierService');
+      const actualTier = await TierService.getUserTier(userId);
       const hasProAccess = actualTier === 'pro';
       
       console.log(`User ${userId} has tier: ${actualTier}, Pro access: ${hasProAccess}`);
@@ -314,7 +314,7 @@ class TradingPersonalityService {
           }
           
           try {
-            const strategy = await Trade.classifyTradeStrategyWithAnalysis(trade);
+            const strategy = await Trade.classifyTradeStrategyWithAnalysis(trade, userId);
             analysisResults.push({ trade, strategy });
           } catch (error) {
             console.error(`Error analyzing trade ${trade.id}:`, error);

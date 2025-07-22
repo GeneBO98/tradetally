@@ -13,7 +13,7 @@ const tradeController = {
       const { 
         symbol, startDate, endDate, tags, strategy, sector,
         side, minPrice, maxPrice, minQuantity, maxQuantity,
-        status, minPnl, maxPnl, pnlType, broker,
+        status, minPnl, maxPnl, pnlType, broker, hasNews,
         limit = 50, offset = 0 
       } = req.query;
       
@@ -35,10 +35,13 @@ const tradeController = {
         maxPnl: maxPnl ? parseFloat(maxPnl) : undefined,
         pnlType,
         broker,
+        hasNews,
         // Pagination
         limit: parseInt(limit),
         offset: parseInt(offset)
       };
+
+      console.log('🔍 getUserTrades filters:', JSON.stringify(filters, null, 2));
 
       // Get trades with pagination
       const trades = await Trade.findByUser(req.user.id, filters);
@@ -69,7 +72,7 @@ const tradeController = {
       const { 
         symbol, startDate, endDate, tags, strategy, sector,
         side, minPrice, maxPrice, minQuantity, maxQuantity,
-        status, minPnl, maxPnl, pnlType, broker,
+        status, minPnl, maxPnl, pnlType, broker, hasNews,
         limit = 50, offset = 0 
       } = req.query;
       
@@ -90,6 +93,7 @@ const tradeController = {
         maxPnl: maxPnl ? parseFloat(maxPnl) : undefined,
         pnlType,
         broker,
+        hasNews,
         limit: parseInt(limit),
         offset: parseInt(offset)
       };
@@ -1075,7 +1079,7 @@ const tradeController = {
       const { 
         startDate, endDate, symbol, sector, strategy, 
         side, minPrice, maxPrice, minQuantity, maxQuantity,
-        status, minPnl, maxPnl, pnlType, broker,
+        status, minPnl, maxPnl, pnlType, broker, hasNews,
         holdTime, minHoldTime, maxHoldTime 
       } = req.query;
       
@@ -1095,6 +1099,7 @@ const tradeController = {
         maxPnl,
         pnlType,
         broker,
+        hasNews,
         holdTime
       };
       

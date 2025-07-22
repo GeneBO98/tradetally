@@ -98,7 +98,7 @@
       </div>
 
       <!-- Show trades when available -->
-      <div v-else>
+      <div v-else :key="tradesStore.trades.length">
         <!-- Bulk Actions Bar -->
         <div v-if="selectedTrades.length > 0" class="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
           <div class="flex items-center justify-between">
@@ -123,7 +123,7 @@
         </div>
 
         <!-- Mobile view (cards) -->
-        <div class="block md:hidden space-y-4">
+        <div class="block md:hidden space-y-4" :key="'mobile-' + tradesStore.trades.length">
         <div v-for="trade in tradesStore.trades" :key="trade.id" 
              class="bg-white dark:bg-gray-800 shadow rounded-lg p-4 hover:shadow-md transition-shadow">
           <div class="flex items-start space-x-3 mb-3">
@@ -136,7 +136,7 @@
             />
             <div class="flex-1 cursor-pointer" @click="$router.push(`/trades/${trade.id}`)">
             <div class="flex justify-between items-start mb-3">
-              <div class="flex items-center space-x-3">
+              <div class="flex items-center space-x-2">
                 <div class="text-lg font-semibold text-gray-900 dark:text-white">
                   {{ trade.symbol }}
                 </div>
@@ -147,6 +147,13 @@
                       : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
                   ]">
                   {{ trade.side }}
+                </span>
+                <!-- News badge for mobile -->
+                <span v-if="trade.has_news" 
+                  class="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400 flex items-center"
+                  :title="`${trade.news_events?.length || 0} news article(s) - ${trade.news_sentiment || 'neutral'} sentiment`">
+                  📰
+                  <span class="ml-1">{{ trade.news_events?.length || 0 }}</span>
                 </span>
               </div>
             <span class="px-2 py-1 text-xs font-semibold rounded-full"
@@ -226,7 +233,7 @@
         </div>
 
         <!-- Desktop view (table) -->
-        <div class="hidden md:block overflow-hidden shadow ring-1 ring-black ring-opacity-5 md:rounded-lg">
+        <div class="hidden md:block overflow-hidden shadow ring-1 ring-black ring-opacity-5 md:rounded-lg" :key="'desktop-' + tradesStore.trades.length">
         <div class="overflow-x-auto">
           <table class="min-w-full divide-y divide-gray-300 dark:divide-gray-700">
           <thead class="bg-gray-50 dark:bg-gray-800">
@@ -283,8 +290,17 @@
                 />
               </td>
               <td class="px-6 py-4 whitespace-nowrap cursor-pointer" @click="$router.push(`/trades/${trade.id}`)">
-                <div class="text-sm font-medium text-gray-900 dark:text-white">
-                  {{ trade.symbol }}
+                <div class="flex items-center space-x-2">
+                  <div class="text-sm font-medium text-gray-900 dark:text-white">
+                    {{ trade.symbol }}
+                  </div>
+                  <!-- News badge for desktop table -->
+                  <span v-if="trade.has_news" 
+                    class="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400 flex items-center"
+                    :title="`${trade.news_events?.length || 0} news article(s) - ${trade.news_sentiment || 'neutral'} sentiment`">
+                    📰
+                    <span class="ml-1">{{ trade.news_events?.length || 0 }}</span>
+                  </span>
                 </div>
               </td>
               <td class="px-6 py-4 whitespace-nowrap cursor-pointer" @click="$router.push(`/trades/${trade.id}`)">

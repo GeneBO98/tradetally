@@ -1,4 +1,5 @@
 const db = require('../config/database');
+const AchievementService = require('../services/achievementService');
 
 class Trade {
   static async create(userId, tradeData, options = {}) {
@@ -77,7 +78,7 @@ class Trade {
         try {
           // Use enhanced classification if trade is complete, otherwise basic classification
           const classification = cleanExitTime && cleanExitPrice ? 
-            await this.classifyTradeStrategyWithAnalysis(tempTrade) :
+            await this.classifyTradeStrategyWithAnalysis(tempTrade, userId) :
             await this.classifyTradeBasic(tempTrade);
           
           if (typeof classification === 'object') {
@@ -115,14 +116,36 @@ class Trade {
       classificationMetadata = { userProvided: true };
     }
 
+    // Check for news events (Pro feature)
+    let newsData = {
+      hasNews: false,
+      newsEvents: [],
+      sentiment: null,
+      checkedAt: null
+    };
+
+    // Only check news for complete trades and if not skipping API calls
+    if (!options.skipApiCalls && cleanExitTime && cleanExitPrice) {
+      try {
+        newsData = await this.checkNewsForTrade({
+          symbol: symbol.toUpperCase(),
+          tradeDate: finalTradeDate,
+          entry_time: entryTime
+        }, userId);
+      } catch (error) {
+        console.warn(`Error checking news for trade: ${error.message}`);
+      }
+    }
+
     const query = `
       INSERT INTO trades (
         user_id, symbol, trade_date, entry_time, exit_time, entry_price, exit_price,
         quantity, side, commission, fees, pnl, pnl_percent, notes, is_public,
         broker, strategy, setup, tags, executions, mae, mfe, confidence,
-        strategy_confidence, classification_method, classification_metadata, manual_override
+        strategy_confidence, classification_method, classification_metadata, manual_override,
+        news_events, has_news, news_sentiment, news_checked_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31)
       RETURNING *
     `;
 
@@ -130,7 +153,8 @@ class Trade {
       userId, symbol.toUpperCase(), finalTradeDate, entryTime, cleanExitTime, entryPrice, cleanExitPrice,
       quantity, side, commission || 0, fees || 0, pnl, pnlPercent, notes, isPublic || false,
       broker, finalStrategy, setup, tags || [], JSON.stringify(executionData || []), mae || null, mfe || null, confidence || 5,
-      strategyConfidence, classificationMethod, JSON.stringify(classificationMetadata), manualOverride
+      strategyConfidence, classificationMethod, JSON.stringify(classificationMetadata), manualOverride,
+      JSON.stringify(newsData.newsEvents || []), newsData.hasNews || false, newsData.sentiment, newsData.checkedAt
     ];
 
     const result = await db.query(query, values);
@@ -204,6 +228,13 @@ class Trade {
       } catch (error) {
         console.warn(`Failed to update enrichment status for trade ${createdTrade.id}:`, error.message);
       }
+    }
+    
+    // Check for new achievements (async, don't wait for completion)
+    if (!options.skipAchievements) {
+      AchievementService.checkAndAwardAchievements(userId).catch(error => {
+        console.warn(`Failed to check achievements for user ${userId} after trade creation:`, error.message);
+      });
     }
     
     return createdTrade;
@@ -328,6 +359,17 @@ class Trade {
       query += ` AND sc.finnhub_industry = $${paramCount}`;
       values.push(filters.sector);
       paramCount++;
+    }
+
+    if (filters.hasNews !== undefined && filters.hasNews !== '') {
+      console.log('🔍 hasNews filter detected:', { value: filters.hasNews, type: typeof filters.hasNews });
+      if (filters.hasNews === 'true' || filters.hasNews === true) {
+        query += ` AND t.has_news = true`;
+        console.log('🔍 Applied hasNews=true filter to query');
+      } else if (filters.hasNews === 'false' || filters.hasNews === false) {
+        query += ` AND (t.has_news = false OR t.has_news IS NULL)`;
+        console.log('🔍 Applied hasNews=false filter to query');
+      }
     }
 
     // Advanced filters
@@ -479,7 +521,7 @@ class Trade {
       try {
         // Re-classify with enhanced analysis if complete, otherwise basic
         const classification = updatedTrade.exit_time && updatedTrade.exit_price ? 
-          await this.classifyTradeStrategyWithAnalysis(updatedTrade) :
+          await this.classifyTradeStrategyWithAnalysis(updatedTrade, userId) :
           await this.classifyTradeBasic(updatedTrade);
 
         if (typeof classification === 'object') {
@@ -565,6 +607,12 @@ class Trade {
     `;
 
     const result = await db.query(query, values);
+    
+    // Check for new achievements after trade update (async, don't wait for completion)
+    AchievementService.checkAndAwardAchievements(userId).catch(error => {
+      console.warn(`Failed to check achievements for user ${userId} after trade update:`, error.message);
+    });
+    
     return result.rows[0];
   }
 
@@ -717,6 +765,20 @@ class Trade {
       query += ` AND exit_price IS NOT NULL`;
     }
 
+    if (filters.hasNews !== undefined && filters.hasNews !== '') {
+      if (filters.hasNews === 'true' || filters.hasNews === true) {
+        query += ` AND has_news = true`;
+      } else if (filters.hasNews === 'false' || filters.hasNews === false) {
+        query += ` AND (has_news = false OR has_news IS NULL)`;
+      }
+    }
+
+    if (filters.strategy && filters.strategy.trim()) {
+      query += ` AND strategy = $${paramCount}`;
+      values.push(filters.strategy.trim());
+      paramCount++;
+    }
+
     console.log('🔢 Count query:', query);
     console.log('🔢 Count values:', values);
     
@@ -848,6 +910,15 @@ class Trade {
     // Hold time filter for analytics
     if (filters.holdTime) {
       whereClause += this.getHoldTimeFilter(filters.holdTime);
+    }
+
+    // News filter for analytics
+    if (filters.hasNews !== undefined && filters.hasNews !== '') {
+      if (filters.hasNews === 'true' || filters.hasNews === true) {
+        whereClause += ` AND t.has_news = true`;
+      } else if (filters.hasNews === 'false' || filters.hasNews === false) {
+        whereClause += ` AND (t.has_news = false OR t.has_news IS NULL)`;
+      }
     }
 
     console.log('Analytics query - whereClause:', whereClause);
@@ -1529,7 +1600,7 @@ class Trade {
   }
 
   // Enhanced strategy classification using Finnhub technical analysis
-  static async classifyTradeStrategyWithAnalysis(trade) {
+  static async classifyTradeStrategyWithAnalysis(trade, userId = null) {
     const finnhub = require('../utils/finnhub');
     
     if (!finnhub.isConfigured()) {
@@ -1555,9 +1626,21 @@ class Trade {
 
       // Get technical data in parallel with rate limiting (removed pattern recognition per user request)
       const [candles, technicalData] = await Promise.all([
-        finnhub.getCandles(symbol, '60', analysisStart, analysisEnd).catch(() => null), // 1-hour candles
-        this.getTechnicalIndicators(symbol, entryTimestamp, exitTimestamp).catch(() => null)
+        finnhub.getCandles(symbol, '60', analysisStart, analysisEnd, userId).catch(() => null), // 1-hour candles
+        this.getTechnicalIndicators(symbol, entryTimestamp, exitTimestamp, userId).catch(() => null)
       ]);
+
+      // Get news data for the trade if available (Pro feature)
+      let newsData = null;
+      try {
+        newsData = await this.checkNewsForTrade({
+          symbol: symbol,
+          tradeDate: trade.trade_date || new Date(trade.entry_time).toISOString().split('T')[0],
+          entry_time: trade.entry_time
+        }, userId);
+      } catch (error) {
+        console.warn(`Error getting news data for strategy analysis: ${error.message}`);
+      }
 
       // Analyze the trade based on price movement and technical indicators
       const analysis = this.analyzeTradeCharacteristics({
@@ -1566,7 +1649,8 @@ class Trade {
         candles,
         technicalData,
         entryTimestamp,
-        exitTimestamp
+        exitTimestamp,
+        newsData
       });
 
       return analysis.strategy;
@@ -1578,7 +1662,7 @@ class Trade {
   }
 
   // Get relevant technical indicators for trade analysis
-  static async getTechnicalIndicators(symbol, entryTimestamp, exitTimestamp) {
+  static async getTechnicalIndicators(symbol, entryTimestamp, exitTimestamp, userId = null) {
     const finnhub = require('../utils/finnhub');
     
     // Calculate intelligent date range to avoid "increase from and to range" errors
@@ -1592,20 +1676,22 @@ class Trade {
     let analysisStart, analysisEnd, resolution;
     
     if (tradeDurationDays < 1) {
-      // Short trades: use 30-90 days of 5-minute data for sufficient periods
-      analysisStart = tradeStart - (90 * 24 * 60 * 60); // 90 days before
-      analysisEnd = Math.max(tradeEnd, tradeStart + (7 * 24 * 60 * 60)); // At least 7 days after
-      resolution = '5'; // 5-minute bars
+      // Short trades: use minimal data for quick analysis
+      // RSI-14 needs ~3-4x periods for stability: 14 periods × 4 = 56 periods minimum
+      // At 60-minute resolution: 56 hours = ~2.3 days minimum
+      analysisStart = tradeStart - (7 * 24 * 60 * 60); // 7 days before (168 hours = 168 periods)
+      analysisEnd = tradeEnd + (1 * 24 * 60 * 60); // 1 day after
+      resolution = '60'; // 60-minute bars
     } else if (tradeDurationDays < 7) {
-      // Medium trades: use 60 days of 15-minute data
+      // Medium trades: use daily data for better stability
+      analysisStart = tradeStart - (30 * 24 * 60 * 60); // 30 days before
+      analysisEnd = tradeEnd + (5 * 24 * 60 * 60); // 5 days after
+      resolution = 'D'; // Daily bars
+    } else {
+      // Long trades: use daily data with more history
       analysisStart = tradeStart - (60 * 24 * 60 * 60); // 60 days before
       analysisEnd = tradeEnd + (7 * 24 * 60 * 60); // 7 days after
-      resolution = '15'; // 15-minute bars
-    } else {
-      // Long trades: use 90 days of 60-minute data
-      analysisStart = tradeStart - (90 * 24 * 60 * 60); // 90 days before
-      analysisEnd = tradeEnd + (14 * 24 * 60 * 60); // 14 days after
-      resolution = '60'; // 60-minute bars
+      resolution = 'D'; // Daily bars
     }
 
     try {
@@ -1615,11 +1701,33 @@ class Trade {
       const indicators = {};
       
       // RSI - most reliable indicator
-      try {
-        indicators.rsi = await finnhub.getTechnicalIndicator(symbol, resolution, analysisStart, analysisEnd, 'rsi', { timeperiod: 14 });
-      } catch (error) {
-        console.warn(`RSI failed for ${symbol}: ${error.message}`);
+      // Skip RSI for known problematic symbols that consistently fail
+      const problematicSymbols = ['AAPL', 'ORIS']; // Add symbols that consistently fail
+      if (problematicSymbols.includes(symbol)) {
+        console.warn(`Skipping RSI for known problematic symbol: ${symbol}`);
         indicators.rsi = null;
+      } else {
+        try {
+          indicators.rsi = await finnhub.getTechnicalIndicator(symbol, resolution, analysisStart, analysisEnd, 'rsi', { timeperiod: 14 });
+        } catch (error) {
+          console.warn(`RSI failed for ${symbol}: ${error.message}`);
+          
+          // Try one simple fallback: daily data with minimal range
+          if (error.message.includes('Timeperiod is too long') || error.message.includes('422')) {
+            try {
+              // Minimal approach: 30 days of daily data only
+              console.warn(`Retrying RSI for ${symbol} with minimal daily data`);
+              const minimalStart = tradeStart - (30 * 24 * 60 * 60); // 30 days only
+              const minimalEnd = tradeEnd; // No extra days after
+              indicators.rsi = await finnhub.getTechnicalIndicator(symbol, 'D', minimalStart, minimalEnd, 'rsi', { timeperiod: 14 });
+            } catch (minimalError) {
+              console.warn(`RSI minimal fallback failed for ${symbol}, adding to problematic symbols list: ${minimalError.message}`);
+              indicators.rsi = null;
+            }
+          } else {
+            indicators.rsi = null;
+          }
+        }
       }
       
       // MACD - requires more data
@@ -1629,6 +1737,9 @@ class Trade {
         });
       } catch (error) {
         console.warn(`MACD failed for ${symbol}: ${error.message}`);
+        
+        // Skip MACD on this error since it requires even more data than RSI
+        console.warn(`Skipping MACD for ${symbol} due to data range limitations`);
         indicators.macd = null;
       }
       
@@ -1639,7 +1750,24 @@ class Trade {
         });
       } catch (error) {
         console.warn(`BBands failed for ${symbol}: ${error.message}`);
-        indicators.bbands = null;
+        
+        // Try fallback with shorter BBands period
+        if (error.message.includes('Timeperiod is too long') || error.message.includes('422')) {
+          try {
+            // Fallback: Use shorter BBands period (10 instead of 20) with daily resolution
+            console.warn(`Retrying BBands for ${symbol} with shorter period (10) and daily resolution`);
+            const dailyStart = Math.floor((tradeStart - (30 * 24 * 60 * 60)) / (24 * 60 * 60)) * 24 * 60 * 60; // 30 days for BBands-10
+            const dailyEnd = Math.floor((tradeEnd + (3 * 24 * 60 * 60)) / (24 * 60 * 60)) * 24 * 60 * 60; // 3 days after
+            indicators.bbands = await finnhub.getTechnicalIndicator(symbol, 'D', dailyStart, dailyEnd, 'bbands', { 
+              timeperiod: 10, nbdevup: 2, nbdevdn: 2 
+            });
+          } catch (fallbackError) {
+            console.warn(`BBands fallback failed for ${symbol}: ${fallbackError.message}`);
+            indicators.bbands = null;
+          }
+        } else {
+          indicators.bbands = null;
+        }
       }
 
       // Return indicators with null placeholders for unused ones
@@ -1657,7 +1785,7 @@ class Trade {
   }
 
   // Analyze trade characteristics to determine strategy
-  static analyzeTradeCharacteristics({ trade, patterns, candles, technicalData, entryTimestamp, exitTimestamp }) {
+  static analyzeTradeCharacteristics({ trade, patterns, candles, technicalData, entryTimestamp, exitTimestamp, newsData = null }) {
     const holdTimeMinutes = parseFloat(trade.hold_time_minutes || 0);
     const pnl = parseFloat(trade.pnl || 0);
     const entryPrice = parseFloat(trade.entry_price);
@@ -1745,6 +1873,35 @@ class Trade {
       strategy = 'momentum';
       confidence = Math.max(confidence, 0.85);
       signals.push('Large quick price movement');
+    }
+
+    // News-driven trade analysis (Pro feature)
+    if (newsData && newsData.hasNews && newsData.newsEvents.length > 0) {
+      signals.push(`${newsData.newsEvents.length} news event(s) on trade date`);
+      
+      // Analyze news sentiment impact on strategy
+      if (newsData.sentiment === 'positive' || newsData.sentiment === 'negative') {
+        // News-driven trades often indicate momentum or event-driven strategies
+        if (holdTimeMinutes < 240) { // Less than 4 hours
+          if (Math.abs(priceMove) > 0.02) { // >2% move
+            strategy = 'news_momentum';
+            confidence = Math.max(confidence, 0.9);
+            signals.push(`${newsData.sentiment} news drove price movement`);
+          }
+        } else if (holdTimeMinutes < 1440) { // Less than 1 day
+          // Longer news-driven positions might be event-based swing trades
+          strategy = 'news_swing';
+          confidence = Math.max(confidence, 0.8);
+          signals.push(`${newsData.sentiment} news influenced swing position`);
+        }
+      }
+      
+      // Mixed sentiment might indicate uncertainty-driven mean reversion
+      if (newsData.sentiment === 'mixed' && Math.abs(priceMove) < 0.01) {
+        strategy = 'news_uncertainty';
+        confidence = Math.max(confidence, 0.7);
+        signals.push('Mixed news sentiment led to range-bound trading');
+      }
     }
 
     return {
@@ -1983,6 +2140,151 @@ class Trade {
       holdTimeMinutes: Math.round(holdTimeMinutes),
       method: 'basic_time_based'
     };
+  }
+
+  // Check for news events on trade date (Pro feature)
+  static async checkNewsForTrade(tradeData, userId = null) {
+    try {
+      // Check if user has pro access for news enrichment
+      const TierService = require('../services/tierService');
+      const userTier = await TierService.getUserTier(userId);
+      
+      if (userTier.name === 'free') {
+        console.log('News enrichment is a Pro feature, skipping for free tier user');
+        return {
+          hasNews: false,
+          newsEvents: [],
+          sentiment: null,
+          checkedAt: new Date().toISOString()
+        };
+      }
+
+      const finnhub = require('../utils/finnhub');
+      
+      if (!finnhub.isConfigured()) {
+        console.warn('Finnhub not configured, skipping news check');
+        return {
+          hasNews: false,
+          newsEvents: [],
+          sentiment: null,
+          checkedAt: new Date().toISOString()
+        };
+      }
+
+      const tradeDate = new Date(tradeData.tradeDate || tradeData.entry_time);
+      const symbol = tradeData.symbol;
+      
+      // Get news for the trade date (look at the day of trade and day before for news that might have influenced)
+      const toDate = tradeDate.toISOString().split('T')[0];
+      const fromDate = new Date(tradeDate.getTime() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      
+      console.log(`Checking news for ${symbol} from ${fromDate} to ${toDate}`);
+      
+      const companyNews = await finnhub.getCompanyNews(symbol, fromDate, toDate);
+      
+      if (!companyNews || companyNews.length === 0) {
+        return {
+          hasNews: false,
+          newsEvents: [],
+          sentiment: null,
+          checkedAt: new Date().toISOString()
+        };
+      }
+
+      // Filter and process news articles
+      const relevantNews = companyNews
+        .filter(article => article.headline && article.datetime)
+        .sort((a, b) => b.datetime - a.datetime) // Sort by newest first
+        .slice(0, 5) // Limit to top 5 most recent articles
+        .map(article => ({
+          headline: article.headline,
+          summary: article.summary || '',
+          url: article.url || '',
+          datetime: new Date(article.datetime * 1000).toISOString(),
+          source: article.source || '',
+          sentiment: this.analyzeNewsSentiment(article.headline, article.summary)
+        }));
+
+      // Calculate overall sentiment
+      const overallSentiment = this.calculateOverallSentiment(relevantNews);
+
+      return {
+        hasNews: relevantNews.length > 0,
+        newsEvents: relevantNews,
+        sentiment: overallSentiment,
+        checkedAt: new Date().toISOString()
+      };
+
+    } catch (error) {
+      console.warn(`Error checking news for trade: ${error.message}`);
+      return {
+        hasNews: false,
+        newsEvents: [],
+        sentiment: null,
+        checkedAt: new Date().toISOString(),
+        error: error.message
+      };
+    }
+  }
+
+  // Simple sentiment analysis for news headlines and summaries
+  static analyzeNewsSentiment(headline, summary) {
+    const text = `${headline} ${summary}`.toLowerCase();
+    
+    const positiveWords = [
+      'positive', 'up', 'rise', 'gain', 'growth', 'increase', 'strong', 'beat', 'beats',
+      'exceed', 'higher', 'good', 'great', 'excellent', 'profit', 'surge', 'jump',
+      'rally', 'bullish', 'breakthrough', 'success', 'upgrade', 'outperform'
+    ];
+    
+    const negativeWords = [
+      'negative', 'down', 'fall', 'drop', 'decline', 'decrease', 'weak', 'miss', 'misses',
+      'below', 'lower', 'bad', 'poor', 'loss', 'losses', 'plunge', 'crash',
+      'bearish', 'concern', 'worry', 'downgrade', 'underperform', 'cut', 'reduce'
+    ];
+
+    let positiveScore = 0;
+    let negativeScore = 0;
+
+    positiveWords.forEach(word => {
+      const matches = (text.match(new RegExp(word, 'g')) || []).length;
+      positiveScore += matches;
+    });
+
+    negativeWords.forEach(word => {
+      const matches = (text.match(new RegExp(word, 'g')) || []).length;
+      negativeScore += matches;
+    });
+
+    if (positiveScore > negativeScore) {
+      return 'positive';
+    } else if (negativeScore > positiveScore) {
+      return 'negative';
+    } else {
+      return 'neutral';
+    }
+  }
+
+  // Calculate overall sentiment from multiple news articles
+  static calculateOverallSentiment(newsArticles) {
+    if (!newsArticles || newsArticles.length === 0) {
+      return null;
+    }
+
+    const sentiments = newsArticles.map(article => article.sentiment);
+    const positiveCount = sentiments.filter(s => s === 'positive').length;
+    const negativeCount = sentiments.filter(s => s === 'negative').length;
+    const neutralCount = sentiments.filter(s => s === 'neutral').length;
+
+    if (positiveCount > negativeCount && positiveCount > neutralCount) {
+      return 'positive';
+    } else if (negativeCount > positiveCount && negativeCount > neutralCount) {
+      return 'negative';
+    } else if (positiveCount === negativeCount && positiveCount > 0) {
+      return 'mixed';
+    } else {
+      return 'neutral';
+    }
   }
 }
 

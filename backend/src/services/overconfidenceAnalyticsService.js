@@ -743,8 +743,8 @@ class OverconfidenceAnalyticsService {
         return similarEventRecommendations;
       }
 
-      // Get admin default AI settings
-      const aiSettings = await adminSettingsService.getDefaultAISettings();
+      // Get user AI settings (with admin defaults as fallback)
+      const aiSettings = await aiService.getUserSettings(userId);
       
       if (!aiSettings.provider || !aiSettings.apiKey) {
         console.log('AI recommendations not available - no AI provider configured');
@@ -961,19 +961,43 @@ Example format:
       
       const result = await db.query(query, [eventId]);
       if (result.rows.length > 0 && result.rows[0].ai_recommendations) {
-        let recommendationsData;
+        let recommendationsData = result.rows[0].ai_recommendations;
         
-        try {
-          // Try to parse as JSON
-          recommendationsData = JSON.parse(result.rows[0].ai_recommendations);
-        } catch (parseError) {
-          console.warn('Invalid JSON in ai_recommendations, treating as plain text:', parseError.message);
-          // If it's not valid JSON, treat as plain text and split into lines
-          const plainText = result.rows[0].ai_recommendations;
-          return plainText.split('\n')
-            .map(line => line.trim())
-            .filter(line => line.length > 10)
-            .slice(0, 4);
+        // If it's already an object (database returned parsed JSON), use it directly
+        if (typeof recommendationsData === 'object' && recommendationsData !== null) {
+          // Handle structured data format
+          if (recommendationsData.recommendations) {
+            return Array.isArray(recommendationsData.recommendations) ? 
+                   recommendationsData.recommendations : 
+                   [recommendationsData.recommendations];
+          }
+          // Handle array format
+          if (Array.isArray(recommendationsData)) {
+            return recommendationsData;
+          }
+          // Single recommendation
+          return [recommendationsData];
+        }
+        
+        // If it's a string, try to parse as JSON
+        if (typeof recommendationsData === 'string') {
+          try {
+            recommendationsData = JSON.parse(recommendationsData);
+          } catch (parseError) {
+            console.warn('Invalid JSON in ai_recommendations, treating as plain text:', parseError.message);
+            // Split plain text into lines
+            return recommendationsData.split('\n')
+              .map(line => line.trim())
+              .filter(line => line.length > 10)
+              .slice(0, 4);
+          }
+        }
+        
+        // Handle new object format with structured data
+        if (recommendationsData && typeof recommendationsData === 'object' && recommendationsData.recommendations) {
+          return Array.isArray(recommendationsData.recommendations) ? 
+                 recommendationsData.recommendations : 
+                 [recommendationsData.recommendations];
         }
         
         // Handle both old and new formats
@@ -1095,9 +1119,30 @@ Example format:
       ]);
 
       if (result.rows.length > 0) {
-        const recommendations = JSON.parse(result.rows[0].ai_recommendations);
+        let recommendations;
+        
+        try {
+          recommendations = JSON.parse(result.rows[0].ai_recommendations);
+        } catch (parseError) {
+          console.warn('Error finding similar event recommendations:', parseError.message);
+          return null;
+        }
+        
         console.log(`Found similar event with recommendations for user ${userId}, event ${event.id}`);
-        return recommendations;
+        
+        // Handle object format with structured data
+        if (recommendations && typeof recommendations === 'object' && recommendations.recommendations) {
+          return Array.isArray(recommendations.recommendations) ? 
+                 recommendations.recommendations : 
+                 [recommendations.recommendations];
+        }
+        
+        // Handle array format
+        if (Array.isArray(recommendations)) {
+          return recommendations;
+        }
+        
+        return [recommendations]; // Single recommendation
       }
 
       return null;
@@ -1141,13 +1186,21 @@ Example format:
       const result = await db.query(query, [userId, similarityHash]);
       
       if (result.rows.length > 0) {
-        const recommendationsData = JSON.parse(result.rows[0].ai_recommendations);
+        let recommendationsData;
+        
+        try {
+          recommendationsData = JSON.parse(result.rows[0].ai_recommendations);
+        } catch (parseError) {
+          console.warn('Error getting recommendations by hash:', parseError.message);
+          return null;
+        }
+        
         console.log(`Found recommendations by similarity hash: ${similarityHash}`);
         
         // Return recommendations array, handling both old and new formats
         if (Array.isArray(recommendationsData)) {
           return recommendationsData; // Old format
-        } else if (recommendationsData.recommendations) {
+        } else if (recommendationsData && recommendationsData.recommendations) {
           return recommendationsData.recommendations; // New format
         } else {
           return [recommendationsData]; // Single recommendation

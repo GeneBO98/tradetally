@@ -153,23 +153,17 @@ class FinnhubClient {
     }
   }
 
-  // Map CUSIP to symbol
-  async mapCusipToSymbol(cusip) {
-    const cacheKey = `cusip_${cusip}`;
-    
-    // Check cache first (24 hour TTL for CUSIP mappings)
-    const cached = await cache.get('cusip_mapping', cacheKey);
-    if (cached) {
-      console.log(`Using cached mapping for CUSIP ${cusip}: ${cached.symbol}`);
-      return cached.symbol;
-    }
-    
-    // Search for the CUSIP
-    const result = await this.searchSymbol(cusip);
-    if (result && result.symbol) {
-      // Cache the mapping
-      await cache.set('cusip_mapping', cacheKey, { symbol: result.symbol, cusip }, 86400); // 24 hour TTL
-      return result.symbol;
+  // Map CUSIP to symbol with AI fallback
+  async mapCusipToSymbol(cusip, userId = null) {
+    try {
+      // Use the full lookupCusip function which includes AI fallback
+      const symbol = await this.lookupCusip(cusip, userId);
+      if (symbol) {
+        console.log(`Successfully mapped CUSIP ${cusip} to symbol ${symbol}`);
+        return symbol;
+      }
+    } catch (error) {
+      console.warn(`CUSIP lookup failed for ${cusip}: ${error.message}`);
     }
     
     console.warn(`No symbol found for CUSIP ${cusip}`);
@@ -549,6 +543,22 @@ class FinnhubClient {
         });
         
         return response;
+      } else if (settings.default_ai_provider === 'openai') {
+        const { OpenAI } = await import('openai');
+        
+        const openai = new OpenAI({ 
+          apiKey: settings.default_ai_api_key,
+          baseURL: settings.default_ai_api_url || undefined
+        });
+        
+        const response = await openai.chat.completions.create({
+          model: settings.default_ai_model || 'gpt-3.5-turbo',
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.1,
+          max_tokens: 50
+        });
+        
+        return response.choices[0]?.message?.content?.trim() || '';
       } else {
         throw new Error(`Unsupported system AI provider: ${settings.default_ai_provider}`);
       }
@@ -648,13 +658,13 @@ Your response should contain ONLY the ticker symbol or "NOT_FOUND" - no addition
     return results;
   }
 
-  async getCandles(symbol, resolution, from, to) {
+  async getCandles(symbol, resolution, from, to, userId = null) {
     let symbolUpper = symbol.toUpperCase();
     
     // Check if this looks like a CUSIP (8-9 characters, alphanumeric)
     if (symbolUpper.match(/^[A-Z0-9]{8,9}$/)) {
       console.log(`Detected potential CUSIP: ${symbolUpper}, attempting to map to symbol`);
-      const mappedSymbol = await this.mapCusipToSymbol(symbolUpper);
+      const mappedSymbol = await this.mapCusipToSymbol(symbolUpper, userId);
       if (mappedSymbol) {
         console.log(`Successfully mapped CUSIP ${symbolUpper} to symbol ${mappedSymbol}`);
         symbolUpper = mappedSymbol;
