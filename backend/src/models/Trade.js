@@ -1072,53 +1072,70 @@ class Trade {
     }
 
     const analyticsQuery = `
-      WITH simple_trades AS (
-        -- Simple grouping by symbol and date - include both open and closed positions
-        SELECT 
+      WITH trades_with_starts AS (
+        SELECT
+          *,
+          CASE
+            WHEN LAG(position, 1, 0) OVER (PARTITION BY symbol ORDER BY trade_date, entry_time) = 0 THEN 1
+            ELSE 0
+          END as is_trade_start
+        FROM (
+          SELECT
+            *,
+            SUM(CASE WHEN side = 'long' THEN quantity ELSE -quantity END) OVER (PARTITION BY symbol ORDER BY trade_date, entry_time) as position
+          FROM trades t
+          ${whereClause}
+        ) as positions
+      ),
+      trades_with_groups AS (
+        SELECT
+          *,
+          SUM(is_trade_start) OVER (PARTITION BY symbol ORDER BY trade_date, entry_time) as trade_group
+        FROM trades_with_starts
+      ),
+      completed_trades AS (
+        SELECT
           symbol,
-          trade_date,
-          SUM(COALESCE(pnl, 0)) as trade_pnl,
+          trade_group,
+          SUM(pnl) as trade_pnl,
           SUM(commission + fees) as trade_costs,
           COUNT(*) as execution_count,
           AVG(pnl_percent) as avg_return_pct,
+          MIN(trade_date) as first_trade_date,
           MIN(entry_time) as first_entry,
-          MAX(COALESCE(exit_time, entry_time)) as last_exit,
-          -- Only count as a completed trade if there's P&L
-          CASE WHEN SUM(pnl) IS NOT NULL THEN 1 ELSE 0 END as is_completed
-        FROM trades t
-        ${whereClause}
-        GROUP BY symbol, trade_date
+          MAX(COALESCE(exit_time, entry_time)) as last_exit
+        FROM trades_with_groups
+        GROUP BY symbol, trade_group
       ),
       trade_stats AS (
         SELECT 
-          -- Count all trades (both open and closed) for total trades
           COUNT(*)::integer as total_trades,
-          COUNT(*) FILTER (WHERE is_completed = 1 AND trade_pnl > 0)::integer as winning_trades,
-          COUNT(*) FILTER (WHERE is_completed = 1 AND trade_pnl < 0)::integer as losing_trades,
-          COUNT(*) FILTER (WHERE is_completed = 1 AND trade_pnl = 0)::integer as breakeven_trades,
+          COUNT(*) FILTER (WHERE trade_pnl > 0)::integer as winning_trades,
+          COUNT(*) FILTER (WHERE trade_pnl < 0)::integer as losing_trades,
+          COUNT(*) FILTER (WHERE trade_pnl = 0)::integer as breakeven_trades,
           COALESCE(SUM(trade_pnl), 0)::numeric as total_pnl,
-          COALESCE(AVG(trade_pnl) FILTER (WHERE is_completed = 1), 0)::numeric as avg_pnl,
-          COALESCE(AVG(trade_pnl) FILTER (WHERE is_completed = 1 AND trade_pnl > 0), 0)::numeric as avg_win,
-          COALESCE(AVG(trade_pnl) FILTER (WHERE is_completed = 1 AND trade_pnl < 0), 0)::numeric as avg_loss,
-          COALESCE(MAX(trade_pnl) FILTER (WHERE is_completed = 1), 0)::numeric as best_trade,
-          COALESCE(MIN(trade_pnl) FILTER (WHERE is_completed = 1), 0)::numeric as worst_trade,
+          COALESCE(AVG(trade_pnl), 0)::numeric as avg_pnl,
+          COALESCE(AVG(trade_pnl) FILTER (WHERE trade_pnl > 0), 0)::numeric as avg_win,
+          COALESCE(AVG(trade_pnl) FILTER (WHERE trade_pnl < 0), 0)::numeric as avg_loss,
+          COALESCE(MAX(trade_pnl), 0)::numeric as best_trade,
+          COALESCE(MIN(trade_pnl), 0)::numeric as worst_trade,
           COALESCE(SUM(trade_costs), 0)::numeric as total_costs,
           COALESCE(AVG(avg_return_pct) FILTER (WHERE avg_return_pct IS NOT NULL), 0)::numeric as avg_return_pct,
-          COALESCE(STDDEV(trade_pnl) FILTER (WHERE is_completed = 1), 0)::numeric as pnl_stddev,
+          COALESCE(STDDEV(trade_pnl), 0)::numeric as pnl_stddev,
           COUNT(DISTINCT symbol)::integer as symbols_traded,
-          COUNT(DISTINCT trade_date)::integer as trading_days,
+          COUNT(DISTINCT first_trade_date)::integer as trading_days,
           COALESCE(SUM(execution_count), 0)::integer as total_executions
-        FROM simple_trades
+        FROM completed_trades
       ),
       daily_pnl AS (
         SELECT 
-          trade_date,
+          first_trade_date as trade_date,
           SUM(trade_pnl) as daily_pnl,
-          SUM(SUM(trade_pnl)) OVER (ORDER BY trade_date) as cumulative_pnl,
+          SUM(SUM(trade_pnl)) OVER (ORDER BY first_trade_date) as cumulative_pnl,
           COUNT(*) as trade_count
-        FROM simple_trades
-        GROUP BY trade_date
-        ORDER BY trade_date
+        FROM completed_trades
+        GROUP BY first_trade_date
+        ORDER BY first_trade_date
       ),
       drawdown_calc AS (
         SELECT 
