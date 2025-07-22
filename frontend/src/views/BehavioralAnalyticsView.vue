@@ -1267,7 +1267,7 @@
                           +{{ trade.missedOpportunityPercent }}% missed opportunity
                         </p>
                         <p class="text-xs text-gray-500">
-                          ${{ trade.potentialAdditionalProfit.optimal.toFixed(2) }} additional profit
+                          ${{ (trade.potentialAdditionalProfit?.optimal || 0).toFixed(2) }} additional profit
                         </p>
                       </div>
                     </div>
@@ -1275,11 +1275,11 @@
                     <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
                       <div>
                         <p class="text-xs text-gray-500 dark:text-gray-400">Exit Price</p>
-                        <p class="font-medium">${{ trade.exitPrice.toFixed(2) }}</p>
+                        <p class="font-medium">${{ (trade.exitPrice || 0).toFixed(2) }}</p>
                       </div>
                       <div>
                         <p class="text-xs text-gray-500 dark:text-gray-400">Actual Profit</p>
-                        <p class="font-medium">${{ trade.actualProfit.toFixed(2) }}</p>
+                        <p class="font-medium">${{ (trade.actualProfit || 0).toFixed(2) }}</p>
                       </div>
                       <div>
                         <p class="text-xs text-gray-500 dark:text-gray-400">Peak Price (24h)</p>
@@ -1443,7 +1443,7 @@
                       </p>
                       <p class="text-sm text-gray-600 dark:text-gray-400">missed opportunity</p>
                       <p class="text-sm font-medium text-green-600 dark:text-green-400">
-                        +${{ trade.potentialAdditionalProfit.optimal.toFixed(2) }}
+                        +${{ (trade.potentialAdditionalProfit?.optimal || 0).toFixed(2) }}
                       </p>
                     </div>
                   </div>
@@ -1452,15 +1452,15 @@
                   <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                     <div>
                       <p class="text-xs text-gray-500 dark:text-gray-400">Entry Price</p>
-                      <p class="font-medium">${{ trade.entryPrice.toFixed(2) }}</p>
+                      <p class="font-medium">${{ (trade.entryPrice || 0).toFixed(2) }}</p>
                     </div>
                     <div>
                       <p class="text-xs text-gray-500 dark:text-gray-400">Exit Price</p>
-                      <p class="font-medium">${{ trade.exitPrice.toFixed(2) }}</p>
+                      <p class="font-medium">${{ (trade.exitPrice || 0).toFixed(2) }}</p>
                     </div>
                     <div>
                       <p class="text-xs text-gray-500 dark:text-gray-400">Actual Profit</p>
-                      <p class="font-medium text-green-600 dark:text-green-400">${{ trade.actualProfit.toFixed(2) }}</p>
+                      <p class="font-medium text-green-600 dark:text-green-400">${{ (trade.actualProfit || 0).toFixed(2) }}</p>
                     </div>
                     <div>
                       <p class="text-xs text-gray-500 dark:text-gray-400">Hold Time</p>
@@ -1490,10 +1490,10 @@
                       <div>
                         <p class="text-sm font-medium text-red-800 dark:text-red-300">Could Have Made</p>
                         <p class="text-lg font-bold text-red-900 dark:text-red-200">
-                          ${{ (trade.actualProfit + trade.potentialAdditionalProfit.optimal).toFixed(2) }}
+                          ${{ ((trade.actualProfit || 0) + (trade.potentialAdditionalProfit?.optimal || 0)).toFixed(2) }}
                         </p>
                         <p class="text-xs text-red-700 dark:text-red-400">
-                          vs ${{ trade.actualProfit.toFixed(2) }} actual profit
+                          vs ${{ (trade.actualProfit || 0).toFixed(2) }} actual profit
                         </p>
                       </div>
                     </div>
@@ -1562,7 +1562,7 @@
                           +{{ trade.missedOpportunityPercent }}%
                         </span>
                         <span class="text-xs text-gray-500 dark:text-gray-400 ml-2">
-                          (+${{ trade.potentialAdditionalProfit.optimal.toFixed(2) }})
+                          (+${{ (trade.potentialAdditionalProfit?.optimal || 0).toFixed(2) }})
                         </span>
                       </div>
                     </div>
