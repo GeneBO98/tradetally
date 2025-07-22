@@ -37,46 +37,94 @@
       </div>
       
       <div>
-        <label for="strategy" class="label">Strategy</label>
-        <select
-          id="strategy"
-          v-model="filters.strategy"
-          class="input"
-        >
-          <option value="">All Strategies</option>
-          <option value="scalper">Scalper</option>
-          <option value="momentum">Momentum</option>
-          <option value="mean_reversion">Mean Reversion</option>
-          <option value="swing">Swing</option>
-          <option value="day_trading">Day Trading</option>
-          <option value="position">Position Trading</option>
-          <option value="breakout">Breakout</option>
-          <option value="reversal">Reversal</option>
-          <option value="trend_following">Trend Following</option>
-          <option value="contrarian">Contrarian</option>
-          <option value="news_momentum">News Momentum</option>
-          <option value="news_swing">News Swing</option>
-          <option value="news_uncertainty">News Uncertainty</option>
-        </select>
+        <label class="label">Strategy</label>
+        <div class="relative" data-dropdown="strategy">
+          <button
+            @click.stop="showStrategyDropdown = !showStrategyDropdown"
+            class="input w-full text-left flex items-center justify-between"
+            type="button"
+          >
+            <span class="truncate">
+              {{ getSelectedStrategyText() }}
+            </span>
+            <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+            </svg>
+          </button>
+          
+          <div v-if="showStrategyDropdown" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
+            <div class="p-1">
+              <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                <input
+                  type="checkbox"
+                  :checked="filters.strategies.length === 0"
+                  @change="toggleAllStrategies"
+                  class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                />
+                <span class="ml-3 text-sm text-gray-900 dark:text-white">All Strategies</span>
+              </label>
+            </div>
+            <div class="border-t border-gray-200 dark:border-gray-600">
+              <div v-for="strategy in strategyOptions" :key="strategy.value" class="p-1">
+                <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                  <input
+                    type="checkbox"
+                    :value="strategy.value"
+                    v-model="filters.strategies"
+                    class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                  />
+                  <span class="ml-3 text-sm text-gray-900 dark:text-white">{{ strategy.label }}</span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
       
       <div>
-        <label for="sector" class="label">Sector</label>
-        <select
-          id="sector"
-          v-model="filters.sector"
-          class="input"
-          :disabled="loadingSectors"
-        >
-          <option value="">{{ loadingSectors ? 'Loading sectors...' : 'All Sectors' }}</option>
-          <option 
-            v-for="sector in availableSectors" 
-            :key="sector"
-            :value="sector"
+        <label class="label">Sector</label>
+        <div class="relative" data-dropdown="sector">
+          <button
+            @click.stop="showSectorDropdown = !showSectorDropdown"
+            class="input w-full text-left flex items-center justify-between"
+            type="button"
+            :disabled="loadingSectors"
           >
-            {{ sector }}
-          </option>
-        </select>
+            <span class="truncate">
+              {{ getSelectedSectorText() }}
+            </span>
+            <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+            </svg>
+          </button>
+          
+          <div v-if="showSectorDropdown && !loadingSectors" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
+            <div class="p-1">
+              <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                <input
+                  type="checkbox"
+                  :checked="filters.sectors.length === 0"
+                  @change="toggleAllSectors"
+                  class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                />
+                <span class="ml-3 text-sm text-gray-900 dark:text-white">All Sectors</span>
+              </label>
+            </div>
+            <div class="border-t border-gray-200 dark:border-gray-600">
+              <div v-for="sector in availableSectors" :key="sector" class="p-1">
+                <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                  <input
+                    type="checkbox"
+                    :value="sector"
+                    v-model="filters.sectors"
+                    class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                  />
+                  <span class="ml-3 text-sm text-gray-900 dark:text-white">{{ sector }}</span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
       
       <div>
@@ -286,7 +334,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ChevronRightIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
@@ -298,13 +346,36 @@ const showAdvanced = ref(false)
 const availableSectors = ref([])
 const loadingSectors = ref(false)
 
+// Dropdown visibility
+const showStrategyDropdown = ref(false)
+const showSectorDropdown = ref(false)
+
+// Strategy options
+const strategyOptions = [
+  { value: 'scalper', label: 'Scalper' },
+  { value: 'momentum', label: 'Momentum' },
+  { value: 'mean_reversion', label: 'Mean Reversion' },
+  { value: 'swing', label: 'Swing' },
+  { value: 'day_trading', label: 'Day Trading' },
+  { value: 'position', label: 'Position Trading' },
+  { value: 'breakout', label: 'Breakout' },
+  { value: 'reversal', label: 'Reversal' },
+  { value: 'trend_following', label: 'Trend Following' },
+  { value: 'contrarian', label: 'Contrarian' },
+  { value: 'news_momentum', label: 'News Momentum' },
+  { value: 'news_swing', label: 'News Swing' },
+  { value: 'news_uncertainty', label: 'News Uncertainty' }
+]
+
 const filters = ref({
   // Basic filters
   symbol: '',
   startDate: '',
   endDate: '',
-  strategy: '',
-  sector: '',
+  strategy: '', // Keep for backward compatibility
+  strategies: [], // New multi-select array
+  sector: '', // Keep for backward compatibility  
+  sectors: [], // New multi-select array
   hasNews: '',
   // Advanced filters
   side: '',
@@ -320,14 +391,42 @@ const filters = ref({
   broker: ''
 })
 
+// Helper methods for multi-select dropdowns
+function getSelectedStrategyText() {
+  if (filters.value.strategies.length === 0) return 'All Strategies'
+  if (filters.value.strategies.length === 1) {
+    const strategy = strategyOptions.find(s => s.value === filters.value.strategies[0])
+    return strategy ? strategy.label : 'All Strategies'
+  }
+  return `${filters.value.strategies.length} strategies selected`
+}
+
+function getSelectedSectorText() {
+  if (filters.value.sectors.length === 0) return loadingSectors.value ? 'Loading sectors...' : 'All Sectors'
+  if (filters.value.sectors.length === 1) return filters.value.sectors[0]
+  return `${filters.value.sectors.length} sectors selected`
+}
+
+function toggleAllStrategies(event) {
+  if (event.target.checked) {
+    filters.value.strategies = []
+  }
+}
+
+function toggleAllSectors(event) {
+  if (event.target.checked) {
+    filters.value.sectors = []
+  }
+}
+
 // Count active filters
 const activeFiltersCount = computed(() => {
   let count = 0
   if (filters.value.symbol) count++
   if (filters.value.startDate) count++
   if (filters.value.endDate) count++
-  if (filters.value.strategy) count++
-  if (filters.value.sector) count++
+  if (filters.value.strategies.length > 0) count++
+  if (filters.value.sectors.length > 0) count++
   if (filters.value.hasNews) count++
   if (filters.value.side) count++
   if (filters.value.minPrice !== null) count++
@@ -368,9 +467,20 @@ function applyFilters() {
   if (filters.value.symbol) cleanFilters.symbol = filters.value.symbol
   if (filters.value.startDate) cleanFilters.startDate = filters.value.startDate
   if (filters.value.endDate) cleanFilters.endDate = filters.value.endDate
-  if (filters.value.strategy) cleanFilters.strategy = filters.value.strategy
-  if (filters.value.sector) cleanFilters.sector = filters.value.sector
+  
+  // Handle multi-select strategies - convert to comma-separated or use first one for backward compatibility
+  if (filters.value.strategies.length > 0) {
+    cleanFilters.strategies = filters.value.strategies.join(',')
+  }
+  
+  // Handle multi-select sectors - convert to comma-separated or use first one for backward compatibility  
+  if (filters.value.sectors.length > 0) {
+    cleanFilters.sectors = filters.value.sectors.join(',')
+  }
+  
   if (filters.value.hasNews) cleanFilters.hasNews = filters.value.hasNews
+  
+  console.log('🎯 APPLYING FILTERS:', cleanFilters)
   
   // Advanced filters
   if (filters.value.side) cleanFilters.side = filters.value.side
@@ -394,7 +504,9 @@ function resetFilters() {
     startDate: '',
     endDate: '',
     strategy: '',
+    strategies: [],
     sector: '',
+    sectors: [],
     hasNews: '',
     side: '',
     minPrice: null,
@@ -446,7 +558,35 @@ const convertHoldTimeRange = (minMinutes, maxMinutes) => {
   return '1+ months' // Default for very long trades
 }
 
+// Close dropdowns when clicking outside
+function handleClickOutside(event) {
+  // Use refs instead of querySelector for better performance and reliability
+  const target = event.target
+  
+  // Check if click is outside strategy dropdown
+  if (showStrategyDropdown.value) {
+    const strategyDropdown = target.closest('[data-dropdown="strategy"]')
+    if (!strategyDropdown) {
+      showStrategyDropdown.value = false
+    }
+  }
+  
+  // Check if click is outside sector dropdown  
+  if (showSectorDropdown.value) {
+    const sectorDropdown = target.closest('[data-dropdown="sector"]')
+    if (!sectorDropdown) {
+      showSectorDropdown.value = false
+    }
+  }
+}
+
 onMounted(() => {
+  // Add click outside listener after a small delay to avoid conflicts
+  setTimeout(() => {
+    document.addEventListener('click', handleClickOutside)
+  }, 100)
+  
+  // Existing code...
   // Fetch available sectors for dropdown
   fetchAvailableSectors()
   
@@ -459,7 +599,9 @@ onMounted(() => {
     startDate: '',
     endDate: '',
     strategy: '',
+    strategies: [],
     sector: '',
+    sectors: [],
     hasNews: '',
     side: '',
     minPrice: null,
@@ -538,6 +680,20 @@ onMounted(() => {
   // Handle strategy from query parameters 
   if (route.query.strategy) {
     filters.value.strategy = route.query.strategy
+    // Also populate the strategies array for consistency
+    filters.value.strategies = [route.query.strategy]
+    shouldApply = true
+  }
+  
+  // Handle multi-select strategies from query parameters
+  if (route.query.strategies) {
+    filters.value.strategies = route.query.strategies.split(',')
+    shouldApply = true
+  }
+  
+  // Handle multi-select sectors from query parameters
+  if (route.query.sectors) {
+    filters.value.sectors = route.query.sectors.split(',')
     shouldApply = true
   }
   
@@ -562,5 +718,9 @@ onMounted(() => {
   if (shouldApply) {
     applyFilters()
   }
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside)
 })
 </script>

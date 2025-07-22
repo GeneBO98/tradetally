@@ -12,6 +12,7 @@ const tradeController = {
     try {
       const { 
         symbol, startDate, endDate, tags, strategy, sector,
+        strategies, sectors, // New multi-select parameters
         side, minPrice, maxPrice, minQuantity, maxQuantity,
         status, minPnl, maxPnl, pnlType, broker, hasNews,
         limit = 50, offset = 0 
@@ -24,6 +25,9 @@ const tradeController = {
         tags: tags ? tags.split(',') : undefined,
         strategy,
         sector,
+        // Multi-select filters
+        strategies: strategies ? strategies.split(',') : undefined,
+        sectors: sectors ? sectors.split(',') : undefined,
         // New advanced filters
         side,
         minPrice: minPrice ? parseFloat(minPrice) : undefined,
@@ -41,7 +45,8 @@ const tradeController = {
         offset: parseInt(offset)
       };
 
-      console.log('🔍 getUserTrades filters:', JSON.stringify(filters, null, 2));
+      console.log('🔍 getUserTrades RAW QUERY:', req.query);
+      console.log('🔍 getUserTrades PARSED filters:', JSON.stringify(filters, null, 2));
 
       // Get trades with pagination
       const trades = await Trade.findByUser(req.user.id, filters);
@@ -71,6 +76,7 @@ const tradeController = {
     try {
       const { 
         symbol, startDate, endDate, tags, strategy, sector,
+        strategies, sectors, // Add multi-select parameters
         side, minPrice, maxPrice, minQuantity, maxQuantity,
         status, minPnl, maxPnl, pnlType, broker, hasNews,
         limit = 50, offset = 0 
@@ -83,6 +89,9 @@ const tradeController = {
         tags: tags ? tags.split(',') : undefined,
         strategy,
         sector,
+        // Multi-select filters
+        strategies: strategies ? strategies.split(',') : undefined,
+        sectors: sectors ? sectors.split(',') : undefined,
         side,
         minPrice: minPrice ? parseFloat(minPrice) : undefined,
         maxPrice: maxPrice ? parseFloat(maxPrice) : undefined,
@@ -1078,6 +1087,7 @@ const tradeController = {
       
       const { 
         startDate, endDate, symbol, sector, strategy, 
+        strategies, sectors, // Add multi-select parameters
         side, minPrice, maxPrice, minQuantity, maxQuantity,
         status, minPnl, maxPnl, pnlType, broker, hasNews,
         holdTime, minHoldTime, maxHoldTime 
@@ -1089,6 +1099,9 @@ const tradeController = {
         symbol,
         sector,
         strategy,
+        // Multi-select filters
+        strategies: strategies ? strategies.split(',') : undefined,
+        sectors: sectors ? sectors.split(',') : undefined,
         side,
         minPrice,
         maxPrice,
@@ -1103,7 +1116,8 @@ const tradeController = {
         holdTime
       };
       
-      console.log('Parsed filters:', filters);
+      console.log('🔍 getAnalytics RAW QUERY:', req.query);
+      console.log('🔍 getAnalytics PARSED filters:', JSON.stringify(filters, null, 2));
 
       // Convert minHoldTime/maxHoldTime to holdTime range if provided
       if (minHoldTime || maxHoldTime) {

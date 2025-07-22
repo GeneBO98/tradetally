@@ -353,6 +353,25 @@ class Trade {
       paramCount++;
     }
 
+    // Multi-select strategies filter
+    if (filters.strategies && filters.strategies.length > 0) {
+      console.log('🎯 APPLYING MULTI-SELECT STRATEGIES:', filters.strategies);
+      const placeholders = filters.strategies.map((_, index) => `$${paramCount + index}`).join(',');
+      query += ` AND t.strategy IN (${placeholders})`;
+      filters.strategies.forEach(strategy => values.push(strategy));
+      paramCount += filters.strategies.length;
+      console.log('🎯 Added strategies filter to query:', query.split('WHERE')[1]);
+    }
+
+    // Multi-select sectors filter  
+    if (filters.sectors && filters.sectors.length > 0) {
+      const placeholders = filters.sectors.map((_, index) => `$${paramCount + index}`).join(',');
+      query += ` AND sc.finnhub_industry IN (${placeholders})`;
+      filters.sectors.forEach(sector => values.push(sector));
+      paramCount += filters.sectors.length;
+    }
+
+    // Single strategy filter (backward compatibility)
     // Strategy filter will be handled later with hold time analysis
 
     if (filters.sector) {
@@ -723,59 +742,87 @@ class Trade {
   static async getCountWithFilters(userId, filters = {}) {
     console.log('🔢 getCountWithFilters called with userId:', userId, 'filters:', filters);
     
-    // Simple count query - just apply basic filters that are most commonly used
-    let query = `SELECT COUNT(*) as total FROM trades WHERE user_id = $1`;
+    // Count query with optional join for sectors
+    let needsJoin = (filters.sectors && filters.sectors.length > 0) || filters.sector;
+    
+    let query = needsJoin 
+      ? `SELECT COUNT(DISTINCT t.id) as total FROM trades t LEFT JOIN symbol_categories sc ON t.symbol = sc.symbol WHERE t.user_id = $1`
+      : `SELECT COUNT(*) as total FROM trades WHERE user_id = $1`;
+    
     const values = [userId];
     let paramCount = 2;
 
     // Only apply the most common filters to avoid SQL errors
+    const tablePrefix = needsJoin ? 't.' : '';
+    
     if (filters.symbol && filters.symbol.trim()) {
-      query += ` AND symbol = $${paramCount}`;
+      query += ` AND ${tablePrefix}symbol = $${paramCount}`;
       values.push(filters.symbol.toUpperCase().trim());
       paramCount++;
     }
 
     if (filters.startDate && filters.startDate.trim()) {
-      query += ` AND trade_date >= $${paramCount}`;
+      query += ` AND ${tablePrefix}trade_date >= $${paramCount}`;
       values.push(filters.startDate.trim());
       paramCount++;
     }
 
     if (filters.endDate && filters.endDate.trim()) {
-      query += ` AND trade_date <= $${paramCount}`;
+      query += ` AND ${tablePrefix}trade_date <= $${paramCount}`;
       values.push(filters.endDate.trim());
       paramCount++;
     }
 
     if (filters.side && filters.side.trim()) {
-      query += ` AND side = $${paramCount}`;
+      query += ` AND ${tablePrefix}side = $${paramCount}`;
       values.push(filters.side.trim());
       paramCount++;
     }
 
     if (filters.pnlType === 'profit') {
-      query += ` AND pnl > 0`;
+      query += ` AND ${tablePrefix}pnl > 0`;
     } else if (filters.pnlType === 'loss') {
-      query += ` AND pnl < 0`;
+      query += ` AND ${tablePrefix}pnl < 0`;
     }
 
     if (filters.status === 'open') {
-      query += ` AND exit_price IS NULL`;
+      query += ` AND ${tablePrefix}exit_price IS NULL`;
     } else if (filters.status === 'closed') {
-      query += ` AND exit_price IS NOT NULL`;
+      query += ` AND ${tablePrefix}exit_price IS NOT NULL`;
     }
 
     if (filters.hasNews !== undefined && filters.hasNews !== '') {
       if (filters.hasNews === 'true' || filters.hasNews === true) {
-        query += ` AND has_news = true`;
+        query += ` AND ${tablePrefix}has_news = true`;
       } else if (filters.hasNews === 'false' || filters.hasNews === false) {
-        query += ` AND (has_news = false OR has_news IS NULL)`;
+        query += ` AND (${tablePrefix}has_news = false OR ${tablePrefix}has_news IS NULL)`;
       }
     }
 
-    if (filters.strategy && filters.strategy.trim()) {
-      query += ` AND strategy = $${paramCount}`;
+    // Multi-select strategies filter for count
+    if (filters.strategies && filters.strategies.length > 0) {
+      const placeholders = filters.strategies.map((_, index) => `$${paramCount + index}`).join(',');
+      query += ` AND ${tablePrefix}strategy IN (${placeholders})`;
+      filters.strategies.forEach(strategy => values.push(strategy));
+      paramCount += filters.strategies.length;
+    } else if (filters.strategy && filters.strategy.trim()) {
+      query += ` AND ${tablePrefix}strategy = $${paramCount}`;
       values.push(filters.strategy.trim());
+      paramCount++;
+    }
+
+    // Multi-select sectors filter for count  
+    if (filters.sectors && filters.sectors.length > 0) {
+      const sectorPlaceholders = filters.sectors.map((_, index) => `$${paramCount + index}`).join(',');
+      query += ` AND sc.finnhub_industry IN (${sectorPlaceholders})`;
+      filters.sectors.forEach(sector => values.push(sector));
+      paramCount += filters.sectors.length;
+    }
+
+    // Single sector filter for count
+    if (filters.sector && filters.sector.trim()) {
+      query += ` AND sc.finnhub_industry = $${paramCount}`;
+      values.push(filters.sector.trim());
       paramCount++;
     }
 
@@ -830,9 +877,9 @@ class Trade {
       paramCount++;
     }
 
-    // Sector filter (requires join with stock_cache)
+    // Sector filter (requires join with symbol_categories)
     if (filters.sector) {
-      whereClause += ` AND EXISTS (SELECT 1 FROM stock_cache sc WHERE sc.symbol = t.symbol AND sc.finnhub_industry = $${paramCount})`;
+      whereClause += ` AND EXISTS (SELECT 1 FROM symbol_categories sc WHERE sc.symbol = t.symbol AND sc.finnhub_industry = $${paramCount})`;
       values.push(filters.sector);
       paramCount++;
     }
@@ -901,10 +948,26 @@ class Trade {
       paramCount++;
     }
 
-    if (filters.strategy) {
+    // Multi-select strategies filter for analytics
+    if (filters.strategies && filters.strategies.length > 0) {
+      console.log('🎯 ANALYTICS: APPLYING MULTI-SELECT STRATEGIES:', filters.strategies);
+      const placeholders = filters.strategies.map((_, index) => `$${paramCount + index}`).join(',');
+      whereClause += ` AND t.strategy IN (${placeholders})`;
+      filters.strategies.forEach(strategy => values.push(strategy));
+      paramCount += filters.strategies.length;
+    } else if (filters.strategy) {
       whereClause += ` AND t.strategy = $${paramCount}`;
       values.push(filters.strategy);
       paramCount++;
+    }
+
+    // Multi-select sectors filter for analytics
+    if (filters.sectors && filters.sectors.length > 0) {
+      console.log('🎯 ANALYTICS: APPLYING MULTI-SELECT SECTORS:', filters.sectors);
+      const sectorPlaceholders = filters.sectors.map((_, index) => `$${paramCount + index}`).join(',');
+      whereClause += ` AND t.symbol IN (SELECT sc.symbol FROM symbol_categories sc WHERE sc.finnhub_industry IN (${sectorPlaceholders}))`;
+      filters.sectors.forEach(sector => values.push(sector));
+      paramCount += filters.sectors.length;
     }
 
     // Hold time filter for analytics
@@ -924,6 +987,9 @@ class Trade {
     console.log('Analytics query - whereClause:', whereClause);
     console.log('Analytics query - values:', values);
     
+    // Debug the full query construction
+    console.log('🔍 About to execute analytics query with', values.length, 'parameters');
+    
     // First, let's count executions (individual database records)
     const executionCountQuery = `
       SELECT COUNT(*) as execution_count
@@ -931,9 +997,18 @@ class Trade {
       ${whereClause}
     `;
     
-    const executionResult = await db.query(executionCountQuery, values);
-    const executionCount = parseInt(executionResult.rows[0].execution_count) || 0;
-    console.log('Total executions:', executionCount);
+    let executionCount = 0;
+    try {
+      console.log('🔍 Executing execution count query:', executionCountQuery);
+      const executionResult = await db.query(executionCountQuery, values);
+      executionCount = parseInt(executionResult.rows[0].execution_count) || 0;
+      console.log('Total executions:', executionCount);
+    } catch (error) {
+      console.error('❌ ERROR in execution count query:', error.message);
+      console.error('❌ Query was:', executionCountQuery);
+      console.error('❌ Values were:', values);
+      throw error;
+    }
 
     const analyticsQuery = `
       WITH simple_trades AS (
@@ -1410,7 +1485,13 @@ class Trade {
       paramCount++;
     }
 
-    if (filters.strategy) {
+    // Multi-select strategies filter for round-trip trade count
+    if (filters.strategies && filters.strategies.length > 0) {
+      const placeholders = filters.strategies.map((_, index) => `$${paramCount + index}`).join(',');
+      whereClause += ` AND strategy IN (${placeholders})`;
+      filters.strategies.forEach(strategy => values.push(strategy));
+      paramCount += filters.strategies.length;
+    } else if (filters.strategy) {
       whereClause += ` AND strategy = $${paramCount}`;
       values.push(filters.strategy);
       paramCount++;
@@ -1450,10 +1531,24 @@ class Trade {
       paramCount++;
     }
 
-    if (filters.strategy) {
+    // Multi-select strategies filter for round-trip trades
+    if (filters.strategies && filters.strategies.length > 0) {
+      const placeholders = filters.strategies.map((_, index) => `$${paramCount + index}`).join(',');
+      whereClause += ` AND rt.strategy IN (${placeholders})`;
+      filters.strategies.forEach(strategy => values.push(strategy));
+      paramCount += filters.strategies.length;
+    } else if (filters.strategy) {
       whereClause += ` AND rt.strategy = $${paramCount}`;
       values.push(filters.strategy);
       paramCount++;
+    }
+
+    // Multi-select sectors filter for round-trip trades
+    if (filters.sectors && filters.sectors.length > 0) {
+      const placeholders = filters.sectors.map((_, index) => `$${paramCount + index}`).join(',');
+      whereClause += ` AND sc.finnhub_industry IN (${placeholders})`;
+      filters.sectors.forEach(sector => values.push(sector));
+      paramCount += filters.sectors.length;
     }
 
     // Add pagination
