@@ -52,6 +52,11 @@ router.delete('/cusip/:cusip', authenticate, tradeController.deleteCusipMapping)
 router.get('/cusip-mappings', authenticate, tradeController.getCusipMappings);
 router.post('/cusip/resolve-unresolved', authenticate, tradeController.resolveUnresolvedCusips);
 router.delete('/bulk', authenticate, tradeController.bulkDeleteTrades);
+
+// Earnings and news endpoints - MUST be before /:id route
+router.get('/earnings', authenticate, tradeController.getUpcomingEarnings);
+router.get('/news', authenticate, tradeController.getTradeNews);
+
 router.get('/:id', optionalAuth, tradeController.getTrade);
 router.put('/:id', authenticate, validate(schemas.updateTrade), tradeController.updateTrade);
 router.delete('/:id', authenticate, tradeController.deleteTrade);

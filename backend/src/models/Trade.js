@@ -672,6 +672,61 @@ class Trade {
     }
   }
 
+  static async getCountWithFilters(userId, filters = {}) {
+    console.log('🔢 getCountWithFilters called with userId:', userId, 'filters:', filters);
+    
+    // Simple count query - just apply basic filters that are most commonly used
+    let query = `SELECT COUNT(*) as total FROM trades WHERE user_id = $1`;
+    const values = [userId];
+    let paramCount = 2;
+
+    // Only apply the most common filters to avoid SQL errors
+    if (filters.symbol && filters.symbol.trim()) {
+      query += ` AND symbol = $${paramCount}`;
+      values.push(filters.symbol.toUpperCase().trim());
+      paramCount++;
+    }
+
+    if (filters.startDate && filters.startDate.trim()) {
+      query += ` AND trade_date >= $${paramCount}`;
+      values.push(filters.startDate.trim());
+      paramCount++;
+    }
+
+    if (filters.endDate && filters.endDate.trim()) {
+      query += ` AND trade_date <= $${paramCount}`;
+      values.push(filters.endDate.trim());
+      paramCount++;
+    }
+
+    if (filters.side && filters.side.trim()) {
+      query += ` AND side = $${paramCount}`;
+      values.push(filters.side.trim());
+      paramCount++;
+    }
+
+    if (filters.pnlType === 'profit') {
+      query += ` AND pnl > 0`;
+    } else if (filters.pnlType === 'loss') {
+      query += ` AND pnl < 0`;
+    }
+
+    if (filters.status === 'open') {
+      query += ` AND exit_price IS NULL`;
+    } else if (filters.status === 'closed') {
+      query += ` AND exit_price IS NOT NULL`;
+    }
+
+    console.log('🔢 Count query:', query);
+    console.log('🔢 Count values:', values);
+    
+    const result = await db.query(query, values);
+    const total = parseInt(result.rows[0].total) || 0;
+    
+    console.log('🔢 Count result:', total);
+    return total;
+  }
+
   static async getAnalytics(userId, filters = {}) {
     console.log('Getting analytics for user:', userId, 'with filters:', filters);
     
@@ -713,6 +768,77 @@ class Trade {
       paramCount++;
     }
 
+    // Sector filter (requires join with stock_cache)
+    if (filters.sector) {
+      whereClause += ` AND EXISTS (SELECT 1 FROM stock_cache sc WHERE sc.symbol = t.symbol AND sc.finnhub_industry = $${paramCount})`;
+      values.push(filters.sector);
+      paramCount++;
+    }
+
+    // Advanced filters
+    if (filters.side) {
+      whereClause += ` AND t.side = $${paramCount}`;
+      values.push(filters.side);
+      paramCount++;
+    }
+
+    if (filters.minPrice !== undefined && filters.minPrice !== null && filters.minPrice !== '') {
+      whereClause += ` AND t.entry_price >= $${paramCount}`;
+      values.push(filters.minPrice);
+      paramCount++;
+    }
+
+    if (filters.maxPrice !== undefined && filters.maxPrice !== null && filters.maxPrice !== '') {
+      whereClause += ` AND t.entry_price <= $${paramCount}`;
+      values.push(filters.maxPrice);
+      paramCount++;
+    }
+
+    if (filters.minQuantity !== undefined && filters.minQuantity !== null && filters.minQuantity !== '') {
+      whereClause += ` AND t.quantity >= $${paramCount}`;
+      values.push(filters.minQuantity);
+      paramCount++;
+    }
+
+    if (filters.maxQuantity !== undefined && filters.maxQuantity !== null && filters.maxQuantity !== '') {
+      whereClause += ` AND t.quantity <= $${paramCount}`;
+      values.push(filters.maxQuantity);
+      paramCount++;
+    }
+
+    if (filters.status === 'open') {
+      whereClause += ` AND t.exit_price IS NULL`;
+    } else if (filters.status === 'closed') {
+      whereClause += ` AND t.exit_price IS NOT NULL`;
+    }
+
+    if (filters.minPnl !== undefined && filters.minPnl !== null && filters.minPnl !== '') {
+      whereClause += ` AND t.pnl >= $${paramCount}`;
+      values.push(filters.minPnl);
+      paramCount++;
+    }
+
+    if (filters.maxPnl !== undefined && filters.maxPnl !== null && filters.maxPnl !== '') {
+      whereClause += ` AND t.pnl <= $${paramCount}`;
+      values.push(filters.maxPnl);
+      paramCount++;
+    }
+
+    if (filters.pnlType === 'positive' || filters.pnlType === 'profit') {
+      whereClause += ` AND t.pnl > 0`;
+    } else if (filters.pnlType === 'negative' || filters.pnlType === 'loss') {
+      whereClause += ` AND t.pnl < 0`;
+    } else if (filters.pnlType === 'breakeven') {
+      whereClause += ` AND t.pnl = 0`;
+    }
+
+    // Broker filter
+    if (filters.broker) {
+      whereClause += ` AND t.broker = $${paramCount}`;
+      values.push(filters.broker);
+      paramCount++;
+    }
+
     if (filters.strategy) {
       whereClause += ` AND t.strategy = $${paramCount}`;
       values.push(filters.strategy);
@@ -722,11 +848,6 @@ class Trade {
     // Hold time filter for analytics
     if (filters.holdTime) {
       whereClause += this.getHoldTimeFilter(filters.holdTime);
-    }
-
-    // Strategy filter for analytics
-    if (filters.strategy) {
-      whereClause += this.getStrategyFilter(filters.strategy);
     }
 
     console.log('Analytics query - whereClause:', whereClause);
@@ -763,8 +884,8 @@ class Trade {
       ),
       trade_stats AS (
         SELECT 
-          -- Only count completed trades for win/loss stats
-          COUNT(*) FILTER (WHERE is_completed = 1)::integer as total_trades,
+          -- Count all trades (both open and closed) for total trades
+          COUNT(*)::integer as total_trades,
           COUNT(*) FILTER (WHERE is_completed = 1 AND trade_pnl > 0)::integer as winning_trades,
           COUNT(*) FILTER (WHERE is_completed = 1 AND trade_pnl < 0)::integer as losing_trades,
           COUNT(*) FILTER (WHERE is_completed = 1 AND trade_pnl = 0)::integer as breakeven_trades,

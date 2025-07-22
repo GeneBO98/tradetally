@@ -43,19 +43,13 @@ const tradeController = {
       // Get trades with pagination
       const trades = await Trade.findByUser(req.user.id, filters);
       
-      // Get total count of individual trades
+      // Get total count of filtered trades
       const totalCountFilters = { ...filters };
       delete totalCountFilters.limit;
       delete totalCountFilters.offset;
       
-      // Get actual trade count from database
-      const countQuery = `
-        SELECT COUNT(*) as total 
-        FROM trades 
-        WHERE user_id = $1
-      `;
-      const countResult = await db.query(countQuery, [req.user.id]);
-      const total = parseInt(countResult.rows[0].total) || 0;
+      // Use Trade model method to get filtered count
+      const total = await Trade.getCountWithFilters(req.user.id, totalCountFilters);
       
       res.json({
         trades,
@@ -1073,15 +1067,38 @@ const tradeController = {
 
   async getAnalytics(req, res, next) {
     try {
-      const { startDate, endDate, symbol, strategy, holdTime, minHoldTime, maxHoldTime } = req.query;
+      console.log('=== ANALYTICS ENDPOINT CALLED ===');
+      console.log('Query params:', req.query);
+      console.log('User ID:', req.user.id);
+      console.log('Side filter specifically:', req.query.side);
+      
+      const { 
+        startDate, endDate, symbol, sector, strategy, 
+        side, minPrice, maxPrice, minQuantity, maxQuantity,
+        status, minPnl, maxPnl, pnlType, broker,
+        holdTime, minHoldTime, maxHoldTime 
+      } = req.query;
       
       const filters = {
         startDate,
         endDate,
         symbol,
+        sector,
         strategy,
+        side,
+        minPrice,
+        maxPrice,
+        minQuantity,
+        maxQuantity,
+        status,
+        minPnl,
+        maxPnl,
+        pnlType,
+        broker,
         holdTime
       };
+      
+      console.log('Parsed filters:', filters);
 
       // Convert minHoldTime/maxHoldTime to holdTime range if provided
       if (minHoldTime || maxHoldTime) {
@@ -1095,6 +1112,8 @@ const tradeController = {
       }
       
       const analytics = await Trade.getAnalytics(req.user.id, filters);
+      
+      console.log('Analytics result:', JSON.stringify(analytics, null, 2));
       
       res.json(analytics);
     } catch (error) {
@@ -1435,6 +1454,120 @@ const tradeController = {
       });
     } catch (error) {
       next(error);
+    }
+  },
+
+  // Get upcoming earnings for symbols
+  async getUpcomingEarnings(req, res, next) {
+    try {
+      const { symbols } = req.query;
+      
+      if (!symbols) {
+        return res.status(400).json({
+          error: 'Missing symbols parameter'
+        });
+      }
+      
+      const symbolList = symbols.split(',').map(s => s.trim()).filter(s => s);
+      
+      if (symbolList.length === 0) {
+        return res.json([]);
+      }
+      
+      // Check if Finnhub is configured
+      if (!finnhub.isConfigured()) {
+        return res.json([]);
+      }
+      
+      try {
+        // Get earnings for the next 2 weeks for all symbols
+        const fromDate = new Date().toISOString().split('T')[0];
+        const toDate = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        
+        // Fetch earnings for all symbols
+        let allEarnings = [];
+        for (const symbol of symbolList) {
+          try {
+            const earnings = await finnhub.getEarningsCalendar(fromDate, toDate, symbol);
+            if (earnings && earnings.length > 0) {
+              allEarnings = allEarnings.concat(earnings);
+            }
+          } catch (symbolError) {
+            console.warn(`Failed to get earnings for ${symbol}:`, symbolError.message);
+          }
+        }
+        
+        res.json(allEarnings);
+      } catch (error) {
+        console.warn('Finnhub earnings API error:', error.message);
+        res.json([]); // Return empty array if API fails
+      }
+    } catch (error) {
+      console.error('Error fetching upcoming earnings:', error);
+      res.status(500).json({
+        error: 'Failed to fetch earnings data'
+      });
+    }
+  },
+
+  // Get trade-related news for symbols
+  async getTradeNews(req, res, next) {
+    try {
+      const { symbols } = req.query;
+      
+      if (!symbols) {
+        return res.status(400).json({
+          error: 'Missing symbols parameter'
+        });
+      }
+      
+      const symbolList = symbols.split(',').map(s => s.trim()).filter(s => s);
+      
+      if (symbolList.length === 0) {
+        return res.json([]);
+      }
+      
+      // Check if Finnhub is configured
+      if (!finnhub.isConfigured()) {
+        return res.json([]);
+      }
+      
+      try {
+        // Get news for the last week for all symbols
+        const fromDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        const toDate = new Date().toISOString().split('T')[0];
+        
+        // Fetch news for all symbols
+        let allNews = [];
+        for (const symbol of symbolList) {
+          try {
+            const news = await finnhub.getCompanyNews(symbol, fromDate, toDate);
+            if (news && news.length > 0) {
+              // Tag each news item with the symbol it belongs to
+              const taggedNews = news.map(item => ({
+                ...item,
+                symbol: symbol // Ensure each news item has the correct symbol
+              }));
+              allNews = allNews.concat(taggedNews);
+            }
+          } catch (symbolError) {
+            console.warn(`Failed to get news for ${symbol}:`, symbolError.message);
+          }
+        }
+        
+        // Sort by date (most recent first) and limit to recent news
+        allNews.sort((a, b) => new Date(b.datetime * 1000) - new Date(a.datetime * 1000));
+        
+        res.json(allNews.slice(0, 20)); // Return top 20 most recent news items
+      } catch (error) {
+        console.warn('Finnhub news API error:', error.message);
+        res.json([]); // Return empty array if API fails
+      }
+    } catch (error) {
+      console.error('Error fetching trade news:', error);
+      res.status(500).json({
+        error: 'Failed to fetch news data'
+      });
     }
   }
 };

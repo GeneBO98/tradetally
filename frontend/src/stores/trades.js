@@ -28,42 +28,70 @@ export const useTradesStore = defineStore('trades', () => {
   const analytics = ref(null)
 
   const totalPnL = computed(() => {
+    console.log('🔄 Computing totalPnL:', {
+      hasAnalytics: !!analytics.value,
+      hasSummary: !!(analytics.value?.summary),
+      analyticsPnL: analytics.value?.summary?.totalPnL,
+      fallbackTradesLength: trades.value.length
+    })
+    
     // Use analytics data if available, otherwise fall back to trade summation
     if (analytics.value && analytics.value.summary && analytics.value.summary.totalPnL !== undefined) {
-      return parseFloat(analytics.value.summary.totalPnL)
+      const result = parseFloat(analytics.value.summary.totalPnL)
+      console.log('📊 Using analytics totalPnL:', result)
+      return result
     }
     
     const total = trades.value.reduce((sum, trade) => {
       const pnl = parseFloat(trade.pnl) || 0
       return sum + pnl
     }, 0)
-    console.log('Total P/L calculation (fallback):', {
+    console.log('📊 Using fallback totalPnL:', total, {
       tradesCount: trades.value.length,
-      totalPnL: total,
-      sampleTrades: trades.value.slice(0, 3).map(t => ({ symbol: t.symbol, pnl: t.pnl, type: typeof t.pnl }))
+      sampleTrades: trades.value.slice(0, 3).map(t => ({ symbol: t.symbol, pnl: t.pnl }))
     })
     return total
   })
 
   const winRate = computed(() => {
+    console.log('🔄 Computing winRate:', {
+      hasAnalytics: !!analytics.value,
+      analyticsWinRate: analytics.value?.summary?.winRate,
+      tradesCount: trades.value.length
+    })
+    
     // Use analytics data if available, otherwise fall back to trade calculation
     if (analytics.value && analytics.value.summary && analytics.value.summary.winRate !== undefined) {
-      return parseFloat(analytics.value.summary.winRate).toFixed(2)
+      const result = parseFloat(analytics.value.summary.winRate).toFixed(2)
+      console.log('📊 Using analytics winRate:', result)
+      return result
     }
     
     const winning = trades.value.filter(t => t.pnl > 0).length
     const total = trades.value.length
-    return total > 0 ? (winning / total * 100).toFixed(2) : 0
+    const result = total > 0 ? (winning / total * 100).toFixed(2) : 0
+    console.log('📊 Using fallback winRate:', result, { winning, total })
+    return result
   })
 
   const totalTrades = computed(() => {
+    console.log('🔄 Computing totalTrades:', {
+      hasAnalytics: !!analytics.value,
+      analyticsTotalTrades: analytics.value?.summary?.totalTrades,
+      paginationTotal: pagination.value.total
+    })
+    
     // Use analytics data if available for total trades count
     if (analytics.value && analytics.value.summary && analytics.value.summary.totalTrades !== undefined) {
-      return analytics.value.summary.totalTrades
+      const result = analytics.value.summary.totalTrades
+      console.log('📊 Using analytics totalTrades:', result)
+      return result
     }
     
     // Fall back to pagination total
-    return pagination.value.total
+    const result = pagination.value.total
+    console.log('📊 Using pagination totalTrades:', result)
+    return result
   })
 
   async function fetchTrades(params = {}) {
@@ -98,8 +126,10 @@ export const useTradesStore = defineStore('trades', () => {
       console.log('Analytics data received:', {
         summary: analyticsResponse.data.summary,
         totalPnL: analyticsResponse.data.summary?.totalPnL,
-        winRate: analyticsResponse.data.summary?.winRate
+        winRate: analyticsResponse.data.summary?.winRate,
+        totalTrades: analyticsResponse.data.summary?.totalTrades
       })
+      console.log('Full analytics response:', JSON.stringify(analyticsResponse.data, null, 2))
       
       // If the response includes pagination metadata, update it
       if (tradesResponse.data.total !== undefined) {
@@ -148,8 +178,10 @@ export const useTradesStore = defineStore('trades', () => {
       console.log('Analytics data received:', {
         summary: analyticsResponse.data.summary,
         totalPnL: analyticsResponse.data.summary?.totalPnL,
-        winRate: analyticsResponse.data.summary?.winRate
+        winRate: analyticsResponse.data.summary?.winRate,
+        totalTrades: analyticsResponse.data.summary?.totalTrades
       })
+      console.log('Full analytics response:', JSON.stringify(analyticsResponse.data, null, 2))
       
       // If the response includes pagination metadata, update it
       if (tradesResponse.data.total !== undefined) {
