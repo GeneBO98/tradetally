@@ -1,7 +1,7 @@
 <template>
   <div class="space-y-4">
     <!-- Basic filters always visible -->
-    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-6">
       <div>
         <label for="symbol" class="label">Symbol</label>
         <input
@@ -54,6 +54,9 @@
           <option value="reversal">Reversal</option>
           <option value="trend_following">Trend Following</option>
           <option value="contrarian">Contrarian</option>
+          <option value="news_momentum">News Momentum</option>
+          <option value="news_swing">News Swing</option>
+          <option value="news_uncertainty">News Uncertainty</option>
         </select>
       </div>
       
@@ -73,6 +76,19 @@
           >
             {{ sector }}
           </option>
+        </select>
+      </div>
+      
+      <div>
+        <label for="hasNews" class="label">News</label>
+        <select
+          id="hasNews"
+          v-model="filters.hasNews"
+          class="input"
+        >
+          <option value="">All Trades</option>
+          <option value="true">With News</option>
+          <option value="false">No News</option>
         </select>
       </div>
     </div>
@@ -289,6 +305,7 @@ const filters = ref({
   endDate: '',
   strategy: '',
   sector: '',
+  hasNews: '',
   // Advanced filters
   side: '',
   minPrice: null,
@@ -311,6 +328,7 @@ const activeFiltersCount = computed(() => {
   if (filters.value.endDate) count++
   if (filters.value.strategy) count++
   if (filters.value.sector) count++
+  if (filters.value.hasNews) count++
   if (filters.value.side) count++
   if (filters.value.minPrice !== null) count++
   if (filters.value.maxPrice !== null) count++
@@ -352,6 +370,7 @@ function applyFilters() {
   if (filters.value.endDate) cleanFilters.endDate = filters.value.endDate
   if (filters.value.strategy) cleanFilters.strategy = filters.value.strategy
   if (filters.value.sector) cleanFilters.sector = filters.value.sector
+  if (filters.value.hasNews) cleanFilters.hasNews = filters.value.hasNews
   
   // Advanced filters
   if (filters.value.side) cleanFilters.side = filters.value.side
@@ -376,6 +395,7 @@ function resetFilters() {
     endDate: '',
     strategy: '',
     sector: '',
+    hasNews: '',
     side: '',
     minPrice: null,
     maxPrice: null,
@@ -440,6 +460,7 @@ onMounted(() => {
     endDate: '',
     strategy: '',
     sector: '',
+    hasNews: '',
     side: '',
     minPrice: null,
     maxPrice: null,

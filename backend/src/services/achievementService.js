@@ -1278,26 +1278,29 @@ class AchievementService {
     return false;
   }
   
-  // Check daily volume
+  // Check daily volume - check if user has EVER achieved the target on any single day
   static async checkDailyVolume(userId, targetShares) {
-    const today = new Date().toISOString().split('T')[0];
-    
     const query = `
-      SELECT SUM(ABS(quantity)) as daily_volume
+      SELECT 
+        DATE(entry_time) as trade_date,
+        SUM(ABS(quantity)) as daily_volume
       FROM trades
       WHERE user_id = $1
-        AND DATE(entry_time) = $2
+      GROUP BY DATE(entry_time)
+      HAVING SUM(ABS(quantity)) >= $2
+      ORDER BY daily_volume DESC
+      LIMIT 1
     `;
     
-    const result = await db.query(query, [userId, today]);
+    const result = await db.query(query, [userId, targetShares]);
     
-    if (parseFloat(result.rows[0].daily_volume || 0) >= targetShares) {
+    if (result.rows.length > 0) {
       return {
         earned: true,
         metadata: {
           daily_volume: result.rows[0].daily_volume,
           target_shares: targetShares,
-          trade_date: today
+          trade_date: result.rows[0].trade_date
         }
       };
     }

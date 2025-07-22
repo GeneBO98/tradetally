@@ -557,6 +557,70 @@
               </dl>
             </div>
           </div>
+
+          <!-- News Section -->
+          <div v-if="trade.has_news && trade.news_events && trade.news_events.length > 0" class="card">
+            <div class="card-body">
+              <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-medium text-gray-900 dark:text-white">Breaking News</h3>
+                <span class="px-3 py-1 text-xs font-semibold rounded-full"
+                  :class="[
+                    trade.news_sentiment === 'positive' ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400' :
+                    trade.news_sentiment === 'negative' ? 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400' :
+                    trade.news_sentiment === 'mixed' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400' :
+                    'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
+                  ]">
+                  {{ trade.news_sentiment || 'neutral' }} sentiment
+                </span>
+              </div>
+              
+              <div class="space-y-4">
+                <div v-for="(article, index) in trade.news_events" :key="index" 
+                     class="border-l-4 pl-4 py-3"
+                     :class="[
+                       article.sentiment === 'positive' ? 'border-green-400' :
+                       article.sentiment === 'negative' ? 'border-red-400' :
+                       'border-gray-400'
+                     ]">
+                  <div class="flex items-start justify-between">
+                    <h4 class="text-sm font-semibold text-gray-900 dark:text-white mb-2">
+                      {{ article.headline }}
+                    </h4>
+                    <span class="flex-shrink-0 ml-2 px-2 py-1 text-xs rounded-full"
+                      :class="[
+                        article.sentiment === 'positive' ? 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400' :
+                        article.sentiment === 'negative' ? 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400' :
+                        'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+                      ]">
+                      {{ article.sentiment }}
+                    </span>
+                  </div>
+                  
+                  <p v-if="article.summary" class="text-sm text-gray-600 dark:text-gray-400 mb-2 overflow-hidden" style="display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;">
+                    {{ article.summary }}
+                  </p>
+                  
+                  <div class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+                    <span>{{ article.source || 'Unknown Source' }}</span>
+                    <span>{{ formatNewsDate(article.datetime) }}</span>
+                  </div>
+                  
+                  <div class="mt-2">
+                    <a v-if="article.url" 
+                       :href="article.url" 
+                       target="_blank" 
+                       rel="noopener noreferrer"
+                       class="inline-flex items-center text-xs text-primary-600 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300">
+                      Read full article
+                      <svg class="w-3 h-3 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                      </svg>
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -803,6 +867,31 @@ function formatCommentDate(date) {
     }
   } catch (error) {
     console.error('Comment date formatting error:', error, 'for date:', date)
+    return 'Invalid Date'
+  }
+}
+
+function formatNewsDate(date) {
+  if (!date) return 'N/A'
+  
+  try {
+    const dateObj = new Date(date)
+    if (isNaN(dateObj.getTime())) return 'Invalid Date'
+    
+    const now = new Date()
+    const diffInHours = (now - dateObj) / (1000 * 60 * 60)
+    
+    if (diffInHours < 1) {
+      return 'Just now'
+    } else if (diffInHours < 24) {
+      return `${Math.floor(diffInHours)}h ago`
+    } else if (diffInHours < 48) {
+      return 'Yesterday'
+    } else {
+      return format(dateObj, 'MMM dd, HH:mm')
+    }
+  } catch (error) {
+    console.error('News date formatting error:', error, 'for date:', date)
     return 'Invalid Date'
   }
 }

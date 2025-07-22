@@ -376,50 +376,115 @@
               <div v-if="personalityData.driftAnalysis && personalityData.driftAnalysis.hasDrift" class="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-4 mb-6">
                 <h5 class="text-lg font-medium text-yellow-800 dark:text-yellow-300 mb-3">
                   Behavioral Drift Detection
-                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ml-2"
-                        :class="{
-                          'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-300': personalityData.driftAnalysis.severity === 'high',
-                          'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-300': personalityData.driftAnalysis.severity === 'medium',
-                          'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-300': personalityData.driftAnalysis.severity === 'low'
-                        }">
-                    {{ personalityData.driftAnalysis.severity.toUpperCase() }}
-                  </span>
+                  <div class="relative group inline-block">
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium cursor-help"
+                          :class="{
+                            'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-300': personalityData.driftAnalysis.severity === 'high',
+                            'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-300': personalityData.driftAnalysis.severity === 'medium',
+                            'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-300': personalityData.driftAnalysis.severity === 'low'
+                          }">
+                      {{ personalityData.driftAnalysis.severity.toUpperCase() }}
+                    </span>
+                    <div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 dark:bg-gray-700 text-white text-xs rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 delay-500 z-10 w-64">
+                      <div class="text-center">
+                        <strong>Drift Severity Levels</strong><br>
+                        <strong>LOW (0-0.4):</strong> Minor behavioral changes<br>
+                        <strong>MEDIUM (0.4-0.7):</strong> Noticeable pattern shifts<br>
+                        <strong>HIGH (0.7-1.0):</strong> Significant behavioral transformation requiring attention
+                      </div>
+                      <div class="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900 dark:border-t-gray-700"></div>
+                    </div>
+                  </div>
                 </h5>
                 
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                  <div>
-                    <p class="text-sm text-yellow-700 dark:text-yellow-300">Personality Shift</p>
-                    <p class="font-medium">
-                      {{ personalityData.driftAnalysis.previousPersonality }} → {{ personalityData.driftAnalysis.currentPersonality }}
-                    </p>
+                  <div class="relative group">
+                    <div class="cursor-help">
+                      <p class="text-sm text-yellow-700 dark:text-yellow-300">Personality Shift</p>
+                      <p class="font-medium">
+                        {{ personalityData.driftAnalysis.previousPersonality }} → {{ personalityData.driftAnalysis.currentPersonality }}
+                      </p>
+                    </div>
+                    <div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 dark:bg-gray-700 text-white text-xs rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 delay-500 z-10 w-64">
+                      <div class="text-center">
+                        <strong>Personality Shift</strong><br>
+                        Shows your trading personality type change between analysis periods. Even if you're still primarily the same type (e.g., Scalper), this indicates if there's been any shift in your dominant trading behavior.
+                      </div>
+                      <div class="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900 dark:border-t-gray-700"></div>
+                    </div>
                   </div>
-                  <div>
-                    <p class="text-sm text-yellow-700 dark:text-yellow-300">Drift Score</p>
-                    <p class="font-medium">{{ personalityData.driftAnalysis.driftScore }}/1.0</p>
+                  <div class="relative group">
+                    <div class="cursor-help">
+                      <p class="text-sm text-yellow-700 dark:text-yellow-300">Drift Score</p>
+                      <p class="font-medium">{{ personalityData.driftAnalysis.driftScore }}/1.0</p>
+                    </div>
+                    <div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 dark:bg-gray-700 text-white text-xs rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 delay-500 z-10 w-72">
+                      <div class="text-center">
+                        <strong>Drift Score Explained</strong><br>
+                        Overall behavioral change score from 0-1.0. Combines personality shift, hold time changes, and trading frequency changes. <strong>1.0 means maximum drift detected</strong> - your behavior patterns have changed significantly even if your strategy type stayed the same.
+                      </div>
+                      <div class="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900 dark:border-t-gray-700"></div>
+                    </div>
                   </div>
-                  <div>
-                    <p class="text-sm text-yellow-700 dark:text-yellow-300">Performance Impact</p>
-                    <p class="font-medium" :class="{
-                      'text-green-600 dark:text-green-400': personalityData.driftAnalysis.performanceImpact < 0,
-                      'text-red-600 dark:text-red-400': personalityData.driftAnalysis.performanceImpact > 0
-                    }">
-                      {{ personalityData.driftAnalysis.performanceImpact >= 0 ? '+' : '' }}${{ personalityData.driftAnalysis.performanceImpact }}
-                    </p>
+                  <div class="relative group">
+                    <div class="cursor-help">
+                      <p class="text-sm text-yellow-700 dark:text-yellow-300">Performance Impact</p>
+                      <p class="font-medium" :class="{
+                        'text-green-600 dark:text-green-400': personalityData.driftAnalysis.performanceImpact < 0,
+                        'text-red-600 dark:text-red-400': personalityData.driftAnalysis.performanceImpact > 0
+                      }">
+                        {{ personalityData.driftAnalysis.performanceImpact >= 0 ? '+' : '' }}${{ personalityData.driftAnalysis.performanceImpact }}
+                      </p>
+                    </div>
+                    <div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 dark:bg-gray-700 text-white text-xs rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 delay-500 z-10 w-64">
+                      <div class="text-center">
+                        <strong>Performance Impact</strong><br>
+                        Estimated financial impact of your behavioral changes. <strong>Positive values</strong> suggest the drift may be hurting performance, while <strong>negative values</strong> suggest it may be helping.
+                      </div>
+                      <div class="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900 dark:border-t-gray-700"></div>
+                    </div>
                   </div>
                 </div>
 
                 <div v-if="personalityData.driftAnalysis.driftMetrics" class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <p class="text-sm text-yellow-700 dark:text-yellow-300">Hold Time Change</p>
-                    <p class="font-medium">{{ personalityData.driftAnalysis.driftMetrics.holdTimeDrift >= 0 ? '+' : '' }}{{ personalityData.driftAnalysis.driftMetrics.holdTimeDrift }}%</p>
+                  <div class="relative group">
+                    <div class="cursor-help">
+                      <p class="text-sm text-yellow-700 dark:text-yellow-300">Hold Time Change</p>
+                      <p class="font-medium">{{ personalityData.driftAnalysis.driftMetrics.holdTimeDrift >= 0 ? '+' : '' }}{{ personalityData.driftAnalysis.driftMetrics.holdTimeDrift }}%</p>
+                    </div>
+                    <div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 dark:bg-gray-700 text-white text-xs rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 delay-500 z-10 w-72">
+                      <div class="text-center">
+                        <strong>Hold Time Change</strong><br>
+                        Percentage change in how long you hold trades on average. Large changes (like going from 10 minutes to 50 minutes) contribute heavily to drift score. This measures whether you're becoming more patient or impatient with your trades.
+                      </div>
+                      <div class="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900 dark:border-t-gray-700"></div>
+                    </div>
                   </div>
-                  <div>
-                    <p class="text-sm text-yellow-700 dark:text-yellow-300">Frequency Change</p>
-                    <p class="font-medium">{{ personalityData.driftAnalysis.driftMetrics.frequencyDrift >= 0 ? '+' : '' }}{{ personalityData.driftAnalysis.driftMetrics.frequencyDrift }}%</p>
+                  <div class="relative group">
+                    <div class="cursor-help">
+                      <p class="text-sm text-yellow-700 dark:text-yellow-300">Frequency Change</p>
+                      <p class="font-medium">{{ personalityData.driftAnalysis.driftMetrics.frequencyDrift >= 0 ? '+' : '' }}{{ personalityData.driftAnalysis.driftMetrics.frequencyDrift }}%</p>
+                    </div>
+                    <div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 dark:bg-gray-700 text-white text-xs rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 delay-500 z-10 w-72">
+                      <div class="text-center">
+                        <strong>Frequency Change</strong><br>
+                        Percentage change in how often you trade per day. Shows if you're becoming more or less active in your trading. Significant changes in trading frequency can indicate evolving market confidence or strategy adjustments.
+                      </div>
+                      <div class="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900 dark:border-t-gray-700"></div>
+                    </div>
                   </div>
-                  <div>
-                    <p class="text-sm text-yellow-700 dark:text-yellow-300">Risk Tolerance Change</p>
-                    <p class="font-medium">{{ personalityData.driftAnalysis.driftMetrics.riskToleranceDrift }}</p>
+                  <div class="relative group">
+                    <div class="cursor-help">
+                      <p class="text-sm text-yellow-700 dark:text-yellow-300">Risk Tolerance Change</p>
+                      <p class="font-medium">{{ personalityData.driftAnalysis.driftMetrics.riskToleranceDrift }}</p>
+                    </div>
+                    <div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 dark:bg-gray-700 text-white text-xs rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 delay-500 z-10 w-72">
+                      <div class="text-center">
+                        <strong>Risk Tolerance Change</strong><br>
+                        Change in your risk tolerance level based on position sizing consistency. Higher values indicate you're becoming less consistent with position sizes, potentially taking on more varied risk levels per trade.
+                      </div>
+                      <div class="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900 dark:border-t-gray-700"></div>
+                    </div>
                   </div>
                 </div>
               </div>

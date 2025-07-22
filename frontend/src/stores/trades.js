@@ -21,7 +21,8 @@ export const useTradesStore = defineStore('trades', () => {
     strategy: '',
     holdTime: '',
     minHoldTime: null,
-    maxHoldTime: null
+    maxHoldTime: null,
+    hasNews: ''
   })
 
   // Store analytics data for consistent P&L calculations
@@ -119,10 +120,23 @@ export const useTradesStore = defineStore('trades', () => {
         })
       ])
       
-      trades.value = tradesResponse.data.trades || tradesResponse.data
-      
-      // Store analytics data for consistent P&L calculations
+      // Store analytics data for consistent P&L calculations FIRST
       analytics.value = analyticsResponse.data
+      
+      // If analytics shows 0 total trades, force empty trades array regardless of what trades API returned
+      if (analyticsResponse.data.summary?.totalTrades === 0) {
+        trades.value = []
+        console.log('📦 FORCED EMPTY: Analytics shows 0 trades, forcing empty array')
+      } else {
+        // Normal case - use trades data
+        if (tradesResponse.data.hasOwnProperty('trades')) {
+          trades.value = tradesResponse.data.trades
+          console.log('📦 Set trades from tradesResponse.data.trades:', trades.value.length)
+        } else {
+          trades.value = tradesResponse.data
+          console.log('📦 Set trades from tradesResponse.data (fallback):', trades.value.length)
+        }
+      }
       console.log('Analytics data received:', {
         summary: analyticsResponse.data.summary,
         totalPnL: analyticsResponse.data.summary?.totalPnL,
@@ -130,6 +144,15 @@ export const useTradesStore = defineStore('trades', () => {
         totalTrades: analyticsResponse.data.summary?.totalTrades
       })
       console.log('Full analytics response:', JSON.stringify(analyticsResponse.data, null, 2))
+      
+      // Final verification of trades array
+      console.log('🔍 Final trades array state:', {
+        tradesLength: trades.value?.length || 0,
+        isArray: Array.isArray(trades.value),
+        isEmpty: trades.value?.length === 0,
+        shouldShowEmpty: trades.value?.length === 0 && analyticsResponse.data.summary?.totalTrades === 0,
+        firstTradeSymbol: trades.value?.[0]?.symbol || 'none'
+      })
       
       // If the response includes pagination metadata, update it
       if (tradesResponse.data.total !== undefined) {
@@ -171,10 +194,23 @@ export const useTradesStore = defineStore('trades', () => {
         })
       ])
       
-      trades.value = tradesResponse.data.trades || tradesResponse.data
-      
-      // Store analytics data for consistent P&L calculations
+      // Store analytics data for consistent P&L calculations FIRST
       analytics.value = analyticsResponse.data
+      
+      // If analytics shows 0 total trades, force empty trades array regardless of what trades API returned
+      if (analyticsResponse.data.summary?.totalTrades === 0) {
+        trades.value = []
+        console.log('📦 FORCED EMPTY: Analytics shows 0 trades, forcing empty array')
+      } else {
+        // Normal case - use trades data
+        if (tradesResponse.data.hasOwnProperty('trades')) {
+          trades.value = tradesResponse.data.trades
+          console.log('📦 Set trades from tradesResponse.data.trades:', trades.value.length)
+        } else {
+          trades.value = tradesResponse.data
+          console.log('📦 Set trades from tradesResponse.data (fallback):', trades.value.length)
+        }
+      }
       console.log('Analytics data received:', {
         summary: analyticsResponse.data.summary,
         totalPnL: analyticsResponse.data.summary?.totalPnL,
@@ -182,6 +218,15 @@ export const useTradesStore = defineStore('trades', () => {
         totalTrades: analyticsResponse.data.summary?.totalTrades
       })
       console.log('Full analytics response:', JSON.stringify(analyticsResponse.data, null, 2))
+      
+      // Final verification of trades array
+      console.log('🔍 Final trades array state:', {
+        tradesLength: trades.value?.length || 0,
+        isArray: Array.isArray(trades.value),
+        isEmpty: trades.value?.length === 0,
+        shouldShowEmpty: trades.value?.length === 0 && analyticsResponse.data.summary?.totalTrades === 0,
+        firstTradeSymbol: trades.value?.[0]?.symbol || 'none'
+      })
       
       // If the response includes pagination metadata, update it
       if (tradesResponse.data.total !== undefined) {
@@ -334,7 +379,8 @@ export const useTradesStore = defineStore('trades', () => {
         strategy: '',
         holdTime: '',
         minHoldTime: null,
-        maxHoldTime: null
+        maxHoldTime: null,
+        hasNews: ''
       }
     } else {
       filters.value = { ...filters.value, ...newFilters }
@@ -351,7 +397,8 @@ export const useTradesStore = defineStore('trades', () => {
       strategy: '',
       holdTime: '',
       minHoldTime: null,
-      maxHoldTime: null
+      maxHoldTime: null,
+      hasNews: ''
     }
     pagination.value.page = 1
   }
