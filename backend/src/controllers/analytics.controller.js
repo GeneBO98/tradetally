@@ -917,23 +917,47 @@ const analyticsController = {
         return found ? parseFloat(found.total_pnl) : 0;
       });
 
-      // Day of Week Performance
-      const dayOfWeekQuery = `
-        SELECT 
-          EXTRACT(DOW FROM trade_date) as day_of_week,
-          COUNT(*) as trade_count,
-          COALESCE(SUM(pnl), 0) as total_pnl
-        FROM trades
-        WHERE user_id = $1 ${dateFilter}
-        GROUP BY EXTRACT(DOW FROM trade_date)
-        ORDER BY EXTRACT(DOW FROM trade_date)
-      `;
+      // Day of Week Performance (timezone-aware and excluding weekends)
+      const { getUserTimezone } = require('../utils/timezone');
+      const userTimezone = await getUserTimezone(req.user.id);
+      
+      let dayOfWeekQuery;
+      let dayOfWeekParams;
+      
+      if (userTimezone !== 'UTC') {
+        dayOfWeekQuery = `
+          SELECT 
+            EXTRACT(DOW FROM (entry_time AT TIME ZONE 'UTC' AT TIME ZONE $2)) as day_of_week,
+            COUNT(*) as trade_count,
+            COALESCE(SUM(pnl), 0) as total_pnl
+          FROM trades
+          WHERE user_id = $1 ${dateFilter}
+            AND EXTRACT(DOW FROM (entry_time AT TIME ZONE 'UTC' AT TIME ZONE $2)) NOT IN (0, 6) -- Exclude weekends
+          GROUP BY EXTRACT(DOW FROM (entry_time AT TIME ZONE 'UTC' AT TIME ZONE $2))
+          ORDER BY EXTRACT(DOW FROM (entry_time AT TIME ZONE 'UTC' AT TIME ZONE $2))
+        `;
+        dayOfWeekParams = params.concat([userTimezone]);
+      } else {
+        dayOfWeekQuery = `
+          SELECT 
+            EXTRACT(DOW FROM entry_time) as day_of_week,
+            COUNT(*) as trade_count,
+            COALESCE(SUM(pnl), 0) as total_pnl
+          FROM trades
+          WHERE user_id = $1 ${dateFilter}
+            AND EXTRACT(DOW FROM entry_time) NOT IN (0, 6) -- Exclude weekends
+          GROUP BY EXTRACT(DOW FROM entry_time)
+          ORDER BY EXTRACT(DOW FROM entry_time)
+        `;
+        dayOfWeekParams = params;
+      }
 
-      const dayOfWeekResult = await db.query(dayOfWeekQuery, params);
+      const dayOfWeekResult = await db.query(dayOfWeekQuery, dayOfWeekParams);
 
-      // Process day of week data (0=Sunday, 1=Monday, ..., 6=Saturday)
+      // Process day of week data - only weekdays (1=Monday, ..., 5=Friday)
+      // Skip weekends entirely since stock markets are closed
       const dayOfWeekData = [];
-      for (let i = 0; i < 7; i++) {
+      for (let i = 1; i <= 5; i++) { // Only weekdays: 1=Monday through 5=Friday
         const found = dayOfWeekResult.rows.find(row => parseInt(row.day_of_week) === i);
         dayOfWeekData.push({
           total_pnl: found ? parseFloat(found.total_pnl) : 0,

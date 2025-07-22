@@ -2126,7 +2126,21 @@ const applyFilters = async () => {
   pagination.value.page = 1
   // Save filters to localStorage
   saveFilters()
+  
+  // Load main data and existing analysis data with new filters
   await loadData()
+  
+  // Reload all existing analysis data with new date filters
+  await Promise.all([
+    loadExistingLossAversionData(),
+    loadExistingOverconfidenceData(),
+    loadExistingPersonalityData()
+  ])
+  
+  // Auto-load top missed trades if loss aversion data exists
+  if (lossAversionData.value?.analysis) {
+    await loadTopMissedTrades()
+  }
 }
 
 // Clear filters
@@ -2501,7 +2515,12 @@ const loadTopMissedTrades = async () => {
     
     console.log('Loading top missed trades...')
     
-    const response = await api.get('/behavioral-analytics/loss-aversion/top-missed-trades?limit=50')
+    const queryParams = new URLSearchParams()
+    if (filters.value.startDate) queryParams.append('startDate', filters.value.startDate)
+    if (filters.value.endDate) queryParams.append('endDate', filters.value.endDate)
+    queryParams.append('limit', '50')
+    
+    const response = await api.get(`/behavioral-analytics/loss-aversion/top-missed-trades?${queryParams}`)
     
     if (response.data.data) {
       topMissedTrades.value = response.data.data

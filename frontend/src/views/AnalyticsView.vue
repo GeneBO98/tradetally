@@ -1263,7 +1263,9 @@ function createDayOfWeekChart() {
   }
 
   const ctx = dayOfWeekChart.value.getContext('2d')
-  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+  // Only show weekdays since markets are closed on weekends
+  const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+  const weekdayData = dayOfWeekData.value.slice(1, 6) // Skip Sunday (0) and Saturday (6)
   
   dayOfWeekChartInstance = new Chart(ctx, {
     type: 'bar',
@@ -1271,8 +1273,8 @@ function createDayOfWeekChart() {
       labels: days,
       datasets: [{
         label: 'Total P&L',
-        data: dayOfWeekData.value.map(d => d.total_pnl || 0),
-        backgroundColor: dayOfWeekData.value.map(d => (d.total_pnl || 0) >= 0 ? '#4ade80' : '#f87171'),
+        data: weekdayData.map(d => d.total_pnl || 0),
+        backgroundColor: weekdayData.map(d => (d.total_pnl || 0) >= 0 ? '#4ade80' : '#f87171'),
         borderWidth: 1,
         barThickness: 30,
         categoryPercentage: 0.7
@@ -1285,7 +1287,7 @@ function createDayOfWeekChart() {
       onClick: (event, elements) => {
         if (elements.length > 0) {
           const index = elements[0].index
-          const dayOfWeek = index // 0 = Sunday, 1 = Monday, etc.
+          const dayOfWeek = index + 1 // Convert to weekday: 0=Monday -> 1, 1=Tuesday -> 2, etc.
           navigateToTradesByDayOfWeek(dayOfWeek)
         }
       },
@@ -2149,13 +2151,11 @@ function navigateToTradesByVolumeRange(volumeRange) {
 }
 
 function navigateToTradesByDayOfWeek(dayOfWeek) {
-  // For day of week filtering, we'll use a custom filter approach
-  // Since there's no direct day-of-week filter, we could either:
-  // 1. Add a custom filter to the backend
-  // 2. Navigate to trades page and let user know to filter manually
-  // For now, let's just navigate to all trades
   router.push({
-    path: '/trades'
+    path: '/trades',
+    query: {
+      daysOfWeek: dayOfWeek.toString() // Pass the day number (0=Sunday, 1=Monday, etc.)
+    }
   }).then(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   })
