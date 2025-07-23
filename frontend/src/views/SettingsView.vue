@@ -105,6 +105,51 @@
         </div>
       </div>
 
+      <!-- Analytics Preferences -->
+      <div class="card">
+        <div class="card-body">
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-6">Analytics Preferences</h3>
+          <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
+            Customize how your trading analytics are calculated and displayed.
+          </p>
+
+          <form @submit.prevent="updateAnalyticsSettings" class="space-y-6">
+            <div>
+              <label for="statisticsCalculation" class="label">Statistics Calculation Method</label>
+              <select
+                id="statisticsCalculation"
+                v-model="analyticsForm.statisticsCalculation"
+                class="input"
+              >
+                <option value="average">Average (Mean)</option>
+                <option value="median">Median</option>
+              </select>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Choose whether to use averages or medians for calculations like Average P&L, Average Win, Average Loss, etc. 
+                Medians are less affected by outliers and may provide a more representative view of typical performance.
+                <strong class="block mt-2 text-blue-600 dark:text-blue-400">
+                  Note: Changes take effect immediately and will update labels throughout the application.
+                </strong>
+              </p>
+            </div>
+
+            <div class="flex justify-end">
+              <button
+                type="submit"
+                :disabled="analyticsLoading"
+                class="btn-primary"
+              >
+                <span v-if="analyticsLoading" class="flex items-center">
+                  <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Saving...
+                </span>
+                <span v-else>Save Analytics Settings</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
       <!-- Admin AI Provider Settings -->
       <div v-if="authStore.user?.role === 'admin'" class="card">
         <div class="card-body">
@@ -220,6 +265,13 @@ const aiForm = ref({
 
 const aiLoading = ref(false)
 
+// Analytics Settings
+const analyticsForm = ref({
+  statisticsCalculation: 'average'
+})
+
+const analyticsLoading = ref(false)
+
 // Admin AI Settings
 const adminAiForm = ref({
   provider: 'gemini',
@@ -319,6 +371,35 @@ async function updateAISettings() {
   }
 }
 
+// Analytics Settings Functions
+async function loadAnalyticsSettings() {
+  try {
+    const response = await api.get('/settings')
+    analyticsForm.value = {
+      statisticsCalculation: response.data.settings.statisticsCalculation || 'average'
+    }
+  } catch (error) {
+    console.error('Failed to load analytics settings:', error)
+    // Default to average if loading fails
+    analyticsForm.value.statisticsCalculation = 'average'
+  }
+}
+
+async function updateAnalyticsSettings() {
+  analyticsLoading.value = true
+  try {
+    await api.put('/settings', {
+      statisticsCalculation: analyticsForm.value.statisticsCalculation
+    })
+    showSuccess('Success', 'Analytics preferences updated successfully')
+  } catch (error) {
+    console.error('Failed to update analytics settings:', error)
+    showError('Error', error.response?.data?.error || 'Failed to update analytics settings')
+  } finally {
+    analyticsLoading.value = false
+  }
+}
+
 // Admin AI Settings Functions
 async function fetchAdminAISettings() {
   try {
@@ -410,6 +491,7 @@ function getAdminApiKeyHelp() {
 
 onMounted(() => {
   loadAISettings()
+  loadAnalyticsSettings()
   
   // Load admin AI settings if user is admin
   if (authStore.user?.role === 'admin') {

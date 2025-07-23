@@ -74,7 +74,8 @@ const schemas = {
     defaultTags: Joi.array().items(Joi.string().max(50)),
     importSettings: Joi.object(),
     theme: Joi.string().valid('light', 'dark'),
-    timezone: Joi.string().max(50)
+    timezone: Joi.string().max(50),
+    statisticsCalculation: Joi.string().valid('average', 'median')
   }).min(1),
 
   // Mobile-specific validation schemas

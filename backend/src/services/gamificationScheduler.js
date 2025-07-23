@@ -20,6 +20,9 @@ class GamificationScheduler {
       // Update leaderboards
       await LeaderboardService.updateLeaderboards();
       
+      // Update trading streaks for all users
+      await this.updateAllTradingStreaks();
+      
       // Assign new users to peer groups
       await this.assignNewUsersToPeerGroups();
       
@@ -45,6 +48,34 @@ class GamificationScheduler {
       
     } catch (error) {
       console.error('Error updating challenge progress:', error);
+    }
+  }
+  
+  // Update trading streaks for all users
+  static async updateAllTradingStreaks() {
+    try {
+      console.log('📈 Updating trading streaks for all users...');
+      
+      // Get all users who have trades
+      const usersWithTrades = await db.query(`
+        SELECT DISTINCT user_id 
+        FROM trades
+      `);
+      
+      let updated = 0;
+      for (const user of usersWithTrades.rows) {
+        try {
+          await AchievementService.updateTradingStreak(user.user_id);
+          updated++;
+        } catch (error) {
+          console.warn(`Failed to update streak for user ${user.user_id}:`, error.message);
+        }
+      }
+      
+      console.log(`✅ Updated trading streaks for ${updated} users`);
+      
+    } catch (error) {
+      console.error('Error updating trading streaks:', error);
     }
   }
   

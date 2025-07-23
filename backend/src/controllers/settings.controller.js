@@ -2,17 +2,31 @@ const User = require('../models/User');
 const db = require('../config/database');
 const adminSettingsService = require('../services/adminSettings');
 
+// Helper function to convert snake_case to camelCase
+function toCamelCase(obj) {
+  if (!obj) return obj;
+  
+  const result = {};
+  for (const [key, value] of Object.entries(obj)) {
+    const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+    result[camelKey] = value;
+  }
+  return result;
+}
+
 const settingsController = {
   async getSettings(req, res, next) {
     try {
-      const settings = await User.getSettings(req.user.id);
+      let settings = await User.getSettings(req.user.id);
       
       if (!settings) {
-        const newSettings = await User.createSettings(req.user.id);
-        return res.json({ settings: newSettings });
+        settings = await User.createSettings(req.user.id);
       }
 
-      res.json({ settings });
+      // Convert snake_case to camelCase for frontend
+      const camelCaseSettings = toCamelCase(settings);
+      
+      res.json({ settings: camelCaseSettings });
     } catch (error) {
       next(error);
     }
@@ -21,7 +35,9 @@ const settingsController = {
   async updateSettings(req, res, next) {
     try {
       const settings = await User.updateSettings(req.user.id, req.body);
-      res.json({ settings });
+      // Convert snake_case to camelCase for frontend
+      const camelCaseSettings = toCamelCase(settings);
+      res.json({ settings: camelCaseSettings });
     } catch (error) {
       next(error);
     }

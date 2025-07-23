@@ -206,6 +206,56 @@ const gamificationController = {
       next(error);
     }
   },
+
+  // Get all leaderboards with entries (for frontend rankings tab)
+  async getAllLeaderboards(req, res, next) {
+    try {
+      const userId = req.user?.id;
+      
+      // Get all active leaderboards
+      const leaderboards = await db.query(`
+        SELECT * FROM leaderboards 
+        WHERE is_active = true 
+        ORDER BY name
+      `);
+      
+      const result = [];
+      
+      for (const lb of leaderboards.rows) {
+        // Get entries for this leaderboard
+        const entries = await db.query(`
+          SELECT 
+            le.rank,
+            COALESCE(le.anonymous_name, CONCAT('Trader', SUBSTRING(u.id::text, 1, 4))) as display_name,
+            le.score as value,
+            CASE WHEN $2::uuid IS NOT NULL THEN le.user_id = $2 ELSE false END as is_current_user
+          FROM leaderboard_entries le
+          JOIN users u ON u.id = le.user_id
+          LEFT JOIN gamification_privacy gp ON gp.user_id = le.user_id
+          WHERE le.leaderboard_id = $1
+            AND DATE(le.recorded_at) = CURRENT_DATE
+          ORDER BY le.rank
+          LIMIT 10
+        `, [lb.id, userId]);
+        
+        result.push({
+          key: lb.key,
+          name: lb.name,
+          description: lb.description,
+          metric_key: lb.metric_key,
+          period_type: lb.period_type,
+          entries: entries.rows
+        });
+      }
+      
+      res.json({
+        success: true,
+        data: result
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
   
   // Get gamification privacy settings
   async getPrivacySettings(req, res, next) {
@@ -343,6 +393,18 @@ const gamificationController = {
       
       // Get user rankings
       const rankings = await LeaderboardService.getUserRankings(userId);
+      
+      // Calculate average rank across all leaderboards for overview display
+      let averageRank = null;
+      if (rankings && rankings.length > 0) {
+        const totalRank = rankings.reduce((sum, ranking) => sum + ranking.rank, 0);
+        averageRank = Math.round(totalRank / rankings.length);
+      }
+      
+      // Update stats with calculated average rank
+      if (stats) {
+        stats.rank = averageRank;
+      }
       
       // Get upcoming achievements (closest to completion)
       const upcomingAchievements = await db.query(`

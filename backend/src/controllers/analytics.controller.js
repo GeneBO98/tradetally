@@ -81,14 +81,26 @@ const analyticsController = {
   async getOverview(req, res, next) {
     try {
       const { startDate, endDate } = req.query;
-      const cacheKey = `analytics_overview_${req.user.id}_${startDate}_${endDate}`;
+      
+      // Get user's preference for average vs median calculations
+      const User = require('../models/User');
+      let useMedian = false;
+      try {
+        const userSettings = await User.getSettings(req.user.id);
+        useMedian = userSettings?.statistics_calculation === 'median';
+      } catch (error) {
+        console.warn('Could not fetch user settings for analytics, using default (average):', error.message);
+        useMedian = false;
+      }
+      
+      const cacheKey = `analytics_overview_${req.user.id}_${startDate}_${endDate}_${useMedian ? 'median' : 'avg'}`;
       const cachedData = cache.get(cacheKey);
 
       if (cachedData) {
         return res.json(cachedData);
       }
 
-      console.log('Date filters received:', { startDate, endDate });
+      console.log('Date filters received:', { startDate, endDate }, 'Use median:', useMedian);
       
       let dateFilter = '';
       const params = [req.user.id];
@@ -145,6 +157,15 @@ const analyticsController = {
                 MIN(entry_time) as entry_time
             FROM trades_with_groups
             GROUP BY symbol, trade_group
+        ),
+        individual_trades AS (
+            -- Get best/worst individual executions, not round-trip aggregates
+            SELECT 
+                COALESCE(MAX(pnl), 0) as individual_best_trade,
+                COALESCE(MIN(pnl), 0) as individual_worst_trade
+            FROM trades
+            WHERE user_id = $1 ${dateFilter}
+                AND pnl IS NOT NULL
         )
         SELECT 
           (SELECT COUNT(*) FROM completed_trades)::integer as total_trades,
@@ -152,11 +173,21 @@ const analyticsController = {
           (SELECT COUNT(*) FROM completed_trades WHERE pnl < 0)::integer as losing_trades,
           (SELECT COUNT(*) FROM completed_trades WHERE pnl = 0)::integer as breakeven_trades,
           COALESCE(SUM(pnl), 0)::numeric as total_pnl,
-          COALESCE(AVG(pnl), 0)::numeric as avg_pnl,
-          COALESCE(AVG(pnl) FILTER (WHERE pnl > 0), 0)::numeric as avg_win,
-          COALESCE(AVG(pnl) FILTER (WHERE pnl < 0), 0)::numeric as avg_loss,
-          COALESCE(MAX(pnl), 0)::numeric as best_trade,
-          COALESCE(MIN(pnl), 0)::numeric as worst_trade,
+          ${useMedian 
+            ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl), 0)::numeric as avg_pnl'
+            : 'COALESCE(AVG(pnl), 0)::numeric as avg_pnl'
+          },
+          ${useMedian
+            ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE pnl > 0), 0)::numeric as avg_win'
+            : 'COALESCE(AVG(pnl) FILTER (WHERE pnl > 0), 0)::numeric as avg_win'
+          },
+          ${useMedian
+            ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE pnl < 0), 0)::numeric as avg_loss'
+            : 'COALESCE(AVG(pnl) FILTER (WHERE pnl < 0), 0)::numeric as avg_loss'
+          },
+          -- Use individual execution best/worst instead of round-trip aggregates
+          (SELECT individual_best_trade FROM individual_trades) as best_trade,
+          (SELECT individual_worst_trade FROM individual_trades) as worst_trade,
           (SELECT COUNT(*) FROM trades WHERE user_id = $1 ${dateFilter})::integer as total_executions,
           COALESCE(SUM(pnl) FILTER (WHERE pnl > 0), 0) as total_gross_wins,
           COALESCE(ABS(SUM(pnl) FILTER (WHERE pnl < 0)), 0) as total_gross_losses,

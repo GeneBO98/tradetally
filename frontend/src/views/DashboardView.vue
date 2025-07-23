@@ -290,7 +290,7 @@
               ${{ formatCurrency(analytics.summary.totalPnL) }}
             </dd>
             <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-              Avg: ${{ formatCurrency(analytics.summary.avgPnL) }}
+              {{ calculationMethod }}: ${{ formatCurrency(analytics.summary.avgPnL) }}
             </div>
           </div>
         </div>
@@ -347,7 +347,7 @@
         <div class="card cursor-pointer hover:shadow-lg transition-shadow" @click="navigateToTradesFiltered('avgWin')">
           <div class="card-body">
             <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
-              Average Win
+              {{ calculationMethod }} Win
             </dt>
             <dd class="mt-1 text-2xl font-semibold text-green-600">
               ${{ formatCurrency(analytics.summary.avgWin) }}
@@ -358,7 +358,7 @@
         <div class="card cursor-pointer hover:shadow-lg transition-shadow" @click="navigateToTradesFiltered('avgLoss')">
           <div class="card-body">
             <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
-              Average Loss
+              {{ calculationMethod }} Loss
             </dt>
             <dd class="mt-1 text-2xl font-semibold text-red-600">
               ${{ formatCurrency(Math.abs(analytics.summary.avgLoss)) }}
@@ -592,12 +592,17 @@ const authStore = useAuthStore()
 const router = useRouter()
 
 const loading = ref(true)
+const userSettings = ref(null)
 const analytics = ref({
   summary: {},
   performanceBySymbol: [],
   dailyPnL: [],
   dailyWinRate: [],
   topTrades: { best: [], worst: [] }
+})
+
+const calculationMethod = computed(() => {
+  return userSettings.value?.statisticsCalculation === 'median' ? 'Median' : 'Average'
 })
 const openTrades = ref([])
 const symbols = ref([])
@@ -1195,11 +1200,23 @@ watch(loading, (newLoading) => {
   }
 })
 
+async function fetchUserSettings() {
+  try {
+    const response = await api.get('/settings')
+    userSettings.value = response.data.settings
+  } catch (error) {
+    console.error('Failed to load user settings:', error)
+    // Default to average if loading fails
+    userSettings.value = { statisticsCalculation: 'average' }
+  }
+}
+
 onMounted(async () => {
   await Promise.all([
     fetchAnalytics(),
     fetchFilterOptions(),
-    fetchOpenTrades()
+    fetchOpenTrades(),
+    fetchUserSettings()
   ])
 })
 </script>

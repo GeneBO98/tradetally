@@ -459,6 +459,82 @@ class AchievementService {
     return false;
   }
   
+  // Calculate and update current trading streak
+  static async updateTradingStreak(userId) {
+    try {
+      const streakQuery = `
+        WITH trading_days AS (
+          SELECT DISTINCT DATE(entry_time AT TIME ZONE 'UTC') as trade_date
+          FROM trades
+          WHERE user_id = $1
+          ORDER BY trade_date DESC
+        ),
+        dated_trades AS (
+          SELECT 
+            trade_date,
+            ROW_NUMBER() OVER (ORDER BY trade_date DESC) as row_num,
+            trade_date + INTERVAL '1 day' * ROW_NUMBER() OVER (ORDER BY trade_date DESC) as expected_date
+          FROM trading_days
+        ),
+        current_streak AS (
+          SELECT COUNT(*) as streak_days
+          FROM dated_trades
+          WHERE trade_date = CURRENT_DATE - INTERVAL '1 day' * (row_num - 1)
+          AND trade_date <= CURRENT_DATE
+        ),
+        longest_streak AS (
+          SELECT 
+            trade_date,
+            LAG(trade_date) OVER (ORDER BY trade_date) as prev_date,
+            CASE 
+              WHEN LAG(trade_date) OVER (ORDER BY trade_date) = trade_date - INTERVAL '1 day' 
+              THEN 0 
+              ELSE 1 
+            END as is_break
+          FROM trading_days
+        ),
+        streak_groups AS (
+          SELECT 
+            trade_date,
+            SUM(is_break) OVER (ORDER BY trade_date ROWS UNBOUNDED PRECEDING) as group_id
+          FROM longest_streak
+        ),
+        streak_lengths AS (
+          SELECT 
+            group_id,
+            COUNT(*) as streak_length,
+            MIN(trade_date) as streak_start,
+            MAX(trade_date) as streak_end
+          FROM streak_groups
+          GROUP BY group_id
+        )
+        SELECT 
+          COALESCE((SELECT streak_days FROM current_streak), 0) as current_streak_days,
+          COALESCE((SELECT MAX(streak_length) FROM streak_lengths), 0) as longest_streak_days
+      `;
+      
+      const result = await db.query(streakQuery, [userId]);
+      const { current_streak_days, longest_streak_days } = result.rows[0];
+      
+      // Update user gamification stats
+      await db.query(`
+        INSERT INTO user_gamification_stats (user_id, current_streak_days, longest_streak_days)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (user_id) 
+        DO UPDATE SET 
+          current_streak_days = EXCLUDED.current_streak_days,
+          longest_streak_days = GREATEST(user_gamification_stats.longest_streak_days, EXCLUDED.longest_streak_days),
+          updated_at = CURRENT_TIMESTAMP
+      `, [userId, current_streak_days, longest_streak_days]);
+      
+      return { current_streak_days, longest_streak_days };
+      
+    } catch (error) {
+      console.error('Error updating trading streak for user', userId, ':', error);
+      return { current_streak_days: 0, longest_streak_days: 0 };
+    }
+  }
+  
   // Check risk/reward ratio
   static async checkRiskReward(userId, targetRatio, requiredTrades) {
     const query = `

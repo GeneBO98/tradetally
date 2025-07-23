@@ -26,32 +26,31 @@ class LeaderboardService {
       
       // Calculate scores based on metric
       switch (leaderboard.metric_key) {
-        case 'discipline_score':
-          scores = await this.calculateDisciplineScores(leaderboard);
+        case 'total_pnl':
+        case 'monthly_pnl':
+        case 'weekly_pnl':
+          scores = await this.calculatePnLScores(leaderboard);
           break;
           
-        case 'revenge_free_days':
-          scores = await this.calculateRevengeFreeStreaks(leaderboard);
+        case 'best_trade':
+          scores = await this.calculateBestTrades(leaderboard);
+          break;
+          
+        case 'worst_trade':
+          scores = await this.calculateWorstTrades(leaderboard);
           break;
           
         case 'consistency_score':
-          scores = await this.calculateConsistencyScores(leaderboard);
-          break;
-          
-        case 'risk_adherence_score':
-          scores = await this.calculateRiskAdherenceScores(leaderboard);
-          break;
-          
-        case 'achievement_points':
-          scores = await this.calculateAchievementPoints(leaderboard);
+          scores = await this.calculateTradingConsistency(leaderboard);
           break;
           
         default:
+          console.warn(`Unknown metric key: ${leaderboard.metric_key}`);
           return;
       }
       
-      // Only update if we have enough participants
-      if (scores.length >= leaderboard.min_participants) {
+      // Save leaderboard entries regardless of participant count
+      if (scores.length > 0) {
         await this.saveLeaderboardEntries(leaderboard.id, scores);
       }
       
@@ -61,44 +60,97 @@ class LeaderboardService {
     }
   }
   
-  // Calculate discipline scores
-  static async calculateDisciplineScores(leaderboard) {
+  // Calculate P&L scores (total, monthly, weekly)
+  static async calculatePnLScores(leaderboard) {
     const dateFilter = this.getDateFilter(leaderboard);
     
     const query = `
-      WITH user_discipline AS (
-        SELECT 
-          t.user_id,
-          COUNT(CASE 
-            WHEN t.pnl > 0 AND t.exit_price IS NOT NULL THEN
-              CASE 
-                -- For long trades: risk/reward = (exit_price - entry_price) / (entry_price - stop_loss)
-                -- For short trades: risk/reward = (entry_price - exit_price) / (stop_loss - entry_price)
-                -- Since we don't have stop_loss, we'll use a simpler metric: profitable trades with good returns
-                WHEN t.side = 'long' AND ((t.exit_price - t.entry_price) / t.entry_price) >= 0.015 THEN 1
-                WHEN t.side = 'short' AND ((t.entry_price - t.exit_price) / t.entry_price) >= 0.015 THEN 1
-                ELSE NULL
-              END
-            ELSE NULL
-          END)::float / NULLIF(COUNT(*)::float, 0) * 100 as discipline_score,
-          COUNT(*) as trade_count
-        FROM trades t
-        JOIN gamification_privacy gp ON gp.user_id = t.user_id
-        WHERE gp.show_on_leaderboards = true
-          AND t.exit_time IS NOT NULL
-          ${dateFilter}
-        GROUP BY t.user_id
-        HAVING COUNT(*) >= 10  -- Minimum trades for meaningful score
-      )
       SELECT 
-        ud.user_id,
-        ud.discipline_score as score,
+        t.user_id,
+        COALESCE(SUM(t.pnl), 0) as score,
         json_build_object(
-          'trade_count', ud.trade_count,
-          'discipline_percentage', ud.discipline_score
+          'total_pnl', COALESCE(SUM(t.pnl), 0),
+          'trade_count', COUNT(*),
+          'win_rate', ROUND(COUNT(CASE WHEN t.pnl > 0 THEN 1 END)::numeric / NULLIF(COUNT(*), 0) * 100, 2),
+          'avg_trade', ROUND(COALESCE(AVG(t.pnl), 0)::numeric, 2)
         ) as metadata
-      FROM user_discipline ud
-      ORDER BY ud.discipline_score DESC
+      FROM trades t
+      JOIN gamification_privacy gp ON gp.user_id = t.user_id
+      WHERE gp.show_on_leaderboards = true
+        AND t.exit_time IS NOT NULL
+        AND t.pnl IS NOT NULL
+        ${dateFilter}
+      GROUP BY t.user_id
+      HAVING COUNT(*) >= 1
+      ORDER BY score DESC
+      LIMIT 100
+    `;
+    
+    const result = await db.query(query);
+    return result.rows;
+  }
+  
+  // Calculate best single trades
+  static async calculateBestTrades(leaderboard) {
+    const query = `
+      SELECT 
+        t.user_id,
+        MAX(t.pnl) as score,
+        json_build_object(
+          'best_trade_pnl', MAX(t.pnl),
+          'best_trade_symbol', (
+            SELECT symbol FROM trades t2 
+            WHERE t2.user_id = t.user_id AND t2.pnl = MAX(t.pnl) 
+            LIMIT 1
+          ),
+          'best_trade_date', (
+            SELECT exit_time FROM trades t2 
+            WHERE t2.user_id = t.user_id AND t2.pnl = MAX(t.pnl) 
+            LIMIT 1
+          )
+        ) as metadata
+      FROM trades t
+      JOIN gamification_privacy gp ON gp.user_id = t.user_id
+      WHERE gp.show_on_leaderboards = true
+        AND t.exit_time IS NOT NULL
+        AND t.pnl IS NOT NULL
+        AND t.pnl > 0
+      GROUP BY t.user_id
+      ORDER BY score DESC
+      LIMIT 100
+    `;
+    
+    const result = await db.query(query);
+    return result.rows;
+  }
+  
+  // Calculate worst single trades
+  static async calculateWorstTrades(leaderboard) {
+    const query = `
+      SELECT 
+        t.user_id,
+        MIN(t.pnl) as score,
+        json_build_object(
+          'worst_trade_pnl', MIN(t.pnl),
+          'worst_trade_symbol', (
+            SELECT symbol FROM trades t2 
+            WHERE t2.user_id = t.user_id AND t2.pnl = MIN(t.pnl) 
+            LIMIT 1
+          ),
+          'worst_trade_date', (
+            SELECT exit_time FROM trades t2 
+            WHERE t2.user_id = t.user_id AND t2.pnl = MIN(t.pnl) 
+            LIMIT 1
+          )
+        ) as metadata
+      FROM trades t
+      JOIN gamification_privacy gp ON gp.user_id = t.user_id
+      WHERE gp.show_on_leaderboards = true
+        AND t.exit_time IS NOT NULL
+        AND t.pnl IS NOT NULL
+        AND t.pnl < 0
+      GROUP BY t.user_id
+      ORDER BY score ASC
       LIMIT 100
     `;
     
@@ -122,8 +174,7 @@ class LeaderboardService {
         WHERE gp.show_on_leaderboards = true
           AND EXISTS (
             SELECT 1 FROM trades t 
-            WHERE t.user_id = u.id 
-              AND t.entry_time >= CURRENT_TIMESTAMP - INTERVAL '30 days'
+            WHERE t.user_id = u.id
           )
         GROUP BY u.id
       )
@@ -171,7 +222,7 @@ class LeaderboardService {
           COUNT(CASE WHEN daily_pnl > 0 THEN 1 END)::float / NULLIF(COUNT(*)::float, 0) * 100 as profitable_days_pct
         FROM daily_results
         GROUP BY user_id
-        HAVING COUNT(DISTINCT trade_date) >= 10
+        HAVING COUNT(DISTINCT trade_date) >= 1
       )
       SELECT 
         user_id,
@@ -239,7 +290,7 @@ class LeaderboardService {
           AND t.entry_price IS NOT NULL
           ${dateFilter}
         GROUP BY t.user_id, uap.avg_position_size
-        HAVING COUNT(*) >= 20
+        HAVING COUNT(*) >= 1
       )
       SELECT 
         user_id,
@@ -322,15 +373,8 @@ class LeaderboardService {
         const score = scores[i];
         const rank = i + 1;
         
-        // Get user's privacy settings
-        const privacyResult = await db.query(
-          'SELECT anonymous_only FROM gamification_privacy WHERE user_id = $1',
-          [score.user_id]
-        );
-        
-        const anonymousName = privacyResult.rows[0]?.anonymous_only || !privacyResult.rows.length
-          ? await this.generateAnonymousName(score.user_id)
-          : null;
+        // Always generate anonymous names for leaderboards (privacy protection)
+        const anonymousName = await this.generateAnonymousName(score.user_id);
         
         await db.query(`
           INSERT INTO leaderboard_entries (
@@ -482,6 +526,67 @@ class LeaderboardService {
     
     const result = await db.query(query, values);
     return result.rows[0];
+  }
+  
+  // Calculate trading consistency based on volume and average P&L
+  static async calculateTradingConsistency(leaderboard) {
+    const query = `
+      WITH user_stats AS (
+        SELECT 
+          t.user_id,
+          COUNT(*) as total_trades,
+          AVG(ABS(t.quantity * t.entry_price)) as avg_volume,
+          AVG(t.pnl) as avg_pnl,
+          STDDEV(t.pnl) as pnl_stddev,
+          COUNT(CASE WHEN t.pnl > 0 THEN 1 END)::float / NULLIF(COUNT(*), 0) * 100 as win_rate
+        FROM trades t
+        JOIN gamification_privacy gp ON gp.user_id = t.user_id
+        WHERE gp.show_on_leaderboards = true
+          AND t.exit_time IS NOT NULL
+          AND t.pnl IS NOT NULL
+          AND t.quantity IS NOT NULL
+          AND t.entry_price IS NOT NULL
+        GROUP BY t.user_id
+        HAVING COUNT(*) >= 10  -- Need at least 10 trades for meaningful consistency
+      ),
+      consistency_scores AS (
+        SELECT 
+          user_id,
+          total_trades,
+          avg_volume,
+          avg_pnl,
+          pnl_stddev,
+          win_rate,
+          -- Consistency score: Higher avg_pnl and lower volatility = better
+          -- Also factor in volume (bigger positions = more impressive)
+          CASE 
+            WHEN pnl_stddev = 0 OR pnl_stddev IS NULL THEN 100
+            ELSE GREATEST(0, 
+              (avg_pnl / NULLIF(pnl_stddev, 0)) * 
+              (win_rate / 100) * 
+              (1 + LOG(GREATEST(1, avg_volume / 1000))) -- Volume bonus
+            )
+          END as consistency_score
+        FROM user_stats
+      )
+      SELECT 
+        user_id,
+        ROUND(consistency_score::numeric, 2) as score,
+        json_build_object(
+          'total_trades', total_trades,
+          'avg_volume', ROUND(avg_volume::numeric, 0),
+          'avg_pnl', ROUND(avg_pnl::numeric, 2),
+          'win_rate', ROUND(win_rate::numeric, 2),
+          'volatility', ROUND(pnl_stddev::numeric, 2),
+          'consistency_score', ROUND(consistency_score::numeric, 2)
+        ) as metadata
+      FROM consistency_scores
+      ORDER BY score DESC
+      LIMIT 100
+    `;
+    
+    const result = await db.query(query);
+    return result.rows;
   }
 }
 

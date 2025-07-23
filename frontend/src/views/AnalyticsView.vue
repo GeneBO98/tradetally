@@ -156,7 +156,7 @@
         <div class="card">
           <div class="card-body">
             <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
-              Avg Trade
+              {{ calculationMethod }} Trade
             </dt>
             <dd class="mt-1 text-2xl font-semibold" :class="[
               overview.avg_pnl >= 0 ? 'text-green-600' : 'text-red-600'
@@ -224,7 +224,7 @@
               <div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 delay-1500 z-10 w-64">
                 <div class="text-center">
                   <strong>System Quality Number (SQN)</strong><br>
-                  Measures the quality of your trading system by calculating (Average Trade / Standard Deviation) × √Number of Trades. Higher values indicate more consistent performance.
+                  Measures the quality of your trading system by calculating ({{ calculationMethod }} Trade / Standard Deviation) × √Number of Trades. Higher values indicate more consistent performance.
                 </div>
                 <div class="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
               </div>
@@ -289,7 +289,7 @@
               <div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 delay-1500 z-10 w-64">
                 <div class="text-center">
                   <strong>K-Ratio</strong><br>
-                  Measures the consistency of your equity curve by calculating Average Return / Standard Deviation of Returns. Higher values indicate smoother, more consistent performance.
+                  Measures the consistency of your equity curve by calculating {{ calculationMethod }} Return / Standard Deviation of Returns. Higher values indicate smoother, more consistent performance.
                 </div>
                 <div class="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
               </div>
@@ -315,7 +315,7 @@
             
             <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-3 relative group">
               <dt class="text-xs font-medium text-gray-500 dark:text-gray-400 truncate cursor-help">
-                Avg Position MAE
+                {{ calculationMethod }} Position MAE
               </dt>
               <dd class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
                 <span v-if="overview.avg_mae !== 'N/A'">${{ overview.avg_mae }} <span class="text-sm text-gray-500">(USD)</span></span>
@@ -336,7 +336,7 @@
             
             <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-3 relative group">
               <dt class="text-xs font-medium text-gray-500 dark:text-gray-400 truncate cursor-help">
-                Avg Position MFE
+                {{ calculationMethod }} Position MFE
               </dt>
               <dd class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
                 <span v-if="overview.avg_mfe !== 'N/A'">${{ overview.avg_mfe }} <span class="text-sm text-gray-500">(USD)</span></span>
@@ -392,13 +392,13 @@
                   </span>
                 </div>
                 <div class="flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800 rounded p-1 -m-1">
-                  <span class="text-sm text-gray-500 dark:text-gray-400">Average Win</span>
+                  <span class="text-sm text-gray-500 dark:text-gray-400">{{ calculationMethod }} Win</span>
                   <span class="text-sm font-medium text-green-600">
                     ${{ formatNumber(overview.avg_win) }}
                   </span>
                 </div>
                 <div class="flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800 rounded p-1 -m-1">
-                  <span class="text-sm text-gray-500 dark:text-gray-400">Average Loss</span>
+                  <span class="text-sm text-gray-500 dark:text-gray-400">{{ calculationMethod }} Loss</span>
                   <span class="text-sm font-medium text-red-600">
                     ${{ formatNumber(Math.abs(overview.avg_loss)) }}
                   </span>
@@ -752,7 +752,7 @@
                     P&L
                   </th>
                   <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Avg P&L
+                    {{ calculationMethod }} P&L
                   </th>
                 </tr>
               </thead>
@@ -884,6 +884,7 @@ import { marked } from 'marked'
 
 const loading = ref(true)
 const performancePeriod = ref('daily')
+const userSettings = ref(null)
 const router = useRouter()
 const route = useRoute()
 
@@ -946,6 +947,11 @@ const categorizationProgress = ref({
 })
 
 const showCompletionMessage = ref(false)
+
+// Computed property for calculation method
+const calculationMethod = computed(() => {
+  return userSettings.value?.statisticsCalculation === 'median' ? 'Median' : 'Average'
+})
 
 // Computed property for displayed sectors
 const displayedSectorData = computed(() => {
@@ -1643,6 +1649,17 @@ async function fetchChartData() {
   }
 }
 
+async function fetchUserSettings() {
+  try {
+    const response = await api.get('/settings')
+    userSettings.value = response.data.settings
+  } catch (error) {
+    console.error('Failed to load user settings:', error)
+    // Default to average if loading fails
+    userSettings.value = { statisticsCalculation: 'average' }
+  }
+}
+
 async function fetchOverview() {
   try {
     const params = {}
@@ -2029,6 +2046,9 @@ function parseMarkdown(text) {
 
 async function loadData() {
   loading.value = true
+  
+  // Load user settings first
+  await fetchUserSettings()
   
   // Load saved filters from localStorage
   const savedFilters = localStorage.getItem('analyticsFilters')

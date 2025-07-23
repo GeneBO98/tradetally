@@ -369,9 +369,6 @@
               <h3 class="text-lg font-medium text-gray-900 dark:text-white">
                 {{ leaderboard.name }}
               </h3>
-              <p class="text-sm text-gray-600 dark:text-gray-400">
-                {{ leaderboard.period_type }}
-              </p>
             </div>
             <div class="p-6">
               <div v-if="leaderboard.entries.length === 0" class="text-center py-8">
@@ -519,7 +516,7 @@ export default {
 
     const loadLeaderboards = async () => {
       try {
-        const response = await api.get('/gamification/rankings')
+        const response = await api.get('/gamification/leaderboards')
         
         if (response.data.success) {
           leaderboards.value = response.data.data || []
@@ -546,6 +543,22 @@ export default {
     }
 
     const formatLeaderboardValue = (value, key) => {
+      // P&L-based leaderboards
+      if (key.includes('pnl') || key.includes('trade')) {
+        const amount = parseFloat(value)
+        if (amount >= 0) {
+          return `+$${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+        } else {
+          return `-$${Math.abs(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+        }
+      }
+      
+      // Consistency score
+      if (key.includes('consistent')) {
+        return `${parseFloat(value).toFixed(2)}`
+      }
+      
+      // Legacy formats
       if (key.includes('discipline') || key.includes('score')) {
         return `${Math.round(value)}%`
       }
