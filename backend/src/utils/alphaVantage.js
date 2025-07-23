@@ -173,7 +173,7 @@ class AlphaVantageClient {
     }
   }
 
-  // Get appropriate data based on trade duration
+  // Get appropriate data based on trade duration - with focused date range filtering
   async getTradeChartData(symbol, entryDate, exitDate = null) {
     const entryTime = new Date(entryDate);
     const exitTime = exitDate ? new Date(exitDate) : new Date();
@@ -182,38 +182,100 @@ class AlphaVantageClient {
 
     console.log(`Alpha Vantage chart request - Symbol: ${symbol}, Entry: ${entryTime.toISOString()}, Exit: ${exitTime.toISOString()}, Duration: ${Math.ceil(tradeDuration / oneDayMs)} days, Has exit date: ${!!exitDate}`);
 
+    // Calculate focused chart window like Finnhub does
+    const entryDateUTC = new Date(entryTime.toISOString().split('T')[0] + 'T00:00:00.000Z');
+    
+    // For same-day trades, focus on the specific trading day
+    // Extended trading hours: 4:00 AM ET to 8:00 PM ET (9:00 AM UTC to 1:00 AM UTC next day)
+    const chartFromTime = new Date(entryDateUTC.getTime() + 9 * 60 * 60 * 1000); // 4:00 AM ET
+    const chartToTime = new Date(entryDateUTC.getTime() + 25 * 60 * 60 * 1000); // 8:00 PM ET
+    
+    // Convert to Unix timestamps for filtering
+    const fromTimestamp = Math.floor(chartFromTime.getTime() / 1000);
+    const toTimestamp = Math.floor(chartToTime.getTime() / 1000);
+    
+    console.log('Alpha Vantage focusing chart on trading day:', {
+      tradeDate: entryDateUTC.toISOString().split('T')[0],
+      entryTime: entryTime.toISOString(),
+      chartFrom: chartFromTime.toISOString(),
+      chartTo: chartToTime.toISOString(),
+      windowHours: ((chartToTime - chartFromTime) / (1000 * 60 * 60)).toFixed(1)
+    });
+
     try {
-      // For same-day trades or no exit date, use intraday data
-      if (!exitDate || tradeDuration <= oneDayMs) {
-        console.log(`Fetching intraday data for ${symbol} (same-day or open trade)`);
-        return {
-          type: 'intraday',
-          interval: '5min',
-          candles: await this.getIntradayData(symbol, '5min')
-        };
+      let rawCandles, dataType, interval;
+      
+      // Check if trade is too old for intraday data (Alpha Vantage free tier limitation)
+      const now = new Date();
+      const tradeAge = now - entryTime;
+      const thirtyDaysMs = 30 * oneDayMs;
+      const isOldTrade = tradeAge > thirtyDaysMs;
+      
+      if (isOldTrade) {
+        console.log(`Trade is ${Math.ceil(tradeAge / oneDayMs)} days old - using daily data for better historical coverage`);
       }
       
-      // For trades up to 7 days, use 15-minute data
-      else if (tradeDuration <= 7 * oneDayMs) {
+      // For same-day trades or no exit date, use intraday data (if recent enough)
+      if ((!exitDate || tradeDuration <= oneDayMs) && !isOldTrade) {
+        console.log(`Fetching intraday 5min data for ${symbol} (same-day or open trade)`);
+        rawCandles = await this.getIntradayData(symbol, '5min');
+        dataType = 'intraday';
+        interval = '5min';
+      }
+      // For trades up to 7 days, use 15-minute data (if recent enough)
+      else if (tradeDuration <= 7 * oneDayMs && !isOldTrade) {
         console.log(`Fetching 15-minute data for ${symbol} (${Math.ceil(tradeDuration / oneDayMs)} day trade)`);
-        return {
-          type: 'intraday',
-          interval: '15min',
-          candles: await this.getIntradayData(symbol, '15min')
-        };
+        rawCandles = await this.getIntradayData(symbol, '15min');
+        dataType = 'intraday';
+        interval = '15min';
+      }
+      // For older trades or longer trades, use daily data
+      else {
+        const reason = isOldTrade ? 'old trade - intraday data not available' : 'multi-day trade';
+        console.log(`Fetching daily data for ${symbol} (${reason})`);
+        rawCandles = await this.getDailyData(symbol, 'full');
+        dataType = 'daily';
+        interval = 'daily';
+      }
+
+      // Filter candles to focus on the trade period (like Finnhub does)
+      let filteredCandles;
+      
+      if (dataType === 'intraday') {
+        // For intraday data, filter to the specific trading day window
+        filteredCandles = rawCandles.filter(candle => {
+          return candle.time >= fromTimestamp && candle.time <= toTimestamp;
+        });
+        
+        console.log(`Filtered intraday candles: ${filteredCandles.length} of ${rawCandles.length} candles within trade day window`);
+      } else {
+        // For daily data, include a reasonable window around the trade dates
+        const tradeDays = Math.max(7, Math.ceil(tradeDuration / oneDayMs) + 5); // At least 7 days, or trade duration + buffer
+        const windowStart = Math.floor((entryTime.getTime() - 5 * oneDayMs) / 1000); // 5 days before entry
+        const windowEnd = Math.floor((exitTime.getTime() + 5 * oneDayMs) / 1000); // 5 days after exit
+        
+        filteredCandles = rawCandles.filter(candle => {
+          return candle.time >= windowStart && candle.time <= windowEnd;
+        });
+        
+        console.log(`Filtered daily candles: ${filteredCandles.length} of ${rawCandles.length} candles within ${tradeDays}-day trade window`);
       }
       
-      // For longer trades, use daily data
-      else {
-        console.log(`Fetching daily data for ${symbol} (multi-day trade)`);
-        return {
-          type: 'daily',
-          interval: 'daily',
-          candles: await this.getDailyData(symbol, 'full')
-        };
+      // Ensure we have some data to show
+      if (filteredCandles.length === 0) {
+        console.warn(`No candles found in focused range for ${symbol}, returning recent data instead`);
+        // Fall back to recent data if no candles in range
+        filteredCandles = rawCandles.slice(-50); // Last 50 candles
       }
+
+      return {
+        type: dataType,
+        interval: interval,
+        candles: filteredCandles,
+        source: 'alphavantage'
+      };
     } catch (error) {
-      console.error(`Error fetching chart data for ${symbol}:`, error);
+      console.error(`Error fetching Alpha Vantage chart data for ${symbol}:`, error);
       throw error;
     }
   }
