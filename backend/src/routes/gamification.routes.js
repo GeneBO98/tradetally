@@ -23,6 +23,7 @@ router.get('/challenges/:challengeId/leaderboard', gamificationController.getCha
 
 // Leaderboard routes
 router.get('/leaderboards/:key', gamificationController.getLeaderboard);
+router.get('/leaderboards', gamificationController.getAllLeaderboards);
 router.get('/rankings', gamificationController.getUserRankings);
 
 // Privacy settings

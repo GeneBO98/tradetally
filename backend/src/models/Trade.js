@@ -237,6 +237,11 @@ class Trade {
       AchievementService.checkAndAwardAchievements(userId).catch(error => {
         console.warn(`Failed to check achievements for user ${userId} after trade creation:`, error.message);
       });
+      
+      // Update trading streak (async, don't wait for completion)
+      AchievementService.updateTradingStreak(userId).catch(error => {
+        console.warn(`Failed to update trading streak for user ${userId} after trade creation:`, error.message);
+      });
     }
     
     return createdTrade;
@@ -657,6 +662,11 @@ class Trade {
       console.warn(`Failed to check achievements for user ${userId} after trade update:`, error.message);
     });
     
+    // Update trading streak (async, don't wait for completion)  
+    AchievementService.updateTradingStreak(userId).catch(error => {
+      console.warn(`Failed to update trading streak for user ${userId} after trade update:`, error.message);
+    });
+    
     return result.rows[0];
   }
 
@@ -882,6 +892,17 @@ class Trade {
   static async getAnalytics(userId, filters = {}) {
     const { getUserTimezone } = require('../utils/timezone');
     console.log('Getting analytics for user:', userId, 'with filters:', filters);
+    
+    // Get user's preference for average vs median calculations
+    const User = require('./User');
+    let useMedian = false;
+    try {
+      const userSettings = await User.getSettings(userId);
+      useMedian = userSettings?.statistics_calculation === 'median';
+    } catch (error) {
+      console.warn('Could not fetch user settings for analytics, using default (average):', error.message);
+      useMedian = false;
+    }
     
     // First, check what data exists in the database
     const dataCheckQuery = `
@@ -1114,13 +1135,25 @@ class Trade {
           COUNT(*) FILTER (WHERE trade_pnl < 0)::integer as losing_trades,
           COUNT(*) FILTER (WHERE trade_pnl = 0)::integer as breakeven_trades,
           COALESCE(SUM(trade_pnl), 0)::numeric as total_pnl,
-          COALESCE(AVG(trade_pnl), 0)::numeric as avg_pnl,
-          COALESCE(AVG(trade_pnl) FILTER (WHERE trade_pnl > 0), 0)::numeric as avg_win,
-          COALESCE(AVG(trade_pnl) FILTER (WHERE trade_pnl < 0), 0)::numeric as avg_loss,
+          ${useMedian 
+            ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY trade_pnl), 0)::numeric as avg_pnl'
+            : 'COALESCE(AVG(trade_pnl), 0)::numeric as avg_pnl'
+          },
+          ${useMedian
+            ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY trade_pnl) FILTER (WHERE trade_pnl > 0), 0)::numeric as avg_win'
+            : 'COALESCE(AVG(trade_pnl) FILTER (WHERE trade_pnl > 0), 0)::numeric as avg_win'
+          },
+          ${useMedian
+            ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY trade_pnl) FILTER (WHERE trade_pnl < 0), 0)::numeric as avg_loss'
+            : 'COALESCE(AVG(trade_pnl) FILTER (WHERE trade_pnl < 0), 0)::numeric as avg_loss'
+          },
           COALESCE(MAX(trade_pnl), 0)::numeric as best_trade,
           COALESCE(MIN(trade_pnl), 0)::numeric as worst_trade,
           COALESCE(SUM(trade_costs), 0)::numeric as total_costs,
-          COALESCE(AVG(avg_return_pct) FILTER (WHERE avg_return_pct IS NOT NULL), 0)::numeric as avg_return_pct,
+          ${useMedian
+            ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY avg_return_pct) FILTER (WHERE avg_return_pct IS NOT NULL), 0)::numeric as avg_return_pct'
+            : 'COALESCE(AVG(avg_return_pct) FILTER (WHERE avg_return_pct IS NOT NULL), 0)::numeric as avg_return_pct'
+          },
           COALESCE(STDDEV(trade_pnl), 0)::numeric as pnl_stddev,
           COUNT(DISTINCT symbol)::integer as symbols_traded,
           COUNT(DISTINCT first_trade_date)::integer as trading_days,
@@ -1152,6 +1185,15 @@ class Trade {
           MIN(cumulative_pnl) as min_cumulative_pnl,
           MAX(peak) as max_peak
         FROM drawdown_calc
+      ),
+      individual_trades AS (
+        -- Get best/worst individual executions, not round-trip aggregates
+        SELECT 
+          COALESCE(MAX(pnl), 0) as individual_best_trade,
+          COALESCE(MIN(pnl), 0) as individual_worst_trade
+        FROM trades t
+        ${whereClause}
+          AND pnl IS NOT NULL
       )
       SELECT 
         ts.*,
@@ -1162,6 +1204,9 @@ class Trade {
         ddb.drawdown_days,
         ddb.min_cumulative_pnl,
         ddb.max_peak,
+        -- Override best/worst trade with individual execution values
+        COALESCE(it.individual_best_trade, ts.best_trade) as best_trade,
+        COALESCE(it.individual_worst_trade, ts.worst_trade) as worst_trade,
         CASE 
           WHEN ts.avg_loss = 0 OR ts.avg_loss IS NULL THEN 0
           ELSE ABS(ts.avg_win / ts.avg_loss)
@@ -1188,6 +1233,7 @@ class Trade {
         FROM drawdown_calc
       ) dd ON true
       LEFT JOIN drawdown_debug ddb ON true
+      LEFT JOIN individual_trades it ON true
     `;
 
     const analyticsResult = await db.query(analyticsQuery, values);

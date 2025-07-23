@@ -118,8 +118,30 @@ class User {
       WHERE user_id = $1
     `;
     
-    const result = await db.query(query, [userId]);
-    return result.rows[0];
+    try {
+      const result = await db.query(query, [userId]);
+      const settings = result.rows[0];
+      
+      // Provide default for statisticsCalculation if column doesn't exist yet
+      if (settings && !settings.hasOwnProperty('statistics_calculation')) {
+        settings.statistics_calculation = 'average';
+      }
+      
+      return settings;
+    } catch (error) {
+      // If column doesn't exist, gracefully handle it
+      if (error.message.includes('statistics_calculation')) {
+        console.warn('statistics_calculation column not yet migrated, using default');
+        const query = `SELECT * FROM user_settings WHERE user_id = $1`;
+        const result = await db.query(query, [userId]);
+        const settings = result.rows[0];
+        if (settings) {
+          settings.statistics_calculation = 'average';
+        }
+        return settings;
+      }
+      throw error;
+    }
   }
 
   static async updateSettings(userId, settings) {
@@ -141,7 +163,8 @@ class User {
       experienceLevel: 'experience_level',
       averagePositionSize: 'average_position_size',
       tradingGoals: 'trading_goals',
-      preferredSectors: 'preferred_sectors'
+      preferredSectors: 'preferred_sectors',
+      statisticsCalculation: 'statistics_calculation'
     };
 
     Object.entries(settings).forEach(([key, value]) => {
@@ -162,8 +185,33 @@ class User {
       RETURNING *
     `;
 
-    const result = await db.query(query, values);
-    return result.rows[0];
+    try {
+      const result = await db.query(query, values);
+      return result.rows[0];
+    } catch (error) {
+      // If statistics_calculation column doesn't exist, try update without it
+      if (error.message.includes('statistics_calculation') && settings.statisticsCalculation) {
+        console.warn('statistics_calculation column not yet migrated, skipping field');
+        const filteredFields = fields.filter(field => !field.includes('statistics_calculation'));
+        const filteredValues = values.filter((value, index) => {
+          const field = fields[index];
+          return field && !field.includes('statistics_calculation');
+        });
+        
+        if (filteredFields.length > 0) {
+          const fallbackQuery = `
+            UPDATE user_settings
+            SET ${filteredFields.join(', ')}
+            WHERE user_id = $${filteredValues.length + 1}
+            RETURNING *
+          `;
+          filteredValues.push(userId);
+          const result = await db.query(fallbackQuery, filteredValues);
+          return result.rows[0];
+        }
+      }
+      throw error;
+    }
   }
 
   static async findByVerificationToken(token) {
