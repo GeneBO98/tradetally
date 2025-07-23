@@ -358,12 +358,12 @@ class FinnhubClient {
     // For simplicity, assume EST (UTC-5) - this covers most trading
     
     // Start at 4:00 AM ET on trade day (9:00 AM UTC)
-    chartFromTime = new Date(entryDateUTC.getTime() + 9 * 60 * 60 * 1000);
+    const chartFromTime = new Date(entryDateUTC.getTime() + 9 * 60 * 60 * 1000);
     // End at 8:00 PM ET on trade day (1:00 AM UTC next day)  
-    chartToTime = new Date(entryDateUTC.getTime() + 25 * 60 * 60 * 1000);
+    const chartToTime = new Date(entryDateUTC.getTime() + 25 * 60 * 60 * 1000);
     
     console.log('Focusing chart on single trading day:', {
-      tradeDate: tradeDate.toISOString().split('T')[0],
+      tradeDate: entryDateUTC.toISOString().split('T')[0],
       entryTime: entryTime.toISOString(),
       chartFrom: chartFromTime.toISOString(),
       chartTo: chartToTime.toISOString(),

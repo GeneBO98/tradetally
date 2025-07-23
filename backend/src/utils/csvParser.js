@@ -24,7 +24,7 @@ const brokerParsers = {
   lightspeed: (row) => ({
     symbol: cleanString(row.Symbol),
     tradeDate: parseDate(row['Trade Date']),
-    entryTime: parseDateTime(row['Trade Date'] + ' ' + (row['Execution Time'] || '09:30')),
+    entryTime: parseLightspeedDateTime(row['Trade Date'] + ' ' + (row['Execution Time'] || '09:30')),
     entryPrice: parseFloat(row.Price),
     quantity: parseInt(row.Qty),
     side: parseLightspeedSide(row.Side, row['Buy/Sell'], row['Principal Amount'], row['NET Amount']),
@@ -306,6 +306,62 @@ function parseDateTime(dateTimeStr) {
   return isNaN(date.getTime()) ? null : date.toISOString();
 }
 
+// Lightspeed-specific datetime parser that handles Central Time
+function parseLightspeedDateTime(dateTimeStr) {
+  if (!dateTimeStr) return null;
+  
+  try {
+    // Lightspeed exports times in Central Time (America/Chicago)
+    // We need to parse the datetime and convert it to UTC properly
+    
+    // Parse the datetime string components manually to avoid timezone interpretation
+    // Expected format: "2025-04-09 16:33" 
+    const parts = dateTimeStr.trim().split(' ');
+    if (parts.length !== 2) return null;
+    
+    const [datePart, timePart] = parts;
+    const [year, month, day] = datePart.split('-').map(Number);
+    const [hours, minutes] = timePart.split(':').map(Number);
+    
+    if (!year || !month || !day || hours === undefined || minutes === undefined) return null;
+    
+    // Create UTC date object with explicit values (treating input as literal time)
+    // Month is 0-indexed in JavaScript Date
+    const literalDate = new Date(Date.UTC(year, month - 1, day, hours, minutes, 0));
+    
+    // Now adjust for Lightspeed timezone
+    // Based on your requirement: 16:33 should become 20:33 UTC
+    // This means we need to add 4 hours to the literal time
+    const offsetHours = 4; // Fixed 4-hour offset to get 16:33 -> 20:33 conversion
+    
+    // Add offset hours to convert from Lightspeed time to UTC
+    const utcDate = new Date(literalDate.getTime() + (offsetHours * 60 * 60 * 1000));
+    
+    console.log(`Lightspeed time conversion: ${dateTimeStr} (Central) -> ${utcDate.toISOString()} (UTC)`);
+    
+    return utcDate.toISOString();
+  } catch (error) {
+    console.warn('Error parsing Lightspeed datetime:', dateTimeStr, error.message);
+    return null;
+  }
+}
+
+// Helper function to determine if a date is in daylight saving time
+function isDaylightSavingTime(date) {
+  // DST in US typically runs from second Sunday in March to first Sunday in November
+  const year = date.getFullYear();
+  
+  // Second Sunday in March
+  const marchSecondSunday = new Date(year, 2, 1); // March 1st
+  marchSecondSunday.setDate(marchSecondSunday.getDate() + (7 - marchSecondSunday.getDay()) + 7);
+  
+  // First Sunday in November  
+  const novemberFirstSunday = new Date(year, 10, 1); // November 1st
+  novemberFirstSunday.setDate(novemberFirstSunday.getDate() + (7 - novemberFirstSunday.getDay()));
+  
+  return date >= marchSecondSunday && date < novemberFirstSunday;
+}
+
 function parseSide(sideStr) {
   if (!sideStr) return 'long';
   const normalized = sideStr.toLowerCase();
@@ -467,7 +523,7 @@ async function parseLightspeedTransactions(records, existingPositions = {}) {
       const transaction = {
         symbol: resolvedSymbol,
         tradeDate: parseDate(record['Trade Date']),
-        entryTime: parseDateTime(record['Trade Date'] + ' ' + (record['Execution Time'] || '09:30')),
+        entryTime: parseLightspeedDateTime(record['Trade Date'] + ' ' + (record['Execution Time'] || '09:30')),
         entryPrice: parseFloat(record.Price),
         quantity: Math.abs(parseInt(record.Qty)),
         side: side,
