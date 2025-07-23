@@ -1628,16 +1628,18 @@ const tradeController = {
 
       // Extract symbol and dates from the trade
       const symbol = trade.symbol;
-      // Use entry_time and exit_time which have full timestamps, not just dates
+      
+      // Use the actual entry_time and exit_time from the database directly for chart data
+      // These are already in UTC and the chart service will handle timezone conversion
       const entryDate = trade.entry_time || trade.trade_date;
-      const exitDate = trade.exit_time;
+      const exitDate = trade.exit_time || null;
 
       if (!symbol) {
         return res.status(400).json({ error: 'Trade missing symbol information' });
       }
 
       if (!entryDate) {
-        return res.status(400).json({ error: 'Trade missing entry date information' });
+               return res.status(400).json({ error: 'Trade missing entry date information' });
       }
 
       // Get chart data using the ChartService

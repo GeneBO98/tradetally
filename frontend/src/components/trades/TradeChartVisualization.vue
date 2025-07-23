@@ -577,11 +577,11 @@ const createTradeChart = () => {
         console.log(`Trade Time:  ${new Date(exitTimestamp * 1000).toLocaleString()}`)
         console.log(`Time Diff:   ${Math.abs(exitCandle.time - exitTimestamp)} seconds`)
         console.log(`Candle OHLC: O=$${formatNumber(exitCandle.open)} H=$${formatNumber(exitCandle.high)} L=$${formatNumber(exitCandle.low)} C=$${formatNumber(exitCandle.close)}`)
-        console.log(`Trade Price: $${formatNumber(exitPrice)}`)
+        console.log(`Trade Price: $${formatNumber(trade.exitPrice)}`)
         
         // Check if trade price is within candle range
-        const exitWithinRange = exitPrice >= exitCandle.low && exitPrice <= exitCandle.high
-        const exitPriceVsClose = ((exitPrice - exitCandle.close) / exitCandle.close * 100).toFixed(2)
+        const exitWithinRange = trade.exitPrice >= exitCandle.low && trade.exitPrice <= exitCandle.high
+        const exitPriceVsClose = ((trade.exitPrice - exitCandle.close) / exitCandle.close * 100).toFixed(2)
         
         console.log(`Price within candle range: ${exitWithinRange}`)
         console.log(`Trade price vs candle close: ${exitPriceVsClose}% difference`)
@@ -591,10 +591,10 @@ const createTradeChart = () => {
           console.warn('This suggests data source differences or timing misalignment.')
         }
         
-        const exitPrice = parseFloat(trade.exitPrice)
+        const exitPriceValue = parseFloat(trade.exitPrice)
         const pnl = parseFloat(trade.pnl)
         const isProfit = pnl >= 0
-        const exitColor = isProfit ? '#10b981' : '#ef4444'
+        const exitColor = '#ef4444' // Always red for SELL
         const pnlText = isProfit ? `+$${formatNumber(pnl)}` : `-$${formatNumber(Math.abs(pnl))}`
         
         // Create exit execution marker - append to existing markers
@@ -603,7 +603,7 @@ const createTradeChart = () => {
           position: 'aboveBar',
           color: exitColor,
           shape: 'arrowDown',
-          text: `SELL @ $${formatNumber(exitPrice)} (${pnlText})`,
+          text: `SELL @ $${formatNumber(exitPriceValue)} (${pnlText})`,
           size: 2
         }
         
@@ -630,7 +630,7 @@ const createTradeChart = () => {
 
         console.log('✅ Exit execution marker created at:', {
           time: new Date(exitCandle.time * 1000).toLocaleString(),
-          price: `$${formatNumber(exitPrice)}`,
+          price: `$${formatNumber(exitPriceValue)}`,
           pnl: pnlText,
           timeDiff: `${Math.abs(exitCandle.time - exitTimestamp)} seconds from actual execution`
         })

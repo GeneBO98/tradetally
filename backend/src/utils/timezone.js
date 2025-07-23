@@ -32,26 +32,29 @@ async function getUserTimezone(userId) {
  * @param {string} timezone - Target timezone (e.g., 'America/New_York', 'UTC')
  * @returns {string} Date in YYYY-MM-DD format in the target timezone
  */
-function getDateInTimezone(timestamp, timezone = 'UTC') {
+function getDateInTimezone(timestamp, timezone = 'UTC', includeTime) {
   try {
     if (!timestamp) {
       return null;
     }
-
+    
     const date = new Date(timestamp);
     if (isNaN(date.getTime())) {
       console.error('Invalid timestamp:', timestamp);
       return null;
     }
-
-    // Use Intl.DateTimeFormat to get the date in the target timezone
-    const formatter = new Intl.DateTimeFormat('en-CA', { // en-CA gives YYYY-MM-DD format
-      timeZone: timezone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit'
-    });
-
+    
+    if (includeTime === undefined) {
+      includeTime = (typeof timestamp === 'string' && timestamp.includes('T'));
+    }
+    
+    const options = includeTime
+      ? { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }
+      : { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' };
+    
+    // Use Intl.DateTimeFormat to get the date (and time if includeTime is true) in the target timezone
+    const formatter = new Intl.DateTimeFormat('en-CA', options);
+    
     const localDate = formatter.format(date);
     return localDate;
   } catch (error) {
@@ -90,14 +93,15 @@ function getDayOfWeekInTimezone(timestamp, timezone = 'UTC') {
 }
 
 /**
- * Convert a timestamp to user's local timezone and extract date
+ * Convert a timestamp to user's local timezone and extract date or datetime
  * @param {string} userId - User ID
  * @param {string|Date} timestamp - The timestamp to convert
- * @returns {Promise<string>} Date in YYYY-MM-DD format in user's timezone
+ * @param {boolean} [includeTime] - If true, include time details
+ * @returns {Promise<string>} Date (or datetime) in user's timezone
  */
-async function getUserLocalDate(userId, timestamp) {
+async function getUserLocalDate(userId, timestamp, includeTime) {
   const userTimezone = await getUserTimezone(userId);
-  return getDateInTimezone(timestamp, userTimezone);
+  return getDateInTimezone(timestamp, userTimezone, includeTime);
 }
 
 /**
