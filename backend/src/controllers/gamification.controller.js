@@ -172,8 +172,9 @@ const gamificationController = {
     try {
       const { key } = req.params;
       const userId = req.user.id;
+      const limit = req.query.limit ? parseInt(req.query.limit) : 100;
       
-      const leaderboard = await LeaderboardService.getLeaderboard(key, userId);
+      const leaderboard = await LeaderboardService.getLeaderboard(key, userId, limit);
       
       res.json({
         success: true,

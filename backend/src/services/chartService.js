@@ -8,24 +8,22 @@ class ChartService {
     try {
       // Check user tier
       const userTier = await TierService.getUserTier(userId);
-      const isProUser = userTier && userTier.tier_name === 'pro';
+      const isProUser = userTier === 'pro';
       
-      console.log(`Getting chart data for user ${userId}, tier: ${userTier?.tier_name || 'free'}, symbol: ${symbol}`);
+      console.log(`Getting chart data for user ${userId}, tier: ${userTier || 'free'}, symbol: ${symbol}`);
+      console.log('Chart data input:', { entryDate, exitDate });
+      console.log('🚨 CHART SERVICE: EntryDate type and value:', typeof entryDate, entryDate);
+      console.log('🚨 CHART SERVICE: ExitDate type and value:', typeof exitDate, exitDate);
       
-      // Pro users get Finnhub data (higher quality, more frequent updates)
+      // Pro users get Finnhub data exclusively (higher quality, more frequent updates)
       if (isProUser && finnhub.isConfigured()) {
-        console.log('Using Finnhub for Pro user chart data');
+        console.log('Using Finnhub exclusively for Pro user chart data');
         try {
           return await finnhub.getTradeChartData(symbol, entryDate, exitDate);
         } catch (error) {
-          console.warn('Finnhub chart data failed, falling back to Alpha Vantage:', error.message);
-          // Fallback to Alpha Vantage if Finnhub fails
-          if (alphaVantage.isConfigured()) {
-            const chartData = await alphaVantage.getTradeChartData(symbol, entryDate, exitDate);
-            chartData.source = 'alphavantage_fallback';
-            return chartData;
-          }
-          throw error;
+          console.warn(`Finnhub failed for symbol ${symbol}: ${error.message}`);
+          // For PRO users, if Finnhub fails, provide a helpful error message
+          throw new Error(`Chart data unavailable for ${symbol}. This symbol may be delisted, inactive, or not supported by Finnhub. Please try a different symbol like AAPL, MSFT, or GOOGL.`);
         }
       }
       
@@ -51,11 +49,11 @@ class ChartService {
     return {
       finnhub: {
         configured: finnhub.isConfigured(),
-        description: 'Finnhub API - Premium charts for Pro users'
+        description: 'Finnhub API - Exclusive premium charts for Pro users (no fallback)'
       },
       alphaVantage: {
         configured: alphaVantage.isConfigured(),
-        description: 'Alpha Vantage API - Basic charts for free users'
+        description: 'Alpha Vantage API - Charts for free users only'
       }
     };
   }
@@ -63,15 +61,15 @@ class ChartService {
   // Get usage statistics for chart services
   static async getUsageStats(userId) {
     const userTier = await TierService.getUserTier(userId);
-    const isProUser = userTier && userTier.tier_name === 'pro';
+    const isProUser = userTier === 'pro';
     
     const stats = {
-      userTier: userTier?.tier_name || 'free',
+      userTier: userTier || 'free',
       preferredService: isProUser && finnhub.isConfigured() ? 'finnhub' : 'alphavantage'
     };
     
-    // Add Alpha Vantage usage stats if configured
-    if (alphaVantage.isConfigured()) {
+    // Add Alpha Vantage usage stats if configured and user is not pro
+    if (!isProUser && alphaVantage.isConfigured()) {
       try {
         stats.alphaVantage = await alphaVantage.getUsageStats();
       } catch (error) {
@@ -79,12 +77,13 @@ class ChartService {
       }
     }
     
-    // Add Finnhub stats if needed (Finnhub doesn't have usage limits in the same way)
+    // Add Finnhub stats for Pro users
     if (finnhub.isConfigured()) {
       stats.finnhub = {
         configured: true,
-        rateLimitPerMinute: 60,
-        description: 'Finnhub API - 60 calls per minute'
+        rateLimitPerMinute: 150,
+        rateLimitPerSecond: 30,
+        description: 'Finnhub API - 150 calls per minute, 30 calls per second (Pro users only)'
       };
     }
     

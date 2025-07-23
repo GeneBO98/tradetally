@@ -6,6 +6,7 @@ const logger = require('../utils/logger');
 const finnhub = require('../utils/finnhub');
 const cache = require('../utils/cache');
 const symbolCategories = require('../utils/symbolCategories');
+const ChartService = require('../services/chartService');
 
 const tradeController = {
   async getUserTrades(req, res, next) {
@@ -1591,6 +1592,122 @@ const tradeController = {
       console.error('Error fetching trade news:', error);
       res.status(500).json({
         error: 'Failed to fetch news data'
+      });
+    }
+  },
+
+  async getTradeChartData(req, res, next) {
+    try {
+      const userId = req.user.id;
+      const tradeId = req.params.id;
+      
+      // Validate UUID format
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(tradeId)) {
+        return res.status(400).json({ error: 'Invalid trade ID format' });
+      }
+
+      // First, get the trade to verify ownership and get symbol/dates
+      const trade = await Trade.findById(tradeId, userId);
+      if (!trade) {
+        return res.status(404).json({ error: 'Trade not found' });
+      }
+
+      // Debug: Log what fields we actually get from the database
+      console.log('=== TRADE RECORD DEBUG ===');
+      console.log('Available trade fields:', Object.keys(trade));
+      console.log('Time-related fields:', {
+        trade_date: trade.trade_date,
+        entry_time: trade.entry_time,
+        exit_time: trade.exit_time,
+        entry_date: trade.entry_date,
+        exit_date: trade.exit_date,
+        created_at: trade.created_at,
+        updated_at: trade.updated_at
+      });
+
+      // Extract symbol and dates from the trade
+      const symbol = trade.symbol;
+      // Use entry_time and exit_time which have full timestamps, not just dates
+      const entryDate = trade.entry_time || trade.trade_date;
+      const exitDate = trade.exit_time;
+
+      if (!symbol) {
+        return res.status(400).json({ error: 'Trade missing symbol information' });
+      }
+
+      if (!entryDate) {
+        return res.status(400).json({ error: 'Trade missing entry date information' });
+      }
+
+      // Get chart data using the ChartService
+      const chartData = await ChartService.getTradeChartData(userId, symbol, entryDate, exitDate);
+      
+      // Add trade information to the response
+      chartData.trade = {
+        id: trade.id,
+        symbol: symbol,
+        entryDate: entryDate,
+        exitDate: exitDate,
+        // Include ALL time-related fields for debugging
+        entryTime: trade.entry_time,
+        exitTime: trade.exit_time,
+        tradeDate: trade.trade_date,
+        entryDateField: trade.entry_date,
+        exitDateField: trade.exit_date,
+        createdAt: trade.created_at,
+        updatedAt: trade.updated_at,
+        // Trade details
+        entryPrice: trade.price || trade.entry_price,
+        exitPrice: trade.exit_price,
+        quantity: trade.quantity,
+        side: trade.side,
+        pnl: trade.pnl,
+        pnlPercent: trade.pnl_percent
+      };
+
+      console.log('Sending trade data to frontend:', {
+        entryDate: chartData.trade.entryDate,
+        exitDate: chartData.trade.exitDate,
+        entryTime: chartData.trade.entryTime,
+        exitTime: chartData.trade.exitTime
+      });
+
+      // Get usage statistics for the response
+      const usageStats = await ChartService.getUsageStats(userId);
+      chartData.usage = usageStats;
+
+      res.json(chartData);
+    } catch (error) {
+      console.error('Error fetching trade chart data:', error);
+      
+      // Handle specific errors
+      if (error.message && error.message.includes('not configured')) {
+        return res.status(503).json({
+          error: 'Chart service not configured',
+          message: error.message
+        });
+      }
+      
+      if (error.message && (error.message.includes('limit') || error.message.includes('rate'))) {
+        return res.status(429).json({
+          error: 'Chart service rate limit exceeded',
+          message: error.message
+        });
+      }
+      
+      // Handle symbol not found or data unavailable
+      if (error.message && (error.message.includes('unavailable') || error.message.includes('not supported') || error.message.includes('delisted'))) {
+        return res.status(404).json({
+          error: 'Chart data unavailable',
+          message: error.message,
+          symbol: req.params.id ? 'Unknown' : undefined
+        });
+      }
+      
+      res.status(500).json({
+        error: 'Failed to fetch chart data',
+        message: error.message
       });
     }
   }

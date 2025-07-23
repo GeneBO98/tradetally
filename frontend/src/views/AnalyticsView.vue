@@ -498,7 +498,8 @@
                 <div class="flex items-center justify-between text-xs mb-1" 
                      :class="showCompletionMessage ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'">
                   <span>
-                    {{ showCompletionMessage ? '✅ All symbols processed!' : 'Processing symbols in background...' }}
+                    <MdiIcon v-if="showCompletionMessage" :icon="mdiCheckCircle" :size="16" class="mr-1 text-green-500" />
+                    {{ showCompletionMessage ? 'All symbols processed!' : 'Processing symbols in background...' }}
                   </span>
                   <span>{{ categorizationProgress.completed }}/{{ categorizationProgress.total }}</span>
                 </div>
@@ -879,8 +880,15 @@ import { ref, onMounted, onUnmounted, nextTick, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import api from '@/services/api'
 import PerformanceChart from '@/components/charts/PerformanceChart.vue'
+import MdiIcon from '@/components/MdiIcon.vue'
 import Chart from 'chart.js/auto'
 import { marked } from 'marked'
+import { 
+  mdiCheckCircle,
+  mdiTarget,
+  mdiChartBox,
+  mdiAlert
+} from '@mdi/js'
 
 const loading = ref(true)
 const performancePeriod = ref('daily')
@@ -2020,13 +2028,13 @@ function parseMarkdown(text) {
       gfm: true
     })
     
-    // Post-process the HTML to add custom classes
+    // Post-process the HTML to add custom classes with icon styling
     result = result
-      .replace(/<h1>/g, '<h1 class="ai-section-header level-1"><span class="section-icon">🎯</span><span class="section-text">')
+      .replace(/<h1>/g, '<h1 class="ai-section-header level-1"><span class="section-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,17.5A1.5,1.5 0 0,1 10.5,16A1.5,1.5 0 0,1 12,14.5A1.5,1.5 0 0,1 13.5,16A1.5,1.5 0 0,1 12,17.5M12,5A3,3 0 0,1 15,8C15,9.5 13.5,10.5 13,11.5H11C10.5,10.5 9,9.5 9,8A3,3 0 0,1 12,5Z" /></svg></span><span class="section-text">')
       .replace(/<\/h1>/g, '</span></h1>')
-      .replace(/<h2>/g, '<h2 class="ai-section-header level-2"><span class="section-icon">📊</span><span class="section-text">')
+      .replace(/<h2>/g, '<h2 class="ai-section-header level-2"><span class="section-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M22,21H2V3H4V19H6V10H10V19H12V6H16V19H18V14H22V21Z" /></svg></span><span class="section-text">')
       .replace(/<\/h2>/g, '</span></h2>')
-      .replace(/<h3>/g, '<h3 class="ai-section-header level-3"><span class="section-icon">⚠️</span><span class="section-text">')
+      .replace(/<h3>/g, '<h3 class="ai-section-header level-3"><span class="section-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M13,14H11V10H13M13,18H11V16H13M1,21H23L12,2L1,21Z" /></svg></span><span class="section-text">')
       .replace(/<\/h3>/g, '</span></h3>')
       .replace(/<p>/g, '<p class="ai-paragraph">')
       .replace(/<ul>/g, '<ul class="ai-unordered-list">')

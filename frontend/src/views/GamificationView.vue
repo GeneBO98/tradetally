@@ -6,8 +6,9 @@
         <div class="py-6">
           <div class="flex items-center justify-between">
             <div>
-              <h1 class="text-3xl font-bold text-gray-900 dark:text-white">
-                🏆 Leaderboard
+              <h1 class="text-3xl font-bold text-gray-900 dark:text-white flex items-center">
+                <MdiIcon :icon="mdiTrophy" :size="32" class="mr-3 text-yellow-500" />
+                Leaderboard
               </h1>
               <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
                 Track your achievements, compete with peers, and level up your trading skills
@@ -86,7 +87,8 @@
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
             ]"
           >
-            {{ tab.icon }} {{ tab.name }}
+            <MdiIcon :icon="tab.icon" :size="20" class="mr-2" />
+            {{ tab.name }}
           </button>
         </nav>
       </div>
@@ -102,7 +104,7 @@
             <div class="p-5">
               <div class="flex items-center">
                 <div class="flex-shrink-0">
-                  <span class="text-2xl">🏆</span>
+                  <MdiIcon :icon="mdiTrophy" :size="24" class="text-yellow-500" />
                 </div>
                 <div class="ml-5 w-0 flex-1">
                   <dl>
@@ -122,7 +124,7 @@
             <div class="p-5">
               <div class="flex items-center">
                 <div class="flex-shrink-0">
-                  <span class="text-2xl">📊</span>
+                  <MdiIcon :icon="mdiChartLine" :size="24" class="text-blue-500" />
                 </div>
                 <div class="ml-5 w-0 flex-1">
                   <dl>
@@ -142,7 +144,7 @@
             <div class="p-5">
               <div class="flex items-center">
                 <div class="flex-shrink-0">
-                  <span class="text-2xl">🔥</span>
+                  <MdiIcon :icon="mdiFire" :size="24" class="text-red-500" />
                 </div>
                 <div class="ml-5 w-0 flex-1">
                   <dl>
@@ -162,7 +164,7 @@
             <div class="p-5">
               <div class="flex items-center">
                 <div class="flex-shrink-0">
-                  <span class="text-2xl">⭐</span>
+                  <MdiIcon :icon="mdiStar" :size="24" class="text-purple-500" />
                 </div>
                 <div class="ml-5 w-0 flex-1">
                   <dl>
@@ -196,13 +198,14 @@
         <!-- Recent Achievements -->
         <div class="bg-white dark:bg-gray-800 shadow rounded-lg mb-8">
           <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white">
-              🏆 Recent Achievements
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white flex items-center">
+              <MdiIcon :icon="mdiTrophy" :size="20" class="mr-2 text-yellow-500" />
+              Recent Achievements
             </h3>
           </div>
           <div class="p-6">
             <div v-if="recentAchievements.length === 0" class="text-center py-8">
-              <span class="text-6xl">🎯</span>
+              <MdiIcon :icon="mdiTarget" :size="72" class="text-gray-400 mx-auto mb-4" />
               <p class="mt-4 text-gray-500 dark:text-gray-400">
                 No achievements yet. Start trading to unlock your first achievement!
               </p>
@@ -214,7 +217,7 @@
                 class="flex items-center p-4 bg-gray-50 dark:bg-gray-700 rounded-lg"
               >
                 <div class="flex-shrink-0">
-                  <span class="text-2xl">🏆</span>
+                  <MdiIcon :icon="mdiTrophy" :size="24" class="text-yellow-500" />
                 </div>
                 <div class="ml-4 flex-1">
                   <h4 class="text-sm font-medium text-gray-900 dark:text-white">
@@ -240,9 +243,16 @@
               </button>
               <button 
                 @click="checkForNewAchievements"
-                class="bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300 px-3 py-1 rounded text-xs font-medium hover:bg-primary-200 dark:hover:bg-primary-800 transition-colors"
+                :disabled="checkingAchievements"
+                :class="[
+                  'px-3 py-1 rounded text-xs font-medium transition-colors flex items-center',
+                  checkingAchievements 
+                    ? 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                    : 'bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300 hover:bg-primary-200 dark:hover:bg-primary-800'
+                ]"
               >
-                Check for new achievements
+                <div v-if="checkingAchievements" class="inline-block animate-spin rounded-full h-3 w-3 border-b border-current mr-2"></div>
+                {{ checkingAchievements ? 'Checking...' : 'Check for new achievements' }}
               </button>
             </div>
           </div>
@@ -278,9 +288,11 @@
                         : 'bg-gray-100 dark:bg-gray-700'
                     ]"
                   >
-                    <span :class="achievement.is_earned ? '' : 'grayscale opacity-50'">
-                      🏆
-                    </span>
+                    <MdiIcon 
+                      :icon="mdiTrophy" 
+                      :size="24" 
+                      :class="achievement.is_earned ? 'text-yellow-500' : 'text-gray-400 grayscale opacity-50'" 
+                    />
                   </div>
                   <div class="ml-3">
                     <h3 
@@ -341,7 +353,7 @@
         </div>
 
         <div v-if="!achievementsLoading && achievements.length === 0" class="text-center py-12">
-          <span class="text-6xl">🎯</span>
+          <MdiIcon :icon="mdiTarget" :size="72" class="text-gray-400 mx-auto mb-4" />
           <h3 class="mt-4 text-lg font-medium text-gray-900 dark:text-white">
             No achievements found
           </h3>
@@ -372,7 +384,7 @@
             </div>
             <div class="p-6">
               <div v-if="leaderboard.entries.length === 0" class="text-center py-8">
-                <span class="text-4xl">📊</span>
+                <MdiIcon :icon="mdiChartBox" :size="48" class="text-gray-400 mx-auto mb-4" />
                 <p class="mt-4 text-gray-500 dark:text-gray-400 text-sm">
                   No rankings available yet
                 </p>
@@ -416,6 +428,85 @@
                   </div>
                 </div>
               </div>
+              <div v-if="leaderboard.entries.length > 0" class="mt-6 text-center">
+                <button 
+                  @click="viewFullLeaderboard(leaderboard)"
+                  class="text-primary-600 dark:text-primary-400 hover:text-primary-500 text-sm font-medium flex items-center mx-auto"
+                >
+                  View all rankings
+                  <MdiIcon :icon="mdiChevronRight" :size="16" class="ml-1" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Full Leaderboard View -->
+      <div v-if="activeTab === 'full-leaderboard'">
+        <div class="mb-6">
+          <button 
+            @click="activeTab = 'leaderboards'"
+            class="flex items-center text-primary-600 dark:text-primary-400 hover:text-primary-500 mb-4"
+          >
+            <MdiIcon :icon="mdiChevronLeft" :size="20" class="mr-1" />
+            Back to Rankings
+          </button>
+          <h2 class="text-2xl font-bold text-gray-900 dark:text-white">
+            {{ selectedLeaderboard?.name }} - Full Rankings
+          </h2>
+        </div>
+
+        <div class="bg-white dark:bg-gray-800 shadow rounded-lg">
+          <div v-if="fullLeaderboardLoading" class="text-center py-12">
+            <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+            <p class="mt-2 text-gray-600 dark:text-gray-400">Loading full rankings...</p>
+          </div>
+
+          <div v-else-if="fullLeaderboardEntries.length === 0" class="text-center py-12">
+            <MdiIcon :icon="mdiChartBox" :size="48" class="text-gray-400 mx-auto mb-4" />
+            <p class="text-gray-500 dark:text-gray-400">No rankings available</p>
+          </div>
+
+          <div v-else class="p-6">
+            <div class="space-y-3">
+              <div
+                v-for="(entry, index) in fullLeaderboardEntries"
+                :key="entry.user_id"
+                :class="[
+                  'flex items-center justify-between p-4 rounded-lg',
+                  entry.is_current_user 
+                    ? 'bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-700' 
+                    : 'bg-gray-50 dark:bg-gray-700'
+                ]"
+              >
+                <div class="flex items-center">
+                  <div 
+                    :class="[
+                      'w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold',
+                      index === 0 ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' :
+                      index === 1 ? 'bg-gray-100 text-gray-800 dark:bg-gray-600 dark:text-gray-200' :
+                      index === 2 ? 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200' :
+                      'bg-gray-200 text-gray-600 dark:bg-gray-600 dark:text-gray-400'
+                    ]"
+                  >
+                    {{ entry.rank || index + 1 }}
+                  </div>
+                  <div class="ml-4">
+                    <div class="text-base font-medium text-gray-900 dark:text-white">
+                      {{ entry.display_name || entry.anonymous_name }}
+                    </div>
+                    <div v-if="entry.is_current_user" class="text-sm text-primary-600 dark:text-primary-400">
+                      You
+                    </div>
+                  </div>
+                </div>
+                <div class="text-right">
+                  <div class="text-base font-bold text-gray-900 dark:text-white">
+                    {{ formatLeaderboardValue(entry.score || entry.value, selectedLeaderboard?.key) }}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -427,16 +518,33 @@
 <script>
 import { ref, onMounted, watch } from 'vue'
 import api from '@/services/api'
+import MdiIcon from '@/components/MdiIcon.vue'
+import { useNotification } from '@/composables/useNotification'
+import { 
+  mdiTrophy, 
+  mdiChartLine, 
+  mdiTarget, 
+  mdiChartBox, 
+  mdiFire, 
+  mdiStar,
+  mdiTrendingUp,
+  mdiChevronRight,
+  mdiChevronLeft
+} from '@mdi/js'
 
 export default {
   name: 'GamificationView',
+  components: {
+    MdiIcon
+  },
   setup() {
+    const { showSuccess, showError, showWarning } = useNotification()
     const activeTab = ref('overview')
     
     const tabs = [
-      { key: 'overview', name: 'Overview', icon: '📊' },
-      { key: 'achievements', name: 'Achievements', icon: '🏆' },
-      { key: 'leaderboards', name: 'Rankings', icon: '📈' }
+      { key: 'overview', name: 'Overview', icon: mdiChartBox },
+      { key: 'achievements', name: 'Achievements', icon: mdiTrophy },
+      { key: 'leaderboards', name: 'Rankings', icon: mdiTrendingUp }
     ]
 
     const userStats = ref({
@@ -454,6 +562,10 @@ export default {
     const leaderboards = ref([])
     const loading = ref(true)
     const achievementsLoading = ref(false)
+    const fullLeaderboardLoading = ref(false)
+    const fullLeaderboardEntries = ref([])
+    const selectedLeaderboard = ref(null)
+    const checkingAchievements = ref(false)
 
     const loadDashboard = async () => {
       try {
@@ -506,6 +618,9 @@ export default {
               console.log('Loaded upcoming achievements from dashboard:', achievements.value)
             }
           }
+          
+          // Sort achievements by XP points (lowest to highest)
+          achievements.value.sort((a, b) => (a.points || 0) - (b.points || 0))
         }
       } catch (error) {
         console.error('Error loading achievements:', error)
@@ -589,13 +704,21 @@ export default {
 
     const checkForNewAchievements = async () => {
       try {
+        checkingAchievements.value = true
         const response = await api.post('/gamification/achievements/check')
+        
         if (response.data.success && response.data.data.count > 0) {
           console.log(`Earned ${response.data.data.count} new achievements!`)
           
           // Show achievement names
           const achievementNames = response.data.data.newAchievements.map(a => a.name).join(', ')
           console.log(`New achievements: ${achievementNames}`)
+          
+          // Show success message to user
+          showSuccess(
+            `🎉 ${response.data.data.count} New Achievement${response.data.data.count > 1 ? 's' : ''}!`,
+            achievementNames
+          )
           
           // Reload dashboard to show updated stats
           await loadDashboard()
@@ -606,9 +729,39 @@ export default {
           }
         } else {
           console.log('No new achievements found')
+          // Show info message to user
+          showWarning('No New Achievements', 'Keep trading to unlock more achievements!')
         }
       } catch (error) {
         console.error('Error checking achievements:', error)
+        showError('Achievement Check Failed', 'Please try again later.')
+      } finally {
+        checkingAchievements.value = false
+      }
+    }
+
+    const viewFullLeaderboard = async (leaderboard) => {
+      selectedLeaderboard.value = leaderboard
+      activeTab.value = 'full-leaderboard'
+      await loadFullLeaderboard(leaderboard.key)
+    }
+
+    const loadFullLeaderboard = async (leaderboardKey) => {
+      try {
+        fullLeaderboardLoading.value = true
+        
+        // Use limit=0 to get all entries (no limit)
+        const response = await api.get(`/gamification/leaderboards/${leaderboardKey}?limit=0`)
+        
+        if (response.data.success) {
+          fullLeaderboardEntries.value = response.data.data.entries || []
+        }
+      } catch (error) {
+        console.error('Error loading full leaderboard:', error)
+        showError('Failed to Load Rankings', 'Unable to load complete leaderboard data.')
+        fullLeaderboardEntries.value = []
+      } finally {
+        fullLeaderboardLoading.value = false
       }
     }
 
@@ -625,10 +778,24 @@ export default {
       leaderboards,
       loading,
       achievementsLoading,
+      fullLeaderboardLoading,
+      fullLeaderboardEntries,
+      selectedLeaderboard,
+      checkingAchievements,
       formatDate,
       formatLeaderboardValue,
       loadTabData,
-      checkForNewAchievements
+      checkForNewAchievements,
+      viewFullLeaderboard,
+      mdiTrophy,
+      mdiChartLine,
+      mdiTarget,
+      mdiChartBox,
+      mdiFire,
+      mdiStar,
+      mdiTrendingUp,
+      mdiChevronRight,
+      mdiChevronLeft
     }
   }
 }

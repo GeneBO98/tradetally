@@ -22,8 +22,8 @@ router.post('/challenges/:challengeId/join', gamificationController.joinChalleng
 router.get('/challenges/:challengeId/leaderboard', gamificationController.getChallengeLeaderboard);
 
 // Leaderboard routes
-router.get('/leaderboards/:key', gamificationController.getLeaderboard);
 router.get('/leaderboards', gamificationController.getAllLeaderboards);
+router.get('/leaderboards/:key', gamificationController.getLeaderboard);
 router.get('/rankings', gamificationController.getUserRankings);
 
 // Privacy settings

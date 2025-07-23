@@ -264,8 +264,8 @@ const baseNavigation = [
       },
       { 
         name: 'Leaderboard', 
-        to: '/gamification', 
-        route: 'gamification',
+        to: '/leaderboard', 
+        route: 'leaderboard',
         description: 'Track achievements, challenges, and compete with peers'
       }
     ]

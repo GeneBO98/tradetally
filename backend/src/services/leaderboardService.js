@@ -407,7 +407,7 @@ class LeaderboardService {
   }
   
   // Get leaderboard entries
-  static async getLeaderboard(leaderboardKey, userId = null) {
+  static async getLeaderboard(leaderboardKey, userId = null, limit = 100) {
     try {
       // Get leaderboard info
       const leaderboardResult = await db.query(
@@ -440,7 +440,7 @@ class LeaderboardService {
         WHERE le.leaderboard_id = $1
           AND DATE(le.recorded_at) = CURRENT_DATE
         ORDER BY le.rank
-        LIMIT 100
+        ${limit > 0 ? `LIMIT ${limit}` : ''}
       `;
       
       const entriesResult = await db.query(entriesQuery, [leaderboard.id, userId]);
