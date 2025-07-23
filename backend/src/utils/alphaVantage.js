@@ -180,24 +180,26 @@ class AlphaVantageClient {
     const tradeDuration = exitTime - entryTime;
     const oneDayMs = 24 * 60 * 60 * 1000;
 
+    console.log(`Alpha Vantage chart request - Symbol: ${symbol}, Entry: ${entryTime.toISOString()}, Exit: ${exitTime.toISOString()}, Duration: ${Math.ceil(tradeDuration / oneDayMs)} days, Has exit date: ${!!exitDate}`);
+
     try {
-      // For same-day trades, use intraday data
-      if (tradeDuration <= oneDayMs) {
-        console.log(`Fetching intraday data for ${symbol} (same-day trade)`);
+      // For same-day trades or no exit date, use intraday data
+      if (!exitDate || tradeDuration <= oneDayMs) {
+        console.log(`Fetching intraday data for ${symbol} (same-day or open trade)`);
         return {
           type: 'intraday',
           interval: '5min',
-          data: await this.getIntradayData(symbol, '5min')
+          candles: await this.getIntradayData(symbol, '5min')
         };
       }
       
-      // For trades up to 5 days, use 15-minute data
-      else if (tradeDuration <= 5 * oneDayMs) {
+      // For trades up to 7 days, use 15-minute data
+      else if (tradeDuration <= 7 * oneDayMs) {
         console.log(`Fetching 15-minute data for ${symbol} (${Math.ceil(tradeDuration / oneDayMs)} day trade)`);
         return {
           type: 'intraday',
           interval: '15min',
-          data: await this.getIntradayData(symbol, '15min')
+          candles: await this.getIntradayData(symbol, '15min')
         };
       }
       
@@ -207,7 +209,7 @@ class AlphaVantageClient {
         return {
           type: 'daily',
           interval: 'daily',
-          data: await this.getDailyData(symbol, 'full')
+          candles: await this.getDailyData(symbol, 'full')
         };
       }
     } catch (error) {

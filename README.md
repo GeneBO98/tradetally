@@ -27,7 +27,9 @@ Password: DemoUser25
 - **Real-time Market Data**: Live stock quotes and unrealized P&L tracking for open positions using Finnhub API
 - **Trade Chart Visualization**: Interactive candlestick charts with entry/exit markers using Alpha Vantage API
 - **AI-Powered Analytics**: Personalized trading recommendations using Google Gemini AI with sector performance analysis
-- **Sector Performance Analysis**: Industry-based performance breakdown using Finnhub company profiles
+- **Gamification & Leaderboards**: Track achievements, compete with peers, and level up your trading skills with P&L-based rankings
+- **Behavioral Analytics**: Advanced trading psychology analysis including revenge trading detection and overconfidence tracking
+- **Sector Performance Analysis**: Industry-based performance breakdown using Finnhub company profiles  
 - **Comprehensive Analytics**: Dashboard with P&L tracking, win rates, performance metrics, and hold time analysis
 - **Trading Profile Customization**: Configure your strategies, styles, and preferences for personalized AI recommendations
 - **Registration Control**: Flexible user registration modes (open, admin approval, or disabled) for self-hosting
@@ -285,7 +287,7 @@ VITE_SHOW_DONATION_BUTTON=true
 - **Free tier**: 60 API calls/minute (sufficient for most use cases)
 - **Consolidated API**: Single provider for both quotes and CUSIP resolution
 
-### Alpha Vantage API (For Trade Chart Visualization)
+### Alpha Vantage API (For Free Tier Chart Visualization)
 
 1. Visit [Alpha Vantage](https://www.alphavantage.co/support/#api-key)
 2. Sign up for a free account
@@ -293,11 +295,12 @@ VITE_SHOW_DONATION_BUTTON=true
 4. Add the key to your `.env` file as `ALPHA_VANTAGE_API_KEY`
 
 **Features:**
-- **Interactive candlestick charts**: Visual trade analysis with entry/exit markers
+- **Interactive candlestick charts**: Visual trade analysis with entry/exit markers for free tier users
 - **Historical market data**: Intraday and daily stock price data
 - **Trade performance overlay**: Entry/exit indicators with P&L visualization
-- **Free tier**: 25 API calls/day, 5 calls/minute (sufficient for chart analysis)
+- **Free tier**: 25 API calls/day, 5 calls/minute (sufficient for basic chart analysis)
 - **Smart caching**: Reduces API usage with intelligent data caching
+- **Note**: Pro users get exclusive Finnhub access with no Alpha Vantage fallback
 
 ### Google Gemini API (AI Recommendations & CUSIP Resolution)
 
@@ -322,6 +325,11 @@ The system uses the following priority:
 1. **Finnhub API**: Primary source for live market data
 2. **Cache**: Previously fetched quotes (1-minute cache)
 3. **Fallback**: Display without real-time data if API unavailable
+
+**For Chart Data:**
+1. **Pro Users**: Finnhub Stock Candles API exclusively (150 calls/min, 1-minute precision)
+2. **Free Users**: Alpha Vantage API (25 calls/day, limited precision)
+3. **Cache**: Previously fetched chart data with intelligent caching
 
 **For CUSIP Resolution:**
 1. **Cache**: Previously resolved mappings (fastest)
@@ -895,7 +903,83 @@ npm run build
 pm2 restart tradetally-backend
 ```
 
+## 🎮 Gamification & Leaderboards
+
+TradeTally includes a comprehensive gamification system to make trading analysis more engaging and competitive.
+
+### Leaderboard Features
+
+**P&L-Based Rankings**:
+- **All-Time P&L Rankings**: Total profit/loss across all trades
+- **Monthly P&L Rankings**: Profit/loss for the current active trading month
+- **Weekly P&L Rankings**: Profit/loss for the current active trading week
+- **Best Single Trade**: Highest profit from a single trade
+- **Largest Loss**: Worst single trade by absolute loss
+- **Most Consistent Trader**: Based on volume traded and average P&L consistency
+
+**Privacy & Anonymity**:
+- All leaderboards use anonymous usernames for privacy
+- Real usernames are never displayed publicly
+- Generated names maintain consistency per user
+
+**View Options**:
+- Overview with top 5 rankings per category
+- "View All" functionality for complete leaderboard data
+- Overall rank calculated as average across all categories
+- Real-time updates with proper loading states
+
+### Achievement System
+
+**Progress Tracking**:
+- XP-based achievement system with sortable progress
+- Check for new achievements with toast notifications
+- Achievements organized by XP gain (lowest to highest)
+- Visual progress indicators and completion status
+
+**Achievement Categories**:
+- Trading milestones and profit targets
+- Volume and consistency achievements
+- Time-based trading streaks
+- Portfolio performance benchmarks
+
+### Behavioral Analytics
+
+**Trading Psychology Analysis**:
+- Revenge trading detection and alerts
+- Overconfidence pattern identification
+- Emotional trading indicators
+- Risk management behavior tracking
+
+**Performance Insights**:
+- User-configurable statistics (average vs median)
+- Dynamic calculation preferences with persistent settings
+- Real-time metric updates based on preference
+- Enhanced analytics with behavioral overlays
+
+### Configuration
+
+Control gamification features with environment variables:
+
+```env
+# Enable/disable all gamification features
+ENABLE_GAMIFICATION=true
+
+# Debug mode for development
+DEBUG=false
+```
+
 ### Recent Updates
+
+**v1.2.0 - Enhanced Gamification & Analytics**
+- **P&L-Based Leaderboards**: Replaced behavioral metrics with meaningful profit/loss rankings
+- **Anonymous Leaderboards**: Privacy-focused rankings with generated usernames
+- **Statistics Preferences**: User-configurable average vs median calculations
+- **Pro Chart Enhancement**: Pro users now get exclusive Finnhub chart data (no Alpha Vantage fallback)
+- **Enhanced UI/UX**: MDI icons throughout, improved loading states, toast notifications
+- **Route Updates**: Changed /gamification to /leaderboard for clarity
+- **View All Rankings**: Complete leaderboard viewing with pagination support
+- **Achievement Sorting**: XP-based achievement organization
+- **Persistent Settings**: Fixed settings persistence across navigation
 
 **v1.1.6 - AI-Powered Analytics & Sector Analysis**
 - **AI Trading Recommendations**: Personalized trading insights using Google Gemini AI
@@ -931,14 +1015,18 @@ pm2 restart tradetally-backend
 
 **Migration Notes:**
 - Update your `.env` to include `REGISTRATION_MODE=open` for new registration control
+- Update your `.env` to include `ENABLE_GAMIFICATION=true` for leaderboard features
 - Update your `.env` to include `GEMINI_API_KEY` for AI recommendations
 - Ensure `FINNHUB_API_KEY` is set for sector analysis
-- Run database migrations for trading profile features:
+- Run database migrations for latest features:
   ```bash
   cd backend
-  psql -U your_user -d your_db -f migrations/add_admin_approved_column.sql
-  psql -U your_user -d your_db -f migrations/add_trading_profile_fields.sql
+  psql -U your_user -d your_db -f migrations/043_add_statistics_calculation_preference.sql
+  psql -U your_user -d your_db -f migrations/044_update_leaderboards_to_pnl_based.sql
+  psql -U your_user -d your_db -f migrations/045_add_admin_approved_column.sql
+  psql -U your_user -d your_db -f migrations/046_add_trading_profile_fields.sql
   ```
+- **Route Change**: Update any bookmarks from `/gamification` to `/leaderboard`
 - Restart both frontend and backend after update
 
 ---

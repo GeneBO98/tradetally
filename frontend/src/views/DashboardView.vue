@@ -522,8 +522,9 @@
                       ${{ formatCurrency(trade.pnl) }}
                     </span>
                   </div>
-                  <div v-else class="text-sm text-gray-500 dark:text-gray-400 italic py-2">
-                    No losing trades found 🎉
+                  <div v-else class="text-sm text-gray-500 dark:text-gray-400 italic py-2 flex items-center">
+                    <MdiIcon :icon="mdiCheckCircle" :size="16" class="mr-1 text-green-500" />
+                    No losing trades found
                   </div>
                 </div>
               </div>
@@ -587,6 +588,8 @@ import Chart from 'chart.js/auto'
 import api from '@/services/api'
 import TradeNewsSection from '@/components/dashboard/TradeNewsSection.vue'
 import UpcomingEarningsSection from '@/components/dashboard/UpcomingEarningsSection.vue'
+import MdiIcon from '@/components/MdiIcon.vue'
+import { mdiCheckCircle } from '@mdi/js'
 
 const authStore = useAuthStore()
 const router = useRouter()

@@ -241,7 +241,10 @@
                       <div class="bg-red-500 h-2 rounded-full" :style="{ width: `${personalityData.personalityScores?.scalper || 0}%` }"></div>
                     </div>
                     <p class="text-xs font-medium">{{ personalityData.personalityScores?.scalper || 0 }}%</p>
-                    <p class="text-xs text-blue-600 dark:text-blue-400 mt-1">📊 View trades</p>
+                    <p class="text-xs text-blue-600 dark:text-blue-400 mt-1 flex items-center justify-center">
+                      <MdiIcon :icon="mdiChartBox" :size="12" class="mr-1" />
+                      View trades
+                    </p>
                   </div>
                   <div class="text-center cursor-pointer p-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" 
                        @click="viewTradesByStrategy('momentum')"
@@ -251,7 +254,10 @@
                       <div class="bg-green-500 h-2 rounded-full" :style="{ width: `${personalityData.personalityScores?.momentum || 0}%` }"></div>
                     </div>
                     <p class="text-xs font-medium">{{ personalityData.personalityScores?.momentum || 0 }}%</p>
-                    <p class="text-xs text-blue-600 dark:text-blue-400 mt-1">📊 View trades</p>
+                    <p class="text-xs text-blue-600 dark:text-blue-400 mt-1 flex items-center justify-center">
+                      <MdiIcon :icon="mdiChartBox" :size="12" class="mr-1" />
+                      View trades
+                    </p>
                   </div>
                   <div class="text-center cursor-pointer p-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" 
                        @click="viewTradesByStrategy('mean_reversion')"
@@ -261,7 +267,10 @@
                       <div class="bg-blue-500 h-2 rounded-full" :style="{ width: `${personalityData.personalityScores?.mean_reversion || 0}%` }"></div>
                     </div>
                     <p class="text-xs font-medium">{{ personalityData.personalityScores?.mean_reversion || 0 }}%</p>
-                    <p class="text-xs text-blue-600 dark:text-blue-400 mt-1">📊 View trades</p>
+                    <p class="text-xs text-blue-600 dark:text-blue-400 mt-1 flex items-center justify-center">
+                      <MdiIcon :icon="mdiChartBox" :size="12" class="mr-1" />
+                      View trades
+                    </p>
                   </div>
                   <div class="text-center cursor-pointer p-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" 
                        @click="viewTradesByStrategy('swing')"
@@ -271,7 +280,10 @@
                       <div class="bg-purple-500 h-2 rounded-full" :style="{ width: `${personalityData.personalityScores?.swing || 0}%` }"></div>
                     </div>
                     <p class="text-xs font-medium">{{ personalityData.personalityScores?.swing || 0 }}%</p>
-                    <p class="text-xs text-blue-600 dark:text-blue-400 mt-1">📊 View trades</p>
+                    <p class="text-xs text-blue-600 dark:text-blue-400 mt-1 flex items-center justify-center">
+                      <MdiIcon :icon="mdiChartBox" :size="12" class="mr-1" />
+                      View trades
+                    </p>
                   </div>
                 </div>
               </div>
@@ -703,7 +715,8 @@
                          class="mt-3 p-4 bg-red-50 dark:bg-red-900/10 rounded-lg border-l-4 border-red-500">
                       <div class="flex items-center justify-between mb-3">
                         <h4 class="text-sm font-semibold text-red-800 dark:text-red-400">
-                          📉 Initial Loss Trade (Trigger)
+                          <MdiIcon :icon="mdiTrendingDown" :size="16" class="mr-1" />
+                          Initial Loss Trade (Trigger)
                         </h4>
                         <button 
                           @click="openTrade(event.trigger_trade.id)"
@@ -744,7 +757,10 @@
                     <div v-if="event.related_patterns?.length" class="mt-4">
                       <div class="flex items-center justify-between mb-3">
                         <div class="flex items-center space-x-2">
-                          <h4 class="text-sm font-semibold text-gray-800 dark:text-gray-200">⚡ Revenge Trading Response</h4>
+                          <h4 class="text-sm font-semibold text-gray-800 dark:text-gray-200 flex items-center">
+                            <MdiIcon :icon="mdiLightningBolt" :size="16" class="mr-1" />
+                            Revenge Trading Response
+                          </h4>
                           <span class="text-xs text-gray-500 dark:text-gray-400">
                             ({{ getTimeBetweenTrades(event.trigger_trade.exit_time, event.related_patterns[0]?.entry_time) }} later)
                           </span>
@@ -2016,6 +2032,21 @@ import api from '@/services/api'
 import { useNotification } from '@/composables/useNotification'
 import { useAuthStore } from '@/stores/auth'
 import ProUpgradePrompt from '@/components/ProUpgradePrompt.vue'
+import MdiIcon from '@/components/MdiIcon.vue'
+import { 
+  mdiChartBox,
+  mdiTrendingDown,
+  mdiLightningBolt,
+  mdiTarget,
+  mdiTrendingUp,
+  mdiClose,
+  mdiCheck,
+  mdiCurrencyUsd,
+  mdiScale,
+  mdiLightbulb,
+  mdiFire,
+  mdiTrophy
+} from '@mdi/js'
 
 const { showSuccess, showError } = useNotification()
 const authStore = useAuthStore()

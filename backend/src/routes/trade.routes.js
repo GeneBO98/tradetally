@@ -57,6 +57,9 @@ router.delete('/bulk', authenticate, tradeController.bulkDeleteTrades);
 router.get('/earnings', authenticate, tradeController.getUpcomingEarnings);
 router.get('/news', authenticate, tradeController.getTradeNews);
 
+// Chart data endpoint - MUST be before /:id route
+router.get('/:id/chart-data', authenticate, tradeController.getTradeChartData);
+
 router.get('/:id', optionalAuth, tradeController.getTrade);
 router.put('/:id', authenticate, validate(schemas.updateTrade), tradeController.updateTrade);
 router.delete('/:id', authenticate, tradeController.deleteTrade);
