@@ -3,7 +3,7 @@
     <div class="max-w-md w-full space-y-8">
       <div>
         <div class="flex justify-center mb-6">
-          <img src="https://zipline.id10tips.com/u/tradetally-banner.svg" alt="TradeTally" class="h-16 w-auto" />
+          <img src="https://zipline.id10tips.com/u/tradetally-banner.svg" alt="TradeTally" class="h-16 w-auto max-w-full" />
         </div>
         <h2 class="mt-6 text-center text-3xl font-extrabold text-gray-900 dark:text-white">
           Create your account

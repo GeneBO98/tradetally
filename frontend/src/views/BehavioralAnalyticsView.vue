@@ -2556,10 +2556,37 @@ const loadTopMissedTrades = async () => {
     if (response.data.data) {
       topMissedTrades.value = response.data.data
       
+      // Cache the top missed trades data
+      const cacheKey = `top_missed_trades_${authStore.user?.id}_${filters.value.startDate || 'all'}_${filters.value.endDate || 'all'}`
+      const cacheData = {
+        data: response.data.data,
+        timestamp: Date.now(),
+        filters: { ...filters.value }
+      }
+      localStorage.setItem(cacheKey, JSON.stringify(cacheData))
+      
       if (response.data.data.topMissedTrades && response.data.data.topMissedTrades.length > 0) {
         showSuccess('Analysis Complete', `Found ${response.data.data.topMissedTrades.length} trades with significant missed opportunities`)
       } else {
         showSuccess('Analysis Complete', response.data.data.message || 'No significant missed opportunities found')
+      }
+    } else {
+      // Check cache if API returns no data
+      const cacheKey = `top_missed_trades_${authStore.user?.id}_${filters.value.startDate || 'all'}_${filters.value.endDate || 'all'}`
+      const cachedData = localStorage.getItem(cacheKey)
+      if (cachedData) {
+        try {
+          const parsed = JSON.parse(cachedData)
+          const cacheAge = Date.now() - parsed.timestamp
+          const maxAge = 7 * 24 * 60 * 60 * 1000 // 7 days
+          
+          if (cacheAge < maxAge && parsed.data) {
+            topMissedTrades.value = parsed.data
+            console.log('Loaded top missed trades from cache')
+          }
+        } catch (e) {
+          console.warn('Invalid cached top missed trades data')
+        }
       }
     }
   } catch (error) {
@@ -2726,9 +2753,27 @@ onMounted(async () => {
       loadExistingPersonalityData()
     ])
     
-    // Auto-load top missed trades if loss aversion data exists
+    // Auto-load top missed trades if loss aversion data exists OR try loading from cache
     if (lossAversionData.value?.analysis) {
       await loadTopMissedTrades()
+    } else {
+      // Try to load top missed trades from cache even if no current analysis
+      const cacheKey = `top_missed_trades_${authStore.user?.id}_${filters.value.startDate || 'all'}_${filters.value.endDate || 'all'}`
+      const cachedData = localStorage.getItem(cacheKey)
+      if (cachedData) {
+        try {
+          const parsed = JSON.parse(cachedData)
+          const cacheAge = Date.now() - parsed.timestamp
+          const maxAge = 7 * 24 * 60 * 60 * 1000 // 7 days
+          
+          if (cacheAge < maxAge && parsed.data) {
+            topMissedTrades.value = parsed.data
+            console.log('Pre-loaded top missed trades from cache on mount')
+          }
+        } catch (e) {
+          console.warn('Invalid cached top missed trades on mount')
+        }
+      }
     }
   } else {
     loading.value = false
@@ -2795,14 +2840,7 @@ const loadCachedLossAversionData = () => {
 
 // Load existing loss aversion analysis data
 const loadExistingLossAversionData = async () => {
-  // First try to load from cache
-  const cachedData = loadCachedLossAversionData()
-  if (cachedData) {
-    lossAversionData.value = cachedData
-    return
-  }
-
-  // Fallback to API if no cache
+  // Always try API first to get the latest data from database
   try {
     const lossAversionRes = await api.get('/behavioral-analytics/loss-aversion/complete')
     if (lossAversionRes.data.data) {
@@ -2810,11 +2848,21 @@ const loadExistingLossAversionData = async () => {
       lossAversionData.value = lossAversionRes.data.data
       // Cache the API response
       cacheLossAversionData(lossAversionRes.data.data)
+      return
     }
   } catch (error) {
-    console.error('Failed to load loss aversion analysis:', error)
-    // Fallback to basic metrics if complete analysis fails
-    try {
+    console.log('Failed to load complete loss aversion data, trying cache...')
+  }
+
+  // Try cache as fallback
+  const cachedData = loadCachedLossAversionData()
+  if (cachedData) {
+    lossAversionData.value = cachedData
+    return
+  }
+
+  // Fallback to basic metrics if both API and cache fail
+  try {
       const fallbackRes = await api.get('/behavioral-analytics/loss-aversion/latest')
       if (fallbackRes.data.data) {
         const metrics = fallbackRes.data.data
@@ -2845,7 +2893,6 @@ const loadExistingLossAversionData = async () => {
     } catch (fallbackError) {
       console.error('Failed to load basic loss aversion metrics:', fallbackError)
     }
-  }
 }
 
 // Load existing overconfidence analysis data
@@ -2858,6 +2905,33 @@ const loadExistingOverconfidenceData = async () => {
     const response = await api.get(`/behavioral-analytics/overconfidence?${queryParams}`)
     if (response.data.success && response.data.data) {
       overconfidenceData.value = response.data.data
+      
+      // Cache overconfidence data locally for persistence
+      const cacheKey = `overconfidence_analysis_${authStore.user?.id}`
+      const cacheData = {
+        data: response.data.data,
+        timestamp: Date.now(),
+        filters: filters.value
+      }
+      localStorage.setItem(cacheKey, JSON.stringify(cacheData))
+    } else {
+      // Try to load from cache if API has no data
+      const cacheKey = `overconfidence_analysis_${authStore.user?.id}`
+      const cachedData = localStorage.getItem(cacheKey)
+      if (cachedData) {
+        try {
+          const parsed = JSON.parse(cachedData)
+          const cacheAge = Date.now() - parsed.timestamp
+          const maxAge = 7 * 24 * 60 * 60 * 1000 // 7 days
+          
+          if (cacheAge < maxAge && parsed.data) {
+            overconfidenceData.value = parsed.data
+            console.log('Loaded overconfidence data from cache')
+          }
+        } catch (e) {
+          console.warn('Invalid cached overconfidence data')
+        }
+      }
     }
   } catch (error) {
     console.error('Failed to load existing overconfidence data:', error)
@@ -2867,7 +2941,23 @@ const loadExistingOverconfidenceData = async () => {
 // Load existing personality analysis data
 const loadExistingPersonalityData = async () => {
   try {
-    // Check localStorage cache first
+    // First try to get the latest stored analysis from the database
+    const response = await api.get('/behavioral-analytics/personality/latest')
+    if (response.data.success && response.data.data) {
+      personalityData.value = response.data.data
+      console.log('Loaded personality data from database')
+      
+      // Also cache it locally for quick access
+      const cacheKey = `personality_analysis_${authStore.user?.id}`
+      const cacheData = {
+        data: response.data.data,
+        timestamp: Date.now()
+      }
+      localStorage.setItem(cacheKey, JSON.stringify(cacheData))
+      return
+    }
+    
+    // If no data from API, check localStorage cache as fallback
     const cacheKey = `personality_analysis_${authStore.user?.id}`
     const cachedData = localStorage.getItem(cacheKey)
     
@@ -2875,38 +2965,19 @@ const loadExistingPersonalityData = async () => {
       try {
         const parsed = JSON.parse(cachedData)
         const cacheAge = Date.now() - parsed.timestamp
-        const maxAge = 24 * 60 * 60 * 1000 // 24 hours
+        const maxAge = 7 * 24 * 60 * 60 * 1000 // 7 days (increased from 24 hours)
         
         if (cacheAge < maxAge && parsed.data) {
           personalityData.value = parsed.data
-          console.log('Loaded personality data from cache')
+          console.log('Loaded personality data from cache (API had no data)')
           return
         }
       } catch (e) {
-        console.warn('Invalid cached personality data, fetching fresh data')
+        console.warn('Invalid cached personality data')
       }
-    }
-    
-    // Fetch fresh data if no cache or cache is stale
-    const response = await api.get('/behavioral-analytics/personality/latest')
-    if (response.data.success && response.data.data) {
-      personalityData.value = response.data.data
-      
-      // Cache the result
-      const cacheData = {
-        data: response.data.data,
-        timestamp: Date.now()
-      }
-      localStorage.setItem(cacheKey, JSON.stringify(cacheData))
-      console.log('Cached fresh personality data')
-    } else {
-      // If no data exists, automatically trigger analysis
-      await autoAnalyzePersonality()
     }
   } catch (error) {
     console.error('Failed to load existing personality data:', error)
-    // Try to automatically analyze if loading fails
-    await autoAnalyzePersonality()
   }
 }
 

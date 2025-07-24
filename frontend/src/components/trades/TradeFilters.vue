@@ -554,7 +554,7 @@ function applyFilters() {
     cleanFilters.sectors = filters.value.sectors.join(',')
   }
   
-  if (filters.value.hasNews) cleanFilters.hasNews = filters.value.hasNews
+  cleanFilters.hasNews = filters.value.hasNews
   
   console.log('🎯 APPLYING FILTERS:', cleanFilters)
   
@@ -564,12 +564,12 @@ function applyFilters() {
   if (filters.value.maxPrice !== null && filters.value.maxPrice !== '') cleanFilters.maxPrice = filters.value.maxPrice
   if (filters.value.minQuantity !== null && filters.value.minQuantity !== '') cleanFilters.minQuantity = filters.value.minQuantity
   if (filters.value.maxQuantity !== null && filters.value.maxQuantity !== '') cleanFilters.maxQuantity = filters.value.maxQuantity
-  if (filters.value.status) cleanFilters.status = filters.value.status
+  cleanFilters.status = filters.value.status
   if (filters.value.minPnl !== null && filters.value.minPnl !== '') cleanFilters.minPnl = filters.value.minPnl
   if (filters.value.maxPnl !== null && filters.value.maxPnl !== '') cleanFilters.maxPnl = filters.value.maxPnl
-  if (filters.value.pnlType) cleanFilters.pnlType = filters.value.pnlType
-  if (filters.value.holdTime) cleanFilters.holdTime = filters.value.holdTime
-  if (filters.value.broker) cleanFilters.broker = filters.value.broker
+  cleanFilters.pnlType = filters.value.pnlType
+  cleanFilters.holdTime = filters.value.holdTime
+  cleanFilters.broker = filters.value.broker
   
   // Handle multi-select days of week - convert to comma-separated
   if (filters.value.daysOfWeek.length > 0) {

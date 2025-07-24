@@ -411,14 +411,14 @@
                 <div class="flex items-center space-x-2">
                   <span
                     :class="{
-                      'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400': tierInfo.tier === 'free',
-                      'bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400': tierInfo.tier === 'pro'
+                      'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400': tierInfo?.tier === 'free',
+                      'bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400': tierInfo?.tier === 'pro'
                     }"
                     class="inline-flex px-3 py-1 text-sm font-semibold rounded-full"
                   >
-                    {{ tierInfo.tier }}
+                    {{ tierInfo?.tier }}
                   </span>
-                  <span v-if="tierInfo.override" class="text-xs text-amber-600 dark:text-amber-400">
+                  <span v-if="tierInfo?.override" class="text-xs text-amber-600 dark:text-amber-400">
                     (Override active)
                   </span>
                   <span v-if="selectedUser && (selectedUser.role === 'admin' || selectedUser.role === 'owner')" class="text-xs text-blue-600 dark:text-blue-400">
@@ -428,28 +428,28 @@
               </div>
 
               <!-- Override Info -->
-              <div v-if="tierInfo.override" class="bg-amber-50 dark:bg-amber-900/20 rounded-lg p-3">
+              <div v-if="tierInfo?.override" class="bg-amber-50 dark:bg-amber-900/20 rounded-lg p-3">
                 <p class="text-sm text-amber-800 dark:text-amber-300">
-                  <strong>Override:</strong> {{ tierInfo.override.tier }} tier
-                  <span v-if="tierInfo.override.expires_at">
-                    until {{ new Date(tierInfo.override.expires_at).toLocaleDateString() }}
+                  <strong>Override:</strong> {{ tierInfo?.override?.tier }} tier
+                  <span v-if="tierInfo?.override?.expires_at">
+                    until {{ new Date(tierInfo?.override?.expires_at).toLocaleDateString() }}
                   </span>
                 </p>
-                <p v-if="tierInfo.override.reason" class="text-xs text-amber-700 dark:text-amber-400 mt-1">
-                  Reason: {{ tierInfo.override.reason }}
+                <p v-if="tierInfo?.override?.reason" class="text-xs text-amber-700 dark:text-amber-400 mt-1">
+                  Reason: {{ tierInfo?.override?.reason }}
                 </p>
-                <p v-if="tierInfo.override.created_by_username" class="text-xs text-amber-700 dark:text-amber-400">
-                  Set by: {{ tierInfo.override.created_by_username }}
+                <p v-if="tierInfo?.override?.created_by_username" class="text-xs text-amber-700 dark:text-amber-400">
+                  Set by: {{ tierInfo?.override?.created_by_username }}
                 </p>
               </div>
 
               <!-- Subscription Info -->
-              <div v-if="tierInfo.subscription && tierInfo.subscription.status === 'active'" class="bg-green-50 dark:bg-green-900/20 rounded-lg p-3">
+              <div v-if="tierInfo?.subscription && tierInfo?.subscription?.status === 'active'" class="bg-green-50 dark:bg-green-900/20 rounded-lg p-3">
                 <p class="text-sm text-green-800 dark:text-green-300">
                   <strong>Active Subscription</strong>
                 </p>
                 <p class="text-xs text-green-700 dark:text-green-400 mt-1">
-                  Renews: {{ new Date(tierInfo.subscription.current_period_end).toLocaleDateString() }}
+                  Renews: {{ tierInfo?.subscription?.current_period_end ? new Date(tierInfo.subscription.current_period_end).toLocaleDateString() : 'N/A' }}
                 </p>
               </div>
             </div>
@@ -494,7 +494,7 @@
               </div>
 
               <!-- Remove Override -->
-              <div v-if="tierInfo.override" class="flex justify-between items-center">
+              <div v-if="tierInfo?.override" class="flex justify-between items-center">
                 <span class="text-sm text-gray-600 dark:text-gray-400">Remove tier override</span>
                 <button
                   @click="removeTierOverride"
