@@ -371,71 +371,251 @@
 
       <!-- Leaderboards Tab -->
       <div v-if="activeTab === 'leaderboards'">
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <div
-            v-for="leaderboard in leaderboards"
-            :key="leaderboard.key"
-            class="bg-white dark:bg-gray-800 shadow rounded-lg"
-          >
+        <!-- My Rankings Section -->
+        <div class="mb-8">
+          <div class="bg-white dark:bg-gray-800 shadow rounded-lg">
             <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-              <h3 class="text-lg font-medium text-gray-900 dark:text-white">
-                {{ leaderboard.name }}
-              </h3>
-            </div>
-            <div class="p-6">
-              <div v-if="leaderboard.entries.length === 0" class="text-center py-8">
-                <MdiIcon :icon="mdiChartBox" :size="48" class="text-gray-400 mx-auto mb-4" />
-                <p class="mt-4 text-gray-500 dark:text-gray-400 text-sm">
-                  No rankings available yet
-                </p>
-              </div>
-              <div v-else class="space-y-4">
-                <div
-                  v-for="(entry, index) in leaderboard.entries.slice(0, 10)"
-                  :key="entry.user_id"
+              <div class="flex items-center justify-between">
+                <h3 class="text-lg font-medium text-gray-900 dark:text-white flex items-center">
+                  <MdiIcon :icon="mdiAccount" :size="20" class="mr-2 text-primary-500" />
+                  My Rankings
+                </h3>
+                <button 
+                  @click="showFilters = !showFilters"
                   :class="[
-                    'flex items-center justify-between p-3 rounded-lg',
-                    entry.is_current_user 
-                      ? 'bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-700' 
-                      : 'bg-gray-50 dark:bg-gray-700'
+                    'px-3 py-1 rounded text-sm font-medium transition-colors flex items-center',
+                    showFilters 
+                      ? 'bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300'
+                      : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
                   ]"
                 >
-                  <div class="flex items-center">
-                    <div 
-                      :class="[
-                        'w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium',
-                        index === 0 ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' :
-                        index === 1 ? 'bg-gray-100 text-gray-800 dark:bg-gray-600 dark:text-gray-200' :
-                        index === 2 ? 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200' :
-                        'bg-gray-200 text-gray-600 dark:bg-gray-600 dark:text-gray-400'
-                      ]"
+                  <MdiIcon :icon="mdiFilter" :size="16" class="mr-1" />
+                  {{ showFilters ? 'Hide Filters' : 'Filter by Peers' }}
+                </button>
+              </div>
+            </div>
+
+            <!-- Filters Section -->
+            <div v-if="showFilters" class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-750">
+              <div v-if="loadingFilters" class="text-center py-4">
+                <div class="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-primary-600"></div>
+                <span class="ml-2 text-sm text-gray-600 dark:text-gray-400">Loading filter options...</span>
+              </div>
+              
+              <div v-else class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <!-- Strategy Filter -->
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Trading Strategy
+                  </label>
+                  <select 
+                    v-model="filters.strategy"
+                    @change="applyFilters"
+                    class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white text-sm"
+                  >
+                    <option value="all">All Strategies</option>
+                    <option 
+                      v-for="strategy in filterOptions.strategies || []" 
+                      :key="strategy.value" 
+                      :value="strategy.value"
                     >
-                      {{ index + 1 }}
+                      {{ strategy.label }}
+                    </option>
+                  </select>
+                </div>
+
+                <!-- Position Size Filter -->
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Average Position Size
+                  </label>
+                  <select 
+                    v-model="filters.volumeRange"
+                    @change="applyFilters"
+                    class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white text-sm"
+                  >
+                    <option 
+                      v-for="range in volumeRanges" 
+                      :key="range.value" 
+                      :value="range.value"
+                    >
+                      {{ range.label }}
+                    </option>
+                  </select>
+                </div>
+
+                <!-- Profit Per Trade Filter -->
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Average Profit Per Trade
+                  </label>
+                  <select 
+                    v-model="filters.pnlRange"
+                    @change="applyFilters"
+                    class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white text-sm"
+                  >
+                    <option 
+                      v-for="range in pnlRanges" 
+                      :key="range.value" 
+                      :value="range.value"
+                    >
+                      {{ range.label }}
+                    </option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Clear Filters Button -->
+              <div class="mt-4 flex justify-end">
+                <button 
+                  @click="clearFilters"
+                  class="px-3 py-1 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
+                >
+                  Clear Filters
+                </button>
+              </div>
+            </div>
+
+            <!-- Rankings Content -->
+            <div class="p-6">
+              <div v-if="rankingsLoading || applyingFilters" class="text-center py-8">
+                <div class="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600"></div>
+                <p class="mt-2 text-gray-600 dark:text-gray-400">
+                  {{ applyingFilters ? 'Applying filters...' : 'Loading your rankings...' }}
+                </p>
+              </div>
+
+              <div v-else-if="userRankings.length === 0" class="text-center py-8">
+                <MdiIcon :icon="mdiChartBox" :size="48" class="text-gray-400 mx-auto mb-4" />
+                <p class="mt-4 text-gray-500 dark:text-gray-400 text-sm">
+                  {{ hasFiltersApplied ? 'No rankings found matching your filter criteria' : 'No rankings available yet' }}
+                </p>
+                <p v-if="hasFiltersApplied" class="text-xs text-gray-400 dark:text-gray-500 mt-2">
+                  Try adjusting your filters to find peers with similar trading patterns
+                </p>
+              </div>
+
+              <div v-else class="space-y-4">
+                <div v-if="hasFiltersApplied" class="mb-4 p-3 bg-primary-50 dark:bg-primary-900/20 rounded-lg border border-primary-200 dark:border-primary-700">
+                  <div class="flex items-center justify-between">
+                    <div class="flex items-center text-sm text-primary-700 dark:text-primary-300">
+                      <MdiIcon :icon="mdiFilter" :size="16" class="mr-2" />
+                      Showing filtered rankings
+                      <span v-if="userRankings[0]?.total_filtered_users" class="ml-2 px-2 py-1 bg-primary-100 dark:bg-primary-800 rounded-full text-xs">
+                        {{ userRankings[0].total_filtered_users }} peers found
+                      </span>
                     </div>
-                    <div class="ml-3">
+                  </div>
+                </div>
+
+                <div
+                  v-for="ranking in userRankings"
+                  :key="`${ranking.key}-${ranking.rank}-${hasFiltersApplied ? 'filtered' : 'all'}`"
+                  class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700 rounded-lg"
+                >
+                  <div class="flex items-center">
+                    <div class="w-10 h-10 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center text-sm font-bold text-primary-600 dark:text-primary-400">
+                      #{{ ranking.rank }}
+                    </div>
+                    <div class="ml-4">
                       <div class="text-sm font-medium text-gray-900 dark:text-white">
-                        {{ entry.display_name || entry.anonymous_name }}
+                        {{ ranking.name }}
                       </div>
-                      <div v-if="entry.is_current_user" class="text-xs text-primary-600 dark:text-primary-400">
-                        You
+                      <div class="text-xs text-gray-500 dark:text-gray-400">
+                        {{ ranking.period_type === 'all_time' ? 'All Time' : ranking.period_type }}
+                        <span v-if="ranking.total_participants">
+                          • {{ ranking.total_participants }} participants
+                        </span>
                       </div>
                     </div>
                   </div>
                   <div class="text-right">
                     <div class="text-sm font-medium text-gray-900 dark:text-white">
-                      {{ formatLeaderboardValue(entry.value, leaderboard.key) }}
+                      {{ formatLeaderboardValue(ranking.score, ranking.key) }}
                     </div>
                   </div>
                 </div>
               </div>
-              <div v-if="leaderboard.entries.length > 0" class="mt-6 text-center">
-                <button 
-                  @click="viewFullLeaderboard(leaderboard)"
-                  class="text-primary-600 dark:text-primary-400 hover:text-primary-500 text-sm font-medium flex items-center mx-auto"
-                >
-                  View all rankings
-                  <MdiIcon :icon="mdiChevronRight" :size="16" class="ml-1" />
-                </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- All Leaderboards Section -->
+        <div>
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
+            {{ hasFiltersApplied ? 'Filtered Leaderboards' : 'All Leaderboards' }}
+          </h3>
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div
+              v-for="leaderboard in leaderboards"
+              :key="leaderboard.key"
+              class="bg-white dark:bg-gray-800 shadow rounded-lg"
+            >
+              <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                <div class="flex items-center justify-between">
+                  <h3 class="text-lg font-medium text-gray-900 dark:text-white">
+                    {{ leaderboard.name }}
+                  </h3>
+                  <span v-if="leaderboard.filtered && leaderboard.totalFilteredUsers !== null" class="text-xs text-gray-500 dark:text-gray-400">
+                    {{ leaderboard.totalFilteredUsers }} peers
+                  </span>
+                </div>
+              </div>
+              <div class="p-6">
+                <div v-if="leaderboard.entries.length === 0" class="text-center py-8">
+                  <MdiIcon :icon="mdiChartBox" :size="48" class="text-gray-400 mx-auto mb-4" />
+                  <p class="mt-4 text-gray-500 dark:text-gray-400 text-sm">
+                    {{ leaderboard.filtered ? 'No peers match the selected filters' : 'No rankings available yet' }}
+                  </p>
+                </div>
+                <div v-else class="space-y-4">
+                  <div
+                    v-for="(entry, index) in leaderboard.entries.slice(0, 10)"
+                    :key="entry.user_id"
+                    :class="[
+                      'flex items-center justify-between p-3 rounded-lg',
+                      entry.is_current_user 
+                        ? 'bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-700' 
+                        : 'bg-gray-50 dark:bg-gray-700'
+                    ]"
+                  >
+                    <div class="flex items-center">
+                      <div 
+                        :class="[
+                          'w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium',
+                          index === 0 ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' :
+                          index === 1 ? 'bg-gray-100 text-gray-800 dark:bg-gray-600 dark:text-gray-200' :
+                          index === 2 ? 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200' :
+                          'bg-gray-200 text-gray-600 dark:bg-gray-600 dark:text-gray-400'
+                        ]"
+                      >
+                        {{ index + 1 }}
+                      </div>
+                      <div class="ml-3">
+                        <div class="text-sm font-medium text-gray-900 dark:text-white">
+                          {{ entry.display_name || entry.anonymous_name }}
+                        </div>
+                        <div v-if="entry.is_current_user" class="text-xs text-primary-600 dark:text-primary-400">
+                          You
+                        </div>
+                      </div>
+                    </div>
+                    <div class="text-right">
+                      <div class="text-sm font-medium text-gray-900 dark:text-white">
+                        {{ formatLeaderboardValue(entry.value, leaderboard.key) }}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div v-if="leaderboard.entries.length > 0" class="mt-6 text-center">
+                  <button 
+                    @click="viewFullLeaderboard(leaderboard)"
+                    class="text-primary-600 dark:text-primary-400 hover:text-primary-500 text-sm font-medium flex items-center mx-auto"
+                  >
+                    View all rankings
+                    <MdiIcon :icon="mdiChevronRight" :size="16" class="ml-1" />
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -516,7 +696,7 @@
 </template>
 
 <script>
-import { ref, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import api from '@/services/api'
 import MdiIcon from '@/components/MdiIcon.vue'
 import { useNotification } from '@/composables/useNotification'
@@ -529,7 +709,9 @@ import {
   mdiStar,
   mdiTrendingUp,
   mdiChevronRight,
-  mdiChevronLeft
+  mdiChevronLeft,
+  mdiAccount,
+  mdiFilter
 } from '@mdi/js'
 
 export default {
@@ -566,6 +748,43 @@ export default {
     const fullLeaderboardEntries = ref([])
     const selectedLeaderboard = ref(null)
     const checkingAchievements = ref(false)
+    
+    // Filter-related reactive data
+    const showFilters = ref(false)
+    const loadingFilters = ref(false)
+    const rankingsLoading = ref(false)
+    const applyingFilters = ref(false)
+    const userRankings = ref([])
+    const filterOptions = ref({
+      strategies: [],
+      volumeRanges: {},
+      pnlRanges: {}
+    })
+    const filters = ref({
+      strategy: 'all',
+      volumeRange: 'all',
+      pnlRange: 'all'
+    })
+
+    // Predefined volume ranges (average position size per trade)
+    const volumeRanges = [
+      { value: 'all', label: 'All Position Sizes', min: null, max: null },
+      { value: 'micro', label: 'Micro Positions (Under $1K per trade)', min: 0, max: 1000 },
+      { value: 'small', label: 'Small Positions ($1K - $10K per trade)', min: 1000, max: 10000 },
+      { value: 'medium', label: 'Medium Positions ($10K - $50K per trade)', min: 10000, max: 50000 },
+      { value: 'large', label: 'Large Positions ($50K - $250K per trade)', min: 50000, max: 250000 },
+      { value: 'xl', label: 'Extra Large Positions ($250K+ per trade)', min: 250000, max: null }
+    ]
+
+    // Predefined P&L ranges (average profit/loss per trade)
+    const pnlRanges = [
+      { value: 'all', label: 'All Profit Levels', min: null, max: null },
+      { value: 'small_profit', label: 'Small Profits ($0 - $50 per trade)', min: 0, max: 50 },
+      { value: 'moderate_profit', label: 'Moderate Profits ($50 - $100 per trade)', min: 50, max: 100 },
+      { value: 'good_profit', label: 'Good Profits ($100 - $200 per trade)', min: 100, max: 200 },
+      { value: 'high_profit', label: 'High Profits ($200 - $500 per trade)', min: 200, max: 500 },
+      { value: 'exceptional_profit', label: 'Exceptional Profits ($500+ per trade)', min: 500, max: null }
+    ]
 
     const loadDashboard = async () => {
       try {
@@ -629,17 +848,201 @@ export default {
       }
     }
 
-    const loadLeaderboards = async () => {
+    const loadLeaderboards = async (appliedFilters = {}) => {
       try {
-        const response = await api.get('/gamification/leaderboards')
+        // Build query parameters from filters
+        const params = new URLSearchParams()
+        
+        // Strategy filter
+        if (appliedFilters.strategy && appliedFilters.strategy !== 'all') {
+          params.append('strategy', appliedFilters.strategy)
+        }
+        
+        // Volume range filter
+        if (appliedFilters.volumeRange && appliedFilters.volumeRange !== 'all') {
+          const volumeRange = volumeRanges.find(r => r.value === appliedFilters.volumeRange)
+          if (volumeRange) {
+            if (volumeRange.min !== null) {
+              params.append('minVolume', volumeRange.min)
+            }
+            if (volumeRange.max !== null) {
+              params.append('maxVolume', volumeRange.max)
+            }
+          }
+        }
+        
+        // P&L range filter
+        if (appliedFilters.pnlRange && appliedFilters.pnlRange !== 'all') {
+          const pnlRange = pnlRanges.find(r => r.value === appliedFilters.pnlRange)
+          if (pnlRange) {
+            if (pnlRange.min !== null) {
+              params.append('minPnl', pnlRange.min)
+            }
+            if (pnlRange.max !== null) {
+              params.append('maxPnl', pnlRange.max)
+            }
+          }
+        }
+        
+        const url = `/gamification/leaderboards${params.toString() ? '?' + params.toString() : ''}`
+        console.log('Loading leaderboards with URL:', url)
+        const response = await api.get(url)
         
         if (response.data.success) {
+          console.log('Loaded leaderboards:', response.data.data)
           leaderboards.value = response.data.data || []
         }
       } catch (error) {
         console.error('Error loading leaderboards:', error)
       }
     }
+
+    // Convert strategy key to friendly label
+    const formatStrategyLabel = (strategy) => {
+      if (!strategy) return strategy
+      
+      // Convert snake_case and kebab-case to Title Case
+      return strategy
+        .replace(/[_-]/g, ' ')
+        .replace(/\b\w/g, l => l.toUpperCase())
+        .replace(/\bDay\b/g, 'Day')
+        .replace(/\bSwing\b/g, 'Swing')
+        .replace(/\bScalp/g, 'Scalp')
+        .replace(/\bMomentum/g, 'Momentum')
+        .replace(/\bMean Reversion/g, 'Mean Reversion')
+        .replace(/\bBreakout/g, 'Breakout')
+        .replace(/\bNews/g, 'News')
+        .replace(/\bEarnings/g, 'Earnings')
+    }
+
+    // Load filter options from the API
+    const loadFilterOptions = async () => {
+      try {
+        loadingFilters.value = true
+        const response = await api.get('/gamification/rankings/filters')
+        
+        if (response.data.success) {
+          const data = response.data.data || {
+            strategies: [],
+            volumeRanges: {},
+            pnlRanges: {}
+          }
+          
+          // Format strategy labels
+          data.strategies = data.strategies.map(strategy => ({
+            value: strategy.value,
+            label: formatStrategyLabel(strategy.label || strategy.value)
+          }))
+          
+          filterOptions.value = data
+        }
+      } catch (error) {
+        console.error('Error loading filter options:', error)
+      } finally {
+        loadingFilters.value = false
+      }
+    }
+
+    // Load user rankings (with optional filters)
+    const loadUserRankings = async (appliedFilters = {}) => {
+      try {
+        rankingsLoading.value = true
+        
+        // Build query parameters
+        const params = new URLSearchParams()
+        
+        // Strategy filter
+        if (appliedFilters.strategy && appliedFilters.strategy !== 'all') {
+          params.append('strategy', appliedFilters.strategy)
+        }
+        
+        // Volume range filter
+        if (appliedFilters.volumeRange && appliedFilters.volumeRange !== 'all') {
+          const volumeRange = volumeRanges.find(r => r.value === appliedFilters.volumeRange)
+          if (volumeRange) {
+            if (volumeRange.min !== null) {
+              params.append('minVolume', volumeRange.min)
+            }
+            if (volumeRange.max !== null) {
+              params.append('maxVolume', volumeRange.max)
+            }
+          }
+        }
+        
+        // P&L range filter
+        if (appliedFilters.pnlRange && appliedFilters.pnlRange !== 'all') {
+          const pnlRange = pnlRanges.find(r => r.value === appliedFilters.pnlRange)
+          if (pnlRange) {
+            if (pnlRange.min !== null) {
+              params.append('minPnl', pnlRange.min)
+            }
+            if (pnlRange.max !== null) {
+              params.append('maxPnl', pnlRange.max)
+            }
+          }
+        }
+        
+        const url = `/gamification/rankings${params.toString() ? '?' + params.toString() : ''}`
+        console.log('Loading rankings with URL:', url)
+        const response = await api.get(url)
+        
+        if (response.data.success) {
+          console.log('Loaded rankings:', response.data.data)
+          // Ensure we completely replace the array to trigger reactivity
+          userRankings.value = [...(response.data.data || [])]
+        }
+      } catch (error) {
+        console.error('Error loading user rankings:', error)
+        userRankings.value = []
+      } finally {
+        rankingsLoading.value = false
+      }
+    }
+
+    // Apply filters to the rankings
+    const applyFilters = async () => {
+      console.log('Applying filters:', filters.value)
+      applyingFilters.value = true
+      try {
+        // Load both user rankings and all leaderboards with filters
+        await Promise.all([
+          loadUserRankings(filters.value),
+          loadLeaderboards(filters.value)
+        ])
+        console.log('Filters applied successfully, rankings updated:', userRankings.value.length)
+      } catch (error) {
+        console.error('Error applying filters:', error)
+      } finally {
+        applyingFilters.value = false
+      }
+    }
+
+    // Clear all filters
+    const clearFilters = async () => {
+      console.log('Clearing all filters')
+      filters.value = {
+        strategy: 'all',
+        volumeRange: 'all',
+        pnlRange: 'all'
+      }
+      try {
+        // Reload both without filters
+        await Promise.all([
+          loadUserRankings(),
+          loadLeaderboards()
+        ])
+        console.log('Filters cleared successfully, rankings reset:', userRankings.value.length)
+      } catch (error) {
+        console.error('Error clearing filters:', error)
+      }
+    }
+
+    // Computed property to check if any filters are applied
+    const hasFiltersApplied = computed(() => {
+      return filters.value.strategy !== 'all' ||
+             filters.value.volumeRange !== 'all' ||
+             filters.value.pnlRange !== 'all'
+    })
 
     const formatDate = (dateString) => {
       if (!dateString) return ''
@@ -691,8 +1094,16 @@ export default {
       if (activeTab.value === 'achievements' && achievements.value.length === 0) {
         await loadAchievements()
       }
-      if (activeTab.value === 'leaderboards' && leaderboards.value.length === 0) {
-        await loadLeaderboards()
+      if (activeTab.value === 'leaderboards') {
+        // Load filter options first
+        if (filterOptions.value.strategies.length === 0) {
+          await loadFilterOptions()
+        }
+        // Always load both rankings and leaderboards with current filters
+        await Promise.all([
+          loadUserRankings(filters.value),
+          loadLeaderboards(filters.value)
+        ])
       }
     }
 
@@ -767,6 +1178,11 @@ export default {
 
     // Watch for tab changes to load data
     watch(activeTab, loadTabData)
+    
+    // Watch for manual filter changes (helpful for debugging)
+    watch(filters, (newFilters, oldFilters) => {
+      console.log('Filters changed:', { old: oldFilters, new: newFilters })
+    }, { deep: true })
 
     return {
       activeTab,
@@ -782,6 +1198,19 @@ export default {
       fullLeaderboardEntries,
       selectedLeaderboard,
       checkingAchievements,
+      // Filter-related
+      showFilters,
+      loadingFilters,
+      rankingsLoading,
+      applyingFilters,
+      userRankings,
+      filterOptions,
+      filters,
+      volumeRanges,
+      pnlRanges,
+      hasFiltersApplied,
+      applyFilters,
+      clearFilters,
       formatDate,
       formatLeaderboardValue,
       loadTabData,
@@ -795,7 +1224,9 @@ export default {
       mdiStar,
       mdiTrendingUp,
       mdiChevronRight,
-      mdiChevronLeft
+      mdiChevronLeft,
+      mdiAccount,
+      mdiFilter
     }
   }
 }

@@ -475,7 +475,7 @@ class LeaderboardService {
   }
   
   // Get user's rankings across all leaderboards
-  static async getUserRankings(userId) {
+  static async getUserRankings(userId, filters = {}) {
     const query = `
       SELECT 
         l.key,
@@ -494,7 +494,384 @@ class LeaderboardService {
     `;
     
     const result = await db.query(query, [userId]);
-    return result.rows;
+    
+    // If no filters provided, return original rankings
+    if (!filters || Object.keys(filters).length === 0) {
+      return result.rows;
+    }
+    
+    // If filters are provided, get filtered rankings
+    return await this.getFilteredRankings(userId, filters);
+  }
+
+  // Get filtered user IDs based on strategy, volume, and P&L criteria
+  static async getFilteredUserIds(filters = {}) {
+    try {
+      const { strategy, minVolume, maxVolume, minPnl, maxPnl } = filters;
+      
+      console.log('Getting filtered user IDs with filters:', filters);
+      
+      // Build dynamic WHERE and HAVING conditions
+      let whereConditions = [];
+      let havingConditions = [];
+      let queryParams = [];
+      let paramIndex = 1;
+      
+      // Base condition - only users who are on leaderboards
+      whereConditions.push(`t.user_id IN (
+        SELECT DISTINCT user_id 
+        FROM leaderboard_entries 
+        WHERE DATE(recorded_at) = CURRENT_DATE
+      )`);
+      
+      // Strategy filter goes in WHERE clause (before grouping)
+      if (strategy && strategy !== 'all') {
+        whereConditions.push(`t.strategy = $${paramIndex}`);
+        queryParams.push(strategy);
+        paramIndex++;
+      }
+      
+      // Volume filters go in HAVING clause (after grouping)
+      if (minVolume !== undefined && minVolume !== null) {
+        havingConditions.push(`AVG(ABS(t.quantity * t.entry_price)) >= $${paramIndex}`);
+        queryParams.push(parseFloat(minVolume));
+        paramIndex++;
+      }
+      
+      if (maxVolume !== undefined && maxVolume !== null) {
+        havingConditions.push(`AVG(ABS(t.quantity * t.entry_price)) <= $${paramIndex}`);
+        queryParams.push(parseFloat(maxVolume));
+        paramIndex++;
+      }
+      
+      // P&L filters go in HAVING clause (after grouping)
+      if (minPnl !== undefined && minPnl !== null) {
+        havingConditions.push(`AVG(t.pnl) >= $${paramIndex}`);
+        queryParams.push(parseFloat(minPnl));
+        paramIndex++;
+      }
+      
+      if (maxPnl !== undefined && maxPnl !== null) {
+        havingConditions.push(`AVG(t.pnl) <= $${paramIndex}`);
+        queryParams.push(parseFloat(maxPnl));
+        paramIndex++;
+      }
+      
+      // Build the WHERE clause
+      let whereClause = whereConditions.join(' AND ');
+      
+      // Build the HAVING clause
+      let havingClause = 'COUNT(*) >= 1'; // Minimum trade requirement
+      if (havingConditions.length > 0) {
+        havingClause = `${havingClause} AND ${havingConditions.join(' AND ')}`;
+      }
+      
+      // Get list of users that match the filter criteria
+      const userFilterQuery = `
+        SELECT DISTINCT t.user_id
+        FROM trades t
+        WHERE ${whereClause}
+        GROUP BY t.user_id
+        HAVING ${havingClause}
+      `;
+      
+      const filteredUsersResult = await db.query(userFilterQuery, queryParams);
+      return filteredUsersResult.rows.map(row => row.user_id);
+      
+    } catch (error) {
+      console.error('Error in getFilteredUserIds:', error);
+      throw error;
+    }
+  }
+
+  // Get filtered rankings based on strategy, volume, and P&L criteria
+  static async getFilteredRankings(userId, filters = {}) {
+    try {
+      const { strategy, minVolume, maxVolume, minPnl, maxPnl } = filters;
+      
+      console.log('Getting filtered rankings with filters:', filters);
+      
+      // Build dynamic WHERE and HAVING conditions for filtering users
+      let whereConditions = [];
+      let havingConditions = [];
+      let queryParams = [];
+      let paramIndex = 1;
+      
+      // Strategy filter goes in WHERE clause (before grouping)
+      if (strategy && strategy !== 'all') {
+        whereConditions.push(`t.strategy = $${paramIndex}`);
+        queryParams.push(strategy);
+        paramIndex++;
+      }
+      
+      // Volume filters go in HAVING clause (after grouping)
+      if (minVolume !== undefined && minVolume !== null) {
+        havingConditions.push(`AVG(ABS(t.quantity * t.entry_price)) >= $${paramIndex}`);
+        queryParams.push(parseFloat(minVolume));
+        paramIndex++;
+      }
+      
+      if (maxVolume !== undefined && maxVolume !== null) {
+        havingConditions.push(`AVG(ABS(t.quantity * t.entry_price)) <= $${paramIndex}`);
+        queryParams.push(parseFloat(maxVolume));
+        paramIndex++;
+      }
+      
+      // P&L filters go in HAVING clause (after grouping)
+      if (minPnl !== undefined && minPnl !== null) {
+        havingConditions.push(`AVG(t.pnl) >= $${paramIndex}`);
+        queryParams.push(parseFloat(minPnl));
+        paramIndex++;
+      }
+      
+      if (maxPnl !== undefined && maxPnl !== null) {
+        havingConditions.push(`AVG(t.pnl) <= $${paramIndex}`);
+        queryParams.push(parseFloat(maxPnl));
+        paramIndex++;
+      }
+      
+      // If no valid filters, return empty results
+      if (whereConditions.length === 0 && havingConditions.length === 0) {
+        return [];
+      }
+      
+      // Build the WHERE clause
+      let whereClause = `t.user_id IN (
+        SELECT DISTINCT user_id 
+        FROM leaderboard_entries 
+        WHERE DATE(recorded_at) = CURRENT_DATE
+      )`;
+      
+      if (whereConditions.length > 0) {
+        whereClause += ` AND ${whereConditions.join(' AND ')}`;
+      }
+      
+      // Build the HAVING clause
+      let havingClause = 'COUNT(*) >= 1'; // Minimum trade requirement
+      if (havingConditions.length > 0) {
+        havingClause = `${havingClause} AND ${havingConditions.join(' AND ')}`;
+      }
+      
+      // Get list of users that match the filter criteria
+      const userFilterQuery = `
+        SELECT DISTINCT t.user_id
+        FROM trades t
+        WHERE ${whereClause}
+        GROUP BY t.user_id
+        HAVING ${havingClause}
+      `;
+      
+      const filteredUsersResult = await db.query(userFilterQuery, queryParams);
+      const filteredUserIds = filteredUsersResult.rows.map(row => row.user_id);
+      
+      console.log(`Found ${filteredUserIds.length} users matching filter criteria`);
+      
+      if (filteredUserIds.length === 0) {
+        return [];
+      }
+      
+      // Now get leaderboard data for only the filtered users
+      // Reset parameter indexing for the new query
+      const rankingsQuery = `
+        WITH filtered_rankings AS (
+          SELECT 
+            l.key,
+            l.name,
+            l.period_type,
+            le.user_id,
+            le.rank as original_rank,
+            le.score,
+            le.metadata,
+            ROW_NUMBER() OVER (PARTITION BY l.id ORDER BY le.score DESC) as filtered_rank
+          FROM leaderboard_entries le
+          JOIN leaderboards l ON l.id = le.leaderboard_id
+          WHERE le.user_id = ANY($1::uuid[])
+            AND DATE(le.recorded_at) = CURRENT_DATE
+            AND l.is_active = true
+        )
+        SELECT 
+          fr.key,
+          fr.name,
+          fr.period_type,
+          CASE 
+            WHEN fr.user_id = $2 THEN fr.filtered_rank
+            ELSE fr.original_rank
+          END as rank,
+          fr.score,
+          fr.metadata,
+          COUNT(*) OVER (PARTITION BY fr.key) as total_participants
+        FROM filtered_rankings fr
+        WHERE fr.user_id = $2
+        UNION ALL
+        -- Include the requesting user's original rankings even if they don't match filters
+        SELECT 
+          l.key,
+          l.name,
+          l.period_type,
+          le.rank,
+          le.score,
+          le.metadata,
+          (SELECT COUNT(*) FROM leaderboard_entries le2 WHERE le2.leaderboard_id = l.id AND le2.user_id = ANY($1::uuid[]) AND DATE(le2.recorded_at) = CURRENT_DATE) as total_participants
+        FROM leaderboard_entries le
+        JOIN leaderboards l ON l.id = le.leaderboard_id
+        WHERE le.user_id = $2
+          AND DATE(le.recorded_at) = CURRENT_DATE
+          AND l.is_active = true
+          AND le.user_id NOT IN (
+            SELECT fr2.user_id FROM filtered_rankings fr2 WHERE fr2.key = l.key
+          )
+        ORDER BY name
+      `;
+      
+      // Fresh parameter array for the new query
+      const rankingsQueryParams = [filteredUserIds, userId];
+      
+      const result = await db.query(rankingsQuery, rankingsQueryParams);
+      
+      // Add filter information to the results
+      const rankings = result.rows.map(row => ({
+        ...row,
+        filtered: true,
+        filter_criteria: filters,
+        total_filtered_users: filteredUserIds.length
+      }));
+      
+      return rankings;
+      
+    } catch (error) {
+      console.error('Error in getFilteredRankings:', error);
+      throw error;
+    }
+  }
+
+  // Get available filter options for rankings
+  static async getRankingFilterOptions() {
+    try {
+      // Get all unique strategies from trades
+      const strategiesQuery = `
+        SELECT DISTINCT strategy 
+        FROM trades 
+        WHERE strategy IS NOT NULL 
+          AND strategy != '' 
+          AND user_id IN (
+            SELECT DISTINCT user_id 
+            FROM leaderboard_entries 
+            WHERE DATE(recorded_at) = CURRENT_DATE
+          )
+        ORDER BY strategy
+      `;
+      
+      // Get volume ranges (min/max average volume traded)
+      const volumeRangesQuery = `
+        SELECT 
+          MIN(avg_volume) as min_volume,
+          MAX(avg_volume) as max_volume,
+          PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY avg_volume) as q25_volume,
+          PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY avg_volume) as median_volume,
+          PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY avg_volume) as q75_volume
+        FROM (
+          SELECT 
+            t.user_id,
+            AVG(ABS(t.quantity * t.entry_price)) as avg_volume
+          FROM trades t
+          WHERE t.user_id IN (
+            SELECT DISTINCT user_id 
+            FROM leaderboard_entries 
+            WHERE DATE(recorded_at) = CURRENT_DATE
+          )
+          GROUP BY t.user_id
+          HAVING COUNT(*) >= 5  -- Users with at least 5 trades
+        ) user_volumes
+      `;
+      
+      // Get P&L ranges (min/max average P&L)
+      const pnlRangesQuery = `
+        SELECT 
+          MIN(avg_pnl) as min_pnl,
+          MAX(avg_pnl) as max_pnl,
+          PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY avg_pnl) as q25_pnl,
+          PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY avg_pnl) as median_pnl,
+          PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY avg_pnl) as q75_pnl
+        FROM (
+          SELECT 
+            t.user_id,
+            AVG(t.pnl) as avg_pnl
+          FROM trades t
+          WHERE t.user_id IN (
+            SELECT DISTINCT user_id 
+            FROM leaderboard_entries 
+            WHERE DATE(recorded_at) = CURRENT_DATE
+          )
+          GROUP BY t.user_id
+          HAVING COUNT(*) >= 5  -- Users with at least 5 trades
+        ) user_pnls
+      `;
+      
+      console.log('Getting ranking filter options...');
+      
+      const [strategiesResult, volumeResult, pnlResult] = await Promise.all([
+        db.query(strategiesQuery),
+        db.query(volumeRangesQuery),
+        db.query(pnlRangesQuery)
+      ]);
+      
+      const strategies = strategiesResult.rows.map(row => row.strategy);
+      const volumeRanges = volumeResult.rows[0] || {};
+      const pnlRanges = pnlResult.rows[0] || {};
+      
+      // Create suggested filter ranges
+      const filterOptions = {
+        strategies: [
+          { value: 'all', label: 'All Strategies' },
+          ...strategies.map(strategy => ({
+            value: strategy,
+            label: strategy
+          }))
+        ],
+        volumeRanges: {
+          min: Math.floor(volumeRanges.min_volume || 0),
+          max: Math.ceil(volumeRanges.max_volume || 100000),
+          quartiles: {
+            q25: Math.floor(volumeRanges.q25_volume || 0),
+            median: Math.floor(volumeRanges.median_volume || 0),
+            q75: Math.floor(volumeRanges.q75_volume || 0)
+          },
+          suggestedRanges: [
+            { label: 'Small ($0 - $10K)', min: 0, max: 10000 },
+            { label: 'Medium ($10K - $50K)', min: 10000, max: 50000 },
+            { label: 'Large ($50K - $250K)', min: 50000, max: 250000 },
+            { label: 'Extra Large ($250K+)', min: 250000, max: null }
+          ]
+        },
+        pnlRanges: {
+          min: Math.floor(pnlRanges.min_pnl || -1000),
+          max: Math.ceil(pnlRanges.max_pnl || 1000),
+          quartiles: {
+            q25: Math.floor(pnlRanges.q25_pnl || 0),
+            median: Math.floor(pnlRanges.median_pnl || 0),
+            q75: Math.floor(pnlRanges.q75_pnl || 0)
+          },
+          suggestedRanges: [
+            { label: 'Struggling (Below $0)', min: null, max: 0 },
+            { label: 'Break Even ($0 - $50)', min: 0, max: 50 },
+            { label: 'Profitable ($50 - $200)', min: 50, max: 200 },
+            { label: 'Highly Profitable ($200+)', min: 200, max: null }
+          ]
+        }
+      };
+      
+      console.log('Filter options prepared:', {
+        strategiesCount: strategies.length,
+        volumeRange: `$${filterOptions.volumeRanges.min} - $${filterOptions.volumeRanges.max}`,
+        pnlRange: `$${filterOptions.pnlRanges.min} - $${filterOptions.pnlRanges.max}`
+      });
+      
+      return filterOptions;
+      
+    } catch (error) {
+      console.error('Error getting ranking filter options:', error);
+      throw error;
+    }
   }
   
   // Create custom leaderboard
