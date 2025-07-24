@@ -197,11 +197,51 @@ const gamificationController = {
     try {
       const userId = req.user.id;
       
-      const rankings = await LeaderboardService.getUserRankings(userId);
+      // Extract filter parameters from query string
+      const filters = {};
+      
+      if (req.query.strategy) {
+        filters.strategy = req.query.strategy;
+      }
+      
+      if (req.query.minVolume) {
+        filters.minVolume = parseFloat(req.query.minVolume);
+      }
+      
+      if (req.query.maxVolume) {
+        filters.maxVolume = parseFloat(req.query.maxVolume);
+      }
+      
+      if (req.query.minPnl) {
+        filters.minPnl = parseFloat(req.query.minPnl);
+      }
+      
+      if (req.query.maxPnl) {
+        filters.maxPnl = parseFloat(req.query.maxPnl);
+      }
+      
+      console.log('Rankings request with filters:', filters);
+      
+      const rankings = await LeaderboardService.getUserRankings(userId, filters);
       
       res.json({
         success: true,
-        data: rankings
+        data: rankings,
+        filters: Object.keys(filters).length > 0 ? filters : null
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  // Get available filter options for rankings
+  async getRankingFilters(req, res, next) {
+    try {
+      const filterOptions = await LeaderboardService.getRankingFilterOptions();
+      
+      res.json({
+        success: true,
+        data: filterOptions
       });
     } catch (error) {
       next(error);
@@ -213,6 +253,65 @@ const gamificationController = {
     try {
       const userId = req.user?.id;
       
+      // Extract filter parameters from query string
+      const filters = {};
+      
+      if (req.query.strategy) {
+        filters.strategy = req.query.strategy;
+      }
+      
+      if (req.query.minVolume) {
+        filters.minVolume = parseFloat(req.query.minVolume);
+      }
+      
+      if (req.query.maxVolume) {
+        filters.maxVolume = parseFloat(req.query.maxVolume);
+      }
+      
+      if (req.query.minPnl) {
+        filters.minPnl = parseFloat(req.query.minPnl);
+      }
+      
+      if (req.query.maxPnl) {
+        filters.maxPnl = parseFloat(req.query.maxPnl);
+      }
+      
+      console.log('getAllLeaderboards with filters:', filters);
+      
+      // Get filtered user IDs if filters are provided
+      let filteredUserIds = null;
+      if (Object.keys(filters).length > 0) {
+        filteredUserIds = await LeaderboardService.getFilteredUserIds(filters);
+        console.log(`Found ${filteredUserIds.length} users matching filters`);
+        
+        // If no users match filters, return empty leaderboards
+        if (filteredUserIds.length === 0) {
+          const leaderboards = await db.query(`
+            SELECT * FROM leaderboards 
+            WHERE is_active = true 
+            ORDER BY name
+          `);
+          
+          // Return leaderboards with empty entries
+          const result = leaderboards.rows.map(lb => ({
+            key: lb.key,
+            name: lb.name,
+            description: lb.description,
+            metric_key: lb.metric_key,
+            period_type: lb.period_type,
+            entries: [],
+            filtered: true,
+            totalFilteredUsers: 0
+          }));
+          
+          return res.json({
+            success: true,
+            data: result,
+            filtered: true
+          });
+        }
+      }
+      
       // Get all active leaderboards
       const leaderboards = await db.query(`
         SELECT * FROM leaderboards 
@@ -223,21 +322,49 @@ const gamificationController = {
       const result = [];
       
       for (const lb of leaderboards.rows) {
-        // Get entries for this leaderboard
-        const entries = await db.query(`
-          SELECT 
-            le.rank,
-            COALESCE(le.anonymous_name, CONCAT('Trader', SUBSTRING(u.id::text, 1, 4))) as display_name,
-            le.score as value,
-            CASE WHEN $2::uuid IS NOT NULL THEN le.user_id = $2 ELSE false END as is_current_user
-          FROM leaderboard_entries le
-          JOIN users u ON u.id = le.user_id
-          LEFT JOIN gamification_privacy gp ON gp.user_id = le.user_id
-          WHERE le.leaderboard_id = $1
-            AND DATE(le.recorded_at) = CURRENT_DATE
-          ORDER BY le.rank
-          LIMIT 10
-        `, [lb.id, userId]);
+        let entries;
+        
+        if (filteredUserIds) {
+          // Get filtered entries for this leaderboard
+          entries = await db.query(`
+            WITH filtered_entries AS (
+              SELECT 
+                le.user_id,
+                le.anonymous_name,
+                le.score,
+                ROW_NUMBER() OVER (ORDER BY le.score DESC) as filtered_rank
+              FROM leaderboard_entries le
+              WHERE le.leaderboard_id = $1
+                AND DATE(le.recorded_at) = CURRENT_DATE
+                AND le.user_id = ANY($2::uuid[])
+            )
+            SELECT 
+              fe.filtered_rank as rank,
+              COALESCE(fe.anonymous_name, CONCAT('Trader', SUBSTRING(u.id::text, 1, 4))) as display_name,
+              fe.score as value,
+              CASE WHEN $3::uuid IS NOT NULL THEN fe.user_id = $3 ELSE false END as is_current_user
+            FROM filtered_entries fe
+            JOIN users u ON u.id = fe.user_id
+            ORDER BY fe.filtered_rank
+            LIMIT 10
+          `, [lb.id, filteredUserIds, userId]);
+        } else {
+          // Get all entries for this leaderboard (original behavior)
+          entries = await db.query(`
+            SELECT 
+              le.rank,
+              COALESCE(le.anonymous_name, CONCAT('Trader', SUBSTRING(u.id::text, 1, 4))) as display_name,
+              le.score as value,
+              CASE WHEN $2::uuid IS NOT NULL THEN le.user_id = $2 ELSE false END as is_current_user
+            FROM leaderboard_entries le
+            JOIN users u ON u.id = le.user_id
+            LEFT JOIN gamification_privacy gp ON gp.user_id = le.user_id
+            WHERE le.leaderboard_id = $1
+              AND DATE(le.recorded_at) = CURRENT_DATE
+            ORDER BY le.rank
+            LIMIT 10
+          `, [lb.id, userId]);
+        }
         
         result.push({
           key: lb.key,
@@ -245,13 +372,16 @@ const gamificationController = {
           description: lb.description,
           metric_key: lb.metric_key,
           period_type: lb.period_type,
-          entries: entries.rows
+          entries: entries.rows,
+          filtered: !!filteredUserIds,
+          totalFilteredUsers: filteredUserIds ? filteredUserIds.length : null
         });
       }
       
       res.json({
         success: true,
-        data: result
+        data: result,
+        filtered: !!filteredUserIds
       });
     } catch (error) {
       next(error);

@@ -4,11 +4,11 @@ const gamificationController = require('../controllers/gamification.controller')
 const { authenticate } = require('../middleware/auth');
 const { attachTierInfo, requiresTier } = require('../middleware/tierAuth');
 
-// Apply authentication and tier info to all routes
+// Apply authentication to all routes
 router.use(authenticate);
 router.use(attachTierInfo);
-router.use(requiresTier('pro')); // Gamification is a Pro feature
-// Note: Gamification uses anonymous usernames for privacy protection
+// Note: Gamification features are available to all users
+// Leaderboards use anonymous usernames for privacy protection
 
 // Achievement routes
 router.get('/achievements', gamificationController.getAvailableAchievements);
@@ -25,6 +25,7 @@ router.get('/challenges/:challengeId/leaderboard', gamificationController.getCha
 router.get('/leaderboards', gamificationController.getAllLeaderboards);
 router.get('/leaderboards/:key', gamificationController.getLeaderboard);
 router.get('/rankings', gamificationController.getUserRankings);
+router.get('/rankings/filters', gamificationController.getRankingFilters);
 
 // Privacy settings
 router.get('/privacy', gamificationController.getPrivacySettings);
