@@ -404,6 +404,204 @@ const watchlistController = {
       logger.logError('Error updating watchlist item:', error);
       next(error);
     }
+  },
+
+  // Get news for watchlist symbols
+  async getWatchlistNews(req, res, next) {
+    try {
+      const { id } = req.params;
+      const userId = req.user.id;
+      const { days = 7, limit = 20 } = req.query;
+      
+      // Verify watchlist belongs to user
+      const watchlistQuery = 'SELECT id FROM watchlists WHERE id = $1 AND user_id = $2';
+      const watchlistResult = await db.query(watchlistQuery, [id, userId]);
+      
+      if (watchlistResult.rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          error: 'Watchlist not found'
+        });
+      }
+      
+      // Get all symbols in the watchlist
+      const symbolsQuery = 'SELECT DISTINCT symbol FROM watchlist_items WHERE watchlist_id = $1';
+      const symbolsResult = await db.query(symbolsQuery, [id]);
+      
+      if (symbolsResult.rows.length === 0) {
+        return res.json({
+          success: true,
+          data: []
+        });
+      }
+      
+      const symbols = symbolsResult.rows.map(row => row.symbol);
+      const allNews = [];
+      
+      // Get news for each symbol
+      for (const symbol of symbols) {
+        try {
+          const fromDate = new Date(Date.now() - parseInt(days) * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+          const newsData = await finnhub.getCompanyNews(symbol, fromDate);
+          
+          if (newsData && newsData.length > 0) {
+            // Add symbol information to each news item
+            const symbolNews = newsData.map(article => ({
+              ...article,
+              symbol: symbol,
+              source: 'finnhub'
+            }));
+            allNews.push(...symbolNews);
+          }
+        } catch (error) {
+          logger.logWarn(`Could not fetch news for ${symbol}:`, error.message);
+        }
+      }
+      
+      // Sort by date (most recent first) and limit results
+      allNews.sort((a, b) => b.datetime - a.datetime);
+      const limitedNews = allNews.slice(0, parseInt(limit));
+      
+      res.json({
+        success: true,
+        data: limitedNews,
+        meta: {
+          symbols: symbols,
+          days: parseInt(days),
+          total_articles: allNews.length,
+          returned_articles: limitedNews.length
+        }
+      });
+    } catch (error) {
+      logger.logError('Error fetching watchlist news:', error);
+      next(error);
+    }
+  },
+
+  // Get earnings for watchlist symbols
+  async getWatchlistEarnings(req, res, next) {
+    try {
+      const { id } = req.params;
+      const userId = req.user.id;
+      const { days = 30 } = req.query;
+      
+      // Verify watchlist belongs to user
+      const watchlistQuery = 'SELECT id FROM watchlists WHERE id = $1 AND user_id = $2';
+      const watchlistResult = await db.query(watchlistQuery, [id, userId]);
+      
+      if (watchlistResult.rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          error: 'Watchlist not found'
+        });
+      }
+      
+      // Get all symbols in the watchlist
+      const symbolsQuery = 'SELECT DISTINCT symbol FROM watchlist_items WHERE watchlist_id = $1';
+      const symbolsResult = await db.query(symbolsQuery, [id]);
+      
+      if (symbolsResult.rows.length === 0) {
+        return res.json({
+          success: true,
+          data: []
+        });
+      }
+      
+      const symbols = symbolsResult.rows.map(row => row.symbol);
+      const allEarnings = [];
+      
+      // Get earnings for each symbol
+      for (const symbol of symbols) {
+        try {
+          const fromDate = new Date().toISOString().split('T')[0];
+          const toDate = new Date(Date.now() + parseInt(days) * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+          const earningsData = await finnhub.getEarningsCalendar(fromDate, toDate, symbol);
+          
+          if (earningsData && earningsData.length > 0) {
+            // Add symbol information to each earnings item
+            const symbolEarnings = earningsData.map(earnings => ({
+              ...earnings,
+              symbol: symbol,
+              source: 'finnhub'
+            }));
+            allEarnings.push(...symbolEarnings);
+          }
+        } catch (error) {
+          logger.logWarn(`Could not fetch earnings for ${symbol}:`, error.message);
+        }
+      }
+      
+      // Sort by date (earliest first)
+      allEarnings.sort((a, b) => new Date(a.date) - new Date(b.date));
+      
+      res.json({
+        success: true,
+        data: allEarnings,
+        meta: {
+          symbols: symbols,
+          days: parseInt(days),
+          total_earnings: allEarnings.length
+        }
+      });
+    } catch (error) {
+      logger.logError('Error fetching watchlist earnings:', error);
+      next(error);
+    }
+  },
+
+  // Get news for a specific symbol in watchlist
+  async getSymbolNews(req, res, next) {
+    try {
+      const { id, symbol } = req.params;
+      const userId = req.user.id;
+      const { days = 7, limit = 10 } = req.query;
+      
+      // Verify watchlist belongs to user and symbol exists in watchlist
+      const checkQuery = `
+        SELECT wi.symbol FROM watchlist_items wi
+        JOIN watchlists w ON wi.watchlist_id = w.id
+        WHERE w.id = $1 AND w.user_id = $2 AND wi.symbol = $3
+      `;
+      const checkResult = await db.query(checkQuery, [id, userId, symbol.toUpperCase()]);
+      
+      if (checkResult.rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          error: 'Symbol not found in watchlist'
+        });
+      }
+      
+      try {
+        const fromDate = new Date(Date.now() - parseInt(days) * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        const newsData = await finnhub.getCompanyNews(symbol.toUpperCase(), fromDate);
+        
+        const limitedNews = newsData ? newsData.slice(0, parseInt(limit)) : [];
+        
+        res.json({
+          success: true,
+          data: limitedNews.map(article => ({
+            ...article,
+            symbol: symbol.toUpperCase(),
+            source: 'finnhub'
+          })),
+          meta: {
+            symbol: symbol.toUpperCase(),
+            days: parseInt(days),
+            total_articles: newsData ? newsData.length : 0,
+            returned_articles: limitedNews.length
+          }
+        });
+      } catch (error) {
+        logger.logError(`Error fetching news for ${symbol}:`, error);
+        return res.status(500).json({
+          success: false,
+          error: 'Failed to fetch news data'
+        });
+      }
+    } catch (error) {
+      logger.logError('Error in getSymbolNews:', error);
+      next(error);
+    }
   }
 };
 

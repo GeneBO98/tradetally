@@ -94,15 +94,37 @@ class PriceMonitoringService {
 
       logger.logDebug(`Monitoring ${symbols.length} symbols: ${symbols.join(', ')}`);
 
+      // Track API failures to detect widespread outages
+      let consecutiveFailures = 0;
+      let successCount = 0;
+
       // Update prices for all symbols
       for (const symbol of symbols) {
-        await this.updateSymbolPrice(symbol);
+        const success = await this.updateSymbolPrice(symbol);
+        
+        if (success) {
+          successCount++;
+          consecutiveFailures = 0; // Reset failure counter on success
+        } else {
+          consecutiveFailures++;
+          
+          // If we have too many consecutive failures, the API might be down
+          if (consecutiveFailures >= 5) {
+            logger.logWarn(`Detected possible API outage after ${consecutiveFailures} consecutive failures. Pausing monitoring for this cycle.`);
+            break;
+          }
+        }
+        
         // Small delay to avoid hitting rate limits
         await new Promise(resolve => setTimeout(resolve, 100));
       }
 
-      // Check for triggered alerts
-      await this.checkAlerts();
+      logger.logDebug(`Price monitoring cycle complete: ${successCount}/${symbols.length} symbols updated successfully`);
+
+      // Only check for triggered alerts if we had some successful price updates
+      if (successCount > 0) {
+        await this.checkAlerts();
+      }
 
     } catch (error) {
       logger.logError('Error in monitorPrices:', error);
@@ -121,26 +143,17 @@ class PriceMonitoringService {
           throw new Error('Invalid price data from Finnhub');
         }
       } catch (finnhubError) {
-        logger.logWarn(`Finnhub failed for ${symbol}, trying Alpha Vantage: ${finnhubError.message}`);
+        const errorMsg = finnhubError?.message || 'Unknown Finnhub error';
         
-        // Fallback to Alpha Vantage
-        try {
-          priceData = await alphaVantage.getQuote(symbol);
-          dataSource = 'alpha_vantage';
-          if (!priceData || !priceData.price) {
-            throw new Error('Invalid price data from Alpha Vantage');
-          }
-          // Normalize Alpha Vantage response to match Finnhub format
-          priceData = {
-            c: priceData.price,
-            pc: priceData.previousClose,
-            d: priceData.change,
-            dp: priceData.changePercent
-          };
-        } catch (alphaError) {
-          logger.logError(`Both APIs failed for ${symbol}:`, alphaError.message);
-          return;
+        // Only log detailed errors for non-502 errors to avoid spam during outages
+        if (errorMsg.includes('502')) {
+          logger.logDebug(`Finnhub temporarily unavailable for ${symbol} (502 error)`);
+        } else {
+          logger.logWarn(`Finnhub failed for ${symbol}: ${errorMsg}`);
         }
+        
+        // Return false to indicate failure
+        return false;
       }
 
       const currentPrice = priceData.c;
@@ -163,8 +176,12 @@ class PriceMonitoringService {
 
       logger.logDebug(`Updated price for ${symbol}: ${currentPrice} (${percentChange >= 0 ? '+' : ''}${percentChange.toFixed(2)}%)`);
 
+      // Return true to indicate success
+      return true;
+
     } catch (error) {
       logger.logError(`Error updating price for ${symbol}:`, error);
+      return false;
     }
   }
 
