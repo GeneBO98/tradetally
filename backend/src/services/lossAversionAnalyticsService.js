@@ -1454,7 +1454,8 @@ class LossAversionAnalyticsService {
                 }
               }
             } catch (priceError) {
-              console.warn(`Price analysis failed for trade ${trade.id}: ${priceError.message}`);
+              console.warn(`Price analysis failed for trade ${trade.id} (${trade.symbol}): ${priceError.message}`);
+              // Continue to fallback estimation on any API error
             }
           }
 
