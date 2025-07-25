@@ -31,7 +31,7 @@ class PushNotificationService {
       }
 
       this.apnProvider = new apn.Provider(apnsConfig);
-      logger.logInfo(`APNS initialized for ${apnsConfig.production ? 'production' : 'development'}`);
+      console.log(`✓ APNS initialized for ${apnsConfig.production ? 'production' : 'development'}`);
     } catch (error) {
       logger.logError('Failed to initialize APNS:', error);
       this.isEnabled = false;
@@ -49,12 +49,11 @@ class PushNotificationService {
       const devicesQuery = `
         SELECT dt.device_token, dt.platform, dt.environment, dt.bundle_id
         FROM device_tokens dt
-        JOIN notification_preferences np ON dt.user_id = np.user_id
+        LEFT JOIN notification_preferences np ON dt.user_id = np.user_id
         WHERE dt.user_id = $1 
-        AND dt.platform = 'apns'
+        AND dt.platform = 'ios'
         AND dt.active = true 
-        AND np.push_notifications = true 
-        AND np.price_alerts_enabled = true
+        AND (np.push_notifications IS NULL OR np.push_notifications = true)
       `;
       
       const devices = await db.query(devicesQuery, [userId]);
@@ -181,7 +180,7 @@ class PushNotificationService {
   shutdown() {
     if (this.apnProvider) {
       this.apnProvider.shutdown();
-      logger.logInfo('APNS provider shutdown');
+      console.log('APNS provider shutdown');
     }
   }
 }

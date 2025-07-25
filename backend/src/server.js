@@ -28,6 +28,7 @@ const BillingService = require('./services/billingService');
 const priceMonitoringService = require('./services/priceMonitoringService');
 const GamificationScheduler = require('./services/gamificationScheduler');
 const backgroundWorker = require('./workers/backgroundWorker');
+const pushNotificationService = require('./services/pushNotificationService');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
@@ -170,6 +171,13 @@ async function startServer() {
       GamificationScheduler.startScheduler();
     } else {
       console.log('Gamification disabled (ENABLE_GAMIFICATION=false)');
+    }
+    
+    // Initialize push notification service
+    if (process.env.ENABLE_PUSH_NOTIFICATIONS === 'true') {
+      console.log('✓ Push notification service loaded');
+    } else {
+      console.log('Push notifications disabled (ENABLE_PUSH_NOTIFICATIONS=false)');
     }
 
     // Start background worker for trade enrichment
