@@ -114,6 +114,144 @@
       </div>
     </div>
 
+    <!-- News and Earnings Sections -->
+    <div v-if="watchlist?.items?.length > 0" class="mt-8 space-y-8">
+      
+      <!-- Watchlist News Section -->
+      <div class="bg-white shadow-sm rounded-lg overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+          <h2 class="text-lg font-medium text-gray-900 flex items-center">
+            <svg class="w-5 h-5 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"></path>
+            </svg>
+            Recent News
+          </h2>
+          <div class="flex items-center space-x-2">
+            <select v-model="newsFilter.days" @change="loadWatchlistNews" class="text-sm border-gray-300 rounded-md">
+              <option value="3">Last 3 days</option>
+              <option value="7">Last 7 days</option>
+              <option value="14">Last 14 days</option>
+              <option value="30">Last 30 days</option>
+            </select>
+            <button 
+              @click="loadWatchlistNews" 
+              :disabled="loadingNews"
+              class="text-sm text-blue-600 hover:text-blue-800 disabled:opacity-50"
+            >
+              {{ loadingNews ? 'Loading...' : 'Refresh' }}
+            </button>
+          </div>
+        </div>
+        
+        <div v-if="loadingNews" class="flex justify-center items-center py-8">
+          <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+        </div>
+        
+        <div v-else-if="watchlistNews.length > 0" class="divide-y divide-gray-200">
+          <article 
+            v-for="article in watchlistNews.slice(0, newsFilter.limit)" 
+            :key="article.id || article.datetime" 
+            class="p-6 hover:bg-gray-50 transition-colors"
+          >
+            <div class="flex items-start space-x-3">
+              <div class="flex-shrink-0">
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                  {{ article.symbol }}
+                </span>
+              </div>
+              <div class="flex-1 min-w-0">
+                <a 
+                  :href="article.url" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  class="block hover:text-blue-600 transition-colors"
+                >
+                  <h3 class="text-sm font-medium text-gray-900 mb-1">{{ article.headline }}</h3>
+                  <p v-if="article.summary" class="text-sm text-gray-600 line-clamp-2 mb-2">{{ article.summary }}</p>
+                  <div class="flex items-center text-xs text-gray-500">
+                    <span>{{ formatNewsDate(article.datetime) }}</span>
+                    <span v-if="article.source" class="ml-2">• {{ article.source }}</span>
+                  </div>
+                </a>
+              </div>
+            </div>
+          </article>
+        </div>
+        
+        <div v-else class="p-6 text-center text-gray-500">
+          <svg class="mx-auto h-8 w-8 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"></path>
+          </svg>
+          <p class="text-sm">No recent news available for your watchlist symbols</p>
+        </div>
+      </div>
+
+      <!-- Upcoming Earnings Section -->
+      <div class="bg-white shadow-sm rounded-lg overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+          <h2 class="text-lg font-medium text-gray-900 flex items-center">
+            <svg class="w-5 h-5 mr-2 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+            </svg>
+            Upcoming Earnings
+          </h2>
+          <div class="flex items-center space-x-2">
+            <select v-model="earningsFilter.days" @change="loadWatchlistEarnings" class="text-sm border-gray-300 rounded-md">
+              <option value="14">Next 14 days</option>
+              <option value="30">Next 30 days</option>
+              <option value="60">Next 60 days</option>
+            </select>
+            <button 
+              @click="loadWatchlistEarnings" 
+              :disabled="loadingEarnings"
+              class="text-sm text-blue-600 hover:text-blue-800 disabled:opacity-50"
+            >
+              {{ loadingEarnings ? 'Loading...' : 'Refresh' }}
+            </button>
+          </div>
+        </div>
+        
+        <div v-if="loadingEarnings" class="flex justify-center items-center py-8">
+          <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-green-600"></div>
+        </div>
+        
+        <div v-else-if="watchlistEarnings.length > 0" class="divide-y divide-gray-200">
+          <div 
+            v-for="earnings in watchlistEarnings" 
+            :key="`${earnings.symbol}-${earnings.date}`" 
+            class="p-6 hover:bg-gray-50 transition-colors"
+          >
+            <div class="flex items-center justify-between">
+              <div class="flex items-center space-x-3">
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                  {{ earnings.symbol }}
+                </span>
+                <div>
+                  <p class="text-sm font-medium text-gray-900">Earnings Report</p>
+                  <p class="text-xs text-gray-500">{{ formatEarningsDate(earnings.date) }}</p>
+                </div>
+              </div>
+              <div class="text-right">
+                <div v-if="earnings.hour" class="text-xs text-gray-500">
+                  {{ earnings.hour === 'amc' ? 'After Market Close' : earnings.hour === 'bmo' ? 'Before Market Open' : earnings.hour }}
+                </div>
+                <div v-if="earnings.epsEstimate" class="text-xs text-gray-600 mt-1">
+                  Est. EPS: ${{ earnings.epsEstimate }}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div v-else class="p-6 text-center text-gray-500">
+          <svg class="mx-auto h-8 w-8 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+          </svg>
+          <p class="text-sm">No upcoming earnings for your watchlist symbols</p>
+        </div>
+      </div>
+    </div>
+
     <!-- Add Symbol Modal -->
     <div v-if="showAddSymbolModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
       <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
@@ -221,6 +359,21 @@ export default {
     const showAddSymbolModal = ref(false)
     const editingItem = ref(null)
 
+    // News and earnings data
+    const watchlistNews = ref([])
+    const watchlistEarnings = ref([])
+    const loadingNews = ref(false)
+    const loadingEarnings = ref(false)
+
+    const newsFilter = ref({
+      days: 7,
+      limit: 10
+    })
+
+    const earningsFilter = ref({
+      days: 30
+    })
+
     const symbolForm = ref({
       symbol: '',
       notes: ''
@@ -235,12 +388,61 @@ export default {
         loading.value = true
         const response = await api.get(`/watchlists/${route.params.id}`)
         watchlist.value = response.data.data
+        
+        // Load news and earnings if watchlist has items
+        if (watchlist.value?.items?.length > 0) {
+          await Promise.all([
+            loadWatchlistNews(),
+            loadWatchlistEarnings()
+          ])
+        }
       } catch (error) {
         console.error('Error loading watchlist:', error)
         showError('Error', 'Failed to load watchlist')
         router.push('/watchlists')
       } finally {
         loading.value = false
+      }
+    }
+
+    const loadWatchlistNews = async () => {
+      if (!watchlist.value?.id) return
+      
+      try {
+        loadingNews.value = true
+        const response = await api.get(`/watchlists/${watchlist.value.id}/news`, {
+          params: {
+            days: newsFilter.value.days,
+            limit: 20 // Load more than display limit for better data
+          }
+        })
+        watchlistNews.value = response.data.data || []
+      } catch (error) {
+        console.error('Error loading watchlist news:', error)
+        showError('Error', 'Failed to load news')
+        watchlistNews.value = []
+      } finally {
+        loadingNews.value = false
+      }
+    }
+
+    const loadWatchlistEarnings = async () => {
+      if (!watchlist.value?.id) return
+      
+      try {
+        loadingEarnings.value = true
+        const response = await api.get(`/watchlists/${watchlist.value.id}/earnings`, {
+          params: {
+            days: earningsFilter.value.days
+          }
+        })
+        watchlistEarnings.value = response.data.data || []
+      } catch (error) {
+        console.error('Error loading watchlist earnings:', error)
+        showError('Error', 'Failed to load earnings')
+        watchlistEarnings.value = []
+      } finally {
+        loadingEarnings.value = false
       }
     }
 
@@ -341,6 +543,51 @@ export default {
       })
     }
 
+    const formatNewsDate = (timestamp) => {
+      const date = new Date(timestamp * 1000) // Convert Unix timestamp to milliseconds
+      const now = new Date()
+      const diffMs = now - date
+      const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
+      const diffDays = Math.floor(diffHours / 24)
+
+      if (diffHours < 1) {
+        return 'Just now'
+      } else if (diffHours < 24) {
+        return `${diffHours}h ago`
+      } else if (diffDays < 7) {
+        return `${diffDays}d ago`
+      } else {
+        return date.toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
+        })
+      }
+    }
+
+    const formatEarningsDate = (dateString) => {
+      const date = new Date(dateString)
+      const now = new Date()
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+      const earningsDate = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+      const diffTime = earningsDate - today
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+
+      if (diffDays === 0) {
+        return 'Today'
+      } else if (diffDays === 1) {
+        return 'Tomorrow'
+      } else if (diffDays < 7) {
+        return `In ${diffDays} days`
+      } else {
+        return date.toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
+        })
+      }
+    }
+
     onMounted(() => {
       loadWatchlist()
     })
@@ -354,6 +601,12 @@ export default {
       editingItem,
       symbolForm,
       editNotesForm,
+      watchlistNews,
+      watchlistEarnings,
+      loadingNews,
+      loadingEarnings,
+      newsFilter,
+      earningsFilter,
       addSymbol,
       removeSymbol,
       editNotes,
@@ -361,11 +614,15 @@ export default {
       createPriceAlert,
       cancelAddSymbol,
       cancelEditNotes,
+      loadWatchlistNews,
+      loadWatchlistEarnings,
       formatPrice,
       formatPriceChange,
       formatPercentChange,
       priceChangeClass,
-      formatDate
+      formatDate,
+      formatNewsDate,
+      formatEarningsDate
     }
   }
 }

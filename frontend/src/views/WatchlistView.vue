@@ -7,7 +7,7 @@
         <p class="text-gray-600">Track your favorite stocks and set price alerts</p>
       </div>
       <button
-        v-if="isProUser"
+        v-if="!authLoading && isProUser"
         @click="showCreateWatchlistModal = true"
         class="mt-4 sm:mt-0 btn-primary"
       >
@@ -18,15 +18,20 @@
       </button>
     </div>
 
+    <!-- Loading State for Auth -->
+    <div v-if="authLoading" class="flex justify-center items-center py-12">
+      <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+    </div>
+
     <!-- Pro Feature Notice -->
     <ProUpgradePrompt 
-      v-if="!isProUser" 
+      v-else-if="!authLoading && !isProUser" 
       variant="card"
       description="Stock watchlists and price alerts are available for Pro users only."
     />
 
-    <!-- Loading State -->
-    <div v-if="isProUser && loading" class="flex justify-center items-center py-12">
+    <!-- Loading State for Watchlists -->
+    <div v-else-if="isProUser && loading" class="flex justify-center items-center py-12">
       <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
     </div>
 
@@ -70,7 +75,7 @@
     </div>
 
     <!-- Empty State -->
-    <div v-else-if="isProUser && !loading" class="text-center py-12">
+    <div v-else-if="!authLoading && isProUser && !loading" class="text-center py-12">
       <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
       </svg>
@@ -149,7 +154,7 @@
 </template>
 
 <script>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useNotification } from '@/composables/useNotification'
 import { useAuthStore } from '@/stores/auth'
@@ -186,7 +191,17 @@ export default {
       return authStore.user?.tier === 'pro'
     })
 
+    // Track if we're still loading user data to avoid showing upgrade prompt prematurely
+    const authLoading = computed(() => {
+      return authStore.loading || (authStore.isAuthenticated && !authStore.user)
+    })
+
     const loadWatchlists = async () => {
+      // Wait for auth to finish loading before checking Pro status
+      if (authLoading.value) {
+        return
+      }
+
       if (!isProUser.value) {
         loading.value = false
         return
@@ -266,8 +281,18 @@ export default {
       }
     }
 
+    // Watch for auth loading to complete, then load watchlists
+    watch(authLoading, (newAuthLoading) => {
+      if (!newAuthLoading) {
+        loadWatchlists()
+      }
+    }, { immediate: true })
+
     onMounted(() => {
-      loadWatchlists()
+      // Initial load if auth is already ready
+      if (!authLoading.value) {
+        loadWatchlists()
+      }
     })
 
     return {
@@ -278,6 +303,7 @@ export default {
       editingWatchlist,
       watchlistForm,
       isProUser,
+      authLoading,
       selectWatchlist,
       editWatchlist,
       deleteWatchlist,

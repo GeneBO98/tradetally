@@ -20,4 +20,9 @@ router.post('/:id/items', watchlistController.addSymbolToWatchlist);
 router.put('/:id/items/:itemId', watchlistController.updateWatchlistItem);
 router.delete('/:id/items/:itemId', watchlistController.removeSymbolFromWatchlist);
 
+// News and earnings for watchlist
+router.get('/:id/news', watchlistController.getWatchlistNews);
+router.get('/:id/earnings', watchlistController.getWatchlistEarnings);
+router.get('/:id/symbols/:symbol/news', watchlistController.getSymbolNews);
+
 module.exports = router;

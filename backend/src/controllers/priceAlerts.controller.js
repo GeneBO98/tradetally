@@ -111,12 +111,43 @@ const priceAlertsController = {
       
       const symbolUpper = symbol.trim().toUpperCase();
       
+      // Check for duplicate price alerts (same symbol, same target price, same alert type)
+      if (alert_type === 'above' || alert_type === 'below') {
+        const duplicateQuery = `
+          SELECT id FROM price_alerts 
+          WHERE user_id = $1 AND symbol = $2 AND alert_type = $3 AND target_price = $4 AND is_active = true
+        `;
+        const duplicateResult = await db.query(duplicateQuery, [userId, symbolUpper, alert_type, target_price]);
+        
+        if (duplicateResult.rows.length > 0) {
+          return res.status(400).json({
+            success: false,
+            error: `You already have an active ${alert_type} alert for ${symbolUpper} at $${target_price}`
+          });
+        }
+      }
+      
       // Get current price for reference
       let currentPrice = null;
       try {
         const priceData = await finnhub.getQuote(symbolUpper);
         if (priceData && priceData.c) {
           currentPrice = priceData.c;
+          
+          // Validate price direction against current price
+          if (alert_type === 'above' && target_price <= currentPrice) {
+            return res.status(400).json({
+              success: false,
+              error: `Warning: You've set an "above" alert for $${target_price}, but ${symbolUpper} is currently trading at $${currentPrice.toFixed(2)}. Your target price should be higher than the current price for "above" alerts.`
+            });
+          }
+          
+          if (alert_type === 'below' && target_price >= currentPrice) {
+            return res.status(400).json({
+              success: false,
+              error: `Warning: You've set a "below" alert for $${target_price}, but ${symbolUpper} is currently trading at $${currentPrice.toFixed(2)}. Your target price should be lower than the current price for "below" alerts.`
+            });
+          }
           
           // Update price monitoring data
           await db.query(`
@@ -180,8 +211,8 @@ const priceAlertsController = {
         is_active
       } = req.body;
       
-      // Check if alert exists
-      const existsQuery = 'SELECT alert_type FROM price_alerts WHERE id = $1 AND user_id = $2';
+      // Check if alert exists and get current alert data
+      const existsQuery = 'SELECT alert_type, symbol, target_price FROM price_alerts WHERE id = $1 AND user_id = $2';
       const existsResult = await db.query(existsQuery, [id, userId]);
       
       if (existsResult.rows.length === 0) {
@@ -192,6 +223,51 @@ const priceAlertsController = {
       }
       
       const alertType = existsResult.rows[0].alert_type;
+      const alertSymbol = existsResult.rows[0].symbol;
+      const currentTargetPrice = existsResult.rows[0].target_price;
+      
+      // If updating target_price, check for duplicates and validate price direction
+      if (target_price !== undefined && (alertType === 'above' || alertType === 'below')) {
+        // Check for duplicate price alerts (excluding current alert)
+        if (target_price !== currentTargetPrice) {
+          const duplicateQuery = `
+            SELECT id FROM price_alerts 
+            WHERE user_id = $1 AND symbol = $2 AND alert_type = $3 AND target_price = $4 AND is_active = true AND id != $5
+          `;
+          const duplicateResult = await db.query(duplicateQuery, [userId, alertSymbol, alertType, target_price, id]);
+          
+          if (duplicateResult.rows.length > 0) {
+            return res.status(400).json({
+              success: false,
+              error: `You already have an active ${alertType} alert for ${alertSymbol} at $${target_price}`
+            });
+          }
+        }
+        
+        // Get current price and validate direction
+        try {
+          const priceData = await finnhub.getQuote(alertSymbol);
+          if (priceData && priceData.c) {
+            const currentPrice = priceData.c;
+            
+            if (alertType === 'above' && target_price <= currentPrice) {
+              return res.status(400).json({
+                success: false,
+                error: `Warning: You've set an "above" alert for $${target_price}, but ${alertSymbol} is currently trading at $${currentPrice.toFixed(2)}. Your target price should be higher than the current price for "above" alerts.`
+              });
+            }
+            
+            if (alertType === 'below' && target_price >= currentPrice) {
+              return res.status(400).json({
+                success: false,
+                error: `Warning: You've set a "below" alert for $${target_price}, but ${alertSymbol} is currently trading at $${currentPrice.toFixed(2)}. Your target price should be lower than the current price for "below" alerts.`
+              });
+            }
+          }
+        } catch (priceError) {
+          logger.logWarn(`Could not fetch current price for ${alertSymbol}:`, priceError.message);
+        }
+      }
       
       // Build update query dynamically
       const updates = [];
