@@ -27,6 +27,7 @@
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
     "multer": "^2.0.1",
+    "node-apn": "^3.0.0",
     "node-fetch": "^3.3.2",
     "nodemailer": "^6.9.7",
     "openai": "^5.10.0",

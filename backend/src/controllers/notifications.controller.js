@@ -502,6 +502,35 @@ const notificationsController = {
       logger.logError('Error updating notification preferences:', error);
       next(error);
     }
+  },
+
+  // Test push notification
+  async testPushNotification(req, res, next) {
+    try {
+      const userId = req.user.id;
+      const { message } = req.body;
+      
+      const pushService = require('../services/pushNotificationService');
+      
+      const result = await pushService.testNotification(userId, message);
+      
+      if (result.success) {
+        res.json({
+          success: true,
+          message: `Test notification sent to ${result.successCount} of ${result.devicesTargeted} devices`,
+          details: result
+        });
+      } else {
+        res.json({
+          success: false,
+          message: `Test notification failed: ${result.reason || result.error}`,
+          details: result
+        });
+      }
+    } catch (error) {
+      logger.logError('Error sending test push notification:', error);
+      next(error);
+    }
   }
 };
 

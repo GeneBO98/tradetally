@@ -29,6 +29,9 @@ mobileRouter.post('/device-token', notificationsController.registerDeviceToken);
 mobileRouter.get('/preferences', notificationsController.getNotificationPreferences);
 mobileRouter.put('/preferences', notificationsController.updateNotificationPreferences);
 
+// Test push notification
+mobileRouter.post('/test-push', notificationsController.testPushNotification);
+
 // Mount mobile routes
 router.use('/', mobileRouter);
 
