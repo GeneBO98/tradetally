@@ -143,11 +143,12 @@ temp/
 ecosystem.config.js.backup
 .pm2/
 
-# SSL certificates (if stored locally)
+# SSL certificates and push notification keys (if stored locally)
 *.pem
 *.key
 *.crt
 *.cert
+*.p8
 
 # Uploads directory (if storing files locally)
 uploads/

@@ -402,6 +402,126 @@ NODE_ENV=production PORT=3000 npm start
 - **Format**: Transaction history CSV
 - **Required Columns**: Symbol, Transaction Date, Price, Quantity, Transaction Type, Commission
 
+## 📱 Push Notification Setup (iOS)
+
+TradeTally supports real-time push notifications for price alerts and trade executions on iOS devices. This section is optional but recommended for mobile users.
+
+### Prerequisites
+
+- **Apple Developer Account** ($99/year) - Required for push notifications
+- **Mobile app** - TradeTally iOS app installed on devices
+- **Device tokens** - Users must register their devices through the mobile app
+
+### Apple Push Notification Service (APNS) Setup
+
+#### 1. Generate APNs Authentication Key
+
+1. **Login to Apple Developer Portal**:
+   - Go to [developer.apple.com](https://developer.apple.com)
+   - Sign in with your Apple Developer account
+
+2. **Create Push Notification Key**:
+   - Navigate to **Certificates, Identifiers & Profiles**
+   - Go to **Keys** section
+   - Click **+** to create a new key
+   - Name it "TradeTally Push Notifications"
+   - Check **Apple Push Notifications service (APNs)**
+   - Click **Continue** → **Register**
+
+3. **Download Key File**:
+   - Download the `.p8` file (e.g., `AuthKey_ABC123DEFG.p8`)
+   - **Important**: Store this file securely - it cannot be re-downloaded
+   - Note the **Key ID** (10-character string like `ABC123DEFG`)
+
+4. **Get Team ID**:
+   - In Apple Developer account, go to **Account** → **Membership**
+   - Copy your **Team ID** (10-character string like `1234567890`)
+
+#### 2. Configure Environment Variables
+
+Add the following to your `.env` file:
+
+```env
+# Enable push notifications
+ENABLE_PUSH_NOTIFICATIONS=true
+
+# Apple Push Notification Service
+APNS_KEY_ID=ABC123DEFG          # From step 3 above
+APNS_TEAM_ID=1234567890         # From step 4 above
+APNS_KEY_PATH=/path/to/keys/AuthKey_ABC123DEFG.p8
+```
+
+#### 3. Secure Key File Storage
+
+**For Development:**
+```bash
+# Create secure directory
+mkdir -p /path/to/tradetally/backend/keys
+chmod 700 /path/to/tradetally/backend/keys
+
+# Copy your .p8 file
+cp ~/Downloads/AuthKey_ABC123DEFG.p8 /path/to/tradetally/backend/keys/
+chmod 600 /path/to/tradetally/backend/keys/AuthKey_ABC123DEFG.p8
+```
+
+**For Production:**
+```bash
+# System-wide secure location
+sudo mkdir -p /etc/tradetally/keys
+sudo cp AuthKey_ABC123DEFG.p8 /etc/tradetally/keys/
+sudo chmod 600 /etc/tradetally/keys/AuthKey_ABC123DEFG.p8
+sudo chown tradetally:tradetally /etc/tradetally/keys/AuthKey_ABC123DEFG.p8
+
+# Update .env to point to production location
+APNS_KEY_PATH=/etc/tradetally/keys/AuthKey_ABC123DEFG.p8
+```
+
+#### 4. Security Best Practices
+
+- **Never commit `.p8` files** to version control
+- Add `*.p8` and `keys/` to your `.gitignore`
+- Use environment variables for all sensitive data
+- Restrict file permissions (600) on the key file
+- Store keys outside web-accessible directories
+
+#### 5. Testing Push Notifications
+
+Use the test endpoint to verify setup:
+
+```bash
+# Test push notification (requires device token registration)
+curl -X POST "http://localhost:3000/api/notifications/test-push" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Test notification from TradeTally"}'
+```
+
+### Features Enabled by Push Notifications
+
+- **Price Alerts**: Instant notifications when price targets are hit
+- **Trade Execution**: Notifications for successful trades
+- **Portfolio Updates**: Real-time updates on position changes
+- **Market Events**: Important market news and earnings announcements
+
+### Troubleshooting
+
+**Common Issues:**
+
+1. **"APNS configuration incomplete"**: Verify all environment variables are set correctly
+2. **"No active devices"**: Users must register device tokens through the mobile app
+3. **"Push notification failed"**: Check APNS key file permissions and path
+4. **"BadDeviceToken"**: Device tokens are automatically marked inactive and cleaned up
+
+**Debug Logs:**
+```bash
+# Check backend logs for push notification status
+tail -f backend.log | grep -i "push\|apns"
+```
+
+### Android Support (Future)
+
+Android push notifications via Firebase Cloud Messaging (FCM) will be added in a future release. The infrastructure is prepared with the `FCM_SERVER_KEY` environment variable.
+
 ## 🏗️ Production Deployment
 
 ### Environment Setup
@@ -602,9 +722,15 @@ sudo tail -f /var/log/postgresql/postgresql-*.log
 | `FINNHUB_API_KEY` | Finnhub API key for quotes/CUSIP/sectors | - | No |
 | `ALPHA_VANTAGE_API_KEY` | Alpha Vantage API key for charts | - | No |
 | `GEMINI_API_KEY` | Google Gemini API key for AI recommendations | - | No |
+| `ENABLE_PUSH_NOTIFICATIONS` | Enable mobile push notifications | `false` | No |
+| `APNS_KEY_ID` | Apple Push Notification Key ID | - | No** |
+| `APNS_TEAM_ID` | Apple Developer Team ID | - | No** |
+| `APNS_KEY_PATH` | Path to Apple .p8 certificate file | - | No** |
+| `FCM_SERVER_KEY` | Firebase Cloud Messaging server key | - | No** |
 
 **Self-Hosted Configuration Notes:**
 - Email settings marked with * are optional for self-hosted setups
+- Push notification settings marked with ** are only required if enabling mobile push notifications
 - If email is not configured, users are automatically verified and can sign in immediately
 - This makes TradeTally self-host friendly without requiring email setup
 - Email verification will be enabled automatically if all email settings are provided

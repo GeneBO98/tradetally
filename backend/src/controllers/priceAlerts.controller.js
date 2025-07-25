@@ -631,43 +631,26 @@ const priceAlertsController = {
   // Send push notification to user's devices
   async sendPushNotification(userId, notificationData) {
     try {
-      // Get user's device tokens and notification preferences
-      const devicesQuery = `
-        SELECT dt.device_token, dt.platform, dt.environment
-        FROM device_tokens dt
-        JOIN notification_preferences np ON dt.user_id = np.user_id
-        WHERE dt.user_id = $1 
-        AND dt.active = true 
-        AND np.push_notifications = true 
-        AND np.price_alerts_enabled = true
-      `;
+      const pushService = require('../services/pushNotificationService');
       
-      const devices = await db.query(devicesQuery, [userId]);
-      
-      if (devices.rows.length === 0) {
-        logger.logDebug(`No active devices with push notifications enabled for user ${userId}`);
-        return;
+      const result = await pushService.sendPriceAlert(userId, {
+        symbol: notificationData.symbol,
+        condition: notificationData.currentPrice > notificationData.targetPrice ? 'above' : 'below',
+        currentPrice: notificationData.currentPrice,
+        targetPrice: notificationData.targetPrice
+      });
+
+      if (result.success) {
+        logger.logInfo(`Push notification sent to ${result.successCount}/${result.devicesTargeted} devices for user ${userId}`);
+      } else {
+        logger.logWarn(`Push notification failed for user ${userId}: ${result.reason || result.error}`);
       }
       
-      // For now, log the push notification details
-      // In a production environment, you would use Apple Push Notification service (APNs)
-      // or Firebase Cloud Messaging (FCM) to actually send the notifications
-      
-      logger.logInfo(`Would send push notification to ${devices.rows.length} devices for user ${userId}:`);
-      logger.logInfo(`Title: ${notificationData.title}`);
-      logger.logInfo(`Body: ${notificationData.body}`);
-      logger.logInfo(`Symbol: ${notificationData.symbol}`);
-      
-      devices.rows.forEach((device, index) => {
-        logger.logInfo(`Device ${index + 1}: ${device.platform} (${device.environment}) - ${device.device_token.substring(0, 10)}...`);
-      });
-      
-      // Here you would integrate with actual push notification services:
-      // - For iOS: Use node-apn or similar library with APNs
-      // - For Android: Use firebase-admin or similar library with FCM
+      return result;
       
     } catch (error) {
-      logger.logError(`Error sending push notification to user ${userId}:`, error);
+      logger.logError('Error sending push notification:', error);
+      return { success: false, error: error.message };
     }
   }
 };
