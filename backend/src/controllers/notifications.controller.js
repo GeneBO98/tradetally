@@ -344,7 +344,7 @@ const notificationsController = {
         environment?.toLowerCase() || 'production', true
       ]);
       
-      logger.logInfo(`Device token registered for user ${userId}: ${platform} (${environment || 'production'})`);
+      console.log(`Device token registered for user ${userId}: ${platform} (${environment || 'production'})`);
       
       res.json({
         success: true,
