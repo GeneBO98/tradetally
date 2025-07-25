@@ -2509,6 +2509,24 @@ const analyzeOverconfidence = async () => {
   try {
     loadingOverconfidence.value = true
     
+    // First, check cache and load immediately to show existing data
+    const cacheKey = `overconfidence_analysis_${authStore.user?.id}_${filters.value.startDate || 'all'}_${filters.value.endDate || 'all'}`
+    const cachedData = localStorage.getItem(cacheKey)
+    if (cachedData) {
+      try {
+        const parsed = JSON.parse(cachedData)
+        const cacheAge = Date.now() - parsed.timestamp
+        const maxAge = 7 * 24 * 60 * 60 * 1000 // 7 days
+        
+        if (cacheAge < maxAge && parsed.data) {
+          overconfidenceData.value = parsed.data
+          console.log('Loaded overconfidence analysis from cache (will update in background)')
+        }
+      } catch (e) {
+        console.warn('Invalid cached overconfidence data')
+      }
+    }
+    
     const queryParams = new URLSearchParams()
     if (filters.value.startDate) queryParams.append('startDate', filters.value.startDate)
     if (filters.value.endDate) queryParams.append('endDate', filters.value.endDate)
@@ -2517,6 +2535,14 @@ const analyzeOverconfidence = async () => {
     
     if (response.data.data) {
       overconfidenceData.value = response.data.data
+      
+      // Cache the overconfidence data
+      const cacheData = {
+        data: response.data.data,
+        timestamp: Date.now(),
+        filters: { ...filters.value }
+      }
+      localStorage.setItem(cacheKey, JSON.stringify(cacheData))
       
       if (response.data.data.error) {
         showError('Analysis Error', response.data.data.message)
@@ -2546,6 +2572,24 @@ const loadTopMissedTrades = async () => {
     
     console.log('Loading top missed trades...')
     
+    // First, check cache and load immediately to show existing data
+    const cacheKey = `top_missed_trades_${authStore.user?.id}_${filters.value.startDate || 'all'}_${filters.value.endDate || 'all'}`
+    const cachedData = localStorage.getItem(cacheKey)
+    if (cachedData) {
+      try {
+        const parsed = JSON.parse(cachedData)
+        const cacheAge = Date.now() - parsed.timestamp
+        const maxAge = 7 * 24 * 60 * 60 * 1000 // 7 days
+        
+        if (cacheAge < maxAge && parsed.data) {
+          topMissedTrades.value = parsed.data
+          console.log('Loaded top missed trades from cache (will update in background)')
+        }
+      } catch (e) {
+        console.warn('Invalid cached top missed trades data')
+      }
+    }
+    
     const queryParams = new URLSearchParams()
     if (filters.value.startDate) queryParams.append('startDate', filters.value.startDate)
     if (filters.value.endDate) queryParams.append('endDate', filters.value.endDate)
@@ -2557,7 +2601,6 @@ const loadTopMissedTrades = async () => {
       topMissedTrades.value = response.data.data
       
       // Cache the top missed trades data
-      const cacheKey = `top_missed_trades_${authStore.user?.id}_${filters.value.startDate || 'all'}_${filters.value.endDate || 'all'}`
       const cacheData = {
         data: response.data.data,
         timestamp: Date.now(),
@@ -2569,24 +2612,6 @@ const loadTopMissedTrades = async () => {
         showSuccess('Analysis Complete', `Found ${response.data.data.topMissedTrades.length} trades with significant missed opportunities`)
       } else {
         showSuccess('Analysis Complete', response.data.data.message || 'No significant missed opportunities found')
-      }
-    } else {
-      // Check cache if API returns no data
-      const cacheKey = `top_missed_trades_${authStore.user?.id}_${filters.value.startDate || 'all'}_${filters.value.endDate || 'all'}`
-      const cachedData = localStorage.getItem(cacheKey)
-      if (cachedData) {
-        try {
-          const parsed = JSON.parse(cachedData)
-          const cacheAge = Date.now() - parsed.timestamp
-          const maxAge = 7 * 24 * 60 * 60 * 1000 // 7 days
-          
-          if (cacheAge < maxAge && parsed.data) {
-            topMissedTrades.value = parsed.data
-            console.log('Loaded top missed trades from cache')
-          }
-        } catch (e) {
-          console.warn('Invalid cached top missed trades data')
-        }
       }
     }
   } catch (error) {
@@ -2753,12 +2778,39 @@ onMounted(async () => {
       loadExistingPersonalityData()
     ])
     
-    // Auto-load top missed trades if loss aversion data exists OR try loading from cache
+    // Always load cached data immediately on page load
+    console.log('🔄 Loading cached data on page mount...')
+    await Promise.all([
+      loadCachedTopMissedTrades(),
+      loadCachedOverconfidenceData()
+    ])
+    
+    // Log current state
+    console.log('📊 Current state after cache loading:')
+    console.log('topMissedTrades:', topMissedTrades.value)
+    console.log('overconfidenceData:', overconfidenceData.value)
+    
+    // Auto-load fresh top missed trades if loss aversion data exists
     if (lossAversionData.value?.analysis) {
       await loadTopMissedTrades()
-    } else {
-      // Try to load top missed trades from cache even if no current analysis
-      const cacheKey = `top_missed_trades_${authStore.user?.id}_${filters.value.startDate || 'all'}_${filters.value.endDate || 'all'}`
+    }
+  } else {
+    loading.value = false
+  }
+})
+
+// Load cached top missed trades immediately on page load
+const loadCachedTopMissedTrades = () => {
+  try {
+    // Try multiple cache key variations to find data
+    const userId = authStore.user?.id
+    const cacheKeys = [
+      `top_missed_trades_${userId}_${filters.value.startDate || 'all'}_${filters.value.endDate || 'all'}`,
+      `top_missed_trades_${userId}_all_all`, // Fallback to "all dates" version
+      `top_missed_trades_${userId}` // Even simpler fallback
+    ]
+    
+    for (const cacheKey of cacheKeys) {
       const cachedData = localStorage.getItem(cacheKey)
       if (cachedData) {
         try {
@@ -2768,17 +2820,56 @@ onMounted(async () => {
           
           if (cacheAge < maxAge && parsed.data) {
             topMissedTrades.value = parsed.data
-            console.log('Pre-loaded top missed trades from cache on mount')
+            console.log(`✅ Loaded top missed trades from cache on page load (key: ${cacheKey})`)
+            console.log('Cache data:', parsed.data)
+            return true
           }
-        } catch (e) {
-          console.warn('Invalid cached top missed trades on mount')
+        } catch (parseError) {
+          console.warn(`Failed to parse cached data for key ${cacheKey}:`, parseError)
         }
       }
     }
-  } else {
-    loading.value = false
+  } catch (e) {
+    console.warn('Failed to load cached top missed trades:', e)
   }
-})
+  return false
+}
+
+// Load cached overconfidence data immediately on page load
+const loadCachedOverconfidenceData = () => {
+  try {
+    // Try multiple cache key variations to find data
+    const userId = authStore.user?.id
+    const cacheKeys = [
+      `overconfidence_analysis_${userId}_${filters.value.startDate || 'all'}_${filters.value.endDate || 'all'}`,
+      `overconfidence_analysis_${userId}_all_all`, // Fallback to "all dates" version
+      `overconfidence_analysis_${userId}` // Even simpler fallback
+    ]
+    
+    for (const cacheKey of cacheKeys) {
+      const cachedData = localStorage.getItem(cacheKey)
+      if (cachedData) {
+        try {
+          const parsed = JSON.parse(cachedData)
+          const cacheAge = Date.now() - parsed.timestamp
+          const maxAge = 7 * 24 * 60 * 60 * 1000 // 7 days
+          
+          if (cacheAge < maxAge && parsed.data) {
+            overconfidenceData.value = parsed.data
+            console.log(`✅ Loaded overconfidence analysis from cache on page load (key: ${cacheKey})`)
+            console.log('Cache data:', parsed.data)
+            return true
+          }
+        } catch (parseError) {
+          console.warn(`Failed to parse cached data for key ${cacheKey}:`, parseError)
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to load cached overconfidence data:', e)
+  }
+  return false
+}
 
 // Clear loss aversion cache
 const clearLossAversionCache = () => {
