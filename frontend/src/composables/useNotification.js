@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 
 const notification = ref(null)
+const modalAlert = ref(null)
 
 export function useNotification() {
   function showNotification(type, title, message = '') {
@@ -19,16 +20,68 @@ export function useNotification() {
     showNotification('warning', title, message)
   }
 
+  // New method for critical errors that need immediate attention
+  function showCriticalError(title, message, options = {}) {
+    modalAlert.value = { 
+      type: 'error', 
+      title, 
+      message,
+      confirmText: options.confirmText || 'OK',
+      onConfirm: options.onConfirm || clearModalAlert
+    }
+  }
+
+  // New method for important warnings that need user acknowledgment
+  function showImportantWarning(title, message, options = {}) {
+    modalAlert.value = { 
+      type: 'warning', 
+      title, 
+      message,
+      confirmText: options.confirmText || 'OK',
+      cancelText: options.cancelText,
+      onConfirm: options.onConfirm || clearModalAlert,
+      onCancel: options.onCancel || clearModalAlert
+    }
+  }
+
+  // New method for confirmation dialogs
+  function showConfirmation(title, message, onConfirm, onCancel = null) {
+    modalAlert.value = { 
+      type: 'confirm', 
+      title, 
+      message,
+      confirmText: 'Confirm',
+      cancelText: 'Cancel',
+      onConfirm: () => {
+        clearModalAlert()
+        onConfirm()
+      },
+      onCancel: () => {
+        clearModalAlert()
+        if (onCancel) onCancel()
+      }
+    }
+  }
+
   function clearNotification() {
     notification.value = null
   }
 
+  function clearModalAlert() {
+    modalAlert.value = null
+  }
+
   return {
     notification,
+    modalAlert,
     showNotification,
     showSuccess,
     showError,
     showWarning,
-    clearNotification
+    showCriticalError,
+    showImportantWarning,
+    showConfirmation,
+    clearNotification,
+    clearModalAlert
   }
 }

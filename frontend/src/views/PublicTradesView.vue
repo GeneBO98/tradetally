@@ -229,7 +229,7 @@ const selectedTrade = ref(null)
 
 // Auth and notifications
 const authStore = useAuthStore()
-const { showSuccess, showError } = useNotification()
+const { showSuccess, showError, showConfirmation } = useNotification()
 
 function formatNumber(num, decimals = 2) {
   return new Intl.NumberFormat('en-US', {
@@ -310,22 +310,24 @@ function canDeleteTrade(trade) {
 }
 
 async function deleteTrade(trade) {
-  if (!confirm(`Are you sure you want to delete this trade for ${trade.symbol}?`)) {
-    return
-  }
-  
-  try {
-    await api.delete(`/trades/${trade.id}`)
-    
-    // Remove the trade from the list
-    trades.value = trades.value.filter(t => t.id !== trade.id)
-    
-    showSuccess('Success', 'Trade deleted successfully')
-  } catch (error) {
-    console.error('Failed to delete trade:', error)
-    const errorMessage = error.response?.data?.error || 'Failed to delete trade'
-    showError('Error', errorMessage)
-  }
+  showConfirmation(
+    'Delete Trade',
+    `Are you sure you want to delete this trade for ${trade.symbol}?`,
+    async () => {
+      try {
+        await api.delete(`/trades/${trade.id}`)
+        
+        // Remove the trade from the list
+        trades.value = trades.value.filter(t => t.id !== trade.id)
+        
+        showSuccess('Success', 'Trade deleted successfully')
+      } catch (error) {
+        console.error('Failed to delete trade:', error)
+        const errorMessage = error.response?.data?.error || 'Failed to delete trade'
+        showError('Error', errorMessage)
+      }
+    }
+  )
 }
 
 onMounted(() => {

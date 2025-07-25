@@ -34,10 +34,16 @@ class PeerGroupService {
         SELECT 
           COUNT(*) as total_trades,
           AVG(EXTRACT(EPOCH FROM (exit_time - entry_time)) / 60) as avg_hold_time_minutes,
-          COUNT(CASE WHEN side = 'buy' THEN 1 END)::float / COUNT(*) * 100 as long_bias_pct,
+          CASE 
+            WHEN COUNT(*) > 0 THEN COUNT(CASE WHEN side = 'buy' THEN 1 END)::float / COUNT(*) * 100 
+            ELSE 0 
+          END as long_bias_pct,
           AVG(ABS(pnl)) as avg_trade_size,
           STDDEV(pnl) as volatility,
-          COUNT(CASE WHEN pnl > 0 THEN 1 END)::float / COUNT(*) * 100 as win_rate,
+          CASE 
+            WHEN COUNT(*) > 0 THEN COUNT(CASE WHEN pnl > 0 THEN 1 END)::float / COUNT(*) * 100 
+            ELSE 0 
+          END as win_rate,
           COUNT(DISTINCT symbol) as symbols_traded,
           COUNT(DISTINCT DATE(entry_time)) as trading_days,
           AVG(quantity * entry_price) as avg_position_size

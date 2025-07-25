@@ -465,9 +465,11 @@ async function handleSubmit() {
       await tradesStore.updateTrade(route.params.id, tradeData)
       showSuccess('Success', 'Trade updated successfully')
     } else {
-      // Analyze for revenge trading before creating
+      // Analyze for revenge trading before creating (non-blocking)
       if (hasProAccess.value) {
-        await analyzeForRevengeTrading(tradeData)
+        analyzeForRevengeTrading(tradeData).catch(err => {
+          console.warn('Revenge trading analysis failed, continuing with trade creation:', err)
+        })
       }
       await tradesStore.createTrade(tradeData)
       showSuccess('Success', 'Trade created successfully')
@@ -523,7 +525,7 @@ async function analyzeForRevengeTrading(tradeData) {
     })
     
     const analysis = response.data.data
-    if (analysis.alerts && analysis.alerts.length > 0) {
+    if (analysis && analysis.alerts && Array.isArray(analysis.alerts) && analysis.alerts.length > 0) {
       const alert = analysis.alerts[0]
       behavioralAlert.value = {
         message: alert.message,

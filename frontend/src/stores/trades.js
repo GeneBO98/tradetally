@@ -269,6 +269,7 @@ export const useTradesStore = defineStore('trades', () => {
       trades.value.unshift(response.data.trade)
       return response.data.trade
     } catch (err) {
+      console.error('Trade creation error:', err.response?.data)
       error.value = err.response?.data?.error || 'Failed to create trade'
       throw err
     } finally {

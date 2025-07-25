@@ -654,7 +654,7 @@ const route = useRoute()
 const router = useRouter()
 const tradesStore = useTradesStore()
 const authStore = useAuthStore()
-const { showSuccess, showError } = useNotification()
+const { showSuccess, showError, showConfirmation } = useNotification()
 
 const loading = ref(true)
 const trade = ref(null)
@@ -972,19 +972,23 @@ async function saveEditComment(commentId) {
 }
 
 async function deleteTradeComment(commentId) {
-  if (!confirm('Are you sure you want to delete this comment?')) return
-  
-  try {
-    await api.delete(`/trades/${trade.value.id}/comments/${commentId}`)
-    
-    // Remove the comment from the list
-    comments.value = comments.value.filter(c => c.id !== commentId)
-    
-    showSuccess('Success', 'Comment deleted successfully')
-  } catch (error) {
-    console.error('Failed to delete comment:', error)
-    showError('Error', 'Failed to delete comment')
-  }
+  showConfirmation(
+    'Delete Comment',
+    'Are you sure you want to delete this comment?',
+    async () => {
+      try {
+        await api.delete(`/trades/${trade.value.id}/comments/${commentId}`)
+        
+        // Remove the comment from the list
+        comments.value = comments.value.filter(c => c.id !== commentId)
+        
+        showSuccess('Success', 'Comment deleted successfully')
+      } catch (error) {
+        console.error('Failed to delete comment:', error)
+        showError('Error', 'Failed to delete comment')
+      }
+    }
+  )
 }
 
 function handleCommentKeydown(event) {
@@ -1005,17 +1009,19 @@ function handleEditKeydown(event) {
 }
 
 async function deleteTrade() {
-  if (!confirm('Are you sure you want to delete this trade? This action cannot be undone.')) {
-    return
-  }
-
-  try {
-    await tradesStore.deleteTrade(trade.value.id)
-    showSuccess('Success', 'Trade deleted successfully')
-    router.push('/trades')
-  } catch (error) {
-    showError('Error', 'Failed to delete trade')
-  }
+  showConfirmation(
+    'Delete Trade',
+    'Are you sure you want to delete this trade? This action cannot be undone.',
+    async () => {
+      try {
+        await tradesStore.deleteTrade(trade.value.id)
+        showSuccess('Success', 'Trade deleted successfully')
+        router.push('/trades')
+      } catch (error) {
+        showError('Error', 'Failed to delete trade')
+      }
+    }
+  )
 }
 
 async function loadTrade() {

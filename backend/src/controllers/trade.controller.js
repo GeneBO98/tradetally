@@ -7,6 +7,7 @@ const finnhub = require('../utils/finnhub');
 const cache = require('../utils/cache');
 const symbolCategories = require('../utils/symbolCategories');
 const ChartService = require('../services/chartService');
+const AnalyticsCache = require('../services/analyticsCache');
 
 const tradeController = {
   async getUserTrades(req, res, next) {
@@ -146,6 +147,19 @@ const tradeController = {
       } catch (cacheError) {
         console.warn('⚠️ Failed to invalidate sector performance cache:', cacheError.message);
       }
+
+      // Invalidate behavioral analytics cache after trade creation
+      try {
+        await AnalyticsCache.invalidateUserCache(req.user.id, [
+          'top_missed_trades',
+          'overconfidence_analysis',
+          'loss_aversion_analysis',
+          'personality_analysis'
+        ]);
+        console.log('✅ Behavioral analytics cache invalidated after trade creation');
+      } catch (cacheError) {
+        console.warn('⚠️ Failed to invalidate behavioral analytics cache:', cacheError.message);
+      }
       
       res.status(201).json({ trade });
     } catch (error) {
@@ -210,6 +224,19 @@ const tradeController = {
         console.warn('⚠️ Failed to invalidate sector performance cache:', cacheError.message);
       }
 
+      // Invalidate behavioral analytics cache after trade update
+      try {
+        await AnalyticsCache.invalidateUserCache(req.user.id, [
+          'top_missed_trades',
+          'overconfidence_analysis',
+          'loss_aversion_analysis',
+          'personality_analysis'
+        ]);
+        console.log('✅ Behavioral analytics cache invalidated after trade update');
+      } catch (cacheError) {
+        console.warn('⚠️ Failed to invalidate behavioral analytics cache:', cacheError.message);
+      }
+
       res.json({ trade });
     } catch (error) {
       next(error);
@@ -238,6 +265,19 @@ const tradeController = {
         console.log('✅ Sector performance cache invalidated after trade deletion');
       } catch (cacheError) {
         console.warn('⚠️ Failed to invalidate sector performance cache:', cacheError.message);
+      }
+
+      // Invalidate behavioral analytics cache after trade deletion
+      try {
+        await AnalyticsCache.invalidateUserCache(req.user.id, [
+          'top_missed_trades',
+          'overconfidence_analysis',
+          'loss_aversion_analysis',
+          'personality_analysis'
+        ]);
+        console.log('✅ Behavioral analytics cache invalidated after trade deletion');
+      } catch (cacheError) {
+        console.warn('⚠️ Failed to invalidate behavioral analytics cache:', cacheError.message);
       }
 
       res.json({ message: 'Trade deleted successfully' });
@@ -279,6 +319,19 @@ const tradeController = {
         console.log('✅ Sector performance cache invalidated after bulk trade deletion');
       } catch (cacheError) {
         console.warn('⚠️ Failed to invalidate sector performance cache:', cacheError.message);
+      }
+
+      // Invalidate behavioral analytics cache after bulk trade deletion
+      try {
+        await AnalyticsCache.invalidateUserCache(req.user.id, [
+          'top_missed_trades',
+          'overconfidence_analysis',
+          'loss_aversion_analysis',
+          'personality_analysis'
+        ]);
+        console.log('✅ Behavioral analytics cache invalidated after bulk trade deletion');
+      } catch (cacheError) {
+        console.warn('⚠️ Failed to invalidate behavioral analytics cache:', cacheError.message);
       }
 
       res.json({ 
@@ -752,6 +805,19 @@ const tradeController = {
             console.warn('⚠️ Failed to invalidate sector performance cache:', cacheError.message);
           }
 
+          // Invalidate behavioral analytics cache after import
+          try {
+            await AnalyticsCache.invalidateUserCache(req.user.id, [
+              'top_missed_trades',
+              'overconfidence_analysis',
+              'loss_aversion_analysis',
+              'personality_analysis'
+            ]);
+            console.log('✅ Behavioral analytics cache invalidated after import completion');
+          } catch (cacheError) {
+            console.warn('⚠️ Failed to invalidate behavioral analytics cache:', cacheError.message);
+          }
+
           // Background categorization of new symbols
           try {
             console.log('🔄 Starting background symbol categorization after import...');
@@ -1045,6 +1111,19 @@ const tradeController = {
         console.log('✅ Sector performance cache invalidated after import deletion');
       } catch (cacheError) {
         console.warn('⚠️ Failed to invalidate sector performance cache:', cacheError.message);
+      }
+
+      // Invalidate behavioral analytics cache after import deletion
+      try {
+        await AnalyticsCache.invalidateUserCache(req.user.id, [
+          'top_missed_trades',
+          'overconfidence_analysis',
+          'loss_aversion_analysis',
+          'personality_analysis'
+        ]);
+        console.log('✅ Behavioral analytics cache invalidated after import deletion');
+      } catch (cacheError) {
+        console.warn('⚠️ Failed to invalidate behavioral analytics cache:', cacheError.message);
       }
 
       logger.logImport(`Deleted ${deletedTrades.rows.length} trades from import ${importId}`);
