@@ -1,6 +1,7 @@
 const db = require('../config/database');
 const TierService = require('./tierService');
 const finnhub = require('../utils/finnhub');
+const AnalyticsCache = require('./analyticsCache');
 
 /**
  * Loss Aversion Analytics Service
@@ -1339,6 +1340,17 @@ class LossAversionAnalyticsService {
         throw new Error('Loss aversion analytics requires Pro tier');
       }
 
+      // Check cache first
+      const cacheKey = AnalyticsCache.generateKey('top_missed_trades', { limit });
+      const cachedData = await AnalyticsCache.get(userId, cacheKey);
+      
+      if (cachedData) {
+        console.log(`Returning cached top missed trades for user ${userId}`);
+        return cachedData;
+      }
+
+      console.log(`Cache miss - computing top missed trades for user ${userId}`);
+
       // Get all completed winning trades that could have been held longer
       const tradesQuery = `
         SELECT 
@@ -1370,13 +1382,17 @@ class LossAversionAnalyticsService {
       const trades = tradesResult.rows;
 
       if (trades.length === 0) {
-        return {
+        const result = {
           topMissedTrades: [],
           totalAnalyzed: 0,
           totalMissedProfit: 0,
           avgMissedOpportunityPercent: 0,
           message: 'No completed winning trades found for analysis'
         };
+        
+        // Cache empty result for shorter time (15 minutes)
+        await AnalyticsCache.set(userId, cacheKey, result, 15);
+        return result;
       }
 
       // Get latest metrics for fallback calculations
@@ -1513,7 +1529,7 @@ class LossAversionAnalyticsService {
 
       console.log(`Analyzed ${trades.length} trades, found ${analyzedTrades.length} with significant missed opportunities (${tradesWithPriceAnalysis} with real price data)`);
 
-      return {
+      const result = {
         topMissedTrades: topMissedTrades,
         totalAnalyzed: trades.length,
         totalEligibleTrades: analyzedTrades.length,
@@ -1522,6 +1538,11 @@ class LossAversionAnalyticsService {
         tradesWithRealPriceData: tradesWithPriceAnalysis,
         message: `Found ${topMissedTrades.length} trades with significant missed opportunities out of ${trades.length} analyzed`
       };
+
+      // Cache the result for 4 hours (since this is expensive to compute)
+      await AnalyticsCache.set(userId, cacheKey, result, 240);
+      
+      return result;
 
     } catch (error) {
       console.error('Error getting top missed trades:', error);

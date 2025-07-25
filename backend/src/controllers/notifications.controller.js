@@ -1,5 +1,6 @@
 const logger = require('../utils/logger');
 const db = require('../config/database');
+const { v4: uuidv4 } = require('uuid');
 
 // Store active SSE connections
 const sseConnections = new Map();
@@ -27,7 +28,8 @@ const notificationsController = {
         'Access-Control-Allow-Origin': req.headers.origin || '*',
         'Access-Control-Allow-Headers': 'Cache-Control',
         'Access-Control-Allow-Credentials': 'true',
-        'X-Accel-Buffering': 'no' // Disable proxy buffering
+        'X-Accel-Buffering': 'no', // Disable proxy buffering
+        'Transfer-Encoding': 'chunked'
       });
 
       // Send initial connection event
@@ -40,22 +42,23 @@ const notificationsController = {
       // Store connection
       sseConnections.set(userId, res);
       
-      // Send heartbeat every 30 seconds to keep connection alive
+      // Send heartbeat every 45 seconds to keep connection alive (longer interval)
       const heartbeatInterval = setInterval(() => {
-        if (sseConnections.has(userId)) {
+        if (sseConnections.has(userId) && !res.destroyed && !res.writableEnded) {
           try {
             res.write(`data: ${JSON.stringify({
               type: 'heartbeat',
               timestamp: new Date().toISOString()
             })}\n\n`);
           } catch (error) {
+            logger.logDebug(`Heartbeat error for user ${userId}:`, error);
             clearInterval(heartbeatInterval);
             sseConnections.delete(userId);
           }
         } else {
           clearInterval(heartbeatInterval);
         }
-      }, 30000);
+      }, 45000);
       
       console.log(`User ${userId} connected to notifications stream`);
 
@@ -100,6 +103,18 @@ const notificationsController = {
 
       req.on('error', (error) => {
         logger.logError(`SSE connection error for user ${userId}:`, error);
+        clearInterval(heartbeatInterval);
+        sseConnections.delete(userId);
+      });
+
+      res.on('close', () => {
+        clearInterval(heartbeatInterval);
+        sseConnections.delete(userId);
+        console.log(`User ${userId} response stream closed`);
+      });
+
+      res.on('error', (error) => {
+        logger.logError(`SSE response error for user ${userId}:`, error);
         clearInterval(heartbeatInterval);
         sseConnections.delete(userId);
       });
@@ -151,7 +166,7 @@ const notificationsController = {
     try {
       const connection = sseConnections.get(userId);
       
-      if (connection) {
+      if (connection && !connection.destroyed && !connection.writableEnded) {
         const eventData = {
           type: 'price_alert',
           data: notification,
@@ -277,6 +292,214 @@ const notificationsController = {
       });
     } catch (error) {
       logger.logError('Error sending test notification:', error);
+      next(error);
+    }
+  },
+
+  // MARK: - Mobile Push Notifications
+
+  // Register device token for push notifications
+  async registerDeviceToken(req, res, next) {
+    try {
+      const userId = req.user.id;
+      const { device_token, platform, environment } = req.body;
+      
+      if (!device_token || !platform) {
+        return res.status(400).json({
+          success: false,
+          error: 'Device token and platform are required'
+        });
+      }
+      
+      // Validate platform
+      if (!['ios', 'android'].includes(platform.toLowerCase())) {
+        return res.status(400).json({
+          success: false,
+          error: 'Platform must be ios or android'
+        });
+      }
+      
+      // Validate environment for iOS
+      if (platform.toLowerCase() === 'ios' && environment && !['development', 'production'].includes(environment.toLowerCase())) {
+        return res.status(400).json({
+          success: false,
+          error: 'Environment must be development or production for iOS'
+        });
+      }
+      
+      const query = `
+        INSERT INTO device_tokens (id, user_id, device_token, platform, environment, active)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        ON CONFLICT (user_id, device_token) DO UPDATE SET
+          platform = $4,
+          environment = $5,
+          active = $6,
+          updated_at = CURRENT_TIMESTAMP
+        RETURNING id, device_token, platform, environment, created_at
+      `;
+      
+      const tokenId = uuidv4();
+      const result = await db.query(query, [
+        tokenId, userId, device_token, platform.toLowerCase(), 
+        environment?.toLowerCase() || 'production', true
+      ]);
+      
+      logger.logInfo(`Device token registered for user ${userId}: ${platform} (${environment || 'production'})`);
+      
+      res.json({
+        success: true,
+        message: 'Device token registered successfully',
+        data: result.rows[0]
+      });
+    } catch (error) {
+      logger.logError('Error registering device token:', error);
+      next(error);
+    }
+  },
+
+  // Get user's notification preferences
+  async getNotificationPreferences(req, res, next) {
+    try {
+      const userId = req.user.id;
+      
+      const query = `
+        SELECT 
+          price_alerts_enabled,
+          earnings_enabled,
+          news_enabled,
+          email_notifications,
+          push_notifications,
+          created_at,
+          updated_at
+        FROM notification_preferences 
+        WHERE user_id = $1
+      `;
+      
+      const result = await db.query(query, [userId]);
+      
+      if (result.rows.length === 0) {
+        // Create default preferences if none exist
+        const defaultQuery = `
+          INSERT INTO notification_preferences (
+            id, user_id, price_alerts_enabled, earnings_enabled, 
+            news_enabled, email_notifications, push_notifications
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7)
+          RETURNING price_alerts_enabled, earnings_enabled, news_enabled,
+                   email_notifications, push_notifications, created_at, updated_at
+        `;
+        
+        const defaultResult = await db.query(defaultQuery, [
+          uuidv4(), userId, true, true, false, true, true
+        ]);
+        
+        res.json({
+          success: true,
+          preferences: defaultResult.rows[0]
+        });
+      } else {
+        res.json({
+          success: true,
+          preferences: result.rows[0]
+        });
+      }
+    } catch (error) {
+      logger.logError('Error fetching notification preferences:', error);
+      next(error);
+    }
+  },
+
+  // Update user's notification preferences
+  async updateNotificationPreferences(req, res, next) {
+    try {
+      const userId = req.user.id;
+      const { 
+        price_alerts_enabled, 
+        earnings_enabled, 
+        news_enabled,
+        email_notifications,
+        push_notifications
+      } = req.body;
+      
+      // Check if preferences exist
+      const existsQuery = 'SELECT id FROM notification_preferences WHERE user_id = $1';
+      const existsResult = await db.query(existsQuery, [userId]);
+      
+      let query, values;
+      
+      if (existsResult.rows.length === 0) {
+        // Create new preferences
+        query = `
+          INSERT INTO notification_preferences (
+            id, user_id, price_alerts_enabled, earnings_enabled, 
+            news_enabled, email_notifications, push_notifications
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7)
+          RETURNING price_alerts_enabled, earnings_enabled, news_enabled,
+                   email_notifications, push_notifications, updated_at
+        `;
+        values = [
+          uuidv4(), userId, 
+          price_alerts_enabled ?? true,
+          earnings_enabled ?? true,
+          news_enabled ?? false,
+          email_notifications ?? true,
+          push_notifications ?? true
+        ];
+      } else {
+        // Update existing preferences
+        const updates = [];
+        values = [];
+        let paramIndex = 1;
+        
+        if (price_alerts_enabled !== undefined) {
+          updates.push(`price_alerts_enabled = $${paramIndex++}`);
+          values.push(price_alerts_enabled);
+        }
+        if (earnings_enabled !== undefined) {
+          updates.push(`earnings_enabled = $${paramIndex++}`);
+          values.push(earnings_enabled);
+        }
+        if (news_enabled !== undefined) {
+          updates.push(`news_enabled = $${paramIndex++}`);
+          values.push(news_enabled);
+        }
+        if (email_notifications !== undefined) {
+          updates.push(`email_notifications = $${paramIndex++}`);
+          values.push(email_notifications);
+        }
+        if (push_notifications !== undefined) {
+          updates.push(`push_notifications = $${paramIndex++}`);
+          values.push(push_notifications);
+        }
+        
+        if (updates.length === 0) {
+          return res.status(400).json({
+            success: false,
+            error: 'No valid fields to update'
+          });
+        }
+        
+        values.push(userId);
+        
+        query = `
+          UPDATE notification_preferences 
+          SET ${updates.join(', ')}, updated_at = CURRENT_TIMESTAMP
+          WHERE user_id = $${paramIndex}
+          RETURNING price_alerts_enabled, earnings_enabled, news_enabled,
+                   email_notifications, push_notifications, updated_at
+        `;
+      }
+      
+      const result = await db.query(query, values);
+      
+      res.json({
+        success: true,
+        message: 'Notification preferences updated successfully',
+        preferences: result.rows[0]
+      });
+    } catch (error) {
+      logger.logError('Error updating notification preferences:', error);
       next(error);
     }
   }

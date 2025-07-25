@@ -168,7 +168,7 @@ export default {
   },
   setup() {
     const router = useRouter()
-    const { showSuccess, showError } = useNotification()
+    const { showSuccess, showError, showCriticalError, showConfirmation } = useNotification()
     const authStore = useAuthStore()
 
     const watchlists = ref([])
@@ -213,7 +213,7 @@ export default {
         watchlists.value = response.data.data
       } catch (error) {
         console.error('Error loading watchlists:', error)
-        showError('Error', 'Failed to load watchlists')
+        showCriticalError('Error', 'Failed to load watchlists')
       } finally {
         loading.value = false
       }
@@ -233,18 +233,20 @@ export default {
     }
 
     const deleteWatchlist = async (watchlist) => {
-      if (!confirm(`Are you sure you want to delete "${watchlist.name}"?`)) {
-        return
-      }
-
-      try {
-        await api.delete(`/watchlists/${watchlist.id}`)
-        await loadWatchlists()
-        showSuccess('Success', 'Watchlist deleted successfully')
-      } catch (error) {
-        console.error('Error deleting watchlist:', error)
-        showError('Error', 'Failed to delete watchlist')
-      }
+      showConfirmation(
+        'Delete Watchlist',
+        `Are you sure you want to delete "${watchlist.name}"? This action cannot be undone.`,
+        async () => {
+          try {
+            await api.delete(`/watchlists/${watchlist.id}`)
+            await loadWatchlists()
+            showSuccess('Success', 'Watchlist deleted successfully')
+          } catch (error) {
+            console.error('Error deleting watchlist:', error)
+            showCriticalError('Error', 'Failed to delete watchlist')
+          }
+        }
+      )
     }
 
     const saveWatchlist = async () => {
@@ -265,7 +267,7 @@ export default {
         await loadWatchlists()
       } catch (error) {
         console.error('Error saving watchlist:', error)
-        showError('Error', 'Failed to save watchlist')
+        showCriticalError('Error', 'Failed to save watchlist')
       } finally {
         saving.value = false
       }

@@ -18,4 +18,18 @@ router.get('/status', notificationsController.getConnectionStatus);
 // Test notification
 router.post('/test', notificationsController.sendTestNotification);
 
+// Mobile push notification routes (remove pro tier requirement for basic functionality)
+const mobileRouter = express.Router();
+mobileRouter.use(authenticate);
+
+// Device token management
+mobileRouter.post('/device-token', notificationsController.registerDeviceToken);
+
+// Notification preferences
+mobileRouter.get('/preferences', notificationsController.getNotificationPreferences);
+mobileRouter.put('/preferences', notificationsController.updateNotificationPreferences);
+
+// Mount mobile routes
+router.use('/', mobileRouter);
+
 module.exports = router;

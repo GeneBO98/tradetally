@@ -2,6 +2,7 @@ const db = require('../config/database');
 const TierService = require('./tierService');
 const aiService = require('../utils/aiService');
 const adminSettingsService = require('./adminSettings');
+const AnalyticsCache = require('./analyticsCache');
 
 class OverconfidenceAnalyticsService {
   
@@ -315,6 +316,21 @@ class OverconfidenceAnalyticsService {
     const limit = paginationOptions.limit || 20;
     const offset = (page - 1) * limit;
 
+    // Check cache first
+    const cacheKey = AnalyticsCache.generateKey('overconfidence_analysis', { 
+      ...dateFilter, 
+      page, 
+      limit 
+    });
+    const cachedData = await AnalyticsCache.get(userId, cacheKey);
+    
+    if (cachedData) {
+      console.log(`Returning cached overconfidence analysis for user ${userId}`);
+      return cachedData;
+    }
+
+    console.log(`Cache miss - computing overconfidence analysis for user ${userId}`);
+
     // Build base parameters for date filtering
     const baseParams = [userId];
     let paramCount = 1;
@@ -478,7 +494,7 @@ class OverconfidenceAnalyticsService {
     const successRate = totalEvents > 0 ? 
       (parseFloat(stats.streaks_ending_in_profit || 0) / totalEvents * 100) : 0;
 
-    return {
+    const result = {
       events: transformedEvents,
       statistics: {
         totalEvents: totalEvents,
@@ -510,6 +526,11 @@ class OverconfidenceAnalyticsService {
         hasPreviousPage: page > 1
       }
     };
+
+    // Cache the result for 2 hours
+    await AnalyticsCache.set(userId, cacheKey, result, 120);
+    
+    return result;
   }
 
   // Update or create user overconfidence settings

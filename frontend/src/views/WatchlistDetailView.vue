@@ -350,7 +350,7 @@ export default {
   setup() {
     const route = useRoute()
     const router = useRouter()
-    const { showSuccess, showError } = useNotification()
+    const { showSuccess, showError, showCriticalError, showConfirmation } = useNotification()
 
     const watchlist = ref(null)
     const loading = ref(true)
@@ -398,7 +398,7 @@ export default {
         }
       } catch (error) {
         console.error('Error loading watchlist:', error)
-        showError('Error', 'Failed to load watchlist')
+        showCriticalError('Error', 'Failed to load watchlist')
         router.push('/watchlists')
       } finally {
         loading.value = false
@@ -419,7 +419,7 @@ export default {
         watchlistNews.value = response.data.data || []
       } catch (error) {
         console.error('Error loading watchlist news:', error)
-        showError('Error', 'Failed to load news')
+        showCriticalError('Error', 'Failed to load news')
         watchlistNews.value = []
       } finally {
         loadingNews.value = false
@@ -439,7 +439,7 @@ export default {
         watchlistEarnings.value = response.data.data || []
       } catch (error) {
         console.error('Error loading watchlist earnings:', error)
-        showError('Error', 'Failed to load earnings')
+        showCriticalError('Error', 'Failed to load earnings')
         watchlistEarnings.value = []
       } finally {
         loadingEarnings.value = false
@@ -456,25 +456,27 @@ export default {
       } catch (error) {
         console.error('Error adding symbol:', error)
         const message = error.response?.data?.error || 'Failed to add symbol'
-        showError('Error', message)
+        showCriticalError('Error', message)
       } finally {
         adding.value = false
       }
     }
 
     const removeSymbol = async (item) => {
-      if (!confirm(`Remove ${item.symbol} from watchlist?`)) {
-        return
-      }
-
-      try {
-        await api.delete(`/watchlists/${route.params.id}/items/${item.id}`)
-        await loadWatchlist()
-        showSuccess('Success', 'Symbol removed from watchlist')
-      } catch (error) {
-        console.error('Error removing symbol:', error)
-        showError('Error', 'Failed to remove symbol')
-      }
+      showConfirmation(
+        'Remove Symbol',
+        `Are you sure you want to remove ${item.symbol} from this watchlist?`,
+        async () => {
+          try {
+            await api.delete(`/watchlists/${route.params.id}/items/${item.id}`)
+            await loadWatchlist()
+            showSuccess('Success', 'Symbol removed from watchlist')
+          } catch (error) {
+            console.error('Error removing symbol:', error)
+            showCriticalError('Error', 'Failed to remove symbol')
+          }
+        }
+      )
     }
 
     const editNotes = (item) => {
@@ -491,7 +493,7 @@ export default {
         cancelEditNotes()
       } catch (error) {
         console.error('Error updating notes:', error)
-        showError('Error', 'Failed to update notes')
+        showCriticalError('Error', 'Failed to update notes')
       } finally {
         updating.value = false
       }

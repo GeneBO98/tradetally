@@ -46,6 +46,7 @@
     </footer>
     
     <Notification />
+    <ModalAlert />
   </div>
 </template>
 
@@ -56,6 +57,7 @@ import { useAuthStore } from '@/stores/auth'
 import { usePriceAlertNotifications } from '@/composables/usePriceAlertNotifications'
 import NavBar from '@/components/layout/NavBar.vue'
 import Notification from '@/components/common/Notification.vue'
+import ModalAlert from '@/components/common/ModalAlert.vue'
 
 const route = useRoute()
 const authStore = useAuthStore()

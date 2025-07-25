@@ -2,6 +2,7 @@ const db = require('../config/database');
 const logger = require('../utils/logger');
 const finnhub = require('../utils/finnhub');
 const { v4: uuidv4 } = require('uuid');
+const notificationsController = require('./notifications.controller');
 
 const priceAlertsController = {
   // Get all price alerts for a user
@@ -72,6 +73,7 @@ const priceAlertsController = {
         browser_enabled = true,
         repeat_enabled = false
       } = req.body;
+      
       
       // Validation
       if (!symbol || !symbol.trim()) {
@@ -485,6 +487,187 @@ const priceAlertsController = {
     } catch (error) {
       logger.logError('Error sending test alert:', error);
       next(error);
+    }
+  },
+
+  // Check and trigger price alerts (called by background job)
+  async checkAndTriggerAlerts() {
+    try {
+      logger.logInfo('Starting price alert check...');
+      
+      // Get all active alerts with current prices
+      const alertsQuery = `
+        SELECT 
+          pa.id,
+          pa.user_id,
+          pa.symbol,
+          pa.alert_type,
+          pa.target_price,
+          pa.change_percent,
+          pa.current_price as alert_creation_price,
+          pa.email_enabled,
+          pa.browser_enabled,
+          pm.current_price,
+          pm.previous_price,
+          pm.percent_change,
+          u.email
+        FROM price_alerts pa
+        JOIN users u ON pa.user_id = u.id
+        LEFT JOIN price_monitoring pm ON pa.symbol = pm.symbol
+        WHERE pa.is_active = true 
+        AND pa.triggered_at IS NULL
+        AND pm.current_price IS NOT NULL
+      `;
+      
+      const alerts = await db.query(alertsQuery);
+      logger.logInfo(`Found ${alerts.rows.length} active alerts to check`);
+      
+      for (const alert of alerts.rows) {
+        const shouldTrigger = this.shouldTriggerAlert(alert);
+        
+        if (shouldTrigger) {
+          await this.triggerAlert(alert);
+        }
+      }
+      
+      logger.logInfo('Price alert check completed');
+    } catch (error) {
+      logger.logError('Error in price alert check:', error);
+    }
+  },
+
+  // Check if an alert should be triggered
+  shouldTriggerAlert(alert) {
+    const currentPrice = parseFloat(alert.current_price);
+    const targetPrice = parseFloat(alert.target_price);
+    const changePercent = parseFloat(alert.percent_change || 0);
+    const targetChangePercent = parseFloat(alert.change_percent || 0);
+    
+    switch (alert.alert_type) {
+      case 'above':
+        return currentPrice >= targetPrice;
+      case 'below':
+        return currentPrice <= targetPrice;
+      case 'change_percent':
+        return Math.abs(changePercent) >= Math.abs(targetChangePercent);
+      default:
+        return false;
+    }
+  },
+
+  // Trigger a specific alert
+  async triggerAlert(alert) {
+    try {
+      const currentPrice = parseFloat(alert.current_price);
+      const targetPrice = parseFloat(alert.target_price);
+      
+      // Mark alert as triggered
+      await db.query(
+        'UPDATE price_alerts SET triggered_at = CURRENT_TIMESTAMP WHERE id = $1',
+        [alert.id]
+      );
+      
+      // Create notification message
+      let message;
+      switch (alert.alert_type) {
+        case 'above':
+          message = `${alert.symbol} is now $${currentPrice.toFixed(2)} (above your target of $${targetPrice.toFixed(2)})`;
+          break;
+        case 'below':
+          message = `${alert.symbol} is now $${currentPrice.toFixed(2)} (below your target of $${targetPrice.toFixed(2)})`;
+          break;
+        case 'change_percent':
+          message = `${alert.symbol} has changed by ${alert.percent_change}% (threshold: ${alert.change_percent}%)`;
+          break;
+        default:
+          message = `Price alert triggered for ${alert.symbol}`;
+      }
+      
+      // Send push notification
+      await this.sendPushNotification(alert.user_id, {
+        title: 'Price Alert Triggered',
+        body: message,
+        symbol: alert.symbol,
+        currentPrice: currentPrice,
+        targetPrice: targetPrice,
+        alertType: alert.alert_type
+      });
+      
+      // Send browser notification (existing SSE functionality)
+      if (alert.browser_enabled) {
+        const notification = {
+          id: alert.id,
+          symbol: alert.symbol,
+          message: message,
+          alert_type: alert.alert_type,
+          target_price: targetPrice,
+          current_price: currentPrice,
+          triggered_at: new Date().toISOString()
+        };
+        
+        await notificationsController.sendNotificationToUser(alert.user_id, notification);
+      }
+      
+      // Log the notification
+      const notificationId = uuidv4();
+      await db.query(`
+        INSERT INTO alert_notifications (
+          id, price_alert_id, user_id, symbol, notification_type,
+          trigger_price, target_price, change_percent, message
+        )
+        VALUES ($1, $2, $3, $4, 'price_alert', $5, $6, $7, $8)
+      `, [
+        notificationId, alert.id, alert.user_id, alert.symbol,
+        currentPrice, targetPrice, alert.change_percent, message
+      ]);
+      
+      logger.logInfo(`Price alert triggered for user ${alert.user_id}: ${alert.symbol} at $${currentPrice}`);
+      
+    } catch (error) {
+      logger.logError(`Error triggering alert ${alert.id}:`, error);
+    }
+  },
+
+  // Send push notification to user's devices
+  async sendPushNotification(userId, notificationData) {
+    try {
+      // Get user's device tokens and notification preferences
+      const devicesQuery = `
+        SELECT dt.device_token, dt.platform, dt.environment
+        FROM device_tokens dt
+        JOIN notification_preferences np ON dt.user_id = np.user_id
+        WHERE dt.user_id = $1 
+        AND dt.active = true 
+        AND np.push_notifications = true 
+        AND np.price_alerts_enabled = true
+      `;
+      
+      const devices = await db.query(devicesQuery, [userId]);
+      
+      if (devices.rows.length === 0) {
+        logger.logDebug(`No active devices with push notifications enabled for user ${userId}`);
+        return;
+      }
+      
+      // For now, log the push notification details
+      // In a production environment, you would use Apple Push Notification service (APNs)
+      // or Firebase Cloud Messaging (FCM) to actually send the notifications
+      
+      logger.logInfo(`Would send push notification to ${devices.rows.length} devices for user ${userId}:`);
+      logger.logInfo(`Title: ${notificationData.title}`);
+      logger.logInfo(`Body: ${notificationData.body}`);
+      logger.logInfo(`Symbol: ${notificationData.symbol}`);
+      
+      devices.rows.forEach((device, index) => {
+        logger.logInfo(`Device ${index + 1}: ${device.platform} (${device.environment}) - ${device.device_token.substring(0, 10)}...`);
+      });
+      
+      // Here you would integrate with actual push notification services:
+      // - For iOS: Use node-apn or similar library with APNs
+      // - For Android: Use firebase-admin or similar library with FCM
+      
+    } catch (error) {
+      logger.logError(`Error sending push notification to user ${userId}:`, error);
     }
   }
 };
