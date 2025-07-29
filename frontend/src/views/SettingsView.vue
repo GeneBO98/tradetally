@@ -14,10 +14,10 @@
           <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-6">AI Provider Settings</h3>
           <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
             Configure which AI provider to use for analytics recommendations and CUSIP lookups.
-            <span v-if="authStore.user?.role === 'admin'" class="block mt-2 text-blue-600 dark:text-blue-400">
+            <span v-if="authStore.user?.role === 'admin'" class="block mt-2 text-blue-600 dark:text-blue-400 font-medium">
               Note: As an admin, you can also configure default settings for all users below.
             </span>
-            <span v-else class="block mt-2 text-blue-600 dark:text-blue-400">
+            <span v-else class="block mt-2 text-blue-600 dark:text-blue-400 font-medium">
               Note: If you leave these settings empty, admin-configured defaults will be used.
             </span>
           </p>
@@ -127,9 +127,9 @@
               <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
                 Choose whether to use averages or medians for calculations like Average P&L, Average Win, Average Loss, etc. 
                 Medians are less affected by outliers and may provide a more representative view of typical performance.
-                <strong class="block mt-2 text-blue-600 dark:text-blue-400">
+                <span class="block mt-2 text-blue-600 dark:text-blue-400 font-medium">
                   Note: Changes take effect immediately and will update labels throughout the application.
-                </strong>
+                </span>
               </p>
             </div>
 
@@ -241,6 +241,95 @@
         </div>
       </div>
 
+      <!-- Data Export & Import -->
+      <div class="card">
+        <div class="card-body">
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-6">Data Export & Import</h3>
+          <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
+            Export all your trading data, settings, and trading profile as a JSON file. You can also import previously exported data.
+          </p>
+
+          <div class="space-y-6">
+            <!-- Export Section -->
+            <div class="flex items-start space-x-4">
+              <div class="flex-1">
+                <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-3">Export Your Data</h4>
+                <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                  Download a complete backup of your TradeTally data including trades, settings, tags, and equity history.
+                </p>
+              </div>
+              <button
+                @click="exportUserData"
+                :disabled="exportLoading"
+                class="btn-primary flex-shrink-0"
+              >
+                <span v-if="exportLoading" class="flex items-center">
+                  <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Preparing Export...
+                </span>
+                <span v-else class="flex items-center">
+                  <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                  </svg>
+                  Export All Data
+                </span>
+              </button>
+            </div>
+
+            <!-- Import Section -->
+            <div class="flex items-start space-x-4">
+              <div class="flex-1">
+                <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-3">Import Data</h4>
+                <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                  Import previously exported TradeTally data. This will merge with your existing data without duplicating trades.
+                </p>
+              </div>
+              <div class="flex-shrink-0">
+                <input
+                  ref="fileInput"
+                  type="file"
+                  accept=".json,application/json"
+                  @change="handleFileSelect"
+                  class="hidden"
+                />
+                <button
+                  @click="$refs.fileInput.click()"
+                  class="btn-secondary"
+                >
+                  <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"></path>
+                  </svg>
+                  Choose File
+                </button>
+              </div>
+            </div>
+            
+            <!-- Selected File and Import Button -->
+            <div v-if="selectedFile" class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+              <span class="text-sm text-gray-600 dark:text-gray-400 truncate mr-4">
+                Selected: {{ selectedFile.name }}
+              </span>
+              <button
+                @click="importUserData"
+                :disabled="importLoading"
+                class="btn-primary flex-shrink-0"
+              >
+                <span v-if="importLoading" class="flex items-center">
+                  <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Importing...
+                </span>
+                <span v-else class="flex items-center">
+                  <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                  </svg>
+                  Import Data
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
 </template>
@@ -280,6 +369,11 @@ const adminAiForm = ref({
   model: ''
 })
 const adminAiLoading = ref(false)
+
+// Export/Import Settings
+const exportLoading = ref(false)
+const importLoading = ref(false)
+const selectedFile = ref(null)
 
 
 
@@ -488,6 +582,81 @@ function getAdminApiKeyHelp() {
   }
 }
 
+// Export/Import Functions
+async function exportUserData() {
+  exportLoading.value = true
+  try {
+    const response = await api.get('/settings/export', {
+      responseType: 'blob'
+    })
+    
+    // Create a download link
+    const blob = new Blob([response.data], { type: 'application/json' })
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    
+    // Generate filename with current date
+    const today = new Date().toISOString().split('T')[0]
+    link.download = `tradetally-export-${today}.json`
+    
+    // Trigger download
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+    
+    showSuccess('Export Complete', 'Your data has been exported successfully')
+  } catch (error) {
+    console.error('Export failed:', error)
+    showError('Export Failed', error.response?.data?.error || 'Failed to export user data')
+  } finally {
+    exportLoading.value = false
+  }
+}
+
+function handleFileSelect(event) {
+  const file = event.target.files[0]
+  if (file) {
+    selectedFile.value = file
+  }
+}
+
+async function importUserData() {
+  if (!selectedFile.value) {
+    showError('No File Selected', 'Please select a file to import')
+    return
+  }
+  
+  importLoading.value = true
+  try {
+    const formData = new FormData()
+    formData.append('file', selectedFile.value)
+    
+    const response = await api.post('/settings/import', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+    
+    const { tradesAdded, tagsAdded, equityAdded } = response.data
+    showSuccess(
+      'Import Complete', 
+      `Successfully imported ${tradesAdded} trades, ${tagsAdded} tags, and ${equityAdded} equity records`
+    )
+    
+    // Clear the selected file
+    selectedFile.value = null
+    // Reset the file input
+    const fileInput = document.querySelector('input[type="file"]')
+    if (fileInput) fileInput.value = ''
+  } catch (error) {
+    console.error('Import failed:', error)
+    showError('Import Failed', error.response?.data?.error || 'Failed to import user data')
+  } finally {
+    importLoading.value = false
+  }
+}
 
 onMounted(() => {
   loadAISettings()

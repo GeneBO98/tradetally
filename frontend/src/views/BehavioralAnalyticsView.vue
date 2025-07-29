@@ -1438,7 +1438,18 @@
               </div>
             </div>
 
-            <div v-if="topMissedTrades && topMissedTrades.topMissedTrades">
+            <div v-if="topMissedTrades && topMissedTrades.topMissedTrades" class="relative">
+              <!-- Loading Overlay -->
+              <div v-if="loadingTopMissedTrades" class="absolute inset-0 bg-white/80 dark:bg-gray-900/80 rounded-lg flex items-center justify-center z-10">
+                <div class="flex items-center space-x-2 text-gray-600 dark:text-gray-400">
+                  <svg class="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  <span class="text-sm font-medium">Updating analysis...</span>
+                </div>
+              </div>
+              
               <!-- Summary Stats -->
               <div class="bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-900/20 dark:to-red-900/20 rounded-lg p-4 mb-6">
                 <div class="grid grid-cols-1 md:grid-cols-4 gap-4 text-center">
@@ -1692,7 +1703,18 @@
               </button>
             </div>
 
-            <div v-if="overconfidenceData && overconfidenceData.analysis">
+            <div v-if="overconfidenceData && overconfidenceData.analysis" class="relative">
+              <!-- Loading Overlay -->
+              <div v-if="loadingOverconfidence" class="absolute inset-0 bg-white/80 dark:bg-gray-900/80 rounded-lg flex items-center justify-center z-10">
+                <div class="flex items-center space-x-2 text-gray-600 dark:text-gray-400">
+                  <svg class="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  <span class="text-sm font-medium">Updating analysis...</span>
+                </div>
+              </div>
+              
               <!-- Main Stats -->
               <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                 <div class="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-4">

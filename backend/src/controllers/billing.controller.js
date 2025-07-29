@@ -1,5 +1,6 @@
 const BillingService = require('../services/billingService');
 const TierService = require('../services/tierService');
+const User = require('../models/User');
 
 const billingController = {
   
@@ -27,12 +28,28 @@ const billingController = {
       const userId = req.user.id;
       const subscription = await BillingService.getSubscriptionDetails(userId);
       const userTier = await TierService.getUserTier(userId);
+      const tierOverride = await User.getTierOverride(userId);
+      
+      // Check if user has an active trial
+      let trial = null;
+      if (tierOverride && tierOverride.reason && tierOverride.reason.includes('trial')) {
+        const isActive = !tierOverride.expires_at || new Date(tierOverride.expires_at) > new Date();
+        trial = {
+          active: isActive,
+          expires_at: tierOverride.expires_at,
+          reason: tierOverride.reason,
+          days_remaining: tierOverride.expires_at ? 
+            Math.max(0, Math.ceil((new Date(tierOverride.expires_at) - new Date()) / (1000 * 60 * 60 * 24))) : 0
+        };
+      }
       
       res.json({
         success: true,
         data: {
           subscription,
-          tier: userTier
+          tier: userTier,
+          trial,
+          has_used_trial: !!tierOverride // User has used trial if any tier override exists
         }
       });
     } catch (error) {

@@ -415,6 +415,7 @@ const settingsController = {
           exitPrice: trade.exit_price,
           entryTime: trade.entry_time,
           exitTime: trade.exit_time,
+          tradeDate: trade.trade_date,
           pnl: trade.pnl,
           commission: trade.commission,
           fees: trade.fees,
@@ -445,78 +446,151 @@ const settingsController = {
 
   async importUserData(req, res, next) {
     try {
+      console.log('Import request received:', req.file ? 'File present' : 'No file');
       const userId = req.user.id;
       const file = req.file;
 
       if (!file) {
+        console.log('No file uploaded in request');
         return res.status(400).json({ error: 'No file uploaded' });
       }
+
+      console.log('File details:', { name: file.originalname, size: file.size, mimetype: file.mimetype });
 
       let importData;
       try {
         importData = JSON.parse(file.buffer.toString());
+        console.log('JSON parsed successfully, keys:', Object.keys(importData));
       } catch (error) {
+        console.error('JSON parse error:', error);
         return res.status(400).json({ error: 'Invalid JSON file' });
       }
 
       // Validate import data structure
       if (!importData.exportVersion || !importData.trades) {
+        console.log('Invalid export structure:', { 
+          hasVersion: !!importData.exportVersion, 
+          hasTrades: !!importData.trades,
+          keys: Object.keys(importData)
+        });
         return res.status(400).json({ error: 'Invalid TradeTally export file' });
       }
 
+      console.log('Starting database connection...');
       const client = await db.connect();
+      console.log('Database connection established');
+      
+      // Test basic database query
+      const testResult = await client.query('SELECT NOW() as current_time');
+      console.log('Database test query successful:', testResult.rows[0]);
       let tradesAdded = 0;
+      let tradesSkipped = 0;
       let tagsAdded = 0;
 
       try {
+        console.log('Starting database transaction...');
         await client.query('BEGIN');
+        console.log('Transaction started successfully');
 
         // Import tags first
         if (importData.tags && importData.tags.length > 0) {
+          console.log(`Processing ${importData.tags.length} tags...`);
           for (const tag of importData.tags) {
-            // Check if tag already exists
-            const existingTag = await client.query(
-              `SELECT id FROM tags WHERE user_id = $1 AND name = $2`,
-              [userId, tag.name]
-            );
-
-            if (existingTag.rows.length === 0) {
-              await client.query(
-                `INSERT INTO tags (user_id, name, color) VALUES ($1, $2, $3)`,
-                [userId, tag.name, tag.color]
+            try {
+              // Check if tag already exists
+              const existingTag = await client.query(
+                `SELECT id FROM tags WHERE user_id = $1 AND name = $2`,
+                [userId, tag.name]
               );
-              tagsAdded++;
+
+              if (existingTag.rows.length === 0) {
+                await client.query(
+                  `INSERT INTO tags (user_id, name, color) VALUES ($1, $2, $3)`,
+                  [userId, tag.name, tag.color]
+                );
+                tagsAdded++;
+                console.log(`Tag added: ${tag.name}`);
+              } else {
+                console.log(`Tag skipped (exists): ${tag.name}`);
+              }
+            } catch (tagError) {
+              console.error('Error processing tag:', tag, tagError);
+              throw tagError;
             }
           }
+        } else {
+          console.log('No tags to import');
         }
 
         // Import trades
         if (importData.trades && importData.trades.length > 0) {
-          for (const trade of importData.trades) {
-            // Check if trade already exists (by symbol, entry_time, and quantity)
-            const existingTrade = await client.query(
-              `SELECT id FROM trades WHERE user_id = $1 AND symbol = $2 AND entry_time = $3 AND quantity = $4`,
-              [userId, trade.symbol, trade.entryTime, trade.quantity]
-            );
-
-            if (existingTrade.rows.length === 0) {
-              await client.query(
-                `INSERT INTO trades (
-                  user_id, symbol, side, quantity, entry_price, exit_price, 
-                  entry_time, exit_time, pnl, commission, fees, notes, tags, 
-                  is_public, strategy, created_at
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
-                [
-                  userId, trade.symbol, trade.side, trade.quantity, trade.entryPrice,
-                  trade.exitPrice, trade.entryTime, trade.exitTime, trade.pnl,
-                  trade.commission, trade.fees, trade.notes, trade.tags,
-                  trade.isPublic || false, trade.strategy, trade.createdAt || new Date()
-                ]
+          console.log(`Processing ${importData.trades.length} trades...`);
+          
+          // First, let's see how many existing trades this user has
+          const existingTradesCount = await client.query(
+            `SELECT COUNT(*) as count FROM trades WHERE user_id = $1`,
+            [userId]
+          );
+          console.log(`User currently has ${existingTradesCount.rows[0].count} trades in database`);
+          for (let i = 0; i < importData.trades.length; i++) {
+            const trade = importData.trades[i];
+            try {
+              console.log(`Processing trade ${i + 1}/${importData.trades.length}: ${trade.symbol} - ${trade.side} ${trade.quantity} @ ${trade.entryTime}`);
+              
+              // Check if trade already exists using a more lenient approach
+              // Use created_at as a unique identifier since it's generated during export
+              const existingTrade = await client.query(
+                `SELECT id FROM trades 
+                 WHERE user_id = $1 
+                 AND symbol = $2 
+                 AND side = $3 
+                 AND quantity = $4 
+                 AND entry_price = $5
+                 AND created_at = $6`,
+                [userId, trade.symbol, trade.side, trade.quantity, trade.entryPrice, trade.createdAt]
               );
-              tradesAdded++;
+              
+              console.log(`Duplicate check for ${trade.symbol}: found ${existingTrade.rows.length} matches`);
+
+              if (existingTrade.rows.length === 0) {
+                console.log('Inserting new trade:', {
+                  symbol: trade.symbol,
+                  side: trade.side,
+                  quantity: trade.quantity,
+                  entryPrice: trade.entryPrice,
+                  entryTime: trade.entryTime
+                });
+                
+                await client.query(
+                  `INSERT INTO trades (
+                    user_id, symbol, side, quantity, entry_price, exit_price, 
+                    entry_time, exit_time, trade_date, pnl, commission, fees, notes, tags, 
+                    is_public, strategy, created_at
+                  ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
+                  [
+                    userId, trade.symbol, trade.side, trade.quantity, trade.entryPrice,
+                    trade.exitPrice, trade.entryTime, trade.exitTime, 
+                    trade.tradeDate || trade.entryTime, // Use tradeDate if available, fallback to entryTime
+                    trade.pnl, trade.commission, trade.fees, trade.notes, trade.tags,
+                    trade.isPublic || false, trade.strategy, trade.createdAt || new Date()
+                  ]
+                );
+                tradesAdded++;
+                console.log(`Trade added successfully: ${trade.symbol}`);
+              } else {
+                tradesSkipped++;
+                console.log(`Trade skipped (exists): ${trade.symbol} - ${trade.side} ${trade.quantity} @ ${trade.entryTime}`);
+              }
+            } catch (tradeError) {
+              console.error('Error processing trade:', trade, tradeError);
+              throw tradeError;
             }
           }
+        } else {
+          console.log('No trades to import');
         }
+
+        console.log(`Import summary: ${tradesAdded} trades added, ${tradesSkipped} trades skipped`);
 
         // Merge settings and trading profile (don't overwrite existing settings completely)
         const existingSettings = await client.query(
@@ -653,7 +727,8 @@ const settingsController = {
           tradesAdded,
           tagsAdded,
           equityAdded,
-          message: `Successfully imported ${tradesAdded} trades, ${tagsAdded} tags, and ${equityAdded} equity records`
+          tradesSkipped: tradesSkipped,
+          message: `Successfully imported ${tradesAdded} trades, ${tagsAdded} tags, and ${equityAdded} equity records. ${tradesSkipped} trades were skipped as duplicates.`
         });
       } catch (error) {
         await client.query('ROLLBACK');
@@ -662,7 +737,9 @@ const settingsController = {
         client.release();
       }
     } catch (error) {
-      next(error);
+      console.error('Import error:', error);
+      console.error('Stack trace:', error.stack);
+      res.status(500).json({ error: 'Import failed', message: error.message });
     }
   },
 

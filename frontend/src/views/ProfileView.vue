@@ -202,15 +202,52 @@
           
           <!-- No Subscription -->
           <div v-else class="space-y-4">
-            <div class="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
-              <h4 class="text-sm font-medium text-gray-900 dark:text-white">Free Plan</h4>
+            <!-- Active Trial -->
+            <div v-if="subscription.trial && subscription.trial.active" class="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4">
+              <div class="flex items-center justify-between">
+                <div>
+                  <h4 class="text-sm font-medium text-blue-900 dark:text-blue-100">Pro Trial Active</h4>
+                  <p class="text-sm text-blue-700 dark:text-blue-300 mt-1">
+                    {{ subscription.trial.days_remaining }} days remaining in your free trial
+                  </p>
+                </div>
+                <span class="px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-800 dark:text-blue-100">
+                  TRIAL
+                </span>
+              </div>
+              <div class="mt-3 text-xs text-blue-600 dark:text-blue-400">
+                Trial expires: {{ formatDate(subscription.trial.expires_at) }}
+              </div>
+            </div>
+            
+            <!-- Free Plan -->
+            <div v-else class="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
+              <h4 class="text-sm font-medium text-gray-900 dark:text-white">
+                {{ subscription.tier === 'pro' ? 'Pro Plan' : 'Free Plan' }}
+              </h4>
               <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                You're currently on the free plan. Upgrade to Pro for advanced features.
+                <span v-if="subscription.tier === 'pro'">
+                  You have Pro access through a tier override.
+                </span>
+                <span v-else-if="subscription.has_used_trial">
+                  You've used your free trial. Upgrade to Pro for continued access to advanced features.
+                </span>
+                <span v-else>
+                  You're currently on the free plan. Start a free trial or upgrade to Pro for advanced features.
+                </span>
               </p>
             </div>
             
             <router-link to="/pricing" class="btn-primary block text-center">
-              Upgrade to Pro
+              <span v-if="subscription.trial && subscription.trial.active">
+                Upgrade Before Trial Ends
+              </span>
+              <span v-else-if="subscription.has_used_trial">
+                Upgrade to Pro
+              </span>
+              <span v-else>
+                Start Free Trial or Upgrade
+              </span>
             </router-link>
           </div>
         </div>

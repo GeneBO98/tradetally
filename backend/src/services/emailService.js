@@ -269,6 +269,94 @@ class EmailService {
       throw error;
     }
   }
+
+  static async sendTrialExpirationEmail(email, username, daysRemaining = 0) {
+    if (!this.isConfigured()) {
+      console.log('Email not configured, skipping trial expiration email');
+      return;
+    }
+
+    const isExpired = daysRemaining <= 0;
+    const pricingUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/pricing`;
+    
+    const content = `
+      <div style="text-align: center; margin-bottom: 30px;">
+        <h1 style="color: #1e293b; font-size: 28px; margin: 0 0 16px 0; font-weight: 700;">
+          ${isExpired ? 'Your Free Trial Has Ended' : `${daysRemaining} Day${daysRemaining === 1 ? '' : 's'} Left in Your Trial`} 🚀
+        </h1>
+        <p style="color: #64748b; font-size: 16px; line-height: 1.6; margin: 0;">
+          ${isExpired ? 'Continue your trading analytics journey' : 'Don\'t miss out on Pro features'}
+        </p>
+      </div>
+      
+      <div style="background-color: #f8fafc; padding: 30px; border-radius: 12px; border-left: 4px solid #667eea; margin: 30px 0;">
+        <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
+          Hi ${username},
+        </p>
+        
+        <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
+          ${isExpired 
+            ? 'Your 14-day Pro trial has come to an end. We hope you enjoyed exploring our advanced trading analytics features!'
+            : `Your Pro trial will expire in ${daysRemaining} day${daysRemaining === 1 ? '' : 's'}. Don't lose access to your favorite features!`
+          }
+        </p>
+        
+        <div style="background-color: #e0f2fe; padding: 20px; border-radius: 8px; margin: 20px 0;">
+          <h3 style="color: #0277bd; font-size: 18px; margin: 0 0 12px 0; font-weight: 600;">
+            Pro Features You've Been Using:
+          </h3>
+          <ul style="color: #01579b; font-size: 14px; line-height: 1.6; margin: 0; padding-left: 20px;">
+            <li>Advanced behavioral analytics (revenge trading, overconfidence detection)</li>
+            <li>Price alerts and watchlists</li>
+            <li>Real-time notifications</li>
+            <li>Enhanced charts and news enrichment</li>
+            <li>Unlimited data export</li>
+          </ul>
+        </div>
+        
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${pricingUrl}" style="${this.getButtonStyle()}">
+            ${isExpired ? 'Subscribe to Pro' : 'Upgrade Before Trial Ends'}
+          </a>
+        </div>
+        
+        <p style="color: #64748b; font-size: 14px; margin: 20px 0 0 0; text-align: center;">
+          Questions? Reply to this email or contact our support team.
+        </p>
+      </div>
+      
+      ${!isExpired ? `
+      <div style="background-color: #fff3cd; padding: 20px; border-radius: 8px; border-left: 4px solid #f59e0b; margin: 25px 0;">
+        <p style="color: #92400e; font-size: 14px; margin: 0; font-weight: 500;">
+          ⏰ Your trial expires in ${daysRemaining} day${daysRemaining === 1 ? '' : 's'}. After that, you'll lose access to Pro features.
+        </p>
+      </div>
+      ` : ''}
+      
+      <p style="color: #64748b; font-size: 14px; line-height: 1.5; margin: 25px 0 0 0;">
+        Thank you for trying TradeTally Pro. We're here to help you make better trading decisions! 📈
+      </p>
+    `;
+
+    const mailOptions = {
+      from: process.env.EMAIL_FROM || 'noreply@tradetally.io',
+      to: email,
+      subject: `${isExpired ? '🚀 Your TradeTally Trial Ended' : `⏰ ${daysRemaining} Day${daysRemaining === 1 ? '' : 's'} Left`} - TradeTally Pro`,
+      html: this.getBaseTemplate(
+        `${isExpired ? 'Trial Ended' : 'Trial Expiring'} - TradeTally`,
+        content
+      )
+    };
+
+    try {
+      const transporter = this.createTransporter();
+      await transporter.sendMail(mailOptions);
+      console.log(`Trial ${isExpired ? 'expiration' : 'reminder'} email sent successfully to ${email}`);
+    } catch (error) {
+      console.error(`Error sending trial ${isExpired ? 'expiration' : 'reminder'} email:`, error);
+      throw error;
+    }
+  }
 }
 
 module.exports = EmailService;
