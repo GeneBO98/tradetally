@@ -925,19 +925,22 @@ class AchievementService {
     return false;
   }
   
-  // Check first stop loss
+  // Check first stop loss - trades table doesn't have stop_loss column
   static async checkFirstStopLoss(userId) {
+    // Since stop_loss column doesn't exist, we'll check for losing trades that were closed early
+    // This could indicate risk management behavior
     const query = `
-      SELECT COUNT(*) as stop_loss_count
+      SELECT COUNT(*) as managed_loss_count
       FROM trades
       WHERE user_id = $1
-        AND stop_loss IS NOT NULL
-        AND stop_loss > 0
+        AND pnl < 0
+        AND exit_time IS NOT NULL
+        AND notes ILIKE '%stop%'
     `;
     
     const result = await db.query(query, [userId]);
     
-    if (parseInt(result.rows[0].stop_loss_count) >= 1) {
+    if (parseInt(result.rows[0].managed_loss_count) >= 1) {
       return {
         earned: true,
         metadata: {
@@ -949,14 +952,17 @@ class AchievementService {
     return false;
   }
   
-  // Check first take profit
+  // Check first take profit - trades table doesn't have take_profit column
   static async checkFirstTakeProfit(userId) {
+    // Since take_profit column doesn't exist, we'll check for profitable trades
+    // that mention profit-taking in notes
     const query = `
       SELECT COUNT(*) as take_profit_count
       FROM trades
       WHERE user_id = $1
-        AND take_profit IS NOT NULL
-        AND take_profit > 0
+        AND pnl > 0
+        AND exit_time IS NOT NULL
+        AND (notes ILIKE '%profit%' OR notes ILIKE '%target%')
     `;
     
     const result = await db.query(query, [userId]);
@@ -1121,8 +1127,6 @@ class AchievementService {
       FROM trades
       WHERE user_id = $1
         AND DATE(entry_time) = $2
-      ORDER BY entry_time ASC
-      LIMIT 1
     `;
     
     const result = await db.query(query, [userId, today]);

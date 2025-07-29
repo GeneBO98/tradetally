@@ -96,18 +96,12 @@
               </ul>
 
               <div class="mt-8">
-                <div 
-                  v-if="!currentSubscription"
-                  class="text-center py-3 px-4 bg-gray-100 dark:bg-gray-700 rounded-lg"
+                <button 
+                  disabled
+                  class="w-full btn btn-disabled bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 cursor-not-allowed"
                 >
-                  <span class="text-gray-600 dark:text-gray-400 font-medium">Current Plan</span>
-                </div>
-                <div 
-                  v-else
-                  class="text-center py-3 px-4 bg-gray-100 dark:bg-gray-700 rounded-lg"
-                >
-                  <span class="text-gray-600 dark:text-gray-400 font-medium">Already on Pro</span>
-                </div>
+                  {{ !currentSubscription ? 'Current Plan' : 'Already on Pro' }}
+                </button>
               </div>
             </div>
           </div>
@@ -162,19 +156,20 @@
                 <button 
                   v-if="!currentSubscription"
                   @click="startTrial()"
-                  :disabled="subscribing"
+                  :disabled="subscribing || hasUsedTrial || (trialInfo && trialInfo.active)"
                   :class="getTrialButtonClass()"
                   class="w-full"
                 >
                   <span v-if="subscribing" class="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></span>
                   {{ getTrialButtonText() }}
                 </button>
-                <div 
+                <button 
                   v-else
-                  class="text-center py-3 px-4 bg-gray-100 dark:bg-gray-700 rounded-lg"
+                  disabled
+                  class="w-full btn btn-disabled bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 cursor-not-allowed"
                 >
-                  <span class="text-gray-600 dark:text-gray-400 font-medium">Already on Pro</span>
-                </div>
+                  Already on Pro
+                </button>
               </div>
             </div>
           </div>
@@ -249,12 +244,13 @@
                   <span v-if="subscribing" class="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></span>
                   {{ getSubscribeButtonText('pro') }}
                 </button>
-                <div 
+                <button 
                   v-else
-                  class="text-center py-3 px-4 bg-gray-100 dark:bg-gray-700 rounded-lg"
+                  disabled
+                  class="w-full btn btn-disabled bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 cursor-not-allowed"
                 >
-                  <span class="text-gray-600 dark:text-gray-400 font-medium">Current Plan</span>
-                </div>
+                  Current Plan
+                </button>
               </div>
             </div>
           </div>
@@ -327,6 +323,8 @@ export default {
     })
     const pricingPlans = ref([])
     const currentSubscription = ref(null)
+    const trialInfo = ref(null)
+    const hasUsedTrial = ref(false)
     const redirectUrl = ref(route.query.redirect || null)
 
     const loadBillingStatus = async () => {
@@ -363,6 +361,8 @@ export default {
       try {
         const response = await api.get('/billing/subscription')
         currentSubscription.value = response.data.data.subscription
+        trialInfo.value = response.data.data.trial
+        hasUsedTrial.value = response.data.data.has_used_trial
       } catch (error) {
         console.error('Error loading current subscription:', error)
       } finally {
@@ -453,12 +453,19 @@ export default {
     }
 
     const getTrialButtonClass = () => {
-      // Check if user already has trial or subscription
+      if (hasUsedTrial.value || (trialInfo.value && trialInfo.value.active)) {
+        return 'btn btn-disabled bg-gray-300 dark:bg-gray-600 text-gray-500 cursor-not-allowed'
+      }
       return 'btn btn-primary'
     }
 
     const getTrialButtonText = () => {
-      // You can add logic here to check if trial is already used
+      if (trialInfo.value && trialInfo.value.active) {
+        return `Active Trial (${trialInfo.value.days_remaining} days left)`
+      }
+      if (hasUsedTrial.value) {
+        return 'Trial Used'
+      }
       return 'Start Free Trial'
     }
 
@@ -488,6 +495,8 @@ export default {
       billingStatus,
       pricingPlans,
       currentSubscription,
+      trialInfo,
+      hasUsedTrial,
       subscribe,
       startTrial,
       getSubscribeButtonClass,

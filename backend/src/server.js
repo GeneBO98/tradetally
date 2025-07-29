@@ -27,7 +27,9 @@ const gamificationRoutes = require('./routes/gamification.routes');
 const BillingService = require('./services/billingService');
 const priceMonitoringService = require('./services/priceMonitoringService');
 const GamificationScheduler = require('./services/gamificationScheduler');
+const TrialScheduler = require('./services/trialScheduler');
 const backgroundWorker = require('./workers/backgroundWorker');
+const jobRecoveryService = require('./services/jobRecoveryService');
 const pushNotificationService = require('./services/pushNotificationService');
 const errorHandler = require('./middleware/errorHandler');
 
@@ -130,9 +132,80 @@ app.use('/api/gamification', gamificationRoutes);
 // Well-known endpoints for mobile discovery
 app.use('/.well-known', wellKnownRoutes);
 
-// Legacy health endpoint
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK', timestamp: new Date().toISOString() });
+// Health endpoint with background worker status
+app.get('/api/health', async (req, res) => {
+  const health = {
+    status: 'OK',
+    timestamp: new Date().toISOString(),
+    services: {
+      database: 'OK',
+      backgroundWorker: backgroundWorker.getStatus(),
+      jobRecovery: jobRecoveryService.getStatus()
+    }
+  };
+  
+  // Check database connection
+  try {
+    await require('./config/database').query('SELECT 1');
+  } catch (error) {
+    health.services.database = 'ERROR';
+    health.status = 'DEGRADED';
+  }
+  
+  // Check if background worker is running (critical for PRO features)
+  if (!health.services.backgroundWorker.isRunning || !health.services.backgroundWorker.queueProcessing) {
+    health.status = 'DEGRADED';
+    health.services.backgroundWorker.status = 'ERROR';
+  } else {
+    health.services.backgroundWorker.status = 'OK';
+  }
+
+  // Check if job recovery is running
+  if (!health.services.jobRecovery.isRunning) {
+    health.status = 'DEGRADED';
+    health.services.jobRecovery.status = 'ERROR';
+  } else {
+    health.services.jobRecovery.status = 'OK';
+  }
+  
+  res.json(health);
+});
+
+// Admin endpoint to check enrichment status
+app.get('/api/admin/enrichment-status', async (req, res) => {
+  try {
+    const db = require('./config/database');
+    
+    // Get job queue status
+    const jobs = await db.query('SELECT type, status, COUNT(*) as count FROM job_queue GROUP BY type, status ORDER BY type, status');
+    
+    // Get trade enrichment status
+    const trades = await db.query('SELECT enrichment_status, COUNT(*) as count FROM trades GROUP BY enrichment_status ORDER BY enrichment_status');
+    
+    res.json({
+      backgroundWorker: backgroundWorker.getStatus(),
+      jobRecovery: jobRecoveryService.getStatus(),
+      jobQueue: jobs.rows,
+      tradeEnrichment: trades.rows,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Admin endpoint to trigger manual recovery
+app.post('/api/admin/trigger-recovery', async (req, res) => {
+  try {
+    await jobRecoveryService.triggerRecovery();
+    res.json({ 
+      success: true, 
+      message: 'Recovery triggered successfully',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 app.use(errorHandler);
@@ -173,6 +246,14 @@ async function startServer() {
       console.log('Gamification disabled (ENABLE_GAMIFICATION=false)');
     }
     
+    // Start trial scheduler (for trial expiration emails)
+    if (process.env.ENABLE_TRIAL_EMAILS !== 'false') {
+      console.log('Starting trial scheduler...');
+      TrialScheduler.startScheduler();
+    } else {
+      console.log('Trial emails disabled (ENABLE_TRIAL_EMAILS=false)');
+    }
+    
     // Initialize push notification service
     if (process.env.ENABLE_PUSH_NOTIFICATIONS === 'true') {
       console.log('✓ Push notification service loaded');
@@ -180,12 +261,47 @@ async function startServer() {
       console.log('Push notifications disabled (ENABLE_PUSH_NOTIFICATIONS=false)');
     }
 
-    // Start background worker for trade enrichment
-    try {
-      await backgroundWorker.start();
-      console.log('✓ Background worker started for trade enrichment');
-    } catch (error) {
-      console.warn('⚠️ Failed to start background worker:', error.message);
+    // Start background worker for trade enrichment - CRITICAL for PRO tier
+    if (process.env.ENABLE_TRADE_ENRICHMENT !== 'false') {
+      console.log('Starting background worker for trade enrichment...');
+      let attempts = 0;
+      const maxAttempts = 3;
+      
+      while (attempts < maxAttempts) {
+        try {
+          await backgroundWorker.start();
+          console.log('✓ Background worker started for trade enrichment');
+          break;
+        } catch (error) {
+          attempts++;
+          console.error(`❌ Failed to start background worker (attempt ${attempts}/${maxAttempts}):`, error.message);
+          
+          if (attempts >= maxAttempts) {
+            console.error('🚨 CRITICAL: Background worker failed to start after multiple attempts');
+            console.error('🚨 This will affect PRO tier trade enrichment features');
+            
+            // In production, we should fail fast for critical services
+            if (process.env.NODE_ENV === 'production') {
+              console.error('🚨 Exiting due to critical service failure in production');
+              process.exit(1);
+            }
+          } else {
+            // Wait 2 seconds before retry
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
+        }
+      }
+    } else {
+      console.log('Trade enrichment disabled (ENABLE_TRADE_ENRICHMENT=false)');
+    }
+
+    // Start automatic job recovery service - CRITICAL for PRO tier reliability
+    if (process.env.ENABLE_JOB_RECOVERY !== 'false') {
+      console.log('Starting automatic job recovery service...');
+      jobRecoveryService.start();
+      console.log('✓ Job recovery service started (prevents stuck enrichment jobs)');
+    } else {
+      console.log('Job recovery disabled (ENABLE_JOB_RECOVERY=false)');
     }
     
     // Start the server
@@ -203,6 +319,7 @@ async function startServer() {
 process.on('SIGTERM', async () => {
   console.log('SIGTERM received, shutting down gracefully...');
   await priceMonitoringService.stop();
+  jobRecoveryService.stop();
   await backgroundWorker.stop();
   process.exit(0);
 });
@@ -210,6 +327,7 @@ process.on('SIGTERM', async () => {
 process.on('SIGINT', async () => {
   console.log('SIGINT received, shutting down gracefully...');
   await priceMonitoringService.stop();
+  jobRecoveryService.stop();
   await backgroundWorker.stop();
   process.exit(0);
 });

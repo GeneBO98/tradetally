@@ -82,6 +82,31 @@ class JobQueue {
    * Get next job to process
    */
   async getNextJob() {
+    logger.logImport('🔍 Querying for pending jobs...');
+    
+    // First, let's see what jobs are available
+    const checkQuery = `
+      SELECT id, type, status, priority, created_at, started_at
+      FROM job_queue 
+      WHERE status = 'pending' 
+      ORDER BY priority ASC, created_at ASC 
+      LIMIT 5
+    `;
+    
+    try {
+      const checkResult = await db.query(checkQuery);
+      logger.logImport(`📋 Found ${checkResult.rows.length} pending jobs`);
+      
+      if (checkResult.rows.length > 0) {
+        logger.logImport('Next pending jobs:', checkResult.rows);
+      } else {
+        logger.logImport('📭 No pending jobs found');
+        return null;
+      }
+    } catch (error) {
+      logger.logError(`Failed to check pending jobs: ${error.message}`);
+    }
+
     const query = `
       UPDATE job_queue 
       SET status = 'processing', started_at = CURRENT_TIMESTAMP
@@ -96,10 +121,19 @@ class JobQueue {
     `;
 
     try {
+      logger.logImport('🔄 Attempting to claim next job...');
       const result = await db.query(query);
+      
+      if (result.rows[0]) {
+        logger.logImport(`✅ Claimed job ${result.rows[0].id} of type ${result.rows[0].type}`);
+      } else {
+        logger.logImport('❌ Failed to claim any job (may be locked by another process)');
+      }
+      
       return result.rows[0] || null;
     } catch (error) {
-      logger.logError(`Failed to get next job: ${error.message}`);
+      logger.logError(`❌ Failed to get next job: ${error.message}`);
+      logger.logError(`Stack trace: ${error.stack}`);
       return null;
     }
   }
@@ -171,19 +205,29 @@ class JobQueue {
    * Start processing jobs
    */
   startProcessing() {
-    if (this.isProcessing) return;
+    if (this.isProcessing) {
+      logger.logImport('Job queue processing already started');
+      return;
+    }
 
     this.isProcessing = true;
-    logger.logImport('Starting job queue processing');
+    logger.logImport('🚀 Starting job queue processing');
 
     // Process jobs every 5 seconds
     this.processingInterval = setInterval(async () => {
       try {
-        await this.processNextJob();
+        logger.logImport('🔍 Checking for next job to process...');
+        const processed = await this.processNextJob();
+        if (!processed) {
+          logger.logImport('📭 No jobs found to process');
+        }
       } catch (error) {
-        logger.logError(`Error in job processing: ${error.message}`);
+        logger.logError(`❌ Error in job processing: ${error.message}`);
+        logger.logError(`Stack trace: ${error.stack}`);
       }
     }, 5000);
+    
+    logger.logImport('✅ Job queue processing interval started (every 5 seconds)');
   }
 
   /**
@@ -202,10 +246,14 @@ class JobQueue {
    * Process the next job in queue
    */
   async processNextJob() {
+    logger.logImport('🔍 Getting next job from queue...');
     const job = await this.getNextJob();
-    if (!job) return;
+    if (!job) {
+      return false; // No job found
+    }
 
-    logger.logImport(`Processing job ${job.id} of type ${job.type}`);
+    logger.logImport(`🚀 Processing job ${job.id} of type ${job.type}`);
+    logger.logImport(`Job data: ${JSON.stringify(job.data)}`);
 
     try {
       let data;
@@ -246,9 +294,13 @@ class JobQueue {
       }
 
       await this.completeJob(job.id, result);
+      logger.logImport(`✅ Job ${job.id} completed successfully`);
+      return true; // Job was processed
     } catch (error) {
-      logger.logError(`Job ${job.id} failed: ${error.message}`);
+      logger.logError(`❌ Job ${job.id} failed: ${error.message}`);
+      logger.logError(`Stack trace: ${error.stack}`);
       await this.failJob(job.id, error.message);
+      return true; // Job was processed (but failed)
     }
   }
 
