@@ -63,6 +63,7 @@
             </button>
 
             <div v-if="authStore.isAuthenticated" class="flex items-center space-x-3">
+              <NotificationBell />
               <a v-if="config.showDonationButton"
                 href="https://www.paypal.com/donate/?business=EHMBRET4CNELL&no_recurring=0&currency_code=USD"
                 target="_blank"
@@ -245,6 +246,7 @@ import { useRegistrationMode } from '@/composables/useRegistrationMode'
 import { SunIcon, MoonIcon, Bars3Icon, XMarkIcon } from '@heroicons/vue/24/outline'
 import config from '@/config'
 import NavDropdown from '@/components/common/NavDropdown.vue'
+import NotificationBell from '@/components/common/NotificationBell.vue'
 
 const authStore = useAuthStore()
 const { showSEOPages } = useRegistrationMode()

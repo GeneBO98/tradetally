@@ -168,13 +168,13 @@ const notificationsController = {
       
       if (connection && !connection.destroyed && !connection.writableEnded) {
         const eventData = {
-          type: 'price_alert',
+          type: notification.type || 'notification',
           data: notification,
           timestamp: new Date().toISOString()
         };
 
         connection.write(`data: ${JSON.stringify(eventData)}\n\n`);
-        logger.logDebug(`Sent real-time notification to user ${userId}`);
+        logger.logDebug(`Sent real-time notification to user ${userId}:`, notification.type);
         return true;
       }
       
@@ -184,6 +184,256 @@ const notificationsController = {
       // Remove broken connection
       sseConnections.delete(userId);
       return false;
+    }
+  },
+
+  // Get all notifications for a user
+  async getUserNotifications(req, res, next) {
+    try {
+      const userId = req.user.id;
+      const { page = 1, limit = 20, unread_only = false } = req.query;
+      const offset = (page - 1) * limit;
+
+      // Get price alert notifications with read status
+      const alertNotificationsQuery = `
+        SELECT 
+          an.id,
+          'price_alert' as type,
+          an.symbol,
+          an.message,
+          an.trigger_price,
+          an.target_price,
+          an.sent_at as created_at,
+          CASE WHEN nrs.id IS NOT NULL THEN true ELSE false END as is_read
+        FROM alert_notifications an
+        LEFT JOIN notification_read_status nrs ON (
+          nrs.user_id = $1 
+          AND nrs.notification_type = 'price_alert' 
+          AND nrs.notification_id = an.id
+        )
+        WHERE an.user_id = $1 
+          AND an.deleted_at IS NULL
+          ${unread_only === 'true' ? 'AND nrs.id IS NULL' : ''}
+        ORDER BY an.sent_at DESC
+        LIMIT $2 OFFSET $3
+      `;
+      
+      // Get trade comments notifications with read status
+      const commentsQuery = `
+        SELECT 
+          tc.id,
+          'trade_comment' as type,
+          t.symbol,
+          CONCAT(u.username, ' commented on your ', t.symbol, ' trade') as message,
+          tc.comment as comment_text,
+          t.id as trade_id,
+          tc.created_at,
+          CASE WHEN nrs.id IS NOT NULL THEN true ELSE false END as is_read
+        FROM trade_comments tc
+        JOIN trades t ON tc.trade_id = t.id
+        JOIN users u ON tc.user_id = u.id
+        LEFT JOIN notification_read_status nrs ON (
+          nrs.user_id = $1 
+          AND nrs.notification_type = 'trade_comment' 
+          AND nrs.notification_id = tc.id
+        )
+        WHERE t.user_id = $1 
+          AND tc.user_id != $1
+          AND t.is_public = true
+          AND tc.deleted_at IS NULL
+          ${unread_only === 'true' ? 'AND nrs.id IS NULL' : ''}
+        ORDER BY tc.created_at DESC
+        LIMIT $2 OFFSET $3
+      `;
+
+      const [alertNotifications, commentNotifications] = await Promise.all([
+        db.query(alertNotificationsQuery, [userId, limit, offset]),
+        db.query(commentsQuery, [userId, limit, offset])
+      ]);
+
+      // Combine and sort all notifications
+      const combinedNotifications = [
+        ...alertNotifications.rows,
+        ...commentNotifications.rows
+      ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+       .slice(0, limit);
+
+      // Get total count for pagination
+      const countQuery = `
+        SELECT 
+          (SELECT COUNT(*) FROM alert_notifications an
+           LEFT JOIN notification_read_status nrs ON (
+             nrs.user_id = $1 AND nrs.notification_type = 'price_alert' AND nrs.notification_id = an.id
+           )
+           WHERE an.user_id = $1 AND an.deleted_at IS NULL
+           ${unread_only === 'true' ? 'AND nrs.id IS NULL' : ''}
+          ) +
+          (SELECT COUNT(*) FROM trade_comments tc 
+           JOIN trades t ON tc.trade_id = t.id 
+           LEFT JOIN notification_read_status nrs ON (
+             nrs.user_id = $1 AND nrs.notification_type = 'trade_comment' AND nrs.notification_id = tc.id
+           )
+           WHERE t.user_id = $1 AND tc.user_id != $1 AND t.is_public = true AND tc.deleted_at IS NULL
+           ${unread_only === 'true' ? 'AND nrs.id IS NULL' : ''}
+          ) as total
+      `;
+      const countResult = await db.query(countQuery, [userId]);
+      const total = parseInt(countResult.rows[0].total);
+
+      res.json({
+        success: true,
+        data: combinedNotifications,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total,
+          totalPages: Math.ceil(total / limit)
+        }
+      });
+    } catch (error) {
+      logger.logError('Error fetching user notifications:', error);
+      next(error);
+    }
+  },
+
+  // Mark notifications as read
+  async markNotificationsAsRead(req, res, next) {
+    try {
+      const userId = req.user.id;
+      const { notifications } = req.body;
+
+      if (!notifications || !Array.isArray(notifications)) {
+        return res.status(400).json({
+          success: false,
+          error: 'notifications array is required with {id, type} objects'
+        });
+      }
+
+      // Insert read status for each notification
+      const insertPromises = notifications.map(notification => {
+        return db.query(`
+          INSERT INTO notification_read_status (user_id, notification_type, notification_id)
+          VALUES ($1, $2, $3)
+          ON CONFLICT (user_id, notification_type, notification_id) 
+          DO UPDATE SET read_at = CURRENT_TIMESTAMP
+        `, [userId, notification.type, notification.id]);
+      });
+
+      await Promise.all(insertPromises);
+      
+      res.json({
+        success: true,
+        message: `${notifications.length} notifications marked as read`
+      });
+    } catch (error) {
+      logger.logError('Error marking notifications as read:', error);
+      next(error);
+    }
+  },
+
+  // Get unread notification count
+  async getUnreadCount(req, res, next) {
+    try {
+      const userId = req.user.id;
+
+      // Count unread alert notifications
+      const alertCountQuery = `
+        SELECT COUNT(*) as count
+        FROM alert_notifications an
+        LEFT JOIN notification_read_status nrs ON (
+          nrs.user_id = $1 
+          AND nrs.notification_type = 'price_alert' 
+          AND nrs.notification_id = an.id
+        )
+        WHERE an.user_id = $1 
+          AND an.deleted_at IS NULL
+          AND nrs.id IS NULL
+          AND an.sent_at > NOW() - INTERVAL '30 days'
+      `;
+
+      // Count unread comment notifications
+      const commentCountQuery = `
+        SELECT COUNT(*) as count
+        FROM trade_comments tc
+        JOIN trades t ON tc.trade_id = t.id
+        LEFT JOIN notification_read_status nrs ON (
+          nrs.user_id = $1 
+          AND nrs.notification_type = 'trade_comment' 
+          AND nrs.notification_id = tc.id
+        )
+        WHERE t.user_id = $1 
+          AND tc.user_id != $1
+          AND t.is_public = true
+          AND tc.deleted_at IS NULL
+          AND nrs.id IS NULL
+          AND tc.created_at > NOW() - INTERVAL '30 days'
+      `;
+
+      const [alertCount, commentCount] = await Promise.all([
+        db.query(alertCountQuery, [userId]),
+        db.query(commentCountQuery, [userId])
+      ]);
+
+      const totalUnread = parseInt(alertCount.rows[0].count) + parseInt(commentCount.rows[0].count);
+
+      res.json({
+        success: true,
+        unread_count: totalUnread
+      });
+    } catch (error) {
+      logger.logError('Error getting unread notification count:', error);
+      next(error);
+    }
+  },
+
+  // Delete notifications
+  async deleteNotifications(req, res, next) {
+    try {
+      const userId = req.user.id;
+      const { notifications } = req.body;
+
+      if (!notifications || !Array.isArray(notifications)) {
+        return res.status(400).json({
+          success: false,
+          error: 'notifications array is required with {id, type} objects'
+        });
+      }
+
+      // Soft delete notifications by setting deleted_at timestamp
+      const deletePromises = notifications.map(notification => {
+        if (notification.type === 'price_alert') {
+          return db.query(`
+            UPDATE alert_notifications 
+            SET deleted_at = CURRENT_TIMESTAMP 
+            WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
+          `, [notification.id, userId]);
+        } else if (notification.type === 'trade_comment') {
+          // For trade comments, we soft delete them but only hide from notifications
+          // (the actual comment stays on the trade)
+          return db.query(`
+            UPDATE trade_comments 
+            SET deleted_at = CURRENT_TIMESTAMP 
+            WHERE id = $1 
+            AND id IN (
+              SELECT tc.id FROM trade_comments tc
+              JOIN trades t ON tc.trade_id = t.id
+              WHERE t.user_id = $2 AND tc.user_id != $2
+            )
+            AND deleted_at IS NULL
+          `, [notification.id, userId]);
+        }
+        return Promise.resolve();
+      });
+
+      await Promise.all(deletePromises);
+      
+      res.json({
+        success: true,
+        message: `${notifications.length} notifications deleted`
+      });
+    } catch (error) {
+      logger.logError('Error deleting notifications:', error);
+      next(error);
     }
   },
 

@@ -321,11 +321,14 @@ class AchievementService {
       SELECT 
         COUNT(*) as total_trades,
         COUNT(CASE WHEN ABS(pnl) <= 1000 THEN 1 END) as within_risk_trades
-      FROM trades
-      WHERE user_id = $1
-        AND exit_time IS NOT NULL
-      ORDER BY exit_time DESC
-      LIMIT $2
+      FROM (
+        SELECT pnl 
+        FROM trades
+        WHERE user_id = $1
+          AND exit_time IS NOT NULL
+        ORDER BY exit_time DESC
+        LIMIT $2
+      ) recent_trades
     `;
     
     const result = await db.query(query, [userId, requiredTrades]);

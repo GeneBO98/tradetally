@@ -437,6 +437,27 @@ const tradeController = {
       
       const selectResult = await db.query(selectQuery, [insertResult.rows[0].id]);
       
+      // If this is a comment on someone else's public trade, trigger notification
+      if (trade.user_id !== req.user.id && trade.is_public) {
+        try {
+          const notificationsController = require('./notifications.controller');
+          const commentNotification = {
+            id: insertResult.rows[0].id,
+            type: 'trade_comment',
+            symbol: trade.symbol,
+            message: `${req.user.username} commented on your ${trade.symbol} trade`,
+            comment_text: comment,
+            trade_id: trade.id,
+            created_at: new Date().toISOString()
+          };
+          
+          // Send real-time notification if user is connected
+          await notificationsController.sendNotificationToUser(trade.user_id, commentNotification);
+        } catch (notifError) {
+          console.warn('Failed to send comment notification:', notifError.message);
+        }
+      }
+      
       res.status(201).json({ comment: selectResult.rows[0] });
     } catch (error) {
       next(error);

@@ -4,6 +4,7 @@ const finnhub = require('../utils/finnhub');
 const alphaVantage = require('../utils/alphaVantage');
 const nodemailer = require('nodemailer');
 const { v4: uuidv4 } = require('uuid');
+const TierService = require('./tierService');
 
 class PriceMonitoringService {
   constructor() {
@@ -204,18 +205,26 @@ class PriceMonitoringService {
           COALESCE(pm.current_price::NUMERIC, 0) AS current_price,
           pm.percent_change,
           u.email,
+          u.tier,
           us.email_notifications as user_email_enabled
         FROM price_alerts pa
         JOIN users u ON pa.user_id = u.id
         LEFT JOIN user_settings us ON u.id = us.user_id
         LEFT JOIN price_monitoring pm ON pa.symbol = pm.symbol
         WHERE pa.is_active = TRUE
-        AND u.tier = 'pro'
         AND pm.current_price IS NOT NULL
       `;
 
       const alertsResult = await db.query(alertsQuery);
-      const alerts = alertsResult.rows;
+      let alerts = alertsResult.rows;
+      
+      // Filter alerts based on billing status for hosted vs self-hosted
+      const billingEnabled = await TierService.isBillingEnabled();
+      if (billingEnabled) {
+        // Hosted instance - only Pro users get alerts
+        alerts = alerts.filter(alert => alert.tier === 'pro');
+      }
+      // Self-hosted instance (billingEnabled = false) - all users get alerts
 
       for (const alert of alerts) {
         const shouldTrigger = this.shouldTriggerAlert(alert);
@@ -294,11 +303,17 @@ class PriceMonitoringService {
         await this.createBrowserNotification(alert, message);
       }
 
-      // Update alert triggered_at timestamp
-      await db.query(
-        'UPDATE price_alerts SET triggered_at = CURRENT_TIMESTAMP WHERE id = $1',
-        [id]
-      );
+      // If repeat is not enabled, delete the alert; otherwise update triggered_at timestamp
+      if (!alert.repeat_enabled) {
+        await db.query('DELETE FROM price_alerts WHERE id = $1', [id]);
+        console.log(`Alert deleted after triggering for ${symbol} (repeat not enabled)`);
+      } else {
+        await db.query(
+          'UPDATE price_alerts SET triggered_at = CURRENT_TIMESTAMP WHERE id = $1',
+          [id]
+        );
+        console.log(`Alert triggered for ${symbol} (repeat enabled, keeping alert)`);
+      }
 
       console.log(`Alert triggered for ${symbol}: ${message}`);
 
