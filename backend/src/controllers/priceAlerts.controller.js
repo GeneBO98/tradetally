@@ -561,11 +561,15 @@ const priceAlertsController = {
       const currentPrice = parseFloat(alert.current_price);
       const targetPrice = parseFloat(alert.target_price);
       
-      // Mark alert as triggered
-      await db.query(
-        'UPDATE price_alerts SET triggered_at = CURRENT_TIMESTAMP WHERE id = $1',
-        [alert.id]
-      );
+      // If repeat is not enabled, delete the alert; otherwise mark as triggered
+      if (!alert.repeat_enabled) {
+        await db.query('DELETE FROM price_alerts WHERE id = $1', [alert.id]);
+      } else {
+        await db.query(
+          'UPDATE price_alerts SET triggered_at = CURRENT_TIMESTAMP WHERE id = $1',
+          [alert.id]
+        );
+      }
       
       // Create notification message
       let message;
@@ -597,11 +601,14 @@ const priceAlertsController = {
       if (alert.browser_enabled) {
         const notification = {
           id: alert.id,
+          type: 'price_alert',
           symbol: alert.symbol,
           message: message,
           alert_type: alert.alert_type,
           target_price: targetPrice,
           current_price: currentPrice,
+          trigger_price: currentPrice,
+          created_at: new Date().toISOString(),
           triggered_at: new Date().toISOString()
         };
         

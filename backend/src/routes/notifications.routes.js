@@ -18,6 +18,18 @@ router.get('/status', notificationsController.getConnectionStatus);
 // Test notification
 router.post('/test', notificationsController.sendTestNotification);
 
+// Get user notifications (remove pro tier requirement for basic functionality)
+router.get('/', authenticate, notificationsController.getUserNotifications);
+
+// Get unread notification count
+router.get('/unread-count', authenticate, notificationsController.getUnreadCount);
+
+// Mark notifications as read
+router.post('/mark-read', authenticate, notificationsController.markNotificationsAsRead);
+
+// Delete notifications
+router.delete('/', authenticate, notificationsController.deleteNotifications);
+
 // Mobile push notification routes (remove pro tier requirement for basic functionality)
 const mobileRouter = express.Router();
 mobileRouter.use(authenticate);
