@@ -671,14 +671,48 @@ class Trade {
   }
 
   static async delete(id, userId) {
-    const query = `
-      DELETE FROM trades
-      WHERE id = $1 AND user_id = $2
-      RETURNING id
-    `;
-
-    const result = await db.query(query, [id, userId]);
-    return result.rows[0];
+    try {
+      // Start transaction to ensure both trade and jobs are deleted together
+      await db.query('BEGIN');
+      
+      // First, delete associated jobs to prevent orphaned jobs
+      const jobDeleteQuery = `
+        DELETE FROM job_queue 
+        WHERE data->>'tradeId' = $1
+        OR (data->'tradeIds' ? $1)
+        RETURNING id, type
+      `;
+      
+      const deletedJobs = await db.query(jobDeleteQuery, [id]);
+      
+      if (deletedJobs.rows.length > 0) {
+        console.log(`Deleted ${deletedJobs.rows.length} jobs for trade ${id}`);
+      }
+      
+      // Then delete the trade
+      const tradeDeleteQuery = `
+        DELETE FROM trades
+        WHERE id = $1 AND user_id = $2
+        RETURNING id
+      `;
+      
+      const result = await db.query(tradeDeleteQuery, [id, userId]);
+      
+      if (result.rows.length === 0) {
+        await db.query('ROLLBACK');
+        return null; // Trade not found or doesn't belong to user
+      }
+      
+      await db.query('COMMIT');
+      console.log(`Successfully deleted trade ${id} and its associated jobs`);
+      
+      return result.rows[0];
+      
+    } catch (error) {
+      await db.query('ROLLBACK');
+      console.error(`Failed to delete trade ${id}:`, error.message);
+      throw error;
+    }
   }
 
   static async addAttachment(tradeId, attachmentData) {

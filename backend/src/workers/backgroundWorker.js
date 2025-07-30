@@ -44,20 +44,23 @@ class BackgroundWorker {
       this.statusInterval = setInterval(async () => {
         try {
           const status = await jobQueue.getQueueStatus();
-          if (status.length > 0) {
+          
+          // Only log if there are jobs or issues
+          const hasJobs = status.some(s => s.status !== 'completed' || parseInt(s.count) > 1000);
+          
+          if (hasJobs) {
             logger.logImport('📊 Job Queue Status:', status);
-            
-            // Alert if too many failed jobs
-            const failedJobs = status.find(s => s.status === 'failed');
-            if (failedJobs && parseInt(failedJobs.count) > 100) {
-              logger.logError(`⚠️ HIGH FAILED JOB COUNT: ${failedJobs.count} failed jobs`);
-            }
-            
-            // Alert if jobs are stuck in processing
-            const processingJobs = status.find(s => s.status === 'processing');
-            if (processingJobs && parseInt(processingJobs.count) > 10) {
-              logger.logError(`⚠️ MANY PROCESSING JOBS: ${processingJobs.count} jobs in processing state`);
-            }
+          }
+          
+          // Always check for alerts regardless of logging
+          const failedJobs = status.find(s => s.status === 'failed');
+          if (failedJobs && parseInt(failedJobs.count) > 50) {
+            logger.logError(`⚠️ HIGH FAILED JOB COUNT: ${failedJobs.count} failed jobs - may need investigation`);
+          }
+          
+          const processingJobs = status.find(s => s.status === 'processing');
+          if (processingJobs && parseInt(processingJobs.count) > 10) {
+            logger.logError(`⚠️ MANY PROCESSING JOBS: ${processingJobs.count} jobs in processing state`);
           }
         } catch (error) {
           logger.logError('Failed to get queue status:', error.message);

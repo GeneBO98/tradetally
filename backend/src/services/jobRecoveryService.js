@@ -10,6 +10,7 @@ class JobRecoveryService {
   constructor() {
     this.isRunning = false;
     this.recoveryInterval = null;
+    this.lastSummaryTime = 0;
   }
 
   /**
@@ -55,13 +56,13 @@ class JobRecoveryService {
    * Run complete recovery process
    */
   async runRecovery() {
-    logger.logImport('🔍 Running automatic job recovery...');
-
+    // Don't log routine recovery checks - only log when action is taken
     const recoveryStats = {
       stuckJobsReset: 0,
       missingJobsCreated: 0,
       orphanedJobsCleaned: 0,
-      tradesFixed: 0
+      tradesFixed: 0,
+      oldJobsCleanedUp: 0
     };
 
     try {
@@ -71,13 +72,16 @@ class JobRecoveryService {
       // 2. Create missing jobs for pending trades
       recoveryStats.missingJobsCreated = await this.createMissingJobs();
 
-      // 3. Clean up orphaned jobs
+      // 3. Clean up orphaned jobs (should be rare now due to cascade delete)
       recoveryStats.orphanedJobsCleaned = await this.cleanupOrphanedJobs();
 
       // 4. Fix trades with inconsistent status
       recoveryStats.tradesFixed = await this.fixInconsistentTrades();
 
-      // 5. Ensure background worker is running
+      // 5. Clean up old failed jobs
+      recoveryStats.oldJobsCleanedUp = await this.cleanupOldFailedJobs();
+
+      // 6. Ensure background worker is running
       await this.ensureBackgroundWorkerRunning();
 
       // Log results
@@ -85,8 +89,14 @@ class JobRecoveryService {
       
       if (totalActions > 0) {
         logger.logImport('🚑 Recovery completed:', recoveryStats);
+        this.lastSummaryTime = Date.now();
       } else {
-        logger.logImport('✅ No recovery needed - all systems healthy');
+        // Only log a summary every hour when everything is healthy
+        const now = Date.now();
+        if (now - this.lastSummaryTime > 60 * 60 * 1000) { // 1 hour
+          logger.logImport('✅ Job recovery service healthy - no issues detected');
+          this.lastSummaryTime = now;
+        }
       }
 
     } catch (error) {
@@ -239,6 +249,30 @@ class JobRecoveryService {
       return completedTrades.rows.length;
     } catch (error) {
       logger.logError('Failed to fix inconsistent trades:', error.message);
+      return 0;
+    }
+  }
+
+  /**
+   * Clean up old failed jobs to prevent accumulation
+   */
+  async cleanupOldFailedJobs() {
+    try {
+      // Delete failed jobs older than 7 days
+      const oldFailedJobs = await db.query(`
+        DELETE FROM job_queue 
+        WHERE status = 'failed'
+        AND completed_at < NOW() - INTERVAL '7 days'
+        RETURNING id
+      `);
+
+      if (oldFailedJobs.rows.length > 0) {
+        logger.logImport(`🗑️ Cleaned up ${oldFailedJobs.rows.length} old failed jobs (>7 days)`);
+      }
+
+      return oldFailedJobs.rows.length;
+    } catch (error) {
+      logger.logError('Failed to cleanup old failed jobs:', error.message);
       return 0;
     }
   }

@@ -8,12 +8,16 @@ class TierService {
     const frontendUrl = process.env.FRONTEND_URL || '';
     
     // Check host header if provided (for runtime domain detection)
-    if (hostHeader && !hostHeader.includes('tradetally.io')) {
+    // Allow localhost for development, disable for other non-tradetally.io domains
+    if (hostHeader && !hostHeader.includes('tradetally.io') && !hostHeader.includes('localhost')) { 
+      console.log(`Billing disabled for host: ${hostHeader} (not tradetally.io or localhost)`);
       return false;
     }
     
     // Check frontend URL if no host header provided
-    if (!hostHeader && frontendUrl && !frontendUrl.includes('tradetally.io')) {
+    // Allow localhost for development, disable for other non-tradetally.io domains  
+    if (!hostHeader && frontendUrl && !frontendUrl.includes('tradetally.io') && !frontendUrl.includes('localhost')) {
+      console.log(`Billing disabled for frontend URL: ${frontendUrl} (not tradetally.io or localhost)`);
       return false;
     }
     
