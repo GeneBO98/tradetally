@@ -241,6 +241,36 @@
         </div>
       </div>
 
+      <!-- API Documentation -->
+      <div class="card">
+        <div class="card-body">
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-6">API Documentation</h3>
+          <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
+            Access comprehensive API documentation for integrating with TradeTally programmatically.
+          </p>
+          
+          <div class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+            <div class="flex-1">
+              <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-2">Interactive API Explorer</h4>
+              <p class="text-sm text-gray-600 dark:text-gray-400">
+                Browse all available API endpoints, test requests, and view response schemas using our Swagger documentation.
+              </p>
+            </div>
+            <a 
+              :href="getApiDocsUrl()" 
+              target="_blank"
+              rel="noopener noreferrer"
+              class="btn-primary flex-shrink-0 ml-4"
+            >
+              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-2M7 7l10 10M17 7v4m0 0l-4 4"></path>
+              </svg>
+              Open API Docs
+            </a>
+          </div>
+        </div>
+      </div>
+
       <!-- Data Export & Import -->
       <div class="card">
         <div class="card-body">
@@ -374,6 +404,20 @@ const adminAiLoading = ref(false)
 const exportLoading = ref(false)
 const importLoading = ref(false)
 const selectedFile = ref(null)
+
+// Get API docs URL
+function getApiDocsUrl() {
+  // Check if we're in development and need to use a different port
+  const currentUrl = window.location
+  
+  // If frontend is on port 5173 (Vite dev), backend is on port 3000
+  if (currentUrl.port === '5173' || currentUrl.hostname === 'localhost') {
+    return `http://localhost:3000/api-docs`
+  }
+  
+  // Otherwise use the same origin
+  return `${currentUrl.origin}/api-docs`
+}
 
 
 

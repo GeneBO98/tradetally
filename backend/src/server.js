@@ -31,6 +31,7 @@ const TrialScheduler = require('./services/trialScheduler');
 const backgroundWorker = require('./workers/backgroundWorker');
 const jobRecoveryService = require('./services/jobRecoveryService');
 const pushNotificationService = require('./services/pushNotificationService');
+const { swaggerSpec, swaggerUi } = require('./config/swagger');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
@@ -131,6 +132,16 @@ app.use('/api/gamification', gamificationRoutes);
 
 // Well-known endpoints for mobile discovery
 app.use('/.well-known', wellKnownRoutes);
+
+// Swagger API Documentation
+if (process.env.NODE_ENV !== 'production' || process.env.ENABLE_SWAGGER === 'true') {
+  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+    explorer: true,
+    customCss: '.swagger-ui .topbar { display: none }',
+    customSiteTitle: 'TradeTally API Documentation',
+  }));
+  console.log('📚 Swagger documentation available at /api-docs');
+}
 
 // Health endpoint with background worker status
 app.get('/api/health', async (req, res) => {
