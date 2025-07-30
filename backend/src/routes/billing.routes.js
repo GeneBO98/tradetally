@@ -22,6 +22,9 @@ router.post('/trial', billingController.startTrial);
 router.post('/portal', billingController.createPortalSession);
 router.get('/checkout/:sessionId', billingController.getCheckoutSession);
 
+// Debug endpoints (development only)
+router.delete('/debug/reset-trial', billingController.debugResetTrial);
+
 // Admin routes (temporarily commented out - needs admin auth middleware)
 // router.get('/config', adminAuth, billingController.getBillingConfig);
 

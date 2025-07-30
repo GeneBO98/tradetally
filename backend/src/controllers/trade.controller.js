@@ -1123,6 +1123,22 @@ const tradeController = {
         timeWindow
       ]);
 
+      // Delete associated jobs for the deleted trades
+      if (deletedTrades.rows.length > 0) {
+        const tradeIds = deletedTrades.rows.map(row => row.id);
+        
+        const jobDeleteQuery = `
+          DELETE FROM job_queue 
+          WHERE data->>'tradeId' = ANY($1)
+          OR (data->'tradeIds' ?| $1)
+          RETURNING id, type
+        `;
+        
+        const deletedJobs = await db.query(jobDeleteQuery, [tradeIds.map(id => id.toString())]);
+        
+        logger.logImport(`Deleted ${deletedJobs.rows.length} jobs for ${deletedTrades.rows.length} deleted trades`);
+      }
+
       // Delete the import log
       await db.query(`DELETE FROM import_logs WHERE id = $1`, [importId]);
 
