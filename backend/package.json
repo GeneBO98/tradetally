@@ -35,6 +35,8 @@
     "qrcode": "^1.5.4",
     "speakeasy": "^2.0.0",
     "stripe": "^14.25.0",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1",
     "uuid": "^9.0.1"
   },
   "devDependencies": {
