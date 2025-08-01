@@ -1,5 +1,5 @@
 # TradeTally - .gitignore
-
+docker-test
 # Environment variables (NEVER commit these)
 .env
 .env.local

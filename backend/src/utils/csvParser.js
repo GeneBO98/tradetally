@@ -308,7 +308,9 @@ function parseDateTime(dateTimeStr) {
 
 // Lightspeed-specific datetime parser that handles Central Time
 function parseLightspeedDateTime(dateTimeStr) {
-  if (!dateTimeStr || dateTimeStr.trim() === '' || dateTimeStr.includes('undefined') || dateTimeStr.includes('null')) {
+  console.log(`DEBUG parseLightspeedDateTime: Input="${dateTimeStr}" (type: ${typeof dateTimeStr})`);
+  if (!dateTimeStr) {
+    console.log(`DEBUG parseLightspeedDateTime: Returning null - dateTimeStr is falsy`);
     return null;
   }
   
@@ -504,10 +506,17 @@ async function parseLightspeedTransactions(records, existingPositions = {}) {
       const buySellValue = record['Buy/Sell'] || record['Buy Sell'] || record.BuySell || record['Long/Short'];
       const side = parseLightspeedSide(sideValue, buySellValue, record['Principal Amount'], record['NET Amount'], record.Qty);
       
+      // Debug the actual field values from CSV
+      const tradeDate = record['Trade Date'];
+      const executionTime = record['Execution Time'];
+      const combinedDateTime = tradeDate + ' ' + (executionTime || '09:30');
+      
+      console.log(`DEBUG CSV FIELDS: Trade Date="${tradeDate}", Execution Time="${executionTime}", Combined="${combinedDateTime}"`);
+      
       const transaction = {
         symbol: resolvedSymbol,
         tradeDate: parseDate(record['Trade Date']),
-        entryTime: parseLightspeedDateTime(record['Trade Date'] + ' ' + (record['Execution Time'] || '09:30')),
+        entryTime: parseLightspeedDateTime(combinedDateTime),
         entryPrice: parseFloat(record.Price),
         quantity: Math.abs(parseInt(record.Qty)),
         side: side,
@@ -516,6 +525,8 @@ async function parseLightspeedTransactions(records, existingPositions = {}) {
         broker: 'lightspeed',
         notes: `Trade #${record['Trade Number']} - ${record['Security Type'] || ''}`
       };
+      
+      console.log(`DEBUG TRANSACTION: entryTime="${transaction.entryTime}", tradeDate="${transaction.tradeDate}"`);
 
       if (transaction.symbol && transaction.entryPrice > 0 && transaction.quantity > 0) {
         transactions.push(transaction);
@@ -593,7 +604,7 @@ async function parseLightspeedTransactions(records, existingPositions = {}) {
       if (currentPosition === 0) {
         currentTrade = {
           symbol: symbol,
-          entryTime: transaction.entryTime,
+          entryTime: transaction.entryTime || new Date().toISOString(),
           tradeDate: transaction.tradeDate,
           side: transaction.side === 'buy' ? 'long' : 'short',
           executions: [],
