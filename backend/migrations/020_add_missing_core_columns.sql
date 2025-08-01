@@ -31,3 +31,10 @@ END $$;
 ALTER TABLE trades ADD COLUMN IF NOT EXISTS executions JSONB;
 ALTER TABLE trades ADD COLUMN IF NOT EXISTS mae DECIMAL(10, 2) DEFAULT NULL;
 ALTER TABLE trades ADD COLUMN IF NOT EXISTS mfe DECIMAL(10, 2) DEFAULT NULL;
+
+-- Handle index conflicts - drop and recreate indexes that might already exist
+DROP INDEX IF EXISTS idx_api_keys_user_id;
+CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys(user_id);
+
+DROP INDEX IF EXISTS idx_api_keys_key_hash;
+CREATE INDEX IF NOT EXISTS idx_api_keys_key_hash ON api_keys(key_hash);
