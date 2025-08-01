@@ -62,7 +62,7 @@ const authController = {
       
       let verificationToken = null;
       let verificationExpires = null;
-      let isVerified = !emailConfigured; // Auto-verify if email not configured
+      let isVerified = !emailConfigured || isFirstUser; // Auto-verify if email not configured OR if first user
       let adminApproved = true; // Default to approved
 
       // Set admin approval based on registration mode
@@ -70,8 +70,8 @@ const authController = {
         adminApproved = false; // Require admin approval for non-first users
       }
 
-      if (emailConfigured) {
-        // Generate verification token only if email is configured
+      if (emailConfigured && !isFirstUser) {
+        // Generate verification token only if email is configured AND not first user
         verificationToken = crypto.randomBytes(32).toString('hex');
         verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
       }
@@ -94,8 +94,8 @@ const authController = {
         console.log(`🔐 First user registered - automatically granted admin privileges: ${user.username} (${user.email})`);
       }
 
-      // Send verification email only if email is configured
-      if (emailConfigured) {
+      // Send verification email only if email is configured AND not first user
+      if (emailConfigured && !isFirstUser) {
         try {
           await sendVerificationEmail(email, verificationToken);
         } catch (error) {
