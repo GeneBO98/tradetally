@@ -1,5 +1,5 @@
--- Database should already be created
--- CREATE DATABASE tradetally_db;
+-- Core database schema for TradeTally main branch
+-- This is the base schema that must exist before any migrations run
 
 -- Users table
 CREATE TABLE IF NOT EXISTS users (
@@ -11,13 +11,18 @@ CREATE TABLE IF NOT EXISTS users (
     avatar_url VARCHAR(500),
     is_verified BOOLEAN DEFAULT FALSE,
     is_active BOOLEAN DEFAULT TRUE,
+    timezone VARCHAR(50) DEFAULT 'UTC',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     verification_token VARCHAR(255),
     verification_expires TIMESTAMP WITH TIME ZONE,
     reset_token VARCHAR(255),
     reset_expires TIMESTAMP WITH TIME ZONE,
-    timezone VARCHAR(50) DEFAULT 'UTC',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    role VARCHAR(20) DEFAULT 'user',
+    admin_approved BOOLEAN DEFAULT TRUE,
+    two_factor_secret VARCHAR(255),
+    two_factor_enabled BOOLEAN DEFAULT FALSE,
+    two_factor_backup_codes TEXT[]
 );
 
 -- User settings table
@@ -41,14 +46,14 @@ CREATE TABLE IF NOT EXISTS trades (
     trade_date DATE NOT NULL,
     entry_time TIMESTAMP WITH TIME ZONE NOT NULL,
     exit_time TIMESTAMP WITH TIME ZONE,
-    entry_price DECIMAL(15, 4) NOT NULL,
-    exit_price DECIMAL(15, 4),
-    quantity INTEGER NOT NULL,
+    entry_price NUMERIC(10,2) NOT NULL,
+    exit_price NUMERIC(10,2),
+    quantity NUMERIC(10,4) NOT NULL,
     side VARCHAR(10) NOT NULL CHECK (side IN ('long', 'short')),
-    commission DECIMAL(10, 2) DEFAULT 0,
-    fees DECIMAL(10, 2) DEFAULT 0,
-    pnl DECIMAL(15, 2),
-    pnl_percent DECIMAL(10, 4),
+    commission NUMERIC(10,2) DEFAULT 0,
+    fees NUMERIC(10,2) DEFAULT 0,
+    pnl NUMERIC(15,2),
+    pnl_percent NUMERIC(10,4),
     notes TEXT,
     is_public BOOLEAN DEFAULT FALSE,
     broker VARCHAR(50),
@@ -56,7 +61,10 @@ CREATE TABLE IF NOT EXISTS trades (
     setup VARCHAR(100),
     tags TEXT[],
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    executions JSONB,
+    mae NUMERIC(10,2) DEFAULT NULL,
+    mfe NUMERIC(10,2) DEFAULT NULL
 );
 
 -- Trade attachments table
@@ -117,13 +125,16 @@ CREATE TABLE IF NOT EXISTS analytics_cache (
 );
 
 -- Create indexes
-CREATE INDEX idx_trades_user_id ON trades(user_id);
-CREATE INDEX idx_trades_symbol ON trades(symbol);
-CREATE INDEX idx_trades_trade_date ON trades(trade_date);
-CREATE INDEX idx_trades_tags ON trades USING GIN(tags);
-CREATE INDEX idx_trades_public ON trades(is_public) WHERE is_public = TRUE;
-CREATE INDEX idx_trade_comments_trade_id ON trade_comments(trade_id);
-CREATE INDEX idx_analytics_cache_user_expires ON analytics_cache(user_id, expires_at);
+CREATE INDEX IF NOT EXISTS idx_trades_user_id ON trades(user_id);
+CREATE INDEX IF NOT EXISTS idx_trades_symbol ON trades(symbol);
+CREATE INDEX IF NOT EXISTS idx_trades_trade_date ON trades(trade_date);
+CREATE INDEX IF NOT EXISTS idx_trades_tags ON trades USING GIN(tags);
+CREATE INDEX IF NOT EXISTS idx_trades_public ON trades(is_public) WHERE is_public = TRUE;
+CREATE INDEX IF NOT EXISTS idx_trade_comments_trade_id ON trade_comments(trade_id);
+CREATE INDEX IF NOT EXISTS idx_analytics_cache_user_expires ON analytics_cache(user_id, expires_at);
+
+-- Add role constraint
+ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('user', 'admin', 'owner'));
 
 -- Create updated_at trigger function
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -134,15 +145,19 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
--- Apply updated_at triggers
+-- Create triggers
+DROP TRIGGER IF EXISTS update_users_updated_at ON users;
 CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_user_settings_updated_at ON user_settings;
 CREATE TRIGGER update_user_settings_updated_at BEFORE UPDATE ON user_settings
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_trades_updated_at ON trades;
 CREATE TRIGGER update_trades_updated_at BEFORE UPDATE ON trades
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_trade_comments_updated_at ON trade_comments;
 CREATE TRIGGER update_trade_comments_updated_at BEFORE UPDATE ON trade_comments
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

@@ -97,6 +97,20 @@ async function migrate() {
   try {
     console.log(`${colors.blue}Starting database migration...${colors.reset}\n`);
     
+    // Run base schema FIRST (before migrations table to avoid conflicts)
+    const schemaPath = path.join(__dirname, 'schema.sql');
+    try {
+      const schemaContent = await fs.readFile(schemaPath, 'utf8');
+      console.log(`${colors.blue}Running base schema initialization...${colors.reset}`);
+      await db.query(schemaContent);
+      console.log(`${colors.green}✓ Base schema initialized${colors.reset}`);
+    } catch (error) {
+      if (error.code !== 'ENOENT') {
+        console.error(`${colors.red}✗ Base schema failed:${colors.reset}`, error.message);
+        throw error;
+      }
+    }
+    
     // Ensure migrations table exists
     await ensureMigrationsTable();
     
