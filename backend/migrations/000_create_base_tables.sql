@@ -1,7 +1,7 @@
 -- Create base database schema tables
 -- This migration creates the fundamental tables that the application expects
 
--- Users table (without role column initially - added in migration 001)
+-- Users table with core columns
 CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email VARCHAR(255) UNIQUE NOT NULL,
@@ -9,8 +9,14 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash VARCHAR(255) NOT NULL,
     full_name VARCHAR(255),
     avatar_url VARCHAR(500),
+    role VARCHAR(20) DEFAULT 'user' CHECK (role IN ('user', 'admin', 'owner')),
     is_verified BOOLEAN DEFAULT FALSE,
     is_active BOOLEAN DEFAULT TRUE,
+    admin_approved BOOLEAN DEFAULT TRUE,
+    verification_token VARCHAR(255),
+    verification_expires TIMESTAMP WITH TIME ZONE,
+    reset_token VARCHAR(255),
+    reset_expires TIMESTAMP WITH TIME ZONE,
     timezone VARCHAR(50) DEFAULT 'UTC',
     two_factor_enabled BOOLEAN DEFAULT FALSE,
     two_factor_secret VARCHAR(255),
@@ -32,7 +38,7 @@ CREATE TABLE IF NOT EXISTS user_settings (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Trades table
+-- Trades table with core columns
 CREATE TABLE IF NOT EXISTS trades (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES users(id) ON DELETE CASCADE,
@@ -42,7 +48,7 @@ CREATE TABLE IF NOT EXISTS trades (
     exit_time TIMESTAMP WITH TIME ZONE,
     entry_price DECIMAL(15, 4) NOT NULL,
     exit_price DECIMAL(15, 4),
-    quantity INTEGER NOT NULL,
+    quantity DECIMAL(10, 4) NOT NULL,
     side VARCHAR(10) NOT NULL CHECK (side IN ('long', 'short')),
     commission DECIMAL(10, 2) DEFAULT 0,
     fees DECIMAL(10, 2) DEFAULT 0,
@@ -54,6 +60,9 @@ CREATE TABLE IF NOT EXISTS trades (
     strategy VARCHAR(100),
     setup VARCHAR(100),
     tags TEXT[],
+    executions JSONB,
+    mae DECIMAL(10, 2) DEFAULT NULL,
+    mfe DECIMAL(10, 2) DEFAULT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
