@@ -1,12 +1,6 @@
 -- Migration: Add owner role to users table
 -- This allows for an owner role that supersedes admin
 
--- Add role column if it doesn't exist (for fresh installs)
-ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT 'user';
-
--- Add admin_approved column if it doesn't exist (for fresh installs)
-ALTER TABLE users ADD COLUMN IF NOT EXISTS admin_approved BOOLEAN DEFAULT TRUE;
-
 -- First, drop the existing constraint
 ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
 
