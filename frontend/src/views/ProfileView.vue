@@ -238,7 +238,12 @@
               </p>
             </div>
             
-            <router-link to="/pricing" class="btn-primary block text-center">
+            <!-- Only show upgrade button if user doesn't have Pro access OR is on active trial -->
+            <router-link 
+              v-if="shouldShowUpgradeButton"
+              to="/pricing" 
+              class="btn-primary block text-center"
+            >
               <span v-if="subscription.trial && subscription.trial.active">
                 Upgrade Before Trial Ends
               </span>
@@ -717,7 +722,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useNotification } from '@/composables/useNotification'
 import api from '@/services/api'
@@ -812,6 +817,34 @@ const sectorOptions = [
   'Consumer Staples', 'Energy', 'Industrials', 'Materials',
   'Utilities', 'Real Estate', 'Communication Services'
 ]
+
+// Computed property to determine if upgrade button should be shown
+const shouldShowUpgradeButton = computed(() => {
+  // Don't show if billing is not available (self-hosted without billing)
+  if (!billingStatus.value.billing_available) {
+    return false
+  }
+  
+  // If user has an active subscription, don't show upgrade button
+  if (subscription.value.subscription) {
+    return false
+  }
+  
+  // If user has Pro tier through override (non-subscription Pro access), don't show upgrade button
+  if (subscription.value.tier === 'pro' && !subscription.value.trial?.active) {
+    return false
+  }
+  
+  // Show upgrade button in these cases:
+  // 1. User is on active trial (allow them to upgrade before trial ends)
+  // 2. User is on free tier and has used trial (needs to upgrade)
+  // 3. User is on free tier and hasn't used trial (can start trial or upgrade)
+  return (
+    (subscription.value.trial?.active) || // Active trial - show "Upgrade Before Trial Ends"
+    (subscription.value.tier === 'free' && subscription.value.has_used_trial) || // Free after trial - show "Upgrade to Pro"
+    (subscription.value.tier === 'free' && !subscription.value.has_used_trial) // Free, no trial used - show "Start Free Trial or Upgrade"
+  )
+})
 
 // Profile methods
 async function updateProfile() {

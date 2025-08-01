@@ -41,7 +41,7 @@ const gamificationController = {
         is_earned: achievement.earned === true || achievement.earned_at !== null
       }));
       
-      console.log(`Returning ${transformedAchievements.length} transformed achievements`);
+      // console.log(`Returning ${transformedAchievements.length} transformed achievements`);
       
       res.json({
         success: true,

@@ -11,14 +11,15 @@ const enrichmentStatus = reactive({
   lastUpdate: null
 })
 
+// Global reactive state for connection status
+const isConnected = ref(false)
+const eventSource = ref(null)
+const notifications = ref([])
+const reconnectTimeout = ref(null)
+
 export function usePriceAlertNotifications() {
   const authStore = useAuthStore()
   const { showSuccess, showWarning } = useNotification()
-  
-  const isConnected = ref(false)
-  const eventSource = ref(null)
-  const notifications = ref([])
-  const reconnectTimeout = ref(null)
   
   const connect = () => {
     console.log('Connect called:', { 

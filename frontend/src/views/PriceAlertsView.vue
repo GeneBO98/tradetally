@@ -136,8 +136,14 @@
                 {{ alert.current_price ? formatPrice(alert.current_price) : 'N/A' }}
               </td>
               <td class="px-6 py-4 whitespace-nowrap">
-                <span v-if="alert.is_active" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                <span v-if="alert.is_active && !alert.triggered_at" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
                   Active
+                </span>
+                <span v-else-if="alert.is_active && alert.triggered_at" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                  Triggered (Repeat)
+                </span>
+                <span v-else-if="!alert.is_active && alert.triggered_at" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                  Triggered
                 </span>
                 <span v-else class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
                   Inactive
@@ -348,7 +354,7 @@ export default {
 
     const filters = ref({
       symbol: '',
-      activeOnly: 'true'
+      activeOnly: 'false'
     })
 
     const alertForm = ref({
