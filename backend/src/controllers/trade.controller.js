@@ -138,7 +138,16 @@ const tradeController = {
 
   async getTrade(req, res, next) {
     try {
-      const trade = await Trade.findById(req.params.id, req.user?.id);
+      const tradeId = req.params.id;
+      
+      // Validate UUID format
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      
+      if (!uuidRegex.test(tradeId)) {
+        return res.status(400).json({ error: 'Invalid trade ID format' });
+      }
+      
+      const trade = await Trade.findById(tradeId, req.user?.id);
       
       if (!trade) {
         return res.status(404).json({ error: 'Trade not found' });
@@ -1020,6 +1029,16 @@ const tradeController = {
         return res.status(400).json({ error: 'Valid CUSIP must be 9 characters' });
       }
 
+      // Check if Finnhub is configured before attempting lookup
+      if (!finnhub.isConfigured()) {
+        return res.status(503).json({ 
+          error: 'CUSIP lookup service not configured', 
+          details: 'Finnhub API key is required for CUSIP resolution. Add FINNHUB_API_KEY to your environment variables.',
+          cusip,
+          found: false
+        });
+      }
+
       const ticker = await finnhub.lookupCusip(cusip);
       
       if (ticker) {
@@ -1028,6 +1047,15 @@ const tradeController = {
         res.json({ cusip, ticker: null, found: false });
       }
     } catch (error) {
+      // Provide more descriptive error messages for CUSIP lookup failures
+      if (error.message.includes('Finnhub API key not configured')) {
+        return res.status(503).json({ 
+          error: 'CUSIP lookup service not configured', 
+          details: 'Add FINNHUB_API_KEY to your environment variables.',
+          cusip: req.params.cusip,
+          found: false
+        });
+      }
       next(error);
     }
   },
@@ -1296,7 +1324,10 @@ const tradeController = {
       const finnhub = require('../utils/finnhub');
       
       if (!finnhub.isConfigured()) {
-        return res.status(503).json({ error: 'News service not configured' });
+        return res.status(503).json({ 
+          error: 'News service not configured',
+          details: 'Finnhub API key is required for news data. Add FINNHUB_API_KEY to your environment variables.'
+        });
       }
 
       const allNews = [];
@@ -1351,7 +1382,10 @@ const tradeController = {
       const finnhub = require('../utils/finnhub');
       
       if (!finnhub.isConfigured()) {
-        return res.status(503).json({ error: 'Earnings service not configured' });
+        return res.status(503).json({ 
+          error: 'Earnings service not configured',
+          details: 'Finnhub API key is required for earnings data. Add FINNHUB_API_KEY to your environment variables.'
+        });
       }
 
       // Get earnings for next 2 weeks
@@ -1385,6 +1419,13 @@ const tradeController = {
     try {
       const { id } = req.params;
       const userId = req.user.id;
+
+      // Validate UUID format
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      
+      if (!uuidRegex.test(id)) {
+        return res.status(400).json({ error: 'Invalid trade ID format' });
+      }
 
       // Get the trade
       const trade = await Trade.findById(id, userId);

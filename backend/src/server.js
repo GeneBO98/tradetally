@@ -103,9 +103,25 @@ app.use('/api/v2', apiRoutes);
 // Well-known endpoints for mobile discovery
 app.use('/.well-known', wellKnownRoutes);
 
-// Legacy health endpoint
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK', timestamp: new Date().toISOString() });
+// Health endpoint with database connection check
+app.get('/api/health', async (req, res) => {
+  const health = {
+    status: 'OK',
+    timestamp: new Date().toISOString(),
+    services: {
+      database: 'OK'
+    }
+  };
+  
+  // Check database connection
+  try {
+    await require('./config/database').query('SELECT 1');
+  } catch (error) {
+    health.services.database = 'ERROR';
+    health.status = 'DEGRADED';
+  }
+  
+  res.json(health);
 });
 
 app.use(errorHandler);
