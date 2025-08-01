@@ -133,8 +133,13 @@ CREATE INDEX IF NOT EXISTS idx_trades_public ON trades(is_public) WHERE is_publi
 CREATE INDEX IF NOT EXISTS idx_trade_comments_trade_id ON trade_comments(trade_id);
 CREATE INDEX IF NOT EXISTS idx_analytics_cache_user_expires ON analytics_cache(user_id, expires_at);
 
--- Add role constraint
-ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('user', 'admin', 'owner'));
+-- Add role constraint (only if it doesn't exist)
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'users_role_check') THEN
+        ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('user', 'admin', 'owner'));
+    END IF;
+END $$;
 
 -- Create updated_at trigger function
 CREATE OR REPLACE FUNCTION update_updated_at_column()
