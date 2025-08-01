@@ -11,9 +11,10 @@ const notificationsController = {
     try {
       const userId = req.user.id;
       const userTier = req.user.tier;
+      const billingEnabled = req.user.billingEnabled;
       
-      // Only allow Pro users
-      if (userTier !== 'pro') {
+      // Only allow Pro users (or all users if billing is disabled)
+      if (billingEnabled && userTier !== 'pro') {
         return res.status(403).json({
           success: false,
           error: 'Real-time notifications require Pro tier'
@@ -26,7 +27,7 @@ const notificationsController = {
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive',
         'Access-Control-Allow-Origin': req.headers.origin || '*',
-        'Access-Control-Allow-Headers': 'Cache-Control',
+        'Access-Control-Allow-Headers': 'Cache-Control, Authorization',
         'Access-Control-Allow-Credentials': 'true',
         'X-Accel-Buffering': 'no', // Disable proxy buffering
         'Transfer-Encoding': 'chunked'
@@ -130,9 +131,10 @@ const notificationsController = {
     try {
       const userId = req.user.id;
       const userTier = req.user.tier;
+      const billingEnabled = req.user.billingEnabled;
       
-      // Only allow Pro users
-      if (userTier !== 'pro') {
+      // Only allow Pro users (or all users if billing is disabled)
+      if (billingEnabled && userTier !== 'pro') {
         return res.status(403).json({
           success: false,
           error: 'Real-time notifications require Pro tier'
@@ -167,14 +169,15 @@ const notificationsController = {
       const connection = sseConnections.get(userId);
       
       if (connection && !connection.destroyed && !connection.writableEnded) {
-        const eventData = {
-          type: notification.type || 'notification',
+        // If notification already has type and data structure, use it as is
+        const eventData = notification.type && notification.data ? notification : {
+          type: notification.type || 'price_alert',
           data: notification,
           timestamp: new Date().toISOString()
         };
 
         connection.write(`data: ${JSON.stringify(eventData)}\n\n`);
-        logger.logDebug(`Sent real-time notification to user ${userId}:`, notification.type);
+        logger.logDebug(`Sent real-time notification to user ${userId}:`, eventData.type);
         return true;
       }
       

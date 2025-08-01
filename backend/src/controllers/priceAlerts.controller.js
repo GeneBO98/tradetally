@@ -475,13 +475,31 @@ const priceAlertsController = {
         alert.current_price || 0, alert.target_price, alert.change_percent, message
       ]);
       
+      // Send real-time notification via SSE
+      const notification = {
+        type: 'price_alert',
+        data: {
+          id: notificationId,
+          symbol: alert.symbol,
+          alert_type: alert.alert_type,
+          message: message,
+          trigger_price: alert.current_price || 0,
+          target_price: alert.target_price,
+          change_percent: alert.change_percent,
+          timestamp: new Date().toISOString()
+        }
+      };
+      
+      const sent = await notificationsController.sendNotificationToUser(userId, notification);
+      
       res.json({
         success: true,
         message: 'Test alert sent successfully',
         data: {
           alert_id: alert.id,
           symbol: alert.symbol,
-          message: message
+          message: message,
+          realtime_notification_sent: sent
         }
       });
     } catch (error) {

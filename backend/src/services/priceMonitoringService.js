@@ -303,10 +303,13 @@ class PriceMonitoringService {
         await this.createBrowserNotification(alert, message);
       }
 
-      // If repeat is not enabled, delete the alert; otherwise update triggered_at timestamp
+      // If repeat is not enabled, mark as inactive; otherwise update triggered_at timestamp
       if (!alert.repeat_enabled) {
-        await db.query('DELETE FROM price_alerts WHERE id = $1', [id]);
-        console.log(`Alert deleted after triggering for ${symbol} (repeat not enabled)`);
+        await db.query(
+          'UPDATE price_alerts SET is_active = false, triggered_at = CURRENT_TIMESTAMP WHERE id = $1',
+          [id]
+        );
+        console.log(`Alert marked inactive after triggering for ${symbol} (repeat not enabled)`);
       } else {
         await db.query(
           'UPDATE price_alerts SET triggered_at = CURRENT_TIMESTAMP WHERE id = $1',
@@ -372,14 +375,17 @@ class PriceMonitoringService {
       const notificationsController = require('../controllers/notifications.controller');
       
       const notification = {
-        id: alert.id,
-        symbol: alert.symbol,
-        alert_type: alert.alert_type,
-        message: message,
-        trigger_price: alert.current_price,
-        target_price: alert.target_price,
-        change_percent: alert.change_percent,
-        timestamp: new Date().toISOString()
+        type: 'price_alert',
+        data: {
+          id: alert.id,
+          symbol: alert.symbol,
+          alert_type: alert.alert_type,
+          message: message,
+          trigger_price: alert.current_price,
+          target_price: alert.target_price,
+          change_percent: alert.change_percent,
+          timestamp: new Date().toISOString()
+        }
       };
 
       const sent = await notificationsController.sendNotificationToUser(alert.user_id, notification);

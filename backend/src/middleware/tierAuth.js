@@ -8,6 +8,13 @@ const requiresTier = (requiredTier) => {
         return res.status(401).json({ error: 'Unauthorized' });
       }
 
+      // Check if billing is disabled (for self-hosted instances)
+      const billingEnabled = await TierService.isBillingEnabled();
+      if (!billingEnabled) {
+        // If billing is disabled, grant access to all tiers
+        return next();
+      }
+
       const userTier = await TierService.getUserTier(req.user.id);
       
       // If required tier is 'free', everyone has access
@@ -39,6 +46,13 @@ const requiresFeature = (featureKey) => {
     try {
       if (!req.user || !req.user.id) {
         return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      // Check if billing is disabled (for self-hosted instances)
+      const billingEnabled = await TierService.isBillingEnabled();
+      if (!billingEnabled) {
+        // If billing is disabled, grant access to all features
+        return next();
       }
 
       const hasAccess = await TierService.hasFeatureAccess(req.user.id, featureKey);

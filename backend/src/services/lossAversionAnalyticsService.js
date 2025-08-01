@@ -1345,11 +1345,11 @@ class LossAversionAnalyticsService {
       const cachedData = await AnalyticsCache.get(userId, cacheKey);
       
       if (cachedData) {
-        console.log(`Returning cached top missed trades for user ${userId}`);
+        // console.log(`Returning cached top missed trades for user ${userId}`);
         return cachedData;
       }
 
-      console.log(`Cache miss - computing top missed trades for user ${userId}`);
+      // console.log(`Cache miss - computing top missed trades for user ${userId}`);
 
       // Get all completed winning trades that could have been held longer
       const tradesQuery = `
@@ -1375,6 +1375,7 @@ class LossAversionAnalyticsService {
           AND t.entry_time IS NOT NULL
           AND t.pnl > 0
           AND t.exit_time >= NOW() - INTERVAL '1 year'
+          AND UPPER(t.symbol) NOT IN ('TEST', 'DEMO', 'EXAMPLE', 'XXX', 'UNKNOWN')
         ORDER BY t.exit_time DESC
       `;
 
@@ -1403,7 +1404,7 @@ class LossAversionAnalyticsService {
       let totalMissedProfit = 0;
       let tradesWithPriceAnalysis = 0;
 
-      console.log(`Analyzing ${trades.length} winning trades for missed opportunities...`);
+      // console.log(`Analyzing ${trades.length} winning trades for missed opportunities...`);
 
       // Analyze up to 50 most recent winning trades for price history
       const tradesToAnalyzeForPrice = trades.slice(0, 50);
@@ -1454,7 +1455,11 @@ class LossAversionAnalyticsService {
                 }
               }
             } catch (priceError) {
-              console.warn(`Price analysis failed for trade ${trade.id} (${trade.symbol}): ${priceError.message}`);
+              // Skip logging for test symbols or commonly problematic symbols
+              const problematicSymbols = ['TEST', 'DEMO', 'EXAMPLE', 'XXX', 'UNKNOWN'];
+              if (!problematicSymbols.includes(trade.symbol.toUpperCase())) {
+                console.warn(`Price analysis failed for trade ${trade.id} (${trade.symbol}): ${priceError.message}`);
+              }
               // Continue to fallback estimation on any API error
             }
           }

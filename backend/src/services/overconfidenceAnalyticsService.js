@@ -39,6 +39,7 @@ class OverconfidenceAnalyticsService {
       WHERE user_id = $1 
         AND exit_price IS NOT NULL 
         AND exit_time IS NOT NULL
+        AND UPPER(symbol) NOT IN ('TEST', 'DEMO', 'EXAMPLE', 'XXX', 'UNKNOWN')
       ORDER BY entry_time ASC
     `;
 
@@ -325,11 +326,11 @@ class OverconfidenceAnalyticsService {
     const cachedData = await AnalyticsCache.get(userId, cacheKey);
     
     if (cachedData) {
-      console.log(`Returning cached overconfidence analysis for user ${userId}`);
+      // console.log(`Returning cached overconfidence analysis for user ${userId}`);
       return cachedData;
     }
 
-    console.log(`Cache miss - computing overconfidence analysis for user ${userId}`);
+    // console.log(`Cache miss - computing overconfidence analysis for user ${userId}`);
 
     // Build base parameters for date filtering
     const baseParams = [userId];
@@ -751,7 +752,7 @@ class OverconfidenceAnalyticsService {
       // First check if we already have cached AI recommendations for this event
       const cachedRecommendations = await this.getCachedAIRecommendations(event.id);
       if (cachedRecommendations && cachedRecommendations.length > 0) {
-        console.log(`Using cached AI recommendations for event ${event.id}`);
+        // console.log(`Using cached AI recommendations for event ${event.id}`);
         return cachedRecommendations;
       }
 
