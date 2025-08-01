@@ -24,7 +24,7 @@ const brokerParsers = {
   lightspeed: (row) => ({
     symbol: cleanString(row.Symbol),
     tradeDate: parseDate(row['Trade Date']),
-    entryTime: parseLightspeedDateTime((row['Trade Date'] || new Date().toISOString().split('T')[0]) + ' ' + (row['Execution Time'] || '09:30')),
+    entryTime: parseLightspeedDateTime(row['Trade Date'] + ' ' + (row['Execution Time'] || '09:30')),
     entryPrice: parseFloat(row.Price),
     quantity: parseInt(row.Qty),
     side: parseLightspeedSide(row.Side, row['Buy/Sell'], row['Principal Amount'], row['NET Amount']),
@@ -308,10 +308,7 @@ function parseDateTime(dateTimeStr) {
 
 // Lightspeed-specific datetime parser that handles Central Time
 function parseLightspeedDateTime(dateTimeStr) {
-  console.log(`DEBUG parseLightspeedDateTime: Input = "${dateTimeStr}"`);
-  
-  if (!dateTimeStr || dateTimeStr.trim() === '' || dateTimeStr.includes('undefined')) {
-    console.log(`DEBUG parseLightspeedDateTime: Returning null due to invalid input`);
+  if (!dateTimeStr || dateTimeStr.trim() === '' || dateTimeStr.includes('undefined') || dateTimeStr.includes('null')) {
     return null;
   }
   
@@ -322,23 +319,13 @@ function parseLightspeedDateTime(dateTimeStr) {
     // Parse the datetime string components manually to avoid timezone interpretation
     // Expected format: "2025-04-09 16:33" 
     const parts = dateTimeStr.trim().split(' ');
-    console.log(`DEBUG parseLightspeedDateTime: Split parts = ${JSON.stringify(parts)}`);
-    
-    if (parts.length !== 2) {
-      console.log(`DEBUG parseLightspeedDateTime: Wrong number of parts (${parts.length}), returning null`);
-      return null;
-    }
+    if (parts.length !== 2) return null;
     
     const [datePart, timePart] = parts;
     const [year, month, day] = datePart.split('-').map(Number);
     const [hours, minutes] = timePart.split(':').map(Number);
     
-    console.log(`DEBUG parseLightspeedDateTime: Parsed components - Year: ${year}, Month: ${month}, Day: ${day}, Hours: ${hours}, Minutes: ${minutes}`);
-    
-    if (!year || !month || !day || hours === undefined || minutes === undefined) {
-      console.log(`DEBUG parseLightspeedDateTime: Invalid components, returning null`);
-      return null;
-    }
+    if (!year || !month || !day || hours === undefined || minutes === undefined) return null;
     
     // Create UTC date object with explicit values (treating input as literal time)
     // Month is 0-indexed in JavaScript Date
@@ -351,8 +338,6 @@ function parseLightspeedDateTime(dateTimeStr) {
     
     // Add offset hours to convert from Lightspeed time to UTC
     const utcDate = new Date(literalDate.getTime() + (offsetHours * 60 * 60 * 1000));
-    
-    console.log(`DEBUG parseLightspeedDateTime: ${dateTimeStr} (Central) -> ${utcDate.toISOString()} (UTC)`);
     
     return utcDate.toISOString();
   } catch (error) {
@@ -519,17 +504,10 @@ async function parseLightspeedTransactions(records, existingPositions = {}) {
       const buySellValue = record['Buy/Sell'] || record['Buy Sell'] || record.BuySell || record['Long/Short'];
       const side = parseLightspeedSide(sideValue, buySellValue, record['Principal Amount'], record['NET Amount'], record.Qty);
       
-      // Debug datetime construction
-      const tradeDate = record['Trade Date'];
-      const executionTime = record['Execution Time'];
-      const dateTimeString = (tradeDate || new Date().toISOString().split('T')[0]) + ' ' + (executionTime || '09:30');
-      
-      console.log(`DEBUG: Constructing datetime - Trade Date: "${tradeDate}", Execution Time: "${executionTime}", Combined: "${dateTimeString}"`);
-      
       const transaction = {
         symbol: resolvedSymbol,
         tradeDate: parseDate(record['Trade Date']),
-        entryTime: parseLightspeedDateTime(dateTimeString),
+        entryTime: parseLightspeedDateTime(record['Trade Date'] + ' ' + (record['Execution Time'] || '09:30')),
         entryPrice: parseFloat(record.Price),
         quantity: Math.abs(parseInt(record.Qty)),
         side: side,
@@ -538,8 +516,6 @@ async function parseLightspeedTransactions(records, existingPositions = {}) {
         broker: 'lightspeed',
         notes: `Trade #${record['Trade Number']} - ${record['Security Type'] || ''}`
       };
-      
-      console.log(`DEBUG: Parsed entryTime result: ${transaction.entryTime}`);
 
       if (transaction.symbol && transaction.entryPrice > 0 && transaction.quantity > 0) {
         transactions.push(transaction);
