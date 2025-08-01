@@ -24,7 +24,7 @@ const brokerParsers = {
   lightspeed: (row) => ({
     symbol: cleanString(row.Symbol),
     tradeDate: parseDate(row['Trade Date']),
-    entryTime: parseLightspeedDateTime(row['Trade Date'] + ' ' + (row['Execution Time'] || '09:30')),
+    entryTime: parseLightspeedDateTime((row['Trade Date'] || new Date().toISOString().split('T')[0]) + ' ' + (row['Execution Time'] || '09:30')),
     entryPrice: parseFloat(row.Price),
     quantity: parseInt(row.Qty),
     side: parseLightspeedSide(row.Side, row['Buy/Sell'], row['Principal Amount'], row['NET Amount']),
@@ -308,7 +308,7 @@ function parseDateTime(dateTimeStr) {
 
 // Lightspeed-specific datetime parser that handles Central Time
 function parseLightspeedDateTime(dateTimeStr) {
-  if (!dateTimeStr) return null;
+  if (!dateTimeStr || dateTimeStr.trim() === '' || dateTimeStr.includes('undefined')) return null;
   
   try {
     // Lightspeed exports times in Central Time (America/Chicago)
@@ -507,7 +507,7 @@ async function parseLightspeedTransactions(records, existingPositions = {}) {
       const transaction = {
         symbol: resolvedSymbol,
         tradeDate: parseDate(record['Trade Date']),
-        entryTime: parseLightspeedDateTime(record['Trade Date'] + ' ' + (record['Execution Time'] || '09:30')),
+        entryTime: parseLightspeedDateTime((record['Trade Date'] || new Date().toISOString().split('T')[0]) + ' ' + (record['Execution Time'] || '09:30')),
         entryPrice: parseFloat(record.Price),
         quantity: Math.abs(parseInt(record.Qty)),
         side: side,
