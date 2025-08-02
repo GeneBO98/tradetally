@@ -684,6 +684,9 @@
         </div>
       </div>
 
+      <!-- News Sentiment Correlation Analytics -->
+      <NewsCorrelationAnalytics />
+
       <!-- New Chart Section -->
       <div class="grid grid-cols-1 gap-8 lg:grid-cols-2 xl:grid-cols-3">
         <!-- Trade Distribution by Price -->
@@ -881,6 +884,7 @@ import { useRouter, useRoute } from 'vue-router'
 import api from '@/services/api'
 import PerformanceChart from '@/components/charts/PerformanceChart.vue'
 import MdiIcon from '@/components/MdiIcon.vue'
+import NewsCorrelationAnalytics from '@/components/analytics/NewsCorrelationAnalytics.vue'
 import Chart from 'chart.js/auto'
 import { marked } from 'marked'
 import { 

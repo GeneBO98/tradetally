@@ -8,12 +8,19 @@ class Trade {
       symbol, entryTime, exitTime, entryPrice, exitPrice,
       quantity, side, commission, fees, notes, isPublic, broker,
       strategy, setup, tags, pnl: providedPnL, pnlPercent: providedPnLPercent,
-      executionData, mae, mfe, confidence
+      executionData, mae, mfe, confidence, tradeDate
     } = tradeData;
 
     // Convert empty strings to null for optional fields
     const cleanExitTime = exitTime === '' ? null : exitTime;
     const cleanExitPrice = exitPrice === '' ? null : exitPrice;
+
+    // Handle case where entryTime is null but tradeDate is provided (e.g., from imports)
+    // Use tradeDate with a default time of 09:30 (market open)
+    const finalEntryTime = entryTime || (tradeDate ? `${tradeDate}T09:30:00` : null);
+    if (!finalEntryTime) {
+      throw new Error('Entry time is required for creating a trade');
+    }
 
     // Use provided P&L if available (e.g., from Schwab), otherwise calculate it
     const pnl = providedPnL !== undefined ? providedPnL : this.calculatePnL(entryPrice, cleanExitPrice, quantity, side, commission, fees);
@@ -21,7 +28,8 @@ class Trade {
 
     // Use exit date as trade date if available, otherwise use entry date
     // Calculate trade date in user's timezone to avoid timezone conversion issues
-    const finalTradeDate = await getUserLocalDate(userId, cleanExitTime || entryTime);
+    // If tradeDate is explicitly provided (e.g., from imports), use it directly
+    const finalTradeDate = tradeDate || await getUserLocalDate(userId, cleanExitTime || finalEntryTime);
 
     // Auto-assign strategy if not provided by user
     let finalStrategy = strategy;
@@ -37,7 +45,7 @@ class Trade {
         // Use basic time-based classification and queue full classification for later
         const tempTrade = {
           symbol: symbol.toUpperCase(),
-          entry_time: entryTime,
+          entry_time: finalEntryTime,
           exit_time: cleanExitTime,
           entry_price: entryPrice,
           exit_price: cleanExitPrice,
@@ -45,7 +53,7 @@ class Trade {
           side,
           pnl,
           hold_time_minutes: cleanExitTime ? 
-            (new Date(cleanExitTime) - new Date(entryTime)) / (1000 * 60) : null
+            (new Date(cleanExitTime) - new Date(finalEntryTime)) / (1000 * 60) : null
         };
 
         const basicClassification = await this.classifyTradeBasic(tempTrade);
@@ -66,7 +74,7 @@ class Trade {
         // Normal classification with API calls
         const tempTrade = {
           symbol: symbol.toUpperCase(),
-          entry_time: entryTime,
+          entry_time: finalEntryTime,
           exit_time: cleanExitTime,
           entry_price: entryPrice,
           exit_price: cleanExitPrice,
@@ -74,7 +82,7 @@ class Trade {
           side,
           pnl,
           hold_time_minutes: cleanExitTime ? 
-            (new Date(cleanExitTime) - new Date(entryTime)) / (1000 * 60) : null
+            (new Date(cleanExitTime) - new Date(finalEntryTime)) / (1000 * 60) : null
         };
 
         try {
@@ -132,7 +140,7 @@ class Trade {
         newsData = await this.checkNewsForTrade({
           symbol: symbol.toUpperCase(),
           tradeDate: finalTradeDate,
-          entry_time: entryTime
+          entry_time: finalEntryTime
         }, userId);
       } catch (error) {
         console.warn(`Error checking news for trade: ${error.message}`);
@@ -152,7 +160,7 @@ class Trade {
     `;
 
     const values = [
-      userId, symbol.toUpperCase(), finalTradeDate, entryTime, cleanExitTime, entryPrice, cleanExitPrice,
+      userId, symbol.toUpperCase(), finalTradeDate, finalEntryTime, cleanExitTime, entryPrice, cleanExitPrice,
       quantity, side, commission || 0, fees || 0, pnl, pnlPercent, notes, isPublic || false,
       broker, finalStrategy, setup, tags || [], JSON.stringify(executionData || []), mae || null, mfe || null, confidence || 5,
       strategyConfidence, classificationMethod, JSON.stringify(classificationMetadata), manualOverride,
@@ -173,8 +181,8 @@ class Trade {
         appliedCachedData = await enrichmentCacheService.applyEnrichmentDataToTrade(
           createdTrade.id,
           symbol.toUpperCase(),
-          entryTime,
-          new Date(entryTime).toTimeString().substring(0, 8) // Convert to HH:MM:SS format
+          finalEntryTime,
+          new Date(finalEntryTime).toTimeString().substring(0, 8) // Convert to HH:MM:SS format
         );
         
         if (appliedCachedData) {
@@ -198,7 +206,7 @@ class Trade {
           {
             tradeId: createdTrade.id,
             symbol: symbol.toUpperCase(),
-            entry_time: entryTime,
+            entry_time: finalEntryTime,
             exit_time: cleanExitTime,
             entry_price: entryPrice,
             exit_price: cleanExitPrice,
@@ -206,7 +214,7 @@ class Trade {
             side,
             pnl,
             hold_time_minutes: cleanExitTime ? 
-              (new Date(cleanExitTime) - new Date(entryTime)) / (1000 * 60) : null
+              (new Date(cleanExitTime) - new Date(finalEntryTime)) / (1000 * 60) : null
           },
           3, // Medium priority
           userId
@@ -1127,40 +1135,22 @@ class Trade {
     }
 
     const analyticsQuery = `
-      WITH trades_with_starts AS (
-        SELECT
-          *,
-          CASE
-            WHEN LAG(position, 1, 0) OVER (PARTITION BY symbol ORDER BY trade_date, entry_time) = 0 THEN 1
-            ELSE 0
-          END as is_trade_start
-        FROM (
-          SELECT
-            *,
-            SUM(CASE WHEN side = 'long' THEN quantity ELSE -quantity END) OVER (PARTITION BY symbol ORDER BY trade_date, entry_time) as position
-          FROM trades t
-          ${whereClause}
-        ) as positions
-      ),
-      trades_with_groups AS (
-        SELECT
-          *,
-          SUM(is_trade_start) OVER (PARTITION BY symbol ORDER BY trade_date, entry_time) as trade_group
-        FROM trades_with_starts
-      ),
-      completed_trades AS (
+      WITH completed_trades AS (
+        -- Each trade with exit price is a complete round trip
         SELECT
           symbol,
-          trade_group,
-          SUM(pnl) as trade_pnl,
-          SUM(commission + fees) as trade_costs,
-          COUNT(*) as execution_count,
-          AVG(pnl_percent) as avg_return_pct,
-          MIN(trade_date) as first_trade_date,
-          MIN(entry_time) as first_entry,
-          MAX(COALESCE(exit_time, entry_time)) as last_exit
-        FROM trades_with_groups
-        GROUP BY symbol, trade_group
+          id as trade_group,
+          pnl as trade_pnl,
+          (commission + fees) as trade_costs,
+          1 as execution_count,
+          pnl_percent as avg_return_pct,
+          trade_date as first_trade_date,
+          entry_time as first_entry,
+          COALESCE(exit_time, entry_time) as last_exit
+        FROM trades t
+        ${whereClause}
+          AND exit_price IS NOT NULL
+          AND pnl IS NOT NULL
       ),
       trade_stats AS (
         SELECT 
@@ -2438,7 +2428,7 @@ class Trade {
       const TierService = require('../services/tierService');
       const userTier = await TierService.getUserTier(userId);
       
-      if (userTier.name === 'free') {
+      if (userTier === 'free') {
         console.log('News enrichment is a Pro feature, skipping for free tier user');
         return {
           hasNews: false,
@@ -2460,47 +2450,20 @@ class Trade {
         };
       }
 
+      // Use the new news enrichment service
+      const newsEnrichmentService = require('../services/newsEnrichmentService');
+      
       const tradeDate = new Date(tradeData.tradeDate || tradeData.entry_time);
       const symbol = tradeData.symbol;
       
-      // Get news for the trade date (look at the day of trade and day before for news that might have influenced)
-      const toDate = tradeDate.toISOString().split('T')[0];
-      const fromDate = new Date(tradeDate.getTime() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      console.log(`Checking news for ${symbol} on ${tradeDate.toISOString().split('T')[0]}`);
       
-      console.log(`Checking news for ${symbol} from ${fromDate} to ${toDate}`);
+      const newsData = await newsEnrichmentService.getNewsForSymbolAndDate(symbol, tradeDate, userId);
       
-      const companyNews = await finnhub.getCompanyNews(symbol, fromDate, toDate);
-      
-      if (!companyNews || companyNews.length === 0) {
-        return {
-          hasNews: false,
-          newsEvents: [],
-          sentiment: null,
-          checkedAt: new Date().toISOString()
-        };
-      }
-
-      // Filter and process news articles
-      const relevantNews = companyNews
-        .filter(article => article.headline && article.datetime)
-        .sort((a, b) => b.datetime - a.datetime) // Sort by newest first
-        .slice(0, 5) // Limit to top 5 most recent articles
-        .map(article => ({
-          headline: article.headline,
-          summary: article.summary || '',
-          url: article.url || '',
-          datetime: new Date(article.datetime * 1000).toISOString(),
-          source: article.source || '',
-          sentiment: this.analyzeNewsSentiment(article.headline, article.summary)
-        }));
-
-      // Calculate overall sentiment
-      const overallSentiment = this.calculateOverallSentiment(relevantNews);
-
       return {
-        hasNews: relevantNews.length > 0,
-        newsEvents: relevantNews,
-        sentiment: overallSentiment,
+        hasNews: newsData.hasNews,
+        newsEvents: newsData.newsEvents,
+        sentiment: newsData.sentiment,
         checkedAt: new Date().toISOString()
       };
 

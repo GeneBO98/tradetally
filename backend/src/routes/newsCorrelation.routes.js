@@ -1,0 +1,140 @@
+const express = require('express');
+const router = express.Router();
+const newsCorrelationController = require('../controllers/newsCorrelation.controller');
+const { authenticate } = require('../middleware/auth');
+
+/**
+ * @swagger
+ * tags:
+ *   name: News Correlation
+ *   description: News sentiment correlation analytics
+ */
+
+/**
+ * @swagger
+ * /api/news-correlation/analytics:
+ *   get:
+ *     summary: Get comprehensive news sentiment correlation analytics
+ *     tags: [News Correlation]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: startDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Start date for analysis (YYYY-MM-DD)
+ *       - in: query
+ *         name: endDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: End date for analysis (YYYY-MM-DD)
+ *       - in: query
+ *         name: symbol
+ *         schema:
+ *           type: string
+ *         description: Filter by specific symbol
+ *       - in: query
+ *         name: sector
+ *         schema:
+ *           type: string
+ *         description: Filter by sector
+ *     responses:
+ *       200:
+ *         description: News sentiment correlation analytics
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 overall_performance:
+ *                   type: object
+ *                   description: Performance metrics by sentiment and side
+ *                 timing_analysis:
+ *                   type: object
+ *                   description: Timing patterns relative to news events
+ *                 direction_bias:
+ *                   type: object
+ *                   description: Long/short bias based on news sentiment
+ *                 sentiment_accuracy:
+ *                   type: object
+ *                   description: How well sentiment predictions align with outcomes
+ *                 top_performers:
+ *                   type: array
+ *                   description: Best performing sentiment/symbol combinations
+ *                 insights:
+ *                   type: array
+ *                   description: Generated insights and recommendations
+ *                 metadata:
+ *                   type: object
+ *                   description: Analysis metadata and filters
+ *       403:
+ *         description: Feature not available for user tier
+ *       500:
+ *         description: Server error
+ */
+router.get('/analytics', authenticate, newsCorrelationController.getCorrelationAnalytics);
+
+/**
+ * @swagger
+ * /api/news-correlation/summary:
+ *   get:
+ *     summary: Get news correlation summary for dashboard
+ *     tags: [News Correlation]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: News correlation summary
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 enabled:
+ *                   type: boolean
+ *                   description: Whether the feature is enabled
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     total_trades_with_news:
+ *                       type: integer
+ *                     overall_win_rate:
+ *                       type: number
+ *                     avg_pnl:
+ *                       type: number
+ *                     sentiment_breakdown:
+ *                       type: object
+ *                     performance_by_sentiment:
+ *                       type: object
+ *       500:
+ *         description: Server error
+ */
+router.get('/summary', authenticate, newsCorrelationController.getCorrelationSummary);
+
+/**
+ * @swagger
+ * /api/news-correlation/enabled:
+ *   get:
+ *     summary: Check if news correlation analytics is enabled
+ *     tags: [News Correlation]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Feature availability status
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 enabled:
+ *                   type: boolean
+ *       500:
+ *         description: Server error
+ */
+router.get('/enabled', authenticate, newsCorrelationController.checkEnabled);
+
+module.exports = router;
