@@ -125,47 +125,21 @@ const analyticsController = {
       console.log('Test result:', testResult.rows[0]);
 
       const overviewQuery = `
-        WITH trades_with_starts AS (
-            SELECT
-                *,
-                CASE
-                    WHEN LAG(position, 1, 0) OVER (PARTITION BY symbol ORDER BY trade_date, entry_time) = 0 THEN 1
-                    ELSE 0
-                END as is_trade_start
-            FROM (
-                SELECT
-                    *,
-                    SUM(CASE WHEN side = 'long' THEN quantity ELSE -quantity END) OVER (PARTITION BY symbol ORDER BY trade_date, entry_time) as position
-                FROM trades
-                WHERE user_id = $1 ${dateFilter}
-            ) as positions
-        ),
-        trades_with_groups AS (
-            SELECT
-                *,
-                SUM(is_trade_start) OVER (PARTITION BY symbol ORDER BY trade_date, entry_time) as trade_group
-            FROM trades_with_starts
-        ),
-        completed_trades AS (
-            SELECT
-                symbol,
-                trade_group,
-                SUM(pnl) as pnl,
-                SUM(commission) as commission,
-                SUM(fees) as fees,
-                MIN(trade_date) as trade_date,
-                MIN(entry_time) as entry_time
-            FROM trades_with_groups
-            GROUP BY symbol, trade_group
+        WITH completed_trades AS (
+            -- Each trade with both entry and exit price is a complete round trip
+            SELECT 
+                *
+            FROM trades
+            WHERE user_id = $1 ${dateFilter}
+                AND exit_price IS NOT NULL
+                AND pnl IS NOT NULL
         ),
         individual_trades AS (
-            -- Get best/worst individual executions, not round-trip aggregates
+            -- Get best/worst individual executions
             SELECT 
                 COALESCE(MAX(pnl), 0) as individual_best_trade,
                 COALESCE(MIN(pnl), 0) as individual_worst_trade
-            FROM trades
-            WHERE user_id = $1 ${dateFilter}
-                AND pnl IS NOT NULL
+            FROM completed_trades
         )
         SELECT 
           (SELECT COUNT(*) FROM completed_trades)::integer as total_trades,
@@ -185,10 +159,10 @@ const analyticsController = {
             ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE pnl < 0), 0)::numeric as avg_loss'
             : 'COALESCE(AVG(pnl) FILTER (WHERE pnl < 0), 0)::numeric as avg_loss'
           },
-          -- Use individual execution best/worst instead of round-trip aggregates
+          -- Best/worst trades
           (SELECT individual_best_trade FROM individual_trades) as best_trade,
           (SELECT individual_worst_trade FROM individual_trades) as worst_trade,
-          (SELECT COUNT(*) FROM trades WHERE user_id = $1 ${dateFilter})::integer as total_executions,
+          (SELECT COUNT(*) FROM completed_trades)::integer as total_executions,
           COALESCE(SUM(pnl) FILTER (WHERE pnl > 0), 0) as total_gross_wins,
           COALESCE(ABS(SUM(pnl) FILTER (WHERE pnl < 0)), 0) as total_gross_losses,
           COALESCE(SUM(commission), 0) as total_commissions,

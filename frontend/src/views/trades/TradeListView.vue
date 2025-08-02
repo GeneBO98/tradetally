@@ -150,10 +150,11 @@
                 </span>
                 <!-- News badge for mobile -->
                 <span v-if="trade.has_news" 
-                  class="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400 flex items-center"
+                  :class="getNewsBadgeClasses(trade.news_sentiment)"
+                  class="px-2 py-1 text-xs font-semibold rounded-full flex items-center"
                   :title="`${trade.news_events?.length || 0} news article(s) - ${trade.news_sentiment || 'neutral'} sentiment`">
-                  📰
-                  <span class="ml-1">{{ trade.news_events?.length || 0 }}</span>
+                  <MdiIcon :icon="newspaperIcon" :size="14" class="mr-1" />
+                  <span>{{ trade.news_events?.length || 0 }}</span>
                 </span>
               </div>
             <span class="px-2 py-1 text-xs font-semibold rounded-full"
@@ -296,10 +297,11 @@
                   </div>
                   <!-- News badge for desktop table -->
                   <span v-if="trade.has_news" 
-                    class="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400 flex items-center"
+                    :class="getNewsBadgeClasses(trade.news_sentiment)"
+                    class="px-2 py-1 text-xs font-semibold rounded-full flex items-center"
                     :title="`${trade.news_events?.length || 0} news article(s) - ${trade.news_sentiment || 'neutral'} sentiment`">
-                    📰
-                    <span class="ml-1">{{ trade.news_events?.length || 0 }}</span>
+                    <MdiIcon :icon="newspaperIcon" :size="14" class="mr-1" />
+                    <span>{{ trade.news_events?.length || 0 }}</span>
                   </span>
                 </div>
               </td>
@@ -501,10 +503,15 @@ import { DocumentTextIcon, ChatBubbleLeftIcon } from '@heroicons/vue/24/outline'
 import TradeFilters from '@/components/trades/TradeFilters.vue'
 import TradeCommentsDialog from '@/components/trades/TradeCommentsDialog.vue'
 import EnrichmentStatus from '@/components/trades/EnrichmentStatus.vue'
+import MdiIcon from '@/components/MdiIcon.vue'
+import { mdiNewspaper } from '@mdi/js'
 
 const tradesStore = useTradesStore()
 const route = useRoute()
 const router = useRouter()
+
+// MDI icons
+const newspaperIcon = mdiNewspaper
 
 // Comments dialog
 const showCommentsDialog = ref(false)
@@ -630,6 +637,21 @@ async function executeBulkDelete() {
     await tradesStore.fetchTrades()
   } catch (error) {
     console.error('Failed to delete trades:', error)
+  }
+}
+
+// Get news badge classes based on sentiment
+function getNewsBadgeClasses(sentiment) {
+  const baseClasses = 'px-2 py-1 text-xs font-semibold rounded-full flex items-center'
+  
+  switch (sentiment) {
+    case 'positive':
+      return 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
+    case 'negative':
+      return 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
+    case 'neutral':
+    default:
+      return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
   }
 }
 

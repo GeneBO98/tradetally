@@ -261,6 +261,9 @@ class JobQueue {
         case 'mae_mfe_estimation':
           result = await this.processMaeMfeEstimation(data);
           break;
+        case 'news_backfill':
+          result = await this.processNewsBackfill(data);
+          break;
         default:
           throw new Error(`Unknown job type: ${job.type}`);
       }
@@ -611,6 +614,24 @@ class JobQueue {
       logger.logError(`Failed to cleanup jobs for deleted trades: ${error.message}`);
       return 0;
     }
+  }
+
+  /**
+   * Process news backfill job
+   */
+  async processNewsBackfill(data) {
+    const newsEnrichmentService = require('../services/newsEnrichmentService');
+    const { userId, batchSize = 50, maxTrades = null } = data;
+    
+    logger.logImport(`Starting news backfill for user ${userId || 'all users'}`);
+    
+    await newsEnrichmentService.backfillTradeNews({
+      userId,
+      batchSize,
+      maxTrades
+    });
+    
+    return { message: 'News backfill completed' };
   }
 }
 
