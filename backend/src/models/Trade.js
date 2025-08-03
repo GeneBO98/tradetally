@@ -2436,12 +2436,12 @@ class Trade {
   // Check for news events on trade date (Pro feature)
   static async checkNewsForTrade(tradeData, userId = null) {
     try {
-      // Check if user has pro access for news enrichment
-      const TierService = require('../services/tierService');
-      const userTier = await TierService.getUserTier(userId);
+      // Use the same eligibility check as NewsEnrichmentService
+      const newsEnrichmentService = require('../services/newsEnrichmentService');
+      const isEligible = await newsEnrichmentService.isNewsEnrichmentEnabled(userId);
       
-      if (userTier === 'free') {
-        console.log('News enrichment is a Pro feature, skipping for free tier user');
+      if (!isEligible) {
+        console.log('News enrichment not available for this user');
         return {
           hasNews: false,
           newsEvents: [],
@@ -2461,9 +2461,6 @@ class Trade {
           checkedAt: new Date().toISOString()
         };
       }
-
-      // Use the new news enrichment service
-      const newsEnrichmentService = require('../services/newsEnrichmentService');
       
       const tradeDate = new Date(tradeData.tradeDate || tradeData.entry_time);
       const symbol = tradeData.symbol;
