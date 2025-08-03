@@ -217,7 +217,12 @@
                 </tr>
               </thead>
               <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-                <tr v-for="performer in analytics.top_performers.slice(0, 10)" :key="`${performer.symbol}-${performer.sentiment}-${performer.side}`">
+                <tr 
+                  v-for="performer in analytics.top_performers.slice(0, 10)" 
+                  :key="`${performer.symbol}-${performer.sentiment}-${performer.side}`"
+                  class="hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition-colors"
+                  @click="showPerformerDetails(performer)"
+                >
                   <td class="px-4 py-4 whitespace-nowrap font-medium text-gray-900 dark:text-white">
                     {{ performer.symbol }}
                   </td>
@@ -296,6 +301,110 @@
         </p>
       </div>
     </div>
+
+    <!-- Performer Details Modal -->
+    <div v-if="selectedPerformer" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" @click="closePerformerDetails">
+      <div class="bg-white dark:bg-gray-800 rounded-lg max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto" @click.stop>
+        <div class="p-6">
+          <!-- Modal Header -->
+          <div class="flex items-center justify-between mb-6">
+            <div>
+              <h3 class="text-xl font-semibold text-gray-900 dark:text-white">
+                {{ selectedPerformer.symbol }} - News & Trade Details
+              </h3>
+              <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                {{ selectedPerformer.news_sentiment }} sentiment • {{ selectedPerformer.side }} positions
+              </p>
+            </div>
+            <button
+              @click="closePerformerDetails"
+              class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+            >
+              <MdiIcon :icon="closeIcon" :size="24" />
+            </button>
+          </div>
+
+          <!-- Performance Summary -->
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+            <div>
+              <div class="text-sm text-gray-500 dark:text-gray-400">Total Trades</div>
+              <div class="text-lg font-semibold text-gray-900 dark:text-white">{{ selectedPerformer.trade_count }}</div>
+            </div>
+            <div>
+              <div class="text-sm text-gray-500 dark:text-gray-400">Win Rate</div>
+              <div class="text-lg font-semibold text-gray-900 dark:text-white">{{ selectedPerformer.win_rate }}%</div>
+            </div>
+            <div>
+              <div class="text-sm text-gray-500 dark:text-gray-400">Total P&L</div>
+              <div class="text-lg font-semibold" :class="selectedPerformer.total_pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                ${{ formatNumber(selectedPerformer.total_pnl) }}
+              </div>
+            </div>
+            <div>
+              <div class="text-sm text-gray-500 dark:text-gray-400">Avg Return</div>
+              <div class="text-lg font-semibold text-gray-900 dark:text-white">{{ selectedPerformer.avg_return_pct }}%</div>
+            </div>
+          </div>
+
+          <!-- Loading/Error States -->
+          <div v-if="performerDetailsLoading" class="flex justify-center py-8">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+          </div>
+
+          <div v-else-if="performerDetailsError" class="text-center py-8">
+            <p class="text-red-600 dark:text-red-400">{{ performerDetailsError }}</p>
+            <button @click="fetchPerformerDetails" class="mt-2 btn-primary">Try Again</button>
+          </div>
+
+          <!-- Trades and News Details -->
+          <div v-else-if="performerDetails" class="space-y-4">
+            <h4 class="text-lg font-medium text-gray-900 dark:text-white">Individual Trades</h4>
+            <div class="space-y-3">
+              <div
+                v-for="trade in performerDetails"
+                :key="trade.id"
+                class="border border-gray-200 dark:border-gray-700 rounded-lg p-4"
+              >
+                <!-- Trade Header -->
+                <div class="flex items-center justify-between mb-3">
+                  <div class="flex items-center space-x-4">
+                    <span class="font-medium text-gray-900 dark:text-white">
+                      {{ formatDate(trade.trade_date) }}
+                    </span>
+                    <span class="px-2 py-1 text-xs font-semibold rounded-full"
+                      :class="trade.pnl >= 0 ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400' : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'">
+                      {{ trade.pnl >= 0 ? '+' : '' }}${{ formatNumber(trade.pnl) }}
+                    </span>
+                  </div>
+                  <div class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ trade.quantity }} shares @ ${{ formatNumber(trade.entry_price) }} → ${{ formatNumber(trade.exit_price) }}
+                  </div>
+                </div>
+
+                <!-- News Headlines -->
+                <div v-if="trade.news_headlines && trade.news_headlines.length > 0" class="mt-3">
+                  <div class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">News Headlines:</div>
+                  <div class="space-y-2">
+                    <div
+                      v-for="(headline, index) in trade.news_headlines"
+                      :key="index"
+                      class="text-sm text-gray-600 dark:text-gray-400 p-2 bg-gray-50 dark:bg-gray-700 rounded border-l-2 border-blue-400"
+                    >
+                      {{ headline }}
+                    </div>
+                  </div>
+                </div>
+
+                <!-- No news available -->
+                <div v-else class="text-sm text-gray-500 dark:text-gray-400 italic">
+                  No news headlines available for this trade
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -303,7 +412,7 @@
 import { ref, onMounted } from 'vue'
 import { format } from 'date-fns'
 import MdiIcon from '@/components/MdiIcon.vue'
-import { mdiRefresh, mdiAlertCircle, mdiLock, mdiLightbulb, mdiChartLine } from '@mdi/js'
+import { mdiRefresh, mdiAlertCircle, mdiLock, mdiLightbulb, mdiChartLine, mdiClose } from '@mdi/js'
 import api from '@/services/api'
 
 // Icons
@@ -312,12 +421,19 @@ const alertIcon = mdiAlertCircle
 const lockIcon = mdiLock
 const bulbIcon = mdiLightbulb
 const chartIcon = mdiChartLine
+const closeIcon = mdiClose
 
 // Data
 const analytics = ref(null)
 const loading = ref(false)
 const error = ref(null)
 const enabled = ref(false)
+
+// Performer details modal
+const selectedPerformer = ref(null)
+const performerDetails = ref(null)
+const performerDetailsLoading = ref(false)
+const performerDetailsError = ref(null)
 
 // Methods
 function formatNumber(num) {
@@ -363,6 +479,44 @@ async function fetchAnalytics() {
 
 function refreshAnalytics() {
   fetchAnalytics()
+}
+
+// Performer details methods
+async function showPerformerDetails(performer) {
+  selectedPerformer.value = performer
+  performerDetails.value = null
+  performerDetailsError.value = null
+  
+  await fetchPerformerDetails()
+}
+
+async function fetchPerformerDetails() {
+  if (!selectedPerformer.value) return
+  
+  performerDetailsLoading.value = true
+  performerDetailsError.value = null
+  
+  try {
+    const response = await api.get('/news-correlation/performer-details', {
+      params: {
+        symbol: selectedPerformer.value.symbol,
+        sentiment: selectedPerformer.value.news_sentiment,
+        side: selectedPerformer.value.side
+      }
+    })
+    performerDetails.value = response.data
+  } catch (err) {
+    console.error('Failed to fetch performer details:', err)
+    performerDetailsError.value = err.response?.data?.error || 'Failed to load trade details'
+  } finally {
+    performerDetailsLoading.value = false
+  }
+}
+
+function closePerformerDetails() {
+  selectedPerformer.value = null
+  performerDetails.value = null
+  performerDetailsError.value = null
 }
 
 onMounted(() => {

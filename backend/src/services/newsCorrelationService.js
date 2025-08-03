@@ -171,6 +171,7 @@ class NewsCorrelationService {
         ${whereClause}
         GROUP BY news_sentiment, side, symbol
         HAVING COUNT(*) >= 3  -- Only include symbols with 3+ trades
+          AND SUM(pnl) > 100  -- Only include combinations with meaningful profit (>$100)
         ORDER BY total_pnl DESC
         LIMIT 20
       `;
@@ -441,6 +442,66 @@ class NewsCorrelationService {
     } catch (error) {
       logger.logError(`Error getting news correlation summary: ${error.message}`);
       return null;
+    }
+  }
+
+  /**
+   * Get detailed trades and news for a specific performer combination
+   */
+  async getPerformerDetails(userId, options = {}) {
+    try {
+      if (!(await this.isNewsCorrelationEnabled(userId))) {
+        return { error: 'News correlation analytics requires Pro tier' };
+      }
+
+      const { symbol, sentiment, side } = options;
+
+      if (!symbol || !sentiment || !side) {
+        return { error: 'Symbol, sentiment, and side are required' };
+      }
+
+      const query = `
+        SELECT 
+          t.id,
+          t.symbol,
+          t.trade_date,
+          t.entry_time,
+          t.exit_time,
+          t.entry_price,
+          t.exit_price,
+          t.quantity,
+          t.side,
+          t.pnl,
+          t.pnl_percent,
+          t.news_sentiment,
+          t.news_events
+        FROM trades t
+        WHERE t.user_id = $1 
+        AND t.symbol = $2
+        AND t.news_sentiment = $3
+        AND t.side = $4
+        AND t.exit_time IS NOT NULL 
+        AND t.exit_price IS NOT NULL 
+        AND t.has_news = TRUE 
+        AND t.news_sentiment IS NOT NULL
+        ORDER BY t.trade_date DESC
+        LIMIT 50
+      `;
+
+      const result = await db.query(query, [userId, symbol, sentiment, side]);
+      
+      return result.rows.map(trade => ({
+        ...trade,
+        news_headlines: trade.news_events ? 
+          (Array.isArray(trade.news_events) ? 
+            trade.news_events.map(event => event.headline || event.title || event.summary).filter(Boolean) : 
+            []) : 
+          []
+      }));
+
+    } catch (error) {
+      logger.logError(`Error getting performer details: ${error.message}`);
+      return { error: 'Failed to fetch performer details' };
     }
   }
 }

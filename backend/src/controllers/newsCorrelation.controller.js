@@ -73,6 +73,35 @@ class NewsCorrelationController {
       res.status(500).json({ error: 'Failed to check feature availability' });
     }
   }
+
+  /**
+   * Get detailed trades and news for a specific performer combination
+   */
+  async getPerformerDetails(req, res) {
+    try {
+      const userId = req.user.id;
+      const { symbol, sentiment, side } = req.query;
+
+      if (!symbol || !sentiment || !side) {
+        return res.status(400).json({ error: 'Symbol, sentiment, and side are required' });
+      }
+
+      const details = await NewsCorrelationService.getPerformerDetails(userId, {
+        symbol: symbol.toUpperCase(),
+        sentiment,
+        side
+      });
+
+      if (details.error) {
+        return res.status(403).json({ error: details.error });
+      }
+
+      res.json(details);
+    } catch (error) {
+      logger.logError(`Error in getPerformerDetails: ${error.message}`);
+      res.status(500).json({ error: 'Failed to get performer details' });
+    }
+  }
 }
 
 module.exports = new NewsCorrelationController();
