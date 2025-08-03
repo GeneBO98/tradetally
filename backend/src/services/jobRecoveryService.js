@@ -159,7 +159,7 @@ class JobRecoveryService {
           // Create strategy classification job
           await jobQueue.addJob('strategy_classification', {
             tradeId: trade.id
-          }, 3, trade.user_id);
+          }, 2, trade.user_id);
           jobsCreated++;
 
           // Create CUSIP resolution job if needed

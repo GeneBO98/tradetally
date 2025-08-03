@@ -1,21 +1,46 @@
 const cache = {
   data: {},
-  get(key) {
-    const cachedItem = this.data[key];
+  
+  // Support both namespace-based and direct key access
+  get(namespaceOrKey, keyOrUndefined) {
+    const actualKey = keyOrUndefined !== undefined ? `${namespaceOrKey}:${keyOrUndefined}` : namespaceOrKey;
+    const cachedItem = this.data[actualKey];
     if (cachedItem && Date.now() < cachedItem.expiry) {
       return cachedItem.value;
     }
-    this.del(key);
+    this.del(actualKey);
     return null;
   },
-  set(key, value, ttl = 60000) { // Default TTL: 1 minute
-    this.data[key] = {
-      value,
-      expiry: Date.now() + ttl,
+  
+  // Support both namespace-based and direct key access
+  set(namespaceOrKey, keyOrValue, valueOrTtl, ttlOrUndefined) {
+    let actualKey, actualValue, actualTtl;
+    
+    if (ttlOrUndefined !== undefined) {
+      // 4 parameters: namespace, key, value, ttl
+      actualKey = `${namespaceOrKey}:${keyOrValue}`;
+      actualValue = valueOrTtl;
+      actualTtl = ttlOrUndefined;
+    } else if (typeof valueOrTtl === 'number') {
+      // 3 parameters: key, value, ttl
+      actualKey = namespaceOrKey;
+      actualValue = keyOrValue;
+      actualTtl = valueOrTtl;
+    } else {
+      // 2 parameters: key, value (use default TTL)
+      actualKey = namespaceOrKey;
+      actualValue = keyOrValue;
+      actualTtl = 60000; // Default TTL: 1 minute
+    }
+    
+    this.data[actualKey] = {
+      value: actualValue,
+      expiry: Date.now() + actualTtl,
     };
   },
-  del(key) {
-    delete this.data[key];
+  del(namespaceOrKey, keyOrUndefined) {
+    const actualKey = keyOrUndefined !== undefined ? `${namespaceOrKey}:${keyOrUndefined}` : namespaceOrKey;
+    delete this.data[actualKey];
   },
   flush() {
     this.data = {};

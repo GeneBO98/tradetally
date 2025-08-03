@@ -2,6 +2,7 @@ const db = require('../config/database');
 const finnhub = require('../utils/finnhub');
 const TierService = require('./tierService');
 const logger = require('../utils/logger');
+const globalEnrichmentCache = require('./globalEnrichmentCacheService');
 
 class NewsEnrichmentService {
   constructor() {
@@ -32,7 +33,7 @@ class NewsEnrichmentService {
   }
 
   /**
-   * Get news data from cache or API
+   * Get news data from global cache or API
    */
   async getNewsForSymbolAndDate(symbol, date, userId = null) {
     try {
@@ -60,36 +61,70 @@ class NewsEnrichmentService {
       const symbolUpper = symbol.toUpperCase();
       const newsDate = new Date(date).toISOString().split('T')[0];
 
-      // Try to get from cache first
-      const cacheQuery = `
-        SELECT news_events, sentiment 
-        FROM news_cache 
-        WHERE symbol = $1 AND news_date = $2
-      `;
-      const cacheResult = await db.query(cacheQuery, [symbolUpper, newsDate]);
+      // Use global enrichment cache with API fallback
+      const enrichmentResult = await globalEnrichmentCache.getEnrichmentWithFallback(
+        symbolUpper, 
+        newsDate, 
+        async (sym, tradeDate) => await this.fetchNewsFromAPI(sym, tradeDate)
+      );
 
-      if (cacheResult.rows.length > 0) {
-        const cached = cacheResult.rows[0];
+      if (enrichmentResult.source === 'error') {
         return {
-          hasNews: cached.news_events && cached.news_events.length > 0,
-          newsEvents: cached.news_events || [],
-          sentiment: cached.sentiment,
-          fromCache: true
+          hasNews: false,
+          newsEvents: [],
+          sentiment: null,
+          fromCache: false,
+          error: enrichmentResult.error
         };
       }
 
-      // Not in cache, fetch from API
-      logger.logImport(`Fetching news for ${symbolUpper} on ${newsDate} from Finnhub`);
+      const data = enrichmentResult.data;
+      const newsEvents = data?.major_news_events || [];
+      
+      // Convert numeric sentiment back to string
+      let sentiment = null;
+      if (data?.news_sentiment !== null && data?.news_sentiment !== undefined) {
+        if (data.news_sentiment > 0.1) sentiment = 'positive';
+        else if (data.news_sentiment < -0.1) sentiment = 'negative';
+        else sentiment = 'neutral';
+      }
+
+      return {
+        hasNews: newsEvents.length > 0,
+        newsEvents: newsEvents,
+        sentiment: sentiment,
+        fromCache: enrichmentResult.cached,
+        source: enrichmentResult.source
+      };
+
+    } catch (error) {
+      logger.logError(`Error getting news for ${symbol} on ${date}: ${error.message}`);
+      return {
+        hasNews: false,
+        newsEvents: [],
+        sentiment: null,
+        fromCache: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Fetch news data from API (used by global cache service)
+   */
+  async fetchNewsFromAPI(symbol, tradeDate) {
+    try {
+      logger.logImport(`Fetching news for ${symbol} on ${tradeDate} from Finnhub`);
       
       // Get news for the trade date and day before
-      const toDate = newsDate;
-      const fromDate = new Date(new Date(newsDate).getTime() - 24 * 60 * 60 * 1000)
+      const toDate = tradeDate;
+      const fromDate = new Date(new Date(tradeDate).getTime() - 24 * 60 * 60 * 1000)
         .toISOString().split('T')[0];
 
-      const companyNews = await finnhub.getCompanyNews(symbolUpper, fromDate, toDate);
+      const companyNews = await finnhub.getCompanyNews(symbol, fromDate, toDate);
       
       let processedNews = [];
-      let sentiment = null;
+      let numericSentiment = 0;
 
       if (companyNews && companyNews.length > 0) {
         // Filter and process news articles
@@ -105,23 +140,49 @@ class NewsEnrichmentService {
             sentiment: this.analyzeSentiment(article.headline + ' ' + (article.summary || ''))
           }));
 
-        // Calculate overall sentiment
+        // Calculate overall numeric sentiment for storage
         if (processedNews.length > 0) {
           const sentiments = processedNews.map(n => n.sentiment);
           const positive = sentiments.filter(s => s === 'positive').length;
           const negative = sentiments.filter(s => s === 'negative').length;
+          const total = sentiments.length;
           
-          if (positive > negative) {
-            sentiment = 'positive';
-          } else if (negative > positive) {
-            sentiment = 'negative';
-          } else {
-            sentiment = 'neutral';
-          }
+          // Convert to numeric score (-1.0 to 1.0)
+          numericSentiment = (positive - negative) / total;
         }
       }
 
-      // Cache the result (even if empty)
+      // Also cache in legacy news_cache table for backward compatibility
+      await this.cacheLegacyNews(symbol, tradeDate, processedNews, numericSentiment);
+
+      // Return data for global cache
+      return {
+        news_sentiment: numericSentiment,
+        news_count: processedNews.length,
+        news_summary: processedNews.length > 0 ? 
+          processedNews.map(n => n.headline).slice(0, 3).join('; ') : null,
+        major_news_events: processedNews,
+        data_sources: ['finnhub'],
+        confidence_score: processedNews.length > 0 ? 90 : 100
+      };
+
+    } catch (error) {
+      logger.logError(`Error fetching news from API for ${symbol}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Cache news in legacy news_cache table for backward compatibility
+   */
+  async cacheLegacyNews(symbol, tradeDate, processedNews, numericSentiment) {
+    try {
+      // Convert numeric sentiment back to string for legacy table
+      let stringSentiment = null;
+      if (numericSentiment > 0.1) stringSentiment = 'positive';
+      else if (numericSentiment < -0.1) stringSentiment = 'negative';
+      else if (processedNews.length > 0) stringSentiment = 'neutral';
+
       const cacheInsertQuery = `
         INSERT INTO news_cache (symbol, news_date, news_events, sentiment)
         VALUES ($1, $2, $3, $4)
@@ -133,27 +194,14 @@ class NewsEnrichmentService {
       `;
       
       await db.query(cacheInsertQuery, [
-        symbolUpper, 
-        newsDate, 
+        symbol.toUpperCase(), 
+        tradeDate, 
         JSON.stringify(processedNews),
-        sentiment
+        stringSentiment
       ]);
-
-      return {
-        hasNews: processedNews.length > 0,
-        newsEvents: processedNews,
-        sentiment: sentiment,
-        fromCache: false
-      };
-
     } catch (error) {
-      logger.logError(`Error getting news for ${symbol} on ${date}: ${error.message}`);
-      return {
-        hasNews: false,
-        newsEvents: [],
-        sentiment: null,
-        fromCache: false
-      };
+      logger.logError(`Error caching legacy news data: ${error.message}`);
+      // Don't throw - this is just for backward compatibility
     }
   }
 

@@ -207,6 +207,7 @@
         </div>
       </div>
 
+
       <!-- Import History -->
       <div v-if="importHistory.length > 0" class="card">
         <div class="card-body">
@@ -292,12 +293,47 @@
       <!-- CUSIP Management -->
       <div class="card">
         <div class="card-body">
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
-            CUSIP to Ticker Lookup
-          </h3>
-          <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
-            Manage CUSIP to ticker symbol mappings. Add mappings for securities that appear as CUSIP numbers instead of ticker symbols.
-          </p>
+          <div class="flex items-start justify-between mb-4">
+            <div>
+              <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">
+                CUSIP Symbol Mappings
+              </h3>
+              <p class="text-sm text-gray-600 dark:text-gray-400">
+                Some brokers export trades with CUSIP codes instead of ticker symbols. Manage how these codes are mapped to ticker symbols for better organization and filtering.
+              </p>
+            </div>
+            <div class="flex items-center space-x-2 ml-4">
+              <button
+                @click="showAllMappingsModal = true"
+                class="btn-secondary text-sm"
+              >
+                <Cog6ToothIcon class="h-5 w-5 mr-2" />
+                Manage All
+              </button>
+              <button
+                v-if="unmappedCusipsCount > 0"
+                @click="showUnmappedModal = true"
+                class="btn-yellow text-sm"
+              >
+                <ExclamationTriangleIcon class="h-5 w-5 mr-2" />
+                {{ unmappedCusipsCount }} Unmapped
+              </button>
+            </div>
+          </div>
+          
+          <div v-if="unmappedCusipsCount > 0" class="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md p-3 mb-6">
+            <div class="flex items-center">
+              <ExclamationTriangleIcon class="h-5 w-5 text-yellow-600 dark:text-yellow-400 mr-2" />
+              <div class="text-sm">
+                <span class="font-medium text-yellow-800 dark:text-yellow-200">
+                  {{ unmappedCusipsCount }} unmapped CUSIP{{ unmappedCusipsCount !== 1 ? 's' : '' }} found in your trades
+                </span>
+                <p class="text-yellow-700 dark:text-yellow-300 mt-1">
+                  These trades may not appear when filtering by ticker symbol. Click "Unmapped" to resolve them.
+                </p>
+              </div>
+            </div>
+          </div>
           
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <!-- Add New Mapping -->
@@ -372,54 +408,34 @@
                       CUSIP {{ lookupResult.cusip }} not found
                     </span>
                   </p>
+                  <div v-if="lookupResult.found" class="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                    Source: {{ lookupResult.source }} • {{ lookupResult.verified ? 'Verified' : 'Unverified' }}
+                  </div>
                 </div>
               </div>
             </div>
           </div>
 
-          <!-- Current Mappings -->
-          <div v-if="cusipMappings && Object.keys(cusipMappings).length > 0" class="mt-6">
-            <h4 class="font-medium text-gray-900 dark:text-white mb-3">Current Mappings</h4>
-            <div class="overflow-x-auto">
-              <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                <thead>
-                  <tr>
-                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                      CUSIP
-                    </th>
-                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                      Ticker
-                    </th>
-                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-                  <tr v-for="(ticker, cusip) in cusipMappings" :key="cusip">
-                    <td class="px-3 py-2 text-sm font-mono text-gray-900 dark:text-white">
-                      {{ cusip }}
-                    </td>
-                    <td class="px-3 py-2 text-sm font-medium text-gray-900 dark:text-white">
-                      {{ ticker }}
-                    </td>
-                    <td class="px-3 py-2 text-sm">
-                      <button 
-                        @click="deleteCusipMapping(cusip)"
-                        class="text-red-600 hover:text-red-500 text-sm font-medium disabled:opacity-50"
-                        :disabled="cusipLoading"
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
         </div>
       </div>
     </div>
+
+    <!-- Unmapped CUSIPs Modal -->
+    <UnmappedCusipsModal
+      v-if="showUnmappedModal"
+      :isOpen="showUnmappedModal"
+      :unmappedCusips="unmappedCusips"
+      @close="showUnmappedModal = false"
+      @mappingCreated="handleMappingCreated"
+    />
+
+    <!-- All CUSIP Mappings Modal -->
+    <AllCusipMappingsModal
+      v-if="showAllMappingsModal"
+      :isOpen="showAllMappingsModal"
+      @close="showAllMappingsModal = false"
+      @mappingChanged="handleMappingCreated"
+    />
   </div>
 </template>
 
@@ -428,8 +444,10 @@ import { ref, onMounted } from 'vue'
 import { useTradesStore } from '@/stores/trades'
 import { useNotification } from '@/composables/useNotification'
 import { format } from 'date-fns'
-import { ArrowUpTrayIcon, XMarkIcon } from '@heroicons/vue/24/outline'
+import { ArrowUpTrayIcon, XMarkIcon, ExclamationTriangleIcon, Cog6ToothIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
+import UnmappedCusipsModal from '@/components/cusip/UnmappedCusipsModal.vue'
+import AllCusipMappingsModal from '@/components/cusip/AllCusipMappingsModal.vue'
 
 const tradesStore = useTradesStore()
 const { showSuccess, showError } = useNotification()
@@ -456,7 +474,13 @@ const lookupForm = ref({
   cusip: ''
 })
 const lookupResult = ref(null)
-const cusipMappings = ref({})
+// Removed cusipMappings ref since it's no longer displayed in the UI
+const unmappedCusipsCount = ref(0)
+const unmappedCusips = ref([])
+const showUnmappedModal = ref(false)
+const showAllMappingsModal = ref(false)
+const allMappings = ref([])
+const allMappingsLoading = ref(false)
 
 function handleFileSelect(event) {
   const file = event.target.files[0]
@@ -647,21 +671,35 @@ async function addCusipMapping() {
   cusipLoading.value = true
   
   try {
-    await api.post('/trades/cusip', {
-      cusip: cusipForm.value.cusip.toUpperCase(),
-      ticker: cusipForm.value.ticker.toUpperCase()
+    const response = await fetch('/api/cusip-mappings', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${tradesStore.token || localStorage.getItem('token')}`
+      },
+      body: JSON.stringify({
+        cusip: cusipForm.value.cusip.toUpperCase(),
+        ticker: cusipForm.value.ticker.toUpperCase(),
+        verified: true
+      })
     })
     
-    showSuccess('CUSIP Mapping Added', `${cusipForm.value.cusip} → ${cusipForm.value.ticker}`)
-    
-    // Reset form
-    cusipForm.value.cusip = ''
-    cusipForm.value.ticker = ''
-    
-    // Refresh mappings
-    await fetchCusipMappings()
+    if (response.ok) {
+      const result = await response.json()
+      showSuccess('CUSIP Mapping Added', `${cusipForm.value.cusip} → ${cusipForm.value.ticker}${result.tradesUpdated ? ` (${result.tradesUpdated} trades updated)` : ''}`)
+      
+      // Reset form
+      cusipForm.value.cusip = ''
+      cusipForm.value.ticker = ''
+      
+      // Refresh unmapped count
+      await fetchUnmappedCusipsCount()
+    } else {
+      const error = await response.json()
+      showError('Add Failed', error.error || 'Failed to add CUSIP mapping')
+    }
   } catch (error) {
-    showError('Add Failed', error.response?.data?.error || 'Failed to add CUSIP mapping')
+    showError('Add Failed', 'Failed to add CUSIP mapping')
   } finally {
     cusipLoading.value = false
   }
@@ -676,23 +714,46 @@ async function lookupCusip() {
   lookupResult.value = null
   
   try {
-    const response = await api.get(`/trades/cusip/${lookupForm.value.cusip.toUpperCase()}`)
-    lookupResult.value = response.data
+    // Use the database function to get mapping
+    const response = await fetch(`/api/cusip-mappings?search=${lookupForm.value.cusip.toUpperCase()}&limit=1`, {
+      headers: {
+        'Authorization': `Bearer ${tradesStore.token || localStorage.getItem('token')}`
+      }
+    })
+    
+    if (response.ok) {
+      const data = await response.json()
+      if (data.data && data.data.length > 0) {
+        const mapping = data.data[0]
+        lookupResult.value = {
+          found: true,
+          cusip: mapping.cusip,
+          ticker: mapping.ticker,
+          source: mapping.resolution_source,
+          verified: mapping.verified
+        }
+      } else {
+        lookupResult.value = {
+          found: false,
+          cusip: lookupForm.value.cusip.toUpperCase()
+        }
+      }
+    } else {
+      throw new Error('Failed to lookup CUSIP')
+    }
   } catch (error) {
-    showError('Lookup Failed', error.response?.data?.error || 'Failed to lookup CUSIP')
+    showError('Lookup Failed', 'Failed to lookup CUSIP')
+    lookupResult.value = {
+      found: false,
+      cusip: lookupForm.value.cusip.toUpperCase()
+    }
   } finally {
     cusipLoading.value = false
   }
 }
 
-async function fetchCusipMappings() {
-  try {
-    const response = await api.get('/trades/cusip-mappings')
-    cusipMappings.value = response.data.mappings || {}
-  } catch (error) {
-    console.error('Failed to fetch CUSIP mappings:', error)
-  }
-}
+// Removed fetchCusipMappings since mappings are no longer displayed in main UI
+// All CUSIP management is now handled through the comprehensive modal
 
 async function deleteCusipMapping(cusip) {
   if (!confirm(`Are you sure you want to delete the mapping for ${cusip}?`)) {
@@ -702,19 +763,55 @@ async function deleteCusipMapping(cusip) {
   cusipLoading.value = true
   
   try {
-    await api.delete(`/trades/cusip/${cusip}`)
-    showSuccess('CUSIP Mapping Deleted', `Mapping for ${cusip} has been deleted`)
-    await fetchCusipMappings()
+    const response = await fetch(`/api/cusip-mappings/${cusip}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${tradesStore.token || localStorage.getItem('token')}`
+      }
+    })
+    
+    if (response.ok) {
+      showSuccess('CUSIP Mapping Deleted', `Mapping for ${cusip} has been deleted`)
+      await fetchUnmappedCusipsCount()
+    } else {
+      const error = await response.json()
+      showError('Delete Failed', error.error || 'Failed to delete CUSIP mapping')
+    }
   } catch (error) {
-    showError('Delete Failed', error.response?.data?.error || 'Failed to delete CUSIP mapping')
+    showError('Delete Failed', 'Failed to delete CUSIP mapping')
   } finally {
     cusipLoading.value = false
   }
 }
 
+// Fetch unmapped CUSIPs count
+async function fetchUnmappedCusipsCount() {
+  try {
+    const response = await fetch('/api/cusip-mappings/unmapped', {
+      headers: {
+        'Authorization': `Bearer ${tradesStore.token || localStorage.getItem('token')}`
+      }
+    })
+    
+    if (response.ok) {
+      const data = await response.json()
+      unmappedCusips.value = data.data || []
+      unmappedCusipsCount.value = unmappedCusips.value.length
+    }
+  } catch (error) {
+    console.error('Error fetching unmapped CUSIPs:', error)
+  }
+}
+
+// Handle mapping created from modal
+function handleMappingCreated() {
+  showUnmappedModal.value = false
+  fetchUnmappedCusipsCount()
+}
+
 onMounted(() => {
   fetchImportHistory()
-  fetchCusipMappings()
+  fetchUnmappedCusipsCount()
   setInterval(fetchImportHistory, 5000)
 })
 </script>

@@ -506,17 +506,8 @@ class FinnhubClient {
           }
         }
         
-        // If no exact match, try the first result if it looks valid
-        const firstResult = searchResults.result[0];
-        if (firstResult.symbol && /^[A-Z]{1,5}$/.test(firstResult.symbol)) {
-          const ticker = firstResult.symbol;
-          
-          // Cache the result
-          await cache.set('cusip_resolution', cleanCusip, ticker);
-          
-          console.log(`Finnhub resolved CUSIP ${cleanCusip} to ticker ${ticker} (best match)`);
-          return ticker;
-        }
+        // If no exact match found, don't use "best match" - this causes incorrect mappings
+        console.log(`Finnhub search returned ${searchResults.result.length} results but no exact CUSIP match for ${cleanCusip}`);
       }
       
       // Finnhub didn't find the CUSIP, try AI fallback

@@ -201,7 +201,19 @@ class CusipQueueManager {
       const aiService = require('./aiService');
       
       // Create a specialized prompt for CUSIP lookup
-      const prompt = `Given the CUSIP "${cusip}", what is the corresponding stock ticker symbol? Please respond with ONLY the ticker symbol, no additional text.`;
+      const prompt = `You are a financial data assistant. A CUSIP (Committee on Uniform Securities Identification Procedures) is a 9-character alphanumeric code that uniquely identifies securities in the United States.
+
+I need you to identify the stock ticker symbol for CUSIP: "${cusip}"
+
+Instructions:
+- If this is a publicly traded stock, respond with ONLY the ticker symbol (1-5 letters)
+- If this is a mutual fund, ETF, bond, or other non-stock security, respond with "NON-STOCK"
+- If you cannot identify the security or are unsure, respond with "UNKNOWN"
+- Do not include any explanation, company name, or additional text
+- Each CUSIP maps to exactly ONE unique ticker symbol - do not reuse ticker symbols
+
+CUSIP: ${cusip}
+Response:`;
       
       // Use AI provider directly with admin settings
       const provider = aiService.providers[aiSettings.provider];
@@ -210,15 +222,21 @@ class CusipQueueManager {
         return null;
       }
 
-      const response = await provider(prompt, aiSettings, { maxTokens: 10 });
-      const ticker = response.trim().toUpperCase();
+      const response = await provider(prompt, aiSettings, { maxTokens: 20 });
+      const result = response.trim().toUpperCase();
       
-      // Basic validation - ticker should be 1-5 characters, letters only
-      if (ticker && /^[A-Z]{1,5}$/.test(ticker)) {
-        console.log(`AI successfully resolved CUSIP ${cusip} to ${ticker}`);
-        return ticker;
+      // Handle different types of responses
+      if (result === 'NON-STOCK') {
+        console.log(`AI identified CUSIP ${cusip} as non-stock security`);
+        return null; // Don't resolve non-stock securities
+      } else if (result === 'UNKNOWN') {
+        console.log(`AI could not identify CUSIP ${cusip}`);
+        return null;
+      } else if (result && /^[A-Z]{1,5}$/.test(result)) {
+        console.log(`AI successfully resolved CUSIP ${cusip} to ${result}`);
+        return result;
       } else {
-        console.log(`AI returned invalid ticker format for CUSIP ${cusip}: ${ticker}`);
+        console.log(`AI returned unexpected response for CUSIP ${cusip}: ${result}`);
         return null;
       }
     } catch (error) {

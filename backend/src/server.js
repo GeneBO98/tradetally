@@ -27,6 +27,7 @@ const gamificationRoutes = require('./routes/gamification.routes');
 const newsEnrichmentRoutes = require('./routes/newsEnrichment.routes');
 const newsCorrelationRoutes = require('./routes/newsCorrelation.routes');
 const notificationPreferencesRoutes = require('./routes/notificationPreferences.routes');
+const cusipMappingsRoutes = require('./routes/cusipMappings.routes');
 const BillingService = require('./services/billingService');
 const priceMonitoringService = require('./services/priceMonitoringService');
 const GamificationScheduler = require('./services/gamificationScheduler');
@@ -34,6 +35,7 @@ const TrialScheduler = require('./services/trialScheduler');
 const backgroundWorker = require('./workers/backgroundWorker');
 const jobRecoveryService = require('./services/jobRecoveryService');
 const pushNotificationService = require('./services/pushNotificationService');
+const globalEnrichmentCacheCleanupService = require('./services/globalEnrichmentCacheCleanupService');
 const { swaggerSpec, swaggerUi } = require('./config/swagger');
 const errorHandler = require('./middleware/errorHandler');
 
@@ -135,6 +137,7 @@ app.use('/api/gamification', gamificationRoutes);
 app.use('/api/news-enrichment', newsEnrichmentRoutes);
 app.use('/api/news-correlation', newsCorrelationRoutes);
 app.use('/api/notification-preferences', notificationPreferencesRoutes);
+app.use('/api/cusip-mappings', cusipMappingsRoutes);
 
 // Well-known endpoints for mobile discovery
 app.use('/.well-known', wellKnownRoutes);
@@ -157,7 +160,8 @@ app.get('/api/health', async (req, res) => {
     services: {
       database: 'OK',
       backgroundWorker: backgroundWorker.getStatus(),
-      jobRecovery: jobRecoveryService.getStatus()
+      jobRecovery: jobRecoveryService.getStatus(),
+      enrichmentCacheCleanup: globalEnrichmentCacheCleanupService.getStatus()
     }
   };
   
@@ -320,6 +324,15 @@ async function startServer() {
     } else {
       console.log('Job recovery disabled (ENABLE_JOB_RECOVERY=false)');
     }
+
+    // Start global enrichment cache cleanup service
+    if (process.env.ENABLE_ENRICHMENT_CACHE_CLEANUP !== 'false') {
+      console.log('Starting global enrichment cache cleanup service...');
+      globalEnrichmentCacheCleanupService.start();
+      console.log('✓ Global enrichment cache cleanup service started');
+    } else {
+      console.log('Enrichment cache cleanup disabled (ENABLE_ENRICHMENT_CACHE_CLEANUP=false)');
+    }
     
     // Start the server
     app.listen(PORT, () => {
@@ -337,6 +350,7 @@ process.on('SIGTERM', async () => {
   console.log('SIGTERM received, shutting down gracefully...');
   await priceMonitoringService.stop();
   jobRecoveryService.stop();
+  globalEnrichmentCacheCleanupService.stop();
   await backgroundWorker.stop();
   process.exit(0);
 });
