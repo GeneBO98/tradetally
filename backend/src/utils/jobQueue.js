@@ -287,35 +287,12 @@ class JobQueue {
     const { cusips, userId } = data;
     
     logger.logImport(`Resolving ${cusips.length} CUSIPs for user ${userId}`);
-    const results = await cusipResolver.batchResolveCusips(cusips, userId);
     
-    // Update trades with resolved symbols and track affected trade IDs
-    const affectedTradeIds = new Set();
+    // Use the full CusipResolver process which handles mapping storage
+    await cusipResolver.processCusipResolution(userId, cusips);
     
-    for (const [cusip, symbol] of Object.entries(results)) {
-      if (symbol) {
-        const updateQuery = `
-          UPDATE trades 
-          SET symbol = $1 
-          WHERE symbol = $2 
-          ${userId ? 'AND user_id = $3' : ''}
-          AND symbol ~ '^[A-Z0-9]{8}[0-9]$'
-          RETURNING id
-        `;
-        
-        const values = [symbol, cusip];
-        if (userId) values.push(userId);
-        
-        const updateResult = await db.query(updateQuery, values);
-        updateResult.rows.forEach(row => affectedTradeIds.add(row.id));
-      }
-    }
-    
-    // Store affected trade IDs in the result for enrichment status tracking
-    return { 
-      ...results, 
-      affectedTradeIds: Array.from(affectedTradeIds) 
-    };
+    // Return simple success result
+    return { success: true, cusipCount: cusips.length };
   }
 
   /**

@@ -25,6 +25,10 @@
     @apply btn text-white bg-danger hover:bg-red-700 focus:ring-red-500;
   }
   
+  .btn-yellow {
+    @apply btn text-yellow-800 bg-yellow-100 hover:bg-yellow-200 border-yellow-300 focus:ring-yellow-500 dark:bg-yellow-900 dark:text-yellow-200 dark:border-yellow-700 dark:hover:bg-yellow-800;
+  }
+  
   .input {
     @apply block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-800 dark:border-gray-600;
   }

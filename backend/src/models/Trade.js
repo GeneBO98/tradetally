@@ -346,7 +346,19 @@ class Trade {
     let paramCount = 2;
 
     if (filters.symbol) {
-      query += ` AND t.symbol = $${paramCount}`;
+      // Enhanced symbol filtering to handle both ticker symbols and CUSIPs
+      // This accounts for the fact that some trades may have CUSIPs stored in the symbol field
+      // that should be mapped to ticker symbols for filtering
+      // Check both global and user-specific CUSIP mappings
+      query += ` AND (
+        t.symbol = $${paramCount} OR
+        EXISTS (
+          SELECT 1 FROM cusip_mappings cm
+          WHERE cm.cusip = t.symbol 
+          AND cm.ticker = $${paramCount}
+          AND (cm.user_id = $1 OR cm.user_id IS NULL)
+        )
+      )`;
       values.push(filters.symbol.toUpperCase());
       paramCount++;
     }

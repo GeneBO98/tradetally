@@ -1,4 +1,5 @@
 const jobQueue = require('../utils/jobQueue');
+const parallelJobQueue = require('../utils/parallelJobQueue');
 const logger = require('../utils/logger');
 
 /**
@@ -31,13 +32,18 @@ class BackgroundWorker {
       await db.query('SELECT 1');
       logger.logImport('✓ Database connection verified');
       
-      // Start the job queue processing
-      jobQueue.startProcessing();
-      logger.logImport('✓ Job queue processing started');
+      // Start parallel job queue processing for better performance
+      parallelJobQueue.startParallelProcessing();
+      logger.logImport('✓ Parallel job queue processing started');
       
-      // Verify job queue is actually processing
-      if (!jobQueue.isProcessing) {
-        throw new Error('Job queue failed to start processing');
+      // Also start sequential processing as fallback for other job types
+      jobQueue.startProcessing();
+      logger.logImport('✓ Sequential job queue also running as fallback');
+      
+      // Verify parallel job queue is actually processing
+      const parallelStatus = parallelJobQueue.getStatus();
+      if (!parallelStatus.isRunning) {
+        throw new Error('Parallel job queue failed to start processing');
       }
       
       // Monitor queue status every minute
@@ -126,6 +132,7 @@ class BackgroundWorker {
     this.isRunning = false;
     
     // Stop job processing
+    parallelJobQueue.stop();
     jobQueue.stopProcessing();
     
     // Clear status monitoring
@@ -144,7 +151,8 @@ class BackgroundWorker {
     return {
       isRunning: this.isRunning,
       shouldStop: this.shouldStop,
-      queueProcessing: jobQueue.isProcessing
+      queueProcessing: jobQueue.isProcessing,
+      parallelQueue: parallelJobQueue.getStatus()
     };
   }
 }
