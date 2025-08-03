@@ -26,6 +26,7 @@ const notificationsRoutes = require('./routes/notifications.routes');
 const gamificationRoutes = require('./routes/gamification.routes');
 const newsEnrichmentRoutes = require('./routes/newsEnrichment.routes');
 const newsCorrelationRoutes = require('./routes/newsCorrelation.routes');
+const notificationPreferencesRoutes = require('./routes/notificationPreferences.routes');
 const BillingService = require('./services/billingService');
 const priceMonitoringService = require('./services/priceMonitoringService');
 const GamificationScheduler = require('./services/gamificationScheduler');
@@ -133,6 +134,7 @@ app.use('/api/notifications', notificationsRoutes);
 app.use('/api/gamification', gamificationRoutes);
 app.use('/api/news-enrichment', newsEnrichmentRoutes);
 app.use('/api/news-correlation', newsCorrelationRoutes);
+app.use('/api/notification-preferences', notificationPreferencesRoutes);
 
 // Well-known endpoints for mobile discovery
 app.use('/.well-known', wellKnownRoutes);

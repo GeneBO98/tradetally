@@ -5,6 +5,7 @@ const alphaVantage = require('../utils/alphaVantage');
 const nodemailer = require('nodemailer');
 const { v4: uuidv4 } = require('uuid');
 const TierService = require('./tierService');
+const NotificationPreferenceService = require('./notificationPreferenceService');
 
 class PriceMonitoringService {
   constructor() {
@@ -273,6 +274,13 @@ class PriceMonitoringService {
   async triggerAlert(alert) {
     try {
       const { id, user_id, symbol, alert_type, target_price, change_percent, current_price, email_enabled, browser_enabled, email, user_email_enabled } = alert;
+
+      // Check if user has price alerts enabled
+      const isNotificationEnabled = await NotificationPreferenceService.isNotificationEnabled(user_id, 'notify_price_alerts');
+      if (!isNotificationEnabled) {
+        console.log(`Price alert notification skipped for user ${user_id} - preference disabled`);
+        return;
+      }
 
       // Create notification message
       let message = '';

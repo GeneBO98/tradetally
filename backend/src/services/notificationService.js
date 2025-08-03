@@ -1,4 +1,5 @@
 const db = require('../config/database');
+const NotificationPreferenceService = require('./notificationPreferenceService');
 
 class NotificationService {
   
@@ -218,6 +219,13 @@ class NotificationService {
   // Send behavioral pattern alert
   static async sendBehavioralAlert(userId, patternType, severity, message) {
     try {
+      // Check if user has trade reminders enabled (closest preference for behavioral alerts)
+      const isEnabled = await NotificationPreferenceService.isNotificationEnabled(userId, 'notify_trade_reminders');
+      if (!isEnabled) {
+        console.log(`Behavioral alert notification skipped for user ${userId} - preference disabled`);
+        return;
+      }
+
       const notification = {
         type: 'behavioral_alert',
         data: {
@@ -239,6 +247,13 @@ class NotificationService {
   // Send price alert notification (existing functionality)
   static async sendPriceAlert(userId, alert) {
     try {
+      // Check if user has price alerts enabled
+      const isEnabled = await NotificationPreferenceService.isNotificationEnabled(userId, 'notify_price_alerts');
+      if (!isEnabled) {
+        console.log(`Price alert notification skipped for user ${userId} - preference disabled`);
+        return;
+      }
+
       const message = {
         type: 'price_alert',
         data: alert
@@ -270,6 +285,127 @@ class NotificationService {
       
     } catch (error) {
       console.error('Error sending CUSIP resolution notification:', error);
+    }
+  }
+
+  // Send news notification for open positions
+  static async sendNewsNotification(userId, newsData) {
+    try {
+      // Check if user has news notifications enabled for open positions
+      const isEnabled = await NotificationPreferenceService.isNotificationEnabled(userId, 'notify_news_open_positions');
+      if (!isEnabled) {
+        console.log(`News notification skipped for user ${userId} - preference disabled`);
+        return;
+      }
+
+      const message = {
+        type: 'news_alert',
+        data: {
+          symbol: newsData.symbol,
+          headline: newsData.headline,
+          summary: newsData.summary,
+          sentiment: newsData.sentiment,
+          url: newsData.url,
+          datetime: newsData.datetime,
+          timestamp: new Date().toISOString()
+        }
+      };
+      
+      await this.sendSSENotification(userId, message);
+      await this.saveNotification(userId, 'news_alert', message.data);
+      
+    } catch (error) {
+      console.error('Error sending news notification:', error);
+    }
+  }
+
+  // Send earnings announcement notification
+  static async sendEarningsNotification(userId, earningsData) {
+    try {
+      // Check if user has earnings notifications enabled
+      const isEnabled = await NotificationPreferenceService.isNotificationEnabled(userId, 'notify_earnings_announcements');
+      if (!isEnabled) {
+        console.log(`Earnings notification skipped for user ${userId} - preference disabled`);
+        return;
+      }
+
+      const message = {
+        type: 'earnings_announcement',
+        data: {
+          symbol: earningsData.symbol,
+          company: earningsData.company,
+          date: earningsData.date,
+          estimate: earningsData.estimate,
+          actual: earningsData.actual,
+          surprise: earningsData.surprise,
+          timestamp: new Date().toISOString()
+        }
+      };
+      
+      await this.sendSSENotification(userId, message);
+      await this.saveNotification(userId, 'earnings_announcement', message.data);
+      
+    } catch (error) {
+      console.error('Error sending earnings notification:', error);
+    }
+  }
+
+  // Send market event notification
+  static async sendMarketEventNotification(userId, eventData) {
+    try {
+      // Check if user has market events notifications enabled
+      const isEnabled = await NotificationPreferenceService.isNotificationEnabled(userId, 'notify_market_events');
+      if (!isEnabled) {
+        console.log(`Market event notification skipped for user ${userId} - preference disabled`);
+        return;
+      }
+
+      const message = {
+        type: 'market_event',
+        data: {
+          event_type: eventData.event_type,
+          title: eventData.title,
+          description: eventData.description,
+          severity: eventData.severity,
+          timestamp: new Date().toISOString()
+        }
+      };
+      
+      await this.sendSSENotification(userId, message);
+      await this.saveNotification(userId, 'market_event', message.data);
+      
+    } catch (error) {
+      console.error('Error sending market event notification:', error);
+    }
+  }
+
+  // Send trade reminder notification
+  static async sendTradeReminderNotification(userId, reminderData) {
+    try {
+      // Check if user has trade reminders enabled
+      const isEnabled = await NotificationPreferenceService.isNotificationEnabled(userId, 'notify_trade_reminders');
+      if (!isEnabled) {
+        console.log(`Trade reminder notification skipped for user ${userId} - preference disabled`);
+        return;
+      }
+
+      const message = {
+        type: 'trade_reminder',
+        data: {
+          reminder_type: reminderData.reminder_type,
+          symbol: reminderData.symbol,
+          message: reminderData.message,
+          action_required: reminderData.action_required,
+          due_date: reminderData.due_date,
+          timestamp: new Date().toISOString()
+        }
+      };
+      
+      await this.sendSSENotification(userId, message);
+      await this.saveNotification(userId, 'trade_reminder', message.data);
+      
+    } catch (error) {
+      console.error('Error sending trade reminder notification:', error);
     }
   }
 }
