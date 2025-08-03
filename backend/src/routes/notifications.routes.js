@@ -27,6 +27,9 @@ router.get('/unread-count', authenticate, notificationsController.getUnreadCount
 // Mark notifications as read
 router.post('/mark-read', authenticate, notificationsController.markNotificationsAsRead);
 
+// Mark all notifications as read
+router.post('/mark-all-read', authenticate, notificationsController.markAllNotificationsAsRead);
+
 // Delete notifications
 router.delete('/', authenticate, notificationsController.deleteNotifications);
 

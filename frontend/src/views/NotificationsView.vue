@@ -17,7 +17,7 @@
               {{ deleting ? 'Deleting...' : `Delete ${selectedNotifications.length}` }}
             </button>
             <button
-              v-if="notifications.length > 0"
+              v-if="notifications.length > 0 && notifications.some(n => !n.is_read)"
               @click="markAllAsRead"
               :disabled="markingRead"
               class="btn-secondary text-sm"
@@ -218,19 +218,15 @@ const loadPage = (page) => {
 }
 
 const markAllAsRead = async () => {
-  if (notifications.value.length === 0) return
-  
   try {
     markingRead.value = true
-    const notificationData = notifications.value.map(n => ({ id: n.id, type: n.type }))
     
-    const response = await fetch('/api/notifications/mark-read', {
+    const response = await fetch('/api/notifications/mark-all-read', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${authStore.token}`
-      },
-      body: JSON.stringify({ notifications: notificationData })
+      }
     })
     
     if (response.ok) {
