@@ -717,13 +717,13 @@ const tradeController = {
           clearTimeout(importTimeout);
 
           // Check for existing trades to avoid duplicates
+          // Note: We don't filter by broker as the same trade could be imported from different broker files
           const existingTradesQuery = `
-            SELECT symbol, entry_time, entry_price, quantity, side 
+            SELECT symbol, entry_time, entry_price, exit_price, pnl, quantity, side 
             FROM trades 
             WHERE user_id = $1 
-            AND broker = $2
-            AND trade_date >= $3
-            AND trade_date <= $4
+            AND trade_date >= $2
+            AND trade_date <= $3
           `;
 
           // Get date range from trades
@@ -733,7 +733,6 @@ const tradeController = {
 
           const existingTrades = await db.query(existingTradesQuery, [
             req.user.id, 
-            broker, 
             minDate.toISOString().split('T')[0],
             maxDate.toISOString().split('T')[0]
           ]);
@@ -746,17 +745,37 @@ const tradeController = {
             try {
               // Minimal logging to avoid slowdowns
               
-              // Check for duplicates
-              const isDuplicate = existingTrades.rows.some(existing => 
-                existing.symbol === tradeData.symbol &&
-                existing.entry_price === tradeData.entryPrice &&
-                existing.quantity === tradeData.quantity &&
-                existing.side === tradeData.side &&
-                Math.abs(new Date(existing.entry_time) - new Date(tradeData.entryTime)) < 60000 // Within 1 minute
-              );
+              // Check for duplicates based on entry price, exit price, and P/L
+              // This is more reliable than symbol matching as symbols can be resolved differently
+              // (e.g., CUSIP lookups may resolve to different symbols on different imports)
+              // Using price and P/L matching prevents duplicate trades from being imported
+              const isDuplicate = existingTrades.rows.some(existing => {
+                // For closed trades, check entry, exit, and P/L
+                if (tradeData.exitPrice && existing.exit_price) {
+                  const entryMatch = Math.abs(parseFloat(existing.entry_price) - parseFloat(tradeData.entryPrice)) < 0.01;
+                  const exitMatch = Math.abs(parseFloat(existing.exit_price) - parseFloat(tradeData.exitPrice)) < 0.01;
+                  const pnlMatch = Math.abs(parseFloat(existing.pnl || 0) - parseFloat(tradeData.pnl || 0)) < 1.00; // $1 tolerance for P/L due to rounding
+                  
+                  return entryMatch && exitMatch && pnlMatch;
+                }
+                // For open trades, check entry price, quantity, and side
+                else if (!tradeData.exitPrice && !existing.exit_price) {
+                  return (
+                    Math.abs(parseFloat(existing.entry_price) - parseFloat(tradeData.entryPrice)) < 0.01 &&
+                    existing.quantity === tradeData.quantity &&
+                    existing.side === tradeData.side &&
+                    Math.abs(new Date(existing.entry_time) - new Date(tradeData.entryTime)) < 60000 // Within 1 minute
+                  );
+                }
+                return false;
+              });
 
               if (isDuplicate) {
-                logger.logImport(`Skipping duplicate trade: ${tradeData.symbol} ${tradeData.quantity} at ${tradeData.entryPrice}`);
+                if (tradeData.exitPrice) {
+                  logger.logImport(`Skipping duplicate trade: Entry: $${tradeData.entryPrice}, Exit: $${tradeData.exitPrice}, P/L: $${tradeData.pnl || 0} (Symbol: ${tradeData.symbol})`);
+                } else {
+                  logger.logImport(`Skipping duplicate open position: ${tradeData.symbol} ${tradeData.quantity} at $${tradeData.entryPrice}`);
+                }
                 duplicates++;
                 continue;
               }

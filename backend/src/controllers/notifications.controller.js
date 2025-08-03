@@ -334,6 +334,60 @@ const notificationsController = {
     }
   },
 
+  // Mark all notifications as read
+  async markAllNotificationsAsRead(req, res, next) {
+    try {
+      const userId = req.user.id;
+
+      // Mark all unread price alerts as read
+      await db.query(`
+        INSERT INTO notification_read_status (user_id, notification_type, notification_id)
+        SELECT $1, 'price_alert', an.id
+        FROM alert_notifications an
+        LEFT JOIN notification_read_status nrs ON (
+          nrs.user_id = $1 
+          AND nrs.notification_type = 'price_alert' 
+          AND nrs.notification_id = an.id
+        )
+        WHERE an.user_id = $1 
+          AND an.deleted_at IS NULL
+          AND nrs.id IS NULL
+          AND an.sent_at > NOW() - INTERVAL '30 days'
+        ON CONFLICT (user_id, notification_type, notification_id) 
+        DO UPDATE SET read_at = CURRENT_TIMESTAMP
+      `, [userId]);
+
+      // Mark all unread trade comments as read  
+      await db.query(`
+        INSERT INTO notification_read_status (user_id, notification_type, notification_id)
+        SELECT $1, 'trade_comment', tc.id
+        FROM trade_comments tc
+        JOIN trades t ON tc.trade_id = t.id
+        LEFT JOIN notification_read_status nrs ON (
+          nrs.user_id = $1 
+          AND nrs.notification_type = 'trade_comment' 
+          AND nrs.notification_id = tc.id
+        )
+        WHERE t.user_id = $1 
+          AND tc.user_id != $1
+          AND t.is_public = true
+          AND tc.deleted_at IS NULL
+          AND nrs.id IS NULL
+          AND tc.created_at > NOW() - INTERVAL '30 days'
+        ON CONFLICT (user_id, notification_type, notification_id) 
+        DO UPDATE SET read_at = CURRENT_TIMESTAMP
+      `, [userId]);
+      
+      res.json({
+        success: true,
+        message: 'All notifications marked as read'
+      });
+    } catch (error) {
+      logger.logError('Error marking all notifications as read:', error);
+      next(error);
+    }
+  },
+
   // Get unread notification count
   async getUnreadCount(req, res, next) {
     try {

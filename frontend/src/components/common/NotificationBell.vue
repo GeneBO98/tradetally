@@ -38,11 +38,16 @@
               Notifications
             </h3>
             <button
-              v-if="notifications.length > 0"
+              v-if="notifications.length > 0 && notifications.some(n => !n.is_read)"
               @click="markAllAsRead"
-              class="text-sm text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+              :disabled="markingAsRead"
+              class="text-sm text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Mark all read
+              <span v-if="markingAsRead" class="flex items-center">
+                <div class="animate-spin rounded-full h-3 w-3 border-b border-current mr-1"></div>
+                Marking...
+              </span>
+              <span v-else>Mark all read</span>
             </button>
           </div>
         </div>
@@ -56,7 +61,14 @@
 
           <div v-else-if="notifications.length === 0" class="p-8 text-center">
             <BellSlashIcon class="h-12 w-12 text-gray-400 mx-auto mb-3" />
-            <p class="text-gray-500 dark:text-gray-400">No notifications yet</p>
+            <p class="text-gray-500 dark:text-gray-400">No unread notifications</p>
+            <router-link
+              to="/notifications"
+              class="text-sm text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 mt-2 inline-block"
+              @click="closeDropdown"
+            >
+              View all notifications
+            </router-link>
           </div>
 
           <div v-else>
@@ -148,6 +160,7 @@ const isOpen = ref(false)
 const notifications = ref([])
 const unreadCount = ref(0)
 const loading = ref(false)
+const markingAsRead = ref(false)
 const pollInterval = ref(null)
 
 // Computed
@@ -172,7 +185,8 @@ const fetchNotifications = async () => {
   
   try {
     loading.value = true
-    const response = await fetch('/api/notifications?limit=10', {
+    // Only fetch unread notifications for the bell dropdown
+    const response = await fetch('/api/notifications?limit=10&unread_only=true', {
       headers: {
         'Authorization': `Bearer ${authStore.token}`
       }
@@ -209,33 +223,72 @@ const fetchUnreadCount = async () => {
 }
 
 const markAllAsRead = async () => {
-  if (!isAuthenticated.value || notifications.value.length === 0) return
+  if (!isAuthenticated.value || markingAsRead.value) return
   
   try {
-    const notificationData = notifications.value.map(n => ({ id: n.id, type: n.type }))
-    await fetch('/api/notifications/mark-read', {
+    markingAsRead.value = true
+    
+    const response = await fetch('/api/notifications/mark-all-read', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${authStore.token}`
-      },
-      body: JSON.stringify({ notifications: notificationData })
+      }
     })
+    
+    if (!response.ok) {
+      const errorData = await response.json()
+      console.error('Failed to mark all notifications as read:', errorData)
+      return
+    }
+    
+    const result = await response.json()
     
     // Update local state
     notifications.value = notifications.value.map(n => ({ ...n, is_read: true }))
     unreadCount.value = 0
+    
+    // Refresh the notifications and unread count to make sure they're accurate
+    await Promise.all([fetchNotifications(), fetchUnreadCount()])
   } catch (error) {
-    console.error('Error marking notifications as read:', error)
+    console.error('Error marking all notifications as read:', error)
+  } finally {
+    markingAsRead.value = false
   }
 }
 
-const handleNotificationClick = (notification) => {
+const handleNotificationClick = async (notification) => {
+  // Mark this notification as read
+  if (!notification.is_read) {
+    try {
+      await fetch('/api/notifications/mark-read', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authStore.token}`
+        },
+        body: JSON.stringify({ 
+          notifications: [{ id: notification.id, type: notification.type }] 
+        })
+      })
+      
+      // Remove the notification from the list (since we only show unread)
+      notifications.value = notifications.value.filter(n => n.id !== notification.id)
+      
+      // Update unread count
+      unreadCount.value = Math.max(0, unreadCount.value - 1)
+    } catch (error) {
+      console.error('Error marking notification as read:', error)
+    }
+  }
+  
+  // Navigate based on notification type
   if (notification.type === 'trade_comment' && notification.trade_id) {
     router.push(`/trades/${notification.trade_id}`)
   } else if (notification.type === 'price_alert') {
     router.push('/price-alerts')
   }
+  
   closeDropdown()
 }
 
