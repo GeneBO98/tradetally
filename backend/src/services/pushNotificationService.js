@@ -1,6 +1,7 @@
 const apn = require('node-apn');
 const db = require('../config/database');
 const logger = require('../utils/logger');
+const NotificationPreferenceService = require('./notificationPreferenceService');
 
 class PushNotificationService {
   constructor() {
@@ -139,6 +140,13 @@ class PushNotificationService {
   }
 
   async sendPriceAlert(userId, alertData) {
+    // Check if user has price alerts enabled
+    const isEnabled = await NotificationPreferenceService.isNotificationEnabled(userId, 'notify_price_alerts');
+    if (!isEnabled) {
+      logger.logDebug(`Push notification for price alert skipped for user ${userId} - preference disabled`);
+      return { success: false, reason: 'preference_disabled' };
+    }
+
     const notificationData = {
       title: 'Price Alert Triggered',
       body: `${alertData.symbol} ${alertData.condition} $${alertData.targetPrice}`,
@@ -152,6 +160,13 @@ class PushNotificationService {
   }
 
   async sendTradeAlert(userId, tradeData) {
+    // Check if user has trade reminders enabled
+    const isEnabled = await NotificationPreferenceService.isNotificationEnabled(userId, 'notify_trade_reminders');
+    if (!isEnabled) {
+      logger.logDebug(`Push notification for trade alert skipped for user ${userId} - preference disabled`);
+      return { success: false, reason: 'preference_disabled' };
+    }
+
     const notificationData = {
       title: 'Trade Executed',
       body: `${tradeData.side.toUpperCase()} ${tradeData.quantity} ${tradeData.symbol} at $${tradeData.price}`,
@@ -160,6 +175,63 @@ class PushNotificationService {
       currentPrice: tradeData.price,
       side: tradeData.side,
       quantity: tradeData.quantity
+    };
+
+    return await this.sendPushNotification(userId, notificationData);
+  }
+
+  async sendNewsAlert(userId, newsData) {
+    // Check if user has news notifications enabled
+    const isEnabled = await NotificationPreferenceService.isNotificationEnabled(userId, 'notify_news_open_positions');
+    if (!isEnabled) {
+      logger.logDebug(`Push notification for news alert skipped for user ${userId} - preference disabled`);
+      return { success: false, reason: 'preference_disabled' };
+    }
+
+    const notificationData = {
+      title: `News Alert: ${newsData.symbol}`,
+      body: newsData.headline,
+      symbol: newsData.symbol,
+      alertType: 'news_alert',
+      sentiment: newsData.sentiment
+    };
+
+    return await this.sendPushNotification(userId, notificationData);
+  }
+
+  async sendEarningsAlert(userId, earningsData) {
+    // Check if user has earnings notifications enabled
+    const isEnabled = await NotificationPreferenceService.isNotificationEnabled(userId, 'notify_earnings_announcements');
+    if (!isEnabled) {
+      logger.logDebug(`Push notification for earnings alert skipped for user ${userId} - preference disabled`);
+      return { success: false, reason: 'preference_disabled' };
+    }
+
+    const notificationData = {
+      title: `Earnings: ${earningsData.symbol}`,
+      body: `${earningsData.company} earnings announcement upcoming`,
+      symbol: earningsData.symbol,
+      alertType: 'earnings_announcement',
+      date: earningsData.date
+    };
+
+    return await this.sendPushNotification(userId, notificationData);
+  }
+
+  async sendMarketEventAlert(userId, eventData) {
+    // Check if user has market events notifications enabled
+    const isEnabled = await NotificationPreferenceService.isNotificationEnabled(userId, 'notify_market_events');
+    if (!isEnabled) {
+      logger.logDebug(`Push notification for market event skipped for user ${userId} - preference disabled`);
+      return { success: false, reason: 'preference_disabled' };
+    }
+
+    const notificationData = {
+      title: 'Market Event',
+      body: eventData.title,
+      alertType: 'market_event',
+      event_type: eventData.event_type,
+      severity: eventData.severity
     };
 
     return await this.sendPushNotification(userId, notificationData);

@@ -325,6 +325,9 @@
         </div>
       </div>
 
+      <!-- Notification Preferences -->
+      <NotificationPreferences />
+
       <!-- Trading Profile -->
       <div class="card">
         <div class="card-body">
@@ -725,6 +728,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useNotification } from '@/composables/useNotification'
+import NotificationPreferences from '@/components/profile/NotificationPreferences.vue'
 import api from '@/services/api'
 
 const authStore = useAuthStore()
