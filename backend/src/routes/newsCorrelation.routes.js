@@ -137,4 +137,71 @@ router.get('/summary', authenticate, newsCorrelationController.getCorrelationSum
  */
 router.get('/enabled', authenticate, newsCorrelationController.checkEnabled);
 
+/**
+ * @swagger
+ * /api/news-correlation/performer-details:
+ *   get:
+ *     summary: Get detailed trades and news for a specific performer combination
+ *     tags: [News Correlation]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: symbol
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Stock symbol
+ *       - in: query
+ *         name: sentiment
+ *         required: true
+ *         schema:
+ *           type: string
+ *           enum: [positive, negative, neutral]
+ *         description: News sentiment
+ *       - in: query
+ *         name: side
+ *         required: true
+ *         schema:
+ *           type: string
+ *           enum: [long, short]
+ *         description: Trade side
+ *     responses:
+ *       200:
+ *         description: Detailed trades and news data
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   id:
+ *                     type: integer
+ *                   symbol:
+ *                     type: string
+ *                   trade_date:
+ *                     type: string
+ *                     format: date
+ *                   entry_price:
+ *                     type: number
+ *                   exit_price:
+ *                     type: number
+ *                   quantity:
+ *                     type: number
+ *                   pnl:
+ *                     type: number
+ *                   news_headlines:
+ *                     type: array
+ *                     items:
+ *                       type: string
+ *       400:
+ *         description: Missing required parameters
+ *       403:
+ *         description: Feature not available for user tier
+ *       500:
+ *         description: Server error
+ */
+router.get('/performer-details', authenticate, newsCorrelationController.getPerformerDetails);
+
 module.exports = router;
