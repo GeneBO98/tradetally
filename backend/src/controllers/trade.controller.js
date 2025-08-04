@@ -974,27 +974,59 @@ const tradeController = {
   async getAnalytics(req, res, next) {
     try {
       console.log('=== ANALYTICS ENDPOINT CALLED ===');
-      console.log('User ID:', req.user.id);
       console.log('Query params:', req.query);
+      console.log('User ID:', req.user.id);
+      console.log('Side filter specifically:', req.query.side);
       
-      const { startDate, endDate, symbol, strategy } = req.query;
+      const { 
+        startDate, endDate, symbol, sector, strategy, 
+        strategies, sectors, // Add multi-select parameters
+        side, minPrice, maxPrice, minQuantity, maxQuantity,
+        status, minPnl, maxPnl, pnlType, broker, hasNews,
+        holdTime, minHoldTime, maxHoldTime, daysOfWeek 
+      } = req.query;
       
       const filters = {
         startDate,
         endDate,
         symbol,
-        strategy
+        sector,
+        strategy,
+        // Multi-select filters
+        strategies: strategies ? strategies.split(',') : undefined,
+        sectors: sectors ? sectors.split(',') : undefined,
+        side,
+        minPrice,
+        maxPrice,
+        minQuantity,
+        maxQuantity,
+        status,
+        minPnl,
+        maxPnl,
+        pnlType,
+        broker,
+        hasNews,
+        holdTime,
+        daysOfWeek: daysOfWeek ? daysOfWeek.split(',').map(d => parseInt(d)) : undefined
       };
+      
+      console.log('🔍 getAnalytics RAW QUERY:', req.query);
+      console.log('🔍 getAnalytics PARSED filters:', JSON.stringify(filters, null, 2));
 
-      console.log('Filters:', filters);
+      // Convert minHoldTime/maxHoldTime to holdTime range if provided
+      if (minHoldTime || maxHoldTime) {
+        const minTime = parseInt(minHoldTime) || 0;
+        const maxTime = parseInt(maxHoldTime) || Infinity;
+        const holdTimeRange = Trade.convertHoldTimeRange(minTime, maxTime);
+        
+        if (holdTimeRange) {
+          filters.holdTime = holdTimeRange;
+        }
+      }
       
       const analytics = await Trade.getAnalytics(req.user.id, filters);
       
-      console.log('Analytics response summary:', {
-        totalTrades: analytics.summary.totalTrades,
-        totalPnL: analytics.summary.totalPnL,
-        winRate: analytics.summary.winRate
-      });
+      console.log('Analytics result:', JSON.stringify(analytics, null, 2));
       
       res.json(analytics);
     } catch (error) {
