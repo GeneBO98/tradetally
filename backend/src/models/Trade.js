@@ -350,12 +350,19 @@ class Trade {
       // This accounts for the fact that some trades may have CUSIPs stored in the symbol field
       // that should be mapped to ticker symbols for filtering
       // Check both global and user-specific CUSIP mappings
+      // Also check if the search term might be a ticker that maps to a CUSIP in trades
       query += ` AND (
         t.symbol = $${paramCount} OR
         EXISTS (
           SELECT 1 FROM cusip_mappings cm
           WHERE cm.cusip = t.symbol 
           AND cm.ticker = $${paramCount}
+          AND (cm.user_id = $1 OR cm.user_id IS NULL)
+        ) OR
+        EXISTS (
+          SELECT 1 FROM cusip_mappings cm
+          WHERE cm.ticker = $${paramCount}
+          AND cm.cusip = t.symbol
           AND (cm.user_id = $1 OR cm.user_id IS NULL)
         )
       )`;
@@ -408,12 +415,12 @@ class Trade {
       paramCount++;
     }
 
-    if (filters.hasNews !== undefined && filters.hasNews !== '') {
+    if (filters.hasNews !== undefined && filters.hasNews !== '' && filters.hasNews !== null) {
       console.log('🔍 hasNews filter detected:', { value: filters.hasNews, type: typeof filters.hasNews });
-      if (filters.hasNews === 'true' || filters.hasNews === true) {
+      if (filters.hasNews === 'true' || filters.hasNews === true || filters.hasNews === 1 || filters.hasNews === '1') {
         query += ` AND t.has_news = true`;
         console.log('🔍 Applied hasNews=true filter to query');
-      } else if (filters.hasNews === 'false' || filters.hasNews === false) {
+      } else if (filters.hasNews === 'false' || filters.hasNews === false || filters.hasNews === 0 || filters.hasNews === '0') {
         query += ` AND (t.has_news = false OR t.has_news IS NULL)`;
         console.log('🔍 Applied hasNews=false filter to query');
       }
@@ -881,10 +888,10 @@ class Trade {
       query += ` AND ${tablePrefix}exit_price IS NOT NULL`;
     }
 
-    if (filters.hasNews !== undefined && filters.hasNews !== '') {
-      if (filters.hasNews === 'true' || filters.hasNews === true) {
+    if (filters.hasNews !== undefined && filters.hasNews !== '' && filters.hasNews !== null) {
+      if (filters.hasNews === 'true' || filters.hasNews === true || filters.hasNews === 1 || filters.hasNews === '1') {
         query += ` AND ${tablePrefix}has_news = true`;
-      } else if (filters.hasNews === 'false' || filters.hasNews === false) {
+      } else if (filters.hasNews === 'false' || filters.hasNews === false || filters.hasNews === 0 || filters.hasNews === '0') {
         query += ` AND (${tablePrefix}has_news = false OR ${tablePrefix}has_news IS NULL)`;
       }
     }
@@ -1095,10 +1102,10 @@ class Trade {
     }
 
     // News filter for analytics
-    if (filters.hasNews !== undefined && filters.hasNews !== '') {
-      if (filters.hasNews === 'true' || filters.hasNews === true) {
+    if (filters.hasNews !== undefined && filters.hasNews !== '' && filters.hasNews !== null) {
+      if (filters.hasNews === 'true' || filters.hasNews === true || filters.hasNews === 1 || filters.hasNews === '1') {
         whereClause += ` AND t.has_news = true`;
-      } else if (filters.hasNews === 'false' || filters.hasNews === false) {
+      } else if (filters.hasNews === 'false' || filters.hasNews === false || filters.hasNews === 0 || filters.hasNews === '0') {
         whereClause += ` AND (t.has_news = false OR t.has_news IS NULL)`;
       }
     }
@@ -1895,59 +1902,108 @@ class Trade {
     const finnhub = require('../utils/finnhub');
     
     if (!finnhub.isConfigured()) {
-      console.log('Finnhub not configured, falling back to time-based classification');
       return this.classifyTradeStrategy(trade);
     }
 
+    // Circuit breaker: if Finnhub has been failing frequently, skip API calls
+    const circuitBreakerKey = 'finnhub_circuit_breaker';
+    const cache = require('../utils/cache');
+    
     try {
+      const circuitBreakerData = await cache.get(circuitBreakerKey);
+      if (circuitBreakerData && circuitBreakerData.failures >= 10) {
+        console.log(`Circuit breaker OPEN: Skipping Finnhub API calls due to ${circuitBreakerData.failures} recent failures`);
+        return {
+          strategy: this.classifyTradeStrategy(trade),
+          confidence: 0.6,
+          method: 'circuit_breaker_fallback',
+          signals: [],
+          analysisType: 'time_based_due_to_api_failures'
+        };
+      }
+    } catch (cacheError) {
+      // Ignore cache errors, continue with normal processing
+    }
+
+    try {
+      const holdTimeMinutes = parseFloat(trade.hold_time_minutes || 0);
+      const pnl = Math.abs(parseFloat(trade.pnl || 0));
+      const quantity = parseFloat(trade.quantity || 0);
+      const value = quantity * parseFloat(trade.entry_price || 0);
+
+      // Fast path: Skip expensive API calls for small/simple trades
+      // Only do full technical analysis for significant trades
+      const isSignificantTrade = value > 1000 || pnl > 50 || holdTimeMinutes > 1440; // $1000+ value, $50+ P&L, or 1+ day hold
+      
+      if (!isSignificantTrade) {
+        console.log(`Fast classification for small trade ${trade.id}: $${value.toFixed(2)} value, ${holdTimeMinutes}min hold`);
+        return {
+          strategy: this.classifyTradeStrategy(trade),
+          confidence: 0.7,
+          method: 'fast_path',
+          signals: [],
+          holdTimeMinutes,
+          analysisType: 'time_based_optimized'
+        };
+      }
+
       const symbol = trade.symbol;
       const entryTime = new Date(trade.entry_time);
       const exitTime = trade.exit_time ? new Date(trade.exit_time) : new Date();
-      const holdTimeMinutes = parseFloat(trade.hold_time_minutes || 0);
-      const pnl = parseFloat(trade.pnl || 0);
       const entryPrice = parseFloat(trade.entry_price);
       const exitPrice = parseFloat(trade.exit_price);
-      const side = trade.side;
 
-      // Get price data around the trade period
+      // Get price data around the trade period (minimal range for performance)
       const entryTimestamp = Math.floor(entryTime.getTime() / 1000);
       const exitTimestamp = Math.floor(exitTime.getTime() / 1000);
-      const analysisStart = entryTimestamp - (24 * 60 * 60); // 1 day before entry
-      const analysisEnd = exitTimestamp + (24 * 60 * 60); // 1 day after exit
+      
+      // Reduced analysis window for performance
+      const analysisStart = entryTimestamp - (12 * 60 * 60); // 12 hours before (was 24)
+      const analysisEnd = exitTimestamp + (6 * 60 * 60); // 6 hours after (was 24)
 
-      // Get technical data in parallel with rate limiting (removed pattern recognition per user request)
-      const [candles, technicalData] = await Promise.all([
-        finnhub.getCandles(symbol, '60', analysisStart, analysisEnd, userId).catch(() => null), // 1-hour candles
-        this.getTechnicalIndicators(symbol, entryTimestamp, exitTimestamp, userId).catch(() => null)
-      ]);
+      // Only fetch candles (skip expensive technical indicators for performance)
+      console.log(`Full classification for significant trade ${trade.id}: $${value.toFixed(2)} value`);
+      
+      const candles = await finnhub.getCandles(symbol, '60', analysisStart, analysisEnd, userId).catch(() => null);
 
-      // Get news data for the trade if available (Pro feature)
-      let newsData = null;
-      try {
-        newsData = await this.checkNewsForTrade({
-          symbol: symbol,
-          tradeDate: trade.trade_date || new Date(trade.entry_time).toISOString().split('T')[0],
-          entry_time: trade.entry_time
-        }, userId);
-      } catch (error) {
-        console.warn(`Error getting news data for strategy analysis: ${error.message}`);
-      }
-
-      // Analyze the trade based on price movement and technical indicators
+      // Skip news data and technical indicators for performance
+      // Analyze the trade based on basic price movement
       const analysis = this.analyzeTradeCharacteristics({
         trade,
-        patterns: null, // Pattern recognition removed per user request
+        patterns: null,
         candles,
-        technicalData,
+        technicalData: null, // Skip for performance
         entryTimestamp,
         exitTimestamp,
-        newsData
+        newsData: null // Skip for performance
       });
+
+      // Record successful API call for circuit breaker
+      try {
+        await cache.set(circuitBreakerKey, { failures: 0, lastSuccess: Date.now() }, 3600); // Reset failures on success
+      } catch (cacheError) {
+        // Ignore cache errors
+      }
 
       return analysis.strategy;
 
     } catch (error) {
       console.error(`Error analyzing trade ${trade.id} for strategy classification:`, error);
+      
+      // Record failure for circuit breaker
+      try {
+        const circuitBreakerData = await cache.get(circuitBreakerKey) || { failures: 0 };
+        circuitBreakerData.failures = (circuitBreakerData.failures || 0) + 1;
+        circuitBreakerData.lastFailure = Date.now();
+        await cache.set(circuitBreakerKey, circuitBreakerData, 3600); // Store for 1 hour
+        
+        if (circuitBreakerData.failures >= 10) {
+          console.log(`🚨 Circuit breaker OPENED: ${circuitBreakerData.failures} Finnhub failures`);
+        }
+      } catch (cacheError) {
+        // Ignore cache errors
+      }
+      
       return this.classifyTradeStrategy(trade); // Fallback to time-based
     }
   }

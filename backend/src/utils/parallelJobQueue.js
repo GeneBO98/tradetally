@@ -21,10 +21,10 @@ class ParallelJobQueue {
     this.isRunning = true;
     logger.logImport('🚀 Starting parallel job queue processing');
 
-    // Start workers for different job types
-    this.startWorkerForJobType('cusip_resolution', 2); // 2 concurrent CUSIP workers
-    this.startWorkerForJobType('strategy_classification', 3); // 3 concurrent strategy workers
-    this.startWorkerForJobType('news_enrichment', 1); // 1 news worker (API rate limited)
+    // Start workers for different job types (increased concurrency for better performance)
+    this.startWorkerForJobType('cusip_resolution', 3); // 3 concurrent CUSIP workers
+    this.startWorkerForJobType('strategy_classification', 5); // 5 concurrent strategy workers (optimized)
+    this.startWorkerForJobType('news_enrichment', 2); // 2 news workers
     
     logger.logImport(`✅ Started ${this.workers.size} parallel workers`);
   }
@@ -55,7 +55,7 @@ class ParallelJobQueue {
       } catch (error) {
         logger.logError(`Error in ${jobType} worker:`, error.message);
       }
-    }, 1000); // Check every second
+    }, 500); // Check every 500ms for faster processing
 
     this.workers.set(jobType, workerInfo);
     logger.logImport(`✅ Started worker for ${jobType} (max concurrent: ${maxConcurrent})`);
@@ -100,9 +100,12 @@ class ParallelJobQueue {
   }
 
   /**
-   * Process job based on its type
+   * Process job based on its type with timeout protection
    */
   async processJobByType(job, workerInfo) {
+    const JOB_TIMEOUT = 30000; // 30 seconds max per job
+    let timeoutId;
+    
     try {
       let data;
       if (typeof job.data === 'string') {
@@ -111,32 +114,54 @@ class ParallelJobQueue {
         data = job.data;
       }
 
+      // Create timeout promise that rejects after timeout
+      const timeoutPromise = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(new Error(`Job ${job.id} timed out after ${JOB_TIMEOUT}ms`));
+        }, JOB_TIMEOUT);
+      });
+
       let result;
       const jobQueue = require('./jobQueue'); // Use existing processors
 
-      switch (job.type) {
-        case 'cusip_resolution':
-          result = await jobQueue.processCusipResolution(data);
-          break;
-        case 'strategy_classification':
-          result = await jobQueue.processStrategyClassification(data);
-          break;
-        case 'news_enrichment':
-          result = await jobQueue.processNewsEnrichment(data);
-          break;
-        default:
-          throw new Error(`Unknown job type: ${job.type}`);
-      }
+      // Race the job processing against the timeout
+      const jobPromise = (async () => {
+        switch (job.type) {
+          case 'cusip_resolution':
+            return await jobQueue.processCusipResolution(data);
+          case 'strategy_classification':
+            return await jobQueue.processStrategyClassification(data);
+          case 'news_enrichment':
+            return await jobQueue.processNewsEnrichment(data);
+          default:
+            throw new Error(`Unknown job type: ${job.type}`);
+        }
+      })();
+
+      // Wait for either completion or timeout
+      result = await Promise.race([jobPromise, timeoutPromise]);
+      
+      // Clear timeout if job completed successfully
+      if (timeoutId) clearTimeout(timeoutId);
 
       // Mark job as completed
       await this.completeJob(job.id, result);
-      logger.logImport(`✅ [${job.type}] Job ${job.id} completed`);
+      logger.logImport(`✅ [${job.type}] Job ${job.id} completed in time`);
 
     } catch (error) {
+      // Clear timeout
+      if (timeoutId) clearTimeout(timeoutId);
+      
       logger.logError(`❌ [${job.type}] Job ${job.id} failed:`, error.message);
-      await this.failJob(job.id, error.message);
+      
+      // Check if this is a timeout or regular failure
+      if (error.message.includes('timed out')) {
+        await this.timeoutJob(job.id, error.message);
+      } else {
+        await this.failJob(job.id, error.message);
+      }
     } finally {
-      // Remove from active jobs
+      // ALWAYS remove from active jobs
       workerInfo.activeJobs.delete(job.id);
     }
   }
@@ -159,10 +184,40 @@ class ParallelJobQueue {
   async failJob(jobId, error) {
     const query = `
       UPDATE job_queue 
-      SET status = 'failed', completed_at = CURRENT_TIMESTAMP, error = $2
+      SET status = 'failed', completed_at = CURRENT_TIMESTAMP, error = $2, attempts = attempts + 1
       WHERE id = $1
     `;
     await db.query(query, [jobId, error]);
+  }
+
+  /**
+   * Mark job as timed out and potentially retry
+   */
+  async timeoutJob(jobId, error) {
+    // Get current attempts
+    const getAttemptsQuery = `SELECT attempts FROM job_queue WHERE id = $1`;
+    const result = await db.query(getAttemptsQuery, [jobId]);
+    const attempts = result.rows[0]?.attempts || 0;
+
+    if (attempts < 2) {
+      // Retry timed out jobs up to 2 times
+      const retryQuery = `
+        UPDATE job_queue 
+        SET status = 'pending', started_at = NULL, attempts = attempts + 1, error = $2
+        WHERE id = $1
+      `;
+      await db.query(retryQuery, [jobId, `Timeout retry ${attempts + 1}: ${error}`]);
+      logger.logImport(`🔄 Job ${jobId} timed out, retrying (attempt ${attempts + 1})`);
+    } else {
+      // Give up after 2 retries
+      const failQuery = `
+        UPDATE job_queue 
+        SET status = 'failed', completed_at = CURRENT_TIMESTAMP, error = $2, attempts = attempts + 1
+        WHERE id = $1
+      `;
+      await db.query(failQuery, [jobId, `Failed after timeout retries: ${error}`]);
+      logger.logError(`❌ Job ${jobId} failed permanently after timeout retries`);
+    }
   }
 
   /**

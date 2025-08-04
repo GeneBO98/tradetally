@@ -131,13 +131,15 @@
                         :class="[
                           position.side === 'long' 
                             ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
-                            : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
+                            : position.side === 'short'
+                            ? 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
+                            : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
                         ]">
-                        {{ position.side }}
+                        {{ position.side === 'neutral' ? 'hedged' : position.side }}
                       </span>
                     </td>
                     <td class="px-3 py-2 text-sm font-bold text-gray-900 dark:text-white text-right">
-                      {{ position.totalQuantity.toLocaleString() }}
+                      {{ position.totalQuantity === 0 ? 'Hedged' : position.totalQuantity.toLocaleString() }}
                     </td>
                     <td class="px-3 py-2 text-sm font-bold text-gray-900 dark:text-white text-right">
                       ${{ formatCurrency(position.avgPrice) }}

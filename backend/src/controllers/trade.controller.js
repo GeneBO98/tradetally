@@ -51,6 +51,11 @@ const tradeController = {
 
       console.log('🔍 getUserTrades RAW QUERY:', req.query);
       console.log('🔍 getUserTrades PARSED filters:', JSON.stringify(filters, null, 2));
+      
+      // Debug empty hasNews
+      if (req.query.hasNews === '') {
+        console.log('⚠️ WARNING: hasNews is empty string, this may cause issues');
+      }
 
       // Get trades with pagination
       const trades = await Trade.findByUser(req.user.id, filters);
@@ -980,29 +985,44 @@ const tradeController = {
         positionMap[trade.symbol].trades.push(trade);
         
         // Calculate net position considering trade direction
-        const quantity = trade.side === 'long' ? trade.quantity : -trade.quantity;
+        // Ensure quantity is parsed as number to avoid string concatenation
+        const quantity = trade.side === 'long' ? Number(trade.quantity) : -Number(trade.quantity);
         positionMap[trade.symbol].totalQuantity += quantity;
         
         // For cost calculation, use absolute value since we're tracking net cost basis
-        positionMap[trade.symbol].totalCost += Math.abs(quantity) * trade.entry_price;
+        positionMap[trade.symbol].totalCost += Math.abs(quantity) * Number(trade.entry_price);
       });
 
       // Calculate average prices and determine position side
       const symbolsToDelete = [];
       Object.values(positionMap).forEach(position => {
-        if (position.totalQuantity === 0) {
-          // No net position, mark for deletion
+        // Only remove if there are no trades at all (shouldn't happen, but safety check)
+        if (position.trades.length === 0) {
           symbolsToDelete.push(position.symbol);
           return;
         }
         
-        // Determine side based on net position
-        position.side = position.totalQuantity > 0 ? 'long' : 'short';
-        
-        // Use absolute quantity for calculations
-        const absQuantity = Math.abs(position.totalQuantity);
-        position.totalQuantity = absQuantity;
-        position.avgPrice = position.totalCost / absQuantity;
+        if (position.totalQuantity === 0) {
+          // Net position is zero, but we have open trades - show as neutral/hedged
+          position.side = 'neutral';
+          // Calculate weighted average price from all trades
+          let totalValue = 0;
+          let totalShares = 0;
+          position.trades.forEach(trade => {
+            totalValue += Number(trade.entry_price) * Number(trade.quantity);
+            totalShares += Number(trade.quantity);
+          });
+          position.avgPrice = totalShares > 0 ? totalValue / totalShares : 0;
+          position.totalQuantity = 0; // Keep as 0 to show it's hedged
+        } else {
+          // Determine side based on net position
+          position.side = position.totalQuantity > 0 ? 'long' : 'short';
+          
+          // Use absolute quantity for calculations
+          const absQuantity = Math.abs(position.totalQuantity);
+          position.totalQuantity = absQuantity;
+          position.avgPrice = position.totalCost / absQuantity;
+        }
       });
       
       // Remove symbols with zero net position
@@ -1034,12 +1054,31 @@ const tradeController = {
           
           if (quote) {
             const currentPrice = quote.c; // Current price
-            const currentValue = currentPrice * position.totalQuantity;
-            // For short positions, profit is made when price goes down
-            const unrealizedPnL = position.side === 'short' 
-              ? position.totalCost - currentValue  // Short: profit when current value < entry cost
-              : currentValue - position.totalCost;  // Long: profit when current value > entry cost
-            const unrealizedPnLPercent = (unrealizedPnL / position.totalCost) * 100;
+            let unrealizedPnL = 0;
+            let unrealizedPnLPercent = 0;
+            let currentValue = 0;
+            
+            if (position.side === 'neutral') {
+              // For hedged positions, calculate P&L for each trade individually
+              position.trades.forEach(trade => {
+                const tradeValue = currentPrice * Number(trade.quantity);
+                const tradeCost = Number(trade.entry_price) * Number(trade.quantity);
+                if (trade.side === 'short') {
+                  unrealizedPnL += tradeCost - tradeValue;
+                } else {
+                  unrealizedPnL += tradeValue - tradeCost;
+                }
+                currentValue += tradeValue;
+              });
+              unrealizedPnLPercent = position.totalCost > 0 ? (unrealizedPnL / position.totalCost) * 100 : 0;
+            } else {
+              currentValue = currentPrice * position.totalQuantity;
+              // For short positions, profit is made when price goes down
+              unrealizedPnL = position.side === 'short' 
+                ? position.totalCost - currentValue  // Short: profit when current value < entry cost
+                : currentValue - position.totalCost;  // Long: profit when current value > entry cost
+              unrealizedPnLPercent = (unrealizedPnL / position.totalCost) * 100;
+            }
             
             return {
               ...position,
@@ -1595,6 +1634,176 @@ const tradeController = {
     }
   },
 
+  async debugSymbolSearch(req, res, next) {
+    try {
+      const { symbol } = req.query;
+      if (!symbol) {
+        return res.status(400).json({ error: 'Symbol parameter required' });
+      }
+
+      const upperSymbol = symbol.toUpperCase();
+      console.log('Debug symbol search for:', upperSymbol, 'user:', req.user.id);
+      
+      // 1. Simple direct match
+      const directMatchQuery = `SELECT id, symbol, trade_date, entry_price, quantity, side FROM trades WHERE user_id = $1 AND symbol = $2 LIMIT 5`;
+      const directMatches = await db.query(directMatchQuery, [req.user.id, upperSymbol]);
+      console.log('Direct matches:', directMatches.rows.length);
+
+      // 2. All trades containing the symbol
+      const allTradesQuery = `SELECT id, symbol, trade_date, entry_price, quantity, side FROM trades WHERE user_id = $1 AND symbol ILIKE $2 LIMIT 5`;
+      const allMatches = await db.query(allTradesQuery, [req.user.id, `%${upperSymbol}%`]);
+      console.log('Pattern matches:', allMatches.rows.length);
+
+      // 3. Count total trades
+      const countQuery = `SELECT COUNT(*) as total_trades FROM trades WHERE user_id = $1`;
+      const counts = await db.query(countQuery, [req.user.id]);
+      console.log('Total trades:', counts.rows[0]);
+
+      res.json({
+        searchTerm: upperSymbol,
+        directMatches: directMatches.rows,
+        patternMatches: allMatches.rows,
+        totalTrades: counts.rows[0].total_trades,
+        debug: {
+          hasDirectMatches: directMatches.rows.length > 0,
+          hasPatternMatches: allMatches.rows.length > 0
+        }
+      });
+    } catch (error) {
+      console.error('Debug symbol search error:', error);
+      res.status(500).json({ error: error.message, stack: error.stack });
+    }
+  },
+
+  async forceCompleteEnrichment(req, res, next) {
+    try {
+      logger.logImport(`FORCE COMPLETE enrichment requested by user ${req.user.id}`);
+      
+      // NUCLEAR OPTION: Force complete ALL pending enrichment jobs
+      const forceCompleteQuery = `
+        UPDATE job_queue 
+        SET status = 'completed', 
+            completed_at = CURRENT_TIMESTAMP,
+            result = '{"forced": true, "reason": "Manual force complete"}'
+        WHERE user_id = $1
+        AND status IN ('pending', 'processing')
+        RETURNING id, type
+      `;
+      
+      const forceCompleteResult = await db.query(forceCompleteQuery, [req.user.id]);
+      
+      // Force complete all trades stuck in enrichment
+      const forceTradesQuery = `
+        UPDATE trades 
+        SET enrichment_status = 'completed',
+            enrichment_completed_at = CURRENT_TIMESTAMP,
+            strategy = CASE 
+              WHEN strategy IS NULL OR strategy = '' THEN 'day_trading'
+              ELSE strategy
+            END,
+            strategy_confidence = CASE
+              WHEN strategy_confidence IS NULL THEN 70
+              ELSE strategy_confidence
+            END,
+            classification_method = 'force_completed'
+        WHERE user_id = $1
+        AND enrichment_status != 'completed'
+        RETURNING id
+      `;
+      
+      const forceTradesResult = await db.query(forceTradesQuery, [req.user.id]);
+      
+      res.json({
+        message: 'ALL enrichment FORCE COMPLETED - no more stuck jobs possible',
+        forceCompletedJobs: forceCompleteResult.rowCount,
+        forceCompletedTrades: forceTradesResult.rowCount,
+        details: {
+          jobs: forceCompleteResult.rows,
+          trades: forceTradesResult.rows.map(row => row.id)
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async retryEnrichment(req, res, next) {
+    try {
+      logger.logImport(`Manual enrichment retry requested by user ${req.user.id}`);
+      
+      // Find all trades with unresolved CUSIPs
+      const unresolvedQuery = `
+        SELECT DISTINCT symbol
+        FROM trades 
+        WHERE user_id = $1 
+        AND symbol ~ '^[A-Z0-9]{8}[0-9]$'
+        AND NOT EXISTS (
+          SELECT 1 FROM cusip_mappings cm 
+          WHERE cm.cusip = trades.symbol
+        )
+      `;
+      
+      const unresolvedResult = await db.query(unresolvedQuery, [req.user.id]);
+      const cusips = unresolvedResult.rows.map(row => row.symbol);
+      
+      if (cusips.length > 0) {
+        logger.logImport(`Found ${cusips.length} unresolved CUSIPs, scheduling resolution`);
+        const cusipResolver = require('../utils/cusipResolver');
+        await cusipResolver.scheduleResolution(req.user.id, cusips);
+      }
+      
+      // Reset any stuck jobs for this user
+      const resetQuery = `
+        UPDATE job_queue 
+        SET status = 'pending', 
+            started_at = NULL,
+            attempts = 0
+        WHERE user_id = $1
+        AND type IN ('cusip_resolution', 'strategy_classification', 'news_enrichment')
+        AND status IN ('processing', 'failed')
+        RETURNING id, type
+      `;
+      
+      const resetResult = await db.query(resetQuery, [req.user.id]);
+      
+      // Emergency fallback: For trades that have been stuck in enrichment for too long,
+      // mark them as completed with basic classification
+      const emergencyFallbackQuery = `
+        UPDATE trades 
+        SET enrichment_status = 'completed',
+            enrichment_completed_at = CURRENT_TIMESTAMP,
+            strategy = CASE 
+              WHEN strategy IS NULL OR strategy = '' THEN 'day_trading'
+              ELSE strategy
+            END,
+            strategy_confidence = CASE
+              WHEN strategy_confidence IS NULL THEN 50
+              ELSE strategy_confidence
+            END,
+            classification_method = 'emergency_fallback'
+        WHERE user_id = $1
+        AND enrichment_status = 'pending'
+        AND created_at < NOW() - INTERVAL '1 hour'
+        RETURNING id
+      `;
+      
+      const emergencyResult = await db.query(emergencyFallbackQuery, [req.user.id]);
+      
+      res.json({
+        message: 'Enrichment retry initiated with emergency recovery',
+        unresolvedCusips: cusips.length,
+        resetJobs: resetResult.rowCount,
+        emergencyFallbackTrades: emergencyResult.rowCount,
+        details: {
+          resetJobs: resetResult.rows.map(row => ({ id: row.id, type: row.type })),
+          fallbackTradeIds: emergencyResult.rows.map(row => row.id)
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
   async getEnrichmentStatus(req, res, next) {
     try {
       // Get enrichment status for the user's trades
@@ -1609,8 +1818,35 @@ const tradeController = {
       
       const result = await db.query(query, [req.user.id]);
       
+      // Also check for trades with potential CUSIP symbols
+      const cusipQuery = `
+        SELECT COUNT(*) as count
+        FROM trades 
+        WHERE user_id = $1 
+        AND symbol ~ '^[A-Z0-9]{8}[0-9]$'
+        AND NOT EXISTS (
+          SELECT 1 FROM cusip_mappings cm 
+          WHERE cm.cusip = trades.symbol
+        )
+      `;
+      
+      const cusipResult = await db.query(cusipQuery, [req.user.id]);
+      
+      // Check for stuck CUSIP resolution jobs
+      const stuckJobsQuery = `
+        SELECT COUNT(*) as count
+        FROM job_queue
+        WHERE user_id = $1
+        AND type = 'cusip_resolution'
+        AND status IN ('pending', 'processing')
+      `;
+      
+      const stuckJobsResult = await db.query(stuckJobsQuery, [req.user.id]);
+      
       res.json({
-        tradeEnrichment: result.rows
+        tradeEnrichment: result.rows,
+        unresolvedCusips: cusipResult.rows[0].count,
+        stuckCusipJobs: stuckJobsResult.rows[0].count
       });
     } catch (error) {
       next(error);
