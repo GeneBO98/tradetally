@@ -51,13 +51,21 @@
     </div>
     
     <!-- Show nuclear button if there are pending jobs for too long -->
-    <div v-if="isEnriching && !enrichmentStatus?.unresolvedCusips" class="mt-3">
+    <div v-if="isEnriching && !enrichmentStatus?.unresolvedCusips" class="mt-3 space-x-2">
+      <button 
+        @click="syncEnrichmentStatus" 
+        class="text-sm bg-yellow-600 text-white px-3 py-1 rounded hover:bg-yellow-700 transition-colors"
+        title="Sync enrichment status with completed jobs"
+      >
+        🔄 SYNC STATUS
+      </button>
+      
       <button 
         @click="forceCompleteEnrichment" 
         class="text-sm bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 transition-colors"
         title="Nuclear option: Force complete ALL enrichment jobs immediately"
       >
-        🚨 FORCE COMPLETE ALL (Jobs Stuck)
+        🚨 FORCE COMPLETE ALL
       </button>
     </div>
     
@@ -223,6 +231,21 @@ async function retryEnrichment() {
   } catch (error) {
     console.error('Failed to retry enrichment:', error)
     alert('Failed to retry enrichment. Please try again.')
+  }
+}
+
+async function syncEnrichmentStatus() {
+  try {
+    const response = await api.post('/trades/sync-enrichment-status')
+    console.log('Sync enrichment status:', response.data)
+    
+    // Refresh status immediately
+    await fetchEnrichmentStatus()
+    
+    alert(`🔄 SYNCED: ${response.data.syncedTrades} trades synced to completed status`)
+  } catch (error) {
+    console.error('Failed to sync enrichment status:', error)
+    alert('Failed to sync enrichment status. Please try again.')
   }
 }
 
