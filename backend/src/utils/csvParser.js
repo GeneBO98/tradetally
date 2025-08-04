@@ -24,7 +24,7 @@ const brokerParsers = {
   lightspeed: (row) => ({
     symbol: cleanString(row.Symbol),
     tradeDate: parseDate(row['Trade Date']),
-    entryTime: parseLightspeedDateTime(row['Trade Date'] + ' ' + (row['Execution Time'] || '09:30')),
+    entryTime: parseLightspeedDateTime(row['Trade Date'] + ' ' + (row['Execution Time'] || row['Raw Exec. Time'] || '09:30')),
     entryPrice: parseFloat(row.Price),
     quantity: parseInt(row.Qty),
     side: parseLightspeedSide(row.Side, row['Buy/Sell'], row['Principal Amount'], row['NET Amount']),
@@ -296,6 +296,19 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
 
 function parseDate(dateStr) {
   if (!dateStr) return null;
+  
+  // Handle MM/DD/YYYY format
+  if (dateStr.includes('/')) {
+    const parts = dateStr.split('/');
+    if (parts.length === 3) {
+      const [month, day, year] = parts;
+      // Create date with explicit values to avoid timezone issues
+      const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+      return isNaN(date.getTime()) ? null : date.toISOString().split('T')[0];
+    }
+  }
+  
+  // Default handling for other formats
   const date = new Date(dateStr);
   return isNaN(date.getTime()) ? null : date.toISOString().split('T')[0];
 }
@@ -319,19 +332,37 @@ function parseLightspeedDateTime(dateTimeStr) {
     // We need to parse the datetime and convert it to UTC properly
     
     // Parse the datetime string components manually to avoid timezone interpretation
-    // Expected format: "2025-04-09 16:33" 
     const parts = dateTimeStr.trim().split(' ');
-    if (parts.length !== 2) return null;
+    if (parts.length < 2) return null;
     
-    const [datePart, timePart] = parts;
-    const [year, month, day] = datePart.split('-').map(Number);
-    const [hours, minutes] = timePart.split(':').map(Number);
+    const [datePart, ...timeParts] = parts;
+    const timeStr = timeParts.join(' '); // Handle time with seconds
+    
+    let year, month, day;
+    
+    // Check if date is in YYYY-MM-DD or MM/DD/YYYY format
+    if (datePart.includes('-')) {
+      // YYYY-MM-DD format
+      [year, month, day] = datePart.split('-').map(Number);
+    } else if (datePart.includes('/')) {
+      // MM/DD/YYYY format
+      const dateParts = datePart.split('/');
+      if (dateParts.length === 3) {
+        [month, day, year] = dateParts.map(Number);
+      }
+    }
+    
+    // Parse time part (HH:MM:SS or HH:MM)
+    const timeParts2 = timeStr.split(':');
+    const hours = parseInt(timeParts2[0]) || 0;
+    const minutes = parseInt(timeParts2[1]) || 0;
+    const seconds = parseInt(timeParts2[2]) || 0;
     
     if (!year || !month || !day || hours === undefined || minutes === undefined) return null;
     
     // Create UTC date object with explicit values (treating input as literal time)
     // Month is 0-indexed in JavaScript Date
-    const literalDate = new Date(Date.UTC(year, month - 1, day, hours, minutes, 0));
+    const literalDate = new Date(Date.UTC(year, month - 1, day, hours, minutes, seconds));
     
     // Now adjust for Lightspeed timezone
     // Based on your requirement: 16:33 should become 20:33 UTC
@@ -508,7 +539,7 @@ async function parseLightspeedTransactions(records, existingPositions = {}) {
       
       // Debug the actual field values from CSV
       const tradeDate = record['Trade Date'];
-      const executionTime = record['Execution Time'];
+      const executionTime = record['Execution Time'] || record['Raw Exec. Time'];
       const combinedDateTime = tradeDate + ' ' + (executionTime || '09:30');
       
       console.log(`DEBUG CSV FIELDS: Trade Date="${tradeDate}", Execution Time="${executionTime}", Combined="${combinedDateTime}"`);
