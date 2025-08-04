@@ -69,23 +69,42 @@ export const useTradesStore = defineStore('trades', () => {
     
     try {
       const offset = (pagination.value.page - 1) * pagination.value.limit
-      const response = await api.get('/trades', { 
-        params: { 
-          ...filters.value, 
-          ...params,
-          limit: pagination.value.limit,
-          offset: offset
-        }
+      
+      // Fetch both trades and analytics data for consistent P&L calculations
+      const [tradesResponse, analyticsResponse] = await Promise.all([
+        api.get('/trades', { 
+          params: { 
+            ...filters.value, 
+            ...params,
+            limit: pagination.value.limit,
+            offset: offset
+          }
+        }),
+        api.get('/trades/analytics', { 
+          params: { 
+            ...filters.value, 
+            ...params
+          }
+        })
+      ])
+      
+      trades.value = tradesResponse.data.trades || tradesResponse.data
+      
+      // Store analytics data for consistent P&L calculations
+      analytics.value = analyticsResponse.data
+      console.log('Analytics data received in fetchTrades:', {
+        summary: analyticsResponse.data.summary,
+        totalPnL: analyticsResponse.data.summary?.totalPnL,
+        winRate: analyticsResponse.data.summary?.winRate
       })
-      trades.value = response.data.trades || response.data
       
       // If the response includes pagination metadata, update it
-      if (response.data.total !== undefined) {
-        pagination.value.total = response.data.total
-        pagination.value.totalPages = Math.ceil(response.data.total / pagination.value.limit)
+      if (tradesResponse.data.total !== undefined) {
+        pagination.value.total = tradesResponse.data.total
+        pagination.value.totalPages = Math.ceil(tradesResponse.data.total / pagination.value.limit)
       }
       
-      return response.data
+      return tradesResponse.data
     } catch (err) {
       error.value = err.response?.data?.error || 'Failed to fetch trades'
       throw err
