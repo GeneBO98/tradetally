@@ -124,19 +124,18 @@ export const useTradesStore = defineStore('trades', () => {
       // Store analytics data for consistent P&L calculations FIRST
       analytics.value = analyticsResponse.data
       
-      // If analytics shows 0 total trades, force empty trades array regardless of what trades API returned
-      if (analyticsResponse.data.summary?.totalTrades === 0) {
-        trades.value = []
-        console.log('📦 FORCED EMPTY: Analytics shows 0 trades, forcing empty array')
+      // Always use the trades data from the trades API, not analytics
+      if (tradesResponse.data.hasOwnProperty('trades')) {
+        trades.value = tradesResponse.data.trades
+        console.log('📦 Set trades from tradesResponse.data.trades:', trades.value.length)
       } else {
-        // Normal case - use trades data
-        if (tradesResponse.data.hasOwnProperty('trades')) {
-          trades.value = tradesResponse.data.trades
-          console.log('📦 Set trades from tradesResponse.data.trades:', trades.value.length)
-        } else {
-          trades.value = tradesResponse.data
-          console.log('📦 Set trades from tradesResponse.data (fallback):', trades.value.length)
-        }
+        trades.value = tradesResponse.data
+        console.log('📦 Set trades from tradesResponse.data (fallback):', trades.value.length)
+      }
+      
+      // Log if there's a mismatch between trades and analytics for debugging
+      if (analyticsResponse.data.summary?.totalTrades === 0 && trades.value.length > 0) {
+        console.log('⚠️ MISMATCH: Analytics shows 0 trades but trades API returned', trades.value.length, 'trades')
       }
       console.log('Analytics data received:', {
         summary: analyticsResponse.data.summary,
@@ -198,19 +197,18 @@ export const useTradesStore = defineStore('trades', () => {
       // Store analytics data for consistent P&L calculations FIRST
       analytics.value = analyticsResponse.data
       
-      // If analytics shows 0 total trades, force empty trades array regardless of what trades API returned
-      if (analyticsResponse.data.summary?.totalTrades === 0) {
-        trades.value = []
-        console.log('📦 FORCED EMPTY: Analytics shows 0 trades, forcing empty array')
+      // Always use the trades data from the trades API, not analytics
+      if (tradesResponse.data.hasOwnProperty('trades')) {
+        trades.value = tradesResponse.data.trades
+        console.log('📦 Set trades from tradesResponse.data.trades:', trades.value.length)
       } else {
-        // Normal case - use trades data
-        if (tradesResponse.data.hasOwnProperty('trades')) {
-          trades.value = tradesResponse.data.trades
-          console.log('📦 Set trades from tradesResponse.data.trades:', trades.value.length)
-        } else {
-          trades.value = tradesResponse.data
-          console.log('📦 Set trades from tradesResponse.data (fallback):', trades.value.length)
-        }
+        trades.value = tradesResponse.data
+        console.log('📦 Set trades from tradesResponse.data (fallback):', trades.value.length)
+      }
+      
+      // Log if there's a mismatch between trades and analytics for debugging
+      if (analyticsResponse.data.summary?.totalTrades === 0 && trades.value.length > 0) {
+        console.log('⚠️ MISMATCH: Analytics shows 0 trades but trades API returned', trades.value.length, 'trades')
       }
       console.log('Analytics data received:', {
         summary: analyticsResponse.data.summary,

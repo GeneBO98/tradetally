@@ -31,6 +31,36 @@
       </button>
     </div>
     
+    <!-- Show retry button if there are unresolved CUSIPs -->
+    <div v-if="enrichmentStatus && enrichmentStatus.unresolvedCusips > 0" class="mt-3 space-x-2">
+      <button 
+        @click="retryEnrichment" 
+        class="text-sm bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 transition-colors"
+      >
+        Retry CUSIP Resolution ({{ enrichmentStatus.unresolvedCusips }} unresolved)
+      </button>
+      
+      <!-- NUCLEAR OPTION for stuck jobs -->
+      <button 
+        @click="forceCompleteEnrichment" 
+        class="text-sm bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 transition-colors"
+        title="Nuclear option: Force complete ALL enrichment jobs immediately"
+      >
+        🚨 FORCE COMPLETE ALL
+      </button>
+    </div>
+    
+    <!-- Show nuclear button if there are pending jobs for too long -->
+    <div v-if="isEnriching && !enrichmentStatus?.unresolvedCusips" class="mt-3">
+      <button 
+        @click="forceCompleteEnrichment" 
+        class="text-sm bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 transition-colors"
+        title="Nuclear option: Force complete ALL enrichment jobs immediately"
+      >
+        🚨 FORCE COMPLETE ALL (Jobs Stuck)
+      </button>
+    </div>
+    
     <!-- Progress bar -->
     <div v-if="isEnriching && progress > 0" class="mt-3">
       <div class="bg-blue-200 dark:bg-blue-800 rounded-full h-2">
@@ -161,10 +191,57 @@ async function fetchEnrichmentStatus() {
       console.log('Enrichment status update:', statuses)
     }
     
+    // Log unresolved CUSIPs if any
+    if (newStatus.unresolvedCusips > 0) {
+      console.log(`Unresolved CUSIPs: ${newStatus.unresolvedCusips}`)
+    }
+    if (newStatus.stuckCusipJobs > 0) {
+      console.log(`Stuck CUSIP jobs: ${newStatus.stuckCusipJobs}`)
+    }
+    
     enrichmentStatus.value = newStatus
     lastUpdateTime.value = Date.now()
   } catch (error) {
     console.error('Failed to fetch enrichment status:', error)
+  }
+}
+
+async function retryEnrichment() {
+  try {
+    const response = await api.post('/trades/retry-enrichment')
+    console.log('Enrichment retry initiated:', response.data)
+    
+    // Refresh status immediately
+    await fetchEnrichmentStatus()
+    
+    // Show success message
+    if (response.data.unresolvedCusips > 0 || response.data.resetJobs > 0) {
+      alert(`Enrichment retry initiated. Processing ${response.data.unresolvedCusips} CUSIPs.`)
+    } else {
+      alert('No unresolved CUSIPs found.')
+    }
+  } catch (error) {
+    console.error('Failed to retry enrichment:', error)
+    alert('Failed to retry enrichment. Please try again.')
+  }
+}
+
+async function forceCompleteEnrichment() {
+  if (!confirm('🚨 NUCLEAR OPTION: This will FORCE COMPLETE all enrichment jobs immediately. Are you sure?')) {
+    return
+  }
+  
+  try {
+    const response = await api.post('/trades/force-complete-enrichment')
+    console.log('Force complete initiated:', response.data)
+    
+    // Refresh status immediately
+    await fetchEnrichmentStatus()
+    
+    alert(`🚨 FORCE COMPLETED: ${response.data.forceCompletedJobs} jobs and ${response.data.forceCompletedTrades} trades completed. No more stuck jobs!`)
+  } catch (error) {
+    console.error('Failed to force complete enrichment:', error)
+    alert('Failed to force complete enrichment. Please try again.')
   }
 }
 

@@ -148,6 +148,55 @@ router.get('/round-trip', authenticate, tradeController.getRoundTripTrades);
  *         description: Enrichment status
  */
 router.get('/enrichment-status', authenticate, tradeController.getEnrichmentStatus);
+
+/**
+ * @swagger
+ * /api/trades/retry-enrichment:
+ *   post:
+ *     summary: Retry trade enrichment for stuck CUSIPs
+ *     tags: [Trades]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Enrichment retry initiated
+ */
+router.post('/retry-enrichment', authenticate, tradeController.retryEnrichment);
+
+/**
+ * @swagger
+ * /api/trades/force-complete-enrichment:
+ *   post:
+ *     summary: NUCLEAR OPTION - Force complete ALL enrichment jobs
+ *     tags: [Trades]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: All enrichment force completed
+ */
+router.post('/force-complete-enrichment', authenticate, tradeController.forceCompleteEnrichment);
+
+/**
+ * @swagger
+ * /api/trades/debug-symbol:
+ *   get:
+ *     summary: Debug symbol search
+ *     tags: [Trades]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: symbol
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Debug information about symbol search
+ */
+router.get('/debug-symbol', authenticate, tradeController.debugSymbolSearch);
+
 /**
  * @swagger
  * /api/trades/open-positions-quotes:

@@ -656,6 +656,22 @@ function getNewsBadgeClasses(sentiment) {
 }
 
 onMounted(() => {
+  // Add debug function to window for testing
+  window.debugSymbol = async (symbol) => {
+    try {
+      const response = await fetch(`/api/trades/debug-symbol?symbol=${symbol}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      const data = await response.json();
+      console.log('Debug Symbol Results:', data);
+      return data;
+    } catch (error) {
+      console.error('Debug failed:', error);
+    }
+  };
+
   // Check if there are URL parameters that the TradeFilters component should handle
   const hasFiltersInUrl = !!(
     route.query.symbol || route.query.startDate || route.query.endDate || 
