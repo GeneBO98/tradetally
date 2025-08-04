@@ -1193,6 +1193,8 @@ class Trade {
           COALESCE(MAX(trade_pnl), 0)::numeric as best_trade,
           COALESCE(MIN(trade_pnl), 0)::numeric as worst_trade,
           COALESCE(SUM(trade_costs), 0)::numeric as total_costs,
+          COALESCE(SUM(trade_pnl) FILTER (WHERE trade_pnl > 0), 0)::numeric as total_gross_wins,
+          COALESCE(ABS(SUM(trade_pnl) FILTER (WHERE trade_pnl < 0)), 0)::numeric as total_gross_losses,
           ${useMedian
             ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY avg_return_pct) FILTER (WHERE avg_return_pct IS NOT NULL), 0)::numeric as avg_return_pct'
             : 'COALESCE(AVG(avg_return_pct) FILTER (WHERE avg_return_pct IS NOT NULL), 0)::numeric as avg_return_pct'
@@ -1251,8 +1253,9 @@ class Trade {
         COALESCE(it.individual_best_trade, ts.best_trade) as best_trade,
         COALESCE(it.individual_worst_trade, ts.worst_trade) as worst_trade,
         CASE 
-          WHEN ts.avg_loss = 0 OR ts.avg_loss IS NULL THEN 0
-          ELSE ABS(ts.avg_win / ts.avg_loss)
+          WHEN ts.total_gross_losses = 0 OR ts.total_gross_losses IS NULL THEN 
+            CASE WHEN ts.total_gross_wins > 0 THEN 999.99 ELSE 0 END
+          ELSE ABS(ts.total_gross_wins / ts.total_gross_losses)
         END as profit_factor,
         CASE 
           WHEN ts.total_trades = 0 THEN 0
