@@ -1675,6 +1675,37 @@ const tradeController = {
     }
   },
 
+  async syncEnrichmentStatus(req, res, next) {
+    try {
+      logger.logImport(`SYNC enrichment status requested by user ${req.user.id}`);
+      
+      // Find trades that have completed jobs but are still marked as pending enrichment
+      const syncQuery = `
+        UPDATE trades 
+        SET enrichment_status = 'completed',
+            enrichment_completed_at = CURRENT_TIMESTAMP
+        WHERE user_id = $1
+        AND enrichment_status != 'completed'
+        AND NOT EXISTS (
+          SELECT 1 FROM job_queue jq 
+          WHERE jq.data::json->>'tradeId' = trades.id::text
+          AND jq.status IN ('pending', 'processing')
+        )
+        RETURNING id, symbol
+      `;
+      
+      const syncResult = await db.query(syncQuery, [req.user.id]);
+      
+      res.json({
+        message: 'Enrichment status synced successfully',
+        syncedTrades: syncResult.rowCount,
+        trades: syncResult.rows
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
   async forceCompleteEnrichment(req, res, next) {
     try {
       logger.logImport(`FORCE COMPLETE enrichment requested by user ${req.user.id}`);

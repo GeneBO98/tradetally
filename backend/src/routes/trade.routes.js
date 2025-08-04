@@ -165,6 +165,20 @@ router.post('/retry-enrichment', authenticate, tradeController.retryEnrichment);
 
 /**
  * @swagger
+ * /api/trades/sync-enrichment-status:
+ *   post:
+ *     summary: Sync enrichment status with completed jobs
+ *     tags: [Trades]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Enrichment status synced
+ */
+router.post('/sync-enrichment-status', authenticate, tradeController.syncEnrichmentStatus);
+
+/**
+ * @swagger
  * /api/trades/force-complete-enrichment:
  *   post:
  *     summary: NUCLEAR OPTION - Force complete ALL enrichment jobs

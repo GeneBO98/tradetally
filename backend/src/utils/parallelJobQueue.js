@@ -146,6 +146,10 @@ class ParallelJobQueue {
 
       // Mark job as completed
       await this.completeJob(job.id, result);
+      
+      // CRITICAL: Update trade enrichment status when job completes
+      await this.updateTradeEnrichmentStatus(job, data);
+      
       logger.logImport(`✅ [${job.type}] Job ${job.id} completed in time`);
 
     } catch (error) {
@@ -217,6 +221,44 @@ class ParallelJobQueue {
       `;
       await db.query(failQuery, [jobId, `Failed after timeout retries: ${error}`]);
       logger.logError(`❌ Job ${jobId} failed permanently after timeout retries`);
+    }
+  }
+
+  /**
+   * Update trade enrichment status when job completes - CRITICAL FOR SYNC
+   */
+  async updateTradeEnrichmentStatus(job, data) {
+    try {
+      const db = require('../config/database');
+      
+      // For strategy classification jobs, mark the trade as enrichment completed
+      if (job.type === 'strategy_classification' && data.tradeId) {
+        await db.query(`
+          UPDATE trades 
+          SET enrichment_status = 'completed',
+              enrichment_completed_at = CURRENT_TIMESTAMP
+          WHERE id = $1
+        `, [data.tradeId]);
+        
+        logger.logImport(`🔄 Updated trade ${data.tradeId} enrichment status to completed`);
+      }
+      
+      // For CUSIP resolution jobs, mark all affected trades as completed
+      if (job.type === 'cusip_resolution' && data.userId) {
+        await db.query(`
+          UPDATE trades 
+          SET enrichment_status = 'completed',
+              enrichment_completed_at = CURRENT_TIMESTAMP
+          WHERE user_id = $1 
+          AND enrichment_status != 'completed'
+          AND symbol ~ '^[A-Z0-9]{8}[0-9]$'
+        `, [data.userId]);
+        
+        logger.logImport(`🔄 Updated CUSIP trades for user ${data.userId} to completed`);
+      }
+      
+    } catch (error) {
+      logger.logError(`Failed to update trade enrichment status: ${error.message}`);
     }
   }
 
