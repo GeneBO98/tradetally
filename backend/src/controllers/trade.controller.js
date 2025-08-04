@@ -530,47 +530,39 @@ const tradeController = {
           // Clear timeout since we're proceeding normally
           clearTimeout(importTimeout);
 
-          // Check for existing trades to avoid duplicates
-          const existingTradesQuery = `
-            SELECT symbol, entry_time, entry_price, quantity, side 
-            FROM trades 
-            WHERE user_id = $1 
-            AND broker = $2
-            AND trade_date >= $3
-            AND trade_date <= $4
-          `;
-
-          // Get date range from trades
-          const tradeDates = trades.map(t => new Date(t.tradeDate)).filter(d => !isNaN(d));
-          const minDate = tradeDates.length > 0 ? new Date(Math.min(...tradeDates)) : new Date();
-          const maxDate = tradeDates.length > 0 ? new Date(Math.max(...tradeDates)) : new Date();
-
-          const existingTrades = await db.query(existingTradesQuery, [
-            req.user.id, 
-            broker, 
-            minDate.toISOString().split('T')[0],
-            maxDate.toISOString().split('T')[0]
-          ]);
-
-          logger.logImport(`Found ${existingTrades.rows.length} existing trades in date range`);
-
-          logger.logImport(`Processing ${trades.length} trades for import...`);
+          // Simplified and more reliable duplicate detection using direct database lookup
+          logger.logImport(`Processing ${trades.length} trades for import with per-trade duplicate checking...`);
           
           for (const tradeData of trades) {
             try {
-              // Minimal logging to avoid slowdowns
+              // Check for duplicates based on entry, exit, side, and P/L
+              // This catches exact duplicate trades regardless of minor timing differences
+              const duplicateCheckQuery = `
+                SELECT id FROM trades 
+                WHERE user_id = $1 
+                AND symbol = $2 
+                AND side = $3
+                AND ABS(entry_price - $4) < 0.01
+                AND ABS(COALESCE(exit_price, 0) - $5) < 0.01
+                AND ABS(COALESCE(pnl, 0) - $6) < 0.01
+                LIMIT 1
+              `;
               
-              // Check for duplicates
-              const isDuplicate = existingTrades.rows.some(existing => 
-                existing.symbol === tradeData.symbol &&
-                existing.entry_price === tradeData.entryPrice &&
-                existing.quantity === tradeData.quantity &&
-                existing.side === tradeData.side &&
-                Math.abs(new Date(existing.entry_time) - new Date(tradeData.entryTime)) < 60000 // Within 1 minute
-              );
+              const exitPrice = tradeData.exitPrice || 0;
+              const pnl = tradeData.pnl || 0;
+              
+              const duplicateResult = await db.query(duplicateCheckQuery, [
+                req.user.id,
+                tradeData.symbol,
+                tradeData.side,
+                tradeData.entryPrice,
+                exitPrice,
+                pnl
+              ]);
 
-              if (isDuplicate) {
-                logger.logImport(`Skipping duplicate trade: ${tradeData.symbol} ${tradeData.quantity} at ${tradeData.entryPrice}`);
+
+              if (duplicateResult.rows.length > 0) {
+                logger.logImport(`Skipping duplicate trade: ${tradeData.symbol} ${tradeData.side} ${tradeData.quantity} at $${tradeData.entryPrice} (${new Date(tradeData.entryTime).toISOString()})`);
                 duplicates++;
                 continue;
               }

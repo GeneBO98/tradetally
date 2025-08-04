@@ -180,7 +180,7 @@
                   </p>
                 </div>
                 <button
-                  @click="deleteImport(importLog.id)"
+                  @click="confirmDeleteImport(importLog.id)"
                   class="text-red-600 hover:text-red-500 text-sm"
                   :disabled="deleting"
                 >
@@ -221,6 +221,37 @@
             
             <div v-if="logContent" class="bg-gray-100 dark:bg-gray-900 p-4 rounded-lg max-h-96 overflow-y-auto">
               <pre class="text-xs text-gray-800 dark:text-gray-200 whitespace-pre-wrap">{{ logContent }}</pre>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Delete Confirmation Modal -->
+      <div v-if="showDeleteConfirm" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+        <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white dark:bg-gray-800">
+          <div class="mt-3 text-center">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white">Delete Import</h3>
+            <div class="mt-2 px-7 py-3">
+              <p class="text-sm text-gray-500 dark:text-gray-400">
+                Are you sure you want to delete this import and all associated trades? 
+                This action cannot be undone.
+              </p>
+            </div>
+            <div class="flex justify-center space-x-4 px-4 py-3">
+              <button
+                @click="showDeleteConfirm = false"
+                class="px-4 py-2 bg-gray-300 text-gray-800 text-base font-medium rounded-md shadow-sm hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-300 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500"
+              >
+                Cancel
+              </button>
+              <button
+                @click="executeDelete"
+                :disabled="deleting"
+                class="px-4 py-2 bg-red-600 text-white text-base font-medium rounded-md shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50"
+              >
+                <span v-if="deleting">Deleting...</span>
+                <span v-else>Delete</span>
+              </button>
             </div>
           </div>
         </div>
@@ -393,6 +424,8 @@ const lookupForm = ref({
 })
 const lookupResult = ref(null)
 const cusipMappings = ref({})
+const showDeleteConfirm = ref(false)
+const deleteImportId = ref(null)
 
 function handleFileSelect(event) {
   const file = event.target.files[0]
@@ -536,17 +569,22 @@ async function fetchImportHistory() {
   }
 }
 
-async function deleteImport(importId) {
-  if (!confirm('Are you sure you want to delete this import and all associated trades?')) {
-    return
-  }
+function confirmDeleteImport(importId) {
+  deleteImportId.value = importId
+  showDeleteConfirm.value = true
+}
+
+async function executeDelete() {
+  if (!deleteImportId.value) return
 
   deleting.value = true
   
   try {
-    await api.delete(`/trades/import/${importId}`)
+    await api.delete(`/trades/import/${deleteImportId.value}`)
     showSuccess('Import Deleted', 'Import and associated trades have been deleted')
     await fetchImportHistory()
+    showDeleteConfirm.value = false
+    deleteImportId.value = null
   } catch (error) {
     showError('Delete Failed', error.response?.data?.error || 'Failed to delete import')
   } finally {
