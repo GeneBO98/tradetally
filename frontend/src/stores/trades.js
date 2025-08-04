@@ -216,6 +216,28 @@ export const useTradesStore = defineStore('trades', () => {
     }
   }
 
+  async function bulkDeleteTrades(tradeIds) {
+    loading.value = true
+    error.value = null
+    
+    try {
+      // Delete trades one by one since there's no bulk endpoint
+      const deletePromises = tradeIds.map(id => api.delete(`/trades/${id}`))
+      await Promise.all(deletePromises)
+      
+      // Remove deleted trades from the local state
+      trades.value = trades.value.filter(t => !tradeIds.includes(t.id))
+      // Update pagination total
+      pagination.value.total -= tradeIds.length
+      pagination.value.totalPages = Math.ceil(pagination.value.total / pagination.value.limit)
+    } catch (err) {
+      error.value = err.response?.data?.error || 'Failed to delete trades'
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
   async function importTrades(file, broker) {
     loading.value = true
     error.value = null
@@ -311,6 +333,7 @@ export const useTradesStore = defineStore('trades', () => {
     createTrade,
     updateTrade,
     deleteTrade,
+    bulkDeleteTrades,
     importTrades,
     setFilters,
     resetFilters,
