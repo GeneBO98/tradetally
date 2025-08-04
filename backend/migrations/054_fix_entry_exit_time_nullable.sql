@@ -15,11 +15,7 @@ UPDATE trades
 SET entry_time = trade_date::timestamp + interval '9 hours 30 minutes'  -- Market open time
 WHERE entry_time IS NULL AND trade_date IS NOT NULL;
 
+-- For trades with NULL exit_time, use trade_date + market close time
 UPDATE trades 
 SET exit_time = trade_date::timestamp + interval '16 hours'  -- Market close time  
-WHERE exit_time IS NULL AND exit_date IS NOT NULL;
-
--- For trades without exit_date but with trade_date, assume same-day trade
-UPDATE trades 
-SET exit_time = trade_date::timestamp + interval '15 hours'  -- Afternoon close
-WHERE exit_time IS NULL AND trade_date IS NOT NULL AND exit_date IS NULL;
+WHERE exit_time IS NULL AND trade_date IS NOT NULL;
