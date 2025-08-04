@@ -404,7 +404,13 @@ class Trade {
     const values = [userId];
     let paramCount = 2;
 
-    // Add date filtering
+    // Apply comprehensive filters (matching findByUser method)
+    if (filters.symbol) {
+      whereClause += ` AND t.symbol = $${paramCount}`;
+      values.push(filters.symbol.toUpperCase());
+      paramCount++;
+    }
+
     if (filters.startDate) {
       whereClause += ` AND t.trade_date >= $${paramCount}`;
       values.push(filters.startDate);
@@ -417,15 +423,129 @@ class Trade {
       paramCount++;
     }
 
-    if (filters.symbol) {
-      whereClause += ` AND t.symbol = $${paramCount}`;
-      values.push(filters.symbol.toUpperCase());
+    if (filters.tags && filters.tags.length > 0) {
+      whereClause += ` AND t.tags && $${paramCount}`;
+      values.push(filters.tags);
       paramCount++;
     }
 
     if (filters.strategy) {
       whereClause += ` AND t.strategy = $${paramCount}`;
       values.push(filters.strategy);
+      paramCount++;
+    }
+
+    // Multi-select filters - strategies
+    if (filters.strategies && filters.strategies.length > 0) {
+      whereClause += ` AND t.strategy = ANY($${paramCount})`;
+      values.push(filters.strategies);
+      paramCount++;
+    }
+
+    if (filters.sector) {
+      whereClause += ` AND sc.finnhub_industry = $${paramCount}`;
+      values.push(filters.sector);
+      paramCount++;
+    }
+
+    // Multi-select filters - sectors
+    if (filters.sectors && filters.sectors.length > 0) {
+      whereClause += ` AND sc.finnhub_industry = ANY($${paramCount})`;
+      values.push(filters.sectors);
+      paramCount++;
+    }
+
+    // Advanced filters
+    if (filters.side) {
+      whereClause += ` AND t.side = $${paramCount}`;
+      values.push(filters.side);
+      paramCount++;
+    }
+
+    if (filters.minPrice !== undefined) {
+      whereClause += ` AND t.entry_price >= $${paramCount}`;
+      values.push(filters.minPrice);
+      paramCount++;
+    }
+
+    if (filters.maxPrice !== undefined) {
+      whereClause += ` AND t.entry_price <= $${paramCount}`;
+      values.push(filters.maxPrice);
+      paramCount++;
+    }
+
+    if (filters.minQuantity !== undefined) {
+      whereClause += ` AND t.quantity >= $${paramCount}`;
+      values.push(filters.minQuantity);
+      paramCount++;
+    }
+
+    if (filters.maxQuantity !== undefined) {
+      whereClause += ` AND t.quantity <= $${paramCount}`;
+      values.push(filters.maxQuantity);
+      paramCount++;
+    }
+
+    if (filters.status === 'open') {
+      whereClause += ` AND t.exit_price IS NULL`;
+    } else if (filters.status === 'closed') {
+      whereClause += ` AND t.exit_price IS NOT NULL`;
+    }
+
+    if (filters.minPnl !== undefined) {
+      whereClause += ` AND t.pnl >= $${paramCount}`;
+      values.push(filters.minPnl);
+      paramCount++;
+    }
+
+    if (filters.maxPnl !== undefined) {
+      whereClause += ` AND t.pnl <= $${paramCount}`;
+      values.push(filters.maxPnl);
+      paramCount++;
+    }
+
+    if (filters.pnlType === 'profit') {
+      whereClause += ` AND t.pnl > 0`;
+    } else if (filters.pnlType === 'loss') {
+      whereClause += ` AND t.pnl < 0`;
+    }
+
+    // Broker filter
+    if (filters.broker) {
+      whereClause += ` AND t.broker = $${paramCount}`;
+      values.push(filters.broker);
+      paramCount++;
+    }
+
+    // News filter (check for null/empty news_sentiment to determine if news exists)
+    if (filters.hasNews === 'true') {
+      whereClause += ` AND t.news_sentiment IS NOT NULL AND t.news_sentiment != ''`;
+    } else if (filters.hasNews === 'false') {
+      whereClause += ` AND (t.news_sentiment IS NULL OR t.news_sentiment = '')`;
+    }
+
+    // Hold time filter
+    if (filters.holdTime) {
+      whereClause += this.getHoldTimeFilter(filters.holdTime);
+    }
+
+    // Hold time range filters
+    if (filters.minHoldTime !== undefined) {
+      whereClause += ` AND EXTRACT(EPOCH FROM (COALESCE(t.exit_time, NOW()) - t.entry_time)) >= $${paramCount}`;
+      values.push(filters.minHoldTime);
+      paramCount++;
+    }
+
+    if (filters.maxHoldTime !== undefined) {
+      whereClause += ` AND EXTRACT(EPOCH FROM (COALESCE(t.exit_time, NOW()) - t.entry_time)) <= $${paramCount}`;
+      values.push(filters.maxHoldTime);
+      paramCount++;
+    }
+
+    // Days of week filter
+    if (filters.daysOfWeek && filters.daysOfWeek.length > 0) {
+      whereClause += ` AND EXTRACT(DOW FROM t.trade_date) = ANY($${paramCount})`;
+      values.push(filters.daysOfWeek);
       paramCount++;
     }
 
@@ -436,6 +556,7 @@ class Trade {
     const executionCountQuery = `
       SELECT COUNT(*) as execution_count
       FROM trades t
+      LEFT JOIN symbol_categories sc ON t.symbol = sc.symbol
       ${whereClause}
     `;
     
@@ -447,19 +568,20 @@ class Trade {
       WITH simple_trades AS (
         -- Simple grouping by symbol and date - include both open and closed positions
         SELECT 
-          symbol,
-          trade_date,
-          SUM(COALESCE(pnl, 0)) as trade_pnl,
-          SUM(commission + fees) as trade_costs,
+          t.symbol,
+          t.trade_date,
+          SUM(COALESCE(t.pnl, 0)) as trade_pnl,
+          SUM(t.commission + t.fees) as trade_costs,
           COUNT(*) as execution_count,
-          AVG(pnl_percent) as avg_return_pct,
-          MIN(entry_time) as first_entry,
-          MAX(COALESCE(exit_time, entry_time)) as last_exit,
+          AVG(t.pnl_percent) as avg_return_pct,
+          MIN(t.entry_time) as first_entry,
+          MAX(COALESCE(t.exit_time, t.entry_time)) as last_exit,
           -- Only count as a completed trade if there's P&L
-          CASE WHEN SUM(pnl) IS NOT NULL THEN 1 ELSE 0 END as is_completed
+          CASE WHEN SUM(t.pnl) IS NOT NULL THEN 1 ELSE 0 END as is_completed
         FROM trades t
+        LEFT JOIN symbol_categories sc ON t.symbol = sc.symbol
         ${whereClause}
-        GROUP BY symbol, trade_date
+        GROUP BY t.symbol, t.trade_date
       ),
       trade_stats AS (
         SELECT 
@@ -604,15 +726,16 @@ class Trade {
     const symbolQuery = `
       WITH symbol_trades AS (
         SELECT 
-          symbol,
-          trade_date,
-          SUM(COALESCE(pnl, 0)) as trade_pnl,
-          SUM(quantity) as trade_volume,
+          t.symbol,
+          t.trade_date,
+          SUM(COALESCE(t.pnl, 0)) as trade_pnl,
+          SUM(t.quantity) as trade_volume,
           COUNT(*) as execution_count,
-          CASE WHEN SUM(pnl) IS NOT NULL THEN 1 ELSE 0 END as is_completed
+          CASE WHEN SUM(t.pnl) IS NOT NULL THEN 1 ELSE 0 END as is_completed
         FROM trades t
+        LEFT JOIN symbol_categories sc ON t.symbol = sc.symbol
         ${whereClause}
-        GROUP BY symbol, trade_date
+        GROUP BY t.symbol, t.trade_date
       )
       SELECT 
         symbol,
@@ -632,15 +755,16 @@ class Trade {
     // Get daily P&L for charting - simplified to work with any data
     const dailyPnLQuery = `
       SELECT 
-        trade_date,
-        SUM(COALESCE(pnl, 0)) as daily_pnl,
-        SUM(SUM(COALESCE(pnl, 0))) OVER (ORDER BY trade_date) as cumulative_pnl,
+        t.trade_date,
+        SUM(COALESCE(t.pnl, 0)) as daily_pnl,
+        SUM(SUM(COALESCE(t.pnl, 0))) OVER (ORDER BY t.trade_date) as cumulative_pnl,
         COUNT(*) as trade_count
       FROM trades t
+      LEFT JOIN symbol_categories sc ON t.symbol = sc.symbol
       ${whereClause}
-      GROUP BY trade_date
+      GROUP BY t.trade_date
       HAVING COUNT(*) > 0
-      ORDER BY trade_date
+      ORDER BY t.trade_date
     `;
 
     const dailyPnLResult = await db.query(dailyPnLQuery, values);
@@ -650,20 +774,21 @@ class Trade {
     // Get daily win rate data - simplified
     const dailyWinRateQuery = `
       SELECT 
-        trade_date,
-        COUNT(*) FILTER (WHERE COALESCE(pnl, 0) > 0) as wins,
-        COUNT(*) FILTER (WHERE COALESCE(pnl, 0) < 0) as losses,
-        COUNT(*) FILTER (WHERE COALESCE(pnl, 0) = 0) as breakeven,
+        t.trade_date,
+        COUNT(*) FILTER (WHERE COALESCE(t.pnl, 0) > 0) as wins,
+        COUNT(*) FILTER (WHERE COALESCE(t.pnl, 0) < 0) as losses,
+        COUNT(*) FILTER (WHERE COALESCE(t.pnl, 0) = 0) as breakeven,
         COUNT(*) as total_trades,
         CASE 
-          WHEN COUNT(*) > 0 THEN ROUND((COUNT(*) FILTER (WHERE COALESCE(pnl, 0) > 0)::decimal / COUNT(*)::decimal) * 100, 2)
+          WHEN COUNT(*) > 0 THEN ROUND((COUNT(*) FILTER (WHERE COALESCE(t.pnl, 0) > 0)::decimal / COUNT(*)::decimal) * 100, 2)
           ELSE 0 
         END as win_rate
       FROM trades t
+      LEFT JOIN symbol_categories sc ON t.symbol = sc.symbol
       ${whereClause}
-      GROUP BY trade_date
+      GROUP BY t.trade_date
       HAVING COUNT(*) > 0
-      ORDER BY trade_date
+      ORDER BY t.trade_date
     `;
 
     const dailyWinRateResult = await db.query(dailyWinRateQuery, values);
@@ -673,20 +798,22 @@ class Trade {
     // Get best and worst individual trades (not grouped)
     const topTradesQuery = `
       (
-        SELECT 'best' as type, id, symbol, entry_price, exit_price, 
-               quantity, pnl, trade_date
+        SELECT 'best' as type, t.id, t.symbol, t.entry_price, t.exit_price, 
+               t.quantity, t.pnl, t.trade_date
         FROM trades t
-        ${whereClause} AND pnl IS NOT NULL
-        ORDER BY pnl DESC
+        LEFT JOIN symbol_categories sc ON t.symbol = sc.symbol
+        ${whereClause} AND t.pnl IS NOT NULL
+        ORDER BY t.pnl DESC
         LIMIT 5
       )
       UNION ALL
       (
-        SELECT 'worst' as type, id, symbol, entry_price, exit_price, 
-               quantity, pnl, trade_date
+        SELECT 'worst' as type, t.id, t.symbol, t.entry_price, t.exit_price, 
+               t.quantity, t.pnl, t.trade_date
         FROM trades t
-        ${whereClause} AND pnl IS NOT NULL
-        ORDER BY pnl ASC
+        LEFT JOIN symbol_categories sc ON t.symbol = sc.symbol
+        ${whereClause} AND t.pnl IS NOT NULL
+        ORDER BY t.pnl ASC
         LIMIT 5
       )
     `;
@@ -696,18 +823,20 @@ class Trade {
     // Get individual best and worst trades for the metric cards
     const bestWorstTradesQuery = `
       (
-        SELECT 'best' as type, id, symbol, pnl, trade_date
+        SELECT 'best' as type, t.id, t.symbol, t.pnl, t.trade_date
         FROM trades t
-        ${whereClause} AND pnl IS NOT NULL
-        ORDER BY pnl DESC
+        LEFT JOIN symbol_categories sc ON t.symbol = sc.symbol
+        ${whereClause} AND t.pnl IS NOT NULL
+        ORDER BY t.pnl DESC
         LIMIT 1
       )
       UNION ALL
       (
-        SELECT 'worst' as type, id, symbol, pnl, trade_date
+        SELECT 'worst' as type, t.id, t.symbol, t.pnl, t.trade_date
         FROM trades t
-        ${whereClause} AND pnl IS NOT NULL
-        ORDER BY pnl ASC
+        LEFT JOIN symbol_categories sc ON t.symbol = sc.symbol
+        ${whereClause} AND t.pnl IS NOT NULL
+        ORDER BY t.pnl ASC
         LIMIT 1
       )
     `;

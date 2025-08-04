@@ -540,8 +540,9 @@ function formatDate(date) {
 }
 
 function handleFilter(filters) {
+  console.log('🎯 handleFilter called with:', filters)
   tradesStore.setFilters(filters)
-  tradesStore.fetchTrades()
+  tradesStore.fetchTrades(filters) // Pass filters explicitly
 }
 
 function goToPage(page) {

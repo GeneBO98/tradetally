@@ -70,21 +70,20 @@ export const useTradesStore = defineStore('trades', () => {
     try {
       const offset = (pagination.value.page - 1) * pagination.value.limit
       
+      // Merge filters - prioritize passed params over stored filters
+      const mergedFilters = { ...filters.value, ...params }
+      
       // Fetch both trades and analytics data for consistent P&L calculations
       const [tradesResponse, analyticsResponse] = await Promise.all([
         api.get('/trades', { 
           params: { 
-            ...filters.value, 
-            ...params,
+            ...mergedFilters,
             limit: pagination.value.limit,
             offset: offset
           }
         }),
         api.get('/trades/analytics', { 
-          params: { 
-            ...filters.value, 
-            ...params
-          }
+          params: mergedFilters
         })
       ])
       
@@ -120,21 +119,20 @@ export const useTradesStore = defineStore('trades', () => {
     try {
       const offset = (pagination.value.page - 1) * pagination.value.limit
       
+      // Merge filters - prioritize passed params over stored filters
+      const mergedFilters = { ...filters.value, ...params }
+      
       // Fetch both round-trip trades and analytics data for consistent P&L
       const [tradesResponse, analyticsResponse] = await Promise.all([
         api.get('/trades/round-trip', { 
           params: { 
-            ...filters.value, 
-            ...params,
+            ...mergedFilters,
             limit: pagination.value.limit,
             offset: offset
           }
         }),
         api.get('/trades/analytics', { 
-          params: { 
-            ...filters.value, 
-            ...params
-          }
+          params: mergedFilters
         })
       ])
       
