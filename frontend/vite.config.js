@@ -30,7 +30,7 @@ export default defineConfig(({ command, mode }) => {
   server: {
     port: 5173,
     host: true,
-    allowedHosts: process.env.NODE_ENV === 'development' ? ['tradetallydev.id10tips.com'] : 'auto',
+    allowedHosts: process.env.NODE_ENV === 'development' ? ['dev.tradetally.io'] : 'auto',
     proxy: {
       '/api': {
         target: 'http://localhost:3000', // Backend server port
