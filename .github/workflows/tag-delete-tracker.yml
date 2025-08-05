@@ -1,0 +1,13 @@
+name: Track tag deletions
+
+on:
+  delete:
+    tags:
+      - '**'
+
+jobs:
+  log_tag_deletion:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Log deleted tag
+        run: echo "Deleted tag: ${{ github.event.ref }}"
