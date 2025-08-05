@@ -1,13 +1,13 @@
-name: Track branch deletions
+name: Track deletions
 
 on:
-  delete:
-    branches:
-      - '**'
+  delete
 
 jobs:
-  log_branch_deletion:
+  log_deletion:
     runs-on: ubuntu-latest
     steps:
-      - name: Log deleted branch
-        run: echo "Deleted branch: ${{ github.event.ref }}"
+      - name: Log deleted ref
+        run: |
+          echo "Ref deleted: ${{ github.event.ref }}"
+          echo "Ref type: ${{ github.event.ref_type }}"
