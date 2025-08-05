@@ -675,7 +675,7 @@ const tradeController = {
           // Fetch existing open positions for context-aware parsing
           logger.logImport(`Fetching existing open positions for context-aware import...`);
           const openPositionsQuery = `
-            SELECT id, symbol, side, quantity, entry_price, entry_time, trade_date, commission, broker
+            SELECT id, symbol, side, quantity, entry_price, entry_time, trade_date, commission, broker, executions
             FROM trades 
             WHERE user_id = $1 
             AND exit_price IS NULL 
@@ -696,7 +696,8 @@ const tradeController = {
               entryTime: row.entry_time,
               tradeDate: row.trade_date,
               commission: parseFloat(row.commission) || 0,
-              broker: row.broker
+              broker: row.broker,
+              executions: row.executions || []  // FIXED: Include existing executions
             };
           });
           
@@ -759,7 +760,7 @@ const tradeController = {
                 if (tradeData.exitPrice && existing.exit_price) {
                   const entryMatch = Math.abs(parseFloat(existing.entry_price) - parseFloat(tradeData.entryPrice)) < 0.01;
                   const exitMatch = Math.abs(parseFloat(existing.exit_price) - parseFloat(tradeData.exitPrice)) < 0.01;
-                  const pnlMatch = Math.abs(parseFloat(existing.pnl || 0) - parseFloat(tradeData.pnl || 0)) < 1.00; // $1 tolerance for P/L due to rounding
+                  const pnlMatch = Math.abs(parseFloat(existing.pnl || 0) - parseFloat(tradeData.pnl || 0)) < 0.01; // $0.01 tolerance for P/L consistency
                   
                   return entryMatch && exitMatch && pnlMatch;
                 }
@@ -801,12 +802,18 @@ const tradeController = {
                 
                 // Filter out non-database fields and calculated fields before updating
                 // The Trade.update method will recalculate pnl and pnlPercent automatically
+                // FIXED: Preserve executions data when updating existing trades
                 const {
-                  totalQuantity, executions, entryValue, exitValue, isExistingPosition,
-                  existingTradeId, isUpdate, executionData, totalFees, totalFeesForSymbol,
+                  totalQuantity, entryValue, exitValue, isExistingPosition,
+                  existingTradeId, isUpdate, totalFees, totalFeesForSymbol,
                   pnl, pnlPercent,
                   ...cleanTradeData
                 } = tradeData;
+                
+                // Keep executions for database update (executionData is just a duplicate)
+                if (tradeData.executions) {
+                  cleanTradeData.executions = tradeData.executions;
+                }
                 
                 await Trade.update(tradeData.existingTradeId, req.user.id, cleanTradeData);
               } else {
