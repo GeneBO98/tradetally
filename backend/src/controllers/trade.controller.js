@@ -583,8 +583,9 @@ const tradeController = {
                 
                 // Filter out non-database fields and calculated fields before updating
                 // The Trade.update method will recalculate pnl and pnlPercent automatically
+                // IMPORTANT: Preserve executions when updating existing trades
                 const {
-                  totalQuantity, executions, entryValue, exitValue, isExistingPosition,
+                  totalQuantity, entryValue, exitValue, isExistingPosition,
                   existingTradeId, isUpdate, executionData, totalFees, totalFeesForSymbol,
                   pnl, pnlPercent,
                   ...cleanTradeData

@@ -610,7 +610,7 @@ async function parseLightspeedTransactions(records, existingPositions = {}) {
       entryTime: existingPosition.entryTime,
       tradeDate: existingPosition.tradeDate,
       side: existingPosition.side,
-      executions: [],
+      executions: existingPosition.executions || [],  // FIXED: Preserve existing executions
       totalQuantity: existingPosition.quantity,
       totalFees: existingPosition.commission || 0,
       entryValue: existingPosition.quantity * existingPosition.entryPrice,
@@ -709,6 +709,13 @@ async function parseLightspeedTransactions(records, existingPositions = {}) {
         currentTrade.exitTime = transaction.entryTime;
         // Store executions for display in trade details
         currentTrade.executionData = currentTrade.executions;
+        
+        // Calculate entry and exit times from executions
+        if (currentTrade.executions && currentTrade.executions.length > 0) {
+          const executionTimes = currentTrade.executions.map(exec => new Date(exec.datetime));
+          currentTrade.entryTime = new Date(Math.min(...executionTimes)).toISOString();
+          currentTrade.exitTime = new Date(Math.max(...executionTimes)).toISOString();
+        }
         
         // Mark as update if this was an existing position
         if (currentTrade.isExistingPosition) {
