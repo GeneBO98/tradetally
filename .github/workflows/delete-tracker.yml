@@ -1,0 +1,15 @@
+name: Watch for tag or branch deletions
+
+on:
+  delete:
+    tags:
+      - '**'
+    branches:
+      - '**'
+
+jobs:
+  log_deletion:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Log deleted ref
+        run: echo "Ref deleted: ${{ github.ref }}"
