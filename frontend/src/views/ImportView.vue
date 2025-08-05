@@ -436,6 +436,54 @@
       @close="showAllMappingsModal = false"
       @mappingChanged="handleMappingCreated"
     />
+
+    <!-- Delete Import Confirmation Modal -->
+    <div v-if="showDeleteModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+      <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white dark:bg-gray-800">
+        <div class="mt-3 text-center">
+          <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 dark:bg-red-900">
+            <ExclamationTriangleIcon class="h-6 w-6 text-red-600 dark:text-red-400" />
+          </div>
+          <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white mt-4">
+            Delete Import
+          </h3>
+          <div class="mt-2 px-7 py-3">
+            <p class="text-sm text-gray-500 dark:text-gray-400">
+              Are you sure you want to delete this import and all associated trades?
+            </p>
+            <div v-if="deleteImportData" class="mt-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-md text-left">
+              <p class="text-sm font-medium text-gray-900 dark:text-white">{{ deleteImportData.file_name }}</p>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                {{ formatDate(deleteImportData.created_at) }}
+              </p>
+              <p class="text-xs text-gray-500 dark:text-gray-400">
+                {{ deleteImportData.trades_imported }} trades will be deleted
+              </p>
+            </div>
+            <p class="text-xs text-red-600 dark:text-red-400 mt-2 font-medium">
+              This action cannot be undone.
+            </p>
+          </div>
+          <div class="flex gap-3 justify-center mt-4">
+            <button
+              @click="showDeleteModal = false"
+              class="px-4 py-2 bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-300 text-base font-medium rounded-md shadow-sm hover:bg-gray-400 dark:hover:bg-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-300"
+              :disabled="deleting"
+            >
+              Cancel
+            </button>
+            <button
+              @click="confirmDelete"
+              class="px-4 py-2 bg-red-600 text-white text-base font-medium rounded-md shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50"
+              :disabled="deleting"
+            >
+              <span v-if="deleting">Deleting...</span>
+              <span v-else>Delete</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -481,6 +529,11 @@ const showUnmappedModal = ref(false)
 const showAllMappingsModal = ref(false)
 const allMappings = ref([])
 const allMappingsLoading = ref(false)
+
+// Delete confirmation modal
+const showDeleteModal = ref(false)
+const deleteImportId = ref(null)
+const deleteImportData = ref(null)
 
 function handleFileSelect(event) {
   const file = event.target.files[0]
@@ -624,21 +677,31 @@ async function fetchImportHistory() {
   }
 }
 
-async function deleteImport(importId) {
-  if (!confirm('Are you sure you want to delete this import and all associated trades?')) {
-    return
-  }
+function deleteImport(importId) {
+  // Find the import data to show in modal
+  const importData = importHistory.value.find(imp => imp.id === importId)
+  
+  deleteImportId.value = importId
+  deleteImportData.value = importData
+  showDeleteModal.value = true
+}
+
+async function confirmDelete() {
+  if (!deleteImportId.value) return
 
   deleting.value = true
   
   try {
-    await api.delete(`/trades/import/${importId}`)
+    await api.delete(`/trades/import/${deleteImportId.value}`)
     showSuccess('Import Deleted', 'Import and associated trades have been deleted')
     await fetchImportHistory()
+    showDeleteModal.value = false
   } catch (error) {
     showError('Delete Failed', error.response?.data?.error || 'Failed to delete import')
   } finally {
     deleting.value = false
+    deleteImportId.value = null
+    deleteImportData.value = null
   }
 }
 

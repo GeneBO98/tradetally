@@ -24,7 +24,7 @@ const brokerParsers = {
   lightspeed: (row) => ({
     symbol: cleanString(row.Symbol),
     tradeDate: parseDate(row['Trade Date']),
-    entryTime: parseLightspeedDateTime(row['Trade Date'] + ' ' + (row['Execution Time'] || '09:30')),
+    entryTime: parseLightspeedDateTime(row['Trade Date'] + ' ' + (row['Execution Time'] || row['Raw Exec. Time'] || '09:30')),
     entryPrice: parseFloat(row.Price),
     quantity: parseInt(row.Qty),
     side: parseLightspeedSide(row.Side, row['Buy/Sell'], row['Principal Amount'], row['NET Amount']),
@@ -296,6 +296,16 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
 
 function parseDate(dateStr) {
   if (!dateStr) return null;
+  
+  // Try to parse MM/DD/YYYY format first
+  const mmddyyyyMatch = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (mmddyyyyMatch) {
+    const [_, month, day, year] = mmddyyyyMatch;
+    const date = new Date(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`);
+    return isNaN(date.getTime()) ? null : date.toISOString().split('T')[0];
+  }
+  
+  // Fall back to default date parsing
   const date = new Date(dateStr);
   return isNaN(date.getTime()) ? null : date.toISOString().split('T')[0];
 }
@@ -315,13 +325,30 @@ function parseLightspeedDateTime(dateTimeStr) {
     // We need to parse the datetime and convert it to UTC properly
     
     // Parse the datetime string components manually to avoid timezone interpretation
-    // Expected format: "2025-04-09 16:33" 
+    // Expected formats: "2025-04-09 16:33" or "04/09/2025 16:33:00"
     const parts = dateTimeStr.trim().split(' ');
-    if (parts.length !== 2) return null;
+    if (parts.length < 2) return null;
     
     const [datePart, timePart] = parts;
-    const [year, month, day] = datePart.split('-').map(Number);
-    const [hours, minutes] = timePart.split(':').map(Number);
+    let year, month, day;
+    
+    // Check if date is in MM/DD/YYYY format
+    if (datePart.includes('/')) {
+      const dateMatch = datePart.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if (dateMatch) {
+        [_, month, day, year] = dateMatch.map(Number);
+      } else {
+        return null;
+      }
+    } else {
+      // Assume YYYY-MM-DD format
+      [year, month, day] = datePart.split('-').map(Number);
+    }
+    
+    // Parse time part (HH:MM or HH:MM:SS)
+    const timeParts = timePart.split(':');
+    const hours = parseInt(timeParts[0]);
+    const minutes = parseInt(timeParts[1]);
     
     if (!year || !month || !day || hours === undefined || minutes === undefined) return null;
     
@@ -523,7 +550,7 @@ async function parseLightspeedTransactions(records, existingPositions = {}) {
       const transaction = {
         symbol: resolvedSymbol,
         tradeDate: parseDate(record['Trade Date']),
-        entryTime: parseLightspeedDateTime(record['Trade Date'] + ' ' + (record['Execution Time'] || '09:30')),
+        entryTime: parseLightspeedDateTime(record['Trade Date'] + ' ' + (record['Execution Time'] || record['Raw Exec. Time'] || '09:30')),
         entryPrice: parseFloat(record.Price),
         quantity: Math.abs(parseInt(record.Qty)),
         side: side,
@@ -581,10 +608,10 @@ async function parseLightspeedTransactions(records, existingPositions = {}) {
       (existingPosition.side === 'long' ? existingPosition.quantity : -existingPosition.quantity) : 0;
     let currentTrade = existingPosition ? {
       symbol: symbol,
-      entryTime: existingPosition.entryTime,
-      tradeDate: existingPosition.tradeDate,
+      entryTime: null,  // Will be set from first CSV transaction
+      tradeDate: null,  // Will be set from first CSV transaction
       side: existingPosition.side,
-      executions: [],
+      executions: existingPosition.executions || [],  // FIXED: Preserve existing executions
       totalQuantity: existingPosition.quantity,
       totalFees: existingPosition.commission || 0,
       entryValue: existingPosition.quantity * existingPosition.entryPrice,
@@ -604,6 +631,12 @@ async function parseLightspeedTransactions(records, existingPositions = {}) {
       const prevPosition = currentPosition;
       
       console.log(`\n${transaction.side} ${qty} @ $${transaction.entryPrice} | Position: ${currentPosition}`);
+      
+      // Set entry time from first CSV transaction for existing position
+      if (currentTrade && currentTrade.entryTime === null) {
+        currentTrade.entryTime = transaction.entryTime;
+        currentTrade.tradeDate = transaction.tradeDate;
+      }
       
       // Start new trade if going from flat to position
       if (currentPosition === 0) {
@@ -680,9 +713,13 @@ async function parseLightspeedTransactions(records, existingPositions = {}) {
         currentTrade.quantity = currentTrade.totalQuantity;
         currentTrade.commission = currentTrade.totalFees;
         currentTrade.fees = 0;
-        currentTrade.exitTime = transaction.entryTime;
-        // Store executions for display in trade details
-        currentTrade.executionData = currentTrade.executions;
+        // FIXED: Calculate proper entry and exit times from all executions
+        const executionTimes = currentTrade.executions.map(e => new Date(e.datetime));
+        const sortedTimes = executionTimes.sort((a, b) => a - b);
+        currentTrade.entryTime = sortedTimes[0].toISOString();
+        currentTrade.exitTime = sortedTimes[sortedTimes.length - 1].toISOString();
+        
+        // Executions are stored in the executions field (no need for executionData)
         
         // Mark as update if this was an existing position
         if (currentTrade.isExistingPosition) {
@@ -713,8 +750,7 @@ async function parseLightspeedTransactions(records, existingPositions = {}) {
       currentTrade.pnl = 0;
       currentTrade.pnlPercent = 0;
       currentTrade.notes = `Open position: ${currentTrade.executions.length} executions`;
-      // Store executions for display in trade details
-      currentTrade.executionData = currentTrade.executions;
+      // Executions are stored in the executions field (no need for executionData)
       
       completedTrades.push(currentTrade);
       console.log(`  → Added open ${currentTrade.side} position: ${currentTrade.totalQuantity} shares`);
