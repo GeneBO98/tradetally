@@ -708,6 +708,7 @@ async function parseLightspeedTransactions(records, existingPositions = {}) {
         currentTrade.fees = 0;
         currentTrade.exitTime = transaction.entryTime;
         // Store executions for display in trade details
+        // Store executions in executionData field (expected by Trade.create)
         currentTrade.executionData = currentTrade.executions;
         
         // Calculate entry and exit times from executions
@@ -746,7 +747,7 @@ async function parseLightspeedTransactions(records, existingPositions = {}) {
       currentTrade.pnl = 0;
       currentTrade.pnlPercent = 0;
       currentTrade.notes = `Open position: ${currentTrade.executions.length} executions`;
-      // Store executions for display in trade details
+      // Store executions in executionData field (expected by Trade.create)
       currentTrade.executionData = currentTrade.executions;
       
       completedTrades.push(currentTrade);
@@ -1049,8 +1050,6 @@ async function parseSchwabTransactions(records, existingPositions = {}) {
         currentTrade.fees = 0;
         currentTrade.exitTime = transaction.datetime;
         currentTrade.notes = `Round trip: ${currentTrade.executions.length} executions`;
-        // Store executions for display in trade details
-        currentTrade.executionData = currentTrade.executions;
         // Store executions for display in trade details
         currentTrade.executionData = currentTrade.executions;
         

@@ -305,7 +305,7 @@ const createTradeChart = () => {
     lineWidth: 4, // Extra thick line for visibility
     lineStyle: 2, // Dashed
     axisLabelVisible: true,
-    title: `📈 ENTRY: $${formatNumber(trade.entryPrice)} (${trade.side.toUpperCase()})`,
+    title: `📈 Entry @ $${formatNumber(trade.entryPrice)} (${trade.side.toUpperCase()})`,
   })
 
   console.log('Creating exit price line...')
@@ -316,7 +316,7 @@ const createTradeChart = () => {
     lineWidth: 4, // Extra thick line for visibility
     lineStyle: 2, // Dashed
     axisLabelVisible: true,
-    title: `📉 EXIT: $${formatNumber(trade.exitPrice)} (${pnlText})`,
+    title: `📉 Exit @ $${formatNumber(trade.exitPrice)} (${pnlText})`,
   })
 
   // Add a breakeven line as reference
