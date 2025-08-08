@@ -232,16 +232,24 @@ class Trade {
 
     Object.entries(updates).forEach(([key, value]) => {
       if (key !== 'id' && key !== 'user_id' && key !== 'created_at') {
-        // Convert camelCase to snake_case for database columns
-        const dbKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
-        fields.push(`${dbKey} = $${paramCount}`);
-        // Handle JSON serialization for JSONB columns
-        if (key === 'executions' || key === 'classificationMetadata' || key === 'newsEvents') {
+        // Handle executionData -> executions mapping
+        if (key === 'executionData') {
+          fields.push(`executions = $${paramCount}`);
           values.push(JSON.stringify(value));
+          paramCount++;
         } else {
-          values.push(value);
+          // Convert camelCase to snake_case for database columns
+          const dbKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+          fields.push(`${dbKey} = $${paramCount}`);
+          
+          // Handle JSON/JSONB fields that need serialization
+          if (key === 'executions' || key === 'classificationMetadata' || key === 'newsEvents') {
+            values.push(JSON.stringify(value));
+          } else {
+            values.push(value);
+          }
+          paramCount++;
         }
-        paramCount++;
       }
     });
 

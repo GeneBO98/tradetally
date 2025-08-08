@@ -496,6 +496,19 @@ const tradeController = {
           // Convert to context format
           const existingPositions = {};
           openPositionsResult.rows.forEach(row => {
+            // Parse executions JSON if it's a string
+            let parsedExecutions = [];
+            if (row.executions) {
+              try {
+                parsedExecutions = typeof row.executions === 'string' 
+                  ? JSON.parse(row.executions) 
+                  : row.executions;
+              } catch (e) {
+                console.warn(`Failed to parse executions for trade ${row.id}:`, e);
+                parsedExecutions = [];
+              }
+            }
+            
             existingPositions[row.symbol] = {
               id: row.id,
               symbol: row.symbol,
@@ -505,7 +518,8 @@ const tradeController = {
               entryTime: row.entry_time,
               tradeDate: row.trade_date,
               commission: parseFloat(row.commission) || 0,
-              broker: row.broker
+              broker: row.broker,
+              executions: parsedExecutions  // Use parsed executions
             };
           });
           
@@ -530,38 +544,99 @@ const tradeController = {
           // Clear timeout since we're proceeding normally
           clearTimeout(importTimeout);
 
-          // Simplified and more reliable duplicate detection using direct database lookup
-          logger.logImport(`Processing ${trades.length} trades for import with per-trade duplicate checking...`);
+          // Check for existing trades to avoid duplicates
+          // Note: We don't filter by broker as the same trade could be imported from different broker files
+          // Include executions data to check for exact execution timestamp matches
+          const existingTradesQuery = `
+            SELECT symbol, entry_time, entry_price, exit_price, pnl, quantity, side, executions
+            FROM trades 
+            WHERE user_id = $1 
+            AND trade_date >= $2
+            AND trade_date <= $3
+          `;
+
+          // Get date range from trades
+          const tradeDates = trades.map(t => new Date(t.tradeDate)).filter(d => !isNaN(d));
+          const minDate = tradeDates.length > 0 ? new Date(Math.min(...tradeDates)) : new Date();
+          const maxDate = tradeDates.length > 0 ? new Date(Math.max(...tradeDates)) : new Date();
+
+          const existingTrades = await db.query(existingTradesQuery, [
+            req.user.id, 
+            minDate.toISOString().split('T')[0],
+            maxDate.toISOString().split('T')[0]
+          ]);
+
+          logger.logImport(`Found ${existingTrades.rows.length} existing trades in date range`);
+
+          logger.logImport(`Processing ${trades.length} trades for import...`);
           
           for (const tradeData of trades) {
             try {
-              // Check for duplicates based on entry, exit, side, and P/L
-              // This catches exact duplicate trades regardless of minor timing differences
-              const duplicateCheckQuery = `
-                SELECT id FROM trades 
-                WHERE user_id = $1 
-                AND symbol = $2 
-                AND side = $3
-                AND ABS(entry_price - $4) < 0.01
-                AND ABS(COALESCE(exit_price, 0) - $5) < 0.01
-                AND ABS(COALESCE(pnl, 0) - $6) < 0.01
-                LIMIT 1
-              `;
-              
-              const exitPrice = tradeData.exitPrice || 0;
-              const pnl = tradeData.pnl || 0;
-              
-              const duplicateResult = await db.query(duplicateCheckQuery, [
-                req.user.id,
-                tradeData.symbol,
-                tradeData.side,
-                tradeData.entryPrice,
-                exitPrice,
-                pnl
-              ]);
+              // Check for duplicates based on entry price, exit price, and P/L
+              // This is more reliable than symbol matching as symbols can be resolved differently
+              // (e.g., CUSIP lookups may resolve to different symbols on different imports)
+              // Using price and P/L matching prevents duplicate trades from being imported
+              const isDuplicate = existingTrades.rows.some(existing => {
+                // Parse existing executions if available
+                let existingExecutions = [];
+                if (existing.executions) {
+                  try {
+                    existingExecutions = typeof existing.executions === 'string' 
+                      ? JSON.parse(existing.executions) 
+                      : existing.executions;
+                  } catch (e) {
+                    existingExecutions = [];
+                  }
+                }
+                
+                // If both trades have executions, check for exact timestamp matches
+                // This is the most precise duplicate detection
+                if (tradeData.executionData && tradeData.executionData.length > 0 && existingExecutions.length > 0) {
+                  // Create a set of execution timestamps from the new trade
+                  const newExecutionTimestamps = new Set(
+                    tradeData.executionData.map(exec => 
+                      new Date(exec.datetime).getTime()
+                    )
+                  );
+                  
+                  // Check if any existing execution has the same timestamp
+                  // If we find even one matching timestamp, it's likely a duplicate
+                  const hasMatchingExecution = existingExecutions.some(exec => {
+                    const execTime = new Date(exec.datetime).getTime();
+                    return newExecutionTimestamps.has(execTime);
+                  });
+                  
+                  if (hasMatchingExecution) {
+                    logger.logImport(`Found duplicate based on execution timestamp match`);
+                    return true;
+                  }
+                }
+                
+                // Fallback to the original logic for trades without execution data
+                // For closed trades, check entry, exit, and P/L
+                if (tradeData.exitPrice && existing.exit_price) {
+                  const entryMatch = Math.abs(parseFloat(existing.entry_price) - parseFloat(tradeData.entryPrice)) < 0.01;
+                  const exitMatch = Math.abs(parseFloat(existing.exit_price) - parseFloat(tradeData.exitPrice)) < 0.01;
+                  const pnlMatch = Math.abs(parseFloat(existing.pnl || 0) - parseFloat(tradeData.pnl || 0)) < 0.01; // $0.01 tolerance for P/L consistency
+                  
+                  // Also check if entry times are very close (within 1 second)
+                  const entryTimeMatch = Math.abs(new Date(existing.entry_time) - new Date(tradeData.entryTime)) < 1000;
+                  
+                  return entryMatch && exitMatch && pnlMatch && entryTimeMatch;
+                }
+                // For open trades, check entry price, quantity, side, and exact entry time
+                else if (!tradeData.exitPrice && !existing.exit_price) {
+                  return (
+                    Math.abs(parseFloat(existing.entry_price) - parseFloat(tradeData.entryPrice)) < 0.01 &&
+                    existing.quantity === tradeData.quantity &&
+                    existing.side === tradeData.side &&
+                    Math.abs(new Date(existing.entry_time) - new Date(tradeData.entryTime)) < 1000 // Within 1 second (more precise)
+                  );
+                }
+                return false;
+              });
 
-
-              if (duplicateResult.rows.length > 0) {
+              if (isDuplicate) {
                 logger.logImport(`Skipping duplicate trade: ${tradeData.symbol} ${tradeData.side} ${tradeData.quantity} at $${tradeData.entryPrice} (${new Date(tradeData.entryTime).toISOString()})`);
                 duplicates++;
                 continue;
@@ -591,6 +666,17 @@ const tradeController = {
                   ...cleanTradeData
                 } = tradeData;
                 
+<<<<<<< Updated upstream
+=======
+                // Keep executionData for database update (Trade.create expects executionData)
+                if (tradeData.executionData) {
+                  cleanTradeData.executionData = tradeData.executionData;
+                } else if (tradeData.executions) {
+                  // Fallback to executions if executionData is not present
+                  cleanTradeData.executionData = tradeData.executions;
+                }
+                
+>>>>>>> Stashed changes
                 await Trade.update(tradeData.existingTradeId, req.user.id, cleanTradeData);
               } else {
                 await Trade.create(req.user.id, tradeData);
