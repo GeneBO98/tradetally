@@ -666,8 +666,6 @@ const tradeController = {
                   ...cleanTradeData
                 } = tradeData;
                 
-<<<<<<< Updated upstream
-=======
                 // Keep executionData for database update (Trade.create expects executionData)
                 if (tradeData.executionData) {
                   cleanTradeData.executionData = tradeData.executionData;
@@ -675,8 +673,6 @@ const tradeController = {
                   // Fallback to executions if executionData is not present
                   cleanTradeData.executionData = tradeData.executions;
                 }
-                
->>>>>>> Stashed changes
                 await Trade.update(tradeData.existingTradeId, req.user.id, cleanTradeData);
               } else {
                 await Trade.create(req.user.id, tradeData);
