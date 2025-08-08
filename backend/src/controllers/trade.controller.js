@@ -810,11 +810,13 @@ const tradeController = {
                   ...cleanTradeData
                 } = tradeData;
                 
-                // Keep executions for database update (executionData is just a duplicate)
-                if (tradeData.executions) {
-                  cleanTradeData.executions = tradeData.executions;
+                // Keep executionData for database update (Trade.create expects executionData)
+                if (tradeData.executionData) {
+                  cleanTradeData.executionData = tradeData.executionData;
+                } else if (tradeData.executions) {
+                  // Fallback to executions if executionData is not present
+                  cleanTradeData.executionData = tradeData.executions;
                 }
-                
                 await Trade.update(tradeData.existingTradeId, req.user.id, cleanTradeData);
               } else {
                 await Trade.create(req.user.id, tradeData, { skipApiCalls: true });
