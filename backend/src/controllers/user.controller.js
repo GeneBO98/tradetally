@@ -261,8 +261,8 @@ const userController = {
         return res.status(400).json({ error: 'Cannot delete your own account' });
       }
 
-      // Get user details before deletion
-      const targetUser = await User.findById(userId);
+      // Get user details before deletion (admin can delete inactive users too)
+      const targetUser = await User.findByIdForAdmin(userId);
       if (!targetUser) {
         return res.status(404).json({ error: 'User not found' });
       }
