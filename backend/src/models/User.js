@@ -29,6 +29,18 @@ class User {
     return result.rows[0];
   }
 
+  static async findByIdForAdmin(id) {
+    const query = `
+      SELECT id, email, username, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone, 
+             two_factor_enabled, created_at, updated_at
+      FROM users
+      WHERE id = $1
+    `;
+    
+    const result = await db.query(query, [id]);
+    return result.rows[0];
+  }
+
   static async findByEmail(email) {
     const query = `
       SELECT id, email, username, password_hash, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone, 
@@ -298,17 +310,46 @@ class User {
   }
 
   static async deleteUser(userId) {
-    // First delete related data (user settings, etc.)
-    await db.query('DELETE FROM user_settings WHERE user_id = $1', [userId]);
+    // Start a transaction to ensure all deletions succeed or fail together
+    const client = await db.pool.connect();
     
-    // Note: In a production system, you might want to handle related data like trades
-    // For now, we'll assume trades should be preserved or handled separately
-    
-    // Delete the user
-    const query = `DELETE FROM users WHERE id = $1`;
-    const result = await db.query(query, [userId]);
-    
-    return result.rowCount > 0;
+    try {
+      await client.query('BEGIN');
+      
+      // Delete related data that doesn't have CASCADE constraints
+      // Delete CUSIP mappings for this user
+      await client.query('DELETE FROM cusip_mappings WHERE user_id = $1', [userId]);
+      
+      // Delete user settings
+      await client.query('DELETE FROM user_settings WHERE user_id = $1', [userId]);
+      
+      // Delete API keys
+      await client.query('DELETE FROM api_keys WHERE user_id = $1', [userId]);
+      
+      // Delete trades (if you want to delete them - otherwise comment this out)
+      await client.query('DELETE FROM trades WHERE user_id = $1', [userId]);
+      
+      // Delete job queue entries for this user's trades
+      await client.query(`
+        DELETE FROM job_queue 
+        WHERE data->>'userId' = $1 
+        OR data->>'tradeId' IN (SELECT id::text FROM trades WHERE user_id = $2)
+      `, [userId, userId]);
+      
+      // Finally, delete the user
+      // Other tables with ON DELETE CASCADE will be handled automatically
+      const query = `DELETE FROM users WHERE id = $1`;
+      const result = await client.query(query, [userId]);
+      
+      await client.query('COMMIT');
+      
+      return result.rowCount > 0;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   static async approveUser(userId) {
