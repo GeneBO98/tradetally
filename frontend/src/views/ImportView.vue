@@ -496,9 +496,11 @@ import { ArrowUpTrayIcon, XMarkIcon, ExclamationTriangleIcon, Cog6ToothIcon } fr
 import api from '@/services/api'
 import UnmappedCusipsModal from '@/components/cusip/UnmappedCusipsModal.vue'
 import AllCusipMappingsModal from '@/components/cusip/AllCusipMappingsModal.vue'
+import { usePriceAlertNotifications } from '@/composables/usePriceAlertNotifications'
 
 const tradesStore = useTradesStore()
 const { showSuccess, showError } = useNotification()
+const { celebrationQueue } = usePriceAlertNotifications()
 
 const loading = ref(false)
 const error = ref(null)
@@ -658,6 +660,70 @@ async function handleImport() {
     
     // Refresh import history
     fetchImportHistory()
+
+    // Poll import status until completed, then trigger achievement check as fallback
+    try {
+      const importId = result.importId
+      const poll = async () => {
+        try {
+          const statusRes = await api.get(`/trades/import/status/${importId}`)
+          const status = statusRes.data.importLog?.status
+          if (status === 'completed' || status === 'failed') {
+            if (status === 'completed') {
+              // Fallback achievement check + local celebration for non-SSE users
+              try {
+                // Get stats before
+                const before = await api.get('/gamification/dashboard')
+                const beforeStats = before.data?.data?.stats || {}
+                const beforeXP = beforeStats.experience_points || 0
+                const beforeLevel = beforeStats.level || 1
+                const beforeMin = beforeStats.level_progress?.current_level_min_xp || 0
+                const beforeNext = beforeStats.level_progress?.next_level_min_xp || 100
+
+                const checkRes = await api.post('/gamification/achievements/check')
+                const newAchievements = checkRes.data?.data?.newAchievements || []
+                const count = newAchievements.length
+                if (count > 0) {
+                  // Queue each achievement for overlay
+                  newAchievements.forEach(a => {
+                    celebrationQueue.value.push({ type: 'achievement', payload: { achievement: a } })
+                  })
+                  // Fetch stats after to compute XP delta and show progress animation
+                  const after = await api.get('/gamification/dashboard')
+                  const afterStats = after.data?.data?.stats || {}
+                  const afterXP = afterStats.experience_points || beforeXP
+                  const afterLevel = afterStats.level || beforeLevel
+                  const afterMin = afterStats.level_progress?.current_level_min_xp || beforeMin
+                  const afterNext = afterStats.level_progress?.next_level_min_xp || beforeNext
+                  const deltaXP = Math.max(0, afterXP - beforeXP)
+                  celebrationQueue.value.push({
+                    type: 'xp_update',
+                    payload: {
+                      oldXP: beforeXP,
+                      newXP: afterXP,
+                      deltaXP,
+                      oldLevel: beforeLevel,
+                      newLevel: afterLevel,
+                      currentLevelMinXPBefore: beforeMin,
+                      nextLevelMinXPBefore: beforeNext,
+                      currentLevelMinXPAfter: afterMin,
+                      nextLevelMinXPAfter: afterNext
+                    }
+                  })
+                  if (afterLevel > beforeLevel) {
+                    celebrationQueue.value.push({ type: 'level_up', payload: { oldLevel: beforeLevel, newLevel: afterLevel } })
+                  }
+                  showSuccess(`New Achievements!`, `${count} unlocked just now`)
+                }
+              } catch (_) {}
+            }
+            return
+          }
+        } catch (_) {}
+        setTimeout(poll, 2000)
+      }
+      poll()
+    } catch (_) {}
   } catch (err) {
     console.error('Import error:', err)
     console.error('Error response:', err.response)

@@ -16,6 +16,8 @@ const isConnected = ref(false)
 const eventSource = ref(null)
 const notifications = ref([])
 const reconnectTimeout = ref(null)
+// Ephemeral queue for achievement celebrations and xp updates
+const celebrationQueue = ref([])
 
 export function usePriceAlertNotifications() {
   const authStore = useAuthStore()
@@ -130,6 +132,19 @@ export function usePriceAlertNotifications() {
       case 'enrichment_update':
         handleEnrichmentUpdate(data.data)
         break
+
+      case 'achievement_earned':
+        // Queue celebration items for UI overlay
+        celebrationQueue.value.push({ type: 'achievement', payload: data.data })
+        break
+
+      case 'level_up':
+        celebrationQueue.value.push({ type: 'level_up', payload: data.data })
+        break
+
+      case 'xp_update':
+        celebrationQueue.value.push({ type: 'xp_update', payload: data.data })
+        break
     }
   }
   
@@ -231,7 +246,8 @@ export function usePriceAlertNotifications() {
     notifications,
     connect,
     disconnect,
-    requestNotificationPermission
+    requestNotificationPermission,
+    celebrationQueue
   }
 }
 

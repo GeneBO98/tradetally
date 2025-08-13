@@ -884,6 +884,16 @@ const tradeController = {
           } catch (error) {
             console.warn('⚠️ Failed to start background symbol categorization:', error.message);
           }
+
+          // Check achievements and trigger leaderboard updates after import
+          try {
+            console.log('🏆 Checking achievements after import for user', req.user.id);
+            const AchievementService = require('../services/achievementService');
+            const newAchievements = await AchievementService.checkAndAwardAchievements(req.user.id);
+            console.log(`🏅 Post-import achievements awarded: ${newAchievements.length}`);
+          } catch (achievementError) {
+            console.warn('⚠️ Failed to check/award achievements after import:', achievementError.message);
+          }
         } catch (error) {
           // Clear timeout on error
           clearTimeout(importTimeout);

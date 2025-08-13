@@ -1378,10 +1378,23 @@ const analyticsController = {
 
       // Generate AI recommendations with sector data
       console.log('🧠 Generating AI recommendations with sector analysis...');
-      const recommendations = await aiService.generateResponse(req.user.id, analyticsController.buildRecommendationPrompt(metrics, trades, tradingProfile, sectorData));
+      let recommendations;
+      try {
+        recommendations = await aiService.generateResponse(req.user.id, analyticsController.buildRecommendationPrompt(metrics, trades, tradingProfile, sectorData));
+        if (!recommendations) {
+          throw new Error('AI service returned undefined recommendations');
+        }
+      } catch (aiError) {
+        console.error('❌ AI service error:', aiError.message);
+        return res.status(500).json({ 
+          error: 'Failed to generate AI recommendations: ' + aiError.message 
+        });
+      }
       console.log('✅ AI recommendations generated successfully');
+      console.log('📝 Recommendations type:', typeof recommendations);
+      console.log('📝 Recommendations content preview:', recommendations ? recommendations.substring(0, 100) + '...' : 'undefined');
 
-      res.json({ 
+      const response = { 
         recommendations,
         analysisDate: new Date().toISOString(),
         tradesAnalyzed: trades.length,
@@ -1389,7 +1402,10 @@ const analyticsController = {
           startDate: startDate || null,
           endDate: endDate || null
         }
-      });
+      };
+      
+      console.log('📤 Sending response with keys:', Object.keys(response));
+      res.json(response);
 
     } catch (error) {
       console.error('Error generating recommendations:', error);
