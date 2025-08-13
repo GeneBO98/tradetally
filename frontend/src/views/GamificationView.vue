@@ -700,6 +700,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import api from '@/services/api'
 import MdiIcon from '@/components/MdiIcon.vue'
 import { useNotification } from '@/composables/useNotification'
+import { usePriceAlertNotifications } from '@/composables/usePriceAlertNotifications'
 import { 
   mdiTrophy, 
   mdiChartLine, 
@@ -721,6 +722,7 @@ export default {
   },
   setup() {
     const { showSuccess, showError, showWarning } = useNotification()
+    const { celebrationQueue } = usePriceAlertNotifications()
     const activeTab = ref('overview')
     
     const tabs = [
@@ -1091,8 +1093,13 @@ export default {
 
     // Load data based on active tab
     const loadTabData = async () => {
-      if (activeTab.value === 'achievements' && achievements.value.length === 0) {
-        await loadAchievements()
+      if (activeTab.value === 'achievements') {
+        // Auto-check for new achievements and celebrate
+        await checkForNewAchievements()
+        await celebrateUnseenEarned()
+        if (achievements.value.length === 0) {
+          await loadAchievements()
+        }
       }
       if (activeTab.value === 'leaderboards') {
         // Load filter options first
@@ -1116,6 +1123,14 @@ export default {
     const checkForNewAchievements = async () => {
       try {
         checkingAchievements.value = true
+        // Get stats before for XP animation context
+        const beforeRes = await api.get('/gamification/dashboard')
+        const beforeStats = beforeRes.data?.data?.stats || {}
+        const beforeXP = beforeStats.experience_points || 0
+        const beforeLevel = beforeStats.level || 1
+        const beforeMin = beforeStats.level_progress?.current_level_min_xp || 0
+        const beforeNext = beforeStats.level_progress?.next_level_min_xp || 100
+
         const response = await api.post('/gamification/achievements/check')
         
         if (response.data.success && response.data.data.count > 0) {
@@ -1130,6 +1145,36 @@ export default {
             `🎉 ${response.data.data.count} New Achievement${response.data.data.count > 1 ? 's' : ''}!`,
             achievementNames
           )
+          
+          // Queue celebrations for each achievement
+          response.data.data.newAchievements.forEach(a => {
+            celebrationQueue.value.push({ type: 'achievement', payload: { achievement: a } })
+          })
+          // Fetch stats after to animate XP/level change
+          const afterRes = await api.get('/gamification/dashboard')
+          const afterStats = afterRes.data?.data?.stats || {}
+          const afterXP = afterStats.experience_points || beforeXP
+          const afterLevel = afterStats.level || beforeLevel
+          const afterMin = afterStats.level_progress?.current_level_min_xp || beforeMin
+          const afterNext = afterStats.level_progress?.next_level_min_xp || beforeNext
+          const deltaXP = Math.max(0, afterXP - beforeXP)
+          celebrationQueue.value.push({
+            type: 'xp_update',
+            payload: {
+              oldXP: beforeXP,
+              newXP: afterXP,
+              deltaXP,
+              oldLevel: beforeLevel,
+              newLevel: afterLevel,
+              currentLevelMinXPBefore: beforeMin,
+              nextLevelMinXPBefore: beforeNext,
+              currentLevelMinXPAfter: afterMin,
+              nextLevelMinXPAfter: afterNext
+            }
+          })
+          if (afterLevel > beforeLevel) {
+            celebrationQueue.value.push({ type: 'level_up', payload: { oldLevel: beforeLevel, newLevel: afterLevel } })
+          }
           
           // Reload dashboard to show updated stats
           await loadDashboard()
@@ -1148,6 +1193,55 @@ export default {
         showError('Achievement Check Failed', 'Please try again later.')
       } finally {
         checkingAchievements.value = false
+      }
+    }
+
+    const celebrateUnseenEarned = async () => {
+      try {
+        const [earnedRes, dashRes] = await Promise.all([
+          api.get('/gamification/achievements/earned'),
+          api.get('/gamification/dashboard')
+        ])
+        const earned = earnedRes.data?.data?.achievements || earnedRes.data?.achievements || []
+        const stats = dashRes.data?.data?.stats || {}
+        const levelProgress = stats.level_progress || {}
+
+        const storageIds = localStorage.getItem('tt_celebrated_achievements')
+        const seenIds = storageIds ? JSON.parse(storageIds) : []
+        const unseen = earned.filter(a => a.id && !seenIds.includes(a.id)).slice(0, 5)
+        if (unseen.length > 0) {
+          unseen.forEach(a => celebrationQueue.value.push({ type: 'achievement', payload: { achievement: a } }))
+          const newSeen = [...new Set([...seenIds, ...unseen.map(a => a.id)])]
+          localStorage.setItem('tt_celebrated_achievements', JSON.stringify(newSeen))
+        }
+
+        const lastLevel = parseInt(localStorage.getItem('tt_seen_level') || '0')
+        const lastXP = parseInt(localStorage.getItem('tt_seen_xp') || '0')
+        const currentLevel = stats.level || 1
+        const currentXP = stats.experience_points || 0
+        if (currentLevel > lastLevel) {
+          celebrationQueue.value.push({ type: 'level_up', payload: { oldLevel: lastLevel || currentLevel - 1, newLevel: currentLevel } })
+        }
+        if (currentXP > lastXP && levelProgress.current_level_min_xp !== undefined) {
+          celebrationQueue.value.push({
+            type: 'xp_update',
+            payload: {
+              oldXP: lastXP,
+              newXP: currentXP,
+              deltaXP: Math.max(0, currentXP - lastXP),
+              oldLevel: lastLevel || currentLevel,
+              newLevel: currentLevel,
+              currentLevelMinXPBefore: levelProgress.current_level_min_xp,
+              nextLevelMinXPBefore: levelProgress.next_level_min_xp,
+              currentLevelMinXPAfter: levelProgress.current_level_min_xp,
+              nextLevelMinXPAfter: levelProgress.next_level_min_xp
+            }
+          })
+        }
+        localStorage.setItem('tt_seen_level', String(currentLevel))
+        localStorage.setItem('tt_seen_xp', String(currentXP))
+      } catch (e) {
+        // ignore
       }
     }
 

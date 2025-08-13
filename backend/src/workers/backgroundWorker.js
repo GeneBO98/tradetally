@@ -173,7 +173,7 @@ class BackgroundWorker {
       // Check if any workers have stopped
       const expectedWorkers = ['cusip_resolution', 'strategy_classification', 'news_enrichment'];
       for (const workerType of expectedWorkers) {
-        if (!status[workerType] || !status[workerType].isRunning) {
+        if (!status.workers || !status.workers[workerType] || !status.workers[workerType].isRunning) {
           logger.logError(`⚠️ Worker ${workerType} is not running - restarting`);
           
           // Restart the specific worker

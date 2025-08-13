@@ -1,5 +1,6 @@
 const db = require('../config/database');
 const NotificationService = require('./notificationService');
+const LeaderboardService = require('./leaderboardService');
 
 class AchievementService {
   
@@ -9,6 +10,11 @@ class AchievementService {
       // Get all achievements the user hasn't earned yet
       const unearned = await this.getUnearnedAchievements(userId);
       const newAchievements = [];
+      // Capture XP/level before for UI animation signals
+      const beforeStats = await this.getUserStats(userId);
+      const oldXP = beforeStats.experience_points || 0;
+      const oldLevel = beforeStats.level || 1;
+      const beforeLevelInfo = this.calculateLevelFromXP(oldXP);
       
       for (const achievement of unearned) {
         const earned = await this.checkAchievementCriteria(userId, achievement);
@@ -24,6 +30,44 @@ class AchievementService {
       // Update user stats if new achievements were earned
       if (newAchievements.length > 0) {
         await this.updateUserStats(userId, newAchievements);
+        // Re-fetch stats after update to compute delta
+        const afterStats = await this.getUserStats(userId);
+        const newXP = afterStats.experience_points || 0;
+        const newLevel = afterStats.level || 1;
+        const afterLevelInfo = this.calculateLevelFromXP(newXP);
+        
+        // Send XP update event for frontend animation
+        try {
+          await NotificationService.sendXPUpdateNotification(userId, {
+            oldXP,
+            newXP,
+            deltaXP: (newAchievements || []).reduce((sum, a) => sum + (a.points || 0), 0),
+            oldLevel,
+            newLevel,
+            currentLevelMinXPBefore: beforeLevelInfo.currentLevelMinXP,
+            nextLevelMinXPBefore: beforeLevelInfo.nextLevelMinXP,
+            currentLevelMinXPAfter: afterLevelInfo.currentLevelMinXP,
+            nextLevelMinXPAfter: afterLevelInfo.nextLevelMinXP
+          });
+        } catch (e) {
+          console.warn('Failed to send XP update notification:', e.message);
+        }
+        
+        // If level changed, also send level-up notification
+        if (newLevel > oldLevel) {
+          try {
+            await NotificationService.sendLevelUpNotification(userId, newLevel, oldLevel);
+          } catch (e) {
+            console.warn('Failed to send level up notification:', e.message);
+          }
+        }
+        
+        // Refresh leaderboards so rankings reflect new points
+        try {
+          await LeaderboardService.updateLeaderboards();
+        } catch (e) {
+          console.warn('Failed to trigger leaderboard update after achievements:', e.message);
+        }
         
         // Send notifications for new achievements
         for (const achievement of newAchievements) {

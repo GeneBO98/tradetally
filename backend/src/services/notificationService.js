@@ -13,6 +13,33 @@ class NotificationService {
     }
   }
   
+  // Send XP update notification (for progress/level animations)
+  static async sendXPUpdateNotification(userId, xpData) {
+    try {
+      const message = {
+        type: 'xp_update',
+        data: {
+          oldXP: xpData.oldXP,
+          newXP: xpData.newXP,
+          deltaXP: xpData.deltaXP,
+          oldLevel: xpData.oldLevel,
+          newLevel: xpData.newLevel,
+          // Optional helpers for UI progress bars
+          currentLevelMinXPBefore: xpData.currentLevelMinXPBefore,
+          nextLevelMinXPBefore: xpData.nextLevelMinXPBefore,
+          currentLevelMinXPAfter: xpData.currentLevelMinXPAfter,
+          nextLevelMinXPAfter: xpData.nextLevelMinXPAfter,
+          timestamp: new Date().toISOString()
+        }
+      };
+      
+      await this.sendSSENotification(userId, message);
+      // Do not persist xp_update events; they are transient UI signals
+    } catch (error) {
+      console.error('Error sending XP update notification:', error);
+    }
+  }
+
   // Send achievement notification
   static async sendAchievementNotification(userId, achievement) {
     try {
