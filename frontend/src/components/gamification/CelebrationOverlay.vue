@@ -14,7 +14,7 @@
             <div class="text-xl mt-2 font-bold text-yellow-600">+{{ currentItem.payload.achievement.points }} XP</div>
             <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
               <div
-                class="bg-primary-500 h-3 rounded-full transition-all duration-300"
+                class="bg-primary-500 h-3 rounded-full transition-all duration-150 ease-out"
                 :style="{ width: levelProgressPercent + '%' }"
               ></div>
             </div>
@@ -34,7 +34,7 @@
             <div class="text-sm text-gray-600 dark:text-gray-400">+{{ currentItem.payload.deltaXP }} XP</div>
             <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
               <div
-                class="bg-primary-500 h-3 rounded-full transition-all duration-700"
+                class="bg-primary-500 h-3 rounded-full transition-all duration-200 ease-out"
                 :style="{ width: progressPercent + '%' }"
               ></div>
             </div>
@@ -110,7 +110,7 @@ async function animateXPIncrease(points) {
   while (remaining > 0) {
     const toLevelUp = xpState.value.next - xpState.value.xp
     const step = Math.min(remaining, toLevelUp)
-    await animateValue(xpState.value.xp, xpState.value.xp + step, 700)
+    await animateValue(xpState.value.xp, xpState.value.xp + step, 300)
     xpState.value.xp += step
     remaining -= step
     if (xpState.value.xp >= xpState.value.next) {
@@ -119,7 +119,7 @@ async function animateXPIncrease(points) {
       xpState.value.min = info.min
       xpState.value.next = info.next
       justLeveledUp.value = true
-      await wait(250)
+      await wait(150)
       justLeveledUp.value = false
     }
   }
