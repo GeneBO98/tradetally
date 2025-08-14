@@ -94,53 +94,7 @@ watch(() => [authStore.user?.tier, authStore.token, authStore.user?.billingEnabl
 
 onMounted(async () => {
   await authStore.checkAuth()
-  // Fallback celebration: surface any unseen achievements/level-ups for non-SSE users
-  try {
-    if (!authStore.token) return
-    const [earnedRes, dashRes] = await Promise.all([
-      api.get('/gamification/achievements/earned'),
-      api.get('/gamification/dashboard')
-    ])
-    const earned = earnedRes.data?.data?.achievements || earnedRes.data?.achievements || []
-    const stats = dashRes.data?.data?.stats || {}
-    const levelProgress = stats.level_progress || {}
-
-    const storageIds = localStorage.getItem('tt_celebrated_achievements')
-    const seenIds = storageIds ? JSON.parse(storageIds) : []
-    const unseen = earned.filter(a => a.id && !seenIds.includes(a.id)).slice(0, 5)
-    if (unseen.length > 0) {
-      unseen.forEach(a => celebrationQueue.value.push({ type: 'achievement', payload: { achievement: a } }))
-      const newSeen = [...new Set([...seenIds, ...unseen.map(a => a.id)])]
-      localStorage.setItem('tt_celebrated_achievements', JSON.stringify(newSeen))
-    }
-
-    const lastLevel = parseInt(localStorage.getItem('tt_seen_level') || '0')
-    const lastXP = parseInt(localStorage.getItem('tt_seen_xp') || '0')
-    const currentLevel = stats.level || 1
-    const currentXP = stats.experience_points || 0
-    if (currentLevel > lastLevel) {
-      celebrationQueue.value.push({ type: 'level_up', payload: { oldLevel: lastLevel || currentLevel - 1, newLevel: currentLevel } })
-    }
-    if (currentXP > lastXP && levelProgress.current_level_min_xp !== undefined) {
-      celebrationQueue.value.push({
-        type: 'xp_update',
-        payload: {
-          oldXP: lastXP,
-          newXP: currentXP,
-          deltaXP: Math.max(0, currentXP - lastXP),
-          oldLevel: lastLevel || currentLevel,
-          newLevel: currentLevel,
-          currentLevelMinXPBefore: levelProgress.current_level_min_xp,
-          nextLevelMinXPBefore: levelProgress.next_level_min_xp,
-          currentLevelMinXPAfter: levelProgress.current_level_min_xp,
-          nextLevelMinXPAfter: levelProgress.next_level_min_xp
-        }
-      })
-    }
-    localStorage.setItem('tt_seen_level', String(currentLevel))
-    localStorage.setItem('tt_seen_xp', String(currentXP))
-  } catch (e) {
-    // ignore fallback errors
-  }
+  // Note: Achievement celebrations are now handled by GamificationView only
+  // This prevents conflicts between App.vue and GamificationView celebration logic
 })
 </script>

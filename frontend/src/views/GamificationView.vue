@@ -19,19 +19,18 @@
                 </span>
               </div>
             </div>
-            <div class="flex items-center space-x-4">
-              <div class="text-right">
-                <div class="text-2xl font-bold text-primary-600 dark:text-primary-400">
-                  Level {{ userStats.level || 1 }}
-                </div>
-                <div class="text-sm text-gray-600 dark:text-gray-400">
-                  {{ userStats.total_points || 0 }} total points
-                </div>
-                <div v-if="userStats.level_progress" class="text-xs text-gray-500 dark:text-gray-500">
-                  {{ userStats.level_progress.points_needed_for_next_level }} XP to next level
-                </div>
-              </div>
-              <!-- Radial Progress Indicator -->
+              <div class="flex items-center space-x-4">
+                <div class="text-right">
+                  <div class="text-2xl font-bold text-primary-600 dark:text-primary-400">
+                    Level {{ userStats.level || 1 }}
+                  </div>
+                  <div class="text-sm text-gray-600 dark:text-gray-400">
+                    {{ userStats.total_points || 0 }} total points
+                  </div>
+                  <div v-if="userStats.level_progress" class="text-xs text-gray-500 dark:text-gray-500">
+                    {{ userStats.level_progress.points_needed_for_next_level }} XP to next level
+                  </div>
+                </div>              <!-- Radial Progress Indicator -->
               <div class="relative w-20 h-20 flex items-center justify-center">
                 <svg class="w-20 h-20 transform -rotate-90" viewBox="0 0 80 80">
                   <!-- Background circle -->
@@ -179,7 +178,7 @@
                         </div>
                         <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mt-1">
                           <div 
-                            class="bg-primary-500 h-2 rounded-full transition-all duration-300"
+                            class="bg-primary-500 h-2 rounded-full transition-all duration-150 ease-out"
                             :style="{ width: `${userStats.level_progress.progress_percentage}%` }"
                           ></div>
                         </div>
@@ -806,6 +805,11 @@ export default {
           }
           anonymousName.value = data.anonymousName || ''
           recentAchievements.value = data.recentAchievements || []
+          
+          // Show achievement celebrations on initial load if on overview tab
+          if (activeTab.value === 'overview') {
+            await celebrateUnseenEarned()
+          }
         }
       } catch (error) {
         console.error('Error loading gamification dashboard:', error)
@@ -1093,10 +1097,13 @@ export default {
 
     // Load data based on active tab
     const loadTabData = async () => {
-      if (activeTab.value === 'achievements') {
-        // Auto-check for new achievements and celebrate
-        await checkForNewAchievements()
+      if (activeTab.value === 'overview') {
+        // Only trigger celebrations on Overview tab
         await celebrateUnseenEarned()
+      }
+      if (activeTab.value === 'achievements') {
+        // Mark achievements as viewed when visiting achievements tab
+        markAchievementsAsViewed()
         if (achievements.value.length === 0) {
           await loadAchievements()
         }
@@ -1196,6 +1203,8 @@ export default {
       }
     }
 
+    // Achievement celebration logic - now handles all uncelebrated achievements at once
+
     const celebrateUnseenEarned = async () => {
       try {
         const [earnedRes, dashRes] = await Promise.all([
@@ -1208,11 +1217,28 @@ export default {
 
         const storageIds = localStorage.getItem('tt_celebrated_achievements')
         const seenIds = storageIds ? JSON.parse(storageIds) : []
-        const unseen = earned.filter(a => a.id && !seenIds.includes(a.id)).slice(0, 5)
+        
+        console.log(`Total earned achievements: ${earned.length}`)
+        console.log(`Previously celebrated IDs:`, seenIds)
+        console.log(`All earned achievements:`, earned.map(a => ({ id: a.id, name: a.name })))
+        
+        // Only filter out achievements that are already in localStorage (permanently celebrated)
+        // Don't filter by shownInSession here - we want to show all uncelebrated achievements
+        const unseen = earned.filter(a => a.id && !seenIds.includes(a.id))
+        
+        console.log(`Found ${unseen.length} uncelebrated achievements:`, unseen.map(a => a.name))
+        
         if (unseen.length > 0) {
-          unseen.forEach(a => celebrationQueue.value.push({ type: 'achievement', payload: { achievement: a } }))
+          // Add all unseen achievements to the celebration queue
+          unseen.forEach(a => {
+            celebrationQueue.value.push({ type: 'achievement', payload: { achievement: a } })
+          })
+          
+          // Mark all as celebrated in localStorage so they don't show again
           const newSeen = [...new Set([...seenIds, ...unseen.map(a => a.id)])]
           localStorage.setItem('tt_celebrated_achievements', JSON.stringify(newSeen))
+          
+          console.log(`Queued ${unseen.length} achievements for celebration`)
         }
 
         const lastLevel = parseInt(localStorage.getItem('tt_seen_level') || '0')
@@ -1241,8 +1267,25 @@ export default {
         localStorage.setItem('tt_seen_level', String(currentLevel))
         localStorage.setItem('tt_seen_xp', String(currentXP))
       } catch (e) {
-        // ignore
+        console.error('Error in celebrateUnseenEarned:', e)
       }
+    }
+
+    const markAchievementsAsViewed = () => {
+      // This function can be used for additional logic when visiting achievements tab
+      // For now, we rely on the localStorage tracking
+    }
+
+    const resetCelebratedAchievements = () => {
+      localStorage.removeItem('tt_celebrated_achievements')
+      localStorage.removeItem('tt_seen_level')
+      localStorage.removeItem('tt_seen_xp')
+      console.log('Reset all celebrated achievements and level/XP tracking')
+    }
+
+    // Expose reset function to window for debugging
+    if (typeof window !== 'undefined') {
+      window.resetCelebratedAchievements = resetCelebratedAchievements
     }
 
     const viewFullLeaderboard = async (leaderboard) => {
@@ -1309,6 +1352,7 @@ export default {
       formatLeaderboardValue,
       loadTabData,
       checkForNewAchievements,
+      resetCelebratedAchievements,
       viewFullLeaderboard,
       mdiTrophy,
       mdiChartLine,
