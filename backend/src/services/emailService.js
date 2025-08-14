@@ -2,13 +2,27 @@ const nodemailer = require('nodemailer');
 
 class EmailService {
   static createTransporter() {
-    return nodemailer.createTransport({
+    const port = parseInt(process.env.EMAIL_PORT) || 587;
+    return nodemailer.createTransporter({
       host: process.env.EMAIL_HOST,
-      port: process.env.EMAIL_PORT || 587,
-      secure: false,
+      port: port,
+      secure: port === 465, // Use SSL for port 465, TLS for others
       auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS
+      },
+      // Add authentication headers to improve deliverability
+      dkim: process.env.DKIM_PRIVATE_KEY ? {
+        domainName: process.env.EMAIL_DOMAIN || 'tradetally.io',
+        keySelector: process.env.DKIM_SELECTOR || 'default',
+        privateKey: process.env.DKIM_PRIVATE_KEY
+      } : undefined,
+      // Additional headers for better deliverability
+      headers: {
+        'X-Mailer': 'TradeTally Email Service',
+        'X-Priority': '3',
+        'X-MSMail-Priority': 'Normal',
+        'Importance': 'Normal'
       }
     });
   }
@@ -19,49 +33,70 @@ class EmailService {
 
   static getBaseTemplate(title, content) {
     return `
-      <!DOCTYPE html>
-      <html lang="en">
+      <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+      <html xmlns="http://www.w3.org/1999/xhtml" lang="en">
       <head>
-        <meta charset="UTF-8">
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta name="x-apple-disable-message-reformatting">
         <title>${title}</title>
+        <!--[if mso]>
+        <noscript>
+          <xml>
+            <o:OfficeDocumentSettings>
+              <o:PixelsPerInch>96</o:PixelsPerInch>
+            </o:OfficeDocumentSettings>
+          </xml>
+        </noscript>
+        <![endif]-->
       </head>
-      <body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-        <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
-          <!-- Header -->
-          <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 20px; text-align: center;">
-            <div style="color: #ffffff; font-size: 32px; font-weight: bold; margin-bottom: 8px; display: flex; align-items: center; justify-content: center; gap: 12px;">
-              <img src="https://zipline.id10tips.com/u/tradetally-favicon.svg" alt="TradeTally" style="width: 32px; height: 32px; vertical-align: middle;" />
-              TradeTally
-            </div>
-            <div style="color: #e2e8f0; font-size: 16px; font-weight: 300;">
-              Smart Trading Analytics
-            </div>
-          </div>
-          
-          <!-- Content -->
-          <div style="padding: 40px 30px;">
-            ${content}
-          </div>
-          
-          <!-- Footer -->
-          <div style="background-color: #f8fafc; padding: 30px; text-align: center; border-top: 1px solid #e2e8f0;">
-            <div style="color: #64748b; font-size: 14px; margin-bottom: 15px;">
-              <strong>TradeTally</strong> - Empowering traders with intelligent analytics
-            </div>
-            <div style="color: #94a3b8; font-size: 12px; line-height: 1.5;">
-              This email was sent to you because you have an account with TradeTally.<br>
-              If you have any questions, contact us at <a href="mailto:support@tradetally.io" style="color: #667eea; text-decoration: none;">support@tradetally.io</a>
-            </div>
-            <div style="margin-top: 20px;">
-              <a href="https://tradetally.io" style="color: #667eea; text-decoration: none; font-size: 12px;">Visit TradeTally</a>
-              <span style="color: #cbd5e1; margin: 0 8px;">|</span>
-              <a href="https://tradetally.io/privacy" style="color: #667eea; text-decoration: none; font-size: 12px;">Privacy Policy</a>
-              <span style="color: #cbd5e1; margin: 0 8px;">|</span>
-              <a href="https://tradetally.io/terms" style="color: #667eea; text-decoration: none; font-size: 12px;">Terms of Service</a>
-            </div>
-          </div>
-        </div>
+      <body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: Arial, sans-serif; -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%;">
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #f8fafc;">
+          <tr>
+            <td align="center" style="padding: 20px 0;">
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" style="max-width: 600px; background-color: #ffffff;">
+                <!-- Header -->
+                <tr>
+                  <td style="background-color: #667eea; padding: 40px 20px; text-align: center;">
+                    <h1 style="color: #ffffff; font-size: 32px; font-weight: bold; margin: 0 0 8px 0; font-family: Arial, sans-serif;">
+                      TradeTally
+                    </h1>
+                    <p style="color: #e2e8f0; font-size: 16px; margin: 0; font-family: Arial, sans-serif;">
+                      Smart Trading Analytics
+                    </p>
+                  </td>
+                </tr>
+                
+                <!-- Content -->
+                <tr>
+                  <td style="padding: 40px 30px;">
+                    ${content}
+                  </td>
+                </tr>
+                
+                <!-- Footer -->
+                <tr>
+                  <td style="background-color: #f8fafc; padding: 30px; text-align: center; border-top: 1px solid #e2e8f0;">
+                    <p style="color: #64748b; font-size: 14px; margin: 0 0 15px 0; font-family: Arial, sans-serif;">
+                      <strong>TradeTally</strong> - Empowering traders with intelligent analytics
+                    </p>
+                    <p style="color: #94a3b8; font-size: 12px; line-height: 1.5; margin: 0 0 20px 0; font-family: Arial, sans-serif;">
+                      This email was sent to you because you have an account with TradeTally.<br>
+                      If you have any questions, contact us at <a href="mailto:support@tradetally.io" style="color: #667eea; text-decoration: none;">support@tradetally.io</a>
+                    </p>
+                    <p style="margin: 0; font-family: Arial, sans-serif;">
+                      <a href="https://tradetally.io" style="color: #667eea; text-decoration: none; font-size: 12px;">Visit TradeTally</a>
+                      <span style="color: #cbd5e1; margin: 0 8px;">|</span>
+                      <a href="https://tradetally.io/privacy" style="color: #667eea; text-decoration: none; font-size: 12px;">Privacy Policy</a>
+                      <span style="color: #cbd5e1; margin: 0 8px;">|</span>
+                      <a href="https://tradetally.io/terms" style="color: #667eea; text-decoration: none; font-size: 12px;">Terms of Service</a>
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
       </body>
       </html>
     `;
@@ -69,17 +104,16 @@ class EmailService {
 
   static getButtonStyle() {
     return `
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background-color: #667eea;
       color: #ffffff;
       padding: 16px 32px;
       text-decoration: none;
-      border-radius: 8px;
+      border-radius: 6px;
       display: inline-block;
       font-weight: 600;
       font-size: 16px;
       text-align: center;
-      box-shadow: 0 4px 14px rgba(102, 126, 234, 0.4);
-      transition: all 0.2s ease;
+      border: none;
     `;
   }
 
@@ -130,10 +164,20 @@ class EmailService {
     `;
 
     const mailOptions = {
-      from: process.env.EMAIL_FROM || 'noreply@tradetally.io',
+      from: {
+        name: 'TradeTally',
+        address: process.env.EMAIL_FROM || 'noreply@tradetally.io'
+      },
       to: email,
-      subject: '📊 Welcome to TradeTally - Verify Your Account',
-      html: this.getBaseTemplate('Verify Your TradeTally Account', content)
+      subject: 'Welcome to TradeTally - Verify Your Account',
+      html: this.getBaseTemplate('Verify Your TradeTally Account', content),
+      text: `Welcome to TradeTally! Please verify your email address by visiting: ${verificationUrl}`,
+      headers: {
+        'List-Unsubscribe': `<${process.env.FRONTEND_URL}/unsubscribe>`,
+        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+        'X-Entity-Ref-ID': `verify-${Date.now()}`,
+        'Message-ID': `<verify-${Date.now()}@tradetally.io>`
+      }
     };
 
     try {
@@ -192,10 +236,20 @@ class EmailService {
     `;
 
     const mailOptions = {
-      from: process.env.EMAIL_FROM || 'noreply@tradetally.io',
+      from: {
+        name: 'TradeTally',
+        address: process.env.EMAIL_FROM || 'noreply@tradetally.io'
+      },
       to: email,
-      subject: '🔐 Reset Your TradeTally Password',
-      html: this.getBaseTemplate('Reset Your TradeTally Password', content)
+      subject: 'Reset Your TradeTally Password',
+      html: this.getBaseTemplate('Reset Your TradeTally Password', content),
+      text: `Reset your TradeTally password by visiting: ${resetUrl}`,
+      headers: {
+        'List-Unsubscribe': `<${process.env.FRONTEND_URL}/unsubscribe>`,
+        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+        'X-Entity-Ref-ID': `reset-${Date.now()}`,
+        'Message-ID': `<reset-${Date.now()}@tradetally.io>`
+      }
     };
 
     try {
@@ -254,10 +308,20 @@ class EmailService {
     `;
 
     const mailOptions = {
-      from: process.env.EMAIL_FROM || 'noreply@tradetally.io',
+      from: {
+        name: 'TradeTally',
+        address: process.env.EMAIL_FROM || 'noreply@tradetally.io'
+      },
       to: email,
-      subject: '📧 Verify Your New Email Address - TradeTally',
-      html: this.getBaseTemplate('Verify Your New Email Address', content)
+      subject: 'Verify Your New Email Address - TradeTally',
+      html: this.getBaseTemplate('Verify Your New Email Address', content),
+      text: `Verify your new TradeTally email address by visiting: ${verificationUrl}`,
+      headers: {
+        'List-Unsubscribe': `<${process.env.FRONTEND_URL}/unsubscribe>`,
+        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+        'X-Entity-Ref-ID': `email-change-${Date.now()}`,
+        'Message-ID': `<email-change-${Date.now()}@tradetally.io>`
+      }
     };
 
     try {
@@ -296,8 +360,8 @@ class EmailService {
         
         <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
           ${isExpired 
-            ? 'Your 14-day Pro trial has come to an end. We hope you enjoyed exploring our advanced trading analytics features!'
-            : `Your Pro trial will expire in ${daysRemaining} day${daysRemaining === 1 ? '' : 's'}. Don't lose access to your favorite features!`
+            ? 'Your 14-day Pro trial has ended. Thank you for exploring our advanced trading analytics features.'
+            : `Your Pro trial will expire in ${daysRemaining} day${daysRemaining === 1 ? '' : 's'}. To continue using Pro features, please consider upgrading your account.`
           }
         </p>
         
@@ -316,7 +380,7 @@ class EmailService {
         
         <div style="text-align: center; margin: 30px 0;">
           <a href="${pricingUrl}" style="${this.getButtonStyle()}">
-            ${isExpired ? 'Subscribe to Pro' : 'Upgrade Before Trial Ends'}
+            ${isExpired ? 'View Pro Plans' : 'View Upgrade Options'}
           </a>
         </div>
         
@@ -326,9 +390,9 @@ class EmailService {
       </div>
       
       ${!isExpired ? `
-      <div style="background-color: #fff3cd; padding: 20px; border-radius: 8px; border-left: 4px solid #f59e0b; margin: 25px 0;">
-        <p style="color: #92400e; font-size: 14px; margin: 0; font-weight: 500;">
-          ⏰ Your trial expires in ${daysRemaining} day${daysRemaining === 1 ? '' : 's'}. After that, you'll lose access to Pro features.
+      <div style="background-color: #f0f9ff; padding: 20px; border-radius: 8px; border-left: 4px solid #0ea5e9; margin: 25px 0;">
+        <p style="color: #0c4a6e; font-size: 14px; margin: 0; font-weight: 500;">
+          Your trial expires in ${daysRemaining} day${daysRemaining === 1 ? '' : 's'}. After that, you'll return to the free plan.
         </p>
       </div>
       ` : ''}
@@ -339,13 +403,23 @@ class EmailService {
     `;
 
     const mailOptions = {
-      from: process.env.EMAIL_FROM || 'noreply@tradetally.io',
+      from: {
+        name: 'TradeTally',
+        address: process.env.EMAIL_FROM || 'noreply@tradetally.io'
+      },
       to: email,
-      subject: `${isExpired ? '🚀 Your TradeTally Trial Ended' : `⏰ ${daysRemaining} Day${daysRemaining === 1 ? '' : 's'} Left`} - TradeTally Pro`,
+      subject: `${isExpired ? 'Your TradeTally Trial Ended' : `${daysRemaining} Day${daysRemaining === 1 ? '' : 's'} Left in Your Trial`} - TradeTally Pro`,
       html: this.getBaseTemplate(
         `${isExpired ? 'Trial Ended' : 'Trial Expiring'} - TradeTally`,
         content
-      )
+      ),
+      text: `${isExpired ? 'Your TradeTally trial has ended.' : `Your TradeTally trial expires in ${daysRemaining} day${daysRemaining === 1 ? '' : 's'}.`} Visit ${pricingUrl} to continue with Pro features.`,
+      headers: {
+        'List-Unsubscribe': `<${process.env.FRONTEND_URL}/unsubscribe>`,
+        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+        'X-Entity-Ref-ID': `trial-${isExpired ? 'expired' : 'reminder'}-${Date.now()}`,
+        'Message-ID': `<trial-${isExpired ? 'expired' : 'reminder'}-${Date.now()}@tradetally.io>`
+      }
     };
 
     try {
