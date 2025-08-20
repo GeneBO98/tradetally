@@ -547,6 +547,16 @@ async function parseLightspeedTransactions(records, existingPositions = {}) {
       const buySellValue = record['Buy/Sell'] || record['Buy Sell'] || record.BuySell || record['Long/Short'];
       const side = parseLightspeedSide(sideValue, buySellValue, record['Principal Amount'], record['NET Amount'], record.Qty);
       
+      // DEBUG: Log the raw CSV data and parsed side for ALL transactions
+      console.log(`🔥 CSV TRANSACTION DEBUG: ${resolvedSymbol}`);
+      console.log(`  Side: "${record.Side}"`);
+      console.log(`  Buy/Sell: "${record['Buy/Sell']}"`);
+      console.log(`  Qty: "${record.Qty}"`);
+      console.log(`  PARSED side: "${side}"`);
+      console.log(`  Raw Symbol: "${record.Symbol}"`);
+      console.log(`  Resolved Symbol: "${resolvedSymbol}"`);
+      console.log(`---`);
+      
       const transaction = {
         symbol: resolvedSymbol,
         tradeDate: parseDate(record['Trade Date']),
@@ -632,6 +642,11 @@ async function parseLightspeedTransactions(records, existingPositions = {}) {
       
       console.log(`\n${transaction.side} ${qty} @ $${transaction.entryPrice} | Position: ${currentPosition}`);
       
+      // DEBUG: Extra logging for PYXS
+      if (symbol === 'PYXS') {
+        console.log(`🐛 PYXS DEBUG: transaction.side="${transaction.side}", qty=${qty}, currentPosition before=${currentPosition}`);
+      }
+      
       // Set entry time from first CSV transaction for existing position
       if (currentTrade && currentTrade.entryTime === null) {
         currentTrade.entryTime = transaction.entryTime;
@@ -680,6 +695,7 @@ async function parseLightspeedTransactions(records, existingPositions = {}) {
           currentTrade.totalQuantity += qty;
         } else if (currentTrade && currentTrade.side === 'short') {
           currentTrade.exitValue += qty * transaction.entryPrice;
+          // Don't add to totalQuantity for covering short position
         }
         
       } else if (transaction.side === 'sell') {
@@ -691,6 +707,7 @@ async function parseLightspeedTransactions(records, existingPositions = {}) {
           currentTrade.totalQuantity += qty;
         } else if (currentTrade && currentTrade.side === 'long') {
           currentTrade.exitValue += qty * transaction.entryPrice;
+          // Don't modify totalQuantity when selling from long position
         }
       }
       
@@ -737,23 +754,44 @@ async function parseLightspeedTransactions(records, existingPositions = {}) {
     }
     
     console.log(`\n${symbol} Final Position: ${currentPosition} shares`);
+    
+    // DEBUG: Extra logging for PYXS  
+    if (symbol === 'PYXS') {
+      console.log(`🐛 PYXS FINAL DEBUG: currentPosition=${currentPosition}, Math.abs(currentPosition)=${Math.abs(currentPosition)}`);
+      if (currentTrade) {
+        console.log(`🐛 PYXS FINAL DEBUG: currentTrade.totalQuantity=${currentTrade.totalQuantity}, currentTrade.side=${currentTrade.side}`);
+      }
+    }
+    
     if (currentTrade) {
       console.log(`Active trade: ${currentTrade.side} ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions`);
       
       // Add open position as incomplete trade
+      // For open positions, use the net position, not the accumulated totalQuantity
+      const netQuantity = Math.abs(currentPosition);
       currentTrade.entryPrice = currentTrade.entryValue / currentTrade.totalQuantity;
       currentTrade.exitPrice = null;
-      currentTrade.quantity = Math.abs(currentPosition); // Use actual net position, not totalQuantity
+      currentTrade.quantity = netQuantity; // Use actual net position
+      
+      // ALSO fix totalQuantity for display consistency
+      currentTrade.totalQuantity = netQuantity;
       currentTrade.commission = currentTrade.totalFees;
       currentTrade.fees = 0;
       currentTrade.exitTime = null;
       currentTrade.pnl = 0;
       currentTrade.pnlPercent = 0;
-      currentTrade.notes = `Open position: ${currentTrade.executions.length} executions`;
-      // Executions are stored in the executions field (no need for executionData)
+      
+      // Mark as update if this was an existing position (partial or full)
+      if (currentTrade.isExistingPosition) {
+        currentTrade.isUpdate = true;
+        currentTrade.notes = `Updated existing position: ${currentTrade.executions.length} executions, remaining ${Math.abs(currentPosition)} shares`;
+        console.log(`  → Updated existing ${currentTrade.side} position: ${existingPosition.quantity} → ${currentTrade.quantity} shares`);
+      } else {
+        currentTrade.notes = `Open position: ${currentTrade.executions.length} executions`;
+        console.log(`  → Added open ${currentTrade.side} position: ${currentTrade.quantity} shares`);
+      }
       
       completedTrades.push(currentTrade);
-      console.log(`  → Added open ${currentTrade.side} position: ${currentTrade.totalQuantity} shares`);
     }
   });
 

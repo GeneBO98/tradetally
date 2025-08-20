@@ -810,16 +810,21 @@ const tradeController = {
                   ...cleanTradeData
                 } = tradeData;
                 
-                // Keep executionData for database update (Trade.create expects executionData)
+                // Keep executions for database update (Trade.update expects executions, not executionData)
                 if (tradeData.executionData) {
-                  cleanTradeData.executionData = tradeData.executionData;
+                  cleanTradeData.executions = tradeData.executionData;
                 } else if (tradeData.executions) {
-                  // Fallback to executions if executionData is not present
-                  cleanTradeData.executionData = tradeData.executions;
+                  // Keep executions as-is
+                  cleanTradeData.executions = tradeData.executions;
                 }
                 await Trade.update(tradeData.existingTradeId, req.user.id, cleanTradeData);
               } else {
-                await Trade.create(req.user.id, tradeData, { skipApiCalls: true });
+                // Map executions to executionData for Trade.create
+                const createTradeData = { ...tradeData };
+                if (tradeData.executions) {
+                  createTradeData.executionData = tradeData.executions;
+                }
+                await Trade.create(req.user.id, createTradeData, { skipApiCalls: true });
               }
               imported++;
             } catch (error) {

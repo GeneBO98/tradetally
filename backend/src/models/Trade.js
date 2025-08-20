@@ -282,7 +282,23 @@ class Trade {
     query += ` GROUP BY t.id, u.username, u.avatar_url, sc.finnhub_industry, sc.company_name`;
 
     const result = await db.query(query, values);
-    return result.rows[0];
+    const trade = result.rows[0];
+    
+    // Parse executions from JSONB column if they exist
+    if (trade && trade.executions) {
+      try {
+        trade.executions = typeof trade.executions === 'string' 
+          ? JSON.parse(trade.executions) 
+          : trade.executions;
+      } catch (error) {
+        console.warn(`Failed to parse executions for trade ${trade.id}:`, error.message);
+        trade.executions = [];
+      }
+    } else if (trade) {
+      trade.executions = [];
+    }
+    
+    return trade;
   }
 
   static async findRoundTripById(id, userId) {
