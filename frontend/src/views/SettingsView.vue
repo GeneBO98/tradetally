@@ -1282,18 +1282,14 @@ async function updateProfile() {
       timezone: profileForm.value.timezone
     }
     
-    // Only include email if 2FA is enabled and email has changed
-    if (twoFactorStatus.value.enabled && profileForm.value.email !== authStore.user?.email) {
+    // Include email if it has changed
+    if (profileForm.value.email !== authStore.user?.email) {
       payload.email = profileForm.value.email
     }
     
     await api.put('/users/profile', payload)
     
-    if (payload.email) {
-      showSuccess('Success', 'Profile updated successfully. Please check your new email for verification.')
-    } else {
-      showSuccess('Success', 'Profile updated successfully')
-    }
+    showSuccess('Success', 'Profile updated successfully')
     
     await authStore.fetchUser()
   } catch (error) {
