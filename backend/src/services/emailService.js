@@ -3,7 +3,7 @@ const nodemailer = require('nodemailer');
 class EmailService {
   static createTransporter() {
     const port = parseInt(process.env.EMAIL_PORT) || 587;
-    return nodemailer.createTransporter({
+    return nodemailer.createTransport({
       host: process.env.EMAIL_HOST,
       port: port,
       secure: port === 465, // Use SSL for port 465, TLS for others

@@ -27,46 +27,20 @@ const userController = {
 
       // Check if email change is requested
       if (email !== undefined && email !== req.user.email) {
-        // Verify user has 2FA enabled
-        const currentUser = await User.findById(req.user.id);
-        if (!currentUser.two_factor_enabled) {
-          return res.status(403).json({ 
-            error: 'Two-factor authentication must be enabled to change email address' 
-          });
-        }
-
         // Check if new email is already in use
         const existingUser = await User.findByEmail(email);
         if (existingUser && existingUser.id !== req.user.id) {
           return res.status(409).json({ error: 'Email address is already in use' });
         }
 
-        // Generate email verification token
-        const crypto = require('crypto');
-        const verificationToken = crypto.randomBytes(32).toString('hex');
-        const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
-
         updates.email = email.toLowerCase();
-        updates.is_verified = false; // Require re-verification
-        updates.verification_token = verificationToken;
-        updates.verification_expires = verificationExpires;
-
-        // Send verification email to new address
-        try {
-          await sendEmailChangeVerification(email, verificationToken);
-        } catch (emailError) {
-          console.warn('Failed to send email change verification:', emailError.message);
-          return res.status(500).json({ 
-            error: 'Failed to send verification email. Please try again.' 
-          });
-        }
       }
 
       const user = await User.update(req.user.id, updates);
       
       const response = { user };
       if (email !== undefined && email !== req.user.email) {
-        response.message = 'Profile updated. Please check your new email address for verification.';
+        response.message = 'Profile updated successfully.';
         response.emailChanged = true;
       }
       
