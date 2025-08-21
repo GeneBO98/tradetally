@@ -654,6 +654,66 @@ class Trade {
       };
     }
 
+    // Special handling for executions to merge instead of replace
+    let mergedExecutions = null;
+    if (updates.executions) {
+      // Get existing executions from current trade
+      let existingExecutions = [];
+      try {
+        existingExecutions = currentTrade.executions
+          ? (typeof currentTrade.executions === 'string'
+              ? JSON.parse(currentTrade.executions)
+              : currentTrade.executions)
+          : [];
+      } catch (e) {
+        console.warn(`Failed to parse existing executions for trade ${id}:`, e.message);
+        existingExecutions = [];
+      }
+
+      // Get new executions from updates
+      const newExecutions = updates.executions;
+
+      console.log(`\n=== EXECUTION MERGE DEBUG for Trade ${id} ===`);
+      console.log(`Current trade symbol: ${currentTrade.symbol}`);
+      console.log(`Existing executions count: ${existingExecutions.length}`);
+      if (existingExecutions.length > 0) {
+        console.log(`First existing execution: ${existingExecutions[0].datetime} @ $${existingExecutions[0].price}`);
+        console.log(`Last existing execution: ${existingExecutions[existingExecutions.length-1].datetime} @ $${existingExecutions[existingExecutions.length-1].price}`);
+      }
+      console.log(`New executions count: ${newExecutions.length}`);
+      if (newExecutions.length > 0) {
+        console.log(`First new execution: ${newExecutions[0].datetime} @ $${newExecutions[0].price}`);
+        console.log(`Last new execution: ${newExecutions[newExecutions.length-1].datetime} @ $${newExecutions[newExecutions.length-1].price}`);
+      }
+
+      // Create a set of existing execution timestamps for fast lookup
+      const existingTimestamps = new Set(
+        existingExecutions.map(exec => {
+          const timestamp = new Date(exec.datetime).getTime();
+          console.log(`  Existing timestamp: ${exec.datetime} -> ${timestamp}`);
+          return timestamp;
+        })
+      );
+
+      // Filter out duplicate executions from new executions
+      const uniqueNewExecutions = newExecutions.filter(exec => {
+        const execTime = new Date(exec.datetime).getTime();
+        const isDuplicate = existingTimestamps.has(execTime);
+        console.log(`  Checking new: ${exec.datetime} -> ${execTime} -> ${isDuplicate ? 'DUPLICATE' : 'UNIQUE'}`);
+        return !isDuplicate;
+      });
+
+      console.log(`RESULT: ${existingExecutions.length} existing + ${uniqueNewExecutions.length} unique new = ${existingExecutions.length + uniqueNewExecutions.length} total`);
+      console.log(`=== END EXECUTION MERGE DEBUG ===\n`);
+      
+      // Merge existing and new executions
+      mergedExecutions = [...existingExecutions, ...uniqueNewExecutions];
+      
+      // Remove executions from updates since we'll handle it separately
+      delete updates.executions;
+    }
+
+    // Process all other fields
     Object.entries(updates).forEach(([key, value]) => {
       if (key !== 'id' && key !== 'user_id' && key !== 'created_at') {
         // Convert camelCase to snake_case for database columns
@@ -661,7 +721,7 @@ class Trade {
         fields.push(`${dbKey} = $${paramCount}`);
         
         // Handle JSON/JSONB fields that need serialization
-        if (key === 'executions' || key === 'classificationMetadata' || key === 'newsEvents') {
+        if (key === 'classificationMetadata' || key === 'newsEvents') {
           values.push(JSON.stringify(value));
         } else {
           values.push(value);
@@ -669,6 +729,13 @@ class Trade {
         paramCount++;
       }
     });
+    
+    // Add merged executions if we have them
+    if (mergedExecutions !== null) {
+      fields.push(`executions = $${paramCount}`);
+      values.push(JSON.stringify(mergedExecutions));
+      paramCount++;
+    }
 
     if (updates.entryPrice || updates.exitPrice || updates.quantity || updates.side || updates.commission || updates.fees) {
       const pnl = this.calculatePnL(

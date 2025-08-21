@@ -90,11 +90,11 @@ class PriceMonitoringService {
       const symbols = symbolsResult.rows.map(row => row.symbol);
 
       if (symbols.length === 0) {
-        logger.logDebug('No symbols to monitor');
+        logger.debug('No symbols to monitor');
         return;
       }
 
-      logger.logDebug(`Monitoring ${symbols.length} symbols: ${symbols.join(', ')}`);
+      logger.debug(`Monitoring ${symbols.length} symbols: ${symbols.join(', ')}`);
 
       // Track API failures to detect widespread outages
       let consecutiveFailures = 0;
@@ -112,7 +112,7 @@ class PriceMonitoringService {
           
           // If we have too many consecutive failures, the API might be down
           if (consecutiveFailures >= 5) {
-            logger.logWarn(`Detected possible API outage after ${consecutiveFailures} consecutive failures. Pausing monitoring for this cycle.`);
+            logger.warn(`Detected possible API outage after ${consecutiveFailures} consecutive failures. Pausing monitoring for this cycle.`);
             break;
           }
         }
@@ -121,7 +121,7 @@ class PriceMonitoringService {
         await new Promise(resolve => setTimeout(resolve, 100));
       }
 
-      logger.logDebug(`Price monitoring cycle complete: ${successCount}/${symbols.length} symbols updated successfully`);
+      logger.debug(`Price monitoring cycle complete: ${successCount}/${symbols.length} symbols updated successfully`);
 
       // Only check for triggered alerts if we had some successful price updates
       if (successCount > 0) {
@@ -129,7 +129,7 @@ class PriceMonitoringService {
       }
 
     } catch (error) {
-      logger.logError('Error in monitorPrices:', error);
+      logger.error('Error in monitorPrices:', error);
     }
   }
 
@@ -149,9 +149,9 @@ class PriceMonitoringService {
         
         // Only log detailed errors for non-502 errors to avoid spam during outages
         if (errorMsg.includes('502')) {
-          logger.logDebug(`Finnhub temporarily unavailable for ${symbol} (502 error)`);
+          logger.debug(`Finnhub temporarily unavailable for ${symbol} (502 error)`);
         } else {
-          logger.logWarn(`Finnhub failed for ${symbol}: ${errorMsg}`);
+          logger.warn(`Finnhub failed for ${symbol}: ${errorMsg}`);
         }
         
         // Return false to indicate failure
@@ -176,13 +176,13 @@ class PriceMonitoringService {
           data_source = $6
       `, [symbol, currentPrice, previousClose, priceChange, percentChange, dataSource]);
 
-      logger.logDebug(`Updated price for ${symbol}: ${currentPrice} (${percentChange >= 0 ? '+' : ''}${percentChange.toFixed(2)}%)`);
+      logger.debug(`Updated price for ${symbol}: ${currentPrice} (${percentChange >= 0 ? '+' : ''}${percentChange.toFixed(2)}%)`);
 
       // Return true to indicate success
       return true;
 
     } catch (error) {
-      logger.logError(`Error updating price for ${symbol}:`, error);
+      logger.error(`Error updating price for ${symbol}:`, error);
       return false;
     }
   }

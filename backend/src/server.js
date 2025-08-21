@@ -6,6 +6,7 @@ const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 
 const { migrate } = require('./utils/migrate');
+const logger = require('./utils/logger');
 const authRoutes = require('./routes/auth.routes');
 const userRoutes = require('./routes/user.routes');
 const tradeRoutes = require('./routes/trade.routes');
@@ -81,11 +82,24 @@ if (process.env.NODE_ENV !== 'production') {
   );
 }
 
+logger.info(`CORS configuration initialized with ${allowedOrigins.length} allowed origins`, 'cors');
+logger.debug(`Allowed origins: ${allowedOrigins.join(', ')}`, 'cors');
+
 const corsOptions = {
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
+    logger.debug(`CORS check for origin: ${origin || 'null'}`, 'cors');
+    
+    if (!origin) {
+      logger.debug('No origin header present - allowing request', 'cors');
+      callback(null, true);
+      return;
+    }
+    
+    if (allowedOrigins.includes(origin)) {
+      logger.debug(`Origin ${origin} is allowed`, 'cors');
       callback(null, true);
     } else {
+      logger.warn(`Origin ${origin} not allowed. Allowed origins: ${allowedOrigins.join(', ')}`, 'cors');
       callback(new Error('Not allowed by CORS'));
     }
   },
@@ -100,7 +114,14 @@ app.use(cors(corsOptions));
 
 // Use morgan for logging in development, but not in production
 if (process.env.NODE_ENV !== 'production') {
-  app.use(morgan('dev'));
+  app.use(morgan('dev', {
+    skip: function (req, res) {
+      // Skip logging for frequently polled endpoints
+      return req.path.includes('/import/history') || 
+             req.path.includes('/health') ||
+             (req.path.includes('/trades') && req.query && req.query.page);
+    }
+  }));
 }
 
 // Body parsing middleware (skip for webhook routes that need raw body)
@@ -149,7 +170,7 @@ if (process.env.NODE_ENV !== 'production' || process.env.ENABLE_SWAGGER === 'tru
     customCss: '.swagger-ui .topbar { display: none }',
     customSiteTitle: 'TradeTally API Documentation',
   }));
-  console.log('📚 Swagger documentation available at /api-docs');
+  logger.info('📚 Swagger documentation available at /api-docs');
 }
 
 // Health endpoint with background worker status
@@ -238,14 +259,14 @@ app.use((req, res) => {
 // Function to start server with migration
 async function startServer() {
   try {
-    console.log('Starting TradeTally server...');
+    logger.info('Starting TradeTally server...');
     
     // Run database migrations first
     if (process.env.RUN_MIGRATIONS !== 'false') {
-      console.log('Running database migrations...');
+      logger.info('Running database migrations...');
       await migrate();
     } else {
-      console.log('Skipping migrations (RUN_MIGRATIONS=false)');
+      logger.info('Skipping migrations (RUN_MIGRATIONS=false)');
     }
     
     // Initialize billing service (conditional)
@@ -336,11 +357,12 @@ async function startServer() {
     
     // Start the server
     app.listen(PORT, () => {
-      console.log(`✓ TradeTally server running on port ${PORT}`);
-      console.log(`✓ Environment: ${process.env.NODE_ENV || 'development'}`);
+      logger.info(`✓ TradeTally server running on port ${PORT}`);
+      logger.info(`✓ Environment: ${process.env.NODE_ENV || 'development'}`);
+      logger.info(`✓ Log level: ${process.env.LOG_LEVEL || 'INFO'}`);
     });
   } catch (error) {
-    console.error('Failed to start server:', error.message);
+    logger.error('Failed to start server:', error);
     process.exit(1);
   }
 }

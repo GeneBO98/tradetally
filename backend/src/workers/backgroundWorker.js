@@ -54,10 +54,15 @@ class BackgroundWorker {
           
           const status = await jobQueue.getQueueStatus();
           
-          // Only log if there are jobs or issues
-          const hasJobs = status.some(s => s.status !== 'completed' || parseInt(s.count) > 1000);
+          // Only log if there are pending/processing jobs (not just completed ones)
+          const hasActiveJobs = status.some(s => 
+            (s.status === 'pending' || s.status === 'processing') && parseInt(s.count) > 0
+          );
+          const hasIssues = status.some(s => 
+            s.status === 'failed' && parseInt(s.count) > 0
+          );
           
-          if (hasJobs) {
+          if (hasActiveJobs || hasIssues) {
             logger.logImport('📊 Job Queue Status:', status);
           }
           
