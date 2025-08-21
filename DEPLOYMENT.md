@@ -16,14 +16,15 @@ Create a new directory and download the required files:
 mkdir tradetally
 cd tradetally
 
-# Download the production docker-compose file
+# Download the docker-compose file
 curl -O https://raw.githubusercontent.com/GeneBO98/tradetally/refs/heads/main/docker-compose.yaml
 
 # Download the environment template
 curl -O https://raw.githubusercontent.com/GeneBO98/tradetally/main/.env.example
+curl -O https://raw.githubusercontent.com/GeneBO98/tradetally/main/.env.example
 
 # Rename to .env
-cp .env.example .env
+mv .env.example .env
 ```
 
 ### 2. Configure Environment
@@ -34,22 +35,48 @@ Edit the `.env` file with your settings:
 nano .env  # or vim .env
 ```
 
-**Important configurations:**
-- `JWT_SECRET`: Change this to a secure random string
+**Required configurations:**
+- `DB_USER`: Database username (default: trader)
 - `DB_PASSWORD`: Set a strong database password
-- API keys (optional but recommended for full functionality)
+- `DB_NAME`: Database name (default: tradetally)
+- `JWT_SECRET`: Change this to a secure random string
+- `CORS_ORIGINS`: Additional CORS origins for mobile apps
+
+**Important optional configurations:**
+- `NODE_ENV`: Environment mode (default: production)
+- `PORT`: Backend port (default: 3000)
+- `FRONTEND_URL`: Frontend URL for CORS (default: http://localhost:5173)
+- `VITE_API_URL`: Frontend API URL (default: http://localhost/api)
+- `REGISTRATION_MODE`: Controls user registration (default: open)
+
+**Email configuration (optional but recommended):**
+- `EMAIL_HOST`: SMTP server host
+- `EMAIL_PORT`: SMTP server port
+- `EMAIL_USER`: SMTP username
+- `EMAIL_PASS`: SMTP password
+- `EMAIL_FROM`: From email address
+
+**External API keys (optional but recommended for full functionality):**
+- `FINNHUB_API_KEY`: For real-time quotes and CUSIP resolution
+- `ALPHA_VANTAGE_API_KEY`: For trade chart visualization
+
+**Mobile app support (optional):**
+- `ACCESS_TOKEN_EXPIRE`: Access token expiry (default: 15m)
+- `REFRESH_TOKEN_EXPIRE`: Refresh token expiry (default: 30d)
+- `MAX_DEVICES_PER_USER`: Max devices per user (default: 10)
+- `MAX_FILE_SIZE`: Max upload file size (default: 52428800)
 
 ### 3. Deploy
 
 ```bash
 # Start the application
-docker-compose -f docker-compose.production.yaml up -d
+docker-compose up -d
 
 # Check status
-docker-compose -f docker-compose.production.yaml ps
+docker-compose ps
 
 # View logs
-docker-compose -f docker-compose.production.yaml logs -f app
+docker-compose logs -f app
 ```
 
 ### 4. Initialize Database (First Time Only)
@@ -71,25 +98,23 @@ docker exec tradetally-db pg_isready -U trader -d tradetally
 
 ## Default Login
 
-Create your first user account through the registration page, or use the demo account if available:
-- Email: demo@example.com
-- Password: DemoUser25
+Create your first user account through the registration page.
 
 ## Management Commands
 
 ### View Logs
 ```bash
-docker-compose -f docker-compose.production.yaml logs -f app
-docker-compose -f docker-compose.production.yaml logs -f postgres
+docker-compose logs -f app
+docker-compose logs -f postgres
 ```
 
 ### Update Application
 ```bash
 # Pull latest image
-docker-compose -f docker-compose.production.yaml pull app
+docker-compose pull app
 
 # Restart application (preserves database)
-docker-compose -f docker-compose.production.yaml up -d app
+docker-compose up -d app
 ```
 
 ### Backup Database
@@ -105,10 +130,10 @@ docker exec -i tradetally-db psql -U trader tradetally < tradetally_backup.sql
 ### Stop Services
 ```bash
 # Stop all services (preserves data)
-docker-compose -f docker-compose.production.yaml down
+docker-compose down
 
 # Stop and remove volumes (WARNING: deletes all data)
-docker-compose -f docker-compose.production.yaml down -v
+docker-compose down -v
 ```
 
 ## Directory Structure
@@ -116,7 +141,7 @@ docker-compose -f docker-compose.production.yaml down -v
 After deployment, your directory should look like:
 ```
 tradetally/
-├── docker-compose.production.yaml
+├── docker-compose.yaml
 ├── .env
 ├── logs/          (created automatically)
 └── data/          (created automatically)
@@ -127,7 +152,7 @@ tradetally/
 ### Application won't start
 ```bash
 # Check logs
-docker-compose -f docker-compose.production.yaml logs app
+docker-compose logs app
 
 # Check database connection
 docker exec tradetally-app ping postgres
@@ -136,10 +161,10 @@ docker exec tradetally-app ping postgres
 ### Database connection issues
 ```bash
 # Check database status
-docker-compose -f docker-compose.production.yaml ps postgres
+docker-compose ps postgres
 
 # Check database logs
-docker-compose -f docker-compose.production.yaml logs postgres
+docker-compose logs postgres
 ```
 
 ### Performance issues
@@ -158,8 +183,7 @@ docker-compose -f docker-compose.production.yaml logs postgres
 ## Support
 
 For issues and support:
-- GitHub Issues: [Your Repository URL]
-- Documentation: [Your Documentation URL]
+- GitHub Issues: https://github.com/GeneBO98/tradetally/issues
 
 ## API Keys (Optional)
 
@@ -168,4 +192,4 @@ For full CUSIP resolution functionality:
 1. **OpenFIGI API**: https://www.openfigi.com/api
 2. **Google Gemini API**: https://console.cloud.google.com/
 
-Add these to your `.env` file as `OPENFIGI_API_KEY` and `GEMINI_API_KEY`.
+Add this to your `.env` file as `OPENFIGI_API_KEY`
