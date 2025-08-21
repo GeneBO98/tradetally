@@ -21,7 +21,6 @@ curl -O https://raw.githubusercontent.com/GeneBO98/tradetally/refs/heads/main/do
 
 # Download the environment template
 curl -O https://raw.githubusercontent.com/GeneBO98/tradetally/main/.env.example
-curl -O https://raw.githubusercontent.com/GeneBO98/tradetally/main/.env.example
 
 # Rename to .env
 mv .env.example .env
