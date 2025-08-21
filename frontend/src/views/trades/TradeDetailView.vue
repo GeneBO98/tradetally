@@ -497,11 +497,23 @@ function formatNumber(num, decimals = 2) {
 }
 
 function formatDate(date) {
+  // Handle date strings that might be in different formats
+  // If it's already a date string like '2025-07-04', treat it as local date
+  if (typeof date === 'string' && date.match(/^\d{4}-\d{2}-\d{2}$/)) {
+    // This is a date-only string, create local date to avoid timezone issues
+    const [year, month, day] = date.split('-')
+    const localDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day))
+    return format(localDate, 'MMM dd, yyyy')
+  }
+  // For datetime strings, use as-is
   return format(new Date(date), 'MMM dd, yyyy')
 }
 
 function formatDateTime(date) {
-  return format(new Date(date), 'MMM dd, yyyy HH:mm')
+  // For datetime display, we want to show the actual time in the user's timezone
+  // but handle the date component consistently
+  const dateObj = new Date(date)
+  return format(dateObj, 'MMM dd, yyyy HH:mm')
 }
 
 function formatFileSize(bytes) {

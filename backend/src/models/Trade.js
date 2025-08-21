@@ -18,7 +18,10 @@ class Trade {
     const pnlPercent = providedPnLPercent !== undefined ? providedPnLPercent : this.calculatePnLPercent(entryPrice, cleanExitPrice, side);
 
     // Use exit date as trade date if available, otherwise use entry date
-    const finalTradeDate = cleanExitTime ? new Date(cleanExitTime).toISOString().split('T')[0] : new Date(entryTime).toISOString().split('T')[0];
+    // Parse the datetime as local time to avoid timezone conversion issues
+    const finalTradeDate = cleanExitTime ? 
+      this.getLocalDateString(cleanExitTime) : 
+      this.getLocalDateString(entryTime);
 
     const query = `
       INSERT INTO trades (
@@ -221,12 +224,12 @@ class Trade {
 
     // Calculate trade_date based on exitTime or entryTime
     if (updates.exitTime) {
-      updates.tradeDate = new Date(updates.exitTime).toISOString().split('T')[0];
+      updates.tradeDate = this.getLocalDateString(updates.exitTime);
     } else if (updates.entryTime) {
       // If we're updating entry time and there's no exit time, use entry time for trade date
       const exitTime = updates.exitTime || currentTrade.exit_time;
       if (!exitTime) {
-        updates.tradeDate = new Date(updates.entryTime).toISOString().split('T')[0];
+        updates.tradeDate = this.getLocalDateString(updates.entryTime);
       }
     }
 
@@ -393,6 +396,16 @@ class Trade {
     } else {
       return ((entryPrice - exitPrice) / entryPrice) * 100;
     }
+  }
+
+  static getLocalDateString(dateTimeString) {
+    // Parse the datetime string and extract just the date part
+    // This avoids timezone conversion issues by treating the input as a local datetime
+    const date = new Date(dateTimeString);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   }
 
   static async getAnalytics(userId, filters = {}) {
