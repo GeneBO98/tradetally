@@ -697,13 +697,16 @@ const tradeController = {
               tradeDate: row.trade_date,
               commission: parseFloat(row.commission) || 0,
               broker: row.broker,
-              executions: row.executions || []  // FIXED: Include existing executions
+              executions: row.executions ? (typeof row.executions === 'string' ? JSON.parse(row.executions) : row.executions) : []  // Parse JSON executions from DB
             };
           });
           
           logger.logImport(`Found ${Object.keys(existingPositions).length} existing open positions`);
           Object.entries(existingPositions).forEach(([symbol, pos]) => {
-            logger.logImport(`  ${symbol}: ${pos.side} ${pos.quantity} shares @ $${pos.entryPrice}`);
+            logger.logImport(`  ${symbol}: ${pos.side} ${pos.quantity} shares @ $${pos.entryPrice} (${pos.executions ? pos.executions.length : 0} executions)`);
+            if (pos.executions && pos.executions.length > 0) {
+              logger.logImport(`    First execution: ${JSON.stringify(pos.executions[0])}`);
+            }
           });
           
           const parseResult = await parseCSV(req.file.buffer, broker, { existingPositions });
@@ -721,15 +724,31 @@ const tradeController = {
           
           // Clear timeout since we're proceeding normally
           clearTimeout(importTimeout);
+          
+          // TEMPORARY DEBUG: Check what CURR trades exist before we start
+          const fs = require('fs');
+          const debugLog = [];
+          
+          const currCheck = await db.query(
+            "SELECT id, quantity, JSON_ARRAY_LENGTH(COALESCE(executions::json, '[]'::json)) as exec_count FROM trades WHERE user_id = $1 AND symbol = 'CURR' AND exit_price IS NULL",
+            [req.user.id]
+          );
+          debugLog.push(`[PRE-IMPORT] Found ${currCheck.rows.length} open CURR trades:`);
+          currCheck.rows.forEach(row => {
+            debugLog.push(`[PRE-IMPORT]   ${row.id}: qty=${row.quantity}, executions=${row.exec_count}`);
+          });
 
           // Check for existing trades to avoid duplicates
           // Note: We don't filter by broker as the same trade could be imported from different broker files
+          // Get ALL open positions for better duplicate detection
           const existingTradesQuery = `
-            SELECT symbol, entry_time, entry_price, exit_price, pnl, quantity, side 
+            SELECT id, symbol, entry_time, entry_price, exit_price, pnl, quantity, side, executions 
             FROM trades 
             WHERE user_id = $1 
-            AND trade_date >= $2
-            AND trade_date <= $3
+            AND (
+              (trade_date >= $2 AND trade_date <= $3)
+              OR exit_price IS NULL  -- Always include open positions
+            )
           `;
 
           // Get date range from trades
@@ -743,7 +762,40 @@ const tradeController = {
             maxDate.toISOString().split('T')[0]
           ]);
 
+          debugLog.push(`[QUERY DEBUG] Date range: ${minDate.toISOString().split('T')[0]} to ${maxDate.toISOString().split('T')[0]}`);
+          debugLog.push(`[QUERY DEBUG] Found ${existingTrades.rows.length} existing trades`);
           logger.logImport(`Found ${existingTrades.rows.length} existing trades in date range`);
+          
+          // Debug: Check what's in the existing CURR trade
+          // Sort to prioritize open trades first
+          existingTrades.rows.sort((a, b) => {
+            if (!a.exit_price && b.exit_price) return -1;
+            if (a.exit_price && !b.exit_price) return 1;
+            return 0;
+          });
+          
+          const currTrades = existingTrades.rows.filter(t => t.symbol === 'CURR');
+          debugLog.push(`[DB CHECK] Found ${currTrades.length} CURR trades in query results (sorted: open first)`);
+          currTrades.forEach(trade => {
+            let execCount = 0;
+            let execs = [];
+            try {
+              execs = typeof trade.executions === 'string' ? JSON.parse(trade.executions) : trade.executions || [];
+              execCount = execs.length;
+            } catch(e) {
+              debugLog.push(`[DB CHECK] Error parsing executions: ${e.message}`);
+            }
+            debugLog.push(`[DB CHECK] CURR trade ${trade.id}: qty=${trade.quantity}, exit=${trade.exit_price}, executions=${execCount}`);
+            if (execCount > 0 && execCount < 10) {
+              debugLog.push(`[DB CHECK]   First exec: ${execs[0].datetime}`);
+              debugLog.push(`[DB CHECK]   Last exec: ${execs[execCount-1].datetime}`);
+            }
+          });
+          
+          // Write debug log to file
+          const debugPath = require('path').join(__dirname, '../logs', 'import-curr-debug.txt');
+          fs.writeFileSync(debugPath, debugLog.join('\n'));
+          console.log(`[DEBUG] Import debug info written to: ${debugPath}`);
 
           logger.logImport(`Processing ${trades.length} trades for import...`);
           
@@ -755,35 +807,192 @@ const tradeController = {
               // This is more reliable than symbol matching as symbols can be resolved differently
               // (e.g., CUSIP lookups may resolve to different symbols on different imports)
               // Using price and P/L matching prevents duplicate trades from being imported
-              const isDuplicate = existingTrades.rows.some(existing => {
+               const isDuplicate = existingTrades.rows.some(existing => {
+                // Debug: log what we're comparing
+                if (tradeData.symbol === existing.symbol && !tradeData.exitPrice && !existing.exit_price) {
+                  console.log(`[DUP CHECK] Comparing ${tradeData.symbol} open positions:`);
+                  console.log(`  New: price=${tradeData.entryPrice}, qty=${tradeData.quantity}, side=${tradeData.side}`);
+                  console.log(`  Existing: price=${existing.entry_price}, qty=${existing.quantity}, side=${existing.side}`);
+                }
+                // Parse existing executions if available
+                let existingExecutions = [];
+                if (existing.executions) {
+                  try {
+                    existingExecutions = typeof existing.executions === 'string' 
+                      ? JSON.parse(existing.executions) 
+                      : existing.executions;
+                  } catch (e) {
+                    existingExecutions = [];
+                  }
+                }
+                
+                // If both trades have executions, check for exact timestamp matches
+                // This is the most precise duplicate detection
+                if (tradeData.executionData && tradeData.executionData.length > 0 && existingExecutions.length > 0) {
+                  // Create a set of execution timestamps from the new trade
+                  const newExecutionTimestamps = new Set(
+                    tradeData.executionData.map(exec => 
+                      new Date(exec.datetime).getTime()
+                    )
+                  );
+                  
+                  // Check if any existing execution has the same timestamp
+                  // If we find even one matching timestamp, it's likely a duplicate
+                  const hasMatchingExecution = existingExecutions.some(exec => {
+                    const execTime = new Date(exec.datetime).getTime();
+                    return newExecutionTimestamps.has(execTime);
+                  });
+                  
+                  if (hasMatchingExecution) {
+                    logger.logImport(`Found duplicate based on execution timestamp match`);
+                    return true;
+                  }
+                }
+                
+                // Fallback to the original logic for trades without execution data
                 // For closed trades, check entry, exit, and P/L
                 if (tradeData.exitPrice && existing.exit_price) {
                   const entryMatch = Math.abs(parseFloat(existing.entry_price) - parseFloat(tradeData.entryPrice)) < 0.01;
                   const exitMatch = Math.abs(parseFloat(existing.exit_price) - parseFloat(tradeData.exitPrice)) < 0.01;
                   const pnlMatch = Math.abs(parseFloat(existing.pnl || 0) - parseFloat(tradeData.pnl || 0)) < 0.01; // $0.01 tolerance for P/L consistency
                   
-                  return entryMatch && exitMatch && pnlMatch;
+                  // Also check if entry times are very close (within 1 second)
+                  const entryTimeMatch = Math.abs(new Date(existing.entry_time) - new Date(tradeData.entryTime)) < 1000;
+                  
+                  return entryMatch && exitMatch && pnlMatch && entryTimeMatch;
                 }
-                // For open trades, check entry price, quantity, and side
+                // For open trades, check symbol, side, and if executions overlap
+                // Don't check quantity as it may change with new executions
                 else if (!tradeData.exitPrice && !existing.exit_price) {
-                  return (
-                    Math.abs(parseFloat(existing.entry_price) - parseFloat(tradeData.entryPrice)) < 0.01 &&
-                    existing.quantity === tradeData.quantity &&
-                    existing.side === tradeData.side &&
-                    Math.abs(new Date(existing.entry_time) - new Date(tradeData.entryTime)) < 60000 // Within 1 minute
-                  );
+                  const symbolMatch = existing.symbol === tradeData.symbol;
+                  const sideMatch = existing.side === tradeData.side;
+                  
+                  // For open positions, we match on symbol and side only
+                  // The quantity may differ if new executions are being added
+                  // We'll check execution overlap to determine if it's the same position
+                  if (symbolMatch && sideMatch) {
+                    let existingExecutions = [];
+                    if (existing.executions) {
+                      try {
+                        logger.logImport(`  Raw executions from DB: ${typeof existing.executions} - length: ${existing.executions.length}`);
+                        existingExecutions = typeof existing.executions === "string"
+                          ? JSON.parse(existing.executions)
+                          : existing.executions;
+                        logger.logImport(`  Parsed ${existingExecutions.length} existing executions`);
+                      } catch (e) {
+                        logger.logImport(`  ERROR parsing executions: ${e.message}`);
+                        existingExecutions = [];
+                      }
+                    }
+                    let newExecutions = tradeData.executionData || tradeData.executions || [];
+                    // For open positions with executions, handle them differently
+                    if (existingExecutions.length > 0 || newExecutions.length > 0) {
+                      // Debug logging
+                      console.log(`[OPEN POS MATCH] ${tradeData.symbol}: Found matching open position`);
+                      console.log(`  Existing qty: ${existing.quantity}, New qty: ${tradeData.quantity}`);
+                      logger.logImport(`Checking duplicates for ${tradeData.symbol}:`);
+                      logger.logImport(`  Existing executions: ${existingExecutions.length}`);
+                      if (existingExecutions.length > 0) {
+                        logger.logImport(`  First existing: ${existingExecutions[0].datetime} @ $${existingExecutions[0].price}`);
+                      }
+                      logger.logImport(`  New executions: ${newExecutions.length}`);
+                      if (newExecutions.length > 0) {
+                        logger.logImport(`  First new: ${newExecutions[0].datetime} @ $${newExecutions[0].price}`);
+                      }
+                      
+                      // Check if all new executions are duplicates by comparing timestamps
+                      console.log(`[EXEC DETAIL] ${tradeData.symbol} existing executions:`);
+                      existingExecutions.forEach(exec => {
+                        console.log(`  ${exec.datetime} - ${exec.action} ${exec.quantity} @ $${exec.price}`);
+                      });
+                      console.log(`[EXEC DETAIL] ${tradeData.symbol} new executions:`);
+                      newExecutions.forEach(exec => {
+                        console.log(`  ${exec.datetime} - ${exec.action} ${exec.quantity} @ $${exec.price}`);
+                      });
+                      
+                      const existingTimestamps = new Set(
+                        existingExecutions.map(exec => {
+                          const timestamp = new Date(exec.datetime).getTime();
+                          logger.logImport(`  Existing exec timestamp: ${exec.datetime} => ${timestamp}`);
+                          return timestamp;
+                        })
+                      );
+                      
+                      const uniqueNewExecutions = newExecutions.filter(exec => {
+                        const execTime = new Date(exec.datetime).getTime();
+                        const isDup = existingTimestamps.has(execTime);
+                        logger.logImport(`  New exec: ${exec.datetime} => ${execTime} => ${isDup ? 'DUPLICATE' : 'UNIQUE'}`);
+                        if (isDup) {
+                          logger.logImport(`    -> Duplicate execution found: ${exec.datetime}`);
+                        }
+                        return !isDup;
+                      });
+                      
+                      logger.logImport(`  Unique new executions: ${uniqueNewExecutions.length}`);
+                      
+                      if (uniqueNewExecutions.length === 0) {
+                        // All executions are duplicates, skip this import entirely
+                        console.log(`[IMPORT DEBUG] All ${newExecutions.length} executions for ${tradeData.symbol} are duplicates - SHOULD SKIP`);
+                        logger.logImport(`All ${newExecutions.length} executions for ${tradeData.symbol} are duplicates - skipping`);
+                        // Make sure we DON'T set isUpdate
+                        tradeData.isUpdate = false;
+                        tradeData.existingTradeId = null;
+                        // Return true to mark as duplicate and skip
+                        return true; 
+                      } else {
+                        // We have new executions to add, mark for update
+                        console.log(`[IMPORT DEBUG] ${tradeData.symbol} has ${uniqueNewExecutions.length} new executions - WILL UPDATE`);
+                        tradeData.isUpdate = true;
+                        tradeData.existingTradeId = existing.id;
+                        
+                        logger.logImport(`Found matching open position (ID: ${existing.id}). Will add ${uniqueNewExecutions.length} new executions.`);
+                        
+                        // Store only the unique new executions to avoid sending duplicates
+                        tradeData.executionData = uniqueNewExecutions;
+                        
+                        // Also update the quantity if it's different due to new executions
+                        if (existing.quantity !== tradeData.quantity) {
+                          console.log(`[IMPORT DEBUG] Updating quantity from ${existing.quantity} to ${tradeData.quantity}`);
+                          // The quantity will be updated when we call Trade.update
+                        }
+                        
+                        // Return true to mark as a "duplicate" but we'll handle it specially later
+                        return true;
+                      }
+                    } else {
+                      logger.logImport("Skipping duplicate open position based on matching fields without executions");
+                      return true;
+                    }
+                  }
+                  return false;
                 }
                 return false;
               });
 
+              // Special handling for duplicates
               if (isDuplicate) {
-                if (tradeData.exitPrice) {
-                  logger.logImport(`Skipping duplicate trade: Entry: $${tradeData.entryPrice}, Exit: $${tradeData.exitPrice}, P/L: $${tradeData.pnl || 0} (Symbol: ${tradeData.symbol})`);
+                console.log(`[DUPLICATE HANDLER] ${tradeData.symbol}: isUpdate=${tradeData.isUpdate}, existingTradeId=${tradeData.existingTradeId}, hasExit=${!!tradeData.exitPrice}`);
+                logger.logImport(`DUPLICATE DETECTED for ${tradeData.symbol}: isUpdate=${tradeData.isUpdate}, existingTradeId=${tradeData.existingTradeId}, hasExit=${!!tradeData.exitPrice}`);
+                
+                // If this is an open position with new executions marked for update, don't skip it
+                if (tradeData.isUpdate && tradeData.existingTradeId && !tradeData.exitPrice) {
+                  console.log(`[DUPLICATE HANDLER] WILL UPDATE ${tradeData.symbol} - has new executions`);
+                  logger.logImport(`Processing open position update: ${tradeData.symbol} ${tradeData.quantity} at $${tradeData.entryPrice}`);
+                  // Continue processing this trade to add the new executions
                 } else {
-                  logger.logImport(`Skipping duplicate open position: ${tradeData.symbol} ${tradeData.quantity} at $${tradeData.entryPrice}`);
+                  // Normal duplicate handling - skip the import
+                  console.log(`[DUPLICATE HANDLER] SKIPPING ${tradeData.symbol} - no new executions`);
+                  if (tradeData.exitPrice) {
+                    logger.logImport(`Skipping duplicate closed trade: ${tradeData.symbol} Entry: $${tradeData.entryPrice}, Exit: $${tradeData.exitPrice}, P/L: $${tradeData.pnl || 0}`);
+                  } else {
+                    logger.logImport(`Skipping duplicate open position: ${tradeData.symbol} ${tradeData.quantity} at $${tradeData.entryPrice}`);
+                  }
+                  duplicates++;
+                  continue;
                 }
-                duplicates++;
-                continue;
+              } else {
+                console.log(`[DUPLICATE HANDLER] ${tradeData.symbol} NOT A DUPLICATE - will process normally`);
+                logger.logImport(`NOT A DUPLICATE: ${tradeData.symbol} - will process normally`);
               }
 
               if (imported % 50 === 0) {
@@ -806,17 +1015,24 @@ const tradeController = {
                 const {
                   totalQuantity, entryValue, exitValue, isExistingPosition,
                   existingTradeId, isUpdate, totalFees, totalFeesForSymbol,
-                  pnl, pnlPercent,
+                  pnl, pnlPercent, newExecutionsAdded, executionData,
                   ...cleanTradeData
                 } = tradeData;
                 
                 // Keep executions for database update (Trade.update expects executions, not executionData)
+                // Pass ALL executions - Trade.update will handle merging and deduplication
                 if (tradeData.executionData) {
                   cleanTradeData.executions = tradeData.executionData;
                 } else if (tradeData.executions) {
                   // Keep executions as-is
                   cleanTradeData.executions = tradeData.executions;
                 }
+                
+                logger.logImport(`Sending to Trade.update - executions count: ${cleanTradeData.executions ? cleanTradeData.executions.length : 0}`);
+                if (cleanTradeData.executions && cleanTradeData.executions.length > 0) {
+                  logger.logImport(`  First execution being sent: ${cleanTradeData.executions[0].datetime}`);
+                }
+                
                 await Trade.update(tradeData.existingTradeId, req.user.id, cleanTradeData);
               } else {
                 // Map executions to executionData for Trade.create
@@ -943,16 +1159,40 @@ const tradeController = {
 
   async getImportHistory(req, res, next) {
     try {
+      const page = parseInt(req.query.page) || 1;
+      const limit = parseInt(req.query.limit) || 5;
+      const offset = (page - 1) * limit;
+
       const query = `
         SELECT * FROM import_logs
         WHERE user_id = $1
         ORDER BY created_at DESC
-        LIMIT 20
+        LIMIT $2 OFFSET $3
       `;
 
-      const result = await db.query(query, [req.user.id]);
+      const countQuery = `
+        SELECT COUNT(*) as total FROM import_logs
+        WHERE user_id = $1
+      `;
+
+      const [result, countResult] = await Promise.all([
+        db.query(query, [req.user.id, limit, offset]),
+        db.query(countQuery, [req.user.id])
+      ]);
       
-      res.json({ imports: result.rows });
+      const total = parseInt(countResult.rows[0].total);
+      const totalPages = Math.ceil(total / limit);
+
+      res.json({ 
+        imports: result.rows,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages,
+          hasMore: page < totalPages
+        }
+      });
     } catch (error) {
       next(error);
     }
@@ -1259,8 +1499,14 @@ const tradeController = {
 
   async getImportLogs(req, res, next) {
     try {
-      const logFiles = logger.getLogFiles();
-      res.json({ logFiles });
+      const showAll = req.query.showAll === 'true';
+      const page = parseInt(req.query.page) || 1;
+      const limit = parseInt(req.query.limit) || 10;
+      const logFiles = logger.getLogFiles(showAll, page, limit);
+      res.json({ 
+        logFiles: logFiles.files,
+        pagination: logFiles.pagination
+      });
     } catch (error) {
       next(error);
     }
@@ -1269,13 +1515,31 @@ const tradeController = {
   async getLogFile(req, res, next) {
     try {
       const filename = req.params.filename;
-      const content = logger.readLogFile(filename);
+      const page = parseInt(req.query.page) || 1;
+      const limit = parseInt(req.query.limit) || 100; // 100 lines per page
+      // Default to showing only last 24 hours (showAll = false)
+      const showAll = req.query.showAll === 'true';
+      const searchQuery = req.query.search || '';
       
-      if (!content) {
+      console.log(`=== getLogFile called ===`);
+      console.log(`filename: ${filename}`);
+      console.log(`page: ${page}`);
+      console.log(`limit: ${limit}`);
+      console.log(`req.query.showAll: "${req.query.showAll}"`);
+      console.log(`showAll (parsed): ${showAll}`);
+      console.log(`search: ${searchQuery}`);
+      
+      const result = logger.readLogFile(filename, page, limit, showAll, searchQuery);
+      
+      if (!result) {
         return res.status(404).json({ error: 'Log file not found' });
       }
 
-      res.json({ filename, content });
+      res.json({ 
+        filename, 
+        content: result.content,
+        pagination: result.pagination
+      });
     } catch (error) {
       next(error);
     }

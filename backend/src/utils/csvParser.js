@@ -621,14 +621,17 @@ async function parseLightspeedTransactions(records, existingPositions = {}) {
       entryTime: null,  // Will be set from first CSV transaction
       tradeDate: null,  // Will be set from first CSV transaction
       side: existingPosition.side,
-      executions: existingPosition.executions || [],  // FIXED: Preserve existing executions
+      executions: Array.isArray(existingPosition.executions) 
+        ? existingPosition.executions 
+        : (existingPosition.executions ? JSON.parse(existingPosition.executions) : []),  // Parse JSON executions
       totalQuantity: existingPosition.quantity,
       totalFees: existingPosition.commission || 0,
       entryValue: existingPosition.quantity * existingPosition.entryPrice,
       exitValue: 0,
       broker: existingPosition.broker || 'lightspeed',
       isExistingPosition: true, // Flag to identify this came from database
-      existingTradeId: existingPosition.id // Store original trade ID for updates
+      existingTradeId: existingPosition.id, // Store original trade ID for updates
+      newExecutionsAdded: 0 // Track how many new executions are actually added
     } : null;
     
     if (existingPosition) {
@@ -671,15 +674,35 @@ async function parseLightspeedTransactions(records, existingPositions = {}) {
         console.log(`  → Started new ${currentTrade.side} trade`);
       }
       
-      // Add execution to current trade
+      // Add execution to current trade (check for duplicates first)
       if (currentTrade) {
-        currentTrade.executions.push({
+        const newExecution = {
           action: transaction.side,
           quantity: qty,
           price: transaction.entryPrice,
           datetime: transaction.entryTime,
           fees: transaction.commission + transaction.fees
+        };
+        
+        // Simple duplicate check: same timestamp = same execution
+        // Normalize timestamps and compare
+        const newTime = new Date(newExecution.datetime).toISOString();
+        const executionExists = currentTrade.executions.some(exec => {
+          const existingTime = new Date(exec.datetime).toISOString();
+          return existingTime === newTime;
         });
+        
+        if (!executionExists) {
+          currentTrade.executions.push(newExecution);
+          if (currentTrade.isExistingPosition) {
+            currentTrade.newExecutionsAdded++;
+          }
+          if (symbol === 'PYXS' || symbol === 'CURR') {
+            console.log(`  ✅ Added new execution (${currentTrade.newExecutionsAdded} new total)`);
+          }
+        } else {
+          console.log(`  → Skipping duplicate execution: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
+        }
         
         // Accumulate total fees for this trade
         currentTrade.totalFees += (transaction.commission || 0) + (transaction.fees || 0);
@@ -740,7 +763,7 @@ async function parseLightspeedTransactions(records, existingPositions = {}) {
         
         // Mark as update if this was an existing position
         if (currentTrade.isExistingPosition) {
-          currentTrade.isUpdate = true;
+          currentTrade.isUpdate = currentTrade.newExecutionsAdded > 0;
           currentTrade.notes = `Closed existing position: ${currentTrade.executions.length} closing executions`;
           console.log(`  ✓ CLOSED existing ${currentTrade.side} position: ${currentTrade.totalQuantity} shares, P/L: $${currentTrade.pnl.toFixed(2)}`);
         } else {
@@ -1015,16 +1038,30 @@ async function parseSchwabTransactions(records, existingPositions = {}) {
         console.log(`  → Started new ${currentTrade.side} trade`);
       }
       
-      // Add execution to current trade
+      // Add execution to current trade (check for duplicates first)
       if (currentTrade) {
-        currentTrade.executions.push({
+        const newExecution = {
           action: transaction.action,
           quantity: qty,
           price: transaction.price,
           datetime: transaction.datetime,
           fees: transaction.fees || 0
-        });
-        currentTrade.totalFees += (transaction.fees || 0);
+        };
+        
+        // Check if this execution already exists (prevent duplicates on re-import)
+        const executionExists = currentTrade.executions.some(exec => 
+          new Date(exec.datetime).toISOString() === new Date(newExecution.datetime).toISOString()
+        );
+        
+        if (!executionExists) {
+          currentTrade.executions.push(newExecution);
+          currentTrade.totalFees += (transaction.fees || 0);
+          if (currentTrade.isExistingPosition) {
+            currentTrade.newExecutionsAdded++;
+          }
+        } else {
+          console.log(`  → Skipping duplicate execution: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
+        }
       }
       
       // Process the transaction
@@ -1222,7 +1259,8 @@ async function parseThinkorswimTransactions(records, existingPositions = {}) {
       exitValue: 0,
       broker: existingPosition.broker || 'thinkorswim',
       isExistingPosition: true,
-      existingTradeId: existingPosition.id
+      existingTradeId: existingPosition.id,
+      newExecutionsAdded: 0
     } : null;
     
     if (existingPosition) {
@@ -1253,16 +1291,30 @@ async function parseThinkorswimTransactions(records, existingPositions = {}) {
         console.log(`  → Started new ${currentTrade.side} trade`);
       }
       
-      // Add execution to current trade
+      // Add execution to current trade (check for duplicates first)
       if (currentTrade) {
-        currentTrade.executions.push({
+        const newExecution = {
           action: transaction.action,
           quantity: qty,
           price: transaction.price,
           datetime: transaction.datetime,
           fees: transaction.fees
-        });
-        currentTrade.totalFees += transaction.fees;
+        };
+        
+        // Check if this execution already exists (prevent duplicates on re-import)
+        const executionExists = currentTrade.executions.some(exec => 
+          new Date(exec.datetime).toISOString() === new Date(newExecution.datetime).toISOString()
+        );
+        
+        if (!executionExists) {
+          currentTrade.executions.push(newExecution);
+          currentTrade.totalFees += transaction.fees;
+          if (currentTrade.isExistingPosition) {
+            currentTrade.newExecutionsAdded++;
+          }
+        } else {
+          console.log(`  → Skipping duplicate execution: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
+        }
       }
       
       // Update position and values
@@ -1310,7 +1362,7 @@ async function parseThinkorswimTransactions(records, existingPositions = {}) {
         
         // Mark as update if this was an existing position
         if (currentTrade.isExistingPosition) {
-          currentTrade.isUpdate = true;
+          currentTrade.isUpdate = currentTrade.newExecutionsAdded > 0;
           currentTrade.notes = `Closed existing position: ${currentTrade.executions.length} closing executions`;
           console.log(`  ✓ CLOSED existing ${currentTrade.side} position: ${currentTrade.totalQuantity} shares, P/L: $${currentTrade.pnl.toFixed(2)}`);
         } else {

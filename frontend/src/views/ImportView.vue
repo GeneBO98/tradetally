@@ -212,7 +212,12 @@
       <div v-if="importHistory.length > 0" class="card">
         <div class="card-body">
           <div class="flex items-center justify-between mb-4">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white">Import History</h3>
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white">
+              Import History
+              <span v-if="pagination.total > 0" class="text-sm font-normal text-gray-500 dark:text-gray-400">
+                ({{ importHistory.length }} of {{ pagination.total }})
+              </span>
+            </h3>
             <button @click="fetchLogs" class="btn-secondary text-sm">
               View Logs
             </button>
@@ -253,38 +258,157 @@
               </div>
             </div>
           </div>
+          
+          <!-- Load More Button -->
+          <div v-if="pagination.hasMore" class="mt-4 text-center">
+            <button
+              @click="loadMoreHistory"
+              class="btn-secondary text-sm"
+            >
+              Load More ({{ pagination.total - importHistory.length }} remaining)
+            </button>
+          </div>
         </div>
       </div>
 
       <!-- Logs Modal -->
-      <div v-if="showLogs" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-        <div class="relative top-20 mx-auto p-5 border w-11/12 max-w-4xl shadow-lg rounded-md bg-white dark:bg-gray-800">
-          <div class="mt-3">
-            <div class="flex items-center justify-between mb-4">
-              <h3 class="text-lg font-medium text-gray-900 dark:text-white">Import Logs</h3>
-              <button @click="showLogs = false" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
-                <XMarkIcon class="h-6 w-6" />
-              </button>
+      <div v-if="showLogs" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg w-11/12 max-w-4xl h-3/4 flex flex-col">
+          <!-- Header -->
+          <div class="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-700">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white">Import Logs</h3>
+            <button @click="showLogs = false" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+              <XMarkIcon class="h-6 w-6" />
+            </button>
+          </div>
+          
+          <!-- Content -->
+          <div class="flex-1 p-5 overflow-hidden flex">
+            
+            <!-- Left Column: Log Files List -->
+            <div class="w-1/3 pr-4 flex flex-col">
+              <div v-if="logFiles.length === 0" class="text-center py-4 text-gray-500 dark:text-gray-400">
+                No log files found
+              </div>
+              
+              <div v-else class="flex flex-col h-full">
+                <!-- File count and toggle -->
+                <div class="flex items-center justify-between mb-4">
+                  <span class="text-sm text-gray-600 dark:text-gray-400">
+                    {{ logFilesPagination.showAll ? 'All log files' : 'Today\'s log files' }}
+                    ({{ logFiles.length }} of {{ logFilesPagination.total }})
+                  </span>
+                  <button
+                    v-if="logFilesPagination.olderFiles > 0"
+                    @click="toggleLogFiles"
+                    class="btn-secondary text-sm"
+                  >
+                    {{ logFilesPagination.showAll ? 'Show Today Only' : 'Show All Files' }}
+                  </button>
+                </div>
+                
+                <!-- Log files list with scroll -->
+                <div class="flex-1 overflow-y-auto space-y-2 pr-2 border border-gray-200 dark:border-gray-600 rounded-lg p-3">
+                  <button
+                    v-for="logFile in logFiles"
+                    :key="logFile.name"
+                    @click="loadLogFile(logFile.name)"
+                    class="w-full text-left p-2 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700"
+                    :class="{ 'bg-primary-50 dark:bg-primary-900/20': selectedLogFile === logFile.name }"
+                  >
+                    {{ logFile.name }}
+                  </button>
+                  
+                  <!-- Load More Button -->
+                  <div v-if="logFilesPagination.hasMore" class="text-center pt-2">
+                    <button
+                      @click="loadMoreLogFiles"
+                      class="btn-secondary text-sm"
+                    >
+                      Load More ({{ logFilesPagination.total - logFiles.length }} remaining)
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
             
-            <div v-if="logFiles.length === 0" class="text-center py-4 text-gray-500 dark:text-gray-400">
-              No log files found
-            </div>
-            
-            <div v-else class="space-y-2 mb-4">
-              <button
-                v-for="logFile in logFiles"
-                :key="logFile.name"
-                @click="loadLogFile(logFile.name)"
-                class="w-full text-left p-2 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700"
-                :class="{ 'bg-primary-50 dark:bg-primary-900/20': selectedLogFile === logFile.name }"
-              >
-                {{ logFile.name }}
-              </button>
-            </div>
-            
-            <div v-if="logContent" class="bg-gray-100 dark:bg-gray-900 p-4 rounded-lg max-h-96 overflow-y-auto">
-              <pre class="text-xs text-gray-800 dark:text-gray-200 whitespace-pre-wrap">{{ logContent }}</pre>
+            <!-- Right Column: Log Content -->
+            <div class="w-2/3 pl-4 flex flex-col">
+              <div v-if="!selectedLogFile" class="flex-1 flex items-center justify-center text-gray-500 dark:text-gray-400">
+                Select a log file to view its contents
+              </div>
+              
+              <div v-else-if="selectedLogFile" class="flex flex-col h-full">
+                <div class="flex items-center justify-between mb-4">
+                  <div>
+                    <h5 class="font-medium text-gray-900 dark:text-white">{{ selectedLogFile }}</h5>
+                    <div class="flex items-center space-x-2 mt-1">
+                      <span v-if="logPagination.total > 0" class="text-sm text-gray-500 dark:text-gray-400">
+                        Showing {{ Math.min(logPagination.page * logPagination.limit, logPagination.total) }} of {{ logPagination.total }} lines
+                        <span v-if="logSearchQuery">(filtered)</span>
+                      </span>
+                      <span v-if="!logPagination.showAll && logPagination.filteredOut > 0" class="text-xs text-blue-600 dark:text-blue-400">
+                        (Last 24 hours)
+                      </span>
+                    </div>
+                  </div>
+                  <div class="flex items-center space-x-2">
+                    <button
+                      v-if="logPagination.filteredOut > 0"
+                      @click="toggleLogView"
+                      class="btn-secondary text-sm"
+                    >
+                      {{ logPagination.showAll ? 'Show Last 24h' : `Show All (${logPagination.totalAllLines} lines)` }}
+                    </button>
+                  </div>
+                </div>
+                
+                <!-- Search bar -->
+                <div class="mb-4">
+                  <div class="relative">
+                    <input
+                      v-model="logSearchQuery"
+                      type="text"
+                      placeholder="Search logs... (e.g. CURR, SLRX, duplicate, error)"
+                      class="input pl-10 pr-10"
+                      @input="searchLogs"
+                    />
+                    <MagnifyingGlassIcon class="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                    <button
+                      v-if="logSearchQuery"
+                      @click="clearSearch"
+                      class="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                    >
+                      <XMarkIcon class="h-5 w-5" />
+                    </button>
+                  </div>
+                  <div v-if="logSearchQuery && searchResults" class="mt-2 text-sm text-gray-600 dark:text-gray-400">
+                    Found {{ searchResults.matchCount }} matches in {{ searchResults.lineCount }} lines
+                  </div>
+                </div>
+                
+                <div class="flex-1 bg-gray-100 dark:bg-gray-900 p-4 rounded-lg overflow-y-auto">
+                  <div v-if="logSearchQuery && !logContent" class="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">
+                    <div class="text-center">
+                      <MagnifyingGlassIcon class="h-12 w-12 mx-auto mb-3 opacity-50" />
+                      <p class="text-sm">No results found for "{{ logSearchQuery }}"</p>
+                      <button @click="clearSearch" class="mt-2 text-xs text-primary-600 dark:text-primary-400 hover:underline">
+                        Clear search
+                      </button>
+                    </div>
+                  </div>
+                  <pre v-else class="text-xs text-gray-800 dark:text-gray-200 whitespace-pre-wrap" v-html="highlightedLogContent"></pre>
+                </div>
+                
+                <div v-if="logPagination.hasMore" class="text-center mt-4">
+                  <button
+                    @click="loadMoreLogs"
+                    class="btn-secondary text-sm"
+                  >
+                    Load More ({{ logPagination.total - (logPagination.page * logPagination.limit) }} lines remaining)
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -488,11 +612,11 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useTradesStore } from '@/stores/trades'
 import { useNotification } from '@/composables/useNotification'
 import { format } from 'date-fns'
-import { ArrowUpTrayIcon, XMarkIcon, ExclamationTriangleIcon, Cog6ToothIcon } from '@heroicons/vue/24/outline'
+import { ArrowUpTrayIcon, XMarkIcon, ExclamationTriangleIcon, Cog6ToothIcon, MagnifyingGlassIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
 import UnmappedCusipsModal from '@/components/cusip/UnmappedCusipsModal.vue'
 import AllCusipMappingsModal from '@/components/cusip/AllCusipMappingsModal.vue'
@@ -509,12 +633,43 @@ const selectedFile = ref(null)
 const fileInput = ref(null)
 const dragOver = ref(false)
 const importHistory = ref([])
+const pagination = ref({
+  page: 1,
+  limit: 5,
+  total: 0,
+  totalPages: 0,
+  hasMore: false
+})
 const deleting = ref(false)
 const showLogs = ref(false)
 const showFormats = ref(false)
 const logFiles = ref([])
+const logFilesPagination = ref({
+  page: 1,
+  limit: 10,
+  total: 0,
+  totalPages: 0,
+  hasMore: false,
+  showAll: false,
+  totalFiles: 0,
+  todayFiles: 0,
+  olderFiles: 0
+})
 const logContent = ref('')
+const originalLogContent = ref('')
+const logSearchQuery = ref('')
+const searchResults = ref(null)
 const selectedLogFile = ref('')
+const logPagination = ref({
+  page: 1,
+  limit: 100,
+  total: 0,
+  totalPages: 0,
+  hasMore: false,
+  showAll: false,
+  totalAllLines: 0,
+  filteredOut: 0
+})
 const cusipLoading = ref(false)
 const cusipForm = ref({
   cusip: '',
@@ -734,12 +889,37 @@ async function handleImport() {
   }
 }
 
-async function fetchImportHistory() {
+async function fetchImportHistory(page = 1) {
   try {
-    const response = await api.get('/trades/import/history')
-    importHistory.value = response.data.imports || []
+    const response = await api.get('/trades/import/history', {
+      params: {
+        page,
+        limit: pagination.value.limit
+      }
+    })
+    
+    if (page === 1) {
+      importHistory.value = response.data.imports || []
+    } else {
+      // Append to existing history for "Load More"
+      importHistory.value.push(...(response.data.imports || []))
+    }
+    
+    pagination.value = response.data.pagination || {
+      page: 1,
+      limit: 5,
+      total: 0,
+      totalPages: 0,
+      hasMore: false
+    }
   } catch (error) {
     console.error('Failed to fetch import history:', error)
+  }
+}
+
+function loadMoreHistory() {
+  if (pagination.value.hasMore) {
+    fetchImportHistory(pagination.value.page + 1)
   }
 }
 
@@ -771,24 +951,165 @@ async function confirmDelete() {
   }
 }
 
-async function fetchLogs() {
+async function fetchLogs(showAll = null, page = 1) {
   try {
-    const response = await api.get('/trades/import/logs')
-    logFiles.value = response.data.logFiles || []
-    showLogs.value = true
+    // If showAll is explicitly passed, update the state and reset page
+    if (showAll !== null) {
+      logFilesPagination.value.showAll = showAll
+      page = 1
+    }
+    
+    const response = await api.get('/trades/import/logs', {
+      params: { 
+        showAll: logFilesPagination.value.showAll.toString(),
+        page,
+        limit: logFilesPagination.value.limit
+      }
+    })
+    
+    if (page === 1) {
+      logFiles.value = response.data.logFiles || []
+    } else {
+      // Append for "Load More"
+      logFiles.value.push(...(response.data.logFiles || []))
+    }
+    
+    logFilesPagination.value = {
+      ...logFilesPagination.value,
+      ...response.data.pagination
+    }
+    
+    if (page === 1) {
+      showLogs.value = true
+    }
   } catch (error) {
     showError('Load Failed', 'Failed to load log files')
   }
 }
 
-async function loadLogFile(filename) {
+function toggleLogFiles() {
+  fetchLogs(!logFilesPagination.value.showAll)
+}
+
+function loadMoreLogFiles() {
+  if (logFilesPagination.value.hasMore) {
+    fetchLogs(null, logFilesPagination.value.page + 1)
+  }
+}
+
+// Computed property for highlighted log content
+const highlightedLogContent = computed(() => {
+  if (!logSearchQuery.value || !logContent.value) {
+    return logContent.value
+  }
+  
+  try {
+    const query = logSearchQuery.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const regex = new RegExp(`(${query})`, 'gi')
+    return logContent.value.replace(regex, '<mark class="bg-yellow-300 dark:bg-yellow-600 text-black dark:text-white">$1</mark>')
+  } catch (error) {
+    return logContent.value
+  }
+})
+
+// Search logs function - debounced server-side search
+let searchTimeout = null
+function searchLogs() {
+  // Clear existing timeout
+  if (searchTimeout) {
+    clearTimeout(searchTimeout)
+  }
+  
+  // Debounce the search to avoid too many requests
+  searchTimeout = setTimeout(() => {
+    if (selectedLogFile.value) {
+      // Reload log file with search query
+      loadLogFile(selectedLogFile.value, 1, logPagination.value.showAll, logSearchQuery.value)
+    }
+  }, 300) // 300ms debounce
+}
+
+// Clear search
+function clearSearch() {
+  logSearchQuery.value = ''
+  searchResults.value = null
+  // Reload without search
+  if (selectedLogFile.value) {
+    loadLogFile(selectedLogFile.value, 1, logPagination.value.showAll, '')
+  }
+}
+
+async function loadLogFile(filename, page = 1, showAll = null, search = null) {
   try {
     selectedLogFile.value = filename
-    const response = await api.get(`/trades/import/logs/${filename}`)
-    logContent.value = response.data.content || 'No content available'
+    
+    // Only reset search if explicitly loading a new file (search is null)
+    if (search === null && page === 1) {
+      logSearchQuery.value = ''
+      searchResults.value = null
+    } else if (search !== null) {
+      // Search was explicitly provided (including empty string to clear)
+      logSearchQuery.value = search
+    }
+    
+    // If showAll is explicitly passed, update the state, otherwise use current state
+    if (showAll !== null) {
+      logPagination.value.showAll = showAll
+      page = 1 // Reset to first page when toggling view
+    }
+    
+    // On first load, default to showing only last 24 hours
+    if (showAll === null && page === 1 && search === null) {
+      logPagination.value.showAll = false
+    }
+    
+    const response = await api.get(`/trades/import/logs/${filename}`, {
+      params: {
+        page,
+        limit: logPagination.value.limit,
+        showAll: logPagination.value.showAll.toString(),
+        search: logSearchQuery.value
+      }
+    })
+    
+    if (page === 1) {
+      logContent.value = response.data.content || 'No content available'
+      originalLogContent.value = logContent.value
+    } else {
+      // Append to existing content for "Load More"
+      logContent.value += '\n' + (response.data.content || '')
+      originalLogContent.value = logContent.value
+    }
+    
+    logPagination.value = {
+      ...logPagination.value,
+      ...response.data.pagination
+    }
+    
+    // Update search results if searching
+    if (response.data.pagination.searchQuery) {
+      searchResults.value = {
+        matchCount: response.data.pagination.searchMatchCount || 0,
+        lineCount: response.data.pagination.searchLineCount || 0
+      }
+    } else {
+      searchResults.value = null
+    }
   } catch (error) {
     showError('Load Failed', 'Failed to load log file content')
     logContent.value = 'Failed to load content'
+  }
+}
+
+function loadMoreLogs() {
+  if (logPagination.value.hasMore && selectedLogFile.value) {
+    loadLogFile(selectedLogFile.value, logPagination.value.page + 1, null, logSearchQuery.value)
+  }
+}
+
+function toggleLogView() {
+  if (selectedLogFile.value) {
+    loadLogFile(selectedLogFile.value, 1, !logPagination.value.showAll, logSearchQuery.value)
   }
 }
 
