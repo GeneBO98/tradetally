@@ -17,13 +17,13 @@ mkdir tradetally
 cd tradetally
 
 # Download the production docker-compose file
-curl -O https://raw.githubusercontent.com/YOUR_USERNAME/trader-vue/main/docker-compose.production.yaml
+curl -O https://raw.githubusercontent.com/GeneBO98/tradetally/refs/heads/main/docker-compose.yaml
 
 # Download the environment template
-curl -O https://raw.githubusercontent.com/YOUR_USERNAME/trader-vue/main/.env.production.example
+curl -O https://raw.githubusercontent.com/GeneBO98/tradetally/main/.env.example
 
 # Rename to .env
-mv .env.production.example .env
+cp .env.example .env
 ```
 
 ### 2. Configure Environment
