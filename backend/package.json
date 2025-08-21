@@ -11,7 +11,7 @@
     "migrate:export": "node run-export-migration.js"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.56.0",
+    "@anthropic-ai/sdk": "^0.57.0",
     "@google/generative-ai": "^0.24.1",
     "axios": "^1.10.0",
     "bcrypt": "^6.0.0",
