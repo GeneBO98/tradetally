@@ -90,19 +90,39 @@
       <!-- Format Examples -->
       <div class="card">
         <div class="card-body">
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Supported CSV Formats</h3>
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white">Supported CSV Formats</h3>
+            <button
+              @click="showFormats = !showFormats"
+              class="flex items-center space-x-2 text-sm text-primary-600 dark:text-primary-400 hover:text-primary-500"
+            >
+              <span>{{ showFormats ? 'Hide' : 'Show' }} Formats</span>
+              <svg 
+                class="w-4 h-4 transition-transform duration-200"
+                :class="{ 'rotate-180': showFormats }"
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+              >
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+          </div>
           
-          <div class="space-y-6">
+          <div v-show="showFormats" class="space-y-6">
             <div>
               <h4 class="font-medium text-gray-900 dark:text-white">Generic CSV</h4>
               <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
-                Use this format if your broker isn't listed or for custom CSV files.
+                Use this format if your broker isn't listed or for custom CSV files. Supports comma, semicolon, or tab separators.
               </p>
               <div class="bg-gray-50 dark:bg-gray-800 rounded-md p-3 text-xs font-mono overflow-x-auto">
                 Symbol,Date,Entry Price,Exit Price,Quantity,Side,Commission,Fees<br>
                 AAPL,2024-01-15,150.25,155.50,100,long,1.00,0.50<br>
                 TSLA,2024-01-16,200.00,,50,short,1.00,0.50
               </div>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                <strong>Alternative column names:</strong> Symbol/symbol, Date/Trade Date, Entry Price/Buy Price/Price, Exit Price/Sell Price, Quantity/Shares/Size, Side/Direction/Type, Commission/Fees
+              </p>
             </div>
 
             <div>
@@ -111,22 +131,28 @@
                 Export from Lightspeed's "Reports" > "Trade Blotter" section as CSV.
               </p>
               <div class="bg-gray-50 dark:bg-gray-800 rounded-md p-3 text-xs font-mono overflow-x-auto">
-                Account Number,Side,Symbol,Trade Date,Price,Qty,Commission Amount<br>
-                12345,B,AAPL,02/03/2025,150.25,100,1.00<br>
-                12345,S,AAPL,02/03/2025,155.50,100,1.00
+                Symbol,Trade Date,Price,Qty,Side,Commission Amount,Execution Time,Trade Number<br>
+                AAPL,02/03/2025,150.25,100,B,1.00,09:30,12345<br>
+                AAPL,02/03/2025,155.50,100,S,1.00,14:30,12346
               </div>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                <strong>Required columns:</strong> Symbol, Trade Date, Price, Qty, Side (B/S), Commission Amount. Optional: Execution Time, Buy/Sell, Security Type, fee columns (FeeSEC, FeeMF, etc.)
+              </p>
             </div>
 
             <div>
               <h4 class="font-medium text-gray-900 dark:text-white">ThinkorSwim</h4>
               <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
-                Export from ThinkorSwim's "Account Statement" section.
+                Export from ThinkorSwim's "Account Statement" section. Only processes trade (TRD) records.
               </p>
               <div class="bg-gray-50 dark:bg-gray-800 rounded-md p-3 text-xs font-mono overflow-x-auto">
-                Exec Time,Symbol,Side,Qty,Price,Commission<br>
-                2024-01-15 09:30:00,AAPL,BUY,100,150.25,1.00<br>
-                2024-01-15 10:45:00,AAPL,SELL,100,155.50,1.00
+                DATE,TIME,TYPE,DESCRIPTION,Commissions & Fees,Misc Fees<br>
+                01/15/2024,09:30:00,TRD,"BOT +100 AAPL @150.25",1.00,0.00<br>
+                01/15/2024,10:45:00,TRD,"SOLD -100 AAPL @155.50",1.00,0.00
               </div>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                <strong>Required columns:</strong> DATE, TIME, TYPE (must be "TRD"), DESCRIPTION (BOT/SOLD format). Optional: Commissions & Fees, Misc Fees
+              </p>
             </div>
 
             <div>
@@ -135,10 +161,47 @@
                 Export from IBKR's "Reports" > "Trade Confirmation" section.
               </p>
               <div class="bg-gray-50 dark:bg-gray-800 rounded-md p-3 text-xs font-mono overflow-x-auto">
-                DateTime,Symbol,Quantity,Price,Commission<br>
-                2024-01-15 09:30:00,AAPL,100,150.25,1.00<br>
-                2024-01-15 10:45:00,AAPL,-100,155.50,1.00
+                Symbol,DateTime,Quantity,Price,Commission,Fees<br>
+                AAPL,2024-01-15 09:30:00,100,150.25,1.00,0.00<br>
+                AAPL,2024-01-15 10:45:00,-100,155.50,1.00,0.00
               </div>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                <strong>Required columns:</strong> Symbol, DateTime, Quantity (positive=buy, negative=sell), Price. Optional: Commission, Fees
+              </p>
+            </div>
+
+            <div>
+              <h4 class="font-medium text-gray-900 dark:text-white">E*TRADE</h4>
+              <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
+                Export from E*TRADE's transaction history.
+              </p>
+              <div class="bg-gray-50 dark:bg-gray-800 rounded-md p-3 text-xs font-mono overflow-x-auto">
+                Symbol,Transaction Date,Transaction Type,Quantity,Price,Commission,Fees<br>
+                AAPL,01/15/2024,Buy,100,150.25,1.00,0.00<br>
+                AAPL,01/15/2024,Sell,100,155.50,1.00,0.00
+              </div>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                <strong>Required columns:</strong> Symbol, Transaction Date, Transaction Type (Buy/Sell), Quantity, Price. Optional: Commission, Fees
+              </p>
+            </div>
+
+            <div>
+              <h4 class="font-medium text-gray-900 dark:text-white">Charles Schwab</h4>
+              <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
+                Supports both completed trades export and transaction history. Tab-separated files are automatically detected.
+              </p>
+              <div class="bg-gray-50 dark:bg-gray-800 rounded-md p-3 text-xs font-mono overflow-x-auto">
+                <strong>Completed Trades:</strong><br>
+                Symbol,Opened Date,Closed Date,Quantity,Cost Per Share,Proceeds Per Share,Gain/Loss ($)<br>
+                AAPL,01/15/2024,01/15/2024,100,150.25,155.50,525.00<br><br>
+                <strong>Transaction History:</strong><br>
+                Date,Action,Symbol,Description,Quantity,Price,Fees & Comm,Amount<br>
+                01/15/2024,Buy,AAPL,Buy,100,150.25,1.00,15026.00<br>
+                01/15/2024,Sell,AAPL,Sell,100,155.50,1.00,15549.00
+              </div>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                <strong>Supports both formats:</strong> Completed trades with P&L or individual transactions. Auto-detects format and delimiter.
+              </p>
             </div>
           </div>
         </div>
@@ -148,7 +211,12 @@
       <div v-if="importHistory.length > 0" class="card">
         <div class="card-body">
           <div class="flex items-center justify-between mb-4">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white">Import History</h3>
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white">
+              Import History
+              <span v-if="pagination.total > 0" class="text-sm font-normal text-gray-500 dark:text-gray-400">
+                ({{ importHistory.length }} of {{ pagination.total }})
+              </span>
+            </h3>
             <button @click="fetchLogs" class="btn-secondary text-sm">
               View Logs
             </button>
@@ -180,7 +248,7 @@
                   </p>
                 </div>
                 <button
-                  @click="confirmDeleteImport(importLog.id)"
+                  @click="deleteImport(importLog.id)"
                   class="text-red-600 hover:text-red-500 text-sm"
                   :disabled="deleting"
                 >
@@ -189,83 +257,213 @@
               </div>
             </div>
           </div>
+          
+          <!-- Load More Button -->
+          <div v-if="pagination.hasMore" class="mt-4 text-center">
+            <button
+              @click="loadMoreHistory"
+              class="btn-secondary text-sm"
+            >
+              Load More ({{ pagination.total - importHistory.length }} remaining)
+            </button>
+          </div>
         </div>
       </div>
 
       <!-- Logs Modal -->
-      <div v-if="showLogs" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-        <div class="relative top-20 mx-auto p-5 border w-11/12 max-w-4xl shadow-lg rounded-md bg-white dark:bg-gray-800">
-          <div class="mt-3">
-            <div class="flex items-center justify-between mb-4">
-              <h3 class="text-lg font-medium text-gray-900 dark:text-white">Import Logs</h3>
-              <button @click="showLogs = false" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
-                <XMarkIcon class="h-6 w-6" />
-              </button>
+      <div v-if="showLogs" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg w-11/12 max-w-4xl h-3/4 flex flex-col">
+          <!-- Header -->
+          <div class="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-700">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white">Import Logs</h3>
+            <button @click="showLogs = false" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+              <XMarkIcon class="h-6 w-6" />
+            </button>
+          </div>
+          
+          <!-- Content -->
+          <div class="flex-1 p-5 overflow-hidden flex">
+            
+            <!-- Left Column: Log Files List -->
+            <div class="w-1/3 pr-4 flex flex-col">
+              <div v-if="logFiles.length === 0" class="text-center py-4 text-gray-500 dark:text-gray-400">
+                No log files found
+              </div>
+              
+              <div v-else class="flex flex-col h-full">
+                <!-- File count and toggle -->
+                <div class="flex items-center justify-between mb-4">
+                  <span class="text-sm text-gray-600 dark:text-gray-400">
+                    {{ logFilesPagination.showAll ? 'All log files' : 'Today\'s log files' }}
+                    ({{ logFiles.length }} of {{ logFilesPagination.total }})
+                  </span>
+                  <button
+                    v-if="logFilesPagination.olderFiles > 0"
+                    @click="toggleLogFiles"
+                    class="btn-secondary text-sm"
+                  >
+                    {{ logFilesPagination.showAll ? 'Show Today Only' : 'Show All Files' }}
+                  </button>
+                </div>
+                
+                <!-- Log files list with scroll -->
+                <div class="flex-1 overflow-y-auto space-y-2 pr-2 border border-gray-200 dark:border-gray-600 rounded-lg p-3">
+                  <button
+                    v-for="logFile in logFiles"
+                    :key="logFile.name"
+                    @click="loadLogFile(logFile.name)"
+                    class="w-full text-left p-2 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700"
+                    :class="{ 'bg-primary-50 dark:bg-primary-900/20': selectedLogFile === logFile.name }"
+                  >
+                    {{ logFile.name }}
+                  </button>
+                  
+                  <!-- Load More Button -->
+                  <div v-if="logFilesPagination.hasMore" class="text-center pt-2">
+                    <button
+                      @click="loadMoreLogFiles"
+                      class="btn-secondary text-sm"
+                    >
+                      Load More ({{ logFilesPagination.total - logFiles.length }} remaining)
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
             
-            <div v-if="logFiles.length === 0" class="text-center py-4 text-gray-500 dark:text-gray-400">
-              No log files found
-            </div>
-            
-            <div v-else class="space-y-2 mb-4">
-              <button
-                v-for="logFile in logFiles"
-                :key="logFile.name"
-                @click="loadLogFile(logFile.name)"
-                class="w-full text-left p-2 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700"
-                :class="{ 'bg-primary-50 dark:bg-primary-900/20': selectedLogFile === logFile.name }"
-              >
-                {{ logFile.name }}
-              </button>
-            </div>
-            
-            <div v-if="logContent" class="bg-gray-100 dark:bg-gray-900 p-4 rounded-lg max-h-96 overflow-y-auto">
-              <pre class="text-xs text-gray-800 dark:text-gray-200 whitespace-pre-wrap">{{ logContent }}</pre>
+            <!-- Right Column: Log Content -->
+            <div class="w-2/3 pl-4 flex flex-col">
+              <div v-if="!selectedLogFile" class="flex-1 flex items-center justify-center text-gray-500 dark:text-gray-400">
+                Select a log file to view its contents
+              </div>
+              
+              <div v-else-if="selectedLogFile" class="flex flex-col h-full">
+                <div class="flex items-center justify-between mb-4">
+                  <div>
+                    <h5 class="font-medium text-gray-900 dark:text-white">{{ selectedLogFile }}</h5>
+                    <div class="flex items-center space-x-2 mt-1">
+                      <span v-if="logPagination.total > 0" class="text-sm text-gray-500 dark:text-gray-400">
+                        Showing {{ logPagination.linesShown || Math.min(logPagination.page * logPagination.limit, logPagination.total) }} of {{ logPagination.total }} lines
+                        <span v-if="logSearchQuery">(filtered)</span>
+                      </span>
+                      <span v-if="!logPagination.showAll && logPagination.filteredOut > 0" class="text-xs text-blue-600 dark:text-blue-400">
+                        (Last 24 hours)
+                      </span>
+                    </div>
+                  </div>
+                  <div class="flex items-center space-x-2">
+                    <button
+                      v-if="logPagination.filteredOut > 0"
+                      @click="toggleLogView"
+                      class="btn-secondary text-sm"
+                    >
+                      {{ logPagination.showAll ? 'Show Last 24h' : `Show All (${logPagination.totalAllLines} lines)` }}
+                    </button>
+                  </div>
+                </div>
+                
+                <!-- Search bar -->
+                <div class="mb-4">
+                  <div class="relative">
+                    <input
+                      v-model="logSearchQuery"
+                      type="text"
+                      placeholder="Search logs... (e.g. CURR, SLRX, duplicate, error)"
+                      class="input pl-10 pr-10"
+                      @input="searchLogs"
+                    />
+                    <MagnifyingGlassIcon class="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                    <button
+                      v-if="logSearchQuery"
+                      @click="clearSearch"
+                      class="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                    >
+                      <XMarkIcon class="h-5 w-5" />
+                    </button>
+                  </div>
+                  <div v-if="logSearchQuery && searchResults" class="mt-2 text-sm text-gray-600 dark:text-gray-400">
+                    Found {{ searchResults.matchCount }} matches in {{ searchResults.lineCount }} lines
+                  </div>
+                </div>
+                
+                <div class="flex-1 bg-gray-100 dark:bg-gray-900 p-4 rounded-lg overflow-y-auto">
+                  <div v-if="logSearchQuery && !logContent" class="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">
+                    <div class="text-center">
+                      <MagnifyingGlassIcon class="h-12 w-12 mx-auto mb-3 opacity-50" />
+                      <p class="text-sm">No results found for "{{ logSearchQuery }}"</p>
+                      <button @click="clearSearch" class="mt-2 text-xs text-primary-600 dark:text-primary-400 hover:underline">
+                        Clear search
+                      </button>
+                    </div>
+                  </div>
+                  <pre v-else class="text-xs text-gray-800 dark:text-gray-200 whitespace-pre-wrap" v-html="highlightedLogContent"></pre>
+                </div>
+                
+                <div v-if="logPagination.hasMore" class="text-center mt-4">
+                  <button
+                    @click="loadMoreLogs"
+                    class="btn-secondary text-sm"
+                  >
+                    Load Older Entries ({{ logPagination.total - (logPagination.linesShown || (logPagination.page * logPagination.limit)) }} remaining)
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Delete Confirmation Modal -->
-      <div v-if="showDeleteConfirm" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-        <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white dark:bg-gray-800">
-          <div class="mt-3 text-center">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white">Delete Import</h3>
-            <div class="mt-2 px-7 py-3">
-              <p class="text-sm text-gray-500 dark:text-gray-400">
-                Are you sure you want to delete this import and all associated trades? 
-                This action cannot be undone.
-              </p>
-            </div>
-            <div class="flex justify-center space-x-4 px-4 py-3">
-              <button
-                @click="showDeleteConfirm = false"
-                class="px-4 py-2 bg-gray-300 text-gray-800 text-base font-medium rounded-md shadow-sm hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-300 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500"
-              >
-                Cancel
-              </button>
-              <button
-                @click="executeDelete"
-                :disabled="deleting"
-                class="px-4 py-2 bg-red-600 text-white text-base font-medium rounded-md shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50"
-              >
-                <span v-if="deleting">Deleting...</span>
-                <span v-else>Delete</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
 
       <!-- CUSIP Management -->
       <div class="card">
         <div class="card-body">
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
-            CUSIP to Ticker Lookup
-          </h3>
-          <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
-            Manage CUSIP to ticker symbol mappings. Add mappings for securities that appear as CUSIP numbers instead of ticker symbols.
-          </p>
+          <div class="flex items-start justify-between mb-4">
+            <div>
+              <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">
+                CUSIP Symbol Mappings
+              </h3>
+              <p class="text-sm text-gray-600 dark:text-gray-400">
+                Some brokers export trades with CUSIP codes instead of ticker symbols. Manage how these codes are mapped to ticker symbols for better organization and filtering.
+              </p>
+            </div>
+            <div class="flex items-center space-x-2 ml-4">
+              <!-- CUSIP management buttons disabled until backend endpoints are available -->
+              <!--
+              <button
+                @click="showAllMappingsModal = true"
+                class="btn-secondary text-sm"
+              >
+                <Cog6ToothIcon class="h-5 w-5 mr-2" />
+                Manage All
+              </button>
+              <button
+                v-if="unmappedCusipsCount > 0"
+                @click="showUnmappedModal = true"
+                class="btn-yellow text-sm"
+              >
+                <ExclamationTriangleIcon class="h-5 w-5 mr-2" />
+                {{ unmappedCusipsCount }} Unmapped
+              </button>
+              -->
+            </div>
+          </div>
+          
+          <!-- Unmapped warning disabled until backend endpoint is available -->
+          <!--
+          <div v-if="unmappedCusipsCount > 0" class="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md p-3 mb-6">
+            <div class="flex items-center">
+              <ExclamationTriangleIcon class="h-5 w-5 text-yellow-600 dark:text-yellow-400 mr-2" />
+              <div class="text-sm">
+                <span class="font-medium text-yellow-800 dark:text-yellow-200">
+                  {{ unmappedCusipsCount }} unmapped CUSIP{{ unmappedCusipsCount !== 1 ? 's' : '' }} found in your trades
+                </span>
+                <p class="text-yellow-700 dark:text-yellow-300 mt-1">
+                  These trades may not appear when filtering by ticker symbol. Click "Unmapped" to resolve them.
+                </p>
+              </div>
+            </div>
+          </div>
+          -->
           
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <!-- Add New Mapping -->
@@ -322,7 +520,7 @@
                 <button
                   @click="lookupCusip"
                   :disabled="!lookupForm.cusip || cusipLoading"
-                  class="btn-secondary w-full"
+                  class="btn-primary w-full"
                 >
                   <span v-if="cusipLoading">Looking up...</span>
                   <span v-else>Lookup</span>
@@ -340,50 +538,78 @@
                       CUSIP {{ lookupResult.cusip }} not found
                     </span>
                   </p>
+                  <div v-if="lookupResult.found" class="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                    Source: {{ lookupResult.source }} • {{ lookupResult.verified ? 'Verified' : 'Unverified' }}
+                  </div>
                 </div>
               </div>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
 
-          <!-- Current Mappings -->
-          <div v-if="cusipMappings && Object.keys(cusipMappings).length > 0" class="mt-6">
-            <h4 class="font-medium text-gray-900 dark:text-white mb-3">Current Mappings</h4>
-            <div class="overflow-x-auto">
-              <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                <thead>
-                  <tr>
-                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                      CUSIP
-                    </th>
-                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                      Ticker
-                    </th>
-                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-                  <tr v-for="(ticker, cusip) in cusipMappings" :key="cusip">
-                    <td class="px-3 py-2 text-sm font-mono text-gray-900 dark:text-white">
-                      {{ cusip }}
-                    </td>
-                    <td class="px-3 py-2 text-sm font-medium text-gray-900 dark:text-white">
-                      {{ ticker }}
-                    </td>
-                    <td class="px-3 py-2 text-sm">
-                      <button 
-                        @click="deleteCusipMapping(cusip)"
-                        class="text-red-600 hover:text-red-500 text-sm font-medium disabled:opacity-50"
-                        :disabled="cusipLoading"
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+    <!-- CUSIP Modals disabled until backend endpoints are available -->
+    <!--
+    <UnmappedCusipsModal
+      v-if="showUnmappedModal"
+      :isOpen="showUnmappedModal"
+      :unmappedCusips="unmappedCusips"
+      @close="showUnmappedModal = false"
+      @mappingCreated="handleMappingCreated"
+    />
+
+    <AllCusipMappingsModal
+      v-if="showAllMappingsModal"
+      :isOpen="showAllMappingsModal"
+      @close="showAllMappingsModal = false"
+      @mappingChanged="handleMappingCreated"
+    />
+    -->
+
+    <!-- Delete Import Confirmation Modal -->
+    <div v-if="showDeleteModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+      <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white dark:bg-gray-800">
+        <div class="mt-3 text-center">
+          <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 dark:bg-red-900">
+            <ExclamationTriangleIcon class="h-6 w-6 text-red-600 dark:text-red-400" />
+          </div>
+          <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white mt-4">
+            Delete Import
+          </h3>
+          <div class="mt-2 px-7 py-3">
+            <p class="text-sm text-gray-500 dark:text-gray-400">
+              Are you sure you want to delete this import and all associated trades?
+            </p>
+            <div v-if="deleteImportData" class="mt-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-md text-left">
+              <p class="text-sm font-medium text-gray-900 dark:text-white">{{ deleteImportData.file_name }}</p>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                {{ formatDate(deleteImportData.created_at) }}
+              </p>
+              <p class="text-xs text-gray-500 dark:text-gray-400">
+                {{ deleteImportData.trades_imported }} trades will be deleted
+              </p>
             </div>
+            <p class="text-xs text-red-600 dark:text-red-400 mt-2 font-medium">
+              This action cannot be undone.
+            </p>
+          </div>
+          <div class="flex gap-3 justify-center mt-4">
+            <button
+              @click="showDeleteModal = false"
+              class="px-4 py-2 bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-300 text-base font-medium rounded-md shadow-sm hover:bg-gray-400 dark:hover:bg-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-300"
+              :disabled="deleting"
+            >
+              Cancel
+            </button>
+            <button
+              @click="confirmDelete"
+              class="px-4 py-2 bg-red-600 text-white text-base font-medium rounded-md shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50"
+              :disabled="deleting"
+            >
+              <span v-if="deleting">Deleting...</span>
+              <span v-else>Delete</span>
+            </button>
           </div>
         </div>
       </div>
@@ -392,12 +618,15 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useTradesStore } from '@/stores/trades'
 import { useNotification } from '@/composables/useNotification'
 import { format } from 'date-fns'
-import { ArrowUpTrayIcon, XMarkIcon } from '@heroicons/vue/24/outline'
+import { ArrowUpTrayIcon, XMarkIcon, ExclamationTriangleIcon, Cog6ToothIcon, MagnifyingGlassIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
+// CUSIP modal imports disabled until backend endpoints are available
+// import UnmappedCusipsModal from '@/components/cusip/UnmappedCusipsModal.vue'
+// import AllCusipMappingsModal from '@/components/cusip/AllCusipMappingsModal.vue'
 
 const tradesStore = useTradesStore()
 const { showSuccess, showError } = useNotification()
@@ -409,11 +638,44 @@ const selectedFile = ref(null)
 const fileInput = ref(null)
 const dragOver = ref(false)
 const importHistory = ref([])
+const pagination = ref({
+  page: 1,
+  limit: 5,
+  total: 0,
+  totalPages: 0,
+  hasMore: false
+})
 const deleting = ref(false)
 const showLogs = ref(false)
+const showFormats = ref(false)
 const logFiles = ref([])
+const logFilesPagination = ref({
+  page: 1,
+  limit: 10,
+  total: 0,
+  totalPages: 0,
+  hasMore: false,
+  showAll: false,
+  totalFiles: 0,
+  todayFiles: 0,
+  olderFiles: 0
+})
 const logContent = ref('')
+const originalLogContent = ref('')
+const logSearchQuery = ref('')
+const searchResults = ref(null)
 const selectedLogFile = ref('')
+const logPagination = ref({
+  page: 1,
+  limit: 100,
+  total: 0,
+  totalPages: 0,
+  hasMore: false,
+  showAll: false,
+  totalAllLines: 0,
+  filteredOut: 0,
+  linesShown: 0
+})
 const cusipLoading = ref(false)
 const cusipForm = ref({
   cusip: '',
@@ -423,9 +685,19 @@ const lookupForm = ref({
   cusip: ''
 })
 const lookupResult = ref(null)
-const cusipMappings = ref({})
-const showDeleteConfirm = ref(false)
+// Removed cusipMappings ref since it's no longer displayed in the UI
+const unmappedCusipsCount = ref(0)
+const unmappedCusips = ref([])
+const showUnmappedModal = ref(false)
+const showAllMappingsModal = ref(false)
+const allMappings = ref([])
+const allMappingsLoading = ref(false)
+
+// Delete confirmation modal
+const showDeleteModal = ref(false)
 const deleteImportId = ref(null)
+const deleteImportData = ref(null)
+
 
 function handleFileSelect(event) {
   const file = event.target.files[0]
@@ -550,6 +822,24 @@ async function handleImport() {
     
     // Refresh import history
     fetchImportHistory()
+
+    // Poll import status until completed (simplified for main branch)
+    try {
+      const importId = result.importId
+      const poll = async () => {
+        try {
+          const statusRes = await api.get(`/trades/import/status/${importId}`)
+          const status = statusRes.data.importLog?.status
+          if (status === 'completed' || status === 'failed') {
+            // Import completed - refresh the history
+            fetchImportHistory()
+            return
+          }
+        } catch (_) {}
+        setTimeout(poll, 2000)
+      }
+      poll()
+    } catch (_) {}
   } catch (err) {
     console.error('Import error:', err)
     console.error('Error response:', err.response)
@@ -560,21 +850,50 @@ async function handleImport() {
   }
 }
 
-async function fetchImportHistory() {
+async function fetchImportHistory(page = 1) {
   try {
-    const response = await api.get('/trades/import/history')
-    importHistory.value = response.data.imports || []
+    const response = await api.get('/trades/import/history', {
+      params: {
+        page,
+        limit: pagination.value.limit
+      }
+    })
+    
+    if (page === 1) {
+      importHistory.value = response.data.imports || []
+    } else {
+      // Append to existing history for "Load More"
+      importHistory.value.push(...(response.data.imports || []))
+    }
+    
+    pagination.value = response.data.pagination || {
+      page: 1,
+      limit: 5,
+      total: 0,
+      totalPages: 0,
+      hasMore: false
+    }
   } catch (error) {
     console.error('Failed to fetch import history:', error)
   }
 }
 
-function confirmDeleteImport(importId) {
-  deleteImportId.value = importId
-  showDeleteConfirm.value = true
+function loadMoreHistory() {
+  if (pagination.value.hasMore) {
+    fetchImportHistory(pagination.value.page + 1)
+  }
 }
 
-async function executeDelete() {
+function deleteImport(importId) {
+  // Find the import data to show in modal
+  const importData = importHistory.value.find(imp => imp.id === importId)
+  
+  deleteImportId.value = importId
+  deleteImportData.value = importData
+  showDeleteModal.value = true
+}
+
+async function confirmDelete() {
   if (!deleteImportId.value) return
 
   deleting.value = true
@@ -583,33 +902,229 @@ async function executeDelete() {
     await api.delete(`/trades/import/${deleteImportId.value}`)
     showSuccess('Import Deleted', 'Import and associated trades have been deleted')
     await fetchImportHistory()
-    showDeleteConfirm.value = false
-    deleteImportId.value = null
+    showDeleteModal.value = false
   } catch (error) {
     showError('Delete Failed', error.response?.data?.error || 'Failed to delete import')
   } finally {
     deleting.value = false
+    deleteImportId.value = null
+    deleteImportData.value = null
   }
 }
 
-async function fetchLogs() {
+// Computed property for highlighted log content
+const highlightedLogContent = computed(() => {
+  if (!logSearchQuery.value || !logContent.value) {
+    return logContent.value
+  }
+  
   try {
+    const query = logSearchQuery.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const regex = new RegExp(`(${query})`, 'gi')
+    return logContent.value.replace(regex, '<mark class="bg-yellow-300 dark:bg-yellow-600 text-black dark:text-white">$1</mark>')
+  } catch (error) {
+    return logContent.value
+  }
+})
+
+async function fetchLogs(showAll = null, page = 1) {
+  try {
+    // Get all log files from backend
     const response = await api.get('/trades/import/logs')
-    logFiles.value = response.data.logFiles || []
-    showLogs.value = true
+    const allFiles = response.data.logFiles || []
+    
+    // Client-side filtering for today vs all files
+    const today = new Date().toISOString().split('T')[0]
+    const todayFiles = allFiles.filter(file => file.name.includes(today))
+    const olderFiles = allFiles.filter(file => !file.name.includes(today))
+    
+    // Update pagination state
+    if (showAll !== null) {
+      logFilesPagination.value.showAll = showAll
+      page = 1
+    }
+    
+    const filesToShow = logFilesPagination.value.showAll ? allFiles : todayFiles
+    const startIndex = (page - 1) * logFilesPagination.value.limit
+    const endIndex = startIndex + logFilesPagination.value.limit
+    
+    if (page === 1) {
+      logFiles.value = filesToShow.slice(startIndex, endIndex)
+    } else {
+      logFiles.value.push(...filesToShow.slice(startIndex, endIndex))
+    }
+    
+    logFilesPagination.value = {
+      ...logFilesPagination.value,
+      page,
+      total: filesToShow.length,
+      totalPages: Math.ceil(filesToShow.length / logFilesPagination.value.limit),
+      hasMore: endIndex < filesToShow.length,
+      totalFiles: allFiles.length,
+      todayFiles: todayFiles.length,
+      olderFiles: olderFiles.length
+    }
+    
+    if (page === 1) {
+      showLogs.value = true
+    }
   } catch (error) {
     showError('Load Failed', 'Failed to load log files')
   }
 }
 
-async function loadLogFile(filename) {
+function toggleLogFiles() {
+  fetchLogs(!logFilesPagination.value.showAll)
+}
+
+function loadMoreLogFiles() {
+  if (logFilesPagination.value.hasMore) {
+    fetchLogs(null, logFilesPagination.value.page + 1)
+  }
+}
+
+// Search logs function - client-side search with debouncing
+let searchTimeout = null
+function searchLogs() {
+  if (searchTimeout) {
+    clearTimeout(searchTimeout)
+  }
+  
+  searchTimeout = setTimeout(() => {
+    if (selectedLogFile.value) {
+      performClientSideSearch()
+    }
+  }, 300)
+}
+
+function performClientSideSearch() {
+  if (!originalLogContent.value || !logSearchQuery.value) {
+    logContent.value = originalLogContent.value
+    searchResults.value = null
+    return
+  }
+  
+  const lines = originalLogContent.value.split('\n')
+  const query = logSearchQuery.value.toLowerCase()
+  const matchingLines = lines.filter(line => line.toLowerCase().includes(query))
+  
+  if (matchingLines.length > 0) {
+    // Keep the newest-first order for search results too
+    logContent.value = matchingLines.join('\n')
+    searchResults.value = {
+      matchCount: matchingLines.length,
+      lineCount: matchingLines.length
+    }
+  } else {
+    logContent.value = ''
+    searchResults.value = {
+      matchCount: 0,
+      lineCount: 0
+    }
+  }
+}
+
+function clearSearch() {
+  logSearchQuery.value = ''
+  searchResults.value = null
+  logContent.value = originalLogContent.value
+}
+
+async function loadLogFile(filename, page = 1, showAll = null, search = null) {
   try {
     selectedLogFile.value = filename
+    
+    // Reset search if loading new file
+    if (search === null && page === 1) {
+      logSearchQuery.value = ''
+      searchResults.value = null
+    } else if (search !== null) {
+      logSearchQuery.value = search
+    }
+    
+    // For simplicity with current backend, load full content
     const response = await api.get(`/trades/import/logs/${filename}`)
-    logContent.value = response.data.content || 'No content available'
+    const fullContent = response.data.content || 'No content available'
+    
+    // Client-side pagination simulation
+    const lines = fullContent.split('\n')
+    const today = new Date()
+    const yesterday = new Date(today)
+    yesterday.setDate(yesterday.getDate() - 1)
+    
+    let filteredLines = lines
+    
+    // If showAll is explicitly set, respect it
+    if (showAll !== null) {
+      logPagination.value.showAll = showAll
+    }
+    
+    // Filter to last 24 hours if not showing all
+    if (!logPagination.value.showAll) {
+      const last24h = lines.filter(line => {
+        const timeMatch = line.match(/\[(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})/)
+        if (timeMatch) {
+          const lineDate = new Date(timeMatch[1])
+          return lineDate >= yesterday
+        }
+        return true // Include lines without timestamps
+      })
+      filteredLines = last24h
+      logPagination.value.filteredOut = lines.length - last24h.length
+    } else {
+      logPagination.value.filteredOut = 0
+    }
+    
+    // Reverse lines to show newest first
+    const reversedLines = [...filteredLines].reverse()
+    
+    // Store original content for search (also reversed)
+    originalLogContent.value = reversedLines.join('\n')
+    
+    // Apply pagination (newest first)
+    const startIndex = (page - 1) * logPagination.value.limit
+    const endIndex = startIndex + logPagination.value.limit
+    
+    if (page === 1) {
+      // First page - show newest lines
+      const paginatedLines = reversedLines.slice(0, logPagination.value.limit)
+      logContent.value = paginatedLines.join('\n')
+    } else {
+      // Subsequent pages - append older lines
+      const newLines = reversedLines.slice(startIndex, endIndex)
+      logContent.value += '\n' + newLines.join('\n')
+    }
+    
+    const totalLinesShown = Math.min(endIndex, reversedLines.length)
+    
+    logPagination.value = {
+      ...logPagination.value,
+      page,
+      total: filteredLines.length,
+      totalAllLines: lines.length,
+      hasMore: endIndex < reversedLines.length,
+      linesShown: totalLinesShown
+    }
+    
+    // Apply search if there's a query
+    if (logSearchQuery.value) {
+      performClientSideSearch()
+    }
   } catch (error) {
     showError('Load Failed', 'Failed to load log file content')
     logContent.value = 'Failed to load content'
+  }
+}
+
+function loadMoreLogs() {
+  if (logPagination.value.hasMore && selectedLogFile.value) {
+    loadLogFile(selectedLogFile.value, logPagination.value.page + 1, null, logSearchQuery.value)
+  }
+}
+
+function toggleLogView() {
+  if (selectedLogFile.value) {
+    loadLogFile(selectedLogFile.value, 1, !logPagination.value.showAll, logSearchQuery.value)
   }
 }
 
@@ -632,8 +1147,8 @@ async function addCusipMapping() {
     cusipForm.value.cusip = ''
     cusipForm.value.ticker = ''
     
-    // Refresh mappings
-    await fetchCusipMappings()
+    // Refresh unmapped count
+    await fetchUnmappedCusipsCount()
   } catch (error) {
     showError('Add Failed', error.response?.data?.error || 'Failed to add CUSIP mapping')
   } finally {
@@ -659,14 +1174,8 @@ async function lookupCusip() {
   }
 }
 
-async function fetchCusipMappings() {
-  try {
-    const response = await api.get('/trades/cusip-mappings')
-    cusipMappings.value = response.data.mappings || {}
-  } catch (error) {
-    console.error('Failed to fetch CUSIP mappings:', error)
-  }
-}
+// Removed fetchCusipMappings since mappings are no longer displayed in main UI
+// All CUSIP management is now handled through the comprehensive modal
 
 async function deleteCusipMapping(cusip) {
   if (!confirm(`Are you sure you want to delete the mapping for ${cusip}?`)) {
@@ -678,7 +1187,7 @@ async function deleteCusipMapping(cusip) {
   try {
     await api.delete(`/trades/cusip/${cusip}`)
     showSuccess('CUSIP Mapping Deleted', `Mapping for ${cusip} has been deleted`)
-    await fetchCusipMappings()
+    await fetchUnmappedCusipsCount()
   } catch (error) {
     showError('Delete Failed', error.response?.data?.error || 'Failed to delete CUSIP mapping')
   } finally {
@@ -686,9 +1195,31 @@ async function deleteCusipMapping(cusip) {
   }
 }
 
+// Fetch unmapped CUSIPs count
+async function fetchUnmappedCusipsCount() {
+  try {
+    // For now, disable unmapped count since the endpoint doesn't exist in main
+    unmappedCusipsCount.value = 0
+    unmappedCusips.value = []
+    
+    // TODO: Implement unmapped CUSIP detection when backend endpoint is available
+    // const response = await api.get('/trades/cusip/unmapped')
+    // unmappedCusips.value = response.data || []
+    // unmappedCusipsCount.value = unmappedCusips.value.length
+  } catch (error) {
+    console.error('Error fetching unmapped CUSIPs:', error)
+  }
+}
+
+// Handle mapping created from modal
+function handleMappingCreated() {
+  showUnmappedModal.value = false
+  fetchUnmappedCusipsCount()
+}
+
 onMounted(() => {
   fetchImportHistory()
-  fetchCusipMappings()
+  fetchUnmappedCusipsCount()
   setInterval(fetchImportHistory, 5000)
 })
 </script>
