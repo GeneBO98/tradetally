@@ -78,6 +78,29 @@
               >
                 View all →
               </button>
+              
+              <!-- Auto-refresh indicator -->
+              <div class="ml-auto flex items-center space-x-2">
+                <button 
+                  @click="fetchOpenTrades(false)"
+                  :disabled="priceRefreshLoading"
+                  class="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 disabled:opacity-50"
+                  title="Refresh prices now"
+                >
+                  <svg class="w-4 h-4" :class="{ 'animate-spin': priceRefreshLoading }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                </button>
+                
+                <div v-if="priceRefreshTimer" class="flex items-center text-xs text-green-600 dark:text-green-400">
+                  <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse mr-1"></div>
+                  Live
+                </div>
+                
+                <div v-if="lastPriceUpdate" class="text-xs text-gray-400">
+                  Updated {{ timeAgo }}
+                </div>
+              </div>
             </div>
             <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400">
               {{ openTrades.length }} {{ openTrades.length === 1 ? 'position' : 'positions' }}
@@ -572,7 +595,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick, watch, computed } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick, watch, computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useRouter } from 'vue-router'
 import { format } from 'date-fns'
@@ -610,6 +633,13 @@ const winRateChart = ref(null)
 let pnlChartInstance = null
 let distributionChartInstance = null
 let winRateChartInstance = null
+
+// Auto-refresh for open positions
+const priceRefreshTimer = ref(null)
+const priceRefreshLoading = ref(false)
+const lastPriceUpdate = ref(null)
+const timeDisplayTimer = ref(null)
+const currentTime = ref(new Date())
 
 const openTradeSymbols = computed(() => {
   return [...new Set(openTrades.value.map(position => position.symbol))]
@@ -652,6 +682,22 @@ function formatPercent(num) {
 function formatDate(dateStr) {
   return format(new Date(dateStr), 'MMM dd')
 }
+
+const timeAgo = computed(() => {
+  if (!lastPriceUpdate.value) return ''
+  
+  const diffInSeconds = Math.floor((currentTime.value - lastPriceUpdate.value) / 1000)
+  
+  if (diffInSeconds < 60) {
+    return `${diffInSeconds}s ago`
+  } else if (diffInSeconds < 3600) {
+    const minutes = Math.floor(diffInSeconds / 60)
+    return `${minutes}m ago`
+  } else {
+    const hours = Math.floor(diffInSeconds / 3600)
+    return `${hours}h ago`
+  }
+})
 
 function getDateRange(range) {
   if (range === 'all') {
@@ -744,8 +790,13 @@ async function fetchAnalytics() {
   }
 }
 
-async function fetchOpenTrades() {
+async function fetchOpenTrades(isAutoRefresh = false) {
   try {
+    // Set loading state only for manual refresh, not auto-refresh
+    if (!isAutoRefresh) {
+      priceRefreshLoading.value = true
+    }
+    
     // Use the new endpoint that includes real-time quotes
     console.log('Fetching open positions with quotes...')
     const response = await api.get('/trades/open-positions-quotes')
@@ -757,6 +808,7 @@ async function fetchOpenTrades() {
     }
     
     openTrades.value = response.data.positions || []
+    lastPriceUpdate.value = new Date()
     console.log('Set openTrades to:', openTrades.value)
     
   } catch (error) {
@@ -798,6 +850,8 @@ async function fetchOpenTrades() {
       console.error('Fallback fetch also failed:', fallbackError)
       openTrades.value = []
     }
+  } finally {
+    priceRefreshLoading.value = false
   }
 }
 
@@ -1178,6 +1232,46 @@ function navigateToTradesByPnLType(type) {
   })
 }
 
+// Auto-refresh functions
+function startPriceRefresh() {
+  // Only start if we have open trades
+  if (openTrades.value.length === 0) {
+    return
+  }
+  
+  console.log('Starting price auto-refresh every 15 seconds')
+  priceRefreshTimer.value = setInterval(() => {
+    fetchOpenTrades(true) // isAutoRefresh = true
+  }, 15000) // 15 seconds
+}
+
+function stopPriceRefresh() {
+  if (priceRefreshTimer.value) {
+    console.log('Stopping price auto-refresh')
+    clearInterval(priceRefreshTimer.value)
+    priceRefreshTimer.value = null
+  }
+}
+
+function restartPriceRefresh() {
+  stopPriceRefresh()
+  startPriceRefresh()
+}
+
+function startTimeDisplay() {
+  // Update current time every second to keep the "time ago" display current
+  timeDisplayTimer.value = setInterval(() => {
+    currentTime.value = new Date()
+  }, 1000)
+}
+
+function stopTimeDisplay() {
+  if (timeDisplayTimer.value) {
+    clearInterval(timeDisplayTimer.value)
+    timeDisplayTimer.value = null
+  }
+}
+
 // Watch for when loading finishes to try creating charts
 watch(loading, (newLoading) => {
   if (!newLoading && analytics.value.dailyPnL?.length > 0) {
@@ -1188,11 +1282,32 @@ watch(loading, (newLoading) => {
   }
 })
 
+// Watch open trades to manage auto-refresh
+watch(openTrades, (newOpenTrades, oldOpenTrades) => {
+  // Start auto-refresh if we now have open trades and didn't before
+  if (newOpenTrades.length > 0 && (!oldOpenTrades || oldOpenTrades.length === 0)) {
+    startPriceRefresh()
+  }
+  // Stop auto-refresh if we no longer have open trades
+  else if (newOpenTrades.length === 0 && oldOpenTrades && oldOpenTrades.length > 0) {
+    stopPriceRefresh()
+  }
+}, { immediate: false })
+
 onMounted(async () => {
+  // Start the time display timer
+  startTimeDisplay()
+  
   await Promise.all([
     fetchAnalytics(),
     fetchFilterOptions(),
     fetchOpenTrades()
   ])
+})
+
+onUnmounted(() => {
+  // Clean up timers when component is unmounted
+  stopPriceRefresh()
+  stopTimeDisplay()
 })
 </script>
