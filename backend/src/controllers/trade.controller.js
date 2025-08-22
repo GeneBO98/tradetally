@@ -661,7 +661,7 @@ const tradeController = {
                 // IMPORTANT: Preserve executions when updating existing trades
                 const {
                   totalQuantity, entryValue, exitValue, isExistingPosition,
-                  existingTradeId, isUpdate, executionData, totalFees, totalFeesForSymbol,
+                  existingTradeId, isUpdate, executionData, executions, totalFees, totalFeesForSymbol,
                   pnl, pnlPercent,
                   ...cleanTradeData
                 } = tradeData;
