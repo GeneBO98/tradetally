@@ -1,11 +1,27 @@
 # TradeTally - .gitignore
 docker-test
-# Environment variables (NEVER commit these)
+
+# Security - NEVER commit sensitive files
 .env
-.env.local
-.env.production
-.env.development
-.env.test
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+*.jks
+secrets/
+config/secrets/
+
+# OS-specific files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Desktop.ini
+Thumbs.db
 
 # Node.js dependencies
 node_modules/
