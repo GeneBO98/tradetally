@@ -143,8 +143,18 @@ const userController = {
   // Admin-only user management endpoints
   async getAllUsers(req, res, next) {
     try {
-      const users = await User.getAllUsers();
-      res.json({ users });
+      const page = parseInt(req.query.page) || 1;
+      const limit = parseInt(req.query.limit) || 25;
+      const offset = (page - 1) * limit;
+      const search = req.query.search || '';
+      
+      const result = await User.getAllUsers(limit, offset, search);
+      
+      res.json({
+        ...result,
+        page,
+        totalPages: Math.ceil(result.total / limit)
+      });
     } catch (error) {
       next(error);
     }
@@ -251,40 +261,6 @@ const userController = {
 
       await User.deleteUser(userId);
       res.json({ message: `User ${targetUser.username} has been permanently deleted` });
-    } catch (error) {
-      next(error);
-    }
-  },
-
-  // Admin user management functions
-  async getAllUsers(req, res, next) {
-    try {
-      const users = await User.getAllUsers();
-      res.json({ users });
-    } catch (error) {
-      next(error);
-    }
-  },
-
-  async getPendingUsers(req, res, next) {
-    try {
-      const users = await User.getPendingUsers();
-      res.json({ users });
-    } catch (error) {
-      next(error);
-    }
-  },
-
-  async approveUser(req, res, next) {
-    try {
-      const { userId } = req.params;
-      
-      const user = await User.approveUser(userId);
-      if (!user) {
-        return res.status(404).json({ error: 'User not found' });
-      }
-      
-      res.json({ user, message: 'User approved successfully' });
     } catch (error) {
       next(error);
     }
