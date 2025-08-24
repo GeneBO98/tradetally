@@ -20,6 +20,41 @@
 
       <!-- Users table -->
       <div v-else class="bg-white dark:bg-gray-800 shadow overflow-hidden sm:rounded-lg">
+        <!-- Search bar -->
+        <div class="px-4 py-4 sm:px-6 border-b border-gray-200 dark:border-gray-700">
+          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-3 sm:space-y-0">
+            <div class="flex-shrink-0 w-full sm:w-96">
+              <div class="relative rounded-md shadow-sm">
+                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <svg class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                </div>
+                <input
+                  v-model="searchQuery"
+                  @input="handleSearch"
+                  type="text"
+                  placeholder="Search users..."
+                  class="focus:ring-primary-500 focus:border-primary-500 block w-full pl-10 pr-12 sm:text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md"
+                />
+                <div v-if="searchQuery" class="absolute inset-y-0 right-0 pr-3 flex items-center">
+                  <button
+                    @click="clearSearch"
+                    class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                  >
+                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div class="text-sm text-gray-500 dark:text-gray-400 flex-shrink-0">
+              {{ totalUsers }} user{{ totalUsers !== 1 ? 's' : '' }} found
+            </div>
+          </div>
+        </div>
+        
         <div class="px-4 py-5 sm:p-6">
           <div class="overflow-x-auto">
             <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
@@ -185,6 +220,53 @@
               </tbody>
             </table>
           </div>
+          
+          <!-- Pagination Controls -->
+          <div class="px-4 py-3 flex items-center justify-between border-t border-gray-200 dark:border-gray-700">
+            <div class="flex items-center text-sm text-gray-700 dark:text-gray-300">
+              Showing {{ startIndex }} to {{ endIndex }} of {{ totalUsers }} users
+            </div>
+            
+            <div class="flex items-center space-x-1">
+              <!-- Previous button -->
+              <button
+                @click="prevPage"
+                :disabled="currentPage === 1"
+                class="relative inline-flex items-center px-2 py-2 text-sm font-medium rounded-l-md border border-gray-300 bg-white text-gray-500 hover:bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" />
+                </svg>
+              </button>
+              
+              <!-- Page numbers -->
+              <button
+                v-for="page in getVisiblePages"
+                :key="page.value"
+                @click="page.type === 'page' ? goToPage(page.value) : null"
+                :disabled="page.type === 'ellipsis'"
+                :class="{
+                  'bg-primary-50 border-primary-500 text-primary-600 dark:bg-primary-900/20 dark:border-primary-500 dark:text-primary-400': page.value === currentPage && page.type === 'page',
+                  'bg-white border-gray-300 text-gray-500 hover:bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-600': page.value !== currentPage && page.type === 'page',
+                  'bg-white border-gray-300 text-gray-700 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 cursor-default': page.type === 'ellipsis'
+                }"
+                class="relative inline-flex items-center px-4 py-2 text-sm font-medium border"
+              >
+                {{ page.display }}
+              </button>
+              
+              <!-- Next button -->
+              <button
+                @click="nextPage"
+                :disabled="currentPage === totalPages"
+                class="relative inline-flex items-center px-2 py-2 text-sm font-medium rounded-r-md border border-gray-300 bg-white text-gray-500 hover:bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" />
+                </svg>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -201,7 +283,7 @@
               <div class="ml-5 w-0 flex-1">
                 <dl>
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Total Users</dt>
-                  <dd class="text-lg font-medium text-gray-900 dark:text-white">{{ users.length }}</dd>
+                  <dd class="text-lg font-medium text-gray-900 dark:text-white">{{ totalUsers }}</dd>
                 </dl>
               </div>
             </div>
@@ -335,6 +417,17 @@ const isUpdating = ref(false)
 const showDeleteConfirm = ref(false)
 const userToDelete = ref(null)
 
+// Pagination state
+const currentPage = ref(1)
+const totalPages = ref(1)
+const totalUsers = ref(0)
+const usersPerPage = ref(25)
+const hasMore = ref(false)
+
+// Search state
+const searchQuery = ref('')
+const searchTimeout = ref(null)
+
 const currentUserId = computed(() => authStore.user?.id)
 
 const adminCount = computed(() => {
@@ -353,19 +446,107 @@ const unverifiedCount = computed(() => {
   return users.value.filter(user => !user.is_verified).length
 })
 
-async function fetchUsers() {
+const startIndex = computed(() => (currentPage.value - 1) * usersPerPage.value + 1)
+const endIndex = computed(() => Math.min(startIndex.value + users.value.length - 1, totalUsers.value))
+
+const getVisiblePages = computed(() => {
+  const pages = []
+  const delta = 2
+  const range = []
+  
+  // Calculate range of pages to show
+  for (let i = Math.max(2, currentPage.value - delta); i <= Math.min(totalPages.value - 1, currentPage.value + delta); i++) {
+    range.push(i)
+  }
+  
+  if (currentPage.value - delta > 2) {
+    range.unshift('...')
+  }
+  if (currentPage.value + delta < totalPages.value - 1) {
+    range.push('...')
+  }
+  
+  range.unshift(1)
+  if (totalPages.value !== 1) {
+    range.push(totalPages.value)
+  }
+  
+  // Convert to page objects
+  let pageNum = 1
+  for (const item of range) {
+    if (item === '...') {
+      pages.push({ type: 'ellipsis', display: '...', value: `ellipsis-${pageNum++}` })
+    } else {
+      pages.push({ type: 'page', display: item, value: item })
+    }
+  }
+  
+  return pages
+})
+
+async function fetchUsers(page = 1) {
   try {
     loading.value = true
     error.value = null
     
-    const response = await api.get('/users/admin/users')
+    const params = new URLSearchParams({
+      page: page.toString(),
+      limit: usersPerPage.value.toString()
+    })
+    
+    if (searchQuery.value.trim()) {
+      params.append('search', searchQuery.value.trim())
+    }
+    
+    const response = await api.get(`/users/admin/users?${params}`)
     users.value = response.data.users
+    totalUsers.value = response.data.total
+    totalPages.value = response.data.totalPages
+    currentPage.value = response.data.page
+    hasMore.value = response.data.hasMore
   } catch (err) {
     error.value = err.response?.data?.error || 'Failed to load users'
     showError('Error', error.value)
   } finally {
     loading.value = false
   }
+}
+
+function goToPage(page) {
+  if (page >= 1 && page <= totalPages.value) {
+    fetchUsers(page)
+  }
+}
+
+function nextPage() {
+  if (currentPage.value < totalPages.value) {
+    goToPage(currentPage.value + 1)
+  }
+}
+
+function prevPage() {
+  if (currentPage.value > 1) {
+    goToPage(currentPage.value - 1)
+  }
+}
+
+function handleSearch() {
+  // Clear existing timeout
+  if (searchTimeout.value) {
+    clearTimeout(searchTimeout.value)
+  }
+  
+  // Debounce search to avoid too many API calls
+  searchTimeout.value = setTimeout(() => {
+    currentPage.value = 1 // Reset to first page on search
+    fetchUsers(1)
+  }, 300)
+}
+
+function clearSearch() {
+  searchQuery.value = ''
+  currentPage.value = 1
+  fetchUsers(1)
 }
 
 async function updateUserRole(user, newRole) {
@@ -429,8 +610,8 @@ async function deleteUser() {
     
     const response = await api.delete(`/users/admin/users/${userToDelete.value.id}`)
     
-    // Remove the user from the local array
-    users.value = users.value.filter(u => u.id !== userToDelete.value.id)
+    // Refresh the current page to reflect the deletion
+    await fetchUsers(currentPage.value)
     
     showSuccess('Success', response.data.message)
     showDeleteConfirm.value = false

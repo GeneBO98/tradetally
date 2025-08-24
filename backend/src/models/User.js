@@ -250,15 +250,60 @@ class User {
   }
 
   // Admin user management methods
-  static async getAllUsers() {
-    const query = `
-      SELECT id, email, username, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone, created_at, updated_at
-      FROM users
-      ORDER BY created_at DESC
-    `;
-    
-    const result = await db.query(query);
-    return result.rows;
+  static async getAllUsers(limit = 25, offset = 0, search = '') {
+    if (search && search.trim()) {
+      // Query with search
+      const searchTerm = `%${search.trim()}%`;
+      
+      const countQuery = `
+        SELECT COUNT(*) as count 
+        FROM users 
+        WHERE username ILIKE $1 OR email ILIKE $1 OR full_name ILIKE $1
+      `;
+      
+      const usersQuery = `
+        SELECT id, email, username, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone, created_at, updated_at
+        FROM users
+        WHERE username ILIKE $3 OR email ILIKE $3 OR full_name ILIKE $3
+        ORDER BY created_at DESC
+        LIMIT $1 OFFSET $2
+      `;
+      
+      const [countResult, usersResult] = await Promise.all([
+        db.query(countQuery, [searchTerm]),
+        db.query(usersQuery, [limit, offset, searchTerm])
+      ]);
+      
+      return {
+        users: usersResult.rows,
+        total: parseInt(countResult.rows[0].count),
+        limit: parseInt(limit),
+        offset: parseInt(offset),
+        hasMore: parseInt(offset) + parseInt(limit) < parseInt(countResult.rows[0].count)
+      };
+    } else {
+      // Query without search
+      const countQuery = `SELECT COUNT(*) as count FROM users`;
+      const usersQuery = `
+        SELECT id, email, username, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone, created_at, updated_at
+        FROM users
+        ORDER BY created_at DESC
+        LIMIT $1 OFFSET $2
+      `;
+      
+      const [countResult, usersResult] = await Promise.all([
+        db.query(countQuery),
+        db.query(usersQuery, [limit, offset])
+      ]);
+      
+      return {
+        users: usersResult.rows,
+        total: parseInt(countResult.rows[0].count),
+        limit: parseInt(limit),
+        offset: parseInt(offset),
+        hasMore: parseInt(offset) + parseInt(limit) < parseInt(countResult.rows[0].count)
+      };
+    }
   }
 
   static async updateRole(userId, role) {
