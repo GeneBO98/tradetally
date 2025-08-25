@@ -387,6 +387,40 @@ class FinnhubClient {
       }
     };
   }
+
+  async getStockSplits(symbol, from, to) {
+    if (!this.apiKey) {
+      console.log('Finnhub API key not configured, skipping stock splits check');
+      return [];
+    }
+
+    const cacheKey = `stock_splits_${symbol}_${from}_${to}`;
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      console.log(`Using cached stock splits for ${symbol}`);
+      return cached;
+    }
+
+    try {
+      const endpoint = '/stock/split';
+      const params = {
+        symbol,
+        from,
+        to
+      };
+      
+      console.log(`Fetching stock splits for ${symbol} from ${from} to ${to}`);
+      const response = await this.makeRequest(endpoint, params);
+      
+      // Cache for 24 hours since splits are historical data
+      cache.set(cacheKey, response, 86400);
+      
+      return response || [];
+    } catch (error) {
+      console.error(`Error fetching stock splits for ${symbol}:`, error.message);
+      return [];
+    }
+  }
 }
 
 module.exports = new FinnhubClient();
