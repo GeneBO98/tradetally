@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@heroicons/vue": "^2.0.18",
-    "axios": "^1.6.2",
+    "axios": "^1.11.0",
     "chart.js": "^4.4.0",
     "date-fns": "^2.30.0",
     "lightweight-charts": "^5.0.8",
