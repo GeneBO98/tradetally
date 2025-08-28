@@ -80,7 +80,23 @@
               </button>
               
               <!-- Auto-refresh indicator -->
-              <div class="ml-auto flex items-center space-x-2">
+              <div class="ml-auto flex items-center space-x-3">
+                <!-- Market status -->
+                <div class="flex items-center text-xs">
+                  <div 
+                    :class="{
+                      'text-green-600 dark:text-green-400': marketStatus.isOpen,
+                      'text-gray-500 dark:text-gray-400': !marketStatus.isOpen,
+                      'text-yellow-600 dark:text-yellow-400': marketStatus.isPreMarket || marketStatus.isAfterHours
+                    }"
+                  >
+                    <span class="hidden sm:inline">{{ marketStatusMessage }}</span>
+                    <span class="sm:hidden">
+                      {{ marketStatus.isOpen ? (marketStatus.isRegularHours ? 'Open' : marketStatus.isPreMarket ? 'Pre' : 'AH') : 'Closed' }}
+                    </span>
+                  </div>
+                </div>
+                
                 <button 
                   @click="fetchOpenTrades(false)"
                   :disabled="priceRefreshLoading"
@@ -92,13 +108,13 @@
                   </svg>
                 </button>
                 
-                <div v-if="priceRefreshTimer" class="flex items-center text-xs text-green-600 dark:text-green-400">
+                <div v-if="priceRefreshTimer && marketStatus.isOpen" class="flex items-center text-xs text-green-600 dark:text-green-400">
                   <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse mr-1"></div>
-                  Live
+                  Auto
                 </div>
                 
                 <div v-if="lastPriceUpdate" class="text-xs text-gray-400">
-                  Updated {{ timeAgo }}
+                  {{ timeAgo }}
                 </div>
               </div>
             </div>
@@ -603,6 +619,7 @@ import Chart from 'chart.js/auto'
 import api from '@/services/api'
 import TradeNewsSection from '@/components/dashboard/TradeNewsSection.vue'
 import UpcomingEarningsSection from '@/components/dashboard/UpcomingEarningsSection.vue'
+import { getMarketStatus, shouldRefreshPrices, getRefreshInterval, getMarketStatusMessage } from '@/utils/marketHours'
 
 const authStore = useAuthStore()
 const router = useRouter()
@@ -697,6 +714,15 @@ const timeAgo = computed(() => {
     const hours = Math.floor(diffInSeconds / 3600)
     return `${hours}h ago`
   }
+})
+
+// Market status
+const marketStatus = computed(() => {
+  return getMarketStatus()
+})
+
+const marketStatusMessage = computed(() => {
+  return getMarketStatusMessage()
 })
 
 function getDateRange(range) {
@@ -1239,10 +1265,35 @@ function startPriceRefresh() {
     return
   }
   
-  console.log('Starting price auto-refresh every 15 seconds')
+  // Check if market is open
+  if (!shouldRefreshPrices()) {
+    console.log('Market is closed - skipping auto-refresh')
+    return
+  }
+  
+  const refreshInterval = getRefreshInterval()
+  if (!refreshInterval) {
+    console.log('No refresh needed during market closed hours')
+    return
+  }
+  
+  console.log(`Starting price auto-refresh every ${refreshInterval / 1000} seconds during market hours`)
+  
+  // Do an immediate check and fetch
+  if (shouldRefreshPrices()) {
+    fetchOpenTrades(true)
+  }
+  
   priceRefreshTimer.value = setInterval(() => {
-    fetchOpenTrades(true) // isAutoRefresh = true
-  }, 15000) // 15 seconds
+    // Check market status on each interval
+    if (shouldRefreshPrices()) {
+      fetchOpenTrades(true) // isAutoRefresh = true
+    } else {
+      console.log('Market closed - skipping refresh')
+      // Optionally stop the timer if market closes
+      stopPriceRefresh()
+    }
+  }, refreshInterval)
 }
 
 function stopPriceRefresh() {
@@ -1303,11 +1354,39 @@ onMounted(async () => {
     fetchFilterOptions(),
     fetchOpenTrades()
   ])
+  
+  // Check market status periodically to start/stop refresh
+  checkMarketStatusPeriodically()
 })
+
+// Market status checker
+let marketCheckInterval = null
+
+function checkMarketStatusPeriodically() {
+  // Check every minute if we should start or stop auto-refresh
+  marketCheckInterval = setInterval(() => {
+    const shouldRefresh = shouldRefreshPrices()
+    const isRefreshing = !!priceRefreshTimer.value
+    
+    if (shouldRefresh && !isRefreshing && openTrades.value.length > 0) {
+      console.log('Market opened - starting auto-refresh')
+      startPriceRefresh()
+    } else if (!shouldRefresh && isRefreshing) {
+      console.log('Market closed - stopping auto-refresh')
+      stopPriceRefresh()
+    }
+  }, 60000) // Check every minute
+}
 
 onUnmounted(() => {
   // Clean up timers when component is unmounted
   stopPriceRefresh()
   stopTimeDisplay()
+  
+  // Clear market check interval
+  if (marketCheckInterval) {
+    clearInterval(marketCheckInterval)
+    marketCheckInterval = null
+  }
 })
 </script>
