@@ -1123,8 +1123,7 @@ export default {
 
     onMounted(() => {
       loadDashboard()
-      // Temporarily disabled automatic achievement checking due to 500 error
-      // checkForNewAchievements()
+      checkForNewAchievements()
     })
 
     const checkForNewAchievements = async () => {

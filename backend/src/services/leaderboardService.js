@@ -74,8 +74,8 @@ class LeaderboardService {
           'avg_trade', ROUND(COALESCE(AVG(t.pnl), 0)::numeric, 2)
         ) as metadata
       FROM trades t
-      JOIN gamification_privacy gp ON gp.user_id = t.user_id
-      WHERE gp.show_on_leaderboards = true
+      LEFT JOIN gamification_privacy gp ON gp.user_id = t.user_id
+      WHERE COALESCE(gp.show_on_leaderboards, true) = true
         AND t.exit_time IS NOT NULL
         AND t.pnl IS NOT NULL
         ${dateFilter}
@@ -109,8 +109,8 @@ class LeaderboardService {
           )
         ) as metadata
       FROM trades t
-      JOIN gamification_privacy gp ON gp.user_id = t.user_id
-      WHERE gp.show_on_leaderboards = true
+      LEFT JOIN gamification_privacy gp ON gp.user_id = t.user_id
+      WHERE COALESCE(gp.show_on_leaderboards, true) = true
         AND t.exit_time IS NOT NULL
         AND t.pnl IS NOT NULL
         AND t.pnl > 0
@@ -143,8 +143,8 @@ class LeaderboardService {
           )
         ) as metadata
       FROM trades t
-      JOIN gamification_privacy gp ON gp.user_id = t.user_id
-      WHERE gp.show_on_leaderboards = true
+      LEFT JOIN gamification_privacy gp ON gp.user_id = t.user_id
+      WHERE COALESCE(gp.show_on_leaderboards, true) = true
         AND t.exit_time IS NOT NULL
         AND t.pnl IS NOT NULL
         AND t.pnl < 0
@@ -168,9 +168,9 @@ class LeaderboardService {
             EXTRACT(DAY FROM (CURRENT_TIMESTAMP - u.created_at))
           ) as revenge_free_days
         FROM users u
-        JOIN gamification_privacy gp ON gp.user_id = u.id
+        LEFT JOIN gamification_privacy gp ON gp.user_id = u.id
         LEFT JOIN revenge_trading_events rte ON rte.user_id = u.id
-        WHERE gp.show_on_leaderboards = true
+        WHERE COALESCE(gp.show_on_leaderboards, true) = true
           AND EXISTS (
             SELECT 1 FROM trades t 
             WHERE t.user_id = u.id
@@ -206,8 +206,8 @@ class LeaderboardService {
           SUM(t.pnl) as daily_pnl,
           COUNT(*) as daily_trades
         FROM trades t
-        JOIN gamification_privacy gp ON gp.user_id = t.user_id
-        WHERE gp.show_on_leaderboards = true
+        LEFT JOIN gamification_privacy gp ON gp.user_id = t.user_id
+        WHERE COALESCE(gp.show_on_leaderboards, true) = true
           AND t.exit_time IS NOT NULL
           ${dateFilter}
         GROUP BY t.user_id, DATE(t.exit_time)
@@ -324,8 +324,8 @@ class LeaderboardService {
           'badges', gs.badges
         ) as metadata
       FROM user_gamification_stats gs
-      JOIN gamification_privacy gp ON gp.user_id = gs.user_id
-      WHERE gp.show_on_leaderboards = true
+      LEFT JOIN gamification_privacy gp ON gp.user_id = gs.user_id
+      WHERE COALESCE(gp.show_on_leaderboards, true) = true
         AND gs.total_points > 0
       ORDER BY gs.total_points DESC
       LIMIT 100
@@ -916,8 +916,8 @@ class LeaderboardService {
           STDDEV(t.pnl) as pnl_stddev,
           COUNT(CASE WHEN t.pnl > 0 THEN 1 END)::float / NULLIF(COUNT(*), 0) * 100 as win_rate
         FROM trades t
-        JOIN gamification_privacy gp ON gp.user_id = t.user_id
-        WHERE gp.show_on_leaderboards = true
+        LEFT JOIN gamification_privacy gp ON gp.user_id = t.user_id
+        WHERE COALESCE(gp.show_on_leaderboards, true) = true
           AND t.exit_time IS NOT NULL
           AND t.pnl IS NOT NULL
           AND t.quantity IS NOT NULL
