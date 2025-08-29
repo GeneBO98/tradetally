@@ -229,6 +229,12 @@ const baseNavigation = [
         to: '/leaderboard', 
         route: 'leaderboard',
         description: 'Track achievements, challenges, and compete with peers'
+      },
+      { 
+        name: 'Public Trades', 
+        to: '/public', 
+        route: 'public-trades',
+        description: 'Browse public trades shared by the community'
       }
     ]
   },
