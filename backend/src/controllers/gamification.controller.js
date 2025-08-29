@@ -1,7 +1,6 @@
 const AchievementService = require('../services/achievementService');
 const ChallengeService = require('../services/challengeService');
 const LeaderboardService = require('../services/leaderboardService');
-const TierService = require('../services/tierService');
 const db = require('../config/database');
 
 const gamificationController = {

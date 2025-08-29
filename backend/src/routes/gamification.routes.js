@@ -2,11 +2,9 @@ const express = require('express');
 const router = express.Router();
 const gamificationController = require('../controllers/gamification.controller');
 const { authenticate } = require('../middleware/auth');
-const { attachTierInfo, requiresTier } = require('../middleware/tierAuth');
 
 // Apply authentication to all routes
 router.use(authenticate);
-router.use(attachTierInfo);
 // Note: Gamification features are available to all users
 // Leaderboards use anonymous usernames for privacy protection
 

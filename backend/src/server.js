@@ -217,7 +217,7 @@ async function startServer() {
       
       // Start gamification scheduler
       const GamificationScheduler = require('./services/gamificationScheduler');
-      GamificationScheduler.start();
+      GamificationScheduler.startScheduler();
       console.log('✓ Gamification scheduler started');
     });
   } catch (error) {
