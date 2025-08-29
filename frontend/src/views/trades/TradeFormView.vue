@@ -253,12 +253,14 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTradesStore } from '@/stores/trades'
 import { useNotification } from '@/composables/useNotification'
+import { useAnalytics } from '@/composables/useAnalytics'
 
 const showMoreOptions = ref(false)
 const route = useRoute()
 const router = useRouter()
 const tradesStore = useTradesStore()
 const { showSuccess, showError } = useNotification()
+const { trackTradeAction } = useAnalytics()
 
 const loading = ref(false)
 const error = ref(null)
@@ -359,9 +361,21 @@ async function handleSubmit() {
     if (isEdit.value) {
       await tradesStore.updateTrade(route.params.id, tradeData)
       showSuccess('Success', 'Trade updated successfully')
+      trackTradeAction('update', {
+        side: tradeData.side,
+        broker: tradeData.broker,
+        strategy: tradeData.strategy,
+        notes: !!tradeData.notes
+      })
     } else {
       await tradesStore.createTrade(tradeData)
       showSuccess('Success', 'Trade created successfully')
+      trackTradeAction('create', {
+        side: tradeData.side,
+        broker: tradeData.broker,
+        strategy: tradeData.strategy,
+        notes: !!tradeData.notes
+      })
     }
 
     router.push('/trades')
