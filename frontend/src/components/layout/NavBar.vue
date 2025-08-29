@@ -209,6 +209,7 @@ const baseNavigation = [
   { name: 'Trades', to: '/trades', route: 'trades' },
   { name: 'Analytics', to: '/analytics', route: 'analytics' },
   { name: 'Calendar', to: '/calendar', route: 'calendar' },
+  { name: 'Gamification', to: '/gamification', route: 'gamification' },
   { name: 'Import', to: '/import', route: 'import' },
   { name: 'Settings', to: '/settings', route: 'settings' }
 ]
