@@ -188,7 +188,7 @@ class ParallelJobQueue {
   async failJob(jobId, error) {
     const query = `
       UPDATE job_queue 
-      SET status = 'failed', completed_at = CURRENT_TIMESTAMP, error = $2, attempts = attempts + 1
+      SET status = 'failed', completed_at = CURRENT_TIMESTAMP, error = $2, retry_count = retry_count + 1
       WHERE id = $1
     `;
     await db.query(query, [jobId, error]);
@@ -198,25 +198,25 @@ class ParallelJobQueue {
    * Mark job as timed out and potentially retry
    */
   async timeoutJob(jobId, error) {
-    // Get current attempts
-    const getAttemptsQuery = `SELECT attempts FROM job_queue WHERE id = $1`;
+    // Get current retry_count
+    const getAttemptsQuery = `SELECT retry_count FROM job_queue WHERE id = $1`;
     const result = await db.query(getAttemptsQuery, [jobId]);
-    const attempts = result.rows[0]?.attempts || 0;
+    const retry_count = result.rows[0]?.retry_count || 0;
 
-    if (attempts < 2) {
+    if (retry_count < 2) {
       // Retry timed out jobs up to 2 times
       const retryQuery = `
         UPDATE job_queue 
-        SET status = 'pending', started_at = NULL, attempts = attempts + 1, error = $2
+        SET status = 'pending', started_at = NULL, retry_count = retry_count + 1, error = $2
         WHERE id = $1
       `;
-      await db.query(retryQuery, [jobId, `Timeout retry ${attempts + 1}: ${error}`]);
-      logger.logImport(`🔄 Job ${jobId} timed out, retrying (attempt ${attempts + 1})`);
+      await db.query(retryQuery, [jobId, `Timeout retry ${retry_count + 1}: ${error}`]);
+      logger.logImport(`🔄 Job ${jobId} timed out, retrying (attempt ${retry_count + 1})`);
     } else {
       // Give up after 2 retries
       const failQuery = `
         UPDATE job_queue 
-        SET status = 'failed', completed_at = CURRENT_TIMESTAMP, error = $2, attempts = attempts + 1
+        SET status = 'failed', completed_at = CURRENT_TIMESTAMP, error = $2, retry_count = retry_count + 1
         WHERE id = $1
       `;
       await db.query(failQuery, [jobId, `Failed after timeout retries: ${error}`]);
