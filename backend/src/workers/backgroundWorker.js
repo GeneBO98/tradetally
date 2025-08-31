@@ -122,17 +122,17 @@ class BackgroundWorker {
       // Find jobs that have been processing for more than 30 seconds (VERY aggressive)
       const stuckJobs = await db.query(`
         UPDATE job_queue 
-        SET status = 'pending', started_at = NULL, attempts = COALESCE(attempts, 0) + 1
+        SET status = 'pending', started_at = NULL, retry_count = COALESCE(retry_count, 0) + 1
         WHERE status = 'processing' 
         AND started_at < NOW() - INTERVAL '30 seconds'
-        RETURNING id, type, attempts
+        RETURNING id, type, retry_count
       `);
       
       if (stuckJobs.rows.length > 0) {
         logger.logImport(`🔄 Reset ${stuckJobs.rows.length} stuck jobs back to pending`);
         
         // For jobs that have been stuck multiple times, mark as failed
-        const persistentlyStuckJobs = stuckJobs.rows.filter(job => job.attempts >= 5);
+        const persistentlyStuckJobs = stuckJobs.rows.filter(job => job.retry_count >= 5);
         if (persistentlyStuckJobs.length > 0) {
           await db.query(`
             UPDATE job_queue 
@@ -154,7 +154,7 @@ class BackgroundWorker {
             error = 'Job abandoned - pending for over 1 hour'
         WHERE status = 'pending' 
         AND created_at < NOW() - INTERVAL '1 hour'
-        AND attempts > 3
+        AND retry_count > 3
         RETURNING id, type
       `);
 
