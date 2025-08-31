@@ -24,11 +24,7 @@ services:
   # Application (Frontend + Backend)
   # Build locally to ensure latest features including chart fixes
   app:
-    build: 
-      context: .
-      args:
-        VITE_POSTHOG_KEY: ${VITE_POSTHOG_KEY}
-        VITE_POSTHOG_HOST: ${VITE_POSTHOG_HOST}
+    image: potentialmidas/tradetally:latest
     container_name: tradetally-app
     depends_on:
       postgres:
