@@ -185,7 +185,7 @@ const twoFactorController = {
       // Verify password first
       const bcrypt = require('bcrypt');
       const user = await db.query(
-        'SELECT password, two_factor_secret, two_factor_enabled, two_factor_backup_codes FROM users WHERE id = $1',
+        'SELECT password_hash, two_factor_secret, two_factor_enabled, two_factor_backup_codes FROM users WHERE id = $1',
         [userId]
       );
 
@@ -193,7 +193,7 @@ const twoFactorController = {
         return res.status(404).json({ error: 'User not found' });
       }
 
-      const validPassword = await bcrypt.compare(password, user.rows[0].password);
+      const validPassword = await bcrypt.compare(password, user.rows[0].password_hash);
       if (!validPassword) {
         return res.status(400).json({ error: 'Invalid password' });
       }

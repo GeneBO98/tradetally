@@ -10,6 +10,13 @@ Visit [TradeTally](https://tradetally.io)
 <img width="1335" alt="SCR-20250703-qegs" src="https://github.com/user-attachments/assets/d19ff676-dec3-4b72-a14f-a701a38c23ab" />
 <img width="1357" alt="SCR-20250703-qeih" src="https://github.com/user-attachments/assets/10439cfa-1f29-4c1a-b5d8-0ed53255b50b" />
 
+## Leaderboards and Achievements!
+<img width="1301" height="1051" alt="SCR-20250829-oksw" src="https://github.com/user-attachments/assets/659c6bf8-4624-4cf1-bb27-0ec80a8dadc7" />
+<img width="1320" height="924" alt="SCR-20250829-okwl" src="https://github.com/user-attachments/assets/ea2266fe-72ee-4722-99be-f29f3930bdf5" />
+<img width="1319" height="1342" alt="SCR-20250829-okyl" src="https://github.com/user-attachments/assets/34ffa301-24a0-409d-8c37-08c11eb2f41d" />
+
+
+
 A comprehensive trading journal and analytics platform built with Vue.js frontend and Node.js backend. Track your trades, analyze performance, and gain insights into your trading patterns across multiple brokers.
 
 Login with:

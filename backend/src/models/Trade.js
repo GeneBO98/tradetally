@@ -1,4 +1,5 @@
 const db = require('../config/database');
+const AchievementService = require('../services/achievementService');
 
 class Trade {
   static async create(userId, tradeData) {
@@ -40,7 +41,19 @@ class Trade {
     ];
 
     const result = await db.query(query, values);
-    return result.rows[0];
+    const createdTrade = result.rows[0];
+    
+    // Check for new achievements (async, don't wait for completion)
+    AchievementService.checkAndAwardAchievements(userId).catch(error => {
+      console.warn(`Failed to check achievements for user ${userId} after trade creation:`, error.message);
+    });
+    
+    // Update trading streak (async, don't wait for completion)
+    AchievementService.updateTradingStreak(userId).catch(error => {
+      console.warn(`Failed to update trading streak for user ${userId} after trade creation:`, error.message);
+    });
+    
+    return createdTrade;
   }
 
   static async findById(id, userId = null) {
@@ -291,7 +304,19 @@ class Trade {
     `;
 
     const result = await db.query(query, values);
-    return result.rows[0];
+    const updatedTrade = result.rows[0];
+    
+    // Check for new achievements after trade update (async, don't wait for completion)
+    AchievementService.checkAndAwardAchievements(userId).catch(error => {
+      console.warn(`Failed to check achievements for user ${userId} after trade update:`, error.message);
+    });
+    
+    // Update trading streak (async, don't wait for completion)  
+    AchievementService.updateTradingStreak(userId).catch(error => {
+      console.warn(`Failed to update trading streak for user ${userId} after trade update:`, error.message);
+    });
+    
+    return updatedTrade;
   }
 
   static async delete(id, userId) {

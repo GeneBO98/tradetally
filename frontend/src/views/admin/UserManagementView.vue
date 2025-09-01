@@ -283,7 +283,7 @@
               <div class="ml-5 w-0 flex-1">
                 <dl>
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Total Users</dt>
-                  <dd class="text-lg font-medium text-gray-900 dark:text-white">{{ totalUsers }}</dd>
+                  <dd class="text-lg font-medium text-gray-900 dark:text-white">{{ statistics.totalUsers }}</dd>
                 </dl>
               </div>
             </div>
@@ -301,7 +301,7 @@
               <div class="ml-5 w-0 flex-1">
                 <dl>
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Admin Users</dt>
-                  <dd class="text-lg font-medium text-gray-900 dark:text-white">{{ adminCount }}</dd>
+                  <dd class="text-lg font-medium text-gray-900 dark:text-white">{{ statistics.adminUsers }}</dd>
                 </dl>
               </div>
             </div>
@@ -319,7 +319,7 @@
               <div class="ml-5 w-0 flex-1">
                 <dl>
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Active Users</dt>
-                  <dd class="text-lg font-medium text-gray-900 dark:text-white">{{ activeUserCount }}</dd>
+                  <dd class="text-lg font-medium text-gray-900 dark:text-white">{{ statistics.activeUsers }}</dd>
                 </dl>
               </div>
             </div>
@@ -337,7 +337,7 @@
               <div class="ml-5 w-0 flex-1">
                 <dl>
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Pending Approval</dt>
-                  <dd class="text-lg font-medium text-orange-600 dark:text-orange-400">{{ pendingApprovalCount }}</dd>
+                  <dd class="text-lg font-medium text-orange-600 dark:text-orange-400">{{ statistics.pendingApproval }}</dd>
                 </dl>
               </div>
             </div>
@@ -355,7 +355,7 @@
               <div class="ml-5 w-0 flex-1">
                 <dl>
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Unverified</dt>
-                  <dd class="text-lg font-medium text-yellow-600 dark:text-yellow-400">{{ unverifiedCount }}</dd>
+                  <dd class="text-lg font-medium text-yellow-600 dark:text-yellow-400">{{ statistics.unverified }}</dd>
                 </dl>
               </div>
             </div>
@@ -428,23 +428,19 @@ const hasMore = ref(false)
 const searchQuery = ref('')
 const searchTimeout = ref(null)
 
+// Statistics state
+const statistics = ref({
+  totalUsers: 0,
+  adminUsers: 0,
+  activeUsers: 0,
+  pendingApproval: 0,
+  unverified: 0
+})
+
 const currentUserId = computed(() => authStore.user?.id)
 
-const adminCount = computed(() => {
-  return users.value.filter(user => user.role === 'admin' && user.is_active).length
-})
-
-const activeUserCount = computed(() => {
-  return users.value.filter(user => user.is_active).length
-})
-
-const pendingApprovalCount = computed(() => {
-  return users.value.filter(user => !user.admin_approved).length
-})
-
-const unverifiedCount = computed(() => {
-  return users.value.filter(user => !user.is_verified).length
-})
+// Computed property for admin count (for disabling logic)
+const adminCount = computed(() => statistics.value.adminUsers)
 
 const startIndex = computed(() => (currentPage.value - 1) * usersPerPage.value + 1)
 const endIndex = computed(() => Math.min(startIndex.value + users.value.length - 1, totalUsers.value))
@@ -504,6 +500,11 @@ async function fetchUsers(page = 1) {
     totalPages.value = response.data.totalPages
     currentPage.value = response.data.page
     hasMore.value = response.data.hasMore
+    
+    // Update statistics if provided
+    if (response.data.statistics) {
+      statistics.value = response.data.statistics
+    }
   } catch (err) {
     error.value = err.response?.data?.error || 'Failed to load users'
     showError('Error', error.value)

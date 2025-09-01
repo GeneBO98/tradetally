@@ -18,6 +18,7 @@ const apiRoutes = require('./routes/api.routes');
 const v1Routes = require('./routes/v1');
 const wellKnownRoutes = require('./routes/well-known.routes');
 const adminRoutes = require('./routes/admin.routes');
+const gamificationRoutes = require('./routes/gamification.routes');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
@@ -102,6 +103,7 @@ app.use('/api/2fa', twoFactorRoutes);
 app.use('/api/api-keys', apiKeyRoutes);
 app.use('/api/v2', apiRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/gamification', gamificationRoutes);
 
 // Well-known endpoints for mobile discovery
 app.use('/.well-known', wellKnownRoutes);
@@ -212,6 +214,11 @@ async function startServer() {
       const stockSplitService = require('./services/stockSplitService');
       stockSplitService.startDailyCheck();
       console.log('✓ Stock split monitoring started');
+      
+      // Start gamification scheduler
+      const GamificationScheduler = require('./services/gamificationScheduler');
+      GamificationScheduler.startScheduler();
+      console.log('✓ Gamification scheduler started');
     });
   } catch (error) {
     console.error('Failed to start server:', error.message);

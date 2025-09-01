@@ -249,6 +249,29 @@ class User {
     return parseInt(result.rows[0].count);
   }
 
+  static async getUserStatistics() {
+    const query = `
+      SELECT 
+        COUNT(*) as total_users,
+        COUNT(CASE WHEN role = 'admin' THEN 1 END) as admin_users,
+        COUNT(CASE WHEN is_active = true THEN 1 END) as active_users,
+        COUNT(CASE WHEN admin_approved = false THEN 1 END) as pending_approval,
+        COUNT(CASE WHEN is_verified = false THEN 1 END) as unverified
+      FROM users
+    `;
+    
+    const result = await db.query(query);
+    const stats = result.rows[0];
+    
+    return {
+      totalUsers: parseInt(stats.total_users),
+      adminUsers: parseInt(stats.admin_users),
+      activeUsers: parseInt(stats.active_users),
+      pendingApproval: parseInt(stats.pending_approval),
+      unverified: parseInt(stats.unverified)
+    };
+  }
+
   // Admin user management methods
   static async getAllUsers(limit = 25, offset = 0, search = '') {
     if (search && search.trim()) {
