@@ -1,6 +1,7 @@
 # TradeTally - .gitignore
 docker-test
 docker-compose.yaml
+*bom.json
 # Security - NEVER commit sensitive files
 .env
 .env.*
