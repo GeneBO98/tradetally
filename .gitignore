@@ -1,6 +1,6 @@
 # TradeTally - .gitignore
 docker-test
-
+docker-compose.yaml
 # Security - NEVER commit sensitive files
 .env
 .env.*

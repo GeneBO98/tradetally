@@ -228,6 +228,77 @@
         </div>
       </div>
 
+      <!-- Disable 2FA Modal -->
+      <div v-if="showDisable2FAModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+        <div class="relative top-20 mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white dark:bg-gray-800">
+          <div class="mt-3">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Disable Two-Factor Authentication</h3>
+            
+            <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-6">
+              <div class="flex items-center">
+                <svg class="w-5 h-5 text-red-600 dark:text-red-400 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+                </svg>
+                <div>
+                  <h4 class="text-sm font-medium text-red-800 dark:text-red-300">Security Warning</h4>
+                  <p class="text-sm text-red-700 dark:text-red-400 mt-1">
+                    Disabling 2FA will make your account less secure. You'll only need your password to log in.
+                  </p>
+                </div>
+              </div>
+            </div>
+            
+            <form @submit.prevent="confirmDisable2FA" class="space-y-4">
+              <div>
+                <label for="disablePassword" class="label">Current Password</label>
+                <input
+                  id="disablePassword"
+                  v-model="disable2FAForm.password"
+                  type="password"
+                  required
+                  class="input"
+                  placeholder="Enter your current password"
+                />
+              </div>
+
+              <div>
+                <label for="disableToken" class="label">2FA Verification Code</label>
+                <input
+                  id="disableToken"
+                  v-model="disable2FAForm.token"
+                  type="text"
+                  maxlength="8"
+                  required
+                  class="input text-center text-lg tracking-widest"
+                  placeholder="Enter 6-digit code or backup code"
+                />
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  Enter the code from your authenticator app or use a backup code
+                </p>
+              </div>
+
+              <div class="flex justify-end space-x-3 pt-4">
+                <button
+                  type="button"
+                  @click="cancelDisable2FA"
+                  class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  :disabled="twoFactorLoading || !disable2FAForm.password || !disable2FAForm.token"
+                  class="px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <span v-if="twoFactorLoading">Disabling...</span>
+                  <span v-else">Disable 2FA</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+
       <!-- AI Provider Settings -->
       <div class="card">
         <div class="card-body">
@@ -987,6 +1058,83 @@
           </form>
         </div>
       </div>
+
+      <!-- Privacy & Analytics -->
+      <div class="card">
+        <div class="card-body">
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-6">Privacy & Analytics</h3>
+          <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
+            Control how your usage data is collected and used for improving the platform.
+          </p>
+          
+          <div class="space-y-6">
+            <!-- Analytics Status -->
+            <div class="bg-gray-50 dark:bg-gray-900 rounded-lg p-4">
+              <div class="flex items-center justify-between mb-3">
+                <h4 class="text-md font-medium text-gray-900 dark:text-white">Analytics Status</h4>
+                <span v-if="analyticsEnabled" 
+                      class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400">
+                  Enabled
+                </span>
+                <span v-else 
+                      class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400">
+                  Disabled
+                </span>
+              </div>
+              <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                <span v-if="analyticsEnabled">
+                  Anonymous usage analytics are being collected to help improve TradeTally. No trading data, symbols, or personal information is tracked.
+                </span>
+                <span v-else>
+                  Analytics are disabled. No usage data is being collected.
+                </span>
+              </p>
+              
+              <div v-if="analyticsEnabled" class="space-y-4">
+                <div class="text-sm text-gray-600 dark:text-gray-400">
+                  <p class="font-medium mb-2">What's collected:</p>
+                  <ul class="list-disc list-inside space-y-1 ml-2">
+                    <li>Page views and feature usage patterns</li>
+                    <li>Import/export actions (broker type and count only)</li>
+                    <li>Achievement unlocks and gamification interactions</li>
+                    <li>Performance metrics (not trade details)</li>
+                  </ul>
+                  <p class="font-medium mt-4 mb-2">What's NOT collected:</p>
+                  <ul class="list-disc list-inside space-y-1 ml-2">
+                    <li>Trade symbols, prices, quantities, or P&L</li>
+                    <li>Personal or financial information</li>
+                    <li>Account credentials or API keys</li>
+                    <li>Trading strategies or notes content</li>
+                  </ul>
+                </div>
+                
+                <button
+                  @click="optOutAnalytics"
+                  :disabled="analyticsLoading"
+                  class="btn-secondary"
+                >
+                  <span v-if="analyticsLoading">Updating...</span>
+                  <span v-else>Opt Out of Analytics</span>
+                </button>
+              </div>
+              
+              <div v-else class="space-y-4">
+                <p class="text-sm text-gray-600 dark:text-gray-400">
+                  Help improve TradeTally by sharing anonymous usage patterns. You can opt out at any time.
+                </p>
+                <button
+                  @click="optInAnalytics"
+                  :disabled="analyticsLoading"
+                  class="btn-primary"
+                >
+                  <span v-if="analyticsLoading">Updating...</span>
+                  <span v-else>Enable Analytics</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Create API Key Modal -->
@@ -1142,11 +1290,13 @@
 import { ref, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useNotification } from '@/composables/useNotification'
+import { useAnalytics } from '@/composables/useAnalytics'
 import { XMarkIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
 
 const authStore = useAuthStore()
 const { showSuccess, showError } = useNotification()
+const { isEnabled: analyticsEnabled, optOut, optIn } = useAnalytics()
 
 const profileLoading = ref(false)
 const settingsLoading = ref(false)
@@ -1157,14 +1307,20 @@ const passwordError = ref(null)
 const showAddTag = ref(false)
 const twoFactorLoading = ref(false)
 const show2FASetup = ref(false)
+const showDisable2FAModal = ref(false)
 const qrCodeUrl = ref('')
 const setupSecret = ref('')
 const backupCodes = ref([])
 const verificationCode = ref('')
+const disable2FAForm = ref({
+  password: '',
+  token: ''
+})
 const exportLoading = ref(false)
 const importLoading = ref(false)
 const importFile = ref(null)
 const importFileInput = ref(null)
+const analyticsLoading = ref(false)
 
 // API Keys
 const apiKeys = ref([])
@@ -1527,8 +1683,37 @@ async function enable2FA() {
 }
 
 async function disable2FA() {
-  // TODO: Implement 2FA disable with password + 2FA verification
-  showError('Coming Soon', '2FA disable will be implemented next')
+  showDisable2FAModal.value = true
+}
+
+async function confirmDisable2FA() {
+  if (!disable2FAForm.value.password || !disable2FAForm.value.token) {
+    showError('Error', 'Both password and verification code are required')
+    return
+  }
+  
+  twoFactorLoading.value = true
+  
+  try {
+    await api.post('/2fa/disable', {
+      password: disable2FAForm.value.password,
+      token: disable2FAForm.value.token
+    })
+    
+    showSuccess('Success', '2FA has been disabled successfully')
+    showDisable2FAModal.value = false
+    disable2FAForm.value = { password: '', token: '' }
+    await fetch2FAStatus()
+  } catch (error) {
+    showError('Error', error.response?.data?.error || 'Failed to disable 2FA')
+  } finally {
+    twoFactorLoading.value = false
+  }
+}
+
+function cancelDisable2FA() {
+  showDisable2FAModal.value = false
+  disable2FAForm.value = { password: '', token: '' }
 }
 
 function cancel2FASetup() {
@@ -1893,6 +2078,33 @@ function formatDate(dateString) {
     month: 'short',
     day: 'numeric'
   })
+}
+
+// Analytics Functions
+async function optOutAnalytics() {
+  analyticsLoading.value = true
+  
+  try {
+    optOut()
+    showSuccess('Success', 'Analytics disabled. No usage data will be collected.')
+  } catch (error) {
+    showError('Error', 'Failed to disable analytics')
+  } finally {
+    analyticsLoading.value = false
+  }
+}
+
+async function optInAnalytics() {
+  analyticsLoading.value = true
+  
+  try {
+    optIn()
+    showSuccess('Success', 'Analytics enabled. Anonymous usage data will help improve TradeTally.')
+  } catch (error) {
+    showError('Error', 'Failed to enable analytics')
+  } finally {
+    analyticsLoading.value = false
+  }
 }
 
 onMounted(() => {

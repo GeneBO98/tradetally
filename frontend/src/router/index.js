@@ -122,6 +122,16 @@ const router = createRouter({
       component: () => import('@/views/PrivacyPolicyView.vue')
     },
     {
+      path: '/leaderboard',
+      name: 'leaderboard',
+      component: () => import('@/views/GamificationView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/gamification',
+      redirect: '/leaderboard'
+    },
+    {
       path: '/faq',
       name: 'faq',
       component: () => import('@/views/FAQView.vue'),

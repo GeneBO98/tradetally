@@ -150,10 +150,14 @@ const userController = {
       
       const result = await User.getAllUsers(limit, offset, search);
       
+      // Get overall statistics (not filtered by search)
+      const stats = await User.getUserStatistics();
+      
       res.json({
         ...result,
         page,
-        totalPages: Math.ceil(result.total / limit)
+        totalPages: Math.ceil(result.total / limit),
+        statistics: stats
       });
     } catch (error) {
       next(error);
