@@ -11,17 +11,163 @@
 
     <form @submit.prevent="handleSubmit" class="card">
       <div class="card-body space-y-6">
-        <!-- Symbol field standalone -->
-        <div>
-          <label for="symbol" class="label">Symbol *</label>
-          <input
-            id="symbol"
-            v-model="form.symbol"
-            type="text"
-            required
-            class="input uppercase"
-            placeholder="AAPL"
-          />
+        <!-- Instrument Type and Symbol fields -->
+        <div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
+          <div>
+            <label for="instrumentType" class="label">Instrument Type *</label>
+            <select id="instrumentType" v-model="form.instrumentType" required class="input" @change="onInstrumentTypeChange">
+              <option value="stock">Stock</option>
+              <option value="option">Option</option>
+              <option value="future">Future</option>
+            </select>
+          </div>
+
+          <div>
+            <label for="symbol" class="label">Symbol *</label>
+            <input
+              id="symbol"
+              v-model="form.symbol"
+              type="text"
+              required
+              class="input uppercase"
+              :placeholder="getSymbolPlaceholder()"
+            />
+          </div>
+        </div>
+
+        <!-- Options-specific fields -->
+        <div v-if="form.instrumentType === 'option'" class="grid grid-cols-1 gap-6 sm:grid-cols-3">
+          <div>
+            <label for="underlyingSymbol" class="label">Underlying Symbol *</label>
+            <input
+              id="underlyingSymbol"
+              v-model="form.underlyingSymbol"
+              type="text"
+              required
+              class="input uppercase"
+              placeholder="AAPL"
+            />
+          </div>
+
+          <div>
+            <label for="strikePrice" class="label">Strike Price *</label>
+            <input
+              id="strikePrice"
+              v-model="form.strikePrice"
+              type="number"
+              step="0.01"
+              min="0"
+              required
+              class="input"
+              placeholder="150.00"
+            />
+          </div>
+
+          <div>
+            <label for="expirationDate" class="label">Expiration Date *</label>
+            <input
+              id="expirationDate"
+              v-model="form.expirationDate"
+              type="date"
+              required
+              class="input"
+            />
+          </div>
+
+          <div>
+            <label for="optionType" class="label">Option Type *</label>
+            <select id="optionType" v-model="form.optionType" required class="input">
+              <option value="">Select type</option>
+              <option value="call">Call</option>
+              <option value="put">Put</option>
+            </select>
+          </div>
+
+          <div>
+            <label for="contractSize" class="label">Contract Size</label>
+            <input
+              id="contractSize"
+              v-model="form.contractSize"
+              type="number"
+              min="1"
+              class="input"
+              placeholder="100"
+            />
+          </div>
+        </div>
+
+        <!-- Futures-specific fields -->
+        <div v-if="form.instrumentType === 'future'" class="grid grid-cols-1 gap-6 sm:grid-cols-3">
+          <div>
+            <label for="underlyingAsset" class="label">Underlying Asset *</label>
+            <input
+              id="underlyingAsset"
+              v-model="form.underlyingAsset"
+              type="text"
+              required
+              class="input uppercase"
+              placeholder="ES"
+            />
+          </div>
+
+          <div>
+            <label for="contractMonth" class="label">Contract Month *</label>
+            <select id="contractMonth" v-model="form.contractMonth" required class="input">
+              <option value="">Select month</option>
+              <option value="F">January (F)</option>
+              <option value="G">February (G)</option>
+              <option value="H">March (H)</option>
+              <option value="J">April (J)</option>
+              <option value="K">May (K)</option>
+              <option value="M">June (M)</option>
+              <option value="N">July (N)</option>
+              <option value="Q">August (Q)</option>
+              <option value="U">September (U)</option>
+              <option value="V">October (V)</option>
+              <option value="X">November (X)</option>
+              <option value="Z">December (Z)</option>
+            </select>
+          </div>
+
+          <div>
+            <label for="contractYear" class="label">Contract Year *</label>
+            <input
+              id="contractYear"
+              v-model="form.contractYear"
+              type="number"
+              min="2020"
+              max="2030"
+              required
+              class="input"
+              placeholder="2025"
+            />
+          </div>
+
+          <div>
+            <label for="pointValue" class="label">Point Value</label>
+            <input
+              id="pointValue"
+              v-model="form.pointValue"
+              type="number"
+              step="0.01"
+              min="0"
+              class="input"
+              placeholder="50"
+            />
+          </div>
+
+          <div>
+            <label for="tickSize" class="label">Tick Size</label>
+            <input
+              id="tickSize"
+              v-model="form.tickSize"
+              type="number"
+              step="0.000001"
+              min="0"
+              class="input"
+              placeholder="0.25"
+            />
+          </div>
         </div>
 
         <!-- Two column grid for remaining fields -->
@@ -283,7 +429,18 @@ const form = ref({
   strategy: '',
   setup: '',
   notes: '',
-  isPublic: false
+  isPublic: false,
+  instrumentType: 'stock',
+  strikePrice: '',
+  expirationDate: '',
+  optionType: '',
+  contractSize: 100,
+  underlyingSymbol: '',
+  contractMonth: '',
+  contractYear: new Date().getFullYear(),
+  tickSize: '',
+  pointValue: '',
+  underlyingAsset: ''
 })
 
 const tagsInput = ref('')
@@ -341,6 +498,23 @@ function handleNotesKeydown(event) {
   }
 }
 
+function getSymbolPlaceholder() {
+  switch (form.value.instrumentType) {
+    case 'option': return 'AAPL230120C00150000'
+    case 'future': return 'ESU25'
+    default: return 'AAPL'
+  }
+}
+
+function onInstrumentTypeChange() {
+  // Reset instrument-specific fields when type changes
+  if (form.value.instrumentType === 'option') {
+    form.value.contractSize = 100
+  } else if (form.value.instrumentType === 'future') {
+    form.value.contractYear = new Date().getFullYear()
+  }
+}
+
 async function handleSubmit() {
   loading.value = true
   error.value = null
@@ -355,6 +529,11 @@ async function handleSubmit() {
       fees: parseFloat(form.value.fees) || 0,
       mae: form.value.mae ? parseFloat(form.value.mae) : null,
       mfe: form.value.mfe ? parseFloat(form.value.mfe) : null,
+      strikePrice: form.value.strikePrice ? parseFloat(form.value.strikePrice) : null,
+      contractSize: form.value.contractSize ? parseInt(form.value.contractSize) : null,
+      contractYear: form.value.contractYear ? parseInt(form.value.contractYear) : null,
+      pointValue: form.value.pointValue ? parseFloat(form.value.pointValue) : null,
+      tickSize: form.value.tickSize ? parseFloat(form.value.tickSize) : null,
       tags: tagsInput.value ? tagsInput.value.split(',').map(tag => tag.trim()).filter(Boolean) : []
     }
 

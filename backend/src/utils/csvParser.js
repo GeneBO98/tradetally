@@ -7,19 +7,25 @@ const cusipQueue = require('./cusipQueue');
 // CUSIP resolution is now handled by the cusipQueue module
 
 const brokerParsers = {
-  generic: (row) => ({
-    symbol: row.Symbol || row.symbol,
-    tradeDate: parseDate(row['Trade Date'] || row.Date || row.date),
-    entryTime: parseDateTime(row['Entry Time'] || row['Trade Date'] || row.Date),
-    exitTime: parseDateTime(row['Exit Time'] || row['Close Time']),
-    entryPrice: parseFloat(row['Entry Price'] || row['Buy Price'] || row.Price),
-    exitPrice: parseFloat(row['Exit Price'] || row['Sell Price']),
-    quantity: parseInt(row.Quantity || row.Shares || row.Size),
-    side: parseSide(row.Side || row.Direction || row.Type),
-    commission: parseFloat(row.Commission || row.Fees || 0),
-    fees: parseFloat(row.Fees || 0),
-    broker: 'generic'
-  }),
+  generic: (row) => {
+    const symbol = row.Symbol || row.symbol;
+    const instrumentData = parseInstrumentData(symbol);
+    
+    return {
+      symbol: symbol,
+      tradeDate: parseDate(row['Trade Date'] || row.Date || row.date),
+      entryTime: parseDateTime(row['Entry Time'] || row['Trade Date'] || row.Date),
+      exitTime: parseDateTime(row['Exit Time'] || row['Close Time']),
+      entryPrice: parseFloat(row['Entry Price'] || row['Buy Price'] || row.Price),
+      exitPrice: parseFloat(row['Exit Price'] || row['Sell Price']),
+      quantity: parseInt(row.Quantity || row.Shares || row.Size),
+      side: parseSide(row.Side || row.Direction || row.Type),
+      commission: parseFloat(row.Commission || row.Fees || 0),
+      fees: parseFloat(row.Fees || 0),
+      broker: 'generic',
+      ...instrumentData
+    };
+  },
 
   lightspeed: (row) => ({
     symbol: cleanString(row.Symbol),
@@ -292,6 +298,70 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
   } catch (error) {
     throw new Error(`CSV parsing failed: ${error.message}`);
   }
+}
+
+// Parse instrument data from symbol to determine type and extract details
+function parseInstrumentData(symbol) {
+  if (!symbol) return { instrumentType: 'stock' };
+  
+  // Options pattern: AAPL230120C00150000 (symbol + expiry + type + strike)
+  const optionMatch = symbol.match(/^([A-Z]+)(\d{6})([CP])(\d{8})$/);
+  if (optionMatch) {
+    const [, underlying, expiry, type, strikeStr] = optionMatch;
+    const year = 2000 + parseInt(expiry.substr(0, 2));
+    const month = parseInt(expiry.substr(2, 2));
+    const day = parseInt(expiry.substr(4, 2));
+    const strike = parseInt(strikeStr) / 1000; // Strike is in thousandths
+    
+    return {
+      instrumentType: 'option',
+      underlyingSymbol: underlying,
+      strikePrice: strike,
+      expirationDate: `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`,
+      optionType: type.toLowerCase() === 'c' ? 'call' : 'put',
+      contractSize: 100
+    };
+  }
+  
+  // Futures pattern: ESU3 (ES = S&P 500, U = September, 3 = 2023)
+  const futuresMatch = symbol.match(/^([A-Z]{1,3})([FGHJKMNQUVXZ])(\d{1,2})$/);
+  if (futuresMatch) {
+    const [, underlying, monthCode, yearCode] = futuresMatch;
+    const monthMap = { F: 1, G: 2, H: 3, J: 4, K: 5, M: 6, N: 7, Q: 8, U: 9, V: 10, X: 11, Z: 12 };
+    const month = monthMap[monthCode];
+    const year = yearCode.length === 1 ? 2020 + parseInt(yearCode) : 2000 + parseInt(yearCode);
+    
+    return {
+      instrumentType: 'future',
+      underlyingAsset: underlying,
+      contractMonth: monthCode,
+      contractYear: year,
+      pointValue: getFuturesPointValue(underlying)
+    };
+  }
+  
+  // Default to stock
+  return { instrumentType: 'stock' };
+}
+
+// Get point value for common futures contracts
+function getFuturesPointValue(underlying) {
+  const pointValues = {
+    'ES': 50,    // E-mini S&P 500
+    'NQ': 20,    // E-mini NASDAQ
+    'RTY': 50,   // E-mini Russell 2000
+    'YM': 5,     // E-mini Dow
+    'CL': 1000,  // Crude Oil
+    'GC': 100,   // Gold
+    'SI': 5000,  // Silver
+    'ZB': 1000,  // 30-Year Treasury Bond
+    'ZN': 1000,  // 10-Year Treasury Note
+    'ZF': 1000,  // 5-Year Treasury Note
+    'ZS': 50,    // Soybeans
+    'ZC': 50,    // Corn
+    'ZW': 50     // Wheat
+  };
+  return pointValues[underlying] || 1;
 }
 
 function parseDate(dateStr) {

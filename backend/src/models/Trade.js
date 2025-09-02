@@ -7,7 +7,9 @@ class Trade {
       symbol, entryTime, exitTime, entryPrice, exitPrice,
       quantity, side, commission, fees, notes, isPublic, broker,
       strategy, setup, tags, pnl: providedPnL, pnlPercent: providedPnLPercent,
-      executionData, mae, mfe
+      executionData, mae, mfe, instrumentType = 'stock',
+      strikePrice, expirationDate, optionType, contractSize, underlyingSymbol,
+      contractMonth, contractYear, tickSize, pointValue, underlyingAsset
     } = tradeData;
 
     // Convert empty strings to null for optional fields
@@ -15,7 +17,7 @@ class Trade {
     const cleanExitPrice = exitPrice === '' ? null : exitPrice;
 
     // Use provided P&L if available (e.g., from Schwab), otherwise calculate it
-    const pnl = providedPnL !== undefined ? providedPnL : this.calculatePnL(entryPrice, cleanExitPrice, quantity, side, commission, fees);
+    const pnl = providedPnL !== undefined ? providedPnL : this.calculatePnL(entryPrice, cleanExitPrice, quantity, side, commission, fees, instrumentType, contractSize, pointValue);
     const pnlPercent = providedPnLPercent !== undefined ? providedPnLPercent : this.calculatePnLPercent(entryPrice, cleanExitPrice, side);
 
     // Use exit date as trade date if available, otherwise use entry date
@@ -28,16 +30,21 @@ class Trade {
       INSERT INTO trades (
         user_id, symbol, trade_date, entry_time, exit_time, entry_price, exit_price,
         quantity, side, commission, fees, pnl, pnl_percent, notes, is_public,
-        broker, strategy, setup, tags, executions, mae, mfe
+        broker, strategy, setup, tags, executions, mae, mfe, instrument_type,
+        strike_price, expiration_date, option_type, contract_size, underlying_symbol,
+        contract_month, contract_year, tick_size, point_value, underlying_asset
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33)
       RETURNING *
     `;
 
     const values = [
       userId, symbol.toUpperCase(), finalTradeDate, entryTime, cleanExitTime, entryPrice, cleanExitPrice,
       quantity, side, commission || 0, fees || 0, pnl, pnlPercent, notes, isPublic || false,
-      broker, strategy, setup, tags || [], JSON.stringify(executionData || []), mae || null, mfe || null
+      broker, strategy, setup, tags || [], JSON.stringify(executionData || []), mae || null, mfe || null,
+      instrumentType, strikePrice || null, expirationDate || null, optionType || null, 
+      contractSize || (instrumentType === 'option' ? 100 : null), underlyingSymbol || null,
+      contractMonth || null, contractYear || null, tickSize || null, pointValue || null, underlyingAsset || null
     ];
 
     const result = await db.query(query, values);
@@ -276,7 +283,10 @@ class Trade {
         updates.quantity || currentTrade.quantity,
         updates.side || currentTrade.side,
         updates.commission || currentTrade.commission,
-        updates.fees || currentTrade.fees
+        updates.fees || currentTrade.fees,
+        updates.instrumentType || currentTrade.instrument_type,
+        updates.contractSize || currentTrade.contract_size,
+        updates.pointValue || currentTrade.point_value
       );
       const pnlPercent = this.calculatePnLPercent(
         updates.entryPrice || currentTrade.entry_price,
@@ -400,14 +410,23 @@ class Trade {
     return result.rows;
   }
 
-  static calculatePnL(entryPrice, exitPrice, quantity, side, commission = 0, fees = 0) {
+  static calculatePnL(entryPrice, exitPrice, quantity, side, commission = 0, fees = 0, instrumentType = 'stock', contractSize = null, pointValue = null) {
     if (!exitPrice) return null;
     
     let pnl;
+    let multiplier = 1;
+    
+    // Set multiplier based on instrument type
+    if (instrumentType === 'option') {
+      multiplier = contractSize || 100; // Standard option contract size
+    } else if (instrumentType === 'future') {
+      multiplier = pointValue || 1; // Point value varies by contract
+    }
+    
     if (side === 'long') {
-      pnl = (exitPrice - entryPrice) * quantity;
+      pnl = (exitPrice - entryPrice) * quantity * multiplier;
     } else {
-      pnl = (entryPrice - exitPrice) * quantity;
+      pnl = (entryPrice - exitPrice) * quantity * multiplier;
     }
     
     return pnl - commission - fees;
