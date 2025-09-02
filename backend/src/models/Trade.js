@@ -59,7 +59,19 @@ class Trade {
   static async findById(id, userId = null) {
     let query = `
       SELECT t.*, u.username, u.avatar_url,
-        array_agg(DISTINCT ta.*) FILTER (WHERE ta.id IS NOT NULL) as attachments,
+        COALESCE(
+          json_agg(
+            json_build_object(
+              'id', ta.id,
+              'file_name', ta.file_name,
+              'file_url', ta.file_url,
+              'file_type', ta.file_type,
+              'file_size', ta.file_size,
+              'uploaded_at', ta.uploaded_at
+            )
+          ) FILTER (WHERE ta.id IS NOT NULL), 
+          '[]'::json
+        ) as attachments,
         count(DISTINCT tc.id)::integer as comment_count,
         sc.finnhub_industry as sector,
         sc.company_name as company_name
@@ -268,6 +280,17 @@ class Trade {
         }
       }
     });
+
+    // Ensure classification fields are set for the trigger if strategy is being updated
+    if (updates.strategy !== undefined && !updates.classificationMethod) {
+      fields.push(`classification_method = $${paramCount}`);
+      values.push('manual');
+      paramCount++;
+      
+      fields.push(`manual_override = $${paramCount}`);
+      values.push(true);
+      paramCount++;
+    }
 
     if (updates.entryPrice || updates.exitPrice || updates.quantity || updates.side || updates.commission || updates.fees) {
       const pnl = this.calculatePnL(
@@ -1251,6 +1274,32 @@ class Trade {
     }
     
     return timeCondition;
+  }
+
+  static async addAttachment(tradeId, attachmentData) {
+    const { fileUrl, fileType, fileName, fileSize } = attachmentData;
+    
+    const query = `
+      INSERT INTO trade_attachments (trade_id, file_name, file_url, file_type, file_size)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING *
+    `;
+    
+    const values = [tradeId, fileName, fileUrl, fileType, fileSize];
+    const result = await db.query(query, values);
+    return result.rows[0];
+  }
+
+  static async deleteAttachment(attachmentId, userId) {
+    const query = `
+      DELETE FROM trade_attachments 
+      WHERE id = $1 
+      AND trade_id IN (SELECT id FROM trades WHERE user_id = $2)
+      RETURNING *
+    `;
+    
+    const result = await db.query(query, [attachmentId, userId]);
+    return result.rows[0];
   }
 }
 

@@ -5,6 +5,7 @@ const { authenticate, optionalAuth } = require('../middleware/auth');
 const { flexibleAuth } = require('../middleware/apiKeyAuth');
 const { validate, schemas } = require('../middleware/validation');
 const multer = require('multer');
+const imageUpload = require('../middleware/upload');
 
 const upload = multer({
   storage: multer.memoryStorage(), // Store in memory
@@ -61,6 +62,10 @@ router.put('/:id', authenticate, validate(schemas.updateTrade), tradeController.
 router.delete('/:id', authenticate, tradeController.deleteTrade);
 router.post('/:id/attachments', authenticate, upload.single('file'), tradeController.uploadAttachment);
 router.delete('/:id/attachments/:attachmentId', authenticate, tradeController.deleteAttachment);
+// Image-specific routes
+router.post('/:id/images', authenticate, imageUpload.array('images', 10), tradeController.uploadTradeImages);
+router.get('/:id/images/:filename', optionalAuth, tradeController.getTradeImage);
+router.delete('/:id/images/:attachmentId', authenticate, tradeController.deleteTradeImage);
 router.post('/:id/comments', authenticate, tradeController.addComment);
 router.get('/:id/comments', optionalAuth, tradeController.getComments);
 router.put('/:id/comments/:commentId', authenticate, tradeController.updateComment);

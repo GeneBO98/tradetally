@@ -6,6 +6,10 @@ const logger = require('../utils/logger');
 const finnhub = require('../utils/finnhub');
 const cache = require('../utils/cache');
 const symbolCategories = require('../utils/symbolCategories');
+const imageProcessor = require('../utils/imageProcessor');
+const upload = require('../middleware/upload');
+const path = require('path');
+const fs = require('fs').promises;
 
 const tradeController = {
   async getUserTrades(req, res, next) {
@@ -1684,6 +1688,176 @@ const tradeController = {
         message: `Reset ${retriedCusips.length} failed CUSIPs for retry`,
         cusips: retriedCusips
       });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  // Image upload endpoints
+  async uploadTradeImages(req, res, next) {
+    try {
+      const tradeId = req.params.id;
+      
+      // Verify trade belongs to user
+      const trade = await Trade.findById(tradeId, req.user.id);
+      if (!trade) {
+        return res.status(404).json({ error: 'Trade not found' });
+      }
+
+      if (!req.files || req.files.length === 0) {
+        return res.status(400).json({ error: 'No images uploaded' });
+      }
+
+      const uploadsDir = path.join(__dirname, '../../uploads/trades');
+      const processedImages = [];
+
+      // Process each uploaded image
+      for (const file of req.files) {
+        try {
+          // Validate image
+          await imageProcessor.validateImage(file.buffer);
+
+          // Process and compress image
+          const processedImage = await imageProcessor.processImage(
+            file.buffer, 
+            file.originalname, 
+            req.user.id, 
+            tradeId
+          );
+
+          // Save to disk
+          const savedImage = await imageProcessor.saveImage(processedImage, uploadsDir);
+
+          // Save to database
+          const attachmentData = {
+            fileUrl: `/api/trades/${tradeId}/images/${savedImage.filename}`,
+            fileType: savedImage.mimeType,
+            fileName: file.originalname,
+            fileSize: savedImage.size
+          };
+
+          const attachment = await Trade.addAttachment(tradeId, attachmentData);
+          
+          processedImages.push({
+            ...attachment,
+            originalSize: savedImage.originalSize,
+            compressedSize: savedImage.size,
+            compressionRatio: savedImage.compressionRatio
+          });
+
+        } catch (error) {
+          console.error(`Failed to process image ${file.originalname}:`, error);
+          processedImages.push({
+            filename: file.originalname,
+            error: error.message
+          });
+        }
+      }
+
+      res.json({
+        message: 'Images processed successfully',
+        images: processedImages,
+        totalImages: processedImages.length,
+        successfulUploads: processedImages.filter(img => !img.error).length
+      });
+
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async getTradeImage(req, res, next) {
+    try {
+      const { id: tradeId, filename } = req.params;
+      
+      // Check if token is provided as query parameter
+      let user = req.user;
+      if (!user && req.query.token) {
+        try {
+          const jwt = require('jsonwebtoken');
+          const decoded = jwt.verify(req.query.token, process.env.JWT_SECRET);
+          user = { id: decoded.userId };
+        } catch (error) {
+          // Token is invalid, continue without user context
+        }
+      }
+      
+      // Check if the attachment exists and belongs to the specified trade
+      const attachmentQuery = `
+        SELECT ta.*, t.is_public, t.user_id 
+        FROM trade_attachments ta 
+        JOIN trades t ON ta.trade_id = t.id 
+        WHERE ta.trade_id = $1 AND ta.file_url LIKE $2
+      `;
+      
+      const attachmentResult = await db.query(attachmentQuery, [tradeId, `%${filename}`]);
+      
+      if (attachmentResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Image not found' });
+      }
+      
+      const attachment = attachmentResult.rows[0];
+      
+      // Check access permissions - allow if trade is public, or if user owns the trade
+      if (!attachment.is_public && (!user || user.id !== attachment.user_id)) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      const imagePath = path.join(__dirname, '../../uploads/trades', filename);
+      
+      // Check if file exists
+      try {
+        await fs.access(imagePath);
+      } catch (error) {
+        return res.status(404).json({ error: 'Image file not found on disk' });
+      }
+
+      // Set appropriate headers
+      res.setHeader('Content-Type', attachment.file_type || 'image/webp');
+      res.setHeader('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
+      
+      // Send file
+      res.sendFile(path.resolve(imagePath));
+
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async deleteTradeImage(req, res, next) {
+    try {
+      const { id: tradeId, attachmentId } = req.params;
+      
+      // Verify trade belongs to user
+      const trade = await Trade.findById(tradeId, req.user.id);
+      if (!trade) {
+        return res.status(404).json({ error: 'Trade not found' });
+      }
+
+      // Get attachment details before deletion
+      const attachmentQuery = `
+        SELECT ta.* FROM trade_attachments ta
+        JOIN trades t ON ta.trade_id = t.id
+        WHERE ta.id = $1 AND t.user_id = $2
+      `;
+      const attachmentResult = await db.query(attachmentQuery, [attachmentId, req.user.id]);
+      
+      if (attachmentResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Image not found' });
+      }
+
+      const attachment = attachmentResult.rows[0];
+
+      // Delete from database
+      await Trade.deleteAttachment(attachmentId, req.user.id);
+
+      // Delete file from disk
+      const filename = path.basename(attachment.file_url);
+      const filePath = path.join(__dirname, '../../uploads/trades', filename);
+      await imageProcessor.deleteImage(filePath);
+
+      res.json({ message: 'Image deleted successfully' });
+
     } catch (error) {
       next(error);
     }

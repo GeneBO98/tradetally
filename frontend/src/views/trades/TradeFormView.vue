@@ -210,6 +210,14 @@
             @keydown="handleNotesKeydown"
           ></textarea>
         </div>
+
+        <!-- Image Upload Section -->
+        <div v-if="isEdit && route.params.id">
+          <ImageUpload 
+            :trade-id="route.params.id" 
+            @uploaded="handleImageUploaded"
+          />
+        </div>
   
         <div class="flex items-center">
           <input
@@ -254,6 +262,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useTradesStore } from '@/stores/trades'
 import { useNotification } from '@/composables/useNotification'
 import { useAnalytics } from '@/composables/useAnalytics'
+import ImageUpload from '@/components/trades/ImageUpload.vue'
 
 const showMoreOptions = ref(false)
 const route = useRoute()
@@ -385,6 +394,11 @@ async function handleSubmit() {
   } finally {
     loading.value = false
   }
+}
+
+function handleImageUploaded() {
+  // Refresh trade data or show success message
+  showSuccess('Images Uploaded', 'Trade images uploaded successfully')
 }
 
 onMounted(() => {
