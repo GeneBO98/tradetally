@@ -212,13 +212,25 @@
             </div>
           </div>
 
-          <!-- Attachments -->
-          <div v-if="trade.attachments && trade.attachments.length > 0" class="card">
+          <!-- Trade Images -->
+          <div v-if="imageAttachments.length > 0" class="card">
+            <div class="card-body">
+              <TradeImages 
+                :trade-id="trade.id" 
+                :images="imageAttachments"
+                :can-delete="canEdit"
+                @deleted="handleImageDeleted"
+              />
+            </div>
+          </div>
+
+          <!-- Non-image Attachments -->
+          <div v-if="nonImageAttachments.length > 0" class="card">
             <div class="card-body">
               <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Attachments</h3>
               <div class="space-y-3">
                 <div
-                  v-for="attachment in trade.attachments"
+                  v-for="attachment in nonImageAttachments"
                   :key="attachment.id"
                   class="flex items-center justify-between p-3 border border-gray-200 dark:border-gray-700 rounded-lg"
                 >
@@ -462,7 +474,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTradesStore } from '@/stores/trades'
 import { useNotification } from '@/composables/useNotification'
@@ -471,6 +483,7 @@ import { DocumentIcon, ChatBubbleLeftIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
 import TradeChartVisualization from '@/components/trades/TradeChartVisualization.vue'
+import TradeImages from '@/components/trades/TradeImages.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -488,6 +501,25 @@ const newComment = ref('')
 const submittingComment = ref(false)
 const editingCommentId = ref(null)
 const editCommentText = ref('')
+
+// Computed properties for attachments
+const imageAttachments = computed(() => {
+  if (!trade.value?.attachments || !Array.isArray(trade.value.attachments)) return []
+  return trade.value.attachments.filter(attachment => 
+    attachment.file_type && attachment.file_type.startsWith('image/')
+  )
+})
+
+const nonImageAttachments = computed(() => {
+  if (!trade.value?.attachments || !Array.isArray(trade.value.attachments)) return []
+  return trade.value.attachments.filter(attachment => 
+    !attachment.file_type || !attachment.file_type.startsWith('image/')
+  )
+})
+
+const canEdit = computed(() => {
+  return authStore.user && trade.value && authStore.user.id === trade.value.user_id
+})
 
 function formatNumber(num, decimals = 2) {
   return new Intl.NumberFormat('en-US', {
@@ -691,6 +723,13 @@ async function deleteTrade() {
     router.push('/trades')
   } catch (error) {
     showError('Error', 'Failed to delete trade')
+  }
+}
+
+function handleImageDeleted(imageId) {
+  // Remove the deleted image from the trade's attachments
+  if (trade.value?.attachments) {
+    trade.value.attachments = trade.value.attachments.filter(att => att.id !== imageId)
   }
 }
 
