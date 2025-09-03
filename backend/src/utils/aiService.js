@@ -15,16 +15,29 @@ class AIService {
 
   async getUserSettings(userId) {
     try {
-      const settings = await User.getSettings(userId);
+      const db = require('../config/database');
       
-      // Get admin default settings
+      // Query user_settings table directly
+      const userSettingsQuery = `
+        SELECT ai_provider, ai_api_key, ai_api_url, ai_model
+        FROM user_settings 
+        WHERE user_id = $1
+      `;
+      const userSettingsResult = await db.query(userSettingsQuery, [userId]);
+      
+      let userSettings = null;
+      if (userSettingsResult.rows.length > 0) {
+        userSettings = userSettingsResult.rows[0];
+      }
+      
+      // Get admin default settings as fallback
       const adminDefaults = await adminSettingsService.getDefaultAISettings();
       
       return {
-        provider: settings?.ai_provider || adminDefaults.provider,
-        apiKey: settings?.ai_api_key || adminDefaults.apiKey,
-        apiUrl: settings?.ai_api_url || adminDefaults.apiUrl,
-        model: settings?.ai_model || adminDefaults.model
+        provider: userSettings?.ai_provider || adminDefaults.provider,
+        apiKey: userSettings?.ai_api_key || adminDefaults.apiKey,
+        apiUrl: userSettings?.ai_api_url || adminDefaults.apiUrl,
+        model: userSettings?.ai_model || adminDefaults.model
       };
     } catch (error) {
       console.error('Failed to get user AI settings:', error);
@@ -46,13 +59,26 @@ class AIService {
 
   async generateResponse(userId, prompt, options = {}) {
     const settings = await this.getUserSettings(userId);
+    console.log('🤖 AI Service - Provider:', settings.provider);
+    console.log('🤖 AI Service - Has API Key:', !!settings.apiKey);
+    console.log('🤖 AI Service - API URL:', settings.apiUrl || 'Not set');
+    console.log('🤖 AI Service - Model:', settings.model || 'Default');
+    
     const provider = this.providers[settings.provider];
     
     if (!provider) {
       throw new Error(`Unsupported AI provider: ${settings.provider}`);
     }
 
-    return provider(prompt, settings, options);
+    const result = await provider(prompt, settings, options);
+    console.log('🤖 AI Service - Response type:', typeof result);
+    console.log('🤖 AI Service - Response preview:', result ? (result.substring ? result.substring(0, 100) : JSON.stringify(result).substring(0, 100)) : 'undefined/null');
+    
+    if (!result) {
+      throw new Error(`AI provider ${settings.provider} returned no response`);
+    }
+    
+    return result;
   }
 
   async lookupCusip(userId, cusip) {
@@ -75,8 +101,16 @@ class AIService {
   }
 
   async useGemini(prompt, settings, options = {}) {
-    // Use existing gemini utility with API key from settings
-    return gemini.generateResponse(prompt, settings.apiKey, options);
+    try {
+      console.log('🔷 Using Gemini provider with API key:', settings.apiKey ? 'PROVIDED' : 'MISSING');
+      // Use existing gemini utility with API key from settings
+      const response = await gemini.generateResponse(prompt, settings.apiKey, options);
+      console.log('🔷 Gemini response received:', response ? 'SUCCESS' : 'EMPTY');
+      return response;
+    } catch (error) {
+      console.error('🔷 Gemini provider error:', error.message);
+      throw error;
+    }
   }
 
   async useClaude(prompt, settings, options = {}) {
@@ -115,18 +149,44 @@ class AIService {
       apiKey: settings.apiKey,
     });
 
-    const response = await openai.chat.completions.create({
-      model: settings.model || 'gpt-4o',
-      messages: [
-        {
-          role: 'user',
-          content: prompt
-        }
-      ],
-      max_completion_tokens: options.maxTokens || 1000,
-    });
+    const model = settings.model || 'gpt-4o';
+    console.log(`🤖 OpenAI: Using model ${model}`);
 
-    return response.choices[0].message.content;
+    try {
+      const response = await openai.chat.completions.create({
+        model: model,
+        messages: [
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        max_completion_tokens: options.maxTokens || 1000,
+      });
+
+      console.log('🤖 OpenAI raw response:', JSON.stringify(response, null, 2).substring(0, 500));
+      
+      if (!response) {
+        throw new Error('No response received from OpenAI API');
+      }
+      
+      if (!response.choices || response.choices.length === 0) {
+        throw new Error('No choices in OpenAI response');
+      }
+      
+      if (!response.choices[0].message) {
+        throw new Error('No message in OpenAI response choice');
+      }
+      
+      const content = response.choices[0].message.content;
+      console.log('🤖 OpenAI extracted content:', content ? `${content.substring(0, 100)}...` : 'undefined/null');
+      
+      return content;
+    } catch (error) {
+      console.error('❌ OpenAI API error:', error.message);
+      console.error('❌ OpenAI error details:', error.response?.data || error);
+      throw error;
+    }
   }
 
   async useOllama(prompt, settings, options = {}) {
@@ -160,6 +220,13 @@ class AIService {
     }
 
     const data = await response.json();
+    
+    // Ollama returns the response in the 'response' field
+    if (!data.response) {
+      console.error('Ollama response missing expected "response" field:', data);
+      throw new Error('Invalid response format from Ollama API');
+    }
+    
     return data.response;
   }
 

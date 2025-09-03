@@ -156,7 +156,7 @@
         <div class="card">
           <div class="card-body">
             <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
-              Avg Trade
+              {{ calculationMethod }} Trade
             </dt>
             <dd class="mt-1 text-2xl font-semibold" :class="[
               overview.avg_pnl >= 0 ? 'text-green-600' : 'text-red-600'
@@ -224,7 +224,7 @@
               <div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 delay-1500 z-10 w-64">
                 <div class="text-center">
                   <strong>System Quality Number (SQN)</strong><br>
-                  Measures the quality of your trading system by calculating (Average Trade / Standard Deviation) × √Number of Trades. Higher values indicate more consistent performance.
+                  Measures the quality of your trading system by calculating ({{ calculationMethod }} Trade / Standard Deviation) × √Number of Trades. Higher values indicate more consistent performance.
                 </div>
                 <div class="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
               </div>
@@ -289,7 +289,7 @@
               <div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 delay-1500 z-10 w-64">
                 <div class="text-center">
                   <strong>K-Ratio</strong><br>
-                  Measures the consistency of your equity curve by calculating Average Return / Standard Deviation of Returns. Higher values indicate smoother, more consistent performance.
+                  Measures the consistency of your equity curve by calculating {{ calculationMethod }} Return / Standard Deviation of Returns. Higher values indicate smoother, more consistent performance.
                 </div>
                 <div class="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
               </div>
@@ -315,7 +315,7 @@
             
             <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-3 relative group">
               <dt class="text-xs font-medium text-gray-500 dark:text-gray-400 truncate cursor-help">
-                Avg Position MAE
+                {{ calculationMethod }} Position MAE
               </dt>
               <dd class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
                 <span v-if="overview.avg_mae !== 'N/A'">${{ overview.avg_mae }} <span class="text-sm text-gray-500">(USD)</span></span>
@@ -336,7 +336,7 @@
             
             <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-3 relative group">
               <dt class="text-xs font-medium text-gray-500 dark:text-gray-400 truncate cursor-help">
-                Avg Position MFE
+                {{ calculationMethod }} Position MFE
               </dt>
               <dd class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
                 <span v-if="overview.avg_mfe !== 'N/A'">${{ overview.avg_mfe }} <span class="text-sm text-gray-500">(USD)</span></span>
@@ -392,13 +392,13 @@
                   </span>
                 </div>
                 <div class="flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800 rounded p-1 -m-1">
-                  <span class="text-sm text-gray-500 dark:text-gray-400">Average Win</span>
+                  <span class="text-sm text-gray-500 dark:text-gray-400">{{ calculationMethod }} Win</span>
                   <span class="text-sm font-medium text-green-600">
                     ${{ formatNumber(overview.avg_win) }}
                   </span>
                 </div>
                 <div class="flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800 rounded p-1 -m-1">
-                  <span class="text-sm text-gray-500 dark:text-gray-400">Average Loss</span>
+                  <span class="text-sm text-gray-500 dark:text-gray-400">{{ calculationMethod }} Loss</span>
                   <span class="text-sm font-medium text-red-600">
                     ${{ formatNumber(Math.abs(overview.avg_loss)) }}
                   </span>
@@ -498,7 +498,8 @@
                 <div class="flex items-center justify-between text-xs mb-1" 
                      :class="showCompletionMessage ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'">
                   <span>
-                    {{ showCompletionMessage ? '✅ All symbols processed!' : 'Processing symbols in background...' }}
+                    <MdiIcon v-if="showCompletionMessage" :icon="mdiCheckCircle" :size="16" class="mr-1 text-green-500" />
+                    {{ showCompletionMessage ? 'All symbols processed!' : 'Processing symbols in background...' }}
                   </span>
                   <span>{{ categorizationProgress.completed }}/{{ categorizationProgress.total }}</span>
                 </div>
@@ -683,6 +684,9 @@
         </div>
       </div>
 
+      <!-- News Sentiment Correlation Analytics -->
+      <NewsCorrelationAnalytics />
+
       <!-- New Chart Section -->
       <div class="grid grid-cols-1 gap-8 lg:grid-cols-2 xl:grid-cols-3">
         <!-- Trade Distribution by Price -->
@@ -752,7 +756,7 @@
                     P&L
                   </th>
                   <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Avg P&L
+                    {{ calculationMethod }} P&L
                   </th>
                 </tr>
               </thead>
@@ -879,11 +883,20 @@ import { ref, onMounted, onUnmounted, nextTick, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import api from '@/services/api'
 import PerformanceChart from '@/components/charts/PerformanceChart.vue'
+import MdiIcon from '@/components/MdiIcon.vue'
+import NewsCorrelationAnalytics from '@/components/analytics/NewsCorrelationAnalytics.vue'
 import Chart from 'chart.js/auto'
 import { marked } from 'marked'
+import { 
+  mdiCheckCircle,
+  mdiTarget,
+  mdiChartBox,
+  mdiAlert
+} from '@mdi/js'
 
 const loading = ref(true)
 const performancePeriod = ref('daily')
+const userSettings = ref(null)
 const router = useRouter()
 const route = useRoute()
 
@@ -946,6 +959,11 @@ const categorizationProgress = ref({
 })
 
 const showCompletionMessage = ref(false)
+
+// Computed property for calculation method
+const calculationMethod = computed(() => {
+  return userSettings.value?.statisticsCalculation === 'median' ? 'Median' : 'Average'
+})
 
 // Computed property for displayed sectors
 const displayedSectorData = computed(() => {
@@ -1263,7 +1281,9 @@ function createDayOfWeekChart() {
   }
 
   const ctx = dayOfWeekChart.value.getContext('2d')
-  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+  // Only show weekdays since markets are closed on weekends
+  const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+  const weekdayData = dayOfWeekData.value.slice(1, 6) // Skip Sunday (0) and Saturday (6)
   
   dayOfWeekChartInstance = new Chart(ctx, {
     type: 'bar',
@@ -1271,8 +1291,8 @@ function createDayOfWeekChart() {
       labels: days,
       datasets: [{
         label: 'Total P&L',
-        data: dayOfWeekData.value.map(d => d.total_pnl || 0),
-        backgroundColor: dayOfWeekData.value.map(d => (d.total_pnl || 0) >= 0 ? '#4ade80' : '#f87171'),
+        data: weekdayData.map(d => d.total_pnl || 0),
+        backgroundColor: weekdayData.map(d => (d.total_pnl || 0) >= 0 ? '#4ade80' : '#f87171'),
         borderWidth: 1,
         barThickness: 30,
         categoryPercentage: 0.7
@@ -1285,7 +1305,7 @@ function createDayOfWeekChart() {
       onClick: (event, elements) => {
         if (elements.length > 0) {
           const index = elements[0].index
-          const dayOfWeek = index // 0 = Sunday, 1 = Monday, etc.
+          const dayOfWeek = index + 1 // Convert to weekday: 0=Monday -> 1, 1=Tuesday -> 2, etc.
           navigateToTradesByDayOfWeek(dayOfWeek)
         }
       },
@@ -1638,6 +1658,17 @@ async function fetchChartData() {
     console.log('Chart data loaded successfully')
   } catch (error) {
     console.error('Error fetching chart data:', error)
+  }
+}
+
+async function fetchUserSettings() {
+  try {
+    const response = await api.get('/settings')
+    userSettings.value = response.data.settings
+  } catch (error) {
+    console.error('Failed to load user settings:', error)
+    // Default to average if loading fails
+    userSettings.value = { statisticsCalculation: 'average' }
   }
 }
 
@@ -2001,13 +2032,13 @@ function parseMarkdown(text) {
       gfm: true
     })
     
-    // Post-process the HTML to add custom classes
+    // Post-process the HTML to add custom classes with icon styling
     result = result
-      .replace(/<h1>/g, '<h1 class="ai-section-header level-1"><span class="section-icon">🎯</span><span class="section-text">')
+      .replace(/<h1>/g, '<h1 class="ai-section-header level-1"><span class="section-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,17.5A1.5,1.5 0 0,1 10.5,16A1.5,1.5 0 0,1 12,14.5A1.5,1.5 0 0,1 13.5,16A1.5,1.5 0 0,1 12,17.5M12,5A3,3 0 0,1 15,8C15,9.5 13.5,10.5 13,11.5H11C10.5,10.5 9,9.5 9,8A3,3 0 0,1 12,5Z" /></svg></span><span class="section-text">')
       .replace(/<\/h1>/g, '</span></h1>')
-      .replace(/<h2>/g, '<h2 class="ai-section-header level-2"><span class="section-icon">📊</span><span class="section-text">')
+      .replace(/<h2>/g, '<h2 class="ai-section-header level-2"><span class="section-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M22,21H2V3H4V19H6V10H10V19H12V6H16V19H18V14H22V21Z" /></svg></span><span class="section-text">')
       .replace(/<\/h2>/g, '</span></h2>')
-      .replace(/<h3>/g, '<h3 class="ai-section-header level-3"><span class="section-icon">⚠️</span><span class="section-text">')
+      .replace(/<h3>/g, '<h3 class="ai-section-header level-3"><span class="section-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M13,14H11V10H13M13,18H11V16H13M1,21H23L12,2L1,21Z" /></svg></span><span class="section-text">')
       .replace(/<\/h3>/g, '</span></h3>')
       .replace(/<p>/g, '<p class="ai-paragraph">')
       .replace(/<ul>/g, '<ul class="ai-unordered-list">')
@@ -2027,6 +2058,9 @@ function parseMarkdown(text) {
 
 async function loadData() {
   loading.value = true
+  
+  // Load user settings first
+  await fetchUserSettings()
   
   // Load saved filters from localStorage
   const savedFilters = localStorage.getItem('analyticsFilters')
@@ -2149,13 +2183,11 @@ function navigateToTradesByVolumeRange(volumeRange) {
 }
 
 function navigateToTradesByDayOfWeek(dayOfWeek) {
-  // For day of week filtering, we'll use a custom filter approach
-  // Since there's no direct day-of-week filter, we could either:
-  // 1. Add a custom filter to the backend
-  // 2. Navigate to trades page and let user know to filter manually
-  // For now, let's just navigate to all trades
   router.push({
-    path: '/trades'
+    path: '/trades',
+    query: {
+      daysOfWeek: dayOfWeek.toString() // Pass the day number (0=Sunday, 1=Monday, etc.)
+    }
   }).then(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   })

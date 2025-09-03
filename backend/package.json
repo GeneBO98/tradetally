@@ -27,6 +27,7 @@
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.1",
     "multer": "^2.0.2",
+    "node-apn": "^3.0.0",
     "node-fetch": "^3.3.2",
     "nodemailer": "^6.9.7",
     "openai": "^5.11.0",
@@ -34,6 +35,9 @@
     "qrcode": "^1.5.4",
     "sharp": "^0.34.3",
     "speakeasy": "^2.0.0",
+    "stripe": "^14.25.0",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1",
     "uuid": "^9.0.1"
   },
   "devDependencies": {

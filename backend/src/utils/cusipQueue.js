@@ -1,6 +1,7 @@
 const db = require('../config/database');
 const cache = require('./cache');
 const finnhub = require('./finnhub');
+const adminSettingsService = require('../services/adminSettings');
 
 class CusipQueueManager {
   constructor() {
@@ -90,13 +91,26 @@ class CusipQueueManager {
    * Mark CUSIP as completed
    */
   async markAsCompleted(cusip, ticker) {
-    const query = `
+    // Update the queue status
+    const queueQuery = `
       UPDATE cusip_lookup_queue 
       SET status = 'completed', error_message = NULL
       WHERE cusip = $1
     `;
-    await db.query(query, [cusip]);
-    console.log(`CUSIP ${cusip} successfully resolved to ${ticker}`);
+    await db.query(queueQuery, [cusip]);
+    
+    // Update all trades that have this CUSIP as their symbol
+    const tradesQuery = `
+      UPDATE trades 
+      SET symbol = $2
+      WHERE symbol = $1
+    `;
+    const updateResult = await db.query(tradesQuery, [cusip, ticker]);
+    
+    console.log(`CUSIP ${cusip} successfully resolved to ${ticker} - Updated ${updateResult.rowCount} trades`);
+    
+    // Cache the resolution for future use
+    await cache.set('cusip_resolution', cusip, ticker, 7 * 24 * 60 * 60); // 7 days TTL
   }
 
   /**
@@ -145,19 +159,89 @@ class CusipQueueManager {
       console.log(`Processing CUSIP lookup: ${cusip}`);
       await this.markAsProcessing(cusip);
 
-      // Attempt to resolve CUSIP
+      // Attempt to resolve CUSIP with Finnhub first
       const ticker = await finnhub.lookupCusip(cusip);
       
       if (ticker) {
         await this.markAsCompleted(cusip, ticker);
         return { success: true, ticker };
       } else {
-        await this.markAsFailed(cusip, 'No symbol found');
-        return { success: false, error: 'No symbol found' };
+        // Fallback to AI provider if Finnhub fails
+        console.log(`Finnhub failed for CUSIP ${cusip}, attempting AI fallback...`);
+        const aiTicker = await this.lookupCusipWithAI(cusip);
+        
+        if (aiTicker) {
+          await this.markAsCompleted(cusip, aiTicker);
+          return { success: true, ticker: aiTicker };
+        } else {
+          await this.markAsFailed(cusip, 'No symbol found (both Finnhub and AI failed)');
+          return { success: false, error: 'No symbol found (both Finnhub and AI failed)' };
+        }
       }
     } catch (error) {
       await this.markAsFailed(cusip, error.message);
       return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Lookup CUSIP using AI provider fallback
+   */
+  async lookupCusipWithAI(cusip) {
+    try {
+      // Get admin default AI settings
+      const aiSettings = await adminSettingsService.getDefaultAISettings();
+      
+      if (!aiSettings.provider || !aiSettings.apiKey) {
+        console.log('AI fallback not available - no AI provider configured');
+        return null;
+      }
+
+      // Import AI service dynamically to avoid circular dependencies
+      const aiService = require('./aiService');
+      
+      // Create a specialized prompt for CUSIP lookup
+      const prompt = `You are a financial data assistant. A CUSIP (Committee on Uniform Securities Identification Procedures) is a 9-character alphanumeric code that uniquely identifies securities in the United States.
+
+I need you to identify the stock ticker symbol for CUSIP: "${cusip}"
+
+Instructions:
+- If this is a publicly traded stock, respond with ONLY the ticker symbol (1-5 letters)
+- If this is a mutual fund, ETF, bond, or other non-stock security, respond with "NON-STOCK"
+- If you cannot identify the security or are unsure, respond with "UNKNOWN"
+- Do not include any explanation, company name, or additional text
+- Each CUSIP maps to exactly ONE unique ticker symbol - do not reuse ticker symbols
+
+CUSIP: ${cusip}
+Response:`;
+      
+      // Use AI provider directly with admin settings
+      const provider = aiService.providers[aiSettings.provider];
+      if (!provider) {
+        console.log(`AI provider ${aiSettings.provider} not supported for CUSIP lookup`);
+        return null;
+      }
+
+      const response = await provider(prompt, aiSettings, { maxTokens: 20 });
+      const result = response.trim().toUpperCase();
+      
+      // Handle different types of responses
+      if (result === 'NON-STOCK') {
+        console.log(`AI identified CUSIP ${cusip} as non-stock security`);
+        return null; // Don't resolve non-stock securities
+      } else if (result === 'UNKNOWN') {
+        console.log(`AI could not identify CUSIP ${cusip}`);
+        return null;
+      } else if (result && /^[A-Z]{1,5}$/.test(result)) {
+        console.log(`AI successfully resolved CUSIP ${cusip} to ${result}`);
+        return result;
+      } else {
+        console.log(`AI returned unexpected response for CUSIP ${cusip}: ${result}`);
+        return null;
+      }
+    } catch (error) {
+      console.error(`AI CUSIP lookup failed for ${cusip}:`, error.message);
+      return null;
     }
   }
 
@@ -262,6 +346,45 @@ class CusipQueueManager {
     
     const result = await db.query(query);
     return result.rows;
+  }
+
+  /**
+   * Update existing trades with already resolved CUSIPs
+   */
+  async updateExistingTrades() {
+    console.log('Updating existing trades with resolved CUSIPs...');
+    
+    // Get all completed CUSIP resolutions that might need to update trades
+    const query = `
+      SELECT DISTINCT t.symbol as cusip
+      FROM trades t
+      WHERE LENGTH(t.symbol) = 9 
+        AND t.symbol ~ '[0-9A-Z]{9}'
+        AND EXISTS (
+          SELECT 1 FROM cusip_lookup_queue q 
+          WHERE q.cusip = t.symbol AND q.status = 'completed'
+        )
+    `;
+    
+    const result = await db.query(query);
+    console.log(`Found ${result.rows.length} CUSIPs in trades that have been resolved`);
+    
+    for (const row of result.rows) {
+      const cusip = row.cusip;
+      
+      // Get the resolved symbol from cache
+      const ticker = await cache.get('cusip_resolution', cusip);
+      if (ticker) {
+        // Update trades with this CUSIP
+        const updateQuery = `
+          UPDATE trades 
+          SET symbol = $2
+          WHERE symbol = $1
+        `;
+        const updateResult = await db.query(updateQuery, [cusip, ticker]);
+        console.log(`Updated ${updateResult.rowCount} trades: ${cusip} → ${ticker}`);
+      }
+    }
   }
 
   /**

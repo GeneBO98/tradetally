@@ -1,4 +1,5 @@
 const db = require('../config/database');
+const NotificationPreferenceService = require('./notificationPreferenceService');
 
 class NotificationService {
   
@@ -246,7 +247,7 @@ class NotificationService {
   static async sendBehavioralAlert(userId, patternType, severity, message) {
     try {
       // Check if user has trade reminders enabled (closest preference for behavioral alerts)
-      const isEnabled = true; // Notification preferences not available
+      const isEnabled = await NotificationPreferenceService.isNotificationEnabled(userId, 'notify_trade_reminders');
       if (!isEnabled) {
         console.log(`Behavioral alert notification skipped for user ${userId} - preference disabled`);
         return;
@@ -274,7 +275,7 @@ class NotificationService {
   static async sendPriceAlert(userId, alert) {
     try {
       // Check if user has price alerts enabled
-      const isEnabled = true; // Notification preferences not available
+      const isEnabled = await NotificationPreferenceService.isNotificationEnabled(userId, 'notify_price_alerts');
       if (!isEnabled) {
         console.log(`Price alert notification skipped for user ${userId} - preference disabled`);
         return;
@@ -318,7 +319,7 @@ class NotificationService {
   static async sendNewsNotification(userId, newsData) {
     try {
       // Check if user has news notifications enabled for open positions
-      const isEnabled = true; // Notification preferences not available
+      const isEnabled = await NotificationPreferenceService.isNotificationEnabled(userId, 'notify_news_open_positions');
       if (!isEnabled) {
         console.log(`News notification skipped for user ${userId} - preference disabled`);
         return;
@@ -349,7 +350,7 @@ class NotificationService {
   static async sendEarningsNotification(userId, earningsData) {
     try {
       // Check if user has earnings notifications enabled
-      const isEnabled = true; // Notification preferences not available
+      const isEnabled = await NotificationPreferenceService.isNotificationEnabled(userId, 'notify_earnings_announcements');
       if (!isEnabled) {
         console.log(`Earnings notification skipped for user ${userId} - preference disabled`);
         return;
@@ -380,7 +381,7 @@ class NotificationService {
   static async sendMarketEventNotification(userId, eventData) {
     try {
       // Check if user has market events notifications enabled
-      const isEnabled = true; // Notification preferences not available
+      const isEnabled = await NotificationPreferenceService.isNotificationEnabled(userId, 'notify_market_events');
       if (!isEnabled) {
         console.log(`Market event notification skipped for user ${userId} - preference disabled`);
         return;
@@ -409,7 +410,7 @@ class NotificationService {
   static async sendTradeReminderNotification(userId, reminderData) {
     try {
       // Check if user has trade reminders enabled
-      const isEnabled = true; // Notification preferences not available
+      const isEnabled = await NotificationPreferenceService.isNotificationEnabled(userId, 'notify_trade_reminders');
       if (!isEnabled) {
         console.log(`Trade reminder notification skipped for user ${userId} - preference disabled`);
         return;

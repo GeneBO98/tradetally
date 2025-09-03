@@ -45,7 +45,8 @@ const schemas = {
     broker: Joi.string().max(50).allow(''),
     strategy: Joi.string().max(100).allow(''),
     setup: Joi.string().max(100).allow(''),
-    tags: Joi.array().items(Joi.string().max(50))
+    tags: Joi.array().items(Joi.string().max(50)),
+    confidence: Joi.number().integer().min(1).max(10).allow(null, '')
   }),
 
   updateTrade: Joi.object({
@@ -65,7 +66,8 @@ const schemas = {
     broker: Joi.string().max(50).allow(''),
     strategy: Joi.string().max(100).allow(''),
     setup: Joi.string().max(100).allow(''),
-    tags: Joi.array().items(Joi.string().max(50))
+    tags: Joi.array().items(Joi.string().max(50)),
+    confidence: Joi.number().integer().min(1).max(10).allow(null, '')
   }).min(1),
 
   updateSettings: Joi.object({
@@ -74,7 +76,8 @@ const schemas = {
     defaultTags: Joi.array().items(Joi.string().max(50)),
     importSettings: Joi.object(),
     theme: Joi.string().valid('light', 'dark'),
-    timezone: Joi.string().max(50)
+    timezone: Joi.string().max(50),
+    statisticsCalculation: Joi.string().valid('average', 'median')
   }).min(1),
 
   // Mobile-specific validation schemas

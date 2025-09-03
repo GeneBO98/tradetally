@@ -55,7 +55,6 @@
 
 <script setup>
 import { ref, watch, onMounted, onBeforeUnmount, computed } from 'vue'
-import { useAnalytics } from '@/composables/useAnalytics'
 
 const props = defineProps({
   queue: {
@@ -63,8 +62,6 @@ const props = defineProps({
     required: true
   }
 })
-
-const { trackAchievement } = useAnalytics()
 
 const visible = ref(false)
 const currentItem = ref(null)
@@ -205,12 +202,7 @@ function next() {
     visible.value = true
     popConfetti()
     if (currentItem.value?.type === 'achievement') {
-      const achievement = currentItem.value.payload.achievement
-      const pts = Number(achievement.points || 0)
-      
-      // Track achievement unlock
-      trackAchievement(achievement.type || achievement.name, pts)
-      
+      const pts = Number(currentItem.value.payload.achievement.points || 0)
       if (xpState.value.xp === null) {
         const info = calcLevelFromXP(0)
         xpState.value = { xp: 0, level: info.level, min: info.min, next: info.next }

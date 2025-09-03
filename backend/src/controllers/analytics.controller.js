@@ -81,14 +81,26 @@ const analyticsController = {
   async getOverview(req, res, next) {
     try {
       const { startDate, endDate } = req.query;
-      const cacheKey = `analytics_overview_${req.user.id}_${startDate}_${endDate}`;
+      
+      // Get user's preference for average vs median calculations
+      const User = require('../models/User');
+      let useMedian = false;
+      try {
+        const userSettings = await User.getSettings(req.user.id);
+        useMedian = userSettings?.statistics_calculation === 'median';
+      } catch (error) {
+        console.warn('Could not fetch user settings for analytics, using default (average):', error.message);
+        useMedian = false;
+      }
+      
+      const cacheKey = `analytics_overview_${req.user.id}_${startDate}_${endDate}_${useMedian ? 'median' : 'avg'}`;
       const cachedData = cache.get(cacheKey);
 
       if (cachedData) {
         return res.json(cachedData);
       }
 
-      console.log('Date filters received:', { startDate, endDate });
+      console.log('Date filters received:', { startDate, endDate }, 'Use median:', useMedian);
       
       let dateFilter = '';
       const params = [req.user.id];
@@ -113,38 +125,21 @@ const analyticsController = {
       console.log('Test result:', testResult.rows[0]);
 
       const overviewQuery = `
-        WITH trades_with_starts AS (
-            SELECT
-                *,
-                CASE
-                    WHEN LAG(position, 1, 0) OVER (PARTITION BY symbol ORDER BY trade_date, entry_time) = 0 THEN 1
-                    ELSE 0
-                END as is_trade_start
-            FROM (
-                SELECT
-                    *,
-                    SUM(CASE WHEN side = 'long' THEN quantity ELSE -quantity END) OVER (PARTITION BY symbol ORDER BY trade_date, entry_time) as position
-                FROM trades
-                WHERE user_id = $1 ${dateFilter}
-            ) as positions
+        WITH completed_trades AS (
+            -- Each trade with both entry and exit price is a complete round trip
+            SELECT 
+                *
+            FROM trades
+            WHERE user_id = $1 ${dateFilter}
+                AND exit_price IS NOT NULL
+                AND pnl IS NOT NULL
         ),
-        trades_with_groups AS (
-            SELECT
-                *,
-                SUM(is_trade_start) OVER (PARTITION BY symbol ORDER BY trade_date, entry_time) as trade_group
-            FROM trades_with_starts
-        ),
-        completed_trades AS (
-            SELECT
-                symbol,
-                trade_group,
-                SUM(pnl) as pnl,
-                SUM(commission) as commission,
-                SUM(fees) as fees,
-                MIN(trade_date) as trade_date,
-                MIN(entry_time) as entry_time
-            FROM trades_with_groups
-            GROUP BY symbol, trade_group
+        individual_trades AS (
+            -- Get best/worst individual executions
+            SELECT 
+                COALESCE(MAX(pnl), 0) as individual_best_trade,
+                COALESCE(MIN(pnl), 0) as individual_worst_trade
+            FROM completed_trades
         )
         SELECT 
           (SELECT COUNT(*) FROM completed_trades)::integer as total_trades,
@@ -152,12 +147,22 @@ const analyticsController = {
           (SELECT COUNT(*) FROM completed_trades WHERE pnl < 0)::integer as losing_trades,
           (SELECT COUNT(*) FROM completed_trades WHERE pnl = 0)::integer as breakeven_trades,
           COALESCE(SUM(pnl), 0)::numeric as total_pnl,
-          COALESCE(AVG(pnl), 0)::numeric as avg_pnl,
-          COALESCE(AVG(pnl) FILTER (WHERE pnl > 0), 0)::numeric as avg_win,
-          COALESCE(AVG(pnl) FILTER (WHERE pnl < 0), 0)::numeric as avg_loss,
-          COALESCE(MAX(pnl), 0)::numeric as best_trade,
-          COALESCE(MIN(pnl), 0)::numeric as worst_trade,
-          (SELECT COUNT(*) FROM trades WHERE user_id = $1 ${dateFilter})::integer as total_executions,
+          ${useMedian 
+            ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl), 0)::numeric as avg_pnl'
+            : 'COALESCE(AVG(pnl), 0)::numeric as avg_pnl'
+          },
+          ${useMedian
+            ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE pnl > 0), 0)::numeric as avg_win'
+            : 'COALESCE(AVG(pnl) FILTER (WHERE pnl > 0), 0)::numeric as avg_win'
+          },
+          ${useMedian
+            ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE pnl < 0), 0)::numeric as avg_loss'
+            : 'COALESCE(AVG(pnl) FILTER (WHERE pnl < 0), 0)::numeric as avg_loss'
+          },
+          -- Best/worst trades
+          (SELECT individual_best_trade FROM individual_trades) as best_trade,
+          (SELECT individual_worst_trade FROM individual_trades) as worst_trade,
+          (SELECT COUNT(*) FROM completed_trades)::integer as total_executions,
           COALESCE(SUM(pnl) FILTER (WHERE pnl > 0), 0) as total_gross_wins,
           COALESCE(ABS(SUM(pnl) FILTER (WHERE pnl < 0)), 0) as total_gross_losses,
           COALESCE(SUM(commission), 0) as total_commissions,
@@ -917,23 +922,47 @@ const analyticsController = {
         return found ? parseFloat(found.total_pnl) : 0;
       });
 
-      // Day of Week Performance
-      const dayOfWeekQuery = `
-        SELECT 
-          EXTRACT(DOW FROM trade_date) as day_of_week,
-          COUNT(*) as trade_count,
-          COALESCE(SUM(pnl), 0) as total_pnl
-        FROM trades
-        WHERE user_id = $1 ${dateFilter}
-        GROUP BY EXTRACT(DOW FROM trade_date)
-        ORDER BY EXTRACT(DOW FROM trade_date)
-      `;
+      // Day of Week Performance (timezone-aware and excluding weekends)
+      const { getUserTimezone } = require('../utils/timezone');
+      const userTimezone = await getUserTimezone(req.user.id);
+      
+      let dayOfWeekQuery;
+      let dayOfWeekParams;
+      
+      if (userTimezone !== 'UTC') {
+        dayOfWeekQuery = `
+          SELECT 
+            EXTRACT(DOW FROM (entry_time AT TIME ZONE 'UTC' AT TIME ZONE $2)) as day_of_week,
+            COUNT(*) as trade_count,
+            COALESCE(SUM(pnl), 0) as total_pnl
+          FROM trades
+          WHERE user_id = $1 ${dateFilter}
+            AND EXTRACT(DOW FROM (entry_time AT TIME ZONE 'UTC' AT TIME ZONE $2)) NOT IN (0, 6) -- Exclude weekends
+          GROUP BY EXTRACT(DOW FROM (entry_time AT TIME ZONE 'UTC' AT TIME ZONE $2))
+          ORDER BY EXTRACT(DOW FROM (entry_time AT TIME ZONE 'UTC' AT TIME ZONE $2))
+        `;
+        dayOfWeekParams = params.concat([userTimezone]);
+      } else {
+        dayOfWeekQuery = `
+          SELECT 
+            EXTRACT(DOW FROM entry_time) as day_of_week,
+            COUNT(*) as trade_count,
+            COALESCE(SUM(pnl), 0) as total_pnl
+          FROM trades
+          WHERE user_id = $1 ${dateFilter}
+            AND EXTRACT(DOW FROM entry_time) NOT IN (0, 6) -- Exclude weekends
+          GROUP BY EXTRACT(DOW FROM entry_time)
+          ORDER BY EXTRACT(DOW FROM entry_time)
+        `;
+        dayOfWeekParams = params;
+      }
 
-      const dayOfWeekResult = await db.query(dayOfWeekQuery, params);
+      const dayOfWeekResult = await db.query(dayOfWeekQuery, dayOfWeekParams);
 
-      // Process day of week data (0=Sunday, 1=Monday, ..., 6=Saturday)
+      // Process day of week data - only weekdays (1=Monday, ..., 5=Friday)
+      // Skip weekends entirely since stock markets are closed
       const dayOfWeekData = [];
-      for (let i = 0; i < 7; i++) {
+      for (let i = 1; i <= 5; i++) { // Only weekdays: 1=Monday through 5=Friday
         const found = dayOfWeekResult.rows.find(row => parseInt(row.day_of_week) === i);
         dayOfWeekData.push({
           total_pnl: found ? parseFloat(found.total_pnl) : 0,
@@ -1349,10 +1378,23 @@ const analyticsController = {
 
       // Generate AI recommendations with sector data
       console.log('🧠 Generating AI recommendations with sector analysis...');
-      const recommendations = await aiService.generateResponse(req.user.id, analyticsController.buildRecommendationPrompt(metrics, trades, tradingProfile, sectorData));
+      let recommendations;
+      try {
+        recommendations = await aiService.generateResponse(req.user.id, analyticsController.buildRecommendationPrompt(metrics, trades, tradingProfile, sectorData));
+        if (!recommendations) {
+          throw new Error('AI service returned undefined recommendations');
+        }
+      } catch (aiError) {
+        console.error('❌ AI service error:', aiError.message);
+        return res.status(500).json({ 
+          error: 'Failed to generate AI recommendations: ' + aiError.message 
+        });
+      }
       console.log('✅ AI recommendations generated successfully');
+      console.log('📝 Recommendations type:', typeof recommendations);
+      console.log('📝 Recommendations content preview:', recommendations ? recommendations.substring(0, 100) + '...' : 'undefined');
 
-      res.json({ 
+      const response = { 
         recommendations,
         analysisDate: new Date().toISOString(),
         tradesAnalyzed: trades.length,
@@ -1360,7 +1402,10 @@ const analyticsController = {
           startDate: startDate || null,
           endDate: endDate || null
         }
-      });
+      };
+      
+      console.log('📤 Sending response with keys:', Object.keys(response));
+      res.json(response);
 
     } catch (error) {
       console.error('Error generating recommendations:', error);

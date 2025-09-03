@@ -34,7 +34,9 @@ Password: DemoUser25
 - **Real-time Market Data**: Live stock quotes and unrealized P&L tracking for open positions using Finnhub API
 - **Trade Chart Visualization**: Interactive candlestick charts with entry/exit markers using Alpha Vantage API
 - **AI-Powered Analytics**: Personalized trading recommendations using Google Gemini AI with sector performance analysis
-- **Sector Performance Analysis**: Industry-based performance breakdown using Finnhub company profiles
+- **Gamification & Leaderboards**: Track achievements, compete with peers, and level up your trading skills with P&L-based rankings
+- **Behavioral Analytics**: Advanced trading psychology analysis including revenge trading detection and overconfidence tracking
+- **Sector Performance Analysis**: Industry-based performance breakdown using Finnhub company profiles  
 - **Comprehensive Analytics**: Dashboard with P&L tracking, win rates, performance metrics, and hold time analysis
 - **Trading Profile Customization**: Configure your strategies, styles, and preferences for personalized AI recommendations
 - **Registration Control**: Flexible user registration modes (open, admin approval, or disabled) for self-hosting
@@ -292,7 +294,7 @@ VITE_SHOW_DONATION_BUTTON=true
 - **Free tier**: 60 API calls/minute (sufficient for most use cases)
 - **Consolidated API**: Single provider for both quotes and CUSIP resolution
 
-### Alpha Vantage API (For Trade Chart Visualization)
+### Alpha Vantage API (For Free Tier Chart Visualization)
 
 1. Visit [Alpha Vantage](https://www.alphavantage.co/support/#api-key)
 2. Sign up for a free account
@@ -300,11 +302,12 @@ VITE_SHOW_DONATION_BUTTON=true
 4. Add the key to your `.env` file as `ALPHA_VANTAGE_API_KEY`
 
 **Features:**
-- **Interactive candlestick charts**: Visual trade analysis with entry/exit markers
+- **Interactive candlestick charts**: Visual trade analysis with entry/exit markers for free tier users
 - **Historical market data**: Intraday and daily stock price data
 - **Trade performance overlay**: Entry/exit indicators with P&L visualization
-- **Free tier**: 25 API calls/day, 5 calls/minute (sufficient for chart analysis)
+- **Free tier**: 25 API calls/day, 5 calls/minute (sufficient for basic chart analysis)
 - **Smart caching**: Reduces API usage with intelligent data caching
+- **Note**: Pro users get exclusive Finnhub access with no Alpha Vantage fallback
 
 ### Google Gemini API (AI Recommendations & CUSIP Resolution)
 
@@ -329,6 +332,11 @@ The system uses the following priority:
 1. **Finnhub API**: Primary source for live market data
 2. **Cache**: Previously fetched quotes (1-minute cache)
 3. **Fallback**: Display without real-time data if API unavailable
+
+**For Chart Data:**
+1. **Pro Users**: Finnhub Stock Candles API exclusively (150 calls/min, 1-minute precision)
+2. **Free Users**: Alpha Vantage API (25 calls/day, limited precision)
+3. **Cache**: Previously fetched chart data with intelligent caching
 
 **For CUSIP Resolution:**
 1. **Cache**: Previously resolved mappings (fastest)
@@ -400,6 +408,126 @@ NODE_ENV=production PORT=3000 npm start
 ### E*TRADE
 - **Format**: Transaction history CSV
 - **Required Columns**: Symbol, Transaction Date, Price, Quantity, Transaction Type, Commission
+
+## 📱 Push Notification Setup (iOS)
+
+TradeTally supports real-time push notifications for price alerts and trade executions on iOS devices. This section is optional but recommended for mobile users.
+
+### Prerequisites
+
+- **Apple Developer Account** ($99/year) - Required for push notifications
+- **Mobile app** - TradeTally iOS app installed on devices
+- **Device tokens** - Users must register their devices through the mobile app
+
+### Apple Push Notification Service (APNS) Setup
+
+#### 1. Generate APNs Authentication Key
+
+1. **Login to Apple Developer Portal**:
+   - Go to [developer.apple.com](https://developer.apple.com)
+   - Sign in with your Apple Developer account
+
+2. **Create Push Notification Key**:
+   - Navigate to **Certificates, Identifiers & Profiles**
+   - Go to **Keys** section
+   - Click **+** to create a new key
+   - Name it "TradeTally Push Notifications"
+   - Check **Apple Push Notifications service (APNs)**
+   - Click **Continue** → **Register**
+
+3. **Download Key File**:
+   - Download the `.p8` file (e.g., `AuthKey_ABC123DEFG.p8`)
+   - **Important**: Store this file securely - it cannot be re-downloaded
+   - Note the **Key ID** (10-character string like `ABC123DEFG`)
+
+4. **Get Team ID**:
+   - In Apple Developer account, go to **Account** → **Membership**
+   - Copy your **Team ID** (10-character string like `1234567890`)
+
+#### 2. Configure Environment Variables
+
+Add the following to your `.env` file:
+
+```env
+# Enable push notifications
+ENABLE_PUSH_NOTIFICATIONS=true
+
+# Apple Push Notification Service
+APNS_KEY_ID=ABC123DEFG          # From step 3 above
+APNS_TEAM_ID=1234567890         # From step 4 above
+APNS_KEY_PATH=/path/to/keys/AuthKey_ABC123DEFG.p8
+```
+
+#### 3. Secure Key File Storage
+
+**For Development:**
+```bash
+# Create secure directory
+mkdir -p /path/to/tradetally/backend/keys
+chmod 700 /path/to/tradetally/backend/keys
+
+# Copy your .p8 file
+cp ~/Downloads/AuthKey_ABC123DEFG.p8 /path/to/tradetally/backend/keys/
+chmod 600 /path/to/tradetally/backend/keys/AuthKey_ABC123DEFG.p8
+```
+
+**For Production:**
+```bash
+# System-wide secure location
+sudo mkdir -p /etc/tradetally/keys
+sudo cp AuthKey_ABC123DEFG.p8 /etc/tradetally/keys/
+sudo chmod 600 /etc/tradetally/keys/AuthKey_ABC123DEFG.p8
+sudo chown tradetally:tradetally /etc/tradetally/keys/AuthKey_ABC123DEFG.p8
+
+# Update .env to point to production location
+APNS_KEY_PATH=/etc/tradetally/keys/AuthKey_ABC123DEFG.p8
+```
+
+#### 4. Security Best Practices
+
+- **Never commit `.p8` files** to version control
+- Add `*.p8` and `keys/` to your `.gitignore`
+- Use environment variables for all sensitive data
+- Restrict file permissions (600) on the key file
+- Store keys outside web-accessible directories
+
+#### 5. Testing Push Notifications
+
+Use the test endpoint to verify setup:
+
+```bash
+# Test push notification (requires device token registration)
+curl -X POST "http://localhost:3000/api/notifications/test-push" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Test notification from TradeTally"}'
+```
+
+### Features Enabled by Push Notifications
+
+- **Price Alerts**: Instant notifications when price targets are hit
+- **Trade Execution**: Notifications for successful trades
+- **Portfolio Updates**: Real-time updates on position changes
+- **Market Events**: Important market news and earnings announcements
+
+### Troubleshooting
+
+**Common Issues:**
+
+1. **"APNS configuration incomplete"**: Verify all environment variables are set correctly
+2. **"No active devices"**: Users must register device tokens through the mobile app
+3. **"Push notification failed"**: Check APNS key file permissions and path
+4. **"BadDeviceToken"**: Device tokens are automatically marked inactive and cleaned up
+
+**Debug Logs:**
+```bash
+# Check backend logs for push notification status
+tail -f backend.log | grep -i "push\|apns"
+```
+
+### Android Support (Future)
+
+Android push notifications via Firebase Cloud Messaging (FCM) will be added in a future release. The infrastructure is prepared with the `FCM_SERVER_KEY` environment variable.
 
 ## 🏗️ Production Deployment
 
@@ -601,9 +729,15 @@ sudo tail -f /var/log/postgresql/postgresql-*.log
 | `FINNHUB_API_KEY` | Finnhub API key for quotes/CUSIP/sectors | - | No |
 | `ALPHA_VANTAGE_API_KEY` | Alpha Vantage API key for charts | - | No |
 | `GEMINI_API_KEY` | Google Gemini API key for AI recommendations | - | No |
+| `ENABLE_PUSH_NOTIFICATIONS` | Enable mobile push notifications | `false` | No |
+| `APNS_KEY_ID` | Apple Push Notification Key ID | - | No** |
+| `APNS_TEAM_ID` | Apple Developer Team ID | - | No** |
+| `APNS_KEY_PATH` | Path to Apple .p8 certificate file | - | No** |
+| `FCM_SERVER_KEY` | Firebase Cloud Messaging server key | - | No** |
 
 **Self-Hosted Configuration Notes:**
 - Email settings marked with * are optional for self-hosted setups
+- Push notification settings marked with ** are only required if enabling mobile push notifications
 - If email is not configured, users are automatically verified and can sign in immediately
 - This makes TradeTally self-host friendly without requiring email setup
 - Email verification will be enabled automatically if all email settings are provided
@@ -902,7 +1036,83 @@ npm run build
 pm2 restart tradetally-backend
 ```
 
+## 🎮 Gamification & Leaderboards
+
+TradeTally includes a comprehensive gamification system to make trading analysis more engaging and competitive.
+
+### Leaderboard Features
+
+**P&L-Based Rankings**:
+- **All-Time P&L Rankings**: Total profit/loss across all trades
+- **Monthly P&L Rankings**: Profit/loss for the current active trading month
+- **Weekly P&L Rankings**: Profit/loss for the current active trading week
+- **Best Single Trade**: Highest profit from a single trade
+- **Largest Loss**: Worst single trade by absolute loss
+- **Most Consistent Trader**: Based on volume traded and average P&L consistency
+
+**Privacy & Anonymity**:
+- All leaderboards use anonymous usernames for privacy
+- Real usernames are never displayed publicly
+- Generated names maintain consistency per user
+
+**View Options**:
+- Overview with top 5 rankings per category
+- "View All" functionality for complete leaderboard data
+- Overall rank calculated as average across all categories
+- Real-time updates with proper loading states
+
+### Achievement System
+
+**Progress Tracking**:
+- XP-based achievement system with sortable progress
+- Check for new achievements with toast notifications
+- Achievements organized by XP gain (lowest to highest)
+- Visual progress indicators and completion status
+
+**Achievement Categories**:
+- Trading milestones and profit targets
+- Volume and consistency achievements
+- Time-based trading streaks
+- Portfolio performance benchmarks
+
+### Behavioral Analytics
+
+**Trading Psychology Analysis**:
+- Revenge trading detection and alerts
+- Overconfidence pattern identification
+- Emotional trading indicators
+- Risk management behavior tracking
+
+**Performance Insights**:
+- User-configurable statistics (average vs median)
+- Dynamic calculation preferences with persistent settings
+- Real-time metric updates based on preference
+- Enhanced analytics with behavioral overlays
+
+### Configuration
+
+Control gamification features with environment variables:
+
+```env
+# Enable/disable all gamification features
+ENABLE_GAMIFICATION=true
+
+# Debug mode for development
+DEBUG=false
+```
+
 ### Recent Updates
+
+**v1.2.0 - Enhanced Gamification & Analytics**
+- **P&L-Based Leaderboards**: Replaced behavioral metrics with meaningful profit/loss rankings
+- **Anonymous Leaderboards**: Privacy-focused rankings with generated usernames
+- **Statistics Preferences**: User-configurable average vs median calculations
+- **Pro Chart Enhancement**: Pro users now get exclusive Finnhub chart data (no Alpha Vantage fallback)
+- **Enhanced UI/UX**: MDI icons throughout, improved loading states, toast notifications
+- **Route Updates**: Changed /gamification to /leaderboard for clarity
+- **View All Rankings**: Complete leaderboard viewing with pagination support
+- **Achievement Sorting**: XP-based achievement organization
+- **Persistent Settings**: Fixed settings persistence across navigation
 
 **v1.1.6 - AI-Powered Analytics & Sector Analysis**
 - **AI Trading Recommendations**: Personalized trading insights using Google Gemini AI
@@ -938,14 +1148,18 @@ pm2 restart tradetally-backend
 
 **Migration Notes:**
 - Update your `.env` to include `REGISTRATION_MODE=open` for new registration control
+- Update your `.env` to include `ENABLE_GAMIFICATION=true` for leaderboard features
 - Update your `.env` to include `GEMINI_API_KEY` for AI recommendations
 - Ensure `FINNHUB_API_KEY` is set for sector analysis
-- Run database migrations for trading profile features:
+- Run database migrations for latest features:
   ```bash
   cd backend
-  psql -U your_user -d your_db -f migrations/add_admin_approved_column.sql
-  psql -U your_user -d your_db -f migrations/add_trading_profile_fields.sql
+  psql -U your_user -d your_db -f migrations/043_add_statistics_calculation_preference.sql
+  psql -U your_user -d your_db -f migrations/044_update_leaderboards_to_pnl_based.sql
+  psql -U your_user -d your_db -f migrations/045_add_admin_approved_column.sql
+  psql -U your_user -d your_db -f migrations/046_add_trading_profile_fields.sql
   ```
+- **Route Change**: Update any bookmarks from `/gamification` to `/leaderboard`
 - Restart both frontend and backend after update
 
 ---

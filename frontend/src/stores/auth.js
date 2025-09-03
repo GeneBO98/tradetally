@@ -171,11 +171,11 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  function checkAuth() {
+  async function checkAuth() {
     if (token.value) {
       // Set the authorization header for subsequent requests
       api.defaults.headers.common['Authorization'] = `Bearer ${token.value}`
-      fetchUser()
+      await fetchUser()
     }
   }
 
