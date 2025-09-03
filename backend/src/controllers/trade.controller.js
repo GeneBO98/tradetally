@@ -1968,7 +1968,7 @@ const tradeController = {
       const userId = req.user.id;
       
       // Get enrichment status for user's trades
-      const query = `
+      const tradesQuery = `
         SELECT 
           COUNT(*) as total_trades,
           COUNT(CASE WHEN enrichment_status = 'completed' THEN 1 END) as enriched_trades,
@@ -1979,8 +1979,43 @@ const tradeController = {
         WHERE user_id = $1
       `;
       
-      const result = await db.query(query, [userId]);
-      const stats = result.rows[0];
+      const tradesResult = await db.query(tradesQuery, [userId]);
+      const stats = tradesResult.rows[0];
+      
+      // Get unresolved CUSIPs (trades with CUSIP-like symbols that haven't been resolved)
+      const cusipQuery = `
+        SELECT COUNT(DISTINCT t.symbol) as unresolved_cusips
+        FROM trades t
+        LEFT JOIN cusip_mappings cm ON cm.cusip = t.symbol AND (cm.user_id = $1 OR cm.user_id IS NULL)
+        WHERE t.user_id = $1
+          AND LENGTH(t.symbol) = 9 
+          AND t.symbol ~ '^[0-9A-Z]{9}$'
+          AND cm.cusip IS NULL
+      `;
+      
+      const cusipResult = await db.query(cusipQuery, [userId]);
+      const unresolvedCusips = parseInt(cusipResult.rows[0].unresolved_cusips) || 0;
+      
+      // Get failed CUSIP resolution errors for helpful messaging
+      let cusipErrors = [];
+      if (unresolvedCusips > 0) {
+        const errorQuery = `
+          SELECT DISTINCT clq.error_message, COUNT(*) as count
+          FROM trades t
+          LEFT JOIN cusip_lookup_queue clq ON clq.cusip = t.symbol
+          WHERE t.user_id = $1
+            AND LENGTH(t.symbol) = 9 
+            AND t.symbol ~ '^[0-9A-Z]{9}$'
+            AND clq.status = 'failed'
+            AND clq.error_message IS NOT NULL
+          GROUP BY clq.error_message
+          ORDER BY count DESC
+          LIMIT 5
+        `;
+        
+        const errorResult = await db.query(errorQuery, [userId]);
+        cusipErrors = errorResult.rows;
+      }
       
       res.json({
         success: true,
@@ -1990,6 +2025,8 @@ const tradeController = {
           pendingTrades: parseInt(stats.pending_trades),
           failedTrades: parseInt(stats.failed_trades),
           unenrichedTrades: parseInt(stats.unenriched_trades),
+          unresolvedCusips: unresolvedCusips,
+          cusipErrors: cusipErrors,
           completionPercentage: stats.total_trades > 0 
             ? Math.round((stats.enriched_trades / stats.total_trades) * 100)
             : 0

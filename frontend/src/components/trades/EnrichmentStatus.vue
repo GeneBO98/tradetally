@@ -31,6 +31,28 @@
       </button>
     </div>
     
+    <!-- Show CUSIP errors if available -->
+    <div v-if="enrichmentStatus && enrichmentStatus.cusipErrors && enrichmentStatus.cusipErrors.length > 0" class="mt-3 mb-2">
+      <div class="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md p-3">
+        <div class="flex">
+          <svg class="h-4 w-4 text-yellow-400 mt-0.5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.268 15.5c-.77.833.192 2.5 1.732 2.5z"></path>
+          </svg>
+          <div class="flex-1">
+            <p class="text-sm text-yellow-800 dark:text-yellow-200 font-medium">
+              CUSIP Resolution Issues:
+            </p>
+            <ul class="text-sm text-yellow-700 dark:text-yellow-300 mt-1 space-y-1">
+              <li v-for="error in enrichmentStatus.cusipErrors" :key="error.error_message" class="flex justify-between">
+                <span>{{ error.error_message }}</span>
+                <span class="text-yellow-600 dark:text-yellow-400">({{ error.count }} CUSIPs)</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+    
     <!-- Show retry button if there are unresolved CUSIPs -->
     <div v-if="enrichmentStatus && enrichmentStatus.unresolvedCusips > 0" class="mt-3 space-x-2">
       <button 
@@ -187,7 +209,7 @@ const lastUpdateTime = ref(Date.now())
 async function fetchEnrichmentStatus() {
   try {
     const response = await api.get('/trades/enrichment-status')
-    const newStatus = response.data
+    const newStatus = response.data.data || response.data
     
     // Log enrichment progress for debugging
     if (newStatus.tradeEnrichment && newStatus.tradeEnrichment.length > 0) {

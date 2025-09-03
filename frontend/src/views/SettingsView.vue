@@ -262,9 +262,7 @@
               rel="noopener noreferrer"
               class="btn-primary flex-shrink-0 ml-4"
             >
-              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-2M7 7l10 10M17 7v4m0 0l-4 4"></path>
-              </svg>
+              <MdiIcon :icon="apiIcon" :size="16" class="mr-2" />
               Open API Docs
             </a>
           </div>
@@ -369,10 +367,14 @@ import { ref, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useNotification } from '@/composables/useNotification'
 import api from '@/services/api'
+import MdiIcon from '@/components/MdiIcon.vue'
+import { mdiApi } from '@mdi/js'
 
 const authStore = useAuthStore()
 const { showSuccess, showError } = useNotification()
 
+// Icons
+const apiIcon = mdiApi
 
 // AI Provider Settings
 const aiForm = ref({

@@ -4,15 +4,15 @@
     <div class="flex items-center mb-8">
       <button
         @click="$router.push('/watchlists')"
-        class="mr-4 p-2 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+        class="mr-4 p-2 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
       >
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
         </svg>
       </button>
       <div class="flex-1">
-        <h1 class="text-3xl font-bold text-gray-900">{{ watchlist?.name }}</h1>
-        <p v-if="watchlist?.description" class="text-gray-600 mt-1">{{ watchlist.description }}</p>
+        <h1 class="text-3xl font-bold text-gray-900 dark:text-white">{{ watchlist?.name }}</h1>
+        <p v-if="watchlist?.description" class="text-gray-600 dark:text-gray-400 mt-1">{{ watchlist.description }}</p>
       </div>
       <button
         @click="showAddSymbolModal = true"
@@ -31,15 +31,15 @@
     </div>
 
     <!-- Watchlist Items -->
-    <div v-else-if="watchlist?.items?.length > 0" class="bg-white shadow-sm rounded-lg overflow-hidden">
-      <div class="px-6 py-4 border-b border-gray-200">
-        <h2 class="text-lg font-medium text-gray-900">Symbols ({{ watchlist.items.length }})</h2>
+    <div v-else-if="watchlist?.items?.length > 0" class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden">
+      <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+        <h2 class="text-lg font-medium text-gray-900 dark:text-white">Symbols ({{ watchlist.items.length }})</h2>
       </div>
       <div class="overflow-x-auto">
-        <table class="min-w-full divide-y divide-gray-200">
-          <thead class="bg-gray-50">
+        <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+          <thead class="bg-gray-50 dark:bg-gray-700">
             <tr>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Symbol</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Symbol</th>
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Price</th>
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Change</th>
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">% Change</th>
@@ -47,28 +47,28 @@
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
             </tr>
           </thead>
-          <tbody class="bg-white divide-y divide-gray-200">
+          <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
             <tr v-for="item in watchlist.items" :key="item.id">
               <td class="px-6 py-4 whitespace-nowrap">
-                <div class="text-sm font-medium text-gray-900">{{ item.symbol }}</div>
-                <div v-if="item.notes" class="text-sm text-gray-500">{{ item.notes }}</div>
+                <div class="text-sm font-medium text-gray-900 dark:text-white">{{ item.symbol }}</div>
+                <div v-if="item.notes" class="text-sm text-gray-500 dark:text-gray-400">{{ item.notes }}</div>
               </td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
                 {{ item.current_price ? formatPrice(item.current_price) : 'N/A' }}
               </td>
               <td class="px-6 py-4 whitespace-nowrap text-sm">
                 <span v-if="item.price_change !== null" :class="priceChangeClass(item.price_change)">
                   {{ formatPriceChange(item.price_change) }}
                 </span>
-                <span v-else class="text-gray-400">N/A</span>
+                <span v-else class="text-gray-400 dark:text-gray-500">N/A</span>
               </td>
               <td class="px-6 py-4 whitespace-nowrap text-sm">
                 <span v-if="item.percent_change !== null" :class="priceChangeClass(item.percent_change)">
                   {{ formatPercentChange(item.percent_change) }}
                 </span>
-                <span v-else class="text-gray-400">N/A</span>
+                <span v-else class="text-gray-400 dark:text-gray-500">N/A</span>
               </td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                 {{ formatDate(item.added_at) }}
               </td>
               <td class="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
@@ -102,8 +102,8 @@
       <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
       </svg>
-      <h3 class="mt-2 text-sm font-medium text-gray-900">No symbols in watchlist</h3>
-      <p class="mt-1 text-sm text-gray-500">Get started by adding your first symbol.</p>
+      <h3 class="mt-2 text-sm font-medium text-gray-900 dark:text-white">No symbols in watchlist</h3>
+      <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Get started by adding your first symbol.</p>
       <div class="mt-6">
         <button
           @click="showAddSymbolModal = true"
@@ -118,16 +118,16 @@
     <div v-if="watchlist?.items?.length > 0" class="mt-8 space-y-8">
       
       <!-- Watchlist News Section -->
-      <div class="bg-white shadow-sm rounded-lg overflow-hidden">
-        <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-          <h2 class="text-lg font-medium text-gray-900 flex items-center">
+      <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+          <h2 class="text-lg font-medium text-gray-900 dark:text-white flex items-center">
             <svg class="w-5 h-5 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"></path>
             </svg>
             Recent News
           </h2>
           <div class="flex items-center space-x-2">
-            <select v-model="newsFilter.days" @change="loadWatchlistNews" class="text-sm border-gray-300 rounded-md">
+            <select v-model="newsFilter.days" @change="loadWatchlistNews" class="text-sm border-gray-300 dark:border-gray-600 rounded-md dark:bg-gray-700 dark:text-white">
               <option value="3">Last 3 days</option>
               <option value="7">Last 7 days</option>
               <option value="14">Last 14 days</option>
@@ -147,15 +147,15 @@
           <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
         </div>
         
-        <div v-else-if="watchlistNews.length > 0" class="divide-y divide-gray-200">
+        <div v-else-if="watchlistNews.length > 0" class="divide-y divide-gray-200 dark:divide-gray-700">
           <article 
             v-for="article in watchlistNews.slice(0, newsFilter.limit)" 
             :key="article.id || article.datetime" 
-            class="p-6 hover:bg-gray-50 transition-colors"
+            class="p-6 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
           >
             <div class="flex items-start space-x-3">
               <div class="flex-shrink-0">
-                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200">
                   {{ article.symbol }}
                 </span>
               </div>
@@ -166,9 +166,9 @@
                   rel="noopener noreferrer"
                   class="block hover:text-blue-600 transition-colors"
                 >
-                  <h3 class="text-sm font-medium text-gray-900 mb-1">{{ article.headline }}</h3>
-                  <p v-if="article.summary" class="text-sm text-gray-600 line-clamp-2 mb-2">{{ article.summary }}</p>
-                  <div class="flex items-center text-xs text-gray-500">
+                  <h3 class="text-sm font-medium text-gray-900 dark:text-white mb-1">{{ article.headline }}</h3>
+                  <p v-if="article.summary" class="text-sm text-gray-600 dark:text-gray-400 line-clamp-2 mb-2">{{ article.summary }}</p>
+                  <div class="flex items-center text-xs text-gray-500 dark:text-gray-400">
                     <span>{{ formatNewsDate(article.datetime) }}</span>
                     <span v-if="article.source" class="ml-2">• {{ article.source }}</span>
                   </div>
@@ -178,7 +178,7 @@
           </article>
         </div>
         
-        <div v-else class="p-6 text-center text-gray-500">
+        <div v-else class="p-6 text-center text-gray-500 dark:text-gray-400">
           <svg class="mx-auto h-8 w-8 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"></path>
           </svg>
@@ -187,16 +187,16 @@
       </div>
 
       <!-- Upcoming Earnings Section -->
-      <div class="bg-white shadow-sm rounded-lg overflow-hidden">
-        <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-          <h2 class="text-lg font-medium text-gray-900 flex items-center">
+      <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+          <h2 class="text-lg font-medium text-gray-900 dark:text-white flex items-center">
             <svg class="w-5 h-5 mr-2 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
             </svg>
             Upcoming Earnings
           </h2>
           <div class="flex items-center space-x-2">
-            <select v-model="earningsFilter.days" @change="loadWatchlistEarnings" class="text-sm border-gray-300 rounded-md">
+            <select v-model="earningsFilter.days" @change="loadWatchlistEarnings" class="text-sm border-gray-300 dark:border-gray-600 rounded-md dark:bg-gray-700 dark:text-white">
               <option value="14">Next 14 days</option>
               <option value="30">Next 30 days</option>
               <option value="60">Next 60 days</option>
@@ -215,27 +215,27 @@
           <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-green-600"></div>
         </div>
         
-        <div v-else-if="watchlistEarnings.length > 0" class="divide-y divide-gray-200">
+        <div v-else-if="watchlistEarnings.length > 0" class="divide-y divide-gray-200 dark:divide-gray-700">
           <div 
             v-for="earnings in watchlistEarnings" 
             :key="`${earnings.symbol}-${earnings.date}`" 
-            class="p-6 hover:bg-gray-50 transition-colors"
+            class="p-6 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
           >
             <div class="flex items-center justify-between">
               <div class="flex items-center space-x-3">
-                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200">
                   {{ earnings.symbol }}
                 </span>
                 <div>
-                  <p class="text-sm font-medium text-gray-900">Earnings Report</p>
-                  <p class="text-xs text-gray-500">{{ formatEarningsDate(earnings.date) }}</p>
+                  <p class="text-sm font-medium text-gray-900 dark:text-white">Earnings Report</p>
+                  <p class="text-xs text-gray-500 dark:text-gray-400">{{ formatEarningsDate(earnings.date) }}</p>
                 </div>
               </div>
               <div class="text-right">
-                <div v-if="earnings.hour" class="text-xs text-gray-500">
+                <div v-if="earnings.hour" class="text-xs text-gray-500 dark:text-gray-400">
                   {{ earnings.hour === 'amc' ? 'After Market Close' : earnings.hour === 'bmo' ? 'Before Market Open' : earnings.hour }}
                 </div>
-                <div v-if="earnings.epsEstimate" class="text-xs text-gray-600 mt-1">
+                <div v-if="earnings.epsEstimate" class="text-xs text-gray-600 dark:text-gray-400 mt-1">
                   Est. EPS: ${{ earnings.epsEstimate }}
                 </div>
               </div>
@@ -243,7 +243,7 @@
           </div>
         </div>
         
-        <div v-else class="p-6 text-center text-gray-500">
+        <div v-else class="p-6 text-center text-gray-500 dark:text-gray-400">
           <svg class="mx-auto h-8 w-8 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
           </svg>
@@ -254,28 +254,28 @@
 
     <!-- Add Symbol Modal -->
     <div v-if="showAddSymbolModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-      <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+      <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700">
         <div class="mt-3">
-          <h3 class="text-lg font-medium text-gray-900 mb-4">Add Symbol to Watchlist</h3>
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Add Symbol to Watchlist</h3>
           <form @submit.prevent="addSymbol">
             <div class="mb-4">
-              <label for="symbol" class="block text-sm font-medium text-gray-700 mb-2">Symbol</label>
+              <label for="symbol" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Symbol</label>
               <input
                 id="symbol"
                 v-model="symbolForm.symbol"
                 type="text"
                 required
-                class="input uppercase"
+                class="input uppercase dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                 placeholder="Enter symbol (e.g., AAPL)"
               >
             </div>
             <div class="mb-6">
-              <label for="notes" class="block text-sm font-medium text-gray-700 mb-2">Notes (optional)</label>
+              <label for="notes" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Notes (optional)</label>
               <textarea
                 id="notes"
                 v-model="symbolForm.notes"
                 rows="3"
-                class="input"
+                class="input dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                 placeholder="Enter notes"
               ></textarea>
             </div>
@@ -302,17 +302,17 @@
 
     <!-- Edit Notes Modal -->
     <div v-if="editingItem" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-      <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+      <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700">
         <div class="mt-3">
-          <h3 class="text-lg font-medium text-gray-900 mb-4">Edit Notes for {{ editingItem.symbol }}</h3>
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Edit Notes for {{ editingItem.symbol }}</h3>
           <form @submit.prevent="updateNotes">
             <div class="mb-6">
-              <label for="editNotes" class="block text-sm font-medium text-gray-700 mb-2">Notes</label>
+              <label for="editNotes" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Notes</label>
               <textarea
                 id="editNotes"
                 v-model="editNotesForm.notes"
                 rows="4"
-                class="input"
+                class="input dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                 placeholder="Enter notes"
               ></textarea>
             </div>
@@ -320,7 +320,7 @@
               <button
                 type="button"
                 @click="cancelEditNotes"
-                class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200"
+                class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-600 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-200 dark:hover:bg-gray-500"
               >
                 Cancel
               </button>

@@ -377,34 +377,6 @@ class NotificationService {
     }
   }
 
-  // Send market event notification
-  static async sendMarketEventNotification(userId, eventData) {
-    try {
-      // Check if user has market events notifications enabled
-      const isEnabled = await NotificationPreferenceService.isNotificationEnabled(userId, 'notify_market_events');
-      if (!isEnabled) {
-        console.log(`Market event notification skipped for user ${userId} - preference disabled`);
-        return;
-      }
-
-      const message = {
-        type: 'market_event',
-        data: {
-          event_type: eventData.event_type,
-          title: eventData.title,
-          description: eventData.description,
-          severity: eventData.severity,
-          timestamp: new Date().toISOString()
-        }
-      };
-      
-      await this.sendSSENotification(userId, message);
-      await this.saveNotification(userId, 'market_event', message.data);
-      
-    } catch (error) {
-      console.error('Error sending market event notification:', error);
-    }
-  }
 
   // Send trade reminder notification
   static async sendTradeReminderNotification(userId, reminderData) {

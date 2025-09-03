@@ -14,8 +14,7 @@ class NotificationPreferencesController {
           notify_news_open_positions,
           notify_earnings_announcements,
           notify_price_alerts,
-          notify_trade_reminders,
-          notify_market_events
+          notify_trade_reminders
         FROM users 
         WHERE id = $1
       `;
@@ -40,8 +39,7 @@ class NotificationPreferencesController {
         notify_news_open_positions: convertPgBoolean(preferences.notify_news_open_positions),
         notify_earnings_announcements: convertPgBoolean(preferences.notify_earnings_announcements),
         notify_price_alerts: convertPgBoolean(preferences.notify_price_alerts),
-        notify_trade_reminders: convertPgBoolean(preferences.notify_trade_reminders),
-        notify_market_events: convertPgBoolean(preferences.notify_market_events)
+        notify_trade_reminders: convertPgBoolean(preferences.notify_trade_reminders)
       };
 
       res.json(formattedPreferences);
@@ -61,8 +59,7 @@ class NotificationPreferencesController {
         notify_news_open_positions,
         notify_earnings_announcements,
         notify_price_alerts,
-        notify_trade_reminders,
-        notify_market_events
+        notify_trade_reminders
       } = req.body;
 
       // Validate that at least one preference field is provided
@@ -70,8 +67,7 @@ class NotificationPreferencesController {
         'notify_news_open_positions',
         'notify_earnings_announcements', 
         'notify_price_alerts',
-        'notify_trade_reminders',
-        'notify_market_events'
+        'notify_trade_reminders'
       ];
 
       const providedFields = validFields.filter(field => req.body.hasOwnProperty(field));
@@ -102,8 +98,7 @@ class NotificationPreferencesController {
           notify_news_open_positions,
           notify_earnings_announcements,
           notify_price_alerts,
-          notify_trade_reminders,
-          notify_market_events
+          notify_trade_reminders
       `;
 
       const result = await db.query(query, values);
@@ -129,8 +124,7 @@ class NotificationPreferencesController {
         notify_news_open_positions: convertPgBoolean(updatedPreferences.notify_news_open_positions),
         notify_earnings_announcements: convertPgBoolean(updatedPreferences.notify_earnings_announcements),
         notify_price_alerts: convertPgBoolean(updatedPreferences.notify_price_alerts),
-        notify_trade_reminders: convertPgBoolean(updatedPreferences.notify_trade_reminders),
-        notify_market_events: convertPgBoolean(updatedPreferences.notify_market_events)
+        notify_trade_reminders: convertPgBoolean(updatedPreferences.notify_trade_reminders)
       };
 
       res.json({
@@ -166,13 +160,8 @@ class NotificationPreferencesController {
         },
         notify_trade_reminders: {
           label: 'Trade Reminders',
-          description: 'Get reminders about trade-related actions, updates, and important trade lifecycle events',
+          description: 'Receive behavioral analytics alerts for patterns like revenge trading and overconfidence warnings',
           category: 'Trading'
-        },
-        notify_market_events: {
-          label: 'Market Events',
-          description: 'Receive notifications about general market events, economic news, and market-wide updates',
-          category: 'Market'
         }
       };
 
@@ -196,8 +185,7 @@ class NotificationPreferencesController {
         'notify_news_open_positions',
         'notify_earnings_announcements',
         'notify_price_alerts', 
-        'notify_trade_reminders',
-        'notify_market_events'
+        'notify_trade_reminders'
       ];
 
       if (!validPreferences.includes(preference)) {
