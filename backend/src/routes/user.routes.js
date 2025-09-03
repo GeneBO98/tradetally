@@ -126,6 +126,7 @@ router.put('/password', authenticate, userController.changePassword);
 
 // Admin-only user management routes
 router.get('/admin/users', requireAdmin, userController.getAllUsers);
+router.get('/admin/statistics', requireAdmin, userController.getStatistics);
 router.get('/admin/users/pending', requireAdmin, userController.getPendingUsers);
 router.post('/admin/users/:userId/approve', requireAdmin, userController.approveUser);
 router.post('/admin/users/:userId/verify', requireAdmin, userController.verifyUser);
