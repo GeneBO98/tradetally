@@ -258,7 +258,17 @@ class Trade {
   static async findById(id, userId = null) {
     let query = `
       SELECT t.*, u.username, u.avatar_url,
-        array_agg(DISTINCT ta.*) FILTER (WHERE ta.id IS NOT NULL) as attachments,
+        json_agg(
+          json_build_object(
+            'id', ta.id,
+            'trade_id', ta.trade_id,
+            'file_url', ta.file_url,
+            'file_type', ta.file_type,
+            'file_name', ta.file_name,
+            'file_size', ta.file_size,
+            'uploaded_at', ta.uploaded_at
+          )
+        ) FILTER (WHERE ta.id IS NOT NULL) as attachments,
         count(DISTINCT tc.id)::integer as comment_count,
         sc.finnhub_industry as sector,
         sc.company_name as company_name
@@ -553,7 +563,7 @@ class Trade {
     return result.rows;
   }
 
-  static async update(id, userId, updates) {
+  static async update(id, userId, updates, options = {}) {
     // First get the current trade data for calculations
     const currentTrade = await this.findById(id, userId);
     
@@ -774,14 +784,16 @@ class Trade {
     const result = await db.query(query, values);
     
     // Check for new achievements after trade update (async, don't wait for completion)
-    AchievementService.checkAndAwardAchievements(userId).catch(error => {
-      console.warn(`Failed to check achievements for user ${userId} after trade update:`, error.message);
-    });
-    
-    // Update trading streak (async, don't wait for completion)  
-    AchievementService.updateTradingStreak(userId).catch(error => {
-      console.warn(`Failed to update trading streak for user ${userId} after trade update:`, error.message);
-    });
+    if (!options.skipAchievements) {
+      AchievementService.checkAndAwardAchievements(userId).catch(error => {
+        console.warn(`Failed to check achievements for user ${userId} after trade update:`, error.message);
+      });
+      
+      // Update trading streak (async, don't wait for completion)  
+      AchievementService.updateTradingStreak(userId).catch(error => {
+        console.warn(`Failed to update trading streak for user ${userId} after trade update:`, error.message);
+      });
+    }
     
     return result.rows[0];
   }

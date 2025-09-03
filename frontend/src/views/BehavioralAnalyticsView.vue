@@ -2549,27 +2549,30 @@ const analyzeOverconfidence = async () => {
       }
     }
     
-    const queryParams = new URLSearchParams()
-    if (filters.value.startDate) queryParams.append('startDate', filters.value.startDate)
-    if (filters.value.endDate) queryParams.append('endDate', filters.value.endDate)
+    const response = await api.post('/behavioral-analytics/overconfidence/analyze-historical', {
+      startDate: filters.value.startDate,
+      endDate: filters.value.endDate
+    })
     
-    const response = await api.get(`/behavioral-analytics/overconfidence?${queryParams}`)
-    
-    if (response.data.data) {
-      overconfidenceData.value = response.data.data
+    if (response.data.success) {
+      // Get the analysis from the response - need to fetch the full analysis after historical processing
+      const analysisResponse = await api.get('/behavioral-analytics/overconfidence')
+      if (analysisResponse.data.success && analysisResponse.data.data) {
+        overconfidenceData.value = analysisResponse.data.data
       
-      // Cache the overconfidence data
-      const cacheData = {
-        data: response.data.data,
-        timestamp: Date.now(),
-        filters: { ...filters.value }
-      }
-      localStorage.setItem(cacheKey, JSON.stringify(cacheData))
-      
-      if (response.data.data.error) {
-        showError('Analysis Error', response.data.data.message)
-      } else {
-        showSuccess('Analysis Complete', 'Overconfidence patterns analyzed successfully')
+        // Cache the overconfidence data
+        const cacheData = {
+          data: analysisResponse.data.data,
+          timestamp: Date.now(),
+          filters: { ...filters.value }
+        }
+        localStorage.setItem(cacheKey, JSON.stringify(cacheData))
+        
+        if (analysisResponse.data.data.error) {
+          showError('Analysis Error', analysisResponse.data.data.message)
+        } else {
+          showSuccess('Analysis Complete', response.data.message || 'Overconfidence patterns analyzed successfully')
+        }
       }
     }
   } catch (error) {
@@ -3011,11 +3014,7 @@ const loadExistingLossAversionData = async () => {
 // Load existing overconfidence analysis data
 const loadExistingOverconfidenceData = async () => {
   try {
-    const queryParams = new URLSearchParams()
-    if (filters.value.startDate) queryParams.append('startDate', filters.value.startDate)
-    if (filters.value.endDate) queryParams.append('endDate', filters.value.endDate)
-    
-    const response = await api.get(`/behavioral-analytics/overconfidence?${queryParams}`)
+    const response = await api.get('/behavioral-analytics/overconfidence')
     if (response.data.success && response.data.data) {
       overconfidenceData.value = response.data.data
       

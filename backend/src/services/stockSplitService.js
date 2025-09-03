@@ -133,7 +133,7 @@ class StockSplitService {
         SELECT * FROM trades
         WHERE symbol = $1
         AND exit_price IS NULL
-        AND entry_date <= $2
+        AND entry_time <= $2
         AND NOT EXISTS (
           SELECT 1 FROM trade_split_adjustments
           WHERE trade_id = trades.id

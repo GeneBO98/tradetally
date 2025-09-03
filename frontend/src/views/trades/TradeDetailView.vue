@@ -326,34 +326,13 @@
             </div>
           </div>
 
-          <!-- Attachments -->
-          <div v-if="trade.attachments && trade.attachments.length > 0" class="card">
-            <div class="card-body">
-              <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Attachments</h3>
-              <div class="space-y-3">
-                <div
-                  v-for="attachment in trade.attachments"
-                  :key="attachment.id"
-                  class="flex items-center justify-between p-3 border border-gray-200 dark:border-gray-700 rounded-lg"
-                >
-                  <div class="flex items-center">
-                    <DocumentIcon class="h-8 w-8 text-gray-400" />
-                    <div class="ml-3">
-                      <p class="text-sm font-medium text-gray-900 dark:text-white">{{ attachment.file_name }}</p>
-                      <p class="text-xs text-gray-500 dark:text-gray-400">{{ formatFileSize(attachment.file_size) }}</p>
-                    </div>
-                  </div>
-                  <a
-                    :href="attachment.file_url"
-                    target="_blank"
-                    class="text-primary-600 hover:text-primary-500"
-                  >
-                    View
-                  </a>
-                </div>
-              </div>
-            </div>
-          </div>
+          <!-- Trade Images -->
+          <TradeImages
+            :trade-id="trade.id"
+            :images="trade.attachments || []"
+            :can-delete="trade.user_id === authStore.user?.id"
+            @deleted="handleImageDeleted"
+          />
 
           <!-- Comments -->
           <div class="card">
@@ -649,6 +628,7 @@ import { DocumentIcon, ChatBubbleLeftIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
 import TradeChartVisualization from '@/components/trades/TradeChartVisualization.vue'
+import TradeImages from '@/components/trades/TradeImages.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -1038,6 +1018,12 @@ async function loadTrade() {
     router.push('/trades')
   } finally {
     loading.value = false
+  }
+}
+
+function handleImageDeleted(imageId) {
+  if (trade.value && trade.value.attachments) {
+    trade.value.attachments = trade.value.attachments.filter(img => img.id !== imageId)
   }
 }
 

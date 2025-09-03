@@ -162,7 +162,8 @@ router.get('/enrichment-status', authenticate, tradeController.getEnrichmentStat
  *       200:
  *         description: Enrichment retry initiated
  */
-router.post('/retry-enrichment', authenticate, tradeController.retryEnrichment);
+// TODO: Add missing retryEnrichment method
+// router.post('/retry-enrichment', authenticate, tradeController.retryEnrichment);
 
 /**
  * @swagger
@@ -176,7 +177,8 @@ router.post('/retry-enrichment', authenticate, tradeController.retryEnrichment);
  *       200:
  *         description: Enrichment status synced
  */
-router.post('/sync-enrichment-status', authenticate, tradeController.syncEnrichmentStatus);
+// TODO: Add missing syncEnrichmentStatus method
+// router.post('/sync-enrichment-status', authenticate, tradeController.syncEnrichmentStatus);
 
 /**
  * @swagger
@@ -190,7 +192,8 @@ router.post('/sync-enrichment-status', authenticate, tradeController.syncEnrichm
  *       200:
  *         description: All enrichment force completed
  */
-router.post('/force-complete-enrichment', authenticate, tradeController.forceCompleteEnrichment);
+// TODO: Add missing forceCompleteEnrichment method  
+// router.post('/force-complete-enrichment', authenticate, tradeController.forceCompleteEnrichment);
 
 /**
  * @swagger
@@ -210,7 +213,8 @@ router.post('/force-complete-enrichment', authenticate, tradeController.forceCom
  *       200:
  *         description: Debug information about symbol search
  */
-router.get('/debug-symbol', authenticate, tradeController.debugSymbolSearch);
+// TODO: Add missing debugSymbolSearch method
+// router.get('/debug-symbol', authenticate, tradeController.debugSymbolSearch);
 
 /**
  * @swagger
@@ -365,6 +369,52 @@ router.post('/cusip', authenticate, tradeController.addCusipMapping);
 router.delete('/cusip/:cusip', authenticate, tradeController.deleteCusipMapping);
 router.get('/cusip-mappings', authenticate, tradeController.getCusipMappings);
 router.post('/cusip/resolve-unresolved', authenticate, tradeController.resolveUnresolvedCusips);
+
+/**
+ * @swagger
+ * /api/trades/bulk:
+ *   delete:
+ *     summary: Bulk delete trades
+ *     tags: [Trades]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               tradeIds:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   format: uuid
+ *                 description: Array of trade IDs to delete
+ *     responses:
+ *       200:
+ *         description: Bulk delete completed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 deletedCount:
+ *                   type: integer
+ *                 totalRequested:
+ *                   type: integer
+ *                 errors:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       tradeId:
+ *                         type: string
+ *                       error:
+ *                         type: string
+ */
 router.delete('/bulk', authenticate, tradeController.bulkDeleteTrades);
 
 /**

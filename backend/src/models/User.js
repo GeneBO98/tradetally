@@ -303,15 +303,67 @@ class User {
   }
 
   // Admin user management methods
-  static async getAllUsers() {
+  static async getAllUsers(limit = 25, offset = 0, search = '') {
+    try {
+      // First try a simple query to test basic functionality
+      const simpleQuery = `SELECT COUNT(*) as total FROM users`;
+      const countResult = await db.query(simpleQuery);
+      
+      // If search is provided, add search condition
+      let whereClause = '';
+      let params = [];
+      if (search && search.trim() !== '') {
+        whereClause = `WHERE (email ILIKE $1 OR username ILIKE $1 OR full_name ILIKE $1)`;
+        params.push(`%${search.trim()}%`);
+      }
+
+      // Get users with pagination
+      const userQuery = `
+        SELECT id, email, username, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone, tier, created_at, updated_at
+        FROM users
+        ${whereClause}
+        ORDER BY created_at DESC 
+        LIMIT $${params.length + 1} OFFSET $${params.length + 2}
+      `;
+      params.push(limit, offset);
+
+      const userResult = await db.query(userQuery, params);
+      
+      // Get filtered count if search was provided
+      let total = parseInt(countResult.rows[0].total);
+      if (search && search.trim() !== '') {
+        const filteredCountQuery = `SELECT COUNT(*) as total FROM users ${whereClause}`;
+        const filteredCountResult = await db.query(filteredCountQuery, [params[0]]);
+        total = parseInt(filteredCountResult.rows[0].total);
+      }
+      
+      return {
+        users: userResult.rows,
+        total: total
+      };
+    } catch (error) {
+      console.error('Error in getAllUsers:', error);
+      throw error;
+    }
+  }
+
+  static async getUserStatistics() {
     const query = `
-      SELECT id, email, username, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone, tier, created_at, updated_at
+      SELECT 
+        COUNT(*) as total_users,
+        COUNT(CASE WHEN is_verified = true THEN 1 END) as verified_users,
+        COUNT(CASE WHEN admin_approved = true THEN 1 END) as approved_users,
+        COUNT(CASE WHEN is_active = true THEN 1 END) as active_users,
+        COUNT(CASE WHEN role = 'admin' THEN 1 END) as admin_users,
+        COUNT(CASE WHEN tier = 'pro' THEN 1 END) as pro_users,
+        COUNT(CASE WHEN tier = 'free' THEN 1 END) as free_users,
+        COUNT(CASE WHEN created_at >= CURRENT_DATE - INTERVAL '7 days' THEN 1 END) as new_users_this_week,
+        COUNT(CASE WHEN created_at >= CURRENT_DATE - INTERVAL '30 days' THEN 1 END) as new_users_this_month
       FROM users
-      ORDER BY created_at DESC
     `;
     
     const result = await db.query(query);
-    return result.rows;
+    return result.rows[0];
   }
 
   static async updateRole(userId, role) {
