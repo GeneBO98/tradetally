@@ -154,14 +154,26 @@ const selectedImage = ref(null)
 const imageToDelete = ref(null)
 
 function getImageUrl(image) {
+  let baseUrl
+  
   // Since file_url already includes '/api/', we just need to use it directly
   // without adding api.defaults.baseURL which would create '/api/api/...'
   if (image.file_url.startsWith('/api/')) {
-    return image.file_url
+    baseUrl = image.file_url
   } else {
     // If it's a relative path, prepend the API base URL
-    return `${api.defaults.baseURL}${image.file_url}`
+    baseUrl = `${api.defaults.baseURL}${image.file_url}`
   }
+  
+  // Add authentication token as query parameter for image access
+  // This is needed because img src requests don't include Authorization headers
+  const token = localStorage.getItem('token') || sessionStorage.getItem('token')
+  if (token) {
+    const separator = baseUrl.includes('?') ? '&' : '?'
+    return `${baseUrl}${separator}token=${encodeURIComponent(token)}`
+  }
+  
+  return baseUrl
 }
 
 function openImage(image) {

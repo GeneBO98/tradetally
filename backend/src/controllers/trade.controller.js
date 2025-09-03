@@ -1789,14 +1789,23 @@ const tradeController = {
     try {
       const { id: tradeId, filename } = req.params;
       
+      console.log('getTradeImage called:', {
+        tradeId,
+        filename,
+        hasAuthHeader: !!req.header('Authorization'),
+        hasQueryToken: !!req.query.token,
+        userFromMiddleware: req.user?.id
+      });
+      
       // Check if token is provided as query parameter
       let user = req.user;
       if (!user && req.query.token) {
         try {
           const jwt = require('jsonwebtoken');
           const decoded = jwt.verify(req.query.token, process.env.JWT_SECRET);
-          user = { id: decoded.userId };
+          user = { id: decoded.id };
         } catch (error) {
+          console.log('JWT verification failed for query token:', error.message);
           // Token is invalid, continue without user context
         }
       }
@@ -1818,7 +1827,17 @@ const tradeController = {
       const attachment = attachmentResult.rows[0];
       
       // Check access permissions - allow if trade is public, or if user owns the trade
-      if (!attachment.is_public && (!user || user.id !== attachment.user_id)) {
+      const hasAccess = attachment.is_public || (user && user.id === attachment.user_id);
+      
+      if (!hasAccess) {
+        console.log('Access denied for image:', {
+          filename,
+          tradeId,
+          userId: user?.id,
+          tradeOwnerId: attachment.user_id,
+          isPublic: attachment.is_public,
+          hasUser: !!user
+        });
         return res.status(403).json({ error: 'Access denied' });
       }
 
