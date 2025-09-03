@@ -20,6 +20,41 @@
 
       <!-- Users table -->
       <div v-else class="bg-white dark:bg-gray-800 shadow overflow-hidden sm:rounded-lg">
+        <!-- Search bar -->
+        <div class="px-4 py-4 sm:px-6 border-b border-gray-200 dark:border-gray-700">
+          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-3 sm:space-y-0">
+            <div class="flex-shrink-0 w-full sm:w-96">
+              <div class="relative rounded-md shadow-sm">
+                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <svg class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                </div>
+                <input
+                  v-model="searchQuery"
+                  @input="handleSearch"
+                  type="text"
+                  placeholder="Search users..."
+                  class="focus:ring-primary-500 focus:border-primary-500 block w-full pl-10 pr-12 sm:text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md"
+                />
+                <div v-if="searchQuery" class="absolute inset-y-0 right-0 pr-3 flex items-center">
+                  <button
+                    @click="clearSearch"
+                    class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                  >
+                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div class="text-sm text-gray-500 dark:text-gray-400 flex-shrink-0">
+              {{ totalUsers }} user{{ totalUsers !== 1 ? 's' : '' }} found
+            </div>
+          </div>
+        </div>
+        
         <div class="px-4 py-5 sm:p-6">
           <div class="overflow-x-auto">
             <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
@@ -99,29 +134,15 @@
                     </select>
                   </td>
                   <td class="px-3 py-3 whitespace-nowrap">
-                    <div class="flex items-center space-x-1">
-                      <span
-                        :class="{
-                          'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400': getUserDisplayTier(user) === 'free',
-                          'bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400': getUserDisplayTier(user) === 'pro'
-                        }"
-                        class="inline-flex px-2 py-1 text-xs font-semibold rounded-full"
-                      >
-                        {{ getUserDisplayTier(user) }}
-                        <span v-if="user.role === 'admin' || user.role === 'owner'" class="ml-1 text-xs opacity-75">
-                          (admin)
-                        </span>
-                      </span>
-                      <button
-                        @click="openTierModal(user)"
-                        class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-                        title="Manage tier"
-                      >
-                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
-                        </svg>
-                      </button>
-                    </div>
+                    <span
+                      :class="{
+                        'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400': getUserDisplayTier(user) === 'free',
+                        'bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400': getUserDisplayTier(user) === 'pro'
+                      }"
+                      class="inline-flex px-2 py-1 text-xs font-semibold rounded-full"
+                    >
+                      {{ getUserDisplayTier(user) }}
+                    </span>
                   </td>
                   <td class="px-3 py-3 whitespace-nowrap">
                     <span
@@ -213,6 +234,53 @@
               </tbody>
             </table>
           </div>
+          
+          <!-- Pagination Controls -->
+          <div class="px-4 py-3 flex items-center justify-between border-t border-gray-200 dark:border-gray-700">
+            <div class="flex items-center text-sm text-gray-700 dark:text-gray-300">
+              Showing {{ startIndex }} to {{ endIndex }} of {{ totalUsers }} users
+            </div>
+            
+            <div class="flex items-center space-x-1">
+              <!-- Previous button -->
+              <button
+                @click="prevPage"
+                :disabled="currentPage === 1"
+                class="relative inline-flex items-center px-2 py-2 text-sm font-medium rounded-l-md border border-gray-300 bg-white text-gray-500 hover:bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" />
+                </svg>
+              </button>
+              
+              <!-- Page numbers -->
+              <button
+                v-for="page in getVisiblePages"
+                :key="page.value"
+                @click="page.type === 'page' ? goToPage(page.value) : null"
+                :disabled="page.type === 'ellipsis'"
+                :class="{
+                  'bg-primary-50 border-primary-500 text-primary-600 dark:bg-primary-900/20 dark:border-primary-500 dark:text-primary-400': page.value === currentPage && page.type === 'page',
+                  'bg-white border-gray-300 text-gray-500 hover:bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-600': page.value !== currentPage && page.type === 'page',
+                  'bg-white border-gray-300 text-gray-700 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 cursor-default': page.type === 'ellipsis'
+                }"
+                class="relative inline-flex items-center px-4 py-2 text-sm font-medium border"
+              >
+                {{ page.display }}
+              </button>
+              
+              <!-- Next button -->
+              <button
+                @click="nextPage"
+                :disabled="currentPage === totalPages"
+                class="relative inline-flex items-center px-2 py-2 text-sm font-medium rounded-r-md border border-gray-300 bg-white text-gray-500 hover:bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" />
+                </svg>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -229,7 +297,7 @@
               <div class="ml-5 w-0 flex-1">
                 <dl>
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Total Users</dt>
-                  <dd class="text-lg font-medium text-gray-900 dark:text-white">{{ users.length }}</dd>
+                  <dd class="text-lg font-medium text-gray-900 dark:text-white">{{ totalUsers }}</dd>
                 </dl>
               </div>
             </div>
@@ -307,24 +375,6 @@
             </div>
           </div>
         </div>
-
-        <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
-          <div class="p-5">
-            <div class="flex items-center">
-              <div class="flex-shrink-0">
-                <svg class="h-6 w-6 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
-                </svg>
-              </div>
-              <div class="ml-5 w-0 flex-1">
-                <dl>
-                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Pro Users</dt>
-                  <dd class="text-lg font-medium text-purple-600 dark:text-purple-400">{{ proUserCount }}</dd>
-                </dl>
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
 
@@ -362,153 +412,6 @@
         </div>
       </div>
     </div>
-
-    <!-- Tier Management Modal -->
-    <div v-if="showTierModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-      <div class="relative top-20 mx-auto p-5 border w-[600px] shadow-lg rounded-md bg-white dark:bg-gray-800">
-        <div class="mt-3">
-          <div class="flex items-center justify-between mb-4">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white">Manage User Tier</h3>
-            <button
-              @click="closeTierModal"
-              class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-            >
-              <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-
-          <div v-if="selectedUser" class="space-y-4">
-            <!-- User Info -->
-            <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
-              <div class="flex items-center space-x-3">
-                <img
-                  v-if="selectedUser.avatar_url"
-                  class="h-10 w-10 rounded-full"
-                  :src="selectedUser.avatar_url"
-                  :alt="selectedUser.username"
-                />
-                <div
-                  v-else
-                  class="h-10 w-10 rounded-full bg-primary-500 flex items-center justify-center"
-                >
-                  <span class="text-sm font-medium text-white">
-                    {{ selectedUser.username.charAt(0).toUpperCase() }}
-                  </span>
-                </div>
-                <div>
-                  <p class="text-sm font-medium text-gray-900 dark:text-white">{{ selectedUser.username }}</p>
-                  <p class="text-xs text-gray-500 dark:text-gray-400">{{ selectedUser.email }}</p>
-                </div>
-              </div>
-            </div>
-
-            <!-- Current Tier Info -->
-            <div v-if="tierInfo" class="space-y-3">
-              <div>
-                <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Current Tier</h4>
-                <div class="flex items-center space-x-2">
-                  <span
-                    :class="{
-                      'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400': tierInfo?.tier === 'free',
-                      'bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400': tierInfo?.tier === 'pro'
-                    }"
-                    class="inline-flex px-3 py-1 text-sm font-semibold rounded-full"
-                  >
-                    {{ tierInfo?.tier }}
-                  </span>
-                  <span v-if="tierInfo?.override" class="text-xs text-amber-600 dark:text-amber-400">
-                    (Override active)
-                  </span>
-                  <span v-if="selectedUser && (selectedUser.role === 'admin' || selectedUser.role === 'owner')" class="text-xs text-blue-600 dark:text-blue-400">
-                    (Admin - Pro by default)
-                  </span>
-                </div>
-              </div>
-
-              <!-- Override Info -->
-              <div v-if="tierInfo?.override" class="bg-amber-50 dark:bg-amber-900/20 rounded-lg p-3">
-                <p class="text-sm text-amber-800 dark:text-amber-300">
-                  <strong>Override:</strong> {{ tierInfo?.override?.tier }} tier
-                  <span v-if="tierInfo?.override?.expires_at">
-                    until {{ new Date(tierInfo?.override?.expires_at).toLocaleDateString() }}
-                  </span>
-                </p>
-                <p v-if="tierInfo?.override?.reason" class="text-xs text-amber-700 dark:text-amber-400 mt-1">
-                  Reason: {{ tierInfo?.override?.reason }}
-                </p>
-                <p v-if="tierInfo?.override?.created_by_username" class="text-xs text-amber-700 dark:text-amber-400">
-                  Set by: {{ tierInfo?.override?.created_by_username }}
-                </p>
-              </div>
-
-              <!-- Subscription Info -->
-              <div v-if="tierInfo?.subscription && tierInfo?.subscription?.status === 'active'" class="bg-green-50 dark:bg-green-900/20 rounded-lg p-3">
-                <p class="text-sm text-green-800 dark:text-green-300">
-                  <strong>Active Subscription</strong>
-                </p>
-                <p class="text-xs text-green-700 dark:text-green-400 mt-1">
-                  Renews: {{ tierInfo?.subscription?.current_period_end ? new Date(tierInfo.subscription.current_period_end).toLocaleDateString() : 'N/A' }}
-                </p>
-              </div>
-            </div>
-
-            <!-- Action Buttons -->
-            <div class="space-y-3 pt-4 border-t dark:border-gray-700">
-              <!-- Set Override -->
-              <div>
-                <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Set Tier Override</h4>
-                <div class="flex items-end space-x-2">
-                  <div class="flex-1">
-                    <select
-                      v-model="overrideTier"
-                      class="w-full text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded focus:ring-primary-500 focus:border-primary-500"
-                    >
-                      <option value="free">Free</option>
-                      <option value="pro">Pro</option>
-                    </select>
-                  </div>
-                  <div class="flex-1">
-                    <input
-                      v-model="overrideExpiry"
-                      type="date"
-                      placeholder="Expiry (optional)"
-                      class="w-full text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded focus:ring-primary-500 focus:border-primary-500"
-                    />
-                  </div>
-                  <button
-                    @click="setTierOverride"
-                    :disabled="isUpdating"
-                    class="px-3 py-2 bg-primary-600 text-white text-sm font-medium rounded hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
-                  >
-                    Set Override
-                  </button>
-                </div>
-                <input
-                  v-model="overrideReason"
-                  type="text"
-                  placeholder="Reason for override (optional)"
-                  class="w-full mt-2 text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded focus:ring-primary-500 focus:border-primary-500"
-                />
-              </div>
-
-              <!-- Remove Override -->
-              <div v-if="tierInfo?.override" class="flex justify-between items-center">
-                <span class="text-sm text-gray-600 dark:text-gray-400">Remove tier override</span>
-                <button
-                  @click="removeTierOverride"
-                  :disabled="isUpdating"
-                  class="px-3 py-1 bg-red-600 text-white text-sm font-medium rounded hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50"
-                >
-                  Remove Override
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -528,13 +431,16 @@ const isUpdating = ref(false)
 const showDeleteConfirm = ref(false)
 const userToDelete = ref(null)
 
-// Tier management
-const showTierModal = ref(false)
-const selectedUser = ref(null)
-const tierInfo = ref(null)
-const overrideTier = ref('pro')
-const overrideExpiry = ref('')
-const overrideReason = ref('')
+// Pagination state
+const currentPage = ref(1)
+const totalPages = ref(1)
+const totalUsers = ref(0)
+const usersPerPage = ref(25)
+const hasMore = ref(false)
+
+// Search state
+const searchQuery = ref('')
+const searchTimeout = ref(null)
 
 const currentUserId = computed(() => authStore.user?.id)
 
@@ -567,19 +473,107 @@ function getUserDisplayTier(user) {
   return user.tier || 'free';
 }
 
-async function fetchUsers() {
+const startIndex = computed(() => (currentPage.value - 1) * usersPerPage.value + 1)
+const endIndex = computed(() => Math.min(startIndex.value + users.value.length - 1, totalUsers.value))
+
+const getVisiblePages = computed(() => {
+  const pages = []
+  const delta = 2
+  const range = []
+  
+  // Calculate range of pages to show
+  for (let i = Math.max(2, currentPage.value - delta); i <= Math.min(totalPages.value - 1, currentPage.value + delta); i++) {
+    range.push(i)
+  }
+  
+  if (currentPage.value - delta > 2) {
+    range.unshift('...')
+  }
+  if (currentPage.value + delta < totalPages.value - 1) {
+    range.push('...')
+  }
+  
+  range.unshift(1)
+  if (totalPages.value !== 1) {
+    range.push(totalPages.value)
+  }
+  
+  // Convert to page objects
+  let pageNum = 1
+  for (const item of range) {
+    if (item === '...') {
+      pages.push({ type: 'ellipsis', display: '...', value: `ellipsis-${pageNum++}` })
+    } else {
+      pages.push({ type: 'page', display: item, value: item })
+    }
+  }
+  
+  return pages
+})
+
+async function fetchUsers(page = 1) {
   try {
     loading.value = true
     error.value = null
     
-    const response = await api.get('/users/admin/users')
+    const params = new URLSearchParams({
+      page: page.toString(),
+      limit: usersPerPage.value.toString()
+    })
+    
+    if (searchQuery.value.trim()) {
+      params.append('search', searchQuery.value.trim())
+    }
+    
+    const response = await api.get(`/users/admin/users?${params}`)
     users.value = response.data.users
+    totalUsers.value = response.data.total
+    totalPages.value = response.data.totalPages
+    currentPage.value = response.data.page
+    hasMore.value = response.data.hasMore
   } catch (err) {
     error.value = err.response?.data?.error || 'Failed to load users'
     showError('Error', error.value)
   } finally {
     loading.value = false
   }
+}
+
+function goToPage(page) {
+  if (page >= 1 && page <= totalPages.value) {
+    fetchUsers(page)
+  }
+}
+
+function nextPage() {
+  if (currentPage.value < totalPages.value) {
+    goToPage(currentPage.value + 1)
+  }
+}
+
+function prevPage() {
+  if (currentPage.value > 1) {
+    goToPage(currentPage.value - 1)
+  }
+}
+
+function handleSearch() {
+  // Clear existing timeout
+  if (searchTimeout.value) {
+    clearTimeout(searchTimeout.value)
+  }
+  
+  // Debounce search to avoid too many API calls
+  searchTimeout.value = setTimeout(() => {
+    currentPage.value = 1 // Reset to first page on search
+    fetchUsers(1)
+  }, 300)
+}
+
+function clearSearch() {
+  searchQuery.value = ''
+  currentPage.value = 1
+  fetchUsers(1)
 }
 
 async function updateUserRole(user, newRole) {
@@ -643,8 +637,8 @@ async function deleteUser() {
     
     const response = await api.delete(`/users/admin/users/${userToDelete.value.id}`)
     
-    // Remove the user from the local array
-    users.value = users.value.filter(u => u.id !== userToDelete.value.id)
+    // Refresh the current page to reflect the deletion
+    await fetchUsers(currentPage.value)
     
     showSuccess('Success', response.data.message)
     showDeleteConfirm.value = false
@@ -702,79 +696,6 @@ function formatDate(dateString) {
     month: 'short',
     day: 'numeric'
   })
-}
-
-// Tier management functions
-async function openTierModal(user) {
-  selectedUser.value = user
-  showTierModal.value = true
-  overrideTier.value = 'pro'
-  overrideExpiry.value = ''
-  overrideReason.value = ''
-  
-  // Fetch tier info
-  try {
-    const response = await api.get(`/users/admin/users/${user.id}/tier`)
-    tierInfo.value = response.data
-  } catch (err) {
-    showError('Error', 'Failed to load tier information')
-  }
-}
-
-function closeTierModal() {
-  showTierModal.value = false
-  selectedUser.value = null
-  tierInfo.value = null
-}
-
-async function setTierOverride() {
-  if (!selectedUser.value) return
-  
-  try {
-    isUpdating.value = true
-    
-    const payload = {
-      tier: overrideTier.value,
-      reason: overrideReason.value || undefined,
-      expiresAt: overrideExpiry.value || undefined
-    }
-    
-    const response = await api.post(`/users/admin/users/${selectedUser.value.id}/tier-override`, payload)
-    
-    showSuccess('Success', response.data.message)
-    
-    // Update the user's tier in the list
-    const userIndex = users.value.findIndex(u => u.id === selectedUser.value.id)
-    if (userIndex !== -1) {
-      users.value[userIndex].tier = overrideTier.value
-    }
-    
-    // Refresh tier info
-    await openTierModal(selectedUser.value)
-  } catch (err) {
-    showError('Error', err.response?.data?.error || 'Failed to set tier override')
-  } finally {
-    isUpdating.value = false
-  }
-}
-
-async function removeTierOverride() {
-  if (!selectedUser.value) return
-  
-  try {
-    isUpdating.value = true
-    
-    const response = await api.delete(`/users/admin/users/${selectedUser.value.id}/tier-override`)
-    
-    showSuccess('Success', response.data.message)
-    
-    // Refresh tier info
-    await openTierModal(selectedUser.value)
-  } catch (err) {
-    showError('Error', err.response?.data?.error || 'Failed to remove tier override')
-  } finally {
-    isUpdating.value = false
-  }
 }
 
 onMounted(() => {
