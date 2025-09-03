@@ -24,16 +24,18 @@ RUN apk add --no-cache \
     make \
     g++ \
     libc6-compat \
-    vips-dev
+    vips-dev \
+    build-base
 
 COPY backend/package*.json ./
 
 # Install dependencies
 RUN npm ci --only=production
 
-# Remove existing Sharp and install for correct platform
-RUN rm -rf node_modules/sharp
-RUN npm install --os=linux --libc=musl --cpu=arm64 sharp
+# Force reinstall Sharp with proper architecture detection
+# This will automatically detect and build for the correct platform
+RUN npm uninstall sharp && \
+    npm install sharp --build-from-source
 
 COPY backend/ ./
 
@@ -41,7 +43,9 @@ FROM node:18-alpine
 RUN apk add --no-cache \
     nginx \
     netcat-openbsd \
-    vips
+    vips \
+    vips-dev \
+    libc6-compat
 WORKDIR /app
 
 # Copy built frontend
