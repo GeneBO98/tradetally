@@ -376,8 +376,10 @@ async function handleSubmit() {
         strategy: tradeData.strategy,
         notes: !!tradeData.notes
       })
+      // For edits, go back to the trade detail page
+      router.push(`/trades/${route.params.id}`)
     } else {
-      await tradesStore.createTrade(tradeData)
+      const newTrade = await tradesStore.createTrade(tradeData)
       showSuccess('Success', 'Trade created successfully')
       trackTradeAction('create', {
         side: tradeData.side,
@@ -385,9 +387,9 @@ async function handleSubmit() {
         strategy: tradeData.strategy,
         notes: !!tradeData.notes
       })
+      // For new trades, go to trades list
+      router.push('/trades')
     }
-
-    router.push('/trades')
   } catch (err) {
     error.value = err.response?.data?.error || 'An error occurred'
     showError('Error', error.value)

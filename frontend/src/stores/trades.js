@@ -201,7 +201,9 @@ export const useTradesStore = defineStore('trades', () => {
       const response = await api.put(`/trades/${id}`, updates)
       const index = trades.value.findIndex(t => t.id === id)
       if (index !== -1) {
-        trades.value[index] = response.data.trade
+        // Preserve the current order by only updating the trade data without changing position
+        // This prevents trades from jumping around when only metadata (like images) is updated
+        trades.value[index] = { ...trades.value[index], ...response.data.trade }
       }
       if (currentTrade.value?.id === id) {
         currentTrade.value = response.data.trade
