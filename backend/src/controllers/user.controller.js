@@ -166,6 +166,15 @@ const userController = {
     }
   },
 
+  async getStatistics(req, res, next) {
+    try {
+      const stats = await User.getUserStatistics();
+      res.json(stats);
+    } catch (error) {
+      next(error);
+    }
+  },
+
   async getPendingUsers(req, res, next) {
     try {
       const users = await User.getPendingUsers();
