@@ -159,6 +159,10 @@ const billingController = {
 
       res.json({
         success: true,
+        data: {
+          checkout_url: session.url,
+          session_id: session.id
+        },
         session: {
           sessionId: session.id,
           url: session.url
