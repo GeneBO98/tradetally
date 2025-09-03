@@ -24,6 +24,8 @@
       </router-link>
     </div>
 
+    <!-- Enrichment Status -->
+    <EnrichmentStatus />
 
     <div class="mt-8 card">
       <div class="card-body">
@@ -145,6 +147,14 @@
                       : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
                   ]">
                   {{ trade.side }}
+                </span>
+                <!-- News badge for mobile -->
+                <span v-if="trade.has_news" 
+                  :class="getNewsBadgeClasses(trade.news_sentiment)"
+                  class="px-2 py-1 text-xs font-semibold rounded-full flex items-center"
+                  :title="`${trade.news_events?.length || 0} news article(s) - ${trade.news_sentiment || 'neutral'} sentiment`">
+                  <MdiIcon :icon="newspaperIcon" :size="14" class="mr-1" />
+                  <span>{{ trade.news_events?.length || 0 }}</span>
                 </span>
               </div>
             <span class="px-2 py-1 text-xs font-semibold rounded-full"
@@ -285,6 +295,14 @@
                   <div class="text-sm font-medium text-gray-900 dark:text-white">
                     {{ trade.symbol }}
                   </div>
+                  <!-- News badge for desktop table -->
+                  <span v-if="trade.has_news" 
+                    :class="getNewsBadgeClasses(trade.news_sentiment)"
+                    class="px-2 py-1 text-xs font-semibold rounded-full flex items-center"
+                    :title="`${trade.news_events?.length || 0} news article(s) - ${trade.news_sentiment || 'neutral'} sentiment`">
+                    <MdiIcon :icon="newspaperIcon" :size="14" class="mr-1" />
+                    <span>{{ trade.news_events?.length || 0 }}</span>
+                  </span>
                 </div>
               </td>
               <td class="px-6 py-4 whitespace-nowrap cursor-pointer" @click="$router.push(`/trades/${trade.id}`)">
@@ -484,11 +502,16 @@ import { format } from 'date-fns'
 import { DocumentTextIcon, ChatBubbleLeftIcon } from '@heroicons/vue/24/outline'
 import TradeFilters from '@/components/trades/TradeFilters.vue'
 import TradeCommentsDialog from '@/components/trades/TradeCommentsDialog.vue'
+import EnrichmentStatus from '@/components/trades/EnrichmentStatus.vue'
+import MdiIcon from '@/components/MdiIcon.vue'
+import { mdiNewspaper } from '@mdi/js'
 
 const tradesStore = useTradesStore()
 const route = useRoute()
 const router = useRouter()
 
+// MDI icons
+const newspaperIcon = mdiNewspaper
 
 // Comments dialog
 const showCommentsDialog = ref(false)
@@ -536,22 +559,12 @@ function formatNumber(num) {
 }
 
 function formatDate(date) {
-  // Handle date strings that might be in different formats
-  // If it's already a date string like '2025-07-04', treat it as local date
-  if (typeof date === 'string' && date.match(/^\d{4}-\d{2}-\d{2}$/)) {
-    // This is a date-only string, create local date to avoid timezone issues
-    const [year, month, day] = date.split('-')
-    const localDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day))
-    return format(localDate, 'MMM dd, yyyy')
-  }
-  // For datetime strings, use as-is
   return format(new Date(date), 'MMM dd, yyyy')
 }
 
 function handleFilter(filters) {
-  console.log('🎯 handleFilter called with:', filters)
   tradesStore.setFilters(filters)
-  tradesStore.fetchTrades(filters) // Pass filters explicitly
+  tradesStore.fetchTrades()
 }
 
 function goToPage(page) {
@@ -627,8 +640,38 @@ async function executeBulkDelete() {
   }
 }
 
+// Get news badge classes based on sentiment
+function getNewsBadgeClasses(sentiment) {
+  const baseClasses = 'px-2 py-1 text-xs font-semibold rounded-full flex items-center'
+  
+  switch (sentiment) {
+    case 'positive':
+      return 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
+    case 'negative':
+      return 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
+    case 'neutral':
+    default:
+      return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
+  }
+}
 
 onMounted(() => {
+  // Add debug function to window for testing
+  window.debugSymbol = async (symbol) => {
+    try {
+      const response = await fetch(`/api/trades/debug-symbol?symbol=${symbol}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      const data = await response.json();
+      console.log('Debug Symbol Results:', data);
+      return data;
+    } catch (error) {
+      console.error('Debug failed:', error);
+    }
+  };
+
   // Check if there are URL parameters that the TradeFilters component should handle
   const hasFiltersInUrl = !!(
     route.query.symbol || route.query.startDate || route.query.endDate || 

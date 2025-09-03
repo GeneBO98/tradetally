@@ -1,7 +1,7 @@
 <template>
   <div class="space-y-4">
     <!-- Basic filters always visible -->
-    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-6">
       <div>
         <label for="symbol" class="label">Symbol</label>
         <input
@@ -37,33 +37,106 @@
       </div>
       
       <div>
-        <label for="strategy" class="label">Strategy</label>
-        <input
-          id="strategy"
-          v-model="filters.strategy"
-          type="text"
-          class="input"
-          placeholder="e.g., Scalping"
-          @keydown.enter="applyFilters"
-        />
+        <label class="label">Strategy</label>
+        <div class="relative" data-dropdown="strategy">
+          <button
+            @click.stop="showStrategyDropdown = !showStrategyDropdown"
+            class="input w-full text-left flex items-center justify-between"
+            type="button"
+          >
+            <span class="truncate">
+              {{ getSelectedStrategyText() }}
+            </span>
+            <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+            </svg>
+          </button>
+          
+          <div v-if="showStrategyDropdown" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
+            <div class="p-1">
+              <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                <input
+                  type="checkbox"
+                  :checked="filters.strategies.length === 0"
+                  @change="toggleAllStrategies"
+                  class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                />
+                <span class="ml-3 text-sm text-gray-900 dark:text-white">All Strategies</span>
+              </label>
+            </div>
+            <div class="border-t border-gray-200 dark:border-gray-600">
+              <div v-for="strategy in strategyOptions" :key="strategy.value" class="p-1">
+                <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                  <input
+                    type="checkbox"
+                    :value="strategy.value"
+                    v-model="filters.strategies"
+                    class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                  />
+                  <span class="ml-3 text-sm text-gray-900 dark:text-white">{{ strategy.label }}</span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
       
       <div>
-        <label for="sector" class="label">Sector</label>
-        <select
-          id="sector"
-          v-model="filters.sector"
-          class="input"
-          :disabled="loadingSectors"
-        >
-          <option value="">{{ loadingSectors ? 'Loading sectors...' : 'All Sectors' }}</option>
-          <option 
-            v-for="sector in availableSectors" 
-            :key="sector"
-            :value="sector"
+        <label class="label">Sector</label>
+        <div class="relative" data-dropdown="sector">
+          <button
+            @click.stop="showSectorDropdown = !showSectorDropdown"
+            class="input w-full text-left flex items-center justify-between"
+            type="button"
+            :disabled="loadingSectors"
           >
-            {{ sector }}
-          </option>
+            <span class="truncate">
+              {{ getSelectedSectorText() }}
+            </span>
+            <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+            </svg>
+          </button>
+          
+          <div v-if="showSectorDropdown && !loadingSectors" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
+            <div class="p-1">
+              <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                <input
+                  type="checkbox"
+                  :checked="filters.sectors.length === 0"
+                  @change="toggleAllSectors"
+                  class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                />
+                <span class="ml-3 text-sm text-gray-900 dark:text-white">All Sectors</span>
+              </label>
+            </div>
+            <div class="border-t border-gray-200 dark:border-gray-600">
+              <div v-for="sector in availableSectors" :key="sector" class="p-1">
+                <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                  <input
+                    type="checkbox"
+                    :value="sector"
+                    v-model="filters.sectors"
+                    class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                  />
+                  <span class="ml-3 text-sm text-gray-900 dark:text-white">{{ sector }}</span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div>
+        <label for="hasNews" class="label">News</label>
+        <select
+          id="hasNews"
+          v-model="filters.hasNews"
+          class="input"
+        >
+          <option value="">All Trades</option>
+          <option value="true">With News</option>
+          <option value="false">No News</option>
         </select>
       </div>
     </div>
@@ -241,6 +314,54 @@
           </select>
         </div>
       </div>
+
+      <!-- Day of Week Filter -->
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 mt-4">
+        <div>
+          <label class="label">Day of Week</label>
+          <div class="relative" data-dropdown="dayOfWeek">
+            <button
+              @click.stop="showDayOfWeekDropdown = !showDayOfWeekDropdown"
+              class="input w-full text-left flex items-center justify-between"
+              type="button"
+            >
+              <span class="truncate">
+                {{ getSelectedDayOfWeekText() }}
+              </span>
+              <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+              </svg>
+            </button>
+            
+            <div v-if="showDayOfWeekDropdown" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
+              <div class="p-1">
+                <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                  <input
+                    type="checkbox"
+                    :checked="filters.daysOfWeek.length === 0"
+                    @change="toggleAllDaysOfWeek"
+                    class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                  />
+                  <span class="ml-3 text-sm text-gray-900 dark:text-white">All Days</span>
+                </label>
+              </div>
+              <div class="border-t border-gray-200 dark:border-gray-600">
+                <div v-for="day in dayOfWeekOptions" :key="day.value" class="p-1">
+                  <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                    <input
+                      type="checkbox"
+                      :value="day.value"
+                      v-model="filters.daysOfWeek"
+                      class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                    />
+                    <span class="ml-3 text-sm text-gray-900 dark:text-white">{{ day.label }}</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
     
     <div class="flex justify-between items-center">
@@ -261,7 +382,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ChevronRightIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
@@ -273,13 +394,47 @@ const showAdvanced = ref(false)
 const availableSectors = ref([])
 const loadingSectors = ref(false)
 
+// Dropdown visibility
+const showStrategyDropdown = ref(false)
+const showSectorDropdown = ref(false)
+const showDayOfWeekDropdown = ref(false)
+
+// Day of week options (weekdays only - markets are closed weekends)
+const dayOfWeekOptions = [
+  { value: 1, label: 'Monday' },
+  { value: 2, label: 'Tuesday' },
+  { value: 3, label: 'Wednesday' },
+  { value: 4, label: 'Thursday' },
+  { value: 5, label: 'Friday' }
+]
+
+// Strategy options
+const strategyOptions = [
+  { value: 'scalper', label: 'Scalper' },
+  { value: 'momentum', label: 'Momentum' },
+  { value: 'mean_reversion', label: 'Mean Reversion' },
+  { value: 'swing', label: 'Swing' },
+  { value: 'day_trading', label: 'Day Trading' },
+  { value: 'position', label: 'Position Trading' },
+  { value: 'breakout', label: 'Breakout' },
+  { value: 'reversal', label: 'Reversal' },
+  { value: 'trend_following', label: 'Trend Following' },
+  { value: 'contrarian', label: 'Contrarian' },
+  { value: 'news_momentum', label: 'News Momentum' },
+  { value: 'news_swing', label: 'News Swing' },
+  { value: 'news_uncertainty', label: 'News Uncertainty' }
+]
+
 const filters = ref({
   // Basic filters
   symbol: '',
   startDate: '',
   endDate: '',
-  strategy: '',
-  sector: '',
+  strategy: '', // Keep for backward compatibility
+  strategies: [], // New multi-select array
+  sector: '', // Keep for backward compatibility  
+  sectors: [], // New multi-select array
+  hasNews: '',
   // Advanced filters
   side: '',
   minPrice: null,
@@ -291,8 +446,52 @@ const filters = ref({
   maxPnl: null,
   pnlType: '',
   holdTime: '',
-  broker: ''
+  broker: '',
+  daysOfWeek: [] // New multi-select array for days
 })
+
+// Helper methods for multi-select dropdowns
+function getSelectedStrategyText() {
+  if (filters.value.strategies.length === 0) return 'All Strategies'
+  if (filters.value.strategies.length === 1) {
+    const strategy = strategyOptions.find(s => s.value === filters.value.strategies[0])
+    return strategy ? strategy.label : 'All Strategies'
+  }
+  return `${filters.value.strategies.length} strategies selected`
+}
+
+function getSelectedSectorText() {
+  if (filters.value.sectors.length === 0) return loadingSectors.value ? 'Loading sectors...' : 'All Sectors'
+  if (filters.value.sectors.length === 1) return filters.value.sectors[0]
+  return `${filters.value.sectors.length} sectors selected`
+}
+
+function toggleAllStrategies(event) {
+  if (event.target.checked) {
+    filters.value.strategies = []
+  }
+}
+
+function toggleAllSectors(event) {
+  if (event.target.checked) {
+    filters.value.sectors = []
+  }
+}
+
+function getSelectedDayOfWeekText() {
+  if (filters.value.daysOfWeek.length === 0) return 'All Days'
+  if (filters.value.daysOfWeek.length === 1) {
+    const day = dayOfWeekOptions.find(d => d.value === filters.value.daysOfWeek[0])
+    return day ? day.label : 'All Days'
+  }
+  return `${filters.value.daysOfWeek.length} days selected`
+}
+
+function toggleAllDaysOfWeek(event) {
+  if (event.target.checked) {
+    filters.value.daysOfWeek = []
+  }
+}
 
 // Count active filters
 const activeFiltersCount = computed(() => {
@@ -300,8 +499,9 @@ const activeFiltersCount = computed(() => {
   if (filters.value.symbol) count++
   if (filters.value.startDate) count++
   if (filters.value.endDate) count++
-  if (filters.value.strategy) count++
-  if (filters.value.sector) count++
+  if (filters.value.strategies.length > 0) count++
+  if (filters.value.sectors.length > 0) count++
+  if (filters.value.hasNews) count++
   if (filters.value.side) count++
   if (filters.value.minPrice !== null) count++
   if (filters.value.maxPrice !== null) count++
@@ -313,6 +513,7 @@ const activeFiltersCount = computed(() => {
   if (filters.value.pnlType) count++
   if (filters.value.holdTime) count++
   if (filters.value.broker) count++
+  if (filters.value.daysOfWeek.length > 0) count++
   return count
 })
 
@@ -330,6 +531,7 @@ const activeAdvancedCount = computed(() => {
   if (filters.value.pnlType) count++
   if (filters.value.holdTime) count++
   if (filters.value.broker) count++
+  if (filters.value.daysOfWeek.length > 0) count++
   return count
 })
 
@@ -341,8 +543,20 @@ function applyFilters() {
   if (filters.value.symbol) cleanFilters.symbol = filters.value.symbol
   if (filters.value.startDate) cleanFilters.startDate = filters.value.startDate
   if (filters.value.endDate) cleanFilters.endDate = filters.value.endDate
-  if (filters.value.strategy) cleanFilters.strategy = filters.value.strategy
-  if (filters.value.sector) cleanFilters.sector = filters.value.sector
+  
+  // Handle multi-select strategies - convert to comma-separated or use first one for backward compatibility
+  if (filters.value.strategies.length > 0) {
+    cleanFilters.strategies = filters.value.strategies.join(',')
+  }
+  
+  // Handle multi-select sectors - convert to comma-separated or use first one for backward compatibility  
+  if (filters.value.sectors.length > 0) {
+    cleanFilters.sectors = filters.value.sectors.join(',')
+  }
+  
+  cleanFilters.hasNews = filters.value.hasNews
+  
+  console.log('🎯 APPLYING FILTERS:', cleanFilters)
   
   // Advanced filters
   if (filters.value.side) cleanFilters.side = filters.value.side
@@ -350,12 +564,17 @@ function applyFilters() {
   if (filters.value.maxPrice !== null && filters.value.maxPrice !== '') cleanFilters.maxPrice = filters.value.maxPrice
   if (filters.value.minQuantity !== null && filters.value.minQuantity !== '') cleanFilters.minQuantity = filters.value.minQuantity
   if (filters.value.maxQuantity !== null && filters.value.maxQuantity !== '') cleanFilters.maxQuantity = filters.value.maxQuantity
-  if (filters.value.status) cleanFilters.status = filters.value.status
+  cleanFilters.status = filters.value.status
   if (filters.value.minPnl !== null && filters.value.minPnl !== '') cleanFilters.minPnl = filters.value.minPnl
   if (filters.value.maxPnl !== null && filters.value.maxPnl !== '') cleanFilters.maxPnl = filters.value.maxPnl
-  if (filters.value.pnlType) cleanFilters.pnlType = filters.value.pnlType
-  if (filters.value.holdTime) cleanFilters.holdTime = filters.value.holdTime
-  if (filters.value.broker) cleanFilters.broker = filters.value.broker
+  cleanFilters.pnlType = filters.value.pnlType
+  cleanFilters.holdTime = filters.value.holdTime
+  cleanFilters.broker = filters.value.broker
+  
+  // Handle multi-select days of week - convert to comma-separated
+  if (filters.value.daysOfWeek.length > 0) {
+    cleanFilters.daysOfWeek = filters.value.daysOfWeek.join(',')
+  }
   
   emit('filter', cleanFilters)
 }
@@ -366,7 +585,10 @@ function resetFilters() {
     startDate: '',
     endDate: '',
     strategy: '',
+    strategies: [],
     sector: '',
+    sectors: [],
+    hasNews: '',
     side: '',
     minPrice: null,
     maxPrice: null,
@@ -377,7 +599,8 @@ function resetFilters() {
     maxPnl: null,
     pnlType: '',
     holdTime: '',
-    broker: ''
+    broker: '',
+    daysOfWeek: []
   }
   // Emit empty filters to trigger immediate refresh
   emit('filter', {})
@@ -396,7 +619,64 @@ async function fetchAvailableSectors() {
   }
 }
 
+// Convert minHoldTime/maxHoldTime to holdTime range option
+const convertHoldTimeRange = (minMinutes, maxMinutes) => {
+  // Handle specific strategy ranges first (more inclusive approach)
+  if (maxMinutes <= 15) return '5-15 min' // Scalper: trades under 15 minutes
+  if (maxMinutes <= 240) return '2-4 hours' // Momentum: up to 4 hours (more inclusive)
+  if (maxMinutes <= 480) return '4-24 hours' // Mean reversion: up to 8 hours (more inclusive) 
+  if (minMinutes >= 1440) return '1-7 days' // Swing: over 1 day
+  
+  // Fallback to exact mapping for edge cases
+  if (maxMinutes < 1) return '< 1 min'
+  if (maxMinutes <= 5) return '1-5 min'
+  if (maxMinutes <= 30) return '15-30 min'
+  if (maxMinutes <= 60) return '30-60 min'
+  if (maxMinutes <= 120) return '1-2 hours'
+  if (maxMinutes <= 1440) return '4-24 hours'
+  if (maxMinutes <= 10080) return '1-7 days'
+  if (maxMinutes <= 40320) return '1-4 weeks'
+  
+  return '1+ months' // Default for very long trades
+}
+
+// Close dropdowns when clicking outside
+function handleClickOutside(event) {
+  // Use refs instead of querySelector for better performance and reliability
+  const target = event.target
+  
+  // Check if click is outside strategy dropdown
+  if (showStrategyDropdown.value) {
+    const strategyDropdown = target.closest('[data-dropdown="strategy"]')
+    if (!strategyDropdown) {
+      showStrategyDropdown.value = false
+    }
+  }
+  
+  // Check if click is outside sector dropdown  
+  if (showSectorDropdown.value) {
+    const sectorDropdown = target.closest('[data-dropdown="sector"]')
+    if (!sectorDropdown) {
+      showSectorDropdown.value = false
+    }
+  }
+  
+  // Check if click is outside day of week dropdown
+  if (showDayOfWeekDropdown.value) {
+    const dayOfWeekDropdown = target.closest('[data-dropdown="dayOfWeek"]')
+    if (!dayOfWeekDropdown) {
+      showDayOfWeekDropdown.value = false
+    }
+  }
+}
+
 onMounted(() => {
+  // Add click outside listener after a small delay to avoid conflicts
+  setTimeout(() => {
+    document.addEventListener('click', handleClickOutside)
+  }, 100)
+  
+  // Existing code...
   // Fetch available sectors for dropdown
   fetchAvailableSectors()
   
@@ -409,7 +689,10 @@ onMounted(() => {
     startDate: '',
     endDate: '',
     strategy: '',
+    strategies: [],
     sector: '',
+    sectors: [],
+    hasNews: '',
     side: '',
     minPrice: null,
     maxPrice: null,
@@ -420,7 +703,8 @@ onMounted(() => {
     maxPnl: null,
     pnlType: '',
     holdTime: '',
-    broker: ''
+    broker: '',
+    daysOfWeek: []
   }
   
   // Then set only the filters from query parameters
@@ -484,8 +768,46 @@ onMounted(() => {
     shouldApply = true
   }
   
+  // Handle strategy from query parameters 
+  if (route.query.strategy) {
+    filters.value.strategy = route.query.strategy
+    // Also populate the strategies array for consistency
+    filters.value.strategies = [route.query.strategy]
+    shouldApply = true
+  }
+  
+  // Handle multi-select strategies from query parameters
+  if (route.query.strategies) {
+    filters.value.strategies = route.query.strategies.split(',')
+    shouldApply = true
+  }
+  
+  // Handle multi-select sectors from query parameters
+  if (route.query.sectors) {
+    filters.value.sectors = route.query.sectors.split(',')
+    shouldApply = true
+  }
+  
+  // Convert minHoldTime/maxHoldTime to holdTime range
+  if (route.query.minHoldTime || route.query.maxHoldTime) {
+    const minTime = parseInt(route.query.minHoldTime) || 0
+    const maxTime = parseInt(route.query.maxHoldTime) || Infinity
+    const holdTimeRange = convertHoldTimeRange(minTime, maxTime)
+    
+    if (holdTimeRange) {
+      filters.value.holdTime = holdTimeRange
+      shouldApply = true
+    }
+  }
+  
+  // Handle multi-select days of week from query parameters
+  if (route.query.daysOfWeek) {
+    filters.value.daysOfWeek = route.query.daysOfWeek.split(',').map(d => parseInt(d))
+    shouldApply = true
+  }
+  
   // Auto-expand advanced filters if any advanced filter is set
-  if (route.query.minPrice || route.query.maxPrice || route.query.minQuantity || route.query.maxQuantity || route.query.holdTime || route.query.broker) {
+  if (route.query.minPrice || route.query.maxPrice || route.query.minQuantity || route.query.maxQuantity || route.query.holdTime || route.query.broker || route.query.minHoldTime || route.query.maxHoldTime || route.query.daysOfWeek) {
     showAdvanced.value = true
   }
   
@@ -493,5 +815,9 @@ onMounted(() => {
   if (shouldApply) {
     applyFilters()
   }
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside)
 })
 </script>

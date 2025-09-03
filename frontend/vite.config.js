@@ -33,7 +33,7 @@ export default defineConfig(({ command, mode }) => {
     allowedHosts: process.env.NODE_ENV === 'development' ? ['dev.tradetally.io'] : 'auto',
     proxy: {
       '/api': {
-        target: 'http://localhost:3000', // Backend server port
+        target: 'http://localhost:3000',
         changeOrigin: true
       }
     }

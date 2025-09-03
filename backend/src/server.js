@@ -6,6 +6,7 @@ require('dotenv').config();
 
 const { migrate } = require('./utils/migrate');
 const { securityMiddleware } = require('./middleware/security');
+const logger = require('./utils/logger');
 const authRoutes = require('./routes/auth.routes');
 const userRoutes = require('./routes/user.routes');
 const tradeRoutes = require('./routes/trade.routes');
@@ -18,7 +19,26 @@ const apiRoutes = require('./routes/api.routes');
 const v1Routes = require('./routes/v1');
 const wellKnownRoutes = require('./routes/well-known.routes');
 const adminRoutes = require('./routes/admin.routes');
+const featuresRoutes = require('./routes/features.routes');
+const behavioralAnalyticsRoutes = require('./routes/behavioralAnalytics.routes');
+const billingRoutes = require('./routes/billing.routes');
+const watchlistRoutes = require('./routes/watchlist.routes');
+const priceAlertsRoutes = require('./routes/priceAlerts.routes');
+const notificationsRoutes = require('./routes/notifications.routes');
 const gamificationRoutes = require('./routes/gamification.routes');
+const newsEnrichmentRoutes = require('./routes/newsEnrichment.routes');
+const newsCorrelationRoutes = require('./routes/newsCorrelation.routes');
+const notificationPreferencesRoutes = require('./routes/notificationPreferences.routes');
+const cusipMappingsRoutes = require('./routes/cusipMappings.routes');
+const BillingService = require('./services/billingService');
+const priceMonitoringService = require('./services/priceMonitoringService');
+const GamificationScheduler = require('./services/gamificationScheduler');
+const TrialScheduler = require('./services/trialScheduler');
+const backgroundWorker = require('./workers/backgroundWorker');
+const jobRecoveryService = require('./services/jobRecoveryService');
+const pushNotificationService = require('./services/pushNotificationService');
+const globalEnrichmentCacheCleanupService = require('./services/globalEnrichmentCacheCleanupService');
+const { swaggerSpec, swaggerUi } = require('./config/swagger');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
@@ -64,11 +84,24 @@ if (process.env.NODE_ENV !== 'production') {
   );
 }
 
+logger.info(`CORS configuration initialized with ${allowedOrigins.length} allowed origins`, 'cors');
+logger.debug(`Allowed origins: ${allowedOrigins.join(', ')}`, 'cors');
+
 const corsOptions = {
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
+    logger.debug(`CORS check for origin: ${origin || 'null'}`, 'cors');
+    
+    if (!origin) {
+      logger.debug('No origin header present - allowing request', 'cors');
+      callback(null, true);
+      return;
+    }
+    
+    if (allowedOrigins.includes(origin)) {
+      logger.debug(`Origin ${origin} is allowed`, 'cors');
       callback(null, true);
     } else {
+      logger.warn(`Origin ${origin} not allowed. Allowed origins: ${allowedOrigins.join(', ')}`, 'cors');
       callback(new Error('Not allowed by CORS'));
     }
   },
@@ -83,9 +116,24 @@ app.use(cors(corsOptions));
 
 // Use morgan for logging in development, but not in production
 if (process.env.NODE_ENV !== 'production') {
-  app.use(morgan('dev'));
+  app.use(morgan('dev', {
+    skip: function (req, res) {
+      // Skip logging for frequently polled endpoints
+      return req.path.includes('/import/history') || 
+             req.path.includes('/health') ||
+             (req.path.includes('/trades') && req.query && req.query.page);
+    }
+  }));
 }
-app.use(express.json());
+
+// Body parsing middleware (skip for webhook routes that need raw body)
+app.use((req, res, next) => {
+  if (req.originalUrl === '/api/billing/webhooks/stripe') {
+    next();
+  } else {
+    express.json()(req, res, next);
+  }
+});
 app.use(express.urlencoded({ extended: true }));
 app.use('/api', skipRateLimit);
 
@@ -103,18 +151,41 @@ app.use('/api/2fa', twoFactorRoutes);
 app.use('/api/api-keys', apiKeyRoutes);
 app.use('/api/v2', apiRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/features', featuresRoutes);
+app.use('/api/behavioral-analytics', behavioralAnalyticsRoutes);
+app.use('/api/billing', billingRoutes);
+app.use('/api/watchlists', watchlistRoutes);
+app.use('/api/price-alerts', priceAlertsRoutes);
+app.use('/api/notifications', notificationsRoutes);
 app.use('/api/gamification', gamificationRoutes);
+app.use('/api/news-enrichment', newsEnrichmentRoutes);
+app.use('/api/news-correlation', newsCorrelationRoutes);
+app.use('/api/notification-preferences', notificationPreferencesRoutes);
+app.use('/api/cusip-mappings', cusipMappingsRoutes);
 
 // Well-known endpoints for mobile discovery
 app.use('/.well-known', wellKnownRoutes);
 
-// Health endpoint with database connection check
+// Swagger API Documentation
+if (process.env.NODE_ENV !== 'production' || process.env.ENABLE_SWAGGER === 'true') {
+  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+    explorer: true,
+    customCss: '.swagger-ui .topbar { display: none }',
+    customSiteTitle: 'TradeTally API Documentation',
+  }));
+  logger.info('📚 Swagger documentation available at /api-docs');
+}
+
+// Health endpoint with database connection check and background worker status
 app.get('/api/health', async (req, res) => {
   const health = {
     status: 'OK',
     timestamp: new Date().toISOString(),
     services: {
-      database: 'OK'
+      database: 'OK',
+      backgroundWorker: backgroundWorker.getStatus(),
+      jobRecovery: jobRecoveryService.getStatus(),
+      enrichmentCacheCleanup: globalEnrichmentCacheCleanupService.getStatus()
     }
   };
   
@@ -124,6 +195,22 @@ app.get('/api/health', async (req, res) => {
   } catch (error) {
     health.services.database = 'ERROR';
     health.status = 'DEGRADED';
+  }
+  
+  // Check if background worker is running (critical for PRO features)
+  if (!health.services.backgroundWorker.isRunning || !health.services.backgroundWorker.queueProcessing) {
+    health.status = 'DEGRADED';
+    health.services.backgroundWorker.status = 'ERROR';
+  } else {
+    health.services.backgroundWorker.status = 'OK';
+  }
+
+  // Check if job recovery is running
+  if (!health.services.jobRecovery.isRunning) {
+    health.status = 'DEGRADED';
+    health.services.jobRecovery.status = 'ERROR';
+  } else {
+    health.services.jobRecovery.status = 'OK';
   }
   
   res.json(health);
@@ -186,6 +273,44 @@ app.get('/api/security-test', (req, res) => {
   });
 });
 
+// Admin endpoint to check enrichment status
+app.get('/api/admin/enrichment-status', async (req, res) => {
+  try {
+    const db = require('./config/database');
+    
+    // Get job queue status
+    const jobs = await db.query('SELECT type, status, COUNT(*) as count FROM job_queue GROUP BY type, status ORDER BY type, status');
+    
+    // Get trade enrichment status
+    const trades = await db.query('SELECT enrichment_status, COUNT(*) as count FROM trades GROUP BY enrichment_status ORDER BY enrichment_status');
+    
+    res.json({
+      backgroundWorker: backgroundWorker.getStatus(),
+      jobRecovery: jobRecoveryService.getStatus(),
+      jobQueue: jobs.rows,
+      tradeEnrichment: trades.rows,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Admin endpoint to trigger manual recovery
+app.post('/api/admin/trigger-recovery', async (req, res) => {
+  try {
+    await jobRecoveryService.triggerRecovery();
+    res.json({ 
+      success: true, 
+      message: 'Recovery triggered successfully',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+}
+});
+
 app.use(errorHandler);
 
 app.use((req, res) => {
@@ -195,36 +320,142 @@ app.use((req, res) => {
 // Function to start server with migration
 async function startServer() {
   try {
-    console.log('Starting TradeTally server...');
+    logger.info('Starting TradeTally server...');
     
     // Run database migrations first
     if (process.env.RUN_MIGRATIONS !== 'false') {
-      console.log('Running database migrations...');
+      logger.info('Running database migrations...');
       await migrate();
     } else {
-      console.log('Skipping migrations (RUN_MIGRATIONS=false)');
+      logger.info('Skipping migrations (RUN_MIGRATIONS=false)');
+    }
+    
+    // Initialize billing service (conditional)
+    await BillingService.initialize();
+    
+    // Start price monitoring service for Pro users
+    if (process.env.ENABLE_PRICE_MONITORING !== 'false') {
+      console.log('Starting price monitoring service...');
+      await priceMonitoringService.start();
+    } else {
+      console.log('Price monitoring disabled (ENABLE_PRICE_MONITORING=false)');
+    }
+    
+    // Start gamification scheduler
+    if (process.env.ENABLE_GAMIFICATION !== 'false') {
+      console.log('Starting gamification scheduler...');
+      GamificationScheduler.startScheduler();
+    } else {
+      console.log('Gamification disabled (ENABLE_GAMIFICATION=false)');
+    }
+    
+    // Start trial scheduler (for trial expiration emails)
+    if (process.env.ENABLE_TRIAL_EMAILS !== 'false') {
+      console.log('Starting trial scheduler...');
+      TrialScheduler.startScheduler();
+    } else {
+      console.log('Trial emails disabled (ENABLE_TRIAL_EMAILS=false)');
+    }
+    
+    // Initialize push notification service
+    if (process.env.ENABLE_PUSH_NOTIFICATIONS === 'true') {
+      console.log('✓ Push notification service loaded');
+    } else {
+      console.log('Push notifications disabled (ENABLE_PUSH_NOTIFICATIONS=false)');
+    }
+
+    // Start background worker for trade enrichment - CRITICAL for PRO tier
+    if (process.env.ENABLE_TRADE_ENRICHMENT !== 'false') {
+      console.log('Starting background worker for trade enrichment...');
+      let attempts = 0;
+      const maxAttempts = 3;
+      
+      while (attempts < maxAttempts) {
+        try {
+          await backgroundWorker.start();
+          console.log('✓ Background worker started for trade enrichment');
+          break;
+        } catch (error) {
+          attempts++;
+          console.error(`❌ Failed to start background worker (attempt ${attempts}/${maxAttempts}):`, error.message);
+          
+          if (attempts >= maxAttempts) {
+            console.error('🚨 CRITICAL: Background worker failed to start after multiple attempts');
+            console.error('🚨 This will affect PRO tier trade enrichment features');
+            
+            // In production, we should fail fast for critical services
+            if (process.env.NODE_ENV === 'production') {
+              console.error('🚨 Exiting due to critical service failure in production');
+              process.exit(1);
+            }
+          } else {
+            // Wait 2 seconds before retry
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
+        }
+      }
+    } else {
+      console.log('Trade enrichment disabled (ENABLE_TRADE_ENRICHMENT=false)');
+    }
+
+    // Start automatic job recovery service - CRITICAL for PRO tier reliability
+    if (process.env.ENABLE_JOB_RECOVERY !== 'false') {
+      console.log('Starting automatic job recovery service...');
+      jobRecoveryService.start();
+      console.log('✓ Job recovery service started (prevents stuck enrichment jobs)');
+    } else {
+      console.log('Job recovery disabled (ENABLE_JOB_RECOVERY=false)');
+    }
+
+    // Start global enrichment cache cleanup service
+    if (process.env.ENABLE_ENRICHMENT_CACHE_CLEANUP !== 'false') {
+      console.log('Starting global enrichment cache cleanup service...');
+      globalEnrichmentCacheCleanupService.start();
+      console.log('✓ Global enrichment cache cleanup service started');
+    } else {
+      console.log('Enrichment cache cleanup disabled (ENABLE_ENRICHMENT_CACHE_CLEANUP=false)');
     }
     
     // Start the server
     app.listen(PORT, () => {
-      console.log(`✓ TradeTally server running on port ${PORT}`);
-      console.log(`✓ Environment: ${process.env.NODE_ENV || 'development'}`);
+      logger.info(`✓ TradeTally server running on port ${PORT}`);
+      logger.info(`✓ Environment: ${process.env.NODE_ENV || 'development'}`);
+      logger.info(`✓ Log level: ${process.env.LOG_LEVEL || 'INFO'}`);
       
       // Start stock split daily checks
       const stockSplitService = require('./services/stockSplitService');
       stockSplitService.startDailyCheck();
       console.log('✓ Stock split monitoring started');
-      
-      // Start gamification scheduler
-      const GamificationScheduler = require('./services/gamificationScheduler');
-      GamificationScheduler.startScheduler();
-      console.log('✓ Gamification scheduler started');
     });
   } catch (error) {
-    console.error('Failed to start server:', error.message);
+    logger.error('Failed to start server:', error);
     process.exit(1);
   }
 }
+
+// Graceful shutdown
+process.on('SIGTERM', async () => {
+  console.log('SIGTERM received, shutting down gracefully...');
+  await priceMonitoringService.stop();
+  jobRecoveryService.stop();
+  globalEnrichmentCacheCleanupService.stop();
+  await backgroundWorker.stop();
+  process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+  console.log('SIGINT received, shutting down gracefully...');
+  await priceMonitoringService.stop();
+  jobRecoveryService.stop();
+  await backgroundWorker.stop();
+  process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+  console.log('SIGINT received, shutting down gracefully...');
+  await priceMonitoringService.stop();
+  process.exit(0);
+});
 
 // Start the server
 startServer();

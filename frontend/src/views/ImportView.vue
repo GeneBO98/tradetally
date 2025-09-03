@@ -207,6 +207,7 @@
         </div>
       </div>
 
+
       <!-- Import History -->
       <div v-if="importHistory.length > 0" class="card">
         <div class="card-body">
@@ -343,7 +344,7 @@
                     <h5 class="font-medium text-gray-900 dark:text-white">{{ selectedLogFile }}</h5>
                     <div class="flex items-center space-x-2 mt-1">
                       <span v-if="logPagination.total > 0" class="text-sm text-gray-500 dark:text-gray-400">
-                        Showing {{ logPagination.linesShown || Math.min(logPagination.page * logPagination.limit, logPagination.total) }} of {{ logPagination.total }} lines
+                        Showing {{ Math.min(logPagination.page * logPagination.limit, logPagination.total) }} of {{ logPagination.total }} lines
                         <span v-if="logSearchQuery">(filtered)</span>
                       </span>
                       <span v-if="!logPagination.showAll && logPagination.filteredOut > 0" class="text-xs text-blue-600 dark:text-blue-400">
@@ -404,7 +405,7 @@
                     @click="loadMoreLogs"
                     class="btn-secondary text-sm"
                   >
-                    Load Older Entries ({{ logPagination.total - (logPagination.linesShown || (logPagination.page * logPagination.limit)) }} remaining)
+                    Load More ({{ logPagination.total - (logPagination.page * logPagination.limit) }} lines remaining)
                   </button>
                 </div>
               </div>
@@ -412,7 +413,6 @@
           </div>
         </div>
       </div>
-
 
       <!-- CUSIP Management -->
       <div class="card">
@@ -427,8 +427,6 @@
               </p>
             </div>
             <div class="flex items-center space-x-2 ml-4">
-              <!-- CUSIP management buttons disabled until backend endpoints are available -->
-              <!--
               <button
                 @click="showAllMappingsModal = true"
                 class="btn-secondary text-sm"
@@ -444,12 +442,9 @@
                 <ExclamationTriangleIcon class="h-5 w-5 mr-2" />
                 {{ unmappedCusipsCount }} Unmapped
               </button>
-              -->
             </div>
           </div>
           
-          <!-- Unmapped warning disabled until backend endpoint is available -->
-          <!--
           <div v-if="unmappedCusipsCount > 0" class="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md p-3 mb-6">
             <div class="flex items-center">
               <ExclamationTriangleIcon class="h-5 w-5 text-yellow-600 dark:text-yellow-400 mr-2" />
@@ -463,7 +458,6 @@
               </div>
             </div>
           </div>
-          -->
           
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <!-- Add New Mapping -->
@@ -545,12 +539,12 @@
               </div>
             </div>
           </div>
+
         </div>
       </div>
     </div>
 
-    <!-- CUSIP Modals disabled until backend endpoints are available -->
-    <!--
+    <!-- Unmapped CUSIPs Modal -->
     <UnmappedCusipsModal
       v-if="showUnmappedModal"
       :isOpen="showUnmappedModal"
@@ -559,13 +553,13 @@
       @mappingCreated="handleMappingCreated"
     />
 
+    <!-- All CUSIP Mappings Modal -->
     <AllCusipMappingsModal
       v-if="showAllMappingsModal"
       :isOpen="showAllMappingsModal"
       @close="showAllMappingsModal = false"
       @mappingChanged="handleMappingCreated"
     />
-    -->
 
     <!-- Delete Import Confirmation Modal -->
     <div v-if="showDeleteModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
@@ -621,17 +615,16 @@
 import { ref, onMounted, computed } from 'vue'
 import { useTradesStore } from '@/stores/trades'
 import { useNotification } from '@/composables/useNotification'
-import { useAnalytics } from '@/composables/useAnalytics'
 import { format } from 'date-fns'
 import { ArrowUpTrayIcon, XMarkIcon, ExclamationTriangleIcon, Cog6ToothIcon, MagnifyingGlassIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
-// CUSIP modal imports disabled until backend endpoints are available
-// import UnmappedCusipsModal from '@/components/cusip/UnmappedCusipsModal.vue'
-// import AllCusipMappingsModal from '@/components/cusip/AllCusipMappingsModal.vue'
+import UnmappedCusipsModal from '@/components/cusip/UnmappedCusipsModal.vue'
+import AllCusipMappingsModal from '@/components/cusip/AllCusipMappingsModal.vue'
+import { usePriceAlertNotifications } from '@/composables/usePriceAlertNotifications'
 
 const tradesStore = useTradesStore()
 const { showSuccess, showError } = useNotification()
-const { trackImport, trackFeatureUsage } = useAnalytics()
+const { celebrationQueue } = usePriceAlertNotifications()
 
 const loading = ref(false)
 const error = ref(null)
@@ -675,8 +668,7 @@ const logPagination = ref({
   hasMore: false,
   showAll: false,
   totalAllLines: 0,
-  filteredOut: 0,
-  linesShown: 0
+  filteredOut: 0
 })
 const cusipLoading = ref(false)
 const cusipForm = ref({
@@ -699,7 +691,6 @@ const allMappingsLoading = ref(false)
 const showDeleteModal = ref(false)
 const deleteImportId = ref(null)
 const deleteImportData = ref(null)
-
 
 function handleFileSelect(event) {
   const file = event.target.files[0]
@@ -815,9 +806,6 @@ async function handleImport() {
     console.log('Import result:', result)
     showSuccess('Import Started', `Import has been queued. Import ID: ${result.importId}`)
     
-    // Track successful import start
-    trackImport(selectedBroker.value, 'started')
-    
     // Reset form
     selectedFile.value = null
     selectedBroker.value = ''
@@ -828,23 +816,62 @@ async function handleImport() {
     // Refresh import history
     fetchImportHistory()
 
-    // Poll import status until completed (simplified for main branch)
+    // Poll import status until completed, then trigger achievement check as fallback
     try {
       const importId = result.importId
       const poll = async () => {
         try {
           const statusRes = await api.get(`/trades/import/status/${importId}`)
           const status = statusRes.data.importLog?.status
-          const tradeCount = statusRes.data.importLog?.trades_imported || null
-          if (status === 'completed') {
-            // Track successful completion
-            trackImport(selectedBroker.value, 'completed', tradeCount)
-            fetchImportHistory()
-            return
-          } else if (status === 'failed') {
-            // Track failure
-            trackImport(selectedBroker.value, 'failed')
-            fetchImportHistory()
+          if (status === 'completed' || status === 'failed') {
+            if (status === 'completed') {
+              // Fallback achievement check + local celebration for non-SSE users
+              try {
+                // Get stats before
+                const before = await api.get('/gamification/dashboard')
+                const beforeStats = before.data?.data?.stats || {}
+                const beforeXP = beforeStats.experience_points || 0
+                const beforeLevel = beforeStats.level || 1
+                const beforeMin = beforeStats.level_progress?.current_level_min_xp || 0
+                const beforeNext = beforeStats.level_progress?.next_level_min_xp || 100
+
+                const checkRes = await api.post('/gamification/achievements/check')
+                const newAchievements = checkRes.data?.data?.newAchievements || []
+                const count = newAchievements.length
+                if (count > 0) {
+                  // Queue each achievement for overlay
+                  newAchievements.forEach(a => {
+                    celebrationQueue.value.push({ type: 'achievement', payload: { achievement: a } })
+                  })
+                  // Fetch stats after to compute XP delta and show progress animation
+                  const after = await api.get('/gamification/dashboard')
+                  const afterStats = after.data?.data?.stats || {}
+                  const afterXP = afterStats.experience_points || beforeXP
+                  const afterLevel = afterStats.level || beforeLevel
+                  const afterMin = afterStats.level_progress?.current_level_min_xp || beforeMin
+                  const afterNext = afterStats.level_progress?.next_level_min_xp || beforeNext
+                  const deltaXP = Math.max(0, afterXP - beforeXP)
+                  celebrationQueue.value.push({
+                    type: 'xp_update',
+                    payload: {
+                      oldXP: beforeXP,
+                      newXP: afterXP,
+                      deltaXP,
+                      oldLevel: beforeLevel,
+                      newLevel: afterLevel,
+                      currentLevelMinXPBefore: beforeMin,
+                      nextLevelMinXPBefore: beforeNext,
+                      currentLevelMinXPAfter: afterMin,
+                      nextLevelMinXPAfter: afterNext
+                    }
+                  })
+                  if (afterLevel > beforeLevel) {
+                    celebrationQueue.value.push({ type: 'level_up', payload: { oldLevel: beforeLevel, newLevel: afterLevel } })
+                  }
+                  showSuccess(`New Achievements!`, `${count} unlocked just now`)
+                }
+              } catch (_) {}
+            }
             return
           }
         } catch (_) {}
@@ -857,9 +884,6 @@ async function handleImport() {
     console.error('Error response:', err.response)
     error.value = err.response?.data?.error || err.message || 'Import failed'
     showError('Import Failed', error.value)
-    
-    // Track import error
-    trackImport(selectedBroker.value, 'error')
   } finally {
     loading.value = false
   }
@@ -927,57 +951,32 @@ async function confirmDelete() {
   }
 }
 
-// Computed property for highlighted log content
-const highlightedLogContent = computed(() => {
-  if (!logSearchQuery.value || !logContent.value) {
-    return logContent.value
-  }
-  
-  try {
-    const query = logSearchQuery.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    const regex = new RegExp(`(${query})`, 'gi')
-    return logContent.value.replace(regex, '<mark class="bg-yellow-300 dark:bg-yellow-600 text-black dark:text-white">$1</mark>')
-  } catch (error) {
-    return logContent.value
-  }
-})
-
 async function fetchLogs(showAll = null, page = 1) {
   try {
-    // Get all log files from backend
-    const response = await api.get('/trades/import/logs')
-    const allFiles = response.data.logFiles || []
-    
-    // Client-side filtering for today vs all files
-    const today = new Date().toISOString().split('T')[0]
-    const todayFiles = allFiles.filter(file => file.name.includes(today))
-    const olderFiles = allFiles.filter(file => !file.name.includes(today))
-    
-    // Update pagination state
+    // If showAll is explicitly passed, update the state and reset page
     if (showAll !== null) {
       logFilesPagination.value.showAll = showAll
       page = 1
     }
     
-    const filesToShow = logFilesPagination.value.showAll ? allFiles : todayFiles
-    const startIndex = (page - 1) * logFilesPagination.value.limit
-    const endIndex = startIndex + logFilesPagination.value.limit
+    const response = await api.get('/trades/import/logs', {
+      params: { 
+        showAll: logFilesPagination.value.showAll.toString(),
+        page,
+        limit: logFilesPagination.value.limit
+      }
+    })
     
     if (page === 1) {
-      logFiles.value = filesToShow.slice(startIndex, endIndex)
+      logFiles.value = response.data.logFiles || []
     } else {
-      logFiles.value.push(...filesToShow.slice(startIndex, endIndex))
+      // Append for "Load More"
+      logFiles.value.push(...(response.data.logFiles || []))
     }
     
     logFilesPagination.value = {
       ...logFilesPagination.value,
-      page,
-      total: filesToShow.length,
-      totalPages: Math.ceil(filesToShow.length / logFilesPagination.value.limit),
-      hasMore: endIndex < filesToShow.length,
-      totalFiles: allFiles.length,
-      todayFiles: todayFiles.length,
-      olderFiles: olderFiles.length
+      ...response.data.pagination
     }
     
     if (page === 1) {
@@ -998,132 +997,103 @@ function loadMoreLogFiles() {
   }
 }
 
-// Search logs function - client-side search with debouncing
+// Computed property for highlighted log content
+const highlightedLogContent = computed(() => {
+  if (!logSearchQuery.value || !logContent.value) {
+    return logContent.value
+  }
+  
+  try {
+    const query = logSearchQuery.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const regex = new RegExp(`(${query})`, 'gi')
+    return logContent.value.replace(regex, '<mark class="bg-yellow-300 dark:bg-yellow-600 text-black dark:text-white">$1</mark>')
+  } catch (error) {
+    return logContent.value
+  }
+})
+
+// Search logs function - debounced server-side search
 let searchTimeout = null
 function searchLogs() {
+  // Clear existing timeout
   if (searchTimeout) {
     clearTimeout(searchTimeout)
   }
   
+  // Debounce the search to avoid too many requests
   searchTimeout = setTimeout(() => {
     if (selectedLogFile.value) {
-      performClientSideSearch()
+      // Reload log file with search query
+      loadLogFile(selectedLogFile.value, 1, logPagination.value.showAll, logSearchQuery.value)
     }
-  }, 300)
+  }, 300) // 300ms debounce
 }
 
-function performClientSideSearch() {
-  if (!originalLogContent.value || !logSearchQuery.value) {
-    logContent.value = originalLogContent.value
-    searchResults.value = null
-    return
-  }
-  
-  const lines = originalLogContent.value.split('\n')
-  const query = logSearchQuery.value.toLowerCase()
-  const matchingLines = lines.filter(line => line.toLowerCase().includes(query))
-  
-  if (matchingLines.length > 0) {
-    // Keep the newest-first order for search results too
-    logContent.value = matchingLines.join('\n')
-    searchResults.value = {
-      matchCount: matchingLines.length,
-      lineCount: matchingLines.length
-    }
-  } else {
-    logContent.value = ''
-    searchResults.value = {
-      matchCount: 0,
-      lineCount: 0
-    }
-  }
-}
-
+// Clear search
 function clearSearch() {
   logSearchQuery.value = ''
   searchResults.value = null
-  logContent.value = originalLogContent.value
+  // Reload without search
+  if (selectedLogFile.value) {
+    loadLogFile(selectedLogFile.value, 1, logPagination.value.showAll, '')
+  }
 }
 
 async function loadLogFile(filename, page = 1, showAll = null, search = null) {
   try {
     selectedLogFile.value = filename
     
-    // Reset search if loading new file
+    // Only reset search if explicitly loading a new file (search is null)
     if (search === null && page === 1) {
       logSearchQuery.value = ''
       searchResults.value = null
     } else if (search !== null) {
+      // Search was explicitly provided (including empty string to clear)
       logSearchQuery.value = search
     }
     
-    // For simplicity with current backend, load full content
-    const response = await api.get(`/trades/import/logs/${filename}`)
-    const fullContent = response.data.content || 'No content available'
-    
-    // Client-side pagination simulation
-    const lines = fullContent.split('\n')
-    const today = new Date()
-    const yesterday = new Date(today)
-    yesterday.setDate(yesterday.getDate() - 1)
-    
-    let filteredLines = lines
-    
-    // If showAll is explicitly set, respect it
+    // If showAll is explicitly passed, update the state, otherwise use current state
     if (showAll !== null) {
       logPagination.value.showAll = showAll
+      page = 1 // Reset to first page when toggling view
     }
     
-    // Filter to last 24 hours if not showing all
-    if (!logPagination.value.showAll) {
-      const last24h = lines.filter(line => {
-        const timeMatch = line.match(/\[(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})/)
-        if (timeMatch) {
-          const lineDate = new Date(timeMatch[1])
-          return lineDate >= yesterday
-        }
-        return true // Include lines without timestamps
-      })
-      filteredLines = last24h
-      logPagination.value.filteredOut = lines.length - last24h.length
-    } else {
-      logPagination.value.filteredOut = 0
+    // On first load, default to showing only last 24 hours
+    if (showAll === null && page === 1 && search === null) {
+      logPagination.value.showAll = false
     }
     
-    // Reverse lines to show newest first
-    const reversedLines = [...filteredLines].reverse()
-    
-    // Store original content for search (also reversed)
-    originalLogContent.value = reversedLines.join('\n')
-    
-    // Apply pagination (newest first)
-    const startIndex = (page - 1) * logPagination.value.limit
-    const endIndex = startIndex + logPagination.value.limit
+    const response = await api.get(`/trades/import/logs/${filename}`, {
+      params: {
+        page,
+        limit: logPagination.value.limit,
+        showAll: logPagination.value.showAll.toString(),
+        search: logSearchQuery.value
+      }
+    })
     
     if (page === 1) {
-      // First page - show newest lines
-      const paginatedLines = reversedLines.slice(0, logPagination.value.limit)
-      logContent.value = paginatedLines.join('\n')
+      logContent.value = response.data.content || 'No content available'
+      originalLogContent.value = logContent.value
     } else {
-      // Subsequent pages - append older lines
-      const newLines = reversedLines.slice(startIndex, endIndex)
-      logContent.value += '\n' + newLines.join('\n')
+      // Append to existing content for "Load More"
+      logContent.value += '\n' + (response.data.content || '')
+      originalLogContent.value = logContent.value
     }
-    
-    const totalLinesShown = Math.min(endIndex, reversedLines.length)
     
     logPagination.value = {
       ...logPagination.value,
-      page,
-      total: filteredLines.length,
-      totalAllLines: lines.length,
-      hasMore: endIndex < reversedLines.length,
-      linesShown: totalLinesShown
+      ...response.data.pagination
     }
     
-    // Apply search if there's a query
-    if (logSearchQuery.value) {
-      performClientSideSearch()
+    // Update search results if searching
+    if (response.data.pagination.searchQuery) {
+      searchResults.value = {
+        matchCount: response.data.pagination.searchMatchCount || 0,
+        lineCount: response.data.pagination.searchLineCount || 0
+      }
+    } else {
+      searchResults.value = null
     }
   } catch (error) {
     showError('Load Failed', 'Failed to load log file content')
@@ -1151,21 +1121,35 @@ async function addCusipMapping() {
   cusipLoading.value = true
   
   try {
-    await api.post('/trades/cusip', {
-      cusip: cusipForm.value.cusip.toUpperCase(),
-      ticker: cusipForm.value.ticker.toUpperCase()
+    const response = await fetch('/api/cusip-mappings', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${tradesStore.token || localStorage.getItem('token')}`
+      },
+      body: JSON.stringify({
+        cusip: cusipForm.value.cusip.toUpperCase(),
+        ticker: cusipForm.value.ticker.toUpperCase(),
+        verified: true
+      })
     })
     
-    showSuccess('CUSIP Mapping Added', `${cusipForm.value.cusip} → ${cusipForm.value.ticker}`)
-    
-    // Reset form
-    cusipForm.value.cusip = ''
-    cusipForm.value.ticker = ''
-    
-    // Refresh unmapped count
-    await fetchUnmappedCusipsCount()
+    if (response.ok) {
+      const result = await response.json()
+      showSuccess('CUSIP Mapping Added', `${cusipForm.value.cusip} → ${cusipForm.value.ticker}${result.tradesUpdated ? ` (${result.tradesUpdated} trades updated)` : ''}`)
+      
+      // Reset form
+      cusipForm.value.cusip = ''
+      cusipForm.value.ticker = ''
+      
+      // Refresh unmapped count
+      await fetchUnmappedCusipsCount()
+    } else {
+      const error = await response.json()
+      showError('Add Failed', error.error || 'Failed to add CUSIP mapping')
+    }
   } catch (error) {
-    showError('Add Failed', error.response?.data?.error || 'Failed to add CUSIP mapping')
+    showError('Add Failed', 'Failed to add CUSIP mapping')
   } finally {
     cusipLoading.value = false
   }
@@ -1180,10 +1164,39 @@ async function lookupCusip() {
   lookupResult.value = null
   
   try {
-    const response = await api.get(`/trades/cusip/${lookupForm.value.cusip.toUpperCase()}`)
-    lookupResult.value = response.data
+    // Use the database function to get mapping
+    const response = await fetch(`/api/cusip-mappings?search=${lookupForm.value.cusip.toUpperCase()}&limit=1`, {
+      headers: {
+        'Authorization': `Bearer ${tradesStore.token || localStorage.getItem('token')}`
+      }
+    })
+    
+    if (response.ok) {
+      const data = await response.json()
+      if (data.data && data.data.length > 0) {
+        const mapping = data.data[0]
+        lookupResult.value = {
+          found: true,
+          cusip: mapping.cusip,
+          ticker: mapping.ticker,
+          source: mapping.resolution_source,
+          verified: mapping.verified
+        }
+      } else {
+        lookupResult.value = {
+          found: false,
+          cusip: lookupForm.value.cusip.toUpperCase()
+        }
+      }
+    } else {
+      throw new Error('Failed to lookup CUSIP')
+    }
   } catch (error) {
-    showError('Lookup Failed', error.response?.data?.error || 'Failed to lookup CUSIP')
+    showError('Lookup Failed', 'Failed to lookup CUSIP')
+    lookupResult.value = {
+      found: false,
+      cusip: lookupForm.value.cusip.toUpperCase()
+    }
   } finally {
     cusipLoading.value = false
   }
@@ -1200,11 +1213,22 @@ async function deleteCusipMapping(cusip) {
   cusipLoading.value = true
   
   try {
-    await api.delete(`/trades/cusip/${cusip}`)
-    showSuccess('CUSIP Mapping Deleted', `Mapping for ${cusip} has been deleted`)
-    await fetchUnmappedCusipsCount()
+    const response = await fetch(`/api/cusip-mappings/${cusip}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${tradesStore.token || localStorage.getItem('token')}`
+      }
+    })
+    
+    if (response.ok) {
+      showSuccess('CUSIP Mapping Deleted', `Mapping for ${cusip} has been deleted`)
+      await fetchUnmappedCusipsCount()
+    } else {
+      const error = await response.json()
+      showError('Delete Failed', error.error || 'Failed to delete CUSIP mapping')
+    }
   } catch (error) {
-    showError('Delete Failed', error.response?.data?.error || 'Failed to delete CUSIP mapping')
+    showError('Delete Failed', 'Failed to delete CUSIP mapping')
   } finally {
     cusipLoading.value = false
   }
@@ -1213,14 +1237,17 @@ async function deleteCusipMapping(cusip) {
 // Fetch unmapped CUSIPs count
 async function fetchUnmappedCusipsCount() {
   try {
-    // For now, disable unmapped count since the endpoint doesn't exist in main
-    unmappedCusipsCount.value = 0
-    unmappedCusips.value = []
+    const response = await fetch('/api/cusip-mappings/unmapped', {
+      headers: {
+        'Authorization': `Bearer ${tradesStore.token || localStorage.getItem('token')}`
+      }
+    })
     
-    // TODO: Implement unmapped CUSIP detection when backend endpoint is available
-    // const response = await api.get('/trades/cusip/unmapped')
-    // unmappedCusips.value = response.data || []
-    // unmappedCusipsCount.value = unmappedCusips.value.length
+    if (response.ok) {
+      const data = await response.json()
+      unmappedCusips.value = data.data || []
+      unmappedCusipsCount.value = unmappedCusips.value.length
+    }
   } catch (error) {
     console.error('Error fetching unmapped CUSIPs:', error)
   }

@@ -1,14 +1,24 @@
 const axios = require('axios');
 const cache = require('./cache');
+const aiService = require('./aiService');
 
 class FinnhubClient {
   constructor() {
     this.apiKey = process.env.FINNHUB_API_KEY;
     this.baseURL = 'https://finnhub.io/api/v1';
     
-    // Rate limiting: Conservative limits for free tier (30 calls per minute)
-    this.maxCallsPerMinute = 30;
+    // Rate limiting configuration
+    // If API key is configured, assume Basic plan (150/min, 30/sec)
+    // If not configured, use conservative limits for self-hosted
+    if (this.apiKey) {
+      this.maxCallsPerMinute = 150;
+      this.maxCallsPerSecond = 30;
+    } else {
+      this.maxCallsPerMinute = 10;  // Conservative for self-hosted
+      this.maxCallsPerSecond = 2;   // Conservative for self-hosted
+    }
     this.callTimestamps = [];
+    this.secondTimestamps = [];
   }
 
   isConfigured() {
@@ -18,23 +28,37 @@ class FinnhubClient {
   async waitForRateLimit() {
     const now = Date.now();
     const oneMinuteAgo = now - 60000;
+    const oneSecondAgo = now - 1000;
     
-    // Remove timestamps older than 1 minute
+    // Remove old timestamps
     this.callTimestamps = this.callTimestamps.filter(timestamp => timestamp > oneMinuteAgo);
+    this.secondTimestamps = this.secondTimestamps.filter(timestamp => timestamp > oneSecondAgo);
     
-    // If we've made max calls in the last minute, wait
+    // Check per-second limit first (30 calls per second)
+    if (this.secondTimestamps.length >= this.maxCallsPerSecond) {
+      const oldestSecondCall = this.secondTimestamps[0];
+      const waitTime = 1000 - (now - oldestSecondCall) + 50; // Add 50ms buffer
+      
+      if (waitTime > 0) {
+        console.log(`Rate limit (per second) reached, waiting ${waitTime}ms`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+      }
+    }
+    
+    // Check per-minute limit (150 calls per minute)
     if (this.callTimestamps.length >= this.maxCallsPerMinute) {
       const oldestCall = this.callTimestamps[0];
       const waitTime = 60000 - (now - oldestCall) + 100; // Add 100ms buffer
       
       if (waitTime > 0) {
-        console.log(`Rate limit reached, waiting ${waitTime}ms`);
+        console.log(`Rate limit (per minute) reached, waiting ${waitTime}ms`);
         await new Promise(resolve => setTimeout(resolve, waitTime));
       }
     }
     
     // Record this call
-    this.callTimestamps.push(Date.now());
+    this.callTimestamps.push(now);
+    this.secondTimestamps.push(now);
   }
 
   async makeRequest(endpoint, params = {}) {
@@ -94,6 +118,56 @@ class FinnhubClient {
       console.warn(`Failed to get quote for ${symbol}: ${error.message}`);
       throw error;
     }
+  }
+
+  // Search for symbol by CUSIP or name
+  async searchSymbol(query) {
+    if (!this.isConfigured()) {
+      console.warn('Finnhub not configured, skipping symbol search');
+      return null;
+    }
+
+    console.log(`Searching for symbol: ${query}`);
+    
+    try {
+      const results = await this.makeRequest('/search', {
+        q: query
+      });
+      
+      if (results && results.result && results.result.length > 0) {
+        // Return the first match
+        const match = results.result[0];
+        console.log(`Found symbol match: ${match.symbol} (${match.description})`);
+        return {
+          symbol: match.symbol,
+          description: match.description,
+          type: match.type,
+          displaySymbol: match.displaySymbol
+        };
+      }
+      
+      return null;
+    } catch (error) {
+      console.warn(`Failed to search symbol ${query}: ${error.message}`);
+      return null;
+    }
+  }
+
+  // Map CUSIP to symbol with AI fallback
+  async mapCusipToSymbol(cusip, userId = null) {
+    try {
+      // Use the full lookupCusip function which includes AI fallback
+      const symbol = await this.lookupCusip(cusip, userId);
+      if (symbol) {
+        console.log(`Successfully mapped CUSIP ${cusip} to symbol ${symbol}`);
+        return symbol;
+      }
+    } catch (error) {
+      console.warn(`CUSIP lookup failed for ${cusip}: ${error.message}`);
+    }
+    
+    console.warn(`No symbol found for CUSIP ${cusip}`);
+    return null;
   }
 
   async getBatchQuotes(symbols) {
@@ -208,6 +282,152 @@ class FinnhubClient {
     }
   }
 
+  async getStockCandles(symbol, resolution = '1', from, to) {
+    const symbolUpper = symbol.toUpperCase();
+    
+    // Create cache key with parameters
+    const cacheKey = `${symbolUpper}_${resolution}_${from}_${to}`;
+    
+    // Check cache first (5 minute TTL for recent candle data)
+    const cached = await cache.get('stock_candles', cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    try {
+      const candles = await this.makeRequest('/stock/candle', {
+        symbol: symbolUpper,
+        resolution,
+        from,
+        to
+      });
+      
+      // Validate candles data
+      if (!candles || candles.s !== 'ok' || !candles.c || candles.c.length === 0) {
+        throw new Error(`No candle data available for ${symbol}`);
+      }
+
+      // Convert to standard format
+      const formattedCandles = [];
+      for (let i = 0; i < candles.c.length; i++) {
+        formattedCandles.push({
+          time: candles.t[i],
+          open: candles.o[i],
+          high: candles.h[i],
+          low: candles.l[i],
+          close: candles.c[i],
+          volume: candles.v[i]
+        });
+      }
+      
+      // Cache the result
+      await cache.set('stock_candles', cacheKey, formattedCandles);
+      
+      return formattedCandles;
+    } catch (error) {
+      console.warn(`Failed to get stock candles for ${symbol}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  // Get appropriate candle data based on trade duration for Pro users
+  async getTradeChartData(symbol, entryDate, exitDate = null) {
+    // Log the dates we're working with to debug timezone issues
+    console.log('getTradeChartData input dates:', {
+      entryDate,
+      exitDate,
+      entryDateString: new Date(entryDate).toString(),
+      exitDateString: exitDate ? new Date(exitDate).toString() : 'none'
+    });
+    
+    const entryTime = new Date(entryDate);
+    const exitTime = exitDate ? new Date(exitDate) : new Date();
+    const tradeDuration = exitTime - entryTime;
+    const oneDayMs = 24 * 60 * 60 * 1000;
+
+    // Focus on the actual trade day only
+    // Get the trade date in UTC to avoid timezone issues
+    const entryDateUTC = new Date(entryTime.toISOString().split('T')[0] + 'T00:00:00.000Z');
+    
+    // Set chart window to show extended trading hours for the trade day
+    // Pre-market: 4:00 AM ET to 9:30 AM ET
+    // Regular hours: 9:30 AM ET to 4:00 PM ET  
+    // After-hours: 4:00 PM ET to 8:00 PM ET
+    
+    // Convert ET times to UTC (ET is UTC-5 in winter, UTC-4 in summer)
+    // For simplicity, assume EST (UTC-5) - this covers most trading
+    
+    // Start at 4:00 AM ET on trade day (9:00 AM UTC)
+    const chartFromTime = new Date(entryDateUTC.getTime() + 9 * 60 * 60 * 1000);
+    // End at 8:00 PM ET on trade day (1:00 AM UTC next day)  
+    const chartToTime = new Date(entryDateUTC.getTime() + 25 * 60 * 60 * 1000);
+    
+    console.log('Focusing chart on single trading day:', {
+      tradeDate: entryDateUTC.toISOString().split('T')[0],
+      entryTime: entryTime.toISOString(),
+      chartFrom: chartFromTime.toISOString(),
+      chartTo: chartToTime.toISOString(),
+      windowHours: ((chartToTime - chartFromTime) / (1000 * 60 * 60)).toFixed(1)
+    });
+
+    // Convert to Unix timestamps
+    const fromTimestamp = Math.floor(chartFromTime.getTime() / 1000);
+    const toTimestamp = Math.floor(chartToTime.getTime() / 1000);
+    
+    console.log('Chart window calculation:', {
+      entryTime: entryTime.toISOString(),
+      exitTime: exitTime.toISOString(),
+      chartFromTime: chartFromTime.toISOString(),
+      chartToTime: chartToTime.toISOString(),
+      fromTimestamp,
+      toTimestamp,
+      tradeDuration: `${tradeDuration / 1000 / 60} minutes`
+    });
+
+    try {
+      let resolution, intervalName;
+      const chartDuration = chartToTime - chartFromTime;
+      
+      // For Pro users, prioritize high-resolution data for better trade analysis
+      // Use 1-minute data aggressively for short to medium timeframes
+      if (chartDuration <= 7 * oneDayMs) {
+        resolution = '1';
+        intervalName = '1min';
+        console.log(`Fetching 1-minute Finnhub data for ${symbol} (${Math.ceil(chartDuration / oneDayMs)} day window - high precision)`);
+      }
+      // For windows up to 30 days, use 5-minute data
+      else if (chartDuration <= 30 * oneDayMs) {
+        resolution = '5';
+        intervalName = '5min';
+        console.log(`Fetching 5-minute Finnhub data for ${symbol} (${Math.ceil(chartDuration / oneDayMs)} day chart window)`);
+      }
+      // For very large chart windows, use 15-minute data
+      else if (chartDuration <= 90 * oneDayMs) {
+        resolution = '15';
+        intervalName = '15min';
+        console.log(`Fetching 15-minute Finnhub data for ${symbol} (${Math.ceil(chartDuration / oneDayMs)} day chart window)`);
+      }
+      // For extremely large windows, use daily data
+      else {
+        resolution = 'D';
+        intervalName = 'daily';
+        console.log(`Fetching daily Finnhub data for ${symbol} (${Math.ceil(chartDuration / oneDayMs)} day chart window)`);
+      }
+      
+      const candles = await this.getStockCandles(symbol, resolution, fromTimestamp, toTimestamp);
+      
+      return {
+        type: resolution === 'D' ? 'daily' : 'intraday',
+        interval: intervalName,
+        candles: candles,
+        source: 'finnhub'
+      };
+    } catch (error) {
+      console.error(`Error fetching Finnhub chart data for ${symbol}:`, error);
+      throw error;
+    }
+  }
+
   async getEarningsCalendar(fromDate = null, toDate = null, symbol = null) {
     const from = fromDate || new Date().toISOString().split('T')[0];
     const to = toDate || new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
@@ -250,7 +470,7 @@ class FinnhubClient {
     }
   }
 
-  async lookupCusip(cusip) {
+  async lookupCusip(cusip, userId = null) {
     if (!cusip || cusip.length !== 9) {
       throw new Error('Invalid CUSIP format');
     }
@@ -286,32 +506,168 @@ class FinnhubClient {
           }
         }
         
-        // If no exact match, try the first result if it looks valid
-        const firstResult = searchResults.result[0];
-        if (firstResult.symbol && /^[A-Z]{1,5}$/.test(firstResult.symbol)) {
-          const ticker = firstResult.symbol;
-          
-          // Cache the result
-          await cache.set('cusip_resolution', cleanCusip, ticker);
-          
-          console.log(`Finnhub resolved CUSIP ${cleanCusip} to ticker ${ticker} (best match)`);
-          return ticker;
+        // If no exact match found, don't use "best match" - this causes incorrect mappings
+        console.log(`Finnhub search returned ${searchResults.result.length} results but no exact CUSIP match for ${cleanCusip}`);
+      }
+      
+      // Finnhub didn't find the CUSIP, try AI fallback
+      console.log(`Finnhub could not resolve CUSIP ${cleanCusip} - trying AI fallback`);
+      
+      try {
+        const aiResult = await this.lookupCusipWithAI(cleanCusip, userId);
+        if (aiResult) {
+          // Cache the AI result
+          await cache.set('cusip_resolution', cleanCusip, aiResult);
+          console.log(`✅ AI resolved CUSIP ${cleanCusip} to ticker ${aiResult}`);
+          return aiResult;
+        } else {
+          console.log(`❌ AI could not resolve CUSIP ${cleanCusip}`);
+        }
+      } catch (aiError) {
+        if (aiError.message.includes('API key not valid') || aiError.message.includes('API_KEY_INVALID')) {
+          console.warn(`⚠️  AI fallback unavailable for CUSIP ${cleanCusip}: Invalid API key configured for user ${userId || 'unknown'}`);
+        } else {
+          console.warn(`❌ AI fallback failed for CUSIP ${cleanCusip}: ${aiError.message}`);
         }
       }
       
-      throw new Error(`No symbol found for CUSIP ${cleanCusip}`);
+      // Neither Finnhub nor AI found the CUSIP - cache the null result to avoid repeated lookups
+      await cache.set('cusip_resolution', cleanCusip, null);
+      console.log(`Could not resolve CUSIP ${cleanCusip} - no matching symbol found via Finnhub or AI`);
+      return null;
       
     } catch (error) {
-      console.warn(`Failed to lookup CUSIP ${cleanCusip}: ${error.message}`);
+      // Only throw if it's an actual API error, not a "not found" case
+      if (!error.message?.includes('No symbol found')) {
+        console.warn(`Failed to lookup CUSIP ${cleanCusip}: ${error.message}`);
+        throw error;
+      }
+      return null;
+    }
+  }
+
+  async generateSystemAIResponse(prompt) {
+    try {
+      const db = require('../config/database');
+      
+      // Get admin AI settings from database
+      const settingsQuery = `
+        SELECT setting_key, setting_value 
+        FROM admin_settings 
+        WHERE setting_key IN ('default_ai_provider', 'default_ai_api_key', 'default_ai_model')
+      `;
+      const settingsResult = await db.query(settingsQuery);
+      
+      const settings = {};
+      settingsResult.rows.forEach(row => {
+        settings[row.setting_key] = row.setting_value;
+      });
+      
+      if (!settings.default_ai_api_key) {
+        throw new Error('System AI provider not configured - no admin API key found');
+      }
+      
+      // Use the configured AI provider
+      if (settings.default_ai_provider === 'gemini') {
+        const gemini = require('./gemini');
+        
+        const response = await gemini.generateResponse(prompt, {
+          apiKey: settings.default_ai_api_key,
+          model: settings.default_ai_model || 'gemini-1.5-flash',
+          temperature: 0.1, // Low temperature for factual responses
+          maxTokens: 50     // Short response expected
+        });
+        
+        return response;
+      } else if (settings.default_ai_provider === 'openai') {
+        const { OpenAI } = await import('openai');
+        
+        const openai = new OpenAI({ 
+          apiKey: settings.default_ai_api_key,
+          baseURL: settings.default_ai_api_url || undefined
+        });
+        
+        const response = await openai.chat.completions.create({
+          model: settings.default_ai_model || 'gpt-3.5-turbo',
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.1,
+          max_tokens: 50
+        });
+        
+        return response.choices[0]?.message?.content?.trim() || '';
+      } else {
+        throw new Error(`Unsupported system AI provider: ${settings.default_ai_provider}`);
+      }
+      
+    } catch (error) {
+      console.error('System AI response failed:', error.message);
+      throw new Error(`Failed to generate AI response: ${error.message}`);
+    }
+  }
+
+
+  async lookupCusipWithAI(cusip, userId = null) {
+    try {
+      if (userId) {
+        // Use the existing aiService which handles user-specific settings
+        const aiService = require('./aiService');
+        const ticker = await aiService.lookupCusip(userId, cusip);
+        
+        if (!ticker || ticker.trim() === 'NOT_FOUND' || ticker.trim().length === 0) {
+          return null;
+        }
+        
+        // Validate ticker format (1-10 characters, letters, numbers, dash, dot)
+        if (!/^[A-Z0-9\-\.]{1,10}$/.test(ticker)) {
+          console.warn(`AI returned invalid ticker format for CUSIP ${cusip}: ${ticker}`);
+          return null;
+        }
+        
+        return ticker;
+      } else {
+        // Fallback to system-level AI call with admin settings
+        const prompt = `You are a financial data assistant. I need to find the stock ticker symbol for a specific CUSIP number.
+
+CUSIP: ${cusip}
+
+Please provide ONLY the stock ticker symbol (e.g., AAPL, MSFT, TSLA) for this CUSIP. 
+
+If you cannot identify the ticker symbol for this CUSIP, respond with "NOT_FOUND".
+
+Your response should contain ONLY the ticker symbol or "NOT_FOUND" - no additional text, explanations, or formatting.`;
+
+        const response = await this.generateSystemAIResponse(prompt);
+        
+        if (!response || response.trim() === 'NOT_FOUND' || response.trim().length === 0) {
+          return null;
+        }
+        
+        // Clean up the response - extract just the ticker symbol
+        let ticker = response.trim().toUpperCase();
+        
+        // Remove any extra text or formatting
+        ticker = ticker.replace(/[^A-Z0-9\-\.]/g, '');
+        
+        // Validate ticker format (1-10 characters, letters, numbers, dash, dot)
+        if (!/^[A-Z0-9\-\.]{1,10}$/.test(ticker)) {
+          console.warn(`AI returned invalid ticker format for CUSIP ${cusip}: ${response.trim()}`);
+          return null;
+        }
+        
+        return ticker;
+      }
+      
+    } catch (error) {
+      console.error(`AI CUSIP lookup failed for ${cusip}:`, error.message);
       throw error;
     }
   }
 
-  async batchLookupCusips(cusips) {
+  async batchLookupCusips(cusips, userId = null) {
     const results = {};
     const uniqueCusips = [...new Set(cusips.map(c => c.replace(/\s/g, '').toUpperCase()))];
     
-    console.log(`Looking up ${uniqueCusips.length} CUSIPs with Finnhub`);
+    console.log(`Looking up ${uniqueCusips.length} CUSIPs with Finnhub for user ${userId || 'unknown'}`);
     
     // Process CUSIPs with automatic rate limiting
     // No need for manual batching since makeRequest handles rate limiting
@@ -319,7 +675,7 @@ class FinnhubClient {
     
     for (const cusip of uniqueCusips) {
       try {
-        const ticker = await this.lookupCusip(cusip);
+        const ticker = await this.lookupCusip(cusip, userId);
         if (ticker) {
           results[cusip] = ticker;
         }
@@ -338,8 +694,21 @@ class FinnhubClient {
     return results;
   }
 
-  async getCandles(symbol, resolution, from, to) {
-    const symbolUpper = symbol.toUpperCase();
+  async getCandles(symbol, resolution, from, to, userId = null) {
+    let symbolUpper = symbol.toUpperCase();
+    
+    // Check if this looks like a CUSIP (8-9 characters, alphanumeric)
+    if (symbolUpper.match(/^[A-Z0-9]{8,9}$/)) {
+      console.log(`Detected potential CUSIP: ${symbolUpper}, attempting to map to symbol`);
+      const mappedSymbol = await this.mapCusipToSymbol(symbolUpper, userId);
+      if (mappedSymbol) {
+        console.log(`Successfully mapped CUSIP ${symbolUpper} to symbol ${mappedSymbol}`);
+        symbolUpper = mappedSymbol;
+      } else {
+        console.warn(`Could not map CUSIP ${symbolUpper} to a symbol`);
+        throw new Error(`CUSIP ${symbolUpper} could not be mapped to a tradeable symbol`);
+      }
+    }
     
     // Create cache key with all parameters
     const cacheKey = `${symbolUpper}_${resolution}_${from}_${to}`;
@@ -360,7 +729,7 @@ class FinnhubClient {
       
       // Validate candle data
       if (!candles || candles.s !== 'ok' || !candles.c || candles.c.length === 0) {
-        throw new Error(`No candle data available for ${symbol} from ${from} to ${to}`);
+        throw new Error(`No candle data available for ${symbolUpper}. This may be due to: 1) Symbol not supported by Finnhub, 2) No trading data for the requested time period, or 3) API limitations.`);
       }
 
       // Cache the result
@@ -369,6 +738,202 @@ class FinnhubClient {
       return candles;
     } catch (error) {
       console.warn(`Failed to get candles for ${symbol}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  async getTicks(symbol, date, limit = 1000, skip = 0) {
+    const symbolUpper = symbol.toUpperCase();
+    
+    // Format date as YYYY-MM-DD
+    const formattedDate = date instanceof Date ? date.toISOString().split('T')[0] : date;
+    
+    // Create cache key with all parameters
+    const cacheKey = `${symbolUpper}_${formattedDate}_${limit}_${skip}`;
+    
+    // Check cache first (24 hour TTL for tick data since it's historical)
+    const cached = await cache.get('ticks', cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    try {
+      const ticks = await this.makeRequest('/stock/tick', {
+        symbol: symbolUpper,
+        date: formattedDate,
+        limit,
+        skip
+      });
+      
+      // Validate tick data
+      if (!ticks || !ticks.t || ticks.t.length === 0) {
+        throw new Error(`No tick data available for ${symbol} on ${formattedDate}`);
+      }
+
+      // Cache the result
+      await cache.set('ticks', cacheKey, ticks);
+
+      return ticks;
+    } catch (error) {
+      console.warn(`Failed to get ticks for ${symbol} on ${formattedDate}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  async getTicksAroundTime(symbol, datetime, windowMinutes = 30) {
+    const symbolUpper = symbol.toUpperCase();
+    const targetTime = new Date(datetime);
+    const targetDate = targetTime.toISOString().split('T')[0];
+    
+    // Create cache key
+    const cacheKey = `${symbolUpper}_${targetDate}_${targetTime.getTime()}_${windowMinutes}`;
+    
+    // Check cache first
+    const cached = await cache.get('ticks_around_time', cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    try {
+      // Get all ticks for the day
+      const allTicks = await this.getTicks(symbol, targetDate, 10000, 0);
+      
+      if (!allTicks || !allTicks.t || allTicks.t.length === 0) {
+        throw new Error(`No tick data available for ${symbol} on ${targetDate}`);
+      }
+
+      // Filter ticks within the time window
+      const targetTimestamp = targetTime.getTime();
+      const windowMs = windowMinutes * 60 * 1000;
+      const startTime = targetTimestamp - windowMs;
+      const endTime = targetTimestamp + windowMs;
+      
+      const filteredTicks = {
+        t: [],
+        p: [],
+        v: [],
+        c: [],
+        x: []
+      };
+      
+      for (let i = 0; i < allTicks.t.length; i++) {
+        const tickTime = allTicks.t[i] * 1000; // Convert to milliseconds
+        
+        if (tickTime >= startTime && tickTime <= endTime) {
+          filteredTicks.t.push(allTicks.t[i]);
+          filteredTicks.p.push(allTicks.p[i]);
+          filteredTicks.v.push(allTicks.v[i]);
+          if (allTicks.c && allTicks.c[i]) filteredTicks.c.push(allTicks.c[i]);
+          if (allTicks.x && allTicks.x[i]) filteredTicks.x.push(allTicks.x[i]);
+        }
+      }
+      
+      // Add metadata
+      filteredTicks.count = filteredTicks.t.length;
+      filteredTicks.symbol = symbolUpper;
+      filteredTicks.date = targetDate;
+      filteredTicks.targetTime = targetTimestamp;
+      filteredTicks.windowMinutes = windowMinutes;
+      
+      // Cache the result
+      await cache.set('ticks_around_time', cacheKey, filteredTicks);
+
+      return filteredTicks;
+    } catch (error) {
+      console.warn(`Failed to get ticks around time for ${symbol} at ${datetime}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  // Get technical indicators
+  async getTechnicalIndicator(symbol, resolution, from, to, indicator, indicatorFields = {}) {
+    const symbolUpper = symbol.toUpperCase();
+    
+    // Create cache key with all parameters
+    const cacheKey = `${symbolUpper}_${resolution}_${from}_${to}_${indicator}_${JSON.stringify(indicatorFields)}`;
+    
+    // Check cache first (1 hour TTL for technical indicators)
+    const cached = await cache.get('technical_indicator', cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    try {
+      const params = {
+        symbol: symbolUpper,
+        resolution,
+        from,
+        to,
+        indicator,
+        ...indicatorFields
+      };
+
+      const result = await this.makeRequest('/indicator', params);
+      
+      // Cache the result
+      await cache.set('technical_indicator', cacheKey, result);
+
+      return result;
+    } catch (error) {
+      console.warn(`Failed to get technical indicator ${indicator} for ${symbol}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  // Get pattern recognition
+  async getPatternRecognition(symbol, resolution) {
+    const symbolUpper = symbol.toUpperCase();
+    
+    // Create cache key
+    const cacheKey = `${symbolUpper}_${resolution}`;
+    
+    // Check cache first (4 hour TTL for patterns)
+    const cached = await cache.get('pattern_recognition', cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    try {
+      const patterns = await this.makeRequest('/scan/pattern', {
+        symbol: symbolUpper,
+        resolution
+      });
+      
+      // Cache the result
+      await cache.set('pattern_recognition', cacheKey, patterns);
+
+      return patterns;
+    } catch (error) {
+      console.warn(`Failed to get pattern recognition for ${symbol}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  // Get support and resistance levels
+  async getSupportResistance(symbol, resolution) {
+    const symbolUpper = symbol.toUpperCase();
+    
+    // Create cache key
+    const cacheKey = `${symbolUpper}_${resolution}`;
+    
+    // Check cache first (4 hour TTL for support/resistance)
+    const cached = await cache.get('support_resistance', cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    try {
+      const levels = await this.makeRequest('/scan/support-resistance', {
+        symbol: symbolUpper,
+        resolution
+      });
+      
+      // Cache the result
+      await cache.set('support_resistance', cacheKey, levels);
+
+      return levels;
+    } catch (error) {
+      console.warn(`Failed to get support/resistance for ${symbol}: ${error.message}`);
       throw error;
     }
   }

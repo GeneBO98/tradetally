@@ -77,6 +77,12 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
+      path: '/analytics/behavioral',
+      name: 'behavioral-analytics',
+      component: () => import('@/views/BehavioralAnalyticsView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
       path: '/calendar',
       name: 'calendar',
       component: () => import('@/views/CalendarView.vue'),
@@ -95,6 +101,12 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
+      path: '/profile',
+      name: 'profile',
+      component: () => import('@/views/ProfileView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
       path: '/equity-history',
       name: 'equity-history',
       component: () => import('@/views/EquityHistoryView.vue'),
@@ -105,6 +117,17 @@ const router = createRouter({
       name: 'admin-users',
       component: () => import('@/views/admin/UserManagementView.vue'),
       meta: { requiresAuth: true, requiresAdmin: true }
+    },
+    {
+      path: '/pricing',
+      name: 'pricing',
+      component: () => import('@/views/PricingView.vue')
+    },
+    {
+      path: '/billing',
+      name: 'billing',
+      component: () => import('@/views/BillingView.vue'),
+      meta: { requiresAuth: true }
     },
     {
       path: '/public',
@@ -148,6 +171,40 @@ const router = createRouter({
       name: 'features',
       component: () => import('@/views/FeaturesView.vue'),
       meta: { requiresOpen: true }
+    },
+    {
+      path: '/watchlists',
+      name: 'watchlists',
+      component: () => import('@/views/WatchlistView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/watchlists/:id',
+      name: 'watchlist-detail',
+      component: () => import('@/views/WatchlistDetailView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/price-alerts',
+      name: 'price-alerts',
+      component: () => import('@/views/PriceAlertsView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/notifications',
+      name: 'notifications',
+      component: () => import('@/views/NotificationsView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/leaderboard',
+      name: 'leaderboard',
+      component: () => import('@/views/GamificationView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/gamification',
+      redirect: '/leaderboard'
     }
   ]
 })
