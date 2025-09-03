@@ -2,11 +2,14 @@ const express = require('express');
 const router = express.Router();
 const behavioralAnalyticsController = require('../controllers/behavioralAnalytics.controller');
 const { authenticate } = require('../middleware/auth');
-const { attachTierInfo } = require('../middleware/tierAuth');
+const { attachTierInfo, requiresTier } = require('../middleware/tierAuth');
 
 // Apply authentication and tier info to all routes
 router.use(authenticate);
 router.use(attachTierInfo);
+
+// Behavioral analytics is a Pro feature - enforce tier requirement
+router.use(requiresTier('pro'));
 
 // Get behavioral analytics overview
 router.get('/overview', behavioralAnalyticsController.getOverview);

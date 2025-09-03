@@ -220,6 +220,15 @@
                         Deactivate
                       </button>
                       
+                      <!-- Purple: Tier Management -->
+                      <button
+                        @click="openTierModal(user)"
+                        :disabled="isUpdating"
+                        class="px-2 py-1 text-xs bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/20 dark:text-purple-400 dark:hover:bg-purple-800/30 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Tier
+                      </button>
+                      
                       <!-- Red: Delete -->
                       <button
                         @click="confirmDeleteUser(user)"
@@ -297,7 +306,7 @@
               <div class="ml-5 w-0 flex-1">
                 <dl>
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Total Users</dt>
-                  <dd class="text-lg font-medium text-gray-900 dark:text-white">{{ totalUsers }}</dd>
+                  <dd class="text-lg font-medium text-gray-900 dark:text-white">{{ statistics.totalUsers || totalUsers }}</dd>
                 </dl>
               </div>
             </div>
@@ -412,6 +421,137 @@
         </div>
       </div>
     </div>
+    
+    <!-- Tier Management Modal -->
+    <div v-if="showTierModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+      <div class="relative top-20 mx-auto p-5 border w-[500px] shadow-lg rounded-md bg-white dark:bg-gray-800">
+        <div class="mt-3">
+          <div class="flex justify-between items-start mb-4">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white">
+              Manage Tier - {{ selectedUser?.username }}
+            </h3>
+            <button
+              @click="closeTierModal"
+              class="text-gray-400 hover:text-gray-500"
+            >
+              <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          <!-- Current Tier Info -->
+          <div v-if="tierInfo" class="space-y-3">
+            <div>
+              <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Current Tier</h4>
+              <div class="flex items-center space-x-2">
+                <span
+                  :class="{
+                    'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400': tierInfo?.tier === 'free',
+                    'bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400': tierInfo?.tier === 'pro'
+                  }"
+                  class="inline-flex px-3 py-1 text-sm font-semibold rounded-full"
+                >
+                  {{ tierInfo?.tier }}
+                </span>
+                <span v-if="tierInfo?.override" class="text-xs text-amber-600 dark:text-amber-400">
+                  (Override active)
+                </span>
+                <span v-if="selectedUser && (selectedUser.role === 'admin' || selectedUser.role === 'owner')" class="text-xs text-blue-600 dark:text-blue-400">
+                  (Admin - Pro by default)
+                </span>
+              </div>
+            </div>
+
+            <!-- Override Info -->
+            <div v-if="tierInfo?.override" class="bg-amber-50 dark:bg-amber-900/20 rounded-lg p-3">
+              <p class="text-sm text-amber-800 dark:text-amber-300">
+                <strong>Override:</strong> {{ tierInfo?.override?.tier }} tier
+                <span v-if="tierInfo?.override?.expires_at">
+                  until {{ new Date(tierInfo?.override?.expires_at).toLocaleDateString() }}
+                </span>
+              </p>
+              <p v-if="tierInfo?.override?.reason" class="text-xs text-amber-700 dark:text-amber-400 mt-1">
+                Reason: {{ tierInfo?.override?.reason }}
+              </p>
+              <p v-if="tierInfo?.override?.created_by_username" class="text-xs text-amber-700 dark:text-amber-400">
+                Set by: {{ tierInfo?.override?.created_by_username }}
+              </p>
+            </div>
+
+            <!-- Subscription Info -->
+            <div v-if="tierInfo?.subscription && tierInfo?.subscription?.status === 'active'" class="bg-green-50 dark:bg-green-900/20 rounded-lg p-3">
+              <p class="text-sm text-green-800 dark:text-green-300">
+                <strong>Active Subscription</strong>
+              </p>
+              <p class="text-xs text-green-700 dark:text-green-400 mt-1">
+                Renews: {{ tierInfo?.subscription?.current_period_end ? new Date(tierInfo.subscription.current_period_end).toLocaleDateString() : 'N/A' }}
+              </p>
+            </div>
+          </div>
+
+          <!-- Action Buttons -->
+          <div class="space-y-3 pt-4 border-t dark:border-gray-700 mt-4">
+            <!-- Set Override -->
+            <div>
+              <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Set Tier Override</h4>
+              <div class="flex items-center space-x-2">
+                <select
+                  v-model="overrideTier"
+                  class="text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded focus:ring-primary-500 focus:border-primary-500"
+                >
+                  <option value="free">Free</option>
+                  <option value="pro">Pro</option>
+                </select>
+                <button
+                  @click="setTierOverride"
+                  :disabled="isUpdating"
+                  class="px-3 py-1 bg-purple-600 text-white text-sm font-medium rounded hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50"
+                >
+                  Set Override
+                </button>
+              </div>
+              <input
+                v-model="overrideExpiry"
+                type="date"
+                placeholder="Expiry date (optional)"
+                class="w-full mt-2 text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded focus:ring-primary-500 focus:border-primary-500"
+              />
+              <input
+                v-model="overrideReason"
+                type="text"
+                placeholder="Reason for override (optional)"
+                class="w-full mt-2 text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded focus:ring-primary-500 focus:border-primary-500"
+              />
+            </div>
+
+            <!-- 14-Day Free Trial Button -->
+            <div class="flex justify-between items-center">
+              <span class="text-sm text-gray-600 dark:text-gray-400">Grant 14-day Pro trial</span>
+              <button
+                @click="grant14DayTrial"
+                :disabled="isUpdating"
+                class="px-3 py-1 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+              >
+                Grant Trial
+              </button>
+            </div>
+
+            <!-- Remove Override -->
+            <div v-if="tierInfo?.override" class="flex justify-between items-center">
+              <span class="text-sm text-gray-600 dark:text-gray-400">Remove tier override</span>
+              <button
+                @click="removeTierOverride"
+                :disabled="isUpdating"
+                class="px-3 py-1 bg-red-600 text-white text-sm font-medium rounded hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50"
+              >
+                Remove Override
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -431,6 +571,14 @@ const isUpdating = ref(false)
 const showDeleteConfirm = ref(false)
 const userToDelete = ref(null)
 
+// Tier management state
+const showTierModal = ref(false)
+const selectedUser = ref(null)
+const tierInfo = ref(null)
+const overrideTier = ref('pro')
+const overrideExpiry = ref('')
+const overrideReason = ref('')
+
 // Pagination state
 const currentPage = ref(1)
 const totalPages = ref(1)
@@ -442,27 +590,24 @@ const hasMore = ref(false)
 const searchQuery = ref('')
 const searchTimeout = ref(null)
 
+// Statistics state (overall totals, not just current page)
+const statistics = ref({
+  totalUsers: 0,
+  adminUsers: 0,
+  activeUsers: 0,
+  pendingApproval: 0,
+  unverified: 0,
+  proUsers: 0
+})
+
 const currentUserId = computed(() => authStore.user?.id)
 
-const adminCount = computed(() => {
-  return users.value.filter(user => user.role === 'admin' && user.is_active).length
-})
-
-const activeUserCount = computed(() => {
-  return users.value.filter(user => user.is_active).length
-})
-
-const pendingApprovalCount = computed(() => {
-  return users.value.filter(user => !user.admin_approved).length
-})
-
-const unverifiedCount = computed(() => {
-  return users.value.filter(user => !user.is_verified).length
-})
-
-const proUserCount = computed(() => {
-  return users.value.filter(user => getUserDisplayTier(user) === 'pro').length
-})
+// Use statistics for counts instead of computing from current page
+const adminCount = computed(() => statistics.value.adminUsers)
+const activeUserCount = computed(() => statistics.value.activeUsers)
+const pendingApprovalCount = computed(() => statistics.value.pendingApproval)
+const unverifiedCount = computed(() => statistics.value.unverified)
+const proUserCount = computed(() => statistics.value.proUsers)
 
 // Helper function to get the display tier for a user
 function getUserDisplayTier(user) {
@@ -531,11 +676,34 @@ async function fetchUsers(page = 1) {
     totalPages.value = response.data.totalPages
     currentPage.value = response.data.page
     hasMore.value = response.data.hasMore
+    
+    // Also fetch overall statistics (only on first page or when not searching)
+    if (page === 1 && !searchQuery.value.trim()) {
+      await fetchStatistics()
+    }
   } catch (err) {
     error.value = err.response?.data?.error || 'Failed to load users'
     showError('Error', error.value)
   } finally {
     loading.value = false
+  }
+}
+
+async function fetchStatistics() {
+  try {
+    const response = await api.get('/users/admin/statistics')
+    const stats = response.data
+    
+    statistics.value = {
+      totalUsers: stats.total_users || 0,
+      adminUsers: stats.admin_users || 0,
+      activeUsers: stats.active_users || 0,
+      pendingApproval: (stats.total_users || 0) - (stats.approved_users || 0),
+      unverified: (stats.total_users || 0) - (stats.verified_users || 0),
+      proUsers: stats.pro_users || 0
+    }
+  } catch (err) {
+    console.error('Failed to fetch statistics:', err)
   }
 }
 
@@ -696,6 +864,124 @@ function formatDate(dateString) {
     month: 'short',
     day: 'numeric'
   })
+}
+
+// Tier Management Functions
+async function openTierModal(user) {
+  selectedUser.value = user
+  showTierModal.value = true
+  await fetchTierInfo(user.id)
+}
+
+function closeTierModal() {
+  showTierModal.value = false
+  selectedUser.value = null
+  tierInfo.value = null
+  overrideTier.value = 'pro'
+  overrideExpiry.value = ''
+  overrideReason.value = ''
+}
+
+async function fetchTierInfo(userId) {
+  try {
+    const response = await api.get(`/users/admin/users/${userId}/tier`)
+    tierInfo.value = response.data
+  } catch (err) {
+    console.error('Failed to fetch tier info:', err)
+    showError('Error', 'Failed to fetch tier information')
+  }
+}
+
+async function setTierOverride() {
+  if (!selectedUser.value) return
+  
+  try {
+    isUpdating.value = true
+    
+    const response = await api.post(`/users/admin/users/${selectedUser.value.id}/tier-override`, {
+      tier: overrideTier.value,
+      expiresAt: overrideExpiry.value || null,
+      reason: overrideReason.value || null
+    })
+    
+    // Update the user in the local array
+    const userIndex = users.value.findIndex(u => u.id === selectedUser.value.id)
+    if (userIndex !== -1) {
+      users.value[userIndex].tier = overrideTier.value
+    }
+    
+    // Refresh tier info
+    await fetchTierInfo(selectedUser.value.id)
+    await fetchStatistics() // Update overall statistics
+    
+    showSuccess('Success', response.data.message || 'Tier override set successfully')
+  } catch (err) {
+    showError('Error', err.response?.data?.error || 'Failed to set tier override')
+  } finally {
+    isUpdating.value = false
+  }
+}
+
+async function grant14DayTrial() {
+  if (!selectedUser.value) return
+  
+  try {
+    isUpdating.value = true
+    
+    // Calculate 14 days from now
+    const trialEnd = new Date()
+    trialEnd.setDate(trialEnd.getDate() + 14)
+    
+    const response = await api.post(`/users/admin/users/${selectedUser.value.id}/tier-override`, {
+      tier: 'pro',
+      expiresAt: trialEnd.toISOString(),
+      reason: '14-day Pro trial'
+    })
+    
+    // Update the user in the local array
+    const userIndex = users.value.findIndex(u => u.id === selectedUser.value.id)
+    if (userIndex !== -1) {
+      users.value[userIndex].tier = 'pro'
+    }
+    
+    // Refresh tier info
+    await fetchTierInfo(selectedUser.value.id)
+    await fetchStatistics() // Update overall statistics
+    
+    showSuccess('Success', '14-day Pro trial granted successfully')
+  } catch (err) {
+    showError('Error', err.response?.data?.error || 'Failed to grant trial')
+  } finally {
+    isUpdating.value = false
+  }
+}
+
+async function removeTierOverride() {
+  if (!selectedUser.value) return
+  
+  try {
+    isUpdating.value = true
+    
+    const response = await api.delete(`/users/admin/users/${selectedUser.value.id}/tier-override`)
+    
+    // Refresh tier info
+    await fetchTierInfo(selectedUser.value.id)
+    
+    // Update the user in the local array
+    const userIndex = users.value.findIndex(u => u.id === selectedUser.value.id)
+    if (userIndex !== -1) {
+      // Reset to base tier (free unless admin)
+      users.value[userIndex].tier = (users.value[userIndex].role === 'admin' || users.value[userIndex].role === 'owner') ? 'pro' : 'free'
+    }
+    
+    await fetchStatistics() // Update overall statistics
+    
+    showSuccess('Success', response.data.message || 'Tier override removed successfully')
+  } catch (err) {
+    showError('Error', err.response?.data?.error || 'Failed to remove tier override')
+  } finally {
+    isUpdating.value = false
+  }
 }
 
 onMounted(() => {
