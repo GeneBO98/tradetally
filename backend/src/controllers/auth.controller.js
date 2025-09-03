@@ -199,9 +199,10 @@ const authController = {
 
       const token = generateToken(user);
       
-      // Get user tier for response
+      // Get user tier and billing status for response
       const TierService = require('../services/tierService');
       const userTier = await TierService.getUserTier(user.id);
+      const billingEnabled = await TierService.isBillingEnabled();
 
       res.json({
         message: 'Login successful',
@@ -213,6 +214,7 @@ const authController = {
           avatarUrl: user.avatar_url,
           role: user.role,
           tier: userTier,
+          billingEnabled: billingEnabled,
           isVerified: user.is_verified,
           adminApproved: user.admin_approved,
           twoFactorEnabled: user.two_factor_enabled || false
@@ -270,6 +272,11 @@ const authController = {
 
       // Generate full access token
       const token = generateToken(user);
+      
+      // Get tier and billing status
+      const TierService = require('../services/tierService');
+      const userTier = await TierService.getUserTier(user.id);
+      const billingEnabled = await TierService.isBillingEnabled();
 
       res.json({
         message: 'Login successful',
@@ -280,6 +287,8 @@ const authController = {
           fullName: user.full_name,
           avatarUrl: user.avatar_url,
           role: user.role,
+          tier: userTier,
+          billingEnabled: billingEnabled,
           timezone: user.timezone,
           isVerified: user.is_verified,
           adminApproved: user.admin_approved,
