@@ -226,6 +226,68 @@ const tradeController = {
     }
   },
 
+  async bulkDeleteTrades(req, res, next) {
+    try {
+      const { tradeIds } = req.body;
+      
+      if (!tradeIds || !Array.isArray(tradeIds) || tradeIds.length === 0) {
+        return res.status(400).json({ error: 'Trade IDs array is required' });
+      }
+
+      // Validate all trade IDs are UUIDs
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      for (const tradeId of tradeIds) {
+        if (!uuidRegex.test(tradeId)) {
+          return res.status(400).json({ error: `Invalid trade ID format: ${tradeId}` });
+        }
+      }
+
+      let deletedCount = 0;
+      let errors = [];
+
+      // Delete each trade individually to ensure permissions and proper cleanup
+      for (const tradeId of tradeIds) {
+        try {
+          // Verify trade exists and belongs to user
+          const trade = await Trade.findById(tradeId, req.user.id);
+          
+          if (!trade) {
+            errors.push({ tradeId, error: 'Trade not found or access denied' });
+            continue;
+          }
+
+          // Delete the trade
+          const result = await Trade.delete(tradeId, req.user.id);
+          
+          if (result) {
+            deletedCount++;
+          } else {
+            errors.push({ tradeId, error: 'Failed to delete trade' });
+          }
+        } catch (error) {
+          errors.push({ tradeId, error: error.message });
+        }
+      }
+
+      // Invalidate sector performance cache
+      try {
+        await cache.invalidate('sector_performance');
+        console.log('✅ Sector performance cache invalidated after bulk trade deletion');
+      } catch (cacheError) {
+        console.warn('⚠️ Failed to invalidate sector performance cache:', cacheError.message);
+      }
+
+      res.json({ 
+        message: `Bulk delete completed. ${deletedCount} trades deleted successfully.`,
+        deletedCount,
+        totalRequested: tradeIds.length,
+        errors
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
   async getPublicTrades(req, res, next) {
     try {
       const { symbol, username, limit = 20, offset = 0 } = req.query;
@@ -678,9 +740,9 @@ const tradeController = {
                   // Fallback to executions if executionData is not present
                   cleanTradeData.executionData = tradeData.executions;
                 }
-                await Trade.update(tradeData.existingTradeId, req.user.id, cleanTradeData);
+                await Trade.update(tradeData.existingTradeId, req.user.id, cleanTradeData, { skipAchievements: true });
               } else {
-                await Trade.create(req.user.id, tradeData);
+                await Trade.create(req.user.id, tradeData, { skipAchievements: true });
               }
               imported++;
             } catch (error) {
@@ -1895,6 +1957,44 @@ const tradeController = {
       await imageProcessor.deleteImage(filePath);
 
       res.json({ message: 'Image deleted successfully' });
+
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async getEnrichmentStatus(req, res, next) {
+    try {
+      const userId = req.user.id;
+      
+      // Get enrichment status for user's trades
+      const query = `
+        SELECT 
+          COUNT(*) as total_trades,
+          COUNT(CASE WHEN enrichment_status = 'completed' THEN 1 END) as enriched_trades,
+          COUNT(CASE WHEN enrichment_status = 'pending' THEN 1 END) as pending_trades,
+          COUNT(CASE WHEN enrichment_status = 'failed' THEN 1 END) as failed_trades,
+          COUNT(CASE WHEN enrichment_status IS NULL THEN 1 END) as unenriched_trades
+        FROM trades 
+        WHERE user_id = $1
+      `;
+      
+      const result = await db.query(query, [userId]);
+      const stats = result.rows[0];
+      
+      res.json({
+        success: true,
+        data: {
+          totalTrades: parseInt(stats.total_trades),
+          enrichedTrades: parseInt(stats.enriched_trades),
+          pendingTrades: parseInt(stats.pending_trades),
+          failedTrades: parseInt(stats.failed_trades),
+          unenrichedTrades: parseInt(stats.unenriched_trades),
+          completionPercentage: stats.total_trades > 0 
+            ? Math.round((stats.enriched_trades / stats.total_trades) * 100)
+            : 0
+        }
+      });
 
     } catch (error) {
       next(error);

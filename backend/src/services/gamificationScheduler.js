@@ -245,6 +245,20 @@ class GamificationScheduler {
   // Cleanup old notifications
   static async cleanupOldNotifications() {
     try {
+      // Check if notifications table exists first
+      const tableExists = await db.query(`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables 
+          WHERE table_schema = 'public' 
+          AND table_name = 'notifications'
+        );
+      `);
+      
+      if (!tableExists.rows[0].exists) {
+        console.log('🔔 Notifications table does not exist yet, skipping cleanup');
+        return;
+      }
+      
       const result = await db.query(`
         DELETE FROM notifications
         WHERE created_at < CURRENT_TIMESTAMP - INTERVAL '30 days'

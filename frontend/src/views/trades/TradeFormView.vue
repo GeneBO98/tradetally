@@ -300,6 +300,16 @@
           ></textarea>
         </div>
 
+        <!-- Current Images (when editing) -->
+        <div v-if="isEdit && currentImages.length > 0">
+          <TradeImages
+            :trade-id="route.params.id"
+            :images="currentImages"
+            :can-delete="true"
+            @deleted="handleImageDeleted"
+          />
+        </div>
+
         <!-- Image Upload Section -->
         <div v-if="isEdit && route.params.id">
           <ImageUpload 
@@ -352,6 +362,7 @@ import { useTradesStore } from '@/stores/trades'
 import { useNotification } from '@/composables/useNotification'
 import { useAnalytics } from '@/composables/useAnalytics'
 import ImageUpload from '@/components/trades/ImageUpload.vue'
+import TradeImages from '@/components/trades/TradeImages.vue'
 import api from '@/services/api'
 
 const showMoreOptions = ref(false)
@@ -391,6 +402,7 @@ const form = ref({
 })
 
 const tagsInput = ref('')
+const currentImages = ref([])
 
 function formatDateTimeLocal(date) {
   if (!date) return ''
@@ -431,6 +443,7 @@ async function loadTrade() {
     }
     
     tagsInput.value = trade.tags ? trade.tags.join(', ') : ''
+    currentImages.value = trade.attachments || []
   } catch (err) {
     showError('Error', 'Failed to load trade')
     router.push('/trades')
@@ -510,8 +523,14 @@ async function handleSubmit() {
 }
 
 function handleImageUploaded() {
-  // Refresh trade data or show success message
+  // Refresh trade data to show new images
+  loadTrade()
   showSuccess('Images Uploaded', 'Trade images uploaded successfully')
+}
+
+function handleImageDeleted(imageId) {
+  // Remove the deleted image from the current images array
+  currentImages.value = currentImages.value.filter(img => img.id !== imageId)
 }
 
 // Check if user has access to behavioral analytics

@@ -308,7 +308,6 @@ app.post('/api/admin/trigger-recovery', async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
-}
 });
 
 app.use(errorHandler);

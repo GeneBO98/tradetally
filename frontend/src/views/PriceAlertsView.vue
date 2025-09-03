@@ -3,8 +3,8 @@
     <!-- Header -->
     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8">
       <div>
-        <h1 class="text-3xl font-bold text-gray-900 mb-2">Price Alerts</h1>
-        <p class="text-gray-600">Get notified when your stocks reach target prices</p>
+        <h1 class="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">Price Alerts</h1>
+        <p class="text-gray-600 dark:text-gray-400">Get notified when your stocks reach target prices</p>
       </div>
       <button
         v-if="isProUser"
@@ -72,7 +72,7 @@
     <!-- Filters -->
     <div v-if="isProUser" class="mb-6 flex flex-wrap items-center gap-4">
       <div class="flex items-center space-x-2">
-        <label for="symbolFilter" class="text-sm font-medium text-gray-700">Symbol:</label>
+        <label for="symbolFilter" class="text-sm font-medium text-gray-700 dark:text-gray-300">Symbol:</label>
         <input
           id="symbolFilter"
           v-model="filters.symbol"
@@ -82,7 +82,7 @@
         >
       </div>
       <div class="flex items-center space-x-2">
-        <label class="text-sm font-medium text-gray-700">Status:</label>
+        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Status:</label>
         <select
           v-model="filters.activeOnly"
           class="input"
@@ -105,34 +105,34 @@
     </div>
 
     <!-- Alerts Table -->
-    <div v-else-if="isProUser && alerts.length > 0" class="bg-white shadow-sm rounded-lg overflow-hidden">
+    <div v-else-if="isProUser && alerts.length > 0" class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden">
       <div class="overflow-x-auto">
-        <table class="min-w-full divide-y divide-gray-200">
-          <thead class="bg-gray-50">
+        <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+          <thead class="bg-gray-50 dark:bg-gray-700">
             <tr>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Symbol</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Alert Type</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Target</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Price</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Notifications</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Symbol</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Alert Type</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Target</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Current Price</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Status</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Notifications</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Created</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
             </tr>
           </thead>
-          <tbody class="bg-white divide-y divide-gray-200">
+          <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
             <tr v-for="alert in filteredAlerts" :key="alert.id">
-              <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+              <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-100">
                 {{ alert.symbol }}
               </td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
                 <span class="capitalize">{{ alert.alert_type.replace('_', ' ') }}</span>
               </td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
                 <span v-if="alert.target_price">{{ formatPrice(alert.target_price) }}</span>
                 <span v-else-if="alert.change_percent">{{ alert.change_percent }}%</span>
               </td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
                 {{ alert.current_price ? formatPrice(alert.current_price) : 'N/A' }}
               </td>
               <td class="px-6 py-4 whitespace-nowrap">
@@ -149,14 +149,14 @@
                   Inactive
                 </span>
               </td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                 <div class="flex space-x-1">
                   <span v-if="alert.email_enabled" title="Email enabled" class="text-blue-500">✉</span>
                   <span v-if="alert.browser_enabled" title="Browser enabled" class="text-green-500">🔔</span>
                   <span v-if="alert.repeat_enabled" title="Repeat enabled" class="text-purple-500">🔄</span>
                 </div>
               </td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                 {{ formatDate(alert.created_at) }}
               </td>
               <td class="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
@@ -187,11 +187,11 @@
 
     <!-- Empty State -->
     <div v-else-if="isProUser && !loading" class="text-center py-12">
-      <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <svg class="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
       </svg>
-      <h3 class="mt-2 text-sm font-medium text-gray-900">No price alerts</h3>
-      <p class="mt-1 text-sm text-gray-500">Get started by creating your first price alert.</p>
+      <h3 class="mt-2 text-sm font-medium text-gray-900 dark:text-gray-100">No price alerts</h3>
+      <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Get started by creating your first price alert.</p>
       <div class="mt-6">
         <button
           @click="showCreateAlertModal = true"
