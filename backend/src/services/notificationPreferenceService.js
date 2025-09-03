@@ -14,8 +14,7 @@ class NotificationPreferenceService {
         'notify_news_open_positions',
         'notify_earnings_announcements',
         'notify_price_alerts',
-        'notify_trade_reminders',
-        'notify_market_events'
+        'notify_trade_reminders'
       ];
 
       if (!validPreferences.includes(preferenceType)) {
@@ -55,8 +54,7 @@ class NotificationPreferenceService {
           notify_news_open_positions,
           notify_earnings_announcements,
           notify_price_alerts,
-          notify_trade_reminders,
-          notify_market_events
+          notify_trade_reminders
         FROM users 
         WHERE id = $1
       `;
@@ -82,8 +80,7 @@ class NotificationPreferenceService {
         notify_news_open_positions: convertPgBoolean(preferences.notify_news_open_positions),
         notify_earnings_announcements: convertPgBoolean(preferences.notify_earnings_announcements),
         notify_price_alerts: convertPgBoolean(preferences.notify_price_alerts),
-        notify_trade_reminders: convertPgBoolean(preferences.notify_trade_reminders),
-        notify_market_events: convertPgBoolean(preferences.notify_market_events)
+        notify_trade_reminders: convertPgBoolean(preferences.notify_trade_reminders)
       };
     } catch (error) {
       logger.logError(`Error getting notification preferences for user ${userId}:`, error);
@@ -103,8 +100,7 @@ class NotificationPreferenceService {
         'notify_news_open_positions',
         'notify_earnings_announcements',
         'notify_price_alerts',
-        'notify_trade_reminders',
-        'notify_market_events'
+        'notify_trade_reminders'
       ];
 
       if (!validPreferences.includes(preferenceType)) {

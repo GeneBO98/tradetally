@@ -218,24 +218,6 @@ class PushNotificationService {
     return await this.sendPushNotification(userId, notificationData);
   }
 
-  async sendMarketEventAlert(userId, eventData) {
-    // Check if user has market events notifications enabled
-    const isEnabled = await NotificationPreferenceService.isNotificationEnabled(userId, 'notify_market_events');
-    if (!isEnabled) {
-      logger.logDebug(`Push notification for market event skipped for user ${userId} - preference disabled`);
-      return { success: false, reason: 'preference_disabled' };
-    }
-
-    const notificationData = {
-      title: 'Market Event',
-      body: eventData.title,
-      alertType: 'market_event',
-      event_type: eventData.event_type,
-      severity: eventData.severity
-    };
-
-    return await this.sendPushNotification(userId, notificationData);
-  }
 
   async testNotification(userId, testMessage = 'Test notification from TradeTally') {
     const notificationData = {

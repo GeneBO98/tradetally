@@ -64,6 +64,11 @@ class AIService {
     console.log('🤖 AI Service - API URL:', settings.apiUrl || 'Not set');
     console.log('🤖 AI Service - Model:', settings.model || 'Default');
     
+    // Validate configuration before attempting to call provider
+    if (!this.isProviderConfigured(settings)) {
+      throw new Error(`AI provider ${settings.provider} is not properly configured. Missing required configuration.`);
+    }
+    
     const provider = this.providers[settings.provider];
     
     if (!provider) {
@@ -81,21 +86,83 @@ class AIService {
     return result;
   }
 
+  /**
+   * Check if a provider is properly configured
+   */
+  isProviderConfigured(settings) {
+    switch (settings.provider) {
+      case 'gemini':
+        return !!settings.apiKey && settings.apiKey.trim() !== '';
+      case 'claude':
+        return !!settings.apiKey && settings.apiKey.trim() !== '';
+      case 'openai':
+        return !!settings.apiKey && settings.apiKey.trim() !== '';
+      case 'ollama':
+        // Ollama requires URL, API key is optional
+        return !!settings.apiUrl && settings.apiUrl.trim() !== '';
+      case 'local':
+        // Local requires URL, API key is optional
+        return !!settings.apiUrl && settings.apiUrl.trim() !== '';
+      default:
+        return false;
+    }
+  }
+
   async lookupCusip(userId, cusip) {
     const settings = await this.getUserSettings(userId);
+    
+    // Check if provider is configured before attempting lookup
+    if (!this.isProviderConfigured(settings)) {
+      console.log(`🤖 AI CUSIP lookup skipped for ${cusip}: ${settings.provider} provider not properly configured`);
+      return null;
+    }
+    
     const provider = this.providers[settings.provider];
     
     if (!provider) {
       throw new Error(`Unsupported AI provider: ${settings.provider}`);
     }
 
-    const prompt = `Given the CUSIP "${cusip}", what is the corresponding stock ticker symbol? Please respond with ONLY the ticker symbol, no additional text.`;
+    const prompt = `You are a financial data assistant. I need the exact stock ticker symbol for this specific CUSIP number.
+
+CUSIP: ${cusip}
+
+CRITICAL REQUIREMENTS:
+- Each CUSIP is a unique 9-character identifier for exactly ONE security
+- You must provide the EXACT ticker symbol that corresponds to this specific CUSIP
+- DO NOT guess or provide approximate matches
+- DO NOT provide popular stock symbols unless you are absolutely certain they match this exact CUSIP
+- If you are not 100% certain of the exact match, respond with "NOT_FOUND"
+
+Only provide the exact ticker symbol if you have definitive knowledge of this CUSIP-to-ticker mapping.
+
+Response format: ONLY the ticker symbol or "NOT_FOUND" - no additional text.`;
     
     try {
-      const response = await provider(prompt, settings, { maxTokens: 10 });
-      return response.trim().toUpperCase();
+      const response = await provider(prompt, settings, { maxTokens: 20 });
+      const cleanResponse = response.trim().toUpperCase();
+      
+      // Return null for NOT_FOUND responses or empty responses
+      if (!cleanResponse || cleanResponse === 'NOT_FOUND' || cleanResponse.length === 0) {
+        console.log(`🤖 AI returned NOT_FOUND for CUSIP ${cusip}`);
+        return null;
+      }
+      
+      // Validate ticker format (1-10 characters, letters, numbers, dash, dot)
+      if (!/^[A-Z0-9\-\.]{1,10}$/.test(cleanResponse)) {
+        console.warn(`AI returned invalid ticker format for CUSIP ${cusip}: ${cleanResponse}`);
+        return null;
+      }
+      
+      // Additional validation: warn if AI returns common "guess" symbols
+      const commonGuesses = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'META', 'NVDA', 'JPM', 'BAC', 'WMT'];
+      if (commonGuesses.includes(cleanResponse)) {
+        console.warn(`⚠️  AI returned common stock symbol ${cleanResponse} for CUSIP ${cusip} - verify accuracy`);
+      }
+      
+      return cleanResponse;
     } catch (error) {
-      console.error(`AI CUSIP lookup failed for ${cusip}:`, error);
+      console.error(`AI CUSIP lookup failed for ${cusip}:`, error.message);
       return null;
     }
   }
@@ -196,15 +263,28 @@ class AIService {
       throw new Error('Ollama API URL not configured');
     }
 
+    // Log the settings for debugging
+    console.log('🦙 Ollama settings:', {
+      apiUrl: settings.apiUrl,
+      hasApiKey: !!settings.apiKey,
+      model: settings.model || 'llama3.1'
+    });
+
     const model = settings.model || 'llama3.1';
     const url = `${settings.apiUrl}/api/generate`;
 
+    const headers = {
+      'Content-Type': 'application/json'
+    };
+
+    // Only add Authorization header if API key is provided and not empty
+    if (settings.apiKey && settings.apiKey.trim() !== '') {
+      headers['Authorization'] = `Bearer ${settings.apiKey}`;
+    }
+
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(settings.apiKey && { 'Authorization': `Bearer ${settings.apiKey}` })
-      },
+      headers,
       body: JSON.stringify({
         model,
         prompt,
@@ -216,7 +296,9 @@ class AIService {
     });
 
     if (!response.ok) {
-      throw new Error(`Ollama API error: ${response.status} ${response.statusText}`);
+      const errorText = await response.text();
+      console.error('🦙 Ollama API error response:', errorText);
+      throw new Error(`Ollama API error: ${response.status} ${response.statusText} - ${errorText}`);
     }
 
     const data = await response.json();

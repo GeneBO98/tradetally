@@ -510,30 +510,52 @@ class FinnhubClient {
         console.log(`Finnhub search returned ${searchResults.result.length} results but no exact CUSIP match for ${cleanCusip}`);
       }
       
-      // Finnhub didn't find the CUSIP, try AI fallback
-      console.log(`Finnhub could not resolve CUSIP ${cleanCusip} - trying AI fallback`);
+      // Finnhub didn't find the CUSIP, try comprehensive lookup service
+      console.log(`Finnhub could not resolve CUSIP ${cleanCusip} - trying comprehensive lookup service`);
       
       try {
-        const aiResult = await this.lookupCusipWithAI(cleanCusip, userId);
-        if (aiResult) {
-          // Cache the AI result
-          await cache.set('cusip_resolution', cleanCusip, aiResult);
-          console.log(`✅ AI resolved CUSIP ${cleanCusip} to ticker ${aiResult}`);
-          return aiResult;
+        const cusipLookupService = require('./cusipLookupService');
+        const result = await cusipLookupService.lookupCusip(cleanCusip);
+        
+        if (result) {
+          // Cache the result
+          await cache.set('cusip_resolution', cleanCusip, result);
+          console.log(`✅ Comprehensive lookup resolved CUSIP ${cleanCusip} to ticker ${result}`);
+          return result;
         } else {
-          console.log(`❌ AI could not resolve CUSIP ${cleanCusip}`);
+          console.log(`❌ Comprehensive lookup could not resolve CUSIP ${cleanCusip}`);
         }
-      } catch (aiError) {
-        if (aiError.message.includes('API key not valid') || aiError.message.includes('API_KEY_INVALID')) {
-          console.warn(`⚠️  AI fallback unavailable for CUSIP ${cleanCusip}: Invalid API key configured for user ${userId || 'unknown'}`);
-        } else {
-          console.warn(`❌ AI fallback failed for CUSIP ${cleanCusip}: ${aiError.message}`);
-        }
+      } catch (lookupError) {
+        console.warn(`❌ Comprehensive lookup failed for CUSIP ${cleanCusip}: ${lookupError.message}`);
       }
       
-      // Neither Finnhub nor AI found the CUSIP - cache the null result to avoid repeated lookups
+      // Check if AI CUSIP resolution is enabled (disabled by default due to reliability issues)
+      const aiCusipEnabled = process.env.ENABLE_AI_CUSIP_RESOLUTION === 'true';
+      
+      if (aiCusipEnabled) {
+        console.log(`⚠️  AI CUSIP resolution enabled - attempting AI fallback for ${cleanCusip} (results may be unreliable)`);
+        
+        try {
+          const aiResult = await this.lookupCusipWithAI(cleanCusip, userId);
+          if (aiResult) {
+            // Cache the AI result but mark it as low confidence
+            await cache.set('cusip_resolution', cleanCusip, aiResult);
+            console.log(`🤖 AI resolved CUSIP ${cleanCusip} to ticker ${aiResult} (⚠️  VERIFY MANUALLY)`);
+            return aiResult;
+          } else {
+            console.log(`❌ AI could not resolve CUSIP ${cleanCusip}`);
+          }
+        } catch (aiError) {
+          console.warn(`❌ AI fallback failed for CUSIP ${cleanCusip}: ${aiError.message}`);
+        }
+      } else {
+        console.log(`🔒 AI CUSIP resolution disabled for ${cleanCusip} (ENABLE_AI_CUSIP_RESOLUTION=false)`);
+      }
+      
+      // Neither Finnhub nor comprehensive lookup found the CUSIP - cache the null result to avoid repeated lookups
       await cache.set('cusip_resolution', cleanCusip, null);
-      console.log(`Could not resolve CUSIP ${cleanCusip} - no matching symbol found via Finnhub or AI`);
+      console.log(`Could not resolve CUSIP ${cleanCusip} - no matching symbol found via any reliable source`);
+      console.log(`💡 Manual mapping available in Trade Import interface for CUSIP ${cleanCusip}`);
       return null;
       
     } catch (error) {
@@ -554,7 +576,7 @@ class FinnhubClient {
       const settingsQuery = `
         SELECT setting_key, setting_value 
         FROM admin_settings 
-        WHERE setting_key IN ('default_ai_provider', 'default_ai_api_key', 'default_ai_model')
+        WHERE setting_key IN ('default_ai_provider', 'default_ai_api_key', 'default_ai_api_url', 'default_ai_model')
       `;
       const settingsResult = await db.query(settingsQuery);
       
@@ -563,8 +585,21 @@ class FinnhubClient {
         settings[row.setting_key] = row.setting_value;
       });
       
-      if (!settings.default_ai_api_key) {
-        throw new Error('System AI provider not configured - no admin API key found');
+      // Validate configuration based on provider type
+      const provider = settings.default_ai_provider || 'gemini';
+      
+      if (provider === 'ollama' || provider === 'local') {
+        // Ollama and local providers require URL, API key is optional
+        if (!settings.default_ai_api_url) {
+          console.log(`System AI provider (${provider}) not configured - no admin API URL found, skipping AI CUSIP resolution`);
+          return null;
+        }
+      } else {
+        // Other providers (gemini, claude, openai) require API key
+        if (!settings.default_ai_api_key) {
+          console.log(`System AI provider (${provider}) not configured - no admin API key found, skipping AI CUSIP resolution`);
+          return null;
+        }
       }
       
       // Use the configured AI provider
@@ -595,6 +630,94 @@ class FinnhubClient {
         });
         
         return response.choices[0]?.message?.content?.trim() || '';
+      } else if (settings.default_ai_provider === 'ollama') {
+        const { default: fetch } = await import('node-fetch');
+        
+        const headers = {
+          'Content-Type': 'application/json'
+        };
+        
+        // Only add Authorization header if API key is provided and not empty
+        if (settings.default_ai_api_key && settings.default_ai_api_key.trim() !== '') {
+          headers['Authorization'] = `Bearer ${settings.default_ai_api_key}`;
+        }
+        
+        const response = await fetch(`${settings.default_ai_api_url}/api/generate`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            model: settings.default_ai_model || 'llama3.1',
+            prompt,
+            stream: false,
+            options: {
+              num_predict: 50
+            }
+          })
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Ollama API error: ${response.status} ${response.statusText} - ${errorText}`);
+        }
+
+        const data = await response.json();
+        return data.response?.trim() || '';
+      } else if (settings.default_ai_provider === 'claude') {
+        const { default: Anthropic } = await import('@anthropic-ai/sdk');
+        
+        const anthropic = new Anthropic({
+          apiKey: settings.default_ai_api_key,
+        });
+
+        const response = await anthropic.messages.create({
+          model: settings.default_ai_model || 'claude-3-5-sonnet-20241022',
+          max_tokens: 50,
+          messages: [
+            {
+              role: 'user',
+              content: prompt
+            }
+          ]
+        });
+
+        return response.content[0]?.text?.trim() || '';
+      } else if (settings.default_ai_provider === 'local') {
+        const { default: fetch } = await import('node-fetch');
+        
+        const headers = {
+          'Content-Type': 'application/json'
+        };
+        
+        if (settings.default_ai_api_key && settings.default_ai_api_key.trim() !== '') {
+          headers['Authorization'] = `Bearer ${settings.default_ai_api_key}`;
+        }
+        
+        const response = await fetch(settings.default_ai_api_url, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            prompt,
+            model: settings.default_ai_model,
+            max_tokens: 50
+          })
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Local API error: ${response.status} ${response.statusText} - ${errorText}`);
+        }
+
+        const data = await response.json();
+        
+        // Try to extract response from common response formats
+        if (data.response) return data.response.trim();
+        if (data.text) return data.text.trim();
+        if (data.content) return data.content.trim();
+        if (data.choices && data.choices[0] && data.choices[0].message) {
+          return data.choices[0].message.content.trim();
+        }
+        
+        return JSON.stringify(data);
       } else {
         throw new Error(`Unsupported system AI provider: ${settings.default_ai_provider}`);
       }
@@ -626,19 +749,25 @@ class FinnhubClient {
         return ticker;
       } else {
         // Fallback to system-level AI call with admin settings
-        const prompt = `You are a financial data assistant. I need to find the stock ticker symbol for a specific CUSIP number.
+        const prompt = `You are a financial data assistant with access to CUSIP databases. I need the exact stock ticker symbol for this specific CUSIP number.
 
 CUSIP: ${cusip}
 
-Please provide ONLY the stock ticker symbol (e.g., AAPL, MSFT, TSLA) for this CUSIP. 
+CRITICAL REQUIREMENTS:
+- Each CUSIP is a unique 9-character identifier for exactly ONE security
+- You must provide the EXACT ticker symbol that corresponds to this specific CUSIP
+- DO NOT guess or provide approximate matches
+- DO NOT provide popular stock symbols like AAPL, MSFT, JPM unless you are absolutely certain they match this exact CUSIP
+- If you are not 100% certain of the exact match, respond with "NOT_FOUND"
 
-If you cannot identify the ticker symbol for this CUSIP, respond with "NOT_FOUND".
+Only provide the exact ticker symbol if you have definitive knowledge of this CUSIP-to-ticker mapping.
 
-Your response should contain ONLY the ticker symbol or "NOT_FOUND" - no additional text, explanations, or formatting.`;
+Your response must be ONLY the ticker symbol or "NOT_FOUND" - no additional text.`;
 
         const response = await this.generateSystemAIResponse(prompt);
         
         if (!response || response.trim() === 'NOT_FOUND' || response.trim().length === 0) {
+          console.log(`System AI returned no result for CUSIP ${cusip}`);
           return null;
         }
         
@@ -654,11 +783,25 @@ Your response should contain ONLY the ticker symbol or "NOT_FOUND" - no addition
           return null;
         }
         
+        // Additional validation: warn if AI returns common "guess" symbols
+        const commonGuesses = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'META', 'NVDA', 'JPM', 'BAC', 'WMT'];
+        if (commonGuesses.includes(ticker)) {
+          console.warn(`⚠️  AI returned common stock symbol ${ticker} for CUSIP ${cusip} - verify accuracy`);
+        }
+        
         return ticker;
       }
       
     } catch (error) {
       console.error(`AI CUSIP lookup failed for ${cusip}:`, error.message);
+      
+      // Return null for configuration errors instead of throwing
+      if (error.message.includes('System AI provider not configured') || 
+          error.message.includes('API key not configured') ||
+          error.message.includes('not properly configured')) {
+        return null;
+      }
+      
       throw error;
     }
   }
