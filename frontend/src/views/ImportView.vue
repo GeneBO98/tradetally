@@ -621,6 +621,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useTradesStore } from '@/stores/trades'
 import { useNotification } from '@/composables/useNotification'
+import { useAnalytics } from '@/composables/useAnalytics'
 import { format } from 'date-fns'
 import { ArrowUpTrayIcon, XMarkIcon, ExclamationTriangleIcon, Cog6ToothIcon, MagnifyingGlassIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
@@ -630,6 +631,7 @@ import api from '@/services/api'
 
 const tradesStore = useTradesStore()
 const { showSuccess, showError } = useNotification()
+const { trackImport, trackFeatureUsage } = useAnalytics()
 
 const loading = ref(false)
 const error = ref(null)
@@ -813,6 +815,9 @@ async function handleImport() {
     console.log('Import result:', result)
     showSuccess('Import Started', `Import has been queued. Import ID: ${result.importId}`)
     
+    // Track successful import start
+    trackImport(selectedBroker.value, 'started')
+    
     // Reset form
     selectedFile.value = null
     selectedBroker.value = ''
@@ -830,8 +835,15 @@ async function handleImport() {
         try {
           const statusRes = await api.get(`/trades/import/status/${importId}`)
           const status = statusRes.data.importLog?.status
-          if (status === 'completed' || status === 'failed') {
-            // Import completed - refresh the history
+          const tradeCount = statusRes.data.importLog?.trades_imported || null
+          if (status === 'completed') {
+            // Track successful completion
+            trackImport(selectedBroker.value, 'completed', tradeCount)
+            fetchImportHistory()
+            return
+          } else if (status === 'failed') {
+            // Track failure
+            trackImport(selectedBroker.value, 'failed')
             fetchImportHistory()
             return
           }
@@ -845,6 +857,9 @@ async function handleImport() {
     console.error('Error response:', err.response)
     error.value = err.response?.data?.error || err.message || 'Import failed'
     showError('Import Failed', error.value)
+    
+    // Track import error
+    trackImport(selectedBroker.value, 'error')
   } finally {
     loading.value = false
   }

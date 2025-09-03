@@ -1,8 +1,18 @@
 FROM node:18-alpine AS frontend-builder
 WORKDIR /app/frontend
+
+# Accept build arguments for PostHog
+ARG VITE_POSTHOG_KEY
+ARG VITE_POSTHOG_HOST
+
 COPY frontend/package*.json ./
 RUN npm ci
 COPY frontend/ ./
+
+# Set environment variables for build
+ENV VITE_POSTHOG_KEY=$VITE_POSTHOG_KEY
+ENV VITE_POSTHOG_HOST=$VITE_POSTHOG_HOST
+
 RUN npm run build
 
 FROM node:18-alpine AS backend-builder

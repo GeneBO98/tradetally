@@ -6,6 +6,11 @@ const logger = require('../utils/logger');
 const finnhub = require('../utils/finnhub');
 const cache = require('../utils/cache');
 const symbolCategories = require('../utils/symbolCategories');
+const imageProcessor = require('../utils/imageProcessor');
+const upload = require('../middleware/upload');
+const path = require('path');
+const fs = require('fs').promises;
+const ChartService = require('../services/chartService');
 
 const tradeController = {
   async getUserTrades(req, res, next) {
@@ -713,6 +718,16 @@ const tradeController = {
             console.log('✅ Sector performance cache invalidated after import completion');
           } catch (cacheError) {
             console.warn('⚠️ Failed to invalidate sector performance cache:', cacheError.message);
+          }
+
+          // Check achievements and trigger leaderboard updates after import
+          try {
+            console.log('🏆 Checking achievements after import for user', req.user.id);
+            const AchievementService = require('../services/achievementService');
+            const newAchievements = await AchievementService.checkAndAwardAchievements(req.user.id);
+            console.log(`🏅 Post-import achievements awarded: ${newAchievements.length}`);
+          } catch (achievementError) {
+            console.warn('⚠️ Failed to check/award achievements after import:', achievementError.message);
           }
 
           // Background categorization of new symbols
@@ -1524,101 +1539,119 @@ const tradeController = {
 
   async getTradeChartData(req, res, next) {
     try {
-      const { id } = req.params;
       const userId = req.user.id;
-
+      const tradeId = req.params.id;
+      
       // Validate UUID format
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-      
-      if (!uuidRegex.test(id)) {
+      if (!uuidRegex.test(tradeId)) {
         return res.status(400).json({ error: 'Invalid trade ID format' });
       }
 
-      // Get the trade
-      const trade = await Trade.findById(id, userId);
-      
+      // First, get the trade to verify ownership and get symbol/dates
+      const trade = await Trade.findById(tradeId, userId);
       if (!trade) {
         return res.status(404).json({ error: 'Trade not found' });
       }
 
-      // Access control is already handled by findById with userId parameter
+      // Debug: Log what fields we actually get from the database
+      console.log('=== TRADE RECORD DEBUG ===');
+      console.log('Available trade fields:', Object.keys(trade));
+      console.log('Time-related fields:', {
+        trade_date: trade.trade_date,
+        entry_time: trade.entry_time,
+        exit_time: trade.exit_time,
+        entry_date: trade.entry_date,
+        exit_date: trade.exit_date,
+        created_at: trade.created_at,
+        updated_at: trade.updated_at
+      });
 
-      // Only show charts for closed trades
-      if (!trade.exit_price || !trade.exit_time) {
-        return res.status(400).json({ error: 'Chart data only available for closed trades' });
-      }
-
-      const alphaVantage = require('../utils/alphaVantage');
+      // Extract symbol and dates from the trade
+      const symbol = trade.symbol;
       
-      if (!alphaVantage.isConfigured()) {
-        return res.status(503).json({ 
-          error: 'Chart service not configured. Alpha Vantage API key is required.',
-          details: 'Add ALPHA_VANTAGE_API_KEY to your environment variables'
-        });
+      // Use the actual entry_time and exit_time from the database directly for chart data
+      // These are already in UTC and the chart service will handle timezone conversion
+      const entryDate = trade.entry_time || trade.trade_date;
+      const exitDate = trade.exit_time || null;
+
+      if (!symbol) {
+        return res.status(400).json({ error: 'Trade missing symbol information' });
       }
 
-      try {
-        // Get chart data based on trade duration
-        const chartData = await alphaVantage.getTradeChartData(
-          trade.symbol,
-          trade.entry_time,
-          trade.exit_time
-        );
-
-        // Filter data to relevant date range (1 day before entry to 1 day after exit)
-        const entryTime = new Date(trade.entry_time).getTime() / 1000;
-        const exitTime = new Date(trade.exit_time).getTime() / 1000;
-        const oneDaySec = 24 * 60 * 60;
-        
-        const filteredData = chartData.data.filter(candle => 
-          candle.time >= (entryTime - oneDaySec) && 
-          candle.time <= (exitTime + oneDaySec)
-        );
-
-        // Prepare response with trade markers
-        res.json({
-          symbol: trade.symbol,
-          type: chartData.type,
-          interval: chartData.interval,
-          candles: filteredData,
-          trade: {
-            entryPrice: trade.entry_price,
-            entryTime: entryTime,
-            exitPrice: trade.exit_price,
-            exitTime: exitTime,
-            side: trade.side,
-            quantity: trade.quantity,
-            pnl: trade.pnl,
-            pnlPercent: trade.pnl_percent
-          },
-          usage: alphaVantage.getUsageStats()
-        });
-      } catch (error) {
-        console.error('Failed to fetch chart data:', error);
-        console.error('Error details:', {
-          message: error.message,
-          stack: error.stack,
-          tradeSymbol: trade.symbol,
-          entryTime: trade.entry_time,
-          exitTime: trade.exit_time
-        });
-        
-        // If it's a rate limit error, return appropriate status
-        if (error.message.includes('limit')) {
-          return res.status(429).json({ 
-            error: error.message,
-            usage: await alphaVantage.getUsageStats()
-          });
-        }
-        
-        // Return more specific error message
-        res.status(500).json({ 
-          error: error.message || 'Failed to load chart data',
-          details: process.env.NODE_ENV === 'development' ? error.stack : undefined
-        });
+      if (!entryDate) {
+               return res.status(400).json({ error: 'Trade missing entry date information' });
       }
+
+      // Get chart data using the ChartService
+      const chartData = await ChartService.getTradeChartData(userId, symbol, entryDate, exitDate);
+      
+      // Add trade information to the response
+      chartData.trade = {
+        id: trade.id,
+        symbol: symbol,
+        entryDate: entryDate,
+        exitDate: exitDate,
+        // Include ALL time-related fields for debugging
+        entryTime: trade.entry_time,
+        exitTime: trade.exit_time,
+        tradeDate: trade.trade_date,
+        entryDateField: trade.entry_date,
+        exitDateField: trade.exit_date,
+        createdAt: trade.created_at,
+        updatedAt: trade.updated_at,
+        // Trade details
+        entryPrice: trade.price || trade.entry_price,
+        exitPrice: trade.exit_price,
+        quantity: trade.quantity,
+        side: trade.side,
+        pnl: trade.pnl,
+        pnlPercent: trade.pnl_percent
+      };
+
+      console.log('Sending trade data to frontend:', {
+        entryDate: chartData.trade.entryDate,
+        exitDate: chartData.trade.exitDate,
+        entryTime: chartData.trade.entryTime,
+        exitTime: chartData.trade.exitTime
+      });
+
+      // Get usage statistics for the response
+      const usageStats = await ChartService.getUsageStats(userId);
+      chartData.usage = usageStats;
+
+      res.json(chartData);
     } catch (error) {
-      next(error);
+      console.error('Error fetching trade chart data:', error);
+      
+      // Handle specific errors
+      if (error.message && error.message.includes('not configured')) {
+        return res.status(503).json({
+          error: 'Chart service not configured',
+          message: error.message
+        });
+      }
+      
+      if (error.message && (error.message.includes('limit') || error.message.includes('rate'))) {
+        return res.status(429).json({
+          error: 'Chart service rate limit exceeded',
+          message: error.message
+        });
+      }
+      
+      // Handle symbol not found or data unavailable
+      if (error.message && (error.message.includes('unavailable') || error.message.includes('not supported') || error.message.includes('delisted'))) {
+        return res.status(404).json({
+          error: 'Chart data unavailable',
+          message: error.message,
+          symbol: req.params.id ? 'Unknown' : undefined
+        });
+      }
+      
+      res.status(500).json({
+        error: 'Failed to fetch chart data',
+        message: error.message
+      });
     }
   },
 
@@ -1674,6 +1707,195 @@ const tradeController = {
         message: `Reset ${retriedCusips.length} failed CUSIPs for retry`,
         cusips: retriedCusips
       });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  // Image upload endpoints
+  async uploadTradeImages(req, res, next) {
+    try {
+      const tradeId = req.params.id;
+      
+      // Verify trade belongs to user
+      const trade = await Trade.findById(tradeId, req.user.id);
+      if (!trade) {
+        return res.status(404).json({ error: 'Trade not found' });
+      }
+
+      if (!req.files || req.files.length === 0) {
+        return res.status(400).json({ error: 'No images uploaded' });
+      }
+
+      const uploadsDir = path.join(__dirname, '../../uploads/trades');
+      const processedImages = [];
+
+      // Process each uploaded image
+      for (const file of req.files) {
+        try {
+          // Validate image
+          await imageProcessor.validateImage(file.buffer);
+
+          // Process and compress image
+          const processedImage = await imageProcessor.processImage(
+            file.buffer, 
+            file.originalname, 
+            req.user.id, 
+            tradeId
+          );
+
+          // Save to disk
+          const savedImage = await imageProcessor.saveImage(processedImage, uploadsDir);
+
+          // Save to database
+          const attachmentData = {
+            fileUrl: `/api/trades/${tradeId}/images/${savedImage.filename}`,
+            fileType: savedImage.mimeType,
+            fileName: file.originalname,
+            fileSize: savedImage.size
+          };
+
+          const attachment = await Trade.addAttachment(tradeId, attachmentData);
+          
+          processedImages.push({
+            ...attachment,
+            originalSize: savedImage.originalSize,
+            compressedSize: savedImage.size,
+            compressionRatio: savedImage.compressionRatio
+          });
+
+        } catch (error) {
+          console.error(`Failed to process image ${file.originalname}:`, error);
+          processedImages.push({
+            filename: file.originalname,
+            error: error.message
+          });
+        }
+      }
+
+      res.json({
+        message: 'Images processed successfully',
+        images: processedImages,
+        totalImages: processedImages.length,
+        successfulUploads: processedImages.filter(img => !img.error).length
+      });
+
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async getTradeImage(req, res, next) {
+    try {
+      const { id: tradeId, filename } = req.params;
+      
+      console.log('getTradeImage called:', {
+        tradeId,
+        filename,
+        hasAuthHeader: !!req.header('Authorization'),
+        hasQueryToken: !!req.query.token,
+        userFromMiddleware: req.user?.id
+      });
+      
+      // Check if token is provided as query parameter
+      let user = req.user;
+      if (!user && req.query.token) {
+        try {
+          const jwt = require('jsonwebtoken');
+          const decoded = jwt.verify(req.query.token, process.env.JWT_SECRET);
+          user = { id: decoded.id };
+        } catch (error) {
+          console.log('JWT verification failed for query token:', error.message);
+          // Token is invalid, continue without user context
+        }
+      }
+      
+      // Check if the attachment exists and belongs to the specified trade
+      const attachmentQuery = `
+        SELECT ta.*, t.is_public, t.user_id 
+        FROM trade_attachments ta 
+        JOIN trades t ON ta.trade_id = t.id 
+        WHERE ta.trade_id = $1 AND ta.file_url LIKE $2
+      `;
+      
+      const attachmentResult = await db.query(attachmentQuery, [tradeId, `%${filename}`]);
+      
+      if (attachmentResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Image not found' });
+      }
+      
+      const attachment = attachmentResult.rows[0];
+      
+      // Check access permissions - allow if trade is public, or if user owns the trade
+      const hasAccess = attachment.is_public || (user && user.id === attachment.user_id);
+      
+      if (!hasAccess) {
+        console.log('Access denied for image:', {
+          filename,
+          tradeId,
+          userId: user?.id,
+          tradeOwnerId: attachment.user_id,
+          isPublic: attachment.is_public,
+          hasUser: !!user
+        });
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      const imagePath = path.join(__dirname, '../../uploads/trades', filename);
+      
+      // Check if file exists
+      try {
+        await fs.access(imagePath);
+      } catch (error) {
+        return res.status(404).json({ error: 'Image file not found on disk' });
+      }
+
+      // Set appropriate headers
+      res.setHeader('Content-Type', attachment.file_type || 'image/webp');
+      res.setHeader('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
+      
+      // Send file
+      res.sendFile(path.resolve(imagePath));
+
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async deleteTradeImage(req, res, next) {
+    try {
+      const { id: tradeId, attachmentId } = req.params;
+      
+      // Verify trade belongs to user
+      const trade = await Trade.findById(tradeId, req.user.id);
+      if (!trade) {
+        return res.status(404).json({ error: 'Trade not found' });
+      }
+
+      // Get attachment details before deletion
+      const attachmentQuery = `
+        SELECT ta.* FROM trade_attachments ta
+        JOIN trades t ON ta.trade_id = t.id
+        WHERE ta.id = $1 AND t.user_id = $2
+      `;
+      const attachmentResult = await db.query(attachmentQuery, [attachmentId, req.user.id]);
+      
+      if (attachmentResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Image not found' });
+      }
+
+      const attachment = attachmentResult.rows[0];
+
+      // Delete from database
+      await Trade.deleteAttachment(attachmentId, req.user.id);
+
+      // Delete file from disk
+      const filename = path.basename(attachment.file_url);
+      const filePath = path.join(__dirname, '../../uploads/trades', filename);
+      await imageProcessor.deleteImage(filePath);
+
+      res.json({ message: 'Image deleted successfully' });
+
     } catch (error) {
       next(error);
     }

@@ -46,24 +46,72 @@
     </footer>
     
     <Notification />
+    <!-- Gamification celebration overlay -->
+    <CelebrationOverlay :queue="celebrationQueue" />
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { usePriceAlertNotifications } from '@/composables/usePriceAlertNotifications'
+import { useAnalytics } from '@/composables/useAnalytics'
 import NavBar from '@/components/layout/NavBar.vue'
 import Notification from '@/components/common/Notification.vue'
+import CelebrationOverlay from '@/components/gamification/CelebrationOverlay.vue'
 
 const route = useRoute()
 const authStore = useAuthStore()
+
+// Initialize price alert notifications globally
+const { isConnected, connect, disconnect, celebrationQueue } = usePriceAlertNotifications()
+
+// Initialize analytics globally
+const { initialize: initializeAnalytics, identifyUser, trackPageView } = useAnalytics()
 
 const isAuthRoute = computed(() => {
   return ['login', 'register'].includes(route.name)
 })
 
-onMounted(() => {
-  authStore.checkAuth()
+// Watch for authentication changes and user tier changes
+let lastConnectionState = false
+watch(() => [authStore.user?.tier, authStore.token, authStore.user?.billingEnabled], ([tier, token, billingEnabled]) => {
+  const shouldConnect = token && (tier === 'pro' || billingEnabled === false)
+  
+  if (shouldConnect && !lastConnectionState) {
+    console.log('Connecting to SSE notifications...')
+    connect()
+    lastConnectionState = true
+  } else if (!shouldConnect && lastConnectionState) {
+    console.log('Disconnecting from SSE notifications...')
+    disconnect()
+    lastConnectionState = false
+  }
+}, { immediate: true })
+
+// Track page views on route changes
+watch(() => route.name, (newRouteName) => {
+  if (newRouteName && !isAuthRoute.value) {
+    trackPageView(newRouteName)
+  }
+})
+
+// Watch for user authentication to identify users in analytics
+watch(() => authStore.user, (user) => {
+  if (user?.id) {
+    identifyUser(user.id, {
+      tier: user.tier || 'free',
+      created_at: user.created_at
+    })
+  }
+}, { immediate: true })
+
+onMounted(async () => {
+  // Initialize analytics
+  initializeAnalytics()
+  
+  await authStore.checkAuth()
+  // Note: Achievement celebrations are now handled globally via CelebrationOverlay
 })
 </script>

@@ -700,6 +700,7 @@ import api from '@/services/api'
 import MdiIcon from '@/components/MdiIcon.vue'
 import { useNotification } from '@/composables/useNotification'
 import { usePriceAlertNotifications } from '@/composables/usePriceAlertNotifications'
+import { useAnalytics } from '@/composables/useAnalytics'
 import { 
   mdiTrophy, 
   mdiChartLine, 
@@ -722,6 +723,7 @@ export default {
   setup() {
     const { showSuccess, showError, showWarning } = useNotification()
     const { celebrationQueue } = usePriceAlertNotifications()
+    const { trackFeatureUsage } = useAnalytics()
     const activeTab = ref('overview')
     
     const tabs = [
@@ -1123,8 +1125,10 @@ export default {
 
     onMounted(() => {
       loadDashboard()
-      // Temporarily disabled automatic achievement checking due to 500 error
-      // checkForNewAchievements()
+      checkForNewAchievements()
+      
+      // Track leaderboard view
+      trackFeatureUsage('leaderboard_view')
     })
 
     const checkForNewAchievements = async () => {

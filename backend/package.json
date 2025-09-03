@@ -29,9 +29,10 @@
     "multer": "^2.0.2",
     "node-fetch": "^3.3.2",
     "nodemailer": "^6.9.7",
-    "openai": "^5.10.2",
+    "openai": "^5.11.0",
     "pg": "^8.11.3",
     "qrcode": "^1.5.4",
+    "sharp": "^0.34.3",
     "speakeasy": "^2.0.0",
     "uuid": "^9.0.1"
   },

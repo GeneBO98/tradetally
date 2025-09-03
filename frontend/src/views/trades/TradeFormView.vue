@@ -210,6 +210,14 @@
             @keydown="handleNotesKeydown"
           ></textarea>
         </div>
+
+        <!-- Image Upload Section -->
+        <div v-if="isEdit && route.params.id">
+          <ImageUpload 
+            :trade-id="route.params.id" 
+            @uploaded="handleImageUploaded"
+          />
+        </div>
   
         <div class="flex items-center">
           <input
@@ -253,12 +261,15 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTradesStore } from '@/stores/trades'
 import { useNotification } from '@/composables/useNotification'
+import { useAnalytics } from '@/composables/useAnalytics'
+import ImageUpload from '@/components/trades/ImageUpload.vue'
 
 const showMoreOptions = ref(false)
 const route = useRoute()
 const router = useRouter()
 const tradesStore = useTradesStore()
 const { showSuccess, showError } = useNotification()
+const { trackTradeAction } = useAnalytics()
 
 const loading = ref(false)
 const error = ref(null)
@@ -359,18 +370,37 @@ async function handleSubmit() {
     if (isEdit.value) {
       await tradesStore.updateTrade(route.params.id, tradeData)
       showSuccess('Success', 'Trade updated successfully')
+      trackTradeAction('update', {
+        side: tradeData.side,
+        broker: tradeData.broker,
+        strategy: tradeData.strategy,
+        notes: !!tradeData.notes
+      })
+      // For edits, go back to the trade detail page
+      router.push(`/trades/${route.params.id}`)
     } else {
-      await tradesStore.createTrade(tradeData)
+      const newTrade = await tradesStore.createTrade(tradeData)
       showSuccess('Success', 'Trade created successfully')
+      trackTradeAction('create', {
+        side: tradeData.side,
+        broker: tradeData.broker,
+        strategy: tradeData.strategy,
+        notes: !!tradeData.notes
+      })
+      // For new trades, go to trades list
+      router.push('/trades')
     }
-
-    router.push('/trades')
   } catch (err) {
     error.value = err.response?.data?.error || 'An error occurred'
     showError('Error', error.value)
   } finally {
     loading.value = false
   }
+}
+
+function handleImageUploaded() {
+  // Refresh trade data or show success message
+  showSuccess('Images Uploaded', 'Trade images uploaded successfully')
 }
 
 onMounted(() => {
