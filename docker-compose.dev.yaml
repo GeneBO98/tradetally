@@ -67,7 +67,7 @@ services:
       ALPHA_VANTAGE_API_KEY: ${ALPHA_VANTAGE_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
     ports:
-      - "5173:80"
+      - "80:80"
       - "3000:3000"
     volumes:
       - ./backend/src/logs:/app/backend/src/logs
