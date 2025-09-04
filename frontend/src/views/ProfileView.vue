@@ -840,7 +840,9 @@ const billingStatus = ref({
 })
 const subscription = ref({
   subscription: null,
-  tier: { tier_name: 'free' }
+  tier: 'free',
+  trial: null,
+  has_used_trial: false
 })
 
 // API Keys data
