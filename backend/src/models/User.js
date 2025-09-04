@@ -593,33 +593,77 @@ class User {
   }
 
   static async setTierOverride(userId, tier, reason, expiresAt, createdBy) {
-    const query = `
-      INSERT INTO tier_overrides (user_id, tier, reason, expires_at, created_by)
-      VALUES ($1, $2, $3, $4, $5)
-      ON CONFLICT (user_id) 
-      DO UPDATE SET
-        tier = EXCLUDED.tier,
-        reason = EXCLUDED.reason,
-        expires_at = EXCLUDED.expires_at,
-        created_by = EXCLUDED.created_by,
-        updated_at = CURRENT_TIMESTAMP
-      RETURNING *
-    `;
-    
-    const values = [userId, tier, reason, expiresAt, createdBy];
-    const result = await db.query(query, values);
-    return result.rows[0];
+    const client = await db.connect();
+    try {
+      await client.query('BEGIN');
+      
+      // Insert/update the override record
+      const overrideQuery = `
+        INSERT INTO tier_overrides (user_id, tier, reason, expires_at, created_by)
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (user_id) 
+        DO UPDATE SET
+          tier = EXCLUDED.tier,
+          reason = EXCLUDED.reason,
+          expires_at = EXCLUDED.expires_at,
+          created_by = EXCLUDED.created_by,
+          updated_at = CURRENT_TIMESTAMP
+        RETURNING *
+      `;
+      
+      // Also update the users table so simple queries return correct tier
+      const userUpdateQuery = `
+        UPDATE users SET tier = $1, updated_at = CURRENT_TIMESTAMP 
+        WHERE id = $2
+      `;
+      
+      const result = await client.query(overrideQuery, [userId, tier, reason, expiresAt, createdBy]);
+      await client.query(userUpdateQuery, [tier, userId]);
+      
+      await client.query('COMMIT');
+      return result.rows[0];
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   static async removeTierOverride(userId) {
-    const query = `
-      DELETE FROM tier_overrides
-      WHERE user_id = $1
-      RETURNING *
-    `;
-    
-    const result = await db.query(query, [userId]);
-    return result.rows[0];
+    const client = await db.connect();
+    try {
+      await client.query('BEGIN');
+      
+      // Remove the override record
+      const deleteQuery = `
+        DELETE FROM tier_overrides
+        WHERE user_id = $1
+        RETURNING *
+      `;
+      
+      // Reset user tier to base tier (free unless admin)
+      const resetTierQuery = `
+        UPDATE users 
+        SET tier = CASE 
+          WHEN role IN ('admin', 'owner') THEN 'pro'
+          ELSE 'free'
+        END,
+        updated_at = CURRENT_TIMESTAMP
+        WHERE id = $1
+      `;
+      
+      const result = await client.query(deleteQuery, [userId]);
+      await client.query(resetTierQuery, [userId]);
+      
+      await client.query('COMMIT');
+      return result.rows[0];
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   static async getTierOverride(userId) {
