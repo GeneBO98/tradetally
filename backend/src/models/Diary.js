@@ -188,6 +188,32 @@ class Diary {
     return this.findByDate(userId, today, 'diary');
   }
 
+  static async findByDateRange(userId, startDate, endDate) {
+    const query = `
+      SELECT de.*,
+        json_agg(
+          json_build_object(
+            'id', da.id,
+            'file_url', da.file_url,
+            'file_type', da.file_type,
+            'file_name', da.file_name,
+            'file_size', da.file_size,
+            'uploaded_at', da.uploaded_at
+          )
+        ) FILTER (WHERE da.id IS NOT NULL) as attachments
+      FROM diary_entries de
+      LEFT JOIN diary_attachments da ON de.id = da.diary_entry_id
+      WHERE de.user_id = $1 
+        AND DATE(de.entry_date) >= $2 
+        AND DATE(de.entry_date) <= $3
+      GROUP BY de.id
+      ORDER BY de.entry_date ASC
+    `;
+
+    const result = await db.query(query, [userId, startDate, endDate]);
+    return result.rows;
+  }
+
   static async update(id, userId, updates) {
     const allowedFields = [
       'title', 'content', 'tags', 'entry_type', 'market_bias',

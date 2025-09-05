@@ -362,6 +362,23 @@ export const useDiaryStore = defineStore('diary', () => {
     resetFilters()
   }
 
+  // AI Analysis
+  const analyzeEntries = async (startDate, endDate) => {
+    try {
+      setLoading(true)
+      clearError()
+
+      const response = await api.get(`/diary/analyze?startDate=${startDate}&endDate=${endDate}`)
+      return response.data
+    } catch (err) {
+      console.error('Error analyzing diary entries:', err)
+      setError(err.response?.data?.error || 'Failed to analyze diary entries')
+      throw err
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return {
     // State
     entries,
@@ -397,6 +414,7 @@ export const useDiaryStore = defineStore('diary', () => {
     searchEntries,
     updateFilters,
     resetFilters,
-    clearState
+    clearState,
+    analyzeEntries
   }
 })

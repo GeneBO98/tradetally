@@ -13,7 +13,8 @@ const {
   deleteAttachment,
   getTags,
   getStats,
-  searchEntries
+  searchEntries,
+  analyzeEntries
 } = require('../controllers/diary.controller');
 
 // Apply authentication middleware to all routes
@@ -33,6 +34,9 @@ router.get('/tags', getTags);
 
 // Get diary statistics
 router.get('/stats', getStats);
+
+// AI Analysis of diary entries
+router.get('/analyze', analyzeEntries);
 
 // Get diary entry by date
 router.get('/date/:date', getEntryByDate);

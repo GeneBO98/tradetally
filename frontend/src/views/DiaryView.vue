@@ -37,6 +37,18 @@
               <CalendarDaysIcon class="w-4 h-4 mr-1 inline" />
               Calendar
             </button>
+            <button
+              @click="currentView = 'analysis'"
+              :class="[
+                'px-3 py-1 text-sm font-medium rounded-md transition-colors',
+                currentView === 'analysis'
+                  ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm'
+                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+              ]"
+            >
+              <SparklesIcon class="w-4 h-4 mr-1 inline" />
+              AI Analysis
+            </button>
           </div>
           
           <!-- Create Entry Button -->
@@ -384,6 +396,11 @@
           </router-link>
         </div>
       </div>
+
+      <!-- AI Analysis View -->
+      <div v-else-if="currentView === 'analysis'">
+        <DiaryAnalysis />
+      </div>
     </div>
 
     <!-- Pagination -->
@@ -450,6 +467,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useDiaryStore } from '@/stores/diary'
 import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isToday, addMonths, subMonths, startOfWeek, endOfWeek } from 'date-fns'
+import DiaryAnalysis from '@/components/diary/DiaryAnalysis.vue'
 import {
   PlusIcon,
   PencilIcon,
@@ -460,7 +478,8 @@ import {
   MagnifyingGlassIcon,
   ExclamationTriangleIcon,
   ChevronLeftIcon,
-  ChevronRightIcon
+  ChevronRightIcon,
+  SparklesIcon
 } from '@heroicons/vue/24/outline'
 
 const diaryStore = useDiaryStore()
