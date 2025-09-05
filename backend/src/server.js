@@ -30,6 +30,7 @@ const newsEnrichmentRoutes = require('./routes/newsEnrichment.routes');
 const newsCorrelationRoutes = require('./routes/newsCorrelation.routes');
 const notificationPreferencesRoutes = require('./routes/notificationPreferences.routes');
 const cusipMappingsRoutes = require('./routes/cusipMappings.routes');
+const diaryRoutes = require('./routes/diary.routes');
 const BillingService = require('./services/billingService');
 const priceMonitoringService = require('./services/priceMonitoringService');
 const GamificationScheduler = require('./services/gamificationScheduler');
@@ -162,6 +163,7 @@ app.use('/api/news-enrichment', newsEnrichmentRoutes);
 app.use('/api/news-correlation', newsCorrelationRoutes);
 app.use('/api/notification-preferences', notificationPreferencesRoutes);
 app.use('/api/cusip-mappings', cusipMappingsRoutes);
+app.use('/api/diary', diaryRoutes);
 
 // Well-known endpoints for mobile discovery
 app.use('/.well-known', wellKnownRoutes);

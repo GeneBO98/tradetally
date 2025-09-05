@@ -210,6 +210,31 @@ docker-compose logs -f app
 - API testing with supertest
 - Database integration tests
 
+## Coding Standards & Conventions
+
+### Data Format Standards
+- **Field Naming**: Use **camelCase** for JavaScript/frontend and API communication
+- **Database Fields**: PostgreSQL uses snake_case in schema, but models should convert to camelCase for consistency
+- **API Responses**: Always return data in camelCase format to frontend
+- **Form Data**: Frontend forms send camelCase, backend models expect camelCase
+
+### Examples:
+```javascript
+// ✅ Good - Frontend/API Format
+{
+  entryDate: '2025-09-05',
+  marketBias: 'bullish',
+  keyLevels: 'SPY 500'
+}
+
+// ❌ Bad - Don't mix formats
+{
+  entry_date: '2025-09-05',  // snake_case
+  marketBias: 'bullish',     // camelCase
+  key_levels: 'SPY 500'      // snake_case
+}
+```
+
 ## Common Pitfalls & Reminders
 
 1. **NEVER replace GitHub URLs** - Always use `GeneBO98/tradetally` for repository references
@@ -219,6 +244,7 @@ docker-compose logs -f app
 5. **Date Handling** - Be mindful of timezone conversions in date operations
 6. **Docker Networks** - Use defined networks for service communication
 7. **CORS Configuration** - Mobile app requires specific CORS origins setup
+8. **Field Naming Consistency** - Always use camelCase for API communication, let models handle database conversion
 
 ## Mobile App Integration
 

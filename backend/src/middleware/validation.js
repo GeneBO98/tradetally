@@ -188,6 +188,32 @@ const schemas = {
     permissions: Joi.array().items(Joi.string().valid('read', 'write', 'admin')),
     expiresIn: Joi.number().integer().min(1).max(365).allow(null),
     isActive: Joi.boolean()
+  }).min(1),
+
+  // Diary validation schemas
+  createDiaryEntry: Joi.object({
+    entryDate: Joi.date().iso().required(),
+    entryType: Joi.string().valid('diary', 'playbook').default('diary'),
+    title: Joi.string().max(255).allow(null, ''),
+    marketBias: Joi.string().valid('bullish', 'bearish', 'neutral').allow(null, ''),
+    content: Joi.string().allow(null, ''),
+    keyLevels: Joi.string().allow(null, ''),
+    watchlist: Joi.array().items(Joi.string().max(50)).default([]),
+    tags: Joi.array().items(Joi.string().max(50)).default([]),
+    followedPlan: Joi.boolean().allow(null),
+    lessonsLearned: Joi.string().allow(null, '')
+  }),
+
+  updateDiaryEntry: Joi.object({
+    entryType: Joi.string().valid('diary', 'playbook'),
+    title: Joi.string().max(255).allow(null, ''),
+    marketBias: Joi.string().valid('bullish', 'bearish', 'neutral').allow(null, ''),
+    content: Joi.string().allow(null, ''),
+    keyLevels: Joi.string().allow(null, ''),
+    watchlist: Joi.array().items(Joi.string().max(50)),
+    tags: Joi.array().items(Joi.string().max(50)),
+    followedPlan: Joi.boolean().allow(null),
+    lessonsLearned: Joi.string().allow(null, '')
   }).min(1)
 };
 
