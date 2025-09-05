@@ -1,4 +1,4 @@
-const apn = require('node-apn');
+const apn = require('@parse/node-apn');
 const db = require('../config/database');
 const logger = require('../utils/logger');
 const NotificationPreferenceService = require('./notificationPreferenceService');
