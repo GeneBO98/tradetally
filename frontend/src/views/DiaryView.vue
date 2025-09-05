@@ -1,0 +1,745 @@
+<template>
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <!-- Header -->
+    <div class="mb-8">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Trading Journal</h1>
+          <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
+            Track your daily market thoughts, trading plans, and reflections
+          </p>
+        </div>
+        
+        <div class="mt-4 sm:mt-0 flex items-center space-x-3">
+          <!-- View Toggle -->
+          <div class="flex bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
+            <button
+              @click="currentView = 'list'"
+              :class="[
+                'px-3 py-1 text-sm font-medium rounded-md transition-colors',
+                currentView === 'list'
+                  ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm'
+                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+              ]"
+            >
+              <ListBulletIcon class="w-4 h-4 mr-1 inline" />
+              List
+            </button>
+            <button
+              @click="currentView = 'calendar'"
+              :class="[
+                'px-3 py-1 text-sm font-medium rounded-md transition-colors',
+                currentView === 'calendar'
+                  ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm'
+                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+              ]"
+            >
+              <CalendarDaysIcon class="w-4 h-4 mr-1 inline" />
+              Calendar
+            </button>
+          </div>
+          
+          <!-- Create Entry Button -->
+          <router-link
+            to="/diary/new"
+            class="btn-primary"
+          >
+            <PlusIcon class="w-4 h-4 mr-2" />
+            New Entry
+          </router-link>
+        </div>
+      </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="mb-6 bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+      <div class="flex flex-col sm:flex-row gap-4">
+        <!-- Entry Type Filter -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            Type
+          </label>
+          <select
+            v-model="filters.entryType"
+            @change="applyFilters"
+            class="input text-sm"
+          >
+            <option value="">All Types</option>
+            <option value="diary">Diary</option>
+            <option value="playbook">Playbook</option>
+          </select>
+        </div>
+
+        <!-- Market Bias Filter -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            Market Bias
+          </label>
+          <select
+            v-model="filters.marketBias"
+            @change="applyFilters"
+            class="input text-sm"
+          >
+            <option value="">All Bias</option>
+            <option value="bullish">Bullish</option>
+            <option value="bearish">Bearish</option>
+            <option value="neutral">Neutral</option>
+          </select>
+        </div>
+
+        <!-- Date Range Filter -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            Start Date
+          </label>
+          <input
+            type="date"
+            v-model="filters.startDate"
+            @change="applyFilters"
+            class="input text-sm"
+          />
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            End Date
+          </label>
+          <input
+            type="date"
+            v-model="filters.endDate"
+            @change="applyFilters"
+            class="input text-sm"
+          />
+        </div>
+
+        <!-- Search -->
+        <div class="flex-1">
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            Search
+          </label>
+          <div class="relative">
+            <input
+              type="text"
+              v-model="searchQuery"
+              @input="debounceSearch"
+              placeholder="Search entries..."
+              class="input text-sm pl-10"
+            />
+            <MagnifyingGlassIcon class="w-4 h-4 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
+          </div>
+        </div>
+
+        <!-- Clear Filters -->
+        <div class="flex items-end">
+          <button
+            @click="clearFilters"
+            class="btn-secondary text-sm"
+          >
+            Clear
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Content Area -->
+    <div class="min-h-96">
+      <!-- Loading State -->
+      <div v-if="loading" class="flex justify-center py-12">
+        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+      </div>
+
+      <!-- Error State -->
+      <div v-else-if="error" class="text-center py-12">
+        <ExclamationTriangleIcon class="w-12 h-12 text-red-400 mx-auto mb-4" />
+        <p class="text-red-600 dark:text-red-400">{{ error }}</p>
+        <button @click="loadEntries" class="btn-primary mt-4">Try Again</button>
+      </div>
+
+      <!-- List View -->
+      <div v-else-if="currentView === 'list'" class="space-y-4">
+        <!-- Entry Cards -->
+        <div
+          v-for="entry in entries"
+          :key="entry.id"
+          class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 hover:shadow-md transition-shadow"
+        >
+          <div class="flex items-start justify-between mb-4">
+            <div class="flex-1">
+              <div class="flex items-center space-x-3 mb-2">
+                <span class="text-sm font-medium text-gray-900 dark:text-white">
+                  {{ formatDate(entry.entry_date) }}
+                </span>
+                
+                <span
+                  :class="[
+                    'px-2 py-1 text-xs font-medium rounded-full',
+                    entry.entry_type === 'diary'
+                      ? 'bg-blue-100 dark:bg-blue-900/20 text-blue-800 dark:text-blue-400'
+                      : 'bg-purple-100 dark:bg-purple-900/20 text-purple-800 dark:text-purple-400'
+                  ]"
+                >
+                  {{ entry.entry_type === 'diary' ? 'Diary' : 'Playbook' }}
+                </span>
+                
+                <span
+                  v-if="entry.market_bias"
+                  :class="marketBiasClasses(entry.market_bias)"
+                  class="px-2 py-1 text-xs font-medium rounded-full"
+                >
+                  {{ entry.market_bias.charAt(0).toUpperCase() + entry.market_bias.slice(1) }}
+                </span>
+              </div>
+              
+              <h3
+                v-if="entry.title"
+                class="text-lg font-medium text-gray-900 dark:text-white mb-2"
+              >
+                {{ entry.title }}
+              </h3>
+            </div>
+            
+            <div class="flex items-center space-x-2 ml-4">
+              <router-link
+                :to="`/diary/${entry.id}/edit`"
+                class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              >
+                <PencilIcon class="w-4 h-4" />
+              </router-link>
+              
+              <button
+                @click="confirmDelete(entry)"
+                class="text-gray-400 hover:text-red-600 dark:hover:text-red-400"
+              >
+                <TrashIcon class="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+          
+          <div
+            v-if="entry.content"
+            class="text-sm text-gray-700 dark:text-gray-300 mb-4 prose prose-sm max-w-none dark:prose-invert"
+            v-html="truncateHtml(entry.content, 300)"
+          ></div>
+          
+          <div v-if="entry.key_levels && entry.key_levels.length > 0" class="mb-3">
+            <span class="text-xs font-medium text-yellow-600 dark:text-yellow-400">Key Levels:</span>
+            <div class="text-sm text-gray-600 dark:text-gray-400 mt-1" v-html="truncateHtml(entry.key_levels, 150)"></div>
+          </div>
+          
+          <div v-if="entry.watchlist && entry.watchlist.length > 0" class="mb-3">
+            <span class="text-xs font-medium text-blue-600 dark:text-blue-400 mr-2">Watchlist:</span>
+            <div class="inline-flex flex-wrap gap-1">
+              <span
+                v-for="(symbol, index) in entry.watchlist.slice(0, 5)"
+                :key="symbol"
+                class="inline-flex items-center px-2 py-1 rounded bg-blue-100 dark:bg-blue-800 text-blue-800 dark:text-blue-200 text-xs"
+              >
+                {{ symbol }}
+              </span>
+              <span
+                v-if="entry.watchlist.length > 5"
+                class="text-xs text-gray-500 dark:text-gray-400 px-2"
+              >
+                +{{ entry.watchlist.length - 5 }} more
+              </span>
+            </div>
+          </div>
+          
+          <div v-if="entry.tags && entry.tags.length > 0" class="flex flex-wrap gap-2">
+            <span
+              v-for="tag in entry.tags.slice(0, 3)"
+              :key="tag"
+              class="inline-flex items-center px-2 py-1 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 text-xs"
+            >
+              #{{ tag }}
+            </span>
+            <span
+              v-if="entry.tags.length > 3"
+              class="text-xs text-gray-500 dark:text-gray-400"
+            >
+              +{{ entry.tags.length - 3 }} more tags
+            </span>
+          </div>
+        </div>
+
+        <!-- No Entries State -->
+        <div v-if="!loading && entries.length === 0" class="text-center py-12">
+          <BookOpenIcon class="w-16 h-16 text-gray-400 mx-auto mb-4" />
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">No journal entries found</h3>
+          <p class="text-gray-500 dark:text-gray-400 mb-6">
+            {{ hasActiveFilters ? 'Try adjusting your filters or' : '' }}
+            Start documenting your trading journey with your first entry.
+          </p>
+          <router-link to="/diary/new" class="btn-primary">
+            <PlusIcon class="w-4 h-4 mr-2" />
+            Create Your First Entry
+          </router-link>
+        </div>
+      </div>
+
+      <!-- Calendar View -->
+      <div v-else-if="currentView === 'calendar'" class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+        <!-- Calendar Header -->
+        <div class="flex justify-between items-center mb-6">
+          <h2 class="text-xl font-semibold text-gray-900 dark:text-white">
+            {{ format(calendarDate, 'MMMM yyyy') }}
+          </h2>
+          <div class="flex items-center space-x-2">
+            <button
+              @click="changeMonth(-1)"
+              class="p-2 rounded-md text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+            >
+              <ChevronLeftIcon class="w-5 h-5" />
+            </button>
+            <button
+              @click="goToToday"
+              class="px-3 py-1 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600"
+            >
+              Today
+            </button>
+            <button
+              @click="changeMonth(1)"
+              class="p-2 rounded-md text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+            >
+              <ChevronRightIcon class="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        <!-- Calendar Grid -->
+        <div class="grid grid-cols-7 gap-1">
+          <!-- Day Headers -->
+          <div
+            v-for="day in dayHeaders"
+            :key="day"
+            class="p-3 text-center text-sm font-medium text-gray-500 dark:text-gray-400"
+          >
+            {{ day }}
+          </div>
+
+          <!-- Calendar Days -->
+          <div
+            v-for="day in calendarDays"
+            :key="`${day.date.getMonth()}-${day.date.getDate()}`"
+            class="relative min-h-[100px] p-2 border border-gray-200 dark:border-gray-600"
+            :class="{
+              'bg-gray-50 dark:bg-gray-700': !day.isCurrentMonth,
+              'bg-blue-50 dark:bg-blue-900': day.isToday,
+              'cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700': day.isCurrentMonth
+            }"
+            @click="selectDate(day.date)"
+          >
+            <!-- Day Number -->
+            <div
+              class="text-sm font-medium mb-1"
+              :class="{
+                'text-gray-400': !day.isCurrentMonth,
+                'text-blue-600 dark:text-blue-400': day.isToday,
+                'text-gray-900 dark:text-white': day.isCurrentMonth && !day.isToday
+              }"
+            >
+              {{ day.date.getDate() }}
+            </div>
+
+            <!-- Diary Entries -->
+            <div v-if="day.entries.length > 0" class="space-y-1">
+              <div
+                v-for="entry in day.entries.slice(0, 2)"
+                :key="entry.id"
+                class="text-xs p-1 rounded cursor-pointer"
+                :class="getEntryDisplayClass(entry)"
+                @click.stop="goToEntry(entry)"
+                :title="getEntryTooltip(entry)"
+              >
+                <component :is="getEntryIcon(entry)" class="w-3 h-3 inline mr-1" />
+                <span class="font-medium">{{ getEntryDisplayText(entry) }}</span>
+                <div v-if="entry.market_bias" class="text-xs opacity-75">
+                  {{ entry.market_bias }} bias
+                </div>
+              </div>
+              <div
+                v-if="day.entries.length > 2"
+                class="text-xs text-gray-500 dark:text-gray-400 cursor-pointer hover:text-gray-700 dark:hover:text-gray-300"
+                @click.stop="showDayEntries(day.date)"
+              >
+                +{{ day.entries.length - 2 }} more entries
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Empty State for Calendar -->
+        <div v-if="entries.length === 0" class="text-center py-12">
+          <BookOpenIcon class="w-16 h-16 text-gray-400 mx-auto mb-4" />
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">No Diary Entries</h3>
+          <p class="text-gray-500 dark:text-gray-400 mb-4">
+            Create your first entry to see it on the calendar.
+          </p>
+          <router-link
+            to="/diary/new"
+            class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700"
+          >
+            <PlusIcon class="w-4 h-4 mr-2" />
+            Create Your First Entry
+          </router-link>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pagination -->
+    <div v-if="entries.length > 0 && pagination.pages > 1" class="mt-8 flex justify-center">
+      <nav class="flex items-center space-x-2">
+        <button
+          @click="changePage(pagination.page - 1)"
+          :disabled="pagination.page <= 1"
+          class="px-3 py-2 text-sm font-medium text-gray-500 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Previous
+        </button>
+        
+        <span class="px-4 py-2 text-sm text-gray-700 dark:text-gray-300">
+          Page {{ pagination.page }} of {{ pagination.pages }}
+        </span>
+        
+        <button
+          @click="changePage(pagination.page + 1)"
+          :disabled="pagination.page >= pagination.pages"
+          class="px-3 py-2 text-sm font-medium text-gray-500 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Next
+        </button>
+      </nav>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div
+      v-if="showDeleteModal"
+      class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+      @click="showDeleteModal = false"
+    >
+      <div
+        class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg max-w-md w-full mx-4"
+        @click.stop
+      >
+        <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Delete Entry</h3>
+        <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
+          Are you sure you want to delete this journal entry? This action cannot be undone.
+        </p>
+        <div class="flex justify-end space-x-3">
+          <button
+            @click="showDeleteModal = false"
+            class="btn-secondary"
+          >
+            Cancel
+          </button>
+          <button
+            @click="deleteEntry"
+            :disabled="deleting"
+            class="btn-danger"
+          >
+            {{ deleting ? 'Deleting...' : 'Delete' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, computed, onMounted, watch } from 'vue'
+import { useRouter } from 'vue-router'
+import { useDiaryStore } from '@/stores/diary'
+import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isToday, addMonths, subMonths, startOfWeek, endOfWeek } from 'date-fns'
+import {
+  PlusIcon,
+  PencilIcon,
+  TrashIcon,
+  BookOpenIcon,
+  CalendarDaysIcon,
+  ListBulletIcon,
+  MagnifyingGlassIcon,
+  ExclamationTriangleIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon
+} from '@heroicons/vue/24/outline'
+
+const diaryStore = useDiaryStore()
+const router = useRouter()
+
+// Component state
+const currentView = ref('list')
+const searchQuery = ref('')
+const searchTimeout = ref(null)
+const showDeleteModal = ref(false)
+const entryToDelete = ref(null)
+const deleting = ref(false)
+
+// Calendar state
+const calendarDate = ref(new Date())
+
+// Filters
+const filters = ref({
+  entryType: '',
+  marketBias: '',
+  startDate: '',
+  endDate: ''
+})
+
+// Computed properties
+const entries = computed(() => diaryStore.entries)
+const loading = computed(() => diaryStore.loading)
+const error = computed(() => diaryStore.error)
+const pagination = computed(() => diaryStore.pagination)
+
+const hasActiveFilters = computed(() => {
+  return Object.values(filters.value).some(value => value !== '') || searchQuery.value !== ''
+})
+
+// Calendar computed properties
+const dayHeaders = computed(() => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'])
+
+const calendarDays = computed(() => {
+  const start = startOfWeek(startOfMonth(calendarDate.value))
+  const end = endOfWeek(endOfMonth(calendarDate.value))
+  const days = eachDayOfInterval({ start, end })
+  
+  return days.map(date => {
+    const dateString = format(date, 'yyyy-MM-dd')
+    const dayEntries = entries.value.filter(entry => {
+      // Extract date part from entry_date (which might be a full timestamp)
+      const entryDateString = entry.entry_date.split('T')[0]
+      return entryDateString === dateString
+    })
+    
+    return {
+      date,
+      isCurrentMonth: date.getMonth() === calendarDate.value.getMonth(),
+      isToday: isToday(date),
+      entries: dayEntries
+    }
+  })
+})
+
+// Methods
+const formatDate = (dateString) => {
+  return format(parseISO(dateString), 'MMM d, yyyy')
+}
+
+const marketBiasClasses = (bias) => {
+  switch (bias) {
+    case 'bullish':
+      return 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
+    case 'bearish':
+      return 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
+    case 'neutral':
+      return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
+    default:
+      return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
+  }
+}
+
+const truncateHtml = (html, maxLength) => {
+  if (!html) return ''
+  if (html.length <= maxLength) return html
+  
+  // Simple HTML-aware truncation
+  const div = document.createElement('div')
+  div.innerHTML = html
+  const text = div.textContent || div.innerText || ''
+  
+  if (text.length <= maxLength) return html
+  
+  return text.substring(0, maxLength) + '...'
+}
+
+const applyFilters = async () => {
+  diaryStore.updateFilters(filters.value)
+  await loadEntries()
+}
+
+const clearFilters = async () => {
+  filters.value = {
+    entryType: '',
+    marketBias: '',
+    startDate: '',
+    endDate: ''
+  }
+  searchQuery.value = ''
+  diaryStore.resetFilters()
+  await loadEntries()
+}
+
+const debounceSearch = () => {
+  clearTimeout(searchTimeout.value)
+  searchTimeout.value = setTimeout(async () => {
+    if (searchQuery.value.trim().length >= 2) {
+      await diaryStore.searchEntries(searchQuery.value, filters.value)
+    } else if (searchQuery.value.trim().length === 0) {
+      await loadEntries()
+    }
+  }, 300)
+}
+
+// Calendar methods
+const changeMonth = (delta) => {
+  if (delta > 0) {
+    calendarDate.value = addMonths(calendarDate.value, 1)
+  } else {
+    calendarDate.value = subMonths(calendarDate.value, 1)
+  }
+}
+
+const goToToday = () => {
+  calendarDate.value = new Date()
+}
+
+const selectDate = (date) => {
+  const dateString = format(date, 'yyyy-MM-dd')
+  const dayEntries = entries.value.filter(entry => {
+    const entryDateString = entry.entry_date.split('T')[0]
+    return entryDateString === dateString
+  })
+  
+  if (dayEntries.length === 1) {
+    // If there's exactly one entry, open it for editing
+    router.push(`/diary/${dayEntries[0].id}/edit`)
+  } else if (dayEntries.length > 1) {
+    // If there are multiple entries, show them in a modal or filter the list view
+    showDayEntries(date)
+  } else {
+    // If no entries, create a new one for this date
+    router.push(`/diary/new?date=${dateString}`)
+  }
+}
+
+const goToEntry = (entry) => {
+  router.push(`/diary/${entry.id}/edit`)
+}
+
+const showDayEntries = (date) => {
+  // Switch to list view and filter by the selected date
+  const dateString = format(date, 'yyyy-MM-dd')
+  filters.value.startDate = dateString
+  filters.value.endDate = dateString
+  currentView.value = 'list'
+}
+
+const getEntryDisplayClass = (entry) => {
+  const baseClass = 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200'
+  
+  // Different colors based on entry type or market bias
+  if (entry.market_bias === 'bullish') {
+    return 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200'
+  } else if (entry.market_bias === 'bearish') {
+    return 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200'
+  } else if (entry.market_bias === 'neutral') {
+    return 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200'
+  } else {
+    return 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200'
+  }
+}
+
+const getEntryIcon = (entry) => {
+  if (entry.entry_type === 'playbook') {
+    return BookOpenIcon
+  }
+  return PencilIcon
+}
+
+const getEntryDisplayText = (entry) => {
+  if (entry.title && entry.title.trim()) {
+    return entry.title.length > 12 ? entry.title.substring(0, 12) + '...' : entry.title
+  }
+  return entry.entry_type === 'playbook' ? 'Playbook' : 'Journal'
+}
+
+const getEntryTooltip = (entry) => {
+  let tooltip = entry.title || (entry.entry_type === 'playbook' ? 'Playbook Entry' : 'Journal Entry')
+  
+  if (entry.market_bias) {
+    tooltip += `\nMarket Bias: ${entry.market_bias}`
+  }
+  
+  if (entry.content && entry.content.length > 0) {
+    const contentPreview = entry.content.length > 100 
+      ? entry.content.substring(0, 100) + '...' 
+      : entry.content
+    tooltip += `\n\n${contentPreview}`
+  }
+  
+  return tooltip
+}
+
+const loadEntries = async () => {
+  try {
+    await diaryStore.fetchEntries({ page: 1 })
+  } catch (error) {
+    console.error('Error loading entries:', error)
+  }
+}
+
+const changePage = async (page) => {
+  if (page >= 1 && page <= pagination.value.pages) {
+    try {
+      await diaryStore.fetchEntries({ page })
+    } catch (error) {
+      console.error('Error changing page:', error)
+    }
+  }
+}
+
+const confirmDelete = (entry) => {
+  entryToDelete.value = entry
+  showDeleteModal.value = true
+}
+
+const deleteEntry = async () => {
+  if (!entryToDelete.value) return
+  
+  try {
+    deleting.value = true
+    await diaryStore.deleteEntry(entryToDelete.value.id)
+    showDeleteModal.value = false
+    entryToDelete.value = null
+    
+    // Reload entries to refresh the list
+    await loadEntries()
+  } catch (error) {
+    console.error('Error deleting entry:', error)
+  } finally {
+    deleting.value = false
+  }
+}
+
+// Load entries on component mount
+onMounted(async () => {
+  await loadEntries()
+})
+
+// Watch for filter changes
+watch(filters, () => {
+  applyFilters()
+}, { deep: true })
+</script>
+
+<style scoped>
+.prose {
+  max-width: none;
+}
+
+.prose p {
+  margin-bottom: 0.5rem;
+}
+
+.prose ul, .prose ol {
+  margin-bottom: 0.5rem;
+}
+
+.prose li {
+  margin-bottom: 0.25rem;
+}
+
+.btn-danger {
+  @apply bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
+}
+</style>

@@ -83,6 +83,24 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
+      path: '/diary',
+      name: 'diary',
+      component: () => import('@/views/DiaryView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/diary/new',
+      name: 'diary-create',
+      component: () => import('@/views/DiaryFormView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/diary/:id/edit',
+      name: 'diary-edit',
+      component: () => import('@/views/DiaryFormView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
       path: '/calendar',
       name: 'calendar',
       component: () => import('@/views/CalendarView.vue'),

@@ -265,6 +265,12 @@ const baseNavigation = [
         description: 'Overview of your trading performance and statistics'
       },
       { 
+        name: 'Trading Journal', 
+        to: '/diary', 
+        route: 'diary',
+        description: 'Daily market notes, trade setups, and reflections'
+      },
+      { 
         name: 'Leaderboard', 
         to: '/leaderboard', 
         route: 'leaderboard',

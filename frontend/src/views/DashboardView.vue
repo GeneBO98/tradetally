@@ -66,6 +66,9 @@
     </div>
 
     <div v-else class="space-y-8">
+      <!-- Today's Journal Entry -->
+      <TodaysJournalEntry />
+      
       <!-- Open Trades Section -->
       <div v-if="openTrades.length > 0" class="card">
         <div class="card-body">
@@ -590,6 +593,7 @@ import Chart from 'chart.js/auto'
 import api from '@/services/api'
 import TradeNewsSection from '@/components/dashboard/TradeNewsSection.vue'
 import UpcomingEarningsSection from '@/components/dashboard/UpcomingEarningsSection.vue'
+import TodaysJournalEntry from '@/components/diary/TodaysJournalEntry.vue'
 import MdiIcon from '@/components/MdiIcon.vue'
 import { mdiCheckCircle } from '@mdi/js'
 
