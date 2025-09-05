@@ -914,7 +914,7 @@ class Trade {
   }
 
   static calculatePnL(entryPrice, exitPrice, quantity, side, commission = 0, fees = 0) {
-    if (!exitPrice) return null;
+    if (!exitPrice || !entryPrice || quantity <= 0) return null;
     
     let pnl;
     if (side === 'long') {
@@ -923,17 +923,32 @@ class Trade {
       pnl = (entryPrice - exitPrice) * quantity;
     }
     
-    return pnl - commission - fees;
+    const totalPnL = pnl - commission - fees;
+    
+    // Guard against NaN, Infinity, or values that exceed database limits
+    if (!isFinite(totalPnL) || Math.abs(totalPnL) > 99999999) {
+      return null;
+    }
+    
+    return totalPnL;
   }
 
   static calculatePnLPercent(entryPrice, exitPrice, side) {
-    if (!exitPrice) return null;
+    if (!exitPrice || !entryPrice || entryPrice <= 0) return null;
     
+    let pnlPercent;
     if (side === 'long') {
-      return ((exitPrice - entryPrice) / entryPrice) * 100;
+      pnlPercent = ((exitPrice - entryPrice) / entryPrice) * 100;
     } else {
-      return ((entryPrice - exitPrice) / entryPrice) * 100;
+      pnlPercent = ((entryPrice - exitPrice) / entryPrice) * 100;
     }
+    
+    // Guard against NaN, Infinity, or values that exceed database limits
+    if (!isFinite(pnlPercent) || Math.abs(pnlPercent) > 999999) {
+      return null;
+    }
+    
+    return pnlPercent;
   }
 
   static async getCountWithFilters(userId, filters = {}) {
