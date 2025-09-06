@@ -114,7 +114,7 @@ const getEntryByDate = async (req, res) => {
   }
 };
 
-// Create or update diary entry
+// Create or update diary entry  
 const createOrUpdateEntry = [
   validate(schemas.createDiaryEntry),
   async (req, res) => {

@@ -3,6 +3,7 @@ const Joi = require('joi');
 const validate = (schema) => {
   return (req, res, next) => {
     console.log('Validating request body:', req.body);
+    console.log('Schema keys:', Object.keys(schema._flags?.unknown === false ? schema.describe().keys || {} : {}));
     const { error } = schema.validate(req.body);
     if (error) {
       console.log('Validation error:', error.details);
@@ -205,6 +206,7 @@ const schemas = {
   }),
 
   updateDiaryEntry: Joi.object({
+    entryDate: Joi.date().iso(), // Add entryDate for update operations
     entryType: Joi.string().valid('diary', 'playbook'),
     title: Joi.string().max(255).allow(null, ''),
     marketBias: Joi.string().valid('bullish', 'bearish', 'neutral').allow(null, ''),

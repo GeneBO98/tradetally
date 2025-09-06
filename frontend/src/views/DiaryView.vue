@@ -230,12 +230,12 @@
           <div
             v-if="entry.content"
             class="text-sm text-gray-700 dark:text-gray-300 mb-4 prose prose-sm max-w-none dark:prose-invert"
-            v-html="truncateHtml(entry.content, 300)"
+            v-html="truncateHtml(parseMarkdown(entry.content), 300)"
           ></div>
           
           <div v-if="entry.key_levels && entry.key_levels.length > 0" class="mb-3">
             <span class="text-xs font-medium text-yellow-600 dark:text-yellow-400">Key Levels:</span>
-            <div class="text-sm text-gray-600 dark:text-gray-400 mt-1" v-html="truncateHtml(entry.key_levels, 150)"></div>
+            <div class="text-sm text-gray-600 dark:text-gray-400 mt-1" v-html="truncateHtml(parseMarkdown(entry.key_levels), 150)"></div>
           </div>
           
           <div v-if="entry.watchlist && entry.watchlist.length > 0" class="mb-3">
@@ -467,6 +467,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useDiaryStore } from '@/stores/diary'
 import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isToday, addMonths, subMonths, startOfWeek, endOfWeek } from 'date-fns'
+import { parseMarkdown, truncateHtml as truncateHtmlUtil } from '@/utils/markdown'
 import DiaryAnalysis from '@/components/diary/DiaryAnalysis.vue'
 import {
   PlusIcon,
@@ -558,17 +559,7 @@ const marketBiasClasses = (bias) => {
 }
 
 const truncateHtml = (html, maxLength) => {
-  if (!html) return ''
-  if (html.length <= maxLength) return html
-  
-  // Simple HTML-aware truncation
-  const div = document.createElement('div')
-  div.innerHTML = html
-  const text = div.textContent || div.innerText || ''
-  
-  if (text.length <= maxLength) return html
-  
-  return text.substring(0, maxLength) + '...'
+  return truncateHtmlUtil(html, maxLength)
 }
 
 const applyFilters = async () => {
