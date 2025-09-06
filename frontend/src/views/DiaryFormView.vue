@@ -151,32 +151,111 @@
               {{ form.entryType === 'diary' ? 'Journal Entry' : 'Setup Description' }}
             </label>
             <div class="border border-gray-300 dark:border-gray-600 rounded-lg">
-              <!-- Simple toolbar -->
-              <div class="flex items-center space-x-2 p-3 border-b border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 rounded-t-lg">
-                <button
-                  type="button"
-                  @click="formatText('bold')"
-                  class="p-1 text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
-                  title="Bold"
-                >
-                  <strong>B</strong>
-                </button>
-                <button
-                  type="button"
-                  @click="formatText('italic')"
-                  class="p-1 text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
-                  title="Italic"
-                >
-                  <em>I</em>
-                </button>
-                <button
-                  type="button"
-                  @click="insertList()"
-                  class="p-1 text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
-                  title="Bullet List"
-                >
-                  <ListBulletIcon class="w-4 h-4" />
-                </button>
+              <!-- Enhanced markdown toolbar -->
+              <div class="flex items-center flex-wrap gap-1 p-3 border-b border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 rounded-t-lg">
+                <!-- Text formatting -->
+                <div class="flex items-center space-x-1 mr-3 border-r border-gray-300 dark:border-gray-600 pr-3">
+                  <button
+                    type="button"
+                    @click="formatText('bold')"
+                    class="toolbar-btn"
+                    title="Bold (Ctrl/Cmd + B)"
+                  >
+                    <strong class="text-sm font-bold">B</strong>
+                  </button>
+                  <button
+                    type="button"
+                    @click="formatText('italic')"
+                    class="toolbar-btn"
+                    title="Italic (Ctrl/Cmd + I)"
+                  >
+                    <em class="text-sm italic">I</em>
+                  </button>
+                  <button
+                    type="button"
+                    @click="formatText('code')"
+                    class="toolbar-btn"
+                    title="Inline Code"
+                  >
+                    <CodeBracketIcon class="w-4 h-4" />
+                  </button>
+                </div>
+
+                <!-- Headings -->
+                <div class="flex items-center space-x-1 mr-3 border-r border-gray-300 dark:border-gray-600 pr-3">
+                  <button
+                    type="button"
+                    @click="formatText('h1')"
+                    class="toolbar-btn"
+                    title="Heading 1"
+                  >
+                    <span class="text-xs font-bold">H1</span>
+                  </button>
+                  <button
+                    type="button"
+                    @click="formatText('h2')"
+                    class="toolbar-btn"
+                    title="Heading 2"
+                  >
+                    <span class="text-xs font-semibold">H2</span>
+                  </button>
+                  <button
+                    type="button"
+                    @click="formatText('h3')"
+                    class="toolbar-btn"
+                    title="Heading 3"
+                  >
+                    <span class="text-xs font-medium">H3</span>
+                  </button>
+                </div>
+
+                <!-- Lists and structure -->
+                <div class="flex items-center space-x-1 mr-3 border-r border-gray-300 dark:border-gray-600 pr-3">
+                  <button
+                    type="button"
+                    @click="insertList('bullet')"
+                    class="toolbar-btn"
+                    title="Bullet List"
+                  >
+                    <ListBulletIcon class="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    @click="insertList('numbered')"
+                    class="toolbar-btn"
+                    title="Numbered List"
+                  >
+                    <span class="text-xs font-semibold">1.</span>
+                  </button>
+                  <button
+                    type="button"
+                    @click="formatText('quote')"
+                    class="toolbar-btn"
+                    title="Quote"
+                  >
+                    <ChatBubbleLeftRightIcon class="w-4 h-4" />
+                  </button>
+                </div>
+
+                <!-- Links and others -->
+                <div class="flex items-center space-x-1">
+                  <button
+                    type="button"
+                    @click="formatText('link')"
+                    class="toolbar-btn"
+                    title="Link"
+                  >
+                    <LinkIcon class="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    @click="formatText('strikethrough')"
+                    class="toolbar-btn"
+                    title="Strikethrough"
+                  >
+                    <span class="text-sm line-through">S</span>
+                  </button>
+                </div>
               </div>
               
               <textarea
@@ -186,6 +265,7 @@
                 placeholder="Write your thoughts, observations, and plans..."
                 class="w-full p-3 border-0 focus:ring-0 focus:outline-none bg-transparent resize-none"
                 @input="adjustTextareaHeight"
+                @keydown="handleKeyDown"
               ></textarea>
             </div>
           </div>
@@ -380,7 +460,11 @@ import {
   ArrowTrendingDownIcon,
   MinusIcon,
   ListBulletIcon,
-  ExclamationTriangleIcon
+  ExclamationTriangleIcon,
+  CodeBracketIcon,
+  LinkIcon,
+  ChatBubbleLeftRightIcon,
+  HashtagIcon
 } from '@heroicons/vue/24/outline'
 
 const route = useRoute()
@@ -420,12 +504,34 @@ const formatText = (command) => {
   const end = textarea.selectionEnd
   const selectedText = textarea.value.substring(start, end)
   
+  let formattedText = ''
+  let newCursorPos = start
+  
   if (selectedText) {
-    let formattedText = ''
-    if (command === 'bold') {
-      formattedText = `**${selectedText}**`
-    } else if (command === 'italic') {
-      formattedText = `*${selectedText}*`
+    // Format selected text
+    switch (command) {
+      case 'bold':
+        formattedText = `**${selectedText}**`
+        newCursorPos = start + formattedText.length
+        break
+      case 'italic':
+        formattedText = `*${selectedText}*`
+        newCursorPos = start + formattedText.length
+        break
+      case 'code':
+        formattedText = `\`${selectedText}\``
+        newCursorPos = start + formattedText.length
+        break
+      case 'strikethrough':
+        formattedText = `~~${selectedText}~~`
+        newCursorPos = start + formattedText.length
+        break
+      case 'link':
+        formattedText = `[${selectedText}](url)`
+        newCursorPos = start + formattedText.length - 4 // Position cursor before "url"
+        break
+      default:
+        return
     }
     
     const newValue = 
@@ -437,25 +543,161 @@ const formatText = (command) => {
     
     nextTick(() => {
       textarea.focus()
-      textarea.setSelectionRange(start + formattedText.length, start + formattedText.length)
+      if (command === 'link') {
+        // Select "url" placeholder
+        textarea.setSelectionRange(newCursorPos - 3, newCursorPos)
+      } else {
+        textarea.setSelectionRange(newCursorPos, newCursorPos)
+      }
+    })
+  } else {
+    // Insert at cursor position
+    const cursorPos = textarea.selectionStart
+    let insertText = ''
+    
+    switch (command) {
+      case 'h1':
+        insertText = '\n# '
+        newCursorPos = cursorPos + 3
+        break
+      case 'h2':
+        insertText = '\n## '
+        newCursorPos = cursorPos + 4
+        break
+      case 'h3':
+        insertText = '\n### '
+        newCursorPos = cursorPos + 5
+        break
+      case 'quote':
+        insertText = '\n> '
+        newCursorPos = cursorPos + 3
+        break
+      case 'link':
+        insertText = '[text](url)'
+        newCursorPos = cursorPos + 1 // Position cursor after '['
+        break
+      case 'code':
+        insertText = '``'
+        newCursorPos = cursorPos + 1 // Position cursor between backticks
+        break
+      default:
+        return
+    }
+    
+    const newValue = 
+      form.value.content.substring(0, cursorPos) + 
+      insertText + 
+      form.value.content.substring(cursorPos)
+    
+    form.value.content = newValue
+    
+    nextTick(() => {
+      textarea.focus()
+      if (command === 'link') {
+        // Select "text" placeholder
+        textarea.setSelectionRange(newCursorPos, newCursorPos + 4)
+      } else {
+        textarea.setSelectionRange(newCursorPos, newCursorPos)
+      }
     })
   }
 }
 
-const insertList = () => {
+const insertList = (type = 'bullet') => {
   const textarea = contentEditor.value
   const cursorPos = textarea.selectionStart
+  
+  let listPrefix = ''
+  if (type === 'bullet') {
+    listPrefix = '\n• '
+  } else if (type === 'numbered') {
+    listPrefix = '\n1. '
+  }
+  
   const newValue = 
     form.value.content.substring(0, cursorPos) + 
-    '\n• ' + 
+    listPrefix + 
     form.value.content.substring(cursorPos)
   
   form.value.content = newValue
   
   nextTick(() => {
     textarea.focus()
-    textarea.setSelectionRange(cursorPos + 3, cursorPos + 3)
+    textarea.setSelectionRange(cursorPos + listPrefix.length, cursorPos + listPrefix.length)
   })
+}
+
+const handleKeyDown = (event) => {
+  if (event.key === 'Enter') {
+    const textarea = contentEditor.value
+    const cursorPos = textarea.selectionStart
+    const textBeforeCursor = form.value.content.substring(0, cursorPos)
+    
+    // Check if we're at the end of a bullet list item
+    const bulletMatch = textBeforeCursor.match(/.*(\n|^)• (.*)$/)
+    const numberedMatch = textBeforeCursor.match(/.*(\n|^)(\d+)\. (.*)$/)
+    
+    if (bulletMatch) {
+      const listContent = bulletMatch[2]
+      if (listContent.trim() === '') {
+        // Empty list item - remove it and don't continue list
+        event.preventDefault()
+        const lineStart = textBeforeCursor.lastIndexOf('\n• ')
+        const newValue = 
+          form.value.content.substring(0, lineStart) + 
+          '\n\n' +
+          form.value.content.substring(cursorPos)
+        form.value.content = newValue
+        
+        nextTick(() => {
+          textarea.setSelectionRange(lineStart + 2, lineStart + 2)
+        })
+      } else {
+        // Continue bullet list
+        event.preventDefault()
+        const newValue = 
+          form.value.content.substring(0, cursorPos) + 
+          '\n• ' + 
+          form.value.content.substring(cursorPos)
+        form.value.content = newValue
+        
+        nextTick(() => {
+          textarea.setSelectionRange(cursorPos + 3, cursorPos + 3)
+        })
+      }
+    } else if (numberedMatch) {
+      const listContent = numberedMatch[3]
+      const currentNumber = parseInt(numberedMatch[2])
+      
+      if (listContent.trim() === '') {
+        // Empty numbered list item - remove it and don't continue list
+        event.preventDefault()
+        const lineStart = textBeforeCursor.lastIndexOf(`\n${currentNumber}. `)
+        const newValue = 
+          form.value.content.substring(0, lineStart) + 
+          '\n\n' +
+          form.value.content.substring(cursorPos)
+        form.value.content = newValue
+        
+        nextTick(() => {
+          textarea.setSelectionRange(lineStart + 2, lineStart + 2)
+        })
+      } else {
+        // Continue numbered list
+        event.preventDefault()
+        const nextNumber = currentNumber + 1
+        const newValue = 
+          form.value.content.substring(0, cursorPos) + 
+          `\n${nextNumber}. ` + 
+          form.value.content.substring(cursorPos)
+        form.value.content = newValue
+        
+        nextTick(() => {
+          textarea.setSelectionRange(cursorPos + `\n${nextNumber}. `.length, cursorPos + `\n${nextNumber}. `.length)
+        })
+      }
+    }
+  }
 }
 
 const adjustTextareaHeight = () => {
@@ -500,8 +742,21 @@ const loadEntry = async () => {
     const entry = await diaryStore.fetchEntry(route.params.id)
     
     if (entry) {
+      // Ensure entry_date is properly formatted for date input (YYYY-MM-DD)
+      let entryDate = entry.entry_date
+      if (entryDate && entryDate.includes('T')) {
+        // Handle datetime format - extract just the date part
+        entryDate = entryDate.split('T')[0]
+      } else if (entryDate) {
+        // Handle other date formats - convert to YYYY-MM-DD
+        const date = new Date(entryDate)
+        if (!isNaN(date.getTime())) {
+          entryDate = date.toISOString().split('T')[0]
+        }
+      }
+      
       form.value = {
-        entryDate: entry.entry_date,
+        entryDate: entryDate || new Date().toISOString().split('T')[0],
         entryType: entry.entry_type || 'diary',
         title: entry.title || '',
         marketBias: entry.market_bias || '',
@@ -583,5 +838,17 @@ onMounted(async () => {
 
 .btn-secondary {
   @apply bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 px-4 py-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2;
+}
+
+.toolbar-btn {
+  @apply p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-gray-100 dark:hover:bg-gray-600 rounded transition-colors duration-150 flex items-center justify-center min-w-[32px] min-h-[32px];
+}
+
+.toolbar-btn:hover {
+  @apply bg-gray-100 dark:bg-gray-600;
+}
+
+.toolbar-btn:active {
+  @apply bg-gray-200 dark:bg-gray-500;
 }
 </style>

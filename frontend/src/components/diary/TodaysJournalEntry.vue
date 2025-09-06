@@ -66,12 +66,12 @@
         <div v-if="entry.content" class="text-sm text-gray-700 dark:text-gray-300">
           <div 
             v-if="!expanded && entry.content.length > 200"
-            v-html="truncateHtml(entry.content, 200)"
+            v-html="truncateHtml(parseMarkdown(entry.content), 200)"
             class="prose prose-sm max-w-none dark:prose-invert"
           ></div>
           <div 
             v-else
-            v-html="entry.content"
+            v-html="parseMarkdown(entry.content)"
             class="prose prose-sm max-w-none dark:prose-invert"
           ></div>
           
@@ -87,7 +87,7 @@
         <!-- Key Levels -->
         <div v-if="entry.key_levels && expanded" class="bg-yellow-50 dark:bg-yellow-900/20 p-3 rounded-lg">
           <h5 class="text-sm font-medium text-yellow-800 dark:text-yellow-200 mb-2">Key Levels</h5>
-          <div class="text-sm text-yellow-700 dark:text-yellow-300" v-html="entry.key_levels"></div>
+          <div class="text-sm text-yellow-700 dark:text-yellow-300" v-html="parseMarkdown(entry.key_levels)"></div>
         </div>
 
         <!-- Watchlist -->
@@ -130,7 +130,7 @@
 
         <div v-if="entry.lessons_learned && expanded" class="border-t pt-3">
           <h5 class="text-sm font-medium text-gray-900 dark:text-white mb-2">Lessons Learned</h5>
-          <div class="text-sm text-gray-700 dark:text-gray-300" v-html="entry.lessons_learned"></div>
+          <div class="text-sm text-gray-700 dark:text-gray-300" v-html="parseMarkdown(entry.lessons_learned)"></div>
         </div>
       </div>
 
@@ -211,6 +211,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useDiaryStore } from '@/stores/diary'
+import { parseMarkdown, truncateHtml as truncateHtmlUtil } from '@/utils/markdown'
 import {
   PlusIcon,
   PencilIcon,
@@ -272,16 +273,7 @@ const marketBiasIcon = (bias) => {
 }
 
 const truncateHtml = (html, maxLength) => {
-  if (html.length <= maxLength) return html
-  
-  // Simple HTML-aware truncation
-  const div = document.createElement('div')
-  div.innerHTML = html
-  const text = div.textContent || div.innerText || ''
-  
-  if (text.length <= maxLength) return html
-  
-  return text.substring(0, maxLength) + '...'
+  return truncateHtmlUtil(html, maxLength)
 }
 
 const createTodaysEntry = () => {
