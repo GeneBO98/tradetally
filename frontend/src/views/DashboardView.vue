@@ -8,6 +8,27 @@
           <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
             Trading performance analytics and insights
           </p>
+          
+          <!-- Market Status and Refresh Indicator -->
+          <div class="mt-2 flex items-center space-x-4 text-xs">
+            <div class="flex items-center space-x-2">
+              <div class="flex items-center">
+                <div 
+                  class="w-2 h-2 rounded-full mr-2"
+                  :class="[
+                    marketStatus.isOpen ? 'bg-green-500' : 'bg-red-500'
+                  ]"
+                ></div>
+                <span class="text-gray-600 dark:text-gray-400">
+                  {{ marketStatus.status }}
+                </span>
+              </div>
+            </div>
+            
+            <div v-if="isAutoUpdating" class="text-gray-500 dark:text-gray-400">
+              <span>{{ nextRefreshIn }}s</span>
+            </div>
+          </div>
         </div>
         
         <!-- Filters -->
@@ -585,7 +606,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick, watch, computed } from 'vue'
+import { ref, onMounted, nextTick, watch, computed, onUnmounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useRouter } from 'vue-router'
 import { format } from 'date-fns'
@@ -596,6 +617,7 @@ import UpcomingEarningsSection from '@/components/dashboard/UpcomingEarningsSect
 import TodaysJournalEntry from '@/components/diary/TodaysJournalEntry.vue'
 import MdiIcon from '@/components/MdiIcon.vue'
 import { mdiCheckCircle } from '@mdi/js'
+import { getRefreshInterval, shouldRefreshPrices, getMarketStatus } from '@/utils/marketHours'
 
 const authStore = useAuthStore()
 const router = useRouter()
@@ -609,6 +631,12 @@ const analytics = ref({
   dailyWinRate: [],
   topTrades: { best: [], worst: [] }
 })
+
+// Auto-update state
+const lastRefresh = ref(null)
+const nextRefreshIn = ref(0)
+const isAutoUpdating = ref(false)
+const marketStatus = ref({ isOpen: false, status: 'Market Closed' })
 
 const calculationMethod = computed(() => {
   return userSettings.value?.statisticsCalculation === 'median' ? 'Median' : 'Average'
@@ -631,6 +659,8 @@ const winRateChart = ref(null)
 let pnlChartInstance = null
 let distributionChartInstance = null
 let winRateChartInstance = null
+let updateInterval = null
+let countdownInterval = null
 
 const openTradeSymbols = computed(() => {
   return [...new Set(openTrades.value.map(position => position.symbol))]
@@ -672,6 +702,20 @@ function formatPercent(num) {
 
 function formatDate(dateStr) {
   return format(new Date(dateStr), 'MMM dd')
+}
+
+function formatLastRefresh(timestamp) {
+  if (!timestamp) return ''
+  const now = new Date()
+  const diff = Math.floor((now - timestamp) / 1000)
+  
+  if (diff < 60) {
+    return `${diff}s ago`
+  } else if (diff < 3600) {
+    return `${Math.floor(diff / 60)}m ago`
+  } else {
+    return format(timestamp, 'h:mm a')
+  }
 }
 
 function getDateRange(range) {
@@ -1220,6 +1264,94 @@ async function fetchUserSettings() {
   }
 }
 
+// Update market status
+function updateMarketStatus() {
+  const status = getMarketStatus()
+  marketStatus.value = {
+    isOpen: status.isOpen || status.isRegularHours,
+    status: status.marketPhase || status.reason || status.status || 'Market Closed'
+  }
+}
+
+// Start countdown timer
+function startCountdown(intervalMs) {
+  clearInterval(countdownInterval)
+  nextRefreshIn.value = Math.floor(intervalMs / 1000)
+  
+  countdownInterval = setInterval(() => {
+    nextRefreshIn.value--
+    if (nextRefreshIn.value <= 0) {
+      nextRefreshIn.value = Math.floor(intervalMs / 1000)
+    }
+  }, 1000)
+}
+
+// Auto-update functionality
+function startAutoUpdate() {
+  console.log('Dashboard: Starting auto-update check...')
+  clearInterval(updateInterval)
+  clearInterval(countdownInterval)
+  
+  updateMarketStatus()
+  
+  const refreshInterval = getRefreshInterval()
+  console.log('Dashboard: Refresh interval from market hours:', refreshInterval)
+  
+  if (refreshInterval && shouldRefreshPrices()) {
+    console.log(`Dashboard: Setting up auto-update every ${refreshInterval/1000} seconds during market hours`)
+    isAutoUpdating.value = true
+    
+    // Start countdown
+    startCountdown(refreshInterval)
+    
+    updateInterval = setInterval(async () => {
+      console.log('Dashboard: Auto-updating open positions and news...')
+      try {
+        // Only refresh open positions during market hours for price updates
+        await fetchOpenTrades()
+        lastRefresh.value = new Date()
+        console.log('Dashboard: Auto-update completed successfully')
+      } catch (error) {
+        console.error('Dashboard: Auto-update failed:', error)
+      }
+    }, refreshInterval)
+  } else {
+    console.log('Dashboard: No auto-update needed - market is closed')
+    isAutoUpdating.value = false
+  }
+}
+
+function stopAutoUpdate() {
+  console.log('Dashboard: Stopping auto-update...')
+  if (updateInterval) {
+    clearInterval(updateInterval)
+    updateInterval = null
+  }
+  if (countdownInterval) {
+    clearInterval(countdownInterval)
+    countdownInterval = null
+  }
+  isAutoUpdating.value = false
+  nextRefreshIn.value = 0
+}
+
+// Check market status periodically to start/stop updates as needed
+function checkMarketStatus() {
+  updateMarketStatus()
+  
+  const refreshInterval = getRefreshInterval()
+  const shouldRefresh = shouldRefreshPrices()
+  
+  // If market status changed, restart auto-update
+  if (shouldRefresh && !updateInterval) {
+    console.log('Dashboard: Market opened - starting auto-updates')
+    startAutoUpdate()
+  } else if (!shouldRefresh && updateInterval) {
+    console.log('Dashboard: Market closed - stopping auto-updates')
+    stopAutoUpdate()
+  }
+}
+
 onMounted(async () => {
   await Promise.all([
     fetchAnalytics(),
@@ -1227,5 +1359,24 @@ onMounted(async () => {
     fetchOpenTrades(),
     fetchUserSettings()
   ])
+  
+  // Set initial refresh timestamp
+  lastRefresh.value = new Date()
+  
+  // Start auto-update functionality
+  startAutoUpdate()
+  
+  // Check market status every minute to handle market open/close transitions
+  const marketStatusChecker = setInterval(checkMarketStatus, 60000) // Check every minute
+  
+  // Clean up on unmount
+  onUnmounted(() => {
+    stopAutoUpdate()
+    clearInterval(marketStatusChecker)
+  })
+})
+
+onUnmounted(() => {
+  stopAutoUpdate()
 })
 </script>
