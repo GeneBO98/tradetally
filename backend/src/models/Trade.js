@@ -8,7 +8,8 @@ class Trade {
       symbol, entryTime, exitTime, entryPrice, exitPrice,
       quantity, side, commission, fees, notes, isPublic, broker,
       strategy, setup, tags, pnl: providedPnL, pnlPercent: providedPnLPercent,
-      executionData, mae, mfe, confidence, tradeDate
+      executionData, mae, mfe, confidence, tradeDate,
+      heartRate, sleepScore, sleepHours, stressLevel
     } = tradeData;
 
     // Convert empty strings to null for optional fields
@@ -153,9 +154,10 @@ class Trade {
         quantity, side, commission, fees, pnl, pnl_percent, notes, is_public,
         broker, strategy, setup, tags, executions, mae, mfe, confidence,
         strategy_confidence, classification_method, classification_metadata, manual_override,
-        news_events, has_news, news_sentiment, news_checked_at
+        news_events, has_news, news_sentiment, news_checked_at,
+        heart_rate, sleep_score, sleep_hours, stress_level
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35)
       RETURNING *
     `;
 
@@ -164,7 +166,8 @@ class Trade {
       quantity, side, commission || 0, fees || 0, pnl, pnlPercent, notes, isPublic || false,
       broker, finalStrategy, setup, tags || [], JSON.stringify(executionData || []), mae || null, mfe || null, confidence || 5,
       strategyConfidence, classificationMethod, JSON.stringify(classificationMetadata), manualOverride,
-      JSON.stringify(newsData.newsEvents || []), newsData.hasNews || false, newsData.sentiment, newsData.checkedAt
+      JSON.stringify(newsData.newsEvents || []), newsData.hasNews || false, newsData.sentiment, newsData.checkedAt,
+      heartRate || null, sleepScore || null, sleepHours || null, stressLevel || null
     ];
 
     const result = await db.query(query, values);
@@ -306,6 +309,14 @@ class Trade {
       }
     } else if (trade) {
       trade.executions = [];
+    }
+    
+    // Convert snake_case health fields to camelCase for frontend
+    if (trade) {
+      trade.heartRate = trade.heart_rate;
+      trade.sleepScore = trade.sleep_score;
+      trade.sleepHours = trade.sleep_hours;
+      trade.stressLevel = trade.stress_level;
     }
     
     return trade;
@@ -560,7 +571,19 @@ class Trade {
     }
 
     const result = await db.query(query, values);
-    return result.rows;
+    
+    // Convert snake_case health fields to camelCase for frontend
+    const trades = result.rows.map(trade => {
+      if (trade) {
+        trade.heartRate = trade.heart_rate;
+        trade.sleepScore = trade.sleep_score;
+        trade.sleepHours = trade.sleep_hours;
+        trade.stressLevel = trade.stress_level;
+      }
+      return trade;
+    });
+    
+    return trades;
   }
 
   static async update(id, userId, updates, options = {}) {
@@ -910,7 +933,19 @@ class Trade {
     }
 
     const result = await db.query(query, values);
-    return result.rows;
+    
+    // Convert snake_case health fields to camelCase for frontend
+    const trades = result.rows.map(trade => {
+      if (trade) {
+        trade.heartRate = trade.heart_rate;
+        trade.sleepScore = trade.sleep_score;
+        trade.sleepHours = trade.sleep_hours;
+        trade.stressLevel = trade.stress_level;
+      }
+      return trade;
+    });
+    
+    return trades;
   }
 
   static calculatePnL(entryPrice, exitPrice, quantity, side, commission = 0, fees = 0) {
