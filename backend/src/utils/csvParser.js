@@ -104,7 +104,7 @@ const brokerParsers = {
   schwab: (row) => {
     // Schwab provides completed trades with entry and exit data
     const quantity = Math.abs(parseInt(row.Quantity || 0));
-    const isShort = parseFloat(row['Cost Per Share'] || 0) > parseFloat(row['Proceeds Per Share'] || 0) && 
+    const isShort = parseFloat(row['Cost Per Share'] || 0) > parseFloat(row['Proceeds Per Share'] || 0) &&
                     parseFloat(row['Gain/Loss ($)'] || 0) > 0;
     
     return {
@@ -121,6 +121,43 @@ const brokerParsers = {
       fees: 0, // Not provided by Schwab
       broker: 'schwab',
       notes: `${row.Term || 'Unknown'} - ${row['Wash Sale?'] === 'Yes' ? 'Wash Sale' : 'Normal'}`
+    };
+  },
+
+  papermoney: (row) => {
+    // PaperMoney provides individual executions that need to be grouped into trades
+    const symbol = cleanString(row.Symbol);
+    const side = row.Side ? row.Side.toLowerCase() : '';
+    const quantity = Math.abs(parseInt(row.Qty || 0));
+    const price = parseFloat(row.Price || row['Net Price'] || 0);
+    const execTime = row['Exec Time'] || '';
+    
+    // Parse the execution time (format: "9/19/25 13:24:32")
+    let tradeDate = null;
+    let entryTime = null;
+    if (execTime) {
+      // Convert MM/DD/YY format to full date
+      const dateMatch = execTime.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})\s+(.+)$/);
+      if (dateMatch) {
+        const [_, month, day, year, time] = dateMatch;
+        const fullYear = parseInt(year) + 2000; // Convert YY to YYYY
+        const fullDate = `${month}/${day}/${fullYear} ${time}`;
+        tradeDate = parseDate(fullDate);
+        entryTime = parseDateTime(fullDate);
+      }
+    }
+    
+    return {
+      symbol: symbol,
+      tradeDate: tradeDate,
+      entryTime: entryTime,
+      entryPrice: price,
+      quantity: quantity,
+      side: side === 'buy' ? 'buy' : 'sell',
+      commission: 0, // PaperMoney doesn't show commissions in this format
+      fees: 0,
+      broker: 'papermoney',
+      notes: `${row['Pos Effect'] || ''} - ${row.Type || 'STOCK'}`
     };
   }
 };
@@ -144,6 +181,50 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       if (lines.length > 1 && !lines[0].includes(',') && lines[1].includes(',')) {
         csvString = lines.slice(1).join('\n');
         console.log('Skipped title row in Lightspeed CSV');
+      }
+    }
+    
+    // Handle PaperMoney CSV files that have multiple sections
+    if (broker === 'papermoney') {
+      const lines = csvString.split('\n');
+      
+      // Find the "Filled Orders" section
+      let filledOrdersStart = -1;
+      let filledOrdersEnd = -1;
+      
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].includes('Filled Orders')) {
+          filledOrdersStart = i + 1; // Skip the "Filled Orders" title line
+          break;
+        }
+      }
+      
+      if (filledOrdersStart >= 0) {
+        // Find the header line (contains "Exec Time,Spread,Side,Qty")
+        for (let i = filledOrdersStart; i < lines.length; i++) {
+          if (lines[i].includes('Exec Time') && lines[i].includes('Side') && lines[i].includes('Qty')) {
+            filledOrdersStart = i;
+            break;
+          }
+        }
+        
+        // Find the end of the filled orders section (next empty line or section)
+        for (let i = filledOrdersStart + 1; i < lines.length; i++) {
+          if (lines[i].trim() === '' || lines[i].includes('Canceled Orders') || lines[i].includes('Rolling Strategies')) {
+            filledOrdersEnd = i;
+            break;
+          }
+        }
+        
+        if (filledOrdersEnd === -1) {
+          filledOrdersEnd = lines.length;
+        }
+        
+        // Extract only the filled orders section
+        csvString = lines.slice(filledOrdersStart, filledOrdersEnd).join('\n');
+        console.log(`Extracted PaperMoney filled orders section: lines ${filledOrdersStart} to ${filledOrdersEnd}`);
+      } else {
+        throw new Error('Could not find "Filled Orders" section in PaperMoney CSV');
       }
     }
     
@@ -271,6 +352,13 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       console.log('Starting thinkorswim transaction parsing');
       const result = await parseThinkorswimTransactions(records, existingPositions);
       console.log('Finished thinkorswim transaction parsing');
+      return result;
+    }
+
+    if (broker === 'papermoney') {
+      console.log('Starting PaperMoney transaction parsing');
+      const result = await parsePaperMoneyTransactions(records, existingPositions);
+      console.log('Finished PaperMoney transaction parsing');
       return result;
     }
 
@@ -1396,6 +1484,255 @@ async function parseThinkorswimTransactions(records, existingPositions = {}) {
   }
   
   console.log(`Created ${completedTrades.length} trades from ${transactions.length} transactions`);
+  return completedTrades;
+}
+
+async function parsePaperMoneyTransactions(records, existingPositions = {}) {
+  console.log(`Processing ${records.length} PaperMoney transaction records`);
+  
+  const transactions = [];
+  const completedTrades = [];
+  
+  // Debug: Log first few records to see structure
+  console.log('Sample PaperMoney records:');
+  records.slice(0, 5).forEach((record, i) => {
+    console.log(`Record ${i}:`, JSON.stringify(record));
+  });
+  
+  // First, parse all trade transactions from the filled orders
+  for (const record of records) {
+    try {
+      const symbol = cleanString(record.Symbol);
+      const side = record.Side ? record.Side.toLowerCase() : '';
+      const quantity = Math.abs(parseInt(record.Qty || 0));
+      const price = parseFloat(record.Price || record['Net Price'] || 0);
+      const execTime = record['Exec Time'] || '';
+      const posEffect = record['Pos Effect'] || '';
+      const type = record.Type || 'STOCK';
+      
+      // Skip if missing essential data
+      if (!symbol || !side || quantity === 0 || price === 0 || !execTime) {
+        console.log(`Skipping PaperMoney record missing data:`, { symbol, side, quantity, price, execTime });
+        continue;
+      }
+      
+      // Parse the execution time (format: "9/19/25 13:24:32")
+      let tradeDate = null;
+      let entryTime = null;
+      if (execTime) {
+        // Convert MM/DD/YY format to full date
+        const dateMatch = execTime.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})\s+(.+)$/);
+        if (dateMatch) {
+          const [_, month, day, year, time] = dateMatch;
+          const fullYear = parseInt(year) + 2000; // Convert YY to YYYY
+          const fullDate = `${month}/${day}/${fullYear} ${time}`;
+          tradeDate = parseDate(fullDate);
+          entryTime = parseDateTime(fullDate);
+        }
+      }
+      
+      if (!tradeDate || !entryTime) {
+        console.log(`Skipping PaperMoney record with invalid date: ${execTime}`);
+        continue;
+      }
+      
+      transactions.push({
+        symbol,
+        date: tradeDate,
+        datetime: entryTime,
+        action: side === 'buy' ? 'buy' : 'sell',
+        quantity,
+        price,
+        fees: 0, // PaperMoney doesn't show fees in this format
+        posEffect,
+        type,
+        description: `${posEffect} - ${type}`,
+        raw: record
+      });
+      
+      console.log(`Parsed PaperMoney transaction: ${side} ${quantity} ${symbol} @ $${price} (${posEffect})`);
+    } catch (error) {
+      console.error('Error parsing PaperMoney transaction:', error, record);
+    }
+  }
+  
+  // Sort transactions by symbol and datetime
+  transactions.sort((a, b) => {
+    if (a.symbol !== b.symbol) return a.symbol.localeCompare(b.symbol);
+    return new Date(a.datetime) - new Date(b.datetime);
+  });
+  
+  console.log(`Parsed ${transactions.length} valid PaperMoney trade transactions`);
+  
+  // Group transactions by symbol
+  const transactionsBySymbol = {};
+  for (const transaction of transactions) {
+    if (!transactionsBySymbol[transaction.symbol]) {
+      transactionsBySymbol[transaction.symbol] = [];
+    }
+    transactionsBySymbol[transaction.symbol].push(transaction);
+  }
+  
+  // Process transactions using round-trip trade grouping
+  for (const symbol in transactionsBySymbol) {
+    const symbolTransactions = transactionsBySymbol[symbol];
+    
+    console.log(`\n=== Processing ${symbolTransactions.length} PaperMoney transactions for ${symbol} ===`);
+    
+    // Track position and round-trip trades
+    // Start with existing position if we have one for this symbol
+    const existingPosition = existingPositions[symbol];
+    let currentPosition = existingPosition ?
+      (existingPosition.side === 'long' ? existingPosition.quantity : -existingPosition.quantity) : 0;
+    let currentTrade = existingPosition ? {
+      symbol: symbol,
+      entryTime: existingPosition.entryTime,
+      tradeDate: existingPosition.tradeDate,
+      side: existingPosition.side,
+      executions: [],
+      totalQuantity: existingPosition.quantity,
+      totalFees: existingPosition.commission || 0,
+      entryValue: existingPosition.quantity * existingPosition.entryPrice,
+      exitValue: 0,
+      broker: existingPosition.broker || 'papermoney',
+      isExistingPosition: true,
+      existingTradeId: existingPosition.id,
+      newExecutionsAdded: 0
+    } : null;
+    
+    if (existingPosition) {
+      console.log(`  → Starting with existing ${existingPosition.side} position: ${existingPosition.quantity} shares @ $${existingPosition.entryPrice}`);
+      console.log(`  → Initial position: ${currentPosition}`);
+    }
+    
+    for (const transaction of symbolTransactions) {
+      const qty = transaction.quantity;
+      const prevPosition = currentPosition;
+      
+      console.log(`\n${transaction.action} ${qty} @ $${transaction.price} | Position: ${currentPosition}`);
+      
+      // Start new trade if going from flat to position
+      if (currentPosition === 0) {
+        currentTrade = {
+          symbol: symbol,
+          entryTime: transaction.datetime,
+          tradeDate: transaction.date,
+          side: transaction.action === 'buy' ? 'long' : 'short',
+          executions: [],
+          totalQuantity: 0,
+          totalFees: 0,
+          entryValue: 0,
+          exitValue: 0,
+          broker: 'papermoney'
+        };
+        console.log(`  → Started new ${currentTrade.side} trade`);
+      }
+      
+      // Add execution to current trade (check for duplicates first)
+      if (currentTrade) {
+        const newExecution = {
+          action: transaction.action,
+          quantity: qty,
+          price: transaction.price,
+          datetime: transaction.datetime,
+          fees: transaction.fees
+        };
+        
+        // Check if this execution already exists (prevent duplicates on re-import)
+        const executionExists = currentTrade.executions.some(exec =>
+          new Date(exec.datetime).toISOString() === new Date(newExecution.datetime).toISOString()
+        );
+        
+        if (!executionExists) {
+          currentTrade.executions.push(newExecution);
+          currentTrade.totalFees += transaction.fees;
+          if (currentTrade.isExistingPosition) {
+            currentTrade.newExecutionsAdded++;
+          }
+        } else {
+          console.log(`  → Skipping duplicate execution: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
+        }
+      }
+      
+      // Update position and values
+      if (transaction.action === 'buy') {
+        currentPosition += qty;
+        
+        if (currentTrade && currentTrade.side === 'long') {
+          currentTrade.entryValue += qty * transaction.price;
+          currentTrade.totalQuantity += qty;
+        } else if (currentTrade && currentTrade.side === 'short') {
+          currentTrade.exitValue += qty * transaction.price;
+        }
+      } else if (transaction.action === 'sell') {
+        currentPosition -= qty;
+        
+        if (currentTrade && currentTrade.side === 'short') {
+          currentTrade.entryValue += qty * transaction.price;
+          currentTrade.totalQuantity += qty;
+        } else if (currentTrade && currentTrade.side === 'long') {
+          currentTrade.exitValue += qty * transaction.price;
+        }
+      }
+      
+      console.log(`  Position: ${prevPosition} → ${currentPosition}`);
+      
+      // Close trade if position goes to zero
+      if (currentPosition === 0 && currentTrade && currentTrade.totalQuantity > 0) {
+        // Calculate weighted average prices
+        currentTrade.entryPrice = currentTrade.entryValue / currentTrade.totalQuantity;
+        currentTrade.exitPrice = currentTrade.exitValue / currentTrade.totalQuantity;
+        
+        // Calculate P/L
+        if (currentTrade.side === 'long') {
+          currentTrade.pnl = currentTrade.exitValue - currentTrade.entryValue - currentTrade.totalFees;
+        } else {
+          currentTrade.pnl = currentTrade.entryValue - currentTrade.exitValue - currentTrade.totalFees;
+        }
+        
+        currentTrade.pnlPercent = (currentTrade.pnl / currentTrade.entryValue) * 100;
+        currentTrade.quantity = currentTrade.totalQuantity;
+        currentTrade.commission = currentTrade.totalFees;
+        currentTrade.fees = 0;
+        currentTrade.exitTime = transaction.datetime;
+        currentTrade.executionData = currentTrade.executions;
+        
+        // Mark as update if this was an existing position
+        if (currentTrade.isExistingPosition) {
+          currentTrade.isUpdate = currentTrade.newExecutionsAdded > 0;
+          currentTrade.notes = `Closed existing position: ${currentTrade.executions.length} closing executions`;
+          console.log(`  ✓ CLOSED existing ${currentTrade.side} position: ${currentTrade.totalQuantity} shares, P/L: $${currentTrade.pnl.toFixed(2)}`);
+        } else {
+          currentTrade.notes = `Round trip: ${currentTrade.executions.length} executions`;
+          console.log(`  ✓ Completed ${currentTrade.side} trade: ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions, P/L: $${currentTrade.pnl.toFixed(2)}`);
+        }
+        
+        completedTrades.push(currentTrade);
+        currentTrade = null;
+      }
+    }
+    
+    console.log(`\n${symbol} Final Position: ${currentPosition} shares`);
+    if (currentTrade) {
+      console.log(`Active trade: ${currentTrade.side} ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions`);
+      
+      // Add open position as incomplete trade
+      currentTrade.entryPrice = currentTrade.entryValue / currentTrade.totalQuantity;
+      currentTrade.exitPrice = null;
+      currentTrade.quantity = currentTrade.totalQuantity;
+      currentTrade.commission = currentTrade.totalFees;
+      currentTrade.fees = 0;
+      currentTrade.exitTime = null;
+      currentTrade.pnl = 0;
+      currentTrade.pnlPercent = 0;
+      currentTrade.notes = `Open position: ${currentTrade.executions.length} executions`;
+      currentTrade.executionData = currentTrade.executions;
+      
+      completedTrades.push(currentTrade);
+    }
+  }
+  
+  console.log(`Created ${completedTrades.length} PaperMoney trades from ${transactions.length} transactions`);
   return completedTrades;
 }
 
