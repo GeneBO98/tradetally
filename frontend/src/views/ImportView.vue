@@ -22,6 +22,7 @@
                 <option value="thinkorswim">ThinkorSwim</option>
                 <option value="ibkr">Interactive Brokers</option>
                 <option value="etrade">E*TRADE</option>
+                <option value="papermoney">PaperMoney</option>
               </select>
               <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
                 Choose the format that matches your CSV file structure.
@@ -201,6 +202,22 @@
               </div>
               <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
                 <strong>Supports both formats:</strong> Completed trades with P&L or individual transactions. Auto-detects format and delimiter.
+              </p>
+            </div>
+
+            <div>
+              <h4 class="font-medium text-gray-900 dark:text-white">PaperMoney</h4>
+              <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
+                Export from ThinkorSwim's PaperMoney platform. Filled orders are treated as actual executed trades for analysis and tracking.
+              </p>
+              <div class="bg-gray-50 dark:bg-gray-800 rounded-md p-3 text-xs font-mono overflow-x-auto">
+                Filled Orders<br>
+                ,,Exec Time,Spread,Side,Qty,Pos Effect,Symbol,Exp,Strike,Type,Price,Net Price,Price Improvement,Order Type<br>
+                ,,9/19/25 13:24:32,STOCK,SELL,-100,TO CLOSE,FATN,,,STOCK,9.86,9.86,.00,MKT<br>
+                ,,9/19/25 13:22:37,STOCK,BUY,+100,TO OPEN,FATN,,,STOCK,9.63,9.63,.00,MKT
+              </div>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                <strong>Required columns:</strong> Exec Time, Side, Qty, Symbol, Price. Filled orders are processed as real trades and grouped into round-trip positions with P&L calculations.
               </p>
             </div>
           </div>
