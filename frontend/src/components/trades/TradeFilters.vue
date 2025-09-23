@@ -255,6 +255,48 @@
       <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div>
           <label class="label">Broker</label>
+          <div class="relative" data-dropdown="broker">
+            <button
+              @click.stop="showBrokerDropdown = !showBrokerDropdown"
+              class="input w-full text-left flex items-center justify-between"
+              type="button"
+              :disabled="loadingBrokers"
+            >
+              <span class="truncate">
+                {{ getSelectedBrokerText() }}
+              </span>
+              <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+              </svg>
+            </button>
+            
+            <div v-if="showBrokerDropdown && !loadingBrokers" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
+              <div class="p-1">
+                <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                  <input
+                    type="checkbox"
+                    :checked="filters.brokers.length === 0"
+                    @change="toggleAllBrokers"
+                    class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                  />
+                  <span class="ml-3 text-sm text-gray-900 dark:text-white">All Brokers</span>
+                </label>
+              </div>
+              <div class="border-t border-gray-200 dark:border-gray-600">
+                <div v-for="broker in availableBrokers" :key="broker" class="p-1">
+                  <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                    <input
+                      type="checkbox"
+                      :value="broker"
+                      v-model="filters.brokers"
+                      class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                    />
+                    <span class="ml-3 text-sm text-gray-900 dark:text-white">{{ broker }}</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
           <select v-model="filters.broker" class="input" :disabled="loadingBrokers">
             <option value="">All Brokers</option>
             <option v-for="broker in availableBrokers" :key="broker" :value="broker">
@@ -397,6 +439,7 @@ const loadingBrokers = ref(false)
 const showStrategyDropdown = ref(false)
 const showSectorDropdown = ref(false)
 const showDayOfWeekDropdown = ref(false)
+const showBrokerDropdown = ref(false)
 
 // Day of week options (weekdays only - markets are closed weekends)
 const dayOfWeekOptions = [
@@ -406,6 +449,10 @@ const dayOfWeekOptions = [
   { value: 4, label: 'Thursday' },
   { value: 5, label: 'Friday' }
 ]
+
+// Broker options - will be dynamically loaded
+const availableBrokers = ref([])
+const loadingBrokers = ref(false)
 
 // Strategy options
 const strategyOptions = [
@@ -445,7 +492,8 @@ const filters = ref({
   maxPnl: null,
   pnlType: '',
   holdTime: '',
-  broker: '',
+  broker: '', // Keep for backward compatibility
+  brokers: [], // New multi-select array
   daysOfWeek: [] // New multi-select array for days
 })
 
@@ -474,6 +522,18 @@ function toggleAllStrategies(event) {
 function toggleAllSectors(event) {
   if (event.target.checked) {
     filters.value.sectors = []
+  }
+}
+
+function getSelectedBrokerText() {
+  if (filters.value.brokers.length === 0) return loadingBrokers.value ? 'Loading brokers...' : 'All Brokers'
+  if (filters.value.brokers.length === 1) return filters.value.brokers[0]
+  return `${filters.value.brokers.length} brokers selected`
+}
+
+function toggleAllBrokers(event) {
+  if (event.target.checked) {
+    filters.value.brokers = []
   }
 }
 
@@ -511,7 +571,7 @@ const activeFiltersCount = computed(() => {
   if (filters.value.maxPnl !== null) count++
   if (filters.value.pnlType) count++
   if (filters.value.holdTime) count++
-  if (filters.value.broker) count++
+  if (filters.value.brokers.length > 0) count++
   if (filters.value.daysOfWeek.length > 0) count++
   return count
 })
@@ -529,7 +589,7 @@ const activeAdvancedCount = computed(() => {
   if (filters.value.maxPnl !== null) count++
   if (filters.value.pnlType) count++
   if (filters.value.holdTime) count++
-  if (filters.value.broker) count++
+  if (filters.value.brokers.length > 0) count++
   if (filters.value.daysOfWeek.length > 0) count++
   return count
 })
@@ -568,7 +628,11 @@ function applyFilters() {
   if (filters.value.maxPnl !== null && filters.value.maxPnl !== '') cleanFilters.maxPnl = filters.value.maxPnl
   cleanFilters.pnlType = filters.value.pnlType
   cleanFilters.holdTime = filters.value.holdTime
-  cleanFilters.broker = filters.value.broker
+  
+  // Handle multi-select brokers - convert to comma-separated
+  if (filters.value.brokers.length > 0) {
+    cleanFilters.brokers = filters.value.brokers.join(',')
+  }
   
   // Handle multi-select days of week - convert to comma-separated
   if (filters.value.daysOfWeek.length > 0) {
@@ -599,6 +663,7 @@ function resetFilters() {
     pnlType: '',
     holdTime: '',
     broker: '',
+    brokers: [],
     daysOfWeek: []
   }
   // Emit empty filters to trigger immediate refresh
@@ -680,6 +745,14 @@ function handleClickOutside(event) {
       showDayOfWeekDropdown.value = false
     }
   }
+  
+  // Check if click is outside broker dropdown
+  if (showBrokerDropdown.value) {
+    const brokerDropdown = target.closest('[data-dropdown="broker"]')
+    if (!brokerDropdown) {
+      showBrokerDropdown.value = false
+    }
+  }
 }
 
 onMounted(() => {
@@ -716,7 +789,8 @@ onMounted(() => {
     maxPnl: null,
     pnlType: '',
     holdTime: '',
-    broker: '',
+    broker: '', // Keep for backward compatibility
+    brokers: [],
     daysOfWeek: []
   }
   
@@ -778,6 +852,14 @@ onMounted(() => {
   
   if (route.query.broker) {
     filters.value.broker = route.query.broker
+    // Also populate the brokers array for consistency
+    filters.value.brokers = [route.query.broker]
+    shouldApply = true
+  }
+  
+  // Handle multi-select brokers from query parameters
+  if (route.query.brokers) {
+    filters.value.brokers = route.query.brokers.split(',')
     shouldApply = true
   }
   
