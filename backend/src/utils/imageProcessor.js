@@ -9,10 +9,6 @@ class ImageProcessor {
     
     // Compression settings - aggressive but practical
     this.compressionSettings = {
-      // Maximum dimensions
-      maxWidth: 1200,
-      maxHeight: 1200,
-      
       // JPEG settings
       jpeg: {
         quality: 70,
@@ -76,23 +72,11 @@ class ImageProcessor {
       console.log(`Original size: ${(inputBuffer.length / 1024).toFixed(2)}KB`);
       console.log(`Original dimensions: ${metadata.width}x${metadata.height}`);
 
-      // Create sharp instance
+      // Create sharp instance - no resizing, only compression
       let sharpInstance = sharp(inputBuffer);
 
-      // Resize if too large
-      if (metadata.width > this.compressionSettings.maxWidth || 
-          metadata.height > this.compressionSettings.maxHeight) {
-        sharpInstance = sharpInstance.resize(
-          this.compressionSettings.maxWidth,
-          this.compressionSettings.maxHeight,
-          {
-            fit: 'inside',
-            withoutEnlargement: true
-          }
-        );
-      }
-
       // Convert to WebP for maximum compression (best format for photos)
+      // This preserves original dimensions while compressing
       const processedBuffer = await sharpInstance
         .webp(this.compressionSettings.webp)
         .toBuffer();

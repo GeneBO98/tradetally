@@ -109,11 +109,11 @@
               id="entryPrice"
               v-model="form.entryPrice"
               type="number"
-              step="0.0001"
+              step="0.000001"
               min="0"
               required
               class="input"
-              placeholder="0.0000"
+              placeholder="0.000000"
             />
           </div>
 
@@ -123,10 +123,10 @@
               id="exitPrice"
               v-model="form.exitPrice"
               type="number"
-              step="0.0001"
+              step="0.000001"
               min="0"
               class="input"
-              placeholder="0.0000"
+              placeholder="0.000000"
             />
           </div>
 
@@ -158,10 +158,10 @@
               id="commission"
               v-model="form.commission"
               type="number"
-              step="0.0001"
+              step="0.000001"
               min="0"
               class="input"
-              placeholder="0.0000"
+              placeholder="0.000000"
             />
           </div>
 
@@ -171,10 +171,10 @@
               id="fees"
               v-model="form.fees"
               type="number"
-              step="0.0001"
+              step="0.000001"
               min="0"
               class="input"
-              placeholder="0.0000"
+              placeholder="0.000000"
             />
           </div>
 
@@ -187,9 +187,9 @@
               id="mae"
               v-model="form.mae"
               type="number"
-              step="0.0001"
+              step="0.000001"
               class="input"
-              placeholder="0.0000"
+              placeholder="0.000000"
             />
           </div>
 
@@ -202,9 +202,9 @@
               id="mfe"
               v-model="form.mfe"
               type="number"
-              step="0.0001"
+              step="0.000001"
               class="input"
-              placeholder="0.0000"
+              placeholder="0.000000"
             />
           </div>
 
