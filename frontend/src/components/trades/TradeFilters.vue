@@ -297,6 +297,12 @@
               </div>
             </div>
           </div>
+          <select v-model="filters.broker" class="input" :disabled="loadingBrokers">
+            <option value="">All Brokers</option>
+            <option v-for="broker in availableBrokers" :key="broker" :value="broker">
+              {{ broker }}
+            </option>
+          </select>
         </div>
 
         <div>
@@ -426,6 +432,8 @@ const route = useRoute()
 const showAdvanced = ref(false)
 const availableSectors = ref([])
 const loadingSectors = ref(false)
+const availableBrokers = ref([])
+const loadingBrokers = ref(false)
 
 // Dropdown visibility
 const showStrategyDropdown = ref(false)
