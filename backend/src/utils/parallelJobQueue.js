@@ -19,14 +19,14 @@ class ParallelJobQueue {
     }
 
     this.isRunning = true;
-    logger.logImport('🚀 Starting parallel job queue processing');
+    logger.logImport('[START] Starting parallel job queue processing');
 
     // Start workers for different job types (increased concurrency for better performance)
     this.startWorkerForJobType('cusip_resolution', 3); // 3 concurrent CUSIP workers
     this.startWorkerForJobType('strategy_classification', 5); // 5 concurrent strategy workers (optimized)
     this.startWorkerForJobType('news_enrichment', 2); // 2 news workers
     
-    logger.logImport(`✅ Started ${this.workers.size} parallel workers`);
+    logger.logImport(`[SUCCESS] Started ${this.workers.size} parallel workers`);
   }
 
   /**
@@ -58,7 +58,7 @@ class ParallelJobQueue {
     }, 500); // Check every 500ms for faster processing
 
     this.workers.set(jobType, workerInfo);
-    logger.logImport(`✅ Started worker for ${jobType} (max concurrent: ${maxConcurrent})`);
+    logger.logImport(`[SUCCESS] Started worker for ${jobType} (max concurrent: ${maxConcurrent})`);
   }
 
   /**
@@ -89,7 +89,7 @@ class ParallelJobQueue {
       const job = result.rows[0];
       workerInfo.activeJobs.add(job.id);
       
-      logger.logImport(`🚀 [${jobType}] Processing job ${job.id}`);
+      logger.logImport(`[START] [${jobType}] Processing job ${job.id}`);
 
       // Process the job
       await this.processJobByType(job, workerInfo);
@@ -150,13 +150,13 @@ class ParallelJobQueue {
       // CRITICAL: Update trade enrichment status when job completes
       await this.updateTradeEnrichmentStatus(job, data);
       
-      logger.logImport(`✅ [${job.type}] Job ${job.id} completed in time`);
+      logger.logImport(`[SUCCESS] [${job.type}] Job ${job.id} completed in time`);
 
     } catch (error) {
       // Clear timeout
       if (timeoutId) clearTimeout(timeoutId);
       
-      logger.logError(`❌ [${job.type}] Job ${job.id} failed:`, error.message);
+      logger.logError(`[ERROR] [${job.type}] Job ${job.id} failed:`, error.message);
       
       // Check if this is a timeout or regular failure
       if (error.message.includes('timed out')) {
@@ -211,7 +211,7 @@ class ParallelJobQueue {
         WHERE id = $1
       `;
       await db.query(retryQuery, [jobId, `Timeout retry ${retry_count + 1}: ${error}`]);
-      logger.logImport(`🔄 Job ${jobId} timed out, retrying (attempt ${retry_count + 1})`);
+      logger.logImport(`[PROCESS] Job ${jobId} timed out, retrying (attempt ${retry_count + 1})`);
     } else {
       // Give up after 2 retries
       const failQuery = `
@@ -220,7 +220,7 @@ class ParallelJobQueue {
         WHERE id = $1
       `;
       await db.query(failQuery, [jobId, `Failed after timeout retries: ${error}`]);
-      logger.logError(`❌ Job ${jobId} failed permanently after timeout retries`);
+      logger.logError(`[ERROR] Job ${jobId} failed permanently after timeout retries`);
     }
   }
 
@@ -240,7 +240,7 @@ class ParallelJobQueue {
           WHERE id = $1
         `, [data.tradeId]);
         
-        logger.logImport(`🔄 Updated trade ${data.tradeId} enrichment status to completed`);
+        logger.logImport(`[PROCESS] Updated trade ${data.tradeId} enrichment status to completed`);
       }
       
       // For CUSIP resolution jobs, mark all affected trades as completed
@@ -254,7 +254,7 @@ class ParallelJobQueue {
           AND symbol ~ '^[A-Z0-9]{8}[0-9]$'
         `, [data.userId]);
         
-        logger.logImport(`🔄 Updated CUSIP trades for user ${data.userId} to completed`);
+        logger.logImport(`[PROCESS] Updated CUSIP trades for user ${data.userId} to completed`);
       }
       
     } catch (error) {

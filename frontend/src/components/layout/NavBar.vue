@@ -71,7 +71,7 @@
                 class="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
                 title="Support TradeTally development"
               >
-                ☕
+                [MONEY]
               </a>
               <router-link 
                 to="/profile" 
@@ -229,7 +229,7 @@
               @click="isMobileMenuOpen = false"
               class="flex items-center text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
             >
-              <span class="mr-2">☕</span>
+              <span class="mr-2">[MONEY]</span>
               <span>Support development</span>
             </a>
           </div>

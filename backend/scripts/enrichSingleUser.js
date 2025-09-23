@@ -4,13 +4,13 @@ const db = require('../src/config/database');
 const newsEnrichmentService = require('../src/services/newsEnrichmentService');
 
 async function enrichSingleUser(email) {
-  console.log(`🧪 Enriching trades for user: ${email}\n`);
+  console.log(`[CHECK] Enriching trades for user: ${email}\n`);
 
   try {
     // Get user ID
     const userResult = await db.query('SELECT id FROM users WHERE email = $1', [email]);
     if (userResult.rows.length === 0) {
-      console.log('❌ User not found');
+      console.log('[ERROR] User not found');
       return;
     }
     
@@ -74,7 +74,7 @@ async function enrichSingleUser(email) {
     }
     
     // Show results
-    console.log(`\n📊 Results for ${email}:`);
+    console.log(`\n[STATS] Results for ${email}:`);
     const statsQuery = `
       SELECT 
         COUNT(*) as total_trades,
@@ -97,11 +97,11 @@ async function enrichSingleUser(email) {
     console.log(`   - Negative: ${s.negative}`);
     console.log(`   - Neutral: ${s.neutral}`);
     
-    console.log('\n✅ Enrichment complete!');
+    console.log('\n[SUCCESS] Enrichment complete!');
     console.log('   News Sentiment Analytics should now show data.');
 
   } catch (error) {
-    console.error('❌ Enrichment failed:', error.message);
+    console.error('[ERROR] Enrichment failed:', error.message);
     console.error(error.stack);
   } finally {
     await db.pool.end();

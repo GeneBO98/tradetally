@@ -2,10 +2,10 @@
 
 # Setup script for TraderVue
 
-echo "🚀 Setting up TraderVue..."
+echo "[SETUP] Setting up TraderVue..."
 
 # Backend setup
-echo "📦 Setting up backend..."
+echo "[SETUP] Setting up backend..."
 cd backend
 
 # Remove node_modules and package-lock if they exist
@@ -17,13 +17,13 @@ npm install
 # Copy env file if it doesn't exist
 if [ ! -f .env ]; then
     cp .env.example .env
-    echo "✅ Created .env file - Please update with your database credentials"
+    echo "[OK] Created .env file - Please update with your database credentials"
 fi
 
 cd ..
 
 # Frontend setup
-echo "📦 Setting up frontend..."
+echo "[SETUP] Setting up frontend..."
 cd frontend
 
 # Remove node_modules and package-lock if they exist
@@ -34,7 +34,7 @@ npm install
 
 cd ..
 
-echo "✅ Setup complete!"
+echo "[SUCCESS] Setup complete!"
 echo ""
 echo "Next steps:"
 echo "1. Update backend/.env with your PostgreSQL database credentials"

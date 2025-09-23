@@ -3,17 +3,17 @@
 const db = require('../src/config/database');
 
 async function testComprehensiveCusipView() {
-  console.log('🧪 Testing Comprehensive CUSIP View\n');
+  console.log('[CHECK] Testing Comprehensive CUSIP View\n');
 
   try {
     // Get a valid user
     const userResult = await db.query('SELECT id FROM users LIMIT 1');
     if (userResult.rows.length === 0) {
-      console.log('❌ No users found in database');
+      console.log('[ERROR] No users found in database');
       return;
     }
     const userId = userResult.rows[0].id;
-    console.log(`✅ Using user: ${userId}`);
+    console.log(`[SUCCESS] Using user: ${userId}`);
 
     // Test 1: Get all CUSIPs from trades (both mapped and unmapped)
     console.log('\n1. All CUSIPs in user trades:');
@@ -129,9 +129,9 @@ async function testComprehensiveCusipView() {
     
     comprehensive.forEach(row => {
       if (row.status === 'mapped') {
-        console.log(`   ✅ ${row.cusip} → ${row.ticker} (${row.resolution_source}, ${row.trade_count} trades)`);
+        console.log(`   [SUCCESS] ${row.cusip} → ${row.ticker} (${row.resolution_source}, ${row.trade_count} trades)`);
       } else {
-        console.log(`   ❌ ${row.cusip} → UNMAPPED (${row.trade_count} trades)`);
+        console.log(`   [ERROR] ${row.cusip} → UNMAPPED (${row.trade_count} trades)`);
       }
     });
 
@@ -150,15 +150,15 @@ async function testComprehensiveCusipView() {
     const manualOnly = comprehensive.filter(c => c.resolution_source === 'manual');
     console.log(`   Found ${manualOnly.length} manual entries`);
 
-    console.log('\n✅ Comprehensive CUSIP view test completed!');
-    console.log('\n📊 Summary:');
+    console.log('\n[SUCCESS] Comprehensive CUSIP view test completed!');
+    console.log('\n[STATS] Summary:');
     console.log(`   • Total CUSIPs in trades: ${allCusipsResult.rows.length}`);
     console.log(`   • Mapped CUSIPs: ${mappedCount}`);
     console.log(`   • Unmapped CUSIPs: ${unmappedCount}`);
     console.log(`   • Total for comprehensive view: ${comprehensive.length}`);
 
   } catch (error) {
-    console.error('❌ Test failed:', error.message);
+    console.error('[ERROR] Test failed:', error.message);
     console.error(error.stack);
   } finally {
     await db.pool.end();

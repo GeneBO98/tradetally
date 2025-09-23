@@ -220,20 +220,27 @@ docker-compose logs -f app
 
 ### Examples:
 ```javascript
-// ✅ Good - Frontend/API Format
+// [CHECK] Good - Frontend/API Format
 {
   entryDate: '2025-09-05',
   marketBias: 'bullish',
   keyLevels: 'SPY 500'
 }
 
-// ❌ Bad - Don't mix formats
+// [ERROR] Bad - Don't mix formats
 {
   entry_date: '2025-09-05',  // snake_case
   marketBias: 'bullish',     // camelCase
   key_levels: 'SPY 500'      // snake_case
 }
 ```
+
+### Visual Elements and Output Standards
+- **NEVER use emojis** - All emojis have been systematically removed from the codebase
+- **Console/Log Output**: Use bracketed text labels like `[SUCCESS]`, `[ERROR]`, `[WARNING]`, `[INFO]`, `[PROCESS]` instead of emojis
+- **UI Text**: Use plain text alternatives instead of emojis (e.g., "Success", "Error", "Warning")
+- **Documentation**: Use text-based indicators and standard markdown formatting
+- **Commit Messages**: Use conventional commit format without emojis
 
 ## Common Pitfalls & Reminders
 

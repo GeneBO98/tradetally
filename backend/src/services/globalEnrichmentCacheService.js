@@ -26,11 +26,11 @@ class GlobalEnrichmentCacheService {
                 // Update access tracking
                 await this.updateAccessTracking(result.rows[0].id);
                 
-                logger.logImport(`📦 Cache HIT: ${symbol} on ${tradeDate} (accessed ${result.rows[0].access_count + 1} times)`);
+                logger.logImport(`[INFO] Cache HIT: ${symbol} on ${tradeDate} (accessed ${result.rows[0].access_count + 1} times)`);
                 return result.rows[0];
             }
             
-            logger.logImport(`📦 Cache MISS: ${symbol} on ${tradeDate}`);
+            logger.logImport(`[INFO] Cache MISS: ${symbol} on ${tradeDate}`);
             return null;
         } catch (error) {
             logger.logError('Error getting cached enrichment:', error);
@@ -115,7 +115,7 @@ class GlobalEnrichmentCacheService {
             const result = await db.query(query, values);
             const cacheId = result.rows[0].id;
             
-            logger.logImport(`📦 Cached enrichment: ${symbol} on ${tradeDate} (ID: ${cacheId.substring(0, 8)}...)`);
+            logger.logImport(`[INFO] Cached enrichment: ${symbol} on ${tradeDate} (ID: ${cacheId.substring(0, 8)}...)`);
             return cacheId;
         } catch (error) {
             logger.logError('Error caching enrichment data:', error);
@@ -150,7 +150,7 @@ class GlobalEnrichmentCacheService {
             const deletedCount = result.rows[0].cleanup_expired_global_enrichment_cache;
             
             if (deletedCount > 0) {
-                logger.logImport(`🧹 Cleaned up ${deletedCount} expired enrichment cache entries`);
+                logger.logImport(`[CLEAN] Cleaned up ${deletedCount} expired enrichment cache entries`);
             }
             
             return deletedCount;

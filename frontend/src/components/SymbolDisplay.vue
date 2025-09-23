@@ -29,7 +29,7 @@ const isResolved = computed(() => isResolvedCusip(props.symbol))
 }
 
 .cusip-resolved:after {
-  content: "✓";
+  content: "[SUCCESS]";
   font-size: 0.8em;
   margin-left: 0.25rem;
   opacity: 0.7;

@@ -4,7 +4,7 @@ const Trade = require('../src/models/Trade');
 const db = require('../src/config/database');
 
 async function testSymbolFiltering() {
-  console.log('🧪 Testing Symbol Filtering Fix\n');
+  console.log('[CHECK] Testing Symbol Filtering Fix\n');
 
   try {
     // First, get a valid user ID
@@ -66,9 +66,9 @@ async function testSymbolFiltering() {
         console.log(`   Found ${mappedTrades.length} trades for ${testTicker}`);
         
         if (mappedTrades.length > 0) {
-          console.log('   ✅ Symbol filtering fix is working!');
+          console.log('   [SUCCESS] Symbol filtering fix is working!');
         } else {
-          console.log('   ❌ Symbol filtering fix needs improvement');
+          console.log('   [ERROR] Symbol filtering fix needs improvement');
         }
       }
     } else {
@@ -101,7 +101,7 @@ async function testSymbolFiltering() {
     });
 
   } catch (error) {
-    console.error('❌ Test failed:', error.message);
+    console.error('[ERROR] Test failed:', error.message);
     console.error(error.stack);
   } finally {
     await db.pool.end();

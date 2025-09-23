@@ -2,7 +2,7 @@ const db = require('../src/config/database');
 const enrichmentCacheService = require('../src/services/enrichmentCacheService');
 
 async function testEnrichmentCache() {
-  console.log('🧪 Testing Enrichment Cache System...\n');
+  console.log('[CHECK] Testing Enrichment Cache System...\n');
   
   const testSymbol = 'TSLA';
   const testDate = new Date('2024-01-15T14:30:00Z');
@@ -10,7 +10,7 @@ async function testEnrichmentCache() {
   
   try {
     // 1. Store some enrichment data
-    console.log('📝 Storing enrichment data in cache...');
+    console.log('[CONFIG] Storing enrichment data in cache...');
     
     const enrichmentData = {
       strategy: 'momentum_trading',
@@ -42,7 +42,7 @@ async function testEnrichmentCache() {
       enrichmentData, 
       testTime
     );
-    console.log(`✅ Stored enrichment data with cache ID: ${cacheId}`);
+    console.log(`[SUCCESS] Stored enrichment data with cache ID: ${cacheId}`);
     
     // 2. Retrieve the data
     console.log('\n📖 Retrieving cached data...');
@@ -53,14 +53,14 @@ async function testEnrichmentCache() {
     );
     
     if (cachedData) {
-      console.log('✅ Retrieved cached data:');
+      console.log('[SUCCESS] Retrieved cached data:');
       console.log(`   Strategy: ${cachedData.strategy} (${cachedData.strategy_confidence}% confidence)`);
       console.log(`   Sector: ${cachedData.sector} | Industry: ${cachedData.industry}`);
       console.log(`   RSI: ${cachedData.rsi_14} | Volume: ${cachedData.volume_24h?.toLocaleString()}`);
       console.log(`   MAE: ${cachedData.typical_mae_percent}% | MFE: ${cachedData.typical_mfe_percent}%`);
       console.log(`   Access Count: ${cachedData.access_count} | Created: ${cachedData.created_at}`);
     } else {
-      console.log('❌ No cached data found');
+      console.log('[ERROR] No cached data found');
     }
     
     // 3. Test time tolerance (look for data within 30 minutes)
@@ -74,14 +74,14 @@ async function testEnrichmentCache() {
     );
     
     if (tolerantData) {
-      console.log('✅ Found data within time tolerance');
+      console.log('[SUCCESS] Found data within time tolerance');
       console.log(`   Access Count: ${tolerantData.access_count} (incremented from cache hit)`);
     } else {
-      console.log('❌ No data found within time tolerance');
+      console.log('[ERROR] No data found within time tolerance');
     }
     
     // 4. Create a test trade to simulate applying cached data
-    console.log('\n🔄 Simulating trade creation with cached data...');
+    console.log('\n[PROCESS] Simulating trade creation with cached data...');
     const userId = 'f7ffbef5-7ec4-4972-be3f-439233ef8410';
     
     // Create a test trade
@@ -106,7 +106,7 @@ async function testEnrichmentCache() {
     ]);
     
     const testTradeId = tradeResult.rows[0].id;
-    console.log(`📊 Created test trade: ${testTradeId}`);
+    console.log(`[STATS] Created test trade: ${testTradeId}`);
     
     // Apply cached enrichment data
     const applied = await enrichmentCacheService.applyEnrichmentDataToTrade(
@@ -117,7 +117,7 @@ async function testEnrichmentCache() {
     );
     
     if (applied) {
-      console.log('✅ Applied cached enrichment data to test trade');
+      console.log('[SUCCESS] Applied cached enrichment data to test trade');
       
       // Check the updated trade
       const updatedTrade = await db.query('SELECT * FROM trades WHERE id = $1', [testTradeId]);
@@ -128,11 +128,11 @@ async function testEnrichmentCache() {
       console.log(`   Enrichment Status: ${trade.enrichment_status}`);
       console.log(`   MAE: ${trade.mae}% | MFE: ${trade.mfe}%`);
     } else {
-      console.log('❌ Failed to apply cached enrichment data');
+      console.log('[ERROR] Failed to apply cached enrichment data');
     }
     
     // 5. Test cache statistics
-    console.log('\n📊 Cache Statistics:');
+    console.log('\n[STATS] Cache Statistics:');
     const stats = await enrichmentCacheService.getCacheStats();
     if (stats) {
       console.log(`   Total Entries: ${stats.total_entries}`);
@@ -153,10 +153,10 @@ async function testEnrichmentCache() {
     await db.query('DELETE FROM trades WHERE id = $1', [testTradeId]);
     console.log(`\n🧹 Cleaned up test trade: ${testTradeId}`);
     
-    console.log('\n🎉 Enrichment cache test completed successfully!');
+    console.log('\n[SUCCESS] Enrichment cache test completed successfully!');
     
     // Show example of what happens during bulk import
-    console.log('\n💡 Example workflow during bulk trade import:');
+    console.log('\n[INFO] Example workflow during bulk trade import:');
     console.log('   1. Trade imported with skipApiCalls=true');
     console.log('   2. System checks enrichment cache for matching symbol/time');
     console.log('   3. If cached data found, applies it immediately (no API calls needed)');
@@ -166,7 +166,7 @@ async function testEnrichmentCache() {
     console.log('   7. Future imports of same symbol/timeframe use cached data instantly');
     
   } catch (error) {
-    console.error('❌ Test failed:', error);
+    console.error('[ERROR] Test failed:', error);
   } finally {
     process.exit(0);
   }

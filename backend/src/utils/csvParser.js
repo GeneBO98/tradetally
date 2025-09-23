@@ -638,7 +638,7 @@ async function parseLightspeedTransactions(records, existingPositions = {}) {
       const side = parseLightspeedSide(sideValue, buySellValue, record['Principal Amount'], record['NET Amount'], record.Qty);
       
       // DEBUG: Log the raw CSV data and parsed side for ALL transactions
-      console.log(`🔥 CSV TRANSACTION DEBUG: ${resolvedSymbol}`);
+      console.log(`[PROCESS] CSV TRANSACTION DEBUG: ${resolvedSymbol}`);
       console.log(`  Side: "${record.Side}"`);
       console.log(`  Buy/Sell: "${record['Buy/Sell']}"`);
       console.log(`  Qty: "${record.Qty}"`);
@@ -788,7 +788,7 @@ async function parseLightspeedTransactions(records, existingPositions = {}) {
             currentTrade.newExecutionsAdded++;
           }
           if (symbol === 'PYXS' || symbol === 'CURR') {
-            console.log(`  ✅ Added new execution (${currentTrade.newExecutionsAdded} new total)`);
+            console.log(`  [SUCCESS] Added new execution (${currentTrade.newExecutionsAdded} new total)`);
           }
         } else {
           console.log(`  → Skipping duplicate execution: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);

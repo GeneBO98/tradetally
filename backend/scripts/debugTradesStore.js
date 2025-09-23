@@ -2,7 +2,7 @@
 // The user should check the browser console for these logs when filtering by "With News"
 
 console.log(`
-🚀 Frontend Debug Steps for Empty News Filter Results:
+[START] Frontend Debug Steps for Empty News Filter Results:
 
 1. Open browser Developer Tools (F12)
 2. Go to Console tab
@@ -12,7 +12,7 @@ console.log(`
 Expected logs when filtering for "With News" (should return 0 trades):
 
 📦 Set trades from tradesResponse.data.trades: 0
-📊 Trades data structure check: {
+[STATS] Trades data structure check: {
   hasTradesProperty: true,
   tradesLength: 0,
   isArray: true,
@@ -24,7 +24,7 @@ Analytics data received: {
   winRate: 0,
   totalTrades: 0
 }
-🔍 Final trades array state: {
+[CHECK] Final trades array state: {
   tradesLength: 0,
   isArray: true,
   isEmpty: true,

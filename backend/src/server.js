@@ -378,15 +378,15 @@ async function startServer() {
           break;
         } catch (error) {
           attempts++;
-          console.error(`❌ Failed to start background worker (attempt ${attempts}/${maxAttempts}):`, error.message);
+          console.error(`[ERROR] Failed to start background worker (attempt ${attempts}/${maxAttempts}):`, error.message);
           
           if (attempts >= maxAttempts) {
-            console.error('🚨 CRITICAL: Background worker failed to start after multiple attempts');
-            console.error('🚨 This will affect PRO tier trade enrichment features');
+            console.error('[ERROR] CRITICAL: Background worker failed to start after multiple attempts');
+            console.error('[ERROR] This will affect PRO tier trade enrichment features');
             
             // In production, we should fail fast for critical services
             if (process.env.NODE_ENV === 'production') {
-              console.error('🚨 Exiting due to critical service failure in production');
+              console.error('[ERROR] Exiting due to critical service failure in production');
               process.exit(1);
             }
           } else {

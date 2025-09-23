@@ -3,7 +3,7 @@
     <div v-if="visible" class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50">
       <div class="relative bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-md mx-4 p-6 text-center">
         <div class="absolute -top-4 left-1/2 -translate-x-1/2">
-          <div class="w-12 h-12 rounded-full bg-primary-500 text-white flex items-center justify-center text-2xl">🎉</div>
+          <div class="w-12 h-12 rounded-full bg-primary-500 text-white flex items-center justify-center text-2xl">[SUCCESS]</div>
         </div>
 
         <div class="mt-6">

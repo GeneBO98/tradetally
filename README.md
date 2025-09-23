@@ -380,20 +380,20 @@ VITE_SHOW_DONATION_BUTTON=true
 - **Real Financial Data**: Actual securities database, not AI guesswork
 - **Multiple Asset Types**: Stocks, bonds, options, and other securities
 
-### ⚠️ AI CUSIP Resolution (Advanced Users Only)
+### [WARNING] AI CUSIP Resolution (Advanced Users Only)
 
 AI CUSIP resolution is **disabled by default** due to reliability concerns. Enable only if you understand the limitations:
 
 #### **Limitations & Warnings:**
-- **❌ Unreliable Results**: AI models frequently return incorrect or duplicate ticker mappings
-- **❌ Self-Hosted AI Issues**: Local models (Ollama, etc.) cannot access real financial databases
-- **❌ Hallucination Risk**: AI may guess popular symbols (JPM, AAPL, MSFT) for unknown CUSIPs
-- **❌ Data Integrity**: Incorrect mappings can corrupt your trade data permanently
+- **[X] Unreliable Results**: AI models frequently return incorrect or duplicate ticker mappings
+- **[X] Self-Hosted AI Issues**: Local models (Ollama, etc.) cannot access real financial databases
+- **[X] Hallucination Risk**: AI may guess popular symbols (JPM, AAPL, MSFT) for unknown CUSIPs
+- **[X] Data Integrity**: Incorrect mappings can corrupt your trade data permanently
 
 #### **When AI CUSIP Resolution Might Work:**
-- ✅ **Cloud-based AI only**: OpenAI, Google Gemini, Anthropic Claude (never self-hosted)
-- ✅ **Manual verification**: You manually verify every AI-resolved CUSIP
-- ✅ **Test environment**: You're testing and can afford incorrect data
+- [CHECK] **Cloud-based AI only**: OpenAI, Google Gemini, Anthropic Claude (never self-hosted)
+- [CHECK] **Manual verification**: You manually verify every AI-resolved CUSIP
+- [CHECK] **Test environment**: You're testing and can afford incorrect data
 
 #### **To Enable AI CUSIP Resolution:**
 ```env

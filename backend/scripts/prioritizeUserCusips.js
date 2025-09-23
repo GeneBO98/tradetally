@@ -3,7 +3,7 @@
 const db = require('../src/config/database');
 
 async function prioritizeUserCusips() {
-  console.log('🎯 Prioritizing boverton@tradetally.io CUSIPs\n');
+  console.log('[TARGET] Prioritizing boverton@tradetally.io CUSIPs\n');
 
   try {
     const userId = 'f7ffbef5-7ec4-4972-be3f-439233ef8410'; // boverton@tradetally.io
@@ -25,7 +25,7 @@ async function prioritizeUserCusips() {
     unmappedCusips.rows.forEach(row => console.log(`  ${row.cusip}`));
 
     if (unmappedCusips.rows.length === 0) {
-      console.log('✅ All CUSIPs are already mapped!');
+      console.log('[SUCCESS] All CUSIPs are already mapped!');
       return;
     }
 
@@ -57,7 +57,7 @@ async function prioritizeUserCusips() {
     const needsQueueing = unmappedCusips.rows.filter(row => !cusipsInQueue.has(row.cusip));
     
     if (needsQueueing.length === 0) {
-      console.log('✅ All unmapped CUSIPs are already queued for processing!');
+      console.log('[SUCCESS] All unmapped CUSIPs are already queued for processing!');
       console.log('They will be resolved automatically as the queue processes.');
       return;
     }
@@ -82,14 +82,14 @@ async function prioritizeUserCusips() {
         userId
       ]);
 
-      console.log(`  ✅ Queued ${cusipRow.cusip} with high priority`);
+      console.log(`  [SUCCESS] Queued ${cusipRow.cusip} with high priority`);
     }
 
-    console.log(`\n🎯 Queued ${needsQueueing.length} high-priority CUSIP resolution jobs`);
+    console.log(`\n[TARGET] Queued ${needsQueueing.length} high-priority CUSIP resolution jobs`);
     console.log('These should be processed within the next few minutes.');
 
   } catch (error) {
-    console.error('❌ Prioritization failed:', error.message);
+    console.error('[ERROR] Prioritization failed:', error.message);
   } finally {
     await db.pool.end();
   }

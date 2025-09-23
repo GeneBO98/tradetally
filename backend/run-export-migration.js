@@ -22,27 +22,27 @@ const colors = {
 
 async function runExportMigration() {
   try {
-    console.log(`${colors.blue}🚀 Running data export migration...${colors.reset}\n`);
+    console.log(`${colors.blue}[START] Running data export migration...${colors.reset}\n`);
     
     // Read the migration file
     const migrationPath = path.join(__dirname, 'migrations', '012_add_missing_export_fields.sql');
     const migrationContent = await fs.readFile(migrationPath, 'utf8');
     
-    console.log(`${colors.blue}📄 Found migration: 012_add_missing_export_fields.sql${colors.reset}`);
+    console.log(`${colors.blue}[INFO] Found migration: 012_add_missing_export_fields.sql${colors.reset}`);
     
     // Run the migration
     const client = await db.pool.connect();
     try {
       await client.query('BEGIN');
       
-      console.log(`${colors.blue}🔄 Executing migration...${colors.reset}`);
+      console.log(`${colors.blue}[PROCESS] Executing migration...${colors.reset}`);
       await client.query(migrationContent);
       
       await client.query('COMMIT');
-      console.log(`${colors.green}✅ Migration completed successfully!${colors.reset}`);
+      console.log(`${colors.green}[SUCCESS] Migration completed successfully!${colors.reset}`);
       
       // Test the export functionality
-      console.log(`${colors.blue}🧪 Testing export functionality...${colors.reset}`);
+      console.log(`${colors.blue}[CHECK] Testing export functionality...${colors.reset}`);
       
       // Check if required tables exist
       const tableChecks = [
@@ -64,9 +64,9 @@ async function runExportMigration() {
         );
         
         if (result.rows[0].exists) {
-          console.log(`${colors.green}  ✓ Table '${table}' exists${colors.reset}`);
+          console.log(`${colors.green}  [SUCCESS] Table '${table}' exists${colors.reset}`);
         } else {
-          console.log(`${colors.yellow}  ⚠ Table '${table}' not found${colors.reset}`);
+          console.log(`${colors.yellow}  [WARNING] Table '${table}' not found${colors.reset}`);
         }
       }
       
@@ -96,13 +96,13 @@ async function runExportMigration() {
       
       for (const column of columnChecks) {
         if (foundColumns.includes(column)) {
-          console.log(`${colors.green}  ✓ Column 'user_settings.${column}' exists${colors.reset}`);
+          console.log(`${colors.green}  [SUCCESS] Column 'user_settings.${column}' exists${colors.reset}`);
         } else {
-          console.log(`${colors.yellow}  ⚠ Column 'user_settings.${column}' not found${colors.reset}`);
+          console.log(`${colors.yellow}  [WARNING] Column 'user_settings.${column}' not found${colors.reset}`);
         }
       }
       
-      console.log(`\n${colors.green}🎉 Export/import functionality is ready!${colors.reset}`);
+      console.log(`\n${colors.green}[SUCCESS] Export/import functionality is ready!${colors.reset}`);
       console.log(`${colors.gray}   You can now use the export/import features in the Settings page.${colors.reset}`);
       
     } catch (error) {
@@ -113,7 +113,7 @@ async function runExportMigration() {
     }
     
   } catch (error) {
-    console.error(`\n${colors.red}❌ Migration failed:${colors.reset}`, error.message);
+    console.error(`\n${colors.red}[ERROR] Migration failed:${colors.reset}`, error.message);
     if (error.detail) {
       console.error(`${colors.red}   Detail: ${error.detail}${colors.reset}`);
     }
@@ -130,7 +130,7 @@ async function runExportMigration() {
 // Run the migration
 runExportMigration()
   .then(() => {
-    console.log(`\n${colors.blue}👋 Migration complete. Exiting...${colors.reset}`);
+    console.log(`\n${colors.blue}[SUCCESS] Migration complete. Exiting...${colors.reset}`);
     process.exit(0);
   })
   .catch(() => {

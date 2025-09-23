@@ -7,7 +7,7 @@
 const db = require('../src/config/database');
 
 async function examineSymbolIssue() {
-  console.log('🔍 Deep dive into symbol filtering issue...');
+  console.log('[CHECK] Deep dive into symbol filtering issue...');
   
   try {
     // 1. Check the CUSIPs that are in trades but not resolved
@@ -167,10 +167,10 @@ async function examineSymbolIssue() {
     console.log('3. Add any missing CUSIPs to the lookup queue');
     console.log('4. Fix the symbol filtering logic to be more robust');
     
-    console.log('\n✅ Symbol issue analysis completed');
+    console.log('\n[SUCCESS] Symbol issue analysis completed');
     
   } catch (error) {
-    console.error('❌ Analysis failed:', error);
+    console.error('[ERROR] Analysis failed:', error);
     throw error;
   }
 }
@@ -179,11 +179,11 @@ async function examineSymbolIssue() {
 if (require.main === module) {
   examineSymbolIssue()
     .then(() => {
-      console.log('\n🎉 Analysis completed!');
+      console.log('\n[SUCCESS] Analysis completed!');
       process.exit(0);
     })
     .catch((error) => {
-      console.error('\n💥 Analysis failed:', error);
+      console.error('\n[ERROR] Analysis failed:', error);
       process.exit(1);
     });
 }

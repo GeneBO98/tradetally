@@ -152,8 +152,8 @@
               <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                 <div class="flex space-x-1">
                   <span v-if="alert.email_enabled" title="Email enabled" class="text-blue-500">✉</span>
-                  <span v-if="alert.browser_enabled" title="Browser enabled" class="text-green-500">🔔</span>
-                  <span v-if="alert.repeat_enabled" title="Repeat enabled" class="text-purple-500">🔄</span>
+                  <span v-if="alert.browser_enabled" title="Browser enabled" class="text-green-500">[BELL]</span>
+                  <span v-if="alert.repeat_enabled" title="Repeat enabled" class="text-purple-500">[REPEAT]</span>
                 </div>
               </td>
               <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">

@@ -4,7 +4,7 @@ const db = require('../src/config/database');
 const axios = require('axios');
 
 async function testNewsCorrelationAPI() {
-  console.log('🧪 Testing News Correlation API Endpoints\n');
+  console.log('[CHECK] Testing News Correlation API Endpoints\n');
 
   try {
     // Get a user for testing
@@ -26,24 +26,24 @@ async function testNewsCorrelationAPI() {
     const headers = { Authorization: `Bearer ${token}` };
 
     // Test 1: Check if feature is enabled
-    console.log('\n📋 Test 1: Checking if feature is enabled...');
+    console.log('\n[INFO] Test 1: Checking if feature is enabled...');
     try {
       const enabledResponse = await axios.get(`${apiBase}/news-correlation/enabled`, { headers });
-      console.log('✅ Enabled check response:', enabledResponse.data);
+      console.log('[SUCCESS] Enabled check response:', enabledResponse.data);
     } catch (error) {
-      console.log('❌ Enabled check failed:', error.response?.data || error.message);
+      console.log('[ERROR] Enabled check failed:', error.response?.data || error.message);
     }
 
     // Test 2: Get analytics data
-    console.log('\n📋 Test 2: Fetching analytics data...');
+    console.log('\n[INFO] Test 2: Fetching analytics data...');
     try {
       const analyticsResponse = await axios.get(`${apiBase}/news-correlation/analytics`, { headers });
-      console.log('✅ Analytics response received');
+      console.log('[SUCCESS] Analytics response received');
       
       const data = analyticsResponse.data;
       
       if (data.metadata) {
-        console.log('📊 Metadata:', {
+        console.log('[STATS] Metadata:', {
           total_trades: data.metadata.total_trades_analyzed,
           date_range: data.metadata.date_range,
           has_insights: data.insights?.length > 0
@@ -51,25 +51,25 @@ async function testNewsCorrelationAPI() {
       }
       
       if (data.overall_performance) {
-        console.log('📈 Overall Performance:', {
+        console.log('[ANALYTICS] Overall Performance:', {
           sentiment_types: Object.keys(data.overall_performance.by_sentiment || {}),
           has_data: Object.keys(data.overall_performance.by_sentiment || {}).length > 0
         });
       }
       
       if (data.insights && data.insights.length > 0) {
-        console.log('💡 Insights found:', data.insights.length);
+        console.log('[INFO] Insights found:', data.insights.length);
         data.insights.slice(0, 2).forEach((insight, i) => {
           console.log(`   ${i + 1}. ${insight.title} (${insight.level})`);
         });
       }
       
     } catch (error) {
-      console.log('❌ Analytics fetch failed:', error.response?.data || error.message);
+      console.log('[ERROR] Analytics fetch failed:', error.response?.data || error.message);
     }
 
     // Test 3: Check how many trades have sentiment data
-    console.log('\n📋 Test 3: Checking sentiment data coverage...');
+    console.log('\n[INFO] Test 3: Checking sentiment data coverage...');
     const sentimentQuery = `
       SELECT 
         COUNT(*) as total_completed_trades,
@@ -87,7 +87,7 @@ async function testNewsCorrelationAPI() {
     const sentimentResult = await db.query(sentimentQuery, [user.id]);
     const stats = sentimentResult.rows[0];
     
-    console.log('📊 Trade sentiment statistics:');
+    console.log('[STATS] Trade sentiment statistics:');
     console.log(`   Total completed trades: ${stats.total_completed_trades}`);
     console.log(`   Trades with news: ${stats.trades_with_news}`);
     console.log(`   Trades with sentiment: ${stats.trades_with_sentiment}`);
@@ -96,13 +96,13 @@ async function testNewsCorrelationAPI() {
     console.log(`   - Neutral: ${stats.neutral_sentiment}`);
     
     if (parseInt(stats.trades_with_sentiment) === 0) {
-      console.log('\n⚠️  No trades with sentiment data found for this user!');
+      console.log('\n[WARNING]  No trades with sentiment data found for this user!');
       console.log('   This explains why analytics might be empty.');
       console.log('   Run news enrichment backfill to populate sentiment data.');
     }
 
   } catch (error) {
-    console.error('❌ Test failed:', error.message);
+    console.error('[ERROR] Test failed:', error.message);
     console.error(error.stack);
   } finally {
     await db.pool.end();

@@ -12,96 +12,433 @@
     </div>
 
     <div v-else class="space-y-8">
-      <!-- Date Filter -->
+      <!-- Filters -->
       <div class="card">
-        <div class="card-body">
-          <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div class="card-body space-y-4">
+          <!-- Basic filters always visible -->
+          <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-6">
+            <div>
+              <label for="symbol" class="label">Symbol</label>
+              <input
+                id="symbol"
+                v-model="localFilters.symbol"
+                type="text"
+                class="input"
+                placeholder="e.g., AAPL"
+                @keydown.enter="applyFilters"
+              />
+            </div>
+            
             <div>
               <label for="startDate" class="label">Start Date</label>
               <input
                 id="startDate"
-                v-model="filters.startDate"
+                v-model="localFilters.startDate"
                 type="date"
                 class="input"
+                @keydown.enter="applyFilters"
               />
             </div>
+            
             <div>
               <label for="endDate" class="label">End Date</label>
               <input
                 id="endDate"
-                v-model="filters.endDate"
+                v-model="localFilters.endDate"
                 type="date"
                 class="input"
+                @keydown.enter="applyFilters"
               />
             </div>
             
-            <!-- Mobile: Stack buttons vertically -->
-            <div class="flex flex-col space-y-2 sm:hidden">
-              <div class="flex space-x-2">
-                <button 
-                  @click="applyFilters"
-                  :disabled="loading"
-                  class="flex-1 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700"
+            <div>
+              <label class="label">Strategy</label>
+              <div class="relative" data-dropdown="strategy">
+                <button
+                  @click.stop="showStrategyDropdown = !showStrategyDropdown"
+                  class="input w-full text-left flex items-center justify-between"
+                  type="button"
                 >
-                  <span v-if="loading" class="flex items-center justify-center">
-                    <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></div>
-                    Applying
+                  <span class="truncate">
+                    {{ getSelectedStrategyText() }}
                   </span>
-                  <span v-else>Apply</span>
+                  <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                  </svg>
                 </button>
-                <button 
-                  @click="clearFilters"
-                  :disabled="loading"
-                  class="flex-1 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700"
-                >
-                  Clear
-                </button>
+                
+                <div v-if="showStrategyDropdown" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
+                  <div class="p-1">
+                    <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                      <input
+                        type="checkbox"
+                        :checked="localFilters.strategies.length === 0"
+                        @change="toggleAllStrategies"
+                        class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                      />
+                      <span class="ml-3 text-sm text-gray-900 dark:text-white">All Strategies</span>
+                    </label>
+                  </div>
+                  <div class="border-t border-gray-200 dark:border-gray-600">
+                    <div v-for="strategy in strategyOptions" :key="strategy.value" class="p-1">
+                      <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                        <input
+                          type="checkbox"
+                          :value="strategy.value"
+                          v-model="localFilters.strategies"
+                          class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                        />
+                        <span class="ml-3 text-sm text-gray-900 dark:text-white">{{ strategy.label }}</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <button 
-                @click="getRecommendations" 
-                :disabled="loadingRecommendations"
-                class="w-full px-3 py-2 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-              >
-                <svg class="w-4 h-4 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                </svg>
-                <span v-if="loadingRecommendations" class="flex items-center">
-                  <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></div>
-                  Analyzing...
-                </span>
-                <span v-else class="whitespace-nowrap">
-                  AI Recommendations
-                </span>
-              </button>
             </div>
             
-            <!-- Desktop: Keep inline -->
-            <div class="hidden sm:flex items-end space-x-2">
-              <button 
-                @click="applyFilters"
-                :disabled="loading"
-                class="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700"
+            <div>
+              <label class="label">Sector</label>
+              <div class="relative" data-dropdown="sector">
+                <button
+                  @click.stop="showSectorDropdown = !showSectorDropdown"
+                  class="input w-full text-left flex items-center justify-between"
+                  type="button"
+                  :disabled="loadingSectorsFilter"
+                >
+                  <span class="truncate">
+                    {{ getSelectedSectorText() }}
+                  </span>
+                  <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                  </svg>
+                </button>
+                
+                <div v-if="showSectorDropdown && !loadingSectorsFilter" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
+                  <div class="p-1">
+                    <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                      <input
+                        type="checkbox"
+                        :checked="localFilters.sectors.length === 0"
+                        @change="toggleAllSectors"
+                        class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                      />
+                      <span class="ml-3 text-sm text-gray-900 dark:text-white">All Sectors</span>
+                    </label>
+                  </div>
+                  <div class="border-t border-gray-200 dark:border-gray-600">
+                    <div v-for="sector in availableSectorsFilter" :key="sector" class="p-1">
+                      <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                        <input
+                          type="checkbox"
+                          :value="sector"
+                          v-model="localFilters.sectors"
+                          class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                        />
+                        <span class="ml-3 text-sm text-gray-900 dark:text-white">{{ sector }}</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div>
+              <label for="hasNews" class="label">News</label>
+              <select
+                id="hasNews"
+                v-model="localFilters.hasNews"
+                class="input"
               >
-                <span v-if="loading" class="flex items-center">
-                  <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></div>
-                  Applying
-                </span>
-                <span v-else>Apply</span>
+                <option value="">All Trades</option>
+                <option value="true">With News</option>
+                <option value="false">No News</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Advanced filters toggle -->
+          <div class="pt-2">
+            <button
+              @click="showAdvanced = !showAdvanced"
+              class="flex items-center text-sm text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200"
+            >
+              <svg 
+                :class="[showAdvanced ? 'rotate-90' : '', 'h-4 w-4 mr-1 transition-transform']"
+                fill="none" stroke="currentColor" viewBox="0 0 24 24"
+              >
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+              </svg>
+              Advanced Filters
+              <span v-if="activeAdvancedCount > 0" class="ml-2 bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400 text-xs px-2 py-0.5 rounded-full">
+                {{ activeAdvancedCount }}
+              </span>
+            </button>
+          </div>
+
+          <!-- Advanced filters (collapsible) -->
+          <div v-if="showAdvanced" class="border-t border-gray-200 dark:border-gray-700 pt-4 space-y-4">
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <!-- Position Type -->
+              <div>
+                <label class="label">Position Type</label>
+                <div class="mt-2 space-y-2">
+                  <label class="inline-flex items-center">
+                    <input
+                      type="radio"
+                      v-model="localFilters.side"
+                      value=""
+                      class="form-radio text-primary-600"
+                    />
+                    <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">All</span>
+                  </label>
+                  <label class="inline-flex items-center ml-4">
+                    <input
+                      type="radio"
+                      v-model="localFilters.side"
+                      value="long"
+                      class="form-radio text-primary-600"
+                    />
+                    <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">Long</span>
+                  </label>
+                  <label class="inline-flex items-center ml-4">
+                    <input
+                      type="radio"
+                      v-model="localFilters.side"
+                      value="short"
+                      class="form-radio text-primary-600"
+                    />
+                    <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">Short</span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- Price Range -->
+              <div>
+                <label class="label">Entry Price Range</label>
+                <div class="flex items-center space-x-2">
+                  <input
+                    v-model.number="localFilters.minPrice"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    class="input"
+                    placeholder="Min"
+                  />
+                  <span class="text-gray-500 dark:text-gray-400">-</span>
+                  <input
+                    v-model.number="localFilters.maxPrice"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    class="input"
+                    placeholder="Max"
+                  />
+                </div>
+              </div>
+
+              <!-- Quantity Range -->
+              <div>
+                <label class="label">Share Quantity</label>
+                <div class="flex items-center space-x-2">
+                  <input
+                    v-model.number="localFilters.minQuantity"
+                    type="number"
+                    min="0"
+                    class="input"
+                    placeholder="Min"
+                  />
+                  <span class="text-gray-500 dark:text-gray-400">-</span>
+                  <input
+                    v-model.number="localFilters.maxQuantity"
+                    type="number"
+                    min="0"
+                    class="input"
+                    placeholder="Max"
+                  />
+                </div>
+              </div>
+
+              <!-- Trade Status -->
+              <div>
+                <label class="label">Trade Status</label>
+                <select v-model="localFilters.status" class="input">
+                  <option value="">All Trades</option>
+                  <option value="open">Open Only</option>
+                  <option value="closed">Closed Only</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- P&L Filters and Broker -->
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div>
+                <label class="label">Broker</label>
+                <div class="relative" data-dropdown="broker">
+                  <button
+                    @click.stop="showBrokerDropdown = !showBrokerDropdown"
+                    class="input w-full text-left flex items-center justify-between"
+                    type="button"
+                    :disabled="loadingBrokersFilter"
+                  >
+                    <span class="truncate">
+                      {{ getSelectedBrokerText() }}
+                    </span>
+                    <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                    </svg>
+                  </button>
+                  
+                  <div v-if="showBrokerDropdown && !loadingBrokersFilter" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
+                    <div class="p-1">
+                      <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                        <input
+                          type="checkbox"
+                          :checked="localFilters.brokers.length === 0"
+                          @change="toggleAllBrokers"
+                          class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                        />
+                        <span class="ml-3 text-sm text-gray-900 dark:text-white">All Brokers</span>
+                      </label>
+                    </div>
+                    <div class="border-t border-gray-200 dark:border-gray-600">
+                      <div v-for="broker in availableBrokersFilter" :key="broker" class="p-1">
+                        <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                          <input
+                            type="checkbox"
+                            :value="broker"
+                            v-model="localFilters.brokers"
+                            class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                          />
+                          <span class="ml-3 text-sm text-gray-900 dark:text-white">{{ broker }}</span>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label class="label">P&L Range ($)</label>
+                <div class="flex items-center space-x-2">
+                  <input
+                    v-model.number="localFilters.minPnl"
+                    type="number"
+                    step="0.01"
+                    class="input"
+                    placeholder="Min"
+                  />
+                  <span class="text-gray-500 dark:text-gray-400">-</span>
+                  <input
+                    v-model.number="localFilters.maxPnl"
+                    type="number"
+                    step="0.01"
+                    class="input"
+                    placeholder="Max"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label class="label">P&L Type</label>
+                <select v-model="localFilters.pnlType" class="input">
+                  <option value="">All</option>
+                  <option value="profit">Profit Only</option>
+                  <option value="loss">Loss Only</option>
+                </select>
+              </div>
+              
+              <div>
+                <label class="label">Hold Time</label>
+                <select v-model="localFilters.holdTime" class="input">
+                  <option value="">All</option>
+                  <option value="< 1 min">< 1 minute</option>
+                  <option value="1-5 min">1-5 minutes</option>
+                  <option value="5-15 min">5-15 minutes</option>
+                  <option value="15-30 min">15-30 minutes</option>
+                  <option value="30-60 min">30-60 minutes</option>
+                  <option value="1-2 hours">1-2 hours</option>
+                  <option value="2-4 hours">2-4 hours</option>
+                  <option value="4-24 hours">4-24 hours</option>
+                  <option value="1-7 days">1-7 days</option>
+                  <option value="1-4 weeks">1-4 weeks</option>
+                  <option value="1+ months">1+ months</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Day of Week Filter -->
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 mt-4">
+              <div>
+                <label class="label">Day of Week</label>
+                <div class="relative" data-dropdown="dayOfWeek">
+                  <button
+                    @click.stop="showDayOfWeekDropdown = !showDayOfWeekDropdown"
+                    class="input w-full text-left flex items-center justify-between"
+                    type="button"
+                  >
+                    <span class="truncate">
+                      {{ getSelectedDayOfWeekText() }}
+                    </span>
+                    <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                    </svg>
+                  </button>
+                  
+                  <div v-if="showDayOfWeekDropdown" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
+                    <div class="p-1">
+                      <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                        <input
+                          type="checkbox"
+                          :checked="localFilters.daysOfWeek.length === 0"
+                          @change="toggleAllDaysOfWeek"
+                          class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                        />
+                        <span class="ml-3 text-sm text-gray-900 dark:text-white">All Days</span>
+                      </label>
+                    </div>
+                    <div class="border-t border-gray-200 dark:border-gray-600">
+                      <div v-for="day in dayOfWeekOptions" :key="day.value" class="p-1">
+                        <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                          <input
+                            type="checkbox"
+                            :value="day.value"
+                            v-model="localFilters.daysOfWeek"
+                            class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                          />
+                          <span class="ml-3 text-sm text-gray-900 dark:text-white">{{ day.label }}</span>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="flex justify-between items-center">
+            <div v-if="activeFiltersCount > 0" class="text-sm text-gray-600 dark:text-gray-400">
+              {{ activeFiltersCount }} filter{{ activeFiltersCount !== 1 ? 's' : '' }} active
+            </div>
+            <div v-else></div>
+            <div class="flex space-x-3">
+              <button @click="resetFilters" class="btn-secondary">
+                Reset
               </button>
-              <button 
-                @click="clearFilters"
-                :disabled="loading"
-                class="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700"
-              >
-                Clear
+              <button @click="applyFilters" class="btn-primary">
+                Apply Filters
               </button>
-              <button 
-                @click="getRecommendations" 
-                :disabled="loadingRecommendations"
-                class="px-3 py-2 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed min-w-[120px] flex items-center justify-center"
-              >
-                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+            </div>
+          </div>
+          
+          <!-- AI Recommendations button -->
+          <div class="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4 flex justify-end">
+            <button 
+              @click="getRecommendations" 
+              :disabled="loadingRecommendations"
+              class="px-3 py-2 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed min-w-[120px] flex items-center justify-center"
+            >
+              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                 </svg>
                 <span v-if="loadingRecommendations" class="flex items-center">
                   <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></div>
@@ -114,7 +451,6 @@
             </div>
           </div>
         </div>
-      </div>
 
       <!-- Overview Stats -->
       <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-5">
@@ -899,10 +1235,90 @@ const performancePeriod = ref('daily')
 const userSettings = ref(null)
 const router = useRouter()
 const route = useRoute()
+const showAdvanced = ref(false)
 
-const filters = ref({
+// Dropdown visibility
+const showStrategyDropdown = ref(false)
+const showSectorDropdown = ref(false)
+const showBrokerDropdown = ref(false)
+const showDayOfWeekDropdown = ref(false)
+
+// Filter data loading states
+const loadingSectorsFilter = ref(false)
+const loadingBrokersFilter = ref(false)
+const availableSectorsFilter = ref([])
+const availableBrokersFilter = ref([])
+
+// Strategy options
+const strategyOptions = [
+  { value: 'scalper', label: 'Scalper' },
+  { value: 'momentum', label: 'Momentum' },
+  { value: 'mean_reversion', label: 'Mean Reversion' },
+  { value: 'swing', label: 'Swing' },
+  { value: 'day_trading', label: 'Day Trading' },
+  { value: 'position', label: 'Position Trading' },
+  { value: 'breakout', label: 'Breakout' },
+  { value: 'reversal', label: 'Reversal' },
+  { value: 'trend_following', label: 'Trend Following' },
+  { value: 'contrarian', label: 'Contrarian' },
+  { value: 'news_momentum', label: 'News Momentum' },
+  { value: 'news_swing', label: 'News Swing' },
+  { value: 'news_uncertainty', label: 'News Uncertainty' }
+]
+
+// Day of week options
+const dayOfWeekOptions = [
+  { value: 1, label: 'Monday' },
+  { value: 2, label: 'Tuesday' },
+  { value: 3, label: 'Wednesday' },
+  { value: 4, label: 'Thursday' },
+  { value: 5, label: 'Friday' }
+]
+
+// Local filters that are displayed in UI
+const localFilters = ref({
+  symbol: '',
   startDate: '',
-  endDate: ''
+  endDate: '',
+  strategies: [],
+  sectors: [],
+  hasNews: '',
+  side: '',
+  minPrice: null,
+  maxPrice: null,
+  minQuantity: null,
+  maxQuantity: null,
+  status: '',
+  minPnl: null,
+  maxPnl: null,
+  pnlType: '',
+  holdTime: '',
+  brokers: [],
+  daysOfWeek: []
+})
+
+// Filters that are sent to API (converted from localFilters)
+const filters = ref({
+  // Basic filters
+  symbol: '',
+  startDate: '',
+  endDate: '',
+  strategies: '',
+  sectors: '',
+  hasNews: '',
+  // Advanced filters
+  side: '',
+  minPrice: null,
+  maxPrice: null,
+  minQuantity: null,
+  maxQuantity: null,
+  status: '',
+  minPnl: null,
+  maxPnl: null,
+  pnlType: '',
+  holdTime: '',
+  brokers: '',
+  daysOfWeek: ''
 })
 
 const overview = ref({
@@ -964,6 +1380,136 @@ const showCompletionMessage = ref(false)
 const calculationMethod = computed(() => {
   return userSettings.value?.statisticsCalculation === 'median' ? 'Median' : 'Average'
 })
+
+
+
+// Helper methods for multi-select dropdowns
+function getSelectedStrategyText() {
+  if (localFilters.value.strategies.length === 0) return 'All Strategies'
+  if (localFilters.value.strategies.length === 1) {
+    const strategy = strategyOptions.find(s => s.value === localFilters.value.strategies[0])
+    return strategy ? strategy.label : 'All Strategies'
+  }
+  return `${localFilters.value.strategies.length} strategies selected`
+}
+
+function getSelectedSectorText() {
+  if (localFilters.value.sectors.length === 0) return loadingSectorsFilter.value ? 'Loading sectors...' : 'All Sectors'
+  if (localFilters.value.sectors.length === 1) return localFilters.value.sectors[0]
+  return `${localFilters.value.sectors.length} sectors selected`
+}
+
+function getSelectedBrokerText() {
+  if (localFilters.value.brokers.length === 0) return loadingBrokersFilter.value ? 'Loading brokers...' : 'All Brokers'
+  if (localFilters.value.brokers.length === 1) return localFilters.value.brokers[0]
+  return `${localFilters.value.brokers.length} brokers selected`
+}
+
+function getSelectedDayOfWeekText() {
+  if (localFilters.value.daysOfWeek.length === 0) return 'All Days'
+  if (localFilters.value.daysOfWeek.length === 1) {
+    const day = dayOfWeekOptions.find(d => d.value === localFilters.value.daysOfWeek[0])
+    return day ? day.label : 'All Days'
+  }
+  return `${localFilters.value.daysOfWeek.length} days selected`
+}
+
+function toggleAllStrategies(event) {
+  if (event.target.checked) {
+    localFilters.value.strategies = []
+  }
+}
+
+function toggleAllSectors(event) {
+  if (event.target.checked) {
+    localFilters.value.sectors = []
+  }
+}
+
+function toggleAllBrokers(event) {
+  if (event.target.checked) {
+    localFilters.value.brokers = []
+  }
+}
+
+function toggleAllDaysOfWeek(event) {
+  if (!event.target.checked) {
+    localFilters.value.daysOfWeek = dayOfWeekOptions.map(d => d.value)
+  } else {
+    localFilters.value.daysOfWeek = []
+  }
+}
+
+// Count of active advanced filters
+const activeAdvancedCount = computed(() => {
+  let count = 0
+  if (localFilters.value.hasNews) count++
+  if (localFilters.value.side) count++
+  if (localFilters.value.minPrice || localFilters.value.maxPrice) count++
+  if (localFilters.value.minQuantity || localFilters.value.maxQuantity) count++
+  if (localFilters.value.status) count++
+  if (localFilters.value.minPnl || localFilters.value.maxPnl) count++
+  if (localFilters.value.pnlType) count++
+  if (localFilters.value.holdTime) count++
+  return count
+})
+
+// Update active filters count to use localFilters
+const activeFiltersCount = computed(() => {
+  let count = 0
+  if (localFilters.value.symbol) count++
+  if (localFilters.value.startDate || localFilters.value.endDate) count++
+  if (localFilters.value.strategies.length > 0) count++
+  if (localFilters.value.sectors.length > 0) count++
+  if (localFilters.value.brokers.length > 0) count++
+  if (localFilters.value.daysOfWeek.length > 0) count++
+  return count + activeAdvancedCount.value
+})
+
+// Click outside handlers
+function handleClickOutside(event) {
+  const dropdowns = [
+    { ref: showStrategyDropdown, selector: '[data-dropdown="strategy"]' },
+    { ref: showSectorDropdown, selector: '[data-dropdown="sector"]' },
+    { ref: showBrokerDropdown, selector: '[data-dropdown="broker"]' },
+    { ref: showDayOfWeekDropdown, selector: '[data-dropdown="day"]' }
+  ]
+  
+  dropdowns.forEach(dropdown => {
+    const element = document.querySelector(dropdown.selector)
+    if (element && !element.contains(event.target)) {
+      dropdown.ref.value = false
+    }
+  })
+}
+
+// Fetch available sectors for filter dropdown
+async function fetchAvailableSectorsForFilter() {
+  loadingSectorsFilter.value = true
+  try {
+    const response = await api.get('/analytics/sectors/available')
+    availableSectorsFilter.value = response.data.sectors || []
+  } catch (error) {
+    console.error('Failed to fetch sectors for filter:', error)
+    availableSectorsFilter.value = []
+  } finally {
+    loadingSectorsFilter.value = false
+  }
+}
+
+// Fetch available brokers for filter dropdown
+async function fetchAvailableBrokersForFilter() {
+  loadingBrokersFilter.value = true
+  try {
+    const response = await api.get('/analytics/brokers/available')
+    availableBrokersFilter.value = response.data.brokers || []
+  } catch (error) {
+    console.error('Failed to fetch brokers for filter:', error)
+    availableBrokersFilter.value = []
+  } finally {
+    loadingBrokersFilter.value = false
+  }
+}
 
 // Computed property for displayed sectors
 const displayedSectorData = computed(() => {
@@ -1631,10 +2177,7 @@ function createDrawdownChart() {
 
 async function fetchChartData() {
   try {
-    const params = {}
-    if (filters.value.startDate) params.startDate = filters.value.startDate
-    if (filters.value.endDate) params.endDate = filters.value.endDate
-
+    const params = buildFilterParams()
     const response = await api.get('/analytics/charts', { params })
     
     console.log('Chart data received:', response.data)
@@ -1672,12 +2215,36 @@ async function fetchUserSettings() {
   }
 }
 
+// Helper function to build filter params
+function buildFilterParams(additionalParams = {}) {
+  const params = { ...additionalParams }
+  
+  // Add all filter parameters
+  if (filters.value.symbol) params.symbol = filters.value.symbol
+  if (filters.value.startDate) params.startDate = filters.value.startDate
+  if (filters.value.endDate) params.endDate = filters.value.endDate
+  if (filters.value.strategies) params.strategies = filters.value.strategies
+  if (filters.value.sectors) params.sectors = filters.value.sectors
+  if (filters.value.hasNews) params.hasNews = filters.value.hasNews
+  if (filters.value.side) params.side = filters.value.side
+  if (filters.value.minPrice !== null) params.minPrice = filters.value.minPrice
+  if (filters.value.maxPrice !== null) params.maxPrice = filters.value.maxPrice
+  if (filters.value.minQuantity !== null) params.minQuantity = filters.value.minQuantity
+  if (filters.value.maxQuantity !== null) params.maxQuantity = filters.value.maxQuantity
+  if (filters.value.status) params.status = filters.value.status
+  if (filters.value.minPnl !== null) params.minPnl = filters.value.minPnl
+  if (filters.value.maxPnl !== null) params.maxPnl = filters.value.maxPnl
+  if (filters.value.pnlType) params.pnlType = filters.value.pnlType
+  if (filters.value.holdTime) params.holdTime = filters.value.holdTime
+  if (filters.value.brokers) params.brokers = filters.value.brokers
+  if (filters.value.daysOfWeek) params.daysOfWeek = filters.value.daysOfWeek
+  
+  return params
+}
+
 async function fetchOverview() {
   try {
-    const params = {}
-    if (filters.value.startDate) params.startDate = filters.value.startDate
-    if (filters.value.endDate) params.endDate = filters.value.endDate
-
+    const params = buildFilterParams()
     const response = await api.get('/analytics/overview', { params })
     console.log('Analytics API response:', response.data)
     console.log('Overview data received:', response.data.overview)
@@ -1689,10 +2256,7 @@ async function fetchOverview() {
 
 async function fetchPerformance() {
   try {
-    const params = { period: performancePeriod.value }
-    if (filters.value.startDate) params.startDate = filters.value.startDate
-    if (filters.value.endDate) params.endDate = filters.value.endDate
-
+    const params = buildFilterParams({ period: performancePeriod.value })
     const response = await api.get('/analytics/performance', { params })
     performanceData.value = response.data.performance
   } catch (error) {
@@ -1702,13 +2266,10 @@ async function fetchPerformance() {
 
 async function fetchSymbolStats() {
   try {
-    const params = {}
-    if (filters.value.startDate) params.startDate = filters.value.startDate
-    if (filters.value.endDate) params.endDate = filters.value.endDate
-
-    console.log('📊 Fetching symbol stats with filters:', params)
+    const params = buildFilterParams()
+    console.log('[SYMBOLS] Fetching symbol stats with filters:', params)
     const response = await api.get('/analytics/symbols', { params })
-    console.log('📊 Symbol stats response:', response.data)
+    console.log('[SYMBOLS] Symbol stats response:', response.data)
     symbolStats.value = response.data.symbols
   } catch (error) {
     console.error('Failed to fetch symbol stats:', error)
@@ -1717,10 +2278,7 @@ async function fetchSymbolStats() {
 
 async function fetchTagStats() {
   try {
-    const params = {}
-    if (filters.value.startDate) params.startDate = filters.value.startDate
-    if (filters.value.endDate) params.endDate = filters.value.endDate
-
+    const params = buildFilterParams()
     const response = await api.get('/analytics/tags', { params })
     tagStats.value = response.data.tags
   } catch (error) {
@@ -1730,10 +2288,7 @@ async function fetchTagStats() {
 
 async function fetchDrawdownData() {
   try {
-    const params = {}
-    if (filters.value.startDate) params.startDate = filters.value.startDate
-    if (filters.value.endDate) params.endDate = filters.value.endDate
-
+    const params = buildFilterParams()
     const response = await api.get('/analytics/drawdown', { params })
     drawdownData.value = response.data.drawdown
   } catch (error) {
@@ -1741,7 +2296,31 @@ async function fetchDrawdownData() {
   }
 }
 
-async function applyFilters() {
+async function applyFilters(newFilters = null) {
+  // Convert localFilters to API format
+  filters.value = {
+    // Basic filters
+    symbol: localFilters.value.symbol,
+    startDate: localFilters.value.startDate,
+    endDate: localFilters.value.endDate,
+    strategies: localFilters.value.strategies.join(','),
+    sectors: localFilters.value.sectors.join(','),
+    hasNews: localFilters.value.hasNews,
+    // Advanced filters
+    side: localFilters.value.side,
+    minPrice: localFilters.value.minPrice,
+    maxPrice: localFilters.value.maxPrice,
+    minQuantity: localFilters.value.minQuantity,
+    maxQuantity: localFilters.value.maxQuantity,
+    status: localFilters.value.status,
+    minPnl: localFilters.value.minPnl,
+    maxPnl: localFilters.value.maxPnl,
+    pnlType: localFilters.value.pnlType,
+    holdTime: localFilters.value.holdTime,
+    brokers: localFilters.value.brokers.join(','),
+    daysOfWeek: localFilters.value.daysOfWeek.join(',')
+  }
+  
   loading.value = true
   
   // Save filters to localStorage
@@ -1777,9 +2356,79 @@ async function applyFilters() {
   }, 100)
 }
 
+async function resetFilters() {
+  // Reset local filters
+  localFilters.value = {
+    symbol: '',
+    startDate: '',
+    endDate: '',
+    strategies: [],
+    sectors: [],
+    hasNews: '',
+    side: '',
+    minPrice: null,
+    maxPrice: null,
+    minQuantity: null,
+    maxQuantity: null,
+    status: '',
+    minPnl: null,
+    maxPnl: null,
+    pnlType: '',
+    holdTime: '',
+    brokers: [],
+    daysOfWeek: []
+  }
+  
+  // Reset and reload data
+  await clearFilters()
+}
+
 async function clearFilters() {
-  filters.value.startDate = ''
-  filters.value.endDate = ''
+  // Reset local filters
+  localFilters.value = {
+    symbol: '',
+    startDate: '',
+    endDate: '',
+    strategies: [],
+    sectors: [],
+    hasNews: '',
+    side: '',
+    minPrice: null,
+    maxPrice: null,
+    minQuantity: null,
+    maxQuantity: null,
+    status: '',
+    minPnl: null,
+    maxPnl: null,
+    pnlType: '',
+    holdTime: '',
+    brokers: [],
+    daysOfWeek: []
+  }
+  
+  // Reset API filters
+  filters.value = {
+    // Basic filters
+    symbol: '',
+    startDate: '',
+    endDate: '',
+    strategies: '',
+    sectors: '',
+    hasNews: '',
+    // Advanced filters
+    side: '',
+    minPrice: null,
+    maxPrice: null,
+    minQuantity: null,
+    maxQuantity: null,
+    status: '',
+    minPnl: null,
+    maxPnl: null,
+    pnlType: '',
+    holdTime: '',
+    brokers: '',
+    daysOfWeek: ''
+  }
   
   // Clear localStorage to ensure fresh defaults
   localStorage.removeItem('analyticsFilters')
@@ -1790,31 +2439,30 @@ async function clearFilters() {
 
 async function getRecommendations() {
   try {
-    console.log('🚀 Starting AI recommendations request...')
+    console.log('[START] Starting AI recommendations request...')
     loadingRecommendations.value = true
     recommendationError.value = null
     recommendations.value = null
     
-    const params = new URLSearchParams()
-    if (filters.value.startDate) params.append('startDate', filters.value.startDate)
-    if (filters.value.endDate) params.append('endDate', filters.value.endDate)
+    const params = buildFilterParams()
     
-    console.log('📡 Making API call to:', `/analytics/recommendations?${params}`)
+    console.log('[API] Making API call to /analytics/recommendations with params:', params)
     
     // Add timeout to the request
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), 180000) // 3 minute timeout for AI processing
     
     try {
-      const response = await api.get(`/analytics/recommendations?${params}`, {
+      const response = await api.get('/analytics/recommendations', {
+        params,
         signal: controller.signal
       })
       clearTimeout(timeoutId)
       
-      console.log('✅ API response received:', response)
-      console.log('📊 Response status:', response.status)
-      console.log('📦 Response data keys:', Object.keys(response.data || {}))
-      console.log('📝 Recommendations content preview:', response.data?.recommendations?.substring(0, 100) + '...')
+      console.log('[SUCCESS] API response received:', response)
+      console.log('[API] Response status:', response.status)
+      console.log('[PACKAGE] Response data keys:', Object.keys(response.data || {}))
+      console.log('[CONFIG] Recommendations content preview:', response.data?.recommendations?.substring(0, 100) + '...')
       
       if (!response.data) {
         throw new Error('No data received from API')
@@ -1825,18 +2473,18 @@ async function getRecommendations() {
       }
       
       recommendations.value = response.data
-      console.log('💾 Recommendations stored in state:', !!recommendations.value)
-      console.log('🎯 Setting showRecommendations to true...')
+      console.log('[STORAGE] Recommendations stored in state:', !!recommendations.value)
+      console.log('[TARGET] Setting showRecommendations to true...')
       
       // Force reactivity update with nextTick
       await nextTick()
       showRecommendations.value = true
       
-      console.log('👁️ showRecommendations is now:', showRecommendations.value)
+      console.log('[CHECK] showRecommendations is now:', showRecommendations.value)
       
       // Double-check modal state after a small delay
       setTimeout(() => {
-        console.log('🔍 Double-checking modal state after 100ms:', showRecommendations.value)
+        console.log('[CHECK] Double-checking modal state after 100ms:', showRecommendations.value)
       }, 100)
       
     } catch (timeoutError) {
@@ -1848,7 +2496,7 @@ async function getRecommendations() {
     }
     
   } catch (error) {
-    console.error('❌ Error fetching recommendations:', error)
+    console.error('[ERROR] Error fetching recommendations:', error)
     console.error('Error response:', error.response)
     console.error('Error status:', error.response?.status)
     console.error('Error data:', error.response?.data)
@@ -1864,13 +2512,10 @@ async function getRecommendations() {
 async function fetchSectorData() {
   try {
     loadingSectors.value = true
-    const params = new URLSearchParams()
-    if (filters.value.startDate) params.append('startDate', filters.value.startDate)
-    if (filters.value.endDate) params.append('endDate', filters.value.endDate)
-    
-    console.log('🏭 Fetching sector performance data with filters:', params.toString())
-    const response = await api.get(`/analytics/sectors?${params}`)
-    console.log('🏭 Sector response:', response.data)
+    const params = buildFilterParams()
+    console.log('[SECTORS] Fetching sector performance data with filters:', params)
+    const response = await api.get('/analytics/sectors', { params })
+    console.log('[SECTORS] Sector response:', response.data)
     sectorData.value = response.data.sectors || []
     allSectorData.value = response.data.sectors || []
     
@@ -1892,9 +2537,9 @@ async function fetchSectorData() {
         : 0
     }
     
-    console.log('✅ Sector data loaded:', sectorData.value.length, 'sectors')
-    console.log('📊 Sector stats:', sectorStats.value)
-    console.log('📈 Progress:', categorizationProgress.value)
+    console.log('[SUCCESS] Sector data loaded:', sectorData.value.length, 'sectors')
+    console.log('[SECTORS] Sector stats:', sectorStats.value)
+    console.log('[PROGRESS] Categorization progress:', categorizationProgress.value)
     
     // If there are uncategorized symbols, set up auto-refresh with progress updates
     if (sectorStats.value.uncategorizedSymbols > 0) {
@@ -1902,7 +2547,7 @@ async function fetchSectorData() {
       startProgressTracking()
     }
   } catch (error) {
-    console.error('❌ Error fetching sector data:', error)
+    console.error('[ERROR] Error fetching sector data:', error)
     sectorData.value = []
     sectorStats.value = { symbolsAnalyzed: 0, totalSymbols: 0, uncategorizedSymbols: 0 }
   } finally {
@@ -1911,7 +2556,7 @@ async function fetchSectorData() {
 }
 
 function navigateToSectorTrades(sectorName) {
-  console.log(`📊 Navigating to trades for sector: ${sectorName}`)
+  console.log(`[NAV] Navigating to trades for sector: ${sectorName}`)
   router.push({
     path: '/trades',
     query: {
@@ -1927,7 +2572,7 @@ async function refreshSectorData() {
     if (filters.value.startDate) params.append('startDate', filters.value.startDate)
     if (filters.value.endDate) params.append('endDate', filters.value.endDate)
     
-    console.log('🔄 Refreshing sector performance data...')
+    console.log('[PROCESS] Refreshing sector performance data...')
     const response = await api.get(`/analytics/sectors/refresh?${params}`)
     sectorData.value = response.data.sectors || []
     allSectorData.value = response.data.sectors || []
@@ -1951,19 +2596,19 @@ async function refreshSectorData() {
         : 0
     }
     
-    console.log('✅ Sector data refreshed:', sectorData.value.length, 'sectors')
-    console.log('📊 Updated sector stats:', sectorStats.value)
-    console.log('📈 Updated progress:', categorizationProgress.value)
+    console.log('[SUCCESS] Sector data refreshed:', sectorData.value.length, 'sectors')
+    console.log('[UPDATE] Updated sector stats:', sectorStats.value)
+    console.log('[UPDATE] Updated categorization progress:', categorizationProgress.value)
     
     // Show success message if more symbols were categorized
     if (oldUncategorized > sectorStats.value.uncategorizedSymbols) {
       const newlyCategorized = oldUncategorized - sectorStats.value.uncategorizedSymbols
-      console.log(`🎉 ${newlyCategorized} additional symbols categorized!`)
+      console.log(`[SUCCESS] ${newlyCategorized} additional symbols categorized!`)
     }
     
     // Check if all symbols are now categorized
     if (sectorStats.value.uncategorizedSymbols === 0 && sectorStats.value.totalSymbols > 0) {
-      console.log('🎉 All symbols categorized!')
+      console.log('[SUCCESS] All symbols categorized!')
       showCompletionMessage.value = true
       
       // Hide completion message after 3 seconds
@@ -1982,7 +2627,7 @@ async function refreshSectorData() {
     }
     
   } catch (error) {
-    console.error('❌ Error refreshing sector data:', error)
+    console.error('[ERROR] Error refreshing sector data:', error)
   } finally {
     loadingSectorRefresh.value = false
   }
@@ -2024,7 +2669,7 @@ function parseMarkdown(text) {
   if (!text) return ''
   
   try {
-    console.log('🎨 Parsing markdown, text length:', text.length)
+    console.log('[STYLE] Parsing markdown, text length:', text.length)
     
     // Use basic marked parsing with post-processing for styling
     let result = marked.parse(text, {
@@ -2046,11 +2691,11 @@ function parseMarkdown(text) {
       .replace(/<li>/g, '<li class="ai-list-item">')
       .replace(/<strong>/g, '<strong class="ai-emphasis">')
     
-    console.log('✅ Markdown parsed and styled successfully, result length:', result.length)
+    console.log('[SUCCESS] Markdown parsed and styled successfully, result length:', result.length)
     return result
   
   } catch (error) {
-    console.error('❌ Error parsing markdown:', error)
+    console.error('[ERROR] Error parsing markdown:', error)
     console.error('Text that failed:', text.substring(0, 200) + '...')
     return `<div class="text-red-500 p-4">Error parsing markdown: ${error.message}<br><br>Raw text:<br><pre class="whitespace-pre-wrap">${text}</pre></div>`
   }
@@ -2217,7 +2862,45 @@ function navigateToTradesByDate(date) {
 }
 
 onMounted(async () => {
+  // Add click outside listener
+  document.addEventListener('click', handleClickOutside)
+  
+  // Fetch filter dropdown data
+  fetchAvailableSectorsForFilter()
+  fetchAvailableBrokersForFilter()
+  
   await loadData()
+  
+  // Initialize localFilters from saved filters
+  const savedFilters = localStorage.getItem('analyticsFilters')
+  if (savedFilters) {
+    try {
+      const parsed = JSON.parse(savedFilters)
+      // Convert API format back to local format
+      localFilters.value = {
+        symbol: parsed.symbol || '',
+        startDate: parsed.startDate || '',
+        endDate: parsed.endDate || '',
+        strategies: parsed.strategies ? parsed.strategies.split(',').filter(Boolean) : [],
+        sectors: parsed.sectors ? parsed.sectors.split(',').filter(Boolean) : [],
+        hasNews: parsed.hasNews || '',
+        side: parsed.side || '',
+        minPrice: parsed.minPrice || null,
+        maxPrice: parsed.maxPrice || null,
+        minQuantity: parsed.minQuantity || null,
+        maxQuantity: parsed.maxQuantity || null,
+        status: parsed.status || '',
+        minPnl: parsed.minPnl || null,
+        maxPnl: parsed.maxPnl || null,
+        pnlType: parsed.pnlType || '',
+        holdTime: parsed.holdTime || '',
+        brokers: parsed.brokers ? parsed.brokers.split(',').filter(Boolean) : [],
+        daysOfWeek: parsed.daysOfWeek ? parsed.daysOfWeek.split(',').filter(Boolean).map(Number) : []
+      }
+    } catch (e) {
+      console.error('Failed to parse saved filters:', e)
+    }
+  }
   
   // Scroll to hash if present
   if (route.hash) {
@@ -2231,6 +2914,9 @@ onMounted(async () => {
 
 // Clean up charts and intervals on unmount
 onUnmounted(() => {
+  // Remove click outside listener
+  document.removeEventListener('click', handleClickOutside)
+  
   if (tradeDistributionChartInstance) {
     tradeDistributionChartInstance.destroy()
   }
@@ -2263,13 +2949,13 @@ onUnmounted(() => {
 // Load More function
 function loadMoreSectors() {
   sectorsToShow.value += 10
-  console.log(`📊 Showing ${sectorsToShow.value} sectors out of ${allSectorData.value.length}`)
+  console.log(`[DISPLAY] Showing ${sectorsToShow.value} sectors out of ${allSectorData.value.length}`)
 }
 
 // Collapse function
 function collapseSectors() {
   sectorsToShow.value = 10
-  console.log(`📊 Collapsed to show ${sectorsToShow.value} sectors`)
+  console.log(`[DISPLAY] Collapsed to show ${sectorsToShow.value} sectors`)
 }
 </script>
 

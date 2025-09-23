@@ -1,7 +1,7 @@
 const db = require('../src/config/database');
 
 async function simulateEnrichment() {
-  console.log('🚀 Starting enrichment simulation...');
+  console.log('[START] Starting enrichment simulation...');
   
   const userId = 'f7ffbef5-7ec4-4972-be3f-439233ef8410';
   let processed = 0;
@@ -27,11 +27,11 @@ async function simulateEnrichment() {
       const processing = statusMap.processing || 0;
       const completed = statusMap.completed || 0;
       
-      console.log(`📊 Status: ${completed} completed, ${processing} processing, ${pending} pending`);
+      console.log(`[STATS] Status: ${completed} completed, ${processing} processing, ${pending} pending`);
       
       // If there are no pending or processing trades, we're done
       if (pending === 0 && processing === 0) {
-        console.log('✅ All trades enriched!');
+        console.log('[SUCCESS] All trades enriched!');
         break;
       }
       
@@ -73,14 +73,14 @@ async function simulateEnrichment() {
         `, [userId, toComplete]);
         
         processed += toComplete;
-        console.log(`✅ Completed ${toComplete} trades (total: ${processed})`);
+        console.log(`[SUCCESS] Completed ${toComplete} trades (total: ${processed})`);
       }
       
       // Wait 5 seconds before next update
       await new Promise(resolve => setTimeout(resolve, 5000));
       
     } catch (error) {
-      console.error('❌ Error in simulation:', error);
+      console.error('[ERROR] Error in simulation:', error);
       break;
     }
   }

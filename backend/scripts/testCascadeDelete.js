@@ -3,7 +3,7 @@ const jobQueue = require('../src/utils/jobQueue');
 
 async function testCascadeDelete() {
   try {
-    console.log('🧪 Testing cascade delete functionality...');
+    console.log('[CHECK] Testing cascade delete functionality...');
     
     // Get a real user ID
     const userResult = await db.query('SELECT id FROM users LIMIT 1');
@@ -24,40 +24,40 @@ async function testCascadeDelete() {
     ]);
     
     const testTradeId = testTradeResult.rows[0].id;
-    console.log('✅ Created test trade:', testTradeId);
+    console.log('[SUCCESS] Created test trade:', testTradeId);
     
     // Create a job for this trade  
     const jobId = await jobQueue.addJob('strategy_classification', {
       tradeId: testTradeId
     }, 3, userId);
     
-    console.log('✅ Created test job:', jobId);
+    console.log('[SUCCESS] Created test job:', jobId);
     
     // Verify job exists
     const jobCheck = await db.query('SELECT * FROM job_queue WHERE id = $1', [jobId]);
-    console.log('✅ Job exists:', jobCheck.rows.length === 1);
+    console.log('[SUCCESS] Job exists:', jobCheck.rows.length === 1);
     
     // Delete the trade
     console.log('🗑️ Deleting test trade...');
     const Trade = require('../src/models/Trade');
     const deleteResult = await Trade.delete(testTradeId, userId);
-    console.log('✅ Trade deleted:', deleteResult !== null);
+    console.log('[SUCCESS] Trade deleted:', deleteResult !== null);
     
     // Check if job was also deleted
     const jobCheckAfter = await db.query('SELECT * FROM job_queue WHERE id = $1', [jobId]);
     const jobDeleted = jobCheckAfter.rows.length === 0;
-    console.log('✅ Job automatically deleted:', jobDeleted);
+    console.log('[SUCCESS] Job automatically deleted:', jobDeleted);
     
     if (jobDeleted) {
-      console.log('🎉 CASCADE DELETE TEST PASSED!');
-      console.log('✅ Jobs are now automatically deleted when trades are deleted');
+      console.log('[SUCCESS] CASCADE DELETE TEST PASSED!');
+      console.log('[SUCCESS] Jobs are now automatically deleted when trades are deleted');
     } else {
-      console.log('❌ CASCADE DELETE TEST FAILED - job still exists');
+      console.log('[ERROR] CASCADE DELETE TEST FAILED - job still exists');
     }
     
     process.exit(0);
   } catch (error) {
-    console.error('❌ Test failed:', error.message);
+    console.error('[ERROR] Test failed:', error.message);
     console.error('Stack:', error.stack);
     process.exit(1);
   }

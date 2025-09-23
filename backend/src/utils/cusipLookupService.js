@@ -30,7 +30,7 @@ class CusipLookupService {
       return cached;
     }
 
-    console.log(`🔍 Starting comprehensive CUSIP lookup for ${cleanCusip}`);
+    console.log(`[CHECK] Starting comprehensive CUSIP lookup for ${cleanCusip}`);
 
     // Try each source in order
     for (const source of this.sources) {
@@ -39,7 +39,7 @@ class CusipLookupService {
         const result = await source.method(cleanCusip);
         
         if (result) {
-          console.log(`✅ ${source.name} resolved CUSIP ${cleanCusip} to ${result}`);
+          console.log(`[SUCCESS] ${source.name} resolved CUSIP ${cleanCusip} to ${result}`);
           
           // Cache the successful result
           await cache.set('cusip_resolution', cleanCusip, result);
@@ -50,7 +50,7 @@ class CusipLookupService {
         await this.delay(1000);
         
       } catch (error) {
-        console.warn(`❌ ${source.name} failed for CUSIP ${cleanCusip}: ${error.message}`);
+        console.warn(`[ERROR] ${source.name} failed for CUSIP ${cleanCusip}: ${error.message}`);
         
         // Continue to next source
         await this.delay(500);
@@ -58,7 +58,7 @@ class CusipLookupService {
     }
 
     // All sources failed - cache null result to avoid repeated lookups
-    console.log(`❌ All sources failed for CUSIP ${cleanCusip}`);
+    console.log(`[ERROR] All sources failed for CUSIP ${cleanCusip}`);
     await cache.set('cusip_resolution', cleanCusip, null);
     return null;
   }

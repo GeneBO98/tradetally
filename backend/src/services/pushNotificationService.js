@@ -32,7 +32,7 @@ class PushNotificationService {
       }
 
       this.apnProvider = new apn.Provider(apnsConfig);
-      console.log(`✓ APNS initialized for ${apnsConfig.production ? 'production' : 'development'}`);
+      console.log(`[SUCCESS] APNS initialized for ${apnsConfig.production ? 'production' : 'development'}`);
     } catch (error) {
       logger.logError('Failed to initialize APNS:', error);
       this.isEnabled = false;

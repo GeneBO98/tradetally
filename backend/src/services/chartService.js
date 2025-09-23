@@ -12,8 +12,8 @@ class ChartService {
       
       console.log(`Getting chart data for user ${userId}, tier: ${userTier || 'free'}, symbol: ${symbol}`);
       console.log('Chart data input:', { entryDate, exitDate });
-      console.log('🚨 CHART SERVICE: EntryDate type and value:', typeof entryDate, entryDate);
-      console.log('🚨 CHART SERVICE: ExitDate type and value:', typeof exitDate, exitDate);
+      console.log('[DEBUG] CHART SERVICE: EntryDate type and value:', typeof entryDate, entryDate);
+      console.log('[DEBUG] CHART SERVICE: ExitDate type and value:', typeof exitDate, exitDate);
       
       // Pro users get Finnhub data exclusively (higher quality, more frequent updates)
       if (isProUser && finnhub.isConfigured()) {

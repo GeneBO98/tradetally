@@ -9,7 +9,7 @@ const db = require('../src/config/database');
 const Trade = require('../src/models/Trade');
 
 async function testClassification() {
-  console.log('🧪 Testing automatic strategy classification...');
+  console.log('[CHECK] Testing automatic strategy classification...');
   
   try {
     // Get a few sample trades to test
@@ -27,15 +27,15 @@ async function testClassification() {
     const trades = await db.query(sampleQuery);
     
     if (trades.rows.length === 0) {
-      console.log('✅ No unclassified trades found - all trades already have strategies!');
+      console.log('[SUCCESS] No unclassified trades found - all trades already have strategies!');
       return;
     }
     
-    console.log(`📊 Found ${trades.rows.length} unclassified trades to test:`);
+    console.log(`[STATS] Found ${trades.rows.length} unclassified trades to test:`);
     console.log('');
     
     for (const trade of trades.rows) {
-      console.log(`🔍 Testing trade ${trade.id}:`);
+      console.log(`[CHECK] Testing trade ${trade.id}:`);
       console.log(`   Symbol: ${trade.symbol}`);
       console.log(`   Hold time: ${Math.round(trade.hold_time_minutes)} minutes`);
       console.log(`   Has exit: ${trade.exit_time ? 'Yes' : 'No'}`);
@@ -72,7 +72,7 @@ async function testClassification() {
         })
       ]);
       
-      console.log(`   ✅ Updated trade ${trade.id} with strategy "${classification.strategy}"`);
+      console.log(`   [SUCCESS] Updated trade ${trade.id} with strategy "${classification.strategy}"`);
     }
     
     // Show current strategy distribution
@@ -87,16 +87,16 @@ async function testClassification() {
       ORDER BY count DESC
     `);
     
-    console.log('📈 Current Strategy Distribution:');
+    console.log('[ANALYTICS] Current Strategy Distribution:');
     distribution.rows.forEach(row => {
       console.log(`   ${row.strategy}: ${row.count} trades (avg confidence: ${Math.round(row.avg_confidence)}%)`);
     });
     
     console.log('');
-    console.log('✅ Test classification completed successfully!');
+    console.log('[SUCCESS] Test classification completed successfully!');
     
   } catch (error) {
-    console.error('❌ Test failed:', error);
+    console.error('[ERROR] Test failed:', error);
     throw error;
   }
 }
@@ -105,11 +105,11 @@ async function testClassification() {
 if (require.main === module) {
   testClassification()
     .then(() => {
-      console.log('🎉 All tests passed!');
+      console.log('[SUCCESS] All tests passed!');
       process.exit(0);
     })
     .catch((error) => {
-      console.error('💥 Test failed:', error);
+      console.error('[ERROR] Test failed:', error);
       process.exit(1);
     });
 }

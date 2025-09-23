@@ -518,7 +518,7 @@ class BillingService {
       const priceValues = Object.values(priceIds);
       const duplicatePrices = priceValues.filter((price, index) => priceValues.indexOf(price) !== index);
       if (duplicatePrices.length > 0) {
-        console.warn('⚠️ Duplicate price IDs detected:', duplicatePrices);
+        console.warn('[WARNING] Duplicate price IDs detected:', duplicatePrices);
         console.warn('Monthly and yearly plans are using the same Stripe price ID');
       }
 

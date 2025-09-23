@@ -33,28 +33,28 @@ class SymbolFilteringFixer {
     try {
       const ticker = await finnhub.lookupCusip(cusip);
       if (ticker && ticker !== cusip) {
-        console.log(`  ✅ Finnhub resolved ${cusip} → ${ticker}`);
+        console.log(`  [SUCCESS] Finnhub resolved ${cusip} → ${ticker}`);
         return ticker;
       }
     } catch (error) {
-      console.log(`  ❌ Finnhub failed for ${cusip}: ${error.message}`);
+      console.log(`  [ERROR] Finnhub failed for ${cusip}: ${error.message}`);
     }
     
     // Method 2: Try manual lookup for common patterns
     const manualMapping = this.getManualMapping(cusip);
     if (manualMapping) {
-      console.log(`  ✅ Manual mapping ${cusip} → ${manualMapping}`);
+      console.log(`  [SUCCESS] Manual mapping ${cusip} → ${manualMapping}`);
       return manualMapping;
     }
     
     // Method 3: Try to extract from existing data patterns
     const extracted = await this.extractFromExistingData(cusip);
     if (extracted) {
-      console.log(`  ✅ Extracted from data ${cusip} → ${extracted}`);
+      console.log(`  [SUCCESS] Extracted from data ${cusip} → ${extracted}`);
       return extracted;
     }
     
-    console.log(`  ❌ Could not resolve ${cusip}`);
+    console.log(`  [ERROR] Could not resolve ${cusip}`);
     return null;
   }
 
@@ -110,7 +110,7 @@ class SymbolFilteringFixer {
       `;
       const result = await db.query(query, [cusip, ticker]);
       
-      console.log(`  📝 Updated ${result.rowCount} trades: ${cusip} → ${ticker}`);
+      console.log(`  [CONFIG] Updated ${result.rowCount} trades: ${cusip} → ${ticker}`);
       this.results.tradesUpdated += result.rowCount;
       
       // Cache the resolution
@@ -118,7 +118,7 @@ class SymbolFilteringFixer {
       
       return result.rowCount;
     } catch (error) {
-      console.error(`  ❌ Failed to update trades for ${cusip}: ${error.message}`);
+      console.error(`  [ERROR] Failed to update trades for ${cusip}: ${error.message}`);
       return 0;
     }
   }
@@ -136,13 +136,13 @@ class SymbolFilteringFixer {
       const result = await db.query(query, [cusip, ticker]);
       
       if (result.rowCount > 0) {
-        console.log(`  📝 Updated symbol_categories: ${cusip} → ${ticker}`);
+        console.log(`  [CONFIG] Updated symbol_categories: ${cusip} → ${ticker}`);
         this.results.categoriesFixed += result.rowCount;
       }
       
       return result.rowCount;
     } catch (error) {
-      console.error(`  ❌ Failed to update symbol_categories for ${cusip}: ${error.message}`);
+      console.error(`  [ERROR] Failed to update symbol_categories for ${cusip}: ${error.message}`);
       return 0;
     }
   }
@@ -151,7 +151,7 @@ class SymbolFilteringFixer {
    * Process all CUSIPs in trades
    */
   async processAllCUSIPs() {
-    console.log('\n🔄 Processing all CUSIPs in trades...');
+    console.log('\n[PROCESS] Processing all CUSIPs in trades...');
     
     // Get all CUSIPs from trades
     const cusipsQuery = `
@@ -252,7 +252,7 @@ class SymbolFilteringFixer {
    * Reset failed CUSIPs in queue for retry
    */
   async resetFailedQueue() {
-    console.log('\n🔄 Resetting failed CUSIPs in queue...');
+    console.log('\n[PROCESS] Resetting failed CUSIPs in queue...');
     
     const resetQuery = `
       UPDATE cusip_lookup_queue 
@@ -269,7 +269,7 @@ class SymbolFilteringFixer {
    * Run the complete fix process
    */
   async run() {
-    console.log('🚀 Starting comprehensive symbol filtering fix...');
+    console.log('[START] Starting comprehensive symbol filtering fix...');
     
     try {
       // Step 1: Clean up incorrect data first
@@ -282,18 +282,18 @@ class SymbolFilteringFixer {
       await this.processAllCUSIPs();
       
       // Step 4: Show results
-      console.log('\n📊 RESULTS SUMMARY:');
-      console.log(`✅ CUSIPs resolved: ${this.results.cusipsResolved}`);
-      console.log(`📝 Trades updated: ${this.results.tradesUpdated}`);
+      console.log('\n[STATS] RESULTS SUMMARY:');
+      console.log(`[SUCCESS] CUSIPs resolved: ${this.results.cusipsResolved}`);
+      console.log(`[CONFIG] Trades updated: ${this.results.tradesUpdated}`);
       console.log(`🧹 Categories fixed: ${this.results.categoriesFixed}`);
-      console.log(`🔄 Queue entries reset: ${this.results.queueReset}`);
+      console.log(`[PROCESS] Queue entries reset: ${this.results.queueReset}`);
       
-      console.log('\n✅ Symbol filtering fix completed successfully!');
+      console.log('\n[SUCCESS] Symbol filtering fix completed successfully!');
       
       return this.results;
       
     } catch (error) {
-      console.error('❌ Fix process failed:', error);
+      console.error('[ERROR] Fix process failed:', error);
       throw error;
     }
   }
@@ -301,7 +301,7 @@ class SymbolFilteringFixer {
 
 // Add a test mode
 async function testCurrentFiltering() {
-  console.log('\n🧪 Testing current symbol filtering...');
+  console.log('\n[CHECK] Testing current symbol filtering...');
   
   const testCases = ['AAPL', 'MSFT', 'TSLA', 'GOOGL'];
   
@@ -340,11 +340,11 @@ if (require.main === module) {
   } else {
     fixer.run()
       .then(() => {
-        console.log('\n🎉 All done! Try testing your symbol filtering now.');
+        console.log('\n[SUCCESS] All done! Try testing your symbol filtering now.');
         process.exit(0);
       })
       .catch((error) => {
-        console.error('\n💥 Fix failed:', error);
+        console.error('\n[ERROR] Fix failed:', error);
         process.exit(1);
       });
   }

@@ -21,18 +21,18 @@ inject_analytics() {
 inject_analytics
 
 # Wait for database to be ready
-echo "⏳ Waiting for database connection..."
+echo "[WAIT] Waiting for database connection..."
 until nc -z "${DB_HOST:-postgres}" "${DB_PORT:-5432}"; do
   echo "   Database not ready, waiting..."
   sleep 2
 done
-echo "✅ Database connection established"
+echo "[OK] Database connection established"
 
 # Set environment variables for mobile support
 export RUN_MIGRATIONS="${RUN_MIGRATIONS:-true}"
 
 # Start backend (migrations will run automatically)
-echo "🚀 Starting TradeTally backend..."
+echo "[START] Starting TradeTally backend..."
 cd /app/backend && node src/server.js &
 
 # Wait for backend to start

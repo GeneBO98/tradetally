@@ -520,42 +520,42 @@ class FinnhubClient {
         if (result) {
           // Cache the result
           await cache.set('cusip_resolution', cleanCusip, result);
-          console.log(`✅ Comprehensive lookup resolved CUSIP ${cleanCusip} to ticker ${result}`);
+          console.log(`[SUCCESS] Comprehensive lookup resolved CUSIP ${cleanCusip} to ticker ${result}`);
           return result;
         } else {
-          console.log(`❌ Comprehensive lookup could not resolve CUSIP ${cleanCusip}`);
+          console.log(`[ERROR] Comprehensive lookup could not resolve CUSIP ${cleanCusip}`);
         }
       } catch (lookupError) {
-        console.warn(`❌ Comprehensive lookup failed for CUSIP ${cleanCusip}: ${lookupError.message}`);
+        console.warn(`[ERROR] Comprehensive lookup failed for CUSIP ${cleanCusip}: ${lookupError.message}`);
       }
       
       // Check if AI CUSIP resolution is enabled (disabled by default due to reliability issues)
       const aiCusipEnabled = process.env.ENABLE_AI_CUSIP_RESOLUTION === 'true';
       
       if (aiCusipEnabled) {
-        console.log(`⚠️  AI CUSIP resolution enabled - attempting AI fallback for ${cleanCusip} (results may be unreliable)`);
+        console.log(`[WARNING] AI CUSIP resolution enabled - attempting AI fallback for ${cleanCusip} (results may be unreliable)`);
         
         try {
           const aiResult = await this.lookupCusipWithAI(cleanCusip, userId);
           if (aiResult) {
             // Cache the AI result but mark it as low confidence
             await cache.set('cusip_resolution', cleanCusip, aiResult);
-            console.log(`🤖 AI resolved CUSIP ${cleanCusip} to ticker ${aiResult} (⚠️  VERIFY MANUALLY)`);
+            console.log(`[AI] AI resolved CUSIP ${cleanCusip} to ticker ${aiResult} (WARNING: VERIFY MANUALLY)`);
             return aiResult;
           } else {
-            console.log(`❌ AI could not resolve CUSIP ${cleanCusip}`);
+            console.log(`[ERROR] AI could not resolve CUSIP ${cleanCusip}`);
           }
         } catch (aiError) {
-          console.warn(`❌ AI fallback failed for CUSIP ${cleanCusip}: ${aiError.message}`);
+          console.warn(`[ERROR] AI fallback failed for CUSIP ${cleanCusip}: ${aiError.message}`);
         }
       } else {
-        console.log(`🔒 AI CUSIP resolution disabled for ${cleanCusip} (ENABLE_AI_CUSIP_RESOLUTION=false)`);
+        console.log(`[DISABLED] AI CUSIP resolution disabled for ${cleanCusip} (ENABLE_AI_CUSIP_RESOLUTION=false)`);
       }
       
       // Neither Finnhub nor comprehensive lookup found the CUSIP - cache the null result to avoid repeated lookups
       await cache.set('cusip_resolution', cleanCusip, null);
       console.log(`Could not resolve CUSIP ${cleanCusip} - no matching symbol found via any reliable source`);
-      console.log(`💡 Manual mapping available in Trade Import interface for CUSIP ${cleanCusip}`);
+      console.log(`[INFO] Manual mapping available in Trade Import interface for CUSIP ${cleanCusip}`);
       return null;
       
     } catch (error) {
@@ -786,7 +786,7 @@ Your response must be ONLY the ticker symbol or "NOT_FOUND" - no additional text
         // Additional validation: warn if AI returns common "guess" symbols
         const commonGuesses = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'META', 'NVDA', 'JPM', 'BAC', 'WMT'];
         if (commonGuesses.includes(ticker)) {
-          console.warn(`⚠️  AI returned common stock symbol ${ticker} for CUSIP ${cusip} - verify accuracy`);
+          console.warn(`[WARNING] AI returned common stock symbol ${ticker} for CUSIP ${cusip} - verify accuracy`);
         }
         
         return ticker;

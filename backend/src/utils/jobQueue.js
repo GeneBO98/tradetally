@@ -99,14 +99,14 @@ class JobQueue {
       const result = await db.query(query);
       
       if (result.rows[0]) {
-        logger.logImport(`✅ Claimed job ${result.rows[0].id} of type ${result.rows[0].type}`);
+        logger.logImport(`[SUCCESS] Claimed job ${result.rows[0].id} of type ${result.rows[0].type}`);
         return result.rows[0];
       }
       
       // No jobs found - this is normal when queue is empty, don't log it
       return null;
     } catch (error) {
-      logger.logError(`❌ Failed to get next job: ${error.message}`);
+      logger.logError(`[ERROR] Failed to get next job: ${error.message}`);
       return null;
     }
   }
@@ -184,7 +184,7 @@ class JobQueue {
     }
 
     this.isProcessing = true;
-    logger.logImport('🚀 Starting job queue processing');
+    logger.logImport('[START] Starting job queue processing');
 
     // Process jobs every 5 seconds
     this.processingInterval = setInterval(async () => {
@@ -196,12 +196,12 @@ class JobQueue {
         }
         // Don't log when processed === false (no jobs found) - this is normal
       } catch (error) {
-        logger.logError(`❌ Error in job processing: ${error.message}`);
+        logger.logError(`[ERROR] Error in job processing: ${error.message}`);
         logger.logError(`Stack trace: ${error.stack}`);
       }
     }, 5000);
     
-    logger.logImport('✅ Job queue processing interval started (every 5 seconds)');
+    logger.logImport('[SUCCESS] Job queue processing interval started (every 5 seconds)');
   }
 
   /**
@@ -225,7 +225,7 @@ class JobQueue {
       return false; // No job found - this is normal, don't log it
     }
 
-    logger.logImport(`🚀 Processing job ${job.id} of type ${job.type}`);
+    logger.logImport(`[START] Processing job ${job.id} of type ${job.type}`);
 
     try {
       let data;
@@ -269,10 +269,10 @@ class JobQueue {
       }
 
       await this.completeJob(job.id, result);
-      logger.logImport(`✅ Job ${job.id} completed successfully`);
+      logger.logImport(`[SUCCESS] Job ${job.id} completed successfully`);
       return true; // Job was processed
     } catch (error) {
-      logger.logError(`❌ Job ${job.id} failed: ${error.message}`);
+      logger.logError(`[ERROR] Job ${job.id} failed: ${error.message}`);
       logger.logError(`Stack trace: ${error.stack}`);
       await this.failJob(job.id, error.message);
       return true; // Job was processed (but failed)

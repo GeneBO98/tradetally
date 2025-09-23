@@ -10,7 +10,7 @@ const jobQueue = require('../src/utils/jobQueue');
 
 async function restartEnrichment() {
   try {
-    console.log('🔄 Restarting enrichment for stuck trades...');
+    console.log('[PROCESS] Restarting enrichment for stuck trades...');
     
     // Get all trades that are stuck in pending enrichment status
     const pendingTrades = await db.query(`
@@ -23,7 +23,7 @@ async function restartEnrichment() {
     console.log(`Found ${pendingTrades.rows.length} trades with pending enrichment`);
     
     if (pendingTrades.rows.length === 0) {
-      console.log('✅ No trades need enrichment restart');
+      console.log('[SUCCESS] No trades need enrichment restart');
       return;
     }
     
@@ -36,7 +36,7 @@ async function restartEnrichment() {
     `);
     
     if (stuckJobs.rows.length > 0) {
-      console.log(`🔄 Reset ${stuckJobs.rows.length} stuck/failed jobs back to pending`);
+      console.log(`[PROCESS] Reset ${stuckJobs.rows.length} stuck/failed jobs back to pending`);
     }
     
     // Queue enrichment jobs for trades that need them
@@ -63,24 +63,24 @@ async function restartEnrichment() {
       }
     }
     
-    console.log(`✅ Queued ${jobsQueued} enrichment jobs`);
+    console.log(`[SUCCESS] Queued ${jobsQueued} enrichment jobs`);
     
     // Start background worker if not running
     const backgroundWorker = require('../src/workers/backgroundWorker');
     const status = backgroundWorker.getStatus();
     
     if (!status.isRunning || !status.queueProcessing) {
-      console.log('🚀 Starting background worker...');
+      console.log('[START] Starting background worker...');
       await backgroundWorker.start();
-      console.log('✅ Background worker started');
+      console.log('[SUCCESS] Background worker started');
     } else {
-      console.log('✅ Background worker is already running');
+      console.log('[SUCCESS] Background worker is already running');
     }
     
-    console.log('🎉 Enrichment restart completed successfully');
+    console.log('[SUCCESS] Enrichment restart completed successfully');
     
   } catch (error) {
-    console.error('❌ Failed to restart enrichment:', error.message);
+    console.error('[ERROR] Failed to restart enrichment:', error.message);
     process.exit(1);
   }
 }

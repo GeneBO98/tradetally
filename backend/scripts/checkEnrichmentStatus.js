@@ -3,7 +3,7 @@
 const db = require('../src/config/database');
 
 async function checkEnrichmentStatus() {
-  console.log('🔍 Checking Trade Enrichment Status\n');
+  console.log('[CHECK] Checking Trade Enrichment Status\n');
 
   try {
     // Check recent trade imports and their enrichment status
@@ -21,9 +21,9 @@ async function checkEnrichmentStatus() {
 
     console.log(`   Found ${recentTrades.rows.length} recent trades (last hour)`);
     recentTrades.rows.forEach(trade => {
-      const enriched = trade.enrichment_status === 'completed' ? '✅ Enriched' : 
-                      trade.enrichment_status === 'pending' ? '🔄 Pending' :
-                      trade.enrichment_status === 'failed' ? '❌ Failed' : 
+      const enriched = trade.enrichment_status === 'completed' ? '[SUCCESS] Enriched' : 
+                      trade.enrichment_status === 'pending' ? '[PROCESS] Pending' :
+                      trade.enrichment_status === 'failed' ? '[ERROR] Failed' : 
                       '❓ Unknown';
       const hasNews = trade.has_news ? ' (has news)' : ' (no news)';
       console.log(`   ${trade.symbol} (${trade.trade_date.toISOString().split('T')[0]}): ${enriched}${hasNews}`);
@@ -104,7 +104,7 @@ async function checkEnrichmentStatus() {
     });
 
   } catch (error) {
-    console.error('❌ Check failed:', error.message);
+    console.error('[ERROR] Check failed:', error.message);
   } finally {
     await db.pool.end();
   }

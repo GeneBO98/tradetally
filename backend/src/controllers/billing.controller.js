@@ -185,13 +185,13 @@ const billingController = {
     let client;
     try {
       const userId = req.user.id;
-      console.log('🔍 Starting trial request for user:', userId);
+      console.log('[CHECK] Starting trial request for user:', userId);
       
       // Use a transaction to make this atomic and prevent race conditions
       try {
         client = await db.connect();
       } catch (dbError) {
-        console.error('❌ Failed to connect to database:', dbError);
+        console.error('[ERROR] Failed to connect to database:', dbError);
         throw new Error('Database connection failed');
       }
       
@@ -211,11 +211,11 @@ const billingController = {
           FOR UPDATE
         `;
         
-        console.log('🔍 Checking user trial status...');
+        console.log('[CHECK] Checking user trial status...');
         const trialStatusResult = await client.query(userTrialStatusQuery, [userId]);
         
         if (trialStatusResult.rows.length === 0) {
-          console.log('❌ User not found:', userId);
+          console.log('[ERROR] User not found:', userId);
           await client.query('ROLLBACK');
           return res.status(404).json({
             error: 'user_not_found',
@@ -226,7 +226,7 @@ const billingController = {
         const userTrialStatus = trialStatusResult.rows[0];
         const hasUsedTrial = userTrialStatus.trial_used || parseInt(userTrialStatus.active_trial_count) > 0;
         
-        console.log('🔍 User trial status:', {
+        console.log('[CHECK] User trial status:', {
           userId,
           trial_used: userTrialStatus.trial_used,
           active_trial_count: userTrialStatus.active_trial_count,
@@ -234,7 +234,7 @@ const billingController = {
         });
         
         if (hasUsedTrial) {
-          console.log('❌ User has already used trial:', userId);
+          console.log('[ERROR] User has already used trial:', userId);
           await client.query('ROLLBACK');
           return res.status(400).json({
             error: 'trial_already_used',
@@ -242,21 +242,21 @@ const billingController = {
           });
         }
         
-        console.log('✅ No existing trial override found, creating new trial for user:', userId);
+        console.log('[SUCCESS] No existing trial override found, creating new trial for user:', userId);
 
         // Check if user already has a subscription
         let subscription;
         try {
           subscription = await User.getSubscription(userId);
-          console.log('🔍 User subscription check:', subscription ? 'has subscription' : 'no subscription');
+          console.log('[CHECK] User subscription check:', subscription ? 'has subscription' : 'no subscription');
         } catch (subError) {
-          console.error('❌ Error checking subscription:', subError);
+          console.error('[ERROR] Error checking subscription:', subError);
           await client.query('ROLLBACK');
           throw new Error('Failed to check subscription status');
         }
         
         if (subscription && subscription.status === 'active') {
-          console.log('❌ User already has active subscription:', userId);
+          console.log('[ERROR] User already has active subscription:', userId);
           await client.query('ROLLBACK');
           return res.status(400).json({
             error: 'already_subscribed',
@@ -277,10 +277,10 @@ const billingController = {
         
         // Update trial_used flag (trigger will also do this, but we'll do it explicitly for clarity)
         await client.query(`UPDATE users SET trial_used = true WHERE id = $1`, [userId]);
-        console.log('✅ Updated trial_used flag');
+        console.log('[SUCCESS] Updated trial_used flag');
         
         await client.query('COMMIT');
-        console.log('✅ Trial created successfully for user:', userId, 'Trial ID:', insertResult.rows[0].id);
+        console.log('[SUCCESS] Trial created successfully for user:', userId, 'Trial ID:', insertResult.rows[0].id);
 
         res.json({
           success: true,
@@ -289,7 +289,7 @@ const billingController = {
         });
       } catch (txError) {
         await client.query('ROLLBACK');
-        console.error('❌ Transaction error in startTrial:', txError);
+        console.error('[ERROR] Transaction error in startTrial:', txError);
         throw txError;
       } finally {
         if (client) {
@@ -297,12 +297,12 @@ const billingController = {
         }
       }
     } catch (error) {
-      console.error('❌ Error starting trial for user:', req.user?.id, error);
+      console.error('[ERROR] Error starting trial for user:', req.user?.id, error);
       if (client) {
         try {
           client.release();
         } catch (releaseError) {
-          console.error('❌ Error releasing client:', releaseError);
+          console.error('[ERROR] Error releasing client:', releaseError);
         }
       }
       next(error);

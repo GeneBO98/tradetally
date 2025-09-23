@@ -3,17 +3,17 @@
 const db = require('../src/config/database');
 
 async function testAPIEndpoints() {
-  console.log('🔧 Testing CUSIP API Endpoints\n');
+  console.log('[CONFIG] Testing CUSIP API Endpoints\n');
 
   try {
     // Get a valid user
     const userResult = await db.query('SELECT id FROM users LIMIT 1');
     if (userResult.rows.length === 0) {
-      console.log('❌ No users found in database');
+      console.log('[ERROR] No users found in database');
       return;
     }
     const userId = userResult.rows[0].id;
-    console.log(`✅ Using user: ${userId}`);
+    console.log(`[SUCCESS] Using user: ${userId}`);
 
     // Test the main API query that the frontend is using
     console.log('\n1. Testing main mappings API query:');
@@ -102,13 +102,13 @@ async function testAPIEndpoints() {
     console.log(`   • Combined total in modal: ${mainResult.rows.length} CUSIPs`);
     
     if (mainResult.rows.length === 0) {
-      console.log('\n❌ PROBLEM: No CUSIPs found by main query - this explains empty modal');
+      console.log('\n[ERROR] PROBLEM: No CUSIPs found by main query - this explains empty modal');
     } else {
-      console.log('\n✅ Data is available - problem likely in API endpoint or frontend');
+      console.log('\n[SUCCESS] Data is available - problem likely in API endpoint or frontend');
     }
 
   } catch (error) {
-    console.error('❌ Test failed:', error.message);
+    console.error('[ERROR] Test failed:', error.message);
     console.error(error.stack);
   } finally {
     await db.pool.end();

@@ -24,19 +24,19 @@ class GeminiRecommendations {
     this.genAI = new GoogleGenerativeAI(effectiveApiKey);
     this.model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
-    console.log('🔧 Building analysis prompt...');
+    console.log('[CONFIG] Building analysis prompt...');
     const prompt = this.buildAnalysisPrompt(tradeMetrics, tradeData, tradingProfile, sectorData);
-    console.log('📝 Prompt length:', prompt.length, 'characters');
+    console.log('[CONFIG] Prompt length:', prompt.length, 'characters');
     
     try {
-      console.log('🌐 Sending request to Gemini API...');
+      console.log('[PROCESS] Sending request to Gemini API...');
       const result = await this.model.generateContent(prompt);
       const response = await result.response;
       const text = response.text();
-      console.log('📨 Received response from Gemini, length:', text.length, 'characters');
+      console.log('[SUCCESS] Received response from Gemini, length:', text.length, 'characters');
       return text;
     } catch (error) {
-      console.error('❌ Gemini API error:', error);
+      console.error('[ERROR] Gemini API error:', error);
       console.error('Error details:', {
         message: error.message,
         stack: error.stack,
@@ -99,7 +99,7 @@ TRADER PROFILE:
 ${profileSection}
 
 ${tradingProfile ? `
-🎯 **CRITICAL**: All recommendations must be specifically relevant to:
+[TARGET] **CRITICAL**: All recommendations must be specifically relevant to:
 - Their chosen strategies: ${tradingProfile.tradingStrategies.join(', ')}
 - Their trading style: ${tradingProfile.tradingStyles.join(', ')}
 - Their ${tradingProfile.riskTolerance} risk tolerance level

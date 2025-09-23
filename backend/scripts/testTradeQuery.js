@@ -8,7 +8,7 @@ const db = require('../src/config/database');
 const Trade = require('../src/models/Trade');
 
 async function testTradeQueries() {
-  console.log('🔍 Testing trade queries...');
+  console.log('[CHECK] Testing trade queries...');
   
   try {
     // Test 1: Check if new columns exist
@@ -25,9 +25,9 @@ async function testTradeQueries() {
     console.log('New columns found:', schemaResult.rows);
     
     if (schemaResult.rows.length < 4) {
-      console.log('❌ Some new columns are missing. Expected 4, found:', schemaResult.rows.length);
+      console.log('[ERROR] Some new columns are missing. Expected 4, found:', schemaResult.rows.length);
     } else {
-      console.log('✅ All new columns exist');
+      console.log('[SUCCESS] All new columns exist');
     }
     
     // Test 2: Get a sample trade ID
@@ -41,7 +41,7 @@ async function testTradeQueries() {
     
     const sampleResult = await db.query(sampleQuery);
     if (sampleResult.rows.length === 0) {
-      console.log('❌ No trades found in database');
+      console.log('[ERROR] No trades found in database');
       return;
     }
     
@@ -59,7 +59,7 @@ async function testTradeQueries() {
     try {
       const trade = await Trade.findById(sampleTrade.id);
       if (trade) {
-        console.log('✅ Trade.findById works');
+        console.log('[SUCCESS] Trade.findById works');
         console.log('Retrieved trade fields:', {
           id: trade.id,
           symbol: trade.symbol,
@@ -71,10 +71,10 @@ async function testTradeQueries() {
           hasUser: !!trade.username
         });
       } else {
-        console.log('❌ Trade.findById returned null');
+        console.log('[ERROR] Trade.findById returned null');
       }
     } catch (error) {
-      console.log('❌ Trade.findById failed:', error.message);
+      console.log('[ERROR] Trade.findById failed:', error.message);
       console.log('Full error:', error);
     }
     
@@ -92,12 +92,12 @@ async function testTradeQueries() {
       try {
         const trade = await Trade.findById(sampleTrade.id, userId);
         if (trade) {
-          console.log('✅ Trade.findById with user ID works');
+          console.log('[SUCCESS] Trade.findById with user ID works');
         } else {
-          console.log('❌ Trade.findById with user ID returned null');
+          console.log('[ERROR] Trade.findById with user ID returned null');
         }
       } catch (error) {
-        console.log('❌ Trade.findById with user ID failed:', error.message);
+        console.log('[ERROR] Trade.findById with user ID failed:', error.message);
       }
     }
     
@@ -118,7 +118,7 @@ async function testTradeQueries() {
           WHERE id = $1
         `;
         const result = await db.query(testQuery, [sampleTrade.id]);
-        console.log(`✅ Field "${field}" is accessible`);
+        console.log(`[SUCCESS] Field "${field}" is accessible`);
         
         if (field === 'classification_metadata' && result.rows[0][field]) {
           try {
@@ -129,14 +129,14 @@ async function testTradeQueries() {
           }
         }
       } catch (error) {
-        console.log(`❌ Field "${field}" has issues:`, error.message);
+        console.log(`[ERROR] Field "${field}" has issues:`, error.message);
       }
     }
     
-    console.log('\n✅ Trade query tests completed');
+    console.log('\n[SUCCESS] Trade query tests completed');
     
   } catch (error) {
-    console.error('❌ Test failed:', error);
+    console.error('[ERROR] Test failed:', error);
     throw error;
   }
 }
@@ -145,11 +145,11 @@ async function testTradeQueries() {
 if (require.main === module) {
   testTradeQueries()
     .then(() => {
-      console.log('\n🎉 All tests completed!');
+      console.log('\n[SUCCESS] All tests completed!');
       process.exit(0);
     })
     .catch((error) => {
-      console.error('\n💥 Tests failed:', error);
+      console.error('\n[ERROR] Tests failed:', error);
       process.exit(1);
     });
 }

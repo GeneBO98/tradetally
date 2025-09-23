@@ -3,7 +3,7 @@
 const db = require('../src/config/database');
 
 async function testUpdatedAPI() {
-  console.log('🧪 Testing Updated CUSIP Mappings API\n');
+  console.log('[CHECK] Testing Updated CUSIP Mappings API\n');
 
   try {
     const userId = 'f7ffbef5-7ec4-4972-be3f-439233ef8410'; // boverton@tradetally.io
@@ -82,7 +82,7 @@ async function testUpdatedAPI() {
       const sourceLabel = row.is_user_override ? 
         (row.resolution_source === 'manual' ? 'Manual (User)' : `${row.resolution_source ? row.resolution_source.toUpperCase() : 'UNKNOWN'} (User)`) :
         row.resolution_source ? row.resolution_source.charAt(0).toUpperCase() + row.resolution_source.slice(1) : 'Unknown';
-      const verified = row.verified ? '✓' : '';
+      const verified = row.verified ? '[VERIFIED]' : '';
       const status = row.ticker ? `→ ${row.ticker}` : 'UNMAPPED';
       console.log(`   ${row.cusip}: ${row.trade_count} trades ${status} (${sourceLabel}) ${verified}`);
     });
@@ -121,13 +121,13 @@ async function testUpdatedAPI() {
     console.log('   - Trade counts for each');
 
     if (result.rows.length > 0) {
-      console.log('\n✅ API update successful! Comprehensive modal will now show all mappings.');
+      console.log('\n[SUCCESS] API update successful! Comprehensive modal will now show all mappings.');
     } else {
-      console.log('\n❌ Still no results - need to debug further');
+      console.log('\n[ERROR] Still no results - need to debug further');
     }
 
   } catch (error) {
-    console.error('❌ Test failed:', error.message);
+    console.error('[ERROR] Test failed:', error.message);
     console.error(error.stack);
   } finally {
     await db.pool.end();

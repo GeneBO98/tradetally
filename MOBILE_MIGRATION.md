@@ -5,13 +5,13 @@ This guide explains how to upgrade your existing TradeTally deployment to suppor
 ## Overview
 
 The mobile support upgrade adds:
-- ✅ API versioning (`/api/v1/`)
-- ✅ Refresh token authentication for mobile apps
-- ✅ Device management and tracking
-- ✅ Server discovery for mobile app configuration
-- ✅ Sync infrastructure for offline capabilities
-- ✅ Instance configuration (cloud vs self-hosted)
-- ✅ Automatic database migrations
+- [CHECK] API versioning (`/api/v1/`)
+- [CHECK] Refresh token authentication for mobile apps
+- [CHECK] Device management and tracking
+- [CHECK] Server discovery for mobile app configuration
+- [CHECK] Sync infrastructure for offline capabilities
+- [CHECK] Instance configuration (cloud vs self-hosted)
+- [CHECK] Automatic database migrations
 
 ## Migration Methods
 
@@ -28,11 +28,11 @@ cd /path/to/your/tradetally
 ```
 
 This script will:
-1. 🔍 Detect your running TradeTally containers
-2. 📦 Create a database backup
-3. 🔄 Run all necessary database migrations
-4. 📝 Update Docker configuration
-5. 🔄 Restart services if needed
+1. [SEARCH] Detect your running TradeTally containers
+2. [BACKUP] Create a database backup
+3. [SYNC] Run all necessary database migrations
+4. [EDIT] Update Docker configuration
+5. [SYNC] Restart services if needed
 
 ### Method 2: Manual Migration
 

@@ -68,7 +68,7 @@
         class="text-sm bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 transition-colors"
         title="Nuclear option: Force complete ALL enrichment jobs immediately"
       >
-        🚨 FORCE COMPLETE ALL
+        [ALERT] FORCE COMPLETE ALL
       </button>
     </div>
     
@@ -79,7 +79,7 @@
         class="text-sm bg-yellow-600 text-white px-3 py-1 rounded hover:bg-yellow-700 transition-colors"
         title="Sync enrichment status with completed jobs"
       >
-        🔄 SYNC STATUS
+        [PROCESS] SYNC STATUS
       </button>
       
       <button 
@@ -87,7 +87,7 @@
         class="text-sm bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 transition-colors"
         title="Nuclear option: Force complete ALL enrichment jobs immediately"
       >
-        🚨 FORCE COMPLETE ALL
+        [ALERT] FORCE COMPLETE ALL
       </button>
     </div>
     
@@ -264,7 +264,7 @@ async function syncEnrichmentStatus() {
     // Refresh status immediately
     await fetchEnrichmentStatus()
     
-    alert(`🔄 SYNCED: ${response.data.syncedTrades} trades synced to completed status`)
+    alert(`[PROCESS] SYNCED: ${response.data.syncedTrades} trades synced to completed status`)
   } catch (error) {
     console.error('Failed to sync enrichment status:', error)
     alert('Failed to sync enrichment status. Please try again.')
@@ -272,7 +272,7 @@ async function syncEnrichmentStatus() {
 }
 
 async function forceCompleteEnrichment() {
-  if (!confirm('🚨 NUCLEAR OPTION: This will FORCE COMPLETE all enrichment jobs immediately. Are you sure?')) {
+  if (!confirm('[ALERT] NUCLEAR OPTION: This will FORCE COMPLETE all enrichment jobs immediately. Are you sure?')) {
     return
   }
   
@@ -283,7 +283,7 @@ async function forceCompleteEnrichment() {
     // Refresh status immediately
     await fetchEnrichmentStatus()
     
-    alert(`🚨 FORCE COMPLETED: ${response.data.forceCompletedJobs} jobs and ${response.data.forceCompletedTrades} trades completed. No more stuck jobs!`)
+    alert(`[ALERT] FORCE COMPLETED: ${response.data.forceCompletedJobs} jobs and ${response.data.forceCompletedTrades} trades completed. No more stuck jobs!`)
   } catch (error) {
     console.error('Failed to force complete enrichment:', error)
     alert('Failed to force complete enrichment. Please try again.')

@@ -1,7 +1,7 @@
 const db = require('../src/config/database');
 
 async function updateEnrichmentStatus() {
-  console.log('🔄 Updating enrichment status for completed jobs...');
+  console.log('[PROCESS] Updating enrichment status for completed jobs...');
   
   try {
     // Update enrichment status to 'completed' for trades that have completed strategy classification jobs
@@ -19,7 +19,7 @@ async function updateEnrichmentStatus() {
     `;
     
     const result = await db.query(updateQuery);
-    console.log(`✅ Updated ${result.rowCount} trades to 'completed' status`);
+    console.log(`[SUCCESS] Updated ${result.rowCount} trades to 'completed' status`);
     
     // Get current status counts
     const statusQuery = `
@@ -31,13 +31,13 @@ async function updateEnrichmentStatus() {
     `;
     
     const statusResult = await db.query(statusQuery);
-    console.log('\n📊 Current enrichment status:');
+    console.log('\n[STATS] Current enrichment status:');
     statusResult.rows.forEach(row => {
       console.log(`  ${row.enrichment_status}: ${row.count}`);
     });
     
   } catch (error) {
-    console.error('❌ Error updating enrichment status:', error);
+    console.error('[ERROR] Error updating enrichment status:', error);
   } finally {
     process.exit(0);
   }

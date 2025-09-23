@@ -3,7 +3,7 @@
 const db = require('../src/config/database');
 
 async function checkEnrichmentStatus() {
-  console.log('🔍 Checking Trade Enrichment Status\n');
+  console.log('[CHECK] Checking Trade Enrichment Status\n');
 
   try {
     const userId = 'f7ffbef5-7ec4-4972-be3f-439233ef8410'; // boverton@tradetally.io
@@ -23,9 +23,9 @@ async function checkEnrichmentStatus() {
 
     console.log(`   Found ${recentTrades.rows.length} recent trades:`);
     recentTrades.rows.forEach(trade => {
-      const enriched = trade.enrichment_status === 'completed' ? '✅ Enriched' : 
-                      trade.enrichment_status === 'pending' ? '🔄 Pending' :
-                      trade.enrichment_status === 'failed' ? '❌ Failed' : 
+      const enriched = trade.enrichment_status === 'completed' ? '[SUCCESS] Enriched' : 
+                      trade.enrichment_status === 'pending' ? '[PROCESS] Pending' :
+                      trade.enrichment_status === 'failed' ? '[ERROR] Failed' : 
                       '❓ Unknown';
       const hasNews = trade.has_news ? ' (has news)' : ' (no news)';
       const age = Math.round((new Date() - trade.created_at) / 1000 / 60);
@@ -90,15 +90,15 @@ async function checkEnrichmentStatus() {
     console.log(`     Failed: ${enrichStats.failed}`);
 
     if (parseInt(enrichStats.pending) > 0) {
-      console.log('\n   🔄 Some trades are still pending enrichment');
+      console.log('\n   [PROCESS] Some trades are still pending enrichment');
     } else if (parseInt(enrichStats.no_status) > 0) {
-      console.log('\n   ⚠️ Some trades have no enrichment status - may need to be queued');
+      console.log('\n   [WARNING] Some trades have no enrichment status - may need to be queued');
     } else {
-      console.log('\n   ✅ All recent trades have been enriched');
+      console.log('\n   [SUCCESS] All recent trades have been enriched');
     }
 
   } catch (error) {
-    console.error('❌ Status check failed:', error.message);
+    console.error('[ERROR] Status check failed:', error.message);
   } finally {
     await db.pool.end();
   }

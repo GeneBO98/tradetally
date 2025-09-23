@@ -3,7 +3,7 @@
 const db = require('../src/config/database');
 
 async function checkCurrentStatus() {
-  console.log('📊 Checking Current CUSIP Resolution Status\n');
+  console.log('[STATS] Checking Current CUSIP Resolution Status\n');
 
   try {
     const userId = 'f7ffbef5-7ec4-4972-be3f-439233ef8410'; // boverton@tradetally.io
@@ -76,13 +76,13 @@ async function checkCurrentStatus() {
     console.log(`  Total in comprehensive view: ${apiResult.rows.length}`);
 
     if (unmapped > 0) {
-      console.log(`\n🔄 ${unmapped} CUSIPs are still being processed in the job queue`);
+      console.log(`\n[PROCESS] ${unmapped} CUSIPs are still being processed in the job queue`);
     } else {
-      console.log(`\n✅ All CUSIPs have been resolved!`);
+      console.log(`\n[SUCCESS] All CUSIPs have been resolved!`);
     }
 
   } catch (error) {
-    console.error('❌ Status check failed:', error.message);
+    console.error('[ERROR] Status check failed:', error.message);
   } finally {
     await db.pool.end();
   }

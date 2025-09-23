@@ -3,13 +3,13 @@
 const db = require('../src/config/database');
 
 async function testCusipMappingUpdate() {
-  console.log('🧪 Testing CUSIP mapping manual update\n');
+  console.log('[CHECK] Testing CUSIP mapping manual update\n');
 
   try {
     // Get a real user ID
     const userQuery = await db.query('SELECT id FROM users LIMIT 1');
     if (userQuery.rows.length === 0) {
-      console.log('❌ No users found in database');
+      console.log('[ERROR] No users found in database');
       return;
     }
     const userId = userQuery.rows[0].id;
@@ -24,19 +24,19 @@ async function testCusipMappingUpdate() {
     `);
     
     if (globalMappingQuery.rows.length === 0) {
-      console.log('❌ No global CUSIP mappings found');
+      console.log('[ERROR] No global CUSIP mappings found');
       return;
     }
     
     const globalMapping = globalMappingQuery.rows[0];
-    console.log('📋 Found global mapping:', {
+    console.log('[INFO] Found global mapping:', {
       cusip: globalMapping.cusip,
       ticker: globalMapping.ticker,
       source: globalMapping.resolution_source
     });
 
     // Test 1: Create a user-specific override (this should work)
-    console.log('\n📋 Test 1: Creating user-specific override');
+    console.log('\n[INFO] Test 1: Creating user-specific override');
     
     const newTicker = 'TEST' + Math.floor(Math.random() * 1000);
     
@@ -65,17 +65,17 @@ async function testCusipMappingUpdate() {
     
     try {
       const result = await db.query(insertQuery, values);
-      console.log('✅ Successfully created user override:', {
+      console.log('[SUCCESS] Successfully created user override:', {
         cusip: result.rows[0].cusip,
         ticker: result.rows[0].ticker,
         isUserOverride: !!result.rows[0].user_id
       });
     } catch (error) {
-      console.log('❌ Failed to create user override:', error.message);
+      console.log('[ERROR] Failed to create user override:', error.message);
     }
 
     // Test 2: Try to update the override
-    console.log('\n📋 Test 2: Updating existing user override');
+    console.log('\n[INFO] Test 2: Updating existing user override');
     
     const updatedTicker = 'UPDATED' + Math.floor(Math.random() * 100);
     
@@ -87,17 +87,17 @@ async function testCusipMappingUpdate() {
         userId,
         true
       ]);
-      console.log('✅ Successfully updated user override:', {
+      console.log('[SUCCESS] Successfully updated user override:', {
         cusip: updateResult.rows[0].cusip,
         ticker: updateResult.rows[0].ticker,
         updated_at: updateResult.rows[0].updated_at
       });
     } catch (error) {
-      console.log('❌ Failed to update user override:', error.message);
+      console.log('[ERROR] Failed to update user override:', error.message);
     }
 
     // Test 3: Verify we can retrieve the mapping correctly
-    console.log('\n📋 Test 3: Retrieving mapping (should prioritize user override)');
+    console.log('\n[INFO] Test 3: Retrieving mapping (should prioritize user override)');
     
     const retrieveQuery = `
       SELECT DISTINCT ON (cusip)
@@ -111,23 +111,23 @@ async function testCusipMappingUpdate() {
     const retrieveResult = await db.query(retrieveQuery, [globalMapping.cusip, userId]);
     if (retrieveResult.rows.length > 0) {
       const mapping = retrieveResult.rows[0];
-      console.log('✅ Retrieved mapping:', {
+      console.log('[SUCCESS] Retrieved mapping:', {
         cusip: mapping.cusip,
         ticker: mapping.ticker,
         isUserOverride: mapping.is_user_override,
         source: mapping.resolution_source
       });
     } else {
-      console.log('❌ No mapping found');
+      console.log('[ERROR] No mapping found');
     }
 
     // Cleanup
     console.log('\n🧹 Cleaning up test data...');
     await db.query('DELETE FROM cusip_mappings WHERE user_id = $1 AND resolution_source = $2', [userId, 'manual']);
-    console.log('✅ Cleanup completed');
+    console.log('[SUCCESS] Cleanup completed');
 
   } catch (error) {
-    console.error('❌ Test failed:', error.message);
+    console.error('[ERROR] Test failed:', error.message);
     console.error(error.stack);
   } finally {
     await db.pool.end();

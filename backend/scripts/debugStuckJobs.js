@@ -3,7 +3,7 @@
 const db = require('../src/config/database');
 
 async function debugStuckJobs() {
-  console.log('🔍 Debugging Stuck CUSIP Resolution Jobs\n');
+  console.log('[CHECK] Debugging Stuck CUSIP Resolution Jobs\n');
 
   try {
     // Check pending jobs
@@ -93,7 +93,7 @@ async function debugStuckJobs() {
     });
 
   } catch (error) {
-    console.error('❌ Debug failed:', error.message);
+    console.error('[ERROR] Debug failed:', error.message);
   } finally {
     await db.pool.end();
   }

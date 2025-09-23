@@ -4,14 +4,14 @@ try {
   db = require('./src/config/database');
   Trade = require('./src/models/Trade');
 } catch (error) {
-  console.error('❌ Unable to load database configuration.');
+  console.error('[ERROR] Unable to load database configuration.');
   console.error('Please ensure your .env file is properly configured.');
   console.error('You can run the SQL script manually instead: fix-pnl-sql.sql');
   process.exit(1);
 }
 
 async function fixPnLCalculations() {
-  console.log('🔧 Starting P/L Calculation Fix');
+  console.log('[CONFIG] Starting P/L Calculation Fix');
   console.log('================================');
   
   try {
@@ -49,7 +49,7 @@ async function fixPnLCalculations() {
     let skippedCount = 0;
     
     for (const trade of trades) {
-      console.log(`\n📊 Trade ${trade.id}:`);
+      console.log(`\n[STATS] Trade ${trade.id}:`);
       console.log(`   Symbol: ${trade.symbol}`);
       console.log(`   Quantity: ${trade.quantity}`);
       console.log(`   Entry: $${trade.entry_price}`);
@@ -75,7 +75,7 @@ async function fixPnLCalculations() {
       
       // If difference is significant (more than $1 or 10%), fix it
       if (difference > 1.00 || (Math.abs(currentPnL) > 0 && difference / Math.abs(currentPnL) > 0.1)) {
-        console.log(`   ✅ FIXING: Significant difference detected`);
+        console.log(`   [SUCCESS] FIXING: Significant difference detected`);
         
         try {
           // Calculate P/L percent
@@ -92,52 +92,52 @@ async function fixPnLCalculations() {
             WHERE id = $3
           `, [expectedPnL, expectedPnLPercent, trade.id]);
           
-          console.log(`   💾 Updated P/L: $${currentPnL.toFixed(2)} → $${expectedPnL.toFixed(2)}`);
-          console.log(`   💾 Updated P/L%: ${(trade.pnl_percent || 0).toFixed(2)}% → ${expectedPnLPercent.toFixed(2)}%`);
+          console.log(`   [INFO] Updated P/L: $${currentPnL.toFixed(2)} -> $${expectedPnL.toFixed(2)}`);
+          console.log(`   [INFO] Updated P/L%: ${(trade.pnl_percent || 0).toFixed(2)}% -> ${expectedPnLPercent.toFixed(2)}%`);
           
           fixedCount++;
         } catch (error) {
-          console.log(`   ❌ Error updating trade: ${error.message}`);
+          console.log(`   [ERROR] Error updating trade: ${error.message}`);
         }
       } else {
-        console.log(`   ⏭️  SKIPPING: Difference is within acceptable range`);
+        console.log(`   [INFO] SKIPPING: Difference is within acceptable range`);
         skippedCount++;
       }
     }
     
-    console.log('\n📈 Summary:');
+    console.log('\n[ANALYTICS] Summary:');
     console.log('===========');
-    console.log(`✅ Fixed: ${fixedCount} trades`);
-    console.log(`⏭️  Skipped: ${skippedCount} trades`);
-    console.log(`📊 Total analyzed: ${trades.length} trades`);
+    console.log(`[SUCCESS] Fixed: ${fixedCount} trades`);
+    console.log(`[INFO] Skipped: ${skippedCount} trades`);
+    console.log(`[STATS] Total analyzed: ${trades.length} trades`);
     
     if (fixedCount > 0) {
-      console.log('\n🎉 P/L calculations have been corrected!');
+      console.log('\n[SUCCESS] P/L calculations have been corrected!');
       console.log('The affected trades now show accurate profit/loss values.');
     }
     
   } catch (error) {
-    console.error('❌ Error fixing P/L calculations:', error);
+    console.error('[ERROR] Error fixing P/L calculations:', error);
     console.error('Stack trace:', error.stack);
   }
 }
 
 // Also create a function to check a specific trade
 async function checkSpecificTrade(tradeId) {
-  console.log(`🔍 Checking specific trade: ${tradeId}`);
+  console.log(`[CHECK] Checking specific trade: ${tradeId}`);
   console.log('==========================================');
   
   try {
     const result = await db.query('SELECT * FROM trades WHERE id = $1', [tradeId]);
     
     if (result.rows.length === 0) {
-      console.log('❌ Trade not found');
+      console.log('[ERROR] Trade not found');
       return;
     }
     
     const trade = result.rows[0];
     
-    console.log('\n📊 Trade Details:');
+    console.log('\n[STATS] Trade Details:');
     console.log(`   ID: ${trade.id}`);
     console.log(`   Symbol: ${trade.symbol}`);
     console.log(`   Side: ${trade.side}`);
@@ -166,32 +166,32 @@ async function checkSpecificTrade(tradeId) {
         trade.side
       );
       
-      console.log('\n🔧 Correct Calculations:');
+      console.log('\n[CONFIG] Correct Calculations:');
       console.log(`   Correct P/L: $${correctPnL.toFixed(2)}`);
       console.log(`   Correct P/L%: ${correctPnLPercent.toFixed(2)}%`);
       
       const pnlDiff = Math.abs(correctPnL - (trade.pnl || 0));
       if (pnlDiff > 0.01) {
-        console.log(`\n❌ P/L is incorrect by $${pnlDiff.toFixed(2)}`);
+        console.log(`\n[ERROR] P/L is incorrect by $${pnlDiff.toFixed(2)}`);
         
         // Offer to fix it
-        console.log('\n🔧 Fixing this trade...');
+        console.log('\n[CONFIG] Fixing this trade...');
         await db.query(`
           UPDATE trades 
           SET pnl = $1, pnl_percent = $2, updated_at = CURRENT_TIMESTAMP
           WHERE id = $3
         `, [correctPnL, correctPnLPercent, trade.id]);
         
-        console.log('✅ Trade has been fixed!');
+        console.log('[SUCCESS] Trade has been fixed!');
       } else {
-        console.log('\n✅ P/L calculation is correct');
+        console.log('\n[SUCCESS] P/L calculation is correct');
       }
     } else {
-      console.log('\n🔍 This is an open position - no P/L to check');
+      console.log('\n[CHECK] This is an open position - no P/L to check');
     }
     
   } catch (error) {
-    console.error('❌ Error checking trade:', error);
+    console.error('[ERROR] Error checking trade:', error);
   }
 }
 

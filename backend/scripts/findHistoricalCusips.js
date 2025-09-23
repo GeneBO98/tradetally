@@ -3,7 +3,7 @@
 const db = require('../src/config/database');
 
 async function findHistoricalCusips() {
-  console.log('🔍 Finding All Historical CUSIPs for User\n');
+  console.log('[CHECK] Finding All Historical CUSIPs for User\n');
 
   try {
     const userId = 'f7ffbef5-7ec4-4972-be3f-439233ef8410'; // boverton@tradetally.io
@@ -47,7 +47,7 @@ async function findHistoricalCusips() {
       if (expectedTicker) {
         const found = currentTickers.rows.find(t => t.symbol === expectedTicker);
         if (found) {
-          console.log(`   ✅ ${cusip} → ${expectedTicker} (${found.count} trades)`);
+          console.log(`   [SUCCESS] ${cusip} → ${expectedTicker} (${found.count} trades)`);
           foundMappings.push({ cusip, ticker: expectedTicker, trade_count: found.count, source: 'inferred' });
         } else {
           console.log(`   ❓ ${cusip} → ${expectedTicker} (not found in current trades)`);
@@ -75,7 +75,7 @@ async function findHistoricalCusips() {
     console.log('   We need to include inferred/historical mappings too');
 
   } catch (error) {
-    console.error('❌ Check failed:', error.message);
+    console.error('[ERROR] Check failed:', error.message);
   } finally {
     await db.pool.end();
   }

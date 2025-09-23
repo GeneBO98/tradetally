@@ -152,7 +152,7 @@
                       }"
                       class="inline-flex px-1 py-1 text-xs font-semibold rounded-full"
                     >
-                      {{ user.is_active ? '✓' : '✗' }}
+                      {{ user.is_active ? '[SUCCESS]' : '[ERROR]' }}
                     </span>
                   </td>
                   <td class="px-3 py-3 whitespace-nowrap">
@@ -163,7 +163,7 @@
                       }"
                       class="inline-flex px-1 py-1 text-xs font-semibold rounded-full"
                     >
-                      {{ user.is_verified ? '✓' : '✗' }}
+                      {{ user.is_verified ? '[SUCCESS]' : '[ERROR]' }}
                     </span>
                   </td>
                   <td class="px-3 py-3 whitespace-nowrap">
@@ -174,7 +174,7 @@
                       }"
                       class="inline-flex px-1 py-1 text-xs font-semibold rounded-full"
                     >
-                      {{ user.admin_approved ? '✓' : '✗' }}
+                      {{ user.admin_approved ? '[SUCCESS]' : '[ERROR]' }}
                     </span>
                   </td>
                   <td class="px-3 py-3 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">

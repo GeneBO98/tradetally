@@ -605,7 +605,7 @@ function applyFilters() {
   
   cleanFilters.hasNews = filters.value.hasNews
   
-  console.log('🎯 APPLYING FILTERS:', cleanFilters)
+  console.log('[TARGET] APPLYING FILTERS:', cleanFilters)
   
   // Advanced filters
   if (filters.value.side) cleanFilters.side = filters.value.side

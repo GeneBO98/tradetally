@@ -3,17 +3,17 @@
 const db = require('../src/config/database');
 
 async function testFixedAPI() {
-  console.log('🧪 Testing Fixed CUSIP API\n');
+  console.log('[CHECK] Testing Fixed CUSIP API\n');
 
   try {
     // Get a valid user
     const userResult = await db.query('SELECT id FROM users LIMIT 1');
     if (userResult.rows.length === 0) {
-      console.log('❌ No users found in database');
+      console.log('[ERROR] No users found in database');
       return;
     }
     const userId = userResult.rows[0].id;
-    console.log(`✅ Using user: ${userId}`);
+    console.log(`[SUCCESS] Using user: ${userId}`);
 
     // Test the fixed main API query (simulating what the controller now does)
     console.log('\n1. Testing fixed main API query (no filters):');
@@ -74,7 +74,7 @@ async function testFixedAPI() {
     queryParams.push(20, 0); // limit, offset
 
     const result = await db.query(fixedQuery, queryParams);
-    console.log(`   ✅ Found ${result.rows.length} CUSIPs (should be 17)`);
+    console.log(`   [SUCCESS] Found ${result.rows.length} CUSIPs (should be 17)`);
     
     if (result.rows.length > 0) {
       console.log('   Sample results:');
@@ -112,15 +112,15 @@ async function testFixedAPI() {
     `;
 
     const countResult = await db.query(countQuery, [userId]);
-    console.log(`   ✅ Total count: ${countResult.rows[0].total} (should be 17)`);
+    console.log(`   [SUCCESS] Total count: ${countResult.rows[0].total} (should be 17)`);
 
-    console.log('\n📊 Fixed API Test Results:');
+    console.log('\n[STATS] Fixed API Test Results:');
     console.log(`   • Main API returns ${result.rows.length} CUSIPs`);
     console.log(`   • Parameter count logic is correct`);
     console.log(`   • Ready for frontend testing`);
 
   } catch (error) {
-    console.error('❌ Test failed:', error.message);
+    console.error('[ERROR] Test failed:', error.message);
     console.error(error.stack);
   } finally {
     await db.pool.end();
