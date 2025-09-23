@@ -297,12 +297,6 @@
               </div>
             </div>
           </div>
-          <select v-model="filters.broker" class="input" :disabled="loadingBrokers">
-            <option value="">All Brokers</option>
-            <option v-for="broker in availableBrokers" :key="broker" :value="broker">
-              {{ broker }}
-            </option>
-          </select>
         </div>
 
         <div>
@@ -449,10 +443,6 @@ const dayOfWeekOptions = [
   { value: 4, label: 'Thursday' },
   { value: 5, label: 'Friday' }
 ]
-
-// Broker options - will be dynamically loaded
-const availableBrokers = ref([])
-const loadingBrokers = ref(false)
 
 // Strategy options
 const strategyOptions = [
