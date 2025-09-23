@@ -1641,6 +1641,27 @@ const analyticsController = {
     }
   },
 
+  async getAvailableBrokers(req, res, next) {
+    try {
+      const query = `
+        SELECT DISTINCT broker
+        FROM trades 
+        WHERE user_id = $1 
+          AND broker IS NOT NULL 
+          AND broker != ''
+        ORDER BY broker
+      `;
+      
+      const result = await db.query(query, [req.user.id]);
+      const brokers = result.rows.map(row => row.broker);
+      
+      res.json({ brokers });
+    } catch (error) {
+      console.error('Error getting available brokers:', error);
+      next(error);
+    }
+  },
+
   async refreshSectorPerformance(req, res, next) {
     try {
       console.log('🔄 Refreshing sector performance data...');
