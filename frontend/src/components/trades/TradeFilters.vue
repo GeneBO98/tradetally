@@ -255,14 +255,11 @@
       <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div>
           <label class="label">Broker</label>
-          <select v-model="filters.broker" class="input">
+          <select v-model="filters.broker" class="input" :disabled="loadingBrokers">
             <option value="">All Brokers</option>
-            <option value="generic">Generic</option>
-            <option value="lightspeed">Lightspeed</option>
-            <option value="thinkorswim">thinkorswim</option>
-            <option value="ibkr">Interactive Brokers</option>
-            <option value="etrade">E*TRADE</option>
-            <option value="schwab">Schwab</option>
+            <option v-for="broker in availableBrokers" :key="broker" :value="broker">
+              {{ broker }}
+            </option>
           </select>
         </div>
 
@@ -393,6 +390,8 @@ const route = useRoute()
 const showAdvanced = ref(false)
 const availableSectors = ref([])
 const loadingSectors = ref(false)
+const availableBrokers = ref([])
+const loadingBrokers = ref(false)
 
 // Dropdown visibility
 const showStrategyDropdown = ref(false)
@@ -619,6 +618,19 @@ async function fetchAvailableSectors() {
   }
 }
 
+async function fetchAvailableBrokers() {
+  try {
+    loadingBrokers.value = true
+    const response = await api.get('/analytics/brokers/available')
+    availableBrokers.value = response.data.brokers || []
+  } catch (error) {
+    console.warn('Failed to fetch available brokers:', error)
+    availableBrokers.value = []
+  } finally {
+    loadingBrokers.value = false
+  }
+}
+
 // Convert minHoldTime/maxHoldTime to holdTime range option
 const convertHoldTimeRange = (minMinutes, maxMinutes) => {
   // Handle specific strategy ranges first (more inclusive approach)
@@ -677,8 +689,9 @@ onMounted(() => {
   }, 100)
   
   // Existing code...
-  // Fetch available sectors for dropdown
+  // Fetch available sectors and brokers for dropdowns
   fetchAvailableSectors()
+  fetchAvailableBrokers()
   
   // Initialize filters from query parameters if present
   let shouldApply = false
