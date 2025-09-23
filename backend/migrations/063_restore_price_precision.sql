@@ -14,7 +14,8 @@ ALTER COLUMN fees TYPE DECIMAL(15, 6),
 ALTER COLUMN mae TYPE DECIMAL(15, 6),
 ALTER COLUMN mfe TYPE DECIMAL(15, 6);
 
--- Recreate the view with the same definition
+-- Recreate the view with basic trade analytics only
+-- Note: Health analytics columns (sleep_score, heart_rate, stress_level) are not yet implemented
 CREATE OR REPLACE VIEW trades_with_health_analytics AS
 SELECT 
     t.*,
@@ -22,28 +23,7 @@ SELECT
         WHEN t.pnl > 0 THEN 'profitable'
         WHEN t.pnl < 0 THEN 'losing'
         ELSE 'breakeven'
-    END as trade_outcome,
-    -- Health quality indicators
-    CASE
-        WHEN t.sleep_score >= 80 THEN 'excellent'
-        WHEN t.sleep_score >= 65 THEN 'good'
-        WHEN t.sleep_score >= 50 THEN 'fair'
-        WHEN t.sleep_score IS NOT NULL THEN 'poor'
-        ELSE 'unknown'
-    END as sleep_quality_category,
-    CASE
-        WHEN t.heart_rate BETWEEN 60 AND 80 THEN 'normal'
-        WHEN t.heart_rate > 80 THEN 'elevated'
-        WHEN t.heart_rate < 60 THEN 'low'
-        ELSE 'unknown'
-    END as heart_rate_category,
-    CASE
-        WHEN t.stress_level <= 0.3 THEN 'low'
-        WHEN t.stress_level <= 0.6 THEN 'moderate'
-        WHEN t.stress_level <= 0.8 THEN 'high'
-        WHEN t.stress_level IS NOT NULL THEN 'very_high'
-        ELSE 'unknown'
-    END as stress_category
+    END as trade_outcome
 FROM trades t;
 
 -- Update comments for clarity
@@ -53,4 +33,4 @@ COMMENT ON COLUMN trades.commission IS 'Commission paid with up to 6 decimal pla
 COMMENT ON COLUMN trades.fees IS 'Additional fees with up to 6 decimal places';
 COMMENT ON COLUMN trades.mae IS 'Maximum Adverse Excursion with up to 6 decimal places';
 COMMENT ON COLUMN trades.mfe IS 'Maximum Favorable Excursion with up to 6 decimal places';
-COMMENT ON VIEW trades_with_health_analytics IS 'Enhanced trades view with health metric categorization';
+COMMENT ON VIEW trades_with_health_analytics IS 'Enhanced trades view with basic trade outcome categorization';
