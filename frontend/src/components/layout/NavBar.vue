@@ -71,7 +71,7 @@
                 class="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
                 title="Support TradeTally development"
               >
-                [MONEY]
+                <MdiIcon :icon="mdiCoffee" :size="20" />
               </a>
               <router-link 
                 to="/profile" 
@@ -229,7 +229,7 @@
               @click="isMobileMenuOpen = false"
               class="flex items-center text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
             >
-              <span class="mr-2">[MONEY]</span>
+              <MdiIcon :icon="mdiCoffee" :size="20" class="mr-2" />
               <span>Support development</span>
             </a>
           </div>
@@ -247,6 +247,8 @@ import { SunIcon, MoonIcon, Bars3Icon, XMarkIcon } from '@heroicons/vue/24/outli
 import config from '@/config'
 import NavDropdown from '@/components/common/NavDropdown.vue'
 import NotificationBell from '@/components/common/NotificationBell.vue'
+import MdiIcon from '@/components/MdiIcon.vue'
+import { mdiCoffee } from '@mdi/js'
 
 const authStore = useAuthStore()
 const { showSEOPages } = useRegistrationMode()
