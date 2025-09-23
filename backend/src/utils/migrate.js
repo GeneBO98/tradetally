@@ -35,7 +35,7 @@ async function ensureMigrationsTable() {
         checksum VARCHAR(64) NOT NULL
       );
     `);
-    console.log(`${colors.green}✓ Migrations table created${colors.reset}`);
+    console.log(`${colors.green}[SUCCESS] Migrations table created${colors.reset}`);
   }
 }
 
@@ -84,7 +84,7 @@ async function runMigration(filename, content, checksum) {
     );
     
     await client.query('COMMIT');
-    console.log(`${colors.green}✓ Migration ${filename} applied successfully${colors.reset}`);
+    console.log(`${colors.green}[SUCCESS] Migration ${filename} applied successfully${colors.reset}`);
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
@@ -103,10 +103,10 @@ async function migrate() {
       const schemaContent = await fs.readFile(schemaPath, 'utf8');
       console.log(`${colors.blue}Running base schema initialization...${colors.reset}`);
       await db.query(schemaContent);
-      console.log(`${colors.green}✓ Base schema initialized${colors.reset}`);
+      console.log(`${colors.green}[SUCCESS] Base schema initialized${colors.reset}`);
     } catch (error) {
       if (error.code !== 'ENOENT') {
-        console.error(`${colors.red}✗ Base schema failed:${colors.reset}`, error.message);
+        console.error(`${colors.red}[ERROR] Base schema failed:${colors.reset}`, error.message);
         throw error;
       }
     }
@@ -136,7 +136,7 @@ async function migrate() {
       if (appliedMigrations.has(filename)) {
         const appliedChecksum = appliedMigrations.get(filename);
         if (appliedChecksum !== checksum) {
-          console.error(`${colors.red}✗ Migration ${filename} has been modified after being applied!${colors.reset}`);
+          console.error(`${colors.red}[ERROR] Migration ${filename} has been modified after being applied!${colors.reset}`);
           console.error(`${colors.red}  Expected checksum: ${appliedChecksum}${colors.reset}`);
           console.error(`${colors.red}  Current checksum:  ${checksum}${colors.reset}`);
           throw new Error('Migration checksum mismatch');
@@ -148,9 +148,9 @@ async function migrate() {
       }
     }
     
-    console.log(`\n${colors.green}✓ Migration complete. ${migrationsRun} migration(s) applied.${colors.reset}`);
+    console.log(`\n${colors.green}[SUCCESS] Migration complete. ${migrationsRun} migration(s) applied.${colors.reset}`);
   } catch (error) {
-    console.error(`\n${colors.red}✗ Migration failed:${colors.reset}`, error.message);
+    console.error(`\n${colors.red}[ERROR] Migration failed:${colors.reset}`, error.message);
     if (error.detail) {
       console.error(`${colors.red}  Detail: ${error.detail}${colors.reset}`);
     }
