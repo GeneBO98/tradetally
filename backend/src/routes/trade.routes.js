@@ -519,8 +519,4 @@ router.get('/:id/comments', optionalAuth, tradeController.getComments);
 router.put('/:id/comments/:commentId', authenticate, tradeController.updateComment);
 router.delete('/:id/comments/:commentId', authenticate, tradeController.deleteComment);
 
-// Health data integration routes
-router.put('/:id/health', authenticate, tradeController.updateTradeHealthData);
-router.put('/health/bulk', authenticate, tradeController.bulkUpdateHealthData);
-
 module.exports = router;
