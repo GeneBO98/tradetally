@@ -540,8 +540,17 @@ class Trade {
       }
     }
 
-    // Broker filter
-    if (filters.broker) {
+    // Broker filter - support both single and multi-select
+    if (filters.brokers) {
+      // Handle comma-separated string of brokers (from multi-select)
+      const brokerList = filters.brokers.split(',').map(b => b.trim());
+      if (brokerList.length > 0) {
+        query += ` AND t.broker = ANY($${paramCount}::text[])`;
+        values.push(brokerList);
+        paramCount++;
+      }
+    } else if (filters.broker) {
+      // Backward compatibility: single broker
       query += ` AND t.broker = $${paramCount}`;
       values.push(filters.broker);
       paramCount++;
@@ -1218,8 +1227,19 @@ class Trade {
       whereClause += ` AND t.pnl = 0`;
     }
 
-    // Broker filter
-    if (filters.broker) {
+    // Broker filter - support both single and multi-select
+    if (filters.brokers) {
+      // Handle comma-separated string of brokers (from multi-select)
+      const brokerList = filters.brokers.split(',').map(b => b.trim());
+      if (brokerList.length > 0) {
+        console.log('🎯 ANALYTICS: APPLYING MULTI-SELECT BROKERS:', brokerList);
+        const placeholders = brokerList.map((_, index) => `$${paramCount + index}`).join(',');
+        whereClause += ` AND t.broker IN (${placeholders})`;
+        brokerList.forEach(broker => values.push(broker));
+        paramCount += brokerList.length;
+      }
+    } else if (filters.broker) {
+      // Backward compatibility: single broker
       whereClause += ` AND t.broker = $${paramCount}`;
       values.push(filters.broker);
       paramCount++;
