@@ -140,7 +140,9 @@ const brokerParsers = {
       const dateMatch = execTime.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})\s+(.+)$/);
       if (dateMatch) {
         const [_, month, day, year, time] = dateMatch;
-        const fullYear = parseInt(year) + 2000; // Convert YY to YYYY
+        // Smart year conversion: assume 00-49 is 2000-2049, 50-99 is 1950-1999
+        const yearNum = parseInt(year);
+        const fullYear = yearNum < 50 ? 2000 + yearNum : 1900 + yearNum;
         const fullDate = `${month}/${day}/${fullYear} ${time}`;
         tradeDate = parseDate(fullDate);
         entryTime = parseDateTime(fullDate);
@@ -356,7 +358,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
     }
 
     if (broker === 'papermoney') {
-      console.log('Starting PaperMoney transaction parsing');
+      // console.log('Starting PaperMoney transaction parsing');
       const result = await parsePaperMoneyTransactions(records, existingPositions);
       console.log('Finished PaperMoney transaction parsing');
       return result;
@@ -1488,7 +1490,8 @@ async function parseThinkorswimTransactions(records, existingPositions = {}) {
 }
 
 async function parsePaperMoneyTransactions(records, existingPositions = {}) {
-  console.log(`Processing ${records.length} PaperMoney transaction records`);
+  const DEBUG = process.env.DEBUG_IMPORT === 'true';
+  if (DEBUG) console.log(`Processing ${records.length} PaperMoney transaction records`);
   
   const transactions = [];
   const completedTrades = [];
@@ -1524,7 +1527,9 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}) {
         const dateMatch = execTime.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})\s+(.+)$/);
         if (dateMatch) {
           const [_, month, day, year, time] = dateMatch;
-          const fullYear = parseInt(year) + 2000; // Convert YY to YYYY
+          // Smart year conversion: assume 00-49 is 2000-2049, 50-99 is 1950-1999
+          const yearNum = parseInt(year);
+          const fullYear = yearNum < 50 ? 2000 + yearNum : 1900 + yearNum;
           const fullDate = `${month}/${day}/${fullYear} ${time}`;
           tradeDate = parseDate(fullDate);
           entryTime = parseDateTime(fullDate);
@@ -1533,6 +1538,21 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}) {
       
       if (!tradeDate || !entryTime) {
         console.log(`Skipping PaperMoney record with invalid date: ${execTime}`);
+        continue;
+      }
+      
+      // Validate date is reasonable (not in future, not too old)
+      const now = new Date();
+      const maxFutureDate = new Date(now.getTime() + 24 * 60 * 60 * 1000); // Allow 1 day in future for timezone issues
+      const minPastDate = new Date('2000-01-01');
+      
+      if (entryTime > maxFutureDate) {
+        console.log(`Skipping PaperMoney record with future date: ${execTime}`);
+        continue;
+      }
+      
+      if (entryTime < minPastDate) {
+        console.log(`Skipping PaperMoney record with date too far in past: ${execTime}`);
         continue;
       }
       
