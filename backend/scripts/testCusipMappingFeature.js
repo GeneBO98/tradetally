@@ -3,17 +3,17 @@
 const db = require('../src/config/database');
 
 async function testCusipMappingFeature() {
-  console.log('🧪 Testing Complete CUSIP Mapping Feature\n');
+  console.log('[CHECK] Testing Complete CUSIP Mapping Feature\n');
 
   try {
     // Get a test user
     const userResult = await db.query('SELECT id FROM users LIMIT 1');
     if (userResult.rows.length === 0) {
-      console.log('❌ No users found in database');
+      console.log('[ERROR] No users found in database');
       return;
     }
     const userId = userResult.rows[0].id;
-    console.log(`✅ Using test user: ${userId}`);
+    console.log(`[SUCCESS] Using test user: ${userId}`);
 
     // Test 1: Create a test CUSIP mapping
     console.log('\n1. Testing CUSIP mapping creation:');
@@ -30,16 +30,16 @@ async function testCusipMappingFeature() {
     `;
     
     const createResult = await db.query(createQuery, [testCusip, testTicker, 'Test Company', userId]);
-    console.log(`   ✅ Created mapping: ${testCusip} → ${testTicker}`);
+    console.log(`   [SUCCESS] Created mapping: ${testCusip} → ${testTicker}`);
 
     // Test 2: Test the get_cusip_mapping function
     console.log('\n2. Testing database function:');
     const functionResult = await db.query('SELECT * FROM get_cusip_mapping($1, $2)', [testCusip, userId]);
     if (functionResult.rows.length > 0) {
       const mapping = functionResult.rows[0];
-      console.log(`   ✅ Function found mapping: ${mapping.cusip} → ${mapping.ticker} (${mapping.resolution_source})`);
+      console.log(`   [SUCCESS] Function found mapping: ${mapping.cusip} → ${mapping.ticker} (${mapping.resolution_source})`);
     } else {
-      console.log('   ❌ Function did not find mapping');
+      console.log('   [ERROR] Function did not find mapping');
     }
 
     // Test 3: Test API endpoints (simulate the controller logic)
@@ -78,7 +78,7 @@ async function testCusipMappingFeature() {
     `;
     
     const mappingsResult = await db.query(mappingsQuery, [userId]);
-    console.log(`   ✅ Found ${mappingsResult.rows.length} mappings for user`);
+    console.log(`   [SUCCESS] Found ${mappingsResult.rows.length} mappings for user`);
     mappingsResult.rows.forEach(row => {
       console.log(`      ${row.cusip} → ${row.ticker} (${row.resolution_source}, ${row.is_user_override ? 'user' : 'global'})`);
     });
@@ -102,7 +102,7 @@ async function testCusipMappingFeature() {
     `;
     
     const filterResult = await db.query(symbolFilterQuery, [userId, testTicker]);
-    console.log(`   ✅ Symbol filtering for "${testTicker}": ${filterResult.rows[0].count} trades found`);
+    console.log(`   [SUCCESS] Symbol filtering for "${testTicker}": ${filterResult.rows[0].count} trades found`);
 
     // Test 5: Test unmapped CUSIPs query
     console.log('\n5. Testing unmapped CUSIPs detection:');
@@ -125,7 +125,7 @@ async function testCusipMappingFeature() {
     `;
     
     const unmappedResult = await db.query(unmappedQuery, [userId]);
-    console.log(`   ✅ Found ${unmappedResult.rows.length} unmapped CUSIPs:`);
+    console.log(`   [SUCCESS] Found ${unmappedResult.rows.length} unmapped CUSIPs:`);
     unmappedResult.rows.forEach(row => {
       console.log(`      ${row.cusip}: ${row.trade_count} trades (unmapped)`);
     });
@@ -134,8 +134,8 @@ async function testCusipMappingFeature() {
     await db.query('DELETE FROM cusip_mappings WHERE cusip = $1 AND user_id = $2', [testCusip, userId]);
     console.log('\n🧹 Cleaned up test data');
 
-    console.log('\n✅ All CUSIP mapping feature tests passed!');
-    console.log('\n📋 Feature Summary:');
+    console.log('\n[SUCCESS] All CUSIP mapping feature tests passed!');
+    console.log('\n[INFO] Feature Summary:');
     console.log('   • Database schema supports user-specific and global mappings');
     console.log('   • API endpoints handle CRUD operations correctly');
     console.log('   • Symbol filtering works with both direct matches and CUSIP mappings');
@@ -143,7 +143,7 @@ async function testCusipMappingFeature() {
     console.log('   • User overrides take priority over global mappings');
 
   } catch (error) {
-    console.error('❌ Test failed:', error.message);
+    console.error('[ERROR] Test failed:', error.message);
     console.error(error.stack);
   } finally {
     await db.pool.end();

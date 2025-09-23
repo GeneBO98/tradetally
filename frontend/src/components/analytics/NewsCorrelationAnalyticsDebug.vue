@@ -28,7 +28,7 @@
         :disabled="loading"
         class="inline-flex items-center px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50"
       >
-        <span :class="{ 'animate-spin': loading }">🔄</span>
+        <span :class="{ 'animate-spin': loading }">[PROCESS]</span>
         <span class="ml-2">Refresh</span>
       </button>
     </div>
@@ -101,7 +101,7 @@ const rawResponse = ref(null)
 
 // Methods
 async function fetchAnalytics() {
-  console.log('📊 NewsCorrelationAnalyticsDebug: Starting fetch...')
+  console.log('[STATS] NewsCorrelationAnalyticsDebug: Starting fetch...')
   
   loading.value = true
   error.value = null
@@ -109,27 +109,27 @@ async function fetchAnalytics() {
 
   try {
     // Check if feature is enabled first
-    console.log('📊 Checking if enabled...')
+    console.log('[STATS] Checking if enabled...')
     const enabledResponse = await api.get('/news-correlation/enabled')
-    console.log('📊 Enabled response:', enabledResponse.data)
+    console.log('[STATS] Enabled response:', enabledResponse.data)
     enabled.value = enabledResponse.data.enabled
     
     if (!enabled.value) {
-      console.log('📊 Feature not enabled, stopping')
+      console.log('[STATS] Feature not enabled, stopping')
       return
     }
 
     // Fetch analytics data
-    console.log('📊 Fetching analytics...')
+    console.log('[STATS] Fetching analytics...')
     const response = await api.get('/news-correlation/analytics')
-    console.log('📊 Analytics response:', response.data)
+    console.log('[STATS] Analytics response:', response.data)
     
     rawResponse.value = response.data
     analytics.value = response.data
 
   } catch (err) {
-    console.error('📊 Failed to fetch news correlation analytics:', err)
-    console.error('📊 Error details:', {
+    console.error('[STATS] Failed to fetch news correlation analytics:', err)
+    console.error('[STATS] Error details:', {
       message: err.message,
       status: err.response?.status,
       data: err.response?.data
@@ -143,7 +143,7 @@ async function fetchAnalytics() {
     }
   } finally {
     loading.value = false
-    console.log('📊 Fetch complete. State:', {
+    console.log('[STATS] Fetch complete. State:', {
       loading: loading.value,
       error: error.value,
       enabled: enabled.value,
@@ -153,12 +153,12 @@ async function fetchAnalytics() {
 }
 
 function refreshAnalytics() {
-  console.log('📊 Refresh button clicked')
+  console.log('[STATS] Refresh button clicked')
   fetchAnalytics()
 }
 
 onMounted(() => {
-  console.log('📊 NewsCorrelationAnalyticsDebug mounted')
+  console.log('[STATS] NewsCorrelationAnalyticsDebug mounted')
   fetchAnalytics()
 })
 </script>

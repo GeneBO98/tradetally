@@ -416,12 +416,12 @@ class Trade {
 
     // Multi-select strategies filter
     if (filters.strategies && filters.strategies.length > 0) {
-      console.log('🎯 APPLYING MULTI-SELECT STRATEGIES:', filters.strategies);
+      console.log('[TARGET] APPLYING MULTI-SELECT STRATEGIES:', filters.strategies);
       const placeholders = filters.strategies.map((_, index) => `$${paramCount + index}`).join(',');
       query += ` AND t.strategy IN (${placeholders})`;
       filters.strategies.forEach(strategy => values.push(strategy));
       paramCount += filters.strategies.length;
-      console.log('🎯 Added strategies filter to query:', query.split('WHERE')[1]);
+      console.log('[TARGET] Added strategies filter to query:', query.split('WHERE')[1]);
     }
 
     // Multi-select sectors filter  
@@ -442,13 +442,13 @@ class Trade {
     }
 
     if (filters.hasNews !== undefined && filters.hasNews !== '' && filters.hasNews !== null) {
-      console.log('🔍 hasNews filter detected:', { value: filters.hasNews, type: typeof filters.hasNews });
+      console.log('[CHECK] hasNews filter detected:', { value: filters.hasNews, type: typeof filters.hasNews });
       if (filters.hasNews === 'true' || filters.hasNews === true || filters.hasNews === 1 || filters.hasNews === '1') {
         query += ` AND t.has_news = true`;
-        console.log('🔍 Applied hasNews=true filter to query');
+        console.log('[CHECK] Applied hasNews=true filter to query');
       } else if (filters.hasNews === 'false' || filters.hasNews === false || filters.hasNews === 0 || filters.hasNews === '0') {
         query += ` AND (t.has_news = false OR t.has_news IS NULL)`;
-        console.log('🔍 Applied hasNews=false filter to query');
+        console.log('[CHECK] Applied hasNews=false filter to query');
       }
     }
 
@@ -1127,6 +1127,20 @@ class Trade {
       values.push(filters.symbol.toUpperCase());
       paramCount++;
     }
+   // Broker filtering
+   if (filters.broker) {
+     whereClause += ` AND t.broker = $${paramCount}`;
+     values.push(filters.broker);
+     paramCount++;
+   } else if (filters.brokers) {
+     // If brokers filter is provided as a comma-separated string, split it into an array and filter using ANY()
+     const brokerList = filters.brokers.split(',').map(b => b.trim()).filter(b => b);
+     if (brokerList.length > 0) {
+       whereClause += ` AND t.broker = ANY($${paramCount}::text[])`;
+       values.push(brokerList);
+       paramCount++;
+     }
+   }
 
     // Sector filter (requires join with symbol_categories)
     if (filters.sector) {
@@ -1197,7 +1211,7 @@ class Trade {
       // Handle comma-separated string of brokers (from multi-select)
       const brokerList = filters.brokers.split(',').map(b => b.trim());
       if (brokerList.length > 0) {
-        console.log('🎯 ANALYTICS: APPLYING MULTI-SELECT BROKERS:', brokerList);
+        console.log('[TARGET] ANALYTICS: APPLYING MULTI-SELECT BROKERS:', brokerList);
         const placeholders = brokerList.map((_, index) => `$${paramCount + index}`).join(',');
         whereClause += ` AND t.broker IN (${placeholders})`;
         brokerList.forEach(broker => values.push(broker));
@@ -1212,7 +1226,7 @@ class Trade {
 
     // Multi-select strategies filter for analytics
     if (filters.strategies && filters.strategies.length > 0) {
-      console.log('🎯 ANALYTICS: APPLYING MULTI-SELECT STRATEGIES:', filters.strategies);
+      console.log('[TARGET] ANALYTICS: APPLYING MULTI-SELECT STRATEGIES:', filters.strategies);
       const placeholders = filters.strategies.map((_, index) => `$${paramCount + index}`).join(',');
       whereClause += ` AND t.strategy IN (${placeholders})`;
       filters.strategies.forEach(strategy => values.push(strategy));
@@ -1225,7 +1239,7 @@ class Trade {
 
     // Multi-select sectors filter for analytics
     if (filters.sectors && filters.sectors.length > 0) {
-      console.log('🎯 ANALYTICS: APPLYING MULTI-SELECT SECTORS:', filters.sectors);
+      console.log('[TARGET] ANALYTICS: APPLYING MULTI-SELECT SECTORS:', filters.sectors);
       const sectorPlaceholders = filters.sectors.map((_, index) => `$${paramCount + index}`).join(',');
       whereClause += ` AND t.symbol IN (SELECT sc.symbol FROM symbol_categories sc WHERE sc.finnhub_industry IN (${sectorPlaceholders}))`;
       filters.sectors.forEach(sector => values.push(sector));
@@ -1267,7 +1281,7 @@ class Trade {
     console.log('Analytics query - values:', values);
     
     // Debug the full query construction
-    console.log('🔍 About to execute analytics query with', values.length, 'parameters');
+    console.log('[CHECK] About to execute analytics query with', values.length, 'parameters');
     
     // First, let's count executions (individual database records)
     const executionCountQuery = `
@@ -1278,14 +1292,14 @@ class Trade {
     
     let executionCount = 0;
     try {
-      console.log('🔍 Executing execution count query:', executionCountQuery);
+      console.log('[CHECK] Executing execution count query:', executionCountQuery);
       const executionResult = await db.query(executionCountQuery, values);
       executionCount = parseInt(executionResult.rows[0].execution_count) || 0;
       console.log('Total executions:', executionCount);
     } catch (error) {
-      console.error('❌ ERROR in execution count query:', error.message);
-      console.error('❌ Query was:', executionCountQuery);
-      console.error('❌ Values were:', values);
+      console.error('[ERROR] ERROR in execution count query:', error.message);
+      console.error('[ERROR] Query was:', executionCountQuery);
+      console.error('[ERROR] Values were:', values);
       throw error;
     }
 
@@ -2137,7 +2151,7 @@ class Trade {
         await cache.set(circuitBreakerKey, circuitBreakerData, 3600); // Store for 1 hour
         
         if (circuitBreakerData.failures >= 10) {
-          console.log(`🚨 Circuit breaker OPENED: ${circuitBreakerData.failures} Finnhub failures`);
+          console.log(`[ERROR] Circuit breaker OPENED: ${circuitBreakerData.failures} Finnhub failures`);
         }
       } catch (cacheError) {
         // Ignore cache errors

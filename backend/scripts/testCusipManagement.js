@@ -3,17 +3,17 @@
 const db = require('../src/config/database');
 
 async function testCusipManagement() {
-  console.log('🧪 Testing CUSIP Management Integration\n');
+  console.log('[CHECK] Testing CUSIP Management Integration\n');
 
   try {
     // Get a valid user
     const userResult = await db.query('SELECT id FROM users LIMIT 1');
     if (userResult.rows.length === 0) {
-      console.log('❌ No users found in database');
+      console.log('[ERROR] No users found in database');
       return;
     }
     const userId = userResult.rows[0].id;
-    console.log(`✅ Using user: ${userId}`);
+    console.log(`[SUCCESS] Using user: ${userId}`);
 
     // Test 1: Create a test mapping to verify the complete flow
     console.log('\n1. Testing complete CUSIP management flow:');
@@ -27,7 +27,7 @@ async function testCusipManagement() {
       RETURNING id
     `;
     const tradeResult = await db.query(tradeQuery, [userId, testCusip]);
-    console.log(`   ✅ Created test trade with CUSIP: ${testCusip}`);
+    console.log(`   [SUCCESS] Created test trade with CUSIP: ${testCusip}`);
 
     // Verify it shows up in unmapped
     const unmappedQuery = `
@@ -50,7 +50,7 @@ async function testCusipManagement() {
     `;
     const unmappedResult = await db.query(unmappedQuery, [userId, testCusip]);
     if (unmappedResult.rows.length > 0) {
-      console.log(`   ✅ CUSIP appears in unmapped list: ${unmappedResult.rows[0].trade_count} trades`);
+      console.log(`   [SUCCESS] CUSIP appears in unmapped list: ${unmappedResult.rows[0].trade_count} trades`);
     }
 
     // Test 2: Create mapping via API simulation
@@ -61,12 +61,12 @@ async function testCusipManagement() {
       RETURNING *
     `;
     const mappingResult = await db.query(createMappingQuery, [testCusip, testTicker, 'Demo Company', userId]);
-    console.log(`   ✅ Created mapping: ${testCusip} → ${testTicker}`);
+    console.log(`   [SUCCESS] Created mapping: ${testCusip} → ${testTicker}`);
 
     // Test 3: Update trades
     const updateQuery = `UPDATE trades SET symbol = $1 WHERE user_id = $2 AND symbol = $3`;
     const updateResult = await db.query(updateQuery, [testTicker, userId, testCusip]);
-    console.log(`   ✅ Updated ${updateResult.rowCount} trades`);
+    console.log(`   [SUCCESS] Updated ${updateResult.rowCount} trades`);
 
     // Test 4: Verify mapping appears in comprehensive view
     console.log('\n3. Testing comprehensive view query:');
@@ -95,7 +95,7 @@ async function testCusipManagement() {
     const compResult = await db.query(comprehensiveQuery, [userId, testCusip]);
     if (compResult.rows.length > 0) {
       const mapping = compResult.rows[0];
-      console.log(`   ✅ Mapping found in comprehensive view: ${mapping.cusip} → ${mapping.ticker} (${mapping.resolution_source})`);
+      console.log(`   [SUCCESS] Mapping found in comprehensive view: ${mapping.cusip} → ${mapping.ticker} (${mapping.resolution_source})`);
     }
 
     // Test 5: Test lookup function
@@ -103,13 +103,13 @@ async function testCusipManagement() {
     const lookupResult = await db.query('SELECT * FROM get_cusip_mapping($1, $2)', [testCusip, userId]);
     if (lookupResult.rows.length > 0) {
       const lookup = lookupResult.rows[0];
-      console.log(`   ✅ Lookup function works: ${lookup.cusip} → ${lookup.ticker}`);
+      console.log(`   [SUCCESS] Lookup function works: ${lookup.cusip} → ${lookup.ticker}`);
     }
 
     // Test 6: Verify no longer in unmapped
     const stillUnmappedResult = await db.query(unmappedQuery, [userId, testCusip]);
     if (stillUnmappedResult.rows.length === 0) {
-      console.log(`   ✅ CUSIP no longer appears in unmapped list`);
+      console.log(`   [SUCCESS] CUSIP no longer appears in unmapped list`);
     }
 
     // Cleanup
@@ -117,8 +117,8 @@ async function testCusipManagement() {
     await db.query('DELETE FROM cusip_mappings WHERE cusip = $1 AND user_id = $2', [testCusip, userId]);
     console.log('\n🧹 Cleaned up test data');
 
-    console.log('\n✅ All CUSIP management integration tests passed!');
-    console.log('\n📋 Integration Summary:');
+    console.log('\n[SUCCESS] All CUSIP management integration tests passed!');
+    console.log('\n[INFO] Integration Summary:');
     console.log('   • CUSIP appears in unmapped list when no mapping exists');
     console.log('   • Mapping creation works correctly');
     console.log('   • Trade symbol updates work when mapping is created');
@@ -128,7 +128,7 @@ async function testCusipManagement() {
     console.log('   • Unmapped button should show count when unmapped CUSIPs exist');
 
   } catch (error) {
-    console.error('❌ Test failed:', error.message);
+    console.error('[ERROR] Test failed:', error.message);
     console.error(error.stack);
   } finally {
     await db.pool.end();

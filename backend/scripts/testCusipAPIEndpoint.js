@@ -3,7 +3,7 @@
 const db = require('../src/config/database');
 
 async function testCusipAPIController() {
-  console.log('🧪 Testing CUSIP API Controller Logic\n');
+  console.log('[CHECK] Testing CUSIP API Controller Logic\n');
 
   try {
     // Get a real user and a global mapping
@@ -19,10 +19,10 @@ async function testCusipAPIController() {
     const globalMapping = globalMappingQuery.rows[0];
     
     console.log('👤 User ID:', userId);
-    console.log('📋 Testing with CUSIP:', globalMapping.cusip, '→', globalMapping.ticker);
+    console.log('[INFO] Testing with CUSIP:', globalMapping.cusip, '→', globalMapping.ticker);
 
     // Test the controller's createOrUpdateCusipMapping logic
-    console.log('\n📋 Test: Controller logic for creating user override');
+    console.log('\n[INFO] Test: Controller logic for creating user override');
     
     const testTicker = 'TESTAPI' + Math.floor(Math.random() * 100);
     const testCompany = 'Test API Company';
@@ -52,7 +52,7 @@ async function testCusipAPIController() {
     ];
     
     const result = await db.query(query, values);
-    console.log('✅ Controller logic succeeded:', {
+    console.log('[SUCCESS] Controller logic succeeded:', {
       cusip: result.rows[0].cusip,
       ticker: result.rows[0].ticker,
       user_id: result.rows[0].user_id,
@@ -60,7 +60,7 @@ async function testCusipAPIController() {
     });
 
     // Test the controller's retrieval logic used in getUserCusipMappings
-    console.log('\n📋 Test: Controller retrieval logic');
+    console.log('\n[INFO] Test: Controller retrieval logic');
     
     const retrievalQuery = `
       WITH all_user_cusips AS (
@@ -94,14 +94,14 @@ async function testCusipAPIController() {
     const retrievalResult = await db.query(retrievalQuery, [globalMapping.cusip, userId]);
     if (retrievalResult.rows.length > 0) {
       const mapping = retrievalResult.rows[0];
-      console.log('✅ Retrieval logic found:', {
+      console.log('[SUCCESS] Retrieval logic found:', {
         cusip: mapping.cusip,
         ticker: mapping.ticker,
         isUserOverride: mapping.is_user_override,
         source: mapping.resolution_source
       });
     } else {
-      console.log('❌ Retrieval logic found no mappings');
+      console.log('[ERROR] Retrieval logic found no mappings');
     }
 
     // Cleanup
@@ -109,7 +109,7 @@ async function testCusipAPIController() {
     await db.query('DELETE FROM cusip_mappings WHERE user_id = $1 AND resolution_source = $2', [userId, 'manual']);
 
   } catch (error) {
-    console.error('❌ Test failed:', error.message);
+    console.error('[ERROR] Test failed:', error.message);
     console.error(error.stack);
   } finally {
     await db.pool.end();

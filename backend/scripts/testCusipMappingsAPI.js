@@ -3,7 +3,7 @@
 const db = require('../src/config/database');
 
 async function testCusipMappingsAPI() {
-  console.log('🧪 Testing CUSIP Mappings API and Database\n');
+  console.log('[CHECK] Testing CUSIP Mappings API and Database\n');
 
   try {
     // Test 1: Check database function
@@ -103,10 +103,10 @@ async function testCusipMappingsAPI() {
       console.log(`   Function-based filtering: ${functionResult.rows.length} symbol groups found`);
     }
 
-    console.log('\n✅ CUSIP Mappings API test completed successfully');
+    console.log('\n[SUCCESS] CUSIP Mappings API test completed successfully');
 
   } catch (error) {
-    console.error('❌ Test failed:', error.message);
+    console.error('[ERROR] Test failed:', error.message);
     console.error(error.stack);
   } finally {
     await db.pool.end();

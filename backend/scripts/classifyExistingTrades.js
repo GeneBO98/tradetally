@@ -21,9 +21,9 @@ class TradeClassificationBatch {
   }
 
   async run() {
-    console.log('🚀 Starting batch classification of existing trades...');
-    console.log(`📊 Processing in batches of ${this.batchSize} trades`);
-    console.log(`⏱️  API delay: ${this.apiCallDelay}ms between technical analysis calls`);
+    console.log('[START] Starting batch classification of existing trades...');
+    console.log(`[STATS] Processing in batches of ${this.batchSize} trades`);
+    console.log(`[INFO]  API delay: ${this.apiCallDelay}ms between technical analysis calls`);
     console.log('');
 
     try {
@@ -37,14 +37,14 @@ class TradeClassificationBatch {
       
       const { total_trades, unclassified_trades, completed_trades } = countResult.rows[0];
       
-      console.log(`📈 Trade Statistics:`);
+      console.log(`[ANALYTICS] Trade Statistics:`);
       console.log(`   Total trades: ${total_trades}`);
       console.log(`   Unclassified: ${unclassified_trades}`);
       console.log(`   Completed: ${completed_trades}`);
       console.log('');
 
       if (parseInt(unclassified_trades) === 0) {
-        console.log('✅ All trades are already classified!');
+        console.log('[SUCCESS] All trades are already classified!');
         return;
       }
 
@@ -69,7 +69,7 @@ class TradeClassificationBatch {
           
           // Progress indicator
           if (this.processed % 10 === 0) {
-            console.log(`   📋 Processed ${this.processed}/${unclassified_trades} trades`);
+            console.log(`   [INFO] Processed ${this.processed}/${unclassified_trades} trades`);
           }
         }
 
@@ -82,7 +82,7 @@ class TradeClassificationBatch {
       await this.printSummary(unclassified_trades);
 
     } catch (error) {
-      console.error('❌ Batch classification failed:', error);
+      console.error('[ERROR] Batch classification failed:', error);
       throw error;
     }
   }
@@ -123,7 +123,7 @@ class TradeClassificationBatch {
           await this.sleep(this.apiCallDelay);
           
         } catch (error) {
-          console.warn(`⚠️  Technical analysis failed for trade ${trade.id}, falling back to basic classification:`, error.message);
+          console.warn(`[WARNING]  Technical analysis failed for trade ${trade.id}, falling back to basic classification:`, error.message);
           classification = await Trade.classifyTradeBasic(trade);
         }
       } else {
@@ -166,7 +166,7 @@ class TradeClassificationBatch {
       this.classified++;
 
     } catch (error) {
-      console.error(`❌ Failed to classify trade ${trade.id}:`, error.message);
+      console.error(`[ERROR] Failed to classify trade ${trade.id}:`, error.message);
       this.errors++;
     }
   }
@@ -197,26 +197,26 @@ class TradeClassificationBatch {
     const rate = this.processed / duration;
 
     console.log('');
-    console.log('🎉 Batch Classification Complete!');
+    console.log('[SUCCESS] Batch Classification Complete!');
     console.log('=====================================');
-    console.log(`📊 Total processed: ${this.processed}/${totalToProcess}`);
-    console.log(`✅ Successfully classified: ${this.classified}`);
-    console.log(`❌ Errors: ${this.errors}`);
-    console.log(`🔗 API calls made: ${this.apiCalls}`);
-    console.log(`⏱️  Total time: ${duration.toFixed(1)} seconds`);
-    console.log(`⚡ Processing rate: ${rate.toFixed(1)} trades/second`);
+    console.log(`[STATS] Total processed: ${this.processed}/${totalToProcess}`);
+    console.log(`[SUCCESS] Successfully classified: ${this.classified}`);
+    console.log(`[ERROR] Errors: ${this.errors}`);
+    console.log(`[INFO] API calls made: ${this.apiCalls}`);
+    console.log(`[INFO]  Total time: ${duration.toFixed(1)} seconds`);
+    console.log(`[WARNING] Processing rate: ${rate.toFixed(1)} trades/second`);
     console.log('');
 
     // Show classification breakdown
     const breakdown = await this.getClassificationBreakdown();
-    console.log('📈 Strategy Distribution:');
+    console.log('[ANALYTICS] Strategy Distribution:');
     breakdown.forEach(row => {
       const percentage = ((row.count / this.classified) * 100).toFixed(1);
       console.log(`   ${row.strategy}: ${row.count} trades (${percentage}%)`);
     });
 
     console.log('');
-    console.log('✨ All existing trades have been classified!');
+    console.log('[SUCCESS] All existing trades have been classified!');
     console.log('   New trades will be automatically classified going forward.');
   }
 
@@ -248,11 +248,11 @@ if (require.main === module) {
   
   processor.run()
     .then(() => {
-      console.log('✅ Batch classification completed successfully');
+      console.log('[SUCCESS] Batch classification completed successfully');
       process.exit(0);
     })
     .catch((error) => {
-      console.error('❌ Batch classification failed:', error);
+      console.error('[ERROR] Batch classification failed:', error);
       process.exit(1);
     });
 }

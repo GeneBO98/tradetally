@@ -1,12 +1,12 @@
 const db = require('../src/config/database');
 
 async function demonstrateRealTimeUpdates() {
-  console.log('🎯 Demonstrating real-time enrichment updates...');
+  console.log('[TARGET] Demonstrating real-time enrichment updates...');
   
   const userId = 'f7ffbef5-7ec4-4972-be3f-439233ef8410';
   
   // First, reset some completed trades to pending to simulate fresh imports
-  console.log('📝 Resetting some trades to pending status...');
+  console.log('[CONFIG] Resetting some trades to pending status...');
   await db.query(`
     UPDATE trades 
     SET enrichment_status = 'pending'
@@ -27,7 +27,7 @@ async function demonstrateRealTimeUpdates() {
     GROUP BY enrichment_status ORDER BY enrichment_status
   `, [userId]);
   
-  console.log('🚀 Initial status:');
+  console.log('[START] Initial status:');
   statusResult.rows.forEach(row => {
     console.log(`  ${row.enrichment_status}: ${row.count}`);
   });
@@ -74,13 +74,13 @@ async function demonstrateRealTimeUpdates() {
       status[row.enrichment_status] = parseInt(row.count);
     });
     
-    console.log(`✅ Step ${i+1}: Completed batch - ${status.completed || 0} completed, ${status.processing || 0} processing, ${status.pending || 0} pending`);
+    console.log(`[SUCCESS] Step ${i+1}: Completed batch - ${status.completed || 0} completed, ${status.processing || 0} processing, ${status.pending || 0} pending`);
     
     // Wait 3 seconds before next batch
     await new Promise(resolve => setTimeout(resolve, 3000));
   }
   
-  console.log('\n🎉 Demo complete! The frontend should have shown real-time updates.');
+  console.log('\n[SUCCESS] Demo complete! The frontend should have shown real-time updates.');
   process.exit(0);
 }
 

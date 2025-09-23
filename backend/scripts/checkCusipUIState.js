@@ -3,17 +3,17 @@
 const db = require('../src/config/database');
 
 async function checkCusipUIState() {
-  console.log('🔍 Checking CUSIP UI State\n');
+  console.log('[CHECK] Checking CUSIP UI State\n');
 
   try {
     // Get a valid user
     const userResult = await db.query('SELECT id FROM users LIMIT 1');
     if (userResult.rows.length === 0) {
-      console.log('❌ No users found in database');
+      console.log('[ERROR] No users found in database');
       return;
     }
     const userId = userResult.rows[0].id;
-    console.log(`✅ Using user: ${userId}`);
+    console.log(`[SUCCESS] Using user: ${userId}`);
 
     // Check unmapped CUSIPs count (for the yellow button)
     console.log('\n1. Unmapped CUSIPs (should show yellow button):');
@@ -37,7 +37,7 @@ async function checkCusipUIState() {
     console.log(`   Unmapped count: ${unmappedResult.rows.length} CUSIPs`);
     
     if (unmappedResult.rows.length > 0) {
-      console.log('   ✅ Yellow "Unmapped" button should be visible');
+      console.log('   [SUCCESS] Yellow "Unmapped" button should be visible');
       console.log('   Top unmapped CUSIPs:');
       unmappedResult.rows.slice(0, 5).forEach(row => {
         console.log(`      ${row.cusip}: ${row.trade_count} trades`);
@@ -61,7 +61,7 @@ async function checkCusipUIState() {
     
     const allCusipsResult = await db.query(allCusipsQuery, [userId]);
     console.log(`   Total CUSIPs: ${allCusipsResult.rows.length}`);
-    console.log('   ✅ "Manage All" button should always be visible');
+    console.log('   [SUCCESS] "Manage All" button should always be visible');
 
     // Check existing mappings
     console.log('\n3. Existing mappings:');
@@ -82,7 +82,7 @@ async function checkCusipUIState() {
       });
     }
 
-    console.log('\n📊 UI State Summary:');
+    console.log('\n[STATS] UI State Summary:');
     console.log(`   • "Manage All" button: Always visible`);
     console.log(`   • "Unmapped" button: ${unmappedResult.rows.length > 0 ? 'Visible' : 'Hidden'} (${unmappedResult.rows.length} unmapped)`);
     console.log(`   • Warning message: ${unmappedResult.rows.length > 0 ? 'Visible' : 'Hidden'}`);
@@ -95,7 +95,7 @@ async function checkCusipUIState() {
     console.log('   • "Unmapped": btn-yellow (yellow warning style)');
 
   } catch (error) {
-    console.error('❌ Check failed:', error.message);
+    console.error('[ERROR] Check failed:', error.message);
     console.error(error.stack);
   } finally {
     await db.pool.end();

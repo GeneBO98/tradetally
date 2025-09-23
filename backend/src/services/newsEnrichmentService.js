@@ -476,7 +476,7 @@ class NewsEnrichmentService {
     }
 
     this.isProcessing = true;
-    logger.logImport('🚀 Starting news backfill for existing trades');
+    logger.logImport('[START] Starting news backfill for existing trades');
 
     try {
       // Build query to find completed trades without news
@@ -592,7 +592,7 @@ class NewsEnrichmentService {
         }
       }
 
-      logger.logImport(`✅ News backfill complete: ${enriched} trades enriched from ${processed} symbol/date combinations`);
+      logger.logImport(`[SUCCESS] News backfill complete: ${enriched} trades enriched from ${processed} symbol/date combinations`);
 
     } catch (error) {
       logger.logError(`Error during news backfill: ${error.message}`);

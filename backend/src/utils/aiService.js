@@ -59,10 +59,10 @@ class AIService {
 
   async generateResponse(userId, prompt, options = {}) {
     const settings = await this.getUserSettings(userId);
-    console.log('🤖 AI Service - Provider:', settings.provider);
-    console.log('🤖 AI Service - Has API Key:', !!settings.apiKey);
-    console.log('🤖 AI Service - API URL:', settings.apiUrl || 'Not set');
-    console.log('🤖 AI Service - Model:', settings.model || 'Default');
+    console.log('[AI] AI Service - Provider:', settings.provider);
+    console.log('[AI] AI Service - Has API Key:', !!settings.apiKey);
+    console.log('[AI] AI Service - API URL:', settings.apiUrl || 'Not set');
+    console.log('[AI] AI Service - Model:', settings.model || 'Default');
     
     // Validate configuration before attempting to call provider
     if (!this.isProviderConfigured(settings)) {
@@ -76,8 +76,8 @@ class AIService {
     }
 
     const result = await provider(prompt, settings, options);
-    console.log('🤖 AI Service - Response type:', typeof result);
-    console.log('🤖 AI Service - Response preview:', result ? (result.substring ? result.substring(0, 100) : JSON.stringify(result).substring(0, 100)) : 'undefined/null');
+    console.log('[AI] AI Service - Response type:', typeof result);
+    console.log('[AI] AI Service - Response preview:', result ? (result.substring ? result.substring(0, 100) : JSON.stringify(result).substring(0, 100)) : 'undefined/null');
     
     if (!result) {
       throw new Error(`AI provider ${settings.provider} returned no response`);
@@ -113,7 +113,7 @@ class AIService {
     
     // Check if provider is configured before attempting lookup
     if (!this.isProviderConfigured(settings)) {
-      console.log(`🤖 AI CUSIP lookup skipped for ${cusip}: ${settings.provider} provider not properly configured`);
+      console.log(`[AI] AI CUSIP lookup skipped for ${cusip}: ${settings.provider} provider not properly configured`);
       return null;
     }
     
@@ -144,7 +144,7 @@ Response format: ONLY the ticker symbol or "NOT_FOUND" - no additional text.`;
       
       // Return null for NOT_FOUND responses or empty responses
       if (!cleanResponse || cleanResponse === 'NOT_FOUND' || cleanResponse.length === 0) {
-        console.log(`🤖 AI returned NOT_FOUND for CUSIP ${cusip}`);
+        console.log(`[AI] AI returned NOT_FOUND for CUSIP ${cusip}`);
         return null;
       }
       
@@ -157,7 +157,7 @@ Response format: ONLY the ticker symbol or "NOT_FOUND" - no additional text.`;
       // Additional validation: warn if AI returns common "guess" symbols
       const commonGuesses = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'META', 'NVDA', 'JPM', 'BAC', 'WMT'];
       if (commonGuesses.includes(cleanResponse)) {
-        console.warn(`⚠️  AI returned common stock symbol ${cleanResponse} for CUSIP ${cusip} - verify accuracy`);
+        console.warn(`[WARNING] AI returned common stock symbol ${cleanResponse} for CUSIP ${cusip} - verify accuracy`);
       }
       
       return cleanResponse;
@@ -169,13 +169,13 @@ Response format: ONLY the ticker symbol or "NOT_FOUND" - no additional text.`;
 
   async useGemini(prompt, settings, options = {}) {
     try {
-      console.log('🔷 Using Gemini provider with API key:', settings.apiKey ? 'PROVIDED' : 'MISSING');
+      console.log('[GEMINI] Using Gemini provider with API key:', settings.apiKey ? 'PROVIDED' : 'MISSING');
       // Use existing gemini utility with API key from settings
       const response = await gemini.generateResponse(prompt, settings.apiKey, options);
-      console.log('🔷 Gemini response received:', response ? 'SUCCESS' : 'EMPTY');
+      console.log('[GEMINI] Gemini response received:', response ? 'SUCCESS' : 'EMPTY');
       return response;
     } catch (error) {
-      console.error('🔷 Gemini provider error:', error.message);
+      console.error('[GEMINI] Gemini provider error:', error.message);
       throw error;
     }
   }
@@ -217,7 +217,7 @@ Response format: ONLY the ticker symbol or "NOT_FOUND" - no additional text.`;
     });
 
     const model = settings.model || 'gpt-4o';
-    console.log(`🤖 OpenAI: Using model ${model}`);
+    console.log(`[OPENAI] OpenAI: Using model ${model}`);
 
     try {
       const response = await openai.chat.completions.create({
@@ -231,7 +231,7 @@ Response format: ONLY the ticker symbol or "NOT_FOUND" - no additional text.`;
         max_completion_tokens: options.maxTokens || 1000,
       });
 
-      console.log('🤖 OpenAI raw response:', JSON.stringify(response, null, 2).substring(0, 500));
+      console.log('[OPENAI] OpenAI raw response:', JSON.stringify(response, null, 2).substring(0, 500));
       
       if (!response) {
         throw new Error('No response received from OpenAI API');
@@ -246,12 +246,12 @@ Response format: ONLY the ticker symbol or "NOT_FOUND" - no additional text.`;
       }
       
       const content = response.choices[0].message.content;
-      console.log('🤖 OpenAI extracted content:', content ? `${content.substring(0, 100)}...` : 'undefined/null');
+      console.log('[OPENAI] OpenAI extracted content:', content ? `${content.substring(0, 100)}...` : 'undefined/null');
       
       return content;
     } catch (error) {
-      console.error('❌ OpenAI API error:', error.message);
-      console.error('❌ OpenAI error details:', error.response?.data || error);
+      console.error('[ERROR] OpenAI API error:', error.message);
+      console.error('[ERROR] OpenAI error details:', error.response?.data || error);
       throw error;
     }
   }
@@ -264,7 +264,7 @@ Response format: ONLY the ticker symbol or "NOT_FOUND" - no additional text.`;
     }
 
     // Log the settings for debugging
-    console.log('🦙 Ollama settings:', {
+    console.log('[OLLAMA] Ollama settings:', {
       apiUrl: settings.apiUrl,
       hasApiKey: !!settings.apiKey,
       model: settings.model || 'llama3.1'
@@ -297,7 +297,7 @@ Response format: ONLY the ticker symbol or "NOT_FOUND" - no additional text.`;
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('🦙 Ollama API error response:', errorText);
+      console.error('[OLLAMA] Ollama API error response:', errorText);
       throw new Error(`Ollama API error: ${response.status} ${response.statusText} - ${errorText}`);
     }
 

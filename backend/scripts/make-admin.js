@@ -23,7 +23,7 @@ async function makeAdmin(email) {
     }
 
     const user = result.rows[0];
-    console.log(`✅ Successfully made ${user.username} (${user.email}) an admin`);
+    console.log(`[SUCCESS] Successfully made ${user.username} (${user.email}) an admin`);
     console.log(`User ID: ${user.id}`);
   } catch (error) {
     console.error('Error making user admin:', error.message);

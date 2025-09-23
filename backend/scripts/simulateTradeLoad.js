@@ -7,7 +7,7 @@
 const db = require('../src/config/database');
 
 async function simulateTradeLoad() {
-  console.log('🎯 Simulating frontend trade load process...');
+  console.log('[TARGET] Simulating frontend trade load process...');
   
   try {
     // Step 1: Get a sample trade and user (like frontend would)
@@ -27,7 +27,7 @@ async function simulateTradeLoad() {
     
     const sampleResult = await db.query(sampleQuery);
     if (sampleResult.rows.length === 0) {
-      console.log('❌ No trades found');
+      console.log('[ERROR] No trades found');
       return;
     }
     
@@ -47,7 +47,7 @@ async function simulateTradeLoad() {
       const trade = await Trade.findById(sample.trade_id, sample.user_id);
       
       if (!trade) {
-        console.log('❌ Trade.findById returned null');
+        console.log('[ERROR] Trade.findById returned null');
         
         // Debug: Let's check what the actual query returns
         console.log('\n3. Debugging the raw query...');
@@ -81,7 +81,7 @@ async function simulateTradeLoad() {
         }
         
       } else {
-        console.log('✅ Trade.findById succeeded');
+        console.log('[SUCCESS] Trade.findById succeeded');
         console.log('Trade structure:', {
           id: trade.id,
           symbol: trade.symbol,
@@ -95,7 +95,7 @@ async function simulateTradeLoad() {
       }
       
     } catch (tradeError) {
-      console.log('❌ Trade.findById threw error:', tradeError.message);
+      console.log('[ERROR] Trade.findById threw error:', tradeError.message);
       console.log('Full error:', tradeError);
     }
     
@@ -110,7 +110,7 @@ async function simulateTradeLoad() {
     
     const mockRes = {
       json: (data) => {
-        console.log('✅ Controller would return:', {
+        console.log('[SUCCESS] Controller would return:', {
           hasTradeProperty: !!data.trade,
           tradeId: data.trade?.id,
           symbol: data.trade?.symbol
@@ -119,24 +119,24 @@ async function simulateTradeLoad() {
       },
       status: (code) => ({
         json: (data) => {
-          console.log(`❌ Controller would return ${code}:`, data);
+          console.log(`[ERROR] Controller would return ${code}:`, data);
           return data;
         }
       })
     };
     
     const mockNext = (error) => {
-      console.log('❌ Controller error:', error.message);
+      console.log('[ERROR] Controller error:', error.message);
     };
     
     // Import and test the actual controller
     const tradeController = require('../src/controllers/trade.controller');
     await tradeController.getTrade(mockReq, mockRes, mockNext);
     
-    console.log('\n✅ Simulation completed');
+    console.log('\n[SUCCESS] Simulation completed');
     
   } catch (error) {
-    console.error('❌ Simulation failed:', error);
+    console.error('[ERROR] Simulation failed:', error);
     throw error;
   }
 }
@@ -145,11 +145,11 @@ async function simulateTradeLoad() {
 if (require.main === module) {
   simulateTradeLoad()
     .then(() => {
-      console.log('\n🎉 Simulation completed!');
+      console.log('\n[SUCCESS] Simulation completed!');
       process.exit(0);
     })
     .catch((error) => {
-      console.error('\n💥 Simulation failed:', error);
+      console.error('\n[ERROR] Simulation failed:', error);
       process.exit(1);
     });
 }

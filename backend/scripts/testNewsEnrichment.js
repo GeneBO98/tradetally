@@ -4,7 +4,7 @@ const db = require('../src/config/database');
 const Trade = require('../src/models/Trade');
 
 async function testNewsEnrichment() {
-  console.log('🧪 Testing News Enrichment Fix\n');
+  console.log('[CHECK] Testing News Enrichment Fix\n');
 
   try {
     // Get a user ID
@@ -25,12 +25,12 @@ async function testNewsEnrichment() {
     `, [userId]);
 
     if (tradeQuery.rows.length === 0) {
-      console.log('❌ No trades without sentiment data found for this user');
+      console.log('[ERROR] No trades without sentiment data found for this user');
       return;
     }
 
     const trade = tradeQuery.rows[0];
-    console.log('📊 Testing trade:', {
+    console.log('[STATS] Testing trade:', {
       id: trade.id,
       symbol: trade.symbol,
       trade_date: trade.trade_date,
@@ -40,7 +40,7 @@ async function testNewsEnrichment() {
     });
 
     // Test the checkNewsForTrade method
-    console.log('\n🔍 Testing checkNewsForTrade method...');
+    console.log('\n[CHECK] Testing checkNewsForTrade method...');
     
     const newsData = await Trade.checkNewsForTrade({
       symbol: trade.symbol,
@@ -48,7 +48,7 @@ async function testNewsEnrichment() {
       entry_time: trade.entry_time
     }, userId);
 
-    console.log('📰 News enrichment result:', {
+    console.log('[INFO] News enrichment result:', {
       hasNews: newsData.hasNews,
       sentiment: newsData.sentiment,
       newsCount: newsData.newsEvents?.length || 0,
@@ -56,7 +56,7 @@ async function testNewsEnrichment() {
     });
 
     if (newsData.hasNews && newsData.newsEvents?.length > 0) {
-      console.log('📄 Sample news headlines:');
+      console.log('[INFO] Sample news headlines:');
       newsData.newsEvents.slice(0, 3).forEach((event, i) => {
         console.log(`   ${i + 1}. ${event.headline} (${event.sentiment})`);
       });
@@ -64,7 +64,7 @@ async function testNewsEnrichment() {
 
     // Update the trade manually to test the full flow
     if (newsData.hasNews || newsData.sentiment) {
-      console.log('\n💾 Updating trade with news data...');
+      console.log('\n[STORAGE] Updating trade with news data...');
       
       const updateQuery = `
         UPDATE trades 
@@ -84,19 +84,19 @@ async function testNewsEnrichment() {
         trade.id
       ]);
 
-      console.log('✅ Trade updated:', updateResult.rows[0]);
+      console.log('[SUCCESS] Trade updated:', updateResult.rows[0]);
     } else {
       console.log('ℹ️  No news data to update (this is normal for many trades)');
     }
 
-    console.log('\n🎉 Test completed successfully!');
+    console.log('\n[SUCCESS] Test completed successfully!');
     console.log('\nNext steps:');
-    console.log('1. ✅ The fix is working - news enrichment now respects billing settings');
-    console.log('2. 📊 For bulk backfill, use the /api/news-enrichment/backfill endpoint with authentication');
-    console.log('3. 🔄 New trades will automatically get sentiment analysis');
+    console.log('1. [SUCCESS] The fix is working - news enrichment now respects billing settings');
+    console.log('2. [STATS] For bulk backfill, use the /api/news-enrichment/backfill endpoint with authentication');
+    console.log('3. [PROCESS] New trades will automatically get sentiment analysis');
 
   } catch (error) {
-    console.error('❌ Test failed:', error.message);
+    console.error('[ERROR] Test failed:', error.message);
     console.error(error.stack);
   } finally {
     await db.pool.end();

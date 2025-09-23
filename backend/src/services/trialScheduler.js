@@ -6,7 +6,7 @@ class TrialScheduler {
   // Run all trial-related scheduled tasks
   static async runScheduledTasks() {
     try {
-      console.log('🚀 Running trial scheduled tasks...');
+      console.log('[START] Running trial scheduled tasks...');
       
       // Check for trials expiring in 3 days and send reminder
       await this.sendTrialReminders(3);
@@ -17,10 +17,10 @@ class TrialScheduler {
       // Check for expired trials and send expiration notice
       await this.sendTrialExpirationNotices();
       
-      console.log('✅ Trial scheduled tasks completed');
+      console.log('[SUCCESS] Trial scheduled tasks completed');
       
     } catch (error) {
-      console.error('❌ Error running trial scheduled tasks:', error);
+      console.error('[ERROR] Error running trial scheduled tasks:', error);
     }
   }
   
@@ -144,7 +144,7 @@ class TrialScheduler {
   
   // Start the trial scheduler
   static startScheduler() {
-    console.log('🚀 Starting trial scheduler...');
+    console.log('[START] Starting trial scheduler...');
     
     // Run immediately
     this.runScheduledTasks();
@@ -154,7 +154,7 @@ class TrialScheduler {
       this.runScheduledTasks();
     }, 6 * 60 * 60 * 1000);
     
-    console.log('✅ Trial scheduler started (runs every 6 hours)');
+    console.log('[SUCCESS] Trial scheduler started (runs every 6 hours)');
   }
 }
 

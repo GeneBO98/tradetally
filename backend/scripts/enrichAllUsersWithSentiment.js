@@ -5,7 +5,7 @@ const newsEnrichmentService = require('../src/services/newsEnrichmentService');
 const logger = require('../src/utils/logger');
 
 async function enrichAllUsersWithSentiment() {
-  console.log('🧪 Enriching trades with sentiment data for all users\n');
+  console.log('[CHECK] Enriching trades with sentiment data for all users\n');
 
   try {
     // Get all users with trades
@@ -95,7 +95,7 @@ async function enrichAllUsersWithSentiment() {
     }
     
     // Show final statistics
-    console.log('\n📊 Final Statistics:');
+    console.log('\n[STATS] Final Statistics:');
     const statsQuery = `
       SELECT 
         COUNT(DISTINCT user_id) as users_with_sentiment,
@@ -116,11 +116,11 @@ async function enrichAllUsersWithSentiment() {
     console.log(`   - Negative: ${s.negative}`);
     console.log(`   - Neutral: ${s.neutral}`);
     
-    console.log('\n✅ Enrichment complete!');
+    console.log('\n[SUCCESS] Enrichment complete!');
     console.log('   News Sentiment Analytics should now show data for all users.');
 
   } catch (error) {
-    console.error('❌ Enrichment failed:', error.message);
+    console.error('[ERROR] Enrichment failed:', error.message);
     console.error(error.stack);
   } finally {
     await db.pool.end();

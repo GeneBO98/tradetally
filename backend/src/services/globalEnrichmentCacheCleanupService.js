@@ -12,7 +12,7 @@ class GlobalEnrichmentCacheCleanupService {
      */
     start() {
         if (this.cleanupInterval) {
-            logger.logImport('🧹 Global enrichment cache cleanup service already running');
+            logger.logImport('[CLEAN] Global enrichment cache cleanup service already running');
             return;
         }
 
@@ -25,7 +25,7 @@ class GlobalEnrichmentCacheCleanupService {
             this.runCleanup();
         }, intervalMs);
 
-        logger.logImport(`🧹 Global enrichment cache cleanup service started (runs every ${this.CLEANUP_INTERVAL_HOURS} hours)`);
+        logger.logImport(`[CLEAN] Global enrichment cache cleanup service started (runs every ${this.CLEANUP_INTERVAL_HOURS} hours)`);
     }
 
     /**
@@ -35,7 +35,7 @@ class GlobalEnrichmentCacheCleanupService {
         if (this.cleanupInterval) {
             clearInterval(this.cleanupInterval);
             this.cleanupInterval = null;
-            logger.logImport('🧹 Global enrichment cache cleanup service stopped');
+            logger.logImport('[CLEAN] Global enrichment cache cleanup service stopped');
         }
     }
 
@@ -44,16 +44,16 @@ class GlobalEnrichmentCacheCleanupService {
      */
     async runCleanup() {
         try {
-            logger.logImport('🧹 Running global enrichment cache cleanup...');
+            logger.logImport('[CLEAN] Running global enrichment cache cleanup...');
             
             const deletedCount = await globalEnrichmentCache.cleanupExpiredEntries();
             const stats = await globalEnrichmentCache.getCacheStats();
             
             if (stats) {
-                logger.logImport(`🧹 Cleanup completed: ${deletedCount} expired entries removed`);
-                logger.logImport(`📊 Cache stats: ${stats.active_entries} active entries, ${stats.total_cache_hits} total hits, ${stats.unique_symbols} symbols`);
+                logger.logImport(`[CLEAN] Cleanup completed: ${deletedCount} expired entries removed`);
+                logger.logImport(`[STATS] Cache stats: ${stats.active_entries} active entries, ${stats.total_cache_hits} total hits, ${stats.unique_symbols} symbols`);
             } else {
-                logger.logImport(`🧹 Cleanup completed: ${deletedCount} expired entries removed`);
+                logger.logImport(`[CLEAN] Cleanup completed: ${deletedCount} expired entries removed`);
             }
         } catch (error) {
             logger.logError('Error during global enrichment cache cleanup:', error);

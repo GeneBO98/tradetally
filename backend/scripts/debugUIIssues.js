@@ -3,7 +3,7 @@
 const db = require('../src/config/database');
 
 async function debugUIIssues() {
-  console.log('🔍 Debugging UI Issues - CUSIP Mappings Not Showing\n');
+  console.log('[CHECK] Debugging UI Issues - CUSIP Mappings Not Showing\n');
 
   try {
     const userId = 'f7ffbef5-7ec4-4972-be3f-439233ef8410'; // boverton@tradetally.io
@@ -115,7 +115,7 @@ async function debugUIIssues() {
 
       if (mappingCheck.rows.length > 0) {
         const mapping = mappingCheck.rows[0];
-        console.log(`   ✅ ${cusip} → ${mapping.ticker} (${mapping.resolution_source})`);
+        console.log(`   [SUCCESS] ${cusip} → ${mapping.ticker} (${mapping.resolution_source})`);
         
         if (tradeCheck.rows.length > 0) {
           tradeCheck.rows.forEach(trade => {
@@ -124,7 +124,7 @@ async function debugUIIssues() {
           });
         }
       } else {
-        console.log(`   ❌ ${cusip}: No mapping found`);
+        console.log(`   [ERROR] ${cusip}: No mapping found`);
       }
     }
 
@@ -173,7 +173,7 @@ async function debugUIIssues() {
     });
 
   } catch (error) {
-    console.error('❌ Debug failed:', error.message);
+    console.error('[ERROR] Debug failed:', error.message);
     console.error(error.stack);
   } finally {
     await db.pool.end();

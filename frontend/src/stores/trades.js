@@ -19,10 +19,14 @@ export const useTradesStore = defineStore('trades', () => {
     endDate: '',
     tags: [],
     strategy: '',
+    strategies: [],
+    sectors: [],
     holdTime: '',
     minHoldTime: null,
     maxHoldTime: null,
     hasNews: '',
+    broker: '',
+    brokers: [],
     daysOfWeek: []
   })
 
@@ -30,7 +34,7 @@ export const useTradesStore = defineStore('trades', () => {
   const analytics = ref(null)
 
   const totalPnL = computed(() => {
-    console.log('🔄 Computing totalPnL:', {
+    console.log('[COMPUTE] totalPnL:', {
       hasAnalytics: !!analytics.value,
       hasSummary: !!(analytics.value?.summary),
       analyticsPnL: analytics.value?.summary?.totalPnL,
@@ -40,7 +44,7 @@ export const useTradesStore = defineStore('trades', () => {
     // Use analytics data if available, otherwise fall back to trade summation
     if (analytics.value && analytics.value.summary && analytics.value.summary.totalPnL !== undefined) {
       const result = parseFloat(analytics.value.summary.totalPnL)
-      console.log('📊 Using analytics totalPnL:', result)
+      console.log('[USING] analytics totalPnL:', result)
       return result
     }
     
@@ -48,7 +52,7 @@ export const useTradesStore = defineStore('trades', () => {
       const pnl = parseFloat(trade.pnl) || 0
       return sum + pnl
     }, 0)
-    console.log('📊 Using fallback totalPnL:', total, {
+    console.log('[FALLBACK] totalPnL:', total, {
       tradesCount: trades.value.length,
       sampleTrades: trades.value.slice(0, 3).map(t => ({ symbol: t.symbol, pnl: t.pnl }))
     })
@@ -56,7 +60,7 @@ export const useTradesStore = defineStore('trades', () => {
   })
 
   const winRate = computed(() => {
-    console.log('🔄 Computing winRate:', {
+    console.log('[COMPUTE] winRate:', {
       hasAnalytics: !!analytics.value,
       analyticsWinRate: analytics.value?.summary?.winRate,
       tradesCount: trades.value.length
@@ -65,19 +69,19 @@ export const useTradesStore = defineStore('trades', () => {
     // Use analytics data if available, otherwise fall back to trade calculation
     if (analytics.value && analytics.value.summary && analytics.value.summary.winRate !== undefined) {
       const result = parseFloat(analytics.value.summary.winRate).toFixed(2)
-      console.log('📊 Using analytics winRate:', result)
+      console.log('[USING] analytics winRate:', result)
       return result
     }
     
     const winning = trades.value.filter(t => t.pnl > 0).length
     const total = trades.value.length
     const result = total > 0 ? (winning / total * 100).toFixed(2) : 0
-    console.log('📊 Using fallback winRate:', result, { winning, total })
+    console.log('[FALLBACK] winRate:', result, { winning, total })
     return result
   })
 
   const totalTrades = computed(() => {
-    console.log('🔄 Computing totalTrades:', {
+    console.log('[COMPUTE] totalTrades:', {
       hasAnalytics: !!analytics.value,
       analyticsTotalTrades: analytics.value?.summary?.totalTrades,
       paginationTotal: pagination.value.total
@@ -86,13 +90,13 @@ export const useTradesStore = defineStore('trades', () => {
     // Use analytics data if available for total trades count
     if (analytics.value && analytics.value.summary && analytics.value.summary.totalTrades !== undefined) {
       const result = analytics.value.summary.totalTrades
-      console.log('📊 Using analytics totalTrades:', result)
+      console.log('[USING] analytics totalTrades:', result)
       return result
     }
     
     // Fall back to pagination total
     const result = pagination.value.total
-    console.log('📊 Using pagination totalTrades:', result)
+    console.log('[USING] pagination totalTrades:', result)
     return result
   })
 
@@ -127,15 +131,15 @@ export const useTradesStore = defineStore('trades', () => {
       // Always use the trades data from the trades API, not analytics
       if (tradesResponse.data.hasOwnProperty('trades')) {
         trades.value = tradesResponse.data.trades
-        console.log('📦 Set trades from tradesResponse.data.trades:', trades.value.length)
+        console.log('[TRADES] Set from tradesResponse.data.trades:', trades.value.length)
       } else {
         trades.value = tradesResponse.data
-        console.log('📦 Set trades from tradesResponse.data (fallback):', trades.value.length)
+        console.log('[TRADES] Set from tradesResponse.data (fallback):', trades.value.length)
       }
       
       // Log if there's a mismatch between trades and analytics for debugging
       if (analyticsResponse.data.summary?.totalTrades === 0 && trades.value.length > 0) {
-        console.log('⚠️ MISMATCH: Analytics shows 0 trades but trades API returned', trades.value.length, 'trades')
+        console.log('[WARNING] MISMATCH: Analytics shows 0 trades but trades API returned', trades.value.length, 'trades')
       }
       console.log('Analytics data received:', {
         summary: analyticsResponse.data.summary,
@@ -146,7 +150,7 @@ export const useTradesStore = defineStore('trades', () => {
       console.log('Full analytics response:', JSON.stringify(analyticsResponse.data, null, 2))
       
       // Final verification of trades array
-      console.log('🔍 Final trades array state:', {
+      console.log('[FINAL] trades array state:', {
         tradesLength: trades.value?.length || 0,
         isArray: Array.isArray(trades.value),
         isEmpty: trades.value?.length === 0,
@@ -200,15 +204,15 @@ export const useTradesStore = defineStore('trades', () => {
       // Always use the trades data from the trades API, not analytics
       if (tradesResponse.data.hasOwnProperty('trades')) {
         trades.value = tradesResponse.data.trades
-        console.log('📦 Set trades from tradesResponse.data.trades:', trades.value.length)
+        console.log('[TRADES] Set from tradesResponse.data.trades:', trades.value.length)
       } else {
         trades.value = tradesResponse.data
-        console.log('📦 Set trades from tradesResponse.data (fallback):', trades.value.length)
+        console.log('[TRADES] Set from tradesResponse.data (fallback):', trades.value.length)
       }
       
       // Log if there's a mismatch between trades and analytics for debugging
       if (analyticsResponse.data.summary?.totalTrades === 0 && trades.value.length > 0) {
-        console.log('⚠️ MISMATCH: Analytics shows 0 trades but trades API returned', trades.value.length, 'trades')
+        console.log('[WARNING] MISMATCH: Analytics shows 0 trades but trades API returned', trades.value.length, 'trades')
       }
       console.log('Analytics data received:', {
         summary: analyticsResponse.data.summary,
@@ -219,7 +223,7 @@ export const useTradesStore = defineStore('trades', () => {
       console.log('Full analytics response:', JSON.stringify(analyticsResponse.data, null, 2))
       
       // Final verification of trades array
-      console.log('🔍 Final trades array state:', {
+      console.log('[FINAL] trades array state:', {
         tradesLength: trades.value?.length || 0,
         isArray: Array.isArray(trades.value),
         isEmpty: trades.value?.length === 0,
@@ -383,6 +387,8 @@ export const useTradesStore = defineStore('trades', () => {
         minHoldTime: null,
         maxHoldTime: null,
         hasNews: '',
+        broker: '',
+        brokers: [],
         daysOfWeek: []
       }
     } else {

@@ -3,17 +3,17 @@
 const db = require('../src/config/database');
 
 async function testCusipAPI() {
-  console.log('🧪 Testing CUSIP API Integration\n');
+  console.log('[CHECK] Testing CUSIP API Integration\n');
 
   try {
     // Get a valid user
     const userResult = await db.query('SELECT id FROM users LIMIT 1');
     if (userResult.rows.length === 0) {
-      console.log('❌ No users found in database');
+      console.log('[ERROR] No users found in database');
       return;
     }
     const userId = userResult.rows[0].id;
-    console.log(`✅ Using user: ${userId}`);
+    console.log(`[SUCCESS] Using user: ${userId}`);
 
     // Test 1: Check unmapped CUSIPs endpoint simulation
     console.log('\n1. Testing unmapped CUSIPs endpoint:');
@@ -58,12 +58,12 @@ async function testCusipAPI() {
       `;
       
       const createResult = await db.query(createQuery, [testCusip, testTicker, 'Test Company', userId]);
-      console.log(`   ✅ Created mapping: ${testCusip} → ${testTicker}`);
+      console.log(`   [SUCCESS] Created mapping: ${testCusip} → ${testTicker}`);
 
       // Test 3: Update trades with new mapping
       const updateQuery = `UPDATE trades SET symbol = $1 WHERE user_id = $2 AND symbol = $3`;
       const updateResult = await db.query(updateQuery, [testTicker, userId, testCusip]);
-      console.log(`   ✅ Updated ${updateResult.rowCount} trades`);
+      console.log(`   [SUCCESS] Updated ${updateResult.rowCount} trades`);
 
       // Test 4: Verify mapping query works
       console.log('\n3. Testing mapping lookup:');
@@ -71,7 +71,7 @@ async function testCusipAPI() {
       const lookupResult = await db.query(lookupQuery, [testCusip, userId]);
       if (lookupResult.rows.length > 0) {
         const mapping = lookupResult.rows[0];
-        console.log(`   ✅ Lookup found: ${mapping.cusip} → ${mapping.ticker}`);
+        console.log(`   [SUCCESS] Lookup found: ${mapping.cusip} → ${mapping.ticker}`);
       }
 
       // Test 5: Clean up
@@ -118,10 +118,10 @@ async function testCusipAPI() {
       console.log(`   ${row.cusip} → ${row.ticker} (${row.resolution_source}, ${row.is_user_override ? 'user' : 'global'})`);
     });
 
-    console.log('\n✅ CUSIP API integration test completed successfully!');
+    console.log('\n[SUCCESS] CUSIP API integration test completed successfully!');
 
   } catch (error) {
-    console.error('❌ Test failed:', error.message);
+    console.error('[ERROR] Test failed:', error.message);
     console.error(error.stack);
   } finally {
     await db.pool.end();

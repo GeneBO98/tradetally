@@ -7,7 +7,7 @@
 const db = require('../src/config/database');
 
 async function examineSymbolData() {
-  console.log('🔍 Examining symbol filtering data...');
+  console.log('[CHECK] Examining symbol filtering data...');
   
   try {
     // Test 1: Check what types of symbols are in the trades table
@@ -188,10 +188,10 @@ async function examineSymbolData() {
     console.log(`  Potential CUSIPs in trades: ${cusipResult.rows.length}`);
     console.log(`  CUSIP to ticker mappings: ${mappingResult.rows.length}`);
     
-    console.log('\n✅ Symbol data examination completed');
+    console.log('\n[SUCCESS] Symbol data examination completed');
     
   } catch (error) {
-    console.error('❌ Examination failed:', error);
+    console.error('[ERROR] Examination failed:', error);
     throw error;
   }
 }
@@ -200,11 +200,11 @@ async function examineSymbolData() {
 if (require.main === module) {
   examineSymbolData()
     .then(() => {
-      console.log('\n🎉 Examination completed!');
+      console.log('\n[SUCCESS] Examination completed!');
       process.exit(0);
     })
     .catch((error) => {
-      console.error('\n💥 Examination failed:', error);
+      console.error('\n[ERROR] Examination failed:', error);
       process.exit(1);
     });
 }

@@ -29,13 +29,13 @@ class SymbolCategoryManager {
         const ageInDays = (Date.now() - updatedAt.getTime()) / (1000 * 60 * 60 * 24);
         
         if (ageInDays < 30) {
-          console.log(`✅ Found category for ${symbol} in permanent storage`);
+          console.log(`[SUCCESS] Found category for ${symbol} in permanent storage`);
           return category;
         }
       }
       
       // If not found or stale, fetch from API
-      console.log(`🔍 Fetching category for ${symbol} from API...`);
+      console.log(`[CHECK] Fetching category for ${symbol} from API...`);
       const profile = await finnhub.getCompanyProfile(symbol);
       
       if (profile) {
@@ -45,7 +45,7 @@ class SymbolCategoryManager {
         if (profile.finnhubIndustry) {
           return profile;
         } else {
-          console.log(`⚠️ No industry data found for ${symbol}, but profile saved to avoid re-fetching`);
+          console.log(`[WARNING] No industry data found for ${symbol}, but profile saved to avoid re-fetching`);
         }
       }
       
@@ -102,7 +102,7 @@ class SymbolCategoryManager {
       ];
       
       await db.query(query, params);
-      console.log(`💾 Saved category for ${symbol} to permanent storage`);
+      console.log(`[INFO] Saved category for ${symbol} to permanent storage`);
     } catch (error) {
       console.error(`Error saving category for ${symbol}:`, error.message);
     }
@@ -128,7 +128,7 @@ class SymbolCategoryManager {
           results.set(row.symbol, row);
         }
         
-        console.log(`📊 Found ${results.size} categories in permanent storage`);
+        console.log(`[STATS] Found ${results.size} categories in permanent storage`);
       } catch (error) {
         console.error('Error fetching stored categories:', error.message);
       }
@@ -138,7 +138,7 @@ class SymbolCategoryManager {
     const symbolsToFetch = uniqueSymbols.filter(symbol => !results.has(symbol));
     
     if (symbolsToFetch.length > 0) {
-      console.log(`🔄 Need to fetch ${symbolsToFetch.length} categories from API`);
+      console.log(`[PROCESS] Need to fetch ${symbolsToFetch.length} categories from API`);
       
       // Process in batches to respect rate limits
       for (let i = 0; i < symbolsToFetch.length; i += this.batchSize) {
@@ -176,7 +176,7 @@ class SymbolCategoryManager {
    */
   async categorizeNewSymbols(userId = null) {
     try {
-      console.log('🔄 Starting background symbol categorization...');
+      console.log('[PROCESS] Starting background symbol categorization...');
       
       // Find symbols in trades that don't have categories
       let query = `
@@ -198,11 +198,11 @@ class SymbolCategoryManager {
       const newSymbols = result.rows.map(row => row.symbol);
       
       if (newSymbols.length === 0) {
-        console.log('✅ All symbols are categorized');
+        console.log('[SUCCESS] All symbols are categorized');
         return { processed: 0, total: 0 };
       }
       
-      console.log(`📊 Found ${newSymbols.length} uncategorized symbols`);
+      console.log(`[STATS] Found ${newSymbols.length} uncategorized symbols`);
       
       // Process new symbols
       let processed = 0;
@@ -220,7 +220,7 @@ class SymbolCategoryManager {
         }
       }
       
-      console.log(`✅ Categorized ${processed} of ${newSymbols.length} symbols`);
+      console.log(`[SUCCESS] Categorized ${processed} of ${newSymbols.length} symbols`);
       return { processed, total: newSymbols.length };
       
     } catch (error) {

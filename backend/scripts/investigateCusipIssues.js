@@ -9,7 +9,7 @@ const cache = require('../src/utils/cache');
 const cusipQueue = require('../src/utils/cusipQueue');
 
 async function investigateCusipIssues() {
-  console.log('🔍 Investigating CUSIP caching and AI prompt issues...');
+  console.log('[CHECK] Investigating CUSIP caching and AI prompt issues...');
   
   try {
     // 1. Check current cache status
@@ -74,7 +74,7 @@ async function investigateCusipIssues() {
       console.log(`  Model: ${aiSettings.model || 'NOT SET'}`);
       
       if (aiSettings.provider && aiSettings.apiKey) {
-        console.log('\n📝 Current AI prompt for CUSIP lookup:');
+        console.log('\n[CONFIG] Current AI prompt for CUSIP lookup:');
         console.log('   "Given the CUSIP "[CUSIP]", what is the corresponding stock ticker symbol? Please respond with ONLY the ticker symbol, no additional text."');
         
         console.log('\n❗ IDENTIFIED PROMPT ISSUES:');
@@ -83,11 +83,11 @@ async function investigateCusipIssues() {
         console.log('• Doesn\'t handle edge cases (mutual funds, bonds, etc.)');
         console.log('• No validation instructions');
       } else {
-        console.log('❌ AI provider not properly configured');
+        console.log('[ERROR] AI provider not properly configured');
       }
       
     } catch (error) {
-      console.log('❌ Could not get AI settings:', error.message);
+      console.log('[ERROR] Could not get AI settings:', error.message);
     }
     
     // 5. Check for specific cache key issue
@@ -125,23 +125,23 @@ async function investigateCusipIssues() {
     console.log('• Resolved CUSIPs are NOT being cached properly');
     console.log('• This causes repeated failed lookups');
     
-    console.log('\n🤖 AI PROMPT ISSUE:');
+    console.log('\n[AI] AI PROMPT ISSUE:');
     console.log('• Prompt is too basic: "Given the CUSIP X, what is the ticker?"');
     console.log('• No context about what a CUSIP is');
     console.log('• No examples of correct format');
     console.log('• No handling of non-equity securities');
     console.log('• No instruction to say "UNKNOWN" if unsure');
     
-    console.log('\n💾 DATABASE VS CACHE ISSUE:');
+    console.log('\n[STORAGE] DATABASE VS CACHE ISSUE:');
     console.log('• Resolved CUSIPs are marked "completed" in queue');
     console.log('• But the trades table is not being updated');
     console.log('• Cache is not working so lookups repeat');
     console.log('• Results in infinite failed attempts');
     
-    console.log('\n✅ Investigation completed');
+    console.log('\n[SUCCESS] Investigation completed');
     
   } catch (error) {
-    console.error('❌ Investigation failed:', error);
+    console.error('[ERROR] Investigation failed:', error);
     throw error;
   }
 }
@@ -150,11 +150,11 @@ async function investigateCusipIssues() {
 if (require.main === module) {
   investigateCusipIssues()
     .then(() => {
-      console.log('\n🎉 Investigation completed!');
+      console.log('\n[SUCCESS] Investigation completed!');
       process.exit(0);
     })
     .catch((error) => {
-      console.error('\n💥 Investigation failed:', error);
+      console.error('\n[ERROR] Investigation failed:', error);
       process.exit(1);
     });
 }

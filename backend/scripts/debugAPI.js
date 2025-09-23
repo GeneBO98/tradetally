@@ -3,17 +3,17 @@
 const db = require('../src/config/database');
 
 async function debugAPI() {
-  console.log('🔍 Debugging CUSIP API Issue\n');
+  console.log('[CHECK] Debugging CUSIP API Issue\n');
 
   try {
     // Get a valid user
     const userResult = await db.query('SELECT id FROM users LIMIT 1');
     if (userResult.rows.length === 0) {
-      console.log('❌ No users found in database');
+      console.log('[ERROR] No users found in database');
       return;
     }
     const userId = userResult.rows[0].id;
-    console.log(`✅ Using user: ${userId}`);
+    console.log(`[SUCCESS] Using user: ${userId}`);
 
     // Check if user has trades with CUSIPs
     console.log('\n1. Checking user trades with CUSIPs:');
@@ -110,7 +110,7 @@ async function debugAPI() {
     `;
 
     const fullResult = await db.query(fullQuery, [userId]);
-    console.log(`   ✅ Full query result: ${fullResult.rows.length} rows`);
+    console.log(`   [SUCCESS] Full query result: ${fullResult.rows.length} rows`);
 
     if (fullResult.rows.length > 0) {
       console.log('   Sample results:');
@@ -118,7 +118,7 @@ async function debugAPI() {
         console.log(`   ${row.cusip}: ${row.ticker || 'UNMAPPED'} (${row.trade_count} trades)`);
       });
     } else {
-      console.log('   ❌ No results returned - this is the problem!');
+      console.log('   [ERROR] No results returned - this is the problem!');
     }
 
     // Check if there's a simpler issue
@@ -147,7 +147,7 @@ async function debugAPI() {
     console.log(`   Simple JOIN test: ${simpleResult.rows.length} rows`);
 
   } catch (error) {
-    console.error('❌ Debug failed:', error.message);
+    console.error('[ERROR] Debug failed:', error.message);
     console.error(error.stack);
   } finally {
     await db.pool.end();

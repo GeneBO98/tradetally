@@ -25,20 +25,20 @@ class BackgroundWorker {
       this.isRunning = true;
       this.shouldStop = false;
       
-      logger.logImport('🚀 Starting background worker for trade enrichment');
+      logger.logImport('[START] Starting background worker for trade enrichment');
       
       // Test database connection first
       const db = require('../config/database');
       await db.query('SELECT 1');
-      logger.logImport('✓ Database connection verified');
+      logger.logImport('[SUCCESS] Database connection verified');
       
       // Start parallel job queue processing for better performance
       parallelJobQueue.startParallelProcessing();
-      logger.logImport('✓ Parallel job queue processing started');
+      logger.logImport('[SUCCESS] Parallel job queue processing started');
       
       // Also start sequential processing as fallback for other job types
       jobQueue.startProcessing();
-      logger.logImport('✓ Sequential job queue also running as fallback');
+      logger.logImport('[SUCCESS] Sequential job queue also running as fallback');
       
       // Verify parallel job queue is actually processing
       const parallelStatus = parallelJobQueue.getStatus();
@@ -63,18 +63,18 @@ class BackgroundWorker {
           );
           
           if (hasActiveJobs || hasIssues) {
-            logger.logImport('📊 Job Queue Status:', status);
+            logger.logImport('[STATS] Job Queue Status:', status);
           }
           
           // Always check for alerts and auto-recover
           const failedJobs = status.find(s => s.status === 'failed');
           if (failedJobs && parseInt(failedJobs.count) > 50) {
-            logger.logError(`⚠️ HIGH FAILED JOB COUNT: ${failedJobs.count} failed jobs - may need investigation`);
+            logger.logError(`[WARNING] HIGH FAILED JOB COUNT: ${failedJobs.count} failed jobs - may need investigation`);
           }
           
           const processingJobs = status.find(s => s.status === 'processing');
           if (processingJobs && parseInt(processingJobs.count) > 10) {
-            logger.logError(`⚠️ MANY PROCESSING JOBS: ${processingJobs.count} jobs in processing state - running recovery`);
+            logger.logError(`[WARNING] MANY PROCESSING JOBS: ${processingJobs.count} jobs in processing state - running recovery`);
             // Run recovery immediately if too many processing jobs
             await this.processStuckJobs();
           }
@@ -91,7 +91,7 @@ class BackgroundWorker {
       process.on('SIGINT', () => this.stop());
       process.on('SIGTERM', () => this.stop());
       
-      logger.logImport('✅ Background worker started successfully');
+      logger.logImport('[SUCCESS] Background worker started successfully');
       
       // Process any stuck jobs immediately and more aggressively
       setTimeout(async () => {
@@ -107,7 +107,7 @@ class BackgroundWorker {
     } catch (error) {
       this.isRunning = false;
       this.shouldStop = true;
-      logger.logError('❌ Failed to start background worker:', error.message);
+      logger.logError('[ERROR] Failed to start background worker:', error.message);
       throw error;
     }
   }
@@ -129,7 +129,7 @@ class BackgroundWorker {
       `);
       
       if (stuckJobs.rows.length > 0) {
-        logger.logImport(`🔄 Reset ${stuckJobs.rows.length} stuck jobs back to pending`);
+        logger.logImport(`[PROCESS] Reset ${stuckJobs.rows.length} stuck jobs back to pending`);
         
         // For jobs that have been stuck multiple times, mark as failed
         const persistentlyStuckJobs = stuckJobs.rows.filter(job => job.retry_count >= 5);
@@ -142,7 +142,7 @@ class BackgroundWorker {
             WHERE id = ANY($1)
           `, [persistentlyStuckJobs.map(job => job.id)]);
           
-          logger.logError(`❌ Marked ${persistentlyStuckJobs.length} persistently stuck jobs as failed`);
+          logger.logError(`[ERROR] Marked ${persistentlyStuckJobs.length} persistently stuck jobs as failed`);
         }
       }
 
@@ -159,7 +159,7 @@ class BackgroundWorker {
       `);
 
       if (zombieJobs.rows.length > 0) {
-        logger.logError(`❌ Abandoned ${zombieJobs.rows.length} zombie jobs that were pending too long`);
+        logger.logError(`[ERROR] Abandoned ${zombieJobs.rows.length} zombie jobs that were pending too long`);
       }
 
     } catch (error) {
@@ -179,7 +179,7 @@ class BackgroundWorker {
       const expectedWorkers = ['cusip_resolution', 'strategy_classification', 'news_enrichment'];
       for (const workerType of expectedWorkers) {
         if (!status.workers || !status.workers[workerType] || !status.workers[workerType].isRunning) {
-          logger.logError(`⚠️ Worker ${workerType} is not running - restarting`);
+          logger.logError(`[WARNING] Worker ${workerType} is not running - restarting`);
           
           // Restart the specific worker
           if (workerType === 'cusip_resolution') {
@@ -194,7 +194,7 @@ class BackgroundWorker {
 
       // If parallel processing completely stopped, restart it
       if (!parallelJobQueue.isRunning) {
-        logger.logError('🚨 Parallel job queue stopped - restarting');
+        logger.logError('[ERROR] Parallel job queue stopped - restarting');
         parallelJobQueue.startParallelProcessing();
       }
 
@@ -223,7 +223,7 @@ class BackgroundWorker {
       clearInterval(this.statusInterval);
     }
     
-    logger.logImport('✅ Background worker stopped');
+    logger.logImport('[SUCCESS] Background worker stopped');
     process.exit(0);
   }
 

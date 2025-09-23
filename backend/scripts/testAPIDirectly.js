@@ -34,7 +34,7 @@ function makeAPIRequest(path, token) {
 }
 
 async function testAPI() {
-  console.log('🔗 Testing API endpoint directly\n');
+  console.log('[INFO] Testing API endpoint directly\n');
   
   try {
     // You'll need to replace this with a valid token
@@ -44,17 +44,17 @@ async function testAPI() {
     console.log(`Status: ${response.status}`);
     
     if (response.status === 401) {
-      console.log('✅ Endpoint exists (returns 401 Unauthorized, which is expected without token)');
+      console.log('[SUCCESS] Endpoint exists (returns 401 Unauthorized, which is expected without token)');
     } else if (response.status === 200) {
-      console.log('✅ Endpoint works!');
+      console.log('[SUCCESS] Endpoint works!');
       console.log(`Data: ${JSON.stringify(response.data, null, 2)}`);
     } else {
-      console.log(`❌ Unexpected status: ${response.status}`);
+      console.log(`[ERROR] Unexpected status: ${response.status}`);
       console.log(`Response: ${JSON.stringify(response.data, null, 2)}`);
     }
     
   } catch (error) {
-    console.error('❌ Request failed:', error.message);
+    console.error('[ERROR] Request failed:', error.message);
   }
 }
 

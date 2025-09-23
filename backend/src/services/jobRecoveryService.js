@@ -37,7 +37,7 @@ class JobRecoveryService {
     // Run initial recovery immediately
     setTimeout(() => this.runRecovery(), 10000); // 10 seconds after startup
 
-    logger.logImport('✅ Job recovery service started (runs every 5 minutes)');
+    logger.logImport('[SUCCESS] Job recovery service started (runs every 5 minutes)');
   }
 
   /**
@@ -94,7 +94,7 @@ class JobRecoveryService {
         // Only log a summary every hour when everything is healthy
         const now = Date.now();
         if (now - this.lastSummaryTime > 60 * 60 * 1000) { // 1 hour
-          logger.logImport('✅ Job recovery service healthy - no issues detected');
+          logger.logImport('[SUCCESS] Job recovery service healthy - no issues detected');
           this.lastSummaryTime = now;
         }
       }
@@ -118,7 +118,7 @@ class JobRecoveryService {
       `);
 
       if (stuckJobs.rows.length > 0) {
-        logger.logImport(`🔄 Reset ${stuckJobs.rows.length} stuck jobs back to pending`);
+        logger.logImport(`[PROCESS] Reset ${stuckJobs.rows.length} stuck jobs back to pending`);
       }
 
       return stuckJobs.rows.length;
@@ -151,7 +151,7 @@ class JobRecoveryService {
         return 0;
       }
 
-      logger.logImport(`📝 Creating jobs for ${pendingTrades.rows.length} trades without jobs`);
+      logger.logImport(`[CONFIG] Creating jobs for ${pendingTrades.rows.length} trades without jobs`);
 
       let jobsCreated = 0;
       for (const trade of pendingTrades.rows) {
@@ -171,7 +171,7 @@ class JobRecoveryService {
             jobsCreated++;
           }
 
-          logger.logImport(`✅ Created jobs for trade ${trade.id} (${trade.symbol})`);
+          logger.logImport(`[SUCCESS] Created jobs for trade ${trade.id} (${trade.symbol})`);
         } catch (error) {
           logger.logError(`Failed to create jobs for trade ${trade.id}:`, error.message);
         }
@@ -204,7 +204,7 @@ class JobRecoveryService {
       `);
 
       if (orphanedJobs.rows.length > 0) {
-        logger.logImport(`🧹 Cleaned up ${orphanedJobs.rows.length} orphaned jobs`);
+        logger.logImport(`[CLEAN] Cleaned up ${orphanedJobs.rows.length} orphaned jobs`);
       }
 
       return orphanedJobs.rows.length;
@@ -243,7 +243,7 @@ class JobRecoveryService {
       `);
 
       if (completedTrades.rows.length > 0) {
-        logger.logImport(`✅ Marked ${completedTrades.rows.length} trades as enrichment completed`);
+        logger.logImport(`[SUCCESS] Marked ${completedTrades.rows.length} trades as enrichment completed`);
       }
 
       return completedTrades.rows.length;
@@ -267,7 +267,7 @@ class JobRecoveryService {
       `);
 
       if (oldFailedJobs.rows.length > 0) {
-        logger.logImport(`🗑️ Cleaned up ${oldFailedJobs.rows.length} old failed jobs (>7 days)`);
+        logger.logImport(`[INFO] Cleaned up ${oldFailedJobs.rows.length} old failed jobs (>7 days)`);
       }
 
       return oldFailedJobs.rows.length;
@@ -286,9 +286,9 @@ class JobRecoveryService {
       const status = backgroundWorker.getStatus();
 
       if (!status.isRunning || !status.queueProcessing) {
-        logger.logImport('🚑 Background worker not running - attempting restart...');
+        logger.logImport('[WARNING] Background worker not running - attempting restart...');
         await backgroundWorker.start();
-        logger.logImport('✅ Background worker restarted');
+        logger.logImport('[SUCCESS] Background worker restarted');
       }
     } catch (error) {
       logger.logError('Failed to ensure background worker is running:', error.message);
@@ -309,7 +309,7 @@ class JobRecoveryService {
    * Manual recovery trigger (for testing/admin use)
    */
   async triggerRecovery() {
-    logger.logImport('🚑 Manual recovery triggered');
+    logger.logImport('[INFO] Manual recovery triggered');
     await this.runRecovery();
   }
 }

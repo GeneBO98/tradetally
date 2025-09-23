@@ -3,7 +3,7 @@
 const db = require('../src/config/database');
 
 async function populateTestMappings() {
-  console.log('🧪 Creating Test CUSIP Mappings for Comprehensive View\n');
+  console.log('[CHECK] Creating Test CUSIP Mappings for Comprehensive View\n');
 
   try {
     const userId = 'f7ffbef5-7ec4-4972-be3f-439233ef8410'; // boverton@tradetally.io
@@ -60,7 +60,7 @@ async function populateTestMappings() {
       }
     }
 
-    console.log('\n✅ Test mappings created!');
+    console.log('\n[SUCCESS] Test mappings created!');
     
     // Now test what the API returns
     console.log('\nTesting API with test data:');
@@ -116,7 +116,7 @@ async function populateTestMappings() {
       console.log(`   ${row.cusip}: ${row.trade_count} trades ${status} (${sourceLabel}) ${verified}`);
     });
 
-    console.log('\n🎯 This is what the comprehensive modal should show:');
+    console.log('\n[TARGET] This is what the comprehensive modal should show:');
     console.log('   - All CUSIPs that were in user trades');
     console.log('   - Their mapped ticker symbols (or UNMAPPED)');
     console.log('   - Source: Finnhub/AI/Manual with user override indication');
@@ -124,7 +124,7 @@ async function populateTestMappings() {
     console.log('   - Trade count for each');
 
   } catch (error) {
-    console.error('❌ Test setup failed:', error.message);
+    console.error('[ERROR] Test setup failed:', error.message);
     console.error(error.stack);
   } finally {
     await db.pool.end();

@@ -19,7 +19,7 @@ async function cleanupJobs() {
       RETURNING id
     `);
     
-    console.log(`✅ Deleted ${oldCompleted.rows.length} old completed jobs (>30 days)`);
+    console.log(`[SUCCESS] Deleted ${oldCompleted.rows.length} old completed jobs (>30 days)`);
     
     // 2. Delete old failed jobs (older than 7 days)
     const oldFailed = await db.query(`
@@ -29,7 +29,7 @@ async function cleanupJobs() {
       RETURNING id
     `);
     
-    console.log(`✅ Deleted ${oldFailed.rows.length} old failed jobs (>7 days)`);
+    console.log(`[SUCCESS] Deleted ${oldFailed.rows.length} old failed jobs (>7 days)`);
     
     // 3. Show current status
     const currentStatus = await db.query(`
@@ -43,7 +43,7 @@ async function cleanupJobs() {
       ORDER BY status
     `);
     
-    console.log('\n📊 Current job queue status:');
+    console.log('\n[STATS] Current job queue status:');
     currentStatus.rows.forEach(row => {
       console.log(`  ${row.status.toUpperCase()}: ${row.count} jobs`);
       if (row.oldest) {
@@ -63,13 +63,13 @@ async function cleanupJobs() {
     `);
     
     if (sizeInfo.rows.length > 0) {
-      console.log(`\n💾 Job queue table size: ${sizeInfo.rows[0].size}`);
+      console.log(`\n[STORAGE] Job queue table size: ${sizeInfo.rows[0].size}`);
     }
     
-    console.log('\n🎉 Cleanup completed successfully');
+    console.log('\n[SUCCESS] Cleanup completed successfully');
     
   } catch (error) {
-    console.error('❌ Cleanup failed:', error.message);
+    console.error('[ERROR] Cleanup failed:', error.message);
     process.exit(1);
   }
 }

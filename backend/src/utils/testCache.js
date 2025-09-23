@@ -44,10 +44,10 @@ async function testCache() {
     const afterInvalidation = await AnalyticsCache.get(userId, 'test_analysis');
     console.log('After invalidation (should be null):', afterInvalidation);
     
-    console.log('✅ Cache test completed successfully!');
+    console.log('[SUCCESS] Cache test completed successfully!');
     
   } catch (error) {
-    console.error('❌ Cache test failed:', error);
+    console.error('[ERROR] Cache test failed:', error);
   }
 }
 

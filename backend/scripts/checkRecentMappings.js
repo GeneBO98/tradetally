@@ -3,7 +3,7 @@
 const db = require('../src/config/database');
 
 async function checkRecentMappings() {
-  console.log('🔍 Checking Recent CUSIP Mappings\n');
+  console.log('[CHECK] Checking Recent CUSIP Mappings\n');
 
   try {
     // Check very recent mappings
@@ -98,7 +98,7 @@ async function checkRecentMappings() {
     }
 
   } catch (error) {
-    console.error('❌ Check failed:', error.message);
+    console.error('[ERROR] Check failed:', error.message);
   } finally {
     await db.pool.end();
   }

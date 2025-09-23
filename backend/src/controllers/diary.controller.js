@@ -379,7 +379,7 @@ const analyzeEntries = async (req, res) => {
     const prompt = createJournalAnalysisPrompt(journalData, startDate, endDate);
 
     // Generate AI analysis
-    console.log('📊 Generating AI analysis for diary entries...');
+    console.log('[AI] Generating AI analysis for diary entries...');
     const analysis = await aiService.generateResponse(userId, prompt, {
       maxTokens: 1500,
       temperature: 0.7

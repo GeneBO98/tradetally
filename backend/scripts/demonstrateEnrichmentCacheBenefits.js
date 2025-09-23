@@ -3,7 +3,7 @@ const enrichmentCacheService = require('../src/services/enrichmentCacheService')
 const Trade = require('../src/models/Trade');
 
 async function demonstrateEnrichmentCacheBenefits() {
-  console.log('🎯 Demonstrating Enrichment Cache Benefits...\n');
+  console.log('[TARGET] Demonstrating Enrichment Cache Benefits...\n');
   
   const userId = 'f7ffbef5-7ec4-4972-be3f-439233ef8410';
   const testSymbol = 'AAPL';
@@ -11,7 +11,7 @@ async function demonstrateEnrichmentCacheBenefits() {
   
   try {
     // 1. Simulate first import - no cache available
-    console.log('📈 Scenario 1: First-time import (no cache available)');
+    console.log('[ANALYTICS] Scenario 1: First-time import (no cache available)');
     console.log('─'.repeat(60));
     
     const trade1Data = {
@@ -31,8 +31,8 @@ async function demonstrateEnrichmentCacheBenefits() {
     console.log('   ⏳ Background jobs would be queued for enrichment');
     
     const trade1 = await Trade.create(userId, trade1Data, { skipApiCalls: true });
-    console.log(`   ✅ Trade created: ${trade1.id}`);
-    console.log(`   📊 Enrichment Status: ${trade1.enrichment_status}`);
+    console.log(`   [SUCCESS] Trade created: ${trade1.id}`);
+    console.log(`   [STATS] Enrichment Status: ${trade1.enrichment_status}`);
     
     // Simulate enrichment completion by storing cache data
     const enrichmentData = {
@@ -64,10 +64,10 @@ async function demonstrateEnrichmentCacheBenefits() {
       enrichmentData,
       baseDate.toTimeString().substring(0, 8)
     );
-    console.log('   💾 Simulated: API enrichment completed and cached');
+    console.log('   [STORAGE] Simulated: API enrichment completed and cached');
     
     // 2. Simulate second import at same time - cache hit!
-    console.log('\n📈 Scenario 2: Second import at same time (cache available!)');
+    console.log('\n[ANALYTICS] Scenario 2: Second import at same time (cache available!)');
     console.log('─'.repeat(60));
     
     const trade2Data = {
@@ -83,11 +83,11 @@ async function demonstrateEnrichmentCacheBenefits() {
     };
     
     console.log(`   Creating trade for ${testSymbol} at ${new Date(trade2Data.entryTime).toLocaleTimeString()}`);
-    console.log('   🎯 Checking cache for existing enrichment data...');
+    console.log('   [TARGET] Checking cache for existing enrichment data...');
     
     const trade2 = await Trade.create(userId, trade2Data, { skipApiCalls: true });
-    console.log(`   ✅ Trade created: ${trade2.id}`);
-    console.log(`   📊 Enrichment Status: ${trade2.enrichment_status}`);
+    console.log(`   [SUCCESS] Trade created: ${trade2.id}`);
+    console.log(`   [STATS] Enrichment Status: ${trade2.enrichment_status}`);
     
     // Check if the trade got enriched from cache
     const enrichedTrade2 = await db.query('SELECT * FROM trades WHERE id = $1', [trade2.id]);
@@ -101,17 +101,17 @@ async function demonstrateEnrichmentCacheBenefits() {
         metadata = trade2Details.classification_metadata;
       }
       if (metadata.cached_enrichment) {
-        console.log('   🚀 SUCCESS: Applied cached enrichment data instantly!');
-        console.log(`   📋 Strategy: ${trade2Details.strategy} (${trade2Details.strategy_confidence}% confidence)`);
-        console.log(`   📋 Method: ${trade2Details.classification_method}`);
-        console.log(`   📋 Sector: ${metadata.sector} | Industry: ${metadata.industry}`);
-        console.log(`   📋 MAE: ${trade2Details.mae}% | MFE: ${trade2Details.mfe}%`);
-        console.log('   ⚡ Zero API calls needed - instant enrichment!');
+        console.log('   [START] SUCCESS: Applied cached enrichment data instantly!');
+        console.log(`   [INFO] Strategy: ${trade2Details.strategy} (${trade2Details.strategy_confidence}% confidence)`);
+        console.log(`   [INFO] Method: ${trade2Details.classification_method}`);
+        console.log(`   [INFO] Sector: ${metadata.sector} | Industry: ${metadata.industry}`);
+        console.log(`   [INFO] MAE: ${trade2Details.mae}% | MFE: ${trade2Details.mfe}%`);
+        console.log('   [WARNING] Zero API calls needed - instant enrichment!');
       }
     }
     
     // 3. Simulate third import 20 minutes later - still within tolerance
-    console.log('\n📈 Scenario 3: Third import 20 minutes later (within time tolerance)');
+    console.log('\n[ANALYTICS] Scenario 3: Third import 20 minutes later (within time tolerance)');
     console.log('─'.repeat(60));
     
     const trade3Data = {
@@ -127,10 +127,10 @@ async function demonstrateEnrichmentCacheBenefits() {
     };
     
     console.log(`   Creating trade for ${testSymbol} at ${new Date(trade3Data.entryTime).toLocaleTimeString()}`);
-    console.log('   🎯 No exact time match, checking time tolerance (±30 min)...');
+    console.log('   [TARGET] No exact time match, checking time tolerance (±30 min)...');
     
     const trade3 = await Trade.create(userId, trade3Data, { skipApiCalls: true });
-    console.log(`   ✅ Trade created: ${trade3.id}`);
+    console.log(`   [SUCCESS] Trade created: ${trade3.id}`);
     
     const enrichedTrade3 = await db.query('SELECT * FROM trades WHERE id = $1', [trade3.id]);
     const trade3Details = enrichedTrade3.rows[0];
@@ -143,13 +143,13 @@ async function demonstrateEnrichmentCacheBenefits() {
         metadata = trade3Details.classification_metadata;
       }
       if (metadata.cached_enrichment) {
-        console.log('   🚀 SUCCESS: Found cached data within time tolerance!');
-        console.log('   ⚡ Still no API calls needed!');
+        console.log('   [START] SUCCESS: Found cached data within time tolerance!');
+        console.log('   [WARNING] Still no API calls needed!');
       }
     }
     
     // 4. Show cache statistics
-    console.log('\n📊 Cache Performance Statistics');
+    console.log('\n[STATS] Cache Performance Statistics');
     console.log('─'.repeat(60));
     
     const stats = await enrichmentCacheService.getCacheStats();
@@ -167,19 +167,19 @@ async function demonstrateEnrichmentCacheBenefits() {
     
     console.log('   Deleting all test trades...');
     await db.query('DELETE FROM trades WHERE id IN ($1, $2, $3)', [trade1.id, trade2.id, trade3.id]);
-    console.log('   ✅ All trades deleted');
+    console.log('   [SUCCESS] All trades deleted');
     
     // But cache data should still exist
     const cacheStillExists = await enrichmentCacheService.hasEnrichmentData(testSymbol, baseDate);
     console.log(`   📦 Cache data still exists: ${cacheStillExists ? 'YES' : 'NO'}`);
     
     if (cacheStillExists) {
-      console.log('   💡 Future imports of the same symbol/time will benefit from this cached data');
-      console.log('   💡 Even though the original trades are gone, the enrichment survives');
+      console.log('   [INFO] Future imports of the same symbol/time will benefit from this cached data');
+      console.log('   [INFO] Even though the original trades are gone, the enrichment survives');
     }
     
     // 6. Final demonstration - create a new trade that benefits from the persisted cache
-    console.log('\n🔄 Final Test: New Trade Using Persisted Cache');
+    console.log('\n[PROCESS] Final Test: New Trade Using Persisted Cache');
     console.log('─'.repeat(60));
     
     const trade4Data = {
@@ -206,8 +206,8 @@ async function demonstrateEnrichmentCacheBenefits() {
         metadata = trade4Details.classification_metadata;
       }
       if (metadata.cached_enrichment) {
-        console.log('   🎉 SUCCESS: New trade instantly enriched from persisted cache!');
-        console.log('   🚀 Zero API calls, instant results, even after original trades deleted');
+        console.log('   [SUCCESS] SUCCESS: New trade instantly enriched from persisted cache!');
+        console.log('   [START] Zero API calls, instant results, even after original trades deleted');
       }
     }
     
@@ -216,15 +216,15 @@ async function demonstrateEnrichmentCacheBenefits() {
     
     console.log('\n🏁 Demo Summary');
     console.log('─'.repeat(60));
-    console.log('   ✅ First import: Would require API calls (queued for background)');
-    console.log('   ✅ Second import: Instant enrichment from cache');
-    console.log('   ✅ Third import: Time-tolerant cache match');
-    console.log('   ✅ Cache survives trade deletion');
-    console.log('   ✅ Future imports benefit from persisted cache');
-    console.log('   🎯 Result: Dramatically faster imports, reduced API costs');
+    console.log('   [SUCCESS] First import: Would require API calls (queued for background)');
+    console.log('   [SUCCESS] Second import: Instant enrichment from cache');
+    console.log('   [SUCCESS] Third import: Time-tolerant cache match');
+    console.log('   [SUCCESS] Cache survives trade deletion');
+    console.log('   [SUCCESS] Future imports benefit from persisted cache');
+    console.log('   [TARGET] Result: Dramatically faster imports, reduced API costs');
     
   } catch (error) {
-    console.error('❌ Demo failed:', error);
+    console.error('[ERROR] Demo failed:', error);
   } finally {
     process.exit(0);
   }

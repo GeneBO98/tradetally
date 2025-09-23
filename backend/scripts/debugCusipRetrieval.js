@@ -3,7 +3,7 @@
 const db = require('../src/config/database');
 
 async function debugCusipRetrieval() {
-  console.log('🔍 Debugging CUSIP Retrieval Logic\n');
+  console.log('[CHECK] Debugging CUSIP Retrieval Logic\n');
 
   try {
     // Get test data
@@ -13,7 +13,7 @@ async function debugCusipRetrieval() {
     const cusip = '107930109'; // MSFT cusip we know exists
     
     console.log('👤 User ID:', userId);
-    console.log('📋 Testing CUSIP:', cusip);
+    console.log('[INFO] Testing CUSIP:', cusip);
 
     // Create a user override first
     await db.query(`
@@ -23,10 +23,10 @@ async function debugCusipRetrieval() {
       DO UPDATE SET ticker = EXCLUDED.ticker, updated_at = CURRENT_TIMESTAMP
     `, [cusip, userId]);
     
-    console.log('✅ Created user override: USERTEST');
+    console.log('[SUCCESS] Created user override: USERTEST');
 
     // Debug: Show all mappings for this CUSIP
-    console.log('\n🔍 All mappings for this CUSIP:');
+    console.log('\n[CHECK] All mappings for this CUSIP:');
     const allMappings = await db.query(`
       SELECT cusip, ticker, resolution_source, user_id, 
              (user_id = $1) as is_user_override,
@@ -39,7 +39,7 @@ async function debugCusipRetrieval() {
     console.table(allMappings.rows);
 
     // Debug: Test the DISTINCT ON query step by step
-    console.log('\n🔍 Testing DISTINCT ON behavior:');
+    console.log('\n[CHECK] Testing DISTINCT ON behavior:');
     const distinctQuery = `
       SELECT DISTINCT ON (cusip)
         cusip, ticker, resolution_source, user_id,
@@ -54,7 +54,7 @@ async function debugCusipRetrieval() {
     console.table(distinctResult.rows);
 
     // Debug: Test with explicit TRUE/FALSE comparison
-    console.log('\n🔍 Testing with explicit boolean comparison:');
+    console.log('\n[CHECK] Testing with explicit boolean comparison:');
     const explicitQuery = `
       SELECT DISTINCT ON (cusip)
         cusip, ticker, resolution_source, user_id,
@@ -71,12 +71,12 @@ async function debugCusipRetrieval() {
     console.table(explicitResult.rows);
 
     // Test the get_cusip_mapping function if it exists
-    console.log('\n🔍 Testing get_cusip_mapping function:');
+    console.log('\n[CHECK] Testing get_cusip_mapping function:');
     try {
       const functionResult = await db.query('SELECT * FROM get_cusip_mapping($1, $2)', [cusip, userId]);
       console.table(functionResult.rows);
     } catch (error) {
-      console.log('❌ get_cusip_mapping function not available:', error.message);
+      console.log('[ERROR] get_cusip_mapping function not available:', error.message);
     }
 
     // Cleanup
@@ -84,7 +84,7 @@ async function debugCusipRetrieval() {
     await db.query('DELETE FROM cusip_mappings WHERE user_id = $1 AND ticker = $2', [userId, 'USERTEST']);
 
   } catch (error) {
-    console.error('❌ Debug failed:', error.message);
+    console.error('[ERROR] Debug failed:', error.message);
     console.error(error.stack);
   } finally {
     await db.pool.end();

@@ -7,7 +7,7 @@
 const cache = require('../src/utils/cache');
 
 async function testCacheFix() {
-  console.log('🧪 Testing cache namespace support...');
+  console.log('[CHECK] Testing cache namespace support...');
   
   try {
     // Test 1: Namespace-based cache operations
@@ -50,10 +50,10 @@ async function testCacheFix() {
     await new Promise(resolve => setTimeout(resolve, 200)); // Wait 200ms
     console.log(`After TTL expired: ${cache.get('short_ttl') || 'EXPIRED'}`);
     
-    console.log('\n✅ Cache tests completed successfully!');
+    console.log('\n[SUCCESS] Cache tests completed successfully!');
     
   } catch (error) {
-    console.error('❌ Cache test failed:', error);
+    console.error('[ERROR] Cache test failed:', error);
     throw error;
   }
 }
@@ -62,11 +62,11 @@ async function testCacheFix() {
 if (require.main === module) {
   testCacheFix()
     .then(() => {
-      console.log('\n🎉 All cache tests passed!');
+      console.log('\n[SUCCESS] All cache tests passed!');
       process.exit(0);
     })
     .catch((error) => {
-      console.error('\n💥 Cache tests failed:', error);
+      console.error('\n[ERROR] Cache tests failed:', error);
       process.exit(1);
     });
 }

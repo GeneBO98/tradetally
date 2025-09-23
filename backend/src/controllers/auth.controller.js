@@ -100,10 +100,10 @@ const authController = {
         try {
           await sendVerificationEmail(email, verificationToken);
         } catch (error) {
-          console.warn('⚠️  Failed to send verification email (continuing with registration):', error.message);
+          console.warn('[WARNING] Failed to send verification email (continuing with registration):', error.message);
         }
       } else {
-        console.log(`📧 Email verification skipped - no email configuration found for user: ${user.username}`);
+        console.log(`[INFO] Email verification skipped - no email configuration found for user: ${user.username}`);
       }
 
       // Determine response message

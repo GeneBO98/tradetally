@@ -3,7 +3,7 @@
 const db = require('../src/config/database');
 
 async function restartJobProcessor() {
-  console.log('🔄 Restarting Job Processor\n');
+  console.log('[PROCESS] Restarting Job Processor\n');
 
   try {
     // First, let's see what's in the queue
@@ -67,15 +67,15 @@ async function restartJobProcessor() {
     console.log(`\nMinutes since last completion: ${timeSinceLastActivity}`);
 
     if (activity.pending_count > 0 && timeSinceLastActivity > 5) {
-      console.log('\n⚠️  There are pending jobs but no recent activity.');
+      console.log('\n[WARNING]  There are pending jobs but no recent activity.');
       console.log('The job processor may need to be restarted manually.');
       console.log('This usually happens automatically, but you may need to restart the server.');
     } else {
-      console.log('\n✅ Job processor appears to be working normally.');
+      console.log('\n[SUCCESS] Job processor appears to be working normally.');
     }
 
   } catch (error) {
-    console.error('❌ Restart failed:', error.message);
+    console.error('[ERROR] Restart failed:', error.message);
   } finally {
     await db.pool.end();
   }

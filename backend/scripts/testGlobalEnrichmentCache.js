@@ -5,7 +5,7 @@ const newsEnrichmentService = require('../src/services/newsEnrichmentService');
 const db = require('../src/config/database');
 
 async function testGlobalEnrichmentCache() {
-  console.log('🧪 Testing Global Enrichment Cache System\n');
+  console.log('[CHECK] Testing Global Enrichment Cache System\n');
 
   try {
     const testSymbol = 'TSLA';
@@ -60,8 +60,8 @@ async function testGlobalEnrichmentCache() {
       console.log(`   ${i + 1}. ${row.symbol} on ${row.trade_date}: ${row.news_count} news, accessed ${row.access_count} times`);
     });
 
-    console.log('\n✅ Global enrichment cache test completed successfully!');
-    console.log('\n🎯 Benefits demonstrated:');
+    console.log('\n[SUCCESS] Global enrichment cache test completed successfully!');
+    console.log('\n[TARGET] Benefits demonstrated:');
     console.log('   - First API call cached for future users');
     console.log('   - Subsequent calls use cached data (faster, no API limits)');
     console.log('   - Multiple users share the same cache');
@@ -69,7 +69,7 @@ async function testGlobalEnrichmentCache() {
     console.log('   - Detailed statistics and monitoring');
 
   } catch (error) {
-    console.error('❌ Test failed:', error.message);
+    console.error('[ERROR] Test failed:', error.message);
     console.error(error.stack);
   } finally {
     await db.pool.end();

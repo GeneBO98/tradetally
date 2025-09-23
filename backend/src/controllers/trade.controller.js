@@ -17,6 +17,7 @@ const tradeController = {
     try {
       const { 
         symbol, startDate, endDate, tags, strategy, sector,
+        strategies, sectors, hasNews, daysOfWeek,
         side, minPrice, maxPrice, minQuantity, maxQuantity,
         status, minPnl, maxPnl, pnlType, broker, brokers,
         limit = 50, offset = 0 
@@ -29,6 +30,11 @@ const tradeController = {
         tags: tags ? tags.split(',') : undefined,
         strategy,
         sector,
+        // Multi-select filters
+        strategies: strategies ? strategies.split(',') : undefined,
+        sectors: sectors ? sectors.split(',') : undefined,
+        hasNews,
+        daysOfWeek: daysOfWeek ? daysOfWeek.split(',').map(d => parseInt(d)) : undefined,
         // New advanced filters
         side,
         minPrice: minPrice ? parseFloat(minPrice) : undefined,
@@ -131,9 +137,9 @@ const tradeController = {
       // Invalidate sector performance cache for this user since new trade was added
       try {
         await cache.invalidate('sector_performance');
-        console.log('✅ Sector performance cache invalidated after trade creation');
+        console.log('[SUCCESS] Sector performance cache invalidated after trade creation');
       } catch (cacheError) {
-        console.warn('⚠️ Failed to invalidate sector performance cache:', cacheError.message);
+        console.warn('[WARNING] Failed to invalidate sector performance cache:', cacheError.message);
       }
       
       res.status(201).json({ trade });
@@ -186,9 +192,9 @@ const tradeController = {
       // Invalidate sector performance cache for this user since trade data changed
       try {
         await cache.invalidate('sector_performance');
-        console.log('✅ Sector performance cache invalidated after trade update');
+        console.log('[SUCCESS] Sector performance cache invalidated after trade update');
       } catch (cacheError) {
-        console.warn('⚠️ Failed to invalidate sector performance cache:', cacheError.message);
+        console.warn('[WARNING] Failed to invalidate sector performance cache:', cacheError.message);
       }
 
       res.json({ trade });
@@ -216,9 +222,9 @@ const tradeController = {
       // Invalidate sector performance cache for this user
       try {
         await cache.invalidate('sector_performance');
-        console.log('✅ Sector performance cache invalidated after trade deletion');
+        console.log('[SUCCESS] Sector performance cache invalidated after trade deletion');
       } catch (cacheError) {
-        console.warn('⚠️ Failed to invalidate sector performance cache:', cacheError.message);
+        console.warn('[WARNING] Failed to invalidate sector performance cache:', cacheError.message);
       }
 
       res.json({ message: 'Trade deleted successfully' });
@@ -273,9 +279,9 @@ const tradeController = {
       // Invalidate sector performance cache
       try {
         await cache.invalidate('sector_performance');
-        console.log('✅ Sector performance cache invalidated after bulk trade deletion');
+        console.log('[SUCCESS] Sector performance cache invalidated after bulk trade deletion');
       } catch (cacheError) {
-        console.warn('⚠️ Failed to invalidate sector performance cache:', cacheError.message);
+        console.warn('[WARNING] Failed to invalidate sector performance cache:', cacheError.message);
       }
 
       res.json({ 
@@ -778,32 +784,32 @@ const tradeController = {
           // Invalidate sector performance cache after successful import
           try {
             await cache.invalidate('sector_performance');
-            console.log('✅ Sector performance cache invalidated after import completion');
+            console.log('[SUCCESS] Sector performance cache invalidated after import completion');
           } catch (cacheError) {
-            console.warn('⚠️ Failed to invalidate sector performance cache:', cacheError.message);
+            console.warn('[WARNING] Failed to invalidate sector performance cache:', cacheError.message);
           }
 
           // Check achievements and trigger leaderboard updates after import
           try {
-            console.log('🏆 Checking achievements after import for user', req.user.id);
+            console.log('[ACHIEVEMENT] Checking achievements after import for user', req.user.id);
             const AchievementService = require('../services/achievementService');
             const newAchievements = await AchievementService.checkAndAwardAchievements(req.user.id);
-            console.log(`🏅 Post-import achievements awarded: ${newAchievements.length}`);
+            console.log(`[ACHIEVEMENT] Post-import achievements awarded: ${newAchievements.length}`);
           } catch (achievementError) {
-            console.warn('⚠️ Failed to check/award achievements after import:', achievementError.message);
+            console.warn('[WARNING] Failed to check/award achievements after import:', achievementError.message);
           }
 
           // Background categorization of new symbols
           try {
-            console.log('🔄 Starting background symbol categorization after import...');
+            console.log('[PROCESS] Starting background symbol categorization after import...');
             // Run categorization in background without blocking the response
             symbolCategories.categorizeNewSymbols(req.user.id).then(result => {
-              console.log(`✅ Background categorization complete: ${result.processed} of ${result.total} symbols categorized`);
+              console.log(`[SUCCESS] Background categorization complete: ${result.processed} of ${result.total} symbols categorized`);
             }).catch(error => {
-              console.warn('⚠️ Background symbol categorization failed:', error.message);
+              console.warn('[WARNING] Background symbol categorization failed:', error.message);
             });
           } catch (error) {
-            console.warn('⚠️ Failed to start background symbol categorization:', error.message);
+            console.warn('[WARNING] Failed to start background symbol categorization:', error.message);
           }
         } catch (error) {
           // Clear timeout on error
@@ -1083,9 +1089,9 @@ const tradeController = {
       // Invalidate sector performance cache for this user
       try {
         await cache.invalidate('sector_performance');
-        console.log('✅ Sector performance cache invalidated after import deletion');
+        console.log('[SUCCESS] Sector performance cache invalidated after import deletion');
       } catch (cacheError) {
-        console.warn('⚠️ Failed to invalidate sector performance cache:', cacheError.message);
+        console.warn('[WARNING] Failed to invalidate sector performance cache:', cacheError.message);
       }
 
       logger.logImport(`Deleted ${deletedTrades.rows.length} trades from import ${importId}`);
@@ -1135,7 +1141,7 @@ const tradeController = {
         startDate, endDate, symbol, sector, strategy, 
         strategies, sectors, // Add multi-select parameters
         side, minPrice, maxPrice, minQuantity, maxQuantity,
-        status, minPnl, maxPnl, pnlType, broker, hasNews,
+        status, minPnl, maxPnl, pnlType, broker, brokers, hasNews,
         holdTime, minHoldTime, maxHoldTime, daysOfWeek 
       } = req.query;
       
@@ -1157,14 +1163,15 @@ const tradeController = {
         minPnl,
         maxPnl,
         pnlType,
-        broker,
+        broker: broker || undefined,
+        brokers: brokers || undefined,  // Support both broker and brokers
         hasNews,
         holdTime,
         daysOfWeek: daysOfWeek ? daysOfWeek.split(',').map(d => parseInt(d)) : undefined
       };
       
-      console.log('🔍 getAnalytics RAW QUERY:', req.query);
-      console.log('🔍 getAnalytics PARSED filters:', JSON.stringify(filters, null, 2));
+      console.log('[ANALYTICS] Raw query:', req.query);
+      console.log('[ANALYTICS] Parsed filters:', JSON.stringify(filters, null, 2));
 
       // Convert minHoldTime/maxHoldTime to holdTime range if provided
       if (minHoldTime || maxHoldTime) {

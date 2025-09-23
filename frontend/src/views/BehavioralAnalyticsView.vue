@@ -791,10 +791,10 @@
                           <div class="flex items-center justify-between mb-2">
                             <div class="flex items-center space-x-2">
                               <span v-if="pattern.pattern_type === 'same_symbol_revenge'" class="text-sm font-medium text-orange-800 dark:text-orange-400">
-                                🎯 Same Symbol Revenge
+                                [TARGET] Same Symbol Revenge
                               </span>
                               <span v-else class="text-sm font-medium text-purple-800 dark:text-purple-400">
-                                ⚡ Emotional Spillover
+                                [FAST] Emotional Spillover
                               </span>
                               <span 
                                 class="px-2 py-0.5 text-xs rounded"
@@ -895,10 +895,10 @@
                                  'text-purple-600 dark:text-purple-400': pattern.pattern_type === 'emotional_reactive_trading'
                                }">
                             <span v-if="pattern.pattern_type === 'same_symbol_revenge'">
-                              📈 Tried to recover losses by trading {{ pattern.symbol }} again
+                              [ANALYTICS] Tried to recover losses by trading {{ pattern.symbol }} again
                             </span>
                             <span v-else>
-                              💭 Emotional reaction led to trading {{ pattern.symbol }} (different from trigger symbol)
+                              [THOUGHT] Emotional reaction led to trading {{ pattern.symbol }} (different from trigger symbol)
                             </span>
                           </div>
                         </div>
@@ -914,7 +914,7 @@
                          }">
                       <div class="flex items-center justify-between mb-2">
                         <h5 class="text-sm font-semibold text-gray-800 dark:text-gray-200">
-                          📊 Revenge Trading Outcome
+                          [STATS] Revenge Trading Outcome
                         </h5>
                         <span 
                           class="inline-flex px-3 py-1 text-sm font-semibold rounded-full"
@@ -924,9 +924,9 @@
                             'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400': event.outcome_type === 'neutral'
                           }"
                         >
-                          <span v-if="event.outcome_type === 'loss'">❌ Made it worse</span>
-                          <span v-else-if="event.outcome_type === 'profit'">✅ Recovered losses</span>
-                          <span v-else>➖ Broke even</span>
+                          <span v-if="event.outcome_type === 'loss'">[ERROR] Made it worse</span>
+                          <span v-else-if="event.outcome_type === 'profit'">[SUCCESS] Recovered losses</span>
+                          <span v-else>[-] Broke even</span>
                         </span>
                       </div>
                       
@@ -968,13 +968,13 @@
                              'text-gray-700 dark:text-gray-300': event.outcome_type === 'neutral'
                            }">
                         <span v-if="event.outcome_type === 'loss'">
-                          💔 The revenge trading made the situation worse by adding ${{ Math.abs(parseFloat(event.total_additional_loss)).toFixed(2) }} in additional losses
+                          [BROKEN] The revenge trading made the situation worse by adding ${{ Math.abs(parseFloat(event.total_additional_loss)).toFixed(2) }} in additional losses
                         </span>
                         <span v-else-if="event.outcome_type === 'profit'">
-                          💰 The revenge trading actually worked this time, recovering ${{ Math.abs(parseFloat(event.total_additional_loss)).toFixed(2) }}
+                          [MONEY] The revenge trading actually worked this time, recovering ${{ Math.abs(parseFloat(event.total_additional_loss)).toFixed(2) }}
                         </span>
                         <span v-else>
-                          ⚖️ The revenge trading broke even - no additional gains or losses
+                          [BALANCED] The revenge trading broke even - no additional gains or losses
                         </span>
                       </div>
                     </div>
@@ -1096,7 +1096,7 @@
                 <h4 class="font-medium text-gray-900 dark:text-white">{{ insight.title }}</h4>
                 <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">{{ insight.message }}</p>
                 <p class="text-sm font-medium text-gray-700 dark:text-gray-300 mt-2">
-                  💡 {{ insight.recommendation }}
+                  [IDEA] {{ insight.recommendation }}
                 </p>
               </div>
             </div>
@@ -1296,7 +1296,7 @@
                       @click="scrollToTopMissedTrades"
                       class="px-3 py-2 text-sm font-medium text-orange-600 bg-orange-50 border border-orange-200 rounded-md hover:bg-orange-100 dark:bg-orange-900/20 dark:text-orange-400 dark:border-orange-800 dark:hover:bg-orange-900/30 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500"
                     >
-                      🎯 View Specific Trades You Exited Early
+                      [TARGET] View Specific Trades You Exited Early
                     </button>
                     <button
                       @click="viewLossAversionTrades"
@@ -1492,7 +1492,7 @@
               <!-- Top Missed Trades List -->
               <div v-if="topMissedTrades.topMissedTrades.length > 0" class="space-y-4">
                 <h4 class="text-lg font-medium text-gray-700 dark:text-gray-300 mb-4">
-                  🎯 Specific Trades Where You Exited Too Early (Sorted by % Profit Missed)
+                  [TARGET] Specific Trades Where You Exited Too Early (Sorted by % Profit Missed)
                 </h4>
                 
                 <div 
@@ -1792,7 +1792,7 @@
                   <div class="flex justify-between items-start mb-3">
                     <div>
                       <h5 class="font-medium text-gray-900 dark:text-white">
-                        🔥 {{ event.winStreakLength }} Consecutive Wins → Overconfidence Risk
+                        [HOT] {{ event.winStreakLength }} Consecutive Wins → Overconfidence Risk
                       </h5>
                       <p class="text-sm text-gray-500 dark:text-gray-400">
                         {{ new Date(event.detectionDate).toLocaleDateString() }} • 
@@ -1825,7 +1825,7 @@
                       </div>
                     </div>
                     <div class="mt-2 text-xs text-orange-700 dark:text-orange-400">
-                      📊 Position increased by <span class="font-bold">{{ event.positionSizeIncrease?.toFixed(1) || 0 }}%</span> 
+                      [STATS] Position increased by <span class="font-bold">{{ event.positionSizeIncrease?.toFixed(1) || 0 }}%</span> 
                       (from ${{ (event.baselinePositionSize || 0).toLocaleString() }} baseline to ${{ (event.peakPositionSize || 0).toLocaleString() }} peak)
                     </div>
                   </div>
@@ -1878,7 +1878,7 @@
                     <div class="flex items-center justify-between mb-3">
                       <div>
                         <h6 class="text-sm font-medium text-gray-700 dark:text-gray-300">
-                          🏆 The {{ event.winStreakLength }} Consecutive Winning Trades
+                          [ACHIEVEMENT] The {{ event.winStreakLength }} Consecutive Winning Trades
                         </h6>
                         <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
                           These {{ event.winStreakLength }} wins in a row led to escalating position sizes as confidence grew
@@ -2804,14 +2804,14 @@ onMounted(async () => {
     ])
     
     // Always load cached data immediately on page load
-    console.log('🔄 Loading cached data on page mount...')
+    console.log('[PROCESS] Loading cached data on page mount...')
     await Promise.all([
       loadCachedTopMissedTrades(),
       loadCachedOverconfidenceData()
     ])
     
     // Log current state
-    console.log('📊 Current state after cache loading:')
+    console.log('[STATS] Current state after cache loading:')
     console.log('topMissedTrades:', topMissedTrades.value)
     console.log('overconfidenceData:', overconfidenceData.value)
     
@@ -2845,7 +2845,7 @@ const loadCachedTopMissedTrades = () => {
           
           if (cacheAge < maxAge && parsed.data) {
             topMissedTrades.value = parsed.data
-            console.log(`✅ Loaded top missed trades from cache on page load (key: ${cacheKey})`)
+            console.log(`[SUCCESS] Loaded top missed trades from cache on page load (key: ${cacheKey})`)
             console.log('Cache data:', parsed.data)
             return true
           }
@@ -2881,7 +2881,7 @@ const loadCachedOverconfidenceData = () => {
           
           if (cacheAge < maxAge && parsed.data) {
             overconfidenceData.value = parsed.data
-            console.log(`✅ Loaded overconfidence analysis from cache on page load (key: ${cacheKey})`)
+            console.log(`[SUCCESS] Loaded overconfidence analysis from cache on page load (key: ${cacheKey})`)
             console.log('Cache data:', parsed.data)
             return true
           }

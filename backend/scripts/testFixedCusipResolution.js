@@ -4,7 +4,7 @@ const db = require('../src/config/database');
 const jobQueue = require('../src/utils/jobQueue');
 
 async function testFixedCusipResolution() {
-  console.log('🧪 Testing Fixed CUSIP Resolution\n');
+  console.log('[CHECK] Testing Fixed CUSIP Resolution\n');
 
   try {
     const userId = 'f7ffbef5-7ec4-4972-be3f-439233ef8410'; // boverton@tradetally.io
@@ -24,7 +24,7 @@ async function testFixedCusipResolution() {
     `, [userId]);
 
     if (unmappedResult.rows.length === 0) {
-      console.log('✅ No unmapped CUSIPs found - all are resolved!');
+      console.log('[SUCCESS] No unmapped CUSIPs found - all are resolved!');
       return;
     }
 
@@ -88,13 +88,13 @@ async function testFixedCusipResolution() {
         console.log(`  ${trade.symbol}: ${trade.count} trades`);
       });
 
-      console.log('\n✅ CUSIP resolution fix is working!');
+      console.log('\n[SUCCESS] CUSIP resolution fix is working!');
     } else {
-      console.log('\n❌ No new mappings created - fix may not be working');
+      console.log('\n[ERROR] No new mappings created - fix may not be working');
     }
 
   } catch (error) {
-    console.error('❌ Test failed:', error.message);
+    console.error('[ERROR] Test failed:', error.message);
     console.error(error.stack);
   } finally {
     await db.pool.end();

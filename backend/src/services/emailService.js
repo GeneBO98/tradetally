@@ -128,7 +128,7 @@ class EmailService {
     const content = `
       <div style="text-align: center; margin-bottom: 30px;">
         <h1 style="color: #1e293b; font-size: 28px; margin: 0 0 16px 0; font-weight: 700;">
-          Welcome to TradeTally! 🎉
+          Welcome to TradeTally!
         </h1>
         <p style="color: #64748b; font-size: 16px; line-height: 1.6; margin: 0;">
           Thank you for joining our community of smart traders
@@ -154,7 +154,7 @@ class EmailService {
       
       <div style="background-color: #fef3cd; padding: 20px; border-radius: 8px; border-left: 4px solid #f59e0b; margin: 25px 0;">
         <p style="color: #92400e; font-size: 14px; margin: 0; font-weight: 500;">
-          ⚠️ This verification link will expire in 24 hours for security reasons.
+          Important: This verification link will expire in 24 hours for security reasons.
         </p>
       </div>
       
@@ -200,7 +200,7 @@ class EmailService {
     const content = `
       <div style="text-align: center; margin-bottom: 30px;">
         <h1 style="color: #1e293b; font-size: 28px; margin: 0 0 16px 0; font-weight: 700;">
-          Reset Your Password 🔐
+          Reset Your Password
         </h1>
         <p style="color: #64748b; font-size: 16px; line-height: 1.6; margin: 0;">
           Secure your TradeTally account with a new password
@@ -226,7 +226,7 @@ class EmailService {
       
       <div style="background-color: #fee2e2; padding: 20px; border-radius: 8px; border-left: 4px solid #ef4444; margin: 25px 0;">
         <p style="color: #dc2626; font-size: 14px; margin: 0; font-weight: 500;">
-          🔒 This reset link will expire in 1 hour for security reasons.
+          Security: This reset link will expire in 1 hour for security reasons.
         </p>
       </div>
       
@@ -272,7 +272,7 @@ class EmailService {
     const content = `
       <div style="text-align: center; margin-bottom: 30px;">
         <h1 style="color: #1e293b; font-size: 28px; margin: 0 0 16px 0; font-weight: 700;">
-          Verify Email Change 📧
+          Verify Email Change
         </h1>
         <p style="color: #64748b; font-size: 16px; line-height: 1.6; margin: 0;">
           Confirm your new email address for TradeTally
@@ -298,7 +298,7 @@ class EmailService {
       
       <div style="background-color: #fef3cd; padding: 20px; border-radius: 8px; border-left: 4px solid #f59e0b; margin: 25px 0;">
         <p style="color: #92400e; font-size: 14px; margin: 0; font-weight: 500;">
-          ⚠️ This verification link will expire in 24 hours for security reasons.
+          Important: This verification link will expire in 24 hours for security reasons.
         </p>
       </div>
       
@@ -346,7 +346,7 @@ class EmailService {
     const content = `
       <div style="text-align: center; margin-bottom: 30px;">
         <h1 style="color: #1e293b; font-size: 28px; margin: 0 0 16px 0; font-weight: 700;">
-          ${isExpired ? 'Your Free Trial Has Ended' : `${daysRemaining} Day${daysRemaining === 1 ? '' : 's'} Left in Your Trial`} 🚀
+          ${isExpired ? 'Your Free Trial Has Ended' : `${daysRemaining} Day${daysRemaining === 1 ? '' : 's'} Left in Your Trial`}
         </h1>
         <p style="color: #64748b; font-size: 16px; line-height: 1.6; margin: 0;">
           ${isExpired ? 'Continue your trading analytics journey' : 'Don\'t miss out on Pro features'}
@@ -398,7 +398,7 @@ class EmailService {
       ` : ''}
       
       <p style="color: #64748b; font-size: 14px; line-height: 1.5; margin: 25px 0 0 0;">
-        Thank you for trying TradeTally Pro. We're here to help you make better trading decisions! 📈
+        Thank you for trying TradeTally Pro. We're here to help you make better trading decisions!
       </p>
     `;
 

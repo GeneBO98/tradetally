@@ -25,7 +25,7 @@ async function checkAllUsers() {
       const cusipResult = await db.query(cusipQuery, [user.id]);
       
       if (cusipResult.rows[0].cusip_count > 0) {
-        console.log(`   📊 CUSIPs: ${cusipResult.rows[0].cusip_count}, Trades: ${cusipResult.rows[0].total_trades}`);
+        console.log(`   [STATS] CUSIPs: ${cusipResult.rows[0].cusip_count}, Trades: ${cusipResult.rows[0].total_trades}`);
         
         // Show sample CUSIPs
         const sampleQuery = `
@@ -43,12 +43,12 @@ async function checkAllUsers() {
           console.log(`     ${row.symbol}: ${row.count} trades`);
         });
       } else {
-        console.log('   📊 No CUSIPs found');
+        console.log('   [STATS] No CUSIPs found');
       }
     }
 
     // Check recent trades to see which user is active
-    console.log('\n📈 Recent trades with CUSIPs:');
+    console.log('\n[ANALYTICS] Recent trades with CUSIPs:');
     const recentQuery = `
       SELECT t.user_id, u.email, t.symbol, t.trade_date
       FROM trades t
@@ -63,7 +63,7 @@ async function checkAllUsers() {
     });
 
   } catch (error) {
-    console.error('❌ Check failed:', error.message);
+    console.error('[ERROR] Check failed:', error.message);
   } finally {
     await db.pool.end();
   }

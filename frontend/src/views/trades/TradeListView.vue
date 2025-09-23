@@ -41,7 +41,7 @@
         <div class="block sm:hidden space-y-4">
           <div>
             <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
-              Total P&L ({{ tradesStore.pagination.total }} {{ tradesStore.pagination.total === 1 ? 'trade' : 'trades' }})
+              Total P&L ({{ tradesStore.totalTrades }} {{ tradesStore.totalTrades === 1 ? 'trade' : 'trades' }})
             </h3>
             <div class="text-lg font-semibold" :class="[
               tradesStore.totalPnL >= 0 
@@ -61,7 +61,7 @@
         <div class="hidden sm:flex items-center justify-between">
           <div class="flex items-center space-x-4">
             <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-              Total P&L ({{ tradesStore.pagination.total }} {{ tradesStore.pagination.total === 1 ? 'trade' : 'trades' }})
+              Total P&L ({{ tradesStore.totalTrades }} {{ tradesStore.totalTrades === 1 ? 'trade' : 'trades' }})
             </h3>
             <div class="text-lg font-semibold" :class="[
               tradesStore.totalPnL >= 0 

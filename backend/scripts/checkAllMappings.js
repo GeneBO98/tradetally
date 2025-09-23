@@ -3,7 +3,7 @@
 const db = require('../src/config/database');
 
 async function checkAllMappings() {
-  console.log('🔍 Checking All CUSIP Mappings for Comprehensive View\n');
+  console.log('[CHECK] Checking All CUSIP Mappings for Comprehensive View\n');
 
   try {
     const userId = 'f7ffbef5-7ec4-4972-be3f-439233ef8410'; // boverton@tradetally.io
@@ -118,12 +118,12 @@ async function checkAllMappings() {
     console.log('   - Verification status');
 
     if (apiResult.rows.length === 0) {
-      console.log('\n❌ API returns 0 results - this is why "Manage All" shows empty!');
+      console.log('\n[ERROR] API returns 0 results - this is why "Manage All" shows empty!');
       console.log('Need to fix the API query to show historical mappings.');
     }
 
   } catch (error) {
-    console.error('❌ Check failed:', error.message);
+    console.error('[ERROR] Check failed:', error.message);
     console.error(error.stack);
   } finally {
     await db.pool.end();

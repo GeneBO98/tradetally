@@ -12,7 +12,7 @@
 const db = require('./src/config/database');
 
 async function fixLightspeedTimezone() {
-  console.log('🔧 Starting Lightspeed Timezone Correction...\n');
+  console.log('[CONFIG] Starting Lightspeed Timezone Correction...\n');
   
   try {
     // Start transaction
@@ -24,16 +24,16 @@ async function fixLightspeedTimezone() {
       ['lightspeed']
     );
     const totalTrades = parseInt(countResult.rows[0].count);
-    console.log(`📊 Found ${totalTrades} Lightspeed trades with timing data to fix`);
+    console.log(`[STATS] Found ${totalTrades} Lightspeed trades with timing data to fix`);
     
     if (totalTrades === 0) {
-      console.log('✅ No trades to fix!');
+      console.log('[SUCCESS] No trades to fix!');
       await db.query('ROLLBACK');
       return;
     }
     
     // Get sample of trades before fixing (for verification)
-    console.log('\n📋 Sample trades BEFORE fixing:');
+    console.log('\n[INFO] Sample trades BEFORE fixing:');
     const beforeSample = await db.query(`
       SELECT id, symbol, entry_time, exit_time 
       FROM trades 
@@ -51,7 +51,7 @@ async function fixLightspeedTimezone() {
     });
     
     // Perform the fix: subtract 1 hour (3600000 milliseconds) from timestamps
-    console.log('\n🔄 Applying timezone correction (subtracting 1 hour)...');
+    console.log('\n[PROCESS] Applying timezone correction (subtracting 1 hour)...');
     
     // Update entry_time - subtract 1 hour
     const entryUpdateResult = await db.query(`
@@ -61,7 +61,7 @@ async function fixLightspeedTimezone() {
       WHERE broker = $1 AND entry_time IS NOT NULL
     `, ['lightspeed']);
     
-    console.log(`   ✅ Updated entry_time for ${entryUpdateResult.rowCount} trades`);
+    console.log(`   [SUCCESS] Updated entry_time for ${entryUpdateResult.rowCount} trades`);
     
     // Update exit_time - subtract 1 hour  
     const exitUpdateResult = await db.query(`
@@ -71,10 +71,10 @@ async function fixLightspeedTimezone() {
       WHERE broker = $1 AND exit_time IS NOT NULL
     `, ['lightspeed']);
     
-    console.log(`   ✅ Updated exit_time for ${exitUpdateResult.rowCount} trades`);
+    console.log(`   [SUCCESS] Updated exit_time for ${exitUpdateResult.rowCount} trades`);
     
     // Verify the fix with the same sample trades
-    console.log('\n📋 Sample trades AFTER fixing:');
+    console.log('\n[INFO] Sample trades AFTER fixing:');
     const afterSample = await db.query(`
       SELECT id, symbol, entry_time, exit_time 
       FROM trades 
@@ -92,7 +92,7 @@ async function fixLightspeedTimezone() {
     });
     
     // Check the specific BLIV trade we discussed
-    console.log('\n🎯 Checking the specific BLIV trade we discussed:');
+    console.log('\n[TARGET] Checking the specific BLIV trade we discussed:');
     const blivTrade = await db.query(
       'SELECT id, symbol, entry_time, exit_time FROM trades WHERE id = $1',
       ['e7f1472e-2c5d-4d34-89a7-6ae3682365c8']
@@ -109,40 +109,40 @@ async function fixLightspeedTimezone() {
       
       // Verify it's correct
       if (entryUTC.toISOString() === '2025-04-09T20:33:00.000Z') {
-        console.log('   ✅ BLIV entry time is now CORRECT!');
+        console.log('   [SUCCESS] BLIV entry time is now CORRECT!');
       } else {
-        console.log('   ❌ BLIV entry time is still incorrect');
+        console.log('   [ERROR] BLIV entry time is still incorrect');
       }
       
       if (exitUTC.toISOString() === '2025-04-09T20:47:00.000Z') {
-        console.log('   ✅ BLIV exit time is now CORRECT!');
+        console.log('   [SUCCESS] BLIV exit time is now CORRECT!');
       } else {
-        console.log('   ❌ BLIV exit time is still incorrect');
+        console.log('   [ERROR] BLIV exit time is still incorrect');
       }
     }
     
     // Commit the transaction
     await db.query('COMMIT');
     
-    console.log(`\n🎉 SUCCESS! Fixed ${totalTrades} Lightspeed trades`);
-    console.log('   📝 All entry_time and exit_time values corrected by -1 hour');
-    console.log('   📅 updated_at timestamps refreshed');
-    console.log('   📊 Charts will now display trades at the correct times');
+    console.log(`\n[SUCCESS] SUCCESS! Fixed ${totalTrades} Lightspeed trades`);
+    console.log('   [CONFIG] All entry_time and exit_time values corrected by -1 hour');
+    console.log('   [CONFIG] updated_at timestamps refreshed');
+    console.log('   [STATS] Charts will now display trades at the correct times');
     
-    console.log('\n💡 What this fix did:');
+    console.log('\n[INFO] What this fix did:');
     console.log('   • Subtracted 1 hour from all Lightspeed trade timestamps');
     console.log('   • 16:33 Central -> 20:33 UTC (was incorrectly 21:33 UTC)');
     console.log('   • Charts will now show buy/sell indicators at expected times');
     
   } catch (error) {
-    console.error('\n❌ ERROR during timezone fix:', error.message);
-    console.log('🔄 Rolling back changes...');
+    console.error('\n[ERROR] ERROR during timezone fix:', error.message);
+    console.log('[PROCESS] Rolling back changes...');
     
     try {
       await db.query('ROLLBACK');
-      console.log('✅ Changes rolled back successfully');
+      console.log('[SUCCESS] Changes rolled back successfully');
     } catch (rollbackError) {
-      console.error('❌ Rollback failed:', rollbackError.message);
+      console.error('[ERROR] Rollback failed:', rollbackError.message);
     }
     
     throw error;
@@ -153,10 +153,10 @@ async function fixLightspeedTimezone() {
 async function main() {
   try {
     await fixLightspeedTimezone();
-    console.log('\n✨ Lightspeed timezone correction completed successfully!');
+    console.log('\n[SUCCESS] Lightspeed timezone correction completed successfully!');
     process.exit(0);
   } catch (error) {
-    console.error('\n💥 Script failed:', error.message);
+    console.error('\n[ERROR] Script failed:', error.message);
     process.exit(1);
   }
 }

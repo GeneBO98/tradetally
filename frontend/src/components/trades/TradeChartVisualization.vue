@@ -34,7 +34,7 @@
           See your entry and exit points on a candlestick chart with market context
         </p>
         <div v-if="userTier === 'pro'" class="text-xs text-blue-600 dark:text-blue-400 mb-4">
-          🔹 Pro Feature: Exclusive Finnhub data with 1-minute precision (no Alpha Vantage fallback)
+          [PRO] Pro Feature: Exclusive Finnhub data with 1-minute precision (no Alpha Vantage fallback)
         </div>
         <button 
           @click="loadChart" 
@@ -398,7 +398,7 @@ const createTradeChart = () => {
     try {
       console.log('Setting candlestick data...')
       candleSeries.setData(uniqueCandles)
-      console.log('✅ Candlestick data set successfully')
+      console.log('[SUCCESS] Candlestick data set successfully')
     } catch (error) {
       console.error('Failed to set candlestick data:', error)
       throw error
@@ -422,15 +422,15 @@ const createTradeChart = () => {
       }
       
       // Debug timestamp calculation
-      console.log('🕐 FIXED TIMESTAMP CALCULATION:')
+      console.log('[TIME] FIXED TIMESTAMP CALCULATION:')
       console.log('Browser timezone:', Intl.DateTimeFormat().resolvedOptions().timeZone)
       console.log('Using entryTime field:', trade.entryTime)
       console.log('Using exitTime field:', trade.exitTime)
       console.log('Fallback entryDate field:', trade.entryDate)
       
-      console.log('✅ Calculated entryTimestamp:', entryTimestamp, new Date(entryTimestamp * 1000).toISOString())
-      console.log('✅ Entry time in your timezone:', new Date(entryTimestamp * 1000).toLocaleString())
-      console.log('✅ Calculated exitTimestamp:', exitTimestamp, exitTimestamp ? new Date(exitTimestamp * 1000).toISOString() : 'none')
+      console.log('[SUCCESS] Calculated entryTimestamp:', entryTimestamp, new Date(entryTimestamp * 1000).toISOString())
+      console.log('[SUCCESS] Entry time in your timezone:', new Date(entryTimestamp * 1000).toLocaleString())
+      console.log('[SUCCESS] Calculated exitTimestamp:', exitTimestamp, exitTimestamp ? new Date(exitTimestamp * 1000).toISOString() : 'none')
     } catch (dateError) {
       console.warn('Error parsing trade dates:', dateError.message)
       entryTimestamp = Math.floor(new Date().getTime() / 1000)
@@ -452,7 +452,7 @@ const createTradeChart = () => {
     })
     
     // Debug: Log trade prices vs nearby candle data
-    console.log('🔍 PRICE ANALYSIS - Trade vs Chart Data:')
+    console.log('[CHECK] PRICE ANALYSIS - Trade vs Chart Data:')
     console.log('Trade Entry Price:', `$${formatNumber(trade.entryPrice)}`)
     if (trade.exitPrice) {
       console.log('Trade Exit Price:', `$${formatNumber(trade.exitPrice)}`)
@@ -467,7 +467,7 @@ const createTradeChart = () => {
 
     // Only add markers after candlestick data is successfully set
     try {
-      console.log('🎯 STARTING MARKER CREATION PROCESS...')
+      console.log('[TARGET] STARTING MARKER CREATION PROCESS...')
       console.log('Entry timestamp:', entryTimestamp, entryTimestamp ? new Date(entryTimestamp * 1000).toISOString() : 'none')
       console.log('Exit timestamp:', exitTimestamp, exitTimestamp ? new Date(exitTimestamp * 1000).toISOString() : 'none')
       
@@ -476,7 +476,7 @@ const createTradeChart = () => {
       
       // Create precise trade execution indicators
       if (entryTimestamp) {
-        console.log('✅ Entry timestamp found, creating entry marker...')
+        console.log('[SUCCESS] Entry timestamp found, creating entry marker...')
         // Find the closest candle to entry time
         const entryCandle = uniqueCandles.reduce((closest, candle) => {
           const currentDiff = Math.abs(candle.time - entryTimestamp)
@@ -485,13 +485,13 @@ const createTradeChart = () => {
         })
         
         // Debug: Analyze price differences at entry
-        console.log('📊 ENTRY CANDLE ANALYSIS:')
+        console.log('[STATS] ENTRY CANDLE ANALYSIS:')
         console.log(`Candle Time: ${new Date(entryCandle.time * 1000).toLocaleString()}`)
         console.log(`Trade Time:  ${new Date(entryTimestamp * 1000).toLocaleString()}`)
         console.log(`Time Diff:   ${Math.abs(entryCandle.time - entryTimestamp)} seconds`)
         
         // TIMEZONE DEBUGGING
-        console.log('🌍 TIMEZONE ANALYSIS:')
+        console.log('[WORLD] TIMEZONE ANALYSIS:')
         console.log(`Trade timestamp raw: ${entryTimestamp}`)
         console.log(`Trade time UTC: ${new Date(entryTimestamp * 1000).toISOString()}`)
         console.log(`Trade time Local: ${new Date(entryTimestamp * 1000).toLocaleString()}`)
@@ -513,9 +513,9 @@ const createTradeChart = () => {
         console.log(`Trade price vs candle close: ${priceVsClose}% difference`)
         
         if (!withinRange) {
-          console.warn('⚠️  PRICE MISMATCH: Trade execution price is outside the candle\'s high-low range!')
+          console.warn('[WARNING] PRICE MISMATCH: Trade execution price is outside the candle\'s high-low range!')
           console.warn('This suggests data source differences or timing misalignment.')
-          console.warn('💡 POSSIBLE CAUSES:')
+          console.warn('[IDEA] POSSIBLE CAUSES:')
           console.warn('• Different data sources (your broker vs Finnhub)')
           console.warn('• Market orders executed between bid/ask spreads')
           console.warn('• Trade executed on different exchange/ECN')
@@ -534,28 +534,28 @@ const createTradeChart = () => {
         }
         
         // Set entry marker using v5 API with fallback
-        console.log('🚀 Creating entry marker with data:', entryMarker)
+        console.log('[START] Creating entry marker with data:', entryMarker)
         try {
           if (LightweightCharts.createSeriesMarkers) {
             const entryMarkersInstance = LightweightCharts.createSeriesMarkers(candleSeries, [entryMarker])
-            console.log('✅ Entry marker created successfully:', entryMarkersInstance)
+            console.log('[SUCCESS] Entry marker created successfully:', entryMarkersInstance)
           } else if (candleSeries.setMarkers) {
             // Fallback to older API if available
-            console.log('📎 Using fallback setMarkers API')
+            console.log('[CLIP] Using fallback setMarkers API')
             candleSeries.setMarkers([entryMarker])
-            console.log('✅ Entry marker created using fallback API')
+            console.log('[SUCCESS] Entry marker created using fallback API')
           } else {
-            console.error('❌ No marker API available in this version')
+            console.error('[ERROR] No marker API available in this version')
             console.log('Available candleSeries methods:', Object.getOwnPropertyNames(candleSeries))
             console.log('Available LightweightCharts methods:', Object.keys(LightweightCharts))
           }
         } catch (markerError) {
-          console.error('❌ Failed to create entry marker:', markerError)
+          console.error('[ERROR] Failed to create entry marker:', markerError)
         }
 
         // Just use the arrow marker - no stupid giant lines
 
-        console.log('✅ Entry execution marker created at:', {
+        console.log('[SUCCESS] Entry execution marker created at:', {
           time: new Date(entryCandle.time * 1000).toLocaleString(),
           price: `$${formatNumber(entryPrice)}`,
           timeDiff: `${Math.abs(entryCandle.time - entryTimestamp)} seconds from actual execution`
@@ -572,7 +572,7 @@ const createTradeChart = () => {
         })
         
         // Debug: Analyze price differences at exit
-        console.log('📊 EXIT CANDLE ANALYSIS:')
+        console.log('[STATS] EXIT CANDLE ANALYSIS:')
         console.log(`Candle Time: ${new Date(exitCandle.time * 1000).toLocaleString()}`)
         console.log(`Trade Time:  ${new Date(exitTimestamp * 1000).toLocaleString()}`)
         console.log(`Time Diff:   ${Math.abs(exitCandle.time - exitTimestamp)} seconds`)
@@ -587,7 +587,7 @@ const createTradeChart = () => {
         console.log(`Trade price vs candle close: ${exitPriceVsClose}% difference`)
         
         if (!exitWithinRange) {
-          console.warn('⚠️  PRICE MISMATCH: Exit price is outside the candle\'s high-low range!')
+          console.warn('[WARNING] PRICE MISMATCH: Exit price is outside the candle\'s high-low range!')
           console.warn('This suggests data source differences or timing misalignment.')
         }
         
@@ -609,26 +609,26 @@ const createTradeChart = () => {
         
         // Add both entry and exit markers together using v5 API with fallback
         const allMarkers = entryMarker ? [entryMarker, exitMarker] : [exitMarker]
-        console.log('🚀 Creating exit markers with data:', allMarkers)
+        console.log('[START] Creating exit markers with data:', allMarkers)
         try {
           if (LightweightCharts.createSeriesMarkers) {
             const exitMarkersInstance = LightweightCharts.createSeriesMarkers(candleSeries, allMarkers)
-            console.log('✅ Exit markers created successfully:', exitMarkersInstance)
+            console.log('[SUCCESS] Exit markers created successfully:', exitMarkersInstance)
           } else if (candleSeries.setMarkers) {
             // Fallback to older API if available
-            console.log('📎 Using fallback setMarkers API for exit')
+            console.log('[CLIP] Using fallback setMarkers API for exit')
             candleSeries.setMarkers(allMarkers)
-            console.log('✅ Exit markers created using fallback API')
+            console.log('[SUCCESS] Exit markers created using fallback API')
           } else {
-            console.error('❌ No marker API available for exit markers')
+            console.error('[ERROR] No marker API available for exit markers')
           }
         } catch (markerError) {
-          console.error('❌ Failed to create exit markers:', markerError)
+          console.error('[ERROR] Failed to create exit markers:', markerError)
         }
 
         // Just use the arrow marker - no stupid giant lines
 
-        console.log('✅ Exit execution marker created at:', {
+        console.log('[SUCCESS] Exit execution marker created at:', {
           time: new Date(exitCandle.time * 1000).toLocaleString(),
           price: `$${formatNumber(exitPriceValue)}`,
           pnl: pnlText,
@@ -707,9 +707,9 @@ const createTradeChart = () => {
     window.addEventListener('resize', handleResize)
     chart._resizeHandler = handleResize
     
-    console.log('✅ Single-day focused chart created successfully using our backend data')
+    console.log('[SUCCESS] Single-day focused chart created successfully using our backend data')
     console.log('')
-    console.log('📋 PRICE ALIGNMENT SUMMARY:')
+    console.log('[INFO] PRICE ALIGNMENT SUMMARY:')
     console.log('If you see price mismatches between your trade prices and candle data:')
     console.log('• This is normal and expected in real trading')
     console.log('• Your broker/exchange data differs from Finnhub\'s aggregated data')
@@ -774,7 +774,7 @@ const fetchChartData = async () => {
 }
 
 const loadChart = () => {
-  console.log('🔄 Loading chart for trade:', props.tradeId)
+  console.log('[PROCESS] Loading chart for trade:', props.tradeId)
   showChart.value = true
   fetchChartData()
 }

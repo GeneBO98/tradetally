@@ -1,7 +1,7 @@
 const db = require('../src/config/database');
 
 async function simulateRealJobProcessing() {
-  console.log('🔄 Simulating real job processing with enrichment updates...');
+  console.log('[PROCESS] Simulating real job processing with enrichment updates...');
   
   const userId = 'f7ffbef5-7ec4-4972-be3f-439233ef8410';
   let totalProcessed = 0;
@@ -17,7 +17,7 @@ async function simulateRealJobProcessing() {
       `, [userId]);
       
       if (pendingTrades.rows.length === 0) {
-        console.log('✅ No more pending trades to process');
+        console.log('[SUCCESS] No more pending trades to process');
         break;
       }
       
@@ -42,7 +42,7 @@ async function simulateRealJobProcessing() {
       `, [tradeIds]);
       
       totalProcessed += tradeIds.length;
-      console.log(`✅ Completed ${tradeIds.length} trades (total: ${totalProcessed})`);
+      console.log(`[SUCCESS] Completed ${tradeIds.length} trades (total: ${totalProcessed})`);
       
       // Show current status
       const statusResult = await db.query(`
@@ -58,13 +58,13 @@ async function simulateRealJobProcessing() {
         status[row.enrichment_status] = parseInt(row.count);
       });
       
-      console.log(`📊 Current: ${status.completed || 0} completed, ${status.processing || 0} processing, ${status.pending || 0} pending`);
+      console.log(`[STATS] Current: ${status.completed || 0} completed, ${status.processing || 0} processing, ${status.pending || 0} pending`);
       
       // Wait 2 more seconds before next batch
       await new Promise(resolve => setTimeout(resolve, 2000));
       
     } catch (error) {
-      console.error('❌ Error processing trades:', error);
+      console.error('[ERROR] Error processing trades:', error);
       break;
     }
   }

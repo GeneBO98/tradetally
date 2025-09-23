@@ -3,7 +3,7 @@ const logger = require('../src/utils/logger');
 
 async function fixEnrichmentStatus() {
   try {
-    console.log('🔧 Fixing enrichment status for trades...');
+    console.log('[CONFIG] Fixing enrichment status for trades...');
     
     // First, get all trades that are stuck in 'pending' status
     const pendingTradesQuery = `
@@ -19,7 +19,7 @@ async function fixEnrichmentStatus() {
     console.log(`Found ${pendingResult.rows.length} trades stuck in pending status`);
     
     if (pendingResult.rows.length === 0) {
-      console.log('✅ No trades need enrichment status update');
+      console.log('[SUCCESS] No trades need enrichment status update');
       return;
     }
     
@@ -64,7 +64,7 @@ async function fixEnrichmentStatus() {
       }
     }
     
-    console.log(`✅ Updated ${updatedCount} trades to completed status`);
+    console.log(`[SUCCESS] Updated ${updatedCount} trades to completed status`);
     
     // Also check for trades that might need enrichment jobs created
     const needsEnrichmentQuery = `
@@ -83,7 +83,7 @@ async function fixEnrichmentStatus() {
     const needsEnrichmentResult = await db.query(needsEnrichmentQuery);
     
     if (needsEnrichmentResult.rows.length > 0) {
-      console.log(`\n🔄 Creating enrichment jobs for ${needsEnrichmentResult.rows.length} trades that need processing`);
+      console.log(`\n[PROCESS] Creating enrichment jobs for ${needsEnrichmentResult.rows.length} trades that need processing`);
       
       const jobQueue = require('../src/utils/jobQueue');
       
