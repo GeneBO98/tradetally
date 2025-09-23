@@ -4,34 +4,39 @@
       Trade Images
     </h3>
     
-    <!-- Image grid -->
-    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+    <!-- Full size images display -->
+    <div class="space-y-6">
       <div
         v-for="image in images"
         :key="image.id"
-        class="relative group cursor-pointer"
-        @click="openImage(image)"
+        class="relative group max-w-4xl mx-auto"
       >
-        <div class="aspect-square bg-gray-100 dark:bg-gray-700 rounded-lg overflow-hidden">
+        <div class="bg-gray-100 dark:bg-gray-700 rounded-lg overflow-hidden shadow-lg">
           <img
             :src="getImageUrl(image)"
             :alt="image.file_name"
-            class="w-full h-full object-cover hover:scale-105 transition-transform duration-200"
+            class="w-full h-auto cursor-pointer hover:opacity-95 transition-opacity duration-200"
+            @click="openImage(image)"
             @error="handleImageError"
           />
         </div>
         
-        <!-- File name -->
-        <p class="mt-2 text-xs text-gray-600 dark:text-gray-400 truncate" :title="image.file_name">
-          {{ image.file_name }}
-        </p>
+        <!-- File info bar -->
+        <div class="mt-2 flex items-center justify-between">
+          <p class="text-sm text-gray-600 dark:text-gray-400" :title="image.file_name">
+            {{ image.file_name }}
+          </p>
+          <p class="text-xs text-gray-500 dark:text-gray-500">
+            {{ formatFileSize(image.file_size) }}
+          </p>
+        </div>
         
         <!-- Delete button (only for trade owner) -->
         <button
           v-if="canDelete"
           type="button"
           @click.stop="deleteImage(image)"
-          class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
+          class="absolute top-2 right-2 bg-red-500 text-white rounded-full w-8 h-8 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 shadow-lg"
         >
           <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
             <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
