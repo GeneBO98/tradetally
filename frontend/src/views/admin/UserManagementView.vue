@@ -152,7 +152,7 @@
                       }"
                       class="inline-flex px-1 py-1 text-xs font-semibold rounded-full"
                     >
-                      {{ user.is_active ? '[SUCCESS]' : '[ERROR]' }}
+                      <MdiIcon :icon="user.is_active ? mdiCheckCircle : mdiCloseCircle" :size="16" />
                     </span>
                   </td>
                   <td class="px-3 py-3 whitespace-nowrap">
@@ -163,7 +163,7 @@
                       }"
                       class="inline-flex px-1 py-1 text-xs font-semibold rounded-full"
                     >
-                      {{ user.is_verified ? '[SUCCESS]' : '[ERROR]' }}
+                      <MdiIcon :icon="user.is_verified ? mdiCheckCircle : mdiCloseCircle" :size="16" />
                     </span>
                   </td>
                   <td class="px-3 py-3 whitespace-nowrap">
@@ -174,7 +174,7 @@
                       }"
                       class="inline-flex px-1 py-1 text-xs font-semibold rounded-full"
                     >
-                      {{ user.admin_approved ? '[SUCCESS]' : '[ERROR]' }}
+                      <MdiIcon :icon="user.admin_approved ? mdiCheckCircle : mdiCloseCircle" :size="16" />
                     </span>
                   </td>
                   <td class="px-3 py-3 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">
@@ -560,6 +560,8 @@ import { ref, onMounted, computed } from 'vue'
 import api from '@/services/api'
 import { useNotification } from '@/composables/useNotification'
 import { useAuthStore } from '@/stores/auth'
+import MdiIcon from '@/components/MdiIcon.vue'
+import { mdiCheckCircle, mdiCloseCircle } from '@mdi/js'
 
 const { showSuccess, showError } = useNotification()
 const authStore = useAuthStore()
