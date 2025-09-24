@@ -51,7 +51,7 @@ const brokerParsers = {
     }
     
     const [_, action, quantityStr, symbol, priceStr] = tradeMatch;
-    const quantity = Math.abs(parseInt(quantityStr.replace(/,/g, '')));
+    const quantity = Math.abs(parseFloat(quantityStr.replace(/,/g, '')));
     const price = parseFloat(priceStr);
     const side = action === 'BOT' ? 'long' : 'short';
     
@@ -502,7 +502,7 @@ function parseLightspeedSide(sideCode, buySell, principalAmount, netAmount, quan
   
   // PRIORITY 2: Check quantity sign (negative = sell, positive = buy)
   if (quantity !== undefined && quantity !== null) {
-    const qty = parseInt(quantity);
+    const qty = parseFloat(quantity);
     if (qty < 0) {
       return 'sell';
     }
@@ -1033,7 +1033,7 @@ async function parseSchwabTransactions(records, existingPositions = {}) {
         continue;
       }
       
-      const quantity = Math.abs(parseInt(quantityStr));
+      const quantity = Math.abs(parseFloat(quantityStr));
       const price = parseFloat(priceStr);
       const amount = Math.abs(parseFloat(amountStr));
       const fees = parseFloat(feesStr) || 0;
@@ -1283,7 +1283,7 @@ async function parseThinkorswimTransactions(records, existingPositions = {}) {
       }
       
       const [_, action, quantityStr, symbol, priceStr] = tradeMatch;
-      const quantity = Math.abs(parseInt(quantityStr.replace(/,/g, '')));
+      const quantity = Math.abs(parseFloat(quantityStr.replace(/,/g, '')));
       const price = parseFloat(priceStr);
       
       // Parse fees

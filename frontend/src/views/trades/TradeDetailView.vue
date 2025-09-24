@@ -75,7 +75,7 @@
                 </div>
                 <div>
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Quantity</dt>
-                  <dd class="mt-1 text-sm text-gray-900 dark:text-white">{{ formatNumber(trade.quantity, 0) }}</dd>
+                  <dd class="mt-1 text-sm text-gray-900 dark:text-white">{{ formatQuantity(trade.quantity) }}</dd>
                 </div>
                 <div>
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Status</dt>
@@ -192,7 +192,7 @@
                         </span>
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap text-sm font-mono text-gray-900 dark:text-white">
-                        {{ formatNumber(execution.quantity, 0) }}
+                        {{ formatQuantity(execution.quantity) }}
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap text-sm font-mono text-gray-900 dark:text-white">
                         ${{ formatNumber(execution.price) }}
@@ -204,7 +204,7 @@
                         {{ execution.fees ? `$${formatNumber(execution.fees)}` : '-' }}
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap text-sm font-mono text-gray-900 dark:text-white">
-                        {{ formatNumber(execution.runningPosition, 0) }}
+                        {{ formatQuantity(execution.runningPosition) }}
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap text-sm font-mono text-gray-900 dark:text-white">
                         {{ execution.avgCost ? `$${formatNumber(execution.avgCost)}` : '-' }}
@@ -751,6 +751,21 @@ function formatNumber(num, decimals = 2) {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals
   }).format(num || 0)
+}
+
+function formatQuantity(num) {
+  if (!num) return '0'
+  
+  // If it's a whole number, show no decimals
+  if (num % 1 === 0) {
+    return new Intl.NumberFormat('en-US').format(num)
+  }
+  
+  // Otherwise, show up to 4 decimal places, removing trailing zeros
+  return new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 4
+  }).format(num)
 }
 
 function formatDate(date) {
