@@ -136,7 +136,8 @@
               id="quantity"
               v-model="form.quantity"
               type="number"
-              min="1"
+              min="0.0001"
+              step="0.0001"
               required
               class="input"
               placeholder="100"
