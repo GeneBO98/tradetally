@@ -45,30 +45,30 @@ async function runMigration(migrationFile) {
     await db.query(sql);
     
     await markMigrationAsExecuted(migrationFile);
-    console.log(`✅ Migration completed: ${migrationFile}`);
+    console.log(`[SUCCESS] Migration completed: ${migrationFile}`);
     return true;
   } catch (error) {
-    console.error(`❌ Migration failed: ${migrationFile}`, error);
+    console.error(`[ERROR] Migration failed: ${migrationFile}`, error);
     return false;
   }
 }
 
 async function runAllMigrations() {
   try {
-    console.log('🔄 Starting database migrations...');
+    console.log('[PROCESS] Starting database migrations...');
     
     // Create migrations table if it doesn't exist
     await createMigrationsTable();
     
     // Get list of executed migrations
     const executedMigrations = await getExecutedMigrations();
-    console.log(`📋 Previously executed migrations: ${executedMigrations.length}`);
+    console.log(`[INFO] Previously executed migrations: ${executedMigrations.length}`);
     
     // Get all migration files
     const migrationsDir = path.join(__dirname, '..', 'src', 'migrations');
     
     if (!fs.existsSync(migrationsDir)) {
-      console.log('📁 No migrations directory found, skipping migrations');
+      console.log('[INFO] No migrations directory found, skipping migrations');
       return;
     }
     
@@ -76,30 +76,30 @@ async function runAllMigrations() {
       .filter(file => file.endsWith('.sql'))
       .sort(); // Sort to ensure consistent order
     
-    console.log(`📄 Found ${migrationFiles.length} migration files`);
+    console.log(`[INFO] Found ${migrationFiles.length} migration files`);
     
     // Run pending migrations
     let pendingMigrations = migrationFiles.filter(file => !executedMigrations.includes(file));
     
     if (pendingMigrations.length === 0) {
-      console.log('✅ No pending migrations, database is up to date');
+      console.log('[SUCCESS] No pending migrations, database is up to date');
       return;
     }
     
-    console.log(`🚀 Running ${pendingMigrations.length} pending migrations...`);
+    console.log(`[START] Running ${pendingMigrations.length} pending migrations...`);
     
     for (const migrationFile of pendingMigrations) {
       const success = await runMigration(migrationFile);
       if (!success) {
-        console.error('❌ Migration failed, stopping migration process');
+        console.error('[ERROR] Migration failed, stopping migration process');
         process.exit(1);
       }
     }
     
-    console.log('✅ All migrations completed successfully!');
+    console.log('[SUCCESS] All migrations completed successfully!');
     
   } catch (error) {
-    console.error('❌ Migration process failed:', error);
+    console.error('[ERROR] Migration process failed:', error);
     process.exit(1);
   }
 }

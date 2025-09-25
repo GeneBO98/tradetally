@@ -1,13 +1,14 @@
 const db = require('../config/database');
 const aiService = require('../utils/aiService');
 const User = require('../models/User');
+const Trade = require('../models/Trade');
 const finnhub = require('../utils/finnhub');
 const cache = require('../utils/cache');
 const MAEEstimator = require('../utils/maeEstimator');
 const symbolCategories = require('../utils/symbolCategories');
 
 // Async MAE/MFE calculation function
-async function calculateMAEMFEAsync(userId, dateFilter, params) {
+async function calculateMAEMFEAsync(userId, filterConditions, params) {
   try {
     // First try to get actual MAE/MFE if available
     const actualMaeQuery = `
@@ -17,7 +18,7 @@ async function calculateMAEMFEAsync(userId, dateFilter, params) {
         COUNT(mae) as mae_count,
         COUNT(mfe) as mfe_count
       FROM trades
-      WHERE user_id = $1 ${dateFilter}
+      WHERE user_id = $1 ${filterConditions}
         AND mae IS NOT NULL 
         AND mfe IS NOT NULL
     `;
@@ -49,7 +50,7 @@ async function calculateMAEMFEAsync(userId, dateFilter, params) {
           entry_time,
           exit_time
         FROM trades
-        WHERE user_id = $1 ${dateFilter}
+        WHERE user_id = $1 ${filterConditions}
           AND entry_price IS NOT NULL
           AND exit_price IS NOT NULL
           AND pnl IS NOT NULL
@@ -77,74 +78,248 @@ async function calculateMAEMFEAsync(userId, dateFilter, params) {
   }
 }
 
+// New helper to convert query params into the Trade model's filter format
+function convertQueryToTradeFilters(query) {
+  const toArray = (val) => {
+    if (Array.isArray(val)) return val.filter(Boolean);
+    if (typeof val === 'string' && val.trim() !== '') {
+      return val.split(',').map(s => s.trim()).filter(Boolean);
+    }
+    return [];
+  };
+
+  const toNumber = (val) => {
+    if (val === undefined || val === null || val === '') return undefined;
+    const n = Number(val);
+    return Number.isFinite(n) ? n : undefined;
+  };
+
+  const toIntArray = (val) => toArray(val).map(v => parseInt(v, 10)).filter(v => Number.isInteger(v));
+
+  // Normalize brokers: support both `brokers` (CSV) and `broker` (single)
+  const brokersRaw = query.brokers !== undefined && query.brokers !== null && String(query.brokers).trim() !== ''
+    ? String(query.brokers)
+    : (query.broker !== undefined && query.broker !== null && String(query.broker).trim() !== ''
+      ? String(query.broker)
+      : undefined);
+
+  return {
+    startDate: query.startDate || undefined,
+    endDate: query.endDate || undefined,
+    symbol: query.symbol ? String(query.symbol).toUpperCase().trim() : undefined,
+    strategies: toArray(query.strategies),
+    sectors: toArray(query.sectors),
+    hasNews: query.hasNews,
+    side: query.side || undefined,
+    minPrice: toNumber(query.minPrice),
+    maxPrice: toNumber(query.maxPrice),
+    minQuantity: toNumber(query.minQuantity),
+    maxQuantity: toNumber(query.maxQuantity),
+    status: query.status || undefined,
+    minPnl: toNumber(query.minPnl),
+    maxPnl: toNumber(query.maxPnl),
+    pnlType: query.pnlType || undefined,
+    brokers: brokersRaw, // accept CSV or single broker
+    daysOfWeek: toIntArray(query.daysOfWeek)
+  };
+}
+
+// Helper function to build filter conditions for analytics queries using normalized Trade filters
+function buildFilterConditions(query) {
+  const filters = convertQueryToTradeFilters(query);
+
+  console.log('--- Filter Debug (normalized) ---');
+  console.log('Raw query object:', query);
+  console.log('Normalized filters:', filters);
+  console.log('Broker filter specifically:', filters.brokers);
+
+  let filterConditions = '';
+  const params = [];
+  let paramIndex = 2; // $1 is reserved for user_id in callers
+
+  // Date filters
+  if (filters.startDate) {
+    filterConditions += ` AND trade_date >= $${paramIndex}`;
+    params.push(filters.startDate);
+    paramIndex++;
+  }
+
+  if (filters.endDate) {
+    filterConditions += ` AND trade_date <= $${paramIndex}`;
+    params.push(filters.endDate);
+    paramIndex++;
+  }
+
+  // Symbol filter (exact match or LIKE based on Trade expectations – here use exact to align with model)
+  if (filters.symbol) {
+    filterConditions += ` AND symbol = $${paramIndex}`;
+    params.push(filters.symbol);
+    paramIndex++;
+  }
+
+  // Multi-select strategies
+  if (filters.strategies && filters.strategies.length > 0) {
+    const placeholders = filters.strategies.map(() => `$${paramIndex++}`).join(',');
+    filterConditions += ` AND strategy IN (${placeholders})`;
+    params.push(...filters.strategies);
+  }
+
+  // Multi-select sectors via subquery to symbol_categories (aligns with Trade model join)
+  if (filters.sectors && filters.sectors.length > 0) {
+    const placeholders = filters.sectors.map(() => `$${paramIndex++}`).join(',');
+    filterConditions += ` AND symbol IN (SELECT symbol FROM symbol_categories WHERE finnhub_industry IN (${placeholders}))`;
+    params.push(...filters.sectors);
+  }
+
+  // Broker filter (multi-select supported) - exactly like Trade model
+  if (filters.brokers && String(filters.brokers).trim() !== '') {
+    const brokerList = String(filters.brokers).split(',').map(b => b.trim()).filter(Boolean);
+    if (brokerList.length > 0) {
+      filterConditions += ` AND broker = ANY($${paramIndex}::text[])`;
+      params.push(brokerList);
+      paramIndex++;
+    }
+  }
+
+  // Side filter
+  if (filters.side) {
+    filterConditions += ` AND side = $${paramIndex}`;
+    params.push(filters.side);
+    paramIndex++;
+  }
+
+  // Price filters
+  if (filters.minPrice !== undefined) {
+    filterConditions += ` AND entry_price >= $${paramIndex}`;
+    params.push(filters.minPrice);
+    paramIndex++;
+  }
+  if (filters.maxPrice !== undefined) {
+    filterConditions += ` AND entry_price <= $${paramIndex}`;
+    params.push(filters.maxPrice);
+    paramIndex++;
+  }
+
+  // Quantity filters
+  if (filters.minQuantity !== undefined) {
+    filterConditions += ` AND CAST(quantity AS DECIMAL) >= $${paramIndex}`;
+    params.push(filters.minQuantity);
+    paramIndex++;
+  }
+  if (filters.maxQuantity !== undefined) {
+    filterConditions += ` AND CAST(quantity AS DECIMAL) <= $${paramIndex}`;
+    params.push(filters.maxQuantity);
+    paramIndex++;
+  }
+
+  // Status filters
+  if (filters.status === 'open') {
+    filterConditions += ` AND exit_price IS NULL`;
+  } else if (filters.status === 'closed') {
+    filterConditions += ` AND exit_price IS NOT NULL`;
+  }
+
+  // P&L filters
+  if (filters.minPnl !== undefined) {
+    filterConditions += ` AND pnl >= $${paramIndex}`;
+    params.push(filters.minPnl);
+    paramIndex++;
+  }
+  if (filters.maxPnl !== undefined) {
+    filterConditions += ` AND pnl <= $${paramIndex}`;
+    params.push(filters.maxPnl);
+    paramIndex++;
+  }
+  if (filters.pnlType === 'profit') {
+    filterConditions += ` AND pnl > 0`;
+  } else if (filters.pnlType === 'loss') {
+    filterConditions += ` AND pnl < 0`;
+  }
+
+  // Day of week filter (use trade_date for simplicity within analytics context)
+  if (filters.daysOfWeek && filters.daysOfWeek.length > 0) {
+    const placeholders = filters.daysOfWeek.map(() => `$${paramIndex++}`).join(',');
+    filterConditions += ` AND EXTRACT(DOW FROM trade_date) IN (${placeholders})`;
+    params.push(...filters.daysOfWeek);
+  }
+
+  // hasNews filter
+  if (filters.hasNews !== undefined && filters.hasNews !== '' && filters.hasNews !== null) {
+    if (filters.hasNews === 'true' || filters.hasNews === true || filters.hasNews === 1 || filters.hasNews === '1') {
+      filterConditions += ` AND has_news = true`;
+    } else if (filters.hasNews === 'false' || filters.hasNews === false || filters.hasNews === 0 || filters.hasNews === '0') {
+      filterConditions += ` AND (has_news = false OR has_news IS NULL)`;
+    }
+  }
+
+  console.log('--- Filter Results (normalized) ---');
+  console.log('Final filter conditions:', filterConditions);
+  console.log('Final params:', params);
+  console.log('--- End Filter Debug ---');
+
+  return { filterConditions, params };
+}
+
 const analyticsController = {
   async getOverview(req, res, next) {
     try {
-      const { startDate, endDate } = req.query;
-      const cacheKey = `analytics_overview_${req.user.id}_${startDate}_${endDate}`;
-      const cachedData = cache.get(cacheKey);
+      const filterData = buildFilterConditions(req.query);
+      
+      // Get user's preference for average vs median calculations
+      const User = require('../models/User');
+      let useMedian = false;
+      try {
+        const userSettings = await User.getSettings(req.user.id);
+        useMedian = userSettings?.statistics_calculation === 'median';
+      } catch (error) {
+        console.warn('Could not fetch user settings for analytics, using default (average):', error.message);
+        useMedian = false;
+      }
+      
+      // Include filter hash in cache key to handle different filter combinations
+      const normalizedFiltersForCache = convertQueryToTradeFilters(req.query);
+      const filterHash = JSON.stringify(normalizedFiltersForCache);
+      const cacheKey = `analytics_overview_${req.user.id}_${Buffer.from(filterHash).toString('base64').slice(0, 32)}_${useMedian ? 'median' : 'avg'}`;
+      
+      console.log('[CACHE] Cache key for analytics overview:', cacheKey);
+      console.log('[CACHE] Normalized filters for cache:', normalizedFiltersForCache);
+      
+      // Temporarily disable cache for debugging filters
+      // const cachedData = cache.get(cacheKey);
+      // if (cachedData) {
+      //   console.log('[CACHE] Returning cached data');
+      //   return res.json(cachedData);
+      // }
 
-      if (cachedData) {
-        return res.json(cachedData);
-      }
-
-      console.log('Date filters received:', { startDate, endDate });
+      const { filterConditions, params: filterParams } = filterData;
+      const params = [req.user.id, ...filterParams];
       
-      let dateFilter = '';
-      const params = [req.user.id];
-      
-      if (startDate) {
-        dateFilter += ' AND trade_date >= $2';
-        params.push(startDate);
-      }
-      
-      if (endDate) {
-        dateFilter += ` AND trade_date <= $${params.length + 1}`;
-        params.push(endDate);
-      }
-      
-      console.log('Final date filter:', dateFilter);
+      console.log('Filters applied:', req.query);
+      console.log('Filter conditions:', filterConditions);
       console.log('Query params:', params);
 
       // Test simple query first to debug
-      const testQuery = `SELECT COUNT(*) as count FROM trades WHERE user_id = $1 ${dateFilter}`;
+      const testQuery = `SELECT COUNT(*) as count FROM trades WHERE user_id = $1 ${filterConditions}`;
       console.log('Test query:', testQuery);
       const testResult = await db.query(testQuery, params);
       console.log('Test result:', testResult.rows[0]);
 
       const overviewQuery = `
-        WITH trades_with_starts AS (
-            SELECT
-                *,
-                CASE
-                    WHEN LAG(position, 1, 0) OVER (PARTITION BY symbol ORDER BY trade_date, entry_time) = 0 THEN 1
-                    ELSE 0
-                END as is_trade_start
-            FROM (
-                SELECT
-                    *,
-                    SUM(CASE WHEN side = 'long' THEN quantity ELSE -quantity END) OVER (PARTITION BY symbol ORDER BY trade_date, entry_time) as position
-                FROM trades
-                WHERE user_id = $1 ${dateFilter}
-            ) as positions
+        WITH completed_trades AS (
+            -- Each trade with both entry and exit price is a complete round trip
+            SELECT 
+                *
+            FROM trades
+            WHERE user_id = $1 ${filterConditions}
+                AND exit_price IS NOT NULL
+                AND pnl IS NOT NULL
         ),
-        trades_with_groups AS (
-            SELECT
-                *,
-                SUM(is_trade_start) OVER (PARTITION BY symbol ORDER BY trade_date, entry_time) as trade_group
-            FROM trades_with_starts
-        ),
-        completed_trades AS (
-            SELECT
-                symbol,
-                trade_group,
-                SUM(pnl) as pnl,
-                SUM(commission) as commission,
-                SUM(fees) as fees,
-                MIN(trade_date) as trade_date,
-                MIN(entry_time) as entry_time
-            FROM trades_with_groups
-            GROUP BY symbol, trade_group
+        individual_trades AS (
+            -- Get best/worst individual executions
+            SELECT 
+                COALESCE(MAX(pnl), 0) as individual_best_trade,
+                COALESCE(MIN(pnl), 0) as individual_worst_trade
+            FROM completed_trades
         )
         SELECT 
           (SELECT COUNT(*) FROM completed_trades)::integer as total_trades,
@@ -152,12 +327,22 @@ const analyticsController = {
           (SELECT COUNT(*) FROM completed_trades WHERE pnl < 0)::integer as losing_trades,
           (SELECT COUNT(*) FROM completed_trades WHERE pnl = 0)::integer as breakeven_trades,
           COALESCE(SUM(pnl), 0)::numeric as total_pnl,
-          COALESCE(AVG(pnl), 0)::numeric as avg_pnl,
-          COALESCE(AVG(pnl) FILTER (WHERE pnl > 0), 0)::numeric as avg_win,
-          COALESCE(AVG(pnl) FILTER (WHERE pnl < 0), 0)::numeric as avg_loss,
-          COALESCE(MAX(pnl), 0)::numeric as best_trade,
-          COALESCE(MIN(pnl), 0)::numeric as worst_trade,
-          (SELECT COUNT(*) FROM trades WHERE user_id = $1 ${dateFilter})::integer as total_executions,
+          ${useMedian 
+            ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl), 0)::numeric as avg_pnl'
+            : 'COALESCE(AVG(pnl), 0)::numeric as avg_pnl'
+          },
+          ${useMedian
+            ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE pnl > 0), 0)::numeric as avg_win'
+            : 'COALESCE(AVG(pnl) FILTER (WHERE pnl > 0), 0)::numeric as avg_win'
+          },
+          ${useMedian
+            ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE pnl < 0), 0)::numeric as avg_loss'
+            : 'COALESCE(AVG(pnl) FILTER (WHERE pnl < 0), 0)::numeric as avg_loss'
+          },
+          -- Best/worst trades
+          (SELECT individual_best_trade FROM individual_trades) as best_trade,
+          (SELECT individual_worst_trade FROM individual_trades) as worst_trade,
+          (SELECT COUNT(*) FROM completed_trades)::integer as total_executions,
           COALESCE(SUM(pnl) FILTER (WHERE pnl > 0), 0) as total_gross_wins,
           COALESCE(ABS(SUM(pnl) FILTER (WHERE pnl < 0)), 0) as total_gross_losses,
           COALESCE(SUM(commission), 0) as total_commissions,
@@ -172,7 +357,7 @@ const analyticsController = {
 
       // --- BEGIN DEBUG LOGGING ---
       console.log('--- Analytics Overview Debug ---');
-      console.log('Query Parameters:', { startDate, endDate, userId: req.user.id });
+      console.log('Query Parameters:', { filters: req.query, userId: req.user.id });
       console.log('Raw Query Result:', result.rows);
       if (overview) {
         console.log('Initial Overview Object:', JSON.parse(JSON.stringify(overview)));
@@ -361,7 +546,7 @@ const analyticsController = {
       try {
         console.log('Starting MAE/MFE calculation...');
         const estimates = await Promise.race([
-          calculateMAEMFEAsync(req.user.id, dateFilter, params),
+          calculateMAEMFEAsync(req.user.id, filterConditions, params),
           new Promise((_, reject) => 
             setTimeout(() => reject(new Error('MAE/MFE calculation timeout')), 5000)
           )
@@ -393,7 +578,8 @@ const analyticsController = {
       });
 
       console.log('Analytics overview calculation completed, sending response');
-      cache.set(cacheKey, { overview });
+      // Temporarily disable cache for debugging
+      // cache.set(cacheKey, { overview });
       res.json({ overview });
     } catch (error) {
       console.error('Analytics overview error:', error);
@@ -435,7 +621,7 @@ const analyticsController = {
 
   async getPerformance(req, res, next) {
     try {
-      const { period = 'daily', startDate, endDate } = req.query;
+      const { period = 'daily' } = req.query;
       
       // Whitelist allowed periods to prevent SQL injection
       const allowedPeriods = ['daily', 'weekly', 'monthly'];
@@ -453,18 +639,8 @@ const analyticsController = {
           groupBy = 'trade_date';
       }
 
-      let dateFilter = '';
-      const params = [req.user.id];
-      
-      if (startDate) {
-        dateFilter += ' AND trade_date >= $2';
-        params.push(startDate);
-      }
-      
-      if (endDate) {
-        dateFilter += ` AND trade_date <= $${params.length + 1}`;
-        params.push(endDate);
-      }
+      const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
+      const params = [req.user.id, ...filterParams];
 
       const performanceQuery = `
         SELECT 
@@ -473,7 +649,7 @@ const analyticsController = {
           COALESCE(SUM(pnl), 0) as pnl,
           COALESCE(SUM(SUM(pnl)) OVER (ORDER BY ${groupBy}), 0) as cumulative_pnl
         FROM trades
-        WHERE user_id = $1 ${dateFilter}
+        WHERE user_id = $1 ${filterConditions}
         GROUP BY ${groupBy}
         ORDER BY period
       `;
@@ -488,25 +664,10 @@ const analyticsController = {
 
   async getSymbolStats(req, res, next) {
     try {
-      const { startDate, endDate, limit = 10 } = req.query;
+      const { limit = 10 } = req.query;
       
-      console.log('Symbol stats request - Date filters:', { startDate, endDate });
-      
-      let dateFilter = '';
-      const params = [req.user.id];
-      
-      if (startDate) {
-        dateFilter += ' AND trade_date >= $2';
-        params.push(startDate);
-      }
-      
-      if (endDate) {
-        dateFilter += ` AND trade_date <= $${params.length + 1}`;
-        params.push(endDate);
-      }
-      
-      console.log('Symbol stats - Final dateFilter:', dateFilter);
-      console.log('Symbol stats - Query params:', params);
+      const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
+      const params = [req.user.id, ...filterParams];
 
       // Validate and sanitize limit parameter
       const sanitizedLimit = parseInt(limit);
@@ -525,7 +686,7 @@ const analyticsController = {
           COALESCE(AVG(pnl), 0) as avg_pnl,
           COALESCE(AVG(pnl_percent), 0) as avg_pnl_percent
         FROM trades
-        WHERE user_id = $1 ${dateFilter}
+        WHERE user_id = $1 ${filterConditions}
         GROUP BY symbol
         ORDER BY total_pnl DESC
         LIMIT $${params.length}
@@ -541,20 +702,8 @@ const analyticsController = {
 
   async getTagStats(req, res, next) {
     try {
-      const { startDate, endDate } = req.query;
-      
-      let dateFilter = '';
-      const params = [req.user.id];
-      
-      if (startDate) {
-        dateFilter += ' AND trade_date >= $2';
-        params.push(startDate);
-      }
-      
-      if (endDate) {
-        dateFilter += ` AND trade_date <= $${params.length + 1}`;
-        params.push(endDate);
-      }
+      const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
+      const params = [req.user.id, ...filterParams];
 
       const tagQuery = `
         SELECT 
@@ -564,7 +713,7 @@ const analyticsController = {
           COALESCE(SUM(pnl), 0) as total_pnl,
           COALESCE(AVG(pnl), 0) as avg_pnl
         FROM trades
-        WHERE user_id = $1 ${dateFilter} AND tags IS NOT NULL
+        WHERE user_id = $1 ${filterConditions} AND tags IS NOT NULL
         GROUP BY tag
         ORDER BY total_trades DESC
       `;
@@ -581,8 +730,8 @@ const analyticsController = {
     try {
       const { year, month } = req.query;
       
-      const params = [req.user.id];
-      let dateFilter = '';
+      // Add year/month to query params if provided for buildFilterConditions
+      const queryWithDates = { ...req.query };
       
       if (year && month) {
         // Validate and sanitize year and month to prevent injection
@@ -600,9 +749,12 @@ const analyticsController = {
         
         const startDate = `${sanitizedYear}-${sanitizedMonth.toString().padStart(2, '0')}-01`;
         const endDate = new Date(sanitizedYear, sanitizedMonth, 0).toISOString().split('T')[0];
-        dateFilter = ' AND trade_date >= $2 AND trade_date <= $3';
-        params.push(startDate, endDate);
+        queryWithDates.startDate = startDate;
+        queryWithDates.endDate = endDate;
       }
+
+      const { filterConditions, params: filterParams } = buildFilterConditions(queryWithDates);
+      const params = [req.user.id, ...filterParams];
 
       const calendarQuery = `
         SELECT 
@@ -610,7 +762,7 @@ const analyticsController = {
           COUNT(*) as trades,
           COALESCE(SUM(pnl), 0) as daily_pnl
         FROM trades
-        WHERE user_id = $1 ${dateFilter}
+        WHERE user_id = $1 ${filterConditions}
         GROUP BY trade_date
         ORDER BY trade_date
       `;
@@ -625,28 +777,18 @@ const analyticsController = {
 
   async exportData(req, res, next) {
     try {
-      const { format = 'csv', startDate, endDate } = req.query;
+      const { format = 'csv' } = req.query;
       
       // Validate format parameter
       const allowedFormats = ['csv', 'json'];
       const sanitizedFormat = allowedFormats.includes(format) ? format : 'csv';
       
-      let dateFilter = '';
-      const params = [req.user.id];
-      
-      if (startDate) {
-        dateFilter += ' AND trade_date >= $2';
-        params.push(startDate);
-      }
-      
-      if (endDate) {
-        dateFilter += ` AND trade_date <= $${params.length + 1}`;
-        params.push(endDate);
-      }
+      const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
+      const params = [req.user.id, ...filterParams];
 
       const exportQuery = `
         SELECT * FROM trades
-        WHERE user_id = $1 ${dateFilter}
+        WHERE user_id = $1 ${filterConditions}
         ORDER BY trade_date DESC, entry_time DESC
       `;
 
@@ -667,26 +809,18 @@ const analyticsController = {
 
   async getChartData(req, res, next) {
     try {
-      const { startDate, endDate } = req.query;
-      const cacheKey = `analytics_chart_data_${req.user.id}_${startDate}_${endDate}`;
+      // Include filter hash in cache key to handle different filter combinations
+      const normalizedForCache = convertQueryToTradeFilters(req.query);
+      const filterHash = JSON.stringify(normalizedForCache);
+      const cacheKey = `analytics_chart_data_${req.user.id}_${Buffer.from(filterHash).toString('base64').slice(0, 32)}`;
       const cachedData = cache.get(cacheKey);
 
       if (cachedData) {
         return res.json(cachedData);
       }
 
-      let dateFilter = '';
-      const params = [req.user.id];
-      
-      if (startDate) {
-        dateFilter += ' AND trade_date >= $2';
-        params.push(startDate);
-      }
-      
-      if (endDate) {
-        dateFilter += ` AND trade_date <= $${params.length + 1}`;
-        params.push(endDate);
-      }
+      const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
+      const params = [req.user.id, ...filterParams];
 
       // Trade Distribution by Price
       const tradeDistributionQuery = `
@@ -713,7 +847,7 @@ const analyticsController = {
               ELSE 8
             END as range_order
           FROM trades
-          WHERE user_id = $1 ${dateFilter}
+          WHERE user_id = $1 ${filterConditions}
         )
         SELECT price_range, COUNT(*) as trade_count
         FROM price_ranges
@@ -747,7 +881,7 @@ const analyticsController = {
             END as range_order,
             pnl
           FROM trades
-          WHERE user_id = $1 ${dateFilter}
+          WHERE user_id = $1 ${filterConditions}
         )
         SELECT price_range, COALESCE(SUM(pnl), 0) as total_pnl
         FROM price_ranges
@@ -769,7 +903,7 @@ const analyticsController = {
             END as total_volume,
             pnl
           FROM trades
-          WHERE user_id = $1 ${dateFilter}
+          WHERE user_id = $1 ${filterConditions}
         ),
         volume_ranges AS (
           SELECT 
@@ -849,7 +983,7 @@ const analyticsController = {
             pnl,
             CASE WHEN pnl > 0 THEN 1 ELSE 0 END as is_winner
           FROM trades
-          WHERE user_id = $1 ${dateFilter} AND pnl IS NOT NULL
+          WHERE user_id = $1 ${filterConditions} AND pnl IS NOT NULL
         )
         SELECT 
           hold_time_range, 
@@ -917,23 +1051,47 @@ const analyticsController = {
         return found ? parseFloat(found.total_pnl) : 0;
       });
 
-      // Day of Week Performance
-      const dayOfWeekQuery = `
-        SELECT 
-          EXTRACT(DOW FROM trade_date) as day_of_week,
-          COUNT(*) as trade_count,
-          COALESCE(SUM(pnl), 0) as total_pnl
-        FROM trades
-        WHERE user_id = $1 ${dateFilter}
-        GROUP BY EXTRACT(DOW FROM trade_date)
-        ORDER BY EXTRACT(DOW FROM trade_date)
-      `;
+      // Day of Week Performance (timezone-aware and excluding weekends)
+      const { getUserTimezone } = require('../utils/timezone');
+      const userTimezone = await getUserTimezone(req.user.id);
+      
+      let dayOfWeekQuery;
+      let dayOfWeekParams;
+      
+      if (userTimezone !== 'UTC') {
+        dayOfWeekQuery = `
+          SELECT 
+            EXTRACT(DOW FROM (entry_time AT TIME ZONE 'UTC' AT TIME ZONE $2)) as day_of_week,
+            COUNT(*) as trade_count,
+            COALESCE(SUM(pnl), 0) as total_pnl
+          FROM trades
+          WHERE user_id = $1 ${filterConditions}
+            AND EXTRACT(DOW FROM (entry_time AT TIME ZONE 'UTC' AT TIME ZONE $2)) NOT IN (0, 6) -- Exclude weekends
+          GROUP BY EXTRACT(DOW FROM (entry_time AT TIME ZONE 'UTC' AT TIME ZONE $2))
+          ORDER BY EXTRACT(DOW FROM (entry_time AT TIME ZONE 'UTC' AT TIME ZONE $2))
+        `;
+        dayOfWeekParams = params.concat([userTimezone]);
+      } else {
+        dayOfWeekQuery = `
+          SELECT 
+            EXTRACT(DOW FROM entry_time) as day_of_week,
+            COUNT(*) as trade_count,
+            COALESCE(SUM(pnl), 0) as total_pnl
+          FROM trades
+          WHERE user_id = $1 ${filterConditions}
+            AND EXTRACT(DOW FROM entry_time) NOT IN (0, 6) -- Exclude weekends
+          GROUP BY EXTRACT(DOW FROM entry_time)
+          ORDER BY EXTRACT(DOW FROM entry_time)
+        `;
+        dayOfWeekParams = params;
+      }
 
-      const dayOfWeekResult = await db.query(dayOfWeekQuery, params);
+      const dayOfWeekResult = await db.query(dayOfWeekQuery, dayOfWeekParams);
 
-      // Process day of week data (0=Sunday, 1=Monday, ..., 6=Saturday)
+      // Process day of week data - only weekdays (1=Monday, ..., 5=Friday)
+      // Skip weekends entirely since stock markets are closed
       const dayOfWeekData = [];
-      for (let i = 0; i < 7; i++) {
+      for (let i = 1; i <= 5; i++) { // Only weekdays: 1=Monday through 5=Friday
         const found = dayOfWeekResult.rows.find(row => parseInt(row.day_of_week) === i);
         dayOfWeekData.push({
           total_pnl: found ? parseFloat(found.total_pnl) : 0,
@@ -955,7 +1113,7 @@ const analyticsController = {
               ELSE quantity  -- Fallback to trade quantity if no executions data
             END as trade_volume
           FROM trades
-          WHERE user_id = $1 ${dateFilter}
+          WHERE user_id = $1 ${filterConditions}
         )
         SELECT 
           trade_date,
@@ -1070,20 +1228,8 @@ const analyticsController = {
 
   async getDrawdownAnalysis(req, res, next) {
     try {
-      const { startDate, endDate } = req.query;
-      
-      let dateFilter = '';
-      const params = [req.user.id];
-      
-      if (startDate) {
-        dateFilter += ' AND trade_date >= $2';
-        params.push(startDate);
-      }
-      
-      if (endDate) {
-        dateFilter += ` AND trade_date <= $${params.length + 1}`;
-        params.push(endDate);
-      }
+      const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
+      const params = [req.user.id, ...filterParams];
 
       const drawdownQuery = `
         WITH daily_pnl AS (
@@ -1091,7 +1237,7 @@ const analyticsController = {
             trade_date,
             COALESCE(SUM(pnl), 0) as daily_pnl
           FROM trades
-          WHERE user_id = $1 ${dateFilter}
+          WHERE user_id = $1 ${filterConditions}
           GROUP BY trade_date
           ORDER BY trade_date
         ),
@@ -1152,12 +1298,12 @@ const analyticsController = {
 
   async getRecommendations(req, res, next) {
     try {
-      console.log('🤖 AI Recommendations request started');
+      console.log('[AI] Recommendations request started');
       
       const userSettings = await aiService.getUserSettings(req.user.id);
       
       if (!userSettings.provider) {
-        console.log('❌ AI provider not configured');
+        console.log('[ERROR] AI provider not configured');
         return res.status(400).json({ 
           error: 'AI recommendations are not available. AI provider not configured in settings.' 
         });
@@ -1166,7 +1312,7 @@ const analyticsController = {
       // Check if API key is required for this provider
       const providersRequiringApiKey = ['gemini', 'claude', 'openai'];
       if (providersRequiringApiKey.includes(userSettings.provider) && !userSettings.apiKey) {
-        console.log(`❌ API key required for ${userSettings.provider} provider`);
+        console.log(`[ERROR] API key required for ${userSettings.provider} provider`);
         return res.status(400).json({ 
           error: `AI recommendations are not available. API key required for ${userSettings.provider} provider.` 
         });
@@ -1175,32 +1321,22 @@ const analyticsController = {
       // Check if API URL is required for this provider
       const providersRequiringApiUrl = ['ollama', 'local'];
       if (providersRequiringApiUrl.includes(userSettings.provider) && !userSettings.apiUrl) {
-        console.log(`❌ API URL required for ${userSettings.provider} provider`);
+        console.log(`[ERROR] API URL required for ${userSettings.provider} provider`);
         return res.status(400).json({ 
           error: `AI recommendations are not available. API URL required for ${userSettings.provider} provider.` 
         });
       }
       
-      console.log(`✅ AI provider configured: ${userSettings.provider}`);
+      console.log(`[OK] AI provider configured: ${userSettings.provider}`);
 
+      // Use buildFilterConditions for consistency
+      const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
+      const params = [req.user.id, ...filterParams];
+      
       const { startDate, endDate } = req.query;
-      
-      // Get analytics overview data
-      let dateFilter = '';
-      const params = [req.user.id];
-      
-      if (startDate) {
-        dateFilter += ' AND trade_date >= $2';
-        params.push(startDate);
-      }
-      
-      if (endDate) {
-        dateFilter += ` AND trade_date <= $${params.length + 1}`;
-        params.push(endDate);
-      }
 
       // Get overview metrics
-      console.log('📊 Fetching trade metrics...');
+      console.log('[DATA] Fetching trade metrics...');
       const overviewQuery = `
         SELECT 
           COUNT(*) as total_trades,
@@ -1212,12 +1348,12 @@ const analyticsController = {
           COALESCE(MAX(pnl), 0) as best_trade,
           COALESCE(MIN(pnl), 0) as worst_trade
         FROM trades
-        WHERE user_id = $1 ${dateFilter}
+        WHERE user_id = $1 ${filterConditions}
       `;
 
       const overviewResult = await db.query(overviewQuery, params);
       const metrics = overviewResult.rows[0];
-      console.log(`📈 Found ${metrics.total_trades} trades for analysis`);
+      console.log(`[INFO] Found ${metrics.total_trades} trades for analysis`);
 
       // Calculate derived metrics
       metrics.win_rate = metrics.total_trades > 0 
@@ -1235,7 +1371,7 @@ const analyticsController = {
           quantity, side, pnl, pnl_percent, commission, fees, broker,
           trade_date, strategy, tags, notes
         FROM trades
-        WHERE user_id = $1 ${dateFilter}
+        WHERE user_id = $1 ${filterConditions}
         ORDER BY trade_date DESC, entry_time DESC
         LIMIT 100
       `;
@@ -1244,13 +1380,13 @@ const analyticsController = {
       const trades = tradesResult.rows;
 
       // Get user's trading profile for personalized recommendations
-      console.log('👤 Fetching user trading profile...');
+      console.log('[USER] Fetching user trading profile...');
       let userProfileSettings = null;
       let tradingProfile = null;
       
       try {
         userProfileSettings = await User.getSettings(req.user.id);
-        console.log('⚙️ User settings found:', !!userProfileSettings);
+        console.log('[CONFIG] User settings found:', !!userProfileSettings);
         
         if (userProfileSettings) {
           // Check if trading profile columns exist before accessing them
@@ -1264,16 +1400,16 @@ const analyticsController = {
             tradingGoals: userProfileSettings.trading_goals || [],
             preferredSectors: userProfileSettings.preferred_sectors || []
           };
-          console.log('📋 Trading profile loaded with strategies:', tradingProfile.tradingStrategies.length);
+          console.log('[PROFILE] Trading profile loaded with strategies:', tradingProfile.tradingStrategies.length);
         }
       } catch (settingsError) {
-        console.warn('⚠️ Failed to load user settings, continuing without trading profile:', settingsError.message);
+        console.warn('[WARNING] Failed to load user settings, continuing without trading profile:', settingsError.message);
         console.warn('This might be because trading profile columns do not exist in database yet');
         tradingProfile = null;
       }
 
       // Get sector performance data for AI analysis
-      console.log('🏭 Fetching sector performance for AI analysis...');
+      console.log('[SECTOR] Fetching sector performance for AI analysis...');
       let sectorData = null;
       try {
         // Get symbols and their P&L
@@ -1284,7 +1420,7 @@ const analyticsController = {
             COALESCE(SUM(pnl), 0) as total_pnl,
             COUNT(CASE WHEN pnl > 0 THEN 1 END) as winning_trades
           FROM trades
-          WHERE user_id = $1 ${dateFilter}
+          WHERE user_id = $1 ${filterConditions}
           GROUP BY symbol
           HAVING COUNT(*) > 0
           ORDER BY total_pnl DESC
@@ -1295,7 +1431,7 @@ const analyticsController = {
         const symbolData = symbolResult.rows;
 
         if (symbolData.length > 0 && finnhub.isConfigured()) {
-          console.log(`📈 Analyzing ${symbolData.length} symbols for sector data...`);
+          console.log(`[ANALYSIS] Analyzing ${symbolData.length} symbols for sector data...`);
           const sectorMap = new Map();
           
           // Process top symbols for sector analysis (limit to avoid delays)
@@ -1327,7 +1463,7 @@ const analyticsController = {
               await new Promise(resolve => setTimeout(resolve, 1000));
               
             } catch (error) {
-              console.warn(`⚠️ Failed to get sector for ${symbolInfo.symbol}:`, error.message);
+              console.warn(`[WARNING] Failed to get sector for ${symbolInfo.symbol}:`, error.message);
             }
           }
 
@@ -1338,21 +1474,34 @@ const analyticsController = {
             avg_pnl: sector.total_trades > 0 ? (sector.total_pnl / sector.total_trades).toFixed(2) : 0
           })).sort((a, b) => b.total_pnl - a.total_pnl);
 
-          console.log(`✅ Sector analysis complete: ${sectorData.length} sectors identified`);
+          console.log(`[COMPLETE] Sector analysis complete: ${sectorData.length} sectors identified`);
         } else {
-          console.log('📊 Skipping sector analysis - insufficient data or Finnhub not configured');
+          console.log('[SKIP] Skipping sector analysis - insufficient data or Finnhub not configured');
         }
       } catch (error) {
-        console.warn('⚠️ Failed to fetch sector data for AI analysis:', error.message);
+        console.warn('[WARNING] Failed to fetch sector data for AI analysis:', error.message);
         sectorData = null;
       }
 
       // Generate AI recommendations with sector data
-      console.log('🧠 Generating AI recommendations with sector analysis...');
-      const recommendations = await aiService.generateResponse(req.user.id, analyticsController.buildRecommendationPrompt(metrics, trades, tradingProfile, sectorData));
-      console.log('✅ AI recommendations generated successfully');
+      console.log('[AI] Generating AI recommendations with sector analysis...');
+      let recommendations;
+      try {
+        recommendations = await aiService.generateResponse(req.user.id, analyticsController.buildRecommendationPrompt(metrics, trades, tradingProfile, sectorData));
+        if (!recommendations) {
+          throw new Error('AI service returned undefined recommendations');
+        }
+      } catch (aiError) {
+        console.error('[ERROR] AI service error:', aiError.message);
+        return res.status(500).json({ 
+          error: 'Failed to generate AI recommendations: ' + aiError.message 
+        });
+      }
+      console.log('[SUCCESS] AI recommendations generated successfully');
+      console.log('[DEBUG] Recommendations type:', typeof recommendations);
+      console.log('[DEBUG] Recommendations content preview:', recommendations ? recommendations.substring(0, 100) + '...' : 'undefined');
 
-      res.json({ 
+      const response = { 
         recommendations,
         analysisDate: new Date().toISOString(),
         tradesAnalyzed: trades.length,
@@ -1360,7 +1509,10 @@ const analyticsController = {
           startDate: startDate || null,
           endDate: endDate || null
         }
-      });
+      };
+      
+      console.log('[RESPONSE] Sending response with keys:', Object.keys(response));
+      res.json(response);
 
     } catch (error) {
       console.error('Error generating recommendations:', error);
@@ -1370,37 +1522,26 @@ const analyticsController = {
 
   async getSectorPerformance(req, res, next) {
     try {
-      console.log('📊 Starting sector performance analysis...');
+      console.log('[SECTOR] Starting sector performance analysis...');
       
       if (!finnhub.isConfigured()) {
-        console.log('❌ Finnhub API key not configured');
+        console.log('[ERROR] Finnhub API key not configured');
         return res.status(400).json({ 
           error: 'Sector analysis not available. Finnhub API key not configured.' 
         });
       }
 
+      // Use buildFilterConditions for consistency
+      const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
+      const params = [req.user.id, ...filterParams];
+      
       const { startDate, endDate } = req.query;
       
-      console.log('Sector performance request - Date filters:', { startDate, endDate });
-      
-      let dateFilter = '';
-      const params = [req.user.id];
-      
-      if (startDate) {
-        dateFilter += ' AND trade_date >= $2';
-        params.push(startDate);
-      }
-      
-      if (endDate) {
-        dateFilter += ` AND trade_date <= $${params.length + 1}`;
-        params.push(endDate);
-      }
-      
-      console.log('Sector performance - Final dateFilter:', dateFilter);
+      console.log('Sector performance request - Filters:', req.query);
       console.log('Sector performance - Query params:', params);
 
       // Get all symbols and their P&L from trades
-      console.log('🔍 Fetching symbols and P&L from trades...');
+      console.log('[QUERY] Fetching symbols and P&L from trades...');
       const symbolQuery = `
         SELECT 
           symbol,
@@ -1409,7 +1550,7 @@ const analyticsController = {
           COALESCE(AVG(pnl), 0) as avg_pnl,
           COUNT(CASE WHEN pnl > 0 THEN 1 END) as winning_trades
         FROM trades
-        WHERE user_id = $1 ${dateFilter}
+        WHERE user_id = $1 ${filterConditions}
         GROUP BY symbol
         HAVING COUNT(*) > 0
         ORDER BY total_pnl DESC
@@ -1418,7 +1559,7 @@ const analyticsController = {
       const symbolResult = await db.query(symbolQuery, params);
       const symbolData = symbolResult.rows;
       
-      console.log(`📈 Found ${symbolData.length} unique symbols to analyze`);
+      console.log(`[INFO] Found ${symbolData.length} unique symbols to analyze`);
 
       if (symbolData.length === 0) {
         return res.json({ 
@@ -1428,7 +1569,7 @@ const analyticsController = {
       }
 
       // Get industry data from permanent storage first (fast)
-      console.log('🏭 Fetching industry data from permanent storage...');
+      console.log('[STORAGE] Fetching industry data from permanent storage...');
       const symbols = symbolData.map(s => s.symbol);
       
       // Get all categories from storage (including those that failed categorization)
@@ -1444,7 +1585,7 @@ const analyticsController = {
         storedCategories.set(row.symbol, row);
       }
       
-      console.log(`📊 Found ${storedCategories.size} stored symbols in permanent storage`);
+      console.log(`[DATA] Found ${storedCategories.size} stored symbols in permanent storage`);
       
       const sectorMap = new Map();
       let categorizedCount = 0;
@@ -1491,7 +1632,7 @@ const analyticsController = {
         }
       }
       
-      console.log(`📊 Immediate sector analysis: ${categorizedCount} categorized, ${uncategorizedSymbols.length} uncategorized`);
+      console.log(`[STATS] Immediate sector analysis: ${categorizedCount} categorized, ${uncategorizedSymbols.length} uncategorized`);
 
       // Convert map to array and calculate additional metrics
       const sectors = Array.from(sectorMap.values()).map(sector => ({
@@ -1501,7 +1642,7 @@ const analyticsController = {
         symbol_count: sector.symbols.length
       })).sort((a, b) => b.total_pnl - a.total_pnl);
 
-      console.log(`✅ Returning ${sectors.length} sectors immediately`);
+      console.log(`[RETURN] Returning ${sectors.length} sectors immediately`);
 
       const resultData = { 
         sectors,
@@ -1519,11 +1660,11 @@ const analyticsController = {
 
       // Start background categorization for uncategorized symbols (don't await)
       if (uncategorizedSymbols.length > 0 && finnhub.isConfigured()) {
-        console.log(`🔄 Starting background categorization for ${uncategorizedSymbols.length} symbols...`);
+        console.log(`[BACKGROUND] Starting background categorization for ${uncategorizedSymbols.length} symbols...`);
         symbolCategories.getSymbolCategories(uncategorizedSymbols).then(() => {
-          console.log(`✅ Background categorization complete for ${uncategorizedSymbols.length} symbols`);
+          console.log(`[COMPLETE] Background categorization complete for ${uncategorizedSymbols.length} symbols`);
         }).catch(error => {
-          console.warn('⚠️ Background categorization failed:', error.message);
+          console.warn('[WARNING] Background categorization failed:', error.message);
         });
       }
 
@@ -1537,7 +1678,7 @@ const analyticsController = {
 
   async categorizeSymbols(req, res, next) {
     try {
-      console.log('🔄 Starting symbol categorization process...');
+      console.log('[PROCESS] Starting symbol categorization process...');
       
       if (!finnhub.isConfigured()) {
         return res.status(400).json({ 
@@ -1596,24 +1737,36 @@ const analyticsController = {
     }
   },
 
+  async getAvailableBrokers(req, res, next) {
+    try {
+      const query = `
+        SELECT DISTINCT broker
+        FROM trades 
+        WHERE user_id = $1 
+          AND broker IS NOT NULL 
+          AND broker != ''
+        ORDER BY broker
+      `;
+      
+      const result = await db.query(query, [req.user.id]);
+      const brokers = result.rows.map(row => row.broker);
+      
+      res.json({ brokers });
+    } catch (error) {
+      console.error('Error getting available brokers:', error);
+      next(error);
+    }
+  },
+
   async refreshSectorPerformance(req, res, next) {
     try {
-      console.log('🔄 Refreshing sector performance data...');
+      console.log('[REFRESH] Refreshing sector performance data...');
+      
+      // Use buildFilterConditions for consistency
+      const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
+      const params = [req.user.id, ...filterParams];
       
       const { startDate, endDate } = req.query;
-      
-      let dateFilter = '';
-      const params = [req.user.id];
-      
-      if (startDate) {
-        dateFilter += ' AND trade_date >= $2';
-        params.push(startDate);
-      }
-      
-      if (endDate) {
-        dateFilter += ` AND trade_date <= $${params.length + 1}`;
-        params.push(endDate);
-      }
 
       // Get all symbols and their P&L from trades
       const symbolQuery = `
@@ -1624,7 +1777,7 @@ const analyticsController = {
           COALESCE(AVG(pnl), 0) as avg_pnl,
           COUNT(CASE WHEN pnl > 0 THEN 1 END) as winning_trades
         FROM trades
-        WHERE user_id = $1 ${dateFilter}
+        WHERE user_id = $1 ${filterConditions}
         GROUP BY symbol
         HAVING COUNT(*) > 0
         ORDER BY total_pnl DESC

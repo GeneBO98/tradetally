@@ -32,7 +32,7 @@ Content-Type: application/json
 
 ---
 
-## 🔍 Server Discovery
+## [SEARCH] Server Discovery
 
 ### Get Server Information
 
@@ -85,7 +85,7 @@ GET /.well-known/tradetally-config.json
 
 ---
 
-## 🔐 Authentication
+## [SECURE] Authentication
 
 ### Login with Device Registration
 
@@ -186,7 +186,7 @@ POST /api/v1/auth/logout/all-devices
 
 ---
 
-## 📱 Device Management
+## [MOBILE] Device Management
 
 ### List User Devices
 
@@ -281,7 +281,7 @@ Headers: X-Device-ID: {device_uuid}
 
 ---
 
-## 🔄 Sync Operations
+## [SYNC] Sync Operations
 
 ### Full Sync
 
@@ -413,7 +413,7 @@ POST /api/v1/sync/conflicts/resolve
 
 ---
 
-## 📊 Mobile-Optimized Data
+## [ANALYTICS] Mobile-Optimized Data
 
 ### User Profile
 
@@ -499,7 +499,7 @@ GET /api/v1/trades/recent?limit=10
 
 ---
 
-## ⚙️ Settings Management
+## [SETTINGS] Settings Management
 
 ### Mobile Settings
 
@@ -550,7 +550,7 @@ PUT /api/v1/settings/display
 
 ---
 
-## 🔍 Health & Monitoring
+## [SEARCH] Health & Monitoring
 
 ### API Health Check
 
@@ -584,7 +584,7 @@ GET /api/v1/server/status
 
 ---
 
-## 🚨 Error Handling
+## [ERROR] Error Handling
 
 ### Common HTTP Status Codes
 
@@ -619,7 +619,7 @@ When you receive a `TOKEN_EXPIRED` error:
 
 ---
 
-## 📱 Mobile App Integration Guide
+## [MOBILE] Mobile App Integration Guide
 
 ### 1. Server Discovery
 
@@ -754,7 +754,7 @@ async function updatePushToken(newToken) {
 
 ---
 
-## 🔧 Development & Testing
+## [TOOLS] Development & Testing
 
 ### Testing Endpoints
 
@@ -779,7 +779,7 @@ Use these endpoints to test your mobile app integration:
 
 ---
 
-## 📚 Additional Resources
+## [DOCS] Additional Resources
 
 - **Migration Guide**: See `MOBILE_MIGRATION.md` for upgrading existing deployments
 - **Server Setup**: See `README.md` for server configuration

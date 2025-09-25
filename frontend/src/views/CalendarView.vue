@@ -132,7 +132,8 @@
           
           <div class="space-y-3 max-h-96 overflow-y-auto">
             <div v-for="trade in selectedDayTrades" :key="trade.id"
-              class="p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
+              class="p-4 border border-gray-200 dark:border-gray-700 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+              @click="navigateToTrade(trade.id)">
               <div class="flex justify-between items-start">
                 <div>
                   <div class="flex items-center space-x-2">
@@ -180,9 +181,12 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { format, startOfYear, endOfYear, eachMonthOfInterval, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameMonth } from 'date-fns'
 import { ChevronLeftIcon, ChevronRightIcon, XMarkIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
+
+const router = useRouter()
 
 const loading = ref(true)
 const trades = ref([])
@@ -382,6 +386,10 @@ function formatNumber(num, decimals = 2) {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals
   }).format(num || 0)
+}
+
+function navigateToTrade(tradeId) {
+  router.push(`/trades/${tradeId}`)
 }
 
 async function fetchTrades() {

@@ -11,6 +11,7 @@
   "dependencies": {
     "@heroicons/vue": "^2.0.18",
     "@mdi/js": "^7.4.47",
+    "@stripe/stripe-js": "^2.4.0",
     "axios": "^1.6.2",
     "chart.js": "^4.4.0",
     "date-fns": "^2.30.0",
@@ -19,15 +20,15 @@
     "papaparse": "^5.4.1",
     "pinia": "^2.1.7",
     "posthog-js": "^1.261.0",
-    "vue": "^3.5.18",
+    "vue": "^3.5.20",
     "vue-chartjs": "^5.2.0",
     "vue-router": "^4.2.5"
   },
   "devDependencies": {
-    "@vitejs/plugin-vue": "^4.5.0",
+    "@vitejs/plugin-vue": "^5.2.4",
     "autoprefixer": "^10.4.16",
     "postcss": "^8.4.31",
     "tailwindcss": "^3.3.5",
-    "vite": "^5.0.2"
+    "vite": "^5.4.19"
   }
 }

@@ -14,7 +14,7 @@
   }
   
   .btn-primary {
-    @apply btn text-white bg-primary-700 hover:bg-primary-800 focus:ring-primary-600;
+    @apply btn text-white bg-primary-600 hover:bg-primary-700 focus:ring-primary-500;
   }
   
   .btn-secondary {
@@ -26,11 +26,79 @@
   }
   
   .btn-yellow {
-    @apply btn text-yellow-800 bg-yellow-100 hover:bg-yellow-200 border-yellow-300 focus:ring-yellow-500 dark:bg-yellow-900/20 dark:text-yellow-200 dark:border-yellow-800 dark:hover:bg-yellow-800/30;
+    @apply btn text-yellow-800 bg-yellow-100 hover:bg-yellow-200 border-yellow-300 focus:ring-yellow-500 dark:bg-yellow-900 dark:text-yellow-200 dark:border-yellow-700 dark:hover:bg-yellow-800;
   }
   
   .input {
-    @apply block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-800 dark:border-gray-600 dark:text-white;
+    @apply block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-800 dark:border-gray-600;
+  }
+  
+  select.input {
+    @apply pr-10 bg-no-repeat bg-right;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+    background-position: right 0.5rem center;
+    background-size: 1.5em 1.5em;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+  }
+  
+  select.input:focus {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%233b82f6' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+  }
+  
+  .dark select.input {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%239ca3af' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+  }
+  
+  .dark select.input:focus {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2360a5fa' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+  }
+  
+  input[type="date"].input,
+  input[type="date"].form-input {
+    @apply text-gray-900 dark:text-gray-100;
+    color: rgb(17 24 39) !important; /* Force dark text in light mode */
+  }
+  
+  .dark input[type="date"].input,
+  .dark input[type="date"].form-input {
+    color: rgb(243 244 246) !important; /* Force light text in dark mode */
+  }
+  
+  input[type="date"].input::-webkit-calendar-picker-indicator,
+  input[type="date"].form-input::-webkit-calendar-picker-indicator {
+    filter: invert(0.5);
+    opacity: 0.7;
+  }
+  
+  .dark input[type="date"].input::-webkit-calendar-picker-indicator,
+  .dark input[type="date"].form-input::-webkit-calendar-picker-indicator {
+    filter: invert(0.8);
+    opacity: 0.9;
+  }
+  
+  /* Additional date input styling to ensure visibility */
+  input[type="date"].input::-webkit-datetime-edit-text,
+  input[type="date"].input::-webkit-datetime-edit-month-field,
+  input[type="date"].input::-webkit-datetime-edit-day-field,
+  input[type="date"].input::-webkit-datetime-edit-year-field,
+  input[type="date"].form-input::-webkit-datetime-edit-text,
+  input[type="date"].form-input::-webkit-datetime-edit-month-field,
+  input[type="date"].form-input::-webkit-datetime-edit-day-field,
+  input[type="date"].form-input::-webkit-datetime-edit-year-field {
+    color: rgb(17 24 39);
+  }
+  
+  .dark input[type="date"].input::-webkit-datetime-edit-text,
+  .dark input[type="date"].input::-webkit-datetime-edit-month-field,
+  .dark input[type="date"].input::-webkit-datetime-edit-day-field,
+  .dark input[type="date"].input::-webkit-datetime-edit-year-field,
+  .dark input[type="date"].form-input::-webkit-datetime-edit-text,
+  .dark input[type="date"].form-input::-webkit-datetime-edit-month-field,
+  .dark input[type="date"].form-input::-webkit-datetime-edit-day-field,
+  .dark input[type="date"].form-input::-webkit-datetime-edit-year-field {
+    color: rgb(243 244 246);
   }
   
   .label {

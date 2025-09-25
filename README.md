@@ -19,14 +19,17 @@ Visit [TradeTally](https://tradetally.io)
 
 A comprehensive trading journal and analytics platform built with Vue.js frontend and Node.js backend. Track your trades, analyze performance, and gain insights into your trading patterns across multiple brokers.
 
-Login with:
+**Available as:**
+- **SaaS Platform**: Fully hosted solution at [tradetally.io](https://tradetally.io) with subscription plans
+- **Self-Hosted**: Free, open-source deployment with all Pro features included
 
-Username: demo@example.com
-Password: DemoUser25
+**Try the Demo:**
+- Username: demo@example.com
+- Password: DemoUser25
 ## Mobile App (Available For Testing)
 ### Testflight
 [Click here for the invitation](https://testflight.apple.com/join/11shUY3t)
-## 🚀 Features
+## <i class="mdi mdi-rocket-launch"></i> Features
 
 - **Multi-Broker Support**: Import trades from Lightspeed (confirmed), Charles Schwab (confirmed), ThinkorSwim (confirmed), Interactive Brokers, and E*TRADE
    - If you have issues with import or have a broker you want support for, please provide a sample .csv so that I can setup a parser for it. 
@@ -34,7 +37,9 @@ Password: DemoUser25
 - **Real-time Market Data**: Live stock quotes and unrealized P&L tracking for open positions using Finnhub API
 - **Trade Chart Visualization**: Interactive candlestick charts with entry/exit markers using Alpha Vantage API
 - **AI-Powered Analytics**: Personalized trading recommendations using Google Gemini AI with sector performance analysis
-- **Sector Performance Analysis**: Industry-based performance breakdown using Finnhub company profiles
+- **Gamification & Leaderboards**: Track achievements, compete with peers, and level up your trading skills with P&L-based rankings
+- **Behavioral Analytics**: Advanced trading psychology analysis including revenge trading detection and overconfidence tracking
+- **Sector Performance Analysis**: Industry-based performance breakdown using Finnhub company profiles  
 - **Comprehensive Analytics**: Dashboard with P&L tracking, win rates, performance metrics, and hold time analysis
 - **Trading Profile Customization**: Configure your strategies, styles, and preferences for personalized AI recommendations
 - **Registration Control**: Flexible user registration modes (open, admin approval, or disabled) for self-hosting
@@ -44,7 +49,61 @@ Password: DemoUser25
 - **Responsive Design**: Modern UI built with Vue 3 and Tailwind CSS with enhanced readability
 - **Secure Authentication**: JWT-based user authentication and authorization with owner/admin roles
 
-## 📋 Prerequisites
+## <i class="mdi mdi-crown"></i> Subscription Tiers & SAAS Features
+
+### Free Tier (Self-Hosted & SaaS)
+**Self-Hosted Deployment:**
+- **All Pro features included** - No limitations when self-hosting
+- Complete access to real-time market data, AI analytics, and advanced features
+- Perfect for personal use or small teams
+
+**SaaS Free Tier:**
+- Basic trade journaling and analytics
+- Limited real-time data access
+- Community support
+- 14-day Pro trial for new users
+
+### <i class="mdi mdi-star"></i> Pro Plan (SaaS Only - $19.99/month)
+
+#### Advanced Market Data
+- **Real-time Stock Quotes**: Live market data with unrealized P&L tracking for open positions
+- **Enhanced Chart Data**: High-resolution candlestick charts with 1-minute precision using Finnhub
+- **Extended API Limits**: Higher rate limits for real-time data and analysis
+
+#### AI-Powered Analytics
+- **Personalized Trading Recommendations**: Advanced AI analysis using chosen LLM
+- **News Correlation Analysis**: Analyze how news events impact your trading performance
+- **Sector Performance Insights**: Industry-based performance breakdown with actionable insights
+- **Trading Psychology Analysis**: Advanced behavioral analytics and pattern recognition
+
+#### Advanced Features
+- **Stock Watchlists**: Create and manage custom watchlists with real-time price monitoring
+- **Price Alerts**: Set custom price targets with push notifications
+- **Advanced Charts**: Multiple chart types with technical indicators
+- **Export & Analytics**: Enhanced data export capabilities and advanced reporting
+
+#### Priority Support
+- **Email Support**: Direct access to technical support team
+- **Feature Requests**: Priority consideration for new feature requests
+- **Beta Access**: Early access to new features and improvements
+
+### Deployment Options
+
+#### SaaS Deployment (tradetally.io)
+- Fully managed hosting and maintenance
+- Automatic updates and backups
+- Subscription-based pricing model
+- Built-in billing and user management
+- Free tier available with Pro plan upgrades
+
+#### Self-Hosted Deployment
+- **All Pro features included for free**
+- Complete control over your data
+- No subscription fees or limitations (some data may require basic plan from Finnhub.io)
+- Perfect for privacy-conscious users or teams
+- Requires technical setup and maintenance
+
+## <i class="mdi mdi-clipboard-list"></i> Prerequisites
 
 Before setting up TradeTally, ensure you have the following installed:
 
@@ -68,7 +127,7 @@ This image is available at https://hub.docker.com/r/potentialmidas/tradetally
 You can read the deployment.md file for more details.
 
 
-## 🛠️ Installation Guide (From Source)
+## <i class="mdi mdi-tools"></i> Installation Guide (From Source)
 
 ### Step 1: Install Node.js and npm
 
@@ -249,9 +308,9 @@ FINNHUB_API_KEY=your_finnhub_api_key
 # Get your free API key at: https://www.alphavantage.co/support/#api-key
 ALPHA_VANTAGE_API_KEY=your_alpha_vantage_api_key
 
-# Google Gemini API Key - For AI-powered trading recommendations and CUSIP resolution
-# Get your free API key at: https://aistudio.google.com/app/apikey
-GEMINI_API_KEY=your_gemini_api_key
+# AI Provider Configuration (Optional - can be configured in Settings page)
+# Multiple AI providers supported: Google Gemini, Claude, OpenAI, Ollama, Custom
+# Configure your preferred AI provider through the web interface Settings page
 ```
 
 ### Step 6: Frontend Setup
@@ -276,7 +335,7 @@ Create a `.env` file in the frontend directory to customize frontend behavior:
 VITE_SHOW_DONATION_BUTTON=true
 ```
 
-## 🔑 API Key Configuration
+## <i class="mdi mdi-key"></i> API Key Configuration
 
 ### Finnhub API (Primary - Recommended)
 
@@ -292,7 +351,7 @@ VITE_SHOW_DONATION_BUTTON=true
 - **Free tier**: 60 API calls/minute (sufficient for most use cases)
 - **Consolidated API**: Single provider for both quotes and CUSIP resolution
 
-### Alpha Vantage API (For Trade Chart Visualization)
+### Alpha Vantage API (For Free Tier Chart Visualization)
 
 1. Visit [Alpha Vantage](https://www.alphavantage.co/support/#api-key)
 2. Sign up for a free account
@@ -300,26 +359,69 @@ VITE_SHOW_DONATION_BUTTON=true
 4. Add the key to your `.env` file as `ALPHA_VANTAGE_API_KEY`
 
 **Features:**
-- **Interactive candlestick charts**: Visual trade analysis with entry/exit markers
+- **Interactive candlestick charts**: Visual trade analysis with entry/exit markers for free tier users
 - **Historical market data**: Intraday and daily stock price data
 - **Trade performance overlay**: Entry/exit indicators with P&L visualization
-- **Free tier**: 25 API calls/day, 5 calls/minute (sufficient for chart analysis)
+- **Free tier**: 25 API calls/day, 5 calls/minute (sufficient for basic chart analysis)
 - **Smart caching**: Reduces API usage with intelligent data caching
+- **Note**: Pro users get exclusive Finnhub access with no Alpha Vantage fallback
 
-### Google Gemini API (AI Recommendations & CUSIP Resolution)
+### OpenFIGI API (Recommended for CUSIP Resolution)
 
-1. Visit [Google AI Studio](https://aistudio.google.com/app/apikey)
-2. Sign in with your Google account
-3. Create a new API key
-4. Add the key to your `.env` file as `GEMINI_API_KEY`
+1. Visit [OpenFIGI](https://www.openfigi.com/)
+2. Sign up for a free account (optional but recommended for higher rate limits)
+3. Generate an API key from your account dashboard
+4. Add the key to your `.env` file as `OPENFIGI_API_KEY`
 
 **Features:**
-- **AI-powered trading recommendations**: Personalized analysis based on your trading profile and performance
+- **Reliable CUSIP Resolution**: Bloomberg's official CUSIP-to-ticker mapping service
+- **High Accuracy**: Industry-standard financial data without AI hallucinations  
+- **Free Tier**: 25,000 requests per month without API key, unlimited with free account
+- **Real Financial Data**: Actual securities database, not AI guesswork
+- **Multiple Asset Types**: Stocks, bonds, options, and other securities
+
+### [WARNING] AI CUSIP Resolution (Advanced Users Only)
+
+AI CUSIP resolution is **disabled by default** due to reliability concerns. Enable only if you understand the limitations:
+
+#### **Limitations & Warnings:**
+- **[X] Unreliable Results**: AI models frequently return incorrect or duplicate ticker mappings
+- **[X] Self-Hosted AI Issues**: Local models (Ollama, etc.) cannot access real financial databases
+- **[X] Hallucination Risk**: AI may guess popular symbols (JPM, AAPL, MSFT) for unknown CUSIPs
+- **[X] Data Integrity**: Incorrect mappings can corrupt your trade data permanently
+
+#### **When AI CUSIP Resolution Might Work:**
+- [CHECK] **Cloud-based AI only**: OpenAI, Google Gemini, Anthropic Claude (never self-hosted)
+- [CHECK] **Manual verification**: You manually verify every AI-resolved CUSIP
+- [CHECK] **Test environment**: You're testing and can afford incorrect data
+
+#### **To Enable AI CUSIP Resolution:**
+```env
+# Only enable if you understand the risks and will verify results manually
+ENABLE_AI_CUSIP_RESOLUTION=true
+```
+
+#### **Recommended Alternative:**
+Instead of AI CUSIP resolution, use:
+1. **OpenFIGI API** (reliable, free, industry standard)
+2. **Manual mapping** through the import interface
+3. **Broker-specific import formats** that include ticker symbols
+
+### AI Provider Configuration (Optional - Settings Page)
+
+AI features including personalized trading recommendations and sector analysis can be configured through the web interface:
+
+1. **Navigate to Settings**: Go to the Settings page in TradeTally
+2. **AI Provider Settings**: Configure your preferred AI provider
+3. **Supported Providers**: Google Gemini, Anthropic Claude, OpenAI, Ollama, or Custom API
+4. **No Manual Setup Required**: All configuration handled through the web interface
+
+**AI Features Available:**
+- **AI-powered trading recommendations**: Personalized analysis based on your trading profile and performance  
 - **Sector performance analysis**: Industry-specific insights and recommendations
 - **Trading pattern analysis**: AI identifies strengths, weaknesses, and improvement opportunities
 - **CUSIP resolution backup**: AI-powered symbol resolution when Finnhub cannot resolve a CUSIP
-- **Free tier available**: Generous limits for AI analysis and recommendations
-- **Personalized insights**: Compares your trading performance vs stated preferences
+- **Multiple Provider Support**: Choose from various AI providers or use your own custom API
 
 ### CUSIP Resolution & Market Data Priority
 
@@ -330,13 +432,19 @@ The system uses the following priority:
 2. **Cache**: Previously fetched quotes (1-minute cache)
 3. **Fallback**: Display without real-time data if API unavailable
 
+**For Chart Data:**
+1. **Pro Users**: Finnhub Stock Candles API exclusively (150 calls/min, 1-minute precision)
+2. **Free Users**: Alpha Vantage API (25 calls/day, limited precision)
+3. **Cache**: Previously fetched chart data with intelligent caching
+
 **For CUSIP Resolution:**
 1. **Cache**: Previously resolved mappings (fastest)
 2. **Finnhub**: Symbol search API (primary)
-3. **Google Gemini**: AI-powered resolution (fallback)
-4. **Manual Entry**: User can manually add mappings
+3. **OpenFIGI**: Bloomberg's free CUSIP-to-ticker API (reliable fallback)
+4. **AI Fallback**: Optional, disabled by default (see AI CUSIP Resolution section below)
+5. **Manual Entry**: User can manually add mappings through import interface
 
-## 🚀 Running the Application
+## <i class="mdi mdi-play"></i> Running the Application
 
 ### Development Mode
 
@@ -377,7 +485,7 @@ cd backend
 NODE_ENV=production PORT=3000 npm start
 ```
 
-## 📊 Supported Broker Formats
+## <i class="mdi mdi-chart-bar"></i> Supported Broker Formats
 
 ### Lightspeed Trader
 - **Format**: CSV with transaction details
@@ -401,7 +509,127 @@ NODE_ENV=production PORT=3000 npm start
 - **Format**: Transaction history CSV
 - **Required Columns**: Symbol, Transaction Date, Price, Quantity, Transaction Type, Commission
 
-## 🏗️ Production Deployment
+## <i class="mdi mdi-cellphone"></i> Push Notification Setup (iOS)
+
+TradeTally supports real-time push notifications for price alerts and trade executions on iOS devices. This section is optional but recommended for mobile users.
+
+### Prerequisites
+
+- **Apple Developer Account** ($99/year) - Required for push notifications
+- **Mobile app** - TradeTally iOS app installed on devices
+- **Device tokens** - Users must register their devices through the mobile app
+
+### Apple Push Notification Service (APNS) Setup
+
+#### 1. Generate APNs Authentication Key
+
+1. **Login to Apple Developer Portal**:
+   - Go to [developer.apple.com](https://developer.apple.com)
+   - Sign in with your Apple Developer account
+
+2. **Create Push Notification Key**:
+   - Navigate to **Certificates, Identifiers & Profiles**
+   - Go to **Keys** section
+   - Click **+** to create a new key
+   - Name it "TradeTally Push Notifications"
+   - Check **Apple Push Notifications service (APNs)**
+   - Click **Continue** → **Register**
+
+3. **Download Key File**:
+   - Download the `.p8` file (e.g., `AuthKey_ABC123DEFG.p8`)
+   - **Important**: Store this file securely - it cannot be re-downloaded
+   - Note the **Key ID** (10-character string like `ABC123DEFG`)
+
+4. **Get Team ID**:
+   - In Apple Developer account, go to **Account** → **Membership**
+   - Copy your **Team ID** (10-character string like `1234567890`)
+
+#### 2. Configure Environment Variables
+
+Add the following to your `.env` file:
+
+```env
+# Enable push notifications
+ENABLE_PUSH_NOTIFICATIONS=true
+
+# Apple Push Notification Service
+APNS_KEY_ID=ABC123DEFG          # From step 3 above
+APNS_TEAM_ID=1234567890         # From step 4 above
+APNS_KEY_PATH=/path/to/keys/AuthKey_ABC123DEFG.p8
+```
+
+#### 3. Secure Key File Storage
+
+**For Development:**
+```bash
+# Create secure directory
+mkdir -p /path/to/tradetally/backend/keys
+chmod 700 /path/to/tradetally/backend/keys
+
+# Copy your .p8 file
+cp ~/Downloads/AuthKey_ABC123DEFG.p8 /path/to/tradetally/backend/keys/
+chmod 600 /path/to/tradetally/backend/keys/AuthKey_ABC123DEFG.p8
+```
+
+**For Production:**
+```bash
+# System-wide secure location
+sudo mkdir -p /etc/tradetally/keys
+sudo cp AuthKey_ABC123DEFG.p8 /etc/tradetally/keys/
+sudo chmod 600 /etc/tradetally/keys/AuthKey_ABC123DEFG.p8
+sudo chown tradetally:tradetally /etc/tradetally/keys/AuthKey_ABC123DEFG.p8
+
+# Update .env to point to production location
+APNS_KEY_PATH=/etc/tradetally/keys/AuthKey_ABC123DEFG.p8
+```
+
+#### 4. Security Best Practices
+
+- **Never commit `.p8` files** to version control
+- Add `*.p8` and `keys/` to your `.gitignore`
+- Use environment variables for all sensitive data
+- Restrict file permissions (600) on the key file
+- Store keys outside web-accessible directories
+
+#### 5. Testing Push Notifications
+
+Use the test endpoint to verify setup:
+
+```bash
+# Test push notification (requires device token registration)
+curl -X POST "http://localhost:3000/api/notifications/test-push" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Test notification from TradeTally"}'
+```
+
+### Features Enabled by Push Notifications
+
+- **Price Alerts**: Instant notifications when price targets are hit
+- **Trade Execution**: Notifications for successful trades
+- **Portfolio Updates**: Real-time updates on position changes
+- **Market Events**: Important market news and earnings announcements
+
+### Troubleshooting
+
+**Common Issues:**
+
+1. **"APNS configuration incomplete"**: Verify all environment variables are set correctly
+2. **"No active devices"**: Users must register device tokens through the mobile app
+3. **"Push notification failed"**: Check APNS key file permissions and path
+4. **"BadDeviceToken"**: Device tokens are automatically marked inactive and cleaned up
+
+**Debug Logs:**
+```bash
+# Check backend logs for push notification status
+tail -f backend.log | grep -i "push\|apns"
+```
+
+### Android Support (Future)
+
+Android push notifications via Firebase Cloud Messaging (FCM) will be added in a future release. The infrastructure is prepared with the `FCM_SERVER_KEY` environment variable.
+
+## <i class="mdi mdi-server"></i> Production Deployment
 
 ### Environment Setup
 
@@ -575,7 +803,7 @@ sudo tail -f /var/log/nginx/error.log
 sudo tail -f /var/log/postgresql/postgresql-*.log
 ```
 
-## 🔧 Configuration Options
+## <i class="mdi mdi-cog"></i> Configuration Options
 
 ### Environment Variables Reference
 
@@ -600,16 +828,25 @@ sudo tail -f /var/log/postgresql/postgresql-*.log
 | `REGISTRATION_MODE` | Registration control | `open` | No |
 | `FINNHUB_API_KEY` | Finnhub API key for quotes/CUSIP/sectors | - | No |
 | `ALPHA_VANTAGE_API_KEY` | Alpha Vantage API key for charts | - | No |
-| `GEMINI_API_KEY` | Google Gemini API key for AI recommendations | - | No |
+| `OPENFIGI_API_KEY` | OpenFIGI API key for reliable CUSIP resolution | - | No |
+| `ENABLE_AI_CUSIP_RESOLUTION` | Enable AI CUSIP fallback (unreliable, disabled by default) | `false` | No |
+| `ENABLE_PUSH_NOTIFICATIONS` | Enable mobile push notifications | `false` | No |
+| `APNS_KEY_ID` | Apple Push Notification Key ID | - | No** |
+| `APNS_TEAM_ID` | Apple Developer Team ID | - | No** |
+| `APNS_KEY_PATH` | Path to Apple .p8 certificate file | - | No** |
+| `FCM_SERVER_KEY` | Firebase Cloud Messaging server key | - | No** |
 
 **Self-Hosted Configuration Notes:**
 - Email settings marked with * are optional for self-hosted setups
+- Push notification settings marked with ** are only required if enabling mobile push notifications
+- **AI Provider Configuration**: All AI providers (Google Gemini, Claude, OpenAI, Ollama) are configured through the Settings page - no environment variables needed
+- **AI CUSIP Resolution**: Disabled by default due to reliability issues. Only enable with cloud-based AI services and manual verification
 - If email is not configured, users are automatically verified and can sign in immediately
 - This makes TradeTally self-host friendly without requiring email setup
 - Email verification will be enabled automatically if all email settings are provided
 - `DETAILED_AUTH_ERRORS` automatically enables for self-hosted setups to show specific login error messages
 
-## 📈 Usage Guide
+## <i class="mdi mdi-chart-line"></i> Usage Guide
 
 ### Self-Hosted Setup (No Email Required)
 
@@ -763,7 +1000,7 @@ The admin role system is designed to be extensible and can include:
 - All admin actions maintain full audit trails
 - Regular users cannot elevate their own permissions
 
-## 🐛 Troubleshooting
+## <i class="mdi mdi-bug"></i> Troubleshooting
 
 ### Common Issues
 
@@ -841,7 +1078,7 @@ REINDEX TABLE trades;
 - Implement database connection pooling
 - Monitor memory usage with `pm2 monit`
 
-## 🔒 Security Considerations
+## <i class="mdi mdi-shield-lock"></i> Security Considerations
 
 ### Production Security
 
@@ -866,11 +1103,11 @@ psql -h localhost -U tradetally_user tradetally_db < backup_20240101.sql
 cp backend/src/data/cusip_cache.json cusip_cache_backup_$(date +%Y%m%d).json
 ```
 
-## 📝 License
+## <i class="mdi mdi-file-document"></i> License
 
 This project is open source software.
 
-## 🤝 Support
+## <i class="mdi mdi-help"></i> Support
 
 For technical support or questions:
 
@@ -879,7 +1116,7 @@ For technical support or questions:
 3. Check application logs for error messages
 4. Ensure all prerequisites are properly installed
 
-## 🔄 Updates
+## <i class="mdi mdi-update"></i> Updates
 
 To update TradeTally to the latest version:
 
@@ -902,49 +1139,87 @@ npm run build
 pm2 restart tradetally-backend
 ```
 
-### Recent Updates
+## <i class="mdi mdi-trophy"></i> Gamification & Leaderboards
 
-**v1.1.6 - AI-Powered Analytics & Sector Analysis**
-- **AI Trading Recommendations**: Personalized trading insights using Google Gemini AI
-- **Sector Performance Analysis**: Industry-based performance breakdown with Finnhub company profiles
-- **Trading Profile Customization**: Configure your strategies, styles, and preferences for personalized AI
-- **Registration Control System**: Flexible user registration modes (open, approval, disabled) for self-hosting
-- **Enhanced Analytics UI**: Improved readability with better typography and spacing
-- **Sector-based Insights**: Compare your performance across different industries and sectors
-- **Progressive Loading**: Analytics page loads immediately while sector data loads in background
+TradeTally includes a comprehensive gamification system to make trading analysis more engaging and competitive.
 
-**v1.1.5 - Enhanced User Experience**
-- **Improved Import Process**: Better error handling and validation for CSV imports
-- **Real-time Dashboard Updates**: Live market data integration with automatic refresh
-- **Performance Optimizations**: Faster page loads and reduced API usage
-- **Mobile Responsiveness**: Enhanced mobile and tablet experience
+### Leaderboard Features
 
-**v1.1.4 - Market Data Integration**
-- **Finnhub API Integration**: Replaced OpenFIGI with Finnhub for consolidated market data
-- **Real-time Quotes**: Live stock quotes for open positions with unrealized P&L
-- **Enhanced CUSIP Resolution**: Improved symbol resolution using Finnhub's search API
-- **Hold Time Analytics**: New chart showing performance by hold time periods
-- **Rate Limiting**: Built-in 30 calls/second rate limiting for Finnhub API
-- **Port Change**: Backend now runs on port 3000 (update your configs)
-- **Owner Role**: First user becomes owner with enhanced permissions
+**P&L-Based Rankings**:
+- **All-Time P&L Rankings**: Total profit/loss across all trades
+- **Monthly P&L Rankings**: Profit/loss for the current active trading month
+- **Weekly P&L Rankings**: Profit/loss for the current active trading week
+- **Best Single Trade**: Highest profit from a single trade
+- **Largest Loss**: Worst single trade by absolute loss
+- **Most Consistent Trader**: Based on volume traded and average P&L consistency
 
-**v1.1.3 - Trade Chart Visualization**
-- **Interactive Candlestick Charts**: Visual trade analysis with entry/exit markers using TradingView's lightweight-charts
-- **Alpha Vantage Integration**: Historical market data for chart visualization (25 calls/day free tier)
-- **Trade Performance Overlay**: Entry/exit price lines with P&L visualization and color coding
-- **Short Position P&L Fix**: Corrected profit/loss calculations for short positions
-- **Smart Caching**: Intelligent data caching to reduce API usage
-- **Chart Controls**: On-demand chart loading to conserve API calls
+**Privacy & Anonymity**:
+- All leaderboards use anonymous usernames for privacy
+- Real usernames are never displayed publicly
+- Generated names maintain consistency per user
+
+**View Options**:
+- Overview with top 5 rankings per category
+- "View All" functionality for complete leaderboard data
+- Overall rank calculated as average across all categories
+- Real-time updates with proper loading states
+
+### Achievement System
+
+**Progress Tracking**:
+- XP-based achievement system with sortable progress
+- Check for new achievements with toast notifications
+- Achievements organized by XP gain (lowest to highest)
+- Visual progress indicators and completion status
+
+**Achievement Categories**:
+- Trading milestones and profit targets
+- Volume and consistency achievements
+- Time-based trading streaks
+- Portfolio performance benchmarks
+
+### Behavioral Analytics
+
+**Trading Psychology Analysis**:
+- Revenge trading detection and alerts
+- Overconfidence pattern identification
+- Emotional trading indicators
+- Risk management behavior tracking
+
+**Performance Insights**:
+- User-configurable statistics (average vs median)
+- Dynamic calculation preferences with persistent settings
+- Real-time metric updates based on preference
+- Enhanced analytics with behavioral overlays
+
+### Configuration
+
+Control gamification features with environment variables:
+
+```env
+# Enable/disable all gamification features
+ENABLE_GAMIFICATION=true
+
+# Debug mode for development
+DEBUG=false
+```
 
 **Migration Notes:**
-- Update your `.env` to include `REGISTRATION_MODE=open` for new registration control
-- Update your `.env` to include `GEMINI_API_KEY` for AI recommendations
-- Ensure `FINNHUB_API_KEY` is set for sector analysis
-- Run database migrations for trading profile features:
+- **SAAS Features**: Self-hosted deployments automatically get all Pro features for free
+- Update your `.env` to include `REGISTRATION_MODE=open` for new registration control  
+- Update your `.env` to include `ENABLE_GAMIFICATION=true` for leaderboard features
+- Configure AI providers through Settings page for AI recommendations
+- **CUSIP Resolution**: OpenFIGI API recommended for reliable CUSIP-to-ticker mapping
+- **AI CUSIP Resolution**: Disabled by default - only enable with cloud AI services and manual verification
+- Ensure `FINNHUB_API_KEY` is set for sector analysis and Pro chart features
+- **No Billing Setup Required**: Self-hosted deployments work without any billing configuration
+- Run database migrations for latest features:
   ```bash
   cd backend
-  psql -U your_user -d your_db -f migrations/add_admin_approved_column.sql
-  psql -U your_user -d your_db -f migrations/add_trading_profile_fields.sql
+  psql -U your_user -d your_db -f migrations/043_add_statistics_calculation_preference.sql
+  psql -U your_user -d your_db -f migrations/044_update_leaderboards_to_pnl_based.sql
+  psql -U your_user -d your_db -f migrations/045_add_admin_approved_column.sql
+  psql -U your_user -d your_db -f migrations/046_add_trading_profile_fields.sql
   ```
 - Restart both frontend and backend after update
 

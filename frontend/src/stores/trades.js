@@ -18,49 +18,86 @@ export const useTradesStore = defineStore('trades', () => {
     startDate: '',
     endDate: '',
     tags: [],
-    strategy: ''
+    strategy: '',
+    strategies: [],
+    sectors: [],
+    holdTime: '',
+    minHoldTime: null,
+    maxHoldTime: null,
+    hasNews: '',
+    broker: '',
+    brokers: [],
+    daysOfWeek: []
   })
 
   // Store analytics data for consistent P&L calculations
   const analytics = ref(null)
 
   const totalPnL = computed(() => {
+    console.log('[COMPUTE] totalPnL:', {
+      hasAnalytics: !!analytics.value,
+      hasSummary: !!(analytics.value?.summary),
+      analyticsPnL: analytics.value?.summary?.totalPnL,
+      fallbackTradesLength: trades.value.length
+    })
+    
     // Use analytics data if available, otherwise fall back to trade summation
     if (analytics.value && analytics.value.summary && analytics.value.summary.totalPnL !== undefined) {
-      return parseFloat(analytics.value.summary.totalPnL)
+      const result = parseFloat(analytics.value.summary.totalPnL)
+      console.log('[USING] analytics totalPnL:', result)
+      return result
     }
     
     const total = trades.value.reduce((sum, trade) => {
       const pnl = parseFloat(trade.pnl) || 0
       return sum + pnl
     }, 0)
-    console.log('Total P/L calculation (fallback):', {
+    console.log('[FALLBACK] totalPnL:', total, {
       tradesCount: trades.value.length,
-      totalPnL: total,
-      sampleTrades: trades.value.slice(0, 3).map(t => ({ symbol: t.symbol, pnl: t.pnl, type: typeof t.pnl }))
+      sampleTrades: trades.value.slice(0, 3).map(t => ({ symbol: t.symbol, pnl: t.pnl }))
     })
     return total
   })
 
   const winRate = computed(() => {
+    console.log('[COMPUTE] winRate:', {
+      hasAnalytics: !!analytics.value,
+      analyticsWinRate: analytics.value?.summary?.winRate,
+      tradesCount: trades.value.length
+    })
+    
     // Use analytics data if available, otherwise fall back to trade calculation
     if (analytics.value && analytics.value.summary && analytics.value.summary.winRate !== undefined) {
-      return parseFloat(analytics.value.summary.winRate).toFixed(2)
+      const result = parseFloat(analytics.value.summary.winRate).toFixed(2)
+      console.log('[USING] analytics winRate:', result)
+      return result
     }
     
     const winning = trades.value.filter(t => t.pnl > 0).length
     const total = trades.value.length
-    return total > 0 ? (winning / total * 100).toFixed(2) : 0
+    const result = total > 0 ? (winning / total * 100).toFixed(2) : 0
+    console.log('[FALLBACK] winRate:', result, { winning, total })
+    return result
   })
 
   const totalTrades = computed(() => {
+    console.log('[COMPUTE] totalTrades:', {
+      hasAnalytics: !!analytics.value,
+      analyticsTotalTrades: analytics.value?.summary?.totalTrades,
+      paginationTotal: pagination.value.total
+    })
+    
     // Use analytics data if available for total trades count
     if (analytics.value && analytics.value.summary && analytics.value.summary.totalTrades !== undefined) {
-      return analytics.value.summary.totalTrades
+      const result = analytics.value.summary.totalTrades
+      console.log('[USING] analytics totalTrades:', result)
+      return result
     }
     
     // Fall back to pagination total
-    return pagination.value.total
+    const result = pagination.value.total
+    console.log('[USING] pagination totalTrades:', result)
+    return result
   })
 
   async function fetchTrades(params = {}) {
@@ -70,31 +107,55 @@ export const useTradesStore = defineStore('trades', () => {
     try {
       const offset = (pagination.value.page - 1) * pagination.value.limit
       
-      // Merge filters - prioritize passed params over stored filters
-      const mergedFilters = { ...filters.value, ...params }
-      
-      // Fetch both trades and analytics data for consistent P&L calculations
+      // Fetch both trades and analytics data for consistent P&L
       const [tradesResponse, analyticsResponse] = await Promise.all([
         api.get('/trades', { 
           params: { 
-            ...mergedFilters,
+            ...filters.value, 
+            ...params,
             limit: pagination.value.limit,
             offset: offset
           }
         }),
         api.get('/trades/analytics', { 
-          params: mergedFilters
+          params: { 
+            ...filters.value, 
+            ...params
+          }
         })
       ])
       
-      trades.value = tradesResponse.data.trades || tradesResponse.data
-      
-      // Store analytics data for consistent P&L calculations
+      // Store analytics data for consistent P&L calculations FIRST
       analytics.value = analyticsResponse.data
-      console.log('Analytics data received in fetchTrades:', {
+      
+      // Always use the trades data from the trades API, not analytics
+      if (tradesResponse.data.hasOwnProperty('trades')) {
+        trades.value = tradesResponse.data.trades
+        console.log('[TRADES] Set from tradesResponse.data.trades:', trades.value.length)
+      } else {
+        trades.value = tradesResponse.data
+        console.log('[TRADES] Set from tradesResponse.data (fallback):', trades.value.length)
+      }
+      
+      // Log if there's a mismatch between trades and analytics for debugging
+      if (analyticsResponse.data.summary?.totalTrades === 0 && trades.value.length > 0) {
+        console.log('[WARNING] MISMATCH: Analytics shows 0 trades but trades API returned', trades.value.length, 'trades')
+      }
+      console.log('Analytics data received:', {
         summary: analyticsResponse.data.summary,
         totalPnL: analyticsResponse.data.summary?.totalPnL,
-        winRate: analyticsResponse.data.summary?.winRate
+        winRate: analyticsResponse.data.summary?.winRate,
+        totalTrades: analyticsResponse.data.summary?.totalTrades
+      })
+      console.log('Full analytics response:', JSON.stringify(analyticsResponse.data, null, 2))
+      
+      // Final verification of trades array
+      console.log('[FINAL] trades array state:', {
+        tradesLength: trades.value?.length || 0,
+        isArray: Array.isArray(trades.value),
+        isEmpty: trades.value?.length === 0,
+        shouldShowEmpty: trades.value?.length === 0 && analyticsResponse.data.summary?.totalTrades === 0,
+        firstTradeSymbol: trades.value?.[0]?.symbol || 'none'
       })
       
       // If the response includes pagination metadata, update it
@@ -119,31 +180,55 @@ export const useTradesStore = defineStore('trades', () => {
     try {
       const offset = (pagination.value.page - 1) * pagination.value.limit
       
-      // Merge filters - prioritize passed params over stored filters
-      const mergedFilters = { ...filters.value, ...params }
-      
       // Fetch both round-trip trades and analytics data for consistent P&L
       const [tradesResponse, analyticsResponse] = await Promise.all([
         api.get('/trades/round-trip', { 
           params: { 
-            ...mergedFilters,
+            ...filters.value, 
+            ...params,
             limit: pagination.value.limit,
             offset: offset
           }
         }),
         api.get('/trades/analytics', { 
-          params: mergedFilters
+          params: { 
+            ...filters.value, 
+            ...params
+          }
         })
       ])
       
-      trades.value = tradesResponse.data.trades || tradesResponse.data
-      
-      // Store analytics data for consistent P&L calculations
+      // Store analytics data for consistent P&L calculations FIRST
       analytics.value = analyticsResponse.data
+      
+      // Always use the trades data from the trades API, not analytics
+      if (tradesResponse.data.hasOwnProperty('trades')) {
+        trades.value = tradesResponse.data.trades
+        console.log('[TRADES] Set from tradesResponse.data.trades:', trades.value.length)
+      } else {
+        trades.value = tradesResponse.data
+        console.log('[TRADES] Set from tradesResponse.data (fallback):', trades.value.length)
+      }
+      
+      // Log if there's a mismatch between trades and analytics for debugging
+      if (analyticsResponse.data.summary?.totalTrades === 0 && trades.value.length > 0) {
+        console.log('[WARNING] MISMATCH: Analytics shows 0 trades but trades API returned', trades.value.length, 'trades')
+      }
       console.log('Analytics data received:', {
         summary: analyticsResponse.data.summary,
         totalPnL: analyticsResponse.data.summary?.totalPnL,
-        winRate: analyticsResponse.data.summary?.winRate
+        winRate: analyticsResponse.data.summary?.winRate,
+        totalTrades: analyticsResponse.data.summary?.totalTrades
+      })
+      console.log('Full analytics response:', JSON.stringify(analyticsResponse.data, null, 2))
+      
+      // Final verification of trades array
+      console.log('[FINAL] trades array state:', {
+        tradesLength: trades.value?.length || 0,
+        isArray: Array.isArray(trades.value),
+        isEmpty: trades.value?.length === 0,
+        shouldShowEmpty: trades.value?.length === 0 && analyticsResponse.data.summary?.totalTrades === 0,
+        firstTradeSymbol: trades.value?.[0]?.symbol || 'none'
       })
       
       // If the response includes pagination metadata, update it
@@ -186,6 +271,7 @@ export const useTradesStore = defineStore('trades', () => {
       trades.value.unshift(response.data.trade)
       return response.data.trade
     } catch (err) {
+      console.error('Trade creation error:', err.response?.data)
       error.value = err.response?.data?.error || 'Failed to create trade'
       throw err
     } finally {
@@ -238,15 +324,11 @@ export const useTradesStore = defineStore('trades', () => {
     error.value = null
     
     try {
-      // Delete trades one by one since there's no bulk endpoint
-      const deletePromises = tradeIds.map(id => api.delete(`/trades/${id}`))
-      await Promise.all(deletePromises)
-      
-      // Remove deleted trades from the local state
+      await api.delete('/trades/bulk', { data: { tradeIds } })
       trades.value = trades.value.filter(t => !tradeIds.includes(t.id))
-      // Update pagination total
-      pagination.value.total -= tradeIds.length
-      pagination.value.totalPages = Math.ceil(pagination.value.total / pagination.value.limit)
+      if (currentTrade.value && tradeIds.includes(currentTrade.value.id)) {
+        currentTrade.value = null
+      }
     } catch (err) {
       error.value = err.response?.data?.error || 'Failed to delete trades'
       throw err
@@ -298,7 +380,16 @@ export const useTradesStore = defineStore('trades', () => {
         startDate: '',
         endDate: '',
         tags: [],
-        strategy: ''
+        strategy: '',
+        strategies: [],
+        sectors: [],
+        holdTime: '',
+        minHoldTime: null,
+        maxHoldTime: null,
+        hasNews: '',
+        broker: '',
+        brokers: [],
+        daysOfWeek: []
       }
     } else {
       filters.value = { ...filters.value, ...newFilters }
@@ -312,7 +403,14 @@ export const useTradesStore = defineStore('trades', () => {
       startDate: '',
       endDate: '',
       tags: [],
-      strategy: ''
+      strategy: '',
+      strategies: [],
+      sectors: [],
+      holdTime: '',
+      minHoldTime: null,
+      maxHoldTime: null,
+      hasNews: '',
+      daysOfWeek: []
     }
     pagination.value.page = 1
   }

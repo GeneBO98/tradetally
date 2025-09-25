@@ -75,7 +75,7 @@
                 </div>
                 <div>
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Quantity</dt>
-                  <dd class="mt-1 text-sm text-gray-900 dark:text-white">{{ formatNumber(trade.quantity, 0) }}</dd>
+                  <dd class="mt-1 text-sm text-gray-900 dark:text-white">{{ formatQuantity(trade.quantity) }}</dd>
                 </div>
                 <div>
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Status</dt>
@@ -88,6 +88,19 @@
                       ]">
                       {{ trade.exit_price ? 'Closed' : 'Open' }}
                     </span>
+                  </dd>
+                </div>
+                <div v-if="trade.confidence">
+                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Confidence Level</dt>
+                  <dd class="mt-1">
+                    <div class="flex items-center space-x-3">
+                      <div class="flex space-x-1">
+                        <div v-for="i in 10" :key="i" class="w-2 h-2 rounded-full"
+                          :class="i <= trade.confidence ? 'bg-primary-500' : 'bg-gray-300 dark:bg-gray-600'">
+                        </div>
+                      </div>
+                      <span class="text-sm font-medium text-gray-900 dark:text-white">{{ trade.confidence }}/10</span>
+                    </div>
                   </dd>
                 </div>
                 <div v-if="trade.sector">
@@ -124,66 +137,167 @@
             :trade-id="trade.id" 
           />
 
+
           <!-- Executions -->
           <div v-if="trade.executions && trade.executions.length > 0" class="card">
             <div class="card-body">
               <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
                 Executions ({{ trade.executions.length }})
               </h3>
-              <div class="overflow-x-auto">
+              
+              <!-- Desktop Table View -->
+              <div class="hidden md:block overflow-x-auto">
                 <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                   <thead class="bg-gray-50 dark:bg-gray-800">
                     <tr>
-                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Time
-                      </th>
-                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                      <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                         Action
                       </th>
-                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                      <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                         Quantity
                       </th>
-                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                      <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                         Price
                       </th>
-                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                      <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                         Value
                       </th>
-                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                      <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                         Fees
+                      </th>
+                      <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        Position
+                      </th>
+                      <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        Avg Cost
+                      </th>
+                      <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        Time
                       </th>
                     </tr>
                   </thead>
                   <tbody class="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
-                    <tr v-for="(execution, index) in trade.executions" :key="index" class="hover:bg-gray-50 dark:hover:bg-gray-800">
-                      <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                        {{ formatDateTime(execution.datetime) }}
-                      </td>
-                      <td class="px-6 py-4 whitespace-nowrap">
-                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
-                          :class="[
-                            execution.action === 'buy' 
-                              ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
-                              : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
-                          ]">
-                          {{ execution.action }}
+                    <tr v-for="(execution, index) in processedExecutions" :key="index"
+                        class="hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                      <td class="px-3 py-4 whitespace-nowrap">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
+                              :class="[
+                                (execution.action || '').toLowerCase() === 'buy' 
+                                  ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
+                                  : (execution.action || '').toLowerCase() === 'sell'
+                                  ? 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
+                                  : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
+                              ]">
+                          {{ (execution.action || 'N/A').toUpperCase() }}
                         </span>
                       </td>
-                      <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white font-mono">
-                        {{ formatNumber(execution.quantity, 0) }}
+                      <td class="px-3 py-4 whitespace-nowrap text-sm font-mono text-gray-900 dark:text-white">
+                        {{ formatQuantity(execution.quantity) }}
                       </td>
-                      <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white font-mono">
+                      <td class="px-3 py-4 whitespace-nowrap text-sm font-mono text-gray-900 dark:text-white">
                         ${{ formatNumber(execution.price) }}
                       </td>
-                      <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white font-mono">
-                        ${{ formatNumber(execution.quantity * execution.price) }}
+                      <td class="px-3 py-4 whitespace-nowrap text-sm font-mono text-gray-900 dark:text-white">
+                        ${{ formatNumber(execution.value) }}
                       </td>
-                      <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white font-mono">
-                        ${{ formatNumber(execution.fees || 0) }}
+                      <td class="px-3 py-4 whitespace-nowrap text-sm font-mono text-gray-600 dark:text-gray-400">
+                        {{ execution.fees ? `$${formatNumber(execution.fees)}` : '-' }}
+                      </td>
+                      <td class="px-3 py-4 whitespace-nowrap text-sm font-mono text-gray-900 dark:text-white">
+                        {{ formatQuantity(execution.runningPosition) }}
+                      </td>
+                      <td class="px-3 py-4 whitespace-nowrap text-sm font-mono text-gray-900 dark:text-white">
+                        {{ execution.avgCost ? `$${formatNumber(execution.avgCost)}` : '-' }}
+                      </td>
+                      <td class="px-3 py-4 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">
+                        {{ execution.datetime ? formatDateTime(execution.datetime) : '-' }}
                       </td>
                     </tr>
                   </tbody>
                 </table>
+              </div>
+
+              <!-- Mobile Card View -->
+              <div class="md:hidden space-y-3">
+                <div v-for="(execution, index) in processedExecutions" :key="index" 
+                     class="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+                  <div class="flex items-center justify-between mb-3">
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
+                          :class="[
+                            (execution.action || '').toLowerCase() === 'buy' 
+                              ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
+                              : (execution.action || '').toLowerCase() === 'sell'
+                              ? 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
+                              : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
+                          ]">
+                      {{ (execution.action || 'N/A').toUpperCase() }}
+                    </span>
+                    <div class="text-xs text-gray-500 dark:text-gray-400">
+                      {{ execution.datetime ? formatDateTime(execution.datetime) : '-' }}
+                    </div>
+                  </div>
+                  
+                  <div class="grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <div class="text-gray-500 dark:text-gray-400 text-xs">Quantity × Price</div>
+                      <div class="font-mono text-gray-900 dark:text-white">
+                        {{ formatNumber(execution.quantity, 0) }} × ${{ formatNumber(execution.price) }}
+                      </div>
+                    </div>
+                    <div>
+                      <div class="text-gray-500 dark:text-gray-400 text-xs">Value</div>
+                      <div class="font-mono text-gray-900 dark:text-white">
+                        ${{ formatNumber(execution.value) }}
+                      </div>
+                    </div>
+                    <div>
+                      <div class="text-gray-500 dark:text-gray-400 text-xs">Position</div>
+                      <div class="font-mono text-gray-900 dark:text-white">
+                        {{ formatNumber(execution.runningPosition, 0) }}
+                      </div>
+                    </div>
+                    <div>
+                      <div class="text-gray-500 dark:text-gray-400 text-xs">Avg Cost</div>
+                      <div class="font-mono text-gray-900 dark:text-white">
+                        {{ execution.avgCost ? `$${formatNumber(execution.avgCost)}` : '-' }}
+                      </div>
+                    </div>
+                    <div v-if="execution.fees" class="col-span-2">
+                      <div class="text-gray-500 dark:text-gray-400 text-xs">Fees</div>
+                      <div class="font-mono text-gray-600 dark:text-gray-400">
+                        ${{ formatNumber(execution.fees) }}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Summary Row -->
+              <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                  <div>
+                    <div class="text-gray-500 dark:text-gray-400 text-xs">Total Executions</div>
+                    <div class="font-semibold text-gray-900 dark:text-white">{{ trade.executions.length }}</div>
+                  </div>
+                  <div>
+                    <div class="text-gray-500 dark:text-gray-400 text-xs">Total Volume</div>
+                    <div class="font-semibold font-mono text-gray-900 dark:text-white">
+                      ${{ formatNumber(executionSummary.totalVolume) }}
+                    </div>
+                  </div>
+                  <div>
+                    <div class="text-gray-500 dark:text-gray-400 text-xs">Total Fees</div>
+                    <div class="font-semibold font-mono text-gray-900 dark:text-white">
+                      ${{ formatNumber(executionSummary.totalFees) }}
+                    </div>
+                  </div>
+                  <div>
+                    <div class="text-gray-500 dark:text-gray-400 text-xs">Final Position</div>
+                    <div class="font-semibold font-mono text-gray-900 dark:text-white">
+                      {{ formatNumber(executionSummary.finalPosition, 0) }}
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -212,34 +326,13 @@
             </div>
           </div>
 
-          <!-- Attachments -->
-          <div v-if="trade.attachments && trade.attachments.length > 0" class="card">
-            <div class="card-body">
-              <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Attachments</h3>
-              <div class="space-y-3">
-                <div
-                  v-for="attachment in trade.attachments"
-                  :key="attachment.id"
-                  class="flex items-center justify-between p-3 border border-gray-200 dark:border-gray-700 rounded-lg"
-                >
-                  <div class="flex items-center">
-                    <DocumentIcon class="h-8 w-8 text-gray-400" />
-                    <div class="ml-3">
-                      <p class="text-sm font-medium text-gray-900 dark:text-white">{{ attachment.file_name }}</p>
-                      <p class="text-xs text-gray-500 dark:text-gray-400">{{ formatFileSize(attachment.file_size) }}</p>
-                    </div>
-                  </div>
-                  <a
-                    :href="attachment.file_url"
-                    target="_blank"
-                    class="text-primary-600 hover:text-primary-500"
-                  >
-                    View
-                  </a>
-                </div>
-              </div>
-            </div>
-          </div>
+          <!-- Trade Images -->
+          <TradeImages
+            :trade-id="trade.id"
+            :images="trade.attachments || []"
+            :can-delete="trade.user_id === authStore.user?.id"
+            @deleted="handleImageDeleted"
+          />
 
           <!-- Comments -->
           <div class="card">
@@ -422,7 +515,7 @@
             <div class="card-body">
               <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Timeline</h3>
               <dl class="space-y-3">
-                <div>
+                <div v-if="trade.entry_time">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Entry</dt>
                   <dd class="mt-1 text-sm text-gray-900 dark:text-white">
                     {{ formatDateTime(trade.entry_time) }}
@@ -434,13 +527,77 @@
                     {{ formatDateTime(trade.exit_time) }}
                   </dd>
                 </div>
-                <div v-if="trade.exit_time">
+                <div v-if="trade.exit_time && trade.entry_time">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Duration</dt>
                   <dd class="mt-1 text-sm text-gray-900 dark:text-white">
                     {{ calculateDuration() }}
                   </dd>
                 </div>
               </dl>
+            </div>
+          </div>
+
+          <!-- News Section -->
+          <div v-if="trade.has_news && trade.news_events && trade.news_events.length > 0" class="card">
+            <div class="card-body">
+              <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-medium text-gray-900 dark:text-white">Breaking News</h3>
+                <span class="px-3 py-1 text-xs font-semibold rounded-full"
+                  :class="[
+                    trade.news_sentiment === 'positive' ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400' :
+                    trade.news_sentiment === 'negative' ? 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400' :
+                    trade.news_sentiment === 'mixed' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400' :
+                    'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
+                  ]">
+                  {{ trade.news_sentiment || 'neutral' }} sentiment
+                </span>
+              </div>
+              
+              <div class="space-y-4">
+                <div v-for="(article, index) in trade.news_events" :key="index" 
+                     class="border-l-4 pl-4 py-3"
+                     :class="[
+                       article.sentiment === 'positive' ? 'border-green-400' :
+                       article.sentiment === 'negative' ? 'border-red-400' :
+                       'border-gray-400'
+                     ]">
+                  <div class="flex items-start justify-between">
+                    <h4 class="text-sm font-semibold text-gray-900 dark:text-white mb-2">
+                      {{ article.headline }}
+                    </h4>
+                    <span class="flex-shrink-0 ml-2 px-2 py-1 text-xs rounded-full"
+                      :class="[
+                        article.sentiment === 'positive' ? 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400' :
+                        article.sentiment === 'negative' ? 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400' :
+                        'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+                      ]">
+                      {{ article.sentiment }}
+                    </span>
+                  </div>
+                  
+                  <p v-if="article.summary" class="text-sm text-gray-600 dark:text-gray-400 mb-2 overflow-hidden" style="display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;">
+                    {{ article.summary }}
+                  </p>
+                  
+                  <div class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+                    <span>{{ article.source || 'Unknown Source' }}</span>
+                    <span>{{ formatNewsDate(article.datetime) }}</span>
+                  </div>
+                  
+                  <div class="mt-2">
+                    <a v-if="article.url" 
+                       :href="article.url" 
+                       target="_blank" 
+                       rel="noopener noreferrer"
+                       class="inline-flex items-center text-xs text-primary-600 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300">
+                      Read full article
+                      <svg class="w-3 h-3 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                      </svg>
+                    </a>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -462,7 +619,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTradesStore } from '@/stores/trades'
 import { useNotification } from '@/composables/useNotification'
@@ -471,12 +628,13 @@ import { DocumentIcon, ChatBubbleLeftIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
 import TradeChartVisualization from '@/components/trades/TradeChartVisualization.vue'
+import TradeImages from '@/components/trades/TradeImages.vue'
 
 const route = useRoute()
 const router = useRouter()
 const tradesStore = useTradesStore()
 const authStore = useAuthStore()
-const { showSuccess, showError } = useNotification()
+const { showSuccess, showError, showConfirmation } = useNotification()
 
 const loading = ref(true)
 const trade = ref(null)
@@ -489,6 +647,105 @@ const submittingComment = ref(false)
 const editingCommentId = ref(null)
 const editCommentText = ref('')
 
+// Computed properties for enhanced execution display
+const processedExecutions = computed(() => {
+  if (!trade.value?.executions || !Array.isArray(trade.value.executions)) {
+    return []
+  }
+  
+  let runningPosition = 0
+  let totalCost = 0
+  let totalShares = 0
+  
+  return trade.value.executions.map((execution, index) => {
+    // Handle null/undefined execution
+    if (!execution) {
+      return {
+        action: 'N/A',
+        quantity: 0,
+        price: 0,
+        value: 0,
+        fees: 0,
+        runningPosition: 0,
+        avgCost: null,
+        datetime: null
+      }
+    }
+    
+    // Map trade record fields to execution format
+    // For round-trip trades, executions are full trade records
+    const quantity = parseFloat(execution.quantity) || 0
+    const price = parseFloat(execution.price) || parseFloat(execution.entry_price) || 0  // Use price from execution, fallback to entry_price from trade record
+    const value = quantity * price
+    const fees = (parseFloat(execution.commission) || 0) + (parseFloat(execution.fees) || 0)
+    const action = execution.action || execution.side || 'unknown'  // Use action from execution, fallback to side from trade record
+    const datetime = execution.datetime || execution.entry_time  // Use datetime from execution, fallback to entry_time from trade record
+    
+    // Update running position
+    if (action === 'buy' || action === 'long') {
+      runningPosition += quantity
+      totalCost += value + fees
+      totalShares += quantity
+    } else if (action === 'sell' || action === 'short') {
+      runningPosition -= quantity
+      // For sells, we don't add to total cost
+    }
+    
+    // Calculate average cost (only for positions with shares)
+    const avgCost = totalShares > 0 ? totalCost / totalShares : 0
+    
+    return {
+      // Keep original execution data
+      ...execution,
+      // Add computed fields for display
+      action,
+      quantity,
+      price,
+      value,
+      fees,
+      datetime,
+      runningPosition,
+      avgCost: avgCost > 0 ? avgCost : null
+    }
+  })
+})
+
+const executionSummary = computed(() => {
+  if (!trade.value?.executions || !Array.isArray(trade.value.executions)) return {
+    totalVolume: 0,
+    totalFees: 0,
+    finalPosition: 0
+  }
+  
+  let totalVolume = 0
+  let totalFees = 0
+  let finalPosition = 0
+  
+  trade.value.executions.forEach(execution => {
+    if (!execution) return
+    
+    const quantity = parseFloat(execution.quantity) || 0
+    const price = parseFloat(execution.price) || parseFloat(execution.entry_price) || 0  // Use price from execution, fallback to entry_price from trade record
+    const fees = (parseFloat(execution.commission) || 0) + (parseFloat(execution.fees) || 0)
+    const action = execution.action || execution.side || 'unknown'  // Use action from execution, fallback to side from trade record
+    
+    totalVolume += quantity * price
+    totalFees += fees
+    
+    if (action === 'buy' || action === 'long') {
+      finalPosition += quantity
+    } else if (action === 'sell' || action === 'short') {
+      finalPosition -= quantity
+    }
+  })
+  
+  return {
+    totalVolume,
+    totalFees,
+    finalPosition
+  }
+})
+
 function formatNumber(num, decimals = 2) {
   return new Intl.NumberFormat('en-US', {
     minimumFractionDigits: decimals,
@@ -496,24 +753,43 @@ function formatNumber(num, decimals = 2) {
   }).format(num || 0)
 }
 
-function formatDate(date) {
-  // Handle date strings that might be in different formats
-  // If it's already a date string like '2025-07-04', treat it as local date
-  if (typeof date === 'string' && date.match(/^\d{4}-\d{2}-\d{2}$/)) {
-    // This is a date-only string, create local date to avoid timezone issues
-    const [year, month, day] = date.split('-')
-    const localDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day))
-    return format(localDate, 'MMM dd, yyyy')
+function formatQuantity(num) {
+  if (!num) return '0'
+  
+  // If it's a whole number, show no decimals
+  if (num % 1 === 0) {
+    return new Intl.NumberFormat('en-US').format(num)
   }
-  // For datetime strings, use as-is
-  return format(new Date(date), 'MMM dd, yyyy')
+  
+  // Otherwise, show up to 4 decimal places, removing trailing zeros
+  return new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 4
+  }).format(num)
+}
+
+function formatDate(date) {
+  if (!date) return 'N/A'
+  try {
+    const dateObj = new Date(date)
+    if (isNaN(dateObj.getTime())) return 'Invalid Date'
+    return format(dateObj, 'MMM dd, yyyy')
+  } catch (error) {
+    console.error('Date formatting error:', error, 'for date:', date)
+    return 'Invalid Date'
+  }
 }
 
 function formatDateTime(date) {
-  // For datetime display, we want to show the actual time in the user's timezone
-  // but handle the date component consistently
-  const dateObj = new Date(date)
-  return format(dateObj, 'MMM dd, yyyy HH:mm')
+  if (!date) return 'N/A'
+  try {
+    const dateObj = new Date(date)
+    if (isNaN(dateObj.getTime())) return 'Invalid Date'
+    return format(dateObj, 'MMM dd, yyyy HH:mm')
+  } catch (error) {
+    console.error('Date formatting error:', error, 'for date:', date)
+    return 'Invalid Date'
+  }
 }
 
 function formatFileSize(bytes) {
@@ -550,25 +826,68 @@ function calculateRiskReward() {
 function calculateDuration() {
   if (!trade.value.exit_time) return 'Open'
   
-  const entry = new Date(trade.value.entry_time)
-  const exit = new Date(trade.value.exit_time)
-  
-  return formatDistance(entry, exit)
+  try {
+    const entry = new Date(trade.value.entry_time)
+    const exit = new Date(trade.value.exit_time)
+    
+    if (isNaN(entry.getTime()) || isNaN(exit.getTime())) {
+      return 'Invalid Date'
+    }
+    
+    return formatDistance(entry, exit)
+  } catch (error) {
+    console.error('Duration calculation error:', error)
+    return 'Invalid Date'
+  }
 }
 
 function formatCommentDate(date) {
-  const dateObj = new Date(date)
-  const now = new Date()
-  const diffInHours = (now - dateObj) / (1000 * 60 * 60)
+  if (!date) return 'N/A'
   
-  if (diffInHours < 24) {
-    return format(dateObj, 'HH:mm')
-  } else if (diffInHours < 48) {
-    return 'Yesterday'
-  } else if (diffInHours < 168) { // 7 days
-    return format(dateObj, 'EEEE')
-  } else {
-    return format(dateObj, 'MMM dd')
+  try {
+    const dateObj = new Date(date)
+    if (isNaN(dateObj.getTime())) return 'Invalid Date'
+    
+    const now = new Date()
+    const diffInHours = (now - dateObj) / (1000 * 60 * 60)
+    
+    if (diffInHours < 24) {
+      return format(dateObj, 'HH:mm')
+    } else if (diffInHours < 48) {
+      return 'Yesterday'
+    } else if (diffInHours < 168) { // 7 days
+      return format(dateObj, 'EEEE')
+    } else {
+      return format(dateObj, 'MMM dd')
+    }
+  } catch (error) {
+    console.error('Comment date formatting error:', error, 'for date:', date)
+    return 'Invalid Date'
+  }
+}
+
+function formatNewsDate(date) {
+  if (!date) return 'N/A'
+  
+  try {
+    const dateObj = new Date(date)
+    if (isNaN(dateObj.getTime())) return 'Invalid Date'
+    
+    const now = new Date()
+    const diffInHours = (now - dateObj) / (1000 * 60 * 60)
+    
+    if (diffInHours < 1) {
+      return 'Just now'
+    } else if (diffInHours < 24) {
+      return `${Math.floor(diffInHours)}h ago`
+    } else if (diffInHours < 48) {
+      return 'Yesterday'
+    } else {
+      return format(dateObj, 'MMM dd, HH:mm')
+    }
+  } catch (error) {
+    console.error('News date formatting error:', error, 'for date:', date)
+    return 'Invalid Date'
   }
 }
 
@@ -648,19 +967,23 @@ async function saveEditComment(commentId) {
 }
 
 async function deleteTradeComment(commentId) {
-  if (!confirm('Are you sure you want to delete this comment?')) return
-  
-  try {
-    await api.delete(`/trades/${trade.value.id}/comments/${commentId}`)
-    
-    // Remove the comment from the list
-    comments.value = comments.value.filter(c => c.id !== commentId)
-    
-    showSuccess('Success', 'Comment deleted successfully')
-  } catch (error) {
-    console.error('Failed to delete comment:', error)
-    showError('Error', 'Failed to delete comment')
-  }
+  showConfirmation(
+    'Delete Comment',
+    'Are you sure you want to delete this comment?',
+    async () => {
+      try {
+        await api.delete(`/trades/${trade.value.id}/comments/${commentId}`)
+        
+        // Remove the comment from the list
+        comments.value = comments.value.filter(c => c.id !== commentId)
+        
+        showSuccess('Success', 'Comment deleted successfully')
+      } catch (error) {
+        console.error('Failed to delete comment:', error)
+        showError('Error', 'Failed to delete comment')
+      }
+    }
+  )
 }
 
 function handleCommentKeydown(event) {
@@ -681,23 +1004,26 @@ function handleEditKeydown(event) {
 }
 
 async function deleteTrade() {
-  if (!confirm('Are you sure you want to delete this trade? This action cannot be undone.')) {
-    return
-  }
-
-  try {
-    await tradesStore.deleteTrade(trade.value.id)
-    showSuccess('Success', 'Trade deleted successfully')
-    router.push('/trades')
-  } catch (error) {
-    showError('Error', 'Failed to delete trade')
-  }
+  showConfirmation(
+    'Delete Trade',
+    'Are you sure you want to delete this trade? This action cannot be undone.',
+    async () => {
+      try {
+        await tradesStore.deleteTrade(trade.value.id)
+        showSuccess('Success', 'Trade deleted successfully')
+        router.push('/trades')
+      } catch (error) {
+        showError('Error', 'Failed to delete trade')
+      }
+    }
+  )
 }
 
 async function loadTrade() {
   try {
     loading.value = true
     trade.value = await tradesStore.fetchTrade(route.params.id)
+    
     // Load comments after trade is loaded
     if (trade.value) {
       loadComments()
@@ -707,6 +1033,12 @@ async function loadTrade() {
     router.push('/trades')
   } finally {
     loading.value = false
+  }
+}
+
+function handleImageDeleted(imageId) {
+  if (trade.value && trade.value.attachments) {
+    trade.value.attachments = trade.value.attachments.filter(img => img.id !== imageId)
   }
 }
 

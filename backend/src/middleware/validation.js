@@ -3,6 +3,7 @@ const Joi = require('joi');
 const validate = (schema) => {
   return (req, res, next) => {
     console.log('Validating request body:', req.body);
+    console.log('Schema keys:', Object.keys(schema._flags?.unknown === false ? schema.describe().keys || {} : {}));
     const { error } = schema.validate(req.body);
     if (error) {
       console.log('Validation error:', error.details);
@@ -34,7 +35,7 @@ const schemas = {
     exitTime: Joi.date().iso().allow(null, ''),
     entryPrice: Joi.number().positive().required(),
     exitPrice: Joi.number().positive().allow(null, ''),
-    quantity: Joi.number().integer().positive().required(),
+    quantity: Joi.number().positive().required(),
     side: Joi.string().valid('long', 'short').required(),
     commission: Joi.number().min(0).default(0),
     fees: Joi.number().min(0).default(0),
@@ -45,7 +46,8 @@ const schemas = {
     broker: Joi.string().max(50).allow(''),
     strategy: Joi.string().max(100).allow(''),
     setup: Joi.string().max(100).allow(''),
-    tags: Joi.array().items(Joi.string().max(50))
+    tags: Joi.array().items(Joi.string().max(50)),
+    confidence: Joi.number().integer().min(1).max(10).allow(null, '')
   }),
 
   updateTrade: Joi.object({
@@ -54,7 +56,7 @@ const schemas = {
     exitTime: Joi.date().iso().allow(null, ''),
     entryPrice: Joi.number().positive(),
     exitPrice: Joi.number().positive().allow(null, ''),
-    quantity: Joi.number().integer().positive(),
+    quantity: Joi.number().positive(),
     side: Joi.string().valid('long', 'short'),
     commission: Joi.number().min(0),
     fees: Joi.number().min(0),
@@ -65,7 +67,8 @@ const schemas = {
     broker: Joi.string().max(50).allow(''),
     strategy: Joi.string().max(100).allow(''),
     setup: Joi.string().max(100).allow(''),
-    tags: Joi.array().items(Joi.string().max(50))
+    tags: Joi.array().items(Joi.string().max(50)),
+    confidence: Joi.number().integer().min(1).max(10).allow(null, '')
   }).min(1),
 
   updateSettings: Joi.object({
@@ -74,7 +77,8 @@ const schemas = {
     defaultTags: Joi.array().items(Joi.string().max(50)),
     importSettings: Joi.object(),
     theme: Joi.string().valid('light', 'dark'),
-    timezone: Joi.string().max(50)
+    timezone: Joi.string().max(50),
+    statisticsCalculation: Joi.string().valid('average', 'median')
   }).min(1),
 
   // Mobile-specific validation schemas
@@ -185,6 +189,33 @@ const schemas = {
     permissions: Joi.array().items(Joi.string().valid('read', 'write', 'admin')),
     expiresIn: Joi.number().integer().min(1).max(365).allow(null),
     isActive: Joi.boolean()
+  }).min(1),
+
+  // Diary validation schemas
+  createDiaryEntry: Joi.object({
+    entryDate: Joi.date().iso().required(),
+    entryType: Joi.string().valid('diary', 'playbook').default('diary'),
+    title: Joi.string().max(255).allow(null, ''),
+    marketBias: Joi.string().valid('bullish', 'bearish', 'neutral').allow(null, ''),
+    content: Joi.string().allow(null, ''),
+    keyLevels: Joi.string().allow(null, ''),
+    watchlist: Joi.array().items(Joi.string().max(50)).default([]),
+    tags: Joi.array().items(Joi.string().max(50)).default([]),
+    followedPlan: Joi.boolean().allow(null),
+    lessonsLearned: Joi.string().allow(null, '')
+  }),
+
+  updateDiaryEntry: Joi.object({
+    entryDate: Joi.date().iso(), // Add entryDate for update operations
+    entryType: Joi.string().valid('diary', 'playbook'),
+    title: Joi.string().max(255).allow(null, ''),
+    marketBias: Joi.string().valid('bullish', 'bearish', 'neutral').allow(null, ''),
+    content: Joi.string().allow(null, ''),
+    keyLevels: Joi.string().allow(null, ''),
+    watchlist: Joi.array().items(Joi.string().max(50)),
+    tags: Joi.array().items(Joi.string().max(50)),
+    followedPlan: Joi.boolean().allow(null),
+    lessonsLearned: Joi.string().allow(null, '')
   }).min(1)
 };
 

@@ -5,19 +5,19 @@
 
 set -e
 
-echo "🚀 Starting TradeTally backend container..."
+echo "[START] Starting TradeTally backend container..."
 
 # Wait for database to be ready
-echo "⏳ Waiting for database connection..."
+echo "[WAIT] Waiting for database connection..."
 until nc -z "${DB_HOST:-localhost}" "${DB_PORT:-5432}"; do
   echo "   Database not ready, waiting..."
   sleep 2
 done
 
-echo "✅ Database connection established"
+echo "[OK] Database connection established"
 
 # Run database migrations
-echo "🔄 Running database migrations..."
+echo "[MIGRATE] Running database migrations..."
 if [ "${RUN_MIGRATIONS:-true}" != "false" ]; then
   node src/utils/migrate.js
 else
@@ -27,10 +27,10 @@ fi
 # Set default environment variables
 export NODE_ENV="${NODE_ENV:-production}"
 
-echo "📝 Configuration:"
+echo "[CONFIG] Configuration:"
 echo "   Environment: ${NODE_ENV}"
 echo "   Database: ${DB_HOST:-localhost}:${DB_PORT:-5432}/${DB_NAME:-tradetally}"
 
 # Start the application
-echo "🎯 Starting TradeTally application..."
+echo "[START] Starting TradeTally application..."
 exec "$@"

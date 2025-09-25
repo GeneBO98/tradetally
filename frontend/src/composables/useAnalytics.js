@@ -32,13 +32,13 @@ export function useAnalytics() {
         
         isInitialized.value = true
         isEnabled.value = true
-        console.log('📊 Analytics initialized')
+        console.log('[STATS] Analytics initialized')
       } catch (error) {
         console.warn('Failed to initialize analytics:', error)
         isEnabled.value = false
       }
     } else {
-      console.log('📊 Analytics disabled (no environment variables)')
+      console.log('[STATS] Analytics disabled (no environment variables)')
       isEnabled.value = false
     }
   }
@@ -151,7 +151,7 @@ export function useAnalytics() {
     
     try {
       posthog.opt_out_capturing()
-      console.log('📊 Analytics opt-out enabled')
+      console.log('[STATS] Analytics opt-out enabled')
     } catch (error) {
       console.warn('Analytics opt-out error:', error)
     }
@@ -162,7 +162,7 @@ export function useAnalytics() {
     
     try {
       posthog.opt_in_capturing()
-      console.log('📊 Analytics opt-in enabled')
+      console.log('[STATS] Analytics opt-in enabled')
     } catch (error) {
       console.warn('Analytics opt-in error:', error)
     }

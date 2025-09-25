@@ -1,37 +1,37 @@
 #!/bin/bash
 
-echo "🚀 TradeTally Quick Deploy Script"
+echo "[DEPLOY] TradeTally Quick Deploy Script"
 echo "=================================="
 
 # Check if Docker is installed
 if ! command -v docker &> /dev/null; then
-    echo "❌ Docker is not installed. Please install Docker first."
+    echo "[ERROR] Docker is not installed. Please install Docker first."
     echo "Visit: https://docs.docker.com/get-docker/"
     exit 1
 fi
 
 # Check if Docker Compose is installed
 if ! command -v docker-compose &> /dev/null; then
-    echo "❌ Docker Compose is not installed. Please install Docker Compose first."
+    echo "[ERROR] Docker Compose is not installed. Please install Docker Compose first."
     echo "Visit: https://docs.docker.com/compose/install/"
     exit 1
 fi
 
-echo "✅ Docker is installed"
+echo "[OK] Docker is installed"
 
 # Create deployment directory
 DEPLOY_DIR="tradetally-deployment"
 if [ -d "$DEPLOY_DIR" ]; then
-    echo "📁 Directory $DEPLOY_DIR already exists. Using existing directory."
+    echo "[INFO] Directory $DEPLOY_DIR already exists. Using existing directory."
     cd "$DEPLOY_DIR"
 else
-    echo "📁 Creating deployment directory: $DEPLOY_DIR"
+    echo "[INFO] Creating deployment directory: $DEPLOY_DIR"
     mkdir "$DEPLOY_DIR"
     cd "$DEPLOY_DIR"
 fi
 
 # Download required files
-echo "📥 Downloading deployment files..."
+echo "[INFO] Downloading deployment files..."
 
 curl -s -o docker-compose.yml https://raw.githubusercontent.com/YOUR_USERNAME/trader-vue/main/docker-compose.production.yaml
 curl -s -o .env.example https://raw.githubusercontent.com/YOUR_USERNAME/trader-vue/main/.env.production.example
@@ -39,7 +39,7 @@ curl -s -o schema.sql https://raw.githubusercontent.com/YOUR_USERNAME/trader-vue
 
 # Create .env if it doesn't exist
 if [ ! -f .env ]; then
-    echo "⚙️ Creating .env file from template..."
+    echo "[CONFIG] Creating .env file from template..."
     cp .env.example .env
     
     # Generate a random JWT secret
@@ -50,49 +50,49 @@ if [ ! -f .env ]; then
     DB_PASSWORD=$(openssl rand -base64 16 2>/dev/null || echo "secure_db_pass_$(date +%s)")
     sed -i.bak "s/your_secure_database_password_here/${DB_PASSWORD}/" .env
     
-    echo "🔑 Generated secure JWT secret and database password"
+    echo "[SECURITY] Generated secure JWT secret and database password"
 fi
 
 # Update docker-compose.yml with correct image name
-echo "🔄 Please update the Docker image name in docker-compose.yml"
+echo "[CONFIG] Please update the Docker image name in docker-compose.yml"
 echo "Replace 'YOUR_DOCKERHUB_USERNAME/tradetally:latest' with your actual image name"
 read -p "Enter your Docker Hub image name (e.g., username/tradetally:latest): " IMAGE_NAME
 
 if [ ! -z "$IMAGE_NAME" ]; then
     sed -i.bak "s|YOUR_DOCKERHUB_USERNAME/tradetally:latest|${IMAGE_NAME}|" docker-compose.yml
-    echo "✅ Updated image name to: $IMAGE_NAME"
+    echo "[OK] Updated image name to: $IMAGE_NAME"
 fi
 
 # Create directories
 mkdir -p logs data
 
 # Start deployment
-echo "🚀 Starting TradeTally deployment..."
+echo "[DEPLOY] Starting TradeTally deployment..."
 docker-compose up -d
 
 # Wait for database to be ready
-echo "⏳ Waiting for database to be ready..."
+echo "[WAIT] Waiting for database to be ready..."
 sleep 10
 
 # Initialize database schema
-echo "🗄️ Initializing database schema..."
+echo "[DB] Initializing database schema..."
 docker exec -i tradetally-db psql -U trader -d tradetally < schema.sql 2>/dev/null || echo "Schema may already exist"
 
 echo ""
-echo "🎉 TradeTally deployment complete!"
+echo "[SUCCESS] TradeTally deployment complete!"
 echo ""
-echo "📊 Access your application:"
+echo "[INFO] Access your application:"
 echo "   TradeTally: http://localhost"
 echo "   Database Admin: http://localhost:8080"
 echo ""
-echo "🔐 Demo Login:"
+echo "[DEMO] Demo Login:"
 echo "   Email: demo@example.com"
 echo "   Password: DemoUser25"
 echo ""
-echo "📝 To customize settings, edit the .env file and restart:"
+echo "[CONFIG] To customize settings, edit the .env file and restart:"
 echo "   docker-compose restart"
 echo ""
-echo "📋 Useful commands:"
+echo "[COMMANDS] Useful commands:"
 echo "   View logs: docker-compose logs -f"
 echo "   Stop: docker-compose down"
 echo "   Update: docker-compose pull && docker-compose up -d"
