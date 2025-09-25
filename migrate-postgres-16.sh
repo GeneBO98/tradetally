@@ -12,8 +12,19 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Configuration
-DOCKER_COMPOSE_FILE="docker-compose.dev.yaml"
+# Configuration - auto-detect compose file
+if [[ -f "docker-compose.yaml" ]]; then
+    DOCKER_COMPOSE_FILE="docker-compose.yaml"
+elif [[ -f "docker-compose.yml" ]]; then
+    DOCKER_COMPOSE_FILE="docker-compose.yml"
+else
+    DOCKER_COMPOSE_FILE="docker-compose.dev.yaml"
+fi
+
+# Allow override via environment variable
+DOCKER_COMPOSE_FILE="${COMPOSE_FILE:-$DOCKER_COMPOSE_FILE}"
+
+echo -e "${BLUE}[INFO] Using compose file: $DOCKER_COMPOSE_FILE${NC}"
 BACKUP_DIR="./postgres-migration-backup"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 BACKUP_FILE="tradetally_backup_${TIMESTAMP}.sql"
@@ -61,9 +72,18 @@ fi
 echo -e "${BLUE}[STEP 2/6] Stopping current containers...${NC}"
 docker-compose -f "$DOCKER_COMPOSE_FILE" down
 
+# Determine volume name based on compose file
+if [[ "$DOCKER_COMPOSE_FILE" == *"dev"* ]]; then
+    VOLUME_NAME="tradetally_postgres_data_dev"
+else
+    VOLUME_NAME="tradetally_postgres_data"
+fi
+
+echo -e "${BLUE}[INFO] Using volume: $VOLUME_NAME${NC}"
+
 # Step 3: Backup the PostgreSQL data volume
 echo -e "${BLUE}[STEP 3/6] Backing up PostgreSQL data volume...${NC}"
-docker run --rm -v tradetally_postgres_data_dev:/source -v "$(pwd)/$BACKUP_DIR":/backup alpine tar czf /backup/postgres_volume_backup_${TIMESTAMP}.tar.gz -C /source .
+docker run --rm -v "$VOLUME_NAME":/source -v "$(pwd)/$BACKUP_DIR":/backup alpine tar czf /backup/postgres_volume_backup_${TIMESTAMP}.tar.gz -C /source .
 
 if [[ $? -eq 0 ]]; then
     echo -e "${GREEN}[SUCCESS] PostgreSQL volume backed up${NC}"
@@ -74,7 +94,7 @@ fi
 
 # Step 4: Remove the old PostgreSQL data volume
 echo -e "${BLUE}[STEP 4/6] Removing old PostgreSQL data volume...${NC}"
-docker volume rm tradetally_postgres_data_dev || true
+docker volume rm "$VOLUME_NAME" || true
 
 # Step 5: Update docker-compose to use PostgreSQL 16
 echo -e "${BLUE}[STEP 5/6] Updating docker-compose to use PostgreSQL 16...${NC}"
