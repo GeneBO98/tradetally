@@ -239,8 +239,8 @@
         </div>
 
         <!-- Desktop view (table) -->
-        <div class="hidden md:block overflow-hidden shadow ring-1 ring-black ring-opacity-5 md:rounded-lg" :key="'desktop-' + tradesStore.trades.length">
-        <div class="overflow-x-auto">
+        <div class="hidden md:block shadow ring-1 ring-black ring-opacity-5 md:rounded-lg" :key="'desktop-' + tradesStore.trades.length">
+        <div class="overflow-x-auto relative">
           <table class="min-w-full divide-y divide-gray-300 dark:divide-gray-700">
           <thead class="bg-gray-50 dark:bg-gray-800">
             <tr>

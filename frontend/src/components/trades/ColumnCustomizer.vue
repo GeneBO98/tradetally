@@ -2,6 +2,7 @@
   <div class="relative">
     <!-- Toggle Button -->
     <button
+      ref="buttonRef"
       @click="toggleMenu"
       class="inline-flex items-center justify-center p-1.5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
       title="Customize columns"
@@ -9,21 +10,23 @@
       <AdjustmentsHorizontalIcon class="h-4 w-4" />
     </button>
 
-    <!-- Dropdown Menu -->
-    <transition
-      enter-active-class="transition ease-out duration-100"
-      enter-from-class="transform opacity-0 scale-95"
-      enter-to-class="transform opacity-100 scale-100"
-      leave-active-class="transition ease-in duration-75"
-      leave-from-class="transform opacity-100 scale-100"
-      leave-to-class="transform opacity-0 scale-95"
-    >
-      <div
-        v-if="showMenu"
-        ref="menuRef"
-        class="absolute right-0 top-full mt-1 w-80 rounded-md shadow-lg bg-white dark:bg-gray-800 ring-1 ring-black ring-opacity-5 z-50"
+    <!-- Dropdown Menu with Teleport -->
+    <Teleport to="body">
+      <transition
+        enter-active-class="transition ease-out duration-100"
+        enter-from-class="transform opacity-0 scale-95"
+        enter-to-class="transform opacity-100 scale-100"
+        leave-active-class="transition ease-in duration-75"
+        leave-from-class="transform opacity-100 scale-100"
+        leave-to-class="transform opacity-0 scale-95"
       >
-        <div class="p-4">
+        <div
+          v-if="showMenu"
+          ref="menuRef"
+          :style="dropdownStyle"
+          class="fixed w-80 rounded-md shadow-lg bg-white dark:bg-gray-800 ring-1 ring-black ring-opacity-5 z-[9999]"
+        >
+          <div class="p-4">
           <div class="flex items-center justify-between mb-4">
             <h3 class="text-sm font-medium text-gray-900 dark:text-white">Customize Columns</h3>
             <button
@@ -119,14 +122,15 @@
               Apply
             </button>
           </div>
+          </div>
         </div>
-      </div>
-    </transition>
+      </transition>
+    </Teleport>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { AdjustmentsHorizontalIcon } from '@heroicons/vue/24/outline'
 import { Bars3Icon } from '@heroicons/vue/24/solid'
 
@@ -138,6 +142,11 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['update:columns'])
+
+// Refs
+const buttonRef = ref(null)
+const menuRef = ref(null)
+const dropdownStyle = ref({})
 
 // Default column configuration
 const defaultColumns = [
@@ -164,7 +173,6 @@ const defaultColumns = [
 ]
 
 const showMenu = ref(false)
-const menuRef = ref(null)
 const localColumns = ref([])
 const draggedIndex = ref(null)
 
@@ -198,11 +206,39 @@ const saveColumns = () => {
   localStorage.setItem('tradeListColumns', JSON.stringify(localColumns.value))
 }
 
-const toggleMenu = () => {
+const updateDropdownPosition = () => {
+  if (!buttonRef.value) return
+  
+  const rect = buttonRef.value.getBoundingClientRect()
+  const menuWidth = 320 // w-80 = 20rem = 320px
+  
+  // Calculate position
+  let left = rect.right - menuWidth
+  let top = rect.bottom + 4
+  
+  // Ensure dropdown doesn't go off the left edge of the screen
+  if (left < 8) {
+    left = 8
+  }
+  
+  // Ensure dropdown doesn't go off the right edge of the screen
+  if (left + menuWidth > window.innerWidth - 8) {
+    left = window.innerWidth - menuWidth - 8
+  }
+  
+  dropdownStyle.value = {
+    top: `${top}px`,
+    left: `${left}px`
+  }
+}
+
+const toggleMenu = async () => {
   showMenu.value = !showMenu.value
   if (showMenu.value) {
     // Reset local columns to current state when opening
     loadSavedColumns()
+    await nextTick()
+    updateDropdownPosition()
   }
 }
 
@@ -267,14 +303,29 @@ const cancel = () => {
 
 // Click outside handler
 const handleClickOutside = (event) => {
-  if (menuRef.value && !menuRef.value.contains(event.target) && !event.target.closest('button')) {
+  if (!showMenu.value) return
+  
+  // Check if click is outside both the button and the menu
+  const clickedOnButton = buttonRef.value && buttonRef.value.contains(event.target)
+  const clickedOnMenu = menuRef.value && menuRef.value.contains(event.target)
+  
+  if (!clickedOnButton && !clickedOnMenu) {
     showMenu.value = false
+  }
+}
+
+// Handle window resize
+const handleResize = () => {
+  if (showMenu.value) {
+    updateDropdownPosition()
   }
 }
 
 onMounted(() => {
   loadSavedColumns()
   document.addEventListener('click', handleClickOutside)
+  window.addEventListener('resize', handleResize)
+  window.addEventListener('scroll', handleResize, true)
   
   // Emit initial columns
   emit('update:columns', [...localColumns.value])
@@ -282,5 +333,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
+  window.removeEventListener('resize', handleResize)
+  window.removeEventListener('scroll', handleResize, true)
 })
 </script>
