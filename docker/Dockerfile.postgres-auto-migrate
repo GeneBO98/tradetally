@@ -1,0 +1,16 @@
+FROM postgres:16-alpine
+
+# Install required tools for migration
+RUN apk add --no-cache \
+    bash \
+    curl \
+    postgresql15 \
+    postgresql15-client
+
+# Copy migration script
+COPY docker/postgres-auto-migrate.sh /usr/local/bin/postgres-auto-migrate.sh
+RUN chmod +x /usr/local/bin/postgres-auto-migrate.sh
+
+# Use our migration entrypoint
+ENTRYPOINT ["/usr/local/bin/postgres-auto-migrate.sh"]
+CMD ["postgres"]
