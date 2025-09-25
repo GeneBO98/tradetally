@@ -1,4 +1,6 @@
-FROM node:18-alpine AS frontend-builder
+FROM node:20-alpine AS frontend-builder
+# Update packages to fix vulnerabilities
+RUN apk update && apk upgrade --no-cache
 WORKDIR /app/frontend
 
 # Accept build arguments for PostHog
@@ -6,7 +8,9 @@ ARG VITE_POSTHOG_KEY
 ARG VITE_POSTHOG_HOST
 
 COPY frontend/package*.json ./
-RUN npm ci
+# Update npm to latest version to fix cross-spawn vulnerability
+RUN npm install -g npm@latest
+RUN npm install
 COPY frontend/ ./
 
 # Set environment variables for build
@@ -15,7 +19,9 @@ ENV VITE_POSTHOG_HOST=$VITE_POSTHOG_HOST
 
 RUN npm run build
 
-FROM node:18-alpine AS backend-builder
+FROM node:20-alpine AS backend-builder
+# Update packages to fix vulnerabilities  
+RUN apk update && apk upgrade --no-cache
 WORKDIR /app/backend
 
 # Install build dependencies for Sharp and other native modules
@@ -29,8 +35,11 @@ RUN apk add --no-cache \
 
 COPY backend/package*.json ./
 
+# Update npm to latest version to fix cross-spawn vulnerability
+RUN npm install -g npm@latest
+
 # Install dependencies
-RUN npm ci --only=production
+RUN npm install --omit=dev
 
 # Force reinstall Sharp with proper architecture detection
 # This will automatically detect and build for the correct platform
@@ -39,8 +48,10 @@ RUN npm uninstall sharp && \
 
 COPY backend/ ./
 
-FROM node:18-alpine
-RUN apk add --no-cache \
+FROM node:20-alpine
+# Update packages to fix vulnerabilities
+RUN apk update && apk upgrade --no-cache && \
+    apk add --no-cache \
     nginx \
     netcat-openbsd \
     vips \
