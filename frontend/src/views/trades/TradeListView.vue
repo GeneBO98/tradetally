@@ -24,6 +24,8 @@
       </router-link>
     </div>
 
+    <!-- Enrichment Status -->
+    <EnrichmentStatus />
 
     <div class="mt-8 card">
       <div class="card-body">
@@ -39,7 +41,7 @@
         <div class="block sm:hidden space-y-4">
           <div>
             <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
-              Total P&L ({{ tradesStore.pagination.total }} {{ tradesStore.pagination.total === 1 ? 'trade' : 'trades' }})
+              Total P&L ({{ tradesStore.totalTrades }} {{ tradesStore.totalTrades === 1 ? 'trade' : 'trades' }})
             </h3>
             <div class="text-lg font-semibold" :class="[
               tradesStore.totalPnL >= 0 
@@ -59,7 +61,7 @@
         <div class="hidden sm:flex items-center justify-between">
           <div class="flex items-center space-x-4">
             <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-              Total P&L ({{ tradesStore.pagination.total }} {{ tradesStore.pagination.total === 1 ? 'trade' : 'trades' }})
+              Total P&L ({{ tradesStore.totalTrades }} {{ tradesStore.totalTrades === 1 ? 'trade' : 'trades' }})
             </h3>
             <div class="text-lg font-semibold" :class="[
               tradesStore.totalPnL >= 0 
@@ -120,6 +122,11 @@
           </div>
         </div>
 
+        <!-- Mobile Column Customizer -->
+        <div class="block md:hidden mb-4 flex justify-end">
+          <ColumnCustomizer :columns="tableColumns" @update:columns="handleColumnsUpdate" />
+        </div>
+
         <!-- Mobile view (cards) -->
         <div class="block md:hidden space-y-4" :key="'mobile-' + tradesStore.trades.length">
         <div v-for="trade in tradesStore.trades" :key="trade.id" 
@@ -145,6 +152,14 @@
                       : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
                   ]">
                   {{ trade.side }}
+                </span>
+                <!-- News badge for mobile -->
+                <span v-if="trade.has_news" 
+                  :class="getNewsBadgeClasses(trade.news_sentiment)"
+                  class="px-2 py-1 text-xs font-semibold rounded-full flex items-center"
+                  :title="`${trade.news_events?.length || 0} news article(s) - ${trade.news_sentiment || 'neutral'} sentiment`">
+                  <MdiIcon :icon="newspaperIcon" :size="14" class="mr-1" />
+                  <span>{{ trade.news_events?.length || 0 }}</span>
                 </span>
               </div>
             <span class="px-2 py-1 text-xs font-semibold rounded-full"
@@ -229,130 +244,230 @@
           <table class="min-w-full divide-y divide-gray-300 dark:divide-gray-700">
           <thead class="bg-gray-50 dark:bg-gray-800">
             <tr>
-              <th class="px-6 py-3 text-left">
-                <input
-                  type="checkbox"
-                  :checked="isAllSelected"
-                  @change="toggleSelectAll"
-                  class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                />
-              </th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                Symbol
-              </th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                Date
-              </th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                Side
-              </th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                Entry
-              </th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                Exit
-              </th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                P&L
-              </th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                Confidence
-              </th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                Sector
-              </th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                Status
-              </th>
-              <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                Comments
+              <template v-for="column in tableColumns" :key="column.key">
+                <th v-if="column.visible && column.key === 'checkbox'" class="px-6 py-3 text-left">
+                  <input
+                    type="checkbox"
+                    :checked="isAllSelected"
+                    @change="toggleSelectAll"
+                    class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                  />
+                </th>
+                <th v-else-if="column.visible" 
+                    class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
+                    :class="{ 'text-center': column.key === 'comments' }">
+                  {{ column.label }}
+                </th>
+              </template>
+              <!-- Column Customizer in header -->
+              <th class="px-2 py-3 text-center relative" style="width: 40px;">
+                <ColumnCustomizer :columns="tableColumns" @update:columns="handleColumnsUpdate" />
               </th>
             </tr>
           </thead>
           <tbody class="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
             <tr v-for="trade in tradesStore.trades" :key="trade.id" 
                 class="hover:bg-gray-50 dark:hover:bg-gray-800">
-              <td class="px-6 py-4 whitespace-nowrap">
-                <input
-                  type="checkbox"
-                  :value="trade.id"
-                  v-model="selectedTrades"
-                  class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                />
-              </td>
-              <td class="px-6 py-4 whitespace-nowrap cursor-pointer" @click="$router.push(`/trades/${trade.id}`)">
-                <div class="flex items-center space-x-2">
-                  <div class="text-sm font-medium text-gray-900 dark:text-white">
-                    {{ trade.symbol }}
-                  </div>
-                </div>
-              </td>
-              <td class="px-6 py-4 whitespace-nowrap cursor-pointer" @click="$router.push(`/trades/${trade.id}`)">
-                <div class="text-sm text-gray-900 dark:text-white">
-                  {{ formatDate(trade.trade_date) }}
-                </div>
-              </td>
-              <td class="px-6 py-4 whitespace-nowrap cursor-pointer" @click="$router.push(`/trades/${trade.id}`)">
-                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
-                  :class="[
-                    trade.side === 'long' 
-                      ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
-                      : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
-                  ]">
-                  {{ trade.side }}
-                </span>
-              </td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer" @click="$router.push(`/trades/${trade.id}`)">
-                ${{ formatNumber(trade.entry_price) }}
-              </td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer" @click="$router.push(`/trades/${trade.id}`)">
-                {{ trade.exit_price ? `$${formatNumber(trade.exit_price)}` : '-' }}
-              </td>
-              <td class="px-6 py-4 whitespace-nowrap cursor-pointer" @click="$router.push(`/trades/${trade.id}`)">
-                <div class="text-sm font-medium" :class="[
-                  trade.pnl >= 0 ? 'text-green-600' : 'text-red-600'
-                ]">
-                  {{ trade.pnl ? `$${formatNumber(trade.pnl)}` : '-' }}
-                </div>
-                <div v-if="trade.pnl_percent" class="text-xs text-gray-500 dark:text-gray-400">
-                  {{ trade.pnl_percent > 0 ? '+' : '' }}{{ formatNumber(trade.pnl_percent) }}%
-                </div>
-              </td>
-              <td class="px-6 py-4 whitespace-nowrap cursor-pointer" @click="$router.push(`/trades/${trade.id}`)">
-                <div v-if="trade.confidence" class="flex items-center space-x-2">
-                  <div class="flex space-x-1">
-                    <div v-for="i in 5" :key="i" class="w-2 h-2 rounded-full"
-                      :class="i <= Math.ceil(trade.confidence / 2) ? 'bg-primary-500' : 'bg-gray-300 dark:bg-gray-600'">
+              <template v-for="column in tableColumns" :key="`${trade.id}-${column.key}`">
+                <!-- Checkbox Column -->
+                <td v-if="column.visible && column.key === 'checkbox'" class="px-6 py-4 whitespace-nowrap">
+                  <input
+                    type="checkbox"
+                    :value="trade.id"
+                    v-model="selectedTrades"
+                    class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                  />
+                </td>
+                
+                <!-- Symbol Column -->
+                <td v-else-if="column.visible && column.key === 'symbol'" 
+                    class="px-6 py-4 whitespace-nowrap cursor-pointer" 
+                    @click="$router.push(`/trades/${trade.id}`)">
+                  <div class="flex items-center space-x-2">
+                    <div class="text-sm font-medium text-gray-900 dark:text-white">
+                      {{ trade.symbol }}
                     </div>
+                    <!-- News badge -->
+                    <span v-if="trade.has_news" 
+                      :class="getNewsBadgeClasses(trade.news_sentiment)"
+                      class="px-2 py-1 text-xs font-semibold rounded-full flex items-center"
+                      :title="`${trade.news_events?.length || 0} news article(s) - ${trade.news_sentiment || 'neutral'} sentiment`">
+                      <MdiIcon :icon="newspaperIcon" :size="14" class="mr-1" />
+                      <span>{{ trade.news_events?.length || 0 }}</span>
+                    </span>
                   </div>
-                  <span class="text-sm text-gray-900 dark:text-white">{{ trade.confidence }}/10</span>
-                </div>
-                <div v-else class="text-sm text-gray-500 dark:text-gray-400">-</div>
-              </td>
-              <td class="px-6 py-4 whitespace-nowrap cursor-pointer" @click="$router.push(`/trades/${trade.id}`)">
-                <div class="text-sm text-gray-900 dark:text-white">
-                  {{ trade.sector || '-' }}
-                </div>
-              </td>
-              <td class="px-6 py-4 whitespace-nowrap cursor-pointer" @click="$router.push(`/trades/${trade.id}`)">
-                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
-                  :class="[
-                    trade.exit_price 
-                      ? 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
-                      : 'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400'
+                </td>
+                
+                <!-- Date Column -->
+                <td v-else-if="column.visible && column.key === 'date'" 
+                    class="px-6 py-4 whitespace-nowrap cursor-pointer" 
+                    @click="$router.push(`/trades/${trade.id}`)">
+                  <div class="text-sm text-gray-900 dark:text-white">
+                    {{ formatDate(trade.trade_date) }}
+                  </div>
+                </td>
+                
+                <!-- Side Column -->
+                <td v-else-if="column.visible && column.key === 'side'" 
+                    class="px-6 py-4 whitespace-nowrap cursor-pointer" 
+                    @click="$router.push(`/trades/${trade.id}`)">
+                  <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
+                    :class="[
+                      trade.side === 'long' 
+                        ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
+                        : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
+                    ]">
+                    {{ trade.side }}
+                  </span>
+                </td>
+                
+                <!-- Entry Column -->
+                <td v-else-if="column.visible && column.key === 'entry'" 
+                    class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer" 
+                    @click="$router.push(`/trades/${trade.id}`)">
+                  ${{ formatNumber(trade.entry_price) }}
+                </td>
+                
+                <!-- Exit Column -->
+                <td v-else-if="column.visible && column.key === 'exit'" 
+                    class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer" 
+                    @click="$router.push(`/trades/${trade.id}`)">
+                  {{ trade.exit_price ? `$${formatNumber(trade.exit_price)}` : '-' }}
+                </td>
+                
+                <!-- P&L Column -->
+                <td v-else-if="column.visible && column.key === 'pnl'" 
+                    class="px-6 py-4 whitespace-nowrap cursor-pointer" 
+                    @click="$router.push(`/trades/${trade.id}`)">
+                  <div class="text-sm font-medium" :class="[
+                    trade.pnl >= 0 ? 'text-green-600' : 'text-red-600'
                   ]">
-                  {{ trade.exit_price ? 'Closed' : 'Open' }}
-                </span>
-              </td>
-              <td class="px-6 py-4 whitespace-nowrap text-center">
-                <button
-                  @click.stop="openComments(trade)"
-                  class="inline-flex items-center text-gray-500 hover:text-primary-600 transition-colors"
-                >
-                  <ChatBubbleLeftIcon class="h-4 w-4 mr-1" />
-                  <span class="text-sm">{{ trade.comment_count || 0 }}</span>
-                </button>
-              </td>
+                    {{ trade.pnl ? `$${formatNumber(trade.pnl)}` : '-' }}
+                  </div>
+                  <div v-if="trade.pnl_percent" class="text-xs text-gray-500 dark:text-gray-400">
+                    {{ trade.pnl_percent > 0 ? '+' : '' }}{{ formatNumber(trade.pnl_percent) }}%
+                  </div>
+                </td>
+                
+                <!-- Confidence Column -->
+                <td v-else-if="column.visible && column.key === 'confidence'" 
+                    class="px-6 py-4 whitespace-nowrap cursor-pointer" 
+                    @click="$router.push(`/trades/${trade.id}`)">
+                  <div v-if="trade.confidence" class="flex items-center space-x-2">
+                    <div class="flex space-x-1">
+                      <div v-for="i in 5" :key="i" class="w-2 h-2 rounded-full"
+                        :class="i <= Math.ceil(trade.confidence / 2) ? 'bg-primary-500' : 'bg-gray-300 dark:bg-gray-600'">
+                      </div>
+                    </div>
+                    <span class="text-sm text-gray-900 dark:text-white">{{ trade.confidence }}/10</span>
+                  </div>
+                  <div v-else class="text-sm text-gray-500 dark:text-gray-400">-</div>
+                </td>
+                
+                <!-- Sector Column -->
+                <td v-else-if="column.visible && column.key === 'sector'" 
+                    class="px-6 py-4 whitespace-nowrap cursor-pointer" 
+                    @click="$router.push(`/trades/${trade.id}`)">
+                  <div class="text-sm text-gray-900 dark:text-white">
+                    {{ trade.sector || '-' }}
+                  </div>
+                </td>
+                
+                <!-- Status Column -->
+                <td v-else-if="column.visible && column.key === 'status'" 
+                    class="px-6 py-4 whitespace-nowrap cursor-pointer" 
+                    @click="$router.push(`/trades/${trade.id}`)">
+                  <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
+                    :class="[
+                      trade.exit_price 
+                        ? 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
+                        : 'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400'
+                    ]">
+                    {{ trade.exit_price ? 'Closed' : 'Open' }}
+                  </span>
+                </td>
+                
+                <!-- Comments Column -->
+                <td v-else-if="column.visible && column.key === 'comments'" 
+                    class="px-6 py-4 whitespace-nowrap text-center">
+                  <button
+                    @click.stop="openComments(trade)"
+                    class="inline-flex items-center text-gray-500 hover:text-primary-600 transition-colors"
+                  >
+                    <ChatBubbleLeftIcon class="h-4 w-4 mr-1" />
+                    <span class="text-sm">{{ trade.comment_count || 0 }}</span>
+                  </button>
+                </td>
+                
+                <!-- Additional Columns -->
+                <td v-else-if="column.visible && column.key === 'quantity'" 
+                    class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer" 
+                    @click="$router.push(`/trades/${trade.id}`)">
+                  {{ trade.quantity || '-' }}
+                </td>
+                
+                <td v-else-if="column.visible && column.key === 'commission'" 
+                    class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer" 
+                    @click="$router.push(`/trades/${trade.id}`)">
+                  {{ trade.commission ? `$${formatNumber(trade.commission)}` : '-' }}
+                </td>
+                
+                <td v-else-if="column.visible && column.key === 'fees'" 
+                    class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer" 
+                    @click="$router.push(`/trades/${trade.id}`)">
+                  {{ trade.fees ? `$${formatNumber(trade.fees)}` : '-' }}
+                </td>
+                
+                <td v-else-if="column.visible && column.key === 'strategy'" 
+                    class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer" 
+                    @click="$router.push(`/trades/${trade.id}`)">
+                  {{ trade.strategy || '-' }}
+                </td>
+                
+                <td v-else-if="column.visible && column.key === 'broker'" 
+                    class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer" 
+                    @click="$router.push(`/trades/${trade.id}`)">
+                  {{ trade.broker || '-' }}
+                </td>
+                
+                <td v-else-if="column.visible && column.key === 'tags'" 
+                    class="px-6 py-4 whitespace-nowrap cursor-pointer" 
+                    @click="$router.push(`/trades/${trade.id}`)">
+                  <div class="flex flex-wrap gap-1">
+                    <span v-for="tag in (trade.tags || [])" :key="tag" 
+                          class="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded">
+                      {{ tag }}
+                    </span>
+                    <span v-if="!trade.tags || trade.tags.length === 0" class="text-sm text-gray-500 dark:text-gray-400">-</span>
+                  </div>
+                </td>
+                
+                <td v-else-if="column.visible && column.key === 'notes'" 
+                    class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer" 
+                    @click="$router.push(`/trades/${trade.id}`)">
+                  <div class="truncate max-w-xs" :title="trade.notes">
+                    {{ trade.notes || '-' }}
+                  </div>
+                </td>
+                
+                <td v-else-if="column.visible && column.key === 'holdTime'" 
+                    class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer" 
+                    @click="$router.push(`/trades/${trade.id}`)">
+                  {{ formatHoldTime(trade) }}
+                </td>
+                
+                <td v-else-if="column.visible && column.key === 'roi'" 
+                    class="px-6 py-4 whitespace-nowrap cursor-pointer" 
+                    @click="$router.push(`/trades/${trade.id}`)">
+                  <div class="text-sm font-medium" :class="[
+                    trade.roi >= 0 ? 'text-green-600' : 'text-red-600'
+                  ]">
+                    {{ trade.roi ? `${trade.roi > 0 ? '+' : ''}${formatNumber(trade.roi)}%` : '-' }}
+                  </div>
+                </td>
+              </template>
+              <!-- Empty cell to align with column customizer -->
+              <td class="px-2 py-4" style="width: 40px;"></td>
             </tr>
           </tbody>
           </table>
@@ -484,11 +599,17 @@ import { format } from 'date-fns'
 import { DocumentTextIcon, ChatBubbleLeftIcon } from '@heroicons/vue/24/outline'
 import TradeFilters from '@/components/trades/TradeFilters.vue'
 import TradeCommentsDialog from '@/components/trades/TradeCommentsDialog.vue'
+import EnrichmentStatus from '@/components/trades/EnrichmentStatus.vue'
+import ColumnCustomizer from '@/components/trades/ColumnCustomizer.vue'
+import MdiIcon from '@/components/MdiIcon.vue'
+import { mdiNewspaper } from '@mdi/js'
 
 const tradesStore = useTradesStore()
 const route = useRoute()
 const router = useRouter()
 
+// MDI icons
+const newspaperIcon = mdiNewspaper
 
 // Comments dialog
 const showCommentsDialog = ref(false)
@@ -497,6 +618,13 @@ const selectedTrade = ref(null)
 // Bulk selection
 const selectedTrades = ref([])
 const showDeleteConfirm = ref(false)
+
+// Column management
+const tableColumns = ref([])
+
+const handleColumnsUpdate = (columns) => {
+  tableColumns.value = columns
+}
 
 // Pagination computed properties
 const visiblePages = computed(() => {
@@ -536,22 +664,22 @@ function formatNumber(num) {
 }
 
 function formatDate(date) {
-  // Handle date strings that might be in different formats
-  // If it's already a date string like '2025-07-04', treat it as local date
-  if (typeof date === 'string' && date.match(/^\d{4}-\d{2}-\d{2}$/)) {
-    // This is a date-only string, create local date to avoid timezone issues
-    const [year, month, day] = date.split('-')
-    const localDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day))
-    return format(localDate, 'MMM dd, yyyy')
-  }
-  // For datetime strings, use as-is
   return format(new Date(date), 'MMM dd, yyyy')
 }
 
+function formatHoldTime(trade) {
+  if (!trade.trade_date || !trade.exit_date) return '-'
+  const start = new Date(trade.trade_date)
+  const end = new Date(trade.exit_date)
+  const days = Math.floor((end - start) / (1000 * 60 * 60 * 24))
+  if (days === 0) return 'Same day'
+  if (days === 1) return '1 day'
+  return `${days} days`
+}
+
 function handleFilter(filters) {
-  console.log('🎯 handleFilter called with:', filters)
   tradesStore.setFilters(filters)
-  tradesStore.fetchTrades(filters) // Pass filters explicitly
+  tradesStore.fetchTrades()
 }
 
 function goToPage(page) {
@@ -627,8 +755,38 @@ async function executeBulkDelete() {
   }
 }
 
+// Get news badge classes based on sentiment
+function getNewsBadgeClasses(sentiment) {
+  const baseClasses = 'px-2 py-1 text-xs font-semibold rounded-full flex items-center'
+  
+  switch (sentiment) {
+    case 'positive':
+      return 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
+    case 'negative':
+      return 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
+    case 'neutral':
+    default:
+      return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
+  }
+}
 
 onMounted(() => {
+  // Add debug function to window for testing
+  window.debugSymbol = async (symbol) => {
+    try {
+      const response = await fetch(`/api/trades/debug-symbol?symbol=${symbol}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      const data = await response.json();
+      console.log('Debug Symbol Results:', data);
+      return data;
+    } catch (error) {
+      console.error('Debug failed:', error);
+    }
+  };
+
   // Check if there are URL parameters that the TradeFilters component should handle
   const hasFiltersInUrl = !!(
     route.query.symbol || route.query.startDate || route.query.endDate || 

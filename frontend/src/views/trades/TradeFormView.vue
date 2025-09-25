@@ -9,6 +9,62 @@
       </p>
     </div>
 
+    <!-- Behavioral Alert -->
+    <div v-if="behavioralAlert" class="mb-6 card border-l-4 border-l-red-500 bg-red-50 dark:bg-red-900/10">
+      <div class="card-body">
+        <div class="flex items-start">
+          <div class="flex-shrink-0">
+            <svg class="h-6 w-6 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
+          </div>
+          <div class="ml-3 flex-1">
+            <h3 class="text-lg font-medium text-red-800 dark:text-red-400">Revenge Trading Alert</h3>
+            <p class="text-red-700 dark:text-red-300 mt-1">{{ behavioralAlert.message }}</p>
+            <div v-if="behavioralAlert.recommendation" class="mt-2">
+              <p class="text-sm text-red-600 dark:text-red-400">
+                <strong>Recommendation:</strong> {{ behavioralAlert.recommendation }}
+              </p>
+            </div>
+            <div v-if="behavioralAlert.coolingPeriod" class="mt-3">
+              <div class="flex items-center space-x-2">
+                <button
+                  @click="takeCoolingPeriod"
+                  class="px-3 py-1 text-sm bg-red-200 text-red-800 rounded hover:bg-red-300 dark:bg-red-900/30 dark:text-red-300 dark:hover:bg-red-900/50"
+                >
+                  Take {{ behavioralAlert.coolingPeriod }} minute break
+                </button>
+                <button
+                  @click="acknowledgeBehavioralAlert"
+                  class="px-3 py-1 text-sm bg-gray-200 text-gray-700 rounded hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
+                >
+                  Continue anyway
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Trade Blocking Warning -->
+    <div v-if="tradeBlocked" class="mb-6 card border-l-4 border-l-red-600 bg-red-100 dark:bg-red-900/20">
+      <div class="card-body text-center">
+        <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 dark:bg-red-900/20 mb-4">
+          <svg class="h-6 w-6 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636m12.728 12.728L18.364 5.636M5.636 18.364l12.728-12.728" />
+          </svg>
+        </div>
+        <h3 class="text-lg font-medium text-red-800 dark:text-red-400 mb-2">Trading Temporarily Blocked</h3>
+        <p class="text-red-700 dark:text-red-300 mb-4">
+          Based on your recent trading patterns, we recommend taking a break to avoid emotional decision-making.
+        </p>
+        <p class="text-sm text-red-600 dark:text-red-400">
+          Recommended cooling period: {{ tradeBlockingInfo.recommendedCoolingPeriod }} minutes
+        </p>
+      </div>
+    </div>
+
     <form @submit.prevent="handleSubmit" class="card">
       <div class="card-body space-y-6">
         <!-- Symbol field standalone -->
@@ -53,11 +109,11 @@
               id="entryPrice"
               v-model="form.entryPrice"
               type="number"
-              step="0.0001"
+              step="0.000001"
               min="0"
               required
               class="input"
-              placeholder="0.0000"
+              placeholder="0.000000"
             />
           </div>
 
@@ -67,10 +123,10 @@
               id="exitPrice"
               v-model="form.exitPrice"
               type="number"
-              step="0.0001"
+              step="0.000001"
               min="0"
               class="input"
-              placeholder="0.0000"
+              placeholder="0.000000"
             />
           </div>
 
@@ -80,7 +136,8 @@
               id="quantity"
               v-model="form.quantity"
               type="number"
-              min="1"
+              min="0.0001"
+              step="0.0001"
               required
               class="input"
               placeholder="100"
@@ -102,10 +159,10 @@
               id="commission"
               v-model="form.commission"
               type="number"
-              step="0.0001"
+              step="0.000001"
               min="0"
               class="input"
-              placeholder="0.0000"
+              placeholder="0.000000"
             />
           </div>
 
@@ -115,10 +172,10 @@
               id="fees"
               v-model="form.fees"
               type="number"
-              step="0.0001"
+              step="0.000001"
               min="0"
               class="input"
-              placeholder="0.0000"
+              placeholder="0.000000"
             />
           </div>
 
@@ -131,9 +188,9 @@
               id="mae"
               v-model="form.mae"
               type="number"
-              step="0.0001"
+              step="0.000001"
               class="input"
-              placeholder="0.0000"
+              placeholder="0.000000"
             />
           </div>
 
@@ -146,9 +203,9 @@
               id="mfe"
               v-model="form.mfe"
               type="number"
-              step="0.0001"
+              step="0.000001"
               class="input"
-              placeholder="0.0000"
+              placeholder="0.000000"
             />
           </div>
 
@@ -163,6 +220,39 @@
             />
           </div>
 
+          <!-- Confidence Level -->
+          <div class="sm:col-span-2">
+            <label for="confidence" class="label">Confidence Level (1-10)</label>
+            <div class="mt-2">
+              <div class="flex items-center space-x-4">
+                <span class="text-sm text-gray-500 dark:text-gray-400">1</span>
+                <div class="flex-1 relative">
+                  <input
+                    id="confidence"
+                    v-model="form.confidence"
+                    type="range"
+                    min="1"
+                    max="10"
+                    step="1"
+                    class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700 slider"
+                    :style="{ background: `linear-gradient(to right, #F0812A 0%, #F0812A ${(form.confidence - 1) * 11.11}%, #e5e7eb ${(form.confidence - 1) * 11.11}%, #e5e7eb 100%)` }"
+                  />
+                  <div class="flex justify-between text-xs text-gray-400 mt-1">
+                    <span v-for="i in 10" :key="i" class="w-4 text-center">{{ i }}</span>
+                  </div>
+                </div>
+                <span class="text-sm text-gray-500 dark:text-gray-400">10</span>
+              </div>
+              <div class="mt-2 text-center">
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-300">
+                  Confidence: {{ form.confidence }}/10
+                </span>
+              </div>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Rate your confidence level in this trade setup from 1 (very low) to 10 (very high)
+              </p>
+            </div>
+          </div>
           
         </div>
       
@@ -210,6 +300,24 @@
             @keydown="handleNotesKeydown"
           ></textarea>
         </div>
+
+        <!-- Current Images (when editing) -->
+        <div v-if="isEdit && currentImages.length > 0">
+          <TradeImages
+            :trade-id="route.params.id"
+            :images="currentImages"
+            :can-delete="true"
+            @deleted="handleImageDeleted"
+          />
+        </div>
+
+        <!-- Image Upload Section -->
+        <div v-if="isEdit && route.params.id">
+          <ImageUpload 
+            :trade-id="route.params.id" 
+            @uploaded="handleImageUploaded"
+          />
+        </div>
   
         <div class="flex items-center">
           <input
@@ -249,11 +357,14 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTradesStore } from '@/stores/trades'
 import { useNotification } from '@/composables/useNotification'
 import { useAnalytics } from '@/composables/useAnalytics'
+import ImageUpload from '@/components/trades/ImageUpload.vue'
+import TradeImages from '@/components/trades/TradeImages.vue'
+import api from '@/services/api'
 
 const showMoreOptions = ref(false)
 const route = useRoute()
@@ -264,6 +375,10 @@ const { trackTradeAction } = useAnalytics()
 
 const loading = ref(false)
 const error = ref(null)
+const behavioralAlert = ref(null)
+const tradeBlocked = ref(false)
+const tradeBlockingInfo = ref(null)
+const hasProAccess = ref(false)
 
 const isEdit = computed(() => !!route.params.id)
 
@@ -283,10 +398,12 @@ const form = ref({
   strategy: '',
   setup: '',
   notes: '',
-  isPublic: false
+  isPublic: false,
+  confidence: 5
 })
 
 const tagsInput = ref('')
+const currentImages = ref([])
 
 function formatDateTimeLocal(date) {
   if (!date) return ''
@@ -322,10 +439,12 @@ async function loadTrade() {
       strategy: trade.strategy || '',
       setup: trade.setup || '',
       notes: trade.notes || '',
-      isPublic: trade.is_public || false
+      isPublic: trade.is_public || false,
+      confidence: trade.confidence || 5
     }
     
     tagsInput.value = trade.tags ? trade.tags.join(', ') : ''
+    currentImages.value = trade.attachments || []
   } catch (err) {
     showError('Error', 'Failed to load trade')
     router.push('/trades')
@@ -346,6 +465,14 @@ async function handleSubmit() {
   error.value = null
 
   try {
+    // Check for trade blocking if user has Pro access and it's a new trade
+    if (!isEdit.value && hasProAccess.value) {
+      const blockStatus = await checkTradeBlocking()
+      if (blockStatus.shouldBlock) {
+        return
+      }
+    }
+
     const tradeData = {
       ...form.value,
       entryPrice: parseFloat(form.value.entryPrice),
@@ -355,6 +482,7 @@ async function handleSubmit() {
       fees: parseFloat(form.value.fees) || 0,
       mae: form.value.mae ? parseFloat(form.value.mae) : null,
       mfe: form.value.mfe ? parseFloat(form.value.mfe) : null,
+      confidence: parseInt(form.value.confidence) || 5,
       tags: tagsInput.value ? tagsInput.value.split(',').map(tag => tag.trim()).filter(Boolean) : []
     }
 
@@ -367,8 +495,16 @@ async function handleSubmit() {
         strategy: tradeData.strategy,
         notes: !!tradeData.notes
       })
+      // For edits, go back to the trade detail page
+      router.push(`/trades/${route.params.id}`)
     } else {
-      await tradesStore.createTrade(tradeData)
+      // Analyze for revenge trading before creating (non-blocking)
+      if (hasProAccess.value) {
+        analyzeForRevengeTrading(tradeData).catch(err => {
+          console.warn('Revenge trading analysis failed, continuing with trade creation:', err)
+        })
+      }
+      const newTrade = await tradesStore.createTrade(tradeData)
       showSuccess('Success', 'Trade created successfully')
       trackTradeAction('create', {
         side: tradeData.side,
@@ -376,9 +512,9 @@ async function handleSubmit() {
         strategy: tradeData.strategy,
         notes: !!tradeData.notes
       })
+      // For new trades, go to trades list
+      router.push('/trades')
     }
-
-    router.push('/trades')
   } catch (err) {
     error.value = err.response?.data?.error || 'An error occurred'
     showError('Error', error.value)
@@ -387,13 +523,114 @@ async function handleSubmit() {
   }
 }
 
-onMounted(() => {
+function handleImageUploaded() {
+  // Refresh trade data to show new images
+  loadTrade()
+  showSuccess('Images Uploaded', 'Trade images uploaded successfully')
+}
+
+function handleImageDeleted(imageId) {
+  // Remove the deleted image from the current images array
+  currentImages.value = currentImages.value.filter(img => img.id !== imageId)
+}
+
+// Check if user has access to behavioral analytics
+async function checkProAccess() {
+  try {
+    const response = await api.get('/features/check/behavioral_analytics')
+    hasProAccess.value = response.data.hasAccess
+  } catch (error) {
+    hasProAccess.value = false
+  }
+}
+
+// Check if user should be blocked from trading
+async function checkTradeBlocking() {
+  try {
+    const response = await api.get('/behavioral-analytics/trade-block-status')
+    const { shouldBlock, reason, alerts, recommendedCoolingPeriod } = response.data.data
+    
+    if (shouldBlock) {
+      tradeBlocked.value = true
+      tradeBlockingInfo.value = {
+        reason,
+        alerts,
+        recommendedCoolingPeriod
+      }
+      return { shouldBlock: true }
+    }
+    
+    return { shouldBlock: false }
+  } catch (error) {
+    console.error('Error checking trade blocking:', error)
+    return { shouldBlock: false }
+  }
+}
+
+// Analyze trade for revenge trading patterns
+async function analyzeForRevengeTrading(tradeData) {
+  try {
+    const response = await api.post('/behavioral-analytics/analyze-trade', {
+      trade: tradeData
+    })
+    
+    const analysis = response.data.data
+    if (analysis && analysis.alerts && Array.isArray(analysis.alerts) && analysis.alerts.length > 0) {
+      const alert = analysis.alerts[0]
+      behavioralAlert.value = {
+        message: alert.message,
+        recommendation: alert.recommendation,
+        coolingPeriod: analysis.recommendedCoolingPeriod
+      }
+    }
+  } catch (error) {
+    console.error('Error analyzing trade for revenge trading:', error)
+  }
+}
+
+// Handle cooling period action
+function takeCoolingPeriod() {
+  showSuccess('Cooling Period', `Taking a ${behavioralAlert.value.coolingPeriod} minute break. Come back refreshed!`)
+  router.push('/dashboard')
+}
+
+// Acknowledge behavioral alert and continue
+function acknowledgeBehavioralAlert() {
+  behavioralAlert.value = null
+}
+
+// Watch for changes in entry time to trigger revenge trading analysis
+watch(() => form.value.entryTime, async (newTime) => {
+  if (!isEdit.value && hasProAccess.value && newTime) {
+    // Clear previous alerts when entry time changes
+    behavioralAlert.value = null
+    
+    // Only analyze if we have enough data to calculate patterns
+    if (form.value.symbol && form.value.entryPrice && form.value.quantity && form.value.side) {
+      const tradeData = {
+        ...form.value,
+        entryPrice: parseFloat(form.value.entryPrice),
+        quantity: parseInt(form.value.quantity)
+      }
+      await analyzeForRevengeTrading(tradeData)
+    }
+  }
+})
+
+onMounted(async () => {
+  await checkProAccess()
+  
   if (isEdit.value) {
     loadTrade()
   } else {
     // Set default entry time
     const now = new Date()
     form.value.entryTime = formatDateTimeLocal(now)
+    
+    // Check for trade blocking on new trades
+    if (hasProAccess.value) {
+      await checkTradeBlocking()
+    }
   }
 })
 </script>

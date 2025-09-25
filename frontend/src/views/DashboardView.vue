@@ -8,6 +8,27 @@
           <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
             Trading performance analytics and insights
           </p>
+          
+          <!-- Market Status and Refresh Indicator -->
+          <div class="mt-2 flex items-center space-x-4 text-xs">
+            <div class="flex items-center space-x-2">
+              <div class="flex items-center">
+                <div 
+                  class="w-2 h-2 rounded-full mr-2"
+                  :class="[
+                    marketStatus.isOpen ? 'bg-green-500' : 'bg-red-500'
+                  ]"
+                ></div>
+                <span class="text-gray-600 dark:text-gray-400">
+                  {{ marketStatus.status }}
+                </span>
+              </div>
+            </div>
+            
+            <div v-if="isAutoUpdating" class="text-gray-500 dark:text-gray-400">
+              <span>{{ nextRefreshIn }}s</span>
+            </div>
+          </div>
         </div>
         
         <!-- Filters -->
@@ -66,6 +87,9 @@
     </div>
 
     <div v-else class="space-y-8">
+      <!-- Today's Journal Entry -->
+      <TodaysJournalEntry />
+      
       <!-- Open Trades Section -->
       <div v-if="openTrades.length > 0" class="card">
         <div class="card-body">
@@ -78,45 +102,6 @@
               >
                 View all →
               </button>
-              
-              <!-- Auto-refresh indicator -->
-              <div class="ml-auto flex items-center space-x-3">
-                <!-- Market status -->
-                <div class="flex items-center text-xs">
-                  <div 
-                    :class="{
-                      'text-green-600 dark:text-green-400': marketStatus.isOpen,
-                      'text-gray-500 dark:text-gray-400': !marketStatus.isOpen,
-                      'text-yellow-600 dark:text-yellow-400': marketStatus.isPreMarket || marketStatus.isAfterHours
-                    }"
-                  >
-                    <span class="hidden sm:inline">{{ marketStatusMessage }}</span>
-                    <span class="sm:hidden">
-                      {{ marketStatus.isOpen ? (marketStatus.isRegularHours ? 'Open' : marketStatus.isPreMarket ? 'Pre' : 'AH') : 'Closed' }}
-                    </span>
-                  </div>
-                </div>
-                
-                <button 
-                  @click="fetchOpenTrades(false)"
-                  :disabled="priceRefreshLoading"
-                  class="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 disabled:opacity-50"
-                  title="Refresh prices now"
-                >
-                  <svg class="w-4 h-4" :class="{ 'animate-spin': priceRefreshLoading }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                </button>
-                
-                <div v-if="priceRefreshTimer && marketStatus.isOpen" class="flex items-center text-xs text-green-600 dark:text-green-400">
-                  <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse mr-1"></div>
-                  Auto
-                </div>
-                
-                <div v-if="lastPriceUpdate" class="text-xs text-gray-400">
-                  {{ timeAgo }}
-                </div>
-              </div>
             </div>
             <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400">
               {{ openTrades.length }} {{ openTrades.length === 1 ? 'position' : 'positions' }}
@@ -170,13 +155,15 @@
                         :class="[
                           position.side === 'long' 
                             ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
-                            : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
+                            : position.side === 'short'
+                            ? 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
+                            : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
                         ]">
-                        {{ position.side }}
+                        {{ position.side === 'neutral' ? 'hedged' : position.side }}
                       </span>
                     </td>
                     <td class="px-3 py-2 text-sm font-bold text-gray-900 dark:text-white text-right">
-                      {{ position.totalQuantity.toLocaleString() }}
+                      {{ position.totalQuantity === 0 ? 'Hedged' : position.totalQuantity.toLocaleString() }}
                     </td>
                     <td class="px-3 py-2 text-sm font-bold text-gray-900 dark:text-white text-right">
                       ${{ formatCurrency(position.avgPrice) }}
@@ -329,7 +316,7 @@
               ${{ formatCurrency(analytics.summary.totalPnL) }}
             </dd>
             <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-              Avg: ${{ formatCurrency(analytics.summary.avgPnL) }}
+              {{ calculationMethod }}: ${{ formatCurrency(analytics.summary.avgPnL) }}
             </div>
           </div>
         </div>
@@ -386,7 +373,7 @@
         <div class="card cursor-pointer hover:shadow-lg transition-shadow" @click="navigateToTradesFiltered('avgWin')">
           <div class="card-body">
             <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
-              Average Win
+              {{ calculationMethod }} Win
             </dt>
             <dd class="mt-1 text-2xl font-semibold text-green-600">
               ${{ formatCurrency(analytics.summary.avgWin) }}
@@ -397,7 +384,7 @@
         <div class="card cursor-pointer hover:shadow-lg transition-shadow" @click="navigateToTradesFiltered('avgLoss')">
           <div class="card-body">
             <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
-              Average Loss
+              {{ calculationMethod }} Loss
             </dt>
             <dd class="mt-1 text-2xl font-semibold text-red-600">
               ${{ formatCurrency(Math.abs(analytics.summary.avgLoss)) }}
@@ -547,15 +534,23 @@
               <div>
                 <h4 class="text-sm font-medium text-red-600 mb-2">Worst Trades</h4>
                 <div class="space-y-1">
-                  <div v-for="trade in analytics.topTrades.worst" :key="`worst-${trade.symbol}-${trade.trade_date}`" 
+                  <div v-if="analytics.topTrades.worst && analytics.topTrades.worst.length > 0"
+                       v-for="trade in analytics.topTrades.worst" :key="`worst-${trade.symbol}-${trade.trade_date}`" 
                        @click="navigateToTradesBySymbolAndDate(trade.symbol, trade.trade_date)"
                        class="flex justify-between items-center text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 rounded p-2 transition-colors">
                     <span class="text-gray-900 dark:text-white">
                       {{ trade.symbol }} {{ formatDate(trade.trade_date) }}
                     </span>
-                    <span class="text-red-600 font-medium">
+                    <span :class="[
+                      trade.pnl >= 0 ? 'text-green-600' : 'text-red-600',
+                      'font-medium'
+                    ]">
                       ${{ formatCurrency(trade.pnl) }}
                     </span>
+                  </div>
+                  <div v-else class="text-sm text-gray-500 dark:text-gray-400 italic py-2 flex items-center">
+                    <MdiIcon :icon="mdiCheckCircle" :size="16" class="mr-1 text-green-500" />
+                    No losing trades found
                   </div>
                 </div>
               </div>
@@ -611,7 +606,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, nextTick, watch, computed } from 'vue'
+import { ref, onMounted, nextTick, watch, computed, onUnmounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useRouter } from 'vue-router'
 import { format } from 'date-fns'
@@ -619,18 +614,32 @@ import Chart from 'chart.js/auto'
 import api from '@/services/api'
 import TradeNewsSection from '@/components/dashboard/TradeNewsSection.vue'
 import UpcomingEarningsSection from '@/components/dashboard/UpcomingEarningsSection.vue'
-import { getMarketStatus, shouldRefreshPrices, getRefreshInterval, getMarketStatusMessage } from '@/utils/marketHours'
+import TodaysJournalEntry from '@/components/diary/TodaysJournalEntry.vue'
+import MdiIcon from '@/components/MdiIcon.vue'
+import { mdiCheckCircle } from '@mdi/js'
+import { getRefreshInterval, shouldRefreshPrices, getMarketStatus } from '@/utils/marketHours'
 
 const authStore = useAuthStore()
 const router = useRouter()
 
 const loading = ref(true)
+const userSettings = ref(null)
 const analytics = ref({
   summary: {},
   performanceBySymbol: [],
   dailyPnL: [],
   dailyWinRate: [],
   topTrades: { best: [], worst: [] }
+})
+
+// Auto-update state
+const lastRefresh = ref(null)
+const nextRefreshIn = ref(0)
+const isAutoUpdating = ref(false)
+const marketStatus = ref({ isOpen: false, status: 'Market Closed' })
+
+const calculationMethod = computed(() => {
+  return userSettings.value?.statisticsCalculation === 'median' ? 'Median' : 'Average'
 })
 const openTrades = ref([])
 const symbols = ref([])
@@ -650,13 +659,8 @@ const winRateChart = ref(null)
 let pnlChartInstance = null
 let distributionChartInstance = null
 let winRateChartInstance = null
-
-// Auto-refresh for open positions
-const priceRefreshTimer = ref(null)
-const priceRefreshLoading = ref(false)
-const lastPriceUpdate = ref(null)
-const timeDisplayTimer = ref(null)
-const currentTime = ref(new Date())
+let updateInterval = null
+let countdownInterval = null
 
 const openTradeSymbols = computed(() => {
   return [...new Set(openTrades.value.map(position => position.symbol))]
@@ -700,30 +704,19 @@ function formatDate(dateStr) {
   return format(new Date(dateStr), 'MMM dd')
 }
 
-const timeAgo = computed(() => {
-  if (!lastPriceUpdate.value) return ''
+function formatLastRefresh(timestamp) {
+  if (!timestamp) return ''
+  const now = new Date()
+  const diff = Math.floor((now - timestamp) / 1000)
   
-  const diffInSeconds = Math.floor((currentTime.value - lastPriceUpdate.value) / 1000)
-  
-  if (diffInSeconds < 60) {
-    return `${diffInSeconds}s ago`
-  } else if (diffInSeconds < 3600) {
-    const minutes = Math.floor(diffInSeconds / 60)
-    return `${minutes}m ago`
+  if (diff < 60) {
+    return `${diff}s ago`
+  } else if (diff < 3600) {
+    return `${Math.floor(diff / 60)}m ago`
   } else {
-    const hours = Math.floor(diffInSeconds / 3600)
-    return `${hours}h ago`
+    return format(timestamp, 'h:mm a')
   }
-})
-
-// Market status
-const marketStatus = computed(() => {
-  return getMarketStatus()
-})
-
-const marketStatusMessage = computed(() => {
-  return getMarketStatusMessage()
-})
+}
 
 function getDateRange(range) {
   if (range === 'all') {
@@ -816,13 +809,8 @@ async function fetchAnalytics() {
   }
 }
 
-async function fetchOpenTrades(isAutoRefresh = false) {
+async function fetchOpenTrades() {
   try {
-    // Set loading state only for manual refresh, not auto-refresh
-    if (!isAutoRefresh) {
-      priceRefreshLoading.value = true
-    }
-    
     // Use the new endpoint that includes real-time quotes
     console.log('Fetching open positions with quotes...')
     const response = await api.get('/trades/open-positions-quotes')
@@ -834,7 +822,6 @@ async function fetchOpenTrades(isAutoRefresh = false) {
     }
     
     openTrades.value = response.data.positions || []
-    lastPriceUpdate.value = new Date()
     console.log('Set openTrades to:', openTrades.value)
     
   } catch (error) {
@@ -876,8 +863,6 @@ async function fetchOpenTrades(isAutoRefresh = false) {
       console.error('Fallback fetch also failed:', fallbackError)
       openTrades.value = []
     }
-  } finally {
-    priceRefreshLoading.value = false
   }
 }
 
@@ -1258,71 +1243,6 @@ function navigateToTradesByPnLType(type) {
   })
 }
 
-// Auto-refresh functions
-function startPriceRefresh() {
-  // Only start if we have open trades
-  if (openTrades.value.length === 0) {
-    return
-  }
-  
-  // Check if market is open
-  if (!shouldRefreshPrices()) {
-    console.log('Market is closed - skipping auto-refresh')
-    return
-  }
-  
-  const refreshInterval = getRefreshInterval()
-  if (!refreshInterval) {
-    console.log('No refresh needed during market closed hours')
-    return
-  }
-  
-  console.log(`Starting price auto-refresh every ${refreshInterval / 1000} seconds during market hours`)
-  
-  // Do an immediate check and fetch
-  if (shouldRefreshPrices()) {
-    fetchOpenTrades(true)
-  }
-  
-  priceRefreshTimer.value = setInterval(() => {
-    // Check market status on each interval
-    if (shouldRefreshPrices()) {
-      fetchOpenTrades(true) // isAutoRefresh = true
-    } else {
-      console.log('Market closed - skipping refresh')
-      // Optionally stop the timer if market closes
-      stopPriceRefresh()
-    }
-  }, refreshInterval)
-}
-
-function stopPriceRefresh() {
-  if (priceRefreshTimer.value) {
-    console.log('Stopping price auto-refresh')
-    clearInterval(priceRefreshTimer.value)
-    priceRefreshTimer.value = null
-  }
-}
-
-function restartPriceRefresh() {
-  stopPriceRefresh()
-  startPriceRefresh()
-}
-
-function startTimeDisplay() {
-  // Update current time every second to keep the "time ago" display current
-  timeDisplayTimer.value = setInterval(() => {
-    currentTime.value = new Date()
-  }, 1000)
-}
-
-function stopTimeDisplay() {
-  if (timeDisplayTimer.value) {
-    clearInterval(timeDisplayTimer.value)
-    timeDisplayTimer.value = null
-  }
-}
-
 // Watch for when loading finishes to try creating charts
 watch(loading, (newLoading) => {
   if (!newLoading && analytics.value.dailyPnL?.length > 0) {
@@ -1333,60 +1253,130 @@ watch(loading, (newLoading) => {
   }
 })
 
-// Watch open trades to manage auto-refresh
-watch(openTrades, (newOpenTrades, oldOpenTrades) => {
-  // Start auto-refresh if we now have open trades and didn't before
-  if (newOpenTrades.length > 0 && (!oldOpenTrades || oldOpenTrades.length === 0)) {
-    startPriceRefresh()
+async function fetchUserSettings() {
+  try {
+    const response = await api.get('/settings')
+    userSettings.value = response.data.settings
+  } catch (error) {
+    console.error('Failed to load user settings:', error)
+    // Default to average if loading fails
+    userSettings.value = { statisticsCalculation: 'average' }
   }
-  // Stop auto-refresh if we no longer have open trades
-  else if (newOpenTrades.length === 0 && oldOpenTrades && oldOpenTrades.length > 0) {
-    stopPriceRefresh()
+}
+
+// Update market status
+function updateMarketStatus() {
+  const status = getMarketStatus()
+  marketStatus.value = {
+    isOpen: status.isOpen || status.isRegularHours,
+    status: status.marketPhase || status.reason || status.status || 'Market Closed'
   }
-}, { immediate: false })
+}
+
+// Start countdown timer
+function startCountdown(intervalMs) {
+  clearInterval(countdownInterval)
+  nextRefreshIn.value = Math.floor(intervalMs / 1000)
+  
+  countdownInterval = setInterval(() => {
+    nextRefreshIn.value--
+    if (nextRefreshIn.value <= 0) {
+      nextRefreshIn.value = Math.floor(intervalMs / 1000)
+    }
+  }, 1000)
+}
+
+// Auto-update functionality
+function startAutoUpdate() {
+  console.log('Dashboard: Starting auto-update check...')
+  clearInterval(updateInterval)
+  clearInterval(countdownInterval)
+  
+  updateMarketStatus()
+  
+  const refreshInterval = getRefreshInterval()
+  console.log('Dashboard: Refresh interval from market hours:', refreshInterval)
+  
+  if (refreshInterval && shouldRefreshPrices()) {
+    console.log(`Dashboard: Setting up auto-update every ${refreshInterval/1000} seconds during market hours`)
+    isAutoUpdating.value = true
+    
+    // Start countdown
+    startCountdown(refreshInterval)
+    
+    updateInterval = setInterval(async () => {
+      console.log('Dashboard: Auto-updating open positions and news...')
+      try {
+        // Only refresh open positions during market hours for price updates
+        await fetchOpenTrades()
+        lastRefresh.value = new Date()
+        console.log('Dashboard: Auto-update completed successfully')
+      } catch (error) {
+        console.error('Dashboard: Auto-update failed:', error)
+      }
+    }, refreshInterval)
+  } else {
+    console.log('Dashboard: No auto-update needed - market is closed')
+    isAutoUpdating.value = false
+  }
+}
+
+function stopAutoUpdate() {
+  console.log('Dashboard: Stopping auto-update...')
+  if (updateInterval) {
+    clearInterval(updateInterval)
+    updateInterval = null
+  }
+  if (countdownInterval) {
+    clearInterval(countdownInterval)
+    countdownInterval = null
+  }
+  isAutoUpdating.value = false
+  nextRefreshIn.value = 0
+}
+
+// Check market status periodically to start/stop updates as needed
+function checkMarketStatus() {
+  updateMarketStatus()
+  
+  const refreshInterval = getRefreshInterval()
+  const shouldRefresh = shouldRefreshPrices()
+  
+  // If market status changed, restart auto-update
+  if (shouldRefresh && !updateInterval) {
+    console.log('Dashboard: Market opened - starting auto-updates')
+    startAutoUpdate()
+  } else if (!shouldRefresh && updateInterval) {
+    console.log('Dashboard: Market closed - stopping auto-updates')
+    stopAutoUpdate()
+  }
+}
 
 onMounted(async () => {
-  // Start the time display timer
-  startTimeDisplay()
-  
   await Promise.all([
     fetchAnalytics(),
     fetchFilterOptions(),
-    fetchOpenTrades()
+    fetchOpenTrades(),
+    fetchUserSettings()
   ])
   
-  // Check market status periodically to start/stop refresh
-  checkMarketStatusPeriodically()
+  // Set initial refresh timestamp
+  lastRefresh.value = new Date()
+  
+  // Start auto-update functionality
+  startAutoUpdate()
+  
+  // Check market status every minute to handle market open/close transitions
+  const marketStatusChecker = setInterval(checkMarketStatus, 60000) // Check every minute
+  
+  // Clean up on unmount
+  onUnmounted(() => {
+    stopAutoUpdate()
+    clearInterval(marketStatusChecker)
+  })
 })
 
-// Market status checker
-let marketCheckInterval = null
-
-function checkMarketStatusPeriodically() {
-  // Check every minute if we should start or stop auto-refresh
-  marketCheckInterval = setInterval(() => {
-    const shouldRefresh = shouldRefreshPrices()
-    const isRefreshing = !!priceRefreshTimer.value
-    
-    if (shouldRefresh && !isRefreshing && openTrades.value.length > 0) {
-      console.log('Market opened - starting auto-refresh')
-      startPriceRefresh()
-    } else if (!shouldRefresh && isRefreshing) {
-      console.log('Market closed - stopping auto-refresh')
-      stopPriceRefresh()
-    }
-  }, 60000) // Check every minute
-}
-
 onUnmounted(() => {
-  // Clean up timers when component is unmounted
-  stopPriceRefresh()
-  stopTimeDisplay()
-  
-  // Clear market check interval
-  if (marketCheckInterval) {
-    clearInterval(marketCheckInterval)
-    marketCheckInterval = null
-  }
+  stopAutoUpdate()
 })
 </script>

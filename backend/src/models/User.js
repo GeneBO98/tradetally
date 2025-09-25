@@ -2,16 +2,21 @@ const db = require('../config/database');
 const bcrypt = require('bcryptjs');
 
 class User {
-  static async create({ email, username, password, fullName, verificationToken, verificationExpires, role = 'user', isVerified = false, adminApproved = true }) {
+  static async create({ email, username, password, fullName, verificationToken, verificationExpires, role = 'user', isVerified = false, adminApproved = true, tier = 'free' }) {
     const hashedPassword = await bcrypt.hash(password, 10);
     
+    // Admins get Pro tier by default
+    if (role === 'admin' || role === 'owner') {
+      tier = 'pro';
+    }
+    
     const query = `
-      INSERT INTO users (email, username, password_hash, full_name, verification_token, verification_expires, role, is_verified, admin_approved)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-      RETURNING id, email, username, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone, created_at
+      INSERT INTO users (email, username, password_hash, full_name, verification_token, verification_expires, role, is_verified, admin_approved, tier)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      RETURNING id, email, username, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone, tier, created_at
     `;
     
-    const values = [email.toLowerCase(), username, hashedPassword, fullName, verificationToken, verificationExpires, role, isVerified, adminApproved];
+    const values = [email.toLowerCase(), username, hashedPassword, fullName, verificationToken, verificationExpires, role, isVerified, adminApproved, tier];
     const result = await db.query(query, values);
     
     return result.rows[0];
@@ -20,7 +25,7 @@ class User {
   static async findById(id) {
     const query = `
       SELECT id, email, username, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone, 
-             two_factor_enabled, created_at, updated_at
+             two_factor_enabled, tier, created_at, updated_at
       FROM users
       WHERE id = $1 AND is_active = true
     `;
@@ -32,7 +37,7 @@ class User {
   static async findByIdForAdmin(id) {
     const query = `
       SELECT id, email, username, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone, 
-             two_factor_enabled, created_at, updated_at
+             two_factor_enabled, tier, created_at, updated_at
       FROM users
       WHERE id = $1
     `;
@@ -44,7 +49,7 @@ class User {
   static async findByEmail(email) {
     const query = `
       SELECT id, email, username, password_hash, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone, 
-             two_factor_enabled, two_factor_secret, created_at
+             two_factor_enabled, two_factor_secret, tier, created_at
       FROM users
       WHERE email = $1
     `;
@@ -55,7 +60,7 @@ class User {
 
   static async findByUsername(username) {
     const query = `
-      SELECT id, email, username, full_name, avatar_url, is_verified, admin_approved, is_active, timezone, created_at
+      SELECT id, email, username, full_name, avatar_url, is_verified, admin_approved, is_active, timezone, tier, created_at
       FROM users
       WHERE username = $1 AND is_active = true
     `;
@@ -90,7 +95,7 @@ class User {
       UPDATE users
       SET ${fields.join(', ')}
       WHERE id = $${paramCount}
-      RETURNING id, email, username, full_name, avatar_url, is_verified, admin_approved, is_active, timezone, updated_at
+      RETURNING id, email, username, full_name, avatar_url, is_verified, admin_approved, is_active, timezone, tier, updated_at
     `;
 
     const result = await db.query(query, values);
@@ -125,8 +130,30 @@ class User {
       WHERE user_id = $1
     `;
     
-    const result = await db.query(query, [userId]);
-    return result.rows[0];
+    try {
+      const result = await db.query(query, [userId]);
+      const settings = result.rows[0];
+      
+      // Provide default for statisticsCalculation if column doesn't exist yet
+      if (settings && !settings.hasOwnProperty('statistics_calculation')) {
+        settings.statistics_calculation = 'average';
+      }
+      
+      return settings;
+    } catch (error) {
+      // If column doesn't exist, gracefully handle it
+      if (error.message.includes('statistics_calculation')) {
+        console.warn('statistics_calculation column not yet migrated, using default');
+        const query = `SELECT * FROM user_settings WHERE user_id = $1`;
+        const result = await db.query(query, [userId]);
+        const settings = result.rows[0];
+        if (settings) {
+          settings.statistics_calculation = 'average';
+        }
+        return settings;
+      }
+      throw error;
+    }
   }
 
   static async updateSettings(userId, settings) {
@@ -148,7 +175,8 @@ class User {
       experienceLevel: 'experience_level',
       averagePositionSize: 'average_position_size',
       tradingGoals: 'trading_goals',
-      preferredSectors: 'preferred_sectors'
+      preferredSectors: 'preferred_sectors',
+      statisticsCalculation: 'statistics_calculation'
     };
 
     Object.entries(settings).forEach(([key, value]) => {
@@ -169,8 +197,33 @@ class User {
       RETURNING *
     `;
 
-    const result = await db.query(query, values);
-    return result.rows[0];
+    try {
+      const result = await db.query(query, values);
+      return result.rows[0];
+    } catch (error) {
+      // If statistics_calculation column doesn't exist, try update without it
+      if (error.message.includes('statistics_calculation') && settings.statisticsCalculation) {
+        console.warn('statistics_calculation column not yet migrated, skipping field');
+        const filteredFields = fields.filter(field => !field.includes('statistics_calculation'));
+        const filteredValues = values.filter((value, index) => {
+          const field = fields[index];
+          return field && !field.includes('statistics_calculation');
+        });
+        
+        if (filteredFields.length > 0) {
+          const fallbackQuery = `
+            UPDATE user_settings
+            SET ${filteredFields.join(', ')}
+            WHERE user_id = $${filteredValues.length + 1}
+            RETURNING *
+          `;
+          filteredValues.push(userId);
+          const result = await db.query(fallbackQuery, filteredValues);
+          return result.rows[0];
+        }
+      }
+      throw error;
+    }
   }
 
   static async findByVerificationToken(token) {
@@ -249,95 +302,85 @@ class User {
     return parseInt(result.rows[0].count);
   }
 
+  // Admin user management methods
+  static async getAllUsers(limit = 25, offset = 0, search = '') {
+    try {
+      // First try a simple query to test basic functionality
+      const simpleQuery = `SELECT COUNT(*) as total FROM users`;
+      const countResult = await db.query(simpleQuery);
+      
+      // If search is provided, add search condition
+      let whereClause = '';
+      let params = [];
+      if (search && search.trim() !== '') {
+        whereClause = `WHERE (email ILIKE $1 OR username ILIKE $1 OR full_name ILIKE $1)`;
+        params.push(`%${search.trim()}%`);
+      }
+
+      // Get users with pagination
+      const userQuery = `
+        SELECT id, email, username, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone, tier, created_at, updated_at
+        FROM users
+        ${whereClause}
+        ORDER BY created_at DESC 
+        LIMIT $${params.length + 1} OFFSET $${params.length + 2}
+      `;
+      params.push(limit, offset);
+
+      const userResult = await db.query(userQuery, params);
+      
+      // Get filtered count if search was provided
+      let total = parseInt(countResult.rows[0].total);
+      if (search && search.trim() !== '') {
+        const filteredCountQuery = `SELECT COUNT(*) as total FROM users ${whereClause}`;
+        const filteredCountResult = await db.query(filteredCountQuery, [params[0]]);
+        total = parseInt(filteredCountResult.rows[0].total);
+      }
+      
+      return {
+        users: userResult.rows,
+        total: total
+      };
+    } catch (error) {
+      console.error('Error in getAllUsers:', error);
+      throw error;
+    }
+  }
+
   static async getUserStatistics() {
     const query = `
       SELECT 
         COUNT(*) as total_users,
-        COUNT(CASE WHEN role = 'admin' THEN 1 END) as admin_users,
+        COUNT(CASE WHEN is_verified = true THEN 1 END) as verified_users,
+        COUNT(CASE WHEN admin_approved = true THEN 1 END) as approved_users,
         COUNT(CASE WHEN is_active = true THEN 1 END) as active_users,
-        COUNT(CASE WHEN admin_approved = false THEN 1 END) as pending_approval,
-        COUNT(CASE WHEN is_verified = false THEN 1 END) as unverified
+        COUNT(CASE WHEN role = 'admin' THEN 1 END) as admin_users,
+        COUNT(CASE WHEN tier = 'pro' THEN 1 END) as pro_users,
+        COUNT(CASE WHEN tier = 'free' THEN 1 END) as free_users,
+        COUNT(CASE WHEN created_at >= CURRENT_DATE - INTERVAL '7 days' THEN 1 END) as new_users_this_week,
+        COUNT(CASE WHEN created_at >= CURRENT_DATE - INTERVAL '30 days' THEN 1 END) as new_users_this_month
       FROM users
     `;
     
     const result = await db.query(query);
-    const stats = result.rows[0];
-    
-    return {
-      totalUsers: parseInt(stats.total_users),
-      adminUsers: parseInt(stats.admin_users),
-      activeUsers: parseInt(stats.active_users),
-      pendingApproval: parseInt(stats.pending_approval),
-      unverified: parseInt(stats.unverified)
-    };
-  }
-
-  // Admin user management methods
-  static async getAllUsers(limit = 25, offset = 0, search = '') {
-    if (search && search.trim()) {
-      // Query with search
-      const searchTerm = `%${search.trim()}%`;
-      
-      const countQuery = `
-        SELECT COUNT(*) as count 
-        FROM users 
-        WHERE username ILIKE $1 OR email ILIKE $1 OR full_name ILIKE $1
-      `;
-      
-      const usersQuery = `
-        SELECT id, email, username, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone, created_at, updated_at
-        FROM users
-        WHERE username ILIKE $3 OR email ILIKE $3 OR full_name ILIKE $3
-        ORDER BY created_at DESC
-        LIMIT $1 OFFSET $2
-      `;
-      
-      const [countResult, usersResult] = await Promise.all([
-        db.query(countQuery, [searchTerm]),
-        db.query(usersQuery, [limit, offset, searchTerm])
-      ]);
-      
-      return {
-        users: usersResult.rows,
-        total: parseInt(countResult.rows[0].count),
-        limit: parseInt(limit),
-        offset: parseInt(offset),
-        hasMore: parseInt(offset) + parseInt(limit) < parseInt(countResult.rows[0].count)
-      };
-    } else {
-      // Query without search
-      const countQuery = `SELECT COUNT(*) as count FROM users`;
-      const usersQuery = `
-        SELECT id, email, username, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone, created_at, updated_at
-        FROM users
-        ORDER BY created_at DESC
-        LIMIT $1 OFFSET $2
-      `;
-      
-      const [countResult, usersResult] = await Promise.all([
-        db.query(countQuery),
-        db.query(usersQuery, [limit, offset])
-      ]);
-      
-      return {
-        users: usersResult.rows,
-        total: parseInt(countResult.rows[0].count),
-        limit: parseInt(limit),
-        offset: parseInt(offset),
-        hasMore: parseInt(offset) + parseInt(limit) < parseInt(countResult.rows[0].count)
-      };
-    }
+    return result.rows[0];
   }
 
   static async updateRole(userId, role) {
+    // Determine tier based on role
+    let tier = 'free';
+    if (role === 'admin' || role === 'owner') {
+      tier = 'pro';
+    }
+    
     const query = `
       UPDATE users
-      SET role = $1, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $2
-      RETURNING id, email, username, full_name, avatar_url, role, is_verified, is_active, timezone, created_at, updated_at
+      SET role = $1, tier = $2, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $3
+      RETURNING id, email, username, full_name, avatar_url, role, is_verified, is_active, timezone, tier, created_at, updated_at
     `;
     
-    const result = await db.query(query, [role, userId]);
+    const result = await db.query(query, [role, tier, userId]);
     return result.rows[0];
   }
 
@@ -346,7 +389,7 @@ class User {
       UPDATE users
       SET is_active = $1, updated_at = CURRENT_TIMESTAMP
       WHERE id = $2
-      RETURNING id, email, username, full_name, avatar_url, role, is_verified, is_active, timezone, created_at, updated_at
+      RETURNING id, email, username, full_name, avatar_url, role, is_verified, is_active, timezone, tier, created_at, updated_at
     `;
     
     const result = await db.query(query, [isActive, userId]);
@@ -372,7 +415,7 @@ class User {
   }
 
   static async getOwner() {
-    const query = `SELECT id, email, username, full_name, avatar_url, role, is_verified, is_active, timezone, created_at, updated_at FROM users WHERE role = 'owner' LIMIT 1`;
+    const query = `SELECT id, email, username, full_name, avatar_url, role, is_verified, is_active, timezone, tier, created_at, updated_at FROM users WHERE role = 'owner' LIMIT 1`;
     const result = await db.query(query);
     return result.rows[0];
   }
@@ -425,7 +468,7 @@ class User {
       UPDATE users
       SET admin_approved = true, updated_at = CURRENT_TIMESTAMP
       WHERE id = $1
-      RETURNING id, email, username, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone, created_at, updated_at
+      RETURNING id, email, username, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone, tier, created_at, updated_at
     `;
     
     const result = await db.query(query, [userId]);
@@ -434,7 +477,7 @@ class User {
 
   static async getPendingUsers() {
     const query = `
-      SELECT id, email, username, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone, created_at, updated_at
+      SELECT id, email, username, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone, tier, created_at, updated_at
       FROM users
       WHERE admin_approved = false AND is_active = true
       ORDER BY created_at ASC
@@ -453,6 +496,203 @@ class User {
     `;
     
     const result = await db.query(query, [backupCodes, userId]);
+    return result.rows[0];
+  }
+
+  // Tier management methods
+  static async updateTier(userId, tier) {
+    const query = `
+      UPDATE users
+      SET tier = $1, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $2
+      RETURNING id, email, username, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone, tier, created_at, updated_at
+    `;
+    
+    const result = await db.query(query, [tier, userId]);
+    return result.rows[0];
+  }
+
+  static async getUserTier(userId) {
+    const query = `
+      SELECT u.tier, to_.tier as override_tier, to_.expires_at as override_expires
+      FROM users u
+      LEFT JOIN tier_overrides to_ ON u.id = to_.user_id
+      WHERE u.id = $1
+    `;
+    
+    const result = await db.query(query, [userId]);
+    if (!result.rows[0]) return null;
+    
+    const { tier, override_tier, override_expires } = result.rows[0];
+    
+    // Check if override is active and not expired
+    if (override_tier && (!override_expires || new Date(override_expires) > new Date())) {
+      return override_tier;
+    }
+    
+    return tier;
+  }
+
+  static async getSubscription(userId) {
+    const query = `
+      SELECT * FROM subscriptions
+      WHERE user_id = $1
+      ORDER BY 
+        CASE WHEN status = 'active' THEN 1 
+             WHEN status = 'trialing' THEN 2 
+             ELSE 3 END,
+        created_at DESC
+      LIMIT 1
+    `;
+    
+    const result = await db.query(query, [userId]);
+    return result.rows[0];
+  }
+
+  static async createOrUpdateSubscription(subscriptionData) {
+    const {
+      userId,
+      stripeCustomerId,
+      stripeSubscriptionId,
+      stripePriceId,
+      status,
+      currentPeriodStart,
+      currentPeriodEnd,
+      cancelAtPeriodEnd
+    } = subscriptionData;
+
+    const query = `
+      INSERT INTO subscriptions (
+        user_id, stripe_customer_id, stripe_subscription_id, stripe_price_id,
+        status, current_period_start, current_period_end, cancel_at_period_end
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      ON CONFLICT (stripe_subscription_id) 
+      DO UPDATE SET
+        status = EXCLUDED.status,
+        current_period_start = EXCLUDED.current_period_start,
+        current_period_end = EXCLUDED.current_period_end,
+        cancel_at_period_end = EXCLUDED.cancel_at_period_end,
+        updated_at = CURRENT_TIMESTAMP
+      RETURNING *
+    `;
+    
+    const values = [
+      userId,
+      stripeCustomerId,
+      stripeSubscriptionId,
+      stripePriceId,
+      status,
+      currentPeriodStart,
+      currentPeriodEnd,
+      cancelAtPeriodEnd
+    ];
+    
+    const result = await db.query(query, values);
+    return result.rows[0];
+  }
+
+  static async setTierOverride(userId, tier, reason, expiresAt, createdBy) {
+    const client = await db.connect();
+    try {
+      await client.query('BEGIN');
+      
+      // Insert/update the override record
+      const overrideQuery = `
+        INSERT INTO tier_overrides (user_id, tier, reason, expires_at, created_by)
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (user_id) 
+        DO UPDATE SET
+          tier = EXCLUDED.tier,
+          reason = EXCLUDED.reason,
+          expires_at = EXCLUDED.expires_at,
+          created_by = EXCLUDED.created_by,
+          updated_at = CURRENT_TIMESTAMP
+        RETURNING *
+      `;
+      
+      // Also update the users table so simple queries return correct tier
+      const userUpdateQuery = `
+        UPDATE users SET tier = $1, updated_at = CURRENT_TIMESTAMP 
+        WHERE id = $2
+      `;
+      
+      const result = await client.query(overrideQuery, [userId, tier, reason, expiresAt, createdBy]);
+      await client.query(userUpdateQuery, [tier, userId]);
+      
+      await client.query('COMMIT');
+      return result.rows[0];
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  static async removeTierOverride(userId) {
+    const client = await db.connect();
+    try {
+      await client.query('BEGIN');
+      
+      // Remove the override record
+      const deleteQuery = `
+        DELETE FROM tier_overrides
+        WHERE user_id = $1
+        RETURNING *
+      `;
+      
+      // Reset user tier to base tier (free unless admin)
+      const resetTierQuery = `
+        UPDATE users 
+        SET tier = CASE 
+          WHEN role IN ('admin', 'owner') THEN 'pro'
+          ELSE 'free'
+        END,
+        updated_at = CURRENT_TIMESTAMP
+        WHERE id = $1
+      `;
+      
+      const result = await client.query(deleteQuery, [userId]);
+      await client.query(resetTierQuery, [userId]);
+      
+      await client.query('COMMIT');
+      return result.rows[0];
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  static async getTierOverride(userId) {
+    const query = `
+      SELECT to_.*, u.username as created_by_username
+      FROM tier_overrides to_
+      LEFT JOIN users u ON to_.created_by = u.id
+      WHERE to_.user_id = $1
+    `;
+    
+    const result = await db.query(query, [userId]);
+    return result.rows[0];
+  }
+
+  static async createTierOverride(userId, tier, reason, expiresAt, createdBy = null) {
+    const query = `
+      INSERT INTO tier_overrides (user_id, tier, reason, expires_at, created_by)
+      VALUES ($1, $2, $3, $4, $5)
+      ON CONFLICT (user_id) 
+      DO UPDATE SET
+        tier = EXCLUDED.tier,
+        reason = EXCLUDED.reason,
+        expires_at = EXCLUDED.expires_at,
+        created_by = EXCLUDED.created_by,
+        updated_at = CURRENT_TIMESTAMP
+      RETURNING *
+    `;
+    
+    const result = await db.query(query, [userId, tier, reason, expiresAt, createdBy]);
     return result.rows[0];
   }
 }

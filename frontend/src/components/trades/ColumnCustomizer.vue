@@ -1,0 +1,286 @@
+<template>
+  <div class="relative">
+    <!-- Toggle Button -->
+    <button
+      @click="toggleMenu"
+      class="inline-flex items-center justify-center p-1.5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+      title="Customize columns"
+    >
+      <AdjustmentsHorizontalIcon class="h-4 w-4" />
+    </button>
+
+    <!-- Dropdown Menu -->
+    <transition
+      enter-active-class="transition ease-out duration-100"
+      enter-from-class="transform opacity-0 scale-95"
+      enter-to-class="transform opacity-100 scale-100"
+      leave-active-class="transition ease-in duration-75"
+      leave-from-class="transform opacity-100 scale-100"
+      leave-to-class="transform opacity-0 scale-95"
+    >
+      <div
+        v-if="showMenu"
+        ref="menuRef"
+        class="absolute right-0 top-full mt-1 w-80 rounded-md shadow-lg bg-white dark:bg-gray-800 ring-1 ring-black ring-opacity-5 z-50"
+      >
+        <div class="p-4">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-sm font-medium text-gray-900 dark:text-white">Customize Columns</h3>
+            <button
+              @click="resetToDefault"
+              class="text-xs text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+            >
+              Reset to default
+            </button>
+          </div>
+
+          <!-- Column List -->
+          <div class="space-y-2 max-h-96 overflow-y-auto">
+            <div
+              v-for="(column, index) in localColumns"
+              :key="column.key"
+              :draggable="true"
+              @dragstart="handleDragStart(index)"
+              @dragover.prevent
+              @drop="handleDrop(index)"
+              @dragend="handleDragEnd"
+              :class="[
+                'flex items-center justify-between p-2 rounded cursor-move transition-colors',
+                draggedIndex === index ? 'opacity-50' : '',
+                'hover:bg-gray-50 dark:hover:bg-gray-700'
+              ]"
+            >
+              <div class="flex items-center space-x-3">
+                <!-- Drag Handle -->
+                <Bars3Icon class="h-4 w-4 text-gray-400" />
+                
+                <!-- Checkbox -->
+                <input
+                  type="checkbox"
+                  v-model="column.visible"
+                  @change="updateColumns"
+                  :disabled="isRequiredColumn(column.key)"
+                  class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded disabled:opacity-50"
+                />
+                
+                <!-- Column Name -->
+                <label class="text-sm text-gray-700 dark:text-gray-300 select-none">
+                  {{ column.label }}
+                  <span v-if="isRequiredColumn(column.key)" class="text-xs text-gray-400 ml-1">(required)</span>
+                </label>
+              </div>
+
+              <!-- Column Width Selector (for visible columns) -->
+              <div v-if="column.visible && !isRequiredColumn(column.key)" class="flex items-center space-x-2">
+                <select
+                  v-model="column.width"
+                  @change="updateColumns"
+                  class="text-xs border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:border-primary-500 focus:ring-primary-500 dark:bg-gray-700 dark:text-gray-300"
+                >
+                  <option value="auto">Auto</option>
+                  <option value="sm">Small</option>
+                  <option value="md">Medium</option>
+                  <option value="lg">Large</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Quick Actions -->
+          <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+            <div class="flex items-center justify-between text-xs">
+              <button
+                @click="selectAll"
+                class="text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+              >
+                Select all
+              </button>
+              <button
+                @click="deselectAll"
+                class="text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+              >
+                Deselect all
+              </button>
+            </div>
+          </div>
+
+          <!-- Apply/Cancel Buttons -->
+          <div class="mt-4 flex justify-end space-x-2">
+            <button
+              @click="cancel"
+              class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700"
+            >
+              Cancel
+            </button>
+            <button
+              @click="apply"
+              class="px-3 py-2 text-sm text-white bg-primary-600 border border-transparent rounded-md hover:bg-primary-700"
+            >
+              Apply
+            </button>
+          </div>
+        </div>
+      </div>
+    </transition>
+  </div>
+</template>
+
+<script setup>
+import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { AdjustmentsHorizontalIcon } from '@heroicons/vue/24/outline'
+import { Bars3Icon } from '@heroicons/vue/24/solid'
+
+const props = defineProps({
+  columns: {
+    type: Array,
+    required: true
+  }
+})
+
+const emit = defineEmits(['update:columns'])
+
+// Default column configuration
+const defaultColumns = [
+  { key: 'checkbox', label: 'Select', visible: true, width: 'auto', required: true },
+  { key: 'symbol', label: 'Symbol', visible: true, width: 'auto', required: true },
+  { key: 'date', label: 'Date', visible: true, width: 'auto' },
+  { key: 'side', label: 'Side', visible: true, width: 'auto' },
+  { key: 'entry', label: 'Entry', visible: true, width: 'auto' },
+  { key: 'exit', label: 'Exit', visible: true, width: 'auto' },
+  { key: 'pnl', label: 'P&L', visible: true, width: 'auto' },
+  { key: 'confidence', label: 'Confidence', visible: true, width: 'auto' },
+  { key: 'sector', label: 'Sector', visible: true, width: 'auto' },
+  { key: 'status', label: 'Status', visible: true, width: 'auto' },
+  { key: 'comments', label: 'Comments', visible: true, width: 'auto' },
+  { key: 'quantity', label: 'Quantity', visible: false, width: 'auto' },
+  { key: 'commission', label: 'Commission', visible: false, width: 'auto' },
+  { key: 'fees', label: 'Fees', visible: false, width: 'auto' },
+  { key: 'strategy', label: 'Strategy', visible: false, width: 'auto' },
+  { key: 'broker', label: 'Broker', visible: false, width: 'auto' },
+  { key: 'tags', label: 'Tags', visible: false, width: 'auto' },
+  { key: 'notes', label: 'Notes', visible: false, width: 'auto' },
+  { key: 'holdTime', label: 'Hold Time', visible: false, width: 'auto' },
+  { key: 'roi', label: 'ROI %', visible: false, width: 'auto' }
+]
+
+const showMenu = ref(false)
+const menuRef = ref(null)
+const localColumns = ref([])
+const draggedIndex = ref(null)
+
+// Required columns that can't be hidden
+const requiredColumns = ['checkbox', 'symbol']
+
+const isRequiredColumn = (key) => requiredColumns.includes(key)
+
+// Load saved column preferences from localStorage
+const loadSavedColumns = () => {
+  const saved = localStorage.getItem('tradeListColumns')
+  if (saved) {
+    try {
+      const savedColumns = JSON.parse(saved)
+      // Merge saved preferences with default columns to handle new columns
+      localColumns.value = defaultColumns.map(defaultCol => {
+        const savedCol = savedColumns.find(c => c.key === defaultCol.key)
+        return savedCol || defaultCol
+      })
+    } catch (e) {
+      console.error('Failed to load saved columns:', e)
+      localColumns.value = [...defaultColumns]
+    }
+  } else {
+    localColumns.value = [...defaultColumns]
+  }
+}
+
+// Save column preferences to localStorage
+const saveColumns = () => {
+  localStorage.setItem('tradeListColumns', JSON.stringify(localColumns.value))
+}
+
+const toggleMenu = () => {
+  showMenu.value = !showMenu.value
+  if (showMenu.value) {
+    // Reset local columns to current state when opening
+    loadSavedColumns()
+  }
+}
+
+const handleDragStart = (index) => {
+  draggedIndex.value = index
+}
+
+const handleDrop = (dropIndex) => {
+  if (draggedIndex.value === null) return
+  
+  const draggedItem = localColumns.value[draggedIndex.value]
+  const newColumns = [...localColumns.value]
+  
+  // Remove dragged item
+  newColumns.splice(draggedIndex.value, 1)
+  
+  // Insert at new position
+  newColumns.splice(dropIndex, 0, draggedItem)
+  
+  localColumns.value = newColumns
+}
+
+const handleDragEnd = () => {
+  draggedIndex.value = null
+}
+
+const selectAll = () => {
+  localColumns.value.forEach(col => {
+    if (!isRequiredColumn(col.key)) {
+      col.visible = true
+    }
+  })
+}
+
+const deselectAll = () => {
+  localColumns.value.forEach(col => {
+    if (!isRequiredColumn(col.key)) {
+      col.visible = false
+    }
+  })
+}
+
+const resetToDefault = () => {
+  localColumns.value = [...defaultColumns]
+  localStorage.removeItem('tradeListColumns')
+}
+
+const updateColumns = () => {
+  // Updates will be applied when user clicks Apply
+}
+
+const apply = () => {
+  saveColumns()
+  emit('update:columns', [...localColumns.value])
+  showMenu.value = false
+}
+
+const cancel = () => {
+  loadSavedColumns()
+  showMenu.value = false
+}
+
+// Click outside handler
+const handleClickOutside = (event) => {
+  if (menuRef.value && !menuRef.value.contains(event.target) && !event.target.closest('button')) {
+    showMenu.value = false
+  }
+}
+
+onMounted(() => {
+  loadSavedColumns()
+  document.addEventListener('click', handleClickOutside)
+  
+  // Emit initial columns
+  emit('update:columns', [...localColumns.value])
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside)
+})
+</script>

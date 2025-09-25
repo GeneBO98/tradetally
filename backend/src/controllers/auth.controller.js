@@ -1,12 +1,13 @@
 const User = require('../models/User');
 const { generateToken } = require('../middleware/auth');
 const crypto = require('crypto');
-const nodemailer = require('nodemailer');
+const EmailService = require('../services/emailService');
 const bcrypt = require('bcryptjs');
+const TierService = require('../services/tierService');
 
 // Check if email configuration is available
 function isEmailConfigured() {
-  return !!(process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASS);
+  return EmailService.isConfigured();
 }
 
 // Check if detailed error messages are enabled (for self-hosted setups)
@@ -99,10 +100,10 @@ const authController = {
         try {
           await sendVerificationEmail(email, verificationToken);
         } catch (error) {
-          console.warn('⚠️  Failed to send verification email (continuing with registration):', error.message);
+          console.warn('[WARNING] Failed to send verification email (continuing with registration):', error.message);
         }
       } else {
-        console.log(`📧 Email verification skipped - no email configuration found for user: ${user.username}`);
+        console.log(`[INFO] Email verification skipped - no email configuration found for user: ${user.username}`);
       }
 
       // Determine response message
@@ -197,6 +198,11 @@ const authController = {
       }
 
       const token = generateToken(user);
+      
+      // Get user tier and billing status for response
+      const TierService = require('../services/tierService');
+      const userTier = await TierService.getUserTier(user.id);
+      const billingEnabled = await TierService.isBillingEnabled();
 
       res.json({
         message: 'Login successful',
@@ -207,6 +213,8 @@ const authController = {
           fullName: user.full_name,
           avatarUrl: user.avatar_url,
           role: user.role,
+          tier: userTier,
+          billingEnabled: billingEnabled,
           isVerified: user.is_verified,
           adminApproved: user.admin_approved,
           twoFactorEnabled: user.two_factor_enabled || false
@@ -264,6 +272,11 @@ const authController = {
 
       // Generate full access token
       const token = generateToken(user);
+      
+      // Get tier and billing status
+      const TierService = require('../services/tierService');
+      const userTier = await TierService.getUserTier(user.id);
+      const billingEnabled = await TierService.isBillingEnabled();
 
       res.json({
         message: 'Login successful',
@@ -274,6 +287,8 @@ const authController = {
           fullName: user.full_name,
           avatarUrl: user.avatar_url,
           role: user.role,
+          tier: userTier,
+          billingEnabled: billingEnabled,
           timezone: user.timezone,
           isVerified: user.is_verified,
           adminApproved: user.admin_approved,
@@ -307,10 +322,12 @@ const authController = {
           fullName: user.full_name,
           avatarUrl: user.avatar_url,
           role: user.role,
+          tier: req.user.tier, // Use effective tier from middleware
           isVerified: user.is_verified,
           adminApproved: user.admin_approved,
           timezone: user.timezone,
-          createdAt: user.created_at
+          createdAt: user.created_at,
+          billingEnabled: req.user.billingEnabled
         },
         settings
       });
@@ -442,115 +459,36 @@ const authController = {
     } catch (error) {
       next(error);
     }
+  },
+
+  async sendTestEmail(req, res, next) {
+    try {
+      const testEmail = 'boverton@tradetally.io';
+      
+      // Send a test branded email using the verification template
+      const testToken = crypto.randomBytes(32).toString('hex');
+      await EmailService.sendVerificationEmail(testEmail, testToken);
+      
+      res.json({ 
+        message: 'Test email sent successfully',
+        recipient: testEmail,
+        emailType: 'verification'
+      });
+    } catch (error) {
+      console.error('Test email error:', error);
+      next(error);
+    }
   }
 };
 
 // Email sending function
 async function sendVerificationEmail(email, token) {
-  // Only send emails if email configuration is provided
-  if (!process.env.EMAIL_HOST || !process.env.EMAIL_USER) {
-    console.log('Email not configured, skipping verification email');
-    return;
-  }
-
-  const transporter = nodemailer.createTransport({
-    host: process.env.EMAIL_HOST,
-    port: process.env.EMAIL_PORT || 587,
-    secure: false,
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS
-    }
-  });
-
-  const verificationUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/verify-email/${token}`;
-
-  const mailOptions = {
-    from: process.env.EMAIL_FROM || 'noreply@tradetally.io',
-    to: email,
-    subject: 'Verify your TradeTally account',
-    html: `
-      <div style="max-width: 600px; margin: 0 auto; padding: 20px; font-family: Arial, sans-serif;">
-        <h1 style="color: #4F46E5;">Welcome to TradeTally!</h1>
-        <p>Thank you for signing up. Please verify your email address by clicking the button below:</p>
-        <div style="text-align: center; margin: 30px 0;">
-          <a href="${verificationUrl}" 
-             style="background-color: #4F46E5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
-            Verify Email Address
-          </a>
-        </div>
-        <p>Or copy and paste this link into your browser:</p>
-        <p style="word-break: break-all; color: #6B7280;">${verificationUrl}</p>
-        <p>This link will expire in 24 hours.</p>
-        <hr style="margin: 30px 0; border: none; border-top: 1px solid #E5E7EB;">
-        <p style="color: #6B7280; font-size: 12px;">
-          If you didn't create an account with TradeTally, you can safely ignore this email.
-        </p>
-      </div>
-    `
-  };
-
-  try {
-    await transporter.sendMail(mailOptions);
-    console.log('Verification email sent to:', email);
-  } catch (error) {
-    console.error('Failed to send verification email:', error);
-    // Don't throw error to prevent registration failure due to email issues
-  }
+  await EmailService.sendVerificationEmail(email, token);
 }
 
 // Password reset email function
 async function sendPasswordResetEmail(email, token) {
-  // Only send emails if email configuration is provided
-  if (!process.env.EMAIL_HOST || !process.env.EMAIL_USER) {
-    console.log('Email not configured, skipping password reset email');
-    return;
-  }
-
-  const transporter = nodemailer.createTransport({
-    host: process.env.EMAIL_HOST,
-    port: process.env.EMAIL_PORT || 587,
-    secure: false,
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS
-    }
-  });
-
-  const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/reset-password/${token}`;
-
-  const mailOptions = {
-    from: process.env.EMAIL_FROM || 'noreply@tradetally.io',
-    to: email,
-    subject: 'Reset your TradeTally password',
-    html: `
-      <div style="max-width: 600px; margin: 0 auto; padding: 20px; font-family: Arial, sans-serif;">
-        <h1 style="color: #4F46E5;">Reset Your Password</h1>
-        <p>You requested to reset your password for your TradeTally account. Click the button below to reset it:</p>
-        <div style="text-align: center; margin: 30px 0;">
-          <a href="${resetUrl}" 
-             style="background-color: #4F46E5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
-            Reset Password
-          </a>
-        </div>
-        <p>Or copy and paste this link into your browser:</p>
-        <p style="word-break: break-all; color: #6B7280;">${resetUrl}</p>
-        <p>This link will expire in 1 hour for security reasons.</p>
-        <hr style="margin: 30px 0; border: none; border-top: 1px solid #E5E7EB;">
-        <p style="color: #6B7280; font-size: 12px;">
-          If you didn't request a password reset, you can safely ignore this email. Your password will not be changed.
-        </p>
-      </div>
-    `
-  };
-
-  try {
-    await transporter.sendMail(mailOptions);
-    console.log('Password reset email sent to:', email);
-  } catch (error) {
-    console.error('Failed to send password reset email:', error);
-    // Don't throw error to prevent operation failure due to email issues
-  }
+  await EmailService.sendPasswordResetEmail(email, token);
 }
 
 module.exports = authController;

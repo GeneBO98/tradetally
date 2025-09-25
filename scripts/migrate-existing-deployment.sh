@@ -15,13 +15,13 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-echo -e "${BLUE}🔄 TradeTally Mobile Support Migration${NC}"
+echo -e "${BLUE}[MIGRATE] TradeTally Mobile Support Migration${NC}"
 echo -e "${BLUE}======================================${NC}"
 echo ""
 
 # Check if Docker is running
 if ! docker info > /dev/null 2>&1; then
-    echo -e "${RED}❌ Docker is not running. Please start Docker and try again.${NC}"
+    echo -e "${RED}[ERROR] Docker is not running. Please start Docker and try again.${NC}"
     exit 1
 fi
 
@@ -36,7 +36,7 @@ check_container() {
 }
 
 # Check for existing TradeTally containers
-echo -e "${YELLOW}🔍 Checking for existing TradeTally containers...${NC}"
+echo -e "${YELLOW}[INFO] Checking for existing TradeTally containers...${NC}"
 
 DB_CONTAINER=""
 APP_CONTAINER=""
@@ -48,7 +48,7 @@ POSSIBLE_APP_NAMES=("tradetally-app" "tradetally_app_1" "tradetally-backend")
 for name in "${POSSIBLE_DB_NAMES[@]}"; do
     if check_container "$name"; then
         DB_CONTAINER="$name"
-        echo -e "${GREEN}✓ Found database container: $name${NC}"
+        echo -e "${GREEN}[OK] Found database container: $name${NC}"
         break
     fi
 done
@@ -56,13 +56,13 @@ done
 for name in "${POSSIBLE_APP_NAMES[@]}"; do
     if check_container "$name"; then
         APP_CONTAINER="$name"
-        echo -e "${GREEN}✓ Found app container: $name${NC}"
+        echo -e "${GREEN}[OK] Found app container: $name${NC}"
         break
     fi
 done
 
 if [[ -z "$DB_CONTAINER" ]]; then
-    echo -e "${RED}❌ No TradeTally database container found.${NC}"
+    echo -e "${RED}[ERROR] No TradeTally database container found.${NC}"
     echo -e "${YELLOW}   Please make sure your TradeTally instance is running.${NC}"
     echo -e "${YELLOW}   Looking for containers with these names: ${POSSIBLE_DB_NAMES[*]}${NC}"
     exit 1
@@ -70,15 +70,15 @@ fi
 
 # Backup database
 echo ""
-echo -e "${YELLOW}📦 Creating database backup...${NC}"
+echo -e "${YELLOW}[BACKUP] Creating database backup...${NC}"
 BACKUP_FILE="tradetally_backup_$(date +%Y%m%d_%H%M%S).sql"
 docker exec "$DB_CONTAINER" pg_dump -U trader -d tradetally > "$BACKUP_FILE"
-echo -e "${GREEN}✓ Database backup created: $BACKUP_FILE${NC}"
+echo -e "${GREEN}[OK] Database backup created: $BACKUP_FILE${NC}"
 
 # Method 1: Use existing app container to run migrations
 if [[ -n "$APP_CONTAINER" ]]; then
     echo ""
-    echo -e "${YELLOW}🔄 Running migrations using existing app container...${NC}"
+    echo -e "${YELLOW}[MIGRATE] Running migrations using existing app container...${NC}"
     
     # Copy migration files to the container
     echo -e "${BLUE}   Copying migration files...${NC}"
@@ -89,12 +89,12 @@ if [[ -n "$APP_CONTAINER" ]]; then
     echo -e "${BLUE}   Executing migrations...${NC}"
     docker exec "$APP_CONTAINER" node /app/backend/src/utils/migrate.js
     
-    echo -e "${GREEN}✓ Migrations completed using existing container${NC}"
+    echo -e "${GREEN}[OK] Migrations completed using existing container${NC}"
     
 # Method 2: Use direct database connection
 else
     echo ""
-    echo -e "${YELLOW}🔄 Running migrations directly on database...${NC}"
+    echo -e "${YELLOW}[MIGRATE] Running migrations directly on database...${NC}"
     
     # Run migrations directly
     for migration_file in "$PROJECT_ROOT/backend/migrations"/*.sql; do
@@ -113,14 +113,14 @@ else
             
             # Run the migration
             docker exec -i "$DB_CONTAINER" psql -U trader -d tradetally < "$migration_file"
-            echo -e "${GREEN}     ✓ $filename applied${NC}"
+            echo -e "${GREEN}     [OK] $filename applied${NC}"
         fi
     done
 fi
 
 # Update Docker Compose with new environment variables
 echo ""
-echo -e "${YELLOW}📝 Updating Docker configuration...${NC}"
+echo -e "${YELLOW}[CONFIG] Updating Docker configuration...${NC}"
 
 if [[ -f "$PROJECT_ROOT/docker-compose.yaml" ]]; then
     echo -e "${BLUE}   Adding mobile support environment variables...${NC}"
@@ -136,12 +136,12 @@ if [[ -f "$PROJECT_ROOT/docker-compose.yaml" ]]; then
 EOF
     fi
     
-    echo -e "${GREEN}   ✓ Docker configuration updated${NC}"
+    echo -e "${GREEN}   [OK] Docker configuration updated${NC}"
 fi
 
 # Create .env template for mobile support
 echo ""
-echo -e "${YELLOW}📋 Creating mobile support configuration template...${NC}"
+echo -e "${YELLOW}[CONFIG] Creating mobile support configuration template...${NC}"
 
 cat > "$PROJECT_ROOT/.env.mobile" << 'EOF'
 # Mobile Support Configuration
@@ -171,19 +171,19 @@ MAX_DEVICES_PER_USER=10
 API_VERSION=v1
 EOF
 
-echo -e "${GREEN}✓ Mobile configuration template created: .env.mobile${NC}"
+echo -e "${GREEN}[OK] Mobile configuration template created: .env.mobile${NC}"
 
 # Restart containers if needed
 if [[ -n "$APP_CONTAINER" ]]; then
     echo ""
-    echo -e "${YELLOW}🔄 Restarting application container to apply changes...${NC}"
+    echo -e "${YELLOW}[RESTART] Restarting application container to apply changes...${NC}"
     docker restart "$APP_CONTAINER"
-    echo -e "${GREEN}✓ Application container restarted${NC}"
+    echo -e "${GREEN}[OK] Application container restarted${NC}"
 fi
 
 # Final instructions
 echo ""
-echo -e "${GREEN}🎉 Migration completed successfully!${NC}"
+echo -e "${GREEN}[SUCCESS] Migration completed successfully!${NC}"
 echo ""
 echo -e "${BLUE}Next steps:${NC}"
 echo -e "${YELLOW}1. Review and copy variables from .env.mobile to your main .env file${NC}"
@@ -197,4 +197,4 @@ echo -e "${YELLOW}  POST /api/v1/auth/refresh - Refresh tokens${NC}"
 echo -e "${YELLOW}  GET /api/v1/devices - Device management${NC}"
 echo -e "${YELLOW}  POST /api/v1/sync/full - Full sync${NC}"
 echo ""
-echo -e "${GREEN}Your TradeTally instance is now ready for mobile app support! 📱${NC}"
+echo -e "${GREEN}Your TradeTally instance is now ready for mobile app support!${NC}"

@@ -7,8 +7,15 @@
           <span class="text-xs text-gray-500 dark:text-gray-400">
             {{ chartData.interval === 'daily' ? 'Daily' : chartData.interval }} chart
           </span>
-          <div v-if="chartData.usage" class="text-xs text-gray-500 dark:text-gray-400">
-            ({{ chartData.usage.dailyCallsRemaining }}/25 API calls remaining today)
+          <span v-if="chartData.source" class="text-xs px-2 py-1 rounded-full" 
+                :class="getSourceBadgeClass(chartData.source)">
+            {{ getSourceLabel(chartData.source) }}
+          </span>
+          <div v-if="chartData.usage && chartData.usage.alphaVantage && userTier !== 'pro'" class="text-xs text-gray-500 dark:text-gray-400">
+            ({{ chartData.usage.alphaVantage.dailyCallsRemaining }}/25 API calls remaining today)
+          </div>
+          <div v-else-if="chartData.source === 'finnhub' && userTier === 'pro'" class="text-xs text-blue-500 dark:text-blue-400">
+            (Unlimited high-precision data)
           </div>
         </div>
       </div>
@@ -26,6 +33,9 @@
         <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
           See your entry and exit points on a candlestick chart with market context
         </p>
+        <div v-if="userTier === 'pro'" class="text-xs text-blue-600 dark:text-blue-400 mb-4">
+          [PRO] Pro Feature: Exclusive Finnhub data with 1-minute precision (no Alpha Vantage fallback)
+        </div>
         <button 
           @click="loadChart" 
           class="btn-primary"
@@ -36,7 +46,9 @@
           Load Chart
         </button>
         <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
-          Uses 1 API call (25 free per day)
+          <span v-if="userTier === 'pro'">Uses Finnhub Pro API exclusively (unlimited high-precision data)</span>
+          <span v-else-if="userTier === 'free'">Uses Alpha Vantage API (1 call, 25 free per day)</span>
+          <span v-else>Chart service configuration pending...</span>
         </p>
       </div>
 
@@ -52,7 +64,8 @@
         </div>
         <p class="text-red-600 dark:text-red-400 mb-2 font-medium">{{ error }}</p>
         <p v-if="error.includes('limit')" class="text-sm text-gray-600 dark:text-gray-400 mb-4">
-          The free tier allows 25 API calls per day. Try again tomorrow or consider upgrading for unlimited access.
+          <span v-if="userTier === 'pro'">Finnhub Pro API rate limit reached. Please wait a moment before retrying.</span>
+          <span v-else>Free tier allows 25 Alpha Vantage API calls per day. Try again tomorrow or upgrade to Pro for unlimited Finnhub access.</span>
         </p>
         <p v-else-if="error.includes('not configured')" class="text-sm text-gray-600 dark:text-gray-400 mb-4">
           Chart service requires API configuration. Contact your administrator to enable chart visualization.
@@ -116,10 +129,11 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted, watch, computed } from 'vue'
 import * as LightweightCharts from 'lightweight-charts'
 import api from '@/services/api'
 import { useNotification } from '@/composables/useNotification'
+import { useAuthStore } from '@/stores/auth'
 
 const props = defineProps({
   tradeId: {
@@ -129,6 +143,7 @@ const props = defineProps({
 })
 
 const { showError, showWarning } = useNotification()
+const authStore = useAuthStore()
 
 const chartContainer = ref(null)
 const loading = ref(false)
@@ -138,6 +153,36 @@ const chartData = ref(null)
 const showChart = ref(false)
 let chart = null
 let candleSeries = null
+
+// Computed properties
+const userTier = computed(() => authStore.user?.tier?.tier_name || 'free')
+
+// Helper methods for source display
+const getSourceLabel = (source) => {
+  switch (source) {
+    case 'finnhub':
+      return 'Finnhub Pro'
+    case 'alphavantage':
+      return 'Alpha Vantage'
+    case 'alphavantage_fallback':
+      return 'Alpha Vantage (Legacy)'
+    default:
+      return 'Unknown'
+  }
+}
+
+const getSourceBadgeClass = (source) => {
+  switch (source) {
+    case 'finnhub':
+      return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+    case 'alphavantage':
+      return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+    case 'alphavantage_fallback':
+      return 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200'
+    default:
+      return 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200'
+  }
+}
 
 const formatNumber = (num) => {
   return parseFloat(num).toFixed(2)
@@ -157,73 +202,49 @@ const createTradeChart = () => {
     chart.remove()
   }
 
-  // Get current theme
-  const isDark = document.documentElement.classList.contains('dark')
-
-  try {
-    console.log('Creating chart with LightweightCharts:', LightweightCharts)
-    console.log('createChart function:', typeof LightweightCharts.createChart)
-    // Create chart with theme-appropriate colors
-    chart = LightweightCharts.createChart(chartContainer.value, {
-    width: chartContainer.value.clientWidth,
-    height: 384, // 96 * 4 (h-96)
-    layout: {
-      background: { type: 'solid', color: 'transparent' },
-      textColor: isDark ? '#e5e7eb' : '#111827',
-    },
-    grid: {
-      vertLines: { color: isDark ? '#374151' : '#e5e7eb' },
-      horzLines: { color: isDark ? '#374151' : '#e5e7eb' },
-    },
-    timeScale: {
-      borderColor: isDark ? '#4b5563' : '#d1d5db',
-    },
-    rightPriceScale: {
-      borderColor: isDark ? '#4b5563' : '#d1d5db',
-    },
-  })
-
-  console.log('Chart created successfully:', chart)
-  console.log('Chart methods available:', Object.getOwnPropertyNames(Object.getPrototypeOf(chart)))
-  console.log('All chart methods:', Object.getOwnPropertyNames(chart))
-
-  // Check available methods that might create series
-  const availableMethods = Object.getOwnPropertyNames(Object.getPrototypeOf(chart))
-    .filter(method => method.includes('Series') || method.includes('series'))
-  console.log('Available series methods:', availableMethods)
-
-  // Check data first before creating series
-  console.log('Chart data candles:', chartData.value.candles)
-  console.log('First candle sample:', chartData.value.candles[0])
-  console.log('Candles length:', chartData.value.candles.length)
-  
   if (!chartData.value.candles || chartData.value.candles.length === 0) {
     const symbol = chartData.value.symbol || 'Unknown'
-    const usage = chartData.value.usage
-    let errorMsg = `No chart data available for ${symbol}.`
-    
-    if (usage && usage.dailyCallsRemaining !== undefined) {
-      errorMsg += ` API calls remaining: ${usage.dailyCallsRemaining}/25.`
-    }
-    
-    errorMsg += '\n\nThis may be due to:'
-    errorMsg += '\n• Symbol not found or delisted'
-    errorMsg += '\n• No trading activity in the selected time period'  
-    errorMsg += '\n• Alpha Vantage API limitations'
-    errorMsg += '\n• Daily API limit reached (25 calls per day)'
-    errorMsg += '\n\n💡 Try testing with common symbols like:'
-    errorMsg += '\n   AAPL, MSFT, GOOGL, TSLA, SPY'
-    
-    // Show user-friendly toast notification
     showWarning('Chart Data Unavailable', `Chart information could not be resolved for ${symbol}. This is common for smaller stocks or ETFs. Try major symbols like AAPL, MSFT, or GOOGL.`)
-    
-    throw new Error(errorMsg)
+    return
   }
 
-  // Create candlestick series using the correct v5 API
-  console.log('Creating candlestick series...')
   try {
-    // Use the correct v5 API syntax with CandlestickSeries
+    console.log('Creating focused single-day chart using our backend data...')
+    
+    // Check if chart container exists
+    if (!chartContainer.value) {
+      console.error('Chart container not found')
+      error.value = 'Chart container not available'
+      return
+    }
+    
+    // Get current theme
+    const isDark = document.documentElement.classList.contains('dark')
+    const trade = chartData.value.trade
+
+    // Create LightweightCharts chart that uses OUR data
+    chart = LightweightCharts.createChart(chartContainer.value, {
+      width: chartContainer.value.clientWidth,
+      height: 384,
+      layout: {
+        background: { type: 'solid', color: 'transparent' },
+        textColor: isDark ? '#e5e7eb' : '#111827',
+      },
+      grid: {
+        vertLines: { color: isDark ? '#374151' : '#e5e7eb' },
+        horzLines: { color: isDark ? '#374151' : '#e5e7eb' },
+      },
+      timeScale: {
+        borderColor: isDark ? '#4b5563' : '#d1d5db',
+        timeVisible: true,
+        secondsVisible: false,
+      },
+      rightPriceScale: {
+        borderColor: isDark ? '#4b5563' : '#d1d5db',
+      },
+    })
+
+    // Create candlestick series
     candleSeries = chart.addSeries(LightweightCharts.CandlestickSeries, {
       upColor: '#10b981',
       downColor: '#ef4444',
@@ -232,125 +253,472 @@ const createTradeChart = () => {
       wickUpColor: '#10b981',
       wickDownColor: '#ef4444',
     })
+
+    // Process and validate our backend data
+    const validatedCandles = chartData.value.candles.map((candle, index) => {
+      const validated = {
+        time: Number(candle.time),
+        open: Number(candle.open),
+        high: Number(candle.high),
+        low: Number(candle.low),
+        close: Number(candle.close)
+      }
+      
+      // Check for invalid data
+      if (isNaN(validated.time) || isNaN(validated.open) || isNaN(validated.high) || 
+          isNaN(validated.low) || isNaN(validated.close)) {
+        console.warn(`Invalid candle at index ${index}:`, candle)
+        return null
+      }
+      
+      return validated
+    }).filter(candle => candle !== null)
+
+    // Sort by time to ensure chronological order
+    validatedCandles.sort((a, b) => a.time - b.time)
+    
+    // Debug: Check for duplicates before deduplication
+    console.log('First 10 candles before deduplication:', validatedCandles.slice(0, 10).map((c, i) => ({
+      index: i,
+      time: c.time,
+      iso: new Date(c.time * 1000).toISOString(),
+      open: c.open,
+      close: c.close
+    })))
+    
+    const duplicateCheck = new Map()
+    let duplicateCount = 0
+    const problematicTime = 1744205760
+    
+    validatedCandles.forEach((candle, index) => {
+      // Special logging for the problematic timestamp
+      if (candle.time === problematicTime) {
+        console.warn(`Found problematic timestamp ${problematicTime} at index ${index} during initial scan:`, candle)
+      }
+      
+      if (duplicateCheck.has(candle.time)) {
+        console.warn(`Duplicate timestamp found at index ${index}: ${candle.time} (${new Date(candle.time * 1000).toISOString()})`)
+        console.warn('Previous occurrence:', duplicateCheck.get(candle.time))
+        console.warn('Current candle:', candle)
+        duplicateCount++
+      } else {
+        duplicateCheck.set(candle.time, { index, candle })
+      }
+    })
+    
+    console.log(`Found ${duplicateCount} duplicates in ${validatedCandles.length} candles`)
+    
+    // Remove duplicates by time (keep the last occurrence for each timestamp)
+    const deduplicatedCandles = []
+    const timeMap = new Map()
+    
+    // Build map with last occurrence of each timestamp
+    validatedCandles.forEach((candle, index) => {
+      timeMap.set(candle.time, candle)
+    })
+    
+    // Convert back to array and sort
+    const uniqueCandles = Array.from(timeMap.values())
+    uniqueCandles.sort((a, b) => a.time - b.time)
+    
+    // Final validation - ensure no duplicates remain
+    for (let i = 1; i < uniqueCandles.length; i++) {
+      if (uniqueCandles[i].time === uniqueCandles[i-1].time) {
+        console.error(`Still have duplicate at index ${i}: ${uniqueCandles[i].time}`)
+      }
+      if (uniqueCandles[i].time < uniqueCandles[i-1].time) {
+        console.error(`Data not sorted at index ${i}: ${uniqueCandles[i].time} < ${uniqueCandles[i-1].time}`)
+      }
+    }
+    
+    console.log(`Using ${uniqueCandles.length} candles from our backend data (${validatedCandles.length - uniqueCandles.length} duplicates removed)`)
+    
+    // Debug: Show first 10 candles after deduplication
+    console.log('First 10 candles after deduplication:', uniqueCandles.slice(0, 10).map((c, i) => ({
+      index: i,
+      time: c.time,
+      iso: new Date(c.time * 1000).toISOString(),
+      open: c.open,
+      close: c.close
+    })))
+    console.log('Chart time range:', {
+      from: new Date(uniqueCandles[0].time * 1000).toLocaleString(),
+      to: new Date(uniqueCandles[uniqueCandles.length - 1].time * 1000).toLocaleString()
+    })
+
+    // Final check before setting data
+    console.log('About to set data with', uniqueCandles.length, 'candles')
+    console.log('First 5 candles being set:', uniqueCandles.slice(0, 5))
+    
+    // Look specifically for the problematic timestamp 1744205760
+    const targetTime = 1744205760
+    const problematicIndices = []
+    uniqueCandles.forEach((candle, index) => {
+      if (candle.time === targetTime) {
+        problematicIndices.push(index)
+        console.warn(`Found problematic timestamp ${targetTime} at index ${index}:`, candle)
+      }
+    })
+    
+    if (problematicIndices.length > 1) {
+      console.error(`FOUND THE ISSUE: Timestamp ${targetTime} appears ${problematicIndices.length} times at indices:`, problematicIndices)
+    }
+    
+    // Double-check for duplicates in the final data
+    let foundDuplicates = false
+    for (let i = 1; i < uniqueCandles.length; i++) {
+      if (uniqueCandles[i].time === uniqueCandles[i-1].time) {
+        console.error(`CRITICAL: Still have duplicate at index ${i}: ${uniqueCandles[i].time}`)
+        console.error('Previous:', uniqueCandles[i-1])
+        console.error('Current:', uniqueCandles[i])
+        foundDuplicates = true
+        
+        // Remove the duplicate right here as a last resort
+        console.warn('Removing duplicate at index', i)
+        uniqueCandles.splice(i, 1)
+        i-- // Adjust index after removal
+      }
+    }
+    
+    if (foundDuplicates) {
+      console.log('After removing duplicates, array length is now:', uniqueCandles.length)
+    }
+    
+    // Final validation - check the first few elements around where the error occurs
+    console.log('Elements around index 1 (where error occurs):')
+    for (let i = 0; i < Math.min(5, uniqueCandles.length); i++) {
+      console.log(`Index ${i}:`, {
+        time: uniqueCandles[i].time,
+        iso: new Date(uniqueCandles[i].time * 1000).toISOString(),
+        data: uniqueCandles[i]
+      })
+    }
+    
+    // Set the deduplicated candle data first, without any other series
+    try {
+      console.log('Setting candlestick data...')
+      candleSeries.setData(uniqueCandles)
+      console.log('[SUCCESS] Candlestick data set successfully')
+    } catch (error) {
+      console.error('Failed to set candlestick data:', error)
+      throw error
+    }
+
+    // Get data time range first
+    const dataStartTime = uniqueCandles[0].time
+    const dataEndTime = uniqueCandles[uniqueCandles.length - 1].time
+
+    // Calculate entry and exit timestamps using the correct fields from backend
+    let entryTimestamp, exitTimestamp = null
+    try {
+      // Use entryTime field (which contains entry_time from database)
+      const entryTime = trade.entryTime || trade.entryDate
+      entryTimestamp = Math.floor(new Date(entryTime).getTime() / 1000)
+      
+      // Use exitTime field (which contains exit_time from database)  
+      const exitTime = trade.exitTime
+      if (exitTime) {
+        exitTimestamp = Math.floor(new Date(exitTime).getTime() / 1000)
+      }
+      
+      // Debug timestamp calculation
+      console.log('[TIME] FIXED TIMESTAMP CALCULATION:')
+      console.log('Browser timezone:', Intl.DateTimeFormat().resolvedOptions().timeZone)
+      console.log('Using entryTime field:', trade.entryTime)
+      console.log('Using exitTime field:', trade.exitTime)
+      console.log('Fallback entryDate field:', trade.entryDate)
+      
+      console.log('[SUCCESS] Calculated entryTimestamp:', entryTimestamp, new Date(entryTimestamp * 1000).toISOString())
+      console.log('[SUCCESS] Entry time in your timezone:', new Date(entryTimestamp * 1000).toLocaleString())
+      console.log('[SUCCESS] Calculated exitTimestamp:', exitTimestamp, exitTimestamp ? new Date(exitTimestamp * 1000).toISOString() : 'none')
+    } catch (dateError) {
+      console.warn('Error parsing trade dates:', dateError.message)
+      entryTimestamp = Math.floor(new Date().getTime() / 1000)
+    }
+
+    // Check if trade times are within data range
+    const entryInRange = entryTimestamp >= dataStartTime && entryTimestamp <= dataEndTime
+    const exitInRange = !exitTimestamp || (exitTimestamp >= dataStartTime && exitTimestamp <= dataEndTime)
+    
+    console.log('Adding precise trade markers at:', {
+      entry: new Date(entryTimestamp * 1000).toLocaleString(),
+      exit: exitTimestamp ? new Date(exitTimestamp * 1000).toLocaleString() : 'none',
+      entryInRange,
+      exitInRange,
+      dataRange: {
+        from: new Date(dataStartTime * 1000).toLocaleString(),
+        to: new Date(dataEndTime * 1000).toLocaleString()
+      }
+    })
+    
+    // Debug: Log trade prices vs nearby candle data
+    console.log('[CHECK] PRICE ANALYSIS - Trade vs Chart Data:')
+    console.log('Trade Entry Price:', `$${formatNumber(trade.entryPrice)}`)
+    if (trade.exitPrice) {
+      console.log('Trade Exit Price:', `$${formatNumber(trade.exitPrice)}`)
+    }
+    
+    if (!entryInRange) {
+      console.warn('Entry time is outside available chart data range')
+    }
+    if (!exitInRange) {
+      console.warn('Exit time is outside available chart data range')
+    }
+
+    // Only add markers after candlestick data is successfully set
+    try {
+      console.log('[TARGET] STARTING MARKER CREATION PROCESS...')
+      console.log('Entry timestamp:', entryTimestamp, entryTimestamp ? new Date(entryTimestamp * 1000).toISOString() : 'none')
+      console.log('Exit timestamp:', exitTimestamp, exitTimestamp ? new Date(exitTimestamp * 1000).toISOString() : 'none')
+      
+      // Declare entryMarker in outer scope
+      let entryMarker = null
+      
+      // Create precise trade execution indicators
+      if (entryTimestamp) {
+        console.log('[SUCCESS] Entry timestamp found, creating entry marker...')
+        // Find the closest candle to entry time
+        const entryCandle = uniqueCandles.reduce((closest, candle) => {
+          const currentDiff = Math.abs(candle.time - entryTimestamp)
+          const closestDiff = Math.abs(closest.time - entryTimestamp)
+          return currentDiff < closestDiff ? candle : closest
+        })
+        
+        // Debug: Analyze price differences at entry
+        console.log('[STATS] ENTRY CANDLE ANALYSIS:')
+        console.log(`Candle Time: ${new Date(entryCandle.time * 1000).toLocaleString()}`)
+        console.log(`Trade Time:  ${new Date(entryTimestamp * 1000).toLocaleString()}`)
+        console.log(`Time Diff:   ${Math.abs(entryCandle.time - entryTimestamp)} seconds`)
+        
+        // TIMEZONE DEBUGGING
+        console.log('[WORLD] TIMEZONE ANALYSIS:')
+        console.log(`Trade timestamp raw: ${entryTimestamp}`)
+        console.log(`Trade time UTC: ${new Date(entryTimestamp * 1000).toISOString()}`)
+        console.log(`Trade time Local: ${new Date(entryTimestamp * 1000).toLocaleString()}`)
+        console.log(`Candle timestamp raw: ${entryCandle.time}`)
+        console.log(`Candle time UTC: ${new Date(entryCandle.time * 1000).toISOString()}`)
+        console.log(`Candle time Local: ${new Date(entryCandle.time * 1000).toLocaleString()}`)
+        console.log(`You said trade was at 16:33 - does that match any of these times?`)
+        // Get entry price first before using it
+        const entryPrice = parseFloat(trade.entryPrice)
+        
+        console.log(`Candle OHLC: O=$${formatNumber(entryCandle.open)} H=$${formatNumber(entryCandle.high)} L=$${formatNumber(entryCandle.low)} C=$${formatNumber(entryCandle.close)}`)
+        console.log(`Trade Price: $${formatNumber(entryPrice)}`)
+        
+        // Check if trade price is within candle range
+        const withinRange = entryPrice >= entryCandle.low && entryPrice <= entryCandle.high
+        const priceVsClose = ((entryPrice - entryCandle.close) / entryCandle.close * 100).toFixed(2)
+        
+        console.log(`Price within candle range: ${withinRange}`)
+        console.log(`Trade price vs candle close: ${priceVsClose}% difference`)
+        
+        if (!withinRange) {
+          console.warn('[WARNING] PRICE MISMATCH: Trade execution price is outside the candle\'s high-low range!')
+          console.warn('This suggests data source differences or timing misalignment.')
+          console.warn('[IDEA] POSSIBLE CAUSES:')
+          console.warn('• Different data sources (your broker vs Finnhub)')
+          console.warn('• Market orders executed between bid/ask spreads')
+          console.warn('• Trade executed on different exchange/ECN')
+          console.warn('• Timing misalignment or data delays')
+          console.warn('• Pre/post-market trading vs regular hours data')
+        }
+
+        // Create entry execution marker using chart markers API
+        entryMarker = {
+          time: entryCandle.time,
+          position: 'belowBar',
+          color: '#10b981',
+          shape: 'arrowUp',
+          text: `BUY @ $${formatNumber(entryPrice)}`,
+          size: 2
+        }
+        
+        // Set entry marker using v5 API with fallback
+        console.log('[START] Creating entry marker with data:', entryMarker)
+        try {
+          if (LightweightCharts.createSeriesMarkers) {
+            const entryMarkersInstance = LightweightCharts.createSeriesMarkers(candleSeries, [entryMarker])
+            console.log('[SUCCESS] Entry marker created successfully:', entryMarkersInstance)
+          } else if (candleSeries.setMarkers) {
+            // Fallback to older API if available
+            console.log('[CLIP] Using fallback setMarkers API')
+            candleSeries.setMarkers([entryMarker])
+            console.log('[SUCCESS] Entry marker created using fallback API')
+          } else {
+            console.error('[ERROR] No marker API available in this version')
+            console.log('Available candleSeries methods:', Object.getOwnPropertyNames(candleSeries))
+            console.log('Available LightweightCharts methods:', Object.keys(LightweightCharts))
+          }
+        } catch (markerError) {
+          console.error('[ERROR] Failed to create entry marker:', markerError)
+        }
+
+        // Just use the arrow marker - no stupid giant lines
+
+        console.log('[SUCCESS] Entry execution marker created at:', {
+          time: new Date(entryCandle.time * 1000).toLocaleString(),
+          price: `$${formatNumber(entryPrice)}`,
+          timeDiff: `${Math.abs(entryCandle.time - entryTimestamp)} seconds from actual execution`
+        })
+      }
+
+      // Add exit execution marker if trade has exit
+      if (exitTimestamp && exitInRange) {
+        // Find the closest candle to exit time
+        const exitCandle = uniqueCandles.reduce((closest, candle) => {
+          const currentDiff = Math.abs(candle.time - exitTimestamp)
+          const closestDiff = Math.abs(closest.time - exitTimestamp)
+          return currentDiff < closestDiff ? candle : closest
+        })
+        
+        // Debug: Analyze price differences at exit
+        console.log('[STATS] EXIT CANDLE ANALYSIS:')
+        console.log(`Candle Time: ${new Date(exitCandle.time * 1000).toLocaleString()}`)
+        console.log(`Trade Time:  ${new Date(exitTimestamp * 1000).toLocaleString()}`)
+        console.log(`Time Diff:   ${Math.abs(exitCandle.time - exitTimestamp)} seconds`)
+        console.log(`Candle OHLC: O=$${formatNumber(exitCandle.open)} H=$${formatNumber(exitCandle.high)} L=$${formatNumber(exitCandle.low)} C=$${formatNumber(exitCandle.close)}`)
+        console.log(`Trade Price: $${formatNumber(trade.exitPrice)}`)
+        
+        // Check if trade price is within candle range
+        const exitWithinRange = trade.exitPrice >= exitCandle.low && trade.exitPrice <= exitCandle.high
+        const exitPriceVsClose = ((trade.exitPrice - exitCandle.close) / exitCandle.close * 100).toFixed(2)
+        
+        console.log(`Price within candle range: ${exitWithinRange}`)
+        console.log(`Trade price vs candle close: ${exitPriceVsClose}% difference`)
+        
+        if (!exitWithinRange) {
+          console.warn('[WARNING] PRICE MISMATCH: Exit price is outside the candle\'s high-low range!')
+          console.warn('This suggests data source differences or timing misalignment.')
+        }
+        
+        const exitPriceValue = parseFloat(trade.exitPrice)
+        const pnl = parseFloat(trade.pnl)
+        const isProfit = pnl >= 0
+        const exitColor = '#ef4444' // Always red for SELL
+        const pnlText = isProfit ? `+$${formatNumber(pnl)}` : `-$${formatNumber(Math.abs(pnl))}`
+        
+        // Create exit execution marker - append to existing markers
+        const exitMarker = {
+          time: exitCandle.time,
+          position: 'aboveBar',
+          color: exitColor,
+          shape: 'arrowDown',
+          text: `SELL @ $${formatNumber(exitPriceValue)} (${pnlText})`,
+          size: 2
+        }
+        
+        // Add both entry and exit markers together using v5 API with fallback
+        const allMarkers = entryMarker ? [entryMarker, exitMarker] : [exitMarker]
+        console.log('[START] Creating exit markers with data:', allMarkers)
+        try {
+          if (LightweightCharts.createSeriesMarkers) {
+            const exitMarkersInstance = LightweightCharts.createSeriesMarkers(candleSeries, allMarkers)
+            console.log('[SUCCESS] Exit markers created successfully:', exitMarkersInstance)
+          } else if (candleSeries.setMarkers) {
+            // Fallback to older API if available
+            console.log('[CLIP] Using fallback setMarkers API for exit')
+            candleSeries.setMarkers(allMarkers)
+            console.log('[SUCCESS] Exit markers created using fallback API')
+          } else {
+            console.error('[ERROR] No marker API available for exit markers')
+          }
+        } catch (markerError) {
+          console.error('[ERROR] Failed to create exit markers:', markerError)
+        }
+
+        // Just use the arrow marker - no stupid giant lines
+
+        console.log('[SUCCESS] Exit execution marker created at:', {
+          time: new Date(exitCandle.time * 1000).toLocaleString(),
+          price: `$${formatNumber(exitPriceValue)}`,
+          pnl: pnlText,
+          timeDiff: `${Math.abs(exitCandle.time - exitTimestamp)} seconds from actual execution`
+        })
+      }
+    } catch (markerError) {
+      console.warn('Failed to add trade execution markers, but chart data is set:', markerError)
+    }
+
+    // Set visible range to focus on the trade period
+    const tradeDuration = exitTimestamp ? (exitTimestamp - entryTimestamp) : 0
+    
+    let visibleFrom, visibleTo
+    
+    // If trade times are outside data range, show all available data
+    if (!entryInRange && !exitInRange) {
+      console.log('Trade times outside data range, showing all available data')
+      visibleFrom = dataStartTime
+      visibleTo = dataEndTime
+    } else if (tradeDuration === 0 || tradeDuration < 86400) { // Same day trade or no exit
+      // For intraday trades, show the full trading day with some context
+      // Get the entry date in the user's timezone and create market hours for that day
+      const entryDate = new Date(entryTimestamp * 1000)
+      const entryDateStr = entryDate.toISOString().split('T')[0] // YYYY-MM-DD
+      
+      // Create market hours for the entry date (9:30 AM - 4:00 PM ET)
+      // Convert to UTC: ET is UTC-5 (EST) or UTC-4 (EDT)
+      // For simplicity, assume EST (UTC-5)
+      const marketOpen = new Date(entryDateStr + 'T14:30:00.000Z') // 9:30 AM ET = 14:30 UTC
+      const marketClose = new Date(entryDateStr + 'T21:00:00.000Z') // 4:00 PM ET = 21:00 UTC
+      
+      const dayStart = Math.floor(marketOpen.getTime() / 1000)
+      const dayEnd = Math.floor(marketClose.getTime() / 1000)
+      
+      visibleFrom = Math.max(dayStart, dataStartTime)
+      visibleTo = Math.min(dayEnd, dataEndTime)
+    } else {
+      // For multi-day trades, focus on the trade period with padding
+      const padding = Math.max(tradeDuration * 0.2, 86400) // 20% padding, minimum 1 day
+      visibleFrom = Math.max(entryTimestamp - padding, dataStartTime)
+      visibleTo = Math.min(exitTimestamp + padding, dataEndTime)
+    }
+    
+    // Ensure we have a reasonable visible range
+    if (visibleTo <= visibleFrom) {
+      console.warn('Invalid visible range, falling back to fit content')
+      chart.timeScale().fitContent()
+    } else {
+      console.log('Setting visible range:', {
+        from: new Date(visibleFrom * 1000).toLocaleString(),
+        to: new Date(visibleTo * 1000).toLocaleString(),
+        entryTime: new Date(entryTimestamp * 1000).toLocaleString(),
+        exitTime: exitTimestamp ? new Date(exitTimestamp * 1000).toLocaleString() : 'N/A',
+        tradeDuration: tradeDuration > 0 ? `${Math.round(tradeDuration / 3600)} hours` : 'N/A',
+        entryDateStr: new Date(entryTimestamp * 1000).toISOString().split('T')[0],
+        dataRange: {
+          from: new Date(dataStartTime * 1000).toLocaleString(),
+          to: new Date(dataEndTime * 1000).toLocaleString()
+        }
+      })
+      
+      chart.timeScale().setVisibleRange({
+        from: visibleFrom,
+        to: visibleTo
+      })
+    }
+
+    // Handle resize
+    const handleResize = () => {
+      if (chart && chartContainer.value) {
+        chart.applyOptions({ width: chartContainer.value.clientWidth })
+      }
+    }
+
+    window.addEventListener('resize', handleResize)
+    chart._resizeHandler = handleResize
+    
+    console.log('[SUCCESS] Single-day focused chart created successfully using our backend data')
+    console.log('')
+    console.log('[INFO] PRICE ALIGNMENT SUMMARY:')
+    console.log('If you see price mismatches between your trade prices and candle data:')
+    console.log('• This is normal and expected in real trading')
+    console.log('• Your broker/exchange data differs from Finnhub\'s aggregated data')
+    console.log('• Charts show market consensus prices, not your specific execution venue')
+    console.log('• Focus on the timing and price level relationships, not exact price matches')
+    console.log('')
+    
   } catch (error) {
-    console.error('Failed to create candlestick series:', error.message)
-    throw new Error(`Failed to create candlestick series: ${error.message}`)
-  }
-  console.log('Candlestick series created successfully')
-  
-  // Validate data format
-  const firstCandle = chartData.value.candles[0]
-  const requiredFields = ['time', 'open', 'high', 'low', 'close']
-  const missingFields = requiredFields.filter(field => !(field in firstCandle))
-  
-  if (missingFields.length > 0) {
-    console.error('Missing required fields in candle data:', missingFields)
-    console.error('Available fields:', Object.keys(firstCandle))
-    throw new Error(`Invalid candle data format. Missing: ${missingFields.join(', ')}`)
-  }
-  
-  // Make sure all numeric values are valid and properly formatted
-  const validatedCandles = chartData.value.candles.map((candle, index) => {
-    const validated = {
-      time: Number(candle.time),
-      open: Number(candle.open),
-      high: Number(candle.high),
-      low: Number(candle.low),
-      close: Number(candle.close)
-    }
-    
-    // Check for invalid data
-    if (isNaN(validated.time) || isNaN(validated.open) || isNaN(validated.high) || 
-        isNaN(validated.low) || isNaN(validated.close)) {
-      console.warn(`Invalid candle at index ${index}:`, candle)
-      return null
-    }
-    
-    // Check for logical consistency (high >= low, etc.)
-    if (validated.high < validated.low || 
-        validated.open < 0 || validated.close < 0) {
-      console.warn(`Logically invalid candle at index ${index}:`, validated)
-      return null
-    }
-    
-    return validated
-  }).filter(candle => candle !== null)
-  
-  console.log('Validated candles:', validatedCandles.length, 'of', chartData.value.candles.length)
-  console.log('Sample validated candle:', validatedCandles[0])
-  
-  if (validatedCandles.length === 0) {
-    throw new Error('No valid candle data after validation')
-  }
-  
-  // Sort by time to ensure chronological order
-  validatedCandles.sort((a, b) => a.time - b.time)
-  
-  console.log('Setting data on candlestick series...')
-  candleSeries.setData(validatedCandles)
-  console.log('Data set successfully')
-
-  // Note: Markers API was removed in lightweight-charts v5
-  // We'll use enhanced price lines instead for entry/exit indicators
-  const trade = chartData.value.trade
-  
-  console.log('Trade data for indicators:', trade)
-  console.log('Entry time:', trade.entryTime, 'Exit time:', trade.exitTime)
-
-  // Add prominent price lines for entry and exit (v5 compatible)
-  console.log('Creating entry price line...')
-  const entryPriceLine = candleSeries.createPriceLine({
-    price: parseFloat(trade.entryPrice),
-    color: '#10b981',
-    lineWidth: 4, // Extra thick line for visibility
-    lineStyle: 2, // Dashed
-    axisLabelVisible: true,
-    title: `📈 Entry @ $${formatNumber(trade.entryPrice)} (${trade.side.toUpperCase()})`,
-  })
-
-  console.log('Creating exit price line...')
-  const pnlText = trade.pnl >= 0 ? `+$${formatNumber(trade.pnl)}` : `-$${formatNumber(Math.abs(trade.pnl))}`
-  const exitPriceLine = candleSeries.createPriceLine({
-    price: parseFloat(trade.exitPrice),
-    color: trade.pnl >= 0 ? '#10b981' : '#ef4444', // Color based on profit/loss
-    lineWidth: 4, // Extra thick line for visibility
-    lineStyle: 2, // Dashed
-    axisLabelVisible: true,
-    title: `📉 Exit @ $${formatNumber(trade.exitPrice)} (${pnlText})`,
-  })
-
-  // Add a breakeven line as reference
-  console.log('Creating breakeven reference line...')
-  const breakevenPriceLine = candleSeries.createPriceLine({
-    price: parseFloat(trade.entryPrice), // Same as entry for reference
-    color: '#6b7280', // Gray color
-    lineWidth: 1,
-    lineStyle: 3, // Dotted
-    axisLabelVisible: false,
-    title: 'Breakeven',
-  })
-
-  console.log('Price lines created successfully')
-
-  // Fit content
-  chart.timeScale().fitContent()
-
-  // Handle resize
-  const handleResize = () => {
-    if (chart && chartContainer.value) {
-      chart.applyOptions({ width: chartContainer.value.clientWidth })
-    }
-  }
-
-  window.addEventListener('resize', handleResize)
-
-  // Store resize handler for cleanup
-  chart._resizeHandler = handleResize
-  
-  console.log('Chart creation completed successfully')
-  
-  } catch (error) {
-    console.error('Error creating chart:', error)
+    console.error('Error creating focused chart:', error)
     error.value = `Chart creation failed: ${error.message}`
   }
 }
@@ -361,8 +729,10 @@ const fetchChartData = async () => {
 
   try {
     console.log(`Fetching chart data for trade ${props.tradeId}`)
+    console.log('Making API call to:', `/trades/${props.tradeId}/chart-data`)
     const response = await api.get(`/trades/${props.tradeId}/chart-data`)
     console.log('Chart data response:', response.data)
+    console.log('Trade data in response:', response.data.trade)
     chartData.value = response.data
     
     // Create chart after data is loaded
@@ -377,10 +747,20 @@ const fetchChartData = async () => {
     if (err.response?.status === 503) {
       isConfigured.value = false
       error.value = err.response.data.error || 'Chart service not configured'
-      showError('Chart Service Unavailable', 'Chart visualization requires Alpha Vantage API configuration.')
+      const configMessage = userTier.value === 'pro' 
+        ? 'Chart visualization requires Finnhub API configuration.'
+        : 'Chart visualization requires API configuration (Finnhub for Pro, Alpha Vantage for Free).'
+      showError('Chart Service Unavailable', configMessage)
     } else if (err.response?.status === 429) {
       error.value = err.response.data.error || 'API rate limit exceeded'
-      showWarning('Chart API Limit Reached', 'Daily chart limit reached (25/day). Try again tomorrow or use common symbols like AAPL, MSFT, GOOGL.')
+      const limitMessage = userTier.value === 'pro' 
+        ? 'Finnhub Pro rate limit reached (150/min). Please wait a moment before retrying.'
+        : 'Alpha Vantage daily limit reached (25/day). Try again tomorrow or upgrade to Pro for unlimited access.'
+      showWarning('Chart API Limit Reached', limitMessage)
+    } else if (err.response?.status === 404) {
+      error.value = err.response.data.error || 'Chart data not available'
+      const message = err.response.data.message || 'Chart data could not be found for this symbol. This may occur with delisted, inactive, or unsupported symbols.'
+      showWarning('Chart Data Unavailable', message)
     } else if (err.response?.status === 400) {
       error.value = err.response.data.error || 'Invalid request'
       showWarning('Chart Data Unavailable', 'Chart data could not be resolved for this symbol. Try using major stocks like AAPL, MSFT, GOOGL, or TSLA.')
@@ -394,6 +774,7 @@ const fetchChartData = async () => {
 }
 
 const loadChart = () => {
+  console.log('[PROCESS] Loading chart for trade:', props.tradeId)
   showChart.value = true
   fetchChartData()
 }
@@ -409,10 +790,14 @@ watch(() => document.documentElement.classList.contains('dark'), () => {
 
 onUnmounted(() => {
   if (chart) {
-    if (chart._resizeHandler) {
-      window.removeEventListener('resize', chart._resizeHandler)
+    try {
+      if (chart._resizeHandler) {
+        window.removeEventListener('resize', chart._resizeHandler)
+      }
+      chart.remove()
+    } catch (error) {
+      console.warn('Error cleaning up chart:', error)
     }
-    chart.remove()
   }
 })
 </script>

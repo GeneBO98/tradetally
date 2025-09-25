@@ -9,7 +9,7 @@ class GamificationScheduler {
   // Run all gamification tasks
   static async runScheduledTasks() {
     try {
-      console.log('🎯 Running gamification scheduled tasks...');
+      console.log('[TARGET] Running gamification scheduled tasks...');
       
       // Update challenge progress for all active users
       await this.updateAllChallengeProgress();
@@ -29,17 +29,17 @@ class GamificationScheduler {
       // Cleanup and maintenance
       await this.runMaintenance();
       
-      console.log('✅ Gamification scheduled tasks completed');
+      console.log('[SUCCESS] Gamification scheduled tasks completed');
       
     } catch (error) {
-      console.error('❌ Error running gamification scheduled tasks:', error);
+      console.error('[ERROR] Error running gamification scheduled tasks:', error);
     }
   }
   
   // Update challenge progress for all active participants
   static async updateAllChallengeProgress() {
     try {
-      console.log('📊 Updating challenge progress...');
+      console.log('[STATS] Updating challenge progress...');
       
       await ChallengeService.checkAndUpdateChallenges();
       
@@ -54,7 +54,7 @@ class GamificationScheduler {
   // Update trading streaks for all users
   static async updateAllTradingStreaks() {
     try {
-      console.log('📈 Updating trading streaks for all users...');
+      console.log('[ANALYTICS] Updating trading streaks for all users...');
       
       // Get all users who have trades
       const usersWithTrades = await db.query(`
@@ -72,7 +72,7 @@ class GamificationScheduler {
         }
       }
       
-      console.log(`✅ Updated trading streaks for ${updated} users`);
+      console.log(`[SUCCESS] Updated trading streaks for ${updated} users`);
       
     } catch (error) {
       console.error('Error updating trading streaks:', error);
@@ -82,7 +82,7 @@ class GamificationScheduler {
   // Check achievements for users who have been active recently
   static async checkAchievementsForActiveUsers() {
     try {
-      console.log('🏆 Checking achievements for active users...');
+      console.log('[ACHIEVEMENT] Checking achievements for active users...');
       
       // Get users who have traded in the last 7 days
       const activeUsersQuery = `
@@ -109,7 +109,7 @@ class GamificationScheduler {
         }
       }
       
-      console.log(`🎉 Awarded ${achievementsAwarded} new achievements to ${activeUsers.rows.length} active users`);
+      console.log(`[SUCCESS] Awarded ${achievementsAwarded} new achievements to ${activeUsers.rows.length} active users`);
       
     } catch (error) {
       console.error('Error checking achievements:', error);
@@ -119,7 +119,7 @@ class GamificationScheduler {
   // Assign new users to appropriate peer groups
   static async assignNewUsersToPeerGroups() {
     try {
-      console.log('👥 Assigning users to peer groups...');
+      console.log('[PROCESS] Assigning users to peer groups...');
       
       // Get users who have enough trades but aren't in any peer group
       const unassignedUsersQuery = `
@@ -149,7 +149,7 @@ class GamificationScheduler {
         }
       }
       
-      console.log(`👥 Assigned ${unassignedUsers.rows.length} users to peer groups`);
+      console.log(`[PROCESS] Assigned ${unassignedUsers.rows.length} users to peer groups`);
       
     } catch (error) {
       console.error('Error assigning users to peer groups:', error);
@@ -184,7 +184,7 @@ class GamificationScheduler {
         };
         
         await ChallengeService.createChallenge(weeklyChallenge);
-        console.log('📅 Created new weekly challenge');
+        console.log('[CONFIG] Created new weekly challenge');
       }
       
     } catch (error) {
@@ -195,7 +195,7 @@ class GamificationScheduler {
   // Run maintenance tasks
   static async runMaintenance() {
     try {
-      console.log('🧹 Running maintenance tasks...');
+      console.log('[CLEAN] Running maintenance tasks...');
       
       // Cleanup expired challenges
       await db.query(`
@@ -219,7 +219,7 @@ class GamificationScheduler {
       // Cleanup old notifications (keep last 30 days)
       await this.cleanupOldNotifications();
       
-      console.log('✨ Maintenance tasks completed');
+      console.log('[CLEAN] Maintenance tasks completed');
       
     } catch (error) {
       console.error('Error running maintenance:', error);
@@ -245,12 +245,26 @@ class GamificationScheduler {
   // Cleanup old notifications
   static async cleanupOldNotifications() {
     try {
+      // Check if notifications table exists first
+      const tableExists = await db.query(`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables 
+          WHERE table_schema = 'public' 
+          AND table_name = 'notifications'
+        );
+      `);
+      
+      if (!tableExists.rows[0].exists) {
+        console.log('[INFO] Notifications table does not exist yet, skipping cleanup');
+        return;
+      }
+      
       const result = await db.query(`
         DELETE FROM notifications
         WHERE created_at < CURRENT_TIMESTAMP - INTERVAL '30 days'
       `);
       
-      console.log(`🗑️ Cleaned up ${result.rowCount} old notifications`);
+      console.log(`[INFO] Cleaned up ${result.rowCount} old notifications`);
       
     } catch (error) {
       console.error('Error cleaning up notifications:', error);
@@ -313,7 +327,7 @@ class GamificationScheduler {
       `);
       report.top_performers = topPerformersQuery.rows;
       
-      console.log('📈 Weekly Gamification Report:', JSON.stringify(report, null, 2));
+      console.log('[ANALYTICS] Weekly Gamification Report:', JSON.stringify(report, null, 2));
       
       return report;
       
@@ -325,7 +339,7 @@ class GamificationScheduler {
   
   // Start the gamification scheduler
   static startScheduler() {
-    console.log('🎯 Starting gamification scheduler...');
+    console.log('[TARGET] Starting gamification scheduler...');
     
     // Run immediately
     this.runScheduledTasks();

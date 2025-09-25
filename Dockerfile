@@ -17,12 +17,35 @@ RUN npm run build
 
 FROM node:18-alpine AS backend-builder
 WORKDIR /app/backend
+
+# Install build dependencies for Sharp and other native modules
+RUN apk add --no-cache \
+    python3 \
+    make \
+    g++ \
+    libc6-compat \
+    vips-dev \
+    build-base
+
 COPY backend/package*.json ./
+
+# Install dependencies
 RUN npm ci --only=production
+
+# Force reinstall Sharp with proper architecture detection
+# This will automatically detect and build for the correct platform
+RUN npm uninstall sharp && \
+    npm install sharp --build-from-source
+
 COPY backend/ ./
 
 FROM node:18-alpine
-RUN apk add --no-cache nginx netcat-openbsd
+RUN apk add --no-cache \
+    nginx \
+    netcat-openbsd \
+    vips \
+    vips-dev \
+    libc6-compat
 WORKDIR /app
 
 # Copy built frontend

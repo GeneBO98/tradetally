@@ -1,6 +1,6 @@
 # TradeTally Mobile API - Quick Start Guide
 
-## 🚀 Getting Started
+## [START] Getting Started
 
 ### 1. Server Discovery
 
@@ -45,7 +45,7 @@ curl -X POST https://your-server.com/api/v1/auth/refresh \
   }'
 ```
 
-## 📱 Mobile App Integration
+## [MOBILE] Mobile App Integration
 
 ### React Native Example
 
@@ -99,7 +99,7 @@ const refreshTokenIfNeeded = async (refreshToken, deviceId) => {
 };
 ```
 
-## 🔄 Sync Implementation
+## [SYNC] Sync Implementation
 
 ### Full Sync (Initial Load)
 
@@ -130,7 +130,7 @@ const performDeltaSync = async () => {
 };
 ```
 
-## 📊 Key Endpoints
+## [ANALYTICS] Key Endpoints
 
 | Endpoint | Method | Purpose |
 |----------|---------|----------|
@@ -144,7 +144,7 @@ const performDeltaSync = async () => {
 | `/api/v1/users/profile` | GET | User profile |
 | `/api/v1/analytics/mobile/summary` | GET | Mobile analytics |
 
-## 🔧 Configuration
+## [TOOLS] Configuration
 
 ### Environment Variables
 
@@ -174,7 +174,7 @@ environment:
   MAX_DEVICES_PER_USER: ${MAX_DEVICES_PER_USER:-10}
 ```
 
-## 🛠️ Development Tools
+## [TOOLS] Development Tools
 
 ### OpenAPI Specification
 
@@ -206,14 +206,14 @@ curl https://your-server.com/api/v1/users/profile \
   -H "X-Device-ID: $device_id"
 ```
 
-## 📚 Additional Resources
+## [DOCS] Additional Resources
 
 - **Full Documentation**: See `MOBILE_API.md`
 - **Migration Guide**: See `MOBILE_MIGRATION.md` 
 - **Server Setup**: See main `README.md`
 - **OpenAPI Spec**: `GET /api/v1/server/openapi.json`
 
-## 🎯 Next Steps
+## [TARGET] Next Steps
 
 1. **Server Discovery**: Test `/.well-known/tradetally-config.json`
 2. **Authentication**: Implement login with device registration
@@ -221,4 +221,4 @@ curl https://your-server.com/api/v1/users/profile \
 4. **Data Sync**: Implement full and delta sync
 5. **Offline Support**: Add local storage and queue
 
-Happy coding! 🚀
+Happy coding! [START]

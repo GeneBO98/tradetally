@@ -3,7 +3,7 @@
     <div v-if="visible" class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50">
       <div class="relative bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-md mx-4 p-6 text-center">
         <div class="absolute -top-4 left-1/2 -translate-x-1/2">
-          <div class="w-12 h-12 rounded-full bg-primary-500 text-white flex items-center justify-center text-2xl">🎉</div>
+          <div class="w-12 h-12 rounded-full bg-primary-500 text-white flex items-center justify-center text-2xl">[SUCCESS]</div>
         </div>
 
         <div class="mt-6">
@@ -55,7 +55,6 @@
 
 <script setup>
 import { ref, watch, onMounted, onBeforeUnmount, computed } from 'vue'
-import { useAnalytics } from '@/composables/useAnalytics'
 
 const props = defineProps({
   queue: {
@@ -63,8 +62,6 @@ const props = defineProps({
     required: true
   }
 })
-
-const { trackAchievement } = useAnalytics()
 
 const visible = ref(false)
 const currentItem = ref(null)
@@ -205,12 +202,7 @@ function next() {
     visible.value = true
     popConfetti()
     if (currentItem.value?.type === 'achievement') {
-      const achievement = currentItem.value.payload.achievement
-      const pts = Number(achievement.points || 0)
-      
-      // Track achievement unlock
-      trackAchievement(achievement.type || achievement.name, pts)
-      
+      const pts = Number(currentItem.value.payload.achievement.points || 0)
       if (xpState.value.xp === null) {
         const info = calcLevelFromXP(0)
         xpState.value = { xp: 0, level: info.level, min: info.min, next: info.next }

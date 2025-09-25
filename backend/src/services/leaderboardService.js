@@ -1,4 +1,5 @@
 const db = require('../config/database');
+const BehavioralAnalyticsService = require('./behavioralAnalyticsService');
 
 class LeaderboardService {
   

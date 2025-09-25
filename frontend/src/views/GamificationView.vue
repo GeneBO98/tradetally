@@ -322,7 +322,7 @@
                     v-if="achievement.is_earned"
                     class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
                   >
-                    ✓ Earned
+                    [SUCCESS] Earned
                   </span>
                   <span
                     v-else
@@ -700,7 +700,6 @@ import api from '@/services/api'
 import MdiIcon from '@/components/MdiIcon.vue'
 import { useNotification } from '@/composables/useNotification'
 import { usePriceAlertNotifications } from '@/composables/usePriceAlertNotifications'
-import { useAnalytics } from '@/composables/useAnalytics'
 import { 
   mdiTrophy, 
   mdiChartLine, 
@@ -723,7 +722,6 @@ export default {
   setup() {
     const { showSuccess, showError, showWarning } = useNotification()
     const { celebrationQueue } = usePriceAlertNotifications()
-    const { trackFeatureUsage } = useAnalytics()
     const activeTab = ref('overview')
     
     const tabs = [
@@ -1125,10 +1123,8 @@ export default {
 
     onMounted(() => {
       loadDashboard()
-      checkForNewAchievements()
-      
-      // Track leaderboard view
-      trackFeatureUsage('leaderboard_view')
+      // Temporarily disabled automatic achievement checking due to 500 error
+      // checkForNewAchievements()
     })
 
     const checkForNewAchievements = async () => {
@@ -1153,7 +1149,7 @@ export default {
           
           // Show success message to user
           showSuccess(
-            `🎉 ${response.data.data.count} New Achievement${response.data.data.count > 1 ? 's' : ''}!`,
+            `[SUCCESS] ${response.data.data.count} New Achievement${response.data.data.count > 1 ? 's' : ''}!`,
             achievementNames
           )
           

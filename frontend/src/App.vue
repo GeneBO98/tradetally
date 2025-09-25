@@ -46,6 +46,7 @@
     </footer>
     
     <Notification />
+    <ModalAlert />
     <!-- Gamification celebration overlay -->
     <CelebrationOverlay :queue="celebrationQueue" />
   </div>
@@ -56,19 +57,17 @@ import { computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { usePriceAlertNotifications } from '@/composables/usePriceAlertNotifications'
-import { useAnalytics } from '@/composables/useAnalytics'
 import NavBar from '@/components/layout/NavBar.vue'
 import Notification from '@/components/common/Notification.vue'
+import ModalAlert from '@/components/common/ModalAlert.vue'
 import CelebrationOverlay from '@/components/gamification/CelebrationOverlay.vue'
+import api from '@/services/api'
 
 const route = useRoute()
 const authStore = useAuthStore()
 
 // Initialize price alert notifications globally
 const { isConnected, connect, disconnect, celebrationQueue } = usePriceAlertNotifications()
-
-// Initialize analytics globally
-const { initialize: initializeAnalytics, identifyUser, trackPageView } = useAnalytics()
 
 const isAuthRoute = computed(() => {
   return ['login', 'register'].includes(route.name)
@@ -79,39 +78,23 @@ let lastConnectionState = false
 watch(() => [authStore.user?.tier, authStore.token, authStore.user?.billingEnabled], ([tier, token, billingEnabled]) => {
   const shouldConnect = token && (tier === 'pro' || billingEnabled === false)
   
-  if (shouldConnect && !lastConnectionState) {
-    console.log('Connecting to SSE notifications...')
-    connect()
-    lastConnectionState = true
-  } else if (!shouldConnect && lastConnectionState) {
-    console.log('Disconnecting from SSE notifications...')
-    disconnect()
-    lastConnectionState = false
-  }
-}, { immediate: true })
-
-// Track page views on route changes
-watch(() => route.name, (newRouteName) => {
-  if (newRouteName && !isAuthRoute.value) {
-    trackPageView(newRouteName)
-  }
-})
-
-// Watch for user authentication to identify users in analytics
-watch(() => authStore.user, (user) => {
-  if (user?.id) {
-    identifyUser(user.id, {
-      tier: user.tier || 'free',
-      created_at: user.created_at
-    })
+  // Only connect/disconnect if the state actually changed
+  if (shouldConnect !== lastConnectionState) {
+    lastConnectionState = shouldConnect
+    
+    if (shouldConnect) {
+      console.log('Connecting to notification stream (user is Pro or billing disabled)')
+      connect()
+    } else {
+      console.log('Disconnecting from notification stream (user not Pro or not authenticated)')
+      disconnect()
+    }
   }
 }, { immediate: true })
 
 onMounted(async () => {
-  // Initialize analytics
-  initializeAnalytics()
-  
   await authStore.checkAuth()
-  // Note: Achievement celebrations are now handled globally via CelebrationOverlay
+  // Note: Achievement celebrations are now handled by GamificationView only
+  // This prevents conflicts between App.vue and GamificationView celebration logic
 })
 </script>
