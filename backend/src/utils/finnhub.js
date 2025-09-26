@@ -83,8 +83,8 @@ class FinnhubClient {
       if (error.response) {
         // Handle 429 rate limit errors with exponential backoff
         if (error.response.status === 429) {
-          console.log('Rate limit hit, waiting 60 seconds before retry...');
-          await new Promise(resolve => setTimeout(resolve, 60000));
+          console.log('Rate limit hit, waiting 5 seconds before retry...');
+          await new Promise(resolve => setTimeout(resolve, 5000));
           throw new Error(`Finnhub API rate limit exceeded: ${error.response.status} - ${error.response.data?.error || 'Rate limit reached'}`);
         }
         throw new Error(`Finnhub API error: ${error.response.status} - ${error.response.data?.error || 'Unknown error'}`);

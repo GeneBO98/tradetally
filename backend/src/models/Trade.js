@@ -962,7 +962,7 @@ class Trade {
 
   static async getCountWithFilters(userId, filters = {}) {
     const { getUserTimezone } = require('../utils/timezone');
-    console.log('🔢 getCountWithFilters called with userId:', userId, 'filters:', filters);
+    console.log('[COUNT] getCountWithFilters called with userId:', userId, 'filters:', filters);
     
     // Count query with optional join for sectors
     let needsJoin = (filters.sectors && filters.sectors.length > 0) || filters.sector;
@@ -1065,13 +1065,13 @@ class Trade {
       }
     }
 
-    console.log('🔢 Count query:', query);
-    console.log('🔢 Count values:', values);
+    console.log('[COUNT] Count query:', query);
+    console.log('[COUNT] Count values:', values);
     
     const result = await db.query(query, values);
     const total = parseInt(result.rows[0].total) || 0;
     
-    console.log('🔢 Count result:', total);
+    console.log('[COUNT] Count result:', total);
     return total;
   }
 

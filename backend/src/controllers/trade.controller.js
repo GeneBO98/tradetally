@@ -55,14 +55,13 @@ const tradeController = {
       // Get trades with pagination
       const trades = await Trade.findByUser(req.user.id, filters);
       
-      // Get total count using round-trip counting methodology for consistency with analytics
+      // Get total count without pagination
       const totalCountFilters = { ...filters };
       delete totalCountFilters.limit;
       delete totalCountFilters.offset;
       
-      // Use the same round-trip counting logic as analytics
-      const roundTripTotal = await Trade.getRoundTripTradeCount(req.user.id, totalCountFilters);
-      const total = roundTripTotal;
+      // Use getCountWithFilters for regular trades table counting
+      const total = await Trade.getCountWithFilters(req.user.id, totalCountFilters);
       
       res.json({
         trades,
@@ -540,6 +539,11 @@ const tradeController = {
         req.file.originalname
       ]);
 
+      // Copy file buffer and metadata to prevent issues if request is cleaned up
+      const fileBuffer = Buffer.from(req.file.buffer);
+      const fileName = req.file.originalname;
+      const fileUserId = req.user.id;
+
       // Ensure import continues in background regardless of client connection
       process.nextTick(async () => {
         // Set up a timeout to prevent stuck imports
@@ -553,7 +557,7 @@ const tradeController = {
         }, 10 * 60 * 1000); // 10 minutes
         
         try {
-          logger.logImport(`Starting import for user ${req.user.id}, broker: ${broker}, file: ${req.file.originalname}`);
+          logger.logImport(`Starting import for user ${fileUserId}, broker: ${broker}, file: ${fileName}`);
           
           // Fetch existing open positions for context-aware parsing
           logger.logImport(`Fetching existing open positions for context-aware import...`);
@@ -565,7 +569,7 @@ const tradeController = {
             AND exit_time IS NULL
             ORDER BY symbol, entry_time
           `;
-          const openPositionsResult = await db.query(openPositionsQuery, [req.user.id]);
+          const openPositionsResult = await db.query(openPositionsQuery, [fileUserId]);
           
           // Convert to context format
           const existingPositions = {};
@@ -602,7 +606,7 @@ const tradeController = {
             logger.logImport(`  ${symbol}: ${pos.side} ${pos.quantity} shares @ $${pos.entryPrice}`);
           });
           
-          const parseResult = await parseCSV(req.file.buffer, broker, { existingPositions });
+          const parseResult = await parseCSV(fileBuffer, broker, { existingPositions });
           
           // Handle both old format (array) and new format (object with trades and unresolvedCusips)
           const trades = Array.isArray(parseResult) ? parseResult : parseResult.trades;
@@ -747,9 +751,9 @@ const tradeController = {
                 } else if (executionData) {
                   cleanTradeData.executions = executionData;
                 }
-                await Trade.update(tradeData.existingTradeId, req.user.id, cleanTradeData, { skipAchievements: true });
+                await Trade.update(tradeData.existingTradeId, req.user.id, cleanTradeData, { skipAchievements: true, skipApiCalls: true });
               } else {
-                await Trade.create(req.user.id, tradeData, { skipAchievements: true });
+                await Trade.create(req.user.id, tradeData, { skipAchievements: true, skipApiCalls: true });
               }
               imported++;
             } catch (error) {
@@ -1371,41 +1375,18 @@ const tradeController = {
 
   async resolveUnresolvedCusips(req, res, next) {
     try {
-      // Get cached CUSIPs from Finnhub
-      const cachedCusips = [];
-      for (const key of finnhub.cache.keys()) {
-        if (key.startsWith('cusip_')) {
-          cachedCusips.push(key.replace('cusip_', ''));
-        }
-      }
+      // Find all CUSIP-like symbols that don't have mappings
+      const cusipQuery = `
+        SELECT DISTINCT t.symbol 
+        FROM trades t
+        LEFT JOIN cusip_mappings cm ON cm.cusip = t.symbol AND (cm.user_id = $1 OR cm.user_id IS NULL)
+        WHERE t.user_id = $1 
+          AND LENGTH(t.symbol) = 9 
+          AND t.symbol ~ '^[0-9A-Z]{9}$'
+          AND cm.cusip IS NULL
+      `;
       
-      let cusipQuery;
-      let queryParams;
-      
-      if (cachedCusips.length === 0) {
-        // No cached CUSIPs, find all CUSIP-like symbols
-        cusipQuery = `
-          SELECT DISTINCT symbol 
-          FROM trades 
-          WHERE user_id = $1 
-          AND LENGTH(symbol) = 9 
-          AND symbol ~ '^[A-Z0-9]{8}[0-9]$'
-        `;
-        queryParams = [req.user.id];
-      } else {
-        // Exclude cached CUSIPs
-        cusipQuery = `
-          SELECT DISTINCT symbol 
-          FROM trades 
-          WHERE user_id = $1 
-          AND LENGTH(symbol) = 9 
-          AND symbol ~ '^[A-Z0-9]{8}[0-9]$'
-          AND symbol NOT IN (${cachedCusips.map((_, i) => `$${i + 2}`).join(',')})
-        `;
-        queryParams = [req.user.id, ...cachedCusips];
-      }
-      
-      const result = await db.query(cusipQuery, queryParams);
+      const result = await db.query(cusipQuery, [req.user.id]);
       const unresolvedCusips = result.rows.map(row => row.symbol);
       
       if (unresolvedCusips.length === 0) {
@@ -1418,23 +1399,34 @@ const tradeController = {
 
       console.log(`Found ${unresolvedCusips.length} unresolved CUSIPs, attempting to resolve...`);
       
-      // Resolve CUSIPs using Finnhub batch lookup
-      const resolvedMappings = await finnhub.batchLookupCusips(unresolvedCusips);
-      const resolvedCount = Object.keys(resolvedMappings).length;
-      
-      // Update trades with resolved mappings
-      let updatedTrades = 0;
-      for (const [cusip, ticker] of Object.entries(resolvedMappings)) {
-        const updateResult = await Trade.updateSymbolForCusip(req.user.id, cusip, ticker);
-        updatedTrades += updateResult.affectedRows || 0;
-      }
-      
+      // Send immediate response and continue in background
       res.json({
-        message: `Resolved ${resolvedCount} of ${unresolvedCusips.length} CUSIPs`,
-        resolved: resolvedCount,
+        message: `Starting resolution of ${unresolvedCusips.length} CUSIPs in background`,
         total: unresolvedCusips.length,
-        tradesUpdated: updatedTrades,
-        mappings: resolvedMappings
+        status: 'processing'
+      });
+      
+      // Copy user ID to avoid reference issues
+      const userId = req.user.id;
+      
+      // Continue processing in background
+      process.nextTick(async () => {
+        try {
+          // Resolve CUSIPs using Finnhub batch lookup
+          const resolvedMappings = await finnhub.batchLookupCusips(unresolvedCusips);
+          const resolvedCount = Object.keys(resolvedMappings).length;
+          
+          // Update trades with resolved mappings
+          let updatedTrades = 0;
+          for (const [cusip, ticker] of Object.entries(resolvedMappings)) {
+            const updateResult = await Trade.updateSymbolForCusip(userId, cusip, ticker);
+            updatedTrades += updateResult.affectedRows || 0;
+          }
+          
+          console.log(`CUSIP resolution complete: ${resolvedCount} of ${unresolvedCusips.length} resolved, ${updatedTrades} trades updated`);
+        } catch (error) {
+          console.error('Error in background CUSIP resolution:', error);
+        }
       });
     } catch (error) {
       next(error);
@@ -2008,6 +2000,16 @@ const tradeController = {
       const tradesResult = await db.query(tradesQuery, [userId]);
       const stats = tradesResult.rows[0];
       
+      // Get enrichment status breakdown for display
+      const enrichmentStatusQuery = `
+        SELECT enrichment_status, COUNT(*) as count
+        FROM trades
+        WHERE user_id = $1
+        GROUP BY enrichment_status
+      `;
+      const enrichmentStatusResult = await db.query(enrichmentStatusQuery, [userId]);
+      const tradeEnrichment = enrichmentStatusResult.rows;
+      
       // Get unresolved CUSIPs (trades with CUSIP-like symbols that haven't been resolved)
       const cusipQuery = `
         SELECT COUNT(DISTINCT t.symbol) as unresolved_cusips
@@ -2053,6 +2055,7 @@ const tradeController = {
           unenrichedTrades: parseInt(stats.unenriched_trades),
           unresolvedCusips: unresolvedCusips,
           cusipErrors: cusipErrors,
+          tradeEnrichment: tradeEnrichment,
           completionPercentage: stats.total_trades > 0 
             ? Math.round((stats.enriched_trades / stats.total_trades) * 100)
             : 0

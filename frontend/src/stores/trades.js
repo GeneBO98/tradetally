@@ -159,9 +159,13 @@ export const useTradesStore = defineStore('trades', () => {
       })
       
       // If the response includes pagination metadata, update it
+      console.log('[PAGINATION] Trades response:', tradesResponse.data)
       if (tradesResponse.data.total !== undefined) {
         pagination.value.total = tradesResponse.data.total
         pagination.value.totalPages = Math.ceil(tradesResponse.data.total / pagination.value.limit)
+        console.log('[PAGINATION] Set:', pagination.value)
+      } else {
+        console.log('[PAGINATION] No total in response!')
       }
       
       return tradesResponse.data
