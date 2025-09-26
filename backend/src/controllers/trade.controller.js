@@ -735,17 +735,17 @@ const tradeController = {
                 // IMPORTANT: Preserve executions when updating existing trades
                 const {
                   totalQuantity, entryValue, exitValue, isExistingPosition,
-                  existingTradeId, isUpdate, executionData, executions, totalFees, totalFeesForSymbol,
-                  pnl, pnlPercent,
+                  existingTradeId, isUpdate, executionData, totalFees, totalFeesForSymbol,
+                  pnl, pnlPercent, newExecutionsAdded,
                   ...cleanTradeData
                 } = tradeData;
                 
-                // Keep executionData for database update (Trade.create expects executionData)
-                if (tradeData.executionData) {
-                  cleanTradeData.executionData = tradeData.executionData;
-                } else if (tradeData.executions) {
-                  // Fallback to executions if executionData is not present
-                  cleanTradeData.executionData = tradeData.executions;
+                // Keep executions for database update (use 'executions' not 'executionData')
+                // Trade.update expects 'executions' which it will merge with existing executions
+                if (tradeData.executions) {
+                  cleanTradeData.executions = tradeData.executions;
+                } else if (executionData) {
+                  cleanTradeData.executions = executionData;
                 }
                 await Trade.update(tradeData.existingTradeId, req.user.id, cleanTradeData, { skipAchievements: true });
               } else {
@@ -1108,8 +1108,17 @@ const tradeController = {
 
   async getImportLogs(req, res, next) {
     try {
-      const logFiles = logger.getLogFiles();
-      res.json({ logFiles });
+      const { showAll = 'false', page = 1, limit = 10 } = req.query;
+      const showAllBool = showAll === 'true';
+      const pageNum = parseInt(page);
+      const limitNum = parseInt(limit);
+      
+      const result = logger.getLogFiles(showAllBool, pageNum, limitNum);
+      
+      res.json({ 
+        logFiles: result.files.map(f => ({ name: f.name })),
+        pagination: result.pagination
+      });
     } catch (error) {
       next(error);
     }
@@ -1118,13 +1127,22 @@ const tradeController = {
   async getLogFile(req, res, next) {
     try {
       const filename = req.params.filename;
-      const content = logger.readLogFile(filename);
+      const { page = 1, limit = 100, showAll = 'false', search = '' } = req.query;
+      const showAllBool = showAll === 'true';
+      const pageNum = parseInt(page);
+      const limitNum = parseInt(limit);
       
-      if (!content) {
+      const result = logger.readLogFile(filename, pageNum, limitNum, showAllBool, search);
+      
+      if (!result) {
         return res.status(404).json({ error: 'Log file not found' });
       }
 
-      res.json({ filename, content });
+      res.json({ 
+        filename, 
+        content: result.content,
+        pagination: result.pagination
+      });
     } catch (error) {
       next(error);
     }
