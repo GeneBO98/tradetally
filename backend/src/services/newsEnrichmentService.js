@@ -592,7 +592,7 @@ class NewsEnrichmentService {
         }
       }
 
-      logger.logImport(`[SUCCESS] News backfill complete: ${enriched} trades enriched from ${processed} symbol/date combinations`);
+      logger.logImport(`News backfill complete: ${enriched} trades enriched from ${processed} symbol/date combinations`);
 
     } catch (error) {
       logger.logError(`Error during news backfill: ${error.message}`);

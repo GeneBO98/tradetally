@@ -118,7 +118,7 @@ class JobRecoveryService {
       `);
 
       if (stuckJobs.rows.length > 0) {
-        logger.logImport(`[PROCESS] Reset ${stuckJobs.rows.length} stuck jobs back to pending`);
+        logger.info(`Reset ${stuckJobs.rows.length} stuck jobs back to pending`, 'import');
       }
 
       return stuckJobs.rows.length;
@@ -171,7 +171,7 @@ class JobRecoveryService {
             jobsCreated++;
           }
 
-          logger.logImport(`[SUCCESS] Created jobs for trade ${trade.id} (${trade.symbol})`);
+          logger.logImport(`Created jobs for trade ${trade.id} (${trade.symbol})`);
         } catch (error) {
           logger.logError(`Failed to create jobs for trade ${trade.id}:`, error.message);
         }
@@ -243,7 +243,7 @@ class JobRecoveryService {
       `);
 
       if (completedTrades.rows.length > 0) {
-        logger.logImport(`[SUCCESS] Marked ${completedTrades.rows.length} trades as enrichment completed`);
+        logger.logImport(`Marked ${completedTrades.rows.length} trades as enrichment completed`);
       }
 
       return completedTrades.rows.length;
@@ -267,7 +267,7 @@ class JobRecoveryService {
       `);
 
       if (oldFailedJobs.rows.length > 0) {
-        logger.logImport(`[INFO] Cleaned up ${oldFailedJobs.rows.length} old failed jobs (>7 days)`);
+        logger.logImport(`Cleaned up ${oldFailedJobs.rows.length} old failed jobs (>7 days)`);
       }
 
       return oldFailedJobs.rows.length;

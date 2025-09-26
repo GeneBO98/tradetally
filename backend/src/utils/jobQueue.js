@@ -99,7 +99,7 @@ class JobQueue {
       const result = await db.query(query);
       
       if (result.rows[0]) {
-        logger.logImport(`[SUCCESS] Claimed job ${result.rows[0].id} of type ${result.rows[0].type}`);
+        logger.logImport(`Claimed job ${result.rows[0].id} of type ${result.rows[0].type}`);
         return result.rows[0];
       }
       
@@ -269,7 +269,7 @@ class JobQueue {
       }
 
       await this.completeJob(job.id, result);
-      logger.logImport(`[SUCCESS] Job ${job.id} completed successfully`);
+      logger.logImport(`Job ${job.id} completed successfully`);
       return true; // Job was processed
     } catch (error) {
       logger.logError(`[ERROR] Job ${job.id} failed: ${error.message}`);

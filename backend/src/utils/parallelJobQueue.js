@@ -26,7 +26,7 @@ class ParallelJobQueue {
     this.startWorkerForJobType('strategy_classification', 5); // 5 concurrent strategy workers (optimized)
     this.startWorkerForJobType('news_enrichment', 2); // 2 news workers
     
-    logger.logImport(`[SUCCESS] Started ${this.workers.size} parallel workers`);
+    logger.logImport(`Started ${this.workers.size} parallel workers`);
   }
 
   /**
@@ -58,7 +58,7 @@ class ParallelJobQueue {
     }, 500); // Check every 500ms for faster processing
 
     this.workers.set(jobType, workerInfo);
-    logger.logImport(`[SUCCESS] Started worker for ${jobType} (max concurrent: ${maxConcurrent})`);
+    logger.logImport(`Started worker for ${jobType} (max concurrent: ${maxConcurrent})`);
   }
 
   /**
@@ -150,7 +150,7 @@ class ParallelJobQueue {
       // CRITICAL: Update trade enrichment status when job completes
       await this.updateTradeEnrichmentStatus(job, data);
       
-      logger.logImport(`[SUCCESS] [${job.type}] Job ${job.id} completed in time`);
+      logger.logImport(`[${job.type}] Job ${job.id} completed in time`);
 
     } catch (error) {
       // Clear timeout
@@ -211,7 +211,7 @@ class ParallelJobQueue {
         WHERE id = $1
       `;
       await db.query(retryQuery, [jobId, `Timeout retry ${retry_count + 1}: ${error}`]);
-      logger.logImport(`[PROCESS] Job ${jobId} timed out, retrying (attempt ${retry_count + 1})`);
+      logger.info(`Job ${jobId} timed out, retrying (attempt ${retry_count + 1})`, 'import');
     } else {
       // Give up after 2 retries
       const failQuery = `
@@ -240,7 +240,7 @@ class ParallelJobQueue {
           WHERE id = $1
         `, [data.tradeId]);
         
-        logger.logImport(`[PROCESS] Updated trade ${data.tradeId} enrichment status to completed`);
+        logger.info(`Updated trade ${data.tradeId} enrichment status to completed`, 'import');
       }
       
       // For CUSIP resolution jobs, mark all affected trades as completed
@@ -254,7 +254,7 @@ class ParallelJobQueue {
           AND symbol ~ '^[A-Z0-9]{8}[0-9]$'
         `, [data.userId]);
         
-        logger.logImport(`[PROCESS] Updated CUSIP trades for user ${data.userId} to completed`);
+        logger.info(`Updated CUSIP trades for user ${data.userId} to completed`, 'import');
       }
       
     } catch (error) {

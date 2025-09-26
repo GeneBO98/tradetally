@@ -45,16 +45,29 @@
           <!-- Unmapped CUSIPs List -->
           <div v-else>
             <div class="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md p-4 mb-6">
-              <div class="flex">
-                <ExclamationTriangleIcon class="h-5 w-5 text-yellow-400" />
-                <div class="ml-3">
-                  <h3 class="text-sm font-medium text-yellow-800 dark:text-yellow-200">
-                    {{ unmappedCusips.length }} Unmapped CUSIP{{ unmappedCusips.length !== 1 ? 's' : '' }}
-                  </h3>
-                  <p class="mt-1 text-sm text-yellow-700 dark:text-yellow-300">
-                    Create mappings for these CUSIPs to make your trades searchable by ticker symbol.
-                  </p>
+              <div class="flex items-start justify-between">
+                <div class="flex">
+                  <ExclamationTriangleIcon class="h-5 w-5 text-yellow-400" />
+                  <div class="ml-3">
+                    <h3 class="text-sm font-medium text-yellow-800 dark:text-yellow-200">
+                      {{ unmappedCusips.length }} Unmapped CUSIP{{ unmappedCusips.length !== 1 ? 's' : '' }}
+                    </h3>
+                    <p class="mt-1 text-sm text-yellow-700 dark:text-yellow-300">
+                      Create mappings for these CUSIPs to make your trades searchable by ticker symbol.
+                    </p>
+                  </div>
                 </div>
+                <button
+                  @click="autoRemapAll"
+                  :disabled="remapping"
+                  class="ml-3 flex-shrink-0 text-sm bg-green-600 text-white px-3 py-1.5 rounded hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <span v-if="remapping" class="flex items-center">
+                    <div class="animate-spin rounded-full h-3 w-3 border-b border-white mr-1"></div>
+                    Remapping...
+                  </span>
+                  <span v-else>Auto Remap All</span>
+                </button>
               </div>
             </div>
 
@@ -212,6 +225,7 @@ const quickMapping = ref({
   verified: false
 })
 const savingMapping = ref(false)
+const remapping = ref(false)
 
 // Methods
 const startQuickMapping = (cusip) => {
@@ -229,6 +243,37 @@ const cancelQuickMapping = () => {
     ticker: '',
     company_name: '',
     verified: false
+  }
+}
+
+const autoRemapAll = async () => {
+  try {
+    remapping.value = true
+    
+    const response = await fetch('/api/trades/cusip/resolve-unresolved', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${authStore.token}`
+      }
+    })
+    
+    if (response.ok) {
+      const result = await response.json()
+      const total = result.total || 0
+      
+      alert(`Auto remap started: Processing ${total} CUSIPs in background. This may take a few minutes.`)
+      
+      emit('mappingCreated')
+    } else {
+      const error = await response.json()
+      console.error('Failed to auto remap:', error)
+      alert('Failed to auto remap CUSIPs. Please try again.')
+    }
+  } catch (error) {
+    console.error('Error auto remapping:', error)
+    alert('Failed to auto remap CUSIPs. Please try again.')
+  } finally {
+    remapping.value = false
   }
 }
 

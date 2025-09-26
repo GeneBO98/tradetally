@@ -62,6 +62,14 @@
         Retry CUSIP Resolution ({{ enrichmentStatus.unresolvedCusips }} unresolved)
       </button>
       
+      <button 
+        @click="autoRemapAll" 
+        class="text-sm bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 transition-colors"
+        title="Attempt to automatically remap all unresolved CUSIPs"
+      >
+        Auto Remap All
+      </button>
+      
       <!-- NUCLEAR OPTION for stuck jobs -->
       <button 
         @click="forceCompleteEnrichment" 
@@ -229,6 +237,7 @@ async function fetchEnrichmentStatus() {
       console.log(`Stuck CUSIP jobs: ${newStatus.stuckCusipJobs}`)
     }
     
+    console.log('[ENRICHMENT] Full status:', newStatus)
     enrichmentStatus.value = newStatus
     lastUpdateTime.value = Date.now()
   } catch (error) {
@@ -268,6 +277,23 @@ async function syncEnrichmentStatus() {
   } catch (error) {
     console.error('Failed to sync enrichment status:', error)
     alert('Failed to sync enrichment status. Please try again.')
+  }
+}
+
+async function autoRemapAll() {
+  try {
+    const response = await api.post('/trades/cusip/resolve-unresolved')
+    console.log('Auto remap initiated:', response.data)
+    
+    // Refresh status immediately
+    await fetchEnrichmentStatus()
+    
+    const { resolved, total } = response.data
+    const failed = total - resolved
+    alert(`Auto remap complete: ${resolved} resolved, ${failed} failed out of ${total} CUSIPs`)
+  } catch (error) {
+    console.error('Failed to auto remap CUSIPs:', error)
+    alert('Failed to auto remap CUSIPs. Please try again.')
   }
 }
 

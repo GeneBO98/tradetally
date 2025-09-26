@@ -129,7 +129,7 @@ class BackgroundWorker {
       `);
       
       if (stuckJobs.rows.length > 0) {
-        logger.logImport(`[PROCESS] Reset ${stuckJobs.rows.length} stuck jobs back to pending`);
+        logger.info(`Reset ${stuckJobs.rows.length} stuck jobs back to pending`, 'import');
         
         // For jobs that have been stuck multiple times, mark as failed
         const persistentlyStuckJobs = stuckJobs.rows.filter(job => job.retry_count >= 5);
