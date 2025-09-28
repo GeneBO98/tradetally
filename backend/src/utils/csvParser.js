@@ -657,6 +657,8 @@ async function parseLightspeedTransactions(records, existingPositions = {}) {
         commission: parseFloat(record['Commission Amount'] || 0),
         fees: calculateLightspeedFees(record),
         broker: 'lightspeed',
+        tradeNumber: record['Trade Number'],  // Add unique trade number
+        sequenceNumber: record['Sequence Number'],  // Add unique sequence number
         notes: `Trade #${record['Trade Number']} - ${record['Security Type'] || ''}`
       };
 
@@ -771,14 +773,20 @@ async function parseLightspeedTransactions(records, existingPositions = {}) {
           quantity: qty,
           price: transaction.entryPrice,
           datetime: transaction.entryTime,
-          fees: transaction.commission + transaction.fees
+          fees: transaction.commission + transaction.fees,
+          tradeNumber: transaction.tradeNumber,  // Include unique trade number
+          sequenceNumber: transaction.sequenceNumber  // Include unique sequence number
         };
         
-        // Simple duplicate check: same timestamp = same execution
-        // Normalize timestamps and compare
-        const newTime = new Date(newExecution.datetime).toISOString();
+        // Use Trade Number for duplicate check - it's unique per execution in Lightspeed
         const executionExists = currentTrade.executions.some(exec => {
+          // If both have trade numbers, use that for comparison (most reliable)
+          if (exec.tradeNumber && newExecution.tradeNumber) {
+            return exec.tradeNumber === newExecution.tradeNumber;
+          }
+          // Fallback to timestamp comparison for older data without trade numbers
           const existingTime = new Date(exec.datetime).toISOString();
+          const newTime = new Date(newExecution.datetime).toISOString();
           return existingTime === newTime;
         });
         
