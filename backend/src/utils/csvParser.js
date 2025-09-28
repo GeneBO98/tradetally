@@ -861,7 +861,9 @@ async function parseLightspeedTransactions(records, existingPositions = {}) {
           console.log(`  [SUCCESS] Completed ${currentTrade.side} trade: ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions, P/L: $${currentTrade.pnl.toFixed(2)}`);
         }
         
-        completedTrades.push(currentTrade);
+        // Map executions to executionData for Trade.create
+      currentTrade.executionData = currentTrade.executions;
+      completedTrades.push(currentTrade);
         currentTrade = null;
       }
     }
@@ -904,6 +906,8 @@ async function parseLightspeedTransactions(records, existingPositions = {}) {
         console.log(`  → Added open ${currentTrade.side} position: ${currentTrade.quantity} shares`);
       }
       
+      // Map executions to executionData for Trade.create
+      currentTrade.executionData = currentTrade.executions;
       completedTrades.push(currentTrade);
     }
   });
@@ -1222,7 +1226,9 @@ async function parseSchwabTransactions(records, existingPositions = {}) {
         // Store executions for display in trade details
         currentTrade.executionData = currentTrade.executions;
         
-        completedTrades.push(currentTrade);
+        // Map executions to executionData for Trade.create
+      currentTrade.executionData = currentTrade.executions;
+      completedTrades.push(currentTrade);
         console.log(`  [SUCCESS] Completed ${currentTrade.side} trade: ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions, P/L: $${currentTrade.pnl.toFixed(2)}`);
         
         currentTrade = null;
@@ -1460,7 +1466,9 @@ async function parseThinkorswimTransactions(records, existingPositions = {}) {
           console.log(`  [SUCCESS] Completed ${currentTrade.side} trade: ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions, P/L: $${currentTrade.pnl.toFixed(2)}`);
         }
         
-        completedTrades.push(currentTrade);
+        // Map executions to executionData for Trade.create
+      currentTrade.executionData = currentTrade.executions;
+      completedTrades.push(currentTrade);
         currentTrade = null;
       }
     }
@@ -1481,6 +1489,8 @@ async function parseThinkorswimTransactions(records, existingPositions = {}) {
       currentTrade.notes = `Open position: ${currentTrade.executions.length} executions`;
       currentTrade.executionData = currentTrade.executions;
       
+      // Map executions to executionData for Trade.create
+      currentTrade.executionData = currentTrade.executions;
       completedTrades.push(currentTrade);
     }
   }
@@ -1727,7 +1737,9 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}) {
           console.log(`  [SUCCESS] Completed ${currentTrade.side} trade: ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions, P/L: $${currentTrade.pnl.toFixed(2)}`);
         }
         
-        completedTrades.push(currentTrade);
+        // Map executions to executionData for Trade.create
+      currentTrade.executionData = currentTrade.executions;
+      completedTrades.push(currentTrade);
         currentTrade = null;
       }
     }
@@ -1748,6 +1760,8 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}) {
       currentTrade.notes = `Open position: ${currentTrade.executions.length} executions`;
       currentTrade.executionData = currentTrade.executions;
       
+      // Map executions to executionData for Trade.create
+      currentTrade.executionData = currentTrade.executions;
       completedTrades.push(currentTrade);
     }
   }
