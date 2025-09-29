@@ -15,21 +15,34 @@ class PushNotificationService {
 
   initializeAPNS() {
     try {
-      const apnsConfig = {
-        token: {
-          key: process.env.APNS_KEY_PATH,
-          keyId: process.env.APNS_KEY_ID,
-          teamId: process.env.APNS_TEAM_ID
-        },
-        production: process.env.NODE_ENV === 'production'
-      };
+      // Check if APNS key file exists before attempting to load it
+      const keyPath = process.env.APNS_KEY_PATH;
+      const keyId = process.env.APNS_KEY_ID;
+      const teamId = process.env.APNS_TEAM_ID;
 
       // Validate required config
-      if (!apnsConfig.token.key || !apnsConfig.token.keyId || !apnsConfig.token.teamId) {
+      if (!keyPath || !keyId || !teamId) {
         logger.logWarn('APNS configuration incomplete - push notifications disabled');
         this.isEnabled = false;
         return;
       }
+
+      // Check if the key file exists
+      const fs = require('fs');
+      if (!fs.existsSync(keyPath)) {
+        logger.logWarn(`APNS key file not found at ${keyPath} - push notifications disabled`);
+        this.isEnabled = false;
+        return;
+      }
+
+      const apnsConfig = {
+        token: {
+          key: keyPath,
+          keyId: keyId,
+          teamId: teamId
+        },
+        production: process.env.NODE_ENV === 'production'
+      };
 
       this.apnProvider = new apn.Provider(apnsConfig);
       console.log(`[SUCCESS] APNS initialized for ${apnsConfig.production ? 'production' : 'development'}`);
