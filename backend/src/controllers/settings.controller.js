@@ -179,7 +179,7 @@ const settingsController = {
       const { aiProvider, aiApiKey, aiApiUrl, aiModel } = req.body;
 
       // Validate AI provider
-      const validProviders = ['gemini', 'claude', 'openai', 'ollama', 'local'];
+      const validProviders = ['gemini', 'claude', 'openai', 'ollama', 'lmstudio', 'perplexity', 'local'];
       if (aiProvider && !validProviders.includes(aiProvider)) {
         return res.status(400).json({ 
           error: 'Invalid AI provider. Must be one of: ' + validProviders.join(', ')
@@ -187,13 +187,13 @@ const settingsController = {
       }
 
       // Validate required fields
-      if (aiProvider && aiProvider !== 'local' && aiProvider !== 'ollama' && !aiApiKey) {
+      if (aiProvider && !['local', 'ollama', 'lmstudio'].includes(aiProvider) && !aiApiKey) {
         return res.status(400).json({ 
           error: 'API key is required for ' + aiProvider 
         });
       }
 
-      if ((aiProvider === 'local' || aiProvider === 'ollama') && !aiApiUrl) {
+      if (['local', 'ollama', 'lmstudio'].includes(aiProvider) && !aiApiUrl) {
         return res.status(400).json({ 
           error: 'API URL is required for ' + aiProvider 
         });
@@ -774,7 +774,7 @@ const settingsController = {
       const { aiProvider, aiApiKey, aiApiUrl, aiModel } = req.body;
 
       // Validate AI provider
-      const validProviders = ['gemini', 'claude', 'openai', 'ollama', 'local'];
+      const validProviders = ['gemini', 'claude', 'openai', 'ollama', 'lmstudio', 'perplexity', 'local'];
       if (aiProvider && !validProviders.includes(aiProvider)) {
         return res.status(400).json({ 
           error: 'Invalid AI provider. Must be one of: ' + validProviders.join(', ')
@@ -782,13 +782,13 @@ const settingsController = {
       }
 
       // Validate required fields
-      if (aiProvider && aiProvider !== 'local' && aiProvider !== 'ollama' && !aiApiKey) {
+      if (aiProvider && !['local', 'ollama', 'lmstudio'].includes(aiProvider) && !aiApiKey) {
         return res.status(400).json({ 
           error: 'API key is required for ' + aiProvider 
         });
       }
 
-      if ((aiProvider === 'local' || aiProvider === 'ollama') && !aiApiUrl) {
+      if (['local', 'ollama', 'lmstudio'].includes(aiProvider) && !aiApiUrl) {
         return res.status(400).json({ 
           error: 'API URL is required for ' + aiProvider 
         });

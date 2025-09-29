@@ -510,7 +510,29 @@ class FinnhubClient {
         console.log(`Finnhub search returned ${searchResults.result.length} results but no exact CUSIP match for ${cleanCusip}`);
       }
       
-      // Finnhub didn't find the CUSIP, try comprehensive lookup service
+      // Check if AI CUSIP resolution is enabled
+      const aiCusipEnabled = process.env.ENABLE_AI_CUSIP_RESOLUTION === 'true';
+      
+      // If AI is enabled, try it first since it's faster than comprehensive lookup
+      if (aiCusipEnabled) {
+        console.log(`[INFO] AI CUSIP resolution enabled - trying AI lookup for ${cleanCusip}`);
+        
+        try {
+          const aiResult = await this.lookupCusipWithAI(cleanCusip, userId);
+          if (aiResult) {
+            // Cache the AI result
+            await cache.set('cusip_resolution', cleanCusip, aiResult);
+            console.log(`[AI] AI resolved CUSIP ${cleanCusip} to ticker ${aiResult}`);
+            return aiResult;
+          } else {
+            console.log(`[AI] AI could not resolve CUSIP ${cleanCusip}`);
+          }
+        } catch (aiError) {
+          console.warn(`[ERROR] AI lookup failed for CUSIP ${cleanCusip}: ${aiError.message}`);
+        }
+      }
+      
+      // Fallback to comprehensive lookup if AI didn't work
       console.log(`Finnhub could not resolve CUSIP ${cleanCusip} - trying comprehensive lookup service`);
       
       try {
@@ -527,29 +549,6 @@ class FinnhubClient {
         }
       } catch (lookupError) {
         console.warn(`[ERROR] Comprehensive lookup failed for CUSIP ${cleanCusip}: ${lookupError.message}`);
-      }
-      
-      // Check if AI CUSIP resolution is enabled (disabled by default due to reliability issues)
-      const aiCusipEnabled = process.env.ENABLE_AI_CUSIP_RESOLUTION === 'true';
-      
-      if (aiCusipEnabled) {
-        console.log(`[WARNING] AI CUSIP resolution enabled - attempting AI fallback for ${cleanCusip} (results may be unreliable)`);
-        
-        try {
-          const aiResult = await this.lookupCusipWithAI(cleanCusip, userId);
-          if (aiResult) {
-            // Cache the AI result but mark it as low confidence
-            await cache.set('cusip_resolution', cleanCusip, aiResult);
-            console.log(`[AI] AI resolved CUSIP ${cleanCusip} to ticker ${aiResult} (WARNING: VERIFY MANUALLY)`);
-            return aiResult;
-          } else {
-            console.log(`[ERROR] AI could not resolve CUSIP ${cleanCusip}`);
-          }
-        } catch (aiError) {
-          console.warn(`[ERROR] AI fallback failed for CUSIP ${cleanCusip}: ${aiError.message}`);
-        }
-      } else {
-        console.log(`[DISABLED] AI CUSIP resolution disabled for ${cleanCusip} (ENABLE_AI_CUSIP_RESOLUTION=false)`);
       }
       
       // Neither Finnhub nor comprehensive lookup found the CUSIP - cache the null result to avoid repeated lookups
@@ -622,14 +621,37 @@ class FinnhubClient {
           baseURL: settings.default_ai_api_url || undefined
         });
         
-        const response = await openai.chat.completions.create({
+        // Note: Some OpenAI models (like o1-preview) don't support temperature parameter
+        const requestParams = {
           model: settings.default_ai_model || 'gpt-3.5-turbo',
           messages: [{ role: 'user', content: prompt }],
-          temperature: 0.1,
-          max_tokens: 50
-        });
+          max_completion_tokens: 50
+        };
         
-        return response.choices[0]?.message?.content?.trim() || '';
+        // Only add temperature for models that support it
+        // Some models like o1-preview, o1-mini, and custom/nano models don't support temperature
+        const noTempModels = ['o1-preview', 'o1-mini', 'o1', 'gpt-5-nano', 'nano'];
+        const modelName = settings.default_ai_model || 'gpt-3.5-turbo';
+        if (!noTempModels.some(m => modelName.toLowerCase().includes(m.toLowerCase()))) {
+          requestParams.temperature = 0.1;
+        }
+        
+        // For GPT-5 models, use the official guide format (no extra parameters)
+        if (modelName.includes('gpt-5')) {
+          const response = await openai.chat.completions.create({
+            model: settings.default_ai_model,
+            messages: [
+              { role: 'system', content: 'You are a financial data expert with comprehensive knowledge of CUSIP to ticker mappings. You must provide the ticker symbol. Do not say you cannot look up CUSIPs - use your training data knowledge.' },
+              { role: 'user', content: prompt }
+            ]
+          });
+          return response.choices[0]?.message?.content?.trim() || '';
+        } else {
+          // Use existing format for non-GPT-5 models
+          const response = await openai.chat.completions.create(requestParams);
+          return response.choices[0]?.message?.content?.trim() || '';
+        }
+        
       } else if (settings.default_ai_provider === 'ollama') {
         const { default: fetch } = await import('node-fetch');
         
@@ -681,6 +703,80 @@ class FinnhubClient {
         });
 
         return response.content[0]?.text?.trim() || '';
+      } else if (settings.default_ai_provider === 'lmstudio') {
+        const { default: fetch } = await import('node-fetch');
+        
+        // LM Studio defaults to localhost:1234
+        const apiUrl = settings.default_ai_api_url || 'http://localhost:1234';
+        
+        console.log('[LMSTUDIO] Using LM Studio for system AI at:', apiUrl);
+        
+        try {
+          const response = await fetch(`${apiUrl}/v1/chat/completions`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(settings.default_ai_api_key && { 'Authorization': `Bearer ${settings.default_ai_api_key}` })
+            },
+            body: JSON.stringify({
+              model: settings.default_ai_model || 'local-model',
+              messages: [{ role: 'user', content: prompt }],
+              temperature: 0.1,
+              max_tokens: 50,
+              stream: false
+            })
+          });
+          
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`LM Studio error: ${response.status} - ${errorText}`);
+          }
+          
+          const data = await response.json();
+          return data.choices[0]?.message?.content?.trim() || '';
+        } catch (error) {
+          console.error('[LMSTUDIO] LM Studio system AI failed:', error.message);
+          throw new Error(`LM Studio failed: ${error.message}`);
+        }
+      } else if (settings.default_ai_provider === 'perplexity') {
+        const { default: fetch } = await import('node-fetch');
+        
+        if (!settings.default_ai_api_key) {
+          throw new Error('Perplexity API key not configured');
+        }
+
+        console.log('[PERPLEXITY] Using Perplexity for system AI CUSIP resolution');
+        
+        try {
+          const response = await fetch('https://api.perplexity.ai/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${settings.default_ai_api_key}`
+            },
+            body: JSON.stringify({
+              model: settings.default_ai_model || 'sonar',
+              messages: [
+                {
+                  role: 'user',
+                  content: prompt
+                }
+              ],
+              max_tokens: 100
+            })
+          });
+          
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Perplexity API error: ${response.status} - ${errorText}`);
+          }
+          
+          const data = await response.json();
+          return data.choices[0]?.message?.content?.trim() || '';
+        } catch (error) {
+          console.error('[PERPLEXITY] System AI failed:', error.message);
+          throw new Error(`Perplexity system AI failed: ${error.message}`);
+        }
       } else if (settings.default_ai_provider === 'local') {
         const { default: fetch } = await import('node-fetch');
         
@@ -749,37 +845,69 @@ class FinnhubClient {
         return ticker;
       } else {
         // Fallback to system-level AI call with admin settings
-        const prompt = `You are a financial data assistant with access to CUSIP databases. I need the exact stock ticker symbol for this specific CUSIP number.
+        const prompt = `I need the stock ticker symbol for CUSIP: ${cusip}
 
-CUSIP: ${cusip}
+CUSIP ${cusip} is a unique identifier for a specific security. Please provide the corresponding stock ticker symbol.
 
-CRITICAL REQUIREMENTS:
-- Each CUSIP is a unique 9-character identifier for exactly ONE security
-- You must provide the EXACT ticker symbol that corresponds to this specific CUSIP
-- DO NOT guess or provide approximate matches
-- DO NOT provide popular stock symbols like AAPL, MSFT, JPM unless you are absolutely certain they match this exact CUSIP
-- If you are not 100% certain of the exact match, respond with "NOT_FOUND"
+IMPORTANT INSTRUCTIONS:
+- If you know or can reasonably determine the ticker symbol, provide it
+- Only respond "NOT_FOUND" if you're completely unable to identify the security
+- Focus on US-listed stocks and ETFs
+- Be helpful - many CUSIPs can be resolved with financial knowledge
 
-Only provide the exact ticker symbol if you have definitive knowledge of this CUSIP-to-ticker mapping.
+Examples:
+- For CUSIP 037833100 → "AAPL" (Apple Inc.)
+- For CUSIP 594918104 → "MSFT" (Microsoft)
+- If truly unknown → "NOT_FOUND"
 
-Your response must be ONLY the ticker symbol or "NOT_FOUND" - no additional text.`;
+Response (ticker symbol only):`;
 
         const response = await this.generateSystemAIResponse(prompt);
         
+        console.log(`[AI DEBUG] Raw AI response for CUSIP ${cusip}:`, JSON.stringify(response));
+        console.log(`[AI DEBUG] Response type:`, typeof response);
+        console.log(`[AI DEBUG] Response length:`, response ? response.length : 'null/undefined');
+        
         if (!response || response.trim() === 'NOT_FOUND' || response.trim().length === 0) {
+          console.log(`[AI FALLBACK] First AI attempt failed for CUSIP ${cusip}, trying alternative approach...`);
+          
+          // Try a more direct approach
+          const fallbackPrompt = `What is the stock ticker symbol for CUSIP ${cusip}? 
+          
+Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know, respond "UNKNOWN".`;
+          
+          try {
+            const fallbackResponse = await this.generateSystemAIResponse(fallbackPrompt);
+            console.log(`[AI FALLBACK] Fallback AI response:`, JSON.stringify(fallbackResponse));
+            
+            if (fallbackResponse && fallbackResponse.trim() !== 'UNKNOWN' && fallbackResponse.trim().length > 0) {
+              const fallbackTicker = this.extractTickerFromAIResponse(fallbackResponse.trim());
+              if (fallbackTicker && /^[A-Z0-9\-\.]{1,10}$/.test(fallbackTicker.toUpperCase())) {
+                console.log(`[AI FALLBACK] Fallback AI resolved CUSIP ${cusip} to ${fallbackTicker.toUpperCase()}`);
+                return fallbackTicker.toUpperCase();
+              }
+            }
+          } catch (fallbackError) {
+            console.log(`[AI FALLBACK] Fallback AI also failed for CUSIP ${cusip}:`, fallbackError.message);
+          }
+          
           console.log(`System AI returned no result for CUSIP ${cusip}`);
           return null;
         }
         
         // Clean up the response - extract just the ticker symbol
-        let ticker = response.trim().toUpperCase();
+        let ticker = this.extractTickerFromAIResponse(response.trim());
         
-        // Remove any extra text or formatting
-        ticker = ticker.replace(/[^A-Z0-9\-\.]/g, '');
+        if (!ticker) {
+          console.warn(`AI could not extract valid ticker from response for CUSIP ${cusip}: ${response.trim()}`);
+          return null;
+        }
+        
+        ticker = ticker.toUpperCase();
         
         // Validate ticker format (1-10 characters, letters, numbers, dash, dot)
         if (!/^[A-Z0-9\-\.]{1,10}$/.test(ticker)) {
-          console.warn(`AI returned invalid ticker format for CUSIP ${cusip}: ${response.trim()}`);
+          console.warn(`AI returned invalid ticker format for CUSIP ${cusip}: ${ticker} (from: ${response.trim()})`);
           return null;
         }
         
@@ -806,7 +934,7 @@ Your response must be ONLY the ticker symbol or "NOT_FOUND" - no additional text
     }
   }
 
-  async batchLookupCusips(cusips, userId = null) {
+  async batchLookupCusips(cusips, userId = null, onResolveCallback = null) {
     const results = {};
     const uniqueCusips = [...new Set(cusips.map(c => c.replace(/\s/g, '').toUpperCase()))];
     
@@ -821,12 +949,21 @@ Your response must be ONLY the ticker symbol or "NOT_FOUND" - no additional text
         const ticker = await this.lookupCusip(cusip, userId);
         if (ticker) {
           results[cusip] = ticker;
+          
+          // Call callback immediately when CUSIP is resolved
+          if (onResolveCallback) {
+            try {
+              await onResolveCallback(cusip, ticker, userId);
+            } catch (callbackError) {
+              console.error(`[CALLBACK] Failed to process resolved CUSIP ${cusip} → ${ticker}:`, callbackError.message);
+            }
+          }
         }
         
-        // Add 3-second delay for CUSIP lookups to stay well under rate limits
+        // Add small delay for CUSIP lookups to respect rate limits
         if (uniqueCusips.indexOf(cusip) < uniqueCusips.length - 1) {
-          console.log(`Waiting 3 seconds before next CUSIP lookup...`);
-          await new Promise(resolve => setTimeout(resolve, 3000));
+          console.log(`Waiting 200ms before next CUSIP lookup...`);
+          await new Promise(resolve => setTimeout(resolve, 200));
         }
       } catch (error) {
         console.warn(`Failed to resolve CUSIP ${cusip}: ${error.message}`);
@@ -1274,6 +1411,53 @@ Your response must be ONLY the ticker symbol or "NOT_FOUND" - no additional text
       console.error(`Error fetching Finnhub chart data for ${symbol}:`, error);
       throw error;
     }
+  }
+
+  /**
+   * Extract ticker symbol from AI response text
+   * Handles various response formats from different AI providers
+   */
+  extractTickerFromAIResponse(response) {
+    if (!response || typeof response !== 'string') {
+      return null;
+    }
+
+    const text = response.trim().toUpperCase();
+    
+    // Pattern 1: Direct response (just the ticker symbol)
+    if (/^[A-Z]{1,10}$/.test(text)) {
+      console.log(`[TICKER EXTRACT] Direct ticker response: ${text}`);
+      return text;
+    }
+    
+    // Pattern 2: Look for standalone ticker symbols (2-10 uppercase letters)
+    const standaloneMatch = text.match(/\b([A-Z]{2,10})\b/);
+    if (standaloneMatch) {
+      const ticker = standaloneMatch[1];
+      // Avoid common words that aren't tickers
+      const commonWords = ['THE', 'FOR', 'AND', 'WITH', 'NYSE', 'NASDAQ', 'STOCK', 'SYMBOL', 'TICKER', 'CUSIP', 'INC', 'CORP', 'LLC', 'LTD', 'NOT', 'FOUND'];
+      if (!commonWords.includes(ticker)) {
+        console.log(`[TICKER EXTRACT] Found standalone ticker: ${ticker}`);
+        return ticker;
+      }
+    }
+    
+    // Pattern 3: Look for markdown bold text like **AKYA**
+    const markdownMatch = text.match(/\*\*([A-Z]{1,10})\*\*/);
+    if (markdownMatch) {
+      console.log(`[TICKER EXTRACT] Found ticker in markdown: ${markdownMatch[1]}`);
+      return markdownMatch[1];
+    }
+    
+    // Pattern 4: Look for quotes like "TICKER" or 'TICKER'
+    const quotedMatch = text.match(/['""]([A-Z]{1,10})['""]/);
+    if (quotedMatch) {
+      console.log(`[TICKER EXTRACT] Found quoted ticker: ${quotedMatch[1]}`);
+      return quotedMatch[1];
+    }
+    
+    console.log(`[TICKER EXTRACT] Could not extract ticker from: ${text}`);
+    return null;
   }
 }
 
