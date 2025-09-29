@@ -12,12 +12,12 @@ const brokerParsers = {
     tradeDate: parseDate(row['Trade Date'] || row.Date || row.date),
     entryTime: parseDateTime(row['Entry Time'] || row['Trade Date'] || row.Date),
     exitTime: parseDateTime(row['Exit Time'] || row['Close Time']),
-    entryPrice: parseFloat(row['Entry Price'] || row['Buy Price'] || row.Price),
-    exitPrice: parseFloat(row['Exit Price'] || row['Sell Price']),
-    quantity: parseInt(row.Quantity || row.Shares || row.Size),
+    entryPrice: parseNumeric(row['Entry Price'] || row['Buy Price'] || row.Price),
+    exitPrice: parseNumeric(row['Exit Price'] || row['Sell Price']),
+    quantity: parseInteger(row.Quantity || row.Shares || row.Size),
     side: parseSide(row.Side || row.Direction || row.Type),
-    commission: parseFloat(row.Commission || row.Fees || 0),
-    fees: parseFloat(row.Fees || 0),
+    commission: parseNumeric(row.Commission || row.Fees),
+    fees: parseNumeric(row.Fees),
     broker: 'generic'
   }),
 
@@ -25,10 +25,10 @@ const brokerParsers = {
     symbol: cleanString(row.Symbol),
     tradeDate: parseDate(row['Trade Date']),
     entryTime: parseLightspeedDateTime(row['Trade Date'] + ' ' + (row['Execution Time'] || row['Raw Exec. Time'] || '09:30')),
-    entryPrice: parseFloat(row.Price),
-    quantity: parseInt(row.Qty),
+    entryPrice: parseNumeric(row.Price),
+    quantity: parseInteger(row.Qty),
     side: parseLightspeedSide(row.Side, row['Buy/Sell'], row['Principal Amount'], row['NET Amount']),
-    commission: parseFloat(row['Commission Amount'] || 0),
+    commission: parseNumeric(row['Commission Amount']),
     fees: calculateLightspeedFees(row),
     broker: 'lightspeed',
     notes: `Trade #${row['Trade Number']} - ${row['Security Type']}`
@@ -385,25 +385,61 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
 }
 
 function parseDate(dateStr) {
-  if (!dateStr) return null;
+  if (!dateStr || dateStr.toString().trim() === '') return null;
+  
+  const cleanDateStr = dateStr.toString().trim();
   
   // Try to parse MM/DD/YYYY format first
-  const mmddyyyyMatch = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  const mmddyyyyMatch = cleanDateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
   if (mmddyyyyMatch) {
     const [_, month, day, year] = mmddyyyyMatch;
+    const monthNum = parseInt(month);
+    const dayNum = parseInt(day);
+    const yearNum = parseInt(year);
+    
+    // Validate date components for PostgreSQL 16 compatibility
+    if (monthNum < 1 || monthNum > 12) return null;
+    if (dayNum < 1 || dayNum > 31) return null;
+    if (yearNum < 1900 || yearNum > 2100) return null;
+    
     const date = new Date(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`);
     return isNaN(date.getTime()) ? null : date.toISOString().split('T')[0];
   }
   
-  // Fall back to default date parsing
-  const date = new Date(dateStr);
-  return isNaN(date.getTime()) ? null : date.toISOString().split('T')[0];
+  // Fall back to default date parsing with validation
+  try {
+    const date = new Date(cleanDateStr);
+    if (isNaN(date.getTime())) return null;
+    
+    // Additional validation for PostgreSQL 16
+    const year = date.getFullYear();
+    if (year < 1900 || year > 2100) return null;
+    
+    return date.toISOString().split('T')[0];
+  } catch (error) {
+    console.warn(`Invalid date format: ${cleanDateStr}`);
+    return null;
+  }
 }
 
 function parseDateTime(dateTimeStr) {
-  if (!dateTimeStr) return null;
-  const date = new Date(dateTimeStr);
-  return isNaN(date.getTime()) ? null : date.toISOString();
+  if (!dateTimeStr || dateTimeStr.toString().trim() === '') return null;
+  
+  const cleanDateTimeStr = dateTimeStr.toString().trim();
+  
+  try {
+    const date = new Date(cleanDateTimeStr);
+    if (isNaN(date.getTime())) return null;
+    
+    // Additional validation for PostgreSQL 16
+    const year = date.getFullYear();
+    if (year < 1900 || year > 2100) return null;
+    
+    return date.toISOString();
+  } catch (error) {
+    console.warn(`Invalid datetime format: ${cleanDateTimeStr}`);
+    return null;
+  }
 }
 
 // Lightspeed-specific datetime parser that handles Central Time
@@ -532,6 +568,37 @@ function cleanString(str) {
   return str.toString().trim();
 }
 
+// PostgreSQL 16 compatible numeric parsing
+function parseNumeric(value, defaultValue = 0) {
+  if (value === null || value === undefined || value === '') return defaultValue;
+  
+  const cleanValue = value.toString().trim().replace(/[$,]/g, '');
+  if (cleanValue === '') return defaultValue;
+  
+  const parsed = parseFloat(cleanValue);
+  if (isNaN(parsed) || !isFinite(parsed)) return defaultValue;
+  
+  // PostgreSQL 16 has stricter limits on numeric precision
+  if (Math.abs(parsed) > 1e15) return defaultValue;
+  
+  return parsed;
+}
+
+function parseInteger(value, defaultValue = 0) {
+  if (value === null || value === undefined || value === '') return defaultValue;
+  
+  const cleanValue = value.toString().trim().replace(/[,]/g, '');
+  if (cleanValue === '') return defaultValue;
+  
+  const parsed = parseInt(cleanValue);
+  if (isNaN(parsed) || !isFinite(parsed)) return defaultValue;
+  
+  // PostgreSQL 16 integer limits
+  if (parsed < -2147483648 || parsed > 2147483647) return defaultValue;
+  
+  return Math.abs(parsed); // Ensure positive for quantities
+}
+
 function calculateLightspeedFees(row) {
   const fees = [
     'FeeSEC', 'FeeMF', 'Fee1', 'Fee2', 'Fee3', 
@@ -540,10 +607,7 @@ function calculateLightspeedFees(row) {
   
   let totalFees = 0;
   fees.forEach(feeField => {
-    const fee = parseFloat(row[feeField] || 0);
-    if (!isNaN(fee)) {
-      totalFees += fee;
-    }
+    totalFees += parseNumeric(row[feeField]);
   });
   
   return totalFees;
@@ -651,10 +715,10 @@ async function parseLightspeedTransactions(records, existingPositions = {}) {
         symbol: resolvedSymbol,
         tradeDate: parseDate(record['Trade Date']),
         entryTime: parseLightspeedDateTime(record['Trade Date'] + ' ' + (record['Execution Time'] || record['Raw Exec. Time'] || '09:30')),
-        entryPrice: parseFloat(record.Price),
-        quantity: Math.abs(parseInt(record.Qty)),
+        entryPrice: parseNumeric(record.Price),
+        quantity: parseInteger(record.Qty),
         side: side,
-        commission: parseFloat(record['Commission Amount'] || 0),
+        commission: parseNumeric(record['Commission Amount']),
         fees: calculateLightspeedFees(record),
         broker: 'lightspeed',
         tradeNumber: record['Trade Number'],  // Add unique trade number
@@ -1792,5 +1856,7 @@ module.exports = {
   parseDate,
   parseDateTime,
   parseSide,
-  cleanString
+  cleanString,
+  parseNumeric,
+  parseInteger
 };

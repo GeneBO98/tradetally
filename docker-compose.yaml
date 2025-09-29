@@ -77,7 +77,7 @@ services:
       FEATURES_BILLING_ENABLED: ${FEATURES_BILLING_ENABLED:-false}
       FEATURES_BEHAVIORAL_ANALYTICS_ENABLED: ${FEATURES_BEHAVIORAL_ANALYTICS_ENABLED:-true}
     ports:
-      - "5173:80"
+      - "80:80"
       - "3000:3000"
     volumes:
       - ./backend/src/logs:/app/backend/src/logs
