@@ -9,8 +9,9 @@ class CusipLookupService {
   constructor() {
     this.sources = [
       { name: 'OpenFIGI', method: this.lookupOpenFIGI.bind(this) },
-      { name: 'SEC EDGAR', method: this.lookupSECEdgar.bind(this) },
-      { name: 'ISIN.org', method: this.lookupISINOrg.bind(this) },
+      // SEC EDGAR and ISIN.org are not implemented, so skip them
+      // { name: 'SEC EDGAR', method: this.lookupSECEdgar.bind(this) },
+      // { name: 'ISIN.org', method: this.lookupISINOrg.bind(this) },
     ];
   }
 
@@ -46,14 +47,12 @@ class CusipLookupService {
           return result;
         }
         
-        // Rate limiting between sources
-        await this.delay(1000);
+        // No delay needed - move to next source immediately
         
       } catch (error) {
         console.warn(`[ERROR] ${source.name} failed for CUSIP ${cleanCusip}: ${error.message}`);
         
-        // Continue to next source
-        await this.delay(500);
+        // Continue to next source immediately - no delay needed
       }
     }
 
@@ -83,7 +82,7 @@ class CusipLookupService {
           // Add API key header if available (increases rate limits)
           ...(process.env.OPENFIGI_API_KEY && { 'X-OPENFIGI-APIKEY': process.env.OPENFIGI_API_KEY })
         },
-        timeout: 10000
+        timeout: 3000
       });
 
       if (response.data && response.data[0] && response.data[0].data) {

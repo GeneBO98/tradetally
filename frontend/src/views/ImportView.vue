@@ -568,6 +568,7 @@
       :unmappedCusips="unmappedCusips"
       @close="showUnmappedModal = false"
       @mappingCreated="handleMappingCreated"
+      @resolutionStarted="handleResolutionStarted"
     />
 
     <!-- All CUSIP Mappings Modal -->
@@ -1254,16 +1255,31 @@ async function deleteCusipMapping(cusip) {
 // Fetch unmapped CUSIPs count
 async function fetchUnmappedCusipsCount() {
   try {
-    const response = await fetch('/api/cusip-mappings/unmapped', {
+    // Add cache busting parameter
+    const url = `/api/cusip-mappings/unmapped?_t=${Date.now()}`
+    const response = await fetch(url, {
       headers: {
-        'Authorization': `Bearer ${tradesStore.token || localStorage.getItem('token')}`
+        'Authorization': `Bearer ${tradesStore.token || localStorage.getItem('token')}`,
+        'Cache-Control': 'no-cache'
       }
     })
     
     if (response.ok) {
       const data = await response.json()
+      const newCount = (data.data || []).length
+      const oldCount = unmappedCusipsCount.value
+      
       unmappedCusips.value = data.data || []
-      unmappedCusipsCount.value = unmappedCusips.value.length
+      unmappedCusipsCount.value = newCount
+      
+      // Log updates for debugging
+      if (newCount !== oldCount) {
+        console.log(`[CUSIP POLLING] Count updated: ${oldCount} → ${newCount}`)
+      } else {
+        console.log(`[CUSIP POLLING] Count unchanged: ${newCount}`)
+      }
+    } else {
+      console.error('[CUSIP POLLING] API error:', response.status, response.statusText)
     }
   } catch (error) {
     console.error('Error fetching unmapped CUSIPs:', error)
@@ -1274,6 +1290,33 @@ async function fetchUnmappedCusipsCount() {
 function handleMappingCreated() {
   showUnmappedModal.value = false
   fetchUnmappedCusipsCount()
+}
+
+// Handle resolution started - start polling for updates
+function handleResolutionStarted(data) {
+  console.log(`[CUSIP POLLING] Resolution started for ${data.total} CUSIPs - starting polling every 3 seconds`)
+  
+  let pollCount = 0
+  
+  // Start polling every 3 seconds to update the count
+  const pollInterval = setInterval(async () => {
+    pollCount++
+    console.log(`[CUSIP POLLING] Poll #${pollCount} - checking for updates...`)
+    
+    await fetchUnmappedCusipsCount()
+    
+    // Stop polling if no more unmapped CUSIPs
+    if (unmappedCusipsCount.value === 0) {
+      clearInterval(pollInterval)
+      console.log(`[CUSIP POLLING] Polling stopped after ${pollCount} polls - all CUSIPs resolved!`)
+    }
+  }, 3000)
+  
+  // Stop polling after 5 minutes regardless (safety net)
+  setTimeout(() => {
+    clearInterval(pollInterval)
+    console.log(`[CUSIP POLLING] Polling stopped after 5 minutes timeout (${pollCount} polls completed)`)
+  }, 5 * 60 * 1000)
 }
 
 onMounted(() => {

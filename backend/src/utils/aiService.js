@@ -9,6 +9,8 @@ class AIService {
       claude: this.useClaude.bind(this),
       openai: this.useOpenAI.bind(this),
       ollama: this.useOllama.bind(this),
+      lmstudio: this.useLMStudio.bind(this),
+      perplexity: this.usePerplexity.bind(this),
       local: this.useLocal.bind(this)
     };
   }
@@ -100,6 +102,12 @@ class AIService {
       case 'ollama':
         // Ollama requires URL, API key is optional
         return !!settings.apiUrl && settings.apiUrl.trim() !== '';
+      case 'lmstudio':
+        // LM Studio requires URL (defaults to http://localhost:1234), API key is optional
+        return !!settings.apiUrl && settings.apiUrl.trim() !== '';
+      case 'perplexity':
+        // Perplexity requires API key
+        return !!settings.apiKey && settings.apiKey.trim() !== '';
       case 'local':
         // Local requires URL, API key is optional
         return !!settings.apiUrl && settings.apiUrl.trim() !== '';
@@ -123,44 +131,49 @@ class AIService {
       throw new Error(`Unsupported AI provider: ${settings.provider}`);
     }
 
-    const prompt = `You are a financial data assistant. I need the exact stock ticker symbol for this specific CUSIP number.
+    const prompt = `What is the stock ticker symbol for CUSIP ${cusip}?
 
-CUSIP: ${cusip}
+RESPOND WITH ONLY THE TICKER SYMBOL. No explanations, no company names, no additional text.
 
-CRITICAL REQUIREMENTS:
-- Each CUSIP is a unique 9-character identifier for exactly ONE security
-- You must provide the EXACT ticker symbol that corresponds to this specific CUSIP
-- DO NOT guess or provide approximate matches
-- DO NOT provide popular stock symbols unless you are absolutely certain they match this exact CUSIP
-- If you are not 100% certain of the exact match, respond with "NOT_FOUND"
+Examples:
+CUSIP 037833100 → AAPL
+CUSIP 594918104 → MSFT
+Unknown CUSIP → NOT_FOUND
 
-Only provide the exact ticker symbol if you have definitive knowledge of this CUSIP-to-ticker mapping.
-
-Response format: ONLY the ticker symbol or "NOT_FOUND" - no additional text.`;
+Your response:`;
     
     try {
-      const response = await provider(prompt, settings, { maxTokens: 20 });
-      const cleanResponse = response.trim().toUpperCase();
+      const response = await provider(prompt, settings, { maxTokens: 50 });
       
-      // Return null for NOT_FOUND responses or empty responses
-      if (!cleanResponse || cleanResponse === 'NOT_FOUND' || cleanResponse.length === 0) {
+      // Extract ticker from response - simple extraction for direct responses
+      const ticker = this.extractSimpleTickerResponse(response.trim());
+      
+      if (!ticker) {
+        console.log(`[AI] AI returned no valid ticker for CUSIP ${cusip}: "${response.trim()}"`);
+        return null;
+      }
+      
+      // Return null for NOT_FOUND responses
+      if (ticker.toUpperCase() === 'NOT_FOUND') {
         console.log(`[AI] AI returned NOT_FOUND for CUSIP ${cusip}`);
         return null;
       }
       
+      const tickerUpper = ticker.toUpperCase();
+      
       // Validate ticker format (1-10 characters, letters, numbers, dash, dot)
-      if (!/^[A-Z0-9\-\.]{1,10}$/.test(cleanResponse)) {
-        console.warn(`AI returned invalid ticker format for CUSIP ${cusip}: ${cleanResponse}`);
+      if (!/^[A-Z0-9\-\.]{1,10}$/.test(tickerUpper)) {
+        console.warn(`AI returned invalid ticker format for CUSIP ${cusip}: ${tickerUpper} (from: "${response.trim()}")`);
         return null;
       }
       
       // Additional validation: warn if AI returns common "guess" symbols
       const commonGuesses = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'META', 'NVDA', 'JPM', 'BAC', 'WMT'];
-      if (commonGuesses.includes(cleanResponse)) {
-        console.warn(`[WARNING] AI returned common stock symbol ${cleanResponse} for CUSIP ${cusip} - verify accuracy`);
+      if (commonGuesses.includes(tickerUpper)) {
+        console.warn(`[WARNING] AI returned common stock symbol ${tickerUpper} for CUSIP ${cusip} - verify accuracy`);
       }
       
-      return cleanResponse;
+      return tickerUpper;
     } catch (error) {
       console.error(`AI CUSIP lookup failed for ${cusip}:`, error.message);
       return null;
@@ -220,7 +233,8 @@ Response format: ONLY the ticker symbol or "NOT_FOUND" - no additional text.`;
     console.log(`[OPENAI] OpenAI: Using model ${model}`);
 
     try {
-      const response = await openai.chat.completions.create({
+      // Build request parameters
+      const requestParams = {
         model: model,
         messages: [
           {
@@ -229,7 +243,16 @@ Response format: ONLY the ticker symbol or "NOT_FOUND" - no additional text.`;
           }
         ],
         max_completion_tokens: options.maxTokens || 1000,
-      });
+      };
+      
+      // Only add temperature for models that support it
+      // Some models like o1-preview, o1-mini, and custom/nano models don't support temperature
+      const noTempModels = ['o1-preview', 'o1-mini', 'o1', 'gpt-5-nano', 'nano'];
+      if (!noTempModels.some(m => model.toLowerCase().includes(m.toLowerCase()))) {
+        requestParams.temperature = 0.1;
+      }
+      
+      const response = await openai.chat.completions.create(requestParams);
 
       console.log('[OPENAI] OpenAI raw response:', JSON.stringify(response, null, 2).substring(0, 500));
       
@@ -312,6 +335,108 @@ Response format: ONLY the ticker symbol or "NOT_FOUND" - no additional text.`;
     return data.response;
   }
 
+  async useLMStudio(prompt, settings, options = {}) {
+    const { default: fetch } = await import('node-fetch');
+    
+    // LM Studio defaults to localhost:1234
+    const apiUrl = settings.apiUrl || 'http://localhost:1234';
+    
+    console.log('[LMSTUDIO] Using LM Studio at:', apiUrl);
+    console.log('[LMSTUDIO] Model:', settings.model || 'auto-detect');
+
+    try {
+      // LM Studio uses OpenAI-compatible API at /v1/chat/completions
+      const response = await fetch(`${apiUrl}/v1/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(settings.apiKey && { 'Authorization': `Bearer ${settings.apiKey}` })
+        },
+        body: JSON.stringify({
+          model: settings.model || 'local-model', // LM Studio will use loaded model
+          messages: [
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          temperature: 0.1,
+          max_tokens: options.maxTokens || 1000,
+          stream: false
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[LMSTUDIO] LM Studio API error:', errorText);
+        throw new Error(`LM Studio API error: ${response.status} - ${errorText}`);
+      }
+
+      const data = await response.json();
+      
+      if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+        console.error('[LMSTUDIO] Unexpected response format:', data);
+        throw new Error('Invalid response format from LM Studio');
+      }
+      
+      return data.choices[0].message.content;
+    } catch (error) {
+      console.error('[LMSTUDIO] LM Studio request failed:', error.message);
+      throw new Error(`LM Studio connection failed: ${error.message}. Make sure LM Studio is running with a loaded model.`);
+    }
+  }
+
+  async usePerplexity(prompt, settings, options = {}) {
+    const { default: fetch } = await import('node-fetch');
+    
+    if (!settings.apiKey) {
+      throw new Error('Perplexity API key not configured');
+    }
+
+    console.log('[PERPLEXITY] Using Perplexity AI for CUSIP resolution');
+    console.log('[PERPLEXITY] Model:', settings.model || 'sonar');
+
+    try {
+      const response = await fetch('https://api.perplexity.ai/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${settings.apiKey}`
+        },
+        body: JSON.stringify({
+          model: settings.model || 'sonar',
+          messages: [
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          max_tokens: options.maxTokens || 1000
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[PERPLEXITY] API error:', errorText);
+        throw new Error(`Perplexity API error: ${response.status} - ${errorText}`);
+      }
+
+      const data = await response.json();
+      
+      if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+        console.error('[PERPLEXITY] Unexpected response format:', data);
+        throw new Error('Invalid response format from Perplexity API');
+      }
+      
+      const result = data.choices[0].message.content;
+      console.log('[PERPLEXITY] Response received:', result ? 'SUCCESS' : 'EMPTY');
+      return result;
+    } catch (error) {
+      console.error('[PERPLEXITY] Request failed:', error.message);
+      throw new Error(`Perplexity API failed: ${error.message}`);
+    }
+  }
+
   async useLocal(prompt, settings, options = {}) {
     const { default: fetch } = await import('node-fetch');
     
@@ -347,6 +472,45 @@ Response format: ONLY the ticker symbol or "NOT_FOUND" - no additional text.`;
     }
     
     return JSON.stringify(data);
+  }
+
+  /**
+   * Extract ticker symbol from simple AI response
+   */
+  extractSimpleTickerResponse(response) {
+    if (!response || typeof response !== 'string') {
+      return null;
+    }
+
+    const text = response.trim().toUpperCase();
+    
+    // Pattern 1: Direct response (just the ticker symbol)
+    if (/^[A-Z]{1,10}$/.test(text)) {
+      console.log(`[AI] Direct ticker response: ${text}`);
+      return text;
+    }
+    
+    // Pattern 2: Look for standalone ticker symbols (2-10 uppercase letters)
+    const standaloneMatch = text.match(/\b([A-Z]{2,10})\b/);
+    if (standaloneMatch) {
+      const ticker = standaloneMatch[1];
+      // Avoid common words that aren't tickers
+      const commonWords = ['THE', 'FOR', 'AND', 'WITH', 'NYSE', 'NASDAQ', 'STOCK', 'SYMBOL', 'TICKER', 'CUSIP', 'INC', 'CORP', 'LLC', 'LTD', 'NOT', 'FOUND'];
+      if (!commonWords.includes(ticker)) {
+        console.log(`[AI] Found standalone ticker: ${ticker}`);
+        return ticker;
+      }
+    }
+    
+    // Pattern 3: Look for markdown bold text like **AKYA**
+    const markdownMatch = text.match(/\*\*([A-Z]{1,10})\*\*/);
+    if (markdownMatch) {
+      console.log(`[AI] Found ticker in markdown: ${markdownMatch[1]}`);
+      return markdownMatch[1];
+    }
+    
+    console.log(`[AI] Could not extract ticker from: ${text}`);
+    return null;
   }
 }
 

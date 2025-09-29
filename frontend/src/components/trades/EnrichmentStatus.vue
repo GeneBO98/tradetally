@@ -53,23 +53,8 @@
       </div>
     </div>
     
-    <!-- Show retry button if there are unresolved CUSIPs -->
+    <!-- Show force complete button if there are unresolved CUSIPs -->
     <div v-if="enrichmentStatus && enrichmentStatus.unresolvedCusips > 0" class="mt-3 space-x-2">
-      <button 
-        @click="retryEnrichment" 
-        class="text-sm bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 transition-colors"
-      >
-        Retry CUSIP Resolution ({{ enrichmentStatus.unresolvedCusips }} unresolved)
-      </button>
-      
-      <button 
-        @click="autoRemapAll" 
-        class="text-sm bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 transition-colors"
-        title="Attempt to automatically remap all unresolved CUSIPs"
-      >
-        Auto Remap All
-      </button>
-      
       <!-- NUCLEAR OPTION for stuck jobs -->
       <button 
         @click="forceCompleteEnrichment" 
@@ -118,6 +103,9 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import api from '@/services/api'
 import { useEnrichmentStatus } from '@/composables/usePriceAlertNotifications'
+import { useNotification } from '@/composables/useNotification'
+
+const { showSuccess, showError, showWarning, showConfirmation } = useNotification()
 
 const enrichmentStatus = ref(null)
 const dismissed = ref(JSON.parse(localStorage.getItem('enrichmentBannerDismissed') || 'false'))
@@ -245,25 +233,6 @@ async function fetchEnrichmentStatus() {
   }
 }
 
-async function retryEnrichment() {
-  try {
-    const response = await api.post('/trades/retry-enrichment')
-    console.log('Enrichment retry initiated:', response.data)
-    
-    // Refresh status immediately
-    await fetchEnrichmentStatus()
-    
-    // Show success message
-    if (response.data.unresolvedCusips > 0 || response.data.resetJobs > 0) {
-      alert(`Enrichment retry initiated. Processing ${response.data.unresolvedCusips} CUSIPs.`)
-    } else {
-      alert('No unresolved CUSIPs found.')
-    }
-  } catch (error) {
-    console.error('Failed to retry enrichment:', error)
-    alert('Failed to retry enrichment. Please try again.')
-  }
-}
 
 async function syncEnrichmentStatus() {
   try {
@@ -273,34 +242,27 @@ async function syncEnrichmentStatus() {
     // Refresh status immediately
     await fetchEnrichmentStatus()
     
-    alert(`[PROCESS] SYNCED: ${response.data.syncedTrades} trades synced to completed status`)
+    showSuccess(
+      'Sync Complete', 
+      `Successfully synced ${response.data.syncedTrades} trades to completed status`
+    )
   } catch (error) {
     console.error('Failed to sync enrichment status:', error)
-    alert('Failed to sync enrichment status. Please try again.')
+    showError('Sync Failed', 'Failed to sync enrichment status. Please try again.')
   }
 }
 
-async function autoRemapAll() {
-  try {
-    const response = await api.post('/trades/cusip/resolve-unresolved')
-    console.log('Auto remap initiated:', response.data)
-    
-    // Refresh status immediately
-    await fetchEnrichmentStatus()
-    
-    const { resolved, total } = response.data
-    const failed = total - resolved
-    alert(`Auto remap complete: ${resolved} resolved, ${failed} failed out of ${total} CUSIPs`)
-  } catch (error) {
-    console.error('Failed to auto remap CUSIPs:', error)
-    alert('Failed to auto remap CUSIPs. Please try again.')
-  }
-}
 
 async function forceCompleteEnrichment() {
-  if (!confirm('[ALERT] NUCLEAR OPTION: This will FORCE COMPLETE all enrichment jobs immediately. Are you sure?')) {
-    return
-  }
+  showConfirmation(
+    'Force Complete All Jobs?',
+    'WARNING: This will force complete ALL enrichment jobs immediately, even if they are not finished. This action cannot be undone. Are you sure?',
+    async () => await performForceComplete(),
+    null
+  )
+}
+
+async function performForceComplete() {
   
   try {
     const response = await api.post('/trades/force-complete-enrichment')
@@ -309,10 +271,13 @@ async function forceCompleteEnrichment() {
     // Refresh status immediately
     await fetchEnrichmentStatus()
     
-    alert(`[ALERT] FORCE COMPLETED: ${response.data.forceCompletedJobs} jobs and ${response.data.forceCompletedTrades} trades completed. No more stuck jobs!`)
+    showSuccess(
+      'Force Complete Successful', 
+      `Force completed ${response.data.forceCompletedJobs} jobs and ${response.data.forceCompletedTrades} trades. All stuck jobs have been cleared.`
+    )
   } catch (error) {
     console.error('Failed to force complete enrichment:', error)
-    alert('Failed to force complete enrichment. Please try again.')
+    showError('Force Complete Failed', 'Failed to force complete enrichment. Please check the logs and try again.')
   }
 }
 

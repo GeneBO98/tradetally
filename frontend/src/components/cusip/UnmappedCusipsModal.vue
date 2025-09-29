@@ -201,6 +201,7 @@ import {
   ExclamationTriangleIcon
 } from '@heroicons/vue/24/outline'
 import { useAuthStore } from '@/stores/auth'
+import { useNotification } from '@/composables/useNotification'
 
 const props = defineProps({
   isOpen: {
@@ -213,9 +214,10 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['close', 'mappingCreated'])
+const emit = defineEmits(['close', 'mappingCreated', 'resolutionStarted'])
 
 const authStore = useAuthStore()
+const { showImportantWarning, showCriticalError } = useNotification()
 
 // Component state
 const mappingCusip = ref(null)
@@ -261,17 +263,18 @@ const autoRemapAll = async () => {
       const result = await response.json()
       const total = result.total || 0
       
-      alert(`Auto remap started: Processing ${total} CUSIPs in background. This may take a few minutes.`)
+      showImportantWarning('CUSIP Resolution Started', `Processing ${total} CUSIPs in background. This may take a few minutes.`)
       
+      emit('resolutionStarted', { total })
       emit('mappingCreated')
     } else {
       const error = await response.json()
       console.error('Failed to auto remap:', error)
-      alert('Failed to auto remap CUSIPs. Please try again.')
+      showCriticalError('Auto Remap Failed', 'Failed to auto remap CUSIPs. Please try again.')
     }
   } catch (error) {
     console.error('Error auto remapping:', error)
-    alert('Failed to auto remap CUSIPs. Please try again.')
+    showCriticalError('Auto Remap Failed', 'Failed to auto remap CUSIPs. Please try again.')
   } finally {
     remapping.value = false
   }

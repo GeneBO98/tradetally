@@ -27,7 +27,7 @@ class TrialScheduler {
   // Send trial reminder emails to users whose trials are expiring soon
   static async sendTrialReminders(daysRemaining) {
     try {
-      console.log(`📧 Checking for trials expiring in ${daysRemaining} days...`);
+      console.log(`[EMAIL] Checking for trials expiring in ${daysRemaining} days...`);
       
       // Calculate the date range for trials expiring in the specified number of days
       const targetDate = new Date();
@@ -88,7 +88,7 @@ class TrialScheduler {
   // Send trial expiration notices to users whose trials have expired
   static async sendTrialExpirationNotices() {
     try {
-      console.log('📧 Checking for expired trials...');
+      console.log('[EMAIL] Checking for expired trials...');
       
       // Find users whose trials expired in the last 24 hours and haven't been notified
       const query = `

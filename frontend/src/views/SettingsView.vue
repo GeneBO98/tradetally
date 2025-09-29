@@ -36,6 +36,8 @@
                   <option value="claude">Anthropic Claude</option>
                   <option value="openai">OpenAI</option>
                   <option value="ollama">Ollama</option>
+                  <option value="lmstudio">LM Studio</option>
+                  <option value="perplexity">Perplexity AI</option>
                   <option value="local">Local/Custom</option>
                 </select>
                 <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -58,14 +60,14 @@
               </div>
             </div>
 
-            <div v-if="aiForm.provider === 'local' || aiForm.provider === 'ollama'">
+            <div v-if="aiForm.provider === 'local' || aiForm.provider === 'ollama' || aiForm.provider === 'lmstudio'">
               <label for="aiUrl" class="label">API URL</label>
               <input
                 id="aiUrl"
                 v-model="aiForm.url"
                 type="url"
                 class="input"
-                :placeholder="aiForm.provider === 'ollama' ? 'http://localhost:11434' : 'http://localhost:8000'"
+                :placeholder="aiForm.provider === 'ollama' ? 'http://localhost:11434' : aiForm.provider === 'lmstudio' ? 'http://localhost:1234' : 'http://localhost:8000'"
                 required
               />
               <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -172,6 +174,8 @@
                   <option value="claude">Anthropic Claude</option>
                   <option value="openai">OpenAI</option>
                   <option value="ollama">Ollama</option>
+                  <option value="lmstudio">LM Studio</option>
+                  <option value="perplexity">Perplexity AI</option>
                   <option value="local">Local/Custom</option>
                 </select>
                 <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -194,14 +198,14 @@
               </div>
             </div>
 
-            <div v-if="adminAiForm.provider === 'local' || adminAiForm.provider === 'ollama'">
+            <div v-if="adminAiForm.provider === 'local' || adminAiForm.provider === 'ollama' || adminAiForm.provider === 'lmstudio'">
               <label for="adminAiUrl" class="label">Default API URL</label>
               <input
                 id="adminAiUrl"
                 v-model="adminAiForm.url"
                 type="url"
                 class="input"
-                :placeholder="adminAiForm.provider === 'ollama' ? 'http://localhost:11434' : 'http://localhost:8000'"
+                :placeholder="adminAiForm.provider === 'ollama' ? 'http://localhost:11434' : adminAiForm.provider === 'lmstudio' ? 'http://localhost:1234' : 'http://localhost:8000'"
                 required
               />
               <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -434,6 +438,10 @@ function getModelPlaceholder() {
       return 'e.g., gpt-4o'
     case 'ollama':
       return 'e.g., llama3.1'
+    case 'lmstudio':
+      return 'e.g., local-model (auto-detected)'
+    case 'perplexity':
+      return 'e.g., sonar'
     case 'local':
       return 'e.g., custom-model'
     default:
@@ -451,6 +459,12 @@ function getApiKeyPlaceholder() {
       return 'sk-...'
     case 'ollama':
       return 'Optional API key'
+    case 'perplexity':
+      return 'pplx-...'
+    case 'lmstudio':
+      return 'Optional API key'
+    case 'local':
+      return 'Enter API key'
     default:
       return 'Enter API key'
   }
@@ -466,6 +480,12 @@ function getApiKeyHelp() {
       return 'Get your API key from OpenAI Dashboard'
     case 'ollama':
       return 'API key is optional for Ollama'
+    case 'perplexity':
+      return 'Get your API key from Perplexity AI Settings'
+    case 'lmstudio':
+      return 'API key is optional for LM Studio'
+    case 'local':
+      return 'Enter your custom API key if required'
     default:
       return 'Enter your API key'
   }
@@ -591,6 +611,10 @@ function getAdminModelPlaceholder() {
       return 'gpt-4o'
     case 'ollama':
       return 'llama3.1'
+    case 'lmstudio':
+      return 'local-model (auto-detected)'
+    case 'perplexity':
+      return 'sonar'
     case 'local':
       return 'custom-model'
     default:

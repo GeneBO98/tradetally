@@ -387,11 +387,13 @@ AI CUSIP resolution is **disabled by default** due to reliability concerns. Enab
 #### **Limitations & Warnings:**
 - **[X] Unreliable Results**: AI models frequently return incorrect or duplicate ticker mappings
 - **[X] Self-Hosted AI Issues**: Local models (Ollama, etc.) cannot access real financial databases
+- **[X] Static LLM Limitations**: Most LLMs have static training data and cannot resolve CUSIPs for companies that have changed tickers or delisted after their training cutoff
 - **[X] Hallucination Risk**: AI may guess popular symbols (JPM, AAPL, MSFT) for unknown CUSIPs
 - **[X] Data Integrity**: Incorrect mappings can corrupt your trade data permanently
 
 #### **When AI CUSIP Resolution Might Work:**
-- [CHECK] **Cloud-based AI only**: OpenAI, Google Gemini, Anthropic Claude (never self-hosted)
+- [CHECK] **Perplexity AI Recommended**: Unlike static LLMs, Perplexity actively searches the web for current CUSIP-to-ticker mappings, providing more accurate results for recently changed or delisted securities
+- [CHECK] **Cloud-based AI only**: OpenAI, Google Gemini, Anthropic Claude, Perplexity (never self-hosted)
 - [CHECK] **Manual verification**: You manually verify every AI-resolved CUSIP
 - [CHECK] **Test environment**: You're testing and can afford incorrect data
 
@@ -399,7 +401,20 @@ AI CUSIP resolution is **disabled by default** due to reliability concerns. Enab
 ```env
 # Only enable if you understand the risks and will verify results manually
 ENABLE_AI_CUSIP_RESOLUTION=true
+
+# For best results with CUSIP resolution, configure Perplexity AI:
+# 1. Get API key from https://www.perplexity.ai/settings/api
+# 2. Configure in Settings > AI Provider
+# 3. Select "Perplexity" as provider and enter API key
 ```
+
+#### **Why Perplexity Works Better for CUSIP Resolution:**
+Due to the static nature of most LLMs, they cannot accurately resolve CUSIPs for:
+- Companies that changed ticker symbols after the LLM's training cutoff
+- Securities that were delisted or merged after training
+- Recently issued securities not in the training data
+
+Perplexity AI addresses this limitation by actively searching the web for current information, making it more reliable for CUSIP resolution than static LLMs.
 
 #### **Recommended Alternative:**
 Instead of AI CUSIP resolution, use:

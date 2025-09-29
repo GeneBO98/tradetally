@@ -1412,20 +1412,50 @@ const tradeController = {
       // Continue processing in background
       process.nextTick(async () => {
         try {
-          // Resolve CUSIPs using Finnhub batch lookup
-          const resolvedMappings = await finnhub.batchLookupCusips(unresolvedCusips);
+          console.log(`[BACKGROUND] Starting CUSIP resolution for ${unresolvedCusips.length} CUSIPs...`);
+          
+          let totalMappingsCreated = 0;
+          let totalTradesUpdated = 0;
+          
+          // Define callback function to create mapping immediately when CUSIP is resolved
+          const onResolveCallback = async (cusip, ticker, userId) => {
+            try {
+              // Update trades to replace CUSIP with ticker
+              const updateResult = await Trade.updateSymbolForCusip(userId, cusip, ticker);
+              const tradesUpdated = updateResult.affectedRows || 0;
+              totalTradesUpdated += tradesUpdated;
+              
+              // Create mapping entry in cusip_mappings table
+              console.log(`[MAPPING] Creating immediate mapping: ${cusip} → ${ticker} for user ${userId}`);
+              
+              const mappingResult = await db.query(
+                `INSERT INTO cusip_mappings (cusip, ticker, user_id, verified, resolution_source, created_by) 
+                 VALUES ($1, $2, $3, true, 'system_ai', $3) 
+                 ON CONFLICT (cusip, user_id) DO NOTHING
+                 RETURNING id`,
+                [cusip, ticker, userId]
+              );
+              
+              if (mappingResult.rows.length > 0) {
+                totalMappingsCreated++;
+                console.log(`[MAPPING] [SUCCESS] Immediately created mapping: ${cusip} → ${ticker} (ID: ${mappingResult.rows[0].id}) - ${tradesUpdated} trades updated`);
+              } else {
+                console.log(`[MAPPING] [WARNING] Mapping already exists: ${cusip} → ${ticker} - ${tradesUpdated} trades updated`);
+              }
+            } catch (mappingError) {
+              console.error(`[MAPPING] [ERROR] Failed to create immediate mapping for ${cusip} → ${ticker}:`, mappingError.message);
+              console.error(`[MAPPING] Error details:`, mappingError);
+            }
+          };
+          
+          // Resolve CUSIPs using Finnhub batch lookup with immediate callback
+          const resolvedMappings = await finnhub.batchLookupCusips(unresolvedCusips, userId, onResolveCallback);
           const resolvedCount = Object.keys(resolvedMappings).length;
           
-          // Update trades with resolved mappings
-          let updatedTrades = 0;
-          for (const [cusip, ticker] of Object.entries(resolvedMappings)) {
-            const updateResult = await Trade.updateSymbolForCusip(userId, cusip, ticker);
-            updatedTrades += updateResult.affectedRows || 0;
-          }
-          
-          console.log(`CUSIP resolution complete: ${resolvedCount} of ${unresolvedCusips.length} resolved, ${updatedTrades} trades updated`);
+          console.log(`[BACKGROUND] [SUCCESS] CUSIP resolution complete: ${resolvedCount} of ${unresolvedCusips.length} resolved, ${totalTradesUpdated} trades updated, ${totalMappingsCreated} mappings created immediately`);
         } catch (error) {
-          console.error('Error in background CUSIP resolution:', error);
+          console.error('[BACKGROUND] [ERROR] Error in background CUSIP resolution:', error.message);
+          console.error('[BACKGROUND] Full error:', error);
         }
       });
     } catch (error) {

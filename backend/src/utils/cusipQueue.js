@@ -222,7 +222,7 @@ Response:`;
         return null;
       }
 
-      const response = await provider(prompt, aiSettings, { maxTokens: 20 });
+      const response = await provider(prompt, aiSettings, { maxTokens: 150 });
       const result = response.trim().toUpperCase();
       
       // Handle different types of responses
@@ -272,8 +272,8 @@ Response:`;
         
         // Add delay between lookups to respect rate limits
         if (pendingCusips.indexOf(pendingCusips.find(c => c.cusip === cusip)) < pendingCusips.length - 1) {
-          console.log('Waiting 3 seconds before next CUSIP lookup...');
-          await new Promise(resolve => setTimeout(resolve, 3000));
+          console.log('Waiting 200ms before next CUSIP lookup...');
+          await new Promise(resolve => setTimeout(resolve, 200));
         }
       }
 
