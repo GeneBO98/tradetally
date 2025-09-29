@@ -3,19 +3,11 @@ FROM node:20-alpine AS frontend-builder
 RUN apk update && apk upgrade --no-cache
 WORKDIR /app/frontend
 
-# Accept build arguments for PostHog
-ARG VITE_POSTHOG_KEY
-ARG VITE_POSTHOG_HOST
-
 COPY frontend/package*.json ./
 # Update npm to latest version to fix cross-spawn vulnerability
 RUN npm install -g npm@latest
 RUN npm install
 COPY frontend/ ./
-
-# Set environment variables for build
-ENV VITE_POSTHOG_KEY=$VITE_POSTHOG_KEY
-ENV VITE_POSTHOG_HOST=$VITE_POSTHOG_HOST
 
 RUN npm run build
 
