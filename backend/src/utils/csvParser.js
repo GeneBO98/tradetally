@@ -6,6 +6,105 @@ const cusipQueue = require('./cusipQueue');
 
 // CUSIP resolution is now handled by the cusipQueue module
 
+/**
+ * Detects the broker format based on CSV headers
+ * @param {Buffer} fileBuffer - The CSV file buffer
+ * @returns {string} - Detected broker format
+ */
+function detectBrokerFormat(fileBuffer) {
+  try {
+    const csvString = fileBuffer.toString('utf-8');
+    const lines = csvString.split('\n');
+
+    // Get the first non-empty line (should be headers)
+    let headerLine = '';
+    for (let i = 0; i < Math.min(10, lines.length); i++) {
+      if (lines[i].trim()) {
+        headerLine = lines[i].trim();
+        break;
+      }
+    }
+
+    if (!headerLine) {
+      return 'generic';
+    }
+
+    const headers = headerLine.toLowerCase();
+    console.log(`[AUTO-DETECT] Analyzing headers: ${headerLine.substring(0, 200)}...`);
+
+    // TradingView detection - look for specific column combination
+    if (headers.includes('symbol') &&
+        headers.includes('side') &&
+        headers.includes('fill price') &&
+        headers.includes('status') &&
+        headers.includes('order id') &&
+        headers.includes('leverage')) {
+      console.log('[AUTO-DETECT] Detected: TradingView (futures trading format)');
+      return 'tradingview';
+    }
+
+    // Lightspeed detection - look for Trade Number, Execution Time, Buy/Sell columns
+    if ((headers.includes('trade number') || headers.includes('sequence number')) &&
+        (headers.includes('execution time') || headers.includes('raw exec')) &&
+        (headers.includes('commission amount') || headers.includes('feesec'))) {
+      console.log('[AUTO-DETECT] Detected: Lightspeed Trader');
+      return 'lightspeed';
+    }
+
+    // ThinkorSwim detection - look for DATE, TIME, TYPE, DESCRIPTION pattern
+    if (headers.includes('date,time,type') && headers.includes('description') &&
+        headers.includes('commissions & fees')) {
+      console.log('[AUTO-DETECT] Detected: ThinkorSwim');
+      return 'thinkorswim';
+    }
+
+    // PaperMoney detection - look for Exec Time, Pos Effect, Spread columns
+    if (headers.includes('exec time') &&
+        headers.includes('pos effect') &&
+        headers.includes('spread')) {
+      console.log('[AUTO-DETECT] Detected: PaperMoney');
+      return 'papermoney';
+    }
+
+    // Schwab detection - two formats
+    // Format 1: Completed trades with Gain/Loss
+    if ((headers.includes('opened date') && headers.includes('closed date') && headers.includes('gain/loss')) ||
+        (headers.includes('symbol') && headers.includes('quantity') && headers.includes('cost per share') && headers.includes('proceeds per share'))) {
+      console.log('[AUTO-DETECT] Detected: Charles Schwab (completed trades)');
+      return 'schwab';
+    }
+    // Format 2: Transaction history
+    if (headers.includes('action') && headers.includes('fees & comm') &&
+        (headers.includes('date') && headers.includes('symbol') && headers.includes('description'))) {
+      console.log('[AUTO-DETECT] Detected: Charles Schwab (transactions)');
+      return 'schwab';
+    }
+
+    // IBKR detection
+    if (headers.includes('symbol') && headers.includes('datetime') &&
+        headers.includes('quantity') && headers.includes('price') &&
+        !headers.includes('action')) { // Distinguish from Schwab
+      console.log('[AUTO-DETECT] Detected: Interactive Brokers');
+      return 'ibkr';
+    }
+
+    // E*TRADE detection
+    if (headers.includes('transaction date') && headers.includes('transaction type') &&
+        (headers.includes('buy') || headers.includes('sell'))) {
+      console.log('[AUTO-DETECT] Detected: E*TRADE');
+      return 'etrade';
+    }
+
+    // Default to generic if no specific format detected
+    console.log('[AUTO-DETECT] No specific format detected, using generic parser');
+    return 'generic';
+
+  } catch (error) {
+    console.error('[AUTO-DETECT] Error detecting broker format:', error);
+    return 'generic';
+  }
+}
+
 const brokerParsers = {
   generic: (row) => ({
     symbol: row.Symbol || row.symbol,
@@ -131,7 +230,7 @@ const brokerParsers = {
     const quantity = Math.abs(parseInt(row.Qty || 0));
     const price = parseFloat(row.Price || row['Net Price'] || 0);
     const execTime = row['Exec Time'] || '';
-    
+
     // Parse the execution time (format: "9/19/25 13:24:32")
     let tradeDate = null;
     let entryTime = null;
@@ -148,7 +247,7 @@ const brokerParsers = {
         entryTime = parseDateTime(fullDate);
       }
     }
-    
+
     return {
       symbol: symbol,
       tradeDate: tradeDate,
@@ -161,13 +260,61 @@ const brokerParsers = {
       broker: 'papermoney',
       notes: `${row['Pos Effect'] || ''} - ${row.Type || 'STOCK'}`
     };
+  },
+
+  tradingview: (row) => {
+    // TradingView provides individual orders that need to be grouped into trades
+    const symbol = cleanString(row.Symbol);
+    const side = row.Side ? row.Side.toLowerCase() : '';
+    const status = row.Status || '';
+    const quantity = Math.abs(parseInteger(row.Qty));
+    const fillPrice = parseNumeric(row['Fill Price']);
+    const commission = parseNumeric(row.Commission);
+    const placingTime = row['Placing Time'] || '';
+    const closingTime = row['Closing Time'] || '';
+    const orderId = row['Order ID'] || '';
+    const orderType = row.Type || '';
+    const leverage = row.Leverage || '';
+
+    // Only process filled orders
+    if (status !== 'Filled') {
+      return null;
+    }
+
+    // Parse the datetime (format: "2025-10-02 21:28:16")
+    const tradeDate = parseDate(closingTime || placingTime);
+    const entryTime = parseDateTime(closingTime || placingTime);
+
+    return {
+      symbol: symbol,
+      tradeDate: tradeDate,
+      entryTime: entryTime,
+      entryPrice: fillPrice,
+      quantity: quantity,
+      side: side === 'buy' ? 'buy' : side === 'sell' ? 'sell' : side,
+      commission: commission,
+      fees: 0,
+      broker: 'tradingview',
+      orderId: orderId,
+      orderType: orderType,
+      leverage: leverage,
+      notes: `${orderType} order ${leverage ? `with ${leverage} leverage` : ''}`
+    };
   }
 };
 
 async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
   try {
+    // Handle auto-detection
+    if (broker === 'auto') {
+      const detectedBroker = detectBrokerFormat(fileBuffer);
+      console.log(`[AUTO-DETECT] Using detected broker format: ${detectedBroker}`);
+      broker = detectedBroker;
+    }
+
     const existingPositions = context.existingPositions || {};
     console.log(`\n=== IMPORT CONTEXT ===`);
+    console.log(`Broker format: ${broker}`);
     console.log(`Existing open positions: ${Object.keys(existingPositions).length}`);
     Object.entries(existingPositions).forEach(([symbol, position]) => {
       console.log(`  ${symbol}: ${position.side} ${position.quantity} shares @ $${position.entryPrice}`);
@@ -361,6 +508,13 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       // console.log('Starting PaperMoney transaction parsing');
       const result = await parsePaperMoneyTransactions(records, existingPositions);
       console.log('Finished PaperMoney transaction parsing');
+      return result;
+    }
+
+    if (broker === 'tradingview') {
+      console.log('Starting TradingView transaction parsing');
+      const result = await parseTradingViewTransactions(records, existingPositions);
+      console.log('Finished TradingView transaction parsing');
       return result;
     }
 
@@ -1842,16 +1996,271 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}) {
   return completedTrades;
 }
 
+async function parseTradingViewTransactions(records, existingPositions = {}) {
+  console.log(`Processing ${records.length} TradingView transaction records`);
+
+  const transactions = [];
+  const completedTrades = [];
+
+  // Debug: Log first few records to see structure
+  console.log('Sample TradingView records:');
+  records.slice(0, 5).forEach((record, i) => {
+    console.log(`Record ${i}:`, JSON.stringify(record));
+  });
+
+  // First, parse all filled orders
+  for (const record of records) {
+    try {
+      const symbol = cleanString(record.Symbol);
+      const side = record.Side ? record.Side.toLowerCase() : '';
+      const status = record.Status || '';
+      const quantity = Math.abs(parseInteger(record.Qty));
+      const fillPrice = parseNumeric(record['Fill Price']);
+      const commission = parseNumeric(record.Commission);
+      const placingTime = record['Placing Time'] || '';
+      const closingTime = record['Closing Time'] || '';
+      const orderId = record['Order ID'] || '';
+      const orderType = record.Type || '';
+      const leverage = record.Leverage || '';
+
+      // Only process filled orders
+      if (status !== 'Filled') {
+        console.log(`Skipping non-filled order: ${status}`);
+        continue;
+      }
+
+      // Skip if missing essential data
+      if (!symbol || !side || quantity === 0 || fillPrice === 0 || !closingTime) {
+        console.log(`Skipping TradingView record missing data:`, { symbol, side, quantity, fillPrice, closingTime });
+        continue;
+      }
+
+      // Parse the datetime (format: "2025-10-02 21:28:16")
+      const tradeDate = parseDate(closingTime);
+      const entryTime = parseDateTime(closingTime);
+
+      if (!tradeDate || !entryTime) {
+        console.log(`Skipping TradingView record with invalid date: ${closingTime}`);
+        continue;
+      }
+
+      transactions.push({
+        symbol,
+        date: tradeDate,
+        datetime: entryTime,
+        action: side === 'buy' ? 'buy' : 'sell',
+        quantity,
+        price: fillPrice,
+        fees: commission,
+        orderId,
+        orderType,
+        leverage,
+        description: `${orderType} order ${leverage ? `with ${leverage}` : ''}`,
+        raw: record
+      });
+
+      console.log(`Parsed TradingView transaction: ${side} ${quantity} ${symbol} @ $${fillPrice} (${orderType})`);
+    } catch (error) {
+      console.error('Error parsing TradingView transaction:', error, record);
+    }
+  }
+
+  // Sort transactions by symbol and datetime
+  transactions.sort((a, b) => {
+    if (a.symbol !== b.symbol) return a.symbol.localeCompare(b.symbol);
+    return new Date(a.datetime) - new Date(b.datetime);
+  });
+
+  console.log(`Parsed ${transactions.length} valid TradingView trade transactions`);
+
+  // Group transactions by symbol
+  const transactionsBySymbol = {};
+  for (const transaction of transactions) {
+    if (!transactionsBySymbol[transaction.symbol]) {
+      transactionsBySymbol[transaction.symbol] = [];
+    }
+    transactionsBySymbol[transaction.symbol].push(transaction);
+  }
+
+  // Process transactions using round-trip trade grouping
+  for (const symbol in transactionsBySymbol) {
+    const symbolTransactions = transactionsBySymbol[symbol];
+
+    console.log(`\n=== Processing ${symbolTransactions.length} TradingView transactions for ${symbol} ===`);
+
+    // Track position and round-trip trades
+    // Start with existing position if we have one for this symbol
+    const existingPosition = existingPositions[symbol];
+    let currentPosition = existingPosition ?
+      (existingPosition.side === 'long' ? existingPosition.quantity : -existingPosition.quantity) : 0;
+    let currentTrade = existingPosition ? {
+      symbol: symbol,
+      entryTime: existingPosition.entryTime,
+      tradeDate: existingPosition.tradeDate,
+      side: existingPosition.side,
+      executions: [],
+      totalQuantity: existingPosition.quantity,
+      totalFees: existingPosition.commission || 0,
+      entryValue: existingPosition.quantity * existingPosition.entryPrice,
+      exitValue: 0,
+      broker: existingPosition.broker || 'tradingview',
+      isExistingPosition: true,
+      existingTradeId: existingPosition.id,
+      newExecutionsAdded: 0
+    } : null;
+
+    if (existingPosition) {
+      console.log(`  → Starting with existing ${existingPosition.side} position: ${existingPosition.quantity} shares @ $${existingPosition.entryPrice}`);
+      console.log(`  → Initial position: ${currentPosition}`);
+    }
+
+    for (const transaction of symbolTransactions) {
+      const qty = transaction.quantity;
+      const prevPosition = currentPosition;
+
+      console.log(`\n${transaction.action} ${qty} @ $${transaction.price} | Position: ${currentPosition}`);
+
+      // Start new trade if going from flat to position
+      if (currentPosition === 0) {
+        currentTrade = {
+          symbol: symbol,
+          entryTime: transaction.datetime,
+          tradeDate: transaction.date,
+          side: transaction.action === 'buy' ? 'long' : 'short',
+          executions: [],
+          totalQuantity: 0,
+          totalFees: 0,
+          entryValue: 0,
+          exitValue: 0,
+          broker: 'tradingview'
+        };
+        console.log(`  → Started new ${currentTrade.side} trade`);
+      }
+
+      // Add execution to current trade (check for duplicates first)
+      if (currentTrade) {
+        const newExecution = {
+          action: transaction.action,
+          quantity: qty,
+          price: transaction.price,
+          datetime: transaction.datetime,
+          fees: transaction.fees,
+          orderId: transaction.orderId
+        };
+
+        // Check if this execution already exists using order ID
+        const executionExists = currentTrade.executions.some(exec => {
+          if (exec.orderId && newExecution.orderId) {
+            return exec.orderId === newExecution.orderId;
+          }
+          // Fallback to timestamp comparison
+          return new Date(exec.datetime).toISOString() === new Date(newExecution.datetime).toISOString();
+        });
+
+        if (!executionExists) {
+          currentTrade.executions.push(newExecution);
+          currentTrade.totalFees += transaction.fees;
+          if (currentTrade.isExistingPosition) {
+            currentTrade.newExecutionsAdded++;
+          }
+        } else {
+          console.log(`  → Skipping duplicate execution: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
+        }
+      }
+
+      // Update position and values
+      if (transaction.action === 'buy') {
+        currentPosition += qty;
+
+        if (currentTrade && currentTrade.side === 'long') {
+          currentTrade.entryValue += qty * transaction.price;
+          currentTrade.totalQuantity += qty;
+        } else if (currentTrade && currentTrade.side === 'short') {
+          currentTrade.exitValue += qty * transaction.price;
+        }
+      } else if (transaction.action === 'sell') {
+        currentPosition -= qty;
+
+        if (currentTrade && currentTrade.side === 'short') {
+          currentTrade.entryValue += qty * transaction.price;
+          currentTrade.totalQuantity += qty;
+        } else if (currentTrade && currentTrade.side === 'long') {
+          currentTrade.exitValue += qty * transaction.price;
+        }
+      }
+
+      console.log(`  Position: ${prevPosition} → ${currentPosition}`);
+
+      // Close trade if position goes to zero
+      if (currentPosition === 0 && currentTrade && currentTrade.totalQuantity > 0) {
+        // Calculate weighted average prices
+        currentTrade.entryPrice = currentTrade.entryValue / currentTrade.totalQuantity;
+        currentTrade.exitPrice = currentTrade.exitValue / currentTrade.totalQuantity;
+
+        // Calculate P/L
+        if (currentTrade.side === 'long') {
+          currentTrade.pnl = currentTrade.exitValue - currentTrade.entryValue - currentTrade.totalFees;
+        } else {
+          currentTrade.pnl = currentTrade.entryValue - currentTrade.exitValue - currentTrade.totalFees;
+        }
+
+        currentTrade.pnlPercent = (currentTrade.pnl / currentTrade.entryValue) * 100;
+        currentTrade.quantity = currentTrade.totalQuantity;
+        currentTrade.commission = currentTrade.totalFees;
+        currentTrade.fees = 0;
+        currentTrade.exitTime = transaction.datetime;
+        currentTrade.executionData = currentTrade.executions;
+
+        // Mark as update if this was an existing position
+        if (currentTrade.isExistingPosition) {
+          currentTrade.isUpdate = currentTrade.newExecutionsAdded > 0;
+          currentTrade.notes = `Closed existing position: ${currentTrade.executions.length} closing executions`;
+          console.log(`  [SUCCESS] CLOSED existing ${currentTrade.side} position: ${currentTrade.totalQuantity} shares, P/L: $${currentTrade.pnl.toFixed(2)}`);
+        } else {
+          currentTrade.notes = `Round trip: ${currentTrade.executions.length} executions`;
+          console.log(`  [SUCCESS] Completed ${currentTrade.side} trade: ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions, P/L: $${currentTrade.pnl.toFixed(2)}`);
+        }
+
+        completedTrades.push(currentTrade);
+        currentTrade = null;
+      }
+    }
+
+    console.log(`\n${symbol} Final Position: ${currentPosition} shares`);
+    if (currentTrade) {
+      console.log(`Active trade: ${currentTrade.side} ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions`);
+
+      // Add open position as incomplete trade
+      currentTrade.entryPrice = currentTrade.entryValue / currentTrade.totalQuantity;
+      currentTrade.exitPrice = null;
+      currentTrade.quantity = currentTrade.totalQuantity;
+      currentTrade.commission = currentTrade.totalFees;
+      currentTrade.fees = 0;
+      currentTrade.exitTime = null;
+      currentTrade.pnl = 0;
+      currentTrade.pnlPercent = 0;
+      currentTrade.notes = `Open position: ${currentTrade.executions.length} executions`;
+      currentTrade.executionData = currentTrade.executions;
+
+      completedTrades.push(currentTrade);
+    }
+  }
+
+  console.log(`Created ${completedTrades.length} TradingView trades from ${transactions.length} transactions`);
+  return completedTrades;
+}
+
 function isValidTrade(trade) {
-  return trade.symbol && 
-         trade.tradeDate && 
-         trade.entryTime && 
-         trade.entryPrice > 0 && 
+  return trade.symbol &&
+         trade.tradeDate &&
+         trade.entryTime &&
+         trade.entryPrice > 0 &&
          trade.quantity > 0;
 }
 
-module.exports = { 
+module.exports = {
   parseCSV,
+  detectBrokerFormat,
   brokerParsers,
   parseDate,
   parseDateTime,
