@@ -15,12 +15,12 @@ const ChartService = require('../services/chartService');
 const tradeController = {
   async getUserTrades(req, res, next) {
     try {
-      const { 
+      const {
         symbol, startDate, endDate, tags, strategy, sector,
-        strategies, sectors, hasNews, daysOfWeek,
+        strategies, sectors, hasNews, daysOfWeek, instrumentTypes,
         side, minPrice, maxPrice, minQuantity, maxQuantity,
         status, minPnl, maxPnl, pnlType, broker, brokers,
-        limit = 50, offset = 0 
+        limit = 50, offset = 0
       } = req.query;
       
       const filters = {
@@ -35,6 +35,7 @@ const tradeController = {
         sectors: sectors ? sectors.split(',') : undefined,
         hasNews,
         daysOfWeek: daysOfWeek ? daysOfWeek.split(',').map(d => parseInt(d)) : undefined,
+        instrumentTypes: instrumentTypes ? instrumentTypes.split(',') : undefined,
         // New advanced filters
         side,
         minPrice: minPrice ? parseFloat(minPrice) : undefined,
@@ -1159,14 +1160,14 @@ const tradeController = {
       console.log('User ID:', req.user.id);
       console.log('Side filter specifically:', req.query.side);
       
-      const { 
-        startDate, endDate, symbol, sector, strategy, 
+      const {
+        startDate, endDate, symbol, sector, strategy,
         strategies, sectors, // Add multi-select parameters
         side, minPrice, maxPrice, minQuantity, maxQuantity,
         status, minPnl, maxPnl, pnlType, broker, brokers, hasNews,
-        holdTime, minHoldTime, maxHoldTime, daysOfWeek 
+        holdTime, minHoldTime, maxHoldTime, daysOfWeek, instrumentTypes
       } = req.query;
-      
+
       const filters = {
         startDate,
         endDate,
@@ -1189,7 +1190,8 @@ const tradeController = {
         brokers: brokers || undefined,  // Support both broker and brokers
         hasNews,
         holdTime,
-        daysOfWeek: daysOfWeek ? daysOfWeek.split(',').map(d => parseInt(d)) : undefined
+        daysOfWeek: daysOfWeek ? daysOfWeek.split(',').map(d => parseInt(d)) : undefined,
+        instrumentTypes: instrumentTypes ? instrumentTypes.split(',') : undefined
       };
       
       console.log('[ANALYTICS] Raw query:', req.query);

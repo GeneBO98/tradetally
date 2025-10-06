@@ -280,15 +280,26 @@
                 </td>
                 
                 <!-- Symbol Column -->
-                <td v-else-if="column.visible && column.key === 'symbol'" 
-                    class="px-6 py-4 whitespace-nowrap cursor-pointer" 
+                <td v-else-if="column.visible && column.key === 'symbol'"
+                    class="px-6 py-4 whitespace-nowrap cursor-pointer"
                     @click="$router.push(`/trades/${trade.id}`)">
                   <div class="flex items-center space-x-2">
                     <div class="text-sm font-medium text-gray-900 dark:text-white">
                       {{ trade.symbol }}
                     </div>
+                    <!-- Instrument type badge -->
+                    <span v-if="trade.instrument_type === 'option'"
+                      class="px-2 py-1 text-xs font-semibold rounded-full bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400"
+                      :title="`${trade.option_type?.toUpperCase()} - Strike: $${trade.strike_price} - Exp: ${trade.expiration_date}`">
+                      OPT
+                    </span>
+                    <span v-else-if="trade.instrument_type === 'future'"
+                      class="px-2 py-1 text-xs font-semibold rounded-full bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400"
+                      :title="`Futures contract`">
+                      FUT
+                    </span>
                     <!-- News badge -->
-                    <span v-if="trade.has_news" 
+                    <span v-if="trade.has_news"
                       :class="getNewsBadgeClasses(trade.news_sentiment)"
                       class="px-2 py-1 text-xs font-semibold rounded-full flex items-center"
                       :title="`${trade.news_events?.length || 0} news article(s) - ${trade.news_sentiment || 'neutral'} sentiment`">

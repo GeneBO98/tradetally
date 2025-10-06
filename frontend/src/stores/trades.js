@@ -27,7 +27,8 @@ export const useTradesStore = defineStore('trades', () => {
     hasNews: '',
     broker: '',
     brokers: [],
-    daysOfWeek: []
+    daysOfWeek: [],
+    instrumentTypes: []
   })
 
   // Store analytics data for consistent P&L calculations
@@ -393,7 +394,8 @@ export const useTradesStore = defineStore('trades', () => {
         hasNews: '',
         broker: '',
         brokers: [],
-        daysOfWeek: []
+        daysOfWeek: [],
+        instrumentTypes: []
       }
     } else {
       filters.value = { ...filters.value, ...newFilters }
@@ -414,7 +416,8 @@ export const useTradesStore = defineStore('trades', () => {
       minHoldTime: null,
       maxHoldTime: null,
       hasNews: '',
-      daysOfWeek: []
+      daysOfWeek: [],
+      instrumentTypes: []
     }
     pagination.value.page = 1
   }

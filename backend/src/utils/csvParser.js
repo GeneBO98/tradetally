@@ -80,11 +80,19 @@ function detectBrokerFormat(fileBuffer) {
       return 'schwab';
     }
 
-    // IBKR detection
+    // IBKR detection - two formats
+    // Format 1: Trade Confirmation (with UnderlyingSymbol, Strike, Expiry, Put/Call, Multiplier, Buy/Sell)
+    if (headers.includes('underlyingsymbol') && headers.includes('strike') &&
+        headers.includes('expiry') && headers.includes('put/call') &&
+        headers.includes('multiplier') && headers.includes('buy/sell')) {
+      console.log('[AUTO-DETECT] Detected: Interactive Brokers Trade Confirmation');
+      return 'ibkr_trade_confirmation';
+    }
+    // Format 2: Activity Statement (Symbol, DateTime, Quantity, Price)
     if (headers.includes('symbol') && headers.includes('datetime') &&
         headers.includes('quantity') && headers.includes('price') &&
         !headers.includes('action')) { // Distinguish from Schwab
-      console.log('[AUTO-DETECT] Detected: Interactive Brokers');
+      console.log('[AUTO-DETECT] Detected: Interactive Brokers Activity Statement');
       return 'ibkr';
     }
 
@@ -182,9 +190,13 @@ const brokerParsers = {
     const absQuantity = Math.abs(quantity);
     const price = parseFloat(row.Price);
     const commission = Math.abs(parseFloat(row.Commission || 0)); // Commission is negative in IBKR CSVs
+    const symbol = cleanString(row.Symbol);
+
+    // Parse instrument data (options/futures detection)
+    const instrumentData = parseInstrumentData(symbol);
 
     return {
-      symbol: cleanString(row.Symbol),
+      symbol: symbol,
       tradeDate: parseDate(row.DateTime),
       entryTime: parseDateTime(row.DateTime),
       entryPrice: price,
@@ -192,7 +204,72 @@ const brokerParsers = {
       side: quantity > 0 ? 'buy' : 'sell',
       commission: commission,
       fees: parseFloat(row.Fees || 0),
-      broker: 'ibkr'
+      broker: 'ibkr',
+      ...instrumentData
+    };
+  },
+
+  ibkr_trade_confirmation: (row) => {
+    // IBKR Trade Confirmation format with separate columns for options data
+    // Columns: Symbol, UnderlyingSymbol, Strike, Expiry, Date/Time, Put/Call, Quantity, Multiplier, Buy/Sell, Price, Commission
+
+    const symbol = cleanString(row.Symbol);
+    const underlyingSymbol = cleanString(row.UnderlyingSymbol);
+    const strike = parseFloat(row.Strike);
+    const expiry = row.Expiry; // Format: YYYYMMDD
+    const putCall = cleanString(row['Put/Call']);
+    const quantity = parseFloat(row.Quantity);
+    const multiplier = parseFloat(row.Multiplier || 100);
+    const buySell = cleanString(row['Buy/Sell']).toUpperCase();
+    const price = parseFloat(row.Price);
+    const commission = Math.abs(parseFloat(row.Commission || 0));
+
+    // Parse date/time - format is YYYYMMDD;HHMMSS
+    const dateTimeParts = (row['Date/Time'] || '').split(';');
+    const dateStr = dateTimeParts[0]; // YYYYMMDD
+    const timeStr = dateTimeParts[1] || '093000'; // HHMMSS
+
+    // Convert YYYYMMDD to YYYY-MM-DD
+    const tradeDate = dateStr ? `${dateStr.substring(0,4)}-${dateStr.substring(4,6)}-${dateStr.substring(6,8)}` : null;
+
+    // Convert HHMMSS to HH:MM:SS
+    const time = timeStr ? `${timeStr.substring(0,2)}:${timeStr.substring(2,4)}:${timeStr.substring(4,6)}` : '09:30:00';
+    const entryTime = tradeDate ? `${tradeDate}T${time}` : null;
+
+    // Parse expiry date from YYYYMMDD to YYYY-MM-DD
+    const expirationDate = expiry ? `${expiry.substring(0,4)}-${expiry.substring(4,6)}-${expiry.substring(6,8)}` : null;
+
+    // Determine instrument type and build instrument data
+    let instrumentData = {};
+
+    if (underlyingSymbol && strike && expiry && putCall) {
+      // This is an option
+      instrumentData = {
+        instrumentType: 'option',
+        underlyingSymbol: underlyingSymbol,
+        strikePrice: strike,
+        expirationDate: expirationDate,
+        optionType: putCall.toLowerCase() === 'c' ? 'call' : 'put',
+        contractSize: multiplier
+      };
+    } else {
+      // Stock or other
+      instrumentData = {
+        instrumentType: 'stock'
+      };
+    }
+
+    return {
+      symbol: symbol,
+      tradeDate: tradeDate,
+      entryTime: entryTime,
+      entryPrice: price,
+      quantity: Math.abs(quantity),
+      side: buySell === 'BUY' ? 'buy' : 'sell',
+      commission: commission,
+      fees: 0,
+      broker: 'ibkr',
+      ...instrumentData
     };
   },
 
@@ -526,8 +603,8 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       return result;
     }
 
-    if (broker === 'ibkr') {
-      console.log('Starting IBKR transaction parsing');
+    if (broker === 'ibkr' || broker === 'ibkr_trade_confirmation') {
+      console.log(`Starting IBKR transaction parsing (${broker} format)`);
       const result = await parseIBKRTransactions(records, existingPositions);
       console.log('Finished IBKR transaction parsing');
       return result;
@@ -735,6 +812,117 @@ function parseLightspeedSide(sideCode, buySell, principalAmount, netAmount, quan
 function cleanString(str) {
   if (!str) return '';
   return str.toString().trim();
+}
+
+// Parse options/futures instrument data from symbol
+function parseInstrumentData(symbol) {
+  if (!symbol) {
+    return { instrumentType: 'stock' };
+  }
+
+  const normalizedSymbol = symbol.replace(/\s+/g, ' ').trim();
+
+  // IBKR Options format: "SEDG  250801P00025000" (underlying + spaces + YYMMDD + C/P + strike)
+  const ibkrOptionMatch = normalizedSymbol.match(/^([A-Z]+)\s+(\d{6})([CP])(\d{8})$/);
+  if (ibkrOptionMatch) {
+    const [, underlying, expiry, type, strikeStr] = ibkrOptionMatch;
+    const year = 2000 + parseInt(expiry.substr(0, 2));
+    const month = parseInt(expiry.substr(2, 2));
+    const day = parseInt(expiry.substr(4, 2));
+    const strike = parseInt(strikeStr) / 1000;
+
+    return {
+      instrumentType: 'option',
+      underlyingSymbol: underlying,
+      strikePrice: strike,
+      expirationDate: `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`,
+      optionType: type.toLowerCase() === 'c' ? 'call' : 'put',
+      contractSize: 100
+    };
+  }
+
+  // Standard compact options format: "AAPL230120C00150000" (6-char underlying + YYMMDD + C/P + 8-digit strike)
+  const compactOptionMatch = normalizedSymbol.match(/^([A-Z]{1,6})(\d{6})([CP])(\d{8})$/);
+  if (compactOptionMatch) {
+    const [, underlying, expiry, type, strikeStr] = compactOptionMatch;
+    const year = 2000 + parseInt(expiry.substr(0, 2));
+    const month = parseInt(expiry.substr(2, 2));
+    const day = parseInt(expiry.substr(4, 2));
+    const strike = parseInt(strikeStr) / 1000;
+
+    return {
+      instrumentType: 'option',
+      underlyingSymbol: underlying,
+      strikePrice: strike,
+      expirationDate: `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`,
+      optionType: type.toLowerCase() === 'c' ? 'call' : 'put',
+      contractSize: 100
+    };
+  }
+
+  // Futures format detection: "ESM4", "NQU24", "CLZ23", "NYMEX_MINI:QG1!", etc.
+  const futuresPatterns = [
+    /^([A-Z]{1,3})([FGHJKMNQUVXZ])(\d{1,2})$/,  // Standard: ESM4, NQU24, CLZ23
+    /^([A-Z_]+):([A-Z0-9]+)!?$/,                 // TradingView: NYMEX_MINI:QG1!
+    /^\/([A-Z]{1,3})([FGHJKMNQUVXZ])(\d{2})$/    // Slash notation: /ESM24
+  ];
+
+  for (const pattern of futuresPatterns) {
+    const match = normalizedSymbol.match(pattern);
+    if (match) {
+      let underlying, monthCode, year;
+
+      if (pattern.source.includes(':')) {
+        // TradingView format
+        [, underlying] = match;
+        // Extract month/year from symbol if present
+        const tvMatch = underlying.match(/([A-Z]+)(\d+)/);
+        if (tvMatch) {
+          underlying = tvMatch[1];
+          year = parseInt(tvMatch[2]);
+          if (year < 100) year += 2000;
+        }
+      } else {
+        [, underlying, monthCode, year] = match;
+        year = parseInt(year);
+        if (year < 100) {
+          year += year < 50 ? 2000 : 1900;
+        }
+      }
+
+      const monthCodes = { F: '01', G: '02', H: '03', J: '04', K: '05', M: '06', N: '07', Q: '08', U: '09', V: '10', X: '11', Z: '12' };
+      const month = monthCode ? monthCodes[monthCode] : null;
+
+      return {
+        instrumentType: 'future',
+        underlyingAsset: underlying,
+        contractMonth: month,
+        contractYear: year || null,
+        pointValue: getFuturesPointValue(underlying)
+      };
+    }
+  }
+
+  return { instrumentType: 'stock' };
+}
+
+// Get point value for futures contracts
+function getFuturesPointValue(underlying) {
+  const pointValues = {
+    'ES': 50,      // E-mini S&P 500
+    'NQ': 20,      // E-mini NASDAQ-100
+    'YM': 5,       // E-mini Dow
+    'RTY': 50,     // E-mini Russell 2000
+    'CL': 1000,    // Crude Oil
+    'GC': 100,     // Gold
+    'SI': 5000,    // Silver
+    'NG': 10000,   // Natural Gas
+    'ZB': 1000,    // 30-Year Treasury Bond
+    'ZN': 1000,    // 10-Year Treasury Note
+    'QG': 2500     // Mini Natural Gas
+  };
+
+  return pointValues[underlying] || 50; // Default to $50 multiplier
 }
 
 // PostgreSQL 16 compatible numeric parsing
@@ -1691,11 +1879,13 @@ async function parseThinkorswimTransactions(records, existingPositions = {}) {
         }
         
         currentTrade.pnlPercent = (currentTrade.pnl / currentTrade.entryValue) * 100;
-        currentTrade.quantity = currentTrade.totalQuantity;
+        currentTrade.quantity = currentTrade.totalQuantity * contractMultiplier;
         currentTrade.commission = currentTrade.totalFees;
         currentTrade.fees = 0;
         currentTrade.exitTime = transaction.datetime;
         currentTrade.executionData = currentTrade.executions;
+        // Add instrument data for options/futures
+        Object.assign(currentTrade, instrumentData);
         
         // Mark as update if this was an existing position
         if (currentTrade.isExistingPosition) {
@@ -1962,11 +2152,13 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}) {
         }
         
         currentTrade.pnlPercent = (currentTrade.pnl / currentTrade.entryValue) * 100;
-        currentTrade.quantity = currentTrade.totalQuantity;
+        currentTrade.quantity = currentTrade.totalQuantity * contractMultiplier;
         currentTrade.commission = currentTrade.totalFees;
         currentTrade.fees = 0;
         currentTrade.exitTime = transaction.datetime;
         currentTrade.executionData = currentTrade.executions;
+        // Add instrument data for options/futures
+        Object.assign(currentTrade, instrumentData);
         
         // Mark as update if this was an existing position
         if (currentTrade.isExistingPosition) {
@@ -2220,11 +2412,13 @@ async function parseTradingViewTransactions(records, existingPositions = {}) {
         }
 
         currentTrade.pnlPercent = (currentTrade.pnl / currentTrade.entryValue) * 100;
-        currentTrade.quantity = currentTrade.totalQuantity;
+        currentTrade.quantity = currentTrade.totalQuantity * contractMultiplier;
         currentTrade.commission = currentTrade.totalFees;
         currentTrade.fees = 0;
         currentTrade.exitTime = transaction.datetime;
         currentTrade.executionData = currentTrade.executions;
+        // Add instrument data for options/futures
+        Object.assign(currentTrade, instrumentData);
 
         // Mark as update if this was an existing position
         if (currentTrade.isExistingPosition) {
@@ -2277,15 +2471,47 @@ async function parseIBKRTransactions(records, existingPositions = {}) {
     console.log(`Record ${i}:`, JSON.stringify(record));
   });
 
+  // Detect format: Trade Confirmation vs Activity Statement
+  const isTradeConfirmation = records.length > 0 && records[0].hasOwnProperty('Buy/Sell');
+
   // First, parse all transactions
   for (const record of records) {
     try {
-      const symbol = cleanString(record.Symbol);
-      const quantity = parseFloat(record.Quantity);
-      const absQuantity = Math.abs(quantity);
-      const price = parseFloat(record.Price);
-      const commission = Math.abs(parseFloat(record.Commission || 0)); // Commission is negative in IBKR
-      const dateTime = record.DateTime || '';
+      let symbol, quantity, absQuantity, price, commission, dateTime, action;
+
+      if (isTradeConfirmation) {
+        // Trade Confirmation format
+        symbol = cleanString(record.Symbol);
+        quantity = parseFloat(record.Quantity);
+        absQuantity = Math.abs(quantity);
+        price = parseFloat(record.Price);
+        commission = Math.abs(parseFloat(record.Commission || 0));
+
+        // Parse date/time - format is YYYYMMDD;HHMMSS
+        const dateTimeParts = (record['Date/Time'] || '').split(';');
+        const dateStr = dateTimeParts[0]; // YYYYMMDD
+        const timeStr = dateTimeParts[1] || '093000'; // HHMMSS
+
+        // Convert YYYYMMDD to YYYY-MM-DD
+        const tradeDate = dateStr ? `${dateStr.substring(0,4)}-${dateStr.substring(4,6)}-${dateStr.substring(6,8)}` : null;
+
+        // Convert HHMMSS to HH:MM:SS
+        const time = timeStr ? `${timeStr.substring(0,2)}:${timeStr.substring(2,4)}:${timeStr.substring(4,6)}` : '09:30:00';
+        dateTime = tradeDate ? `${tradeDate} ${time}` : '';
+
+        // Determine action from Buy/Sell column
+        const buySell = cleanString(record['Buy/Sell']).toUpperCase();
+        action = buySell === 'BUY' ? 'buy' : 'sell';
+      } else {
+        // Activity Statement format (original)
+        symbol = cleanString(record.Symbol);
+        quantity = parseFloat(record.Quantity);
+        absQuantity = Math.abs(quantity);
+        price = parseFloat(record.Price);
+        commission = Math.abs(parseFloat(record.Commission || 0));
+        dateTime = record.DateTime || '';
+        action = quantity > 0 ? 'buy' : 'sell';
+      }
 
       // Skip if missing essential data
       if (!symbol || absQuantity === 0 || price === 0 || !dateTime) {
@@ -2306,7 +2532,7 @@ async function parseIBKRTransactions(records, existingPositions = {}) {
         symbol,
         date: tradeDate,
         datetime: entryTime,
-        action: quantity > 0 ? 'buy' : 'sell',
+        action: action,
         quantity: absQuantity,
         price: price,
         fees: commission,
@@ -2314,7 +2540,7 @@ async function parseIBKRTransactions(records, existingPositions = {}) {
         raw: record
       });
 
-      console.log(`Parsed IBKR transaction: ${quantity > 0 ? 'buy' : 'sell'} ${absQuantity} ${symbol} @ $${price}`);
+      console.log(`Parsed IBKR transaction: ${action} ${absQuantity} ${symbol} @ $${price}`);
     } catch (error) {
       console.error('Error parsing IBKR transaction:', error, record);
     }
@@ -2342,6 +2568,43 @@ async function parseIBKRTransactions(records, existingPositions = {}) {
     const symbolTransactions = transactionsBySymbol[symbol];
 
     console.log(`\n=== Processing ${symbolTransactions.length} IBKR transactions for ${symbol} ===`);
+
+    // Parse instrument data to check if this is an option/future
+    let instrumentData;
+
+    // Check if Trade Confirmation format with separate columns
+    if (isTradeConfirmation && symbolTransactions[0].raw) {
+      const firstRecord = symbolTransactions[0].raw;
+      const underlyingSymbol = cleanString(firstRecord.UnderlyingSymbol);
+      const strike = parseFloat(firstRecord.Strike);
+      const expiry = firstRecord.Expiry; // Format: YYYYMMDD
+      const putCall = cleanString(firstRecord['Put/Call']);
+      const multiplier = parseFloat(firstRecord.Multiplier || 100);
+
+      if (underlyingSymbol && strike && expiry && putCall) {
+        // This is an option - use the columns directly
+        const expirationDate = expiry ? `${expiry.substring(0,4)}-${expiry.substring(4,6)}-${expiry.substring(6,8)}` : null;
+
+        instrumentData = {
+          instrumentType: 'option',
+          underlyingSymbol: underlyingSymbol,
+          strikePrice: strike,
+          expirationDate: expirationDate,
+          optionType: putCall.toLowerCase() === 'c' ? 'call' : 'put',
+          contractSize: multiplier
+        };
+      } else {
+        instrumentData = { instrumentType: 'stock' };
+      }
+    } else {
+      // Activity Statement format - parse from symbol
+      instrumentData = parseInstrumentData(symbol);
+    }
+
+    const contractMultiplier = instrumentData.instrumentType === 'option' ? (instrumentData.contractSize || 100) :
+                                instrumentData.instrumentType === 'future' ? (instrumentData.pointValue || 1) : 1;
+
+    console.log(`Instrument type: ${instrumentData.instrumentType}, contract multiplier: ${contractMultiplier}`);
 
     // Track position and round-trip trades
     // Start with existing position if we have one for this symbol
@@ -2457,11 +2720,13 @@ async function parseIBKRTransactions(records, existingPositions = {}) {
         }
 
         currentTrade.pnlPercent = (currentTrade.pnl / currentTrade.entryValue) * 100;
-        currentTrade.quantity = currentTrade.totalQuantity;
+        currentTrade.quantity = currentTrade.totalQuantity * contractMultiplier;
         currentTrade.commission = currentTrade.totalFees;
         currentTrade.fees = 0;
         currentTrade.exitTime = transaction.datetime;
         currentTrade.executionData = currentTrade.executions;
+        // Add instrument data for options/futures
+        Object.assign(currentTrade, instrumentData);
 
         // Mark as update if this was an existing position
         if (currentTrade.isExistingPosition) {

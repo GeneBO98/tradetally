@@ -8,7 +8,10 @@ class Trade {
       symbol, entryTime, exitTime, entryPrice, exitPrice,
       quantity, side, commission, fees, notes, isPublic, broker,
       strategy, setup, tags, pnl: providedPnL, pnlPercent: providedPnLPercent,
-      executionData, mae, mfe, confidence, tradeDate
+      executionData, mae, mfe, confidence, tradeDate,
+      instrumentType = 'stock', strikePrice, expirationDate, optionType,
+      contractSize, underlyingSymbol, contractMonth, contractYear,
+      tickSize, pointValue, underlyingAsset
     } = tradeData;
 
     // Convert empty strings to null for optional fields
@@ -153,9 +156,11 @@ class Trade {
         quantity, side, commission, fees, pnl, pnl_percent, notes, is_public,
         broker, strategy, setup, tags, executions, mae, mfe, confidence,
         strategy_confidence, classification_method, classification_metadata, manual_override,
-        news_events, has_news, news_sentiment, news_checked_at
+        news_events, has_news, news_sentiment, news_checked_at,
+        instrument_type, strike_price, expiration_date, option_type, contract_size, underlying_symbol,
+        contract_month, contract_year, tick_size, point_value, underlying_asset
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42)
       RETURNING *
     `;
 
@@ -164,7 +169,10 @@ class Trade {
       quantity, side, commission || 0, fees || 0, pnl, pnlPercent, notes, isPublic || false,
       broker, finalStrategy, setup, tags || [], JSON.stringify(executionData || []), mae || null, mfe || null, confidence || 5,
       strategyConfidence, classificationMethod, JSON.stringify(classificationMetadata), manualOverride,
-      JSON.stringify(newsData.newsEvents || []), newsData.hasNews || false, newsData.sentiment, newsData.checkedAt
+      JSON.stringify(newsData.newsEvents || []), newsData.hasNews || false, newsData.sentiment, newsData.checkedAt,
+      instrumentType || 'stock', strikePrice || null, expirationDate || null, optionType || null,
+      contractSize || (instrumentType === 'option' ? 100 : null), underlyingSymbol || null,
+      contractMonth || null, contractYear || null, tickSize || null, pointValue || null, underlyingAsset || null
     ];
 
     const result = await db.query(query, values);
@@ -527,6 +535,14 @@ class Trade {
         filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
         paramCount += filters.daysOfWeek.length;
       }
+    }
+
+    // Instrument types filter (stock, option, future)
+    if (filters.instrumentTypes && filters.instrumentTypes.length > 0) {
+      const placeholders = filters.instrumentTypes.map((_, index) => `$${paramCount + index}`).join(',');
+      query += ` AND t.instrument_type IN (${placeholders})`;
+      filters.instrumentTypes.forEach(type => values.push(type));
+      paramCount += filters.instrumentTypes.length;
     }
 
     // Broker filter - support both single and multi-select
@@ -1264,7 +1280,7 @@ class Trade {
     if (filters.daysOfWeek && filters.daysOfWeek.length > 0) {
       const userTimezone = await getUserTimezone(userId);
       const placeholders = filters.daysOfWeek.map((_, index) => `$${paramCount + index}`).join(',');
-      
+
       if (userTimezone !== 'UTC') {
         whereClause += ` AND extract(dow from (t.entry_time AT TIME ZONE 'UTC' AT TIME ZONE $${paramCount + filters.daysOfWeek.length})) IN (${placeholders})`;
         filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
@@ -1275,6 +1291,14 @@ class Trade {
         filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
         paramCount += filters.daysOfWeek.length;
       }
+    }
+
+    // Instrument types filter (stock, option, future)
+    if (filters.instrumentTypes && filters.instrumentTypes.length > 0) {
+      const placeholders = filters.instrumentTypes.map((_, index) => `$${paramCount + index}`).join(',');
+      whereClause += ` AND t.instrument_type IN (${placeholders})`;
+      filters.instrumentTypes.forEach(type => values.push(type));
+      paramCount += filters.instrumentTypes.length;
     }
 
     console.log('Analytics query - whereClause:', whereClause);
