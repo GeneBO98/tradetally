@@ -16,6 +16,7 @@
               <label for="broker" class="label">Broker Format</label>
               <select id="broker" v-model="selectedBroker" required class="input">
                 <option value="">Select broker format</option>
+                <option value="auto">Auto-Detect</option>
                 <option value="generic">Generic CSV</option>
                 <option value="lightspeed">Lightspeed Trader</option>
                 <option value="schwab">Charles Schwab</option>
@@ -23,9 +24,10 @@
                 <option value="ibkr">Interactive Brokers</option>
                 <option value="etrade">E*TRADE</option>
                 <option value="papermoney">PaperMoney</option>
+                <option value="tradingview">TradingView</option>
               </select>
               <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                Choose the format that matches your CSV file structure.
+                Choose the format that matches your CSV file structure, or use Auto-Detect.
               </p>
             </div>
 
@@ -646,7 +648,7 @@ const { celebrationQueue } = usePriceAlertNotifications()
 
 const loading = ref(false)
 const error = ref(null)
-const selectedBroker = ref('')
+const selectedBroker = ref('auto')
 const selectedFile = ref(null)
 const fileInput = ref(null)
 const dragOver = ref(false)
