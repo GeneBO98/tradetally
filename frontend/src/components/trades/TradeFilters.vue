@@ -57,7 +57,7 @@
               <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
                 <input
                   type="checkbox"
-                  :checked="filters.strategies.length === 0"
+                  :checked="!filters.strategies || filters.strategies.length === 0"
                   @change="toggleAllStrategies"
                   class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
                 />
@@ -103,7 +103,7 @@
               <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
                 <input
                   type="checkbox"
-                  :checked="filters.sectors.length === 0"
+                  :checked="!filters.sectors || filters.sectors.length === 0"
                   @change="toggleAllSectors"
                   class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
                 />
@@ -144,7 +144,8 @@
     <!-- Advanced filters toggle -->
     <div class="pt-2">
       <button
-        @click="showAdvanced = !showAdvanced"
+        type="button"
+        @click.stop.prevent="showAdvanced = !showAdvanced"
         class="flex items-center text-sm text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200"
       >
         <ChevronRightIcon 
@@ -275,7 +276,7 @@
                 <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
                   <input
                     type="checkbox"
-                    :checked="filters.brokers.length === 0"
+                    :checked="!filters.brokers || filters.brokers.length === 0"
                     @change="toggleAllBrokers"
                     class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
                   />
@@ -348,7 +349,7 @@
         </div>
       </div>
 
-      <!-- Day of Week Filter -->
+      <!-- Day of Week and Instrument Type Filters -->
       <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 mt-4">
         <div>
           <label class="label">Day of Week</label>
@@ -371,7 +372,7 @@
                 <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
                   <input
                     type="checkbox"
-                    :checked="filters.daysOfWeek.length === 0"
+                    :checked="!filters.daysOfWeek || filters.daysOfWeek.length === 0"
                     @change="toggleAllDaysOfWeek"
                     class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
                   />
@@ -394,9 +395,54 @@
             </div>
           </div>
         </div>
+
+        <div>
+          <label class="label">Instrument Type</label>
+          <div class="relative" data-dropdown="instrumentType">
+            <button
+              @click.stop="showInstrumentTypeDropdown = !showInstrumentTypeDropdown"
+              class="input w-full text-left flex items-center justify-between"
+              type="button"
+            >
+              <span class="truncate">
+                {{ getSelectedInstrumentTypeText() }}
+              </span>
+              <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+              </svg>
+            </button>
+
+            <div v-if="showInstrumentTypeDropdown" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
+              <div class="p-1">
+                <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                  <input
+                    type="checkbox"
+                    :checked="!filters.instrumentTypes || filters.instrumentTypes.length === 0"
+                    @change="toggleAllInstrumentTypes"
+                    class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                  />
+                  <span class="ml-3 text-sm text-gray-900 dark:text-white">All Types</span>
+                </label>
+              </div>
+              <div class="border-t border-gray-200 dark:border-gray-600">
+                <div v-for="type in instrumentTypeOptions" :key="type.value" class="p-1">
+                  <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                    <input
+                      type="checkbox"
+                      :value="type.value"
+                      v-model="filters.instrumentTypes"
+                      class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                    />
+                    <span class="ml-3 text-sm text-gray-900 dark:text-white">{{ type.label }}</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
-    
+
     <div class="flex justify-between items-center">
       <div v-if="activeFiltersCount > 0" class="text-sm text-gray-600 dark:text-gray-400">
         {{ activeFiltersCount }} filter{{ activeFiltersCount !== 1 ? 's' : '' }} active
@@ -434,6 +480,7 @@ const showStrategyDropdown = ref(false)
 const showSectorDropdown = ref(false)
 const showDayOfWeekDropdown = ref(false)
 const showBrokerDropdown = ref(false)
+const showInstrumentTypeDropdown = ref(false)
 
 // Day of week options (weekdays only - markets are closed weekends)
 const dayOfWeekOptions = [
@@ -442,6 +489,13 @@ const dayOfWeekOptions = [
   { value: 3, label: 'Wednesday' },
   { value: 4, label: 'Thursday' },
   { value: 5, label: 'Friday' }
+]
+
+// Instrument type options
+const instrumentTypeOptions = [
+  { value: 'stock', label: 'Stocks' },
+  { value: 'option', label: 'Options' },
+  { value: 'future', label: 'Futures' }
 ]
 
 // Strategy options
@@ -484,12 +538,13 @@ const filters = ref({
   holdTime: '',
   broker: '', // Keep for backward compatibility
   brokers: [], // New multi-select array
-  daysOfWeek: [] // New multi-select array for days
+  daysOfWeek: [], // New multi-select array for days
+  instrumentTypes: [] // New multi-select array for instrument types
 })
 
 // Helper methods for multi-select dropdowns
 function getSelectedStrategyText() {
-  if (filters.value.strategies.length === 0) return 'All Strategies'
+  if (!filters.value.strategies || filters.value.strategies.length === 0) return 'All Strategies'
   if (filters.value.strategies.length === 1) {
     const strategy = strategyOptions.find(s => s.value === filters.value.strategies[0])
     return strategy ? strategy.label : 'All Strategies'
@@ -498,7 +553,7 @@ function getSelectedStrategyText() {
 }
 
 function getSelectedSectorText() {
-  if (filters.value.sectors.length === 0) return loadingSectors.value ? 'Loading sectors...' : 'All Sectors'
+  if (!filters.value.sectors || filters.value.sectors.length === 0) return loadingSectors.value ? 'Loading sectors...' : 'All Sectors'
   if (filters.value.sectors.length === 1) return filters.value.sectors[0]
   return `${filters.value.sectors.length} sectors selected`
 }
@@ -516,7 +571,7 @@ function toggleAllSectors(event) {
 }
 
 function getSelectedBrokerText() {
-  if (filters.value.brokers.length === 0) return loadingBrokers.value ? 'Loading brokers...' : 'All Brokers'
+  if (!filters.value.brokers || filters.value.brokers.length === 0) return loadingBrokers.value ? 'Loading brokers...' : 'All Brokers'
   if (filters.value.brokers.length === 1) return filters.value.brokers[0]
   return `${filters.value.brokers.length} brokers selected`
 }
@@ -528,7 +583,7 @@ function toggleAllBrokers(event) {
 }
 
 function getSelectedDayOfWeekText() {
-  if (filters.value.daysOfWeek.length === 0) return 'All Days'
+  if (!filters.value.daysOfWeek || filters.value.daysOfWeek.length === 0) return 'All Days'
   if (filters.value.daysOfWeek.length === 1) {
     const day = dayOfWeekOptions.find(d => d.value === filters.value.daysOfWeek[0])
     return day ? day.label : 'All Days'
@@ -542,14 +597,29 @@ function toggleAllDaysOfWeek(event) {
   }
 }
 
+function getSelectedInstrumentTypeText() {
+  if (!filters.value.instrumentTypes || filters.value.instrumentTypes.length === 0) return 'All Types'
+  if (filters.value.instrumentTypes.length === 1) {
+    const type = instrumentTypeOptions.find(t => t.value === filters.value.instrumentTypes[0])
+    return type ? type.label : 'All Types'
+  }
+  return `${filters.value.instrumentTypes.length} types selected`
+}
+
+function toggleAllInstrumentTypes(event) {
+  if (event.target.checked) {
+    filters.value.instrumentTypes = []
+  }
+}
+
 // Count active filters
 const activeFiltersCount = computed(() => {
   let count = 0
   if (filters.value.symbol) count++
   if (filters.value.startDate) count++
   if (filters.value.endDate) count++
-  if (filters.value.strategies.length > 0) count++
-  if (filters.value.sectors.length > 0) count++
+  if (filters.value.strategies && filters.value.strategies.length > 0) count++
+  if (filters.value.sectors && filters.value.sectors.length > 0) count++
   if (filters.value.hasNews) count++
   if (filters.value.side) count++
   if (filters.value.minPrice !== null) count++
@@ -561,8 +631,9 @@ const activeFiltersCount = computed(() => {
   if (filters.value.maxPnl !== null) count++
   if (filters.value.pnlType) count++
   if (filters.value.holdTime) count++
-  if (filters.value.brokers.length > 0) count++
-  if (filters.value.daysOfWeek.length > 0) count++
+  if (filters.value.brokers && filters.value.brokers.length > 0) count++
+  if (filters.value.daysOfWeek && filters.value.daysOfWeek.length > 0) count++
+  if (filters.value.instrumentTypes && filters.value.instrumentTypes.length > 0) count++
   return count
 })
 
@@ -579,8 +650,9 @@ const activeAdvancedCount = computed(() => {
   if (filters.value.maxPnl !== null) count++
   if (filters.value.pnlType) count++
   if (filters.value.holdTime) count++
-  if (filters.value.brokers.length > 0) count++
-  if (filters.value.daysOfWeek.length > 0) count++
+  if (filters.value.brokers && filters.value.brokers.length > 0) count++
+  if (filters.value.daysOfWeek && filters.value.daysOfWeek.length > 0) count++
+  if (filters.value.instrumentTypes && filters.value.instrumentTypes.length > 0) count++
   return count
 })
 
@@ -628,7 +700,12 @@ function applyFilters() {
   if (filters.value.daysOfWeek.length > 0) {
     cleanFilters.daysOfWeek = filters.value.daysOfWeek.join(',')
   }
-  
+
+  // Handle multi-select instrument types - convert to comma-separated
+  if (filters.value.instrumentTypes.length > 0) {
+    cleanFilters.instrumentTypes = filters.value.instrumentTypes.join(',')
+  }
+
   emit('filter', cleanFilters)
 }
 
@@ -654,7 +731,8 @@ function resetFilters() {
     holdTime: '',
     broker: '',
     brokers: [],
-    daysOfWeek: []
+    daysOfWeek: [],
+    instrumentTypes: []
   }
   // Emit empty filters to trigger immediate refresh
   emit('filter', {})
@@ -743,6 +821,14 @@ function handleClickOutside(event) {
       showBrokerDropdown.value = false
     }
   }
+
+  // Check if click is outside instrument type dropdown
+  if (showInstrumentTypeDropdown.value) {
+    const instrumentTypeDropdown = target.closest('[data-dropdown="instrumentType"]')
+    if (!instrumentTypeDropdown) {
+      showInstrumentTypeDropdown.value = false
+    }
+  }
 }
 
 onMounted(() => {
@@ -781,7 +867,8 @@ onMounted(() => {
     holdTime: '',
     broker: '', // Keep for backward compatibility
     brokers: [],
-    daysOfWeek: []
+    daysOfWeek: [],
+    instrumentTypes: []
   }
   
   // Then set only the filters from query parameters
@@ -890,9 +977,15 @@ onMounted(() => {
     filters.value.daysOfWeek = route.query.daysOfWeek.split(',').map(d => parseInt(d))
     shouldApply = true
   }
-  
+
+  // Handle instrument types from query parameters
+  if (route.query.instrumentTypes) {
+    filters.value.instrumentTypes = route.query.instrumentTypes.split(',')
+    shouldApply = true
+  }
+
   // Auto-expand advanced filters if any advanced filter is set
-  if (route.query.minPrice || route.query.maxPrice || route.query.minQuantity || route.query.maxQuantity || route.query.holdTime || route.query.broker || route.query.minHoldTime || route.query.maxHoldTime || route.query.daysOfWeek) {
+  if (route.query.minPrice || route.query.maxPrice || route.query.minQuantity || route.query.maxQuantity || route.query.holdTime || route.query.broker || route.query.minHoldTime || route.query.maxHoldTime || route.query.daysOfWeek || route.query.instrumentTypes) {
     showAdvanced.value = true
   }
   
