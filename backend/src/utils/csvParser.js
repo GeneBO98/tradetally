@@ -176,17 +176,25 @@ const brokerParsers = {
     };
   },
 
-  ibkr: (row) => ({
-    symbol: row.Symbol,
-    tradeDate: parseDate(row.DateTime),
-    entryTime: parseDateTime(row.DateTime),
-    entryPrice: parseFloat(row.Price),
-    quantity: parseInt(row.Quantity),
-    side: parseFloat(row.Quantity) > 0 ? 'long' : 'short',
-    commission: parseFloat(row.Commission || 0),
-    fees: parseFloat(row.Fees || 0),
-    broker: 'ibkr'
-  }),
+  ibkr: (row) => {
+    // IBKR uses signed quantities: positive = buy, negative = sell
+    const quantity = parseFloat(row.Quantity);
+    const absQuantity = Math.abs(quantity);
+    const price = parseFloat(row.Price);
+    const commission = Math.abs(parseFloat(row.Commission || 0)); // Commission is negative in IBKR CSVs
+
+    return {
+      symbol: cleanString(row.Symbol),
+      tradeDate: parseDate(row.DateTime),
+      entryTime: parseDateTime(row.DateTime),
+      entryPrice: price,
+      quantity: absQuantity,
+      side: quantity > 0 ? 'buy' : 'sell',
+      commission: commission,
+      fees: parseFloat(row.Fees || 0),
+      broker: 'ibkr'
+    };
+  },
 
   etrade: (row) => ({
     symbol: row.Symbol,
@@ -515,6 +523,13 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       console.log('Starting TradingView transaction parsing');
       const result = await parseTradingViewTransactions(records, existingPositions);
       console.log('Finished TradingView transaction parsing');
+      return result;
+    }
+
+    if (broker === 'ibkr') {
+      console.log('Starting IBKR transaction parsing');
+      const result = await parseIBKRTransactions(records, existingPositions);
+      console.log('Finished IBKR transaction parsing');
       return result;
     }
 
@@ -2247,6 +2262,243 @@ async function parseTradingViewTransactions(records, existingPositions = {}) {
   }
 
   console.log(`Created ${completedTrades.length} TradingView trades from ${transactions.length} transactions`);
+  return completedTrades;
+}
+
+async function parseIBKRTransactions(records, existingPositions = {}) {
+  console.log(`Processing ${records.length} IBKR transaction records`);
+
+  const transactions = [];
+  const completedTrades = [];
+
+  // Debug: Log first few records to see structure
+  console.log('Sample IBKR records:');
+  records.slice(0, 5).forEach((record, i) => {
+    console.log(`Record ${i}:`, JSON.stringify(record));
+  });
+
+  // First, parse all transactions
+  for (const record of records) {
+    try {
+      const symbol = cleanString(record.Symbol);
+      const quantity = parseFloat(record.Quantity);
+      const absQuantity = Math.abs(quantity);
+      const price = parseFloat(record.Price);
+      const commission = Math.abs(parseFloat(record.Commission || 0)); // Commission is negative in IBKR
+      const dateTime = record.DateTime || '';
+
+      // Skip if missing essential data
+      if (!symbol || absQuantity === 0 || price === 0 || !dateTime) {
+        console.log(`Skipping IBKR record missing data:`, { symbol, quantity, price, dateTime });
+        continue;
+      }
+
+      // Parse the datetime
+      const tradeDate = parseDate(dateTime);
+      const entryTime = parseDateTime(dateTime);
+
+      if (!tradeDate || !entryTime) {
+        console.log(`Skipping IBKR record with invalid date: ${dateTime}`);
+        continue;
+      }
+
+      transactions.push({
+        symbol,
+        date: tradeDate,
+        datetime: entryTime,
+        action: quantity > 0 ? 'buy' : 'sell',
+        quantity: absQuantity,
+        price: price,
+        fees: commission,
+        description: `IBKR transaction`,
+        raw: record
+      });
+
+      console.log(`Parsed IBKR transaction: ${quantity > 0 ? 'buy' : 'sell'} ${absQuantity} ${symbol} @ $${price}`);
+    } catch (error) {
+      console.error('Error parsing IBKR transaction:', error, record);
+    }
+  }
+
+  // Sort transactions by symbol and datetime
+  transactions.sort((a, b) => {
+    if (a.symbol !== b.symbol) return a.symbol.localeCompare(b.symbol);
+    return new Date(a.datetime) - new Date(b.datetime);
+  });
+
+  console.log(`Parsed ${transactions.length} valid IBKR trade transactions`);
+
+  // Group transactions by symbol
+  const transactionsBySymbol = {};
+  for (const transaction of transactions) {
+    if (!transactionsBySymbol[transaction.symbol]) {
+      transactionsBySymbol[transaction.symbol] = [];
+    }
+    transactionsBySymbol[transaction.symbol].push(transaction);
+  }
+
+  // Process transactions using round-trip trade grouping
+  for (const symbol in transactionsBySymbol) {
+    const symbolTransactions = transactionsBySymbol[symbol];
+
+    console.log(`\n=== Processing ${symbolTransactions.length} IBKR transactions for ${symbol} ===`);
+
+    // Track position and round-trip trades
+    // Start with existing position if we have one for this symbol
+    const existingPosition = existingPositions[symbol];
+    let currentPosition = existingPosition ?
+      (existingPosition.side === 'long' ? existingPosition.quantity : -existingPosition.quantity) : 0;
+    let currentTrade = existingPosition ? {
+      symbol: symbol,
+      entryTime: existingPosition.entryTime,
+      tradeDate: existingPosition.tradeDate,
+      side: existingPosition.side,
+      executions: [],
+      totalQuantity: existingPosition.quantity,
+      totalFees: existingPosition.commission || 0,
+      entryValue: existingPosition.quantity * existingPosition.entryPrice,
+      exitValue: 0,
+      broker: existingPosition.broker || 'ibkr',
+      isExistingPosition: true,
+      existingTradeId: existingPosition.id,
+      newExecutionsAdded: 0
+    } : null;
+
+    if (existingPosition) {
+      console.log(`  → Starting with existing ${existingPosition.side} position: ${existingPosition.quantity} shares @ $${existingPosition.entryPrice}`);
+      console.log(`  → Initial position: ${currentPosition}`);
+    }
+
+    for (const transaction of symbolTransactions) {
+      const qty = transaction.quantity;
+      const prevPosition = currentPosition;
+
+      console.log(`\n${transaction.action} ${qty} @ $${transaction.price} | Position: ${currentPosition}`);
+
+      // Start new trade if going from flat to position
+      if (currentPosition === 0) {
+        currentTrade = {
+          symbol: symbol,
+          entryTime: transaction.datetime,
+          tradeDate: transaction.date,
+          side: transaction.action === 'buy' ? 'long' : 'short',
+          executions: [],
+          totalQuantity: 0,
+          totalFees: 0,
+          entryValue: 0,
+          exitValue: 0,
+          broker: 'ibkr'
+        };
+        console.log(`  → Started new ${currentTrade.side} trade`);
+      }
+
+      // Add execution to current trade (check for duplicates first)
+      if (currentTrade) {
+        const newExecution = {
+          action: transaction.action,
+          quantity: qty,
+          price: transaction.price,
+          datetime: transaction.datetime,
+          fees: transaction.fees
+        };
+
+        // Check if this execution already exists (prevent duplicates on re-import)
+        const executionExists = currentTrade.executions.some(exec =>
+          new Date(exec.datetime).toISOString() === new Date(newExecution.datetime).toISOString() &&
+          exec.quantity === newExecution.quantity &&
+          exec.price === newExecution.price
+        );
+
+        if (!executionExists) {
+          currentTrade.executions.push(newExecution);
+          currentTrade.totalFees += transaction.fees;
+          if (currentTrade.isExistingPosition) {
+            currentTrade.newExecutionsAdded++;
+          }
+        } else {
+          console.log(`  → Skipping duplicate execution: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
+        }
+      }
+
+      // Update position and values
+      if (transaction.action === 'buy') {
+        currentPosition += qty;
+
+        if (currentTrade && currentTrade.side === 'long') {
+          currentTrade.entryValue += qty * transaction.price;
+          currentTrade.totalQuantity += qty;
+        } else if (currentTrade && currentTrade.side === 'short') {
+          currentTrade.exitValue += qty * transaction.price;
+        }
+      } else if (transaction.action === 'sell') {
+        currentPosition -= qty;
+
+        if (currentTrade && currentTrade.side === 'short') {
+          currentTrade.entryValue += qty * transaction.price;
+          currentTrade.totalQuantity += qty;
+        } else if (currentTrade && currentTrade.side === 'long') {
+          currentTrade.exitValue += qty * transaction.price;
+        }
+      }
+
+      console.log(`  Position: ${prevPosition} → ${currentPosition}`);
+
+      // Close trade if position goes to zero
+      if (currentPosition === 0 && currentTrade && currentTrade.totalQuantity > 0) {
+        // Calculate weighted average prices
+        currentTrade.entryPrice = currentTrade.entryValue / currentTrade.totalQuantity;
+        currentTrade.exitPrice = currentTrade.exitValue / currentTrade.totalQuantity;
+
+        // Calculate P/L
+        if (currentTrade.side === 'long') {
+          currentTrade.pnl = currentTrade.exitValue - currentTrade.entryValue - currentTrade.totalFees;
+        } else {
+          currentTrade.pnl = currentTrade.entryValue - currentTrade.exitValue - currentTrade.totalFees;
+        }
+
+        currentTrade.pnlPercent = (currentTrade.pnl / currentTrade.entryValue) * 100;
+        currentTrade.quantity = currentTrade.totalQuantity;
+        currentTrade.commission = currentTrade.totalFees;
+        currentTrade.fees = 0;
+        currentTrade.exitTime = transaction.datetime;
+        currentTrade.executionData = currentTrade.executions;
+
+        // Mark as update if this was an existing position
+        if (currentTrade.isExistingPosition) {
+          currentTrade.isUpdate = currentTrade.newExecutionsAdded > 0;
+          currentTrade.notes = `Closed existing position: ${currentTrade.executions.length} closing executions`;
+          console.log(`  [SUCCESS] CLOSED existing ${currentTrade.side} position: ${currentTrade.totalQuantity} shares, P/L: $${currentTrade.pnl.toFixed(2)}`);
+        } else {
+          currentTrade.notes = `Round trip: ${currentTrade.executions.length} executions`;
+          console.log(`  [SUCCESS] Completed ${currentTrade.side} trade: ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions, P/L: $${currentTrade.pnl.toFixed(2)}`);
+        }
+
+        completedTrades.push(currentTrade);
+        currentTrade = null;
+      }
+    }
+
+    console.log(`\n${symbol} Final Position: ${currentPosition} shares`);
+    if (currentTrade) {
+      console.log(`Active trade: ${currentTrade.side} ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions`);
+
+      // Add open position as incomplete trade
+      currentTrade.entryPrice = currentTrade.entryValue / currentTrade.totalQuantity;
+      currentTrade.exitPrice = null;
+      currentTrade.quantity = currentTrade.totalQuantity;
+      currentTrade.commission = currentTrade.totalFees;
+      currentTrade.fees = 0;
+      currentTrade.exitTime = null;
+      currentTrade.pnl = 0;
+      currentTrade.pnlPercent = 0;
+      currentTrade.notes = `Open position: ${currentTrade.executions.length} executions`;
+      currentTrade.executionData = currentTrade.executions;
+
+      completedTrades.push(currentTrade);
+    }
+  }
+
+  console.log(`Created ${completedTrades.length} IBKR trades from ${transactions.length} transactions`);
   return completedTrades;
 }
 
