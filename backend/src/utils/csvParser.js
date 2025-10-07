@@ -3,8 +3,55 @@ const logger = require('./logger');
 const finnhub = require('./finnhub');
 const cache = require('./cache');
 const cusipQueue = require('./cusipQueue');
+const currencyConverter = require('./currencyConverter');
 
 // CUSIP resolution is now handled by the cusipQueue module
+
+/**
+ * Detects if CSV contains a currency column
+ * @param {Array} records - Parsed CSV records
+ * @returns {boolean} - True if currency column is detected
+ */
+function detectCurrencyColumn(records) {
+  if (!records || records.length === 0) {
+    console.log('[CURRENCY] No records to check for currency column');
+    return false;
+  }
+
+  console.log(`[CURRENCY] Checking ${records.length} records for currency column`);
+
+  // Get all field names from the first record (case-insensitive)
+  const firstRecord = records[0];
+  const fieldNames = Object.keys(firstRecord);
+  console.log(`[CURRENCY] Available fields: ${fieldNames.join(', ')}`);
+
+  // Check if any record has a currency field (case-insensitive)
+  const currencyFieldPatterns = ['currency', 'curr', 'ccy', 'currency_code', 'currencycode'];
+
+  for (const record of records) {
+    for (const fieldName of Object.keys(record)) {
+      const lowerFieldName = fieldName.toLowerCase().trim();
+
+      // Check if this field name matches any currency pattern
+      if (currencyFieldPatterns.some(pattern => lowerFieldName.includes(pattern))) {
+        const value = record[fieldName];
+        if (value && value.toString().trim() !== '') {
+          const currencyValue = value.toString().toUpperCase().trim();
+          console.log(`[CURRENCY] Found currency field '${fieldName}' with value '${currencyValue}'`);
+
+          // Detect non-USD currency
+          if (currencyValue !== 'USD' && currencyValue !== '') {
+            console.log(`[CURRENCY] Detected non-USD currency: ${currencyValue}`);
+            return true;
+          }
+        }
+      }
+    }
+  }
+
+  console.log('[CURRENCY] No non-USD currency column detected');
+  return false;
+}
 
 /**
  * Detects the broker format based on CSV headers
@@ -390,6 +437,8 @@ const brokerParsers = {
 
 async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
   try {
+    console.log(`[CURRENCY DEBUG] parseCSV called with broker: ${broker}, userId: ${context.userId}`);
+
     // Handle auto-detection
     if (broker === 'auto') {
       const detectedBroker = detectBrokerFormat(fileBuffer);
@@ -400,6 +449,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
     const existingPositions = context.existingPositions || {};
     console.log(`\n=== IMPORT CONTEXT ===`);
     console.log(`Broker format: ${broker}`);
+    console.log(`User ID: ${context.userId || 'NOT PROVIDED'}`);
     console.log(`Existing open positions: ${Object.keys(existingPositions).length}`);
     Object.entries(existingPositions).forEach(([symbol, position]) => {
       console.log(`  ${symbol}: ${position.side} ${position.quantity} shares @ $${position.entryPrice}`);
@@ -568,6 +618,30 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
     
     console.log(`Parsing ${records.length} records with ${broker} parser`);
 
+    // Check if CSV contains a currency column BEFORE broker-specific parsing
+    const hasCurrencyColumn = detectCurrencyColumn(records);
+
+    if (hasCurrencyColumn) {
+      console.log(`[CURRENCY] Currency column detected in CSV import`);
+
+      // Check if user has pro tier access
+      const userId = context.userId;
+      if (!userId) {
+        throw new Error('CURRENCY_REQUIRES_PRO:User authentication required for currency conversion');
+      }
+
+      const hasProAccess = await currencyConverter.userHasProAccess(userId);
+      if (!hasProAccess) {
+        throw new Error('CURRENCY_REQUIRES_PRO:Currency conversion is a Pro feature. Please upgrade to Pro to import trades with non-USD currencies.');
+      }
+
+      console.log(`[CURRENCY] User ${userId} has Pro access, currency conversion enabled`);
+
+      // Store currency column info in context for broker parsers to use
+      context.hasCurrencyColumn = true;
+      context.currencyRecords = records; // Store original records with currency data
+    }
+
     if (broker === 'lightspeed') {
       console.log('Starting Lightspeed transaction parsing');
       const result = await parseLightspeedTransactions(records, existingPositions);
@@ -610,13 +684,45 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       return result;
     }
 
+    // Generic parser
     const parser = brokerParsers[broker] || brokerParsers.generic;
     const trades = [];
 
     for (const record of records) {
       try {
-        const trade = parser(record);
+        let trade = parser(record);
         if (isValidTrade(trade)) {
+          // Check if this trade has a currency that needs conversion
+          if (hasCurrencyColumn) {
+            const currencyFieldPatterns = ['currency', 'curr', 'ccy', 'currency_code', 'currencycode'];
+            let currency = null;
+
+            // Find the currency field in the record
+            for (const fieldName of Object.keys(record)) {
+              const lowerFieldName = fieldName.toLowerCase().trim();
+              if (currencyFieldPatterns.some(pattern => lowerFieldName.includes(pattern))) {
+                currency = record[fieldName];
+                break;
+              }
+            }
+
+            // Convert trade if currency is not USD
+            if (currency && currency.toString().toUpperCase().trim() !== 'USD') {
+              const tradeDate = trade.tradeDate || trade.date;
+              if (!tradeDate) {
+                console.warn(`[CURRENCY] Cannot convert trade without date: ${JSON.stringify(trade)}`);
+              } else {
+                try {
+                  console.log(`[CURRENCY] Converting trade from ${currency} to USD on ${tradeDate}`);
+                  trade = await currencyConverter.convertTradeToUSD(trade, currency, tradeDate);
+                } catch (conversionError) {
+                  console.error(`[CURRENCY] Failed to convert trade: ${conversionError.message}`);
+                  throw new Error(`Currency conversion failed for ${currency}: ${conversionError.message}`);
+                }
+              }
+            }
+          }
+
           trades.push(trade);
         }
       } catch (error) {

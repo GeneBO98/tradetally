@@ -1414,6 +1414,64 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
   }
 
   /**
+   * Get forex exchange rate for a specific date
+   * @param {string} base - Base currency (e.g., 'EUR')
+   * @param {string} target - Target currency (default: 'USD')
+   * @param {string} date - Date in YYYY-MM-DD format
+   * @returns {Promise<number>} Exchange rate
+   */
+  async getForexRate(base, target = 'USD', date = null) {
+    if (!this.apiKey) {
+      throw new Error('Finnhub API key not configured');
+    }
+
+    const baseUpper = base.toUpperCase();
+    const targetUpper = target.toUpperCase();
+
+    // If base is already USD, return 1.0
+    if (baseUpper === targetUpper) {
+      return 1.0;
+    }
+
+    // Format date if provided, otherwise use current date
+    const formattedDate = date || new Date().toISOString().split('T')[0];
+
+    // Create cache key
+    const cacheKey = `forex_${baseUpper}_${targetUpper}_${formattedDate}`;
+
+    // Check cache first (24 hour TTL for forex rates)
+    const cached = await cache.get('forex_rates', cacheKey);
+    if (cached) {
+      console.log(`Using cached forex rate for ${baseUpper}/${targetUpper} on ${formattedDate}: ${cached}`);
+      return cached;
+    }
+
+    try {
+      // Finnhub forex rates endpoint: /forex/rates
+      const response = await this.makeRequest('/forex/rates', {
+        base: baseUpper,
+        date: formattedDate
+      });
+
+      // Response format: { base: 'EUR', quote: { USD: 1.18, ... } }
+      if (!response || !response.quote || !response.quote[targetUpper]) {
+        throw new Error(`No forex rate available for ${baseUpper}/${targetUpper} on ${formattedDate}`);
+      }
+
+      const rate = parseFloat(response.quote[targetUpper]);
+
+      // Cache the result
+      await cache.set('forex_rates', cacheKey, rate);
+
+      console.log(`Finnhub forex rate for ${baseUpper}/${targetUpper} on ${formattedDate}: ${rate}`);
+      return rate;
+    } catch (error) {
+      console.warn(`Failed to get forex rate for ${baseUpper}/${targetUpper}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
    * Extract ticker symbol from AI response text
    * Handles various response formats from different AI providers
    */

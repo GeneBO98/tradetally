@@ -524,6 +524,40 @@ NODE_ENV=production PORT=3000 npm start
 - **Format**: Transaction history CSV
 - **Required Columns**: Symbol, Transaction Date, Price, Quantity, Transaction Type, Commission
 
+### Currency Conversion (Pro Feature)
+
+TradeTally supports multi-currency imports with automatic conversion to USD for standardized analytics:
+
+**Features:**
+- **Automatic Currency Detection**: Add a "Currency" column to your CSV with currency codes (USD, EUR, GBP, HKD, etc.)
+- **Historical Exchange Rates**: Uses Finnhub forex API to fetch exchange rates for the specific trade date
+- **Dual-Currency Storage**: Preserves both original currency values and USD conversions
+- **All Broker Support**: Works with Lightspeed, Schwab, ThinkorSwim, IBKR, E*TRADE, and generic formats
+
+**How to Use:**
+1. Add a column named "Currency" (or "Curr", "CCY") to your CSV file
+2. Fill in the currency code for each trade (e.g., "HKD", "EUR", "GBP")
+3. Import the CSV as normal - currency conversion happens automatically
+4. All monetary values (P&L, entry/exit prices, commissions, fees) are converted to USD using the exchange rate from the trade date
+
+**Example CSV with Currency:**
+```csv
+Symbol,Entry Date,Exit Date,Quantity,Entry Price,Exit Price,P&L,Currency
+AAPL,2025-01-15,2025-01-16,100,150.00,155.00,500.00,USD
+HKD:2828,2025-01-15,2025-01-16,1000,50.00,52.00,2000.00,HKD
+```
+
+**Stored Data:**
+- Original currency and exchange rate
+- Original values in source currency
+- Converted values in USD
+- All analytics use USD for consistency
+
+**Pro Feature:**
+- Currency conversion requires a Pro subscription on SaaS platform
+- Fully included in self-hosted deployments
+- Requires `FINNHUB_API_KEY` in backend `.env` for exchange rate data
+
 ## <i class="mdi mdi-cellphone"></i> Push Notification Setup (iOS)
 
 TradeTally supports real-time push notifications for price alerts and trade executions on iOS devices. This section is optional but recommended for mobile users.
