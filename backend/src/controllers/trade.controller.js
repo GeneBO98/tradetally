@@ -754,6 +754,8 @@ const tradeController = {
                 }
                 await Trade.update(tradeData.existingTradeId, req.user.id, cleanTradeData, { skipAchievements: true, skipApiCalls: true });
               } else {
+                // Add import ID to track which import this trade came from
+                tradeData.importId = importId;
                 await Trade.create(req.user.id, tradeData, { skipAchievements: true, skipApiCalls: true });
               }
               imported++;
@@ -1067,28 +1069,20 @@ const tradeController = {
 
       logger.logImport(`Deleting import ${importId} for user ${req.user.id}`);
 
-      // Delete trades that were created around the same time as the import
-      // This is a simplified approach - in production you'd want to store import_id with each trade
+      // Delete trades using the import_id foreign key (CASCADE will handle this automatically)
+      // But we'll explicitly delete to count the trades removed
       const deleteTradesQuery = `
-        DELETE FROM trades 
-        WHERE user_id = $1 
-        AND broker = $2 
-        AND created_at >= $3 
-        AND created_at <= $4
+        DELETE FROM trades
+        WHERE user_id = $1 AND import_id = $2
         RETURNING id
       `;
 
-      const timeWindow = new Date(importDate);
-      timeWindow.setMinutes(timeWindow.getMinutes() + 5); // 5 minute window
-
       const deletedTrades = await db.query(deleteTradesQuery, [
         req.user.id,
-        importLog.broker,
-        importLog.created_at,
-        timeWindow
+        importId
       ]);
 
-      // Delete the import log
+      // Delete the import log (CASCADE will delete any remaining trades if any)
       await db.query(`DELETE FROM import_logs WHERE id = $1`, [importId]);
 
       // Invalidate sector performance cache for this user
