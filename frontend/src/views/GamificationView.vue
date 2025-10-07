@@ -320,14 +320,16 @@
                 <div class="flex-shrink-0">
                   <span
                     v-if="achievement.is_earned"
-                    class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                    class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
                   >
-                    [SUCCESS] Earned
+                    <MdiIcon :icon="mdiCheckCircle" :size="16" />
+                    Earned
                   </span>
                   <span
                     v-else
-                    class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400"
+                    class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400"
                   >
+                    <MdiIcon :icon="mdiLock" :size="16" />
                     Locked
                   </span>
                 </div>
@@ -711,7 +713,9 @@ import {
   mdiChevronRight,
   mdiChevronLeft,
   mdiAccount,
-  mdiFilter
+  mdiFilter,
+  mdiCheckCircle,
+  mdiLock
 } from '@mdi/js'
 
 export default {
@@ -1149,7 +1153,7 @@ export default {
           
           // Show success message to user
           showSuccess(
-            `[SUCCESS] ${response.data.data.count} New Achievement${response.data.data.count > 1 ? 's' : ''}!`,
+            `${response.data.data.count} New Achievement${response.data.data.count > 1 ? 's' : ''} Unlocked!`,
             achievementNames
           )
           
@@ -1364,7 +1368,9 @@ export default {
       mdiChevronRight,
       mdiChevronLeft,
       mdiAccount,
-      mdiFilter
+      mdiFilter,
+      mdiCheckCircle,
+      mdiLock
     }
   }
 }

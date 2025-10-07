@@ -1777,7 +1777,7 @@ async function parseThinkorswimTransactions(records, existingPositions = {}) {
       entryTime: existingPosition.entryTime,
       tradeDate: existingPosition.tradeDate,
       side: existingPosition.side,
-      executions: [],
+      executions: existingPosition.executions || [],
       totalQuantity: existingPosition.quantity,
       totalFees: existingPosition.commission || 0,
       entryValue: existingPosition.quantity * existingPosition.entryPrice,
@@ -1919,13 +1919,20 @@ async function parseThinkorswimTransactions(records, existingPositions = {}) {
       currentTrade.pnlPercent = 0;
       currentTrade.notes = `Open position: ${currentTrade.executions.length} executions`;
       currentTrade.executionData = currentTrade.executions;
-      
+
+      // Mark as update if this was an existing position with new executions
+      if (currentTrade.isExistingPosition && currentTrade.newExecutionsAdded > 0) {
+        currentTrade.isUpdate = true;
+        currentTrade.notes = `Updated open position: ${currentTrade.newExecutionsAdded} new executions added`;
+        console.log(`  [SUCCESS] UPDATED open ${currentTrade.side} position: ${currentTrade.totalQuantity} shares, ${currentTrade.newExecutionsAdded} new executions`);
+      }
+
       // Map executions to executionData for Trade.create
       currentTrade.executionData = currentTrade.executions;
       completedTrades.push(currentTrade);
     }
   }
-  
+
   console.log(`Created ${completedTrades.length} trades from ${transactions.length} transactions`);
   return completedTrades;
 }
@@ -2050,7 +2057,7 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}) {
       entryTime: existingPosition.entryTime,
       tradeDate: existingPosition.tradeDate,
       side: existingPosition.side,
-      executions: [],
+      executions: existingPosition.executions || [],
       totalQuantity: existingPosition.quantity,
       totalFees: existingPosition.commission || 0,
       entryValue: existingPosition.quantity * existingPosition.entryPrice,
@@ -2192,13 +2199,20 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}) {
       currentTrade.pnlPercent = 0;
       currentTrade.notes = `Open position: ${currentTrade.executions.length} executions`;
       currentTrade.executionData = currentTrade.executions;
-      
+
+      // Mark as update if this was an existing position with new executions
+      if (currentTrade.isExistingPosition && currentTrade.newExecutionsAdded > 0) {
+        currentTrade.isUpdate = true;
+        currentTrade.notes = `Updated open position: ${currentTrade.newExecutionsAdded} new executions added`;
+        console.log(`  [SUCCESS] UPDATED open ${currentTrade.side} position: ${currentTrade.totalQuantity} shares, ${currentTrade.newExecutionsAdded} new executions`);
+      }
+
       // Map executions to executionData for Trade.create
       currentTrade.executionData = currentTrade.executions;
       completedTrades.push(currentTrade);
     }
   }
-  
+
   console.log(`Created ${completedTrades.length} PaperMoney trades from ${transactions.length} transactions`);
   return completedTrades;
 }
@@ -2305,7 +2319,7 @@ async function parseTradingViewTransactions(records, existingPositions = {}) {
       entryTime: existingPosition.entryTime,
       tradeDate: existingPosition.tradeDate,
       side: existingPosition.side,
-      executions: [],
+      executions: existingPosition.executions || [],
       totalQuantity: existingPosition.quantity,
       totalFees: existingPosition.commission || 0,
       entryValue: existingPosition.quantity * existingPosition.entryPrice,
@@ -2450,6 +2464,13 @@ async function parseTradingViewTransactions(records, existingPositions = {}) {
       currentTrade.pnlPercent = 0;
       currentTrade.notes = `Open position: ${currentTrade.executions.length} executions`;
       currentTrade.executionData = currentTrade.executions;
+
+      // Mark as update if this was an existing position with new executions
+      if (currentTrade.isExistingPosition && currentTrade.newExecutionsAdded > 0) {
+        currentTrade.isUpdate = true;
+        currentTrade.notes = `Updated open position: ${currentTrade.newExecutionsAdded} new executions added`;
+        console.log(`  [SUCCESS] UPDATED open ${currentTrade.side} position: ${currentTrade.totalQuantity} shares, ${currentTrade.newExecutionsAdded} new executions`);
+      }
 
       completedTrades.push(currentTrade);
     }
@@ -2616,7 +2637,7 @@ async function parseIBKRTransactions(records, existingPositions = {}) {
       entryTime: existingPosition.entryTime,
       tradeDate: existingPosition.tradeDate,
       side: existingPosition.side,
-      executions: [],
+      executions: existingPosition.executions || [],
       totalQuantity: existingPosition.quantity,
       totalFees: existingPosition.commission || 0,
       entryValue: existingPosition.quantity * existingPosition.entryPrice,
@@ -2758,6 +2779,13 @@ async function parseIBKRTransactions(records, existingPositions = {}) {
       currentTrade.pnlPercent = 0;
       currentTrade.notes = `Open position: ${currentTrade.executions.length} executions`;
       currentTrade.executionData = currentTrade.executions;
+
+      // Mark as update if this was an existing position with new executions
+      if (currentTrade.isExistingPosition && currentTrade.newExecutionsAdded > 0) {
+        currentTrade.isUpdate = true;
+        currentTrade.notes = `Updated open position: ${currentTrade.newExecutionsAdded} new executions added`;
+        console.log(`  [SUCCESS] UPDATED open ${currentTrade.side} position: ${currentTrade.totalQuantity} shares, ${currentTrade.newExecutionsAdded} new executions`);
+      }
 
       completedTrades.push(currentTrade);
     }

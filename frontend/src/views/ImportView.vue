@@ -825,10 +825,13 @@ async function handleImport() {
     const result = await tradesStore.importTrades(selectedFile.value, selectedBroker.value)
     console.log('Import result:', result)
     showSuccess('Import Started', `Import has been queued. Import ID: ${result.importId}`)
-    
-    // Reset form
+
+    // Save broker preference to localStorage
+    localStorage.setItem('lastSelectedBroker', selectedBroker.value)
+
+    // Reset form (but keep broker selection)
     selectedFile.value = null
-    selectedBroker.value = ''
+    // Don't reset selectedBroker - keep it for next import
     if (fileInput.value) {
       fileInput.value.value = ''
     }
@@ -1322,6 +1325,12 @@ function handleResolutionStarted(data) {
 }
 
 onMounted(() => {
+  // Load saved broker preference
+  const savedBroker = localStorage.getItem('lastSelectedBroker')
+  if (savedBroker) {
+    selectedBroker.value = savedBroker
+  }
+
   fetchImportHistory()
   fetchUnmappedCusipsCount()
   setInterval(fetchImportHistory, 5000)
