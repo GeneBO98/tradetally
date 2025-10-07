@@ -11,7 +11,7 @@ class Trade {
       executionData, mae, mfe, confidence, tradeDate,
       instrumentType = 'stock', strikePrice, expirationDate, optionType,
       contractSize, underlyingSymbol, contractMonth, contractYear,
-      tickSize, pointValue, underlyingAsset
+      tickSize, pointValue, underlyingAsset, importId
     } = tradeData;
 
     // Convert empty strings to null for optional fields
@@ -158,9 +158,9 @@ class Trade {
         strategy_confidence, classification_method, classification_metadata, manual_override,
         news_events, has_news, news_sentiment, news_checked_at,
         instrument_type, strike_price, expiration_date, option_type, contract_size, underlying_symbol,
-        contract_month, contract_year, tick_size, point_value, underlying_asset
+        contract_month, contract_year, tick_size, point_value, underlying_asset, import_id
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43)
       RETURNING *
     `;
 
@@ -172,7 +172,8 @@ class Trade {
       JSON.stringify(newsData.newsEvents || []), newsData.hasNews || false, newsData.sentiment, newsData.checkedAt,
       instrumentType || 'stock', strikePrice || null, expirationDate || null, optionType || null,
       contractSize || (instrumentType === 'option' ? 100 : null), underlyingSymbol || null,
-      contractMonth || null, contractYear || null, tickSize || null, pointValue || null, underlyingAsset || null
+      contractMonth || null, contractYear || null, tickSize || null, pointValue || null, underlyingAsset || null,
+      importId || null
     ];
 
     const result = await db.query(query, values);
