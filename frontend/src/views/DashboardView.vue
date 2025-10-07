@@ -163,7 +163,7 @@
                       </span>
                     </td>
                     <td class="px-3 py-2 text-sm font-bold text-gray-900 dark:text-white text-right">
-                      {{ position.totalQuantity === 0 ? 'Hedged' : position.totalQuantity.toLocaleString() }}
+                      {{ position.totalQuantity === 0 ? 'Hedged' : (position.totalQuantity || 0).toLocaleString() }}
                     </td>
                     <td class="px-3 py-2 text-sm font-bold text-gray-900 dark:text-white text-right">
                       ${{ formatCurrency(position.avgPrice) }}
@@ -228,7 +228,7 @@
                       </span>
                     </td>
                     <td class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300 text-right">
-                      {{ trade.quantity.toLocaleString() }}
+                      {{ (trade.quantity || 0).toLocaleString() }}
                     </td>
                     <td class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300 text-right">
                       ${{ formatCurrency(trade.entry_price) }}
