@@ -24,21 +24,24 @@
           v-if="showMenu"
           ref="menuRef"
           :style="dropdownStyle"
-          class="fixed w-80 rounded-md shadow-lg bg-white dark:bg-gray-800 ring-1 ring-black ring-opacity-5 z-[9999]"
+          class="fixed w-80 rounded-md shadow-lg bg-white dark:bg-gray-800 ring-1 ring-black ring-opacity-5 z-[9999] flex flex-col overflow-hidden"
         >
-          <div class="p-4">
-          <div class="flex items-center justify-between mb-4">
-            <h3 class="text-sm font-medium text-gray-900 dark:text-white">Customize Columns</h3>
-            <button
-              @click="resetToDefault"
-              class="text-xs text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
-            >
-              Reset to default
-            </button>
+          <!-- Header (Fixed) -->
+          <div class="p-4 flex-shrink-0 border-b border-gray-200 dark:border-gray-700">
+            <div class="flex items-center justify-between">
+              <h3 class="text-sm font-medium text-gray-900 dark:text-white">Customize Columns</h3>
+              <button
+                @click="resetToDefault"
+                class="text-xs text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+              >
+                Reset to default
+              </button>
+            </div>
           </div>
 
-          <!-- Column List -->
-          <div class="space-y-2 max-h-96 overflow-y-auto">
+          <!-- Column List (Scrollable) -->
+          <div class="overflow-y-auto flex-1 p-4">
+            <div class="space-y-2">
             <div
               v-for="(column, index) in localColumns"
               :key="column.key"
@@ -87,11 +90,12 @@
                 </select>
               </div>
             </div>
+            </div>
           </div>
 
-          <!-- Quick Actions -->
-          <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-            <div class="flex items-center justify-between text-xs">
+          <!-- Quick Actions & Buttons (Sticky Footer) -->
+          <div class="p-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex-shrink-0">
+            <div class="flex items-center justify-between text-xs mb-4">
               <button
                 @click="selectAll"
                 class="text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
@@ -105,23 +109,22 @@
                 Deselect all
               </button>
             </div>
-          </div>
 
-          <!-- Apply/Cancel Buttons -->
-          <div class="mt-4 flex justify-end space-x-2">
-            <button
-              @click="cancel"
-              class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700"
-            >
-              Cancel
-            </button>
-            <button
-              @click="apply"
-              class="px-3 py-2 text-sm text-white bg-primary-600 border border-transparent rounded-md hover:bg-primary-700"
-            >
-              Apply
-            </button>
-          </div>
+            <!-- Apply/Cancel Buttons -->
+            <div class="flex justify-end space-x-2">
+              <button
+                @click="cancel"
+                class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700"
+              >
+                Cancel
+              </button>
+              <button
+                @click="apply"
+                class="px-3 py-2 text-sm text-white bg-primary-600 border border-transparent rounded-md hover:bg-primary-700"
+              >
+                Apply
+              </button>
+            </div>
           </div>
         </div>
       </transition>
@@ -208,27 +211,50 @@ const saveColumns = () => {
 
 const updateDropdownPosition = () => {
   if (!buttonRef.value) return
-  
+
   const rect = buttonRef.value.getBoundingClientRect()
   const menuWidth = 320 // w-80 = 20rem = 320px
-  
+  const viewportMargin = 16 // 1rem margin from viewport edges
+
   // Calculate position
   let left = rect.right - menuWidth
   let top = rect.bottom + 4
-  
+
   // Ensure dropdown doesn't go off the left edge of the screen
-  if (left < 8) {
-    left = 8
+  if (left < viewportMargin) {
+    left = viewportMargin
   }
-  
+
   // Ensure dropdown doesn't go off the right edge of the screen
-  if (left + menuWidth > window.innerWidth - 8) {
-    left = window.innerWidth - menuWidth - 8
+  if (left + menuWidth > window.innerWidth - viewportMargin) {
+    left = window.innerWidth - menuWidth - viewportMargin
   }
-  
+
+  // Calculate available space and max height
+  const spaceBelow = window.innerHeight - rect.bottom - viewportMargin
+  const spaceAbove = rect.top - viewportMargin
+
+  let maxHeight
+  if (spaceBelow < 400 && spaceAbove > spaceBelow) {
+    // Position above button if more space there
+    maxHeight = Math.min(spaceAbove - 8, 600)
+    top = rect.top - maxHeight - 4
+  } else {
+    // Position below button
+    maxHeight = Math.min(spaceBelow - 8, 600)
+    top = rect.bottom + 4
+  }
+
+  // Ensure top doesn't go above viewport
+  if (top < viewportMargin) {
+    top = viewportMargin
+    maxHeight = window.innerHeight - viewportMargin * 2
+  }
+
   dropdownStyle.value = {
     top: `${top}px`,
-    left: `${left}px`
+    left: `${left}px`,
+    maxHeight: `${maxHeight}px`
   }
 }
 

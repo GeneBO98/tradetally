@@ -3,7 +3,11 @@
     <div v-if="visible" class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50">
       <div class="relative bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-md mx-4 p-6 text-center">
         <div class="absolute -top-4 left-1/2 -translate-x-1/2">
-          <div class="w-12 h-12 rounded-full bg-primary-500 text-white flex items-center justify-center text-2xl">[SUCCESS]</div>
+          <div class="w-12 h-12 rounded-full bg-primary-500 text-white flex items-center justify-center">
+            <svg class="w-7 h-7" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z" />
+            </svg>
+          </div>
         </div>
 
         <div class="mt-6">
