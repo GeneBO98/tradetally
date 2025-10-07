@@ -613,7 +613,8 @@ class Trade {
     }
 
     // Check if we need to re-classify strategy
-    const shouldReclassify = !currentTrade.manual_override && (
+    // Skip reclassification if skipApiCalls is set (e.g., during bulk imports)
+    const shouldReclassify = !options.skipApiCalls && !currentTrade.manual_override && (
       updates.exitTime || updates.exitPrice || updates.entryTime || updates.entryPrice
     );
 

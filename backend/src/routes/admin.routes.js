@@ -85,9 +85,57 @@ router.get('/stock-splits/check-log', requireAdmin, async (req, res, next) => {
       ORDER BY last_checked_at DESC
       LIMIT 100
     `;
-    
+
     const result = await db.query(query);
     res.json({ log: result.rows });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Database health check - verifies critical column types
+router.get('/database/health', requireAdmin, async (req, res, next) => {
+  try {
+    const db = require('../config/database');
+
+    // Check critical numeric columns that have had precision issues
+    const columnChecks = await db.query(`
+      SELECT
+        column_name,
+        data_type,
+        numeric_precision,
+        numeric_scale,
+        CASE
+          WHEN column_name = 'strategy_confidence' AND numeric_precision < 5 THEN 'WARN: Should be DECIMAL(5,2) to hold percentage values (0-100)'
+          WHEN column_name = 'pnl' AND numeric_precision < 20 THEN 'WARN: Should be NUMERIC(20,6) to handle large trade values'
+          WHEN column_name = 'pnl_percent' AND numeric_precision < 15 THEN 'WARN: Should be NUMERIC(15,6) for accuracy'
+          ELSE 'OK'
+        END as status
+      FROM information_schema.columns
+      WHERE table_name = 'trades'
+        AND column_name IN ('strategy_confidence', 'pnl', 'pnl_percent', 'entry_price', 'exit_price', 'quantity', 'commission')
+      ORDER BY column_name
+    `);
+
+    // Count migrations run
+    const migrationCount = await db.query(`
+      SELECT COUNT(*) as count FROM migrations
+    `);
+
+    // Check for any columns with warnings
+    const warnings = columnChecks.rows.filter(col => col.status !== 'OK');
+    const hasIssues = warnings.length > 0;
+
+    res.json({
+      status: hasIssues ? 'warning' : 'healthy',
+      migrationsRun: migrationCount.rows[0].count,
+      columns: columnChecks.rows,
+      warnings: warnings.length > 0 ? warnings : null,
+      recommendations: hasIssues ? [
+        'Run pending migrations to fix column precision issues',
+        'Ensure migrations 058, 064 have been applied for numeric field fixes'
+      ] : null
+    });
   } catch (error) {
     next(error);
   }
