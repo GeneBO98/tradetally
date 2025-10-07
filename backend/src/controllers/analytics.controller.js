@@ -948,6 +948,63 @@ const analyticsController = {
         ORDER BY range_order
       `;
 
+      // Performance by Position Size - Dynamic ranges based on actual data
+      const performanceByPositionSizeQuery = `
+        WITH position_sizes AS (
+          SELECT
+            (entry_price * quantity) as position_size,
+            pnl
+          FROM trades
+          WHERE user_id = $1 ${filterConditions}
+        ),
+        stats AS (
+          SELECT
+            MIN(position_size) as min_size,
+            MAX(position_size) as max_size,
+            COUNT(*) as total_trades
+          FROM position_sizes
+          WHERE position_size > 0
+        ),
+        dynamic_ranges AS (
+          SELECT
+            position_size,
+            pnl,
+            -- Dynamically create ranges based on min/max
+            CASE
+              -- If max is under $1000, use $100 increments
+              WHEN (SELECT max_size FROM stats) <= 1000 THEN
+                FLOOR(position_size / 100) * 100
+              -- If max is under $5000, use $500 increments
+              WHEN (SELECT max_size FROM stats) <= 5000 THEN
+                FLOOR(position_size / 500) * 500
+              -- If max is under $10000, use $1000 increments
+              WHEN (SELECT max_size FROM stats) <= 10000 THEN
+                FLOOR(position_size / 1000) * 1000
+              -- If max is under $50000, use $5000 increments
+              WHEN (SELECT max_size FROM stats) <= 50000 THEN
+                FLOOR(position_size / 5000) * 5000
+              -- If max is under $100000, use $10000 increments
+              WHEN (SELECT max_size FROM stats) <= 100000 THEN
+                FLOOR(position_size / 10000) * 10000
+              -- If max is under $500000, use $50000 increments
+              WHEN (SELECT max_size FROM stats) <= 500000 THEN
+                FLOOR(position_size / 50000) * 50000
+              -- Otherwise use $100000 increments
+              ELSE
+                FLOOR(position_size / 100000) * 100000
+            END as range_start
+          FROM position_sizes
+          WHERE position_size > 0
+        )
+        SELECT
+          range_start,
+          COALESCE(SUM(pnl), 0) as total_pnl,
+          COUNT(*) as trade_count
+        FROM dynamic_ranges
+        GROUP BY range_start
+        ORDER BY range_start
+      `;
+
       // Performance by Hold Time
       const performanceByHoldTimeQuery = `
         WITH hold_time_analysis AS (
@@ -995,10 +1052,11 @@ const analyticsController = {
         ORDER BY range_order
       `;
 
-      const [tradeDistResult, perfByPriceResult, perfByVolumeResult, perfByHoldTimeResult] = await Promise.all([
+      const [tradeDistResult, perfByPriceResult, perfByVolumeResult, perfByPositionSizeResult, perfByHoldTimeResult] = await Promise.all([
         db.query(tradeDistributionQuery, params),
         db.query(performanceByPriceQuery, params),
         db.query(performanceByVolumeQuery, params),
+        db.query(performanceByPositionSizeQuery, params),
         db.query(performanceByHoldTimeQuery, params)
       ]);
 
@@ -1006,6 +1064,7 @@ const analyticsController = {
         tradeDistribution: tradeDistResult.rows,
         performanceByPrice: perfByPriceResult.rows,
         performanceByVolume: perfByVolumeResult.rows,
+        performanceByPositionSize: perfByPositionSizeResult.rows,
         performanceByHoldTime: perfByHoldTimeResult.rows
       });
 
@@ -1045,6 +1104,50 @@ const analyticsController = {
 
       const dynamicVolumeLabels = sortedVolumeEntries.map(([label]) => label);
       const performanceByVolume = sortedVolumeEntries.map(([, pnl]) => pnl);
+
+      // Process dynamic position size data
+      const formatPositionSizeRange = (rangeStart) => {
+        const start = parseFloat(rangeStart);
+
+        // Determine the increment based on the range
+        let increment;
+        if (start < 1000) increment = 100;
+        else if (start < 5000) increment = 500;
+        else if (start < 10000) increment = 1000;
+        else if (start < 50000) increment = 5000;
+        else if (start < 100000) increment = 10000;
+        else if (start < 500000) increment = 50000;
+        else increment = 100000;
+
+        const end = start + increment;
+
+        // Format the range label
+        const formatCurrency = (val) => {
+          if (val >= 1000000) return `$${(val / 1000000).toFixed(1)}M`;
+          if (val >= 1000) return `$${(val / 1000).toFixed(0)}K`;
+          return `$${val}`;
+        };
+
+        return `${formatCurrency(start)}-${formatCurrency(end)}`;
+      };
+
+      const positionSizeDataMap = new Map();
+      perfByPositionSizeResult.rows.forEach(row => {
+        if (row.range_start !== null) {
+          const label = formatPositionSizeRange(row.range_start);
+          positionSizeDataMap.set(label, {
+            pnl: parseFloat(row.total_pnl),
+            rangeStart: parseFloat(row.range_start)
+          });
+        }
+      });
+
+      // Sort by range_start value
+      const sortedPositionSizeEntries = Array.from(positionSizeDataMap.entries())
+        .sort((a, b) => a[1].rangeStart - b[1].rangeStart);
+
+      const dynamicPositionSizeLabels = sortedPositionSizeEntries.map(([label]) => label);
+      const performanceByPositionSize = sortedPositionSizeEntries.map(([, data]) => data.pnl);
 
       const performanceByHoldTime = holdTimeLabels.map(label => {
         const found = perfByHoldTimeResult.rows.find(row => row.hold_time_range === label);
@@ -1130,6 +1233,7 @@ const analyticsController = {
         tradeDistribution,
         performanceByPrice,
         performanceByVolume,
+        performanceByPositionSize,
         performanceByHoldTime,
         dayOfWeek: dayOfWeekData,
         dailyVolume: dailyVolumeResult.rows,
@@ -1137,6 +1241,7 @@ const analyticsController = {
         labels: {
           volume: dynamicVolumeLabels,
           price: priceLabels,
+          positionSize: dynamicPositionSizeLabels,
           holdTime: holdTimeLabels
         }
       };
