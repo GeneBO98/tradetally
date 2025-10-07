@@ -1069,6 +1069,31 @@
             </div>
           </div>
         </div>
+
+        <!-- Performance by Position Size -->
+        <div class="card">
+          <div class="card-body">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Performance by Position Size ($)</h3>
+            <div class="h-80 relative">
+              <canvas
+                ref="performanceByPositionSizeChart"
+                class="absolute inset-0 w-full h-full"
+                :class="{ 'hidden': !performanceByPositionSizeData.length || performanceByPositionSizeData.every(val => val === 0) }"
+              ></canvas>
+              <div
+                v-if="!performanceByPositionSizeData.length || performanceByPositionSizeData.every(val => val === 0)"
+                class="absolute inset-0 flex items-center justify-center text-gray-500 dark:text-gray-400"
+              >
+                <div class="text-center">
+                  <svg class="w-12 h-12 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                  </svg>
+                  <p>No position size data available for the selected period</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- Tag Performance -->
@@ -1524,6 +1549,7 @@ const hasMoreSectors = computed(() => {
 const tradeDistributionChart = ref(null)
 const performanceByPriceChart = ref(null)
 const performanceByVolumeChart = ref(null)
+const performanceByPositionSizeChart = ref(null)
 const performanceByHoldTimeChart = ref(null)
 const dayOfWeekChart = ref(null)
 const dailyVolumeChart = ref(null)
@@ -1533,6 +1559,7 @@ const drawdownChart = ref(null)
 let tradeDistributionChartInstance = null
 let performanceByPriceChartInstance = null
 let performanceByVolumeChartInstance = null
+let performanceByPositionSizeChartInstance = null
 let performanceByHoldTimeChartInstance = null
 let dayOfWeekChartInstance = null
 let dailyVolumeChartInstance = null
@@ -1542,6 +1569,7 @@ let drawdownChartInstance = null
 const tradeDistributionData = ref([])
 const performanceByPriceData = ref([])
 const performanceByVolumeData = ref([])
+const performanceByPositionSizeData = ref([])
 const performanceByHoldTimeData = ref([])
 const dayOfWeekData = ref([])
 const dailyVolumeData = ref([])
@@ -1551,6 +1579,7 @@ const drawdownData = ref([])
 const chartLabels = ref({
   volume: [],
   price: ['< $2', '$2-4.99', '$5-9.99', '$10-19.99', '$20-49.99', '$50-99.99', '$100-199.99', '$200+'],
+  positionSize: [],
   holdTime: ['< 1 min', '1-5 min', '5-15 min', '15-30 min', '30-60 min', '1-2 hours', '2-4 hours', '4-24 hours', '1-7 days', '1-4 weeks', '1+ months']
 })
 
@@ -1803,6 +1832,80 @@ function createPerformanceByVolumeChart() {
       plugins: {
         legend: {
           onClick: null // Disable legend clicking
+        },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              return `Total P&L: $${context.parsed.x.toFixed(2)}`
+            }
+          }
+        }
+      }
+    }
+  })
+}
+
+function createPerformanceByPositionSizeChart() {
+  if (performanceByPositionSizeChartInstance) {
+    performanceByPositionSizeChartInstance.destroy()
+  }
+
+  // Only create chart if there's data to display
+  if (!performanceByPositionSizeData.value.length || performanceByPositionSizeData.value.every(val => val === 0)) {
+    console.log('No position size data to display, skipping chart creation')
+    return
+  }
+
+  const ctx = performanceByPositionSizeChart.value.getContext('2d')
+  const labels = chartLabels.value.positionSize?.length > 0 ? chartLabels.value.positionSize : []
+
+  performanceByPositionSizeChartInstance = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Total P&L',
+        data: performanceByPositionSizeData.value,
+        backgroundColor: performanceByPositionSizeData.value.map(val => val >= 0 ? '#4ade80' : '#f87171'),
+        borderWidth: 1
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      indexAxis: 'y',
+      onClick: (event, elements) => {
+        if (elements.length > 0) {
+          const index = elements[0].index
+          const sizeRange = labels[index]
+          navigateToTradesByPositionSize(sizeRange)
+        }
+      },
+      scales: {
+        x: {
+          title: {
+            display: true,
+            text: 'Total P&L ($)'
+          },
+          grid: {
+            color: function(context) {
+              if (context.tick.value === 0) {
+                return '#9ca3af'
+              }
+              return 'rgba(0,0,0,0.1)'
+            }
+          }
+        },
+        y: {
+          title: {
+            display: true,
+            text: 'Position Size ($)'
+          }
+        }
+      },
+      plugins: {
+        legend: {
+          onClick: null
         },
         tooltip: {
           callbacks: {
@@ -2185,6 +2288,7 @@ async function fetchChartData() {
     tradeDistributionData.value = response.data.tradeDistribution
     performanceByPriceData.value = response.data.performanceByPrice
     performanceByVolumeData.value = response.data.performanceByVolume
+    performanceByPositionSizeData.value = response.data.performanceByPositionSize
     performanceByHoldTimeData.value = response.data.performanceByHoldTime
     dayOfWeekData.value = response.data.dayOfWeek
     dailyVolumeData.value = response.data.dailyVolume
@@ -2346,6 +2450,7 @@ async function applyFilters(newFilters = null) {
       createTradeDistributionChart()
       createPerformanceByPriceChart()
       createPerformanceByVolumeChart()
+      createPerformanceByPositionSizeChart()
       createPerformanceByHoldTimeChart()
       createDayOfWeekChart()
       createDailyVolumeChart()
@@ -2838,6 +2943,51 @@ function navigateToTradesByDayOfWeek(dayOfWeek) {
   })
 }
 
+function navigateToTradesByPositionSize(positionSizeRange) {
+  // Parse the position size range (e.g., "$100-$200", "$5K-$10K", "$1M-$2M")
+  let minPositionSize = null
+  let maxPositionSize = null
+
+  const parseValue = (str) => {
+    // Remove $ sign
+    str = str.replace('$', '').trim()
+
+    // Handle K (thousands)
+    if (str.includes('K')) {
+      return parseFloat(str.replace('K', '')) * 1000
+    }
+    // Handle M (millions)
+    if (str.includes('M')) {
+      return parseFloat(str.replace('M', '')) * 1000000
+    }
+    // Plain number
+    return parseFloat(str)
+  }
+
+  if (positionSizeRange.includes('-')) {
+    const parts = positionSizeRange.split('-')
+    minPositionSize = parseValue(parts[0])
+    maxPositionSize = parseValue(parts[1])
+  } else if (positionSizeRange.includes('+')) {
+    minPositionSize = parseValue(positionSizeRange.replace('+', ''))
+    maxPositionSize = null
+  } else if (positionSizeRange.includes('<')) {
+    minPositionSize = 0
+    maxPositionSize = parseValue(positionSizeRange.replace('<', '')) - 1
+  }
+
+  const query = {}
+  if (minPositionSize !== null) query.minPositionSize = minPositionSize
+  if (maxPositionSize !== null) query.maxPositionSize = maxPositionSize
+
+  router.push({
+    path: '/trades',
+    query
+  }).then(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  })
+}
+
 function navigateToTradesByHoldTime(holdTimeRange) {
   router.push({
     path: '/trades',
@@ -2925,6 +3075,9 @@ onUnmounted(() => {
   }
   if (performanceByVolumeChartInstance) {
     performanceByVolumeChartInstance.destroy()
+  }
+  if (performanceByPositionSizeChartInstance) {
+    performanceByPositionSizeChartInstance.destroy()
   }
   if (performanceByHoldTimeChartInstance) {
     performanceByHoldTimeChartInstance.destroy()
