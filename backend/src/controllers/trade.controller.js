@@ -8,6 +8,7 @@ const cache = require('../utils/cache');
 const symbolCategories = require('../utils/symbolCategories');
 const imageProcessor = require('../utils/imageProcessor');
 const upload = require('../middleware/upload');
+const currencyConverter = require('../utils/currencyConverter');
 const path = require('path');
 const fs = require('fs').promises;
 const ChartService = require('../services/chartService');
@@ -607,13 +608,63 @@ const tradeController = {
             logger.logImport(`  ${symbol}: ${pos.side} ${pos.quantity} shares @ $${pos.entryPrice}`);
           });
           
-          const parseResult = await parseCSV(fileBuffer, broker, { existingPositions });
-          
+          const context = { existingPositions, userId: req.user.id };
+          const parseResult = await parseCSV(fileBuffer, broker, context);
+
           // Handle both old format (array) and new format (object with trades and unresolvedCusips)
-          const trades = Array.isArray(parseResult) ? parseResult : parseResult.trades;
+          let trades = Array.isArray(parseResult) ? parseResult : parseResult.trades;
           const unresolvedCusips = parseResult.unresolvedCusips || [];
-          
+
           logger.logImport(`Parsed ${trades.length} trades from CSV`);
+
+          // Apply currency conversion if a currency column was detected
+          if (context.hasCurrencyColumn && context.currencyRecords) {
+            logger.logImport('[CURRENCY] Applying currency conversion to parsed trades');
+
+            // Build a map of currency values from the original CSV records
+            const currencyMap = new Map();
+            const currencyFieldPatterns = ['currency', 'curr', 'ccy', 'currency_code', 'currencycode'];
+
+            context.currencyRecords.forEach((record, index) => {
+              for (const fieldName of Object.keys(record)) {
+                const lowerFieldName = fieldName.toLowerCase().trim();
+
+                if (currencyFieldPatterns.some(pattern => lowerFieldName.includes(pattern))) {
+                  const value = record[fieldName];
+                  if (value && value.toString().trim() !== '') {
+                    const currencyValue = value.toString().toUpperCase().trim();
+                    currencyMap.set(index, currencyValue);
+                    break;
+                  }
+                }
+              }
+            });
+
+            // Convert each trade
+            const convertedTrades = [];
+            for (let i = 0; i < trades.length; i++) {
+              const trade = trades[i];
+              const currency = currencyMap.get(i) || 'USD';
+
+              if (currency && currency !== 'USD') {
+                try {
+                  const tradeDate = trade.tradeDate || trade.entryTime?.split('T')[0];
+                  const convertedTrade = await currencyConverter.convertTradeToUSD(trade, currency, tradeDate);
+                  convertedTrades.push(convertedTrade);
+                  logger.logImport(`[CURRENCY] Converted trade ${i + 1}: ${currency} to USD (rate: ${convertedTrade.exchangeRate})`);
+                } catch (error) {
+                  logger.logImport(`[CURRENCY] Failed to convert trade ${i + 1}: ${error.message}`);
+                  // Keep original trade if conversion fails
+                  convertedTrades.push(trade);
+                }
+              } else {
+                convertedTrades.push(trade);
+              }
+            }
+
+            trades = convertedTrades;
+            logger.logImport(`[CURRENCY] Completed currency conversion for ${trades.length} trades`);
+          }
           
           let imported = 0;
           let failed = 0;

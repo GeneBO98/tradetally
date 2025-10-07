@@ -11,7 +11,10 @@ class Trade {
       executionData, mae, mfe, confidence, tradeDate,
       instrumentType = 'stock', strikePrice, expirationDate, optionType,
       contractSize, underlyingSymbol, contractMonth, contractYear,
-      tickSize, pointValue, underlyingAsset, importId
+      tickSize, pointValue, underlyingAsset, importId,
+      originalCurrency, exchangeRate, originalEntryPriceCurrency,
+      originalExitPriceCurrency, originalPnlCurrency, originalCommissionCurrency,
+      originalFeesCurrency
     } = tradeData;
 
     // Convert empty strings to null for optional fields
@@ -158,9 +161,11 @@ class Trade {
         strategy_confidence, classification_method, classification_metadata, manual_override,
         news_events, has_news, news_sentiment, news_checked_at,
         instrument_type, strike_price, expiration_date, option_type, contract_size, underlying_symbol,
-        contract_month, contract_year, tick_size, point_value, underlying_asset, import_id
+        contract_month, contract_year, tick_size, point_value, underlying_asset, import_id,
+        original_currency, exchange_rate, original_entry_price_currency, original_exit_price_currency,
+        original_pnl_currency, original_commission_currency, original_fees_currency
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50)
       RETURNING *
     `;
 
@@ -173,7 +178,9 @@ class Trade {
       instrumentType || 'stock', strikePrice || null, expirationDate || null, optionType || null,
       contractSize || (instrumentType === 'option' ? 100 : null), underlyingSymbol || null,
       contractMonth || null, contractYear || null, tickSize || null, pointValue || null, underlyingAsset || null,
-      importId || null
+      importId || null,
+      originalCurrency || 'USD', exchangeRate || 1.0, originalEntryPriceCurrency || null, originalExitPriceCurrency || null,
+      originalPnlCurrency || null, originalCommissionCurrency || null, originalFeesCurrency || null
     ];
 
     const result = await db.query(query, values);

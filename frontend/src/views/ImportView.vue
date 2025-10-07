@@ -629,6 +629,51 @@
       </div>
     </div>
   </div>
+
+  <!-- Currency Pro Feature Modal -->
+  <div v-if="showCurrencyProModal" class="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+      <!-- Background overlay -->
+      <div class="fixed inset-0 bg-gray-500 dark:bg-gray-900 bg-opacity-75 dark:bg-opacity-75 transition-opacity" aria-hidden="true" @click="showCurrencyProModal = false"></div>
+
+      <!-- Modal panel -->
+      <div class="inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
+        <div>
+          <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-primary-100 dark:bg-primary-900">
+            <svg class="h-6 w-6 text-primary-600 dark:text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <div class="mt-3 text-center sm:mt-5">
+            <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white" id="modal-title">
+              Pro Feature Required
+            </h3>
+            <div class="mt-2">
+              <p class="text-sm text-gray-500 dark:text-gray-400">
+                {{ currencyProMessage }}
+              </p>
+            </div>
+          </div>
+        </div>
+        <div class="mt-5 sm:mt-6 sm:grid sm:grid-cols-2 sm:gap-3 sm:grid-flow-row-dense">
+          <router-link
+            to="/settings"
+            class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-primary-600 text-base font-medium text-white hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:col-start-2 sm:text-sm"
+            @click="showCurrencyProModal = false"
+          >
+            Upgrade to Pro
+          </router-link>
+          <button
+            type="button"
+            class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 dark:border-gray-600 shadow-sm px-4 py-2 bg-white dark:bg-gray-700 text-base font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:mt-0 sm:col-start-1 sm:text-sm"
+            @click="showCurrencyProModal = false"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script setup>
@@ -650,6 +695,8 @@ const loading = ref(false)
 const error = ref(null)
 const selectedBroker = ref('auto')
 const selectedFile = ref(null)
+const showCurrencyProModal = ref(false)
+const currencyProMessage = ref('')
 const fileInput = ref(null)
 const dragOver = ref(false)
 const importHistory = ref([])
@@ -905,8 +952,17 @@ async function handleImport() {
   } catch (err) {
     console.error('Import error:', err)
     console.error('Error response:', err.response)
-    error.value = err.response?.data?.error || err.message || 'Import failed'
-    showError('Import Failed', error.value)
+    const errorMessage = err.response?.data?.error || err.message || 'Import failed'
+
+    // Check if this is a currency pro tier error
+    if (errorMessage.includes('CURRENCY_REQUIRES_PRO') || errorMessage.includes('Currency conversion is a Pro feature')) {
+      const message = errorMessage.split(':')[1] || 'Currency conversion is a Pro feature. Please upgrade to Pro to import trades with non-USD currencies.'
+      showCurrencyProModal.value = true
+      currencyProMessage.value = message
+    } else {
+      error.value = errorMessage
+      showError('Import Failed', error.value)
+    }
   } finally {
     loading.value = false
   }
