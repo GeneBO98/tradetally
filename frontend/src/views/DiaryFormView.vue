@@ -35,6 +35,38 @@
       </div>
     </div>
 
+    <!-- Duplicate Entry Modal -->
+    <div v-if="showDuplicateModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50">
+      <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full p-6">
+        <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+          Entry Already Exists
+        </h3>
+        <p class="text-gray-600 dark:text-gray-400 mb-6">
+          An entry for {{ form.entryDate }} already exists. Would you like to append to the existing entry or overwrite it?
+        </p>
+        <div class="flex flex-col space-y-3">
+          <button
+            @click="handleDuplicateChoice('append')"
+            class="btn-primary"
+          >
+            Append to Existing Entry
+          </button>
+          <button
+            @click="handleDuplicateChoice('overwrite')"
+            class="btn-secondary"
+          >
+            Overwrite Existing Entry
+          </button>
+          <button
+            @click="showDuplicateModal = false"
+            class="btn-secondary"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Form -->
     <div v-else class="space-y-8">
       <form @submit.prevent="saveEntry" class="space-y-6">
@@ -775,11 +807,15 @@ const loadEntry = async () => {
   }
 }
 
+const showDuplicateModal = ref(false)
+const existingEntry = ref(null)
+const pendingEntryData = ref(null)
+
 const saveEntry = async () => {
   try {
     saving.value = true
     error.value = null
-    
+
     // Prepare form data
     const entryData = {
       entryDate: form.value.entryDate,
@@ -793,20 +829,72 @@ const saveEntry = async () => {
       followedPlan: form.value.followedPlan,
       lessonsLearned: form.value.lessonsLearned.trim() || null
     }
-    
+
     if (isEditing.value) {
       await diaryStore.updateEntry(route.params.id, entryData)
+      router.push('/diary')
     } else {
+      // Check for existing entry on the same date
+      try {
+        const existing = await diaryStore.fetchEntryByDate(form.value.entryDate, form.value.entryType)
+        if (existing) {
+          // Entry exists - show modal
+          existingEntry.value = existing
+          pendingEntryData.value = entryData
+          showDuplicateModal.value = true
+          saving.value = false
+          return
+        }
+      } catch (err) {
+        // No existing entry found - continue with save
+      }
+
       await diaryStore.saveEntry(entryData)
+      router.push('/diary')
     }
-    
-    // Navigate back to diary list
-    router.push('/diary')
-    
+
   } catch (err) {
     error.value = err.response?.data?.error || 'Failed to save diary entry'
   } finally {
     saving.value = false
+  }
+}
+
+const handleDuplicateChoice = async (choice) => {
+  try {
+    saving.value = true
+    showDuplicateModal.value = false
+
+    if (choice === 'append') {
+      // Append to existing entry
+      const updatedData = {
+        ...pendingEntryData.value,
+        content: existingEntry.value.content
+          ? `${existingEntry.value.content}\n\n---\n\n${pendingEntryData.value.content}`
+          : pendingEntryData.value.content,
+        // Merge watchlists
+        watchlist: [...new Set([...(existingEntry.value.watchlist || []), ...pendingEntryData.value.watchlist])],
+        // Merge tags
+        tags: [...new Set([...(existingEntry.value.tags || []), ...pendingEntryData.value.tags])],
+        // Keep existing key levels if new one is empty
+        keyLevels: pendingEntryData.value.keyLevels || existingEntry.value.key_levels,
+        // Keep existing title if new one is empty
+        title: pendingEntryData.value.title || existingEntry.value.title
+      }
+
+      await diaryStore.updateEntry(existingEntry.value.id, updatedData)
+    } else if (choice === 'overwrite') {
+      // Overwrite existing entry
+      await diaryStore.updateEntry(existingEntry.value.id, pendingEntryData.value)
+    }
+
+    router.push('/diary')
+  } catch (err) {
+    error.value = err.response?.data?.error || 'Failed to save diary entry'
+  } finally {
+    saving.value = false
+    existingEntry.value = null
+    pendingEntryData.value = null
   }
 }
 

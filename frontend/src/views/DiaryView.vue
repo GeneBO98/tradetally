@@ -134,10 +134,27 @@
               type="text"
               v-model="searchQuery"
               @input="debounceSearch"
-              placeholder="Search entries..."
+              @focus="showTagSuggestions = searchQuery.includes('#')"
+              @blur="hideTagSuggestions"
+              placeholder="Search entries or #tag..."
               class="input text-sm pl-10"
             />
             <MagnifyingGlassIcon class="w-4 h-4 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
+
+            <!-- Tag Suggestions Dropdown -->
+            <div
+              v-if="showTagSuggestions && filteredTags.length > 0"
+              class="absolute z-50 top-full mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg max-h-48 overflow-y-auto"
+            >
+              <button
+                v-for="tag in filteredTags"
+                :key="tag"
+                @mousedown.prevent="selectTag(tag)"
+                class="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-900 dark:text-white"
+              >
+                #{{ tag }}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -167,8 +184,13 @@
         <button @click="loadEntries" class="btn-primary mt-4">Try Again</button>
       </div>
 
-      <!-- List View -->
-      <div v-else-if="currentView === 'list'" class="space-y-4">
+      <!-- Content -->
+      <div v-else>
+        <!-- General Notes Section (shown in all views) -->
+        <GeneralNotes v-if="currentView === 'list'" class="mb-6" />
+
+        <!-- List View -->
+        <div v-if="currentView === 'list'" class="space-y-4">
         <!-- Entry Cards -->
         <div
           v-for="entry in entries"
@@ -226,13 +248,20 @@
               </button>
             </div>
           </div>
-          
-          <div
-            v-if="entry.content"
-            class="text-sm text-gray-700 dark:text-gray-300 mb-4 prose prose-sm max-w-none dark:prose-invert"
-            v-html="truncateHtml(parseMarkdown(entry.content), 300)"
-          ></div>
-          
+
+          <!-- Content (split into cards if appended) -->
+          <div v-if="entry.content" class="mb-4">
+            <div
+              v-for="(contentPart, idx) in splitContent(entry.content)"
+              :key="idx"
+              :class="[
+                'text-sm text-gray-700 dark:text-gray-300 prose prose-sm max-w-none dark:prose-invert',
+                splitContent(entry.content).length > 1 ? 'bg-gray-50 dark:bg-gray-700/30 p-4 rounded-lg mb-3 last:mb-0' : ''
+              ]"
+              v-html="truncateHtml(parseMarkdown(contentPart), 300)"
+            ></div>
+          </div>
+
           <div v-if="entry.key_levels && entry.key_levels.length > 0" class="mb-3">
             <span class="text-xs font-medium text-yellow-600 dark:text-yellow-400">Key Levels:</span>
             <div class="text-sm text-gray-600 dark:text-gray-400 mt-1" v-html="truncateHtml(parseMarkdown(entry.key_levels), 150)"></div>
@@ -287,10 +316,10 @@
             Create Your First Entry
           </router-link>
         </div>
-      </div>
+        </div>
 
-      <!-- Calendar View -->
-      <div v-else-if="currentView === 'calendar'" class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+        <!-- Calendar View -->
+        <div v-else-if="currentView === 'calendar'" class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
         <!-- Calendar Header -->
         <div class="flex justify-between items-center mb-6">
           <h2 class="text-xl font-semibold text-gray-900 dark:text-white">
@@ -395,11 +424,12 @@
             Create Your First Entry
           </router-link>
         </div>
-      </div>
+        </div>
 
-      <!-- AI Analysis View -->
-      <div v-else-if="currentView === 'analysis'">
-        <DiaryAnalysis />
+        <!-- AI Analysis View -->
+        <div v-else-if="currentView === 'analysis'">
+          <DiaryAnalysis />
+        </div>
       </div>
     </div>
 
@@ -469,6 +499,7 @@ import { useDiaryStore } from '@/stores/diary'
 import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isToday, addMonths, subMonths, startOfWeek, endOfWeek } from 'date-fns'
 import { parseMarkdown, truncateHtml as truncateHtmlUtil } from '@/utils/markdown'
 import DiaryAnalysis from '@/components/diary/DiaryAnalysis.vue'
+import GeneralNotes from '@/components/diary/GeneralNotes.vue'
 import {
   PlusIcon,
   PencilIcon,
@@ -493,6 +524,8 @@ const searchTimeout = ref(null)
 const showDeleteModal = ref(false)
 const entryToDelete = ref(null)
 const deleting = ref(false)
+const showTagSuggestions = ref(false)
+const allTags = ref([])
 
 // Calendar state
 const calendarDate = ref(new Date())
@@ -513,6 +546,20 @@ const pagination = computed(() => diaryStore.pagination)
 
 const hasActiveFilters = computed(() => {
   return Object.values(filters.value).some(value => value !== '') || searchQuery.value !== ''
+})
+
+const filteredTags = computed(() => {
+  if (!searchQuery.value.includes('#')) return []
+
+  // Extract the tag query after the last #
+  const lastHashIndex = searchQuery.value.lastIndexOf('#')
+  const tagQuery = searchQuery.value.substring(lastHashIndex + 1).toLowerCase()
+
+  if (!tagQuery) return allTags.value
+
+  return allTags.value.filter(tag =>
+    tag.toLowerCase().includes(tagQuery)
+  )
 })
 
 // Calendar computed properties
@@ -542,7 +589,17 @@ const calendarDays = computed(() => {
 
 // Methods
 const formatDate = (dateString) => {
-  return format(parseISO(dateString), 'MMM d, yyyy')
+  // Parse as local date to avoid timezone shifts
+  const [year, month, day] = dateString.split('T')[0].split('-')
+  const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day))
+  return format(date, 'MMM d, yyyy')
+}
+
+const splitContent = (content) => {
+  if (!content) return []
+  // Split by the separator used in append mode
+  const parts = content.split(/\n\n---\n\n/)
+  return parts.filter(part => part.trim().length > 0)
 }
 
 const marketBiasClasses = (bias) => {
@@ -580,6 +637,13 @@ const clearFilters = async () => {
 }
 
 const debounceSearch = () => {
+  // Show tag suggestions if # is typed
+  if (searchQuery.value.includes('#')) {
+    showTagSuggestions.value = true
+  } else {
+    showTagSuggestions.value = false
+  }
+
   clearTimeout(searchTimeout.value)
   searchTimeout.value = setTimeout(async () => {
     if (searchQuery.value.trim().length >= 2) {
@@ -588,6 +652,20 @@ const debounceSearch = () => {
       await loadEntries()
     }
   }, 300)
+}
+
+const selectTag = (tag) => {
+  // Replace everything after the last # with the selected tag
+  const lastHashIndex = searchQuery.value.lastIndexOf('#')
+  searchQuery.value = searchQuery.value.substring(0, lastHashIndex + 1) + tag
+  showTagSuggestions.value = false
+  debounceSearch()
+}
+
+const hideTagSuggestions = () => {
+  setTimeout(() => {
+    showTagSuggestions.value = false
+  }, 200)
 }
 
 // Calendar methods
@@ -721,9 +799,12 @@ const deleteEntry = async () => {
   }
 }
 
-// Load entries on component mount
+// Load entries and tags on component mount
 onMounted(async () => {
   await loadEntries()
+  // Load tags for autocomplete
+  const tags = await diaryStore.fetchTags()
+  allTags.value = tags || []
 })
 
 // Watch for filter changes

@@ -3,6 +3,7 @@ const { validate, schemas } = require('../middleware/validation');
 const upload = require('../middleware/upload');
 const multer = require('multer');
 const aiService = require('../utils/aiService');
+const db = require('../config/database');
 
 
 // Get diary entries for user with filtering and pagination
@@ -440,6 +441,112 @@ Please analyze these journal entries and provide:
 Please be specific, constructive, and focus on actionable advice. Use a professional but encouraging tone. Format your response clearly with the sections above.`;
 };
 
+// General Notes functions
+const getGeneralNotes = async (req, res, next) => {
+  try {
+    const query = `
+      SELECT * FROM general_notes
+      WHERE user_id = $1
+      ORDER BY is_pinned DESC, updated_at DESC
+    `;
+    const result = await db.query(query, [req.user.id]);
+    res.json({ notes: result.rows });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const createGeneralNote = async (req, res, next) => {
+  try {
+    const { title, content, isPinned = true } = req.body;
+
+    if (!content || !content.trim()) {
+      return res.status(400).json({ error: 'Content is required' });
+    }
+
+    const query = `
+      INSERT INTO general_notes (user_id, title, content, is_pinned)
+      VALUES ($1, $2, $3, $4)
+      RETURNING *
+    `;
+    const result = await db.query(query, [req.user.id, title, content.trim(), isPinned]);
+    res.status(201).json({ note: result.rows[0] });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const updateGeneralNote = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { title, content, isPinned } = req.body;
+
+    // Verify ownership
+    const checkQuery = 'SELECT * FROM general_notes WHERE id = $1 AND user_id = $2';
+    const checkResult = await db.query(checkQuery, [id, req.user.id]);
+
+    if (checkResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Note not found' });
+    }
+
+    const updates = [];
+    const values = [];
+    let paramCount = 1;
+
+    if (title !== undefined) {
+      updates.push(`title = $${paramCount}`);
+      values.push(title);
+      paramCount++;
+    }
+
+    if (content !== undefined) {
+      updates.push(`content = $${paramCount}`);
+      values.push(content);
+      paramCount++;
+    }
+
+    if (isPinned !== undefined) {
+      updates.push(`is_pinned = $${paramCount}`);
+      values.push(isPinned);
+      paramCount++;
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'No updates provided' });
+    }
+
+    values.push(id, req.user.id);
+    const query = `
+      UPDATE general_notes
+      SET ${updates.join(', ')}
+      WHERE id = $${paramCount} AND user_id = $${paramCount + 1}
+      RETURNING *
+    `;
+
+    const result = await db.query(query, values);
+    res.json({ note: result.rows[0] });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const deleteGeneralNote = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const query = 'DELETE FROM general_notes WHERE id = $1 AND user_id = $2 RETURNING *';
+    const result = await db.query(query, [id, req.user.id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Note not found' });
+    }
+
+    res.json({ message: 'Note deleted successfully' });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getEntries,
   getTodaysEntry,
@@ -453,5 +560,9 @@ module.exports = {
   getTags,
   getStats,
   searchEntries,
-  analyzeEntries
+  analyzeEntries,
+  getGeneralNotes,
+  createGeneralNote,
+  updateGeneralNote,
+  deleteGeneralNote
 };
