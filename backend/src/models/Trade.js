@@ -6,7 +6,7 @@ class Trade {
   static async create(userId, tradeData, options = {}) {
     const {
       symbol, entryTime, exitTime, entryPrice, exitPrice,
-      quantity, side, commission, fees, notes, isPublic, broker,
+      quantity, side, commission, entryCommission, exitCommission, fees, notes, isPublic, broker,
       strategy, setup, tags, pnl: providedPnL, pnlPercent: providedPnLPercent,
       executionData, mae, mfe, confidence, tradeDate,
       instrumentType = 'stock', strikePrice, expirationDate, optionType,
@@ -156,7 +156,7 @@ class Trade {
     const query = `
       INSERT INTO trades (
         user_id, symbol, trade_date, entry_time, exit_time, entry_price, exit_price,
-        quantity, side, commission, fees, pnl, pnl_percent, notes, is_public,
+        quantity, side, commission, entry_commission, exit_commission, fees, pnl, pnl_percent, notes, is_public,
         broker, strategy, setup, tags, executions, mae, mfe, confidence,
         strategy_confidence, classification_method, classification_metadata, manual_override,
         news_events, has_news, news_sentiment, news_checked_at,
@@ -165,13 +165,13 @@ class Trade {
         original_currency, exchange_rate, original_entry_price_currency, original_exit_price_currency,
         original_pnl_currency, original_commission_currency, original_fees_currency
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52)
       RETURNING *
     `;
 
     const values = [
       userId, symbol.toUpperCase(), finalTradeDate, finalEntryTime, cleanExitTime, entryPrice, cleanExitPrice,
-      quantity, side, commission || 0, fees || 0, pnl, pnlPercent, notes, isPublic || false,
+      quantity, side, commission || 0, entryCommission || 0, exitCommission || 0, fees || 0, pnl, pnlPercent, notes, isPublic || false,
       broker, finalStrategy, setup, tags || [], JSON.stringify(executionData || []), mae || null, mfe || null, confidence || 5,
       strategyConfidence, classificationMethod, JSON.stringify(classificationMetadata), manualOverride,
       JSON.stringify(newsData.newsEvents || []), newsData.hasNews || false, newsData.sentiment, newsData.checkedAt,
@@ -1687,11 +1687,33 @@ class Trade {
     const query = `
       SELECT DISTINCT strategy
       FROM trades
-      WHERE user_id = $1 AND strategy IS NOT NULL
+      WHERE user_id = $1 AND strategy IS NOT NULL AND strategy != ''
       ORDER BY strategy
     `;
     const result = await db.query(query, [userId]);
     return result.rows.map(row => row.strategy);
+  }
+
+  static async getSetupList(userId) {
+    const query = `
+      SELECT DISTINCT setup
+      FROM trades
+      WHERE user_id = $1 AND setup IS NOT NULL AND setup != ''
+      ORDER BY setup
+    `;
+    const result = await db.query(query, [userId]);
+    return result.rows.map(row => row.setup);
+  }
+
+  static async getBrokerList(userId) {
+    const query = `
+      SELECT DISTINCT broker
+      FROM trades
+      WHERE user_id = $1 AND broker IS NOT NULL AND broker != ''
+      ORDER BY broker
+    `;
+    const result = await db.query(query, [userId]);
+    return result.rows.map(row => row.broker);
   }
 
   // Create a new round trip trade record

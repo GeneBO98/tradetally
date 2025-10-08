@@ -26,7 +26,7 @@
 
     <div v-else>
       <!-- Expanded Month View -->
-      <div v-if="expandedMonth" class="mb-8">
+      <div v-if="expandedMonth" ref="expandedMonthContainer" class="mb-8">
         <div class="card">
           <div class="card-body">
             <div class="flex justify-between items-center mb-6">
@@ -40,7 +40,7 @@
                     ${{ formatNumber(monthlyPnl) }}
                   </p>
                 </div>
-                <button @click="expandedMonth = null" class="btn-secondary">
+                <button @click="closeExpandedMonth" class="btn-secondary">
                   Close
                 </button>
               </div>
@@ -58,18 +58,19 @@
             </div>
             <div v-for="(week, weekIndex) in expandedMonthWeekdays" :key="weekIndex" class="grid grid-cols-6 gap-1 mb-1">
               <div v-for="(day, dayIndex) in week.days" :key="dayIndex"
-                class="border border-gray-200 dark:border-gray-700 rounded-lg p-2 sm:p-3 min-h-[70px] sm:min-h-[80px] cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                class="border border-gray-200 dark:border-gray-700 rounded-lg p-2 sm:p-3 min-h-[70px] sm:min-h-[80px] cursor-pointer hover:brightness-95 transition-all"
                 :class="getDayClass(day)"
+                :style="getDayStyle(day)"
                 @click="day.date && day.trades > 0 ? selectDay(day) : null">
                 <div v-if="day.date">
-                  <div class="text-xs sm:text-sm font-medium text-gray-900 dark:text-white">
+                  <div class="text-xs sm:text-sm font-medium" :class="getDayTextColor(day)">
                     {{ day.date.getDate() }}
                   </div>
                   <div v-if="day.pnl !== undefined && day.trades > 0" class="mt-1">
-                    <p class="text-xs sm:text-sm font-semibold truncate" :class="day.pnl >= 0 ? 'text-green-600' : 'text-red-600'">
+                    <p class="text-xs sm:text-sm font-semibold truncate" :class="getDayPnlTextColor(day)">
                       ${{ formatNumber(day.pnl, 0) }}
                     </p>
-                    <p class="text-xs text-gray-500 dark:text-gray-400">
+                    <p class="text-xs" :class="getDaySubTextColor(day)">
                       {{ day.trades }} {{ day.trades === 1 ? 'trade' : 'trades' }}
                     </p>
                   </div>
@@ -107,7 +108,8 @@
               </div>
               <div v-for="(day, index) in month.days" :key="index"
                 class="aspect-square flex items-center justify-center rounded"
-                :class="getMiniDayClass(day)">
+                :class="getMiniDayClass(day)"
+                :style="getMiniDayStyle(day)">
                 <span v-if="day.date" class="font-medium">{{ day.date.getDate() }}</span>
               </div>
             </div>
@@ -180,7 +182,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { format, startOfYear, endOfYear, eachMonthOfInterval, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameMonth } from 'date-fns'
 import { ChevronLeftIcon, ChevronRightIcon, XMarkIcon } from '@heroicons/vue/24/outline'
@@ -193,6 +195,7 @@ const trades = ref([])
 const expandedMonth = ref(null)
 const currentYear = ref(new Date().getFullYear())
 const selectedDay = ref(null)
+const expandedMonthContainer = ref(null)
 
 const yearlyCalendar = computed(() => {
   const start = startOfYear(new Date(currentYear.value, 0, 1))
@@ -357,17 +360,166 @@ function generateMonthDays(monthStart, monthEnd) {
 function getDayClass(day) {
   if (!day.date) return ''
   if (day.pnl === undefined) return 'bg-gray-50 dark:bg-gray-800'
-  return day.pnl >= 0 ? 'bg-green-50 dark:bg-green-900/20' : 'bg-red-50 dark:bg-red-900/20'
+  return '' // Style handled by getDayStyle
+}
+
+function getDayStyle(day) {
+  if (!day.date || day.pnl === undefined) return {}
+
+  // Get all days with P/L for the expanded month to calculate relative intensity
+  const daysWithPnl = expandedMonthDays.value.filter(d => d.pnl !== undefined)
+  if (daysWithPnl.length === 0) return {}
+
+  const maxProfit = Math.max(...daysWithPnl.filter(d => d.pnl > 0).map(d => d.pnl), 0)
+  const maxLoss = Math.abs(Math.min(...daysWithPnl.filter(d => d.pnl < 0).map(d => d.pnl), 0))
+
+  if (day.pnl >= 0) {
+    // Green for profits - scale from light to dark based on relative size
+    const intensity = maxProfit > 0 ? Math.min(day.pnl / maxProfit, 1) : 0.5
+    const saturation = 50 + intensity * 30
+    const lightness = 95 - (intensity * 45)
+    return {
+      backgroundColor: `hsl(142, ${saturation}%, ${lightness}%)`
+    }
+  } else {
+    // Red for losses - scale from light to dark based on relative size
+    const intensity = maxLoss > 0 ? Math.min(Math.abs(day.pnl) / maxLoss, 1) : 0.5
+    const saturation = 50 + intensity * 30
+    const lightness = 95 - (intensity * 45)
+    return {
+      backgroundColor: `hsl(0, ${saturation}%, ${lightness}%)`
+    }
+  }
+}
+
+function getDayTextColor(day) {
+  if (!day.date || day.pnl === undefined) return 'text-gray-900 dark:text-white'
+
+  const daysWithPnl = expandedMonthDays.value.filter(d => d.pnl !== undefined)
+  if (daysWithPnl.length === 0) return 'text-gray-900 dark:text-white'
+
+  const maxProfit = Math.max(...daysWithPnl.filter(d => d.pnl > 0).map(d => d.pnl), 0)
+  const maxLoss = Math.abs(Math.min(...daysWithPnl.filter(d => d.pnl < 0).map(d => d.pnl), 0))
+
+  const intensity = day.pnl >= 0
+    ? (maxProfit > 0 ? Math.min(day.pnl / maxProfit, 1) : 0.5)
+    : (maxLoss > 0 ? Math.min(Math.abs(day.pnl) / maxLoss, 1) : 0.5)
+
+  // Use dark text for light backgrounds (low intensity), white for dark backgrounds (high intensity)
+  return intensity > 0.4 ? 'text-white' : 'text-gray-900'
+}
+
+function getDayPnlTextColor(day) {
+  if (!day.date || day.pnl === undefined) return day.pnl >= 0 ? 'text-green-600' : 'text-red-600'
+
+  const daysWithPnl = expandedMonthDays.value.filter(d => d.pnl !== undefined)
+  if (daysWithPnl.length === 0) return day.pnl >= 0 ? 'text-green-600' : 'text-red-600'
+
+  const maxProfit = Math.max(...daysWithPnl.filter(d => d.pnl > 0).map(d => d.pnl), 0)
+  const maxLoss = Math.abs(Math.min(...daysWithPnl.filter(d => d.pnl < 0).map(d => d.pnl), 0))
+
+  const intensity = day.pnl >= 0
+    ? (maxProfit > 0 ? Math.min(day.pnl / maxProfit, 1) : 0.5)
+    : (maxLoss > 0 ? Math.min(Math.abs(day.pnl) / maxLoss, 1) : 0.5)
+
+  // Use white/light colors for dark backgrounds, darker colors for light backgrounds
+  if (intensity > 0.4) {
+    return 'text-white font-bold'
+  } else {
+    return day.pnl >= 0 ? 'text-green-700' : 'text-red-700'
+  }
+}
+
+function getDaySubTextColor(day) {
+  if (!day.date || day.pnl === undefined) return 'text-gray-500 dark:text-gray-400'
+
+  const daysWithPnl = expandedMonthDays.value.filter(d => d.pnl !== undefined)
+  if (daysWithPnl.length === 0) return 'text-gray-500 dark:text-gray-400'
+
+  const maxProfit = Math.max(...daysWithPnl.filter(d => d.pnl > 0).map(d => d.pnl), 0)
+  const maxLoss = Math.abs(Math.min(...daysWithPnl.filter(d => d.pnl < 0).map(d => d.pnl), 0))
+
+  const intensity = day.pnl >= 0
+    ? (maxProfit > 0 ? Math.min(day.pnl / maxProfit, 1) : 0.5)
+    : (maxLoss > 0 ? Math.min(Math.abs(day.pnl) / maxLoss, 1) : 0.5)
+
+  return intensity > 0.4 ? 'text-white/80' : 'text-gray-600'
 }
 
 function getMiniDayClass(day) {
   if (!day.date) return ''
   if (day.pnl === undefined) return ''
-  return day.pnl >= 0 ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+  return 'text-white' // Color handled by getMiniDayStyle
 }
 
-function expandMonth(monthDate) {
+function getMiniDayStyle(day) {
+  if (!day.date || day.pnl === undefined) return {}
+
+  // Get all days with P/L for the year to calculate relative intensity
+  const allDaysWithPnl = []
+  yearlyCalendar.value.forEach(month => {
+    month.days.forEach(d => {
+      if (d.pnl !== undefined) allDaysWithPnl.push(d)
+    })
+  })
+
+  if (allDaysWithPnl.length === 0) {
+    return {
+      backgroundColor: day.pnl >= 0 ? 'rgb(34, 197, 94)' : 'rgb(239, 68, 68)'
+    }
+  }
+
+  const maxProfit = Math.max(...allDaysWithPnl.filter(d => d.pnl > 0).map(d => d.pnl), 0)
+  const maxLoss = Math.abs(Math.min(...allDaysWithPnl.filter(d => d.pnl < 0).map(d => d.pnl), 0))
+
+  if (day.pnl >= 0) {
+    // Green for profits - scale saturation/lightness
+    const intensity = maxProfit > 0 ? Math.min(day.pnl / maxProfit, 1) : 0.5
+    const saturation = 40 + (intensity * 50)
+    const lightness = 55 - (intensity * 15)
+    return {
+      backgroundColor: `hsl(142, ${saturation}%, ${lightness}%)`
+    }
+  } else {
+    // Red for losses - scale saturation/lightness
+    const intensity = maxLoss > 0 ? Math.min(Math.abs(day.pnl) / maxLoss, 1) : 0.5
+    const saturation = 40 + (intensity * 50)
+    const lightness = 55 - (intensity * 15)
+    return {
+      backgroundColor: `hsl(0, ${saturation}%, ${lightness}%)`
+    }
+  }
+}
+
+async function expandMonth(monthDate) {
   expandedMonth.value = monthDate
+  // Save to localStorage for persistence across navigation
+  try {
+    localStorage.setItem('calendar_expanded_month', monthDate.toISOString())
+    localStorage.setItem('calendar_expanded_year', currentYear.value.toString())
+  } catch (e) {
+    console.warn('Failed to save expanded month to localStorage:', e)
+  }
+
+  // Scroll to the expanded month view after DOM updates
+  await nextTick()
+  if (expandedMonthContainer.value) {
+    expandedMonthContainer.value.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start'
+    })
+  }
+}
+
+function closeExpandedMonth() {
+  expandedMonth.value = null
+  // Clear from localStorage
+  try {
+    localStorage.removeItem('calendar_expanded_month')
+    localStorage.removeItem('calendar_expanded_year')
+  } catch (e) {
+    console.warn('Failed to clear expanded month from localStorage:', e)
+  }
 }
 
 function selectDay(day) {
@@ -376,7 +528,11 @@ function selectDay(day) {
 
 function changeYear(direction) {
   currentYear.value += direction
-  expandedMonth.value = null
+  // Keep expanded month open if it exists, just update to same month in new year
+  if (expandedMonth.value) {
+    const currentMonth = expandedMonth.value.getMonth()
+    expandedMonth.value = new Date(currentYear.value, currentMonth, 1)
+  }
   selectedDay.value = null
   fetchTrades()
 }
@@ -411,6 +567,26 @@ async function fetchTrades() {
 }
 
 onMounted(() => {
+  // Restore expanded month from localStorage if it exists
+  try {
+    const savedMonth = localStorage.getItem('calendar_expanded_month')
+    const savedYear = localStorage.getItem('calendar_expanded_year')
+
+    if (savedMonth && savedYear) {
+      const year = parseInt(savedYear)
+      // Only restore if it's for the current year being viewed
+      if (year === currentYear.value) {
+        expandedMonth.value = new Date(savedMonth)
+      } else {
+        // Clear stale data
+        localStorage.removeItem('calendar_expanded_month')
+        localStorage.removeItem('calendar_expanded_year')
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to restore expanded month from localStorage:', e)
+  }
+
   fetchTrades()
 })
 

@@ -154,10 +154,23 @@
           </div>
 
           <div>
-            <label for="commission" class="label">Commission</label>
+            <label for="entryCommission" class="label">Entry Commission</label>
             <input
-              id="commission"
-              v-model="form.commission"
+              id="entryCommission"
+              v-model="form.entryCommission"
+              type="number"
+              step="0.000001"
+              min="0"
+              class="input"
+              placeholder="0.000000"
+            />
+          </div>
+
+          <div>
+            <label for="exitCommission" class="label">Exit Commission</label>
+            <input
+              id="exitCommission"
+              v-model="form.exitCommission"
               type="number"
               step="0.000001"
               min="0"
@@ -180,10 +193,7 @@
           </div>
 
           <div>
-            <label for="mae" class="label">
-              MAE (Max Adverse Excursion)
-              <span class="text-xs text-gray-500">Maximum loss during trade</span>
-            </label>
+            <label for="mae" class="label">MAE (Max Adverse Excursion)</label>
             <input
               id="mae"
               v-model="form.mae"
@@ -191,14 +201,12 @@
               step="0.000001"
               class="input"
               placeholder="0.000000"
+              title="Maximum loss during trade"
             />
           </div>
 
           <div>
-            <label for="mfe" class="label">
-              MFE (Max Favorable Excursion)
-              <span class="text-xs text-gray-500">Maximum profit during trade</span>
-            </label>
+            <label for="mfe" class="label">MFE (Max Favorable Excursion)</label>
             <input
               id="mfe"
               v-model="form.mfe"
@@ -206,19 +214,46 @@
               step="0.000001"
               class="input"
               placeholder="0.000000"
+              title="Maximum profit during trade"
             />
           </div>
 
-          <div>
+          <div class="relative">
             <label for="broker" class="label">Broker</label>
-            <input
-              id="broker"
-              v-model="form.broker"
-              type="text"
-              class="input"
-              placeholder="ThinkorSwim"
-            />
+            <div class="relative">
+              <input
+                v-if="showBrokerInput"
+                id="broker"
+                v-model="form.broker"
+                type="text"
+                class="input pr-20"
+                placeholder="Enter broker name"
+                @blur="handleBrokerInputBlur"
+              />
+              <select
+                v-else
+                id="broker"
+                v-model="form.broker"
+                class="input pr-20"
+                @change="handleBrokerSelect"
+              >
+                <option value="">Select broker</option>
+                <option v-for="broker in brokersList" :key="broker" :value="broker">{{ broker }}</option>
+                <option value="__custom__">+ Add New Broker</option>
+              </select>
+              <button
+                v-if="showBrokerInput"
+                type="button"
+                @click="showBrokerInput = false"
+                class="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 px-2 py-1"
+              >
+                Select
+              </button>
+            </div>
           </div>
+
+          <!-- Empty placeholder to align grid -->
+          <div class="hidden sm:block"></div>
 
           <!-- Confidence Level -->
           <div class="sm:col-span-2">
@@ -256,26 +291,72 @@
           
         </div>
       
-      <div v-if="showMoreOptions">
-        <div>
+      <div v-if="showMoreOptions" class="space-y-6">
+        <div class="relative">
           <label for="strategy" class="label">Strategy</label>
-          <input
-            id="strategy"
-            v-model="form.strategy"
-            type="text"
-            class="input"
-            placeholder="Scalping"
-          />
+          <div class="relative">
+            <input
+              v-if="showStrategyInput"
+              id="strategy"
+              v-model="form.strategy"
+              type="text"
+              class="input pr-20"
+              placeholder="Enter strategy name"
+              @blur="handleStrategyInputBlur"
+            />
+            <select
+              v-else
+              id="strategy"
+              v-model="form.strategy"
+              class="input pr-20"
+              @change="handleStrategySelect"
+            >
+              <option value="">Select strategy</option>
+              <option v-for="strategy in strategiesList" :key="strategy" :value="strategy">{{ strategy }}</option>
+              <option value="__custom__">+ Add New Strategy</option>
+            </select>
+            <button
+              v-if="showStrategyInput"
+              type="button"
+              @click="showStrategyInput = false"
+              class="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 px-2 py-1"
+            >
+              Select
+            </button>
+          </div>
         </div>
-        <div>
+        <div class="relative">
           <label for="setup" class="label">Setup</label>
-          <input
-            id="setup"
-            v-model="form.setup"
-            type="text"
-            class="input"
-            placeholder="Breakout"
-          />
+          <div class="relative">
+            <input
+              v-if="showSetupInput"
+              id="setup"
+              v-model="form.setup"
+              type="text"
+              class="input pr-20"
+              placeholder="Enter setup name"
+              @blur="handleSetupInputBlur"
+            />
+            <select
+              v-else
+              id="setup"
+              v-model="form.setup"
+              class="input pr-20"
+              @change="handleSetupSelect"
+            >
+              <option value="">Select setup</option>
+              <option v-for="setup in setupsList" :key="setup" :value="setup">{{ setup }}</option>
+              <option value="__custom__">+ Add New Setup</option>
+            </select>
+            <button
+              v-if="showSetupInput"
+              type="button"
+              @click="showSetupInput = false"
+              class="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 px-2 py-1"
+            >
+              Select
+            </button>
+          </div>
         </div>
   
         <div>
@@ -390,7 +471,8 @@ const form = ref({
   exitPrice: '',
   quantity: '',
   side: '',
-  commission: 0,
+  entryCommission: 0,
+  exitCommission: 0,
   fees: 0,
   mae: null,
   mfe: null,
@@ -404,6 +486,13 @@ const form = ref({
 
 const tagsInput = ref('')
 const currentImages = ref([])
+const strategiesList = ref([])
+const setupsList = ref([])
+const brokersList = ref([])
+const userSettings = ref(null)
+const showBrokerInput = ref(false)
+const showStrategyInput = ref(false)
+const showSetupInput = ref(false)
 
 function formatDateTimeLocal(date) {
   if (!date) return ''
@@ -431,7 +520,8 @@ async function loadTrade() {
       exitPrice: trade.exit_price || '',
       quantity: trade.quantity,
       side: trade.side,
-      commission: trade.commission || 0,
+      entryCommission: trade.entry_commission || trade.commission || 0,
+      exitCommission: trade.exit_commission || 0,
       fees: trade.fees || 0,
       mae: trade.mae || null,
       mfe: trade.mfe || null,
@@ -478,7 +568,9 @@ async function handleSubmit() {
       entryPrice: parseFloat(form.value.entryPrice),
       exitPrice: form.value.exitPrice ? parseFloat(form.value.exitPrice) : null,
       quantity: parseInt(form.value.quantity),
-      commission: parseFloat(form.value.commission) || 0,
+      entryCommission: parseFloat(form.value.entryCommission) || 0,
+      exitCommission: parseFloat(form.value.exitCommission) || 0,
+      commission: (parseFloat(form.value.entryCommission) || 0) + (parseFloat(form.value.exitCommission) || 0),
       fees: parseFloat(form.value.fees) || 0,
       mae: form.value.mae ? parseFloat(form.value.mae) : null,
       mfe: form.value.mfe ? parseFloat(form.value.mfe) : null,
@@ -617,16 +709,100 @@ watch(() => form.value.entryTime, async (newTime) => {
   }
 })
 
+async function fetchLists() {
+  try {
+    // Fetch strategies list
+    const strategiesResponse = await api.get('/trades/strategies')
+    strategiesList.value = strategiesResponse.data.strategies || []
+
+    // Fetch setups list
+    const setupsResponse = await api.get('/trades/setups')
+    setupsList.value = setupsResponse.data.setups || []
+
+    // Fetch brokers list
+    const brokersResponse = await api.get('/trades/brokers')
+    brokersList.value = brokersResponse.data.brokers || []
+  } catch (error) {
+    console.error('Error fetching lists:', error)
+  }
+}
+
+async function fetchUserSettings() {
+  try {
+    const response = await api.get('/settings')
+    userSettings.value = response.data
+
+    // Set default broker if not editing and default exists
+    if (!isEdit.value && userSettings.value.default_broker) {
+      form.value.broker = userSettings.value.default_broker
+    }
+  } catch (error) {
+    console.error('Error fetching user settings:', error)
+  }
+}
+
+function handleBrokerSelect(event) {
+  if (event.target.value === '__custom__') {
+    form.value.broker = ''
+    showBrokerInput.value = true
+    // Focus the input after a brief delay to allow DOM update
+    setTimeout(() => {
+      document.getElementById('broker')?.focus()
+    }, 100)
+  }
+}
+
+function handleBrokerInputBlur() {
+  // If the input is empty, switch back to select
+  if (!form.value.broker) {
+    showBrokerInput.value = false
+  }
+}
+
+function handleStrategySelect(event) {
+  if (event.target.value === '__custom__') {
+    form.value.strategy = ''
+    showStrategyInput.value = true
+    setTimeout(() => {
+      document.getElementById('strategy')?.focus()
+    }, 100)
+  }
+}
+
+function handleStrategyInputBlur() {
+  if (!form.value.strategy) {
+    showStrategyInput.value = false
+  }
+}
+
+function handleSetupSelect(event) {
+  if (event.target.value === '__custom__') {
+    form.value.setup = ''
+    showSetupInput.value = true
+    setTimeout(() => {
+      document.getElementById('setup')?.focus()
+    }, 100)
+  }
+}
+
+function handleSetupInputBlur() {
+  if (!form.value.setup) {
+    showSetupInput.value = false
+  }
+}
+
 onMounted(async () => {
   await checkProAccess()
-  
+  await fetchLists()
+  await fetchUserSettings()
+
   if (isEdit.value) {
     loadTrade()
   } else {
     // Set default entry time
     const now = new Date()
     form.value.entryTime = formatDateTimeLocal(now)
-    
+
     // Check for trade blocking on new trades
     if (hasProAccess.value) {
       await checkTradeBlocking()
