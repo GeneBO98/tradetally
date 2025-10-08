@@ -1282,6 +1282,24 @@ const tradeController = {
     }
   },
 
+  async getSetupList(req, res, next) {
+    try {
+      const setups = await Trade.getSetupList(req.user.id);
+      res.json({ setups });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async getBrokerList(req, res, next) {
+    try {
+      const brokers = await Trade.getBrokerList(req.user.id);
+      res.json({ brokers });
+    } catch (error) {
+      next(error);
+    }
+  },
+
   async lookupCusip(req, res, next) {
     try {
       const { cusip } = req.params;

@@ -176,7 +176,8 @@ class User {
       averagePositionSize: 'average_position_size',
       tradingGoals: 'trading_goals',
       preferredSectors: 'preferred_sectors',
-      statisticsCalculation: 'statistics_calculation'
+      statisticsCalculation: 'statistics_calculation',
+      defaultBroker: 'default_broker'
     };
 
     Object.entries(settings).forEach(([key, value]) => {

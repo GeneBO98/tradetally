@@ -283,6 +283,35 @@ router.get('/symbols', authenticate, tradeController.getSymbolList);
  *         description: List of available strategies
  */
 router.get('/strategies', authenticate, tradeController.getStrategyList);
+
+/**
+ * @swagger
+ * /api/trades/setups:
+ *   get:
+ *     summary: Get list of setups used by the user
+ *     tags: [Trades]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of available setups
+ */
+router.get('/setups', authenticate, tradeController.getSetupList);
+
+/**
+ * @swagger
+ * /api/trades/brokers:
+ *   get:
+ *     summary: Get list of brokers used by the user
+ *     tags: [Trades]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of available brokers
+ */
+router.get('/brokers', authenticate, tradeController.getBrokerList);
+
 /**
  * @swagger
  * /api/trades/import:
