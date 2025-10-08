@@ -139,8 +139,25 @@ class Diary {
     }
 
     if (search) {
-      query += ` AND (de.title ILIKE $${paramCount} OR de.content ILIKE $${paramCount} OR de.key_levels ILIKE $${paramCount} OR de.lessons_learned ILIKE $${paramCount})`;
-      values.push(`%${search}%`);
+      // Check if searching for a tag (starts with #)
+      if (search.startsWith('#')) {
+        const tag = search.substring(1); // Remove the # symbol
+        query += ` AND $${paramCount} = ANY(de.tags)`;
+        values.push(tag);
+      } else {
+        // Search in text fields and also check if any tag contains the search term
+        query += ` AND (
+          de.title ILIKE $${paramCount}
+          OR de.content ILIKE $${paramCount}
+          OR de.key_levels ILIKE $${paramCount}
+          OR de.lessons_learned ILIKE $${paramCount}
+          OR EXISTS (
+            SELECT 1 FROM unnest(de.tags) AS tag
+            WHERE tag ILIKE $${paramCount}
+          )
+        )`;
+        values.push(`%${search}%`);
+      }
       paramCount++;
     }
 
@@ -215,6 +232,15 @@ class Diary {
   }
 
   static async update(id, userId, updates) {
+    // Map camelCase to snake_case
+    const fieldMapping = {
+      entryType: 'entry_type',
+      marketBias: 'market_bias',
+      keyLevels: 'key_levels',
+      followedPlan: 'followed_plan',
+      lessonsLearned: 'lessons_learned'
+    };
+
     const allowedFields = [
       'title', 'content', 'tags', 'entry_type', 'market_bias',
       'key_levels', 'watchlist', 'followed_plan', 'lessons_learned'
@@ -225,8 +251,11 @@ class Diary {
     let paramCount = 1;
 
     Object.keys(updates).forEach(field => {
-      if (allowedFields.includes(field) && updates[field] !== undefined) {
-        fields.push(`${field} = $${paramCount}`);
+      // Convert camelCase to snake_case if mapping exists
+      const dbField = fieldMapping[field] || field;
+
+      if (allowedFields.includes(dbField) && updates[field] !== undefined) {
+        fields.push(`${dbField} = $${paramCount}`);
         values.push(updates[field]);
         paramCount++;
       }

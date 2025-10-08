@@ -14,7 +14,11 @@ const {
   getTags,
   getStats,
   searchEntries,
-  analyzeEntries
+  analyzeEntries,
+  getGeneralNotes,
+  createGeneralNote,
+  updateGeneralNote,
+  deleteGeneralNote
 } = require('../controllers/diary.controller');
 
 // Apply authentication middleware to all routes
@@ -40,6 +44,12 @@ router.get('/analyze', analyzeEntries);
 
 // Get diary entry by date
 router.get('/date/:date', getEntryByDate);
+
+// General Notes routes (must be before /:id route)
+router.get('/general-notes', getGeneralNotes);
+router.post('/general-notes', createGeneralNote);
+router.put('/general-notes/:id', updateGeneralNote);
+router.delete('/general-notes/:id', deleteGeneralNote);
 
 // Get specific diary entry by ID
 router.get('/:id', getEntry);
