@@ -3,6 +3,37 @@ const AchievementService = require('../services/achievementService');
 const { getUserLocalDate } = require('../utils/timezone');
 
 class Trade {
+  /**
+   * Ensure tags exist in the tags table
+   * Creates tags if they don't exist
+   */
+  static async ensureTagsExist(userId, tags) {
+    if (!tags || tags.length === 0) return;
+
+    for (const tagName of tags) {
+      if (!tagName || tagName.trim() === '') continue;
+
+      try {
+        // Check if tag exists
+        const checkResult = await db.query(
+          'SELECT id FROM tags WHERE user_id = $1 AND LOWER(name) = LOWER($2)',
+          [userId, tagName.trim()]
+        );
+
+        // Create tag if it doesn't exist
+        if (checkResult.rows.length === 0) {
+          await db.query(
+            'INSERT INTO tags (user_id, name, color) VALUES ($1, $2, $3) ON CONFLICT (user_id, name) DO NOTHING',
+            [userId, tagName.trim(), '#3B82F6'] // Default blue color
+          );
+          console.log(`[TAGS] Auto-created tag "${tagName}" for user ${userId}`);
+        }
+      } catch (error) {
+        console.warn(`[TAGS] Failed to ensure tag "${tagName}" exists:`, error.message);
+      }
+    }
+  }
+
   static async create(userId, tradeData, options = {}) {
     const {
       symbol, entryTime, exitTime, entryPrice, exitPrice,
@@ -151,6 +182,11 @@ class Trade {
       } catch (error) {
         console.warn(`Error checking news for trade: ${error.message}`);
       }
+    }
+
+    // Ensure tags exist in tags table
+    if (tags && tags.length > 0) {
+      await this.ensureTagsExist(userId, tags);
     }
 
     const query = `
@@ -425,9 +461,11 @@ class Trade {
     }
 
     if (filters.tags && filters.tags.length > 0) {
+      console.log('[TAGS] Applying tag filter in Trade.findByUser:', filters.tags);
       query += ` AND t.tags && $${paramCount}`;
       values.push(filters.tags);
       paramCount++;
+      console.log('[TAGS] Tag filter SQL added, value:', filters.tags);
     }
 
     // Multi-select strategies filter
@@ -803,6 +841,11 @@ class Trade {
       fields.push(`pnl_percent = $${paramCount}`);
       values.push(pnlPercent);
       paramCount++;
+    }
+
+    // Ensure tags exist in tags table if tags are being updated
+    if (updates.tags && updates.tags.length > 0) {
+      await this.ensureTagsExist(userId, updates.tags);
     }
 
     values.push(id);
@@ -1246,6 +1289,14 @@ class Trade {
       // Backward compatibility: single broker
       whereClause += ` AND t.broker = $${paramCount}`;
       values.push(filters.broker);
+      paramCount++;
+    }
+
+    // Tags filter for analytics
+    if (filters.tags && filters.tags.length > 0) {
+      console.log('[TAGS] ANALYTICS: APPLYING TAGS FILTER:', filters.tags);
+      whereClause += ` AND t.tags && $${paramCount}`;
+      values.push(filters.tags);
       paramCount++;
     }
 

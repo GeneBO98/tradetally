@@ -141,7 +141,12 @@
                 </div>
               </div>
             </div>
-            
+
+            <div>
+              <label class="label">Tags</label>
+              <TagManagement v-model="localFilters.tags" />
+            </div>
+
             <div>
               <label for="hasNews" class="label">News</label>
               <select
@@ -1246,6 +1251,7 @@ import api from '@/services/api'
 import PerformanceChart from '@/components/charts/PerformanceChart.vue'
 import MdiIcon from '@/components/MdiIcon.vue'
 import NewsCorrelationAnalytics from '@/components/analytics/NewsCorrelationAnalytics.vue'
+import TagManagement from '@/components/trades/TagManagement.vue'
 import Chart from 'chart.js/auto'
 import { marked } from 'marked'
 import { 
@@ -1307,6 +1313,7 @@ const localFilters = ref({
   endDate: '',
   strategies: [],
   sectors: [],
+  tags: [],
   hasNews: '',
   side: '',
   minPrice: null,
@@ -1330,6 +1337,7 @@ const filters = ref({
   endDate: '',
   strategies: '',
   sectors: '',
+  tags: '',
   hasNews: '',
   // Advanced filters
   side: '',
@@ -2329,6 +2337,7 @@ function buildFilterParams(additionalParams = {}) {
   if (filters.value.endDate) params.endDate = filters.value.endDate
   if (filters.value.strategies) params.strategies = filters.value.strategies
   if (filters.value.sectors) params.sectors = filters.value.sectors
+  if (filters.value.tags) params.tags = filters.value.tags
   if (filters.value.hasNews) params.hasNews = filters.value.hasNews
   if (filters.value.side) params.side = filters.value.side
   if (filters.value.minPrice !== null) params.minPrice = filters.value.minPrice
@@ -2409,6 +2418,7 @@ async function applyFilters(newFilters = null) {
     endDate: localFilters.value.endDate,
     strategies: localFilters.value.strategies.join(','),
     sectors: localFilters.value.sectors.join(','),
+    tags: localFilters.value.tags.join(','),
     hasNews: localFilters.value.hasNews,
     // Advanced filters
     side: localFilters.value.side,
