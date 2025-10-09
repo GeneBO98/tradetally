@@ -37,6 +37,7 @@ const schemas = {
     exitPrice: Joi.number().positive().allow(null, ''),
     quantity: Joi.number().positive().required(),
     side: Joi.string().valid('long', 'short').required(),
+    instrumentType: Joi.string().valid('stock', 'option', 'future').default('stock'),
     commission: Joi.number().min(0).default(0),
     entryCommission: Joi.number().min(0).default(0),
     exitCommission: Joi.number().min(0).default(0),
@@ -49,7 +50,19 @@ const schemas = {
     strategy: Joi.string().max(100).allow(''),
     setup: Joi.string().max(100).allow(''),
     tags: Joi.array().items(Joi.string().max(50)),
-    confidence: Joi.number().integer().min(1).max(10).allow(null, '')
+    confidence: Joi.number().integer().min(1).max(10).allow(null, ''),
+    // Options-specific fields
+    underlyingSymbol: Joi.string().max(10).allow(null, ''),
+    optionType: Joi.string().valid('call', 'put').allow(null, ''),
+    strikePrice: Joi.number().positive().allow(null, ''),
+    expirationDate: Joi.date().iso().allow(null, ''),
+    contractSize: Joi.number().integer().positive().allow(null, ''),
+    // Futures-specific fields
+    underlyingAsset: Joi.string().max(50).allow(null, ''),
+    contractMonth: Joi.string().valid('JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC').allow(null, ''),
+    contractYear: Joi.number().integer().min(2020).max(2100).allow(null, ''),
+    tickSize: Joi.number().positive().allow(null, ''),
+    pointValue: Joi.number().positive().allow(null, '')
   }),
 
   updateTrade: Joi.object({
@@ -60,6 +73,7 @@ const schemas = {
     exitPrice: Joi.number().positive().allow(null, ''),
     quantity: Joi.number().positive(),
     side: Joi.string().valid('long', 'short'),
+    instrumentType: Joi.string().valid('stock', 'option', 'future'),
     commission: Joi.number().min(0),
     entryCommission: Joi.number().min(0),
     exitCommission: Joi.number().min(0),
@@ -72,7 +86,19 @@ const schemas = {
     strategy: Joi.string().max(100).allow(''),
     setup: Joi.string().max(100).allow(''),
     tags: Joi.array().items(Joi.string().max(50)),
-    confidence: Joi.number().integer().min(1).max(10).allow(null, '')
+    confidence: Joi.number().integer().min(1).max(10).allow(null, ''),
+    // Options-specific fields
+    underlyingSymbol: Joi.string().max(10).allow(null, ''),
+    optionType: Joi.string().valid('call', 'put').allow(null, ''),
+    strikePrice: Joi.number().positive().allow(null, ''),
+    expirationDate: Joi.date().iso().allow(null, ''),
+    contractSize: Joi.number().integer().positive().allow(null, ''),
+    // Futures-specific fields
+    underlyingAsset: Joi.string().max(50).allow(null, ''),
+    contractMonth: Joi.string().valid('JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC').allow(null, ''),
+    contractYear: Joi.number().integer().min(2020).max(2100).allow(null, ''),
+    tickSize: Joi.number().positive().allow(null, ''),
+    pointValue: Joi.number().positive().allow(null, '')
   }).min(1),
 
   updateSettings: Joi.object({

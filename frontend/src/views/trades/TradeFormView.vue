@@ -154,6 +154,15 @@
           </div>
 
           <div>
+            <label for="instrumentType" class="label">Instrument Type *</label>
+            <select id="instrumentType" v-model="form.instrumentType" required class="input">
+              <option value="stock">Stock</option>
+              <option value="option">Option</option>
+              <option value="future">Future</option>
+            </select>
+          </div>
+
+          <div>
             <label for="entryCommission" class="label">Entry Commission</label>
             <input
               id="entryCommission"
@@ -292,6 +301,148 @@
         </div>
       
       <div v-if="showMoreOptions" class="space-y-6">
+        <!-- Options-specific fields -->
+        <div v-if="form.instrumentType === 'option'" class="grid grid-cols-1 gap-6 sm:grid-cols-2 border border-gray-200 dark:border-gray-600 rounded-lg p-4">
+          <div class="sm:col-span-2">
+            <h3 class="text-md font-medium text-gray-900 dark:text-white mb-4">Option Details</h3>
+          </div>
+
+          <div>
+            <label for="underlyingSymbol" class="label">Underlying Symbol *</label>
+            <input
+              id="underlyingSymbol"
+              v-model="form.underlyingSymbol"
+              type="text"
+              :required="form.instrumentType === 'option'"
+              class="input uppercase"
+              placeholder="SPY"
+            />
+          </div>
+
+          <div>
+            <label for="optionType" class="label">Option Type *</label>
+            <select id="optionType" v-model="form.optionType" :required="form.instrumentType === 'option'" class="input">
+              <option value="">Select type</option>
+              <option value="call">Call</option>
+              <option value="put">Put</option>
+            </select>
+          </div>
+
+          <div>
+            <label for="strikePrice" class="label">Strike Price *</label>
+            <input
+              id="strikePrice"
+              v-model="form.strikePrice"
+              type="number"
+              step="0.01"
+              min="0"
+              :required="form.instrumentType === 'option'"
+              class="input"
+              placeholder="450.00"
+            />
+          </div>
+
+          <div>
+            <label for="expirationDate" class="label">Expiration Date *</label>
+            <input
+              id="expirationDate"
+              v-model="form.expirationDate"
+              type="date"
+              :required="form.instrumentType === 'option'"
+              class="input"
+            />
+          </div>
+
+          <div>
+            <label for="contractSize" class="label">Contract Size</label>
+            <input
+              id="contractSize"
+              v-model="form.contractSize"
+              type="number"
+              min="1"
+              class="input"
+              placeholder="100"
+            />
+          </div>
+        </div>
+
+        <!-- Futures-specific fields -->
+        <div v-if="form.instrumentType === 'future'" class="grid grid-cols-1 gap-6 sm:grid-cols-2 border border-gray-200 dark:border-gray-600 rounded-lg p-4">
+          <div class="sm:col-span-2">
+            <h3 class="text-md font-medium text-gray-900 dark:text-white mb-4">Futures Details</h3>
+          </div>
+
+          <div>
+            <label for="underlyingAsset" class="label">Underlying Asset *</label>
+            <input
+              id="underlyingAsset"
+              v-model="form.underlyingAsset"
+              type="text"
+              :required="form.instrumentType === 'future'"
+              class="input"
+              placeholder="E-mini S&P 500"
+            />
+          </div>
+
+          <div>
+            <label for="contractMonth" class="label">Contract Month *</label>
+            <select id="contractMonth" v-model="form.contractMonth" :required="form.instrumentType === 'future'" class="input">
+              <option value="">Select month</option>
+              <option value="JAN">January</option>
+              <option value="FEB">February</option>
+              <option value="MAR">March</option>
+              <option value="APR">April</option>
+              <option value="MAY">May</option>
+              <option value="JUN">June</option>
+              <option value="JUL">July</option>
+              <option value="AUG">August</option>
+              <option value="SEP">September</option>
+              <option value="OCT">October</option>
+              <option value="NOV">November</option>
+              <option value="DEC">December</option>
+            </select>
+          </div>
+
+          <div>
+            <label for="contractYear" class="label">Contract Year *</label>
+            <input
+              id="contractYear"
+              v-model="form.contractYear"
+              type="number"
+              min="2020"
+              :required="form.instrumentType === 'future'"
+              class="input"
+              placeholder="2025"
+            />
+          </div>
+
+          <div>
+            <label for="tickSize" class="label">Tick Size</label>
+            <input
+              id="tickSize"
+              v-model="form.tickSize"
+              type="number"
+              step="0.000001"
+              min="0"
+              class="input"
+              placeholder="0.25"
+            />
+          </div>
+
+          <div>
+            <label for="pointValue" class="label">Point Value</label>
+            <input
+              id="pointValue"
+              v-model="form.pointValue"
+              type="number"
+              step="0.01"
+              min="0"
+              class="input"
+              placeholder="50.00"
+            />
+          </div>
+        </div>
+
         <div class="relative">
           <label for="strategy" class="label">Strategy</label>
           <div class="relative">
@@ -471,6 +622,7 @@ const form = ref({
   exitPrice: '',
   quantity: '',
   side: '',
+  instrumentType: 'stock',
   entryCommission: 0,
   exitCommission: 0,
   fees: 0,
@@ -481,7 +633,19 @@ const form = ref({
   setup: '',
   notes: '',
   isPublic: false,
-  confidence: 5
+  confidence: 5,
+  // Options-specific fields
+  underlyingSymbol: '',
+  optionType: '',
+  strikePrice: null,
+  expirationDate: '',
+  contractSize: 100,
+  // Futures-specific fields
+  underlyingAsset: '',
+  contractMonth: '',
+  contractYear: null,
+  tickSize: null,
+  pointValue: null
 })
 
 const tagsInput = ref('')
@@ -520,6 +684,7 @@ async function loadTrade() {
       exitPrice: trade.exit_price || '',
       quantity: trade.quantity,
       side: trade.side,
+      instrumentType: trade.instrument_type || 'stock',
       entryCommission: trade.entry_commission || trade.commission || 0,
       exitCommission: trade.exit_commission || 0,
       fees: trade.fees || 0,
@@ -530,7 +695,19 @@ async function loadTrade() {
       setup: trade.setup || '',
       notes: trade.notes || '',
       isPublic: trade.is_public || false,
-      confidence: trade.confidence || 5
+      confidence: trade.confidence || 5,
+      // Options-specific fields
+      underlyingSymbol: trade.underlying_symbol || '',
+      optionType: trade.option_type || '',
+      strikePrice: trade.strike_price || null,
+      expirationDate: trade.expiration_date || '',
+      contractSize: trade.contract_size || 100,
+      // Futures-specific fields
+      underlyingAsset: trade.underlying_asset || '',
+      contractMonth: trade.contract_month || '',
+      contractYear: trade.contract_year || null,
+      tickSize: trade.tick_size || null,
+      pointValue: trade.point_value || null
     }
     
     tagsInput.value = trade.tags ? trade.tags.join(', ') : ''
@@ -575,7 +752,19 @@ async function handleSubmit() {
       mae: form.value.mae ? parseFloat(form.value.mae) : null,
       mfe: form.value.mfe ? parseFloat(form.value.mfe) : null,
       confidence: parseInt(form.value.confidence) || 5,
-      tags: tagsInput.value ? tagsInput.value.split(',').map(tag => tag.trim()).filter(Boolean) : []
+      tags: tagsInput.value ? tagsInput.value.split(',').map(tag => tag.trim()).filter(Boolean) : [],
+      // Options-specific fields (only send if option type)
+      underlyingSymbol: form.value.instrumentType === 'option' ? form.value.underlyingSymbol : null,
+      optionType: form.value.instrumentType === 'option' ? form.value.optionType : null,
+      strikePrice: form.value.instrumentType === 'option' && form.value.strikePrice ? parseFloat(form.value.strikePrice) : null,
+      expirationDate: form.value.instrumentType === 'option' ? form.value.expirationDate : null,
+      contractSize: form.value.instrumentType === 'option' && form.value.contractSize ? parseInt(form.value.contractSize) : null,
+      // Futures-specific fields (only send if future type)
+      underlyingAsset: form.value.instrumentType === 'future' ? form.value.underlyingAsset : null,
+      contractMonth: form.value.instrumentType === 'future' ? form.value.contractMonth : null,
+      contractYear: form.value.instrumentType === 'future' && form.value.contractYear ? parseInt(form.value.contractYear) : null,
+      tickSize: form.value.instrumentType === 'future' && form.value.tickSize ? parseFloat(form.value.tickSize) : null,
+      pointValue: form.value.instrumentType === 'future' && form.value.pointValue ? parseFloat(form.value.pointValue) : null
     }
 
     if (isEdit.value) {
@@ -691,12 +880,19 @@ function acknowledgeBehavioralAlert() {
   behavioralAlert.value = null
 }
 
+// Watch for changes in instrument type to auto-expand more options
+watch(() => form.value.instrumentType, (newType) => {
+  if (newType === 'option' || newType === 'future') {
+    showMoreOptions.value = true
+  }
+})
+
 // Watch for changes in entry time to trigger revenge trading analysis
 watch(() => form.value.entryTime, async (newTime) => {
   if (!isEdit.value && hasProAccess.value && newTime) {
     // Clear previous alerts when entry time changes
     behavioralAlert.value = null
-    
+
     // Only analyze if we have enough data to calculate patterns
     if (form.value.symbol && form.value.entryPrice && form.value.quantity && form.value.side) {
       const tradeData = {
