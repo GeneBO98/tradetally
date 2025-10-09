@@ -429,17 +429,18 @@ class Trade {
       // that should be mapped to ticker symbols for filtering
       // Check both global and user-specific CUSIP mappings
       // Also check if the search term might be a ticker that maps to a CUSIP in trades
+      // Now supports partial matching with ILIKE
       query += ` AND (
-        t.symbol = $${paramCount} OR
+        t.symbol ILIKE $${paramCount} || '%' OR
         EXISTS (
           SELECT 1 FROM cusip_mappings cm
-          WHERE cm.cusip = t.symbol 
-          AND cm.ticker = $${paramCount}
+          WHERE cm.cusip = t.symbol
+          AND cm.ticker ILIKE $${paramCount} || '%'
           AND (cm.user_id = $1 OR cm.user_id IS NULL)
         ) OR
         EXISTS (
           SELECT 1 FROM cusip_mappings cm
-          WHERE cm.ticker = $${paramCount}
+          WHERE cm.ticker ILIKE $${paramCount} || '%'
           AND cm.cusip = t.symbol
           AND (cm.user_id = $1 OR cm.user_id IS NULL)
         )
@@ -962,7 +963,7 @@ class Trade {
     let paramCount = 1;
 
     if (filters.symbol) {
-      query += ` AND t.symbol = $${paramCount}`;
+      query += ` AND t.symbol ILIKE $${paramCount} || '%'`;
       values.push(filters.symbol.toUpperCase());
       paramCount++;
     }
@@ -1046,7 +1047,7 @@ class Trade {
     const tablePrefix = needsJoin ? 't.' : '';
     
     if (filters.symbol && filters.symbol.trim()) {
-      query += ` AND ${tablePrefix}symbol = $${paramCount}`;
+      query += ` AND ${tablePrefix}symbol ILIKE $${paramCount} || '%'`;
       values.push(filters.symbol.toUpperCase().trim());
       paramCount++;
     }
@@ -1191,7 +1192,7 @@ class Trade {
     }
 
     if (filters.symbol) {
-      whereClause += ` AND t.symbol = $${paramCount}`;
+      whereClause += ` AND t.symbol ILIKE $${paramCount} || '%'`;
       values.push(filters.symbol.toUpperCase());
       paramCount++;
     }
@@ -1895,7 +1896,7 @@ class Trade {
     let paramCount = 2;
 
     if (filters.symbol) {
-      whereClause += ` AND symbol = $${paramCount}`;
+      whereClause += ` AND symbol ILIKE $${paramCount} || '%'`;
       values.push(filters.symbol.toUpperCase());
       paramCount++;
     }
@@ -1959,7 +1960,7 @@ class Trade {
     let paramCount = 2;
 
     if (filters.symbol) {
-      whereClause += ` AND rt.symbol = $${paramCount}`;
+      whereClause += ` AND rt.symbol ILIKE $${paramCount} || '%'`;
       values.push(filters.symbol.toUpperCase());
       paramCount++;
     }
