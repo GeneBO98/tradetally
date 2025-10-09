@@ -448,6 +448,58 @@ router.delete('/bulk', authenticate, tradeController.bulkDeleteTrades);
 
 /**
  * @swagger
+ * /api/trades/bulk/tags:
+ *   post:
+ *     summary: Bulk add tags to trades
+ *     tags: [Trades]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               tradeIds:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   format: uuid
+ *                 description: Array of trade IDs to add tags to
+ *               tags:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 description: Array of tag names to add
+ *     responses:
+ *       200:
+ *         description: Bulk tag update completed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 updatedCount:
+ *                   type: integer
+ *                 totalRequested:
+ *                   type: integer
+ *                 errors:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       tradeId:
+ *                         type: string
+ *                       error:
+ *                         type: string
+ */
+router.post('/bulk/tags', authenticate, tradeController.bulkAddTags);
+
+/**
+ * @swagger
  * /api/trades/earnings:
  *   get:
  *     summary: Get upcoming earnings

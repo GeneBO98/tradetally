@@ -113,6 +113,12 @@
                 Clear selection
               </button>
               <button
+                @click="showBulkTagModal = true"
+                class="px-3 py-2 text-sm bg-primary-600 text-white rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+              >
+                Add tags
+              </button>
+              <button
                 @click="confirmBulkDelete"
                 class="px-3 py-2 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
               >
@@ -578,7 +584,7 @@
           <h3 class="text-lg font-medium text-gray-900 dark:text-white">Delete Trades</h3>
           <div class="mt-2 px-7 py-3">
             <p class="text-sm text-gray-500 dark:text-gray-400">
-              Are you sure you want to delete {{ selectedTrades.length }} trade{{ selectedTrades.length === 1 ? '' : 's' }}? 
+              Are you sure you want to delete {{ selectedTrades.length }} trade{{ selectedTrades.length === 1 ? '' : 's' }}?
               This action cannot be undone.
             </p>
           </div>
@@ -599,6 +605,46 @@
         </div>
       </div>
     </div>
+
+    <!-- Bulk Tag Modal -->
+    <div v-if="showBulkTagModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50" @click.self="showBulkTagModal = false">
+      <div class="relative top-20 mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white dark:bg-gray-800">
+        <div class="flex justify-between items-center mb-4">
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white">Add Tags to {{ selectedTrades.length }} Trade{{ selectedTrades.length === 1 ? '' : 's' }}</h3>
+          <button
+            @click="showBulkTagModal = false"
+            class="text-gray-400 hover:text-gray-500"
+          >
+            <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+            </svg>
+          </button>
+        </div>
+
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Select tags to add
+          </label>
+          <TagManagement v-model="bulkTagsToAdd" />
+        </div>
+
+        <div class="flex justify-end space-x-2">
+          <button
+            @click="showBulkTagModal = false"
+            class="px-4 py-2 bg-gray-300 text-gray-800 text-base font-medium rounded-md shadow-sm hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-300"
+          >
+            Cancel
+          </button>
+          <button
+            @click="executeBulkAddTags"
+            :disabled="bulkTagsToAdd.length === 0"
+            class="px-4 py-2 bg-primary-600 text-white text-base font-medium rounded-md shadow-sm hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Add Tags
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -612,8 +658,10 @@ import TradeFilters from '@/components/trades/TradeFilters.vue'
 import TradeCommentsDialog from '@/components/trades/TradeCommentsDialog.vue'
 import EnrichmentStatus from '@/components/trades/EnrichmentStatus.vue'
 import ColumnCustomizer from '@/components/trades/ColumnCustomizer.vue'
+import TagManagement from '@/components/trades/TagManagement.vue'
 import MdiIcon from '@/components/MdiIcon.vue'
 import { mdiNewspaper } from '@mdi/js'
+import api from '@/services/api'
 
 const tradesStore = useTradesStore()
 const route = useRoute()
@@ -629,6 +677,8 @@ const selectedTrade = ref(null)
 // Bulk selection
 const selectedTrades = ref([])
 const showDeleteConfirm = ref(false)
+const showBulkTagModal = ref(false)
+const bulkTagsToAdd = ref([])
 
 // Column management
 const tableColumns = ref([])
@@ -763,6 +813,30 @@ async function executeBulkDelete() {
     await tradesStore.fetchTrades()
   } catch (error) {
     console.error('Failed to delete trades:', error)
+  }
+}
+
+async function executeBulkAddTags() {
+  if (bulkTagsToAdd.value.length === 0) return
+
+  try {
+    const response = await api.post('/trades/bulk/tags', {
+      tradeIds: selectedTrades.value,
+      tags: bulkTagsToAdd.value
+    })
+
+    console.log('[SUCCESS]', response.data.message)
+
+    // Reset state
+    selectedTrades.value = []
+    bulkTagsToAdd.value = []
+    showBulkTagModal.value = false
+
+    // Refresh the trades list
+    await tradesStore.fetchTrades()
+  } catch (error) {
+    console.error('[ERROR] Failed to add tags:', error)
+    alert(error.response?.data?.message || 'Failed to add tags to trades')
   }
 }
 

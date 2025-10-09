@@ -126,7 +126,12 @@
           </div>
         </div>
       </div>
-      
+
+      <div>
+        <label class="label">Tags</label>
+        <TagManagement v-model="filters.tags" />
+      </div>
+
       <div>
         <label for="hasNews" class="label">News</label>
         <select
@@ -465,6 +470,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ChevronRightIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
+import TagManagement from './TagManagement.vue'
 
 const emit = defineEmits(['filter'])
 const route = useRoute()
@@ -522,8 +528,9 @@ const filters = ref({
   endDate: '',
   strategy: '', // Keep for backward compatibility
   strategies: [], // New multi-select array
-  sector: '', // Keep for backward compatibility  
+  sector: '', // Keep for backward compatibility
   sectors: [], // New multi-select array
+  tags: [], // New multi-select array for tags
   hasNews: '',
   // Advanced filters
   side: '',
@@ -670,11 +677,16 @@ function applyFilters() {
     cleanFilters.strategies = filters.value.strategies.join(',')
   }
   
-  // Handle multi-select sectors - convert to comma-separated or use first one for backward compatibility  
+  // Handle multi-select sectors - convert to comma-separated or use first one for backward compatibility
   if (filters.value.sectors.length > 0) {
     cleanFilters.sectors = filters.value.sectors.join(',')
   }
-  
+
+  // Handle multi-select tags - convert to comma-separated
+  if (filters.value.tags && filters.value.tags.length > 0) {
+    cleanFilters.tags = filters.value.tags.join(',')
+  }
+
   cleanFilters.hasNews = filters.value.hasNews
   
   console.log('[TARGET] APPLYING FILTERS:', cleanFilters)
@@ -718,6 +730,7 @@ function resetFilters() {
     strategies: [],
     sector: '',
     sectors: [],
+    tags: [],
     hasNews: '',
     side: '',
     minPrice: null,
