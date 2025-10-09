@@ -109,6 +109,7 @@ function convertQueryToTradeFilters(query) {
     symbol: query.symbol ? String(query.symbol).toUpperCase().trim() : undefined,
     strategies: toArray(query.strategies),
     sectors: toArray(query.sectors),
+    tags: toArray(query.tags),
     hasNews: query.hasNews,
     side: query.side || undefined,
     minPrice: toNumber(query.minPrice),
@@ -169,6 +170,13 @@ function buildFilterConditions(query) {
     const placeholders = filters.sectors.map(() => `$${paramIndex++}`).join(',');
     filterConditions += ` AND symbol IN (SELECT symbol FROM symbol_categories WHERE finnhub_industry IN (${placeholders}))`;
     params.push(...filters.sectors);
+  }
+
+  // Tags filter (multi-select supported) - uses array overlap operator
+  if (filters.tags && filters.tags.length > 0) {
+    filterConditions += ` AND tags && $${paramIndex}`;
+    params.push(filters.tags);
+    paramIndex++;
   }
 
   // Broker filter (multi-select supported) - exactly like Trade model

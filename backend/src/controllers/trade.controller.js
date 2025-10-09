@@ -23,12 +23,12 @@ const tradeController = {
         status, minPnl, maxPnl, pnlType, broker, brokers,
         limit = 50, offset = 0
       } = req.query;
-      
+
       const filters = {
         symbol,
         startDate,
         endDate,
-        tags: tags ? tags.split(',') : undefined,
+        tags: tags ? tags.split(',').map(t => t.trim()).filter(Boolean) : undefined,
         strategy,
         sector,
         // Multi-select filters
@@ -53,6 +53,10 @@ const tradeController = {
         limit: parseInt(limit),
         offset: parseInt(offset)
       };
+
+      if (filters.tags && filters.tags.length > 0) {
+        console.log('[TAGS] Filtering by tags:', filters.tags);
+      }
 
       // Get trades with pagination
       const trades = await Trade.findByUser(req.user.id, filters);
@@ -285,9 +289,69 @@ const tradeController = {
         console.warn('[WARNING] Failed to invalidate sector performance cache:', cacheError.message);
       }
 
-      res.json({ 
+      res.json({
         message: `Bulk delete completed. ${deletedCount} trades deleted successfully.`,
         deletedCount,
+        totalRequested: tradeIds.length,
+        errors
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async bulkAddTags(req, res, next) {
+    try {
+      const { tradeIds, tags } = req.body;
+
+      if (!tradeIds || !Array.isArray(tradeIds) || tradeIds.length === 0) {
+        return res.status(400).json({ error: 'Trade IDs array is required' });
+      }
+
+      if (!tags || !Array.isArray(tags) || tags.length === 0) {
+        return res.status(400).json({ error: 'Tags array is required' });
+      }
+
+      // Validate all trade IDs are UUIDs
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      for (const tradeId of tradeIds) {
+        if (!uuidRegex.test(tradeId)) {
+          return res.status(400).json({ error: `Invalid trade ID format: ${tradeId}` });
+        }
+      }
+
+      // Ensure tags exist in tags table
+      await Trade.ensureTagsExist(req.user.id, tags);
+
+      let updatedCount = 0;
+      let errors = [];
+
+      // Update each trade individually to ensure permissions
+      for (const tradeId of tradeIds) {
+        try {
+          // Get current trade to merge tags
+          const trade = await Trade.findById(tradeId, req.user.id);
+
+          if (!trade) {
+            errors.push({ tradeId, error: 'Trade not found or access denied' });
+            continue;
+          }
+
+          // Merge new tags with existing tags (avoid duplicates)
+          const existingTags = trade.tags || [];
+          const mergedTags = [...new Set([...existingTags, ...tags])];
+
+          // Update the trade with merged tags
+          await Trade.update(tradeId, req.user.id, { tags: mergedTags });
+          updatedCount++;
+        } catch (error) {
+          errors.push({ tradeId, error: error.message });
+        }
+      }
+
+      res.json({
+        message: `Bulk tag update completed. ${updatedCount} trades updated successfully.`,
+        updatedCount,
         totalRequested: tradeIds.length,
         errors
       });
@@ -1206,7 +1270,7 @@ const tradeController = {
       console.log('Side filter specifically:', req.query.side);
       
       const {
-        startDate, endDate, symbol, sector, strategy,
+        startDate, endDate, symbol, sector, strategy, tags,
         strategies, sectors, // Add multi-select parameters
         side, minPrice, maxPrice, minQuantity, maxQuantity,
         status, minPnl, maxPnl, pnlType, broker, brokers, hasNews,
@@ -1220,6 +1284,7 @@ const tradeController = {
         sector,
         strategy,
         // Multi-select filters
+        tags: tags ? tags.split(',').map(t => t.trim()).filter(Boolean) : undefined,
         strategies: strategies ? strategies.split(',') : undefined,
         sectors: sectors ? sectors.split(',') : undefined,
         side,
