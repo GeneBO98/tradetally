@@ -150,6 +150,16 @@ function detectBrokerFormat(fileBuffer) {
       return 'etrade';
     }
 
+    // ProjectX detection - look for ContractName, EnteredAt, ExitedAt, PnL columns
+    if (headers.includes('contractname') &&
+        headers.includes('enteredat') &&
+        headers.includes('exitedat') &&
+        headers.includes('pnl') &&
+        headers.includes('tradeduration')) {
+      console.log('[AUTO-DETECT] Detected: ProjectX');
+      return 'projectx';
+    }
+
     // Default to generic if no specific format detected
     console.log('[AUTO-DETECT] No specific format detected, using generic parser');
     return 'generic';
@@ -431,6 +441,54 @@ const brokerParsers = {
       orderType: orderType,
       leverage: leverage,
       notes: `${orderType} order ${leverage ? `with ${leverage} leverage` : ''}`
+    };
+  },
+
+  projectx: (row) => {
+    // ProjectX provides completed trades with entry and exit times
+    // Format: Id,ContractName,EnteredAt,ExitedAt,EntryPrice,ExitPrice,Fees,PnL,Size,Type,TradeDay,TradeDuration,Commissions
+
+    // Get Id field - handle BOM character that may be present
+    const tradeId = row.Id || row['﻿Id'] || row['\uFEFFId'] || '';
+    const contractName = cleanString(row.ContractName);
+    const enteredAt = row.EnteredAt || '';
+    const exitedAt = row.ExitedAt || '';
+    const type = row.Type || '';
+    const quantity = Math.abs(parseInteger(row.Size));
+    const entryPrice = parseNumeric(row.EntryPrice);
+    const exitPrice = parseNumeric(row.ExitPrice);
+    const fees = parseNumeric(row.Fees);
+    const commissions = parseNumeric(row.Commissions);
+    const pnl = parseNumeric(row.PnL);
+    const tradeDuration = row.TradeDuration || '';
+
+    // Parse timestamps (format: "10/01/2025 21:13:23 +02:00")
+    const tradeDate = parseDate(enteredAt);
+    const entryTime = parseDateTime(enteredAt);
+    const exitTime = parseDateTime(exitedAt);
+
+    // Determine side from Type field (Long/Short)
+    // Database expects 'long' or 'short', not 'buy' or 'sell'
+    const side = type.toLowerCase() === 'long' ? 'long' : 'short';
+
+    // ProjectX uses "Fees" field for total commissions/fees
+    // Commissions field is usually empty
+    const totalCommission = commissions || fees || 0;
+
+    return {
+      symbol: contractName,
+      tradeDate: tradeDate,
+      entryTime: entryTime,
+      exitTime: exitTime,
+      entryPrice: entryPrice,
+      exitPrice: exitPrice,
+      quantity: quantity,
+      side: side,
+      commission: totalCommission,
+      fees: 0, // Already included in commission
+      profitLoss: pnl,
+      broker: 'projectx',
+      notes: `Trade #${tradeId} - Duration: ${tradeDuration}`
     };
   }
 };
