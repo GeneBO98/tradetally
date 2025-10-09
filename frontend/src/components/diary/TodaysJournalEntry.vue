@@ -62,19 +62,26 @@
           <h4 class="font-medium text-gray-900 dark:text-white">{{ entry.title }}</h4>
         </div>
 
-        <!-- Content Preview -->
-        <div v-if="entry.content" class="text-sm text-gray-700 dark:text-gray-300">
-          <div 
-            v-if="!expanded && entry.content.length > 200"
-            v-html="truncateHtml(parseMarkdown(entry.content), 200)"
-            class="prose prose-sm max-w-none dark:prose-invert"
-          ></div>
-          <div 
-            v-else
-            v-html="parseMarkdown(entry.content)"
-            class="prose prose-sm max-w-none dark:prose-invert"
-          ></div>
-          
+        <!-- Content (split into cards if appended) -->
+        <div v-if="entry.content">
+          <div
+            v-for="(contentPart, idx) in splitContent(entry.content)"
+            :key="idx"
+            :class="[
+              'text-sm text-gray-700 dark:text-gray-300 prose prose-sm max-w-none dark:prose-invert',
+              splitContent(entry.content).length > 1 ? 'bg-gray-50 dark:bg-gray-700/30 p-4 rounded-lg mb-3 last:mb-0' : ''
+            ]"
+          >
+            <div
+              v-if="!expanded && contentPart.length > 200"
+              v-html="truncateHtml(parseMarkdown(contentPart), 200)"
+            ></div>
+            <div
+              v-else
+              v-html="parseMarkdown(contentPart)"
+            ></div>
+          </div>
+
           <button
             v-if="!expanded && entry.content.length > 200"
             @click="expanded = true"
@@ -274,6 +281,13 @@ const marketBiasIcon = (bias) => {
 
 const truncateHtml = (html, maxLength) => {
   return truncateHtmlUtil(html, maxLength)
+}
+
+const splitContent = (content) => {
+  if (!content) return []
+  // Split by the separator used in append mode
+  const parts = content.split(/\n\n---\n\n/)
+  return parts.filter(part => part.trim().length > 0)
 }
 
 const createTodaysEntry = () => {

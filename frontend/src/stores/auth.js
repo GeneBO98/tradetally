@@ -12,13 +12,13 @@ export const useAuthStore = defineStore('auth', () => {
 
   const isAuthenticated = computed(() => !!token.value)
 
-  async function login(credentials) {
+  async function login(credentials, returnUrl = null) {
     loading.value = true
     error.value = null
-    
+
     try {
       const response = await api.post('/auth/login', credentials)
-      
+
       // Check if email verification is required
       if (response.data.requiresVerification) {
         error.value = response.data.error
@@ -45,14 +45,20 @@ export const useAuthStore = defineStore('auth', () => {
         twoFactorError.message = response.data.message
         throw twoFactorError
       }
-      
+
       const { user: userData, token: authToken } = response.data
-      
+
       user.value = userData
       token.value = authToken
       localStorage.setItem('token', authToken)
-      
-      router.push({ name: 'dashboard' })
+
+      // If there's a return URL (from OAuth flow), redirect there instead of dashboard
+      if (returnUrl) {
+        window.location.href = decodeURIComponent(returnUrl)
+      } else {
+        router.push({ name: 'dashboard' })
+      }
+
       return response.data
     } catch (err) {
       // Don't set error for 2FA, verification, or approval - these are normal flows

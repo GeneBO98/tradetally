@@ -149,6 +149,17 @@ const router = createRouter({
       meta: { requiresAuth: true, requiresAdmin: true }
     },
     {
+      path: '/admin/oauth',
+      name: 'oauth-clients',
+      component: () => import('@/views/OAuth/ClientManagementView.vue'),
+      meta: { requiresAuth: true, requiresAdmin: true }
+    },
+    {
+      path: '/oauth/authorize',
+      name: 'oauth-authorize',
+      component: () => import('@/views/OAuth/AuthorizeView.vue')
+    },
+    {
       path: '/pricing',
       name: 'pricing',
       component: () => import('@/views/PricingView.vue')

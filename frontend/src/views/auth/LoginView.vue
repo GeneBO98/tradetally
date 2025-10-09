@@ -146,9 +146,11 @@ async function handleLogin() {
   showTwoFactor.value = false
   userEmail.value = ''
   tempToken.value = ''
-  
+
   try {
-    await authStore.login(form.value)
+    // Check if there's a return URL from OAuth flow
+    const returnUrl = route.query.return_url
+    await authStore.login(form.value, returnUrl)
   } catch (error) {
     if (error.requiresVerification) {
       showResendVerification.value = true

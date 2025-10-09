@@ -350,12 +350,29 @@ const publicNavigation = computed(() => {
 
 const navigation = computed(() => {
   const nav = [...baseNavigation]
-  
+
   // Add admin navigation for admin users
   if (authStore.user?.role === 'admin') {
-    nav.push({ name: 'Admin', to: '/admin/users', route: 'admin-users' })
+    nav.push({
+      name: 'Admin',
+      type: 'dropdown',
+      items: [
+        {
+          name: 'User Management',
+          to: '/admin/users',
+          route: 'admin-users',
+          description: 'Manage users and permissions'
+        },
+        {
+          name: 'OAuth Applications',
+          to: '/admin/oauth',
+          route: 'oauth-clients',
+          description: 'Manage OAuth2 clients and integrations'
+        }
+      ]
+    })
   }
-  
+
   return nav
 })
 

@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
+const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 
@@ -31,6 +32,7 @@ const newsCorrelationRoutes = require('./routes/newsCorrelation.routes');
 const notificationPreferencesRoutes = require('./routes/notificationPreferences.routes');
 const cusipMappingsRoutes = require('./routes/cusipMappings.routes');
 const diaryRoutes = require('./routes/diary.routes');
+const oauth2Routes = require('./routes/oauth2.routes');
 const BillingService = require('./services/billingService');
 const priceMonitoringService = require('./services/priceMonitoringService');
 const GamificationScheduler = require('./services/gamificationScheduler');
@@ -127,6 +129,9 @@ if (process.env.NODE_ENV !== 'production') {
   }));
 }
 
+// Cookie parser middleware
+app.use(cookieParser());
+
 // Body parsing middleware (skip for webhook routes that need raw body)
 app.use((req, res, next) => {
   if (req.originalUrl === '/api/billing/webhooks/stripe') {
@@ -164,6 +169,10 @@ app.use('/api/news-correlation', newsCorrelationRoutes);
 app.use('/api/notification-preferences', notificationPreferencesRoutes);
 app.use('/api/cusip-mappings', cusipMappingsRoutes);
 app.use('/api/diary', diaryRoutes);
+
+// OAuth2 Provider endpoints
+app.use('/oauth', oauth2Routes);
+app.use('/api/oauth', oauth2Routes);
 
 // Well-known endpoints for mobile discovery
 app.use('/.well-known', wellKnownRoutes);
