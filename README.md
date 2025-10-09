@@ -2,6 +2,10 @@
 ## Try the DEMO
 Visit [TradeTally](https://tradetally.io)
 
+## Forum Now Available 
+Join the [Discourse!](https://forum.tradetally.io)
+**Notice**: If you already have a TradeTally.io account you can login to the Forum with that.
+
 <img width="1340" alt="SCR-20250703-qdty" src="https://github.com/user-attachments/assets/c7281791-53f6-43c4-937d-ebc9c679f32f" />
 <img width="1282" alt="SCR-20250703-qdvz" src="https://github.com/user-attachments/assets/9eadee5c-5b71-4d38-baf9-b335080d4cae" />
 <img width="1336" alt="SCR-20250703-qeal" src="https://github.com/user-attachments/assets/6057c9a2-ac33-4aa1-8946-388628e6b8cc" />
