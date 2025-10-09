@@ -44,7 +44,13 @@ const authenticate = async (req, res, next) => {
 
 const optionalAuth = async (req, res, next) => {
   try {
-    const token = req.header('Authorization')?.replace('Bearer ', '');
+    // Try to get token from Authorization header first
+    let token = req.header('Authorization')?.replace('Bearer ', '');
+
+    // If no Authorization header, try to get token from cookie
+    if (!token && req.cookies && req.cookies.token) {
+      token = req.cookies.token;
+    }
 
     if (token) {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
