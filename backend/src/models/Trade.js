@@ -60,7 +60,7 @@ class Trade {
     }
 
     // Use provided P&L if available (e.g., from Schwab), otherwise calculate it
-    const pnl = providedPnL !== undefined ? providedPnL : this.calculatePnL(entryPrice, cleanExitPrice, quantity, side, commission, fees);
+    const pnl = providedPnL !== undefined ? providedPnL : this.calculatePnL(entryPrice, cleanExitPrice, quantity, side, commission, fees, instrumentType, contractSize);
     const pnlPercent = providedPnLPercent !== undefined ? providedPnLPercent : this.calculatePnLPercent(entryPrice, cleanExitPrice, side);
 
     // Use exit date as trade date if available, otherwise use entry date
@@ -685,7 +685,9 @@ class Trade {
         updatedTrade.quantity,
         updatedTrade.side,
         updates.commission || currentTrade.commission,
-        updates.fees || currentTrade.fees
+        updates.fees || currentTrade.fees,
+        updates.instrumentType || currentTrade.instrument_type || 'stock',
+        updates.contractSize || currentTrade.contract_size || 1
       );
 
       if (updatedTrade.exit_time) {
@@ -820,14 +822,16 @@ class Trade {
       paramCount++;
     }
 
-    if (updates.entryPrice || updates.exitPrice || updates.quantity || updates.side || updates.commission || updates.fees) {
+    if (updates.entryPrice || updates.exitPrice || updates.quantity || updates.side || updates.commission || updates.fees || updates.instrumentType || updates.contractSize) {
       const pnl = this.calculatePnL(
         updates.entryPrice || currentTrade.entry_price,
         updates.exitPrice || currentTrade.exit_price,
         updates.quantity || currentTrade.quantity,
         updates.side || currentTrade.side,
         updates.commission || currentTrade.commission,
-        updates.fees || currentTrade.fees
+        updates.fees || currentTrade.fees,
+        updates.instrumentType || currentTrade.instrument_type || 'stock',
+        updates.contractSize || currentTrade.contract_size || 1
       );
       const pnlPercent = this.calculatePnLPercent(
         updates.entryPrice || currentTrade.entry_price,
@@ -991,23 +995,28 @@ class Trade {
     return result.rows;
   }
 
-  static calculatePnL(entryPrice, exitPrice, quantity, side, commission = 0, fees = 0) {
+  static calculatePnL(entryPrice, exitPrice, quantity, side, commission = 0, fees = 0, instrumentType = 'stock', contractSize = 1) {
     if (!exitPrice || !entryPrice || quantity <= 0) return null;
-    
+
+    // For options and futures, apply contract multiplier
+    const multiplier = (instrumentType === 'option' || instrumentType === 'future')
+      ? (contractSize || 100)
+      : 1;
+
     let pnl;
     if (side === 'long') {
-      pnl = (exitPrice - entryPrice) * quantity;
+      pnl = (exitPrice - entryPrice) * quantity * multiplier;
     } else {
-      pnl = (entryPrice - exitPrice) * quantity;
+      pnl = (entryPrice - exitPrice) * quantity * multiplier;
     }
-    
+
     const totalPnL = pnl - commission - fees;
-    
+
     // Guard against NaN, Infinity, or values that exceed database limits
     if (!isFinite(totalPnL) || Math.abs(totalPnL) > 99999999) {
       return null;
     }
-    
+
     return totalPnL;
   }
 

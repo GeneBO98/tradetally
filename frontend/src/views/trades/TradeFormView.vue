@@ -669,6 +669,20 @@ function formatDateTimeLocal(date) {
   return `${year}-${month}-${day}T${hours}:${minutes}`
 }
 
+function formatDateOnly(date) {
+  if (!date) return ''
+  // If already in YYYY-MM-DD format, return as-is
+  if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return date
+  }
+  // Otherwise parse and format (for datetime strings or Date objects)
+  const d = new Date(date)
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 async function loadTrade() {
   if (!isEdit.value) return
   
@@ -700,7 +714,7 @@ async function loadTrade() {
       underlyingSymbol: trade.underlying_symbol || '',
       optionType: trade.option_type || '',
       strikePrice: trade.strike_price || null,
-      expirationDate: trade.expiration_date || '',
+      expirationDate: trade.expiration_date ? formatDateOnly(trade.expiration_date) : '',
       contractSize: trade.contract_size || 100,
       // Futures-specific fields
       underlyingAsset: trade.underlying_asset || '',

@@ -1842,7 +1842,13 @@ async function parseSchwabTransactions(records, existingPositions = {}) {
 
 async function parseThinkorswimTransactions(records, existingPositions = {}) {
   console.log(`Processing ${records.length} thinkorswim transaction records`);
-  
+
+  // Thinkorswim is stock trading, so contract multiplier is always 1
+  const contractMultiplier = 1;
+  const instrumentData = {
+    instrumentType: 'stock'
+  };
+
   const transactions = [];
   const completedTrades = [];
   
@@ -2043,7 +2049,7 @@ async function parseThinkorswimTransactions(records, existingPositions = {}) {
         }
         
         currentTrade.pnlPercent = (currentTrade.pnl / currentTrade.entryValue) * 100;
-        currentTrade.quantity = currentTrade.totalQuantity * contractMultiplier;
+        currentTrade.quantity = currentTrade.totalQuantity * (typeof contractMultiplier !== 'undefined' ? contractMultiplier : 1);
         currentTrade.commission = currentTrade.totalFees;
         currentTrade.fees = 0;
         currentTrade.exitTime = transaction.datetime;
@@ -2323,7 +2329,7 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}) {
         }
         
         currentTrade.pnlPercent = (currentTrade.pnl / currentTrade.entryValue) * 100;
-        currentTrade.quantity = currentTrade.totalQuantity * contractMultiplier;
+        currentTrade.quantity = currentTrade.totalQuantity * (typeof contractMultiplier !== 'undefined' ? contractMultiplier : 1);
         currentTrade.commission = currentTrade.totalFees;
         currentTrade.fees = 0;
         currentTrade.exitTime = transaction.datetime;
@@ -2473,6 +2479,22 @@ async function parseTradingViewTransactions(records, existingPositions = {}) {
 
     console.log(`\n=== Processing ${symbolTransactions.length} TradingView transactions for ${symbol} ===`);
 
+    // TradingView is stock trading, so contract multiplier is always 1
+    const contractMultiplier = 1;
+    const instrumentData = {
+      instrumentType: 'stock',
+      contractSize: null,
+      underlyingSymbol: null,
+      optionType: null,
+      strikePrice: null,
+      expirationDate: null,
+      underlyingAsset: null,
+      contractMonth: null,
+      contractYear: null,
+      tickSize: null,
+      pointValue: null
+    };
+
     // Track position and round-trip trades
     // Start with existing position if we have one for this symbol
     const existingPosition = existingPositions[symbol];
@@ -2590,7 +2612,7 @@ async function parseTradingViewTransactions(records, existingPositions = {}) {
         }
 
         currentTrade.pnlPercent = (currentTrade.pnl / currentTrade.entryValue) * 100;
-        currentTrade.quantity = currentTrade.totalQuantity * contractMultiplier;
+        currentTrade.quantity = currentTrade.totalQuantity * (typeof contractMultiplier !== 'undefined' ? contractMultiplier : 1);
         currentTrade.commission = currentTrade.totalFees;
         currentTrade.fees = 0;
         currentTrade.exitTime = transaction.datetime;
@@ -2905,7 +2927,7 @@ async function parseIBKRTransactions(records, existingPositions = {}) {
         }
 
         currentTrade.pnlPercent = (currentTrade.pnl / currentTrade.entryValue) * 100;
-        currentTrade.quantity = currentTrade.totalQuantity * contractMultiplier;
+        currentTrade.quantity = currentTrade.totalQuantity * (typeof contractMultiplier !== 'undefined' ? contractMultiplier : 1);
         currentTrade.commission = currentTrade.totalFees;
         currentTrade.fees = 0;
         currentTrade.exitTime = transaction.datetime;
