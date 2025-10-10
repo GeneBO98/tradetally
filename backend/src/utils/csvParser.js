@@ -820,12 +820,16 @@ function parseDate(dateStr) {
   try {
     const date = new Date(cleanDateStr);
     if (isNaN(date.getTime())) return null;
-    
+
     // Additional validation for PostgreSQL 16
     const year = date.getFullYear();
     if (year < 1900 || year > 2100) return null;
-    
-    return date.toISOString().split('T')[0];
+
+    // Use local date components to avoid timezone shifting
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const dd = String(date.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
   } catch (error) {
     console.warn(`Invalid date format: ${cleanDateStr}`);
     return null;
@@ -834,18 +838,34 @@ function parseDate(dateStr) {
 
 function parseDateTime(dateTimeStr) {
   if (!dateTimeStr || dateTimeStr.toString().trim() === '') return null;
-  
+
   const cleanDateTimeStr = dateTimeStr.toString().trim();
-  
+
   try {
+    // Check if the string is in format "YYYY-MM-DD HH:MM:SS" (local time without timezone)
+    const localDateTimeMatch = cleanDateTimeStr.match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})$/);
+    if (localDateTimeMatch) {
+      const [, year, month, day, hour, minute, second] = localDateTimeMatch;
+      // Return as-is without timezone conversion
+      return `${year}-${month}-${day}T${hour}:${minute}:${second}`;
+    }
+
+    // Otherwise use Date parsing
     const date = new Date(cleanDateTimeStr);
     if (isNaN(date.getTime())) return null;
-    
+
     // Additional validation for PostgreSQL 16
     const year = date.getFullYear();
     if (year < 1900 || year > 2100) return null;
-    
-    return date.toISOString();
+
+    // Format as ISO string in local time to avoid timezone shifting
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const dd = String(date.getDate()).padStart(2, '0');
+    const hh = String(date.getHours()).padStart(2, '0');
+    const min = String(date.getMinutes()).padStart(2, '0');
+    const ss = String(date.getSeconds()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}T${hh}:${min}:${ss}`;
   } catch (error) {
     console.warn(`Invalid datetime format: ${cleanDateTimeStr}`);
     return null;
@@ -985,6 +1005,52 @@ function parseInstrumentData(symbol) {
   }
 
   const normalizedSymbol = symbol.replace(/\s+/g, ' ').trim();
+
+  // Readable IBKR options format: "DIA 10OCT25 466 PUT" (underlying + date + strike + type)
+  const readableOptionMatch = normalizedSymbol.match(/^([A-Z]+)\s+(\d{1,2})([A-Z]{3})(\d{2})\s+(\d+(?:\.\d+)?)\s+(PUT|CALL)$/i);
+  if (readableOptionMatch) {
+    const [, underlying, day, monthStr, year, strike, type] = readableOptionMatch;
+
+    // Convert month abbreviation to number
+    const months = {
+      'JAN': '01', 'FEB': '02', 'MAR': '03', 'APR': '04', 'MAY': '05', 'JUN': '06',
+      'JUL': '07', 'AUG': '08', 'SEP': '09', 'OCT': '10', 'NOV': '11', 'DEC': '12'
+    };
+    const month = months[monthStr.toUpperCase()];
+    const fullYear = 2000 + parseInt(year);
+
+    return {
+      instrumentType: 'option',
+      underlyingSymbol: underlying,
+      strikePrice: parseFloat(strike),
+      expirationDate: `${fullYear}-${month}-${day.padStart(2, '0')}`,
+      optionType: type.toLowerCase(),
+      contractSize: 100
+    };
+  }
+
+  // Compact IBKR options format: "DIA10OCT25466PUT" (underlying + date + strike + type, no spaces)
+  const compactReadableOptionMatch = normalizedSymbol.match(/^([A-Z]+)(\d{1,2})([A-Z]{3})(\d{2})(\d+(?:\.\d+)?)(PUT|CALL)$/i);
+  if (compactReadableOptionMatch) {
+    const [, underlying, day, monthStr, year, strike, type] = compactReadableOptionMatch;
+
+    // Convert month abbreviation to number
+    const months = {
+      'JAN': '01', 'FEB': '02', 'MAR': '03', 'APR': '04', 'MAY': '05', 'JUN': '06',
+      'JUL': '07', 'AUG': '08', 'SEP': '09', 'OCT': '10', 'NOV': '11', 'DEC': '12'
+    };
+    const month = months[monthStr.toUpperCase()];
+    const fullYear = 2000 + parseInt(year);
+
+    return {
+      instrumentType: 'option',
+      underlyingSymbol: underlying,
+      strikePrice: parseFloat(strike),
+      expirationDate: `${fullYear}-${month}-${day.padStart(2, '0')}`,
+      optionType: type.toLowerCase(),
+      contractSize: 100
+    };
+  }
 
   // IBKR Options format: "SEDG  250801P00025000" (underlying + spaces + YYMMDD + C/P + strike)
   const ibkrOptionMatch = normalizedSymbol.match(/^([A-Z]+)\s+(\d{6})([CP])(\d{8})$/);
@@ -2057,6 +2123,11 @@ async function parseThinkorswimTransactions(records, existingPositions = {}) {
         // Add instrument data for options/futures
         Object.assign(currentTrade, instrumentData);
         
+        // For options, update symbol to use underlying symbol instead of the full option symbol
+        if (instrumentData.instrumentType === 'option' && instrumentData.underlyingSymbol) {
+          currentTrade.symbol = instrumentData.underlyingSymbol;
+        }
+        
         // Mark as update if this was an existing position
         if (currentTrade.isExistingPosition) {
           currentTrade.isUpdate = currentTrade.newExecutionsAdded > 0;
@@ -2089,6 +2160,14 @@ async function parseThinkorswimTransactions(records, existingPositions = {}) {
       currentTrade.pnlPercent = 0;
       currentTrade.notes = `Open position: ${currentTrade.executions.length} executions`;
       currentTrade.executionData = currentTrade.executions;
+      
+      // Add instrument data for options/futures
+      Object.assign(currentTrade, instrumentData);
+      
+      // For options, update symbol to use underlying symbol instead of the full option symbol
+      if (instrumentData.instrumentType === 'option' && instrumentData.underlyingSymbol) {
+        currentTrade.symbol = instrumentData.underlyingSymbol;
+      }
 
       // Mark as update if this was an existing position with new executions
       if (currentTrade.isExistingPosition && currentTrade.newExecutionsAdded > 0) {
@@ -2337,6 +2416,11 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}) {
         // Add instrument data for options/futures
         Object.assign(currentTrade, instrumentData);
         
+        // For options, update symbol to use underlying symbol instead of the full option symbol
+        if (instrumentData.instrumentType === 'option' && instrumentData.underlyingSymbol) {
+          currentTrade.symbol = instrumentData.underlyingSymbol;
+        }
+        
         // Mark as update if this was an existing position
         if (currentTrade.isExistingPosition) {
           currentTrade.isUpdate = currentTrade.newExecutionsAdded > 0;
@@ -2369,6 +2453,14 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}) {
       currentTrade.pnlPercent = 0;
       currentTrade.notes = `Open position: ${currentTrade.executions.length} executions`;
       currentTrade.executionData = currentTrade.executions;
+      
+      // Add instrument data for options/futures
+      Object.assign(currentTrade, instrumentData);
+      
+      // For options, update symbol to use underlying symbol instead of the full option symbol
+      if (instrumentData.instrumentType === 'option' && instrumentData.underlyingSymbol) {
+        currentTrade.symbol = instrumentData.underlyingSymbol;
+      }
 
       // Mark as update if this was an existing position with new executions
       if (currentTrade.isExistingPosition && currentTrade.newExecutionsAdded > 0) {
@@ -2614,11 +2706,31 @@ async function parseTradingViewTransactions(records, existingPositions = {}) {
         currentTrade.pnlPercent = (currentTrade.pnl / currentTrade.entryValue) * 100;
         currentTrade.quantity = currentTrade.totalQuantity * (typeof contractMultiplier !== 'undefined' ? contractMultiplier : 1);
         currentTrade.commission = currentTrade.totalFees;
+
+        // Calculate split commissions based on entry vs exit executions
+        let entryCommission = 0;
+        let exitCommission = 0;
+        currentTrade.executions.forEach(exec => {
+          if ((currentTrade.side === 'long' && exec.action === 'buy') ||
+              (currentTrade.side === 'short' && exec.action === 'sell')) {
+            entryCommission += exec.fees;
+          } else {
+            exitCommission += exec.fees;
+          }
+        });
+        currentTrade.entryCommission = entryCommission;
+        currentTrade.exitCommission = exitCommission;
+
         currentTrade.fees = 0;
         currentTrade.exitTime = transaction.datetime;
         currentTrade.executionData = currentTrade.executions;
         // Add instrument data for options/futures
         Object.assign(currentTrade, instrumentData);
+        
+        // For options, update symbol to use underlying symbol instead of the full option symbol
+        if (instrumentData.instrumentType === 'option' && instrumentData.underlyingSymbol) {
+          currentTrade.symbol = instrumentData.underlyingSymbol;
+        }
 
         // Mark as update if this was an existing position
         if (currentTrade.isExistingPosition) {
@@ -2650,6 +2762,14 @@ async function parseTradingViewTransactions(records, existingPositions = {}) {
       currentTrade.pnlPercent = 0;
       currentTrade.notes = `Open position: ${currentTrade.executions.length} executions`;
       currentTrade.executionData = currentTrade.executions;
+      
+      // Add instrument data for options/futures
+      Object.assign(currentTrade, instrumentData);
+      
+      // For options, update symbol to use underlying symbol instead of the full option symbol
+      if (instrumentData.instrumentType === 'option' && instrumentData.underlyingSymbol) {
+        currentTrade.symbol = instrumentData.underlyingSymbol;
+      }
 
       // Mark as update if this was an existing position with new executions
       if (currentTrade.isExistingPosition && currentTrade.newExecutionsAdded > 0) {
@@ -2716,9 +2836,11 @@ async function parseIBKRTransactions(records, existingPositions = {}) {
         absQuantity = Math.abs(quantity);
         price = parseFloat(record.Price);
         commission = Math.abs(parseFloat(record.Commission || 0));
-        dateTime = record.DateTime || '';
+        // Clean DateTime - remove leading apostrophe if present
+        dateTime = (record.DateTime || '').toString().replace(/^'/, '').trim();
         action = quantity > 0 ? 'buy' : 'sell';
       }
+
 
       // Skip if missing essential data
       if (!symbol || absQuantity === 0 || price === 0 || !dateTime) {
@@ -2735,19 +2857,29 @@ async function parseIBKRTransactions(records, existingPositions = {}) {
         continue;
       }
 
+      // For options, convert quantity from shares to contracts
+      // IBKR shows quantity in shares (e.g., 100 shares = 1 contract)
+      let processedQuantity = absQuantity;
+      const instrumentData = parseInstrumentData(symbol);
+      if (instrumentData.instrumentType === 'option') {
+        // Convert shares to contracts (divide by 100)
+        processedQuantity = absQuantity / 100;
+        console.log(`IBKR Option: ${absQuantity} shares = ${processedQuantity} contracts`);
+      }
+
       transactions.push({
         symbol,
         date: tradeDate,
         datetime: entryTime,
         action: action,
-        quantity: absQuantity,
+        quantity: processedQuantity,
         price: price,
         fees: commission,
         description: `IBKR transaction`,
         raw: record
       });
 
-      console.log(`Parsed IBKR transaction: ${action} ${absQuantity} ${symbol} @ $${price}`);
+      console.log(`Parsed IBKR transaction: ${action} ${processedQuantity} ${symbol} @ $${price}`);
     } catch (error) {
       console.error('Error parsing IBKR transaction:', error, record);
     }
@@ -2808,7 +2940,9 @@ async function parseIBKRTransactions(records, existingPositions = {}) {
       instrumentData = parseInstrumentData(symbol);
     }
 
-    const contractMultiplier = instrumentData.instrumentType === 'option' ? (instrumentData.contractSize || 100) :
+    // For IBKR options, quantity is already converted to contracts, so multiplier is 1
+    // For other instruments, use the standard contract multiplier
+    const contractMultiplier = instrumentData.instrumentType === 'option' ? 1 :
                                 instrumentData.instrumentType === 'future' ? (instrumentData.pointValue || 1) : 1;
 
     console.log(`Instrument type: ${instrumentData.instrumentType}, contract multiplier: ${contractMultiplier}`);
@@ -2873,10 +3007,12 @@ async function parseIBKRTransactions(records, existingPositions = {}) {
         };
 
         // Check if this execution already exists (prevent duplicates on re-import)
+        // Include fees in duplicate check to handle multiple partial fills at same time/price
         const executionExists = currentTrade.executions.some(exec =>
           new Date(exec.datetime).toISOString() === new Date(newExecution.datetime).toISOString() &&
           exec.quantity === newExecution.quantity &&
-          exec.price === newExecution.price
+          exec.price === newExecution.price &&
+          exec.fees === newExecution.fees
         );
 
         if (!executionExists) {
@@ -2929,11 +3065,31 @@ async function parseIBKRTransactions(records, existingPositions = {}) {
         currentTrade.pnlPercent = (currentTrade.pnl / currentTrade.entryValue) * 100;
         currentTrade.quantity = currentTrade.totalQuantity * (typeof contractMultiplier !== 'undefined' ? contractMultiplier : 1);
         currentTrade.commission = currentTrade.totalFees;
+
+        // Calculate split commissions based on entry vs exit executions
+        let entryCommission = 0;
+        let exitCommission = 0;
+        currentTrade.executions.forEach(exec => {
+          if ((currentTrade.side === 'long' && exec.action === 'buy') ||
+              (currentTrade.side === 'short' && exec.action === 'sell')) {
+            entryCommission += exec.fees;
+          } else {
+            exitCommission += exec.fees;
+          }
+        });
+        currentTrade.entryCommission = entryCommission;
+        currentTrade.exitCommission = exitCommission;
+
         currentTrade.fees = 0;
         currentTrade.exitTime = transaction.datetime;
         currentTrade.executionData = currentTrade.executions;
         // Add instrument data for options/futures
         Object.assign(currentTrade, instrumentData);
+        
+        // For options, update symbol to use underlying symbol instead of the full option symbol
+        if (instrumentData.instrumentType === 'option' && instrumentData.underlyingSymbol) {
+          currentTrade.symbol = instrumentData.underlyingSymbol;
+        }
 
         // Mark as update if this was an existing position
         if (currentTrade.isExistingPosition) {
@@ -2965,6 +3121,14 @@ async function parseIBKRTransactions(records, existingPositions = {}) {
       currentTrade.pnlPercent = 0;
       currentTrade.notes = `Open position: ${currentTrade.executions.length} executions`;
       currentTrade.executionData = currentTrade.executions;
+      
+      // Add instrument data for options/futures
+      Object.assign(currentTrade, instrumentData);
+      
+      // For options, update symbol to use underlying symbol instead of the full option symbol
+      if (instrumentData.instrumentType === 'option' && instrumentData.underlyingSymbol) {
+        currentTrade.symbol = instrumentData.underlyingSymbol;
+      }
 
       // Mark as update if this was an existing position with new executions
       if (currentTrade.isExistingPosition && currentTrade.newExecutionsAdded > 0) {

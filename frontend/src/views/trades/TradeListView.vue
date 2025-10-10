@@ -473,13 +473,13 @@
                   {{ formatHoldTime(trade) }}
                 </td>
                 
-                <td v-else-if="column.visible && column.key === 'roi'" 
-                    class="px-6 py-4 whitespace-nowrap cursor-pointer" 
+                <td v-else-if="column.visible && column.key === 'roi'"
+                    class="px-6 py-4 whitespace-nowrap cursor-pointer"
                     @click="$router.push(`/trades/${trade.id}`)">
                   <div class="text-sm font-medium" :class="[
-                    trade.roi >= 0 ? 'text-green-600' : 'text-red-600'
+                    (trade.pnl_percent || 0) >= 0 ? 'text-green-600' : 'text-red-600'
                   ]">
-                    {{ trade.roi ? `${trade.roi > 0 ? '+' : ''}${formatNumber(trade.roi)}%` : '-' }}
+                    {{ trade.pnl_percent != null ? `${trade.pnl_percent > 0 ? '+' : ''}${formatNumber(trade.pnl_percent)}%` : '-' }}
                   </div>
                 </td>
               </template>
@@ -729,11 +729,24 @@ function formatDate(date) {
 }
 
 function formatHoldTime(trade) {
-  if (!trade.trade_date || !trade.exit_date) return '-'
-  const start = new Date(trade.trade_date)
-  const end = new Date(trade.exit_date)
-  const days = Math.floor((end - start) / (1000 * 60 * 60 * 24))
-  if (days === 0) return 'Same day'
+  // Use hold_time_minutes if available
+  if (trade.hold_time_minutes != null) {
+    const minutes = trade.hold_time_minutes
+    if (minutes < 60) return `${Math.floor(minutes)}m`
+    if (minutes < 1440) return `${Math.floor(minutes / 60)}h ${Math.floor(minutes % 60)}m`
+    const days = Math.floor(minutes / 1440)
+    if (days === 1) return '1 day'
+    return `${days} days`
+  }
+
+  // Fallback to calculating from dates
+  if (!trade.entry_time || !trade.exit_time) return '-'
+  const start = new Date(trade.entry_time)
+  const end = new Date(trade.exit_time)
+  const minutes = Math.floor((end - start) / (1000 * 60))
+  if (minutes < 60) return `${minutes}m`
+  if (minutes < 1440) return `${Math.floor(minutes / 60)}h ${Math.floor(minutes % 60)}m`
+  const days = Math.floor(minutes / 1440)
   if (days === 1) return '1 day'
   return `${days} days`
 }
