@@ -526,6 +526,9 @@ router.get('/earnings', authenticate, tradeController.getUpcomingEarnings);
  */
 router.get('/news', authenticate, tradeController.getTradeNews);
 
+// Export trades - MUST be before /:id route to avoid matching "export" as an ID
+router.get('/export', authenticate, tradeController.exportTrades);
+
 // Chart data endpoint - MUST be before /:id route
 router.get('/:id/chart-data', authenticate, tradeController.getTradeChartData);
 

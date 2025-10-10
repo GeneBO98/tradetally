@@ -1036,18 +1036,23 @@ const tradeController = {
             trades: [],
             totalQuantity: 0,
             totalCost: 0,
-            avgPrice: 0
+            avgPrice: 0,
+            instrumentType: trade.instrument_type || 'stock',
+            contractSize: trade.contract_size || 1
           };
         }
-        
+
         positionMap[trade.symbol].trades.push(trade);
-        
+
         // Calculate net position considering trade direction
         const quantity = trade.side === 'long' ? trade.quantity : -trade.quantity;
         positionMap[trade.symbol].totalQuantity += quantity;
-        
-        // For cost calculation, use absolute value since we're tracking net cost basis
-        positionMap[trade.symbol].totalCost += Math.abs(quantity) * trade.entry_price;
+
+        // For cost calculation, account for contract size (options/futures multiplier)
+        const contractMultiplier = trade.instrument_type === 'option' || trade.instrument_type === 'future'
+          ? (trade.contract_size || 100)
+          : 1;
+        positionMap[trade.symbol].totalCost += Math.abs(quantity) * trade.entry_price * contractMultiplier;
       });
 
       // Calculate average prices and determine position side
@@ -1094,12 +1099,16 @@ const tradeController = {
         // Enhance positions with real-time data
         const enhancedPositions = Object.values(positionMap).map(position => {
           const quote = quotes[position.symbol];
-          
+
           if (quote) {
             const currentPrice = quote.c; // Current price
-            const currentValue = currentPrice * position.totalQuantity;
+            // Account for contract multiplier in current value calculation
+            const contractMultiplier = position.instrumentType === 'option' || position.instrumentType === 'future'
+              ? (position.contractSize || 100)
+              : 1;
+            const currentValue = currentPrice * position.totalQuantity * contractMultiplier;
             // For short positions, profit is made when price goes down
-            const unrealizedPnL = position.side === 'short' 
+            const unrealizedPnL = position.side === 'short'
               ? position.totalCost - currentValue  // Short: profit when current value < entry cost
               : currentValue - position.totalCost;  // Long: profit when current value > entry cost
             const unrealizedPnLPercent = (unrealizedPnL / position.totalCost) * 100;
@@ -1659,11 +1668,137 @@ const tradeController = {
 
   async exportTrades(req, res, next) {
     try {
-      res.json({
-        message: 'Trade export not yet implemented',
-        format: null,
-        data: null
-      });
+      const { startDate, endDate, format = 'csv' } = req.query;
+
+      // Build filters
+      const filters = {};
+      if (startDate) filters.startDate = startDate;
+      if (endDate) filters.endDate = endDate;
+
+      // Fetch all trades for the user
+      const trades = await Trade.findByUser(req.user.id, filters);
+
+      if (format === 'csv') {
+        // Define CSV headers - include ALL fields
+        const headers = [
+          'Symbol',
+          'Entry Time',
+          'Exit Time',
+          'Entry Price',
+          'Exit Price',
+          'Quantity',
+          'Side',
+          'Instrument Type',
+          'P&L',
+          'P&L %',
+          'Commission',
+          'Entry Commission',
+          'Exit Commission',
+          'Fees',
+          'Broker',
+          'Strategy',
+          'Setup',
+          'Notes',
+          'MAE',
+          'MFE',
+          'Confidence',
+          'Tags',
+          'Trade Date',
+          'Hold Time (minutes)',
+          // Options fields
+          'Underlying Symbol',
+          'Option Type',
+          'Strike Price',
+          'Expiration Date',
+          'Contract Size',
+          // Futures fields
+          'Underlying Asset',
+          'Contract Month',
+          'Contract Year',
+          'Tick Size',
+          'Point Value',
+          // Currency fields
+          'Currency',
+          'Exchange Rate',
+          'Original Entry Price (Currency)',
+          'Original Exit Price (Currency)',
+          'Original P&L (Currency)',
+          'Original Commission (Currency)',
+          'Original Fees (Currency)'
+        ];
+
+        // Convert trades to CSV rows
+        const rows = trades.map(trade => [
+          trade.symbol,
+          trade.entry_time,
+          trade.exit_time || '',
+          trade.entry_price,
+          trade.exit_price || '',
+          trade.quantity,
+          trade.side,
+          trade.instrument_type || 'stock',
+          trade.pnl || '',
+          trade.pnl_percent || '',
+          trade.commission || 0,
+          trade.entry_commission || 0,
+          trade.exit_commission || 0,
+          trade.fees || 0,
+          trade.broker || '',
+          trade.strategy || '',
+          trade.setup || '',
+          (trade.notes || '').replace(/"/g, '""'), // Escape quotes in notes
+          trade.mae || '',
+          trade.mfe || '',
+          trade.confidence || '',
+          Array.isArray(trade.tags) ? trade.tags.join(';') : '',
+          trade.trade_date || '',
+          trade.hold_time_minutes || '',
+          // Options fields
+          trade.underlying_symbol || '',
+          trade.option_type || '',
+          trade.strike_price || '',
+          trade.expiration_date || '',
+          trade.contract_size || '',
+          // Futures fields
+          trade.underlying_asset || '',
+          trade.contract_month || '',
+          trade.contract_year || '',
+          trade.tick_size || '',
+          trade.point_value || '',
+          // Currency fields
+          trade.currency || 'USD',
+          trade.exchange_rate || 1,
+          trade.original_entry_price_currency || '',
+          trade.original_exit_price_currency || '',
+          trade.original_pnl_currency || '',
+          trade.original_commission_currency || '',
+          trade.original_fees_currency || ''
+        ]);
+
+        // Build CSV content
+        const csvContent = [
+          headers.map(h => `"${h}"`).join(','),
+          ...rows.map(row => row.map(cell => {
+            // Handle null/undefined
+            if (cell === null || cell === undefined) return '';
+            // Wrap in quotes and escape existing quotes
+            return `"${String(cell).replace(/"/g, '""')}"`;
+          }).join(','))
+        ].join('\n');
+
+        // Set headers for file download
+        const filename = `tradetally_export_${new Date().toISOString().split('T')[0]}.csv`;
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.send(csvContent);
+      } else {
+        // JSON format
+        res.json({
+          trades,
+          count: trades.length,
+          exportDate: new Date().toISOString()
+        });
+      }
     } catch (error) {
       next(error);
     }
