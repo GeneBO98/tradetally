@@ -137,6 +137,10 @@ const tradeController = {
 
   async createTrade(req, res, next) {
     try {
+      // Log incoming trade data for debugging
+      if (req.body.strategy || req.body.setup) {
+        console.log(`[TRADE CONTROLLER] Creating trade with strategy="${req.body.strategy || 'null'}", setup="${req.body.setup || 'null'}"`);
+      }
       const trade = await Trade.create(req.user.id, req.body);
       
       // Invalidate sector performance cache for this user since new trade was added
@@ -188,6 +192,10 @@ const tradeController = {
 
   async updateTrade(req, res, next) {
     try {
+      // Log incoming update data for debugging
+      if (req.body.strategy !== undefined || req.body.setup !== undefined) {
+        console.log(`[TRADE CONTROLLER] Updating trade ${req.params.id} with strategy="${req.body.strategy || 'null'}", setup="${req.body.setup || 'null'}"`);
+      }
       const trade = await Trade.update(req.params.id, req.user.id, req.body);
       
       if (!trade) {

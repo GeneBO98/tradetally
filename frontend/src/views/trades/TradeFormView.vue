@@ -237,6 +237,7 @@
                 type="text"
                 class="input pr-20"
                 placeholder="Enter broker name"
+                @keydown.enter.prevent="handleBrokerInputEnter"
                 @blur="handleBrokerInputBlur"
               />
               <select
@@ -451,29 +452,23 @@
               id="strategy"
               v-model="form.strategy"
               type="text"
-              class="input pr-20"
+              class="input"
               placeholder="Enter strategy name"
+              @keydown.enter.prevent="handleStrategyInputEnter"
               @blur="handleStrategyInputBlur"
             />
             <select
               v-else
               id="strategy"
               v-model="form.strategy"
-              class="input pr-20"
+              class="input"
               @change="handleStrategySelect"
             >
               <option value="">Select strategy</option>
+              <option v-if="form.strategy && !strategiesList.includes(form.strategy)" :value="form.strategy">{{ form.strategy }}</option>
               <option v-for="strategy in strategiesList" :key="strategy" :value="strategy">{{ strategy }}</option>
               <option value="__custom__">+ Add New Strategy</option>
             </select>
-            <button
-              v-if="showStrategyInput"
-              type="button"
-              @click="showStrategyInput = false"
-              class="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 px-2 py-1"
-            >
-              Select
-            </button>
           </div>
         </div>
         <div class="relative">
@@ -484,29 +479,23 @@
               id="setup"
               v-model="form.setup"
               type="text"
-              class="input pr-20"
+              class="input"
               placeholder="Enter setup name"
+              @keydown.enter.prevent="handleSetupInputEnter"
               @blur="handleSetupInputBlur"
             />
             <select
               v-else
               id="setup"
               v-model="form.setup"
-              class="input pr-20"
+              class="input"
               @change="handleSetupSelect"
             >
               <option value="">Select setup</option>
+              <option v-if="form.setup && !setupsList.includes(form.setup)" :value="form.setup">{{ form.setup }}</option>
               <option v-for="setup in setupsList" :key="setup" :value="setup">{{ setup }}</option>
               <option value="__custom__">+ Add New Setup</option>
             </select>
-            <button
-              v-if="showSetupInput"
-              type="button"
-              @click="showSetupInput = false"
-              class="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 px-2 py-1"
-            >
-              Select
-            </button>
           </div>
         </div>
   
@@ -589,7 +578,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTradesStore } from '@/stores/trades'
 import { useNotification } from '@/composables/useNotification'
@@ -671,11 +660,21 @@ function formatDateTimeLocal(date) {
 
 function formatDateOnly(date) {
   if (!date) return ''
+  
   // If already in YYYY-MM-DD format, return as-is
   if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return date
   }
-  // Otherwise parse and format (for datetime strings or Date objects)
+  
+  // For date-only fields, parse the date string directly to avoid timezone issues
+  // Split the date string and reconstruct it to avoid timezone conversion
+  const dateStr = date.toString()
+  const match = dateStr.match(/(\d{4})-(\d{2})-(\d{2})/)
+  if (match) {
+    return `${match[1]}-${match[2]}-${match[3]}`
+  }
+  
+  // Fallback to Date object if the above doesn't work
   const d = new Date(date)
   const year = d.getFullYear()
   const month = String(d.getMonth() + 1).padStart(2, '0')
@@ -783,6 +782,18 @@ async function handleSubmit() {
 
     if (isEdit.value) {
       await tradesStore.updateTrade(route.params.id, tradeData)
+
+      // Add new values to lists if not already present
+      if (tradeData.strategy && !strategiesList.value.includes(tradeData.strategy)) {
+        strategiesList.value.push(tradeData.strategy)
+      }
+      if (tradeData.setup && !setupsList.value.includes(tradeData.setup)) {
+        setupsList.value.push(tradeData.setup)
+      }
+      if (tradeData.broker && !brokersList.value.includes(tradeData.broker)) {
+        brokersList.value.push(tradeData.broker)
+      }
+
       showSuccess('Success', 'Trade updated successfully')
       trackTradeAction('update', {
         side: tradeData.side,
@@ -800,6 +811,18 @@ async function handleSubmit() {
         })
       }
       const newTrade = await tradesStore.createTrade(tradeData)
+
+      // Add new values to lists if not already present
+      if (tradeData.strategy && !strategiesList.value.includes(tradeData.strategy)) {
+        strategiesList.value.push(tradeData.strategy)
+      }
+      if (tradeData.setup && !setupsList.value.includes(tradeData.setup)) {
+        setupsList.value.push(tradeData.setup)
+      }
+      if (tradeData.broker && !brokersList.value.includes(tradeData.broker)) {
+        brokersList.value.push(tradeData.broker)
+      }
+
       showSuccess('Success', 'Trade created successfully')
       trackTradeAction('create', {
         side: tradeData.side,
@@ -962,9 +985,16 @@ function handleBrokerSelect(event) {
   }
 }
 
+function handleBrokerInputEnter() {
+  // Save the broker and switch back to select
+  if (form.value.broker.trim()) {
+    showBrokerInput.value = false
+  }
+}
+
 function handleBrokerInputBlur() {
   // If the input is empty, switch back to select
-  if (!form.value.broker) {
+  if (!form.value.broker.trim()) {
     showBrokerInput.value = false
   }
 }
@@ -979,8 +1009,16 @@ function handleStrategySelect(event) {
   }
 }
 
+function handleStrategyInputEnter() {
+  // Save the strategy and switch back to select
+  if (form.value.strategy.trim()) {
+    showStrategyInput.value = false
+  }
+}
+
 function handleStrategyInputBlur() {
-  if (!form.value.strategy) {
+  // If the input is empty, switch back to select
+  if (!form.value.strategy.trim()) {
     showStrategyInput.value = false
   }
 }
@@ -995,8 +1033,16 @@ function handleSetupSelect(event) {
   }
 }
 
+function handleSetupInputEnter() {
+  // Save the setup and switch back to select
+  if (form.value.setup.trim()) {
+    showSetupInput.value = false
+  }
+}
+
 function handleSetupInputBlur() {
-  if (!form.value.setup) {
+  // If the input is empty, switch back to select
+  if (!form.value.setup.trim()) {
     showSetupInput.value = false
   }
 }

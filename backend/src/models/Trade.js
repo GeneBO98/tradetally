@@ -221,9 +221,9 @@ class Trade {
 
     const result = await db.query(query, values);
     const createdTrade = result.rows[0];
-    
-    // Log the strategy assignment for debugging
-    console.log(`Auto-assigned strategy "${finalStrategy}" to trade ${createdTrade.id} with ${strategyConfidence}% confidence using ${classificationMethod}`);
+
+    // Log the strategy and setup assignment for debugging
+    console.log(`[TRADE CREATE] Trade ${createdTrade.id}: strategy="${finalStrategy || 'null'}", setup="${setup || 'null'}", confidence=${strategyConfidence}%, method=${classificationMethod}`);
     
     // Check enrichment cache for existing data
     let appliedCachedData = false;
@@ -310,6 +310,7 @@ class Trade {
   static async findById(id, userId = null) {
     let query = `
       SELECT t.*, u.username, u.avatar_url,
+        t.strategy, t.setup,
         json_agg(
           json_build_object(
             'id', ta.id,
@@ -408,7 +409,8 @@ class Trade {
   static async findByUser(userId, filters = {}) {
     const { getUserTimezone } = require('../utils/timezone');
     let query = `
-      SELECT t.*, 
+      SELECT t.*,
+        t.strategy, t.setup,
         array_agg(DISTINCT ta.file_url) FILTER (WHERE ta.id IS NOT NULL) as attachment_urls,
         count(DISTINCT tc.id)::integer as comment_count,
         sc.finnhub_industry as sector,
@@ -658,9 +660,22 @@ class Trade {
       }
     }
 
+    // Check if user is manually setting strategy - do this first to prevent re-classification from overwriting it
+    if (updates.strategy && !currentTrade.manual_override) {
+      // User is manually setting strategy - mark as override
+      updates.manualOverride = true;
+      updates.strategyConfidence = 100;
+      updates.classificationMethod = 'manual';
+      updates.classificationMetadata = { 
+        userProvided: true, 
+        overrideTimestamp: new Date().toISOString() 
+      };
+    }
+
     // Check if we need to re-classify strategy
     // Skip reclassification if skipApiCalls is set (e.g., during bulk imports)
-    const shouldReclassify = !options.skipApiCalls && !currentTrade.manual_override && (
+    // Also skip if user is manually setting strategy (already handled above)
+    const shouldReclassify = !options.skipApiCalls && !currentTrade.manual_override && !updates.strategy && (
       updates.exitTime || updates.exitPrice || updates.entryTime || updates.entryPrice
     );
 
@@ -728,15 +743,6 @@ class Trade {
         console.warn('Error in trade re-classification:', error.message);
         // Don't fail the update, just keep existing strategy
       }
-    } else if (updates.strategy && !currentTrade.manual_override) {
-      // User is manually setting strategy - mark as override
-      updates.manualOverride = true;
-      updates.strategyConfidence = 100;
-      updates.classificationMethod = 'manual';
-      updates.classificationMetadata = { 
-        userProvided: true, 
-        overrideTimestamp: new Date().toISOString() 
-      };
     }
 
     // Special handling for executions to merge instead of replace
@@ -804,13 +810,19 @@ class Trade {
         // Convert camelCase to snake_case for database columns
         const dbKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
         fields.push(`${dbKey} = $${paramCount}`);
-        
+
         // Handle JSON/JSONB fields that need serialization
         if (key === 'classificationMetadata' || key === 'newsEvents') {
           values.push(JSON.stringify(value));
         } else {
           values.push(value);
         }
+
+        // Log strategy and setup updates
+        if (key === 'strategy' || key === 'setup') {
+          console.log(`[TRADE UPDATE] Setting ${key}="${value}" for trade ${id}`);
+        }
+
         paramCount++;
       }
     });
