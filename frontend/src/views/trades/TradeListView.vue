@@ -482,6 +482,53 @@
                     {{ trade.pnl_percent != null ? `${trade.pnl_percent > 0 ? '+' : ''}${formatNumber(trade.pnl_percent)}%` : '-' }}
                   </div>
                 </td>
+
+                <!-- Options/Futures Fields -->
+                <td v-else-if="column.visible && column.key === 'instrumentType'"
+                    class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer"
+                    @click="$router.push(`/trades/${trade.id}`)">
+                  <span v-if="trade.instrument_type" class="capitalize">{{ trade.instrument_type }}</span>
+                  <span v-else>Stock</span>
+                </td>
+
+                <td v-else-if="column.visible && column.key === 'underlyingSymbol'"
+                    class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer"
+                    @click="$router.push(`/trades/${trade.id}`)">
+                  {{ trade.underlying_symbol || '-' }}
+                </td>
+
+                <td v-else-if="column.visible && column.key === 'optionType'"
+                    class="px-6 py-4 whitespace-nowrap cursor-pointer"
+                    @click="$router.push(`/trades/${trade.id}`)">
+                  <span v-if="trade.option_type"
+                        class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full uppercase"
+                        :class="[
+                          trade.option_type === 'call'
+                            ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
+                            : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
+                        ]">
+                    {{ trade.option_type }}
+                  </span>
+                  <span v-else class="text-sm text-gray-500 dark:text-gray-400">-</span>
+                </td>
+
+                <td v-else-if="column.visible && column.key === 'strikePrice'"
+                    class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer"
+                    @click="$router.push(`/trades/${trade.id}`)">
+                  {{ trade.strike_price ? `$${formatNumber(trade.strike_price)}` : '-' }}
+                </td>
+
+                <td v-else-if="column.visible && column.key === 'expirationDate'"
+                    class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer"
+                    @click="$router.push(`/trades/${trade.id}`)">
+                  {{ trade.expiration_date ? formatDate(trade.expiration_date) : '-' }}
+                </td>
+
+                <td v-else-if="column.visible && column.key === 'contractSize'"
+                    class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer"
+                    @click="$router.push(`/trades/${trade.id}`)">
+                  {{ trade.contract_size || '-' }}
+                </td>
               </template>
               <!-- Empty cell to align with column customizer -->
               <td class="px-2 py-4" style="width: 40px;"></td>

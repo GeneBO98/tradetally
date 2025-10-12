@@ -594,6 +594,14 @@ class Trade {
       paramCount += filters.instrumentTypes.length;
     }
 
+    // Option types filter (call, put) - only applies to options
+    if (filters.optionTypes && filters.optionTypes.length > 0) {
+      const placeholders = filters.optionTypes.map((_, index) => `$${paramCount + index}`).join(',');
+      query += ` AND t.option_type IN (${placeholders})`;
+      filters.optionTypes.forEach(type => values.push(type));
+      paramCount += filters.optionTypes.length;
+    }
+
     // Broker filter - support both single and multi-select
     if (filters.brokers) {
       // Handle comma-separated string of brokers (from multi-select)

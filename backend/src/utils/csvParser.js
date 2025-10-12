@@ -1505,25 +1505,35 @@ async function parseLightspeedTransactions(records, existingPositions = {}) {
       // Process the transaction
       if (transaction.side === 'buy') {
         currentPosition += qty;
-        
+
+        // Apply multiplier for options/futures
+        const multiplier = (transaction.instrumentType === 'option' || transaction.instrumentType === 'future')
+          ? (transaction.contractSize || 100)
+          : 1;
+
         // Add to entry or exit value based on trade direction
         if (currentTrade && currentTrade.side === 'long') {
-          currentTrade.entryValue += qty * transaction.entryPrice;
+          currentTrade.entryValue += qty * transaction.entryPrice * multiplier;
           currentTrade.totalQuantity += qty;
         } else if (currentTrade && currentTrade.side === 'short') {
-          currentTrade.exitValue += qty * transaction.entryPrice;
+          currentTrade.exitValue += qty * transaction.entryPrice * multiplier;
           // Don't add to totalQuantity for covering short position
         }
-        
+
       } else if (transaction.side === 'sell') {
         currentPosition -= qty;
-        
+
+        // Apply multiplier for options/futures
+        const multiplier = (transaction.instrumentType === 'option' || transaction.instrumentType === 'future')
+          ? (transaction.contractSize || 100)
+          : 1;
+
         // Add to entry or exit value based on trade direction
         if (currentTrade && currentTrade.side === 'short') {
-          currentTrade.entryValue += qty * transaction.entryPrice;
+          currentTrade.entryValue += qty * transaction.entryPrice * multiplier;
           currentTrade.totalQuantity += qty;
         } else if (currentTrade && currentTrade.side === 'long') {
-          currentTrade.exitValue += qty * transaction.entryPrice;
+          currentTrade.exitValue += qty * transaction.entryPrice * multiplier;
           // Don't modify totalQuantity when selling from long position
         }
       }
@@ -2990,12 +3000,16 @@ async function parseIBKRTransactions(records, existingPositions = {}) {
       instrumentData = parseInstrumentData(symbol);
     }
 
-    // For IBKR options, quantity is already converted to contracts, so multiplier is 1
-    // For other instruments, use the standard contract multiplier
-    const contractMultiplier = instrumentData.instrumentType === 'option' ? 1 :
-                                instrumentData.instrumentType === 'future' ? (instrumentData.pointValue || 1) : 1;
+    // Note: For IBKR, quantity is in contracts for options but prices are per-share
+    // We don't use contractMultiplier for quantity adjustments, but we DO need to apply
+    // a multiplier when calculating dollar values (entryValue/exitValue)
+    const contractMultiplier = 1; // Quantity is already in contracts
 
     console.log(`Instrument type: ${instrumentData.instrumentType}, contract multiplier: ${contractMultiplier}`);
+
+    // For dollar value calculations (entryValue/exitValue), we need to apply appropriate multipliers
+    const valueMultiplier = instrumentData.instrumentType === 'option' ? 100 :
+                            instrumentData.instrumentType === 'future' ? (instrumentData.pointValue || 1) : 1;
 
     // Track position and round-trip trades
     // Start with existing position if we have one for this symbol
@@ -3081,19 +3095,19 @@ async function parseIBKRTransactions(records, existingPositions = {}) {
         currentPosition += qty;
 
         if (currentTrade && currentTrade.side === 'long') {
-          currentTrade.entryValue += qty * transaction.price;
+          currentTrade.entryValue += qty * transaction.price * valueMultiplier;
           currentTrade.totalQuantity += qty;
         } else if (currentTrade && currentTrade.side === 'short') {
-          currentTrade.exitValue += qty * transaction.price;
+          currentTrade.exitValue += qty * transaction.price * valueMultiplier;
         }
       } else if (transaction.action === 'sell') {
         currentPosition -= qty;
 
         if (currentTrade && currentTrade.side === 'short') {
-          currentTrade.entryValue += qty * transaction.price;
+          currentTrade.entryValue += qty * transaction.price * valueMultiplier;
           currentTrade.totalQuantity += qty;
         } else if (currentTrade && currentTrade.side === 'long') {
-          currentTrade.exitValue += qty * transaction.price;
+          currentTrade.exitValue += qty * transaction.price * valueMultiplier;
         }
       }
 
