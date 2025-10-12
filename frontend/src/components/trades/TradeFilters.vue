@@ -445,6 +445,52 @@
             </div>
           </div>
         </div>
+
+        <!-- Option Type Filter (only shown when Options selected) -->
+        <div v-if="filters.instrumentTypes.includes('option')">
+          <label class="label">Option Type</label>
+          <div class="relative" data-dropdown="optionType">
+            <button
+              @click.stop="showOptionTypeDropdown = !showOptionTypeDropdown"
+              class="input w-full text-left flex items-center justify-between"
+              type="button"
+            >
+              <span class="truncate">
+                {{ getSelectedOptionTypeText() }}
+              </span>
+              <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+              </svg>
+            </button>
+
+            <div v-if="showOptionTypeDropdown" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
+              <div class="p-1">
+                <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                  <input
+                    type="checkbox"
+                    :checked="!filters.optionTypes || filters.optionTypes.length === 0"
+                    @change="toggleAllOptionTypes"
+                    class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                  />
+                  <span class="ml-3 text-sm text-gray-900 dark:text-white">All Option Types</span>
+                </label>
+              </div>
+              <div class="border-t border-gray-200 dark:border-gray-600">
+                <div v-for="type in optionTypeOptions" :key="type.value" class="p-1">
+                  <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                    <input
+                      type="checkbox"
+                      :value="type.value"
+                      v-model="filters.optionTypes"
+                      class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                    />
+                    <span class="ml-3 text-sm text-gray-900 dark:text-white">{{ type.label }}</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -487,6 +533,7 @@ const showSectorDropdown = ref(false)
 const showDayOfWeekDropdown = ref(false)
 const showBrokerDropdown = ref(false)
 const showInstrumentTypeDropdown = ref(false)
+const showOptionTypeDropdown = ref(false)
 
 // Day of week options (weekdays only - markets are closed weekends)
 const dayOfWeekOptions = [
@@ -502,6 +549,12 @@ const instrumentTypeOptions = [
   { value: 'stock', label: 'Stocks' },
   { value: 'option', label: 'Options' },
   { value: 'future', label: 'Futures' }
+]
+
+// Option type options
+const optionTypeOptions = [
+  { value: 'call', label: 'Calls' },
+  { value: 'put', label: 'Puts' }
 ]
 
 // Strategy options
@@ -546,7 +599,8 @@ const filters = ref({
   broker: '', // Keep for backward compatibility
   brokers: [], // New multi-select array
   daysOfWeek: [], // New multi-select array for days
-  instrumentTypes: [] // New multi-select array for instrument types
+  instrumentTypes: [], // New multi-select array for instrument types
+  optionTypes: [] // New multi-select array for option types (call/put)
 })
 
 // Helper methods for multi-select dropdowns
@@ -616,6 +670,23 @@ function getSelectedInstrumentTypeText() {
 function toggleAllInstrumentTypes(event) {
   if (event.target.checked) {
     filters.value.instrumentTypes = []
+    // Also clear option types when clearing instrument types
+    filters.value.optionTypes = []
+  }
+}
+
+function getSelectedOptionTypeText() {
+  if (!filters.value.optionTypes || filters.value.optionTypes.length === 0) return 'All Option Types'
+  if (filters.value.optionTypes.length === 1) {
+    const type = optionTypeOptions.find(t => t.value === filters.value.optionTypes[0])
+    return type ? type.label : 'All Option Types'
+  }
+  return `${filters.value.optionTypes.length} types selected`
+}
+
+function toggleAllOptionTypes(event) {
+  if (event.target.checked) {
+    filters.value.optionTypes = []
   }
 }
 
@@ -641,6 +712,7 @@ const activeFiltersCount = computed(() => {
   if (filters.value.brokers && filters.value.brokers.length > 0) count++
   if (filters.value.daysOfWeek && filters.value.daysOfWeek.length > 0) count++
   if (filters.value.instrumentTypes && filters.value.instrumentTypes.length > 0) count++
+  if (filters.value.optionTypes && filters.value.optionTypes.length > 0) count++
   return count
 })
 
@@ -660,6 +732,7 @@ const activeAdvancedCount = computed(() => {
   if (filters.value.brokers && filters.value.brokers.length > 0) count++
   if (filters.value.daysOfWeek && filters.value.daysOfWeek.length > 0) count++
   if (filters.value.instrumentTypes && filters.value.instrumentTypes.length > 0) count++
+  if (filters.value.optionTypes && filters.value.optionTypes.length > 0) count++
   return count
 })
 
@@ -718,6 +791,11 @@ function applyFilters() {
     cleanFilters.instrumentTypes = filters.value.instrumentTypes.join(',')
   }
 
+  // Handle multi-select option types - convert to comma-separated
+  if (filters.value.optionTypes.length > 0) {
+    cleanFilters.optionTypes = filters.value.optionTypes.join(',')
+  }
+
   emit('filter', cleanFilters)
 }
 
@@ -745,7 +823,8 @@ function resetFilters() {
     broker: '',
     brokers: [],
     daysOfWeek: [],
-    instrumentTypes: []
+    instrumentTypes: [],
+    optionTypes: []
   }
   // Emit empty filters to trigger immediate refresh
   emit('filter', {})
@@ -842,6 +921,14 @@ function handleClickOutside(event) {
       showInstrumentTypeDropdown.value = false
     }
   }
+
+  // Check if click is outside option type dropdown
+  if (showOptionTypeDropdown.value) {
+    const optionTypeDropdown = target.closest('[data-dropdown="optionType"]')
+    if (!optionTypeDropdown) {
+      showOptionTypeDropdown.value = false
+    }
+  }
 }
 
 onMounted(() => {
@@ -881,9 +968,10 @@ onMounted(() => {
     broker: '', // Keep for backward compatibility
     brokers: [],
     daysOfWeek: [],
-    instrumentTypes: []
+    instrumentTypes: [],
+    optionTypes: []
   }
-  
+
   // Then set only the filters from query parameters
   if (route.query.symbol) {
     filters.value.symbol = route.query.symbol
@@ -997,8 +1085,14 @@ onMounted(() => {
     shouldApply = true
   }
 
+  // Handle option types from query parameters
+  if (route.query.optionTypes) {
+    filters.value.optionTypes = route.query.optionTypes.split(',')
+    shouldApply = true
+  }
+
   // Auto-expand advanced filters if any advanced filter is set
-  if (route.query.minPrice || route.query.maxPrice || route.query.minQuantity || route.query.maxQuantity || route.query.holdTime || route.query.broker || route.query.minHoldTime || route.query.maxHoldTime || route.query.daysOfWeek || route.query.instrumentTypes) {
+  if (route.query.minPrice || route.query.maxPrice || route.query.minQuantity || route.query.maxQuantity || route.query.holdTime || route.query.broker || route.query.minHoldTime || route.query.maxHoldTime || route.query.daysOfWeek || route.query.instrumentTypes || route.query.optionTypes) {
     showAdvanced.value = true
   }
   

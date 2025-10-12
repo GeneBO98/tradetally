@@ -172,7 +172,13 @@ const defaultColumns = [
   { key: 'tags', label: 'Tags', visible: false, width: 'auto' },
   { key: 'notes', label: 'Notes', visible: false, width: 'auto' },
   { key: 'holdTime', label: 'Hold Time', visible: false, width: 'auto' },
-  { key: 'roi', label: 'ROI %', visible: false, width: 'auto' }
+  { key: 'roi', label: 'ROI %', visible: false, width: 'auto' },
+  { key: 'instrumentType', label: 'Instrument Type', visible: false, width: 'auto' },
+  { key: 'underlyingSymbol', label: 'Underlying Symbol', visible: false, width: 'auto' },
+  { key: 'optionType', label: 'Option Type', visible: false, width: 'auto' },
+  { key: 'strikePrice', label: 'Strike Price', visible: false, width: 'auto' },
+  { key: 'expirationDate', label: 'Expiration Date', visible: false, width: 'auto' },
+  { key: 'contractSize', label: 'Contract Size', visible: false, width: 'auto' }
 ]
 
 const showMenu = ref(false)

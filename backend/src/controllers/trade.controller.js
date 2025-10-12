@@ -18,7 +18,7 @@ const tradeController = {
     try {
       const {
         symbol, startDate, endDate, tags, strategy, sector,
-        strategies, sectors, hasNews, daysOfWeek, instrumentTypes,
+        strategies, sectors, hasNews, daysOfWeek, instrumentTypes, optionTypes,
         side, minPrice, maxPrice, minQuantity, maxQuantity,
         status, minPnl, maxPnl, pnlType, broker, brokers,
         limit = 50, offset = 0
@@ -37,6 +37,7 @@ const tradeController = {
         hasNews,
         daysOfWeek: daysOfWeek ? daysOfWeek.split(',').map(d => parseInt(d)) : undefined,
         instrumentTypes: instrumentTypes ? instrumentTypes.split(',') : undefined,
+        optionTypes: optionTypes ? optionTypes.split(',') : undefined,
         // New advanced filters
         side,
         minPrice: minPrice ? parseFloat(minPrice) : undefined,
