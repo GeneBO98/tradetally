@@ -264,6 +264,9 @@ class JobQueue {
         case 'news_backfill':
           result = await this.processNewsBackfill(data);
           break;
+        case 'news_enrichment':
+          result = await this.processNewsEnrichment(data);
+          break;
         default:
           throw new Error(`Unknown job type: ${job.type}`);
       }
@@ -599,16 +602,88 @@ class JobQueue {
   async processNewsBackfill(data) {
     const newsEnrichmentService = require('../services/newsEnrichmentService');
     const { userId, batchSize = 50, maxTrades = null } = data;
-    
+
     logger.logImport(`Starting news backfill for user ${userId || 'all users'}`);
-    
+
     await newsEnrichmentService.backfillTradeNews({
       userId,
       batchSize,
       maxTrades
     });
-    
+
     return { message: 'News backfill completed' };
+  }
+
+  /**
+   * Process news enrichment job for recently imported trades
+   */
+  async processNewsEnrichment(data) {
+    const newsEnrichmentService = require('../services/newsEnrichmentService');
+    const { userId, importId, tradeCount } = data;
+
+    logger.logImport(`Starting news enrichment for ${tradeCount} trades from import ${importId}`);
+
+    // Get trades from the import that need news enrichment (completed trades only)
+    const tradesQuery = `
+      SELECT id, symbol, trade_date, entry_time
+      FROM trades
+      WHERE user_id = $1
+        AND import_id = $2
+        AND exit_time IS NOT NULL
+        AND exit_price IS NOT NULL
+        AND (has_news IS NULL OR news_checked_at IS NULL)
+      ORDER BY trade_date DESC
+    `;
+
+    try {
+      const result = await db.query(tradesQuery, [userId, importId]);
+      const trades = result.rows;
+
+      logger.logImport(`Found ${trades.length} completed trades to enrich with news`);
+
+      let enriched = 0;
+      let skipped = 0;
+
+      for (const trade of trades) {
+        try {
+          const newsData = await newsEnrichmentService.getNewsForSymbolAndDate(
+            trade.symbol,
+            new Date(trade.trade_date),
+            userId
+          );
+
+          // Update trade with news data
+          await db.query(`
+            UPDATE trades
+            SET has_news = $1,
+                news_events = $2,
+                news_sentiment = $3,
+                news_checked_at = CURRENT_TIMESTAMP
+            WHERE id = $4
+          `, [
+            newsData.hasNews,
+            newsData.newsEvents ? JSON.stringify(newsData.newsEvents) : null,
+            newsData.sentiment,
+            trade.id
+          ]);
+
+          enriched++;
+          logger.logImport(`Enriched trade ${trade.id} (${trade.symbol}): hasNews=${newsData.hasNews}`);
+        } catch (error) {
+          logger.logError(`Failed to enrich trade ${trade.id}: ${error.message}`);
+          skipped++;
+        }
+      }
+
+      return {
+        enriched,
+        skipped,
+        total: trades.length
+      };
+    } catch (error) {
+      logger.logError(`News enrichment job failed: ${error.message}`);
+      throw error;
+    }
   }
 }
 

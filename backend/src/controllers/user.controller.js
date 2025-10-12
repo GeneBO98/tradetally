@@ -395,6 +395,52 @@ const userController = {
     } catch (error) {
       next(error);
     }
+  },
+
+  async enrichTrades(req, res, next) {
+    try {
+      const userId = req.user.id;
+      const db = require('../config/database');
+      const jobQueue = require('../utils/jobQueue');
+
+      // Count trades that need enrichment
+      const countQuery = `
+        SELECT COUNT(*) as count
+        FROM trades
+        WHERE user_id = $1
+          AND exit_time IS NOT NULL
+          AND exit_price IS NOT NULL
+          AND (has_news IS NULL OR news_checked_at IS NULL)
+      `;
+
+      const countResult = await db.query(countQuery, [userId]);
+      const tradesCount = parseInt(countResult.rows[0].count);
+
+      if (tradesCount === 0) {
+        return res.json({
+          message: 'All trades are already enriched',
+          tradesQueued: 0
+        });
+      }
+
+      // Queue news enrichment job
+      const jobId = await jobQueue.addJob('news_backfill', {
+        userId: userId,
+        batchSize: 50,
+        maxTrades: null
+      });
+
+      console.log(`[SUCCESS] Queued news enrichment for ${tradesCount} trades (job ${jobId})`);
+
+      res.json({
+        message: `Enrichment job queued for ${tradesCount} trades`,
+        tradesQueued: tradesCount,
+        jobId: jobId
+      });
+    } catch (error) {
+      console.error('[ERROR] Failed to queue trade enrichment:', error.message);
+      next(error);
+    }
   }
 };
 

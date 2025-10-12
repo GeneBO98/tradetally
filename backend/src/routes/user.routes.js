@@ -142,6 +142,9 @@ router.post('/admin/users/:userId/tier-override', requireAdmin, userController.s
 router.delete('/admin/users/:userId/tier-override', requireAdmin, userController.removeTierOverride);
 router.get('/admin/users/:userId/tier-override', requireAdmin, userController.getTierOverride);
 
+// Trade enrichment route
+router.post('/enrich-trades', authenticate, userController.enrichTrades);
+
 // Public profile routes (must be last to avoid conflicts)
 router.get('/:username', userController.getPublicProfile);
 router.get('/:username/trades', userController.getUserPublicTrades);

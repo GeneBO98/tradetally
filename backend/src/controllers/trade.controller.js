@@ -941,6 +941,22 @@ const tradeController = {
           } catch (error) {
             console.warn('[WARNING] Failed to start background symbol categorization:', error.message);
           }
+
+          // Background news enrichment for imported trades
+          try {
+            if (imported > 0) {
+              console.log(`[PROCESS] Scheduling background news enrichment for ${imported} imported trades...`);
+              const jobQueue = require('../utils/jobQueue');
+              await jobQueue.addJob('news_enrichment', {
+                userId: req.user.id,
+                importId: importId,
+                tradeCount: imported
+              });
+              console.log('[SUCCESS] News enrichment job queued');
+            }
+          } catch (error) {
+            console.warn('[WARNING] Failed to queue news enrichment job:', error.message);
+          }
         } catch (error) {
           // Clear timeout on error
           clearTimeout(importTimeout);
