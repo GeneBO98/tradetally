@@ -652,11 +652,15 @@ const processedExecutions = computed(() => {
   if (!trade.value?.executions || !Array.isArray(trade.value.executions)) {
     return []
   }
-  
+
+  // Check if this is an options trade and get contract multiplier
+  const isOption = trade.value.instrument_type === 'option'
+  const contractSize = isOption ? (trade.value.contract_size || 100) : 1
+
   let runningPosition = 0
   let totalCost = 0
-  let totalShares = 0
-  
+  let totalContracts = 0
+
   return trade.value.executions.map((execution, index) => {
     // Handle null/undefined execution
     if (!execution) {
@@ -671,28 +675,32 @@ const processedExecutions = computed(() => {
         datetime: null
       }
     }
-    
+
     // Map trade record fields to execution format
     // For round-trip trades, executions are full trade records
     const quantity = parseFloat(execution.quantity) || 0
     const price = parseFloat(execution.price) || parseFloat(execution.entry_price) || 0  // Use price from execution, fallback to entry_price from trade record
-    const value = quantity * price
+
+    // For options, the actual dollar value includes the contract multiplier
+    const value = isOption ? (quantity * price * contractSize) : (quantity * price)
     const fees = (parseFloat(execution.commission) || 0) + (parseFloat(execution.fees) || 0)
     const action = execution.action || execution.side || 'unknown'  // Use action from execution, fallback to side from trade record
     const datetime = execution.datetime || execution.entry_time  // Use datetime from execution, fallback to entry_time from trade record
-    
+
     // Update running position
     if (action === 'buy' || action === 'long') {
       runningPosition += quantity
       totalCost += value + fees
-      totalShares += quantity
+      totalContracts += quantity
     } else if (action === 'sell' || action === 'short') {
       runningPosition -= quantity
       // For sells, we don't add to total cost
     }
-    
-    // Calculate average cost (only for positions with shares)
-    const avgCost = totalShares > 0 ? totalCost / totalShares : 0
+
+    // Calculate average cost
+    // For options: average cost per contract (price per share of the option)
+    // For stocks: average cost per share
+    const avgCost = totalContracts > 0 ? (totalCost / (totalContracts * contractSize)) : 0
     
     return {
       // Keep original execution data
@@ -716,20 +724,25 @@ const executionSummary = computed(() => {
     totalFees: 0,
     finalPosition: 0
   }
-  
+
+  // Check if this is an options trade and get contract multiplier
+  const isOption = trade.value.instrument_type === 'option'
+  const contractSize = isOption ? (trade.value.contract_size || 100) : 1
+
   let totalVolume = 0
   let totalFees = 0
   let finalPosition = 0
-  
+
   trade.value.executions.forEach(execution => {
     if (!execution) return
-    
+
     const quantity = parseFloat(execution.quantity) || 0
     const price = parseFloat(execution.price) || parseFloat(execution.entry_price) || 0  // Use price from execution, fallback to entry_price from trade record
     const fees = (parseFloat(execution.commission) || 0) + (parseFloat(execution.fees) || 0)
     const action = execution.action || execution.side || 'unknown'  // Use action from execution, fallback to side from trade record
     
-    totalVolume += quantity * price
+    // For options, include contract multiplier in volume calculation
+    totalVolume += isOption ? (quantity * price * contractSize) : (quantity * price)
     totalFees += fees
     
     if (action === 'buy' || action === 'long') {

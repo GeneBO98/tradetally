@@ -192,8 +192,7 @@ router.get('/enrichment-status', authenticate, tradeController.getEnrichmentStat
  *       200:
  *         description: All enrichment force completed
  */
-// TODO: Add missing forceCompleteEnrichment method  
-// router.post('/force-complete-enrichment', authenticate, tradeController.forceCompleteEnrichment);
+router.post('/force-complete-enrichment', authenticate, tradeController.forceCompleteEnrichment);
 
 /**
  * @swagger
