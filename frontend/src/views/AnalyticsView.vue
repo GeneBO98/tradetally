@@ -2410,15 +2410,16 @@ async function fetchDrawdownData() {
 }
 
 async function applyFilters(newFilters = null) {
+  console.log('[DEBUG] applyFilters called', { newFilters, localFilters: localFilters.value })
   // Convert localFilters to API format
   filters.value = {
     // Basic filters
     symbol: localFilters.value.symbol,
     startDate: localFilters.value.startDate,
     endDate: localFilters.value.endDate,
-    strategies: localFilters.value.strategies.join(','),
-    sectors: localFilters.value.sectors.join(','),
-    tags: localFilters.value.tags.join(','),
+    strategies: (localFilters.value.strategies || []).join(','),
+    sectors: (localFilters.value.sectors || []).join(','),
+    tags: (localFilters.value.tags || []).join(','),
     hasNews: localFilters.value.hasNews,
     // Advanced filters
     side: localFilters.value.side,
@@ -2431,8 +2432,8 @@ async function applyFilters(newFilters = null) {
     maxPnl: localFilters.value.maxPnl,
     pnlType: localFilters.value.pnlType,
     holdTime: localFilters.value.holdTime,
-    brokers: localFilters.value.brokers.join(','),
-    daysOfWeek: localFilters.value.daysOfWeek.join(',')
+    brokers: (localFilters.value.brokers || []).join(','),
+    daysOfWeek: (localFilters.value.daysOfWeek || []).join(',')
   }
   
   loading.value = true

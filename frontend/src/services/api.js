@@ -1,7 +1,7 @@
 import axios from 'axios'
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : '/api',
+  baseURL: import.meta.env.VITE_API_URL || '/api',
   withCredentials: true // Enable sending cookies with requests
   // Don't set default Content-Type - let each request set its own
 })
