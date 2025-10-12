@@ -362,6 +362,42 @@
         </div>
       </div>
 
+      <!-- Trade Enrichment -->
+      <div class="card">
+        <div class="card-body">
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Trade Enrichment</h3>
+          <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
+            Enrich your existing trades with news sentiment data and other analytics. This process runs in the background and may take a few minutes depending on the number of trades.
+          </p>
+
+          <div class="flex items-center justify-between">
+            <div class="flex-1">
+              <p class="text-sm font-medium text-gray-900 dark:text-white">
+                News Sentiment Enrichment
+              </p>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                Add news events and sentiment analysis to trades that are missing this data
+              </p>
+            </div>
+            <button
+              @click="enrichTrades"
+              :disabled="enrichmentLoading"
+              class="btn-primary ml-4"
+            >
+              <span v-if="enrichmentLoading" class="flex items-center">
+                <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                Processing...
+              </span>
+              <span v-else>Enrich Trades</span>
+            </button>
+          </div>
+
+          <div v-if="enrichmentMessage" class="mt-4 p-3 rounded-md" :class="enrichmentSuccess ? 'bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-200' : 'bg-blue-50 dark:bg-blue-900/20 text-blue-800 dark:text-blue-200'">
+            <p class="text-sm">{{ enrichmentMessage }}</p>
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
 </template>
@@ -410,6 +446,11 @@ const adminAiLoading = ref(false)
 const exportLoading = ref(false)
 const importLoading = ref(false)
 const selectedFile = ref(null)
+
+// Trade Enrichment
+const enrichmentLoading = ref(false)
+const enrichmentMessage = ref('')
+const enrichmentSuccess = ref(false)
 
 // Get API docs URL
 function getApiDocsUrl() {
@@ -728,10 +769,39 @@ async function importUserData() {
   }
 }
 
+async function enrichTrades() {
+  enrichmentLoading.value = true
+  enrichmentMessage.value = ''
+  enrichmentSuccess.value = false
+
+  try {
+    const response = await api.post('/users/enrich-trades')
+
+    enrichmentSuccess.value = true
+    enrichmentMessage.value = response.data.message
+
+    if (response.data.tradesQueued > 0) {
+      showSuccess(
+        'Enrichment Started',
+        `Processing ${response.data.tradesQueued} trades in the background. This may take a few minutes.`
+      )
+    } else {
+      showSuccess('All Set', 'All your trades are already enriched with news data!')
+    }
+  } catch (error) {
+    console.error('Enrichment failed:', error)
+    enrichmentSuccess.value = false
+    enrichmentMessage.value = error.response?.data?.error || 'Failed to start enrichment process'
+    showError('Enrichment Failed', enrichmentMessage.value)
+  } finally {
+    enrichmentLoading.value = false
+  }
+}
+
 onMounted(() => {
   loadAISettings()
   loadAnalyticsSettings()
-  
+
   // Load admin AI settings if user is admin
   if (authStore.user?.role === 'admin') {
     fetchAdminAISettings()

@@ -2410,7 +2410,6 @@ async function fetchDrawdownData() {
 }
 
 async function applyFilters(newFilters = null) {
-  console.log('[DEBUG] applyFilters called', { newFilters, localFilters: localFilters.value })
   // Convert localFilters to API format
   filters.value = {
     // Basic filters
