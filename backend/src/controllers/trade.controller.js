@@ -2368,6 +2368,79 @@ const tradeController = {
     } catch (error) {
       next(error);
     }
+  },
+
+  async forceCompleteEnrichment(req, res, next) {
+    try {
+      const userId = req.user.id;
+
+      console.log(`[ENRICHMENT] Force completing all enrichment jobs for user ${userId}`);
+
+      // Update all trades with pending or failed enrichment status to completed
+      const updateQuery = `
+        UPDATE trades
+        SET
+          enrichment_status = 'completed',
+          enrichment_completed_at = CURRENT_TIMESTAMP,
+          enrichment_attempts = COALESCE(enrichment_attempts, 0),
+          last_enrichment_error = 'Force completed by user'
+        WHERE user_id = $1
+          AND (enrichment_status IN ('pending', 'failed') OR enrichment_status IS NULL)
+        RETURNING id, symbol, enrichment_status
+      `;
+
+      const result = await db.query(updateQuery, [userId]);
+
+      // Clear any pending jobs from the job queue for this user
+      const clearJobsQuery = `
+        DELETE FROM job_queue
+        WHERE user_id = $1
+          AND type IN ('strategy_classification', 'cusip_lookup', 'news_enrichment', 'chart_enrichment')
+          AND status IN ('pending', 'failed')
+        RETURNING id, type
+      `;
+
+      const jobsResult = await db.query(clearJobsQuery, [userId]);
+
+      console.log(`[ENRICHMENT] Force completed ${result.rows.length} trades and cleared ${jobsResult.rows.length} jobs for user ${userId}`);
+
+      // Get updated statistics
+      const statsQuery = `
+        SELECT
+          COUNT(*) as total_trades,
+          COUNT(CASE WHEN enrichment_status = 'completed' THEN 1 END) as enriched_trades,
+          COUNT(CASE WHEN enrichment_status = 'pending' THEN 1 END) as pending_trades,
+          COUNT(CASE WHEN enrichment_status = 'failed' THEN 1 END) as failed_trades
+        FROM trades
+        WHERE user_id = $1
+      `;
+
+      const statsResult = await db.query(statsQuery, [userId]);
+      const stats = statsResult.rows[0];
+
+      res.json({
+        success: true,
+        message: `Force completed enrichment for ${result.rows.length} trades`,
+        forceCompletedTrades: result.rows.length,
+        forceCompletedJobs: jobsResult.rows.length,
+        data: {
+          tradesUpdated: result.rows.length,
+          jobsCleared: jobsResult.rows.length,
+          updatedTrades: result.rows.map(r => ({ id: r.id, symbol: r.symbol })),
+          clearedJobs: jobsResult.rows.map(j => ({ id: j.id, type: j.type })),
+          statistics: {
+            totalTrades: parseInt(stats.total_trades),
+            enrichedTrades: parseInt(stats.enriched_trades),
+            pendingTrades: parseInt(stats.pending_trades),
+            failedTrades: parseInt(stats.failed_trades)
+          }
+        }
+      });
+
+    } catch (error) {
+      console.error('[ENRICHMENT ERROR] Force complete enrichment failed:', error);
+      next(error);
+    }
   }
 };
 

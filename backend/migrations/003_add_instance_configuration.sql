@@ -48,9 +48,17 @@ INSERT INTO instance_config (key, value, description, is_public) VALUES
     }'::jsonb, 'Security configuration', false)
 ON CONFLICT (key) DO NOTHING;
 
--- Create trigger to update instance_config.updated_at
-CREATE TRIGGER update_instance_config_updated_at BEFORE UPDATE ON instance_config 
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+-- Create trigger to update instance_config.updated_at (only if it doesn't exist)
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.triggers
+                   WHERE trigger_name = 'update_instance_config_updated_at'
+                   AND event_object_table = 'instance_config') THEN
+        CREATE TRIGGER update_instance_config_updated_at
+        BEFORE UPDATE ON instance_config
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+END $$;
 
 -- Create well_known_config view for public instance discovery
 CREATE OR REPLACE VIEW well_known_config AS

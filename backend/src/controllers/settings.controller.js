@@ -468,12 +468,39 @@ const settingsController = {
 
       // Validate import data structure
       if (!importData.exportVersion || !importData.trades) {
-        console.log('Invalid export structure:', { 
-          hasVersion: !!importData.exportVersion, 
+        console.log('Invalid export structure:', {
+          hasVersion: !!importData.exportVersion,
           hasTrades: !!importData.trades,
           keys: Object.keys(importData)
         });
         return res.status(400).json({ error: 'Invalid TradeTally export file' });
+      }
+
+      // Ensure database schema is ready before import
+      // This prevents issues when importing into a fresh database
+      try {
+        // Check if critical tables exist
+        const tableCheckQuery = `
+          SELECT
+            EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'trades') as has_trades,
+            EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'tags') as has_tags,
+            EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'users') as has_users
+        `;
+        const tableCheck = await db.query(tableCheckQuery);
+
+        if (!tableCheck.rows[0].has_trades || !tableCheck.rows[0].has_tags || !tableCheck.rows[0].has_users) {
+          console.error('[IMPORT ERROR] Database schema not ready:', tableCheck.rows[0]);
+          return res.status(500).json({
+            error: 'Database schema not initialized. Please restart the application to run migrations first.',
+            details: 'The database tables required for import do not exist yet.'
+          });
+        }
+      } catch (schemaError) {
+        console.error('[IMPORT ERROR] Schema check failed:', schemaError);
+        return res.status(500).json({
+          error: 'Unable to verify database schema',
+          details: schemaError.message
+        });
       }
 
       console.log('Starting database connection...');

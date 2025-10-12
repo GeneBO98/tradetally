@@ -62,22 +62,22 @@ CREATE TABLE IF NOT EXISTS api_keys (
     revoked_at TIMESTAMP WITH TIME ZONE
 );
 
--- Add indexes for performance
-CREATE INDEX idx_devices_user_id ON devices(user_id);
-CREATE INDEX idx_devices_fingerprint ON devices(device_fingerprint);
-CREATE INDEX idx_devices_last_active ON devices(last_active);
+-- Add indexes for performance (with IF NOT EXISTS)
+CREATE INDEX IF NOT EXISTS idx_devices_user_id ON devices(user_id);
+CREATE INDEX IF NOT EXISTS idx_devices_fingerprint ON devices(device_fingerprint);
+CREATE INDEX IF NOT EXISTS idx_devices_last_active ON devices(last_active);
 
-CREATE INDEX idx_refresh_tokens_user_id ON refresh_tokens(user_id);
-CREATE INDEX idx_refresh_tokens_device_id ON refresh_tokens(device_id);
-CREATE INDEX idx_refresh_tokens_family_id ON refresh_tokens(family_id);
-CREATE INDEX idx_refresh_tokens_expires_at ON refresh_tokens(expires_at);
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id);
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_device_id ON refresh_tokens(device_id);
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_family_id ON refresh_tokens(family_id);
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_expires_at ON refresh_tokens(expires_at);
 
-CREATE INDEX idx_sync_metadata_user_id ON sync_metadata(user_id);
-CREATE INDEX idx_sync_metadata_entity ON sync_metadata(entity_type, entity_id);
-CREATE INDEX idx_sync_metadata_sync_version ON sync_metadata(user_id, sync_version);
-CREATE INDEX idx_sync_metadata_created_at ON sync_metadata(created_at);
+CREATE INDEX IF NOT EXISTS idx_sync_metadata_user_id ON sync_metadata(user_id);
+CREATE INDEX IF NOT EXISTS idx_sync_metadata_entity ON sync_metadata(entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_sync_metadata_sync_version ON sync_metadata(user_id, sync_version);
+CREATE INDEX IF NOT EXISTS idx_sync_metadata_created_at ON sync_metadata(created_at);
 
-CREATE INDEX idx_api_keys_user_id ON api_keys(user_id);
+CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys(user_id);
 
 -- Add updated_at timestamp to existing tables if not exists
 DO $$ 

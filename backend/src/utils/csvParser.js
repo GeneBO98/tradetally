@@ -135,8 +135,9 @@ function detectBrokerFormat(fileBuffer) {
       console.log('[AUTO-DETECT] Detected: Interactive Brokers Trade Confirmation');
       return 'ibkr_trade_confirmation';
     }
-    // Format 2: Activity Statement (Symbol, DateTime, Quantity, Price)
-    if (headers.includes('symbol') && headers.includes('datetime') &&
+    // Format 2: Activity Statement (Symbol, Date/Time or DateTime, Quantity, Price)
+    if (headers.includes('symbol') &&
+        (headers.includes('date/time') || headers.includes('datetime')) &&
         headers.includes('quantity') && headers.includes('price') &&
         !headers.includes('action')) { // Distinguish from Schwab
       console.log('[AUTO-DETECT] Detected: Interactive Brokers Activity Statement');
@@ -252,12 +253,24 @@ const brokerParsers = {
     // Parse instrument data (options/futures detection)
     const instrumentData = parseInstrumentData(symbol);
 
+    // Handle both "DateTime" and "Date/Time" column names
+    const dateTimeValue = row.DateTime || row['Date/Time'];
+
+    // For options, IBKR Activity Statement already reports quantity in contracts
+    // No conversion needed - the quantity is already in contracts
+    let finalQuantity = absQuantity;
+    if (instrumentData.instrumentType === 'option') {
+      // Ensure quantity is an integer for options contracts
+      finalQuantity = Math.round(absQuantity);
+      console.log(`[IBKR] Options contract quantity: ${finalQuantity}`);
+    }
+
     return {
-      symbol: symbol,
-      tradeDate: parseDate(row.DateTime),
-      entryTime: parseDateTime(row.DateTime),
+      symbol: instrumentData.underlyingSymbol || symbol,
+      tradeDate: parseDate(dateTimeValue),
+      entryTime: parseDateTime(dateTimeValue),
       entryPrice: price,
-      quantity: absQuantity,
+      quantity: finalQuantity,
       side: quantity > 0 ? 'buy' : 'sell',
       commission: commission,
       fees: parseFloat(row.Fees || 0),
@@ -796,17 +809,37 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
 
 function parseDate(dateStr) {
   if (!dateStr || dateStr.toString().trim() === '') return null;
-  
+
   const cleanDateStr = dateStr.toString().trim();
-  
-  // Try to parse MM/DD/YYYY format first
+
+  // Try to parse IBKR format MM-DD-YY first
+  const mmddyyMatch = cleanDateStr.match(/^(\d{1,2})-(\d{1,2})-(\d{2})/);
+  if (mmddyyMatch) {
+    const [_, month, day, shortYear] = mmddyyMatch;
+    const monthNum = parseInt(month);
+    const dayNum = parseInt(day);
+    const yearNum = 2000 + parseInt(shortYear);
+
+    // Validate date components for PostgreSQL 16 compatibility
+    if (monthNum < 1 || monthNum > 12) return null;
+    if (dayNum < 1 || dayNum > 31) return null;
+    if (yearNum < 1900 || yearNum > 2099) return null;
+
+    // Create date in YYYY-MM-DD format
+    const monthPadded = monthNum.toString().padStart(2, '0');
+    const dayPadded = dayNum.toString().padStart(2, '0');
+
+    return `${yearNum}-${monthPadded}-${dayPadded}`;
+  }
+
+  // Try to parse MM/DD/YYYY format
   const mmddyyyyMatch = cleanDateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
   if (mmddyyyyMatch) {
     const [_, month, day, year] = mmddyyyyMatch;
     const monthNum = parseInt(month);
     const dayNum = parseInt(day);
     const yearNum = parseInt(year);
-    
+
     // Validate date components for PostgreSQL 16 compatibility
     if (monthNum < 1 || monthNum > 12) return null;
     if (dayNum < 1 || dayNum > 31) return null;
@@ -842,6 +875,17 @@ function parseDateTime(dateTimeStr) {
   const cleanDateTimeStr = dateTimeStr.toString().trim();
 
   try {
+    // Check for IBKR format "MM-DD-YY H:MM" or "MM-DD-YY HH:MM"
+    const ibkrDateTimeMatch = cleanDateTimeStr.match(/^(\d{1,2})-(\d{1,2})-(\d{2})\s+(\d{1,2}):(\d{2})$/);
+    if (ibkrDateTimeMatch) {
+      const [, month, day, shortYear, hour, minute] = ibkrDateTimeMatch;
+      const year = 2000 + parseInt(shortYear); // Convert YY to YYYY
+      const monthPadded = month.padStart(2, '0');
+      const dayPadded = day.padStart(2, '0');
+      const hourPadded = hour.padStart(2, '0');
+      return `${year}-${monthPadded}-${dayPadded}T${hourPadded}:${minute}:00`;
+    }
+
     // Check if the string is in format "YYYY-MM-DD HH:MM:SS" (local time without timezone)
     const localDateTimeMatch = cleanDateTimeStr.match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})$/);
     if (localDateTimeMatch) {
@@ -1052,7 +1096,8 @@ function parseInstrumentData(symbol) {
     };
   }
 
-  // IBKR Options format: "SEDG  250801P00025000" (underlying + spaces + YYMMDD + C/P + strike)
+  // IBKR Options format: "SEDG  250801P00025000" or "AMD   251010C00240000" (underlying + spaces + YYMMDD + C/P + strike)
+  // This format has the underlying padded with spaces, then date, call/put indicator, and strike*1000
   const ibkrOptionMatch = normalizedSymbol.match(/^([A-Z]+)\s+(\d{6})([CP])(\d{8})$/);
   if (ibkrOptionMatch) {
     const [, underlying, expiry, type, strikeStr] = ibkrOptionMatch;
@@ -2836,8 +2881,9 @@ async function parseIBKRTransactions(records, existingPositions = {}) {
         absQuantity = Math.abs(quantity);
         price = parseFloat(record.Price);
         commission = Math.abs(parseFloat(record.Commission || 0));
+        // Handle both "DateTime" and "Date/Time" column names
         // Clean DateTime - remove leading apostrophe if present
-        dateTime = (record.DateTime || '').toString().replace(/^'/, '').trim();
+        dateTime = (record.DateTime || record['Date/Time'] || '').toString().replace(/^'/, '').trim();
         action = quantity > 0 ? 'buy' : 'sell';
       }
 
@@ -2857,14 +2903,18 @@ async function parseIBKRTransactions(records, existingPositions = {}) {
         continue;
       }
 
-      // For options, convert quantity from shares to contracts
-      // IBKR shows quantity in shares (e.g., 100 shares = 1 contract)
+      // For options, IBKR Activity Statement already reports quantity in contracts
       let processedQuantity = absQuantity;
       const instrumentData = parseInstrumentData(symbol);
       if (instrumentData.instrumentType === 'option') {
-        // Convert shares to contracts (divide by 100)
-        processedQuantity = absQuantity / 100;
-        console.log(`IBKR Option: ${absQuantity} shares = ${processedQuantity} contracts`);
+        // IBKR reports options quantity in contracts already (not shares)
+        // So we don't need to divide by 100
+        processedQuantity = Math.round(absQuantity); // Ensure whole number
+        console.log(`[IBKR] Options contract quantity: ${processedQuantity} contracts`);
+      } else {
+        // For stocks, use the quantity as-is
+        processedQuantity = absQuantity;
+        console.log(`[IBKR] Stock quantity: ${processedQuantity} shares`);
       }
 
       transactions.push({

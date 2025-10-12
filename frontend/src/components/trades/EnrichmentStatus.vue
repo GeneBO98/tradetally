@@ -56,31 +56,34 @@
     <!-- Show force complete button if there are unresolved CUSIPs -->
     <div v-if="enrichmentStatus && enrichmentStatus.unresolvedCusips > 0" class="mt-3 space-x-2">
       <!-- NUCLEAR OPTION for stuck jobs -->
-      <button 
-        @click="forceCompleteEnrichment" 
-        class="text-sm bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 transition-colors"
+      <button
+        @click="forceCompleteEnrichment"
+        class="inline-flex items-center text-sm bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 transition-colors"
         title="Nuclear option: Force complete ALL enrichment jobs immediately"
       >
-        [ALERT] FORCE COMPLETE ALL
+        <ExclamationTriangleIcon class="h-4 w-4 mr-1" />
+        FORCE COMPLETE ALL
       </button>
     </div>
     
     <!-- Show nuclear button if there are pending jobs for too long -->
     <div v-if="isEnriching && !enrichmentStatus?.unresolvedCusips" class="mt-3 space-x-2">
-      <button 
-        @click="syncEnrichmentStatus" 
-        class="text-sm bg-yellow-600 text-white px-3 py-1 rounded hover:bg-yellow-700 transition-colors"
+      <button
+        @click="syncEnrichmentStatus"
+        class="inline-flex items-center text-sm bg-yellow-600 text-white px-3 py-1 rounded hover:bg-yellow-700 transition-colors"
         title="Sync enrichment status with completed jobs"
       >
-        [PROCESS] SYNC STATUS
+        <ArrowPathIcon class="h-4 w-4 mr-1" />
+        SYNC STATUS
       </button>
       
-      <button 
-        @click="forceCompleteEnrichment" 
-        class="text-sm bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 transition-colors"
+      <button
+        @click="forceCompleteEnrichment"
+        class="inline-flex items-center text-sm bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 transition-colors"
         title="Nuclear option: Force complete ALL enrichment jobs immediately"
       >
-        [ALERT] FORCE COMPLETE ALL
+        <ExclamationTriangleIcon class="h-4 w-4 mr-1" />
+        FORCE COMPLETE ALL
       </button>
     </div>
     
@@ -104,6 +107,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import api from '@/services/api'
 import { useEnrichmentStatus } from '@/composables/usePriceAlertNotifications'
 import { useNotification } from '@/composables/useNotification'
+import { ExclamationTriangleIcon, ArrowPathIcon } from '@heroicons/vue/24/outline'
 
 const { showSuccess, showError, showWarning, showConfirmation } = useNotification()
 
