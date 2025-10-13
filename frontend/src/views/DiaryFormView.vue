@@ -70,6 +70,55 @@
     <!-- Form -->
     <div v-else class="space-y-8">
       <form @submit.prevent="saveEntry" class="space-y-6">
+        <!-- Template Selector -->
+        <div v-if="!isEditing" class="bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 p-4 rounded-lg">
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center">
+              <DocumentTextIcon class="w-5 h-5 text-primary-600 dark:text-primary-400 mr-2" />
+              <h3 class="text-sm font-medium text-primary-900 dark:text-primary-200">Use a Template</h3>
+            </div>
+            <button
+              type="button"
+              @click="showTemplates = !showTemplates"
+              class="text-sm text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300"
+            >
+              {{ showTemplates ? 'Hide' : 'Show' }}
+            </button>
+          </div>
+
+          <div v-if="showTemplates" class="space-y-3">
+            <div v-if="availableTemplates.length === 0" class="text-sm text-primary-700 dark:text-primary-300">
+              No templates available. Create one from the Templates section in your journal.
+            </div>
+            <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-2">
+              <button
+                v-for="template in availableTemplates"
+                :key="template.id"
+                type="button"
+                @click="applyTemplate(template)"
+                class="text-left p-3 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:border-primary-500 dark:hover:border-primary-500 transition-colors"
+              >
+                <div class="flex items-start justify-between">
+                  <div class="flex-1 min-w-0">
+                    <div class="font-medium text-sm text-gray-900 dark:text-white truncate">
+                      {{ template.name }}
+                    </div>
+                    <div v-if="template.description" class="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">
+                      {{ template.description }}
+                    </div>
+                  </div>
+                  <span
+                    v-if="template.is_default"
+                    class="ml-2 flex-shrink-0 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400"
+                  >
+                    Default
+                  </span>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+
         <!-- Basic Information -->
         <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
           <h2 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Basic Information</h2>
@@ -484,6 +533,7 @@
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDiaryStore } from '@/stores/diary'
+import { useDiaryTemplateStore } from '@/stores/diaryTemplate'
 import {
   ArrowLeftIcon,
   PlusIcon,
@@ -496,17 +546,21 @@ import {
   CodeBracketIcon,
   LinkIcon,
   ChatBubbleLeftRightIcon,
-  HashtagIcon
+  HashtagIcon,
+  DocumentTextIcon
 } from '@heroicons/vue/24/outline'
 
 const route = useRoute()
 const router = useRouter()
 const diaryStore = useDiaryStore()
+const templateStore = useDiaryTemplateStore()
 
 // Component state
 const loading = ref(false)
 const saving = ref(false)
 const error = ref(null)
+const showTemplates = ref(false)
+const availableTemplates = ref([])
 
 const contentEditor = ref(null)
 const newWatchlistSymbol = ref('')
@@ -528,6 +582,52 @@ const form = ref({
 
 // Computed properties
 const isEditing = computed(() => !!route.params.id)
+
+// Template methods
+const loadTemplates = async () => {
+  try {
+    await templateStore.fetchTemplates({ entryType: form.value.entryType })
+    availableTemplates.value = templateStore.templates
+
+    // Auto-show templates if there's a default one
+    const defaultTemplate = availableTemplates.value.find(t => t.is_default)
+    if (defaultTemplate && !isEditing.value) {
+      showTemplates.value = true
+    }
+  } catch (err) {
+    console.error('Failed to load templates:', err)
+  }
+}
+
+const applyTemplate = async (template) => {
+  try {
+    // Apply template fields to form
+    if (template.title) form.value.title = template.title
+    if (template.market_bias) form.value.marketBias = template.market_bias
+    if (template.content) form.value.content = template.content
+    if (template.key_levels) form.value.keyLevels = template.key_levels
+    if (template.watchlist && template.watchlist.length > 0) {
+      form.value.watchlist = [...template.watchlist]
+    }
+    if (template.tags && template.tags.length > 0) {
+      form.value.tags = [...template.tags]
+    }
+
+    // Increment use count
+    await templateStore.applyTemplate(template.id)
+
+    // Auto-resize textarea if needed
+    await nextTick()
+    if (contentEditor.value) {
+      adjustTextareaHeight()
+    }
+
+    // Hide template selector
+    showTemplates.value = false
+  } catch (err) {
+    console.error('Failed to apply template:', err)
+  }
+}
 
 // Methods
 const formatText = (command) => {
@@ -902,8 +1002,11 @@ const handleDuplicateChoice = async (choice) => {
 onMounted(async () => {
   if (isEditing.value) {
     await loadEntry()
+  } else {
+    // Load templates for new entries
+    await loadTemplates()
   }
-  
+
   // Adjust textarea height after content is loaded
   nextTick(() => {
     adjustTextareaHeight()
