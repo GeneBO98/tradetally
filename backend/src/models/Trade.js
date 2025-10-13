@@ -64,9 +64,15 @@ class Trade {
     const pnlPercent = providedPnLPercent !== undefined ? providedPnLPercent : this.calculatePnLPercent(entryPrice, cleanExitPrice, side);
 
     // Use exit date as trade date if available, otherwise use entry date
-    // Calculate trade date in user's timezone to avoid timezone conversion issues
     // If tradeDate is explicitly provided (e.g., from imports), use it directly
-    const finalTradeDate = tradeDate || await getUserLocalDate(userId, cleanExitTime || finalEntryTime);
+    // Otherwise, extract the date portion from the timestamp WITHOUT timezone conversion
+    // This preserves the date the user entered in the form
+    let finalTradeDate = tradeDate;
+    if (!finalTradeDate) {
+      // Extract date from timestamp (YYYY-MM-DD format)
+      const timestampToUse = cleanExitTime || finalEntryTime;
+      finalTradeDate = timestampToUse.split('T')[0];
+    }
 
     // Auto-assign strategy if not provided by user
     let finalStrategy = strategy;
