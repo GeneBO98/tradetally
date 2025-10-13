@@ -32,6 +32,7 @@ const newsCorrelationRoutes = require('./routes/newsCorrelation.routes');
 const notificationPreferencesRoutes = require('./routes/notificationPreferences.routes');
 const cusipMappingsRoutes = require('./routes/cusipMappings.routes');
 const diaryRoutes = require('./routes/diary.routes');
+const diaryTemplateRoutes = require('./routes/diaryTemplate.routes');
 const oauth2Routes = require('./routes/oauth2.routes');
 const tagsRoutes = require('./routes/tags.routes');
 const BillingService = require('./services/billingService');
@@ -170,6 +171,7 @@ app.use('/api/news-correlation', newsCorrelationRoutes);
 app.use('/api/notification-preferences', notificationPreferencesRoutes);
 app.use('/api/cusip-mappings', cusipMappingsRoutes);
 app.use('/api/diary', diaryRoutes);
+app.use('/api/diary-templates', diaryTemplateRoutes);
 app.use('/api/tags', tagsRoutes);
 
 // OAuth2 Provider endpoints

@@ -29,7 +29,7 @@ docker exec tradetally-db-dev pg_dumpall -U trader --roles-only > ~/tradetally-m
 
 # Copy any uploaded files from Docker volumes
 docker cp tradetally-app-dev:/app/backend/src/data ~/tradetally-migration/app_data
-docker cp tradetally-app-dev:/app/backend/src/logs ~/tradetally-migration/app_logs
+docker cp tradetally-app:/app/backend/src/logs ~/tradetally-migration/app_logs
 ```
 
 ### 1.2 Export Environment Variables
@@ -41,7 +41,7 @@ Save your current environment configuration:
 cp .env ~/tradetally-migration/.env.backup
 
 # Export Docker environment (for reference)
-docker exec tradetally-app-dev env > ~/tradetally-migration/docker_env.txt
+docker exec tradetally-app env > ~/tradetally-migration/docker_env.txt
 ```
 
 ## Step 2: Install Native Services
@@ -51,7 +51,7 @@ docker exec tradetally-app-dev env > ~/tradetally-migration/docker_env.txt
 ```bash
 # Ubuntu/Debian
 sudo apt update
-sudo apt install postgresql-15 postgresql-contrib
+sudo apt install postgresql-16 postgresql-contrib
 
 # Start PostgreSQL
 sudo systemctl start postgresql
@@ -115,7 +115,7 @@ Edit PostgreSQL configuration:
 
 ```bash
 # Edit pg_hba.conf
-sudo nano /etc/postgresql/15/main/pg_hba.conf
+sudo nano /etc/postgresql/16/main/pg_hba.conf
 
 # Add this line for local connections:
 local   tradetally      trader                                  md5
@@ -136,7 +136,7 @@ sudo mkdir -p /opt/tradetally
 sudo chown $USER:$USER /opt/tradetally
 
 # Clone or copy your application
-cp -r ~/Projects/tradetally/* /opt/tradetally/
+cp -r ~tradetally/* /opt/tradetally/
 
 # Restore data and logs
 cp -r ~/tradetally-migration/app_data /opt/tradetally/backend/src/

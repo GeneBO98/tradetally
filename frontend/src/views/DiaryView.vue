@@ -38,6 +38,18 @@
               Calendar
             </button>
             <button
+              @click="currentView = 'templates'"
+              :class="[
+                'px-3 py-1 text-sm font-medium rounded-md transition-colors',
+                currentView === 'templates'
+                  ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm'
+                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+              ]"
+            >
+              <DocumentTextIcon class="w-4 h-4 mr-1 inline" />
+              Templates
+            </button>
+            <button
               @click="currentView = 'analysis'"
               :class="[
                 'px-3 py-1 text-sm font-medium rounded-md transition-colors',
@@ -426,6 +438,11 @@
         </div>
         </div>
 
+        <!-- Templates View -->
+        <div v-else-if="currentView === 'templates'">
+          <TemplateManager @apply-template="handleApplyTemplate" />
+        </div>
+
         <!-- AI Analysis View -->
         <div v-else-if="currentView === 'analysis'">
           <DiaryAnalysis />
@@ -500,6 +517,7 @@ import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, isSameDa
 import { parseMarkdown, truncateHtml as truncateHtmlUtil } from '@/utils/markdown'
 import DiaryAnalysis from '@/components/diary/DiaryAnalysis.vue'
 import GeneralNotes from '@/components/diary/GeneralNotes.vue'
+import TemplateManager from '@/components/diary/TemplateManager.vue'
 import {
   PlusIcon,
   PencilIcon,
@@ -511,7 +529,8 @@ import {
   ExclamationTriangleIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
-  SparklesIcon
+  SparklesIcon,
+  DocumentTextIcon
 } from '@heroicons/vue/24/outline'
 
 const diaryStore = useDiaryStore()
@@ -783,13 +802,13 @@ const confirmDelete = (entry) => {
 
 const deleteEntry = async () => {
   if (!entryToDelete.value) return
-  
+
   try {
     deleting.value = true
     await diaryStore.deleteEntry(entryToDelete.value.id)
     showDeleteModal.value = false
     entryToDelete.value = null
-    
+
     // Reload entries to refresh the list
     await loadEntries()
   } catch (error) {
@@ -797,6 +816,11 @@ const deleteEntry = async () => {
   } finally {
     deleting.value = false
   }
+}
+
+const handleApplyTemplate = (template) => {
+  // Navigate to new entry form (template will be shown there)
+  router.push('/diary/new')
 }
 
 // Load entries and tags on component mount
