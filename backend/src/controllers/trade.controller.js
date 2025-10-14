@@ -637,14 +637,15 @@ const tradeController = {
           // Fetch existing open positions for context-aware parsing
           logger.logImport(`Fetching existing open positions for context-aware import...`);
           const openPositionsQuery = `
-            SELECT id, symbol, side, quantity, entry_price, entry_time, trade_date, commission, broker
-            FROM trades 
-            WHERE user_id = $1 
-            AND exit_price IS NULL 
+            SELECT id, symbol, side, quantity, entry_price, entry_time, trade_date, commission, broker, executions
+            FROM trades
+            WHERE user_id = $1
+            AND exit_price IS NULL
             AND exit_time IS NULL
             ORDER BY symbol, entry_time
           `;
           const openPositionsResult = await db.query(openPositionsQuery, [fileUserId]);
+          logger.logImport(`Found ${openPositionsResult.rows.length} existing open positions`);
           
           // Convert to context format
           const existingPositions = {};

@@ -778,6 +778,7 @@ const tableColumns = ref([])
 
 const handleColumnsUpdate = (columns) => {
   tableColumns.value = columns
+  console.log('[TRADE LIST] Columns updated, visible columns:', columns.filter(c => c.visible).map(c => c.label))
 }
 
 // Dynamic table layout based on visible columns
@@ -879,7 +880,23 @@ function formatNumber(num) {
 }
 
 function formatDate(date) {
-  return format(new Date(date), 'MMM dd, yyyy')
+  if (!date) return 'N/A'
+  try {
+    // Parse date string manually to avoid timezone issues
+    // If it's a date-only string (YYYY-MM-DD), parse components directly
+    const dateStr = date.toString()
+    if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      const [year, month, day] = dateStr.split('-').map(Number)
+      // Create date in local timezone (month is 0-indexed)
+      const dateObj = new Date(year, month - 1, day)
+      return format(dateObj, 'MMM dd, yyyy')
+    }
+    // For datetime strings, use as-is
+    return format(new Date(date), 'MMM dd, yyyy')
+  } catch (error) {
+    console.error('Date formatting error:', error, 'for date:', date)
+    return 'Invalid Date'
+  }
 }
 
 function formatHoldTime(trade) {
