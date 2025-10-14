@@ -784,6 +784,16 @@ function formatQuantity(num) {
 function formatDate(date) {
   if (!date) return 'N/A'
   try {
+    // Parse date string manually to avoid timezone issues
+    // If it's a date-only string (YYYY-MM-DD), parse components directly
+    const dateStr = date.toString()
+    if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      const [year, month, day] = dateStr.split('-').map(Number)
+      // Create date in local timezone (month is 0-indexed)
+      const dateObj = new Date(year, month - 1, day)
+      return format(dateObj, 'MMM dd, yyyy')
+    }
+    // For datetime strings, use as-is
     const dateObj = new Date(date)
     if (isNaN(dateObj.getTime())) return 'Invalid Date'
     return format(dateObj, 'MMM dd, yyyy')
@@ -796,6 +806,19 @@ function formatDate(date) {
 function formatDateTime(date) {
   if (!date) return 'N/A'
   try {
+    // Parse datetime string manually to avoid timezone issues
+    const dateStr = date.toString()
+
+    // If it's an ISO datetime string, parse components directly
+    const isoMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/)
+    if (isoMatch) {
+      const [, year, month, day, hour, minute, second] = isoMatch.map(Number)
+      // Create date in local timezone
+      const dateObj = new Date(year, month - 1, day, hour, minute, second)
+      return format(dateObj, 'MMM dd, yyyy HH:mm')
+    }
+
+    // Fallback to standard parsing
     const dateObj = new Date(date)
     if (isNaN(dateObj.getTime())) return 'Invalid Date'
     return format(dateObj, 'MMM dd, yyyy HH:mm')
