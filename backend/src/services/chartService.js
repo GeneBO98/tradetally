@@ -23,7 +23,8 @@ class ChartService {
         } catch (error) {
           console.warn(`Finnhub failed for symbol ${symbol}: ${error.message}`);
           // For PRO users, if Finnhub fails, provide a helpful error message
-          throw new Error(`Chart data unavailable for ${symbol}. This symbol may be delisted, inactive, or not supported by Finnhub. Please try a different symbol like AAPL, MSFT, or GOOGL.`);
+          // Log the error and continue with alphaVantage (if configured) as a fallback
+          console.warn(`Chart data unavailable for ${symbol}. This symbol may be delisted, inactive, or not supported by Finnhub. Please try a different symbol like AAPL, MSFT, or GOOGL.`);
         }
       }
       
