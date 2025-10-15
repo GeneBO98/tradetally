@@ -19,6 +19,8 @@ Join the [Discourse!](https://forum.tradetally.io)
 <img width="1320" height="924" alt="SCR-20250829-okwl" src="https://github.com/user-attachments/assets/ea2266fe-72ee-4722-99be-f29f3930bdf5" />
 <img width="1319" height="1342" alt="SCR-20250829-okyl" src="https://github.com/user-attachments/assets/34ffa301-24a0-409d-8c37-08c11eb2f41d" />
 
+## Health Correlations
+<img width="1258" height="1362" alt="SCR-20251015-ilvq" src="https://github.com/user-attachments/assets/7aa6a206-189b-4a13-b502-ab96b04c69b0" />
 
 
 A comprehensive trading journal and analytics platform built with Vue.js frontend and Node.js backend. Track your trades, analyze performance, and gain insights into your trading patterns across multiple brokers.
