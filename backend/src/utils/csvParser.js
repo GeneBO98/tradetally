@@ -810,7 +810,8 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
 function parseDate(dateStr) {
   if (!dateStr || dateStr.toString().trim() === '') return null;
 
-  const cleanDateStr = dateStr.toString().trim();
+  // Remove leading and trailing quotes/apostrophes (including Unicode curly quotes), then trim
+  const cleanDateStr = dateStr.toString().replace(/^[\x27\x22\u2018\u2019\u201C\u201D]|[\x27\x22\u2018\u2019\u201C\u201D]$/g, '').trim();
 
   // Try to parse IBKR format MM-DD-YY first
   const mmddyyMatch = cleanDateStr.match(/^(\d{1,2})-(\d{1,2})-(\d{2})/);
@@ -872,7 +873,8 @@ function parseDate(dateStr) {
 function parseDateTime(dateTimeStr) {
   if (!dateTimeStr || dateTimeStr.toString().trim() === '') return null;
 
-  const cleanDateTimeStr = dateTimeStr.toString().trim();
+  // Remove leading and trailing quotes/apostrophes (including Unicode curly quotes), then trim
+  const cleanDateTimeStr = dateTimeStr.toString().replace(/^[\x27\x22\u2018\u2019\u201C\u201D]|[\x27\x22\u2018\u2019\u201C\u201D]$/g, '').trim();
 
   try {
     // Check for MM/DD/YYYY HH:MM:SS format (common in many CSVs)
@@ -1450,33 +1452,40 @@ async function parseLightspeedTransactions(records, existingPositions = {}) {
   // Process transactions using round-trip trade grouping (like TradersVue and updated Schwab parser)
   Object.keys(symbolGroups).forEach(symbol => {
     const symbolTransactions = symbolGroups[symbol];
-    
+
     // Calculate total commissions and fees for this symbol from CSV
     const totalCommissions = symbolTransactions.reduce((sum, tx) => sum + tx.commission, 0);
     const totalFees = symbolTransactions.reduce((sum, tx) => sum + tx.fees, 0);
-    
+
     console.log(`\n=== Processing ${symbolTransactions.length} Lightspeed transactions for ${symbol} ===`);
     console.log(`Symbol ${symbol}: CSV commissions: $${totalCommissions.toFixed(2)}, fees: $${totalFees.toFixed(2)}`);
-    
+
+    // Detect instrument type to apply correct multiplier
+    const instrumentData = parseInstrumentData(symbol);
+    const valueMultiplier = instrumentData.instrumentType === 'option' ? 100 :
+                            instrumentData.instrumentType === 'future' ? (instrumentData.pointValue || 1) : 1;
+
+    console.log(`Instrument type: ${instrumentData.instrumentType}, value multiplier: ${valueMultiplier}`);
+
     // Sort by execution time for FIFO matching
     symbolTransactions.sort((a, b) => new Date(a.entryTime) - new Date(b.entryTime));
-    
+
     // Track position and round-trip trades
     // Start with existing position if we have one for this symbol
     const existingPosition = existingPositions[symbol];
-    let currentPosition = existingPosition ? 
+    let currentPosition = existingPosition ?
       (existingPosition.side === 'long' ? existingPosition.quantity : -existingPosition.quantity) : 0;
     let currentTrade = existingPosition ? {
       symbol: symbol,
       entryTime: null,  // Will be set from first CSV transaction
       tradeDate: null,  // Will be set from first CSV transaction
       side: existingPosition.side,
-      executions: Array.isArray(existingPosition.executions) 
-        ? existingPosition.executions 
+      executions: Array.isArray(existingPosition.executions)
+        ? existingPosition.executions
         : (existingPosition.executions ? JSON.parse(existingPosition.executions) : []),  // Parse JSON executions
       totalQuantity: existingPosition.quantity,
       totalFees: existingPosition.commission || 0,
-      entryValue: existingPosition.quantity * existingPosition.entryPrice,
+      entryValue: existingPosition.quantity * existingPosition.entryPrice * valueMultiplier,
       exitValue: 0,
       broker: existingPosition.broker || 'lightspeed',
       isExistingPosition: true, // Flag to identify this came from database
@@ -1568,53 +1577,44 @@ async function parseLightspeedTransactions(records, existingPositions = {}) {
       if (transaction.side === 'buy') {
         currentPosition += qty;
 
-        // Apply multiplier for options/futures
-        const multiplier = (transaction.instrumentType === 'option' || transaction.instrumentType === 'future')
-          ? (transaction.contractSize || 100)
-          : 1;
-
         // Add to entry or exit value based on trade direction
         if (currentTrade && currentTrade.side === 'long') {
-          currentTrade.entryValue += qty * transaction.entryPrice * multiplier;
+          currentTrade.entryValue += qty * transaction.entryPrice * valueMultiplier;
           currentTrade.totalQuantity += qty;
         } else if (currentTrade && currentTrade.side === 'short') {
-          currentTrade.exitValue += qty * transaction.entryPrice * multiplier;
+          currentTrade.exitValue += qty * transaction.entryPrice * valueMultiplier;
           // Don't add to totalQuantity for covering short position
         }
 
       } else if (transaction.side === 'sell') {
         currentPosition -= qty;
 
-        // Apply multiplier for options/futures
-        const multiplier = (transaction.instrumentType === 'option' || transaction.instrumentType === 'future')
-          ? (transaction.contractSize || 100)
-          : 1;
-
         // Add to entry or exit value based on trade direction
         if (currentTrade && currentTrade.side === 'short') {
-          currentTrade.entryValue += qty * transaction.entryPrice * multiplier;
+          currentTrade.entryValue += qty * transaction.entryPrice * valueMultiplier;
           currentTrade.totalQuantity += qty;
         } else if (currentTrade && currentTrade.side === 'long') {
-          currentTrade.exitValue += qty * transaction.entryPrice * multiplier;
+          currentTrade.exitValue += qty * transaction.entryPrice * valueMultiplier;
           // Don't modify totalQuantity when selling from long position
         }
       }
       
       console.log(`  Position: ${prevPosition} → ${currentPosition}`);
-      
+
       // Close trade if position goes to zero
       if (currentPosition === 0 && currentTrade && currentTrade.totalQuantity > 0) {
         // Calculate weighted average prices
-        currentTrade.entryPrice = currentTrade.entryValue / currentTrade.totalQuantity;
-        currentTrade.exitPrice = currentTrade.exitValue / currentTrade.totalQuantity;
-        
+        // Divide by multiplier to get per-contract/per-share price
+        currentTrade.entryPrice = currentTrade.entryValue / (currentTrade.totalQuantity * valueMultiplier);
+        currentTrade.exitPrice = currentTrade.exitValue / (currentTrade.totalQuantity * valueMultiplier);
+
         // Calculate P/L
         if (currentTrade.side === 'long') {
           currentTrade.pnl = currentTrade.exitValue - currentTrade.entryValue - currentTrade.totalFees;
         } else {
           currentTrade.pnl = currentTrade.entryValue - currentTrade.exitValue - currentTrade.totalFees;
         }
-        
+
         currentTrade.pnlPercent = (currentTrade.pnl / currentTrade.entryValue) * 100;
         currentTrade.quantity = currentTrade.totalQuantity;
         currentTrade.commission = currentTrade.totalFees;
@@ -1624,9 +1624,9 @@ async function parseLightspeedTransactions(records, existingPositions = {}) {
         const sortedTimes = executionTimes.sort((a, b) => a - b);
         currentTrade.entryTime = sortedTimes[0].toISOString();
         currentTrade.exitTime = sortedTimes[sortedTimes.length - 1].toISOString();
-        
+
         // Executions are stored in the executions field (no need for executionData)
-        
+
         // Mark as update if this was an existing position
         if (currentTrade.isExistingPosition) {
           currentTrade.isUpdate = currentTrade.newExecutionsAdded > 0;
@@ -1656,11 +1656,12 @@ async function parseLightspeedTransactions(records, existingPositions = {}) {
     
     if (currentTrade) {
       console.log(`Active trade: ${currentTrade.side} ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions`);
-      
+
       // Add open position as incomplete trade
       // For open positions, use the net position, not the accumulated totalQuantity
       const netQuantity = Math.abs(currentPosition);
-      currentTrade.entryPrice = currentTrade.entryValue / currentTrade.totalQuantity;
+      // Divide by multiplier to get per-contract/per-share price
+      currentTrade.entryPrice = currentTrade.entryValue / (currentTrade.totalQuantity * valueMultiplier);
       currentTrade.exitPrice = null;
       currentTrade.quantity = netQuantity; // Use actual net position
       
@@ -2007,20 +2008,21 @@ async function parseSchwabTransactions(records, existingPositions = {}) {
       }
       
       console.log(`  Position: ${prevPosition} → ${currentPosition}`);
-      
+
       // Close trade if position goes to zero
       if (currentPosition === 0 && currentTrade && currentTrade.totalQuantity > 0) {
         // Calculate weighted average prices
-        currentTrade.entryPrice = currentTrade.entryValue / currentTrade.totalQuantity;
-        currentTrade.exitPrice = currentTrade.exitValue / currentTrade.totalQuantity;
-        
+        // Divide by multiplier to get per-contract/per-share price
+        currentTrade.entryPrice = currentTrade.entryValue / (currentTrade.totalQuantity * valueMultiplier);
+        currentTrade.exitPrice = currentTrade.exitValue / (currentTrade.totalQuantity * valueMultiplier);
+
         // Calculate P/L
         if (currentTrade.side === 'long') {
           currentTrade.pnl = currentTrade.exitValue - currentTrade.entryValue - currentTrade.totalFees;
         } else {
           currentTrade.pnl = currentTrade.entryValue - currentTrade.exitValue - currentTrade.totalFees;
         }
-        
+
         currentTrade.pnlPercent = (currentTrade.pnl / currentTrade.entryValue) * 100;
         currentTrade.quantity = currentTrade.totalQuantity;
         currentTrade.commission = currentTrade.totalFees;
@@ -2043,7 +2045,7 @@ async function parseSchwabTransactions(records, existingPositions = {}) {
         openLots.length = 0; // Clear lots when trade completes
       }
     }
-    
+
     console.log(`\n${symbol} Final Position: ${currentPosition} shares`);
     if (currentTrade && currentPosition !== 0) {
       // Add open position as incomplete trade
@@ -2060,7 +2062,8 @@ async function parseSchwabTransactions(records, existingPositions = {}) {
       }
 
       // Calculate weighted average entry price for display
-      currentTrade.entryPrice = currentTrade.entryValue / currentTrade.totalQuantity;
+      // Divide by multiplier to get per-contract/per-share price
+      currentTrade.entryPrice = currentTrade.entryValue / (currentTrade.totalQuantity * valueMultiplier);
       currentTrade.quantity = currentTrade.totalQuantity;
       currentTrade.commission = currentTrade.totalFees;
       currentTrade.fees = 0;
@@ -2320,7 +2323,8 @@ async function parseThinkorswimTransactions(records, existingPositions = {}) {
       console.log(`Active trade: ${currentTrade.side} ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions`);
       
       // Add open position as incomplete trade
-      currentTrade.entryPrice = currentTrade.entryValue / currentTrade.totalQuantity;
+      // Divide by multiplier to get per-contract/per-share price
+      currentTrade.entryPrice = currentTrade.entryValue / (currentTrade.totalQuantity * valueMultiplier);
       currentTrade.exitPrice = null;
       currentTrade.quantity = currentTrade.totalQuantity;
       currentTrade.commission = currentTrade.totalFees;
@@ -2330,10 +2334,10 @@ async function parseThinkorswimTransactions(records, existingPositions = {}) {
       currentTrade.pnlPercent = 0;
       currentTrade.notes = `Open position: ${currentTrade.executions.length} executions`;
       currentTrade.executionData = currentTrade.executions;
-      
+
       // Add instrument data for options/futures
       Object.assign(currentTrade, instrumentData);
-      
+
       // For options, update symbol to use underlying symbol instead of the full option symbol
       if (instrumentData.instrumentType === 'option' && instrumentData.underlyingSymbol) {
         currentTrade.symbol = instrumentData.underlyingSymbol;
@@ -2613,7 +2617,8 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}) {
       console.log(`Active trade: ${currentTrade.side} ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions`);
       
       // Add open position as incomplete trade
-      currentTrade.entryPrice = currentTrade.entryValue / currentTrade.totalQuantity;
+      // Divide by multiplier to get per-contract/per-share price
+      currentTrade.entryPrice = currentTrade.entryValue / (currentTrade.totalQuantity * valueMultiplier);
       currentTrade.exitPrice = null;
       currentTrade.quantity = currentTrade.totalQuantity;
       currentTrade.commission = currentTrade.totalFees;
@@ -2623,10 +2628,10 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}) {
       currentTrade.pnlPercent = 0;
       currentTrade.notes = `Open position: ${currentTrade.executions.length} executions`;
       currentTrade.executionData = currentTrade.executions;
-      
+
       // Add instrument data for options/futures
       Object.assign(currentTrade, instrumentData);
-      
+
       // For options, update symbol to use underlying symbol instead of the full option symbol
       if (instrumentData.instrumentType === 'option' && instrumentData.underlyingSymbol) {
         currentTrade.symbol = instrumentData.underlyingSymbol;
@@ -2863,8 +2868,9 @@ async function parseTradingViewTransactions(records, existingPositions = {}) {
       // Close trade if position goes to zero
       if (currentPosition === 0 && currentTrade && currentTrade.totalQuantity > 0) {
         // Calculate weighted average prices
-        currentTrade.entryPrice = currentTrade.entryValue / currentTrade.totalQuantity;
-        currentTrade.exitPrice = currentTrade.exitValue / currentTrade.totalQuantity;
+        // Divide by multiplier to get per-contract/per-share price
+        currentTrade.entryPrice = currentTrade.entryValue / (currentTrade.totalQuantity * valueMultiplier);
+        currentTrade.exitPrice = currentTrade.exitValue / (currentTrade.totalQuantity * valueMultiplier);
 
         // Calculate P/L
         if (currentTrade.side === 'long') {
@@ -2922,7 +2928,8 @@ async function parseTradingViewTransactions(records, existingPositions = {}) {
       console.log(`Active trade: ${currentTrade.side} ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions`);
 
       // Add open position as incomplete trade
-      currentTrade.entryPrice = currentTrade.entryValue / currentTrade.totalQuantity;
+      // Divide by multiplier to get per-contract/per-share price
+      currentTrade.entryPrice = currentTrade.entryValue / (currentTrade.totalQuantity * valueMultiplier);
       currentTrade.exitPrice = null;
       currentTrade.quantity = currentTrade.totalQuantity;
       currentTrade.commission = currentTrade.totalFees;
@@ -2932,10 +2939,10 @@ async function parseTradingViewTransactions(records, existingPositions = {}) {
       currentTrade.pnlPercent = 0;
       currentTrade.notes = `Open position: ${currentTrade.executions.length} executions`;
       currentTrade.executionData = currentTrade.executions;
-      
+
       // Add instrument data for options/futures
       Object.assign(currentTrade, instrumentData);
-      
+
       // For options, update symbol to use underlying symbol instead of the full option symbol
       if (instrumentData.instrumentType === 'option' && instrumentData.underlyingSymbol) {
         currentTrade.symbol = instrumentData.underlyingSymbol;
@@ -3007,8 +3014,9 @@ async function parseIBKRTransactions(records, existingPositions = {}) {
         price = parseFloat(record.Price);
         commission = Math.abs(parseFloat(record.Commission || 0));
         // Handle both "DateTime" and "Date/Time" column names
-        // Clean DateTime - remove leading apostrophe if present
-        dateTime = (record.DateTime || record['Date/Time'] || '').toString().replace(/^'/, '').trim();
+        // Clean DateTime - remove leading and trailing apostrophes/quotes if present
+        const rawDateTime = (record.DateTime || record['Date/Time'] || '').toString();
+        dateTime = rawDateTime.replace(/^[\x27\x22\u2018\u2019\u201C\u201D]|[\x27\x22\u2018\u2019\u201C\u201D]$/g, '').trim();
         action = quantity > 0 ? 'buy' : 'sell';
       }
 
@@ -3233,8 +3241,9 @@ async function parseIBKRTransactions(records, existingPositions = {}) {
       // Close trade if position goes to zero
       if (currentPosition === 0 && currentTrade && currentTrade.totalQuantity > 0) {
         // Calculate weighted average prices
-        currentTrade.entryPrice = currentTrade.entryValue / currentTrade.totalQuantity;
-        currentTrade.exitPrice = currentTrade.exitValue / currentTrade.totalQuantity;
+        // Divide by multiplier to get per-contract/per-share price
+        currentTrade.entryPrice = currentTrade.entryValue / (currentTrade.totalQuantity * valueMultiplier);
+        currentTrade.exitPrice = currentTrade.exitValue / (currentTrade.totalQuantity * valueMultiplier);
 
         // Calculate P/L
         if (currentTrade.side === 'long') {
@@ -3292,7 +3301,8 @@ async function parseIBKRTransactions(records, existingPositions = {}) {
       console.log(`Active trade: ${currentTrade.side} ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions`);
 
       // Add open position as incomplete trade
-      currentTrade.entryPrice = currentTrade.entryValue / currentTrade.totalQuantity;
+      // Divide by multiplier to get per-contract/per-share price
+      currentTrade.entryPrice = currentTrade.entryValue / (currentTrade.totalQuantity * valueMultiplier);
       currentTrade.exitPrice = null;
       currentTrade.quantity = currentTrade.totalQuantity;
       currentTrade.commission = currentTrade.totalFees;
@@ -3302,10 +3312,10 @@ async function parseIBKRTransactions(records, existingPositions = {}) {
       currentTrade.pnlPercent = 0;
       currentTrade.notes = `Open position: ${currentTrade.executions.length} executions`;
       currentTrade.executionData = currentTrade.executions;
-      
+
       // Add instrument data for options/futures
       Object.assign(currentTrade, instrumentData);
-      
+
       // For options, update symbol to use underlying symbol instead of the full option symbol
       if (instrumentData.instrumentType === 'option' && instrumentData.underlyingSymbol) {
         currentTrade.symbol = instrumentData.underlyingSymbol;
