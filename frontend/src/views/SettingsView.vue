@@ -287,7 +287,7 @@
               <div class="flex-1">
                 <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-3">Export Your Data</h4>
                 <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                  Download a complete backup of your TradeTally data including trades, settings, tags, and equity history.
+                  Download a complete backup of your TradeTally data including trades, diary entries, playbook entries, settings, tags, and equity history.
                 </p>
               </div>
               <button
