@@ -132,6 +132,7 @@ const createOrUpdateEntry = [
         content: formData.content,
         keyLevels: formData.keyLevels,
         watchlist: formData.watchlist || [],
+        linkedTrades: formData.linkedTrades || [],
         tags: formData.tags || [],
         followedPlan: formData.followedPlan,
         lessonsLearned: formData.lessonsLearned
@@ -167,6 +168,7 @@ const updateEntry = [
       if (formData.content !== undefined) updates.content = formData.content;
       if (formData.keyLevels !== undefined) updates.keyLevels = formData.keyLevels;
       if (formData.watchlist !== undefined) updates.watchlist = formData.watchlist;
+      if (formData.linkedTrades !== undefined) updates.linkedTrades = formData.linkedTrades;
       if (formData.tags !== undefined) updates.tags = formData.tags;
       if (formData.followedPlan !== undefined) updates.followedPlan = formData.followedPlan;
       if (formData.lessonsLearned !== undefined) updates.lessonsLearned = formData.lessonsLearned;
