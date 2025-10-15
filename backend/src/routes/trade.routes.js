@@ -528,6 +528,10 @@ router.get('/news', authenticate, tradeController.getTradeNews);
 // Export trades - MUST be before /:id route to avoid matching "export" as an ID
 router.get('/export', authenticate, tradeController.exportTrades);
 
+// Expired options management routes - MUST be before /:id route
+router.get('/expired-options', authenticate, tradeController.getExpiredOptions);
+router.post('/expired-options/auto-close', authenticate, tradeController.autoCloseExpiredOptions);
+
 // Chart data endpoint - MUST be before /:id route
 router.get('/:id/chart-data', authenticate, tradeController.getTradeChartData);
 
