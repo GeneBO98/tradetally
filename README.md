@@ -1,6 +1,9 @@
 # TradeTally - Trading Journal & Analytics Platform - Dominate With Data
 ## Try the DEMO
 Visit [TradeTally](https://tradetally.io)
+**Demo User:**
+- Username: demo@example.com
+- Password: DemoUser25
 
 ## Forum Now Available 
 Join the [Discourse!](https://forum.tradetally.io)
@@ -29,9 +32,6 @@ A comprehensive trading journal and analytics platform built with Vue.js fronten
 - **SaaS Platform**: Fully hosted solution at [tradetally.io](https://tradetally.io) with subscription plans
 - **Self-Hosted**: Free, open-source deployment with all Pro features included
 
-**Try the Demo:**
-- Username: demo@example.com
-- Password: DemoUser25
 ## Mobile App (Available For Testing)
 ### Testflight
 [Click here for the invitation](https://testflight.apple.com/join/11shUY3t)
