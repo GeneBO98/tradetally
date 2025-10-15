@@ -763,6 +763,15 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       try {
         let trade = parser(record);
         if (isValidTrade(trade)) {
+          // Parse instrument data for futures/options detection
+          if (trade.symbol) {
+            const instrumentData = parseInstrumentData(trade.symbol);
+            if (instrumentData.instrumentType === 'future' || instrumentData.instrumentType === 'option') {
+              // Add instrument data to trade
+              Object.assign(trade, instrumentData);
+            }
+          }
+
           // Check if this trade has a currency that needs conversion
           if (hasCurrencyColumn) {
             const currencyFieldPatterns = ['currency', 'curr', 'ccy', 'currency_code', 'currencycode'];
@@ -1224,7 +1233,13 @@ function parseInstrumentData(symbol) {
       } else {
         [, underlying, monthCode, year] = match;
         year = parseInt(year);
-        if (year < 100) {
+        if (year < 10) {
+          // Single digit year: interpret as last digit of current decade (e.g., 5 = 2025, 9 = 2029, 0 = 2020)
+          const currentYear = new Date().getFullYear();
+          const currentDecade = Math.floor(currentYear / 10) * 10;
+          year = currentDecade + year;
+        } else if (year < 100) {
+          // Two digit year: use standard logic (00-49 = 2000s, 50-99 = 1900s)
           year += year < 50 ? 2000 : 1900;
         }
       }
