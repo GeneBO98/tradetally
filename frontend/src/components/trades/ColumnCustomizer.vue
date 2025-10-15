@@ -178,7 +178,10 @@ const defaultColumns = [
   { key: 'optionType', label: 'Option Type', visible: false, width: 'auto' },
   { key: 'strikePrice', label: 'Strike Price', visible: false, width: 'auto' },
   { key: 'expirationDate', label: 'Expiration Date', visible: false, width: 'auto' },
-  { key: 'contractSize', label: 'Contract Size', visible: false, width: 'auto' }
+  { key: 'contractSize', label: 'Contract Size', visible: false, width: 'auto' },
+  { key: 'heartRate', label: 'Heart Rate', visible: false, width: 'auto' },
+  { key: 'sleepHours', label: 'Sleep Hours', visible: false, width: 'auto' },
+  { key: 'sleepScore', label: 'Sleep Score', visible: false, width: 'auto' }
 ]
 
 const showMenu = ref(false)

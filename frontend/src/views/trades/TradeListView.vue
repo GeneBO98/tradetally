@@ -558,6 +558,24 @@
                     @click="$router.push(`/trades/${trade.id}`)">
                   {{ trade.contract_size || '-' }}
                 </td>
+
+                <td v-else-if="column.visible && column.key === 'heartRate'"
+                    :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']"
+                    @click="$router.push(`/trades/${trade.id}`)">
+                  {{ trade.heart_rate ? `${Math.round(trade.heart_rate)} BPM` : '-' }}
+                </td>
+
+                <td v-else-if="column.visible && column.key === 'sleepHours'"
+                    :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']"
+                    @click="$router.push(`/trades/${trade.id}`)">
+                  {{ trade.sleep_hours ? `${Number(trade.sleep_hours).toFixed(1)}h` : '-' }}
+                </td>
+
+                <td v-else-if="column.visible && column.key === 'sleepScore'"
+                    :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']"
+                    @click="$router.push(`/trades/${trade.id}`)">
+                  {{ trade.sleep_score ? Math.round(trade.sleep_score) : '-' }}
+                </td>
               </template>
               <!-- Empty cell to align with column customizer -->
               <td class="px-2 py-4" style="width: 40px;"></td>

@@ -64,6 +64,8 @@ services:
       VITE_POSTHOG_HOST: ${VITE_POSTHOG_HOST:-}
       # Registration Control
       REGISTRATION_MODE: ${REGISTRATION_MODE:-open}
+      # API Documentation
+      ENABLE_SWAGGER: ${ENABLE_SWAGGER:-true}
       # External API Keys
       FINNHUB_API_KEY: ${FINNHUB_API_KEY:-}
       ALPHA_VANTAGE_API_KEY: ${ALPHA_VANTAGE_API_KEY:-}

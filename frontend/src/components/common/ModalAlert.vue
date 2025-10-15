@@ -9,20 +9,25 @@
       <div class="mt-3">
         <!-- Icon -->
         <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full mb-4" :class="iconBgClass">
-          <ExclamationTriangleIcon 
-            v-if="modalAlert.type === 'warning'" 
-            class="h-6 w-6" 
-            :class="iconClass" 
+          <ExclamationTriangleIcon
+            v-if="modalAlert.type === 'warning'"
+            class="h-6 w-6"
+            :class="iconClass"
           />
-          <XCircleIcon 
-            v-else-if="modalAlert.type === 'error'" 
-            class="h-6 w-6" 
-            :class="iconClass" 
+          <XCircleIcon
+            v-else-if="modalAlert.type === 'error'"
+            class="h-6 w-6"
+            :class="iconClass"
           />
-          <QuestionMarkCircleIcon 
-            v-else-if="modalAlert.type === 'confirm'" 
-            class="h-6 w-6" 
-            :class="iconClass" 
+          <QuestionMarkCircleIcon
+            v-else-if="modalAlert.type === 'confirm'"
+            class="h-6 w-6"
+            :class="iconClass"
+          />
+          <CheckCircleIcon
+            v-else-if="modalAlert.type === 'success'"
+            class="h-6 w-6"
+            :class="iconClass"
           />
         </div>
 
@@ -64,7 +69,7 @@
 <script setup>
 import { computed } from 'vue'
 import { useNotification } from '@/composables/useNotification'
-import { ExclamationTriangleIcon, XCircleIcon, QuestionMarkCircleIcon } from '@heroicons/vue/24/outline'
+import { ExclamationTriangleIcon, XCircleIcon, QuestionMarkCircleIcon, CheckCircleIcon } from '@heroicons/vue/24/outline'
 
 const { modalAlert, clearModalAlert } = useNotification()
 
@@ -76,6 +81,8 @@ const iconBgClass = computed(() => {
       return 'bg-yellow-100 dark:bg-yellow-900/20'
     case 'confirm':
       return 'bg-blue-100 dark:bg-blue-900/20'
+    case 'success':
+      return 'bg-green-100 dark:bg-green-900/20'
     default:
       return 'bg-gray-100 dark:bg-gray-900/20'
   }
@@ -89,6 +96,8 @@ const iconClass = computed(() => {
       return 'text-yellow-600 dark:text-yellow-400'
     case 'confirm':
       return 'text-blue-600 dark:text-blue-400'
+    case 'success':
+      return 'text-green-600 dark:text-green-400'
     default:
       return 'text-gray-600 dark:text-gray-400'
   }
@@ -102,6 +111,8 @@ const confirmButtonClass = computed(() => {
       return 'bg-yellow-600 hover:bg-yellow-700 focus:ring-yellow-500'
     case 'confirm':
       return 'bg-blue-600 hover:bg-blue-700 focus:ring-blue-500'
+    case 'success':
+      return 'bg-green-600 hover:bg-green-700 focus:ring-green-500'
     default:
       return 'bg-gray-600 hover:bg-gray-700 focus:ring-gray-500'
   }
