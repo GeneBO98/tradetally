@@ -46,9 +46,9 @@ export function useNotification() {
 
   // New method for confirmation dialogs
   function showConfirmation(title, message, onConfirm, onCancel = null) {
-    modalAlert.value = { 
-      type: 'confirm', 
-      title, 
+    modalAlert.value = {
+      type: 'confirm',
+      title,
       message,
       confirmText: 'Confirm',
       cancelText: 'Cancel',
@@ -60,6 +60,17 @@ export function useNotification() {
         clearModalAlert()
         if (onCancel) onCancel()
       }
+    }
+  }
+
+  // New method for success modals
+  function showSuccessModal(title, message, options = {}) {
+    modalAlert.value = {
+      type: 'success',
+      title,
+      message,
+      confirmText: options.confirmText || 'OK',
+      onConfirm: options.onConfirm || clearModalAlert
     }
   }
 
@@ -81,6 +92,7 @@ export function useNotification() {
     showCriticalError,
     showImportantWarning,
     showConfirmation,
+    showSuccessModal,
     clearNotification,
     clearModalAlert
   }

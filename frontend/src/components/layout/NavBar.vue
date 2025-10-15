@@ -297,11 +297,18 @@ const baseNavigation = [
         route: 'analytics',
         description: 'Trading performance metrics and statistics'
       },
-      { 
-        name: 'Behavioral Analytics', 
-        to: '/analytics/behavioral', 
+      {
+        name: 'Behavioral Analytics',
+        to: '/analytics/behavioral',
         route: 'behavioral-analytics',
         description: 'Detect revenge trading and emotional patterns',
+        badge: { type: 'pro', text: 'Pro' }
+      },
+      {
+        name: 'Health Analytics',
+        to: '/analytics/health',
+        route: 'health-analytics',
+        description: 'Correlate health metrics with trading performance',
         badge: { type: 'pro', text: 'Pro' }
       }
     ]

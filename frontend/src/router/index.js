@@ -83,6 +83,12 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
+      path: '/analytics/health',
+      name: 'health-analytics',
+      component: () => import('@/views/HealthAnalyticsView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
       path: '/diary',
       name: 'diary',
       component: () => import('@/views/DiaryView.vue'),

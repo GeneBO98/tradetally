@@ -2459,6 +2459,116 @@ const tradeController = {
       console.error('[ENRICHMENT ERROR] Force complete enrichment failed:', error);
       next(error);
     }
+  },
+
+  async updateTradeHealthData(req, res, next) {
+    try {
+      const tradeId = req.params.id;
+      const { heartRate, sleepScore, sleepHours, stressLevel } = req.body;
+
+      // Validate trade belongs to user
+      const tradeCheck = await db.query(
+        'SELECT id FROM trades WHERE id = $1 AND user_id = $2',
+        [tradeId, req.user.id]
+      );
+
+      if (tradeCheck.rows.length === 0) {
+        return res.status(404).json({ error: 'Trade not found' });
+      }
+
+      // Update trade with health data
+      const query = `
+        UPDATE trades
+        SET heart_rate = $1, sleep_score = $2, sleep_hours = $3, stress_level = $4, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $5 AND user_id = $6
+        RETURNING *
+      `;
+
+      const result = await db.query(query, [
+        heartRate || null,
+        sleepScore || null,
+        sleepHours || null,
+        stressLevel || null,
+        tradeId,
+        req.user.id
+      ]);
+
+      logger.logInfo(`Updated health data for trade ${tradeId} for user ${req.user.id}`);
+
+      res.json({
+        success: true,
+        trade: result.rows[0]
+      });
+
+    } catch (error) {
+      logger.logError('Error updating trade health data:', error);
+      next(error);
+    }
+  },
+
+  async bulkUpdateHealthData(req, res, next) {
+    try {
+      const { trades } = req.body; // Array of {tradeId, heartRate, sleepScore, sleepHours, stressLevel}
+
+      if (!Array.isArray(trades) || trades.length === 0) {
+        return res.status(400).json({ error: 'Trades array is required' });
+      }
+
+      let updatedCount = 0;
+      const errors = [];
+
+      // Process each trade update
+      for (const tradeUpdate of trades) {
+        const { tradeId, heartRate, sleepScore, sleepHours, stressLevel } = tradeUpdate;
+
+        try {
+          // Validate trade belongs to user
+          const tradeCheck = await db.query(
+            'SELECT id FROM trades WHERE id = $1 AND user_id = $2',
+            [tradeId, req.user.id]
+          );
+
+          if (tradeCheck.rows.length === 0) {
+            errors.push({ tradeId, error: 'Trade not found' });
+            continue;
+          }
+
+          // Update trade with health data
+          const query = `
+            UPDATE trades
+            SET heart_rate = $1, sleep_score = $2, sleep_hours = $3, stress_level = $4, updated_at = CURRENT_TIMESTAMP
+            WHERE id = $5 AND user_id = $6
+          `;
+
+          await db.query(query, [
+            heartRate || null,
+            sleepScore || null,
+            sleepHours || null,
+            stressLevel || null,
+            tradeId,
+            req.user.id
+          ]);
+
+          updatedCount++;
+
+        } catch (error) {
+          errors.push({ tradeId, error: error.message });
+        }
+      }
+
+      logger.logInfo(`Bulk updated ${updatedCount} trades with health data for user ${req.user.id}`);
+
+      res.json({
+        success: true,
+        updatedCount,
+        totalRequested: trades.length,
+        errors: errors.length > 0 ? errors : undefined
+      });
+
+    } catch (error) {
+      logger.logError('Error bulk updating trade health data:', error);
+      next(error);
+    }
   }
 };
 
