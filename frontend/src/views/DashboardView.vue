@@ -89,7 +89,7 @@
     <div v-else class="space-y-8">
       <!-- Today's Journal Entry -->
       <TodaysJournalEntry />
-      
+
       <!-- Open Trades Section -->
       <div v-if="openTrades.length > 0" class="card">
         <div class="card-body">
@@ -1338,10 +1338,10 @@ function stopAutoUpdate() {
 // Check market status periodically to start/stop updates as needed
 function checkMarketStatus() {
   updateMarketStatus()
-  
+
   const refreshInterval = getRefreshInterval()
   const shouldRefresh = shouldRefreshPrices()
-  
+
   // If market status changed, restart auto-update
   if (shouldRefresh && !updateInterval) {
     console.log('Dashboard: Market opened - starting auto-updates')
@@ -1352,12 +1352,55 @@ function checkMarketStatus() {
   }
 }
 
+// Fetch count of expired options
+async function fetchExpiredOptionsCount() {
+  try {
+    console.log('[Dashboard] Checking for expired options...')
+    const response = await api.get('/trades/expired-options')
+    console.log('[Dashboard] Expired options response:', response.data)
+
+    const count = response.data.count || 0
+
+    // If there are expired options, auto-close them immediately
+    if (count > 0) {
+      console.log(`[Dashboard] Found ${count} expired options, auto-closing...`)
+
+      try {
+        const closeResponse = await api.post('/trades/expired-options/auto-close', { dryRun: false })
+        console.log('[Dashboard] Auto-close response:', closeResponse.data)
+
+        // Show success notification
+        showSuccessModal(
+          'Expired Options Auto-Closed',
+          `Automatically closed ${closeResponse.data.closedCount} expired option${closeResponse.data.closedCount !== 1 ? 's' : ''}. These have been marked as "auto-closed" with full loss calculated.`
+        )
+
+        // Refresh dashboard data
+        await Promise.all([
+          fetchAnalytics(),
+          fetchOpenTrades()
+        ])
+      } catch (closeError) {
+        console.error('[Dashboard] Error auto-closing expired options:', closeError)
+        showCriticalError(
+          'Auto-Close Failed',
+          closeError.response?.data?.error || 'Failed to auto-close expired options'
+        )
+      }
+    }
+
+  } catch (error) {
+    console.error('[Dashboard] Error fetching expired options:', error)
+  }
+}
+
 onMounted(async () => {
   await Promise.all([
     fetchAnalytics(),
     fetchFilterOptions(),
     fetchOpenTrades(),
-    fetchUserSettings()
+    fetchUserSettings(),
+    fetchExpiredOptionsCount()
   ])
   
   // Set initial refresh timestamp

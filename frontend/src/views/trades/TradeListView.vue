@@ -318,8 +318,8 @@
                 <td v-else-if="column.visible && column.key === 'symbol'"
                     :class="[getCellPadding, 'cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
-                  <div class="flex items-center gap-1.5 flex-wrap min-w-max">
-                    <div class="text-sm font-medium text-gray-900 dark:text-white whitespace-nowrap">
+                  <div class="flex items-center gap-1.5 flex-wrap max-w-xs">
+                    <div class="text-sm font-medium text-gray-900 dark:text-white truncate max-w-[200px]" :title="trade.symbol">
                       {{ trade.symbol }}
                     </div>
                     <!-- Instrument type badge -->

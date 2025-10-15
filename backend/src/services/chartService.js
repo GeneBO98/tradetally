@@ -15,14 +15,30 @@ class ChartService {
       console.log('[DEBUG] CHART SERVICE: EntryDate type and value:', typeof entryDate, entryDate);
       console.log('[DEBUG] CHART SERVICE: ExitDate type and value:', typeof exitDate, exitDate);
       
-      // Pro users get Finnhub data exclusively (higher quality, more frequent updates)
+      // Pro users get Finnhub data (higher quality, more frequent updates)
       if (isProUser && finnhub.isConfigured()) {
-        console.log('Using Finnhub exclusively for Pro user chart data');
+        console.log('Using Finnhub for Pro user chart data');
         try {
           return await finnhub.getTradeChartData(symbol, entryDate, exitDate);
         } catch (error) {
           console.warn(`Finnhub failed for symbol ${symbol}: ${error.message}`);
-          // For PRO users, if Finnhub fails, provide a helpful error message
+
+          // Fall back to Alpha Vantage if configured
+          if (alphaVantage.isConfigured()) {
+            console.warn(`Falling back to Alpha Vantage for Pro user due to Finnhub failure (${error.message})`);
+            try {
+              const chartData = await alphaVantage.getTradeChartData(symbol, entryDate, exitDate);
+              chartData.source = 'alphavantage';
+              chartData.fallback = true;
+              chartData.fallbackReason = 'Finnhub unavailable';
+              return chartData;
+            } catch (avError) {
+              console.error(`Alpha Vantage fallback also failed for ${symbol}: ${avError.message}`);
+              throw new Error(`Chart data unavailable for ${symbol}. This symbol may be delisted, inactive, or not supported. Please try a different symbol like AAPL, MSFT, or GOOGL.`);
+            }
+          }
+
+          // No fallback available - throw error
           throw new Error(`Chart data unavailable for ${symbol}. This symbol may be delisted, inactive, or not supported by Finnhub. Please try a different symbol like AAPL, MSFT, or GOOGL.`);
         }
       }
@@ -49,11 +65,11 @@ class ChartService {
     return {
       finnhub: {
         configured: finnhub.isConfigured(),
-        description: 'Finnhub API - Exclusive premium charts for Pro users (no fallback)'
+        description: 'Finnhub API - Premium charts for Pro users with Alpha Vantage fallback'
       },
       alphaVantage: {
         configured: alphaVantage.isConfigured(),
-        description: 'Alpha Vantage API - Charts for free users only'
+        description: 'Alpha Vantage API - Charts for free users and fallback for Pro users'
       }
     };
   }
