@@ -318,8 +318,8 @@
                 <td v-else-if="column.visible && column.key === 'symbol'"
                     :class="[getCellPadding, 'cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
-                  <div class="flex items-center gap-1.5 flex-wrap min-w-max">
-                    <div class="text-sm font-medium text-gray-900 dark:text-white whitespace-nowrap">
+                  <div class="flex items-center gap-1.5 flex-wrap max-w-xs">
+                    <div class="text-sm font-medium text-gray-900 dark:text-white truncate max-w-[200px]" :title="trade.symbol">
                       {{ trade.symbol }}
                     </div>
                     <!-- Instrument type badge -->
@@ -558,6 +558,24 @@
                     @click="$router.push(`/trades/${trade.id}`)">
                   {{ trade.contract_size || '-' }}
                 </td>
+
+                <td v-else-if="column.visible && column.key === 'heartRate'"
+                    :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']"
+                    @click="$router.push(`/trades/${trade.id}`)">
+                  {{ trade.heart_rate ? `${Math.round(trade.heart_rate)} BPM` : '-' }}
+                </td>
+
+                <td v-else-if="column.visible && column.key === 'sleepHours'"
+                    :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']"
+                    @click="$router.push(`/trades/${trade.id}`)">
+                  {{ trade.sleep_hours ? `${Number(trade.sleep_hours).toFixed(1)}h` : '-' }}
+                </td>
+
+                <td v-else-if="column.visible && column.key === 'sleepScore'"
+                    :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']"
+                    @click="$router.push(`/trades/${trade.id}`)">
+                  {{ trade.sleep_score ? Math.round(trade.sleep_score) : '-' }}
+                </td>
               </template>
               <!-- Empty cell to align with column customizer -->
               <td class="px-2 py-4" style="width: 40px;"></td>
@@ -778,6 +796,7 @@ const tableColumns = ref([])
 
 const handleColumnsUpdate = (columns) => {
   tableColumns.value = columns
+  console.log('[TRADE LIST] Columns updated, visible columns:', columns.filter(c => c.visible).map(c => c.label))
 }
 
 // Dynamic table layout based on visible columns
@@ -879,7 +898,23 @@ function formatNumber(num) {
 }
 
 function formatDate(date) {
-  return format(new Date(date), 'MMM dd, yyyy')
+  if (!date) return 'N/A'
+  try {
+    // Parse date string manually to avoid timezone issues
+    // If it's a date-only string (YYYY-MM-DD), parse components directly
+    const dateStr = date.toString()
+    if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      const [year, month, day] = dateStr.split('-').map(Number)
+      // Create date in local timezone (month is 0-indexed)
+      const dateObj = new Date(year, month - 1, day)
+      return format(dateObj, 'MMM dd, yyyy')
+    }
+    // For datetime strings, use as-is
+    return format(new Date(date), 'MMM dd, yyyy')
+  } catch (error) {
+    console.error('Date formatting error:', error, 'for date:', date)
+    return 'Invalid Date'
+  }
 }
 
 function formatHoldTime(trade) {

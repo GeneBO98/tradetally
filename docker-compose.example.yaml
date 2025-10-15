@@ -65,6 +65,8 @@ services:
       FINNHUB_API_KEY: ${FINNHUB_API_KEY:-}
       ALPHA_VANTAGE_API_KEY: ${ALPHA_VANTAGE_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      # API Documentation
+      ENABLE_SWAGGER: ${ENABLE_SWAGGER:-true}
       # Billing and Features Configuration
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}

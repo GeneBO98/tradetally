@@ -649,6 +649,18 @@ const showSetupInput = ref(false)
 
 function formatDateTimeLocal(date) {
   if (!date) return ''
+
+  // Parse datetime string manually to avoid timezone issues
+  const dateStr = date.toString()
+
+  // If it's an ISO datetime string, parse components directly
+  const isoMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/)
+  if (isoMatch) {
+    const [, year, month, day, hour, minute] = isoMatch
+    return `${year}-${month}-${day}T${hour}:${minute}`
+  }
+
+  // Fallback to Date object
   const d = new Date(date)
   const year = d.getFullYear()
   const month = String(d.getMonth() + 1).padStart(2, '0')

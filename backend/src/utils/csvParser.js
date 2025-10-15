@@ -875,6 +875,26 @@ function parseDateTime(dateTimeStr) {
   const cleanDateTimeStr = dateTimeStr.toString().trim();
 
   try {
+    // Check for MM/DD/YYYY HH:MM:SS format (common in many CSVs)
+    const mmddyyyyTimeMatch = cleanDateTimeStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})$/);
+    if (mmddyyyyTimeMatch) {
+      const [, month, day, year, hour, minute, second] = mmddyyyyTimeMatch;
+      const monthPadded = month.padStart(2, '0');
+      const dayPadded = day.padStart(2, '0');
+      const hourPadded = hour.padStart(2, '0');
+      return `${year}-${monthPadded}-${dayPadded}T${hourPadded}:${minute}:${second}`;
+    }
+
+    // Check for MM/DD/YYYY HH:MM format (without seconds)
+    const mmddyyyyTimeNoSecMatch = cleanDateTimeStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})$/);
+    if (mmddyyyyTimeNoSecMatch) {
+      const [, month, day, year, hour, minute] = mmddyyyyTimeNoSecMatch;
+      const monthPadded = month.padStart(2, '0');
+      const dayPadded = day.padStart(2, '0');
+      const hourPadded = hour.padStart(2, '0');
+      return `${year}-${monthPadded}-${dayPadded}T${hourPadded}:${minute}:00`;
+    }
+
     // Check for IBKR format "MM-DD-YY H:MM" or "MM-DD-YY HH:MM"
     const ibkrDateTimeMatch = cleanDateTimeStr.match(/^(\d{1,2})-(\d{1,2})-(\d{2})\s+(\d{1,2}):(\d{2})$/);
     if (ibkrDateTimeMatch) {
@@ -894,7 +914,49 @@ function parseDateTime(dateTimeStr) {
       return `${year}-${month}-${day}T${hour}:${minute}:${second}`;
     }
 
-    // Otherwise use Date parsing
+    // Check if just a date is provided (no time component)
+    const dateOnlyMatch = cleanDateTimeStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (dateOnlyMatch) {
+      const [, month, day, year] = dateOnlyMatch;
+      const monthPadded = month.padStart(2, '0');
+      const dayPadded = day.padStart(2, '0');
+      // Default to 09:30 (market open) if no time provided
+      return `${year}-${monthPadded}-${dayPadded}T09:30:00`;
+    }
+
+    // Otherwise, parse manually to avoid timezone issues
+    // Try to extract date and time components without Date object conversion
+    const spaceSplit = cleanDateTimeStr.split(' ');
+    if (spaceSplit.length >= 2) {
+      const datePart = spaceSplit[0];
+      const timePart = spaceSplit[1];
+
+      // Parse date part
+      let year, month, day;
+      if (datePart.includes('/')) {
+        const dateMatch = datePart.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+        if (dateMatch) {
+          [, month, day, year] = dateMatch;
+        }
+      } else if (datePart.includes('-')) {
+        const dateMatch = datePart.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (dateMatch) {
+          [, year, month, day] = dateMatch;
+        }
+      }
+
+      // Parse time part
+      const timeMatch = timePart.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+      if (year && month && day && timeMatch) {
+        const [, hour, minute, second = '00'] = timeMatch;
+        const monthPadded = month.padStart(2, '0');
+        const dayPadded = day.padStart(2, '0');
+        const hourPadded = hour.padStart(2, '0');
+        return `${year}-${monthPadded}-${dayPadded}T${hourPadded}:${minute}:${second}`;
+      }
+    }
+
+    // Last resort: use Date parsing but extract components carefully
     const date = new Date(cleanDateTimeStr);
     if (isNaN(date.getTime())) return null;
 
@@ -1813,20 +1875,50 @@ async function parseSchwabTransactions(records, existingPositions = {}) {
   // Process transactions using round-trip trade grouping (like TradersVue)
   for (const symbol in transactionsBySymbol) {
     const symbolTransactions = transactionsBySymbol[symbol];
-    
+
     console.log(`\n=== Processing ${symbolTransactions.length} transactions for ${symbol} ===`);
-    
-    // Track position and round-trip trades
-    let currentPosition = 0;
-    let currentTrade = null; // Active round-trip trade being built
+
+    // Detect instrument type to apply correct multiplier
+    const instrumentData = parseInstrumentData(symbol);
+    const valueMultiplier = instrumentData.instrumentType === 'option' ? 100 :
+                            instrumentData.instrumentType === 'future' ? (instrumentData.pointValue || 1) : 1;
+
+    console.log(`Instrument type: ${instrumentData.instrumentType}, value multiplier: ${valueMultiplier}`);
+
+    // Start with existing position if we have one for this symbol
+    const existingPosition = existingPositions[symbol];
+    let currentPosition = existingPosition ?
+      (existingPosition.side === 'long' ? existingPosition.quantity : -existingPosition.quantity) : 0;
+    let currentTrade = existingPosition ? {
+      symbol: symbol,
+      entryTime: existingPosition.entryTime,
+      tradeDate: existingPosition.tradeDate,
+      side: existingPosition.side,
+      executions: Array.isArray(existingPosition.executions)
+        ? existingPosition.executions
+        : (existingPosition.executions ? JSON.parse(existingPosition.executions) : []),
+      totalQuantity: existingPosition.quantity,
+      totalFees: existingPosition.commission || 0,
+      entryValue: existingPosition.quantity * existingPosition.entryPrice * valueMultiplier,
+      exitValue: 0,
+      broker: existingPosition.broker || 'schwab',
+      isExistingPosition: true,
+      existingTradeId: existingPosition.id,
+      newExecutionsAdded: 0
+    } : null;
     const openLots = []; // FIFO queue of position lots
-    
+
+    if (existingPosition) {
+      console.log(`  → Starting with existing ${existingPosition.side} position: ${existingPosition.quantity} ${instrumentData.instrumentType === 'option' ? 'contracts' : 'shares'} @ $${existingPosition.entryPrice}`);
+      console.log(`  → Initial position: ${currentPosition}, entryValue: $${currentTrade.entryValue.toFixed(2)}`);
+    }
+
     for (const transaction of symbolTransactions) {
       const qty = transaction.quantity;
       const prevPosition = currentPosition;
-      
+
       console.log(`\n${transaction.action} ${qty} @ $${transaction.price} | Position: ${currentPosition}`);
-      
+
       // Start new trade if going from flat to position
       if (currentPosition === 0) {
         currentTrade = {
@@ -1934,30 +2026,53 @@ async function parseSchwabTransactions(records, existingPositions = {}) {
         currentTrade.commission = currentTrade.totalFees;
         currentTrade.fees = 0;
         currentTrade.exitTime = transaction.datetime;
-        currentTrade.notes = `Round trip: ${currentTrade.executions.length} executions`;
-        // Store executions for display in trade details
         currentTrade.executionData = currentTrade.executions;
-        // Store executions for display in trade details
-        currentTrade.executionData = currentTrade.executions;
-        
-        // Map executions to executionData for Trade.create
-      currentTrade.executionData = currentTrade.executions;
-      completedTrades.push(currentTrade);
-        console.log(`  [SUCCESS] Completed ${currentTrade.side} trade: ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions, P/L: $${currentTrade.pnl.toFixed(2)}`);
-        
+
+        // Mark as update if this was an existing position
+        if (currentTrade.isExistingPosition) {
+          currentTrade.shouldUpdate = true;
+          currentTrade.notes = `Closed existing position: ${currentTrade.executions.length} total executions`;
+          console.log(`  [SUCCESS] CLOSED existing ${currentTrade.side} position: ${currentTrade.totalQuantity} shares, P/L: $${currentTrade.pnl.toFixed(2)}`);
+        } else {
+          currentTrade.notes = `Round trip: ${currentTrade.executions.length} executions`;
+          console.log(`  [SUCCESS] Completed ${currentTrade.side} trade: ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions, P/L: $${currentTrade.pnl.toFixed(2)}`);
+        }
+
+        completedTrades.push(currentTrade);
         currentTrade = null;
         openLots.length = 0; // Clear lots when trade completes
       }
     }
     
     console.log(`\n${symbol} Final Position: ${currentPosition} shares`);
-    if (currentTrade) {
+    if (currentTrade && currentPosition !== 0) {
+      // Add open position as incomplete trade
+      // Check if this is an update to existing position or new position
+      if (currentTrade.isExistingPosition && currentTrade.newExecutionsAdded > 0) {
+        // Updated existing position - mark for update
+        currentTrade.shouldUpdate = true;
+        currentTrade.notes = `Updated open position: ${currentTrade.newExecutionsAdded} new executions added`;
+        console.log(`  [SUCCESS] UPDATED open ${currentTrade.side} position: ${currentTrade.totalQuantity} shares, ${currentTrade.newExecutionsAdded} new executions`);
+      } else if (!currentTrade.isExistingPosition) {
+        // New open position
+        currentTrade.notes = `Open position: ${currentTrade.executions.length} executions`;
+        console.log(`  → Added open ${currentTrade.side} position: ${currentTrade.totalQuantity} shares`);
+      }
+
+      // Calculate weighted average entry price for display
+      currentTrade.entryPrice = currentTrade.entryValue / currentTrade.totalQuantity;
+      currentTrade.quantity = currentTrade.totalQuantity;
+      currentTrade.commission = currentTrade.totalFees;
+      currentTrade.fees = 0;
+      currentTrade.executionData = currentTrade.executions;
+
+      completedTrades.push(currentTrade);
       console.log(`Active trade: ${currentTrade.side} ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions`);
     }
   }
-  
-  console.log(`Created ${completedTrades.length} completed trades from transaction pairing`);
-  
+
+  console.log(`Created ${completedTrades.length} completed trades (including open positions) from transaction pairing`);
+
   return completedTrades;
 }
 
@@ -3021,10 +3136,12 @@ async function parseIBKRTransactions(records, existingPositions = {}) {
       entryTime: existingPosition.entryTime,
       tradeDate: existingPosition.tradeDate,
       side: existingPosition.side,
-      executions: existingPosition.executions || [],
+      executions: Array.isArray(existingPosition.executions)
+        ? existingPosition.executions
+        : (existingPosition.executions ? JSON.parse(existingPosition.executions) : []),
       totalQuantity: existingPosition.quantity,
       totalFees: existingPosition.commission || 0,
-      entryValue: existingPosition.quantity * existingPosition.entryPrice,
+      entryValue: existingPosition.quantity * existingPosition.entryPrice * valueMultiplier,
       exitValue: 0,
       broker: existingPosition.broker || 'ibkr',
       isExistingPosition: true,
@@ -3033,8 +3150,8 @@ async function parseIBKRTransactions(records, existingPositions = {}) {
     } : null;
 
     if (existingPosition) {
-      console.log(`  → Starting with existing ${existingPosition.side} position: ${existingPosition.quantity} shares @ $${existingPosition.entryPrice}`);
-      console.log(`  → Initial position: ${currentPosition}`);
+      console.log(`  → Starting with existing ${existingPosition.side} position: ${existingPosition.quantity} ${instrumentData.instrumentType === 'option' ? 'contracts' : 'shares'} @ $${existingPosition.entryPrice}`);
+      console.log(`  → Initial position: ${currentPosition}, entryValue: $${currentTrade.entryValue.toFixed(2)}`);
     }
 
     for (const transaction of symbolTransactions) {
@@ -3205,7 +3322,7 @@ async function parseIBKRTransactions(records, existingPositions = {}) {
     }
   }
 
-  console.log(`Created ${completedTrades.length} IBKR trades from ${transactions.length} transactions`);
+  console.log(`Created ${completedTrades.length} IBKR trades (including open positions) from ${transactions.length} transactions`);
   return completedTrades;
 }
 

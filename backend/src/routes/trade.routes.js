@@ -528,6 +528,10 @@ router.get('/news', authenticate, tradeController.getTradeNews);
 // Export trades - MUST be before /:id route to avoid matching "export" as an ID
 router.get('/export', authenticate, tradeController.exportTrades);
 
+// Expired options management routes - MUST be before /:id route
+router.get('/expired-options', authenticate, tradeController.getExpiredOptions);
+router.post('/expired-options/auto-close', authenticate, tradeController.autoCloseExpiredOptions);
+
 // Chart data endpoint - MUST be before /:id route
 router.get('/:id/chart-data', authenticate, tradeController.getTradeChartData);
 
@@ -601,5 +605,9 @@ router.post('/:id/comments', authenticate, tradeController.addComment);
 router.get('/:id/comments', optionalAuth, tradeController.getComments);
 router.put('/:id/comments/:commentId', authenticate, tradeController.updateComment);
 router.delete('/:id/comments/:commentId', authenticate, tradeController.deleteComment);
+
+// Health data integration routes
+router.put('/:id/health', authenticate, tradeController.updateTradeHealthData);
+router.put('/health/bulk', authenticate, tradeController.bulkUpdateHealthData);
 
 module.exports = router;
