@@ -242,7 +242,7 @@
                     </div>
 
                     <!-- Tags -->
-                    <div>
+                    <div class="mb-3">
                       <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                         Default Tags (comma-separated)
                       </label>
@@ -252,6 +252,36 @@
                         class="input"
                         placeholder="e.g., market-analysis, pre-market"
                       />
+                    </div>
+
+                    <!-- Post-Market Reflection Section -->
+                    <div class="border-t pt-4 mt-4">
+                      <h5 class="text-sm font-medium text-gray-900 dark:text-white mb-3">Post-Market Reflection</h5>
+
+                      <!-- Followed Plan -->
+                      <div class="mb-3">
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          Did you follow your plan? (Default)
+                        </label>
+                        <select v-model="templateForm.followedPlan" class="input">
+                          <option :value="null">Not set</option>
+                          <option :value="true">Yes</option>
+                          <option :value="false">No</option>
+                        </select>
+                      </div>
+
+                      <!-- Lessons Learned -->
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          Lessons Learned Template
+                        </label>
+                        <textarea
+                          v-model="templateForm.lessonsLearned"
+                          rows="3"
+                          class="input"
+                          placeholder="Pre-fill lessons learned section with prompts (optional)"
+                        ></textarea>
+                      </div>
                     </div>
                   </div>
 
@@ -351,6 +381,8 @@ const templateForm = ref({
   marketBias: '',
   keyLevels: '',
   tags: [],
+  followedPlan: null,
+  lessonsLearned: '',
   isDefault: false
 })
 
@@ -378,6 +410,8 @@ const resetForm = () => {
     marketBias: '',
     keyLevels: '',
     tags: [],
+    followedPlan: null,
+    lessonsLearned: '',
     isDefault: false
   }
   tagsInput.value = ''
@@ -401,6 +435,8 @@ const editTemplate = (template) => {
     marketBias: template.market_bias || '',
     keyLevels: template.key_levels || '',
     tags: template.tags || [],
+    followedPlan: template.followed_plan !== undefined ? template.followed_plan : null,
+    lessonsLearned: template.lessons_learned || '',
     isDefault: template.is_default
   }
   tagsInput.value = (template.tags || []).join(', ')

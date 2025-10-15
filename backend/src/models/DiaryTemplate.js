@@ -8,6 +8,7 @@ class DiaryTemplate {
     const {
       name, description, entryType = 'diary',
       title, content, marketBias, keyLevels, watchlist, tags,
+      followedPlan, lessonsLearned,
       isDefault = false
     } = templateData;
 
@@ -20,9 +21,10 @@ class DiaryTemplate {
       INSERT INTO diary_templates (
         user_id, name, description, entry_type,
         title, content, market_bias, key_levels, watchlist, tags,
+        followed_plan, lessons_learned,
         is_default
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
       RETURNING *
     `;
 
@@ -37,6 +39,8 @@ class DiaryTemplate {
       keyLevels || null,
       watchlist || [],
       tags || [],
+      followedPlan !== undefined ? followedPlan : null,
+      lessonsLearned || null,
       isDefault
     ];
 
@@ -121,7 +125,8 @@ class DiaryTemplate {
   static async update(id, userId, updates) {
     const allowedFields = [
       'name', 'description', 'entryType', 'title', 'content',
-      'marketBias', 'keyLevels', 'watchlist', 'tags', 'isDefault'
+      'marketBias', 'keyLevels', 'watchlist', 'tags',
+      'followedPlan', 'lessonsLearned', 'isDefault'
     ];
 
     const setters = [];
@@ -231,6 +236,8 @@ class DiaryTemplate {
       keyLevels: template.key_levels,
       watchlist: template.watchlist,
       tags: template.tags,
+      followedPlan: template.followed_plan,
+      lessonsLearned: template.lessons_learned,
       isDefault: false // Don't copy default status
     };
 

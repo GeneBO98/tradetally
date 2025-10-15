@@ -364,7 +364,7 @@ const settingsController = {
         // If equity_history doesn't exist, try equity_snapshots
         try {
           const equitySnapshotsResult = await db.query(
-            `SELECT 
+            `SELECT
               user_id,
               snapshot_date as date,
               equity_amount as equity,
@@ -379,6 +379,30 @@ const settingsController = {
           // If neither table exists, continue with empty equity history
           console.warn('No equity tracking tables found, continuing with empty equity history');
         }
+      }
+
+      // Get diary entries
+      let diaryEntries = [];
+      try {
+        const diaryResult = await db.query(
+          `SELECT * FROM diary_entries WHERE user_id = $1 ORDER BY entry_date`,
+          [userId]
+        );
+        diaryEntries = diaryResult.rows;
+      } catch (error) {
+        console.warn('Unable to fetch diary entries:', error.message);
+      }
+
+      // Get playbook entries
+      let playbookEntries = [];
+      try {
+        const playbookResult = await db.query(
+          `SELECT * FROM diary_entries WHERE user_id = $1 AND entry_type = 'playbook' ORDER BY entry_date`,
+          [userId]
+        );
+        playbookEntries = playbookResult.rows;
+      } catch (error) {
+        console.warn('Unable to fetch playbook entries:', error.message);
       }
 
       // Create export data
@@ -433,6 +457,36 @@ const settingsController = {
           date: equity.date,
           equity: equity.equity,
           pnl: equity.pnl
+        })),
+        diaryEntries: diaryEntries.map(entry => ({
+          entryDate: entry.entry_date,
+          title: entry.title,
+          content: entry.content,
+          entryType: entry.entry_type,
+          marketBias: entry.market_bias,
+          keyLevels: entry.key_levels,
+          watchlist: entry.watchlist,
+          followedPlan: entry.followed_plan,
+          lessonsLearned: entry.lessons_learned,
+          linkedTrades: entry.linked_trades,
+          tags: entry.tags,
+          createdAt: entry.created_at,
+          updatedAt: entry.updated_at
+        })),
+        playbookEntries: playbookEntries.map(entry => ({
+          entryDate: entry.entry_date,
+          title: entry.title,
+          content: entry.content,
+          entryType: entry.entry_type,
+          marketBias: entry.market_bias,
+          keyLevels: entry.key_levels,
+          watchlist: entry.watchlist,
+          followedPlan: entry.followed_plan,
+          lessonsLearned: entry.lessons_learned,
+          linkedTrades: entry.linked_trades,
+          tags: entry.tags,
+          createdAt: entry.created_at,
+          updatedAt: entry.updated_at
         }))
       };
 
@@ -723,7 +777,7 @@ const settingsController = {
             try {
               // Try to insert into equity_history first
               await client.query(
-                `INSERT INTO equity_history (user_id, date, equity, pnl) 
+                `INSERT INTO equity_history (user_id, date, equity, pnl)
                  VALUES ($1, $2, $3, $4)
                  ON CONFLICT (user_id, date) DO NOTHING`,
                 [userId, equity.date, equity.equity, equity.pnl || 0.00]
@@ -733,7 +787,7 @@ const settingsController = {
               // If equity_history doesn't exist, try equity_snapshots
               try {
                 await client.query(
-                  `INSERT INTO equity_snapshots (user_id, snapshot_date, equity_amount) 
+                  `INSERT INTO equity_snapshots (user_id, snapshot_date, equity_amount)
                    VALUES ($1, $2, $3)
                    ON CONFLICT (user_id, snapshot_date) DO NOTHING`,
                   [userId, equity.date, equity.equity]
@@ -747,15 +801,125 @@ const settingsController = {
           }
         }
 
+        // Import diary entries
+        let diaryAdded = 0;
+        let diarySkipped = 0;
+        if (importData.diaryEntries && importData.diaryEntries.length > 0) {
+          console.log(`Processing ${importData.diaryEntries.length} diary entries...`);
+          for (const entry of importData.diaryEntries) {
+            try {
+              // Check if entry already exists (using entry_date and created_at as unique identifiers)
+              const existingEntry = await client.query(
+                `SELECT id FROM diary_entries
+                 WHERE user_id = $1
+                 AND entry_date = $2
+                 AND created_at = $3`,
+                [userId, entry.entryDate, entry.createdAt]
+              );
+
+              if (existingEntry.rows.length === 0) {
+                await client.query(
+                  `INSERT INTO diary_entries (
+                    user_id, entry_date, title, content, entry_type,
+                    market_bias, key_levels, watchlist, followed_plan,
+                    lessons_learned, linked_trades, tags, created_at, updated_at
+                  ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+                  [
+                    userId,
+                    entry.entryDate,
+                    entry.title,
+                    entry.content,
+                    entry.entryType || 'diary',
+                    entry.marketBias,
+                    entry.keyLevels,
+                    entry.watchlist || [],
+                    entry.followedPlan,
+                    entry.lessonsLearned,
+                    entry.linkedTrades || [],
+                    entry.tags || [],
+                    entry.createdAt || new Date(),
+                    entry.updatedAt || new Date()
+                  ]
+                );
+                diaryAdded++;
+                console.log(`Diary entry added: ${entry.title || entry.entryDate}`);
+              } else {
+                diarySkipped++;
+                console.log(`Diary entry skipped (exists): ${entry.title || entry.entryDate}`);
+              }
+            } catch (diaryError) {
+              console.error('Error processing diary entry:', entry, diaryError);
+              // Don't throw - continue with other entries
+            }
+          }
+        }
+
+        // Import playbook entries (if stored separately in export)
+        let playbookAdded = 0;
+        let playbookSkipped = 0;
+        if (importData.playbookEntries && importData.playbookEntries.length > 0) {
+          console.log(`Processing ${importData.playbookEntries.length} playbook entries...`);
+          for (const entry of importData.playbookEntries) {
+            try {
+              // Check if entry already exists
+              const existingEntry = await client.query(
+                `SELECT id FROM diary_entries
+                 WHERE user_id = $1
+                 AND entry_date = $2
+                 AND created_at = $3`,
+                [userId, entry.entryDate, entry.createdAt]
+              );
+
+              if (existingEntry.rows.length === 0) {
+                await client.query(
+                  `INSERT INTO diary_entries (
+                    user_id, entry_date, title, content, entry_type,
+                    market_bias, key_levels, watchlist, followed_plan,
+                    lessons_learned, linked_trades, tags, created_at, updated_at
+                  ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+                  [
+                    userId,
+                    entry.entryDate,
+                    entry.title,
+                    entry.content,
+                    entry.entryType || 'playbook',
+                    entry.marketBias,
+                    entry.keyLevels,
+                    entry.watchlist || [],
+                    entry.followedPlan,
+                    entry.lessonsLearned,
+                    entry.linkedTrades || [],
+                    entry.tags || [],
+                    entry.createdAt || new Date(),
+                    entry.updatedAt || new Date()
+                  ]
+                );
+                playbookAdded++;
+                console.log(`Playbook entry added: ${entry.title || entry.entryDate}`);
+              } else {
+                playbookSkipped++;
+                console.log(`Playbook entry skipped (exists): ${entry.title || entry.entryDate}`);
+              }
+            } catch (playbookError) {
+              console.error('Error processing playbook entry:', entry, playbookError);
+              // Don't throw - continue with other entries
+            }
+          }
+        }
+
         await client.query('COMMIT');
-        
-        res.json({ 
+
+        res.json({
           success: true,
           tradesAdded,
           tagsAdded,
           equityAdded,
+          diaryAdded,
+          playbookAdded,
           tradesSkipped: tradesSkipped,
-          message: `Successfully imported ${tradesAdded} trades, ${tagsAdded} tags, and ${equityAdded} equity records. ${tradesSkipped} trades were skipped as duplicates.`
+          diarySkipped,
+          playbookSkipped,
+          message: `Successfully imported ${tradesAdded} trades, ${tagsAdded} tags, ${equityAdded} equity records, ${diaryAdded} diary entries, and ${playbookAdded} playbook entries. ${tradesSkipped} trades, ${diarySkipped} diary entries, and ${playbookSkipped} playbook entries were skipped as duplicates.`
         });
       } catch (error) {
         await client.query('ROLLBACK');
