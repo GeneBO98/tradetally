@@ -11,9 +11,7 @@
         @click="showCreateAlertModal = true"
         class="mt-4 sm:mt-0 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
       >
-        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-        </svg>
+        <MdiIcon :icon="mdiBell" :size="16" classes="mr-2" />
         Create Alert
       </button>
     </div>
@@ -152,8 +150,8 @@
               <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                 <div class="flex space-x-1">
                   <span v-if="alert.email_enabled" title="Email enabled" class="text-blue-500">✉</span>
-                  <span v-if="alert.browser_enabled" title="Browser enabled" class="text-green-500">[BELL]</span>
-                  <span v-if="alert.repeat_enabled" title="Repeat enabled" class="text-purple-500">[REPEAT]</span>
+                  <MdiIcon v-if="alert.browser_enabled" :icon="mdiBell" :size="16" title="Browser enabled" classes="text-green-500" />
+                  <MdiIcon v-if="alert.repeat_enabled" :icon="mdiRepeat" :size="16" title="Repeat enabled" classes="text-purple-500" />
                 </div>
               </td>
               <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
@@ -325,12 +323,15 @@ import { usePriceAlertNotifications } from '@/composables/usePriceAlertNotificat
 import { useAuthStore } from '@/stores/auth'
 import api from '@/services/api'
 import ProUpgradePrompt from '@/components/ProUpgradePrompt.vue'
+import MdiIcon from '@/components/MdiIcon.vue'
+import { mdiBell, mdiRepeat } from '@mdi/js'
 import { getMarketStatus } from '@/utils/marketStatus'
 
 export default {
   name: 'PriceAlertsView',
   components: {
-    ProUpgradePrompt
+    ProUpgradePrompt,
+    MdiIcon
   },
   setup() {
     const route = useRoute()
@@ -579,7 +580,9 @@ export default {
       requestBrowserNotifications,
       marketStatus,
       getConnectionStatusColor,
-      getConnectionStatusText
+      getConnectionStatusText,
+      mdiBell,
+      mdiRepeat
     }
   }
 }

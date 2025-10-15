@@ -282,13 +282,13 @@
           <div v-if="entry.watchlist && entry.watchlist.length > 0" class="mb-3">
             <span class="text-xs font-medium text-blue-600 dark:text-blue-400 mr-2">Watchlist:</span>
             <div class="inline-flex flex-wrap gap-1">
-              <span
+              <WatchlistSymbol
                 v-for="(symbol, index) in entry.watchlist.slice(0, 5)"
                 :key="symbol"
-                class="inline-flex items-center px-2 py-1 rounded bg-blue-100 dark:bg-blue-800 text-blue-800 dark:text-blue-200 text-xs"
-              >
-                {{ symbol }}
-              </span>
+                :symbol="symbol"
+                @added-to-watchlist="handleWatchlistAdded"
+                @alert-created="handleAlertCreated"
+              />
               <span
                 v-if="entry.watchlist.length > 5"
                 class="text-xs text-gray-500 dark:text-gray-400 px-2"
@@ -297,7 +297,12 @@
               </span>
             </div>
           </div>
-          
+
+          <div v-if="entry.linked_trades && entry.linked_trades.length > 0" class="mb-3">
+            <span class="text-xs font-medium text-purple-600 dark:text-purple-400 mr-2">Linked Trades:</span>
+            <LinkedTradesList :trade-ids="entry.linked_trades" />
+          </div>
+
           <div v-if="entry.tags && entry.tags.length > 0" class="flex flex-wrap gap-2">
             <span
               v-for="tag in entry.tags.slice(0, 3)"
@@ -518,6 +523,8 @@ import { parseMarkdown, truncateHtml as truncateHtmlUtil } from '@/utils/markdow
 import DiaryAnalysis from '@/components/diary/DiaryAnalysis.vue'
 import GeneralNotes from '@/components/diary/GeneralNotes.vue'
 import TemplateManager from '@/components/diary/TemplateManager.vue'
+import LinkedTradesList from '@/components/diary/LinkedTradesList.vue'
+import WatchlistSymbol from '@/components/diary/WatchlistSymbol.vue'
 import {
   PlusIcon,
   PencilIcon,
@@ -816,6 +823,14 @@ const deleteEntry = async () => {
   } finally {
     deleting.value = false
   }
+}
+
+const handleWatchlistAdded = (symbol) => {
+  console.log(`[SUCCESS] ${symbol} added to watchlist`)
+}
+
+const handleAlertCreated = (symbol) => {
+  console.log(`[SUCCESS] Price alert created for ${symbol}`)
 }
 
 const handleApplyTemplate = (template) => {

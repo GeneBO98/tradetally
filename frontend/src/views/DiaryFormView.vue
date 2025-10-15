@@ -411,6 +411,20 @@
             </div>
           </div>
 
+          <!-- Linked Trades -->
+          <div class="mb-6">
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Linked Trades
+            </label>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
+              Link trades from {{ form.entryDate }} to this journal entry
+            </p>
+            <TradeSelector
+              v-model="form.linkedTrades"
+              :entry-date="form.entryDate"
+            />
+          </div>
+
           <!-- Tags -->
           <div class="mb-6">
             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -534,6 +548,7 @@ import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDiaryStore } from '@/stores/diary'
 import { useDiaryTemplateStore } from '@/stores/diaryTemplate'
+import TradeSelector from '@/components/diary/TradeSelector.vue'
 import {
   ArrowLeftIcon,
   PlusIcon,
@@ -575,6 +590,7 @@ const form = ref({
   content: '',
   keyLevels: '',
   watchlist: [],
+  linkedTrades: [],
   tags: [],
   followedPlan: null,
   lessonsLearned: ''
@@ -895,6 +911,7 @@ const loadEntry = async () => {
         content: entry.content || '',
         keyLevels: entry.key_levels || '',
         watchlist: entry.watchlist || [],
+        linkedTrades: entry.linked_trades || [],
         tags: entry.tags || [],
         followedPlan: entry.followed_plan,
         lessonsLearned: entry.lessons_learned || ''
@@ -925,6 +942,7 @@ const saveEntry = async () => {
       content: form.value.content.trim() || null,
       keyLevels: form.value.keyLevels.trim() || null,
       watchlist: form.value.watchlist,
+      linkedTrades: form.value.linkedTrades,
       tags: form.value.tags,
       followedPlan: form.value.followedPlan,
       lessonsLearned: form.value.lessonsLearned.trim() || null

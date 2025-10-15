@@ -230,6 +230,7 @@ const schemas = {
     content: Joi.string().allow(null, ''),
     keyLevels: Joi.string().allow(null, ''),
     watchlist: Joi.array().items(Joi.string().max(50)).default([]),
+    linkedTrades: Joi.array().items(Joi.string().uuid()).default([]),
     tags: Joi.array().items(Joi.string().max(50)).default([]),
     followedPlan: Joi.boolean().allow(null),
     lessonsLearned: Joi.string().allow(null, '')
@@ -243,6 +244,7 @@ const schemas = {
     content: Joi.string().allow(null, ''),
     keyLevels: Joi.string().allow(null, ''),
     watchlist: Joi.array().items(Joi.string().max(50)),
+    linkedTrades: Joi.array().items(Joi.string().uuid()),
     tags: Joi.array().items(Joi.string().max(50)),
     followedPlan: Joi.boolean().allow(null),
     lessonsLearned: Joi.string().allow(null, '')

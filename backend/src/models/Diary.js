@@ -5,7 +5,7 @@ class Diary {
   static async create(userId, entryData) {
     const {
       entryDate, title, content, tags, entryType = 'diary',
-      marketBias, keyLevels, watchlist, followedPlan, lessonsLearned
+      marketBias, keyLevels, watchlist, linkedTrades, followedPlan, lessonsLearned
     } = entryData;
 
     // Use provided date or today's date in user's timezone
@@ -14,9 +14,9 @@ class Diary {
     const query = `
       INSERT INTO diary_entries (
         user_id, entry_date, title, content, tags, entry_type,
-        market_bias, key_levels, watchlist, followed_plan, lessons_learned
+        market_bias, key_levels, watchlist, linked_trades, followed_plan, lessons_learned
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       ON CONFLICT (user_id, entry_date, entry_type)
       DO UPDATE SET
         title = EXCLUDED.title,
@@ -25,6 +25,7 @@ class Diary {
         market_bias = EXCLUDED.market_bias,
         key_levels = EXCLUDED.key_levels,
         watchlist = EXCLUDED.watchlist,
+        linked_trades = EXCLUDED.linked_trades,
         followed_plan = EXCLUDED.followed_plan,
         lessons_learned = EXCLUDED.lessons_learned,
         updated_at = CURRENT_TIMESTAMP
@@ -41,6 +42,7 @@ class Diary {
       marketBias || null,
       keyLevels || null,
       watchlist || [],
+      linkedTrades || [],
       followedPlan || null,
       lessonsLearned || null
     ];
@@ -237,13 +239,14 @@ class Diary {
       entryType: 'entry_type',
       marketBias: 'market_bias',
       keyLevels: 'key_levels',
+      linkedTrades: 'linked_trades',
       followedPlan: 'followed_plan',
       lessonsLearned: 'lessons_learned'
     };
 
     const allowedFields = [
       'title', 'content', 'tags', 'entry_type', 'market_bias',
-      'key_levels', 'watchlist', 'followed_plan', 'lessons_learned'
+      'key_levels', 'watchlist', 'linked_trades', 'followed_plan', 'lessons_learned'
     ];
 
     const fields = [];
