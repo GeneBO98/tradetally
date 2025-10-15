@@ -33,6 +33,7 @@ const notificationPreferencesRoutes = require('./routes/notificationPreferences.
 const cusipMappingsRoutes = require('./routes/cusipMappings.routes');
 const diaryRoutes = require('./routes/diary.routes');
 const diaryTemplateRoutes = require('./routes/diaryTemplate.routes');
+const healthRoutes = require('./routes/health.routes');
 const oauth2Routes = require('./routes/oauth2.routes');
 const tagsRoutes = require('./routes/tags.routes');
 const BillingService = require('./services/billingService');
@@ -172,6 +173,7 @@ app.use('/api/notification-preferences', notificationPreferencesRoutes);
 app.use('/api/cusip-mappings', cusipMappingsRoutes);
 app.use('/api/diary', diaryRoutes);
 app.use('/api/diary-templates', diaryTemplateRoutes);
+app.use('/api/health', healthRoutes);
 app.use('/api/tags', tagsRoutes);
 
 // OAuth2 Provider endpoints

@@ -178,7 +178,10 @@ const defaultColumns = [
   { key: 'optionType', label: 'Option Type', visible: false, width: 'auto' },
   { key: 'strikePrice', label: 'Strike Price', visible: false, width: 'auto' },
   { key: 'expirationDate', label: 'Expiration Date', visible: false, width: 'auto' },
-  { key: 'contractSize', label: 'Contract Size', visible: false, width: 'auto' }
+  { key: 'contractSize', label: 'Contract Size', visible: false, width: 'auto' },
+  { key: 'heartRate', label: 'Heart Rate', visible: false, width: 'auto' },
+  { key: 'sleepHours', label: 'Sleep Hours', visible: false, width: 'auto' },
+  { key: 'sleepScore', label: 'Sleep Score', visible: false, width: 'auto' }
 ]
 
 const showMenu = ref(false)
@@ -196,23 +199,43 @@ const loadSavedColumns = () => {
   if (saved) {
     try {
       const savedColumns = JSON.parse(saved)
+      console.log('[COLUMNS] Loaded saved columns from localStorage:', savedColumns.length, 'columns')
+
       // Merge saved preferences with default columns to handle new columns
-      localColumns.value = defaultColumns.map(defaultCol => {
-        const savedCol = savedColumns.find(c => c.key === defaultCol.key)
-        return savedCol || defaultCol
+      // Preserve order from saved columns, then append any new columns
+      const savedKeys = new Set(savedColumns.map(c => c.key))
+      const mergedColumns = [...savedColumns]
+
+      // Add any new columns that weren't in saved config
+      defaultColumns.forEach(defaultCol => {
+        if (!savedKeys.has(defaultCol.key)) {
+          mergedColumns.push(defaultCol)
+          console.log('[COLUMNS] Adding new column:', defaultCol.key)
+        }
       })
+
+      localColumns.value = mergedColumns
     } catch (e) {
-      console.error('Failed to load saved columns:', e)
+      console.error('[COLUMNS] Failed to load saved columns:', e)
       localColumns.value = [...defaultColumns]
     }
   } else {
+    console.log('[COLUMNS] No saved columns found, using defaults')
     localColumns.value = [...defaultColumns]
   }
 }
 
 // Save column preferences to localStorage
 const saveColumns = () => {
-  localStorage.setItem('tradeListColumns', JSON.stringify(localColumns.value))
+  const columnsToSave = localColumns.value.map(col => ({
+    key: col.key,
+    label: col.label,
+    visible: col.visible,
+    width: col.width,
+    required: col.required
+  }))
+  localStorage.setItem('tradeListColumns', JSON.stringify(columnsToSave))
+  console.log('[COLUMNS] Saved column preferences:', columnsToSave.length, 'columns')
 }
 
 const updateDropdownPosition = () => {
@@ -279,18 +302,20 @@ const handleDragStart = (index) => {
 }
 
 const handleDrop = (dropIndex) => {
-  if (draggedIndex.value === null) return
-  
-  const draggedItem = localColumns.value[draggedIndex.value]
+  if (draggedIndex.value === null || draggedIndex.value === dropIndex) return
+
+  const draggedItem = { ...localColumns.value[draggedIndex.value] }
   const newColumns = [...localColumns.value]
-  
+
   // Remove dragged item
   newColumns.splice(draggedIndex.value, 1)
-  
-  // Insert at new position
-  newColumns.splice(dropIndex, 0, draggedItem)
-  
+
+  // Insert at new position (adjust index if dragging from earlier position)
+  const insertIndex = draggedIndex.value < dropIndex ? dropIndex - 1 : dropIndex
+  newColumns.splice(insertIndex, 0, draggedItem)
+
   localColumns.value = newColumns
+  console.log('[COLUMNS] Reordered columns:', draggedItem.label, 'moved to position', insertIndex)
 }
 
 const handleDragEnd = () => {
@@ -324,7 +349,9 @@ const updateColumns = () => {
 
 const apply = () => {
   saveColumns()
-  emit('update:columns', [...localColumns.value])
+  const columnsToEmit = localColumns.value.map(col => ({ ...col }))
+  emit('update:columns', columnsToEmit)
+  console.log('[COLUMNS] Applied column configuration with', columnsToEmit.filter(c => c.visible).length, 'visible columns')
   showMenu.value = false
 }
 
@@ -358,9 +385,11 @@ onMounted(() => {
   document.addEventListener('click', handleClickOutside)
   window.addEventListener('resize', handleResize)
   window.addEventListener('scroll', handleResize, true)
-  
+
   // Emit initial columns
-  emit('update:columns', [...localColumns.value])
+  const columnsToEmit = localColumns.value.map(col => ({ ...col }))
+  emit('update:columns', columnsToEmit)
+  console.log('[COLUMNS] Initialized with', columnsToEmit.filter(c => c.visible).length, 'visible columns')
 })
 
 onUnmounted(() => {

@@ -637,14 +637,15 @@ const tradeController = {
           // Fetch existing open positions for context-aware parsing
           logger.logImport(`Fetching existing open positions for context-aware import...`);
           const openPositionsQuery = `
-            SELECT id, symbol, side, quantity, entry_price, entry_time, trade_date, commission, broker
-            FROM trades 
-            WHERE user_id = $1 
-            AND exit_price IS NULL 
+            SELECT id, symbol, side, quantity, entry_price, entry_time, trade_date, commission, broker, executions
+            FROM trades
+            WHERE user_id = $1
+            AND exit_price IS NULL
             AND exit_time IS NULL
             ORDER BY symbol, entry_time
           `;
           const openPositionsResult = await db.query(openPositionsQuery, [fileUserId]);
+          logger.logImport(`Found ${openPositionsResult.rows.length} existing open positions`);
           
           // Convert to context format
           const existingPositions = {};
@@ -1088,14 +1089,22 @@ const tradeController = {
           symbolsToDelete.push(position.symbol);
           return;
         }
-        
+
         // Determine side based on net position
         position.side = position.totalQuantity > 0 ? 'long' : 'short';
-        
+
         // Use absolute quantity for calculations
         const absQuantity = Math.abs(position.totalQuantity);
         position.totalQuantity = absQuantity;
-        position.avgPrice = position.totalCost / absQuantity;
+
+        // Get contract multiplier from the first trade in the position
+        const firstTrade = position.trades[0];
+        const contractMultiplier = firstTrade.instrument_type === 'option' || firstTrade.instrument_type === 'future'
+          ? (firstTrade.contract_size || 100)
+          : 1;
+
+        // avgPrice should be per-share price, so divide totalCost by (quantity * multiplier)
+        position.avgPrice = position.totalCost / (absQuantity * contractMultiplier);
       });
       
       // Remove symbols with zero net position
@@ -2456,6 +2465,232 @@ const tradeController = {
 
     } catch (error) {
       console.error('[ENRICHMENT ERROR] Force complete enrichment failed:', error);
+      next(error);
+    }
+  },
+
+  async updateTradeHealthData(req, res, next) {
+    try {
+      const tradeId = req.params.id;
+      const { heartRate, sleepScore, sleepHours, stressLevel } = req.body;
+
+      // Validate trade belongs to user
+      const tradeCheck = await db.query(
+        'SELECT id FROM trades WHERE id = $1 AND user_id = $2',
+        [tradeId, req.user.id]
+      );
+
+      if (tradeCheck.rows.length === 0) {
+        return res.status(404).json({ error: 'Trade not found' });
+      }
+
+      // Update trade with health data
+      const query = `
+        UPDATE trades
+        SET heart_rate = $1, sleep_score = $2, sleep_hours = $3, stress_level = $4, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $5 AND user_id = $6
+        RETURNING *
+      `;
+
+      const result = await db.query(query, [
+        heartRate || null,
+        sleepScore || null,
+        sleepHours || null,
+        stressLevel || null,
+        tradeId,
+        req.user.id
+      ]);
+
+      logger.logInfo(`Updated health data for trade ${tradeId} for user ${req.user.id}`);
+
+      res.json({
+        success: true,
+        trade: result.rows[0]
+      });
+
+    } catch (error) {
+      logger.logError('Error updating trade health data:', error);
+      next(error);
+    }
+  },
+
+  async bulkUpdateHealthData(req, res, next) {
+    try {
+      const { trades } = req.body; // Array of {tradeId, heartRate, sleepScore, sleepHours, stressLevel}
+
+      if (!Array.isArray(trades) || trades.length === 0) {
+        return res.status(400).json({ error: 'Trades array is required' });
+      }
+
+      let updatedCount = 0;
+      const errors = [];
+
+      // Process each trade update
+      for (const tradeUpdate of trades) {
+        const { tradeId, heartRate, sleepScore, sleepHours, stressLevel } = tradeUpdate;
+
+        try {
+          // Validate trade belongs to user
+          const tradeCheck = await db.query(
+            'SELECT id FROM trades WHERE id = $1 AND user_id = $2',
+            [tradeId, req.user.id]
+          );
+
+          if (tradeCheck.rows.length === 0) {
+            errors.push({ tradeId, error: 'Trade not found' });
+            continue;
+          }
+
+          // Update trade with health data
+          const query = `
+            UPDATE trades
+            SET heart_rate = $1, sleep_score = $2, sleep_hours = $3, stress_level = $4, updated_at = CURRENT_TIMESTAMP
+            WHERE id = $5 AND user_id = $6
+          `;
+
+          await db.query(query, [
+            heartRate || null,
+            sleepScore || null,
+            sleepHours || null,
+            stressLevel || null,
+            tradeId,
+            req.user.id
+          ]);
+
+          updatedCount++;
+
+        } catch (error) {
+          errors.push({ tradeId, error: error.message });
+        }
+      }
+
+      logger.logInfo(`Bulk updated ${updatedCount} trades with health data for user ${req.user.id}`);
+
+      res.json({
+        success: true,
+        updatedCount,
+        totalRequested: trades.length,
+        errors: errors.length > 0 ? errors : undefined
+      });
+
+    } catch (error) {
+      logger.logError('Error bulk updating trade health data:', error);
+      next(error);
+    }
+  },
+
+  // Get expired options that are still marked as open
+  async getExpiredOptions(req, res, next) {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+
+      const query = `
+        SELECT
+          id, symbol, underlying_symbol, quantity, entry_price, entry_time,
+          strike_price, expiration_date, option_type, contract_size,
+          side, strategy, notes
+        FROM trades
+        WHERE user_id = $1
+          AND instrument_type = 'option'
+          AND exit_time IS NULL
+          AND expiration_date < $2
+        ORDER BY expiration_date DESC, symbol
+      `;
+
+      const result = await db.query(query, [req.user.id, today]);
+
+      logger.logInfo(`Found ${result.rows.length} expired options for user ${req.user.id}`);
+
+      res.json({
+        success: true,
+        count: result.rows.length,
+        expiredOptions: result.rows
+      });
+
+    } catch (error) {
+      logger.logError('Error fetching expired options:', error);
+      next(error);
+    }
+  },
+
+  // Auto-close expired options (bulk operation)
+  async autoCloseExpiredOptions(req, res, next) {
+    try {
+      const { dryRun = false } = req.body;
+      const today = new Date().toISOString().split('T')[0];
+      const closedAt = new Date();
+
+      // First, get all expired options for this user
+      const findQuery = `
+        SELECT id, symbol, expiration_date, quantity, entry_price, contract_size
+        FROM trades
+        WHERE user_id = $1
+          AND instrument_type = 'option'
+          AND exit_time IS NULL
+          AND expiration_date < $2
+        ORDER BY expiration_date DESC
+      `;
+
+      const expiredOptions = await db.query(findQuery, [req.user.id, today]);
+
+      if (expiredOptions.rows.length === 0) {
+        return res.json({
+          success: true,
+          message: 'No expired options found to close',
+          closedCount: 0,
+          dryRun
+        });
+      }
+
+      logger.logInfo(`Found ${expiredOptions.rows.length} expired options for user ${req.user.id}. Dry run: ${dryRun}`);
+
+      if (dryRun) {
+        return res.json({
+          success: true,
+          message: `Would close ${expiredOptions.rows.length} expired option(s)`,
+          closedCount: 0,
+          dryRun: true,
+          options: expiredOptions.rows.map(opt => ({
+            id: opt.id,
+            symbol: opt.symbol,
+            expirationDate: opt.expiration_date,
+            quantity: opt.quantity
+          }))
+        });
+      }
+
+      // Auto-close all expired options
+      const updateQuery = `
+        UPDATE trades
+        SET
+          exit_time = expiration_date + INTERVAL '16 hours',  -- Set to 4 PM ET on expiration day
+          exit_price = 0,  -- Expired worthless
+          pnl = -(entry_price * quantity * COALESCE(contract_size, 100)),  -- Total loss
+          auto_closed = true,
+          auto_close_reason = 'option expired worthless',
+          updated_at = $1
+        WHERE user_id = $2
+          AND instrument_type = 'option'
+          AND exit_time IS NULL
+          AND expiration_date < $3
+        RETURNING id, symbol, expiration_date
+      `;
+
+      const result = await db.query(updateQuery, [closedAt, req.user.id, today]);
+
+      logger.logInfo(`Auto-closed ${result.rows.length} expired options for user ${req.user.id}`, {
+        closedTrades: result.rows.map(t => ({ id: t.id, symbol: t.symbol, expirationDate: t.expiration_date }))
+      });
+
+      res.json({
+        success: true,
+        message: `Successfully auto-closed ${result.rows.length} expired option(s)`,
+        closedCount: result.rows.length,
+        closedTrades: result.rows
+      });
+
+    } catch (error) {
+      logger.logError('Error auto-closing expired options:', error);
       next(error);
     }
   }
