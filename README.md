@@ -30,7 +30,8 @@ A comprehensive trading journal and analytics platform built with Vue.js fronten
 
 **Available as:**
 - **SaaS Platform**: Fully hosted solution at [tradetally.io](https://tradetally.io) with subscription plans
-- **Self-Hosted**: Free, open-source deployment with all Pro features included
+- **Self-Hosted**: Free, open-source deployment with all Pro features included*
+     (Provided that you have all of the correct finnhub API access for more advanced features)
 
 ## Mobile App (Available For Testing)
 ### Testflight
