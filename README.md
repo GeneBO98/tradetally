@@ -11,12 +11,43 @@ A comprehensive trading journal and analytics platform built with Vue.js fronten
 - **Live Demo**: [tradetally.io](https://tradetally.io)
 - **Documentation**: [docs.tradetally.io](https://docs.tradetally.io)
 - **Forum**: [forum.tradetally.io](https://forum.tradetally.io)
-- **Docker Hub**: [potentialmidas/tradetally](https://hub.docker.com/r/potentialmidas/tradetally)
 - **iOS TestFlight**: [Join the beta](https://testflight.apple.com/join/11shUY3t)
+- **Docker Hub**: [potentialmidas/tradetally](https://hub.docker.com/r/potentialmidas/tradetally)
 
 ### Demo Account
 - **Username**: demo@example.com
 - **Password**: DemoUser25
+
+## Major Features
+
+### Trading Journal & Analysis
+- **Multi-Broker Support** - Import trades from Lightspeed, Charles Schwab, ThinkorSwim, IBKR, E*TRADE, ProjectX
+- **Options & Futures Trading** - Full support for options and futures contracts with specialized analytics
+- **Real-time Market Data** - Live stock quotes and unrealized P&L tracking
+- **Trade Visualization** - Interactive candlestick charts with entry/exit markers
+
+### Analytics & Insights
+- **AI-Powered Analytics** - Personalized trading recommendations powered by Google Gemini
+- **Advanced Charts** - Performance analysis by hold time, day of week, sector, and more
+- **Behavioral Analytics** - Revenge trading detection and overconfidence tracking (Pro)
+- **Health Tracking** - Correlate sleep, heart rate, and other health metrics with trading performance (Pro)
+
+### Markets & Alerts
+- **Watchlists** - Track favorite stocks with real-time prices and news (Pro)
+- **Price Alerts** - Email and browser notifications for price targets (Pro)
+- **News Integration** - Automatic news enrichment for traded symbols
+- **Earnings Tracking** - Monitor upcoming earnings for watchlist symbols (Pro)
+
+### Community & Gamification
+- **Leaderboards** - Track achievements and compete with peers
+- **Public Trades** - Share trades and learn from the community
+- **Achievements System** - Unlock badges and track milestones
+- **Forum Integration** - Join discussions at [forum.tradetally.io](https://forum.tradetally.io)
+
+### Mobile App
+- **iOS App** - Native iOS application available on [TestFlight](https://testflight.apple.com/join/11shUY3t)
+- Full feature parity with web application
+- Optimized mobile trading journal experience
 
 ## Deployment Options
 
@@ -32,63 +63,25 @@ Free, open-source deployment with all Pro features included. Perfect for:
 
 **Note**: For full feature access (real-time quotes, advanced charts, sector analysis), a [Finnhub.io Basic plan](https://finnhub.io/pricing) is required. Free tier available with limitations.
 
-## Key Features
-
-- **Multi-Broker Support** - Import trades from Lightspeed, Charles Schwab, ThinkorSwim, IBKR, E*TRADE
-- **Real-time Market Data** - Live stock quotes and unrealized P&L tracking
-- **AI-Powered Analytics** - Personalized trading recommendations
-- **Advanced Charts** - Performance analysis by hold time, day of week, sector, and more
-- **Trade Visualization** - Interactive candlestick charts with entry/exit markers
-- **Gamification & Leaderboards** - Track achievements and compete with peers
-- **Behavioral Analytics** - Revenge trading detection and overconfidence tracking
-- **Mobile App** - iOS app available on TestFlight
-
 ## Technology Stack
 
 **Backend**: Node.js, Express, PostgreSQL
 **Frontend**: Vue.js 3, Tailwind CSS, Pinia
-**APIs**: Finnhub, Alpha Vantage, various AI providers
+**APIs**: Finnhub, Alpha Vantage, Google Gemini
 **Infrastructure**: Docker, Nginx
 
 ## Getting Started
 
-### Docker Deployment (Recommended)
+For detailed installation and setup instructions, visit the [documentation site](https://docs.tradetally.io).
 
-See [Docker Deployment Guide](https://docs.tradetally.io/deployment/docker/) for detailed instructions.
+### Quick Start with Docker
 
 ```bash
-# Pull and run the latest image
 docker pull potentialmidas/tradetally:latest
 docker run -d -p 80:80 potentialmidas/tradetally:latest
 ```
 
-### From Source
-
-See [Installation Guide](https://docs.tradetally.io/getting-started/installation/) for detailed instructions.
-
-**Prerequisites**:
-- Node.js (v14+)
-- PostgreSQL (v16+)
-- npm
-
-```bash
-# Clone repository
-git clone https://github.com/GeneBO98/tradetally.git
-cd tradetally
-
-# Setup backend
-cd backend
-npm install
-cp .env.example .env
-# Edit .env with your configuration
-npm run migrate
-npm run dev
-
-# Setup frontend (in new terminal)
-cd frontend
-npm install
-npm run dev
-```
+See the [Docker Deployment Guide](https://docs.tradetally.io/deployment/docker/) for production setup.
 
 ## Documentation
 
@@ -99,16 +92,14 @@ Comprehensive documentation is available at [docs.tradetally.io](https://docs.tr
 - [API Configuration](https://docs.tradetally.io/getting-started/api-keys/)
 - [Docker Deployment](https://docs.tradetally.io/deployment/docker/)
 - [Importing Trades](https://docs.tradetally.io/usage/importing-trades/)
-- [Dashboard Features](https://docs.tradetally.io/features/dashboard/)
-- [Analytics Features](https://docs.tradetally.io/features/analytics/)
+- [Feature Guides](https://docs.tradetally.io/features/)
 
 ## Community & Support
 
-- **Forum**: Join the [TradeTally Discourse](https://forum.tradetally.io)
+- **Forum**: Join the [TradeTally Discourse](https://forum.tradetally.io) - If you have a TradeTally.io account, you can login with those credentials
 - **GitHub Issues**: Report bugs or request features
 - **Documentation**: [docs.tradetally.io](https://docs.tradetally.io)
-
-**Note**: If you already have a TradeTally.io account, you can login to the Forum with those credentials.
+- **iOS TestFlight**: [Join the beta](https://testflight.apple.com/join/11shUY3t)
 
 ## Screenshots
 
