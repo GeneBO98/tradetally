@@ -29,6 +29,15 @@
                   ]"
                 >
                   {{ item.name }}
+                  <span
+                    v-if="item.badge"
+                    class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
+                    :class="{
+                      'bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400': item.badge.type === 'pro'
+                    }"
+                  >
+                    {{ item.badge.text }}
+                  </span>
                 </router-link>
               </template>
             </template>
@@ -170,7 +179,18 @@
                     : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700'
                 ]"
               >
-                {{ item.name }}
+                <div class="flex items-center">
+                  {{ item.name }}
+                  <span
+                    v-if="item.badge"
+                    class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
+                    :class="{
+                      'bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400': item.badge.type === 'pro'
+                    }"
+                  >
+                    {{ item.badge.text }}
+                  </span>
+                </div>
               </router-link>
             </template>
             <div class="border-t border-gray-200 dark:border-gray-700 pt-4 pb-3">
@@ -313,25 +333,11 @@ const baseNavigation = [
       }
     ]
   },
-  { 
-    name: 'Watchlists', 
-    type: 'dropdown',
-    items: [
-      { 
-        name: 'Stock Watchlists', 
-        to: '/watchlists', 
-        route: 'watchlists',
-        description: 'Track your favorite stocks and monitor prices',
-        badge: { type: 'pro', text: 'Pro' }
-      },
-      { 
-        name: 'Price Alerts', 
-        to: '/price-alerts', 
-        route: 'price-alerts',
-        description: 'Set email and browser notifications for price targets',
-        badge: { type: 'pro', text: 'Pro' }
-      }
-    ]
+  {
+    name: 'Markets',
+    to: '/markets',
+    route: 'markets',
+    badge: { type: 'pro', text: 'Pro' }
   },
   { name: 'Calendar', to: '/calendar', route: 'calendar' },
   { name: 'Import', to: '/import', route: 'import' },

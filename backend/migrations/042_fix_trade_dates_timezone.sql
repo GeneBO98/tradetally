@@ -18,6 +18,14 @@ WHERE EXTRACT(DOW FROM trade_date) IN (0, 6) -- Only fix weekend dates
 
 -- Double-check: ensure no trades have weekend dates after the fix
 -- This query should return 0 rows after the migration
-SELECT COUNT(*) as weekend_trades_remaining
-FROM trades 
-WHERE EXTRACT(DOW FROM trade_date) IN (0, 6);
+DO $$
+DECLARE
+    weekend_count INTEGER;
+BEGIN
+    SELECT COUNT(*) INTO weekend_count
+    FROM trades
+    WHERE EXTRACT(DOW FROM trade_date) IN (0, 6);
+
+    RAISE NOTICE 'Migration 042 completed successfully';
+    RAISE NOTICE 'Weekend trades remaining: %', weekend_count;
+END $$;

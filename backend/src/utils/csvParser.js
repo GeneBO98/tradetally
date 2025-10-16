@@ -755,7 +755,20 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       return result;
     }
 
-    // Generic parser
+    // Generic parser - Use transaction-based processing for better position tracking
+    // Check for user preference or use enhanced mode by default when context is available
+    const useEnhancedMode = context.usePositionTracking !== false; // Default to true
+
+    if (useEnhancedMode && existingPositions && Object.keys(existingPositions).length >= 0) {
+      console.log('Using enhanced generic parser with position tracking');
+      const result = await parseGenericTransactions(records, existingPositions);
+      console.log('Finished generic transaction-based parsing');
+      return result;
+    }
+
+    // Fallback to simple row-by-row parsing (legacy mode)
+    // Used when position tracking is disabled or no context available
+    console.log('Using simple generic parser (legacy mode - no position tracking)');
     const parser = brokerParsers[broker] || brokerParsers.generic;
     const trades = [];
 
@@ -3348,6 +3361,274 @@ async function parseIBKRTransactions(records, existingPositions = {}) {
   }
 
   console.log(`Created ${completedTrades.length} IBKR trades (including open positions) from ${transactions.length} transactions`);
+  return completedTrades;
+}
+
+/**
+ * Parse generic CSV transactions with position tracking
+ * This function properly matches opening and closing trades across imports
+ * @param {Array} records - CSV records to parse
+ * @param {Object} existingPositions - Map of existing open positions by symbol
+ * @returns {Array} - Array of completed and open trades
+ */
+async function parseGenericTransactions(records, existingPositions = {}) {
+  console.log(`Processing ${records.length} generic CSV records with position tracking`);
+
+  const transactions = [];
+  const completedTrades = [];
+
+  // First, parse all records into transactions
+  for (const record of records) {
+    try {
+      // Use the generic parser to extract basic trade data
+      const parser = brokerParsers.generic;
+      const trade = parser(record);
+
+      if (!isValidTrade(trade)) {
+        continue;
+      }
+
+      // Determine transaction type based on the parsed side
+      // The generic parser returns 'long' or 'short' as the side
+      // We need to convert this to buy/sell transactions
+      let transactionSide;
+
+      // Check if there's an explicit action/type field in the CSV
+      const action = (record.Action || record.Type || record.Side || '').toLowerCase();
+
+      if (action.includes('buy') || action.includes('purchase') || action.includes('bot')) {
+        transactionSide = 'buy';
+      } else if (action.includes('sell') || action.includes('sold') || action.includes('sld')) {
+        transactionSide = 'sell';
+      } else {
+        // Fallback: use the parsed side from generic parser
+        // If side is 'long', assume it's a buy; if 'short', assume it's a sell
+        transactionSide = trade.side === 'short' ? 'sell' : 'buy';
+      }
+
+      transactions.push({
+        symbol: trade.symbol.toUpperCase(),
+        datetime: trade.entryTime,
+        tradeDate: trade.tradeDate,
+        side: transactionSide,
+        quantity: Math.abs(trade.quantity),
+        price: trade.entryPrice,
+        commission: trade.commission || 0,
+        fees: trade.fees || 0,
+        broker: trade.broker || 'generic',
+        originalRecord: record
+      });
+    } catch (error) {
+      console.error('Error parsing generic transaction:', error, record);
+    }
+  }
+
+  // Sort transactions by datetime
+  transactions.sort((a, b) => new Date(a.datetime) - new Date(b.datetime));
+
+  console.log(`Parsed ${transactions.length} valid transactions from ${records.length} records`);
+
+  // Group transactions by symbol
+  const symbolGroups = {};
+  for (const transaction of transactions) {
+    if (!symbolGroups[transaction.symbol]) {
+      symbolGroups[transaction.symbol] = [];
+    }
+    symbolGroups[transaction.symbol].push(transaction);
+  }
+
+  console.log(`Processing ${Object.keys(symbolGroups).length} symbols`);
+
+  // Process each symbol's transactions
+  for (const [symbol, symbolTransactions] of Object.entries(symbolGroups)) {
+    console.log(`\nProcessing ${symbol}: ${symbolTransactions.length} transactions`);
+
+    // Initialize position tracking
+    const existingPosition = existingPositions[symbol];
+    let currentPosition = existingPosition ?
+      (existingPosition.side === 'long' ? existingPosition.quantity : -existingPosition.quantity) : 0;
+
+    let currentTrade = existingPosition ? {
+      symbol: symbol,
+      entryTime: existingPosition.entryTime,
+      tradeDate: existingPosition.tradeDate,
+      side: existingPosition.side,
+      executions: Array.isArray(existingPosition.executions)
+        ? existingPosition.executions
+        : (existingPosition.executions ? JSON.parse(existingPosition.executions) : []),
+      totalQuantity: existingPosition.quantity,
+      totalFees: existingPosition.commission || 0,
+      entryValue: existingPosition.quantity * existingPosition.entryPrice,
+      exitValue: 0,
+      broker: existingPosition.broker || 'generic',
+      isExistingPosition: true,
+      existingTradeId: existingPosition.id,
+      newExecutionsAdded: 0
+    } : null;
+
+    if (existingPosition) {
+      console.log(`  → Starting with existing ${existingPosition.side} position: ${existingPosition.quantity} shares @ $${existingPosition.entryPrice}`);
+      console.log(`  → Initial position: ${currentPosition}`);
+    }
+
+    // Process each transaction chronologically
+    for (const transaction of symbolTransactions) {
+      const qty = transaction.quantity;
+      const prevPosition = currentPosition;
+
+      console.log(`\n  ${transaction.side.toUpperCase()} ${qty} @ $${transaction.price} | Position: ${currentPosition}`);
+
+      // Start new trade if going from flat to position
+      if (currentPosition === 0) {
+        currentTrade = {
+          symbol: symbol,
+          entryTime: transaction.datetime,
+          tradeDate: transaction.tradeDate,
+          side: transaction.side === 'buy' ? 'long' : 'short',
+          executions: [],
+          totalQuantity: 0,
+          totalFees: 0,
+          entryValue: 0,
+          exitValue: 0,
+          broker: transaction.broker
+        };
+        console.log(`  → Started new ${currentTrade.side} trade`);
+      }
+
+      // Add execution to current trade
+      if (currentTrade) {
+        const newExecution = {
+          action: transaction.side,
+          quantity: qty,
+          price: transaction.price,
+          datetime: transaction.datetime,
+          fees: transaction.commission + transaction.fees
+        };
+
+        // Check for duplicate executions
+        const executionExists = currentTrade.executions.some(exec => {
+          const existingTime = new Date(exec.datetime).getTime();
+          const newTime = new Date(newExecution.datetime).getTime();
+          return existingTime === newTime &&
+                 exec.quantity === newExecution.quantity &&
+                 exec.price === newExecution.price;
+        });
+
+        if (!executionExists) {
+          currentTrade.executions.push(newExecution);
+          if (currentTrade.isExistingPosition) {
+            currentTrade.newExecutionsAdded++;
+          }
+        }
+
+        currentTrade.totalFees += transaction.commission + transaction.fees;
+      }
+
+      // Process the transaction and update position
+      if (transaction.side === 'buy') {
+        currentPosition += qty;
+
+        if (currentTrade) {
+          if (currentTrade.side === 'long') {
+            // Adding to long position
+            currentTrade.entryValue += qty * transaction.price;
+            currentTrade.totalQuantity += qty;
+          } else if (currentTrade.side === 'short') {
+            // Covering short position
+            currentTrade.exitValue += qty * transaction.price;
+          }
+        }
+      } else if (transaction.side === 'sell') {
+        currentPosition -= qty;
+
+        if (currentTrade) {
+          if (currentTrade.side === 'short') {
+            // Adding to short position
+            currentTrade.entryValue += qty * transaction.price;
+            currentTrade.totalQuantity += qty;
+          } else if (currentTrade.side === 'long') {
+            // Selling long position
+            currentTrade.exitValue += qty * transaction.price;
+          }
+        }
+      }
+
+      console.log(`  Position: ${prevPosition} → ${currentPosition}`);
+
+      // Close trade if position goes to zero
+      if (currentPosition === 0 && currentTrade && currentTrade.totalQuantity > 0) {
+        // Calculate final values
+        currentTrade.entryPrice = currentTrade.entryValue / currentTrade.totalQuantity;
+        currentTrade.exitPrice = currentTrade.exitValue / currentTrade.totalQuantity;
+
+        // Calculate P&L
+        if (currentTrade.side === 'long') {
+          currentTrade.pnl = currentTrade.exitValue - currentTrade.entryValue - currentTrade.totalFees;
+        } else {
+          currentTrade.pnl = currentTrade.entryValue - currentTrade.exitValue - currentTrade.totalFees;
+        }
+
+        currentTrade.pnlPercent = (currentTrade.pnl / currentTrade.entryValue) * 100;
+        currentTrade.quantity = currentTrade.totalQuantity;
+        currentTrade.commission = currentTrade.totalFees;
+        currentTrade.fees = 0;
+
+        // Set proper entry and exit times
+        const executionTimes = currentTrade.executions.map(e => new Date(e.datetime));
+        const sortedTimes = executionTimes.sort((a, b) => a - b);
+        currentTrade.entryTime = sortedTimes[0].toISOString();
+        currentTrade.exitTime = sortedTimes[sortedTimes.length - 1].toISOString();
+
+        // Mark as update if this was an existing position
+        if (currentTrade.isExistingPosition) {
+          currentTrade.isUpdate = currentTrade.newExecutionsAdded > 0;
+          currentTrade.notes = `Closed position via generic import: ${currentTrade.executions.length} executions`;
+          console.log(`  [CHECK] CLOSED existing ${currentTrade.side} position: P/L: $${currentTrade.pnl.toFixed(2)}`);
+        } else {
+          currentTrade.notes = `Round trip trade: ${currentTrade.executions.length} executions`;
+          console.log(`  [CHECK] Completed ${currentTrade.side} trade: P/L: $${currentTrade.pnl.toFixed(2)}`);
+        }
+
+        currentTrade.executionData = currentTrade.executions;
+        completedTrades.push(currentTrade);
+        currentTrade = null;
+      }
+    }
+
+    // Handle remaining open position
+    if (currentTrade && Math.abs(currentPosition) > 0) {
+      const netQuantity = Math.abs(currentPosition);
+
+      // For open positions
+      currentTrade.entryPrice = currentTrade.totalQuantity > 0 ?
+        currentTrade.entryValue / currentTrade.totalQuantity : 0;
+      currentTrade.exitPrice = null;
+      currentTrade.exitTime = null;
+      currentTrade.quantity = netQuantity;
+      currentTrade.totalQuantity = netQuantity;
+      currentTrade.commission = currentTrade.totalFees;
+      currentTrade.fees = 0;
+      currentTrade.pnl = 0;
+      currentTrade.pnlPercent = 0;
+
+      // Update side based on final position
+      currentTrade.side = currentPosition > 0 ? 'long' : 'short';
+
+      if (currentTrade.isExistingPosition) {
+        currentTrade.isUpdate = true;
+        currentTrade.notes = `Updated position via generic import: ${currentTrade.executions.length} executions`;
+        console.log(`  [CHECK] UPDATED ${currentTrade.side} position: ${netQuantity} shares`);
+      } else {
+        currentTrade.notes = `Open position: ${currentTrade.executions.length} executions`;
+        console.log(`  [CHECK] Created open ${currentTrade.side} position: ${netQuantity} shares`);
+      }
+
+      currentTrade.executionData = currentTrade.executions;
+      completedTrades.push(currentTrade);
+    }
+  }
+
+  console.log(`\n[SUCCESS] Created ${completedTrades.length} trades from ${transactions.length} transactions`);
   return completedTrades;
 }
 

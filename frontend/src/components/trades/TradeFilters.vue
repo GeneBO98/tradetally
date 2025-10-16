@@ -1,7 +1,7 @@
 <template>
   <div class="space-y-4">
     <!-- Basic filters always visible -->
-    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-6">
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
       <div>
         <label for="symbol" class="label">Symbol</label>
         <input
@@ -13,7 +13,7 @@
           @keydown.enter="applyFilters"
         />
       </div>
-      
+
       <div>
         <label for="startDate" class="label">Start Date</label>
         <input
@@ -24,7 +24,7 @@
           @keydown.enter="applyFilters"
         />
       </div>
-      
+
       <div>
         <label for="endDate" class="label">End Date</label>
         <input
@@ -35,7 +35,7 @@
           @keydown.enter="applyFilters"
         />
       </div>
-      
+
       <div>
         <label class="label">Strategy</label>
         <div class="relative" data-dropdown="strategy">
@@ -51,7 +51,7 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
             </svg>
           </button>
-          
+
           <div v-if="showStrategyDropdown" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
             <div class="p-1">
               <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
@@ -80,46 +80,66 @@
           </div>
         </div>
       </div>
-      
+    </div>
+
+    <!-- Second Row of Basic Filters -->
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
       <div>
-        <label class="label">Sector</label>
-        <div class="relative" data-dropdown="sector">
+        <label class="label">Trade Status</label>
+        <select v-model="filters.status" class="input">
+          <option value="">All Trades</option>
+          <option value="open">Open Only</option>
+          <option value="closed">Closed Only</option>
+        </select>
+      </div>
+
+      <div>
+        <label class="label">Position Type</label>
+        <select v-model="filters.side" class="input">
+          <option value="">All</option>
+          <option value="long">Long</option>
+          <option value="short">Short</option>
+        </select>
+      </div>
+
+      <div>
+        <label class="label">Instrument Type</label>
+        <div class="relative" data-dropdown="instrumentType">
           <button
-            @click.stop="showSectorDropdown = !showSectorDropdown"
+            @click.stop="showInstrumentTypeDropdown = !showInstrumentTypeDropdown"
             class="input w-full text-left flex items-center justify-between"
             type="button"
-            :disabled="loadingSectors"
           >
             <span class="truncate">
-              {{ getSelectedSectorText() }}
+              {{ getSelectedInstrumentTypeText() }}
             </span>
             <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
             </svg>
           </button>
-          
-          <div v-if="showSectorDropdown && !loadingSectors" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
+
+          <div v-if="showInstrumentTypeDropdown" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
             <div class="p-1">
               <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
                 <input
                   type="checkbox"
-                  :checked="!filters.sectors || filters.sectors.length === 0"
-                  @change="toggleAllSectors"
+                  :checked="!filters.instrumentTypes || filters.instrumentTypes.length === 0"
+                  @change="toggleAllInstrumentTypes"
                   class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
                 />
-                <span class="ml-3 text-sm text-gray-900 dark:text-white">All Sectors</span>
+                <span class="ml-3 text-sm text-gray-900 dark:text-white">All Types</span>
               </label>
             </div>
             <div class="border-t border-gray-200 dark:border-gray-600">
-              <div v-for="sector in availableSectors" :key="sector" class="p-1">
+              <div v-for="type in instrumentTypeOptions" :key="type.value" class="p-1">
                 <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
                   <input
                     type="checkbox"
-                    :value="sector"
-                    v-model="filters.sectors"
+                    :value="type.value"
+                    v-model="filters.instrumentTypes"
                     class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
                   />
-                  <span class="ml-3 text-sm text-gray-900 dark:text-white">{{ sector }}</span>
+                  <span class="ml-3 text-sm text-gray-900 dark:text-white">{{ type.label }}</span>
                 </label>
               </div>
             </div>
@@ -130,19 +150,6 @@
       <div>
         <label class="label">Tags</label>
         <TagManagement v-model="filters.tags" />
-      </div>
-
-      <div>
-        <label for="hasNews" class="label">News</label>
-        <select
-          id="hasNews"
-          v-model="filters.hasNews"
-          class="input"
-        >
-          <option value="">All Trades</option>
-          <option value="true">With News</option>
-          <option value="false">No News</option>
-        </select>
       </div>
     </div>
 
@@ -164,328 +171,315 @@
     </div>
 
     <!-- Advanced filters (collapsible) -->
-    <div v-if="showAdvanced" class="border-t border-gray-200 dark:border-gray-700 pt-4 space-y-4">
-      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <!-- Position Type -->
-        <div>
-          <label class="label">Position Type</label>
-          <div class="mt-2 space-y-2">
-            <label class="inline-flex items-center">
+    <div v-if="showAdvanced" class="border-t border-gray-200 dark:border-gray-700 pt-4 space-y-6">
+      <!-- Range Filters Group -->
+      <div class="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4">
+        <h4 class="text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-3">Range Filters</h4>
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <!-- Price Range -->
+          <div>
+            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Entry Price</label>
+            <div class="flex items-center gap-1.5">
               <input
-                type="radio"
-                v-model="filters.side"
-                value=""
-                class="form-radio text-primary-600"
+                v-model.number="filters.minPrice"
+                type="number"
+                step="0.01"
+                min="0"
+                class="input text-sm w-32"
+                placeholder="Min"
               />
-              <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">All</span>
-            </label>
-            <label class="inline-flex items-center ml-4">
+              <span class="text-xs text-gray-400">-</span>
               <input
-                type="radio"
-                v-model="filters.side"
-                value="long"
-                class="form-radio text-primary-600"
+                v-model.number="filters.maxPrice"
+                type="number"
+                step="0.01"
+                min="0"
+                class="input text-sm w-32"
+                placeholder="Max"
               />
-              <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">Long</span>
-            </label>
-            <label class="inline-flex items-center ml-4">
+            </div>
+          </div>
+
+          <!-- Quantity Range -->
+          <div>
+            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Share Quantity</label>
+            <div class="flex items-center gap-1.5">
               <input
-                type="radio"
-                v-model="filters.side"
-                value="short"
-                class="form-radio text-primary-600"
+                v-model.number="filters.minQuantity"
+                type="number"
+                min="0"
+                class="input text-sm w-32"
+                placeholder="Min"
               />
-              <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">Short</span>
-            </label>
+              <span class="text-xs text-gray-400">-</span>
+              <input
+                v-model.number="filters.maxQuantity"
+                type="number"
+                min="0"
+                class="input text-sm w-32"
+                placeholder="Max"
+              />
+            </div>
           </div>
-        </div>
 
-        <!-- Price Range -->
-        <div>
-          <label class="label">Entry Price Range</label>
-          <div class="flex items-center space-x-2">
-            <input
-              v-model.number="filters.minPrice"
-              type="number"
-              step="0.01"
-              min="0"
-              class="input"
-              placeholder="Min"
-            />
-            <span class="text-gray-500 dark:text-gray-400">-</span>
-            <input
-              v-model.number="filters.maxPrice"
-              type="number"
-              step="0.01"
-              min="0"
-              class="input"
-              placeholder="Max"
-            />
+          <!-- P&L Range -->
+          <div>
+            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">P&L ($)</label>
+            <div class="flex items-center gap-1.5">
+              <input
+                v-model.number="filters.minPnl"
+                type="number"
+                step="0.01"
+                class="input text-sm w-32"
+                placeholder="Min"
+              />
+              <span class="text-xs text-gray-400">-</span>
+              <input
+                v-model.number="filters.maxPnl"
+                type="number"
+                step="0.01"
+                class="input text-sm w-32"
+                placeholder="Max"
+              />
+            </div>
           </div>
-        </div>
-
-        <!-- Quantity Range -->
-        <div>
-          <label class="label">Share Quantity</label>
-          <div class="flex items-center space-x-2">
-            <input
-              v-model.number="filters.minQuantity"
-              type="number"
-              min="0"
-              class="input"
-              placeholder="Min"
-            />
-            <span class="text-gray-500 dark:text-gray-400">-</span>
-            <input
-              v-model.number="filters.maxQuantity"
-              type="number"
-              min="0"
-              class="input"
-              placeholder="Max"
-            />
-          </div>
-        </div>
-
-        <!-- Trade Status -->
-        <div>
-          <label class="label">Trade Status</label>
-          <select v-model="filters.status" class="input">
-            <option value="">All Trades</option>
-            <option value="open">Open Only</option>
-            <option value="closed">Closed Only</option>
-          </select>
         </div>
       </div>
 
-      <!-- P&L Filters and Broker -->
-      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div>
-          <label class="label">Broker</label>
-          <div class="relative" data-dropdown="broker">
-            <button
-              @click.stop="showBrokerDropdown = !showBrokerDropdown"
-              class="input w-full text-left flex items-center justify-between"
-              type="button"
-              :disabled="loadingBrokers"
-            >
-              <span class="truncate">
-                {{ getSelectedBrokerText() }}
-              </span>
-              <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-              </svg>
-            </button>
-            
-            <div v-if="showBrokerDropdown && !loadingBrokers" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
-              <div class="p-1">
-                <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
-                  <input
-                    type="checkbox"
-                    :checked="!filters.brokers || filters.brokers.length === 0"
-                    @change="toggleAllBrokers"
-                    class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
-                  />
-                  <span class="ml-3 text-sm text-gray-900 dark:text-white">All Brokers</span>
-                </label>
-              </div>
-              <div class="border-t border-gray-200 dark:border-gray-600">
-                <div v-for="broker in availableBrokers" :key="broker" class="p-1">
+      <!-- Trade Characteristics Group -->
+      <div class="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4">
+        <h4 class="text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-3">Trade Characteristics</h4>
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <!-- Sector -->
+          <div>
+            <label class="label">Sector</label>
+            <div class="relative" data-dropdown="sector">
+              <button
+                @click.stop="showSectorDropdown = !showSectorDropdown"
+                class="input w-full text-left flex items-center justify-between"
+                type="button"
+                :disabled="loadingSectors"
+              >
+                <span class="truncate">
+                  {{ getSelectedSectorText() }}
+                </span>
+                <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                </svg>
+              </button>
+
+              <div v-if="showSectorDropdown && !loadingSectors" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
+                <div class="p-1">
                   <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
                     <input
                       type="checkbox"
-                      :value="broker"
-                      v-model="filters.brokers"
+                      :checked="!filters.sectors || filters.sectors.length === 0"
+                      @change="toggleAllSectors"
                       class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
                     />
-                    <span class="ml-3 text-sm text-gray-900 dark:text-white">{{ broker }}</span>
+                    <span class="ml-3 text-sm text-gray-900 dark:text-white">All Sectors</span>
                   </label>
+                </div>
+                <div class="border-t border-gray-200 dark:border-gray-600">
+                  <div v-for="sector in availableSectors" :key="sector" class="p-1">
+                    <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                      <input
+                        type="checkbox"
+                        :value="sector"
+                        v-model="filters.sectors"
+                        class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                      />
+                      <span class="ml-3 text-sm text-gray-900 dark:text-white">{{ sector }}</span>
+                    </label>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
 
-        <div>
-          <label class="label">P&L Range ($)</label>
-          <div class="flex items-center space-x-2">
-            <input
-              v-model.number="filters.minPnl"
-              type="number"
-              step="0.01"
+          <!-- News -->
+          <div>
+            <label for="hasNews" class="label">News</label>
+            <select
+              id="hasNews"
+              v-model="filters.hasNews"
               class="input"
-              placeholder="Min"
-            />
-            <span class="text-gray-500 dark:text-gray-400">-</span>
-            <input
-              v-model.number="filters.maxPnl"
-              type="number"
-              step="0.01"
-              class="input"
-              placeholder="Max"
-            />
+            >
+              <option value="">All Trades</option>
+              <option value="true">With News</option>
+              <option value="false">No News</option>
+            </select>
           </div>
-        </div>
 
-        <div>
-          <label class="label">P&L Type</label>
-          <select v-model="filters.pnlType" class="input">
-            <option value="">All</option>
-            <option value="profit">Profit Only</option>
-            <option value="loss">Loss Only</option>
-          </select>
-        </div>
-        
-        <div>
-          <label class="label">Hold Time</label>
-          <select v-model="filters.holdTime" class="input">
-            <option value="">All</option>
-            <option value="< 1 min">< 1 minute</option>
-            <option value="1-5 min">1-5 minutes</option>
-            <option value="5-15 min">5-15 minutes</option>
-            <option value="15-30 min">15-30 minutes</option>
-            <option value="30-60 min">30-60 minutes</option>
-            <option value="1-2 hours">1-2 hours</option>
-            <option value="2-4 hours">2-4 hours</option>
-            <option value="4-24 hours">4-24 hours</option>
-            <option value="1-7 days">1-7 days</option>
-            <option value="1-4 weeks">1-4 weeks</option>
-            <option value="1+ months">1+ months</option>
-          </select>
+          <!-- Broker -->
+          <div>
+            <label class="label">Broker</label>
+            <div class="relative" data-dropdown="broker">
+              <button
+                @click.stop="showBrokerDropdown = !showBrokerDropdown"
+                class="input w-full text-left flex items-center justify-between"
+                type="button"
+                :disabled="loadingBrokers"
+              >
+                <span class="truncate">
+                  {{ getSelectedBrokerText() }}
+                </span>
+                <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                </svg>
+              </button>
+
+              <div v-if="showBrokerDropdown && !loadingBrokers" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
+                <div class="p-1">
+                  <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                    <input
+                      type="checkbox"
+                      :checked="!filters.brokers || filters.brokers.length === 0"
+                      @change="toggleAllBrokers"
+                      class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                    />
+                    <span class="ml-3 text-sm text-gray-900 dark:text-white">All Brokers</span>
+                  </label>
+                </div>
+                <div class="border-t border-gray-200 dark:border-gray-600">
+                  <div v-for="broker in availableBrokers" :key="broker" class="p-1">
+                    <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                      <input
+                        type="checkbox"
+                        :value="broker"
+                        v-model="filters.brokers"
+                        class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                      />
+                      <span class="ml-3 text-sm text-gray-900 dark:text-white">{{ broker }}</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- P&L Type -->
+          <div>
+            <label class="label">P&L Type</label>
+            <select v-model="filters.pnlType" class="input">
+              <option value="">All</option>
+              <option value="profit">Profit Only</option>
+              <option value="loss">Loss Only</option>
+            </select>
+          </div>
         </div>
       </div>
 
-      <!-- Day of Week and Instrument Type Filters -->
-      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 mt-4">
-        <div>
-          <label class="label">Day of Week</label>
-          <div class="relative" data-dropdown="dayOfWeek">
-            <button
-              @click.stop="showDayOfWeekDropdown = !showDayOfWeekDropdown"
-              class="input w-full text-left flex items-center justify-between"
-              type="button"
-            >
-              <span class="truncate">
-                {{ getSelectedDayOfWeekText() }}
-              </span>
-              <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-              </svg>
-            </button>
-            
-            <div v-if="showDayOfWeekDropdown" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
-              <div class="p-1">
-                <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
-                  <input
-                    type="checkbox"
-                    :checked="!filters.daysOfWeek || filters.daysOfWeek.length === 0"
-                    @change="toggleAllDaysOfWeek"
-                    class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
-                  />
-                  <span class="ml-3 text-sm text-gray-900 dark:text-white">All Days</span>
-                </label>
-              </div>
-              <div class="border-t border-gray-200 dark:border-gray-600">
-                <div v-for="day in dayOfWeekOptions" :key="day.value" class="p-1">
+      <!-- Timing Filters Group -->
+      <div class="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4">
+        <h4 class="text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-3">Timing & Options</h4>
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <!-- Hold Time -->
+          <div>
+            <label class="label">Hold Time</label>
+            <select v-model="filters.holdTime" class="input">
+              <option value="">All</option>
+              <option value="< 1 min">< 1 minute</option>
+              <option value="1-5 min">1-5 minutes</option>
+              <option value="5-15 min">5-15 minutes</option>
+              <option value="15-30 min">15-30 minutes</option>
+              <option value="30-60 min">30-60 minutes</option>
+              <option value="1-2 hours">1-2 hours</option>
+              <option value="2-4 hours">2-4 hours</option>
+              <option value="4-24 hours">4-24 hours</option>
+              <option value="1-7 days">1-7 days</option>
+              <option value="1-4 weeks">1-4 weeks</option>
+              <option value="1+ months">1+ months</option>
+            </select>
+          </div>
+
+          <!-- Day of Week -->
+          <div>
+            <label class="label">Day of Week</label>
+            <div class="relative" data-dropdown="dayOfWeek">
+              <button
+                @click.stop="showDayOfWeekDropdown = !showDayOfWeekDropdown"
+                class="input w-full text-left flex items-center justify-between"
+                type="button"
+              >
+                <span class="truncate">
+                  {{ getSelectedDayOfWeekText() }}
+                </span>
+                <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                </svg>
+              </button>
+
+              <div v-if="showDayOfWeekDropdown" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
+                <div class="p-1">
                   <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
                     <input
                       type="checkbox"
-                      :value="day.value"
-                      v-model="filters.daysOfWeek"
+                      :checked="!filters.daysOfWeek || filters.daysOfWeek.length === 0"
+                      @change="toggleAllDaysOfWeek"
                       class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
                     />
-                    <span class="ml-3 text-sm text-gray-900 dark:text-white">{{ day.label }}</span>
+                    <span class="ml-3 text-sm text-gray-900 dark:text-white">All Days</span>
                   </label>
+                </div>
+                <div class="border-t border-gray-200 dark:border-gray-600">
+                  <div v-for="day in dayOfWeekOptions" :key="day.value" class="p-1">
+                    <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                      <input
+                        type="checkbox"
+                        :value="day.value"
+                        v-model="filters.daysOfWeek"
+                        class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                      />
+                      <span class="ml-3 text-sm text-gray-900 dark:text-white">{{ day.label }}</span>
+                    </label>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
 
-        <div>
-          <label class="label">Instrument Type</label>
-          <div class="relative" data-dropdown="instrumentType">
-            <button
-              @click.stop="showInstrumentTypeDropdown = !showInstrumentTypeDropdown"
-              class="input w-full text-left flex items-center justify-between"
-              type="button"
-            >
-              <span class="truncate">
-                {{ getSelectedInstrumentTypeText() }}
-              </span>
-              <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-              </svg>
-            </button>
+          <!-- Option Type Filter (only shown when Options selected in main filters) -->
+          <div v-if="filters.instrumentTypes.includes('option')">
+            <label class="label">Option Type</label>
+            <div class="relative" data-dropdown="optionType">
+              <button
+                @click.stop="showOptionTypeDropdown = !showOptionTypeDropdown"
+                class="input w-full text-left flex items-center justify-between"
+                type="button"
+              >
+                <span class="truncate">
+                  {{ getSelectedOptionTypeText() }}
+                </span>
+                <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                </svg>
+              </button>
 
-            <div v-if="showInstrumentTypeDropdown" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
-              <div class="p-1">
-                <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
-                  <input
-                    type="checkbox"
-                    :checked="!filters.instrumentTypes || filters.instrumentTypes.length === 0"
-                    @change="toggleAllInstrumentTypes"
-                    class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
-                  />
-                  <span class="ml-3 text-sm text-gray-900 dark:text-white">All Types</span>
-                </label>
-              </div>
-              <div class="border-t border-gray-200 dark:border-gray-600">
-                <div v-for="type in instrumentTypeOptions" :key="type.value" class="p-1">
+              <div v-if="showOptionTypeDropdown" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
+                <div class="p-1">
                   <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
                     <input
                       type="checkbox"
-                      :value="type.value"
-                      v-model="filters.instrumentTypes"
+                      :checked="!filters.optionTypes || filters.optionTypes.length === 0"
+                      @change="toggleAllOptionTypes"
                       class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
                     />
-                    <span class="ml-3 text-sm text-gray-900 dark:text-white">{{ type.label }}</span>
+                    <span class="ml-3 text-sm text-gray-900 dark:text-white">All Option Types</span>
                   </label>
                 </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Option Type Filter (only shown when Options selected) -->
-        <div v-if="filters.instrumentTypes.includes('option')">
-          <label class="label">Option Type</label>
-          <div class="relative" data-dropdown="optionType">
-            <button
-              @click.stop="showOptionTypeDropdown = !showOptionTypeDropdown"
-              class="input w-full text-left flex items-center justify-between"
-              type="button"
-            >
-              <span class="truncate">
-                {{ getSelectedOptionTypeText() }}
-              </span>
-              <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-              </svg>
-            </button>
-
-            <div v-if="showOptionTypeDropdown" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
-              <div class="p-1">
-                <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
-                  <input
-                    type="checkbox"
-                    :checked="!filters.optionTypes || filters.optionTypes.length === 0"
-                    @change="toggleAllOptionTypes"
-                    class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
-                  />
-                  <span class="ml-3 text-sm text-gray-900 dark:text-white">All Option Types</span>
-                </label>
-              </div>
-              <div class="border-t border-gray-200 dark:border-gray-600">
-                <div v-for="type in optionTypeOptions" :key="type.value" class="p-1">
-                  <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
-                    <input
-                      type="checkbox"
-                      :value="type.value"
-                      v-model="filters.optionTypes"
-                      class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
-                    />
-                    <span class="ml-3 text-sm text-gray-900 dark:text-white">{{ type.label }}</span>
-                  </label>
+                <div class="border-t border-gray-200 dark:border-gray-600">
+                  <div v-for="type in optionTypeOptions" :key="type.value" class="p-1">
+                    <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                      <input
+                        type="checkbox"
+                        :value="type.value"
+                        v-model="filters.optionTypes"
+                        class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                      />
+                      <span class="ml-3 text-sm text-gray-900 dark:text-white">{{ type.label }}</span>
+                    </label>
+                  </div>
                 </div>
               </div>
             </div>
@@ -697,21 +691,22 @@ const activeFiltersCount = computed(() => {
   if (filters.value.startDate) count++
   if (filters.value.endDate) count++
   if (filters.value.strategies && filters.value.strategies.length > 0) count++
+  if (filters.value.side) count++
+  if (filters.value.status) count++
+  if (filters.value.instrumentTypes && filters.value.instrumentTypes.length > 0) count++
+  if (filters.value.tags && filters.value.tags.length > 0) count++
   if (filters.value.sectors && filters.value.sectors.length > 0) count++
   if (filters.value.hasNews) count++
-  if (filters.value.side) count++
   if (filters.value.minPrice !== null) count++
   if (filters.value.maxPrice !== null) count++
   if (filters.value.minQuantity !== null) count++
   if (filters.value.maxQuantity !== null) count++
-  if (filters.value.status) count++
   if (filters.value.minPnl !== null) count++
   if (filters.value.maxPnl !== null) count++
   if (filters.value.pnlType) count++
   if (filters.value.holdTime) count++
   if (filters.value.brokers && filters.value.brokers.length > 0) count++
   if (filters.value.daysOfWeek && filters.value.daysOfWeek.length > 0) count++
-  if (filters.value.instrumentTypes && filters.value.instrumentTypes.length > 0) count++
   if (filters.value.optionTypes && filters.value.optionTypes.length > 0) count++
   return count
 })
@@ -719,19 +714,18 @@ const activeFiltersCount = computed(() => {
 // Count active advanced filters only
 const activeAdvancedCount = computed(() => {
   let count = 0
-  if (filters.value.side) count++
+  if (filters.value.sectors && filters.value.sectors.length > 0) count++
+  if (filters.value.hasNews) count++
   if (filters.value.minPrice !== null) count++
   if (filters.value.maxPrice !== null) count++
   if (filters.value.minQuantity !== null) count++
   if (filters.value.maxQuantity !== null) count++
-  if (filters.value.status) count++
+  if (filters.value.brokers && filters.value.brokers.length > 0) count++
   if (filters.value.minPnl !== null) count++
   if (filters.value.maxPnl !== null) count++
   if (filters.value.pnlType) count++
   if (filters.value.holdTime) count++
-  if (filters.value.brokers && filters.value.brokers.length > 0) count++
   if (filters.value.daysOfWeek && filters.value.daysOfWeek.length > 0) count++
-  if (filters.value.instrumentTypes && filters.value.instrumentTypes.length > 0) count++
   if (filters.value.optionTypes && filters.value.optionTypes.length > 0) count++
   return count
 })

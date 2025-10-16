@@ -220,10 +220,14 @@ const router = createRouter({
       meta: { requiresOpen: true }
     },
     {
-      path: '/watchlists',
-      name: 'watchlists',
-      component: () => import('@/views/WatchlistView.vue'),
+      path: '/markets',
+      name: 'markets',
+      component: () => import('@/views/MarketsView.vue'),
       meta: { requiresAuth: true }
+    },
+    {
+      path: '/watchlists',
+      redirect: '/markets'
     },
     {
       path: '/watchlists/:id',
@@ -233,9 +237,7 @@ const router = createRouter({
     },
     {
       path: '/price-alerts',
-      name: 'price-alerts',
-      component: () => import('@/views/PriceAlertsView.vue'),
-      meta: { requiresAuth: true }
+      redirect: '/markets'
     },
     {
       path: '/notifications',
