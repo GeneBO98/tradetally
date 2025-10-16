@@ -25,16 +25,9 @@ SET
   primary_markets = '{}',
   trading_goals = '{}',
   preferred_sectors = '{}'
-WHERE 
-  trading_strategies IS NULL 
-  OR trading_styles IS NULL 
-  OR primary_markets IS NULL 
-  OR trading_goals IS NULL 
+WHERE
+  trading_strategies IS NULL
+  OR trading_styles IS NULL
+  OR primary_markets IS NULL
+  OR trading_goals IS NULL
   OR preferred_sectors IS NULL;
-
--- Show current status
-SELECT 
-    COUNT(*) as total_user_settings,
-    COUNT(CASE WHEN trading_strategies IS NOT NULL THEN 1 END) as users_with_strategies,
-    COUNT(CASE WHEN trading_styles IS NOT NULL THEN 1 END) as users_with_styles
-FROM user_settings;
