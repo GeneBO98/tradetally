@@ -109,9 +109,21 @@ WHERE
     OR preferred_sectors IS NULL;
 
 -- Show migration status
-SELECT 
-    'Migration completed successfully' as status,
-    COUNT(*) as total_user_settings,
-    COUNT(CASE WHEN trading_strategies IS NOT NULL THEN 1 END) as users_with_strategies,
-    COUNT(CASE WHEN account_equity IS NOT NULL THEN 1 END) as users_with_equity
-FROM user_settings;
+DO $$
+DECLARE
+    total_settings INTEGER;
+    with_strategies INTEGER;
+    with_equity INTEGER;
+BEGIN
+    SELECT
+        COUNT(*),
+        COUNT(CASE WHEN trading_strategies IS NOT NULL THEN 1 END),
+        COUNT(CASE WHEN account_equity IS NOT NULL THEN 1 END)
+    INTO total_settings, with_strategies, with_equity
+    FROM user_settings;
+
+    RAISE NOTICE 'Migration completed successfully';
+    RAISE NOTICE 'Total user settings: %', total_settings;
+    RAISE NOTICE 'Users with strategies: %', with_strategies;
+    RAISE NOTICE 'Users with equity: %', with_equity;
+END $$;
