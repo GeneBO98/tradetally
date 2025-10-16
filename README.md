@@ -52,7 +52,7 @@ A comprehensive trading journal and analytics platform built with Vue.js fronten
 ## Deployment Options
 
 ### SaaS Platform
-Fully hosted solution at [tradetally.io](https://tradetally.io) with subscription plans starting at $19.99/month.
+Fully hosted solution at [tradetally.io](https://tradetally.io) with subscription at $8.00/month or $80/year.
 
 ### Self-Hosted
 Free, open-source deployment with all Pro features included. Perfect for:
