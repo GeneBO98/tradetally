@@ -2,7 +2,7 @@
 
 **Dominate With Data**
 
-![TradeTally Dashboard](https://github.com/user-attachments/assets/c7281791-53f6-43c4-937d-ebc9c679f32f)
+<img width="1269" height="1258" alt="SCR-20251016-iosj" src="https://github.com/user-attachments/assets/ce052bdd-f149-4041-b759-3c0f47c926e0" />
 
 A comprehensive trading journal and analytics platform built with Vue.js frontend and Node.js backend. Track your trades, analyze performance, and gain insights into your trading patterns across multiple brokers.
 
@@ -103,8 +103,15 @@ Comprehensive documentation is available at [docs.tradetally.io](https://docs.tr
 
 ## Screenshots
 
-<img width="1282" alt="Analytics Dashboard" src="https://github.com/user-attachments/assets/9eadee5c-5b71-4d38-baf9-b335080d4cae" />
-<img width="1336" alt="Trade List" src="https://github.com/user-attachments/assets/6057c9a2-ac33-4aa1-8946-388628e6b8cc" />
+<img width="1258" height="1083" alt="SCR-20251016-ioxa" src="https://github.com/user-attachments/assets/7da7b48d-ae9e-4eb7-9002-d95e4fa56ee4" />
+<img width="1251" height="618" alt="SCR-20251016-iouv" src="https://github.com/user-attachments/assets/d1e5d4d7-4eb2-4f7e-9067-a80e4fda7bdd" />
+<img width="1315" height="1107" alt="SCR-20251016-ioph" src="https://github.com/user-attachments/assets/08f7b939-0b61-4a85-ae69-330b30e81f72" />
+<img width="1251" height="750" alt="SCR-20251016-ioqu" src="https://github.com/user-attachments/assets/564abda5-50c5-4ad7-90fd-4e923b2d5d09" />
+<img width="1257" height="765" alt="SCR-20251016-inwc" src="https://github.com/user-attachments/assets/9e7697b5-39e2-4982-899b-ed5f4a781a30" />
+<img width="1249" height="1320" alt="SCR-20251016-inyh" src="https://github.com/user-attachments/assets/55d893dd-fd82-49a4-9340-2496945e0844" />
+<img width="1243" height="664" alt="SCR-20251016-iohf" src="https://github.com/user-attachments/assets/d0593bdd-e9d0-4d77-86bd-eda7b7c25e71" />
+<img width="1242" height="867" alt="SCR-20251016-ioih" src="https://github.com/user-attachments/assets/8139d229-c1a8-4889-a7e1-2ab598611f24" />
+<img width="1232" height="954" alt="SCR-20251016-iolb" src="https://github.com/user-attachments/assets/19be38eb-c2fa-40a4-843d-b38a5a1129cd" />
 <img width="1301" alt="Leaderboards" src="https://github.com/user-attachments/assets/659c6bf8-4624-4cf1-bb27-0ec80a8dadc7" />
 <img width="1320" alt="Achievements" src="https://github.com/user-attachments/assets/ea2266fe-72ee-4722-99be-f29f3930bdf5" />
 
