@@ -94,6 +94,8 @@ const createTemplate = async (req, res) => {
       keyLevels: formData.keyLevels,
       watchlist: formData.watchlist || [],
       tags: formData.tags || [],
+      followedPlan: formData.followedPlan,
+      lessonsLearned: formData.lessonsLearned,
       isDefault: formData.isDefault || false
     };
 
@@ -134,6 +136,8 @@ const updateTemplate = async (req, res) => {
     if (formData.keyLevels !== undefined) updates.keyLevels = formData.keyLevels;
     if (formData.watchlist !== undefined) updates.watchlist = formData.watchlist;
     if (formData.tags !== undefined) updates.tags = formData.tags;
+    if (formData.followedPlan !== undefined) updates.followedPlan = formData.followedPlan;
+    if (formData.lessonsLearned !== undefined) updates.lessonsLearned = formData.lessonsLearned;
     if (formData.isDefault !== undefined) updates.isDefault = formData.isDefault;
 
     const template = await DiaryTemplate.update(id, userId, updates);
