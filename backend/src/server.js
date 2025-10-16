@@ -40,6 +40,7 @@ const BillingService = require('./services/billingService');
 const priceMonitoringService = require('./services/priceMonitoringService');
 const GamificationScheduler = require('./services/gamificationScheduler');
 const TrialScheduler = require('./services/trialScheduler');
+const OptionsScheduler = require('./services/optionsScheduler');
 const backgroundWorker = require('./workers/backgroundWorker');
 const jobRecoveryService = require('./services/jobRecoveryService');
 const pushNotificationService = require('./services/pushNotificationService');
@@ -372,7 +373,15 @@ async function startServer() {
     } else {
       console.log('Trial emails disabled (ENABLE_TRIAL_EMAILS=false)');
     }
-    
+
+    // Start options scheduler (for automatic expired options closure)
+    if (process.env.ENABLE_OPTIONS_SCHEDULER !== 'false') {
+      console.log('Starting options scheduler...');
+      OptionsScheduler.start();
+    } else {
+      console.log('Options scheduler disabled (ENABLE_OPTIONS_SCHEDULER=false)');
+    }
+
     // Initialize push notification service
     if (process.env.ENABLE_PUSH_NOTIFICATIONS === 'true') {
       console.log('✓ Push notification service loaded');
@@ -453,6 +462,9 @@ async function startServer() {
 process.on('SIGTERM', async () => {
   console.log('SIGTERM received, shutting down gracefully...');
   await priceMonitoringService.stop();
+  OptionsScheduler.stop();
+  GamificationScheduler.stopScheduler();
+  TrialScheduler.stopScheduler();
   jobRecoveryService.stop();
   globalEnrichmentCacheCleanupService.stop();
   await backgroundWorker.stop();
@@ -462,14 +474,12 @@ process.on('SIGTERM', async () => {
 process.on('SIGINT', async () => {
   console.log('SIGINT received, shutting down gracefully...');
   await priceMonitoringService.stop();
+  OptionsScheduler.stop();
+  GamificationScheduler.stopScheduler();
+  TrialScheduler.stopScheduler();
   jobRecoveryService.stop();
+  globalEnrichmentCacheCleanupService.stop();
   await backgroundWorker.stop();
-  process.exit(0);
-});
-
-process.on('SIGINT', async () => {
-  console.log('SIGINT received, shutting down gracefully...');
-  await priceMonitoringService.stop();
   process.exit(0);
 });
 
