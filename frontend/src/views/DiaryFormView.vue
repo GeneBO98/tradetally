@@ -628,6 +628,10 @@ const applyTemplate = async (template) => {
     if (template.tags && template.tags.length > 0) {
       form.value.tags = [...template.tags]
     }
+    if (template.followed_plan !== undefined && template.followed_plan !== null) {
+      form.value.followedPlan = template.followed_plan
+    }
+    if (template.lessons_learned) form.value.lessonsLearned = template.lessons_learned
 
     // Increment use count
     await templateStore.applyTemplate(template.id)
