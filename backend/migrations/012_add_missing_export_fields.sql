@@ -122,7 +122,7 @@ BEGIN
     INTO total_settings, with_strategies, with_equity
     FROM user_settings;
 
-    RAISE NOTICE 'Migration completed successfully';
+    RAISE NOTICE 'Migration 012 completed successfully';
     RAISE NOTICE 'Total user settings: %', total_settings;
     RAISE NOTICE 'Users with strategies: %', with_strategies;
     RAISE NOTICE 'Users with equity: %', with_equity;

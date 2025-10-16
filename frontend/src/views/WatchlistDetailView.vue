@@ -3,7 +3,7 @@
     <!-- Header -->
     <div class="flex items-center mb-8">
       <button
-        @click="$router.push('/watchlists')"
+        @click="$router.push('/markets')"
         class="mr-4 p-2 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
       >
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -399,7 +399,7 @@ export default {
       } catch (error) {
         console.error('Error loading watchlist:', error)
         showCriticalError('Error', 'Failed to load watchlist')
-        router.push('/watchlists')
+        router.push('/markets')
       } finally {
         loading.value = false
       }

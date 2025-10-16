@@ -776,11 +776,17 @@ const tradeController = {
           
           for (const tradeData of trades) {
             try {
-              // Check for duplicates based on entry price, exit price, and P/L
-              // This is more reliable than symbol matching as symbols can be resolved differently
-              // (e.g., CUSIP lookups may resolve to different symbols on different imports)
-              // Using price and P/L matching prevents duplicate trades from being imported
-              const isDuplicate = existingTrades.rows.some(existing => {
+              // Skip duplicate detection for trades that are updates to existing positions
+              // These trades have isUpdate=true and existingTradeId set by the parser
+              if (tradeData.isUpdate && tradeData.existingTradeId) {
+                // This is an update to an existing trade, not a duplicate
+                logger.logImport(`Processing update for existing trade ${tradeData.existingTradeId}: ${tradeData.symbol}`);
+              } else {
+                // Check for duplicates based on entry price, exit price, and P/L
+                // This is more reliable than symbol matching as symbols can be resolved differently
+                // (e.g., CUSIP lookups may resolve to different symbols on different imports)
+                // Using price and P/L matching prevents duplicate trades from being imported
+                const isDuplicate = existingTrades.rows.some(existing => {
                 // Parse existing executions if available
                 let existingExecutions = [];
                 if (existing.executions) {
@@ -840,10 +846,11 @@ const tradeController = {
                 return false;
               });
 
-              if (isDuplicate) {
-                logger.logImport(`Skipping duplicate trade: ${tradeData.symbol} ${tradeData.side} ${tradeData.quantity} at $${tradeData.entryPrice} (${new Date(tradeData.entryTime).toISOString()})`);
-                duplicates++;
-                continue;
+                if (isDuplicate) {
+                  logger.logImport(`Skipping duplicate trade: ${tradeData.symbol} ${tradeData.side} ${tradeData.quantity} at $${tradeData.entryPrice} (${new Date(tradeData.entryTime).toISOString()})`);
+                  duplicates++;
+                  continue;
+                }
               }
 
               if (imported % 50 === 0) {

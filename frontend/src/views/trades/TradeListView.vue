@@ -276,7 +276,12 @@
 
         <!-- Desktop view (table) -->
         <div class="hidden md:block shadow ring-1 ring-black ring-opacity-5 md:rounded-lg" :key="'desktop-' + tradesStore.trades.length">
-        <div class="overflow-x-auto relative">
+        <!-- Top scroll bar wrapper -->
+        <div ref="topScroll" class="overflow-x-auto overflow-y-hidden bg-gray-100 dark:bg-gray-800" @scroll="syncBottomScroll" style="height: 17px;">
+          <div :style="{width: tableScrollWidth, height: '1px'}"></div>
+        </div>
+        <!-- Main table wrapper -->
+        <div ref="bottomScroll" class="overflow-x-auto relative" @scroll="syncTopScroll">
           <table class="w-full divide-y divide-gray-300 dark:divide-gray-700" :style="tableLayoutStyle">
           <thead class="bg-gray-50 dark:bg-gray-800">
             <tr>
@@ -345,11 +350,12 @@
                 </td>
                 
                 <!-- Date Column -->
-                <td v-else-if="column.visible && column.key === 'date'" 
-                    :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']" 
+                <td v-else-if="column.visible && column.key === 'date'"
+                    :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
-                  <div class="text-sm text-gray-900 dark:text-white">
-                    {{ formatDate(trade.trade_date) }}
+                  <div class="text-sm text-gray-900 dark:text-white leading-tight">
+                    <div>{{ formatDateMonthDay(trade.trade_date) }}</div>
+                    <div class="text-xs text-gray-500 dark:text-gray-400">{{ formatDateYear(trade.trade_date) }}</div>
                   </div>
                 </td>
                 
@@ -767,6 +773,11 @@ const newspaperIcon = mdiNewspaper
 // Fullwidth mode
 const isFullWidth = ref(false)
 
+// Scroll synchronization
+const topScroll = ref(null)
+const bottomScroll = ref(null)
+const tableScrollWidth = ref('0px')
+
 // Load fullwidth preference from localStorage
 const loadFullWidthPreference = () => {
   const saved = localStorage.getItem('tradeListFullWidth')
@@ -779,6 +790,28 @@ const loadFullWidthPreference = () => {
 const toggleFullWidth = () => {
   isFullWidth.value = !isFullWidth.value
   localStorage.setItem('tradeListFullWidth', isFullWidth.value.toString())
+}
+
+// Scroll synchronization functions
+const syncBottomScroll = () => {
+  if (topScroll.value && bottomScroll.value) {
+    bottomScroll.value.scrollLeft = topScroll.value.scrollLeft
+  }
+}
+
+const syncTopScroll = () => {
+  if (topScroll.value && bottomScroll.value) {
+    topScroll.value.scrollLeft = bottomScroll.value.scrollLeft
+  }
+}
+
+const updateTableScrollWidth = () => {
+  if (bottomScroll.value) {
+    const table = bottomScroll.value.querySelector('table')
+    if (table) {
+      tableScrollWidth.value = `${table.scrollWidth}px`
+    }
+  }
 }
 
 // Comments dialog
@@ -890,6 +923,23 @@ watch(
   }
 )
 
+// Watch for trades changes to update scroll width
+watch(
+  () => tradesStore.trades.length,
+  () => {
+    // Use nextTick to ensure DOM has updated
+    setTimeout(() => updateTableScrollWidth(), 100)
+  }
+)
+
+// Watch for column changes to update scroll width
+watch(
+  () => tableColumns.value.filter(c => c.visible).length,
+  () => {
+    setTimeout(() => updateTableScrollWidth(), 100)
+  }
+)
+
 function formatNumber(num) {
   return new Intl.NumberFormat('en-US', {
     minimumFractionDigits: 2,
@@ -914,6 +964,37 @@ function formatDate(date) {
   } catch (error) {
     console.error('Date formatting error:', error, 'for date:', date)
     return 'Invalid Date'
+  }
+}
+
+function formatDateMonthDay(date) {
+  if (!date) return 'N/A'
+  try {
+    const dateStr = date.toString()
+    if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      const [year, month, day] = dateStr.split('-').map(Number)
+      const dateObj = new Date(year, month - 1, day)
+      return format(dateObj, 'MMM dd')
+    }
+    return format(new Date(date), 'MMM dd')
+  } catch (error) {
+    console.error('Date formatting error:', error, 'for date:', date)
+    return 'N/A'
+  }
+}
+
+function formatDateYear(date) {
+  if (!date) return ''
+  try {
+    const dateStr = date.toString()
+    if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      const [year] = dateStr.split('-').map(Number)
+      return year.toString()
+    }
+    return format(new Date(date), 'yyyy')
+  } catch (error) {
+    console.error('Date formatting error:', error, 'for date:', date)
+    return ''
   }
 }
 
@@ -1079,17 +1160,20 @@ onMounted(() => {
 
   // Check if there are URL parameters that the TradeFilters component should handle
   const hasFiltersInUrl = !!(
-    route.query.symbol || route.query.startDate || route.query.endDate || 
-    route.query.strategy || route.query.sector || route.query.status || 
-    route.query.minPrice || route.query.maxPrice || route.query.minQuantity || 
+    route.query.symbol || route.query.startDate || route.query.endDate ||
+    route.query.strategy || route.query.sector || route.query.status ||
+    route.query.minPrice || route.query.maxPrice || route.query.minQuantity ||
     route.query.maxQuantity || route.query.holdTime || route.query.broker ||
     route.query.minHoldTime || route.query.maxHoldTime || route.query.pnlType
   )
-  
+
   // Only fetch trades immediately if there are no URL parameters
   // TradeFilters component will handle URL parameters and trigger fetch automatically
   if (!hasFiltersInUrl) {
     tradesStore.fetchTrades()
   }
+
+  // Initialize table scroll width after component is mounted
+  setTimeout(() => updateTableScrollWidth(), 200)
 })
 </script>
