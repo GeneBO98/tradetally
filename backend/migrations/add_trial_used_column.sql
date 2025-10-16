@@ -52,14 +52,7 @@ CREATE TRIGGER tier_override_insert_trigger
 UPDATE users u
 SET trial_used = EXISTS (
     SELECT 1 FROM tier_overrides to_
-    WHERE to_.user_id = u.id 
+    WHERE to_.user_id = u.id
     AND to_.reason ILIKE '%trial%'
 ),
 updated_at = CURRENT_TIMESTAMP;
-
--- Display results
-SELECT 
-    'Migration complete' as status,
-    COUNT(*) FILTER (WHERE trial_used = true) as users_with_trials,
-    COUNT(*) FILTER (WHERE trial_used = false) as users_without_trials
-FROM users;

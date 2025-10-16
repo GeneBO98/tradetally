@@ -484,9 +484,8 @@ const brokerParsers = {
     // Database expects 'long' or 'short', not 'buy' or 'sell'
     const side = type.toLowerCase() === 'long' ? 'long' : 'short';
 
-    // ProjectX uses "Fees" field for total commissions/fees
-    // Commissions field is usually empty
-    const totalCommission = commissions || fees || 0;
+    // Parse instrument data for futures/options
+    const instrumentData = parseInstrumentData(contractName);
 
     return {
       symbol: contractName,
@@ -497,11 +496,12 @@ const brokerParsers = {
       exitPrice: exitPrice,
       quantity: quantity,
       side: side,
-      commission: totalCommission,
-      fees: 0, // Already included in commission
+      commission: commissions,  // Commissions map to commission field
+      fees: fees,               // Fees map to fees field
       profitLoss: pnl,
       broker: 'projectx',
-      notes: `Trade #${tradeId} - Duration: ${tradeDuration}`
+      notes: `Trade #${tradeId} - Duration: ${tradeDuration}`,
+      ...instrumentData  // Add futures/options metadata
     };
   }
 };
@@ -753,6 +753,42 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       const result = await parseIBKRTransactions(records, existingPositions);
       console.log('Finished IBKR transaction parsing');
       return result;
+    }
+
+    // ProjectX provides completed trades (not transactions), use simple parsing
+    if (broker === 'projectx') {
+      console.log('Starting ProjectX completed trade parsing');
+      const parser = brokerParsers.projectx;
+      const trades = [];
+
+      for (const record of records) {
+        try {
+          let trade = parser(record);
+          if (isValidTrade(trade)) {
+            // Currency conversion if needed
+            if (context.hasCurrencyColumn && trade.symbol) {
+              const currencyRecord = context.currencyRecords?.find(r =>
+                (r.Symbol || r.symbol) === trade.symbol &&
+                (r.DateTime || r['Date/Time'] || r.Date) === (record.DateTime || record['Date/Time'] || record.Date)
+              );
+
+              if (currencyRecord && currencyRecord.Currency) {
+                const currency = currencyRecord.Currency.trim().toUpperCase();
+                if (currency && currency !== 'USD') {
+                  trade.currency = currency;
+                }
+              }
+            }
+
+            trades.push(trade);
+          }
+        } catch (error) {
+          console.error(`Error parsing ProjectX record:`, error.message);
+        }
+      }
+
+      console.log(`[SUCCESS] Parsed ${trades.length} ProjectX completed trades`);
+      return trades;
     }
 
     // Generic parser - Use transaction-based processing for better position tracking
