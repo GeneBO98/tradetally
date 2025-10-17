@@ -519,6 +519,151 @@ const brokerParsers = {
   }
 };
 
+/**
+ * Groups completed trades based on entry time proximity
+ * Applies to all broker formats - merges trades for same symbol within time gap
+ * @param {Array} trades - Array of parsed trades
+ * @param {Object} settings - Grouping settings {enabled, timeGapMinutes}
+ * @returns {Array} - Array of grouped trades
+ */
+function applyTradeGrouping(trades, settings) {
+  if (!trades || trades.length === 0) return trades;
+
+  console.log(`\n=== APPLYING TRADE GROUPING ===`);
+  console.log(`Grouping ${trades.length} trades with ${settings.timeGapMinutes} minute time gap`);
+
+  // Group by symbol
+  const tradesBySymbol = {};
+  trades.forEach(trade => {
+    const symbol = trade.symbol;
+    if (!tradesBySymbol[symbol]) {
+      tradesBySymbol[symbol] = [];
+    }
+    tradesBySymbol[symbol].push(trade);
+  });
+
+  const groupedTrades = [];
+
+  // Process each symbol separately
+  for (const [symbol, symbolTrades] of Object.entries(tradesBySymbol)) {
+    console.log(`\n[GROUPING] Processing ${symbolTrades.length} trades for ${symbol}`);
+
+    // Sort by entry time
+    symbolTrades.sort((a, b) => new Date(a.entryTime) - new Date(b.entryTime));
+
+    let currentGroup = null;
+    let lastEntryTime = null;
+
+    for (const trade of symbolTrades) {
+      const entryTime = new Date(trade.entryTime);
+
+      if (!currentGroup) {
+        // Start new group - initialize with executionData array (matches Trade model)
+        currentGroup = {
+          ...trade,
+          groupedTrades: 1,
+          executionData: trade.executionData || trade.executions || [{
+            datetime: trade.entryTime,
+            price: trade.entryPrice,
+            quantity: trade.quantity,
+            side: trade.side,
+            commission: trade.commission || 0,
+            fees: trade.fees || 0
+          }]
+        };
+        lastEntryTime = entryTime;
+        console.log(`  [GROUPING] Started new group at ${trade.entryTime}`);
+      } else {
+        // Check time gap
+        const timeSinceLastEntry = (entryTime - lastEntryTime) / (1000 * 60); // minutes
+
+        // Only group if same side and within time gap
+        if (timeSinceLastEntry <= settings.timeGapMinutes && trade.side === currentGroup.side) {
+          // Merge into current group
+          console.log(`  [GROUPING] Merging trade: ${timeSinceLastEntry.toFixed(1)}min gap (${trade.side} ${trade.quantity}@${trade.entryPrice})`);
+
+          // Add this trade's execution to the executionData array
+          const newExecution = {
+            datetime: trade.entryTime,
+            price: trade.entryPrice,
+            quantity: trade.quantity,
+            side: trade.side,
+            commission: trade.commission || 0,
+            fees: trade.fees || 0
+          };
+
+          // If trade has its own executionData/executions array, merge those; otherwise add as single execution
+          if ((trade.executionData || trade.executions) && Array.isArray(trade.executionData || trade.executions)) {
+            currentGroup.executionData.push(...(trade.executionData || trade.executions));
+          } else {
+            currentGroup.executionData.push(newExecution);
+          }
+
+          // Calculate weighted average entry price
+          const totalQuantity = currentGroup.quantity + trade.quantity;
+          const totalEntryValue = (currentGroup.entryPrice * currentGroup.quantity) + (trade.entryPrice * trade.quantity);
+          currentGroup.entryPrice = totalEntryValue / totalQuantity;
+
+          // Combine quantities
+          currentGroup.quantity = totalQuantity;
+
+          // Sum up P&L and costs
+          currentGroup.profitLoss = (currentGroup.profitLoss || 0) + (trade.profitLoss || 0);
+          currentGroup.commission = (currentGroup.commission || 0) + (trade.commission || 0);
+          currentGroup.fees = (currentGroup.fees || 0) + (trade.fees || 0);
+
+          // Track grouped count
+          currentGroup.groupedTrades = (currentGroup.groupedTrades || 1) + 1;
+
+          // Use latest exit time and price if available
+          if (trade.exitTime) {
+            currentGroup.exitTime = trade.exitTime;
+            // Calculate weighted average exit price if both have exit prices
+            if (currentGroup.exitPrice && trade.exitPrice) {
+              const prevQuantity = currentGroup.quantity - trade.quantity;
+              currentGroup.exitPrice = ((currentGroup.exitPrice * prevQuantity) + (trade.exitPrice * trade.quantity)) / totalQuantity;
+            } else if (trade.exitPrice) {
+              currentGroup.exitPrice = trade.exitPrice;
+            }
+          }
+
+          // Keep original notes without merging
+          if (!currentGroup.originalNotes) {
+            currentGroup.originalNotes = currentGroup.notes;
+          }
+        } else {
+          // Time gap exceeded or different side, save current group and start new one
+          const reason = trade.side !== currentGroup.side ? 'different side' : `gap exceeded (${timeSinceLastEntry.toFixed(1)}min)`;
+          console.log(`  [GROUPING] ${reason}, starting new group`);
+          groupedTrades.push(currentGroup);
+          currentGroup = {
+            ...trade,
+            groupedTrades: 1,
+            executionData: trade.executionData || trade.executions || [{
+              datetime: trade.entryTime,
+              price: trade.entryPrice,
+              quantity: trade.quantity,
+              side: trade.side,
+              commission: trade.commission || 0,
+              fees: trade.fees || 0
+            }]
+          };
+          lastEntryTime = entryTime;
+          console.log(`  [GROUPING] Started new group at ${trade.entryTime}`);
+        }
+      }
+    }
+
+    // Add final group for this symbol
+    if (currentGroup) {
+      groupedTrades.push(currentGroup);
+    }
+  }
+
+  console.log(`[SUCCESS] Grouped ${trades.length} trades into ${groupedTrades.length} trades`);
+  return groupedTrades;
+}
+
 async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
   try {
     console.log(`[CURRENCY DEBUG] parseCSV called with broker: ${broker}, userId: ${context.userId}`);
@@ -730,6 +875,13 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       console.log('Starting Lightspeed transaction parsing');
       const result = await parseLightspeedTransactions(records, existingPositions);
       console.log('Finished Lightspeed transaction parsing');
+
+      // Apply trade grouping if enabled
+      const tradeGroupingSettings = context.tradeGroupingSettings || { enabled: true, timeGapMinutes: 60 };
+      if (tradeGroupingSettings.enabled && result.length > 0) {
+        return applyTradeGrouping(result, tradeGroupingSettings);
+      }
+
       return result;
     }
 
@@ -737,6 +889,13 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       console.log('Starting Schwab trade parsing');
       const result = await parseSchwabTrades(records, existingPositions);
       console.log('Finished Schwab trade parsing');
+
+      // Apply trade grouping if enabled
+      const tradeGroupingSettings = context.tradeGroupingSettings || { enabled: true, timeGapMinutes: 60 };
+      if (tradeGroupingSettings.enabled && result.length > 0) {
+        return applyTradeGrouping(result, tradeGroupingSettings);
+      }
+
       return result;
     }
 
@@ -744,6 +903,13 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       console.log('Starting thinkorswim transaction parsing');
       const result = await parseThinkorswimTransactions(records, existingPositions);
       console.log('Finished thinkorswim transaction parsing');
+
+      // Apply trade grouping if enabled
+      const tradeGroupingSettings = context.tradeGroupingSettings || { enabled: true, timeGapMinutes: 60 };
+      if (tradeGroupingSettings.enabled && result.length > 0) {
+        return applyTradeGrouping(result, tradeGroupingSettings);
+      }
+
       return result;
     }
 
@@ -751,6 +917,13 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       // console.log('Starting PaperMoney transaction parsing');
       const result = await parsePaperMoneyTransactions(records, existingPositions);
       console.log('Finished PaperMoney transaction parsing');
+
+      // Apply trade grouping if enabled
+      const tradeGroupingSettings = context.tradeGroupingSettings || { enabled: true, timeGapMinutes: 60 };
+      if (tradeGroupingSettings.enabled && result.length > 0) {
+        return applyTradeGrouping(result, tradeGroupingSettings);
+      }
+
       return result;
     }
 
@@ -758,12 +931,20 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       console.log('Starting TradingView transaction parsing');
       const result = await parseTradingViewTransactions(records, existingPositions);
       console.log('Finished TradingView transaction parsing');
+
+      // Apply trade grouping if enabled
+      const tradeGroupingSettings = context.tradeGroupingSettings || { enabled: true, timeGapMinutes: 60 };
+      if (tradeGroupingSettings.enabled && result.length > 0) {
+        return applyTradeGrouping(result, tradeGroupingSettings);
+      }
+
       return result;
     }
 
     if (broker === 'ibkr' || broker === 'ibkr_trade_confirmation') {
       console.log(`Starting IBKR transaction parsing (${broker} format)`);
-      const result = await parseIBKRTransactions(records, existingPositions);
+      const tradeGroupingSettings = context.tradeGroupingSettings || { enabled: true, timeGapMinutes: 60 };
+      const result = await parseIBKRTransactions(records, existingPositions, tradeGroupingSettings);
       console.log('Finished IBKR transaction parsing');
       return result;
     }
@@ -801,6 +982,13 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       }
 
       console.log(`[SUCCESS] Parsed ${trades.length} ProjectX completed trades`);
+
+      // Apply trade grouping if enabled
+      const tradeGroupingSettings = context.tradeGroupingSettings || { enabled: true, timeGapMinutes: 60 };
+      if (tradeGroupingSettings.enabled && trades.length > 0) {
+        return applyTradeGrouping(trades, tradeGroupingSettings);
+      }
+
       return trades;
     }
 
@@ -812,6 +1000,13 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       console.log('Using enhanced generic parser with position tracking');
       const result = await parseGenericTransactions(records, existingPositions);
       console.log('Finished generic transaction-based parsing');
+
+      // Apply trade grouping if enabled
+      const tradeGroupingSettings = context.tradeGroupingSettings || { enabled: true, timeGapMinutes: 60 };
+      if (tradeGroupingSettings.enabled && result.length > 0) {
+        return applyTradeGrouping(result, tradeGroupingSettings);
+      }
+
       return result;
     }
 
@@ -870,6 +1065,14 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       } catch (error) {
         console.error('Error parsing row:', error, record);
       }
+    }
+
+    console.log(`[SUCCESS] Parsed ${trades.length} trades (legacy mode)`);
+
+    // Apply trade grouping if enabled
+    const tradeGroupingSettings = context.tradeGroupingSettings || { enabled: true, timeGapMinutes: 60 };
+    if (tradeGroupingSettings.enabled && trades.length > 0) {
+      return applyTradeGrouping(trades, tradeGroupingSettings);
     }
 
     return trades;
@@ -2134,6 +2337,10 @@ async function parseSchwabTransactions(records, existingPositions = {}) {
         }
 
         completedTrades.push(currentTrade);
+
+        // Record the end time for time-gap-based grouping
+        lastTradeEndTime[symbol] = transaction.datetime;
+
         currentTrade = null;
         openLots.length = 0; // Clear lots when trade completes
       }
@@ -3077,6 +3284,10 @@ async function parseTradingViewTransactions(records, existingPositions = {}) {
         }
 
         completedTrades.push(currentTrade);
+
+        // Record the end time for time-gap-based grouping
+        lastTradeEndTime[symbol] = transaction.datetime;
+
         currentTrade = null;
       }
     }
@@ -3121,10 +3332,11 @@ async function parseTradingViewTransactions(records, existingPositions = {}) {
   return completedTrades;
 }
 
-async function parseIBKRTransactions(records, existingPositions = {}) {
+async function parseIBKRTransactions(records, existingPositions = {}, tradeGroupingSettings = { enabled: true, timeGapMinutes: 60 }) {
   console.log(`\n=== IBKR TRANSACTION PARSER ===`);
   console.log(`Processing ${records.length} IBKR transaction records`);
   console.log(`Existing open positions passed to parser: ${Object.keys(existingPositions).length}`);
+  console.log(`Trade grouping: ${tradeGroupingSettings.enabled ? `enabled (${tradeGroupingSettings.timeGapMinutes} minute time gap)` : 'disabled'}`);
 
   if (Object.keys(existingPositions).length > 0) {
     console.log(`Existing positions:`);
@@ -3251,9 +3463,8 @@ async function parseIBKRTransactions(records, existingPositions = {}) {
 
   console.log(`Parsed ${transactions.length} valid IBKR trade transactions`);
 
-  // TODO: Future enhancement - Add configurable time gap for grouping executions
-  // Similar to TradeSviz's 1-hour default time gap setting to determine if
-  // consecutive executions should be treated as same trade or separate trades
+  // Track the last trade end time for each symbol (for time-gap-based grouping)
+  const lastTradeEndTime = {};
 
   // Group transactions by symbol
   const transactionsBySymbol = {};
@@ -3364,21 +3575,38 @@ async function parseIBKRTransactions(records, existingPositions = {}) {
           continue;
         }
 
-        // If Code contains 'O' (Open) or 'P' (Partial) or no code, start a new trade
+        // If Code contains 'O' (Open) or 'P' (Partial) or no code, consider starting a new trade
         if (!transactionCode || transactionCode.includes('O') || transactionCode.includes('P')) {
-          currentTrade = {
-            symbol: symbol,
-            entryTime: transaction.datetime,
-            tradeDate: transaction.date,
-            side: transaction.action === 'buy' ? 'long' : 'short',
-            executions: [],
-            totalQuantity: 0,
-            totalFees: 0,
-            entryValue: 0,
-            exitValue: 0,
-            broker: 'ibkr'
-          };
-          console.log(`  → Started new ${currentTrade.side} trade${transactionCode ? ` [Code: ${transactionCode}]` : ''}`);
+          // Check time gap if grouping is enabled
+          let shouldStartNewTrade = true;
+
+          if (tradeGroupingSettings.enabled && lastTradeEndTime[symbol]) {
+            const timeSinceLastTrade = (new Date(transaction.datetime) - new Date(lastTradeEndTime[symbol])) / (1000 * 60); // minutes
+
+            if (timeSinceLastTrade <= tradeGroupingSettings.timeGapMinutes) {
+              // Within time gap - continue previous trade
+              shouldStartNewTrade = false;
+              console.log(`  → [GROUPING] Within ${tradeGroupingSettings.timeGapMinutes}min gap (${timeSinceLastTrade.toFixed(1)}min) - continuing previous trade`);
+            } else {
+              console.log(`  → [GROUPING] Beyond ${tradeGroupingSettings.timeGapMinutes}min gap (${timeSinceLastTrade.toFixed(1)}min) - starting new trade`);
+            }
+          }
+
+          if (shouldStartNewTrade) {
+            currentTrade = {
+              symbol: symbol,
+              entryTime: transaction.datetime,
+              tradeDate: transaction.date,
+              side: transaction.action === 'buy' ? 'long' : 'short',
+              executions: [],
+              totalQuantity: 0,
+              totalFees: 0,
+              entryValue: 0,
+              exitValue: 0,
+              broker: 'ibkr'
+            };
+            console.log(`  → Started new ${currentTrade.side} trade${transactionCode ? ` [Code: ${transactionCode}]` : ''}`);
+          }
         }
       }
 
@@ -3489,6 +3717,10 @@ async function parseIBKRTransactions(records, existingPositions = {}) {
         }
 
         completedTrades.push(currentTrade);
+
+        // Record the end time for time-gap-based grouping
+        lastTradeEndTime[symbol] = transaction.datetime;
+
         currentTrade = null;
       }
     }
@@ -3760,6 +3992,10 @@ async function parseGenericTransactions(records, existingPositions = {}) {
 
         currentTrade.executionData = currentTrade.executions;
         completedTrades.push(currentTrade);
+
+        // Record the end time for time-gap-based grouping
+        lastTradeEndTime[symbol] = transaction.datetime;
+
         currentTrade = null;
       }
     }

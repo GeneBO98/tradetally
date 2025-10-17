@@ -108,7 +108,9 @@ const schemas = {
     importSettings: Joi.object(),
     theme: Joi.string().valid('light', 'dark'),
     timezone: Joi.string().max(50),
-    statisticsCalculation: Joi.string().valid('average', 'median')
+    statisticsCalculation: Joi.string().valid('average', 'median'),
+    enableTradeGrouping: Joi.boolean(),
+    tradeGroupingTimeGapMinutes: Joi.number().integer().min(1).max(1440)
   }).min(1),
 
   // Mobile-specific validation schemas

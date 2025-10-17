@@ -177,7 +177,9 @@ class User {
       tradingGoals: 'trading_goals',
       preferredSectors: 'preferred_sectors',
       statisticsCalculation: 'statistics_calculation',
-      defaultBroker: 'default_broker'
+      defaultBroker: 'default_broker',
+      enableTradeGrouping: 'enable_trade_grouping',
+      tradeGroupingTimeGapMinutes: 'trade_grouping_time_gap_minutes'
     };
 
     Object.entries(settings).forEach(([key, value]) => {
