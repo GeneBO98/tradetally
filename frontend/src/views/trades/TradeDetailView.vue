@@ -70,7 +70,7 @@
                 <div>
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Exit Price</dt>
                   <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">
-                    {{ trade.exit_price ? `$${formatNumber(trade.exit_price)}` : 'Open' }}
+                    {{ trade.exit_time ? `$${formatNumber(trade.exit_price)}` : 'Open' }}
                   </dd>
                 </div>
                 <div>
@@ -82,11 +82,11 @@
                   <dd class="mt-1">
                     <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
                       :class="[
-                        trade.exit_price 
+                        trade.exit_time
                           ? 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
                           : 'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400'
                       ]">
-                      {{ trade.exit_price ? 'Closed' : 'Open' }}
+                      {{ trade.exit_time ? 'Closed' : 'Open' }}
                     </span>
                   </dd>
                 </div>
@@ -483,7 +483,7 @@
                   <dd class="mt-1 text-2xl font-semibold" :class="[
                     trade.pnl >= 0 ? 'text-green-600' : 'text-red-600'
                   ]">
-                    {{ trade.pnl ? `$${formatNumber(trade.pnl)}` : 'Open' }}
+                    {{ trade.exit_time ? `$${formatNumber(trade.pnl)}` : 'Open' }}
                   </dd>
                 </div>
                 <div v-if="trade.pnl_percent">
@@ -837,19 +837,19 @@ function formatFileSize(bytes) {
 }
 
 function calculateRiskReward() {
-  if (!trade.value.exit_price) return 'Open'
-  
+  if (!trade.value.exit_time) return 'Open'
+
   // For closed trades, we can't calculate a true risk/reward ratio without stop-loss/target levels
   // Instead, we'll show the actual outcome as a ratio
   const entryPrice = trade.value.entry_price
   const exitPrice = trade.value.exit_price
   const isLong = trade.value.side === 'long'
-  
+
   // Calculate the price movement as a percentage
-  const priceChange = isLong 
+  const priceChange = isLong
     ? ((exitPrice - entryPrice) / entryPrice) * 100
     : ((entryPrice - exitPrice) / entryPrice) * 100
-  
+
   if (priceChange > 0) {
     return `+${priceChange.toFixed(2)}%`
   } else if (priceChange < 0) {

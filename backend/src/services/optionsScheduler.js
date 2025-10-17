@@ -40,12 +40,12 @@ class OptionsScheduler {
         SET exit_time = $1,
             exit_price = 0,
             pnl = CASE
-              WHEN side = 'buy' THEN (0 - entry_price) * quantity * COALESCE(contract_size, 100)
-              WHEN side = 'sell' THEN (entry_price - 0) * quantity * COALESCE(contract_size, 100)
+              WHEN side = 'long' THEN (0 - entry_price) * quantity * COALESCE(contract_size, 100)
+              WHEN side = 'short' THEN (entry_price - 0) * quantity * COALESCE(contract_size, 100)
             END,
             notes = CASE
-              WHEN notes IS NULL OR notes = '' THEN 'Auto-closed: Option expired'
-              ELSE notes || ' | Auto-closed: Option expired'
+              WHEN notes IS NULL OR notes = '' THEN 'Auto-closed: Option expired worthless'
+              ELSE notes || ' | Auto-closed: Option expired worthless'
             END,
             updated_at = $1
         WHERE id = $2

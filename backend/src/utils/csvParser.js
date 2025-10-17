@@ -64,11 +64,24 @@ function detectBrokerFormat(fileBuffer) {
     const lines = csvString.split('\n');
 
     // Get the first non-empty line (should be headers)
+    // For ThinkorSwim, skip over title lines and section headers
     let headerLine = '';
+    let headerLineIndex = 0;
     for (let i = 0; i < Math.min(10, lines.length); i++) {
-      if (lines[i].trim()) {
-        headerLine = lines[i].trim();
-        break;
+      const line = lines[i].trim();
+      if (line && line.includes(',')) {
+        // Check if this looks like a header line with column names
+        const lowerLine = line.toLowerCase();
+        if (lowerLine.includes('date') && lowerLine.includes('time') && lowerLine.includes('type')) {
+          headerLine = line;
+          headerLineIndex = i;
+          break;
+        }
+        // If no specific match yet, use first line with commas as fallback
+        if (!headerLine) {
+          headerLine = line;
+          headerLineIndex = i;
+        }
       }
     }
 
@@ -77,7 +90,14 @@ function detectBrokerFormat(fileBuffer) {
     }
 
     const headers = headerLine.toLowerCase();
-    console.log(`[AUTO-DETECT] Analyzing headers: ${headerLine.substring(0, 200)}...`);
+    console.log(`[AUTO-DETECT] Analyzing headers (line ${headerLineIndex + 1}): ${headerLine.substring(0, 200)}...`);
+
+    // ThinkorSwim detection - look for DATE, TIME, TYPE, REF #, DESCRIPTION pattern
+    if (headers.includes('date') && headers.includes('time') && headers.includes('type') &&
+        headers.includes('ref #') && headers.includes('description')) {
+      console.log('[AUTO-DETECT] Detected: ThinkorSwim');
+      return 'thinkorswim';
+    }
 
     // TradingView detection - look for specific column combination
     if (headers.includes('symbol') &&
@@ -96,13 +116,6 @@ function detectBrokerFormat(fileBuffer) {
         (headers.includes('commission amount') || headers.includes('feesec'))) {
       console.log('[AUTO-DETECT] Detected: Lightspeed Trader');
       return 'lightspeed';
-    }
-
-    // ThinkorSwim detection - look for DATE, TIME, TYPE, DESCRIPTION pattern
-    if (headers.includes('date,time,type') && headers.includes('description') &&
-        headers.includes('commissions & fees')) {
-      console.log('[AUTO-DETECT] Detected: ThinkorSwim');
-      return 'thinkorswim';
     }
 
     // PaperMoney detection - look for Exec Time, Pos Effect, Spread columns
@@ -1312,17 +1325,33 @@ function parseInstrumentData(symbol) {
 // Get point value for futures contracts
 function getFuturesPointValue(underlying) {
   const pointValues = {
+    // E-mini contracts
     'ES': 50,      // E-mini S&P 500
     'NQ': 20,      // E-mini NASDAQ-100
     'YM': 5,       // E-mini Dow
     'RTY': 50,     // E-mini Russell 2000
+
+    // Micro E-mini contracts (1/10th of E-mini)
+    'MES': 5,      // Micro E-mini S&P 500 (10 Micros = 1 E-mini)
+    'MNQ': 2,      // Micro E-mini NASDAQ-100 (10 Micros = 1 E-mini)
+    'MYM': 0.5,    // Micro E-mini Dow (10 Micros = 1 E-mini)
+    'M2K': 5,      // Micro E-mini Russell 2000 (10 Micros = 1 E-mini)
+
+    // Energy
     'CL': 1000,    // Crude Oil
+    'NG': 10000,   // Natural Gas
+    'QG': 2500,    // Mini Natural Gas
+
+    // Metals
     'GC': 100,     // Gold
     'SI': 5000,    // Silver
-    'NG': 10000,   // Natural Gas
+    'HG': 12500,   // Copper
+
+    // Treasuries
     'ZB': 1000,    // 30-Year Treasury Bond
     'ZN': 1000,    // 10-Year Treasury Note
-    'QG': 2500     // Mini Natural Gas
+    'ZF': 1000,    // 5-Year Treasury Note
+    'ZT': 2000     // 2-Year Treasury Note
   };
 
   return pointValues[underlying] || 50; // Default to $50 multiplier
@@ -2148,6 +2177,7 @@ async function parseThinkorswimTransactions(records, existingPositions = {}) {
 
   // Thinkorswim is stock trading, so contract multiplier is always 1
   const contractMultiplier = 1;
+  const valueMultiplier = 1; // For stocks, value multiplier is 1
   const instrumentData = {
     instrumentType: 'stock'
   };
@@ -2182,23 +2212,24 @@ async function parseThinkorswimTransactions(records, existingPositions = {}) {
       const description = record.DESCRIPTION || record.Description || '';
       const date = record.DATE || record.Date || '';
       const time = record.TIME || record.Time || '';
-      
+      const refNum = record['REF #'] || record['Ref #'] || record.REF || '';
+
       // Parse trade details from description (e.g., "BOT +1,000 82655M107 @.77")
       const tradeMatch = description.match(/(BOT|SOLD)\s+([\+\-]?[\d,]+)\s+(\S+)\s+@([\d.]+)/);
       if (!tradeMatch) {
         console.log(`Skipping unparseable trade description: ${description}`);
         continue;
       }
-      
+
       const [_, action, quantityStr, symbol, priceStr] = tradeMatch;
       const quantity = Math.abs(parseFloat(quantityStr.replace(/,/g, '')));
       const price = parseFloat(priceStr);
-      
+
       // Parse fees
       const miscFees = parseFloat((record['Misc Fees'] || '0').replace(/[$,]/g, '')) || 0;
       const commissionsFees = parseFloat((record['Commissions & Fees'] || '0').replace(/[$,]/g, '')) || 0;
       const totalFees = miscFees + commissionsFees;
-      
+
       transactions.push({
         symbol,
         date: parseDate(date),
@@ -2208,6 +2239,7 @@ async function parseThinkorswimTransactions(records, existingPositions = {}) {
         price,
         fees: totalFees,
         description,
+        refNum,
         raw: record
       });
       
@@ -2222,12 +2254,74 @@ async function parseThinkorswimTransactions(records, existingPositions = {}) {
     if (a.symbol !== b.symbol) return a.symbol.localeCompare(b.symbol);
     return new Date(a.datetime) - new Date(b.datetime);
   });
-  
+
   console.log(`Parsed ${transactions.length} valid trade transactions`);
-  
+
+  // Group transactions by REF # first, then merge them
+  const transactionsByRef = {};
+  for (const transaction of transactions) {
+    if (transaction.refNum) {
+      if (!transactionsByRef[transaction.refNum]) {
+        transactionsByRef[transaction.refNum] = [];
+      }
+      transactionsByRef[transaction.refNum].push(transaction);
+    }
+  }
+
+  // Merge transactions with the same REF # into single transactions
+  const mergedTransactions = [];
+  const processedRefs = new Set();
+
+  for (const transaction of transactions) {
+    // If this transaction has a REF # and we haven't processed it yet
+    if (transaction.refNum && !processedRefs.has(transaction.refNum)) {
+      const refTransactions = transactionsByRef[transaction.refNum];
+
+      if (refTransactions.length > 1) {
+        // Multiple transactions with same REF # - merge them
+        console.log(`Merging ${refTransactions.length} transactions with REF # ${transaction.refNum}`);
+
+        // Sum quantities and fees, weighted average for price
+        let totalQuantity = 0;
+        let totalValue = 0;
+        let totalFees = 0;
+
+        for (const refTx of refTransactions) {
+          totalQuantity += refTx.quantity;
+          totalValue += refTx.quantity * refTx.price;
+          totalFees += refTx.fees;
+        }
+
+        const avgPrice = totalValue / totalQuantity;
+
+        // Create merged transaction using first transaction as template
+        const mergedTransaction = {
+          ...refTransactions[0],
+          quantity: totalQuantity,
+          price: avgPrice,
+          fees: totalFees
+        };
+
+        console.log(`  → Merged into: ${mergedTransaction.action} ${totalQuantity} ${mergedTransaction.symbol} @ $${avgPrice.toFixed(4)}`);
+        mergedTransactions.push(mergedTransaction);
+      } else {
+        // Single transaction with this REF #
+        mergedTransactions.push(transaction);
+      }
+
+      processedRefs.add(transaction.refNum);
+    } else if (!transaction.refNum) {
+      // No REF #, keep as-is
+      mergedTransactions.push(transaction);
+    }
+    // Skip if already processed
+  }
+
+  console.log(`After REF # grouping: ${mergedTransactions.length} transactions (from ${transactions.length})`);
+
   // Group transactions by symbol
   const transactionsBySymbol = {};
-  for (const transaction of transactions) {
+  for (const transaction of mergedTransactions) {
     if (!transactionsBySymbol[transaction.symbol]) {
       transactionsBySymbol[transaction.symbol] = [];
     }
@@ -3028,13 +3122,22 @@ async function parseTradingViewTransactions(records, existingPositions = {}) {
 }
 
 async function parseIBKRTransactions(records, existingPositions = {}) {
+  console.log(`\n=== IBKR TRANSACTION PARSER ===`);
   console.log(`Processing ${records.length} IBKR transaction records`);
+  console.log(`Existing open positions passed to parser: ${Object.keys(existingPositions).length}`);
+
+  if (Object.keys(existingPositions).length > 0) {
+    console.log(`Existing positions:`);
+    Object.entries(existingPositions).forEach(([symbol, position]) => {
+      console.log(`  ${symbol}: ${position.side} ${position.quantity} @ $${position.entryPrice} (Trade ID: ${position.id})`);
+    });
+  }
 
   const transactions = [];
   const completedTrades = [];
 
   // Debug: Log first few records to see structure
-  console.log('Sample IBKR records:');
+  console.log('\nSample IBKR records:');
   records.slice(0, 5).forEach((record, i) => {
     console.log(`Record ${i}:`, JSON.stringify(record));
   });
@@ -3046,6 +3149,13 @@ async function parseIBKRTransactions(records, existingPositions = {}) {
   for (const record of records) {
     try {
       let symbol, quantity, absQuantity, price, commission, dateTime, action;
+
+      // Capture Code column if present (O = Open, P = Partial, C = Close)
+      let code = null;
+      if (record.Code || record.code) {
+        code = cleanString(record.Code || record.code).toUpperCase();
+        console.log(`[IBKR] Transaction code: ${code}`);
+      }
 
       if (isTradeConfirmation) {
         // Trade Confirmation format
@@ -3122,11 +3232,12 @@ async function parseIBKRTransactions(records, existingPositions = {}) {
         quantity: processedQuantity,
         price: price,
         fees: commission,
+        code: code, // O = Open, P = Partial, C = Close
         description: `IBKR transaction`,
         raw: record
       });
 
-      console.log(`Parsed IBKR transaction: ${action} ${processedQuantity} ${symbol} @ $${price}`);
+      console.log(`Parsed IBKR transaction: ${action} ${processedQuantity} ${symbol} @ $${price}${code ? ` [${code}]` : ''}`);
     } catch (error) {
       console.error('Error parsing IBKR transaction:', error, record);
     }
@@ -3139,6 +3250,10 @@ async function parseIBKRTransactions(records, existingPositions = {}) {
   });
 
   console.log(`Parsed ${transactions.length} valid IBKR trade transactions`);
+
+  // TODO: Future enhancement - Add configurable time gap for grouping executions
+  // Similar to TradeSviz's 1-hour default time gap setting to determine if
+  // consecutive executions should be treated as same trade or separate trades
 
   // Group transactions by symbol
   const transactionsBySymbol = {};
@@ -3229,24 +3344,42 @@ async function parseIBKRTransactions(records, existingPositions = {}) {
     for (const transaction of symbolTransactions) {
       const qty = transaction.quantity;
       const prevPosition = currentPosition;
+      const transactionCode = transaction.code;
 
-      console.log(`\n${transaction.action} ${qty} @ $${transaction.price} | Position: ${currentPosition}`);
+      console.log(`\n${transaction.action} ${qty} @ $${transaction.price} | Position: ${currentPosition}${transactionCode ? ` | Code: ${transactionCode}` : ''}`);
 
       // Start new trade if going from flat to position
+      // UNLESS this is a closing-only transaction (Code contains 'C' but not 'O' or 'P')
       if (currentPosition === 0) {
-        currentTrade = {
-          symbol: symbol,
-          entryTime: transaction.datetime,
-          tradeDate: transaction.date,
-          side: transaction.action === 'buy' ? 'long' : 'short',
-          executions: [],
-          totalQuantity: 0,
-          totalFees: 0,
-          entryValue: 0,
-          exitValue: 0,
-          broker: 'ibkr'
-        };
-        console.log(`  → Started new ${currentTrade.side} trade`);
+        // Check if this is a close-only transaction (Code contains 'C' but not 'O' or 'P')
+        const isCloseOnly = transactionCode && transactionCode.includes('C') &&
+                           !transactionCode.includes('O') && !transactionCode.includes('P');
+
+        // If we have a close-only transaction but no currentTrade, this means we're trying to close
+        // a position that was opened in a previous import but we don't have it loaded
+        if (isCloseOnly && !currentTrade) {
+          console.log(`  → [WARNING] Close transaction (Code='${transactionCode}') found but no open position in current import or existingPositions`);
+          console.log(`  → This position may have been opened in a different import. Skipping this execution.`);
+          // Skip this transaction - it's closing a position we don't have
+          continue;
+        }
+
+        // If Code contains 'O' (Open) or 'P' (Partial) or no code, start a new trade
+        if (!transactionCode || transactionCode.includes('O') || transactionCode.includes('P')) {
+          currentTrade = {
+            symbol: symbol,
+            entryTime: transaction.datetime,
+            tradeDate: transaction.date,
+            side: transaction.action === 'buy' ? 'long' : 'short',
+            executions: [],
+            totalQuantity: 0,
+            totalFees: 0,
+            entryValue: 0,
+            exitValue: 0,
+            broker: 'ibkr'
+          };
+          console.log(`  → Started new ${currentTrade.side} trade${transactionCode ? ` [Code: ${transactionCode}]` : ''}`);
+        }
       }
 
       // Add execution to current trade (check for duplicates first)
