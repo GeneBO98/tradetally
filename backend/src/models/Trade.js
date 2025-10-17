@@ -60,8 +60,8 @@ class Trade {
     }
 
     // Use provided P&L if available (e.g., from Schwab), otherwise calculate it
-    const pnl = providedPnL !== undefined ? providedPnL : this.calculatePnL(entryPrice, cleanExitPrice, quantity, side, commission, fees, instrumentType, contractSize);
-    const pnlPercent = providedPnLPercent !== undefined ? providedPnLPercent : this.calculatePnLPercent(entryPrice, cleanExitPrice, side);
+    const pnl = providedPnL !== undefined ? providedPnL : this.calculatePnL(entryPrice, cleanExitPrice, quantity, side, commission, fees, instrumentType, contractSize, pointValue);
+    const pnlPercent = providedPnLPercent !== undefined ? providedPnLPercent : this.calculatePnLPercent(entryPrice, cleanExitPrice, side, pnl, quantity, instrumentType, pointValue);
 
     // Use exit date as trade date if available, otherwise use entry date
     // If tradeDate is explicitly provided (e.g., from imports), use it directly
@@ -849,20 +849,30 @@ class Trade {
     }
 
     if (updates.entryPrice || updates.exitPrice || updates.quantity || updates.side || updates.commission || updates.fees || updates.instrumentType || updates.contractSize) {
+      const instrumentType = updates.instrumentType || currentTrade.instrument_type || 'stock';
+      const quantity = updates.quantity || currentTrade.quantity;
+      const pointValue = updates.pointValue || currentTrade.point_value;
+      const contractSize = updates.contractSize || currentTrade.contract_size || 1;
+
       const pnl = this.calculatePnL(
         updates.entryPrice || currentTrade.entry_price,
         updates.exitPrice || currentTrade.exit_price,
-        updates.quantity || currentTrade.quantity,
+        quantity,
         updates.side || currentTrade.side,
         updates.commission || currentTrade.commission,
         updates.fees || currentTrade.fees,
-        updates.instrumentType || currentTrade.instrument_type || 'stock',
-        updates.contractSize || currentTrade.contract_size || 1
+        instrumentType,
+        contractSize,
+        pointValue
       );
       const pnlPercent = this.calculatePnLPercent(
         updates.entryPrice || currentTrade.entry_price,
         updates.exitPrice || currentTrade.exit_price,
-        updates.side || currentTrade.side
+        updates.side || currentTrade.side,
+        pnl,
+        quantity,
+        instrumentType,
+        pointValue
       );
 
       fields.push(`pnl = $${paramCount}`);
@@ -1021,13 +1031,21 @@ class Trade {
     return result.rows;
   }
 
-  static calculatePnL(entryPrice, exitPrice, quantity, side, commission = 0, fees = 0, instrumentType = 'stock', contractSize = 1) {
+  static calculatePnL(entryPrice, exitPrice, quantity, side, commission = 0, fees = 0, instrumentType = 'stock', contractSize = 1, pointValue = null) {
     if (!exitPrice || !entryPrice || quantity <= 0) return null;
 
-    // For options and futures, apply contract multiplier
-    const multiplier = (instrumentType === 'option' || instrumentType === 'future')
-      ? (contractSize || 100)
-      : 1;
+    // Determine the multiplier based on instrument type
+    let multiplier;
+    if (instrumentType === 'future') {
+      // For futures, use point value (e.g., $5 per point for ES, $2 for MNQ)
+      multiplier = pointValue || 1;
+    } else if (instrumentType === 'option') {
+      // For options, use contract size (typically 100 shares per contract)
+      multiplier = contractSize || 100;
+    } else {
+      // For stocks, no multiplier needed (1 share = 1 share)
+      multiplier = 1;
+    }
 
     let pnl;
     if (side === 'long') {
@@ -1046,21 +1064,42 @@ class Trade {
     return totalPnL;
   }
 
-  static calculatePnLPercent(entryPrice, exitPrice, side) {
+  static calculatePnLPercent(entryPrice, exitPrice, side, pnl = null, quantity = null, instrumentType = 'stock', pointValue = null) {
     if (!exitPrice || !entryPrice || entryPrice <= 0) return null;
-    
+
     let pnlPercent;
-    if (side === 'long') {
-      pnlPercent = ((exitPrice - entryPrice) / entryPrice) * 100;
+
+    // For futures, calculate ROI based on P&L vs notional value
+    if (instrumentType === 'future' && pnl !== null && quantity !== null) {
+      // Calculate notional value of the position
+      // For futures: notional = entry_price × quantity × point_value
+      const effectivePointValue = pointValue || 1; // Default to 1 if not provided
+      const notionalValue = entryPrice * quantity * effectivePointValue;
+
+      if (notionalValue > 0) {
+        pnlPercent = (pnl / notionalValue) * 100;
+      } else {
+        // Fallback to price-based calculation if notional value is invalid
+        if (side === 'long') {
+          pnlPercent = ((exitPrice - entryPrice) / entryPrice) * 100;
+        } else {
+          pnlPercent = ((entryPrice - exitPrice) / entryPrice) * 100;
+        }
+      }
     } else {
-      pnlPercent = ((entryPrice - exitPrice) / entryPrice) * 100;
+      // Standard calculation for stocks and options
+      if (side === 'long') {
+        pnlPercent = ((exitPrice - entryPrice) / entryPrice) * 100;
+      } else {
+        pnlPercent = ((entryPrice - exitPrice) / entryPrice) * 100;
+      }
     }
-    
+
     // Guard against NaN, Infinity, or values that exceed database limits
     if (!isFinite(pnlPercent) || Math.abs(pnlPercent) > 999999) {
       return null;
     }
-    
+
     return pnlPercent;
   }
 
