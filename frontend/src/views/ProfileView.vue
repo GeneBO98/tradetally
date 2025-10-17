@@ -328,6 +328,68 @@
       <!-- Notification Preferences -->
       <NotificationPreferences />
 
+      <!-- Trade Import Settings -->
+      <div class="card">
+        <div class="card-body">
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-6">Trade Import Settings</h3>
+          <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
+            Configure how executions are grouped when importing trades from broker CSV files.
+          </p>
+
+          <form @submit.prevent="updateTradeImportSettings" class="space-y-6">
+            <!-- Trade Grouping Toggle -->
+            <div class="flex items-start">
+              <div class="flex items-center h-5">
+                <input
+                  id="enableTradeGrouping"
+                  v-model="tradeImportForm.enableTradeGrouping"
+                  type="checkbox"
+                  class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                />
+              </div>
+              <div class="ml-3">
+                <label for="enableTradeGrouping" class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Enable Trade Grouping
+                </label>
+                <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  When enabled, multiple executions within the specified time gap will be grouped into a single trade.
+                  This is useful for scaling in/out of positions.
+                </p>
+              </div>
+            </div>
+
+            <!-- Time Gap Setting -->
+            <div v-if="tradeImportForm.enableTradeGrouping">
+              <label for="tradeGroupingTimeGap" class="label">Time Gap for Grouping (minutes)</label>
+              <input
+                id="tradeGroupingTimeGap"
+                v-model.number="tradeImportForm.tradeGroupingTimeGapMinutes"
+                type="number"
+                min="1"
+                max="1440"
+                class="input"
+                placeholder="60"
+              />
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Maximum time gap (in minutes) between executions to group them into the same trade.
+                Default is 60 minutes (1 hour), following TradeSviz industry standard.
+              </p>
+            </div>
+
+            <div class="flex justify-end">
+              <button
+                type="submit"
+                :disabled="tradeImportLoading"
+                class="btn-primary"
+              >
+                <span v-if="tradeImportLoading">Updating...</span>
+                <span v-else>Update Import Settings</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
       <!-- Trading Profile -->
       <div class="card">
         <div class="card-body">
@@ -858,6 +920,13 @@ const createApiKeyForm = ref({
   expiresIn: null
 })
 
+// Trade import settings data
+const tradeImportLoading = ref(false)
+const tradeImportForm = ref({
+  enableTradeGrouping: true,
+  tradeGroupingTimeGapMinutes: 60
+})
+
 // Trading profile data
 const tradingProfileLoading = ref(false)
 const tradingProfileForm = ref({
@@ -1217,10 +1286,41 @@ function formatSubscriptionStatus(status) {
   return formatted[status] || status
 }
 
+// Trade import settings methods
+async function updateTradeImportSettings() {
+  tradeImportLoading.value = true
+
+  try {
+    await api.put('/settings', {
+      enableTradeGrouping: tradeImportForm.value.enableTradeGrouping,
+      tradeGroupingTimeGapMinutes: tradeImportForm.value.tradeGroupingTimeGapMinutes
+    })
+    showSuccess('Success', 'Trade import settings updated successfully')
+  } catch (error) {
+    showError('Error', 'Failed to update trade import settings')
+  } finally {
+    tradeImportLoading.value = false
+  }
+}
+
+async function fetchTradeImportSettings() {
+  try {
+    const response = await api.get('/settings')
+    const settings = response.data.settings
+
+    tradeImportForm.value = {
+      enableTradeGrouping: settings.enableTradeGrouping ?? true,
+      tradeGroupingTimeGapMinutes: settings.tradeGroupingTimeGapMinutes ?? 60
+    }
+  } catch (error) {
+    console.error('Failed to fetch trade import settings:', error)
+  }
+}
+
 // Trading profile methods
 async function updateTradingProfile() {
   tradingProfileLoading.value = true
-  
+
   try {
     await api.put('/settings/trading-profile', tradingProfileForm.value)
     showSuccess('Success', 'Trading profile updated successfully')
@@ -1278,9 +1378,10 @@ onMounted(async () => {
     fetch2FAStatus(),
     fetchApiKeys(),
     fetchTradingProfile(),
+    fetchTradeImportSettings(),
     loadBillingStatus()
   ])
-  
+
   // Load subscription data after billing status
   await loadSubscription()
 })

@@ -1,4 +1,5 @@
 const Trade = require('../models/Trade');
+const User = require('../models/User');
 const { parseCSV } = require('../utils/csvParser');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../config/database');
@@ -681,8 +682,21 @@ const tradeController = {
           Object.entries(existingPositions).forEach(([symbol, pos]) => {
             logger.logImport(`  ${symbol}: ${pos.side} ${pos.quantity} shares @ $${pos.entryPrice}`);
           });
-          
-          const context = { existingPositions, userId: req.user.id };
+
+          // Fetch user settings for trade grouping configuration
+          let userSettings = await User.getSettings(req.user.id);
+          if (!userSettings) {
+            userSettings = await User.createSettings(req.user.id);
+          }
+
+          const context = {
+            existingPositions,
+            userId: req.user.id,
+            tradeGroupingSettings: {
+              enabled: userSettings.enable_trade_grouping ?? true,
+              timeGapMinutes: userSettings.trade_grouping_time_gap_minutes ?? 60
+            }
+          };
           const parseResult = await parseCSV(fileBuffer, broker, context);
 
           // Handle both old format (array) and new format (object with trades and unresolvedCusips)
