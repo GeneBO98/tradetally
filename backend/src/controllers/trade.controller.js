@@ -62,15 +62,30 @@ const tradeController = {
 
       // Get trades with pagination
       const trades = await Trade.findByUser(req.user.id, filters);
-      
+
+      // Map snake_case database fields to camelCase for API response
+      trades.forEach(trade => {
+        if (trade.contract_month !== undefined) trade.contractMonth = trade.contract_month;
+        if (trade.contract_year !== undefined) trade.contractYear = trade.contract_year;
+        if (trade.underlying_asset !== undefined) trade.underlyingAsset = trade.underlying_asset;
+        if (trade.instrument_type !== undefined) trade.instrumentType = trade.instrument_type;
+        if (trade.strike_price !== undefined) trade.strikePrice = trade.strike_price;
+        if (trade.expiration_date !== undefined) trade.expirationDate = trade.expiration_date;
+        if (trade.option_type !== undefined) trade.optionType = trade.option_type;
+        if (trade.contract_size !== undefined) trade.contractSize = trade.contract_size;
+        if (trade.underlying_symbol !== undefined) trade.underlyingSymbol = trade.underlying_symbol;
+        if (trade.point_value !== undefined) trade.pointValue = trade.point_value;
+        if (trade.tick_size !== undefined) trade.tickSize = trade.tick_size;
+      });
+
       // Get total count without pagination
       const totalCountFilters = { ...filters };
       delete totalCountFilters.limit;
       delete totalCountFilters.offset;
-      
+
       // Use getCountWithFilters for regular trades table counting
       const total = await Trade.getCountWithFilters(req.user.id, totalCountFilters);
-      
+
       res.json({
         trades,
         count: trades.length,
@@ -185,6 +200,20 @@ const tradeController = {
           trade.executions = [];
         }
       }
+
+      // Map snake_case database fields to camelCase for API response
+      // This ensures frontend compatibility
+      if (trade.contract_month !== undefined) trade.contractMonth = trade.contract_month;
+      if (trade.contract_year !== undefined) trade.contractYear = trade.contract_year;
+      if (trade.underlying_asset !== undefined) trade.underlyingAsset = trade.underlying_asset;
+      if (trade.instrument_type !== undefined) trade.instrumentType = trade.instrument_type;
+      if (trade.strike_price !== undefined) trade.strikePrice = trade.strike_price;
+      if (trade.expiration_date !== undefined) trade.expirationDate = trade.expiration_date;
+      if (trade.option_type !== undefined) trade.optionType = trade.option_type;
+      if (trade.contract_size !== undefined) trade.contractSize = trade.contract_size;
+      if (trade.underlying_symbol !== undefined) trade.underlyingSymbol = trade.underlying_symbol;
+      if (trade.point_value !== undefined) trade.pointValue = trade.point_value;
+      if (trade.tick_size !== undefined) trade.tickSize = trade.tick_size;
 
       res.json({ trade });
     } catch (error) {

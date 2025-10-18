@@ -694,6 +694,41 @@ function formatDateOnly(date) {
   return `${year}-${month}-${day}`
 }
 
+// Convert month number (01-12) to month abbreviation (JAN-DEC)
+function convertMonthNumberToAbbreviation(monthNumber) {
+  if (!monthNumber) return ''
+
+  const monthMap = {
+    '01': 'JAN', '1': 'JAN',
+    '02': 'FEB', '2': 'FEB',
+    '03': 'MAR', '3': 'MAR',
+    '04': 'APR', '4': 'APR',
+    '05': 'MAY', '5': 'MAY',
+    '06': 'JUN', '6': 'JUN',
+    '07': 'JUL', '7': 'JUL',
+    '08': 'AUG', '8': 'AUG',
+    '09': 'SEP', '9': 'SEP',
+    '10': 'OCT',
+    '11': 'NOV',
+    '12': 'DEC'
+  }
+
+  return monthMap[monthNumber.toString()] || ''
+}
+
+// Convert month abbreviation (JAN-DEC) to month number (01-12)
+function convertMonthAbbreviationToNumber(monthAbbr) {
+  if (!monthAbbr) return null
+
+  const monthMap = {
+    'JAN': '01', 'FEB': '02', 'MAR': '03', 'APR': '04',
+    'MAY': '05', 'JUN': '06', 'JUL': '07', 'AUG': '08',
+    'SEP': '09', 'OCT': '10', 'NOV': '11', 'DEC': '12'
+  }
+
+  return monthMap[monthAbbr.toUpperCase()] || null
+}
+
 async function loadTrade() {
   if (!isEdit.value) return
   
@@ -729,10 +764,10 @@ async function loadTrade() {
       contractSize: trade.contract_size || 100,
       // Futures-specific fields
       underlyingAsset: trade.underlying_asset || '',
-      contractMonth: trade.contract_month || '',
-      contractYear: trade.contract_year || null,
-      tickSize: trade.tick_size || null,
-      pointValue: trade.point_value || null
+      contractMonth: convertMonthNumberToAbbreviation(trade.contract_month || trade.contractMonth) || '',
+      contractYear: trade.contract_year || trade.contractYear || null,
+      tickSize: trade.tick_size || trade.tickSize || null,
+      pointValue: trade.point_value || trade.pointValue || null
     }
     
     tagsInput.value = trade.tags ? trade.tags.join(', ') : ''
@@ -786,7 +821,7 @@ async function handleSubmit() {
       contractSize: form.value.instrumentType === 'option' && form.value.contractSize ? parseInt(form.value.contractSize) : null,
       // Futures-specific fields (only send if future type)
       underlyingAsset: form.value.instrumentType === 'future' ? form.value.underlyingAsset : null,
-      contractMonth: form.value.instrumentType === 'future' ? form.value.contractMonth : null,
+      contractMonth: form.value.instrumentType === 'future' ? convertMonthAbbreviationToNumber(form.value.contractMonth) : null,
       contractYear: form.value.instrumentType === 'future' && form.value.contractYear ? parseInt(form.value.contractYear) : null,
       tickSize: form.value.instrumentType === 'future' && form.value.tickSize ? parseFloat(form.value.tickSize) : null,
       pointValue: form.value.instrumentType === 'future' && form.value.pointValue ? parseFloat(form.value.pointValue) : null
