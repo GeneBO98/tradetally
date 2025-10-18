@@ -2323,7 +2323,13 @@ async function parseSchwabTransactions(records, existingPositions = {}) {
         currentTrade.quantity = currentTrade.totalQuantity;
         currentTrade.commission = currentTrade.totalFees;
         currentTrade.fees = 0;
-        currentTrade.exitTime = transaction.datetime;
+
+        // Calculate proper entry and exit times from all executions
+        const executionTimes = currentTrade.executions.map(e => new Date(e.datetime));
+        const sortedTimes = executionTimes.sort((a, b) => a - b);
+        currentTrade.entryTime = sortedTimes[0].toISOString();
+        currentTrade.exitTime = sortedTimes[sortedTimes.length - 1].toISOString();
+
         currentTrade.executionData = currentTrade.executions;
 
         // Mark as update if this was an existing position
@@ -2656,7 +2662,13 @@ async function parseThinkorswimTransactions(records, existingPositions = {}) {
         currentTrade.quantity = currentTrade.totalQuantity * (typeof contractMultiplier !== 'undefined' ? contractMultiplier : 1);
         currentTrade.commission = currentTrade.totalFees;
         currentTrade.fees = 0;
-        currentTrade.exitTime = transaction.datetime;
+
+        // Calculate proper entry and exit times from all executions
+        const executionTimes = currentTrade.executions.map(e => new Date(e.datetime));
+        const sortedTimes = executionTimes.sort((a, b) => a - b);
+        currentTrade.entryTime = sortedTimes[0].toISOString();
+        currentTrade.exitTime = sortedTimes[sortedTimes.length - 1].toISOString();
+
         currentTrade.executionData = currentTrade.executions;
         // Add instrument data for options/futures
         Object.assign(currentTrade, instrumentData);
@@ -2950,7 +2962,13 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}) {
         currentTrade.quantity = currentTrade.totalQuantity * (typeof contractMultiplier !== 'undefined' ? contractMultiplier : 1);
         currentTrade.commission = currentTrade.totalFees;
         currentTrade.fees = 0;
-        currentTrade.exitTime = transaction.datetime;
+
+        // Calculate proper entry and exit times from all executions
+        const executionTimes = currentTrade.executions.map(e => new Date(e.datetime));
+        const sortedTimes = executionTimes.sort((a, b) => a - b);
+        currentTrade.entryTime = sortedTimes[0].toISOString();
+        currentTrade.exitTime = sortedTimes[sortedTimes.length - 1].toISOString();
+
         currentTrade.executionData = currentTrade.executions;
         // Add instrument data for options/futures
         Object.assign(currentTrade, instrumentData);
@@ -3263,7 +3281,13 @@ async function parseTradingViewTransactions(records, existingPositions = {}) {
         currentTrade.exitCommission = exitCommission;
 
         currentTrade.fees = 0;
-        currentTrade.exitTime = transaction.datetime;
+
+        // Calculate proper entry and exit times from all executions
+        const executionTimes = currentTrade.executions.map(e => new Date(e.datetime));
+        const sortedTimes = executionTimes.sort((a, b) => a - b);
+        currentTrade.entryTime = sortedTimes[0].toISOString();
+        currentTrade.exitTime = sortedTimes[sortedTimes.length - 1].toISOString();
+
         currentTrade.executionData = currentTrade.executions;
         // Add instrument data for options/futures
         Object.assign(currentTrade, instrumentData);
@@ -3721,7 +3745,13 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         currentTrade.exitCommission = exitCommission;
 
         currentTrade.fees = 0;
-        currentTrade.exitTime = transaction.datetime;
+
+        // Calculate proper entry and exit times from all executions
+        const executionTimes = currentTrade.executions.map(e => new Date(e.datetime));
+        const sortedTimes = executionTimes.sort((a, b) => a - b);
+        currentTrade.entryTime = sortedTimes[0].toISOString();
+        currentTrade.exitTime = sortedTimes[sortedTimes.length - 1].toISOString();
+
         currentTrade.executionData = currentTrade.executions;
         // Add instrument data for options/futures
         Object.assign(currentTrade, instrumentData);
