@@ -3475,6 +3475,16 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
     transactionsBySymbol[transaction.symbol].push(transaction);
   }
 
+  // Log all available existing positions for debugging
+  console.log(`\n[IBKR] Available existing positions:`);
+  if (Object.keys(existingPositions).length === 0) {
+    console.log(`  → No existing positions found`);
+  } else {
+    Object.entries(existingPositions).forEach(([sym, pos]) => {
+      console.log(`  → ${sym}: ${pos.side} ${pos.quantity} @ $${pos.entryPrice} (ID: ${pos.id})`);
+    });
+  }
+
   // Process transactions using round-trip trade grouping
   for (const symbol in transactionsBySymbol) {
     const symbolTransactions = transactionsBySymbol[symbol];
@@ -3526,7 +3536,22 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
 
     // Track position and round-trip trades
     // Start with existing position if we have one for this symbol
-    const existingPosition = existingPositions[symbol];
+    // For options, try looking up by underlying symbol since that's what gets saved to database
+    let existingPosition = existingPositions[symbol];
+    if (!existingPosition && instrumentData.instrumentType === 'option' && instrumentData.underlyingSymbol) {
+      existingPosition = existingPositions[instrumentData.underlyingSymbol];
+      if (existingPosition) {
+        console.log(`  → Found existing position using underlying symbol: ${instrumentData.underlyingSymbol}`);
+      }
+    }
+
+    if (!existingPosition) {
+      console.log(`  → No existing position found for symbol: ${symbol}`);
+      if (instrumentData.instrumentType === 'option' && instrumentData.underlyingSymbol) {
+        console.log(`  → Also checked underlying symbol: ${instrumentData.underlyingSymbol}`);
+      }
+    }
+
     let currentPosition = existingPosition ?
       (existingPosition.side === 'long' ? existingPosition.quantity : -existingPosition.quantity) : 0;
     let currentTrade = existingPosition ? {
@@ -3560,53 +3585,53 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
       console.log(`\n${transaction.action} ${qty} @ $${transaction.price} | Position: ${currentPosition}${transactionCode ? ` | Code: ${transactionCode}` : ''}`);
 
       // Start new trade if going from flat to position
-      // UNLESS this is a closing-only transaction (Code contains 'C' but not 'O' or 'P')
-      if (currentPosition === 0) {
+      if (currentPosition === 0 && !currentTrade) {
         // Check if this is a close-only transaction (Code contains 'C' but not 'O' or 'P')
+        // This is just a HINT - we'll still process the transaction even if we can't find the position
         const isCloseOnly = transactionCode && transactionCode.includes('C') &&
                            !transactionCode.includes('O') && !transactionCode.includes('P');
 
-        // If we have a close-only transaction but no currentTrade, this means we're trying to close
-        // a position that was opened in a previous import but we don't have it loaded
-        if (isCloseOnly && !currentTrade) {
-          console.log(`  → [WARNING] Close transaction (Code='${transactionCode}') found but no open position in current import or existingPositions`);
-          console.log(`  → This position may have been opened in a different import. Skipping this execution.`);
-          // Skip this transaction - it's closing a position we don't have
-          continue;
+        if (isCloseOnly) {
+          // Code='C' indicates this should close an existing position, but we don't have one loaded
+          // This could mean:
+          // 1. The opening position wasn't found due to symbol mismatch
+          // 2. The position was closed in a previous import
+          // 3. The CSV is being imported out of order
+          console.log(`  → [WARNING] Code='${transactionCode}' indicates closing transaction, but no open position found`);
+          console.log(`  → Will treat this as a new opening position (${transaction.action === 'buy' ? 'long' : 'short'})`);
+          console.log(`  → If this should close an existing position, check symbol matching in database`);
         }
 
-        // If Code contains 'O' (Open) or 'P' (Partial) or no code, consider starting a new trade
-        if (!transactionCode || transactionCode.includes('O') || transactionCode.includes('P')) {
-          // Check time gap if grouping is enabled
-          let shouldStartNewTrade = true;
+        // Start a new trade regardless of Code
+        // Check time gap if grouping is enabled
+        let shouldStartNewTrade = true;
 
-          if (tradeGroupingSettings.enabled && lastTradeEndTime[symbol]) {
-            const timeSinceLastTrade = (new Date(transaction.datetime) - new Date(lastTradeEndTime[symbol])) / (1000 * 60); // minutes
+        if (tradeGroupingSettings.enabled && lastTradeEndTime[symbol]) {
+          const timeSinceLastTrade = (new Date(transaction.datetime) - new Date(lastTradeEndTime[symbol])) / (1000 * 60); // minutes
 
-            if (timeSinceLastTrade <= tradeGroupingSettings.timeGapMinutes) {
-              // Within time gap - continue previous trade
-              shouldStartNewTrade = false;
-              console.log(`  → [GROUPING] Within ${tradeGroupingSettings.timeGapMinutes}min gap (${timeSinceLastTrade.toFixed(1)}min) - continuing previous trade`);
-            } else {
-              console.log(`  → [GROUPING] Beyond ${tradeGroupingSettings.timeGapMinutes}min gap (${timeSinceLastTrade.toFixed(1)}min) - starting new trade`);
-            }
+          if (timeSinceLastTrade <= tradeGroupingSettings.timeGapMinutes) {
+            // Within time gap - continue previous trade
+            shouldStartNewTrade = false;
+            console.log(`  → [GROUPING] Within ${tradeGroupingSettings.timeGapMinutes}min gap (${timeSinceLastTrade.toFixed(1)}min) - continuing previous trade`);
+          } else {
+            console.log(`  → [GROUPING] Beyond ${tradeGroupingSettings.timeGapMinutes}min gap (${timeSinceLastTrade.toFixed(1)}min) - starting new trade`);
           }
+        }
 
-          if (shouldStartNewTrade) {
-            currentTrade = {
-              symbol: symbol,
-              entryTime: transaction.datetime,
-              tradeDate: transaction.date,
-              side: transaction.action === 'buy' ? 'long' : 'short',
-              executions: [],
-              totalQuantity: 0,
-              totalFees: 0,
-              entryValue: 0,
-              exitValue: 0,
-              broker: 'ibkr'
-            };
-            console.log(`  → Started new ${currentTrade.side} trade${transactionCode ? ` [Code: ${transactionCode}]` : ''}`);
-          }
+        if (shouldStartNewTrade) {
+          currentTrade = {
+            symbol: symbol,
+            entryTime: transaction.datetime,
+            tradeDate: transaction.date,
+            side: transaction.action === 'buy' ? 'long' : 'short',
+            executions: [],
+            totalQuantity: 0,
+            totalFees: 0,
+            entryValue: 0,
+            exitValue: 0,
+            broker: 'ibkr'
+          };
+          console.log(`  → Started new ${currentTrade.side} trade${transactionCode ? ` [Code: ${transactionCode}]` : ''}`);
         }
       }
 
