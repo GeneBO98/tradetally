@@ -127,12 +127,43 @@
                 <option value="median">Median</option>
               </select>
               <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                Choose whether to use averages or medians for calculations like Average P&L, Average Win, Average Loss, etc. 
+                Choose whether to use averages or medians for calculations like Average P&L, Average Win, Average Loss, etc.
                 Medians are less affected by outliers and may provide a more representative view of typical performance.
                 <span class="block mt-2 text-blue-600 dark:text-blue-400 font-medium">
                   Note: Changes take effect immediately and will update labels throughout the application.
                 </span>
               </p>
+            </div>
+
+            <div class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+              <div class="flex-1">
+                <label for="autoCloseExpiredOptions" class="block text-sm font-medium text-gray-900 dark:text-white">
+                  Auto-Close Expired Options
+                </label>
+                <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                  Automatically close expired options positions with appropriate P&L (Long: -100%, Short: +100%).
+                  The system checks hourly for expired options.
+                </p>
+              </div>
+              <div class="ml-4 flex-shrink-0">
+                <button
+                  type="button"
+                  @click="analyticsForm.autoCloseExpiredOptions = !analyticsForm.autoCloseExpiredOptions"
+                  :class="[
+                    analyticsForm.autoCloseExpiredOptions ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700',
+                    'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2'
+                  ]"
+                  role="switch"
+                  :aria-checked="analyticsForm.autoCloseExpiredOptions"
+                >
+                  <span
+                    :class="[
+                      analyticsForm.autoCloseExpiredOptions ? 'translate-x-5' : 'translate-x-0',
+                      'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out'
+                    ]"
+                  />
+                </button>
+              </div>
             </div>
 
             <div class="flex justify-end">
@@ -146,6 +177,71 @@
                   Saving...
                 </span>
                 <span v-else>Save Analytics Settings</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Trade Import Settings -->
+      <div class="card">
+        <div class="card-body">
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-6">Trade Import Settings</h3>
+          <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
+            Configure how executions are grouped when importing trades from broker CSV files.
+          </p>
+
+          <form @submit.prevent="updateTradeImportSettings" class="space-y-6">
+            <!-- Trade Grouping Toggle -->
+            <div class="flex items-start">
+              <div class="flex items-center h-5">
+                <input
+                  id="enableTradeGrouping"
+                  v-model="tradeImportForm.enableTradeGrouping"
+                  type="checkbox"
+                  class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                />
+              </div>
+              <div class="ml-3">
+                <label for="enableTradeGrouping" class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Enable Trade Grouping
+                </label>
+                <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  When enabled, multiple executions within the specified time gap will be grouped into a single trade.
+                  This is useful for scaling in/out of positions.
+                </p>
+              </div>
+            </div>
+
+            <!-- Time Gap Setting -->
+            <div v-if="tradeImportForm.enableTradeGrouping">
+              <label for="tradeGroupingTimeGap" class="label">Time Gap for Grouping (minutes)</label>
+              <input
+                id="tradeGroupingTimeGap"
+                v-model.number="tradeImportForm.tradeGroupingTimeGapMinutes"
+                type="number"
+                min="1"
+                max="1440"
+                class="input"
+                placeholder="60"
+              />
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Maximum time gap (in minutes) between executions to group them into the same trade.
+                Default is 60 minutes (1 hour), following TradeSviz industry standard.
+              </p>
+            </div>
+
+            <div class="flex justify-end">
+              <button
+                type="submit"
+                :disabled="tradeImportLoading"
+                class="btn-primary"
+              >
+                <span v-if="tradeImportLoading" class="flex items-center">
+                  <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Saving...
+                </span>
+                <span v-else>Update Import Settings</span>
               </button>
             </div>
           </form>
@@ -428,10 +524,18 @@ const aiLoading = ref(false)
 
 // Analytics Settings
 const analyticsForm = ref({
-  statisticsCalculation: 'average'
+  statisticsCalculation: 'average',
+  autoCloseExpiredOptions: true
 })
 
 const analyticsLoading = ref(false)
+
+// Trade Import Settings
+const tradeImportForm = ref({
+  enableTradeGrouping: true,
+  tradeGroupingTimeGapMinutes: 60
+})
+const tradeImportLoading = ref(false)
 
 // Admin AI Settings
 const adminAiForm = ref({
@@ -577,12 +681,16 @@ async function loadAnalyticsSettings() {
   try {
     const response = await api.get('/settings')
     analyticsForm.value = {
-      statisticsCalculation: response.data.settings.statisticsCalculation || 'average'
+      statisticsCalculation: response.data.settings.statisticsCalculation || 'average',
+      autoCloseExpiredOptions: response.data.settings.autoCloseExpiredOptions !== undefined
+        ? response.data.settings.autoCloseExpiredOptions
+        : true
     }
   } catch (error) {
     console.error('Failed to load analytics settings:', error)
-    // Default to average if loading fails
+    // Default values if loading fails
     analyticsForm.value.statisticsCalculation = 'average'
+    analyticsForm.value.autoCloseExpiredOptions = true
   }
 }
 
@@ -590,7 +698,8 @@ async function updateAnalyticsSettings() {
   analyticsLoading.value = true
   try {
     await api.put('/settings', {
-      statisticsCalculation: analyticsForm.value.statisticsCalculation
+      statisticsCalculation: analyticsForm.value.statisticsCalculation,
+      autoCloseExpiredOptions: analyticsForm.value.autoCloseExpiredOptions
     })
     showSuccess('Success', 'Analytics preferences updated successfully')
   } catch (error) {
@@ -598,6 +707,40 @@ async function updateAnalyticsSettings() {
     showError('Error', error.response?.data?.error || 'Failed to update analytics settings')
   } finally {
     analyticsLoading.value = false
+  }
+}
+
+// Trade Import Settings Functions
+async function loadTradeImportSettings() {
+  try {
+    const response = await api.get('/settings')
+    const settings = response.data.settings
+
+    tradeImportForm.value = {
+      enableTradeGrouping: settings.enableTradeGrouping ?? true,
+      tradeGroupingTimeGapMinutes: settings.tradeGroupingTimeGapMinutes ?? 60
+    }
+  } catch (error) {
+    console.error('Failed to load trade import settings:', error)
+    // Default values if loading fails
+    tradeImportForm.value.enableTradeGrouping = true
+    tradeImportForm.value.tradeGroupingTimeGapMinutes = 60
+  }
+}
+
+async function updateTradeImportSettings() {
+  tradeImportLoading.value = true
+  try {
+    await api.put('/settings', {
+      enableTradeGrouping: tradeImportForm.value.enableTradeGrouping,
+      tradeGroupingTimeGapMinutes: tradeImportForm.value.tradeGroupingTimeGapMinutes
+    })
+    showSuccess('Success', 'Trade import settings updated successfully')
+  } catch (error) {
+    console.error('Failed to update trade import settings:', error)
+    showError('Error', error.response?.data?.error || 'Failed to update trade import settings')
+  } finally {
+    tradeImportLoading.value = false
   }
 }
 
@@ -801,6 +944,7 @@ async function enrichTrades() {
 onMounted(() => {
   loadAISettings()
   loadAnalyticsSettings()
+  loadTradeImportSettings()
 
   // Load admin AI settings if user is admin
   if (authStore.user?.role === 'admin') {
