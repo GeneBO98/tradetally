@@ -76,6 +76,9 @@ const tradeController = {
         if (trade.underlying_symbol !== undefined) trade.underlyingSymbol = trade.underlying_symbol;
         if (trade.point_value !== undefined) trade.pointValue = trade.point_value;
         if (trade.tick_size !== undefined) trade.tickSize = trade.tick_size;
+        if (trade.stop_loss !== undefined) trade.stopLoss = trade.stop_loss;
+        if (trade.take_profit !== undefined) trade.takeProfit = trade.take_profit;
+        if (trade.r_value !== undefined) trade.rValue = trade.r_value;
       });
 
       // Get total count without pagination
@@ -214,6 +217,9 @@ const tradeController = {
       if (trade.underlying_symbol !== undefined) trade.underlyingSymbol = trade.underlying_symbol;
       if (trade.point_value !== undefined) trade.pointValue = trade.point_value;
       if (trade.tick_size !== undefined) trade.tickSize = trade.tick_size;
+      if (trade.stop_loss !== undefined) trade.stopLoss = trade.stop_loss;
+      if (trade.take_profit !== undefined) trade.takeProfit = trade.take_profit;
+      if (trade.r_value !== undefined) trade.rValue = trade.r_value;
 
       res.json({ trade });
     } catch (error) {

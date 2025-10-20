@@ -51,6 +51,9 @@ const schemas = {
     setup: Joi.string().max(100).allow(''),
     tags: Joi.array().items(Joi.string().max(50)),
     confidence: Joi.number().integer().min(1).max(10).allow(null, ''),
+    // Risk management fields
+    stopLoss: Joi.number().positive().allow(null, ''),
+    takeProfit: Joi.number().positive().allow(null, ''),
     // Options-specific fields
     underlyingSymbol: Joi.string().max(10).allow(null, ''),
     optionType: Joi.string().valid('call', 'put').allow(null, ''),
@@ -87,6 +90,9 @@ const schemas = {
     setup: Joi.string().max(100).allow(''),
     tags: Joi.array().items(Joi.string().max(50)),
     confidence: Joi.number().integer().min(1).max(10).allow(null, ''),
+    // Risk management fields
+    stopLoss: Joi.number().positive().allow(null, ''),
+    takeProfit: Joi.number().positive().allow(null, ''),
     // Options-specific fields
     underlyingSymbol: Joi.string().max(10).allow(null, ''),
     optionType: Joi.string().valid('call', 'put').allow(null, ''),

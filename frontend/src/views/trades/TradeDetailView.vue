@@ -73,6 +73,32 @@
                     {{ trade.exit_time ? `$${formatNumber(trade.exit_price)}` : 'Open' }}
                   </dd>
                 </div>
+                <div v-if="trade.stopLoss">
+                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Stop Loss</dt>
+                  <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">${{ formatNumber(trade.stopLoss) }}</dd>
+                </div>
+                <div v-if="trade.takeProfit">
+                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Take Profit</dt>
+                  <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">${{ formatNumber(trade.takeProfit) }}</dd>
+                </div>
+                <div v-if="trade.rValue !== null && trade.rValue !== undefined">
+                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">R-Value (Risk/Reward)</dt>
+                  <dd class="mt-1">
+                    <span class="text-sm font-semibold font-mono"
+                      :class="[
+                        Number(trade.rValue) >= 2
+                          ? 'text-green-600 dark:text-green-400'
+                          : Number(trade.rValue) >= 1
+                          ? 'text-yellow-600 dark:text-yellow-400'
+                          : 'text-red-600 dark:text-red-400'
+                      ]">
+                      1:{{ Number(trade.rValue).toFixed(2) }}
+                    </span>
+                    <span class="ml-2 text-xs text-gray-500 dark:text-gray-400">
+                      ({{ Number(trade.rValue) >= 2 ? 'Excellent' : Number(trade.rValue) >= 1 ? 'Good' : 'Poor' }} ratio)
+                    </span>
+                  </dd>
+                </div>
                 <div>
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Quantity</dt>
                   <dd class="mt-1 text-sm text-gray-900 dark:text-white">{{ formatQuantity(trade.quantity) }}</dd>

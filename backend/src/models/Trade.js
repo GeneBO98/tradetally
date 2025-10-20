@@ -45,7 +45,8 @@ class Trade {
       tickSize, pointValue, underlyingAsset, importId,
       originalCurrency, exchangeRate, originalEntryPriceCurrency,
       originalExitPriceCurrency, originalPnlCurrency, originalCommissionCurrency,
-      originalFeesCurrency
+      originalFeesCurrency,
+      stopLoss, takeProfit
     } = tradeData;
 
     // Convert empty strings to null for optional fields
@@ -62,6 +63,13 @@ class Trade {
     // Use provided P&L if available (e.g., from Schwab), otherwise calculate it
     const pnl = providedPnL !== undefined ? providedPnL : this.calculatePnL(entryPrice, cleanExitPrice, quantity, side, commission, fees, instrumentType, contractSize, pointValue);
     const pnlPercent = providedPnLPercent !== undefined ? providedPnLPercent : this.calculatePnLPercent(entryPrice, cleanExitPrice, side, pnl, quantity, instrumentType, pointValue);
+
+    // Calculate R-value if stop loss is provided
+    // If take profit is not provided but exit price exists, use exit price as take profit
+    const effectiveTakeProfit = takeProfit || cleanExitPrice;
+    const rValue = (stopLoss && effectiveTakeProfit && entryPrice && side)
+      ? this.calculateRValue(entryPrice, stopLoss, effectiveTakeProfit, side)
+      : null;
 
     // Use exit date as trade date if available, otherwise use entry date
     // If tradeDate is explicitly provided (e.g., from imports), use it directly
@@ -205,9 +213,10 @@ class Trade {
         instrument_type, strike_price, expiration_date, option_type, contract_size, underlying_symbol,
         contract_month, contract_year, tick_size, point_value, underlying_asset, import_id,
         original_currency, exchange_rate, original_entry_price_currency, original_exit_price_currency,
-        original_pnl_currency, original_commission_currency, original_fees_currency
+        original_pnl_currency, original_commission_currency, original_fees_currency,
+        stop_loss, take_profit, r_value
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55)
       RETURNING *
     `;
 
@@ -222,7 +231,8 @@ class Trade {
       contractMonth || null, contractYear || null, tickSize || null, pointValue || null, underlyingAsset || null,
       importId || null,
       originalCurrency || 'USD', exchangeRate || 1.0, originalEntryPriceCurrency || null, originalExitPriceCurrency || null,
-      originalPnlCurrency || null, originalCommissionCurrency || null, originalFeesCurrency || null
+      originalPnlCurrency || null, originalCommissionCurrency || null, originalFeesCurrency || null,
+      stopLoss || null, takeProfit || null, rValue
     ];
 
     const result = await db.query(query, values);
@@ -884,6 +894,26 @@ class Trade {
       paramCount++;
     }
 
+    // Recalculate R-value if any of the relevant fields are updated
+    if (updates.entryPrice || updates.exitPrice || updates.stopLoss || updates.takeProfit || updates.side) {
+      const entryPrice = updates.entryPrice || currentTrade.entry_price;
+      const exitPrice = updates.exitPrice !== undefined ? updates.exitPrice : currentTrade.exit_price;
+      const stopLoss = updates.stopLoss !== undefined ? updates.stopLoss : currentTrade.stop_loss;
+      const takeProfit = updates.takeProfit !== undefined ? updates.takeProfit : currentTrade.take_profit;
+      const side = updates.side || currentTrade.side;
+
+      // Calculate R-value if stop loss is provided
+      // If take profit is not provided but exit price exists, use exit price as take profit
+      const effectiveTakeProfit = takeProfit || exitPrice;
+      const rValue = (stopLoss && effectiveTakeProfit && entryPrice && side)
+        ? this.calculateRValue(entryPrice, stopLoss, effectiveTakeProfit, side)
+        : null;
+
+      fields.push(`r_value = $${paramCount}`);
+      values.push(rValue);
+      paramCount++;
+    }
+
     // Ensure tags exist in tags table if tags are being updated
     if (updates.tags && updates.tags.length > 0) {
       await this.ensureTagsExist(userId, updates.tags);
@@ -1101,6 +1131,90 @@ class Trade {
     }
 
     return pnlPercent;
+  }
+
+  /**
+   * Calculate R-value (Risk/Reward Ratio)
+   * R-value represents the reward-to-risk ratio for a trade
+   *
+   * For Long positions: R = (takeProfit - entryPrice) / (entryPrice - stopLoss)
+   * For Short positions: R = (entryPrice - takeProfit) / (stopLoss - entryPrice)
+   *
+   * Example: An R-value of 2.0 means the potential reward is 2x the potential risk
+   *          (a 1:2 risk/reward ratio - risk $1 to potentially gain $2)
+   *
+   * @param {number} entryPrice - The entry price of the trade
+   * @param {number} stopLoss - The stop loss price level
+   * @param {number} takeProfit - The take profit price level
+   * @param {string} side - The trade side ('long' or 'short')
+   * @returns {number|null} The calculated R-value, or null if inputs are invalid
+   */
+  static calculateRValue(entryPrice, stopLoss, takeProfit, side) {
+    // Validate inputs
+    if (!entryPrice || !stopLoss || !takeProfit || !side) {
+      return null;
+    }
+
+    // Ensure all values are positive
+    if (entryPrice <= 0 || stopLoss <= 0 || takeProfit <= 0) {
+      return null;
+    }
+
+    let risk;
+    let reward;
+
+    if (side === 'long') {
+      // For long positions:
+      // Risk = entry price - stop loss (how much we can lose)
+      // Reward = take profit - entry price (how much we can gain)
+      risk = entryPrice - stopLoss;
+      reward = takeProfit - entryPrice;
+
+      // Validate that stop loss is below entry and take profit is above entry
+      if (stopLoss >= entryPrice) {
+        console.warn('[R-VALUE] Invalid long position: stop loss must be below entry price');
+        return null;
+      }
+      if (takeProfit <= entryPrice) {
+        console.warn('[R-VALUE] Invalid long position: take profit must be above entry price');
+        return null;
+      }
+    } else if (side === 'short') {
+      // For short positions:
+      // Risk = stop loss - entry price (how much we can lose)
+      // Reward = entry price - take profit (how much we can gain)
+      risk = stopLoss - entryPrice;
+      reward = entryPrice - takeProfit;
+
+      // Validate that stop loss is above entry and take profit is below entry
+      if (stopLoss <= entryPrice) {
+        console.warn('[R-VALUE] Invalid short position: stop loss must be above entry price');
+        return null;
+      }
+      if (takeProfit >= entryPrice) {
+        console.warn('[R-VALUE] Invalid short position: take profit must be below entry price');
+        return null;
+      }
+    } else {
+      console.warn('[R-VALUE] Invalid side value:', side);
+      return null;
+    }
+
+    // Calculate R-value as reward/risk
+    if (risk <= 0) {
+      console.warn('[R-VALUE] Risk must be positive, got:', risk);
+      return null;
+    }
+
+    const rValue = reward / risk;
+
+    // Guard against NaN, Infinity, or negative values
+    if (!isFinite(rValue) || rValue < 0) {
+      return null;
+    }
+
+    // Round to 2 decimal places
+    return Math.round(rValue * 100) / 100;
   }
 
   static async getCountWithFilters(userId, filters = {}) {

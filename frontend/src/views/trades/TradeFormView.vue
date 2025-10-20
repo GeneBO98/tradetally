@@ -131,6 +131,32 @@
           </div>
 
           <div>
+            <label for="stopLoss" class="label">Stop Loss</label>
+            <input
+              id="stopLoss"
+              v-model="form.stopLoss"
+              type="number"
+              step="0.000001"
+              min="0"
+              class="input"
+              placeholder="0.000000"
+            />
+          </div>
+
+          <div>
+            <label for="takeProfit" class="label">Take Profit</label>
+            <input
+              id="takeProfit"
+              v-model="form.takeProfit"
+              type="number"
+              step="0.000001"
+              min="0"
+              class="input"
+              placeholder="0.000000"
+            />
+          </div>
+
+          <div>
             <label for="quantity" class="label">Quantity *</label>
             <input
               id="quantity"
@@ -623,6 +649,9 @@ const form = ref({
   notes: '',
   isPublic: false,
   confidence: 5,
+  // Risk management fields
+  stopLoss: null,
+  takeProfit: null,
   // Options-specific fields
   underlyingSymbol: '',
   optionType: '',
@@ -750,6 +779,8 @@ async function loadTrade() {
       fees: trade.fees || 0,
       mae: trade.mae || null,
       mfe: trade.mfe || null,
+      stopLoss: trade.stopLoss || null,
+      takeProfit: trade.takeProfit || null,
       broker: trade.broker || '',
       strategy: trade.strategy || '',
       setup: trade.setup || '',
