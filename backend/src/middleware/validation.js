@@ -116,7 +116,8 @@ const schemas = {
     timezone: Joi.string().max(50),
     statisticsCalculation: Joi.string().valid('average', 'median'),
     enableTradeGrouping: Joi.boolean(),
-    tradeGroupingTimeGapMinutes: Joi.number().integer().min(1).max(1440)
+    tradeGroupingTimeGapMinutes: Joi.number().integer().min(1).max(1440),
+    autoCloseExpiredOptions: Joi.boolean()
   }).min(1),
 
   // Mobile-specific validation schemas
