@@ -2,14 +2,20 @@ const Joi = require('joi');
 
 const validate = (schema) => {
   return (req, res, next) => {
-    console.log('Validating request body:', req.body);
-    console.log('Schema keys:', Object.keys(schema._flags?.unknown === false ? schema.describe().keys || {} : {}));
+    console.log('[VALIDATION] Request body:', JSON.stringify(req.body, null, 2));
     const { error } = schema.validate(req.body);
     if (error) {
-      console.log('Validation error:', error.details);
+      console.log('[VALIDATION ERROR] Details:', JSON.stringify(error.details, null, 2));
+      const errorMessages = error.details.map(d => `${d.path.join('.')}: ${d.message}`);
+      console.log('[VALIDATION ERROR] Messages:', errorMessages);
       return res.status(400).json({
         error: 'Validation Error',
-        details: error.details.map(d => d.message).join(', ')
+        details: errorMessages.join(', '),
+        fields: error.details.map(d => ({
+          field: d.path.join('.'),
+          message: d.message,
+          type: d.type
+        }))
       });
     }
     next();
@@ -52,8 +58,14 @@ const schemas = {
     tags: Joi.array().items(Joi.string().max(50)),
     confidence: Joi.number().integer().min(1).max(10).allow(null, ''),
     // Risk management fields
-    stopLoss: Joi.number().positive().allow(null, ''),
-    takeProfit: Joi.number().positive().allow(null, ''),
+    stopLoss: Joi.alternatives().try(
+      Joi.number().positive(),
+      Joi.valid(null, '')
+    ),
+    takeProfit: Joi.alternatives().try(
+      Joi.number().positive(),
+      Joi.valid(null, '')
+    ),
     // Options-specific fields
     underlyingSymbol: Joi.string().max(10).allow(null, ''),
     optionType: Joi.string().valid('call', 'put').allow(null, ''),
@@ -65,7 +77,15 @@ const schemas = {
     contractMonth: Joi.string().valid('JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC').allow(null, ''),
     contractYear: Joi.number().integer().min(2020).max(2100).allow(null, ''),
     tickSize: Joi.number().positive().allow(null, ''),
-    pointValue: Joi.number().positive().allow(null, '')
+    pointValue: Joi.number().positive().allow(null, ''),
+    // Executions array for multiple fills
+    executions: Joi.array().items(Joi.object({
+      action: Joi.string().valid('buy', 'sell').required(),
+      quantity: Joi.number().positive().required(),
+      price: Joi.number().positive().required(),
+      datetime: Joi.date().iso().required(),
+      fees: Joi.number().min(0).default(0)
+    })).optional()
   }),
 
   updateTrade: Joi.object({
@@ -91,8 +111,14 @@ const schemas = {
     tags: Joi.array().items(Joi.string().max(50)),
     confidence: Joi.number().integer().min(1).max(10).allow(null, ''),
     // Risk management fields
-    stopLoss: Joi.number().positive().allow(null, ''),
-    takeProfit: Joi.number().positive().allow(null, ''),
+    stopLoss: Joi.alternatives().try(
+      Joi.number().positive(),
+      Joi.valid(null, '')
+    ),
+    takeProfit: Joi.alternatives().try(
+      Joi.number().positive(),
+      Joi.valid(null, '')
+    ),
     // Options-specific fields
     underlyingSymbol: Joi.string().max(10).allow(null, ''),
     optionType: Joi.string().valid('call', 'put').allow(null, ''),
@@ -104,7 +130,15 @@ const schemas = {
     contractMonth: Joi.string().valid('JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC').allow(null, ''),
     contractYear: Joi.number().integer().min(2020).max(2100).allow(null, ''),
     tickSize: Joi.number().positive().allow(null, ''),
-    pointValue: Joi.number().positive().allow(null, '')
+    pointValue: Joi.number().positive().allow(null, ''),
+    // Executions array for multiple fills
+    executions: Joi.array().items(Joi.object({
+      action: Joi.string().valid('buy', 'sell').required(),
+      quantity: Joi.number().positive().required(),
+      price: Joi.number().positive().required(),
+      datetime: Joi.date().iso().required(),
+      fees: Joi.number().min(0).default(0)
+    })).optional()
   }).min(1),
 
   updateSettings: Joi.object({

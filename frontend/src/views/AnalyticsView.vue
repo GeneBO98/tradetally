@@ -458,7 +458,7 @@
         </div>
 
       <!-- Overview Stats -->
-      <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-5">
+      <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-6">
         <div class="card">
           <div class="card-body">
             <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
@@ -514,6 +514,17 @@
             </dt>
             <dd class="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">
               {{ overview.profit_factor ?? '0.00' }}
+            </dd>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-body">
+            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
+              {{ calculationMethod }} R-Value
+            </dt>
+            <dd class="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">
+              {{ overview.avg_r_value !== undefined && overview.avg_r_value !== null ? Number(overview.avg_r_value).toFixed(2) : '0.00' }}
             </dd>
           </div>
         </div>
@@ -1374,7 +1385,8 @@ const overview = ref({
   total_commissions: 0,
   total_fees: 0,
   avg_mae: 'N/A',
-  avg_mfe: 'N/A'
+  avg_mfe: 'N/A',
+  avg_r_value: 0
 })
 
 const performanceData = ref([])

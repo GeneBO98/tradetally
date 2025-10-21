@@ -67,165 +67,199 @@
 
     <form @submit.prevent="handleSubmit" class="card">
       <div class="card-body space-y-6">
-        <!-- Symbol field standalone -->
-        <div>
-          <label for="symbol" class="label">Symbol *</label>
-          <input
-            id="symbol"
-            v-model="form.symbol"
-            type="text"
-            required
-            class="input uppercase"
-            placeholder="AAPL"
-          />
+        <!-- Trade Info Section -->
+        <div class="border-b border-gray-200 dark:border-gray-700 pb-6">
+          <h2 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Trade Information</h2>
+
+          <div class="grid grid-cols-1 gap-6 sm:grid-cols-3">
+            <div>
+              <label for="symbol" class="label">Symbol *</label>
+              <input
+                id="symbol"
+                v-model="form.symbol"
+                type="text"
+                required
+                class="input uppercase"
+                placeholder="AAPL"
+              />
+            </div>
+
+            <div>
+              <label for="side" class="label">Side *</label>
+              <select id="side" v-model="form.side" required class="input">
+                <option value="">Select side</option>
+                <option value="long">Long</option>
+                <option value="short">Short</option>
+              </select>
+            </div>
+
+            <div>
+              <label for="instrumentType" class="label">Instrument Type *</label>
+              <select id="instrumentType" v-model="form.instrumentType" required class="input">
+                <option value="stock">Stock</option>
+                <option value="option">Option</option>
+                <option value="future">Future</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 mt-6">
+            <div>
+              <label for="stopLoss" class="label">Stop Loss</label>
+              <input
+                id="stopLoss"
+                v-model="form.stopLoss"
+                type="number"
+                step="0.000001"
+                min="0"
+                class="input"
+                placeholder="0.000000"
+              />
+            </div>
+
+            <div>
+              <label for="takeProfit" class="label">Take Profit</label>
+              <input
+                id="takeProfit"
+                v-model="form.takeProfit"
+                type="number"
+                step="0.000001"
+                min="0"
+                class="input"
+                placeholder="0.000000"
+              />
+            </div>
+          </div>
         </div>
 
-        <!-- Two column grid for remaining fields -->
+        <!-- Executions Section -->
+        <div class="border-b border-gray-200 dark:border-gray-700 pb-6">
+          <div class="flex items-center justify-between mb-4">
+            <div>
+              <h2 class="text-lg font-medium text-gray-900 dark:text-white">Executions</h2>
+              <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                Add each individual fill/execution for this trade
+              </p>
+            </div>
+            <button
+              type="button"
+              @click="addExecution"
+              class="px-4 py-2 bg-primary-600 text-white rounded hover:bg-primary-700 text-sm font-medium"
+            >
+              + Add Execution
+            </button>
+          </div>
+
+          <div v-if="form.executions && form.executions.length > 0" class="space-y-4">
+            <div
+              v-for="(execution, index) in form.executions"
+              :key="index"
+              class="border border-gray-300 dark:border-gray-600 rounded-lg p-4 bg-gray-50 dark:bg-gray-800"
+            >
+              <div class="flex items-center justify-between mb-3">
+                <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Execution {{ index + 1 }}
+                </h3>
+                <button
+                  type="button"
+                  @click="removeExecution(index)"
+                  class="text-sm text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                >
+                  Remove
+                </button>
+              </div>
+
+              <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <div>
+                  <label :for="`exec-datetime-${index}`" class="label">Date/Time *</label>
+                  <input
+                    :id="`exec-datetime-${index}`"
+                    v-model="execution.datetime"
+                    type="datetime-local"
+                    required
+                    class="input"
+                  />
+                </div>
+
+                <div>
+                  <label :for="`exec-action-${index}`" class="label">Action *</label>
+                  <select
+                    :id="`exec-action-${index}`"
+                    v-model="execution.action"
+                    required
+                    class="input"
+                  >
+                    <option value="">Select</option>
+                    <option value="buy">Buy</option>
+                    <option value="sell">Sell</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label :for="`exec-quantity-${index}`" class="label">Quantity *</label>
+                  <input
+                    :id="`exec-quantity-${index}`"
+                    v-model="execution.quantity"
+                    type="number"
+                    min="0.0001"
+                    step="0.0001"
+                    required
+                    class="input"
+                    placeholder="100"
+                  />
+                </div>
+
+                <div>
+                  <label :for="`exec-price-${index}`" class="label">Price *</label>
+                  <input
+                    :id="`exec-price-${index}`"
+                    v-model="execution.price"
+                    type="number"
+                    step="0.000001"
+                    min="0"
+                    required
+                    class="input"
+                    placeholder="0.00"
+                  />
+                </div>
+
+                <div>
+                  <label :for="`exec-commission-${index}`" class="label">Commission</label>
+                  <input
+                    :id="`exec-commission-${index}`"
+                    v-model="execution.commission"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    class="input"
+                    placeholder="0.00"
+                  />
+                </div>
+
+                <div>
+                  <label :for="`exec-fees-${index}`" class="label">Fees</label>
+                  <input
+                    :id="`exec-fees-${index}`"
+                    v-model="execution.fees"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    class="input"
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div v-else class="text-center py-8 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
+            <p class="text-gray-500 dark:text-gray-400 mb-2">No executions added yet</p>
+            <p class="text-sm text-gray-400 dark:text-gray-500">Click "Add Execution" to add your first fill</p>
+          </div>
+        </div>
+
+        <!-- Additional Fields Section -->
         <div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
-          <div>
-            <label for="entryTime" class="label">Entry Time *</label>
-            <input
-              id="entryTime"
-              v-model="form.entryTime"
-              type="datetime-local"
-              required
-              class="input"
-            />
-          </div>
-
-          <div>
-            <label for="exitTime" class="label">Exit Time</label>
-            <input
-              id="exitTime"
-              v-model="form.exitTime"
-              type="datetime-local"
-              class="input"
-            />
-          </div>
-
-          <div>
-            <label for="entryPrice" class="label">Entry Price *</label>
-            <input
-              id="entryPrice"
-              v-model="form.entryPrice"
-              type="number"
-              step="0.000001"
-              min="0"
-              required
-              class="input"
-              placeholder="0.000000"
-            />
-          </div>
-
-          <div>
-            <label for="exitPrice" class="label">Exit Price</label>
-            <input
-              id="exitPrice"
-              v-model="form.exitPrice"
-              type="number"
-              step="0.000001"
-              min="0"
-              class="input"
-              placeholder="0.000000"
-            />
-          </div>
-
-          <div>
-            <label for="stopLoss" class="label">Stop Loss</label>
-            <input
-              id="stopLoss"
-              v-model="form.stopLoss"
-              type="number"
-              step="0.000001"
-              min="0"
-              class="input"
-              placeholder="0.000000"
-            />
-          </div>
-
-          <div>
-            <label for="takeProfit" class="label">Take Profit</label>
-            <input
-              id="takeProfit"
-              v-model="form.takeProfit"
-              type="number"
-              step="0.000001"
-              min="0"
-              class="input"
-              placeholder="0.000000"
-            />
-          </div>
-
-          <div>
-            <label for="quantity" class="label">Quantity *</label>
-            <input
-              id="quantity"
-              v-model="form.quantity"
-              type="number"
-              min="0.0001"
-              step="0.0001"
-              required
-              class="input"
-              placeholder="100"
-            />
-          </div>
-
-          <div>
-            <label for="side" class="label">Side *</label>
-            <select id="side" v-model="form.side" required class="input">
-              <option value="">Select side</option>
-              <option value="long">Long</option>
-              <option value="short">Short</option>
-            </select>
-          </div>
-
-          <div>
-            <label for="instrumentType" class="label">Instrument Type *</label>
-            <select id="instrumentType" v-model="form.instrumentType" required class="input">
-              <option value="stock">Stock</option>
-              <option value="option">Option</option>
-              <option value="future">Future</option>
-            </select>
-          </div>
-
-          <div>
-            <label for="entryCommission" class="label">Entry Commission</label>
-            <input
-              id="entryCommission"
-              v-model="form.entryCommission"
-              type="number"
-              step="0.000001"
-              min="0"
-              class="input"
-              placeholder="0.000000"
-            />
-          </div>
-
-          <div>
-            <label for="exitCommission" class="label">Exit Commission</label>
-            <input
-              id="exitCommission"
-              v-model="form.exitCommission"
-              type="number"
-              step="0.000001"
-              min="0"
-              class="input"
-              placeholder="0.000000"
-            />
-          </div>
-
-          <div>
-            <label for="fees" class="label">Fees</label>
-            <input
-              id="fees"
-              v-model="form.fees"
-              type="number"
-              step="0.000001"
-              min="0"
-              class="input"
-              placeholder="0.000000"
-            />
-          </div>
 
           <div>
             <label for="mae" class="label">MAE (Max Adverse Excursion)</label>
@@ -663,7 +697,9 @@ const form = ref({
   contractMonth: '',
   contractYear: null,
   tickSize: null,
-  pointValue: null
+  pointValue: null,
+  // Executions array for multiple fills
+  executions: []
 })
 
 const tagsInput = ref('')
@@ -726,6 +762,12 @@ function formatDateOnly(date) {
 // Convert month number (01-12) to month abbreviation (JAN-DEC)
 function convertMonthNumberToAbbreviation(monthNumber) {
   if (!monthNumber) return ''
+
+  // If it's already an abbreviation, return it
+  const validAbbreviations = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC']
+  if (validAbbreviations.includes(monthNumber.toString().toUpperCase())) {
+    return monthNumber.toString().toUpperCase()
+  }
 
   const monthMap = {
     '01': 'JAN', '1': 'JAN',
@@ -798,9 +840,20 @@ async function loadTrade() {
       contractMonth: convertMonthNumberToAbbreviation(trade.contract_month || trade.contractMonth) || '',
       contractYear: trade.contract_year || trade.contractYear || null,
       tickSize: trade.tick_size || trade.tickSize || null,
-      pointValue: trade.point_value || trade.pointValue || null
+      pointValue: trade.point_value || trade.pointValue || null,
+      // Executions
+      executions: trade.executions && Array.isArray(trade.executions) && trade.executions.length > 0
+        ? trade.executions.map(exec => ({
+            action: exec.action || exec.side || '',
+            quantity: exec.quantity || '',
+            price: exec.price || '',
+            datetime: exec.datetime ? formatDateTimeLocal(exec.datetime) : '',
+            commission: exec.commission || 0,
+            fees: exec.fees || 0
+          }))
+        : []
     }
-    
+
     tagsInput.value = trade.tags ? trade.tags.join(', ') : ''
     currentImages.value = trade.attachments || []
   } catch (err) {
@@ -831,19 +884,80 @@ async function handleSubmit() {
       }
     }
 
+    // Calculate values from executions if they exist
+    let calculatedQuantity = parseFloat(form.value.quantity) || 0
+    let calculatedEntryTime = form.value.entryTime
+    let calculatedExitTime = form.value.exitTime
+    let calculatedEntryPrice = parseFloat(form.value.entryPrice) || 0
+    let calculatedExitPrice = form.value.exitPrice ? parseFloat(form.value.exitPrice) : null
+    let calculatedCommission = (parseFloat(form.value.entryCommission) || 0) + (parseFloat(form.value.exitCommission) || 0)
+    let calculatedFees = parseFloat(form.value.fees) || 0
+
+    const processedExecutions = form.value.executions && form.value.executions.length > 0
+      ? form.value.executions.map(exec => ({
+          action: exec.action,
+          quantity: parseFloat(exec.quantity),
+          price: parseFloat(exec.price),
+          datetime: exec.datetime,
+          commission: parseFloat(exec.commission) || 0,
+          fees: parseFloat(exec.fees) || 0
+        }))
+      : undefined
+
+    // If we have executions, calculate summary values from them
+    if (processedExecutions && processedExecutions.length > 0) {
+      // Total quantity is sum of ALL execution quantities (not net position)
+      calculatedQuantity = processedExecutions.reduce((sum, exec) => sum + exec.quantity, 0)
+
+      // Total commission and fees from all executions
+      calculatedCommission = processedExecutions.reduce((sum, exec) => sum + (exec.commission || 0), 0)
+      calculatedFees = processedExecutions.reduce((sum, exec) => sum + (exec.fees || 0), 0)
+
+      // Entry time is earliest execution
+      const sortedByTime = [...processedExecutions].sort((a, b) =>
+        new Date(a.datetime) - new Date(b.datetime)
+      )
+      calculatedEntryTime = sortedByTime[0].datetime
+
+      // Exit time is latest execution (if there are sell executions)
+      const hasSellExecution = processedExecutions.some(e => e.action === 'sell')
+      if (hasSellExecution) {
+        calculatedExitTime = sortedByTime[sortedByTime.length - 1].datetime
+      }
+
+      // Entry price is weighted average of buy executions
+      const buyExecutions = processedExecutions.filter(e => e.action === 'buy')
+      if (buyExecutions.length > 0) {
+        const totalBuyValue = buyExecutions.reduce((sum, exec) => sum + (exec.price * exec.quantity), 0)
+        const totalBuyQty = buyExecutions.reduce((sum, exec) => sum + exec.quantity, 0)
+        calculatedEntryPrice = totalBuyValue / totalBuyQty
+      }
+
+      // Exit price is weighted average of sell executions
+      const sellExecutions = processedExecutions.filter(e => e.action === 'sell')
+      if (sellExecutions.length > 0) {
+        const totalSellValue = sellExecutions.reduce((sum, exec) => sum + (exec.price * exec.quantity), 0)
+        const totalSellQty = sellExecutions.reduce((sum, exec) => sum + exec.quantity, 0)
+        calculatedExitPrice = totalSellValue / totalSellQty
+      }
+    }
+
     const tradeData = {
       ...form.value,
-      entryPrice: parseFloat(form.value.entryPrice),
-      exitPrice: form.value.exitPrice ? parseFloat(form.value.exitPrice) : null,
-      quantity: parseInt(form.value.quantity),
-      entryCommission: parseFloat(form.value.entryCommission) || 0,
-      exitCommission: parseFloat(form.value.exitCommission) || 0,
-      commission: (parseFloat(form.value.entryCommission) || 0) + (parseFloat(form.value.exitCommission) || 0),
-      fees: parseFloat(form.value.fees) || 0,
+      entryTime: calculatedEntryTime,
+      exitTime: calculatedExitTime || null,
+      entryPrice: calculatedEntryPrice,
+      exitPrice: calculatedExitPrice,
+      quantity: calculatedQuantity,
+      commission: calculatedCommission,
+      fees: calculatedFees,
       mae: form.value.mae ? parseFloat(form.value.mae) : null,
       mfe: form.value.mfe ? parseFloat(form.value.mfe) : null,
       confidence: parseInt(form.value.confidence) || 5,
       tags: tagsInput.value ? tagsInput.value.split(',').map(tag => tag.trim()).filter(Boolean) : [],
+      // Risk management fields
+      stopLoss: form.value.stopLoss && form.value.stopLoss !== '' ? parseFloat(form.value.stopLoss) : null,
+      takeProfit: form.value.takeProfit && form.value.takeProfit !== '' ? parseFloat(form.value.takeProfit) : null,
       // Options-specific fields (only send if option type)
       underlyingSymbol: form.value.instrumentType === 'option' ? form.value.underlyingSymbol : null,
       optionType: form.value.instrumentType === 'option' ? form.value.optionType : null,
@@ -852,11 +966,34 @@ async function handleSubmit() {
       contractSize: form.value.instrumentType === 'option' && form.value.contractSize ? parseInt(form.value.contractSize) : null,
       // Futures-specific fields (only send if future type)
       underlyingAsset: form.value.instrumentType === 'future' ? form.value.underlyingAsset : null,
-      contractMonth: form.value.instrumentType === 'future' ? convertMonthAbbreviationToNumber(form.value.contractMonth) : null,
+      contractMonth: form.value.instrumentType === 'future' && form.value.contractMonth ? form.value.contractMonth : null,
       contractYear: form.value.instrumentType === 'future' && form.value.contractYear ? parseInt(form.value.contractYear) : null,
       tickSize: form.value.instrumentType === 'future' && form.value.tickSize ? parseFloat(form.value.tickSize) : null,
-      pointValue: form.value.instrumentType === 'future' && form.value.pointValue ? parseFloat(form.value.pointValue) : null
+      pointValue: form.value.instrumentType === 'future' && form.value.pointValue ? parseFloat(form.value.pointValue) : null,
+      // Executions array
+      executions: processedExecutions
     }
+
+    // Remove any snake_case database fields that might have been spread from form.value
+    delete tradeData.contract_month
+    delete tradeData.contract_year
+    delete tradeData.underlying_asset
+    delete tradeData.tick_size
+    delete tradeData.point_value
+    delete tradeData.stop_loss
+    delete tradeData.take_profit
+    delete tradeData.entry_time
+    delete tradeData.exit_time
+    delete tradeData.entry_price
+    delete tradeData.exit_price
+    delete tradeData.underlying_symbol
+    delete tradeData.option_type
+    delete tradeData.strike_price
+    delete tradeData.expiration_date
+    delete tradeData.contract_size
+
+    console.log('[TRADE FORM] form.value.contractMonth:', form.value.contractMonth)
+    console.log('[TRADE FORM] Submitting trade data:', JSON.stringify(tradeData, null, 2))
 
     if (isEdit.value) {
       await tradesStore.updateTrade(route.params.id, tradeData)
@@ -1123,6 +1260,22 @@ function handleSetupInputBlur() {
   if (!form.value.setup.trim()) {
     showSetupInput.value = false
   }
+}
+
+function addExecution() {
+  const now = new Date()
+  form.value.executions.push({
+    action: '',
+    quantity: '',
+    price: '',
+    datetime: formatDateTimeLocal(now),
+    commission: 0,
+    fees: 0
+  })
+}
+
+function removeExecution(index) {
+  form.value.executions.splice(index, 1)
 }
 
 onMounted(async () => {

@@ -895,12 +895,15 @@ class Trade {
     }
 
     // Recalculate R-value if any of the relevant fields are updated
-    if (updates.entryPrice || updates.exitPrice || updates.stopLoss || updates.takeProfit || updates.side) {
+    if (updates.entryPrice !== undefined || updates.exitPrice !== undefined ||
+        updates.stopLoss !== undefined || updates.takeProfit !== undefined || updates.side) {
       const entryPrice = updates.entryPrice || currentTrade.entry_price;
       const exitPrice = updates.exitPrice !== undefined ? updates.exitPrice : currentTrade.exit_price;
       const stopLoss = updates.stopLoss !== undefined ? updates.stopLoss : currentTrade.stop_loss;
       const takeProfit = updates.takeProfit !== undefined ? updates.takeProfit : currentTrade.take_profit;
       const side = updates.side || currentTrade.side;
+
+      console.log('[R-VALUE CALC] Inputs:', { entryPrice, stopLoss, takeProfit, exitPrice, side });
 
       // Calculate R-value if stop loss is provided
       // If take profit is not provided but exit price exists, use exit price as take profit
@@ -908,6 +911,8 @@ class Trade {
       const rValue = (stopLoss && effectiveTakeProfit && entryPrice && side)
         ? this.calculateRValue(entryPrice, stopLoss, effectiveTakeProfit, side)
         : null;
+
+      console.log('[R-VALUE CALC] Result:', rValue);
 
       fields.push(`r_value = $${paramCount}`);
       values.push(rValue);
@@ -1152,11 +1157,13 @@ class Trade {
   static calculateRValue(entryPrice, stopLoss, takeProfit, side) {
     // Validate inputs
     if (!entryPrice || !stopLoss || !takeProfit || !side) {
+      console.warn('[R-VALUE] Missing required inputs:', { entryPrice, stopLoss, takeProfit, side });
       return null;
     }
 
     // Ensure all values are positive
     if (entryPrice <= 0 || stopLoss <= 0 || takeProfit <= 0) {
+      console.warn('[R-VALUE] All values must be positive:', { entryPrice, stopLoss, takeProfit });
       return null;
     }
 
@@ -1167,33 +1174,35 @@ class Trade {
       // For long positions:
       // Risk = entry price - stop loss (how much we can lose)
       // Reward = take profit - entry price (how much we can gain)
-      risk = entryPrice - stopLoss;
-      reward = takeProfit - entryPrice;
+      risk = Math.abs(entryPrice - stopLoss);
+      reward = Math.abs(takeProfit - entryPrice);
 
-      // Validate that stop loss is below entry and take profit is above entry
+      // Typical validation: stop loss below entry, take profit above entry
+      // But we'll use abs() to handle edge cases
       if (stopLoss >= entryPrice) {
-        console.warn('[R-VALUE] Invalid long position: stop loss must be below entry price');
-        return null;
+        console.warn('[R-VALUE] Warning: stop loss should typically be below entry for long positions');
+        // Don't return null, calculate anyway with absolute values
       }
       if (takeProfit <= entryPrice) {
-        console.warn('[R-VALUE] Invalid long position: take profit must be above entry price');
-        return null;
+        console.warn('[R-VALUE] Warning: take profit should typically be above entry for long positions');
+        // Don't return null, calculate anyway with absolute values
       }
     } else if (side === 'short') {
       // For short positions:
       // Risk = stop loss - entry price (how much we can lose)
       // Reward = entry price - take profit (how much we can gain)
-      risk = stopLoss - entryPrice;
-      reward = entryPrice - takeProfit;
+      risk = Math.abs(stopLoss - entryPrice);
+      reward = Math.abs(entryPrice - takeProfit);
 
-      // Validate that stop loss is above entry and take profit is below entry
+      // Typical validation: stop loss above entry, take profit below entry
+      // But we'll use abs() to handle edge cases
       if (stopLoss <= entryPrice) {
-        console.warn('[R-VALUE] Invalid short position: stop loss must be above entry price');
-        return null;
+        console.warn('[R-VALUE] Warning: stop loss should typically be above entry for short positions');
+        // Don't return null, calculate anyway with absolute values
       }
       if (takeProfit >= entryPrice) {
-        console.warn('[R-VALUE] Invalid short position: take profit must be below entry price');
-        return null;
+        console.warn('[R-VALUE] Warning: take profit should typically be below entry for short positions');
+        // Don't return null, calculate anyway with absolute values
       }
     } else {
       console.warn('[R-VALUE] Invalid side value:', side);
@@ -1210,6 +1219,7 @@ class Trade {
 
     // Guard against NaN, Infinity, or negative values
     if (!isFinite(rValue) || rValue < 0) {
+      console.warn('[R-VALUE] Invalid calculated R-value:', rValue);
       return null;
     }
 
@@ -1588,20 +1598,21 @@ class Trade {
           pnl_percent as avg_return_pct,
           trade_date as first_trade_date,
           entry_time as first_entry,
-          COALESCE(exit_time, entry_time) as last_exit
+          COALESCE(exit_time, entry_time) as last_exit,
+          r_value
         FROM trades t
         ${whereClause}
           AND exit_price IS NOT NULL
           AND pnl IS NOT NULL
       ),
       trade_stats AS (
-        SELECT 
+        SELECT
           COUNT(*)::integer as total_trades,
           COUNT(*) FILTER (WHERE trade_pnl > 0)::integer as winning_trades,
           COUNT(*) FILTER (WHERE trade_pnl < 0)::integer as losing_trades,
           COUNT(*) FILTER (WHERE trade_pnl = 0)::integer as breakeven_trades,
           COALESCE(SUM(trade_pnl), 0)::numeric as total_pnl,
-          ${useMedian 
+          ${useMedian
             ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY trade_pnl), 0)::numeric as avg_pnl'
             : 'COALESCE(AVG(trade_pnl), 0)::numeric as avg_pnl'
           },
@@ -1621,6 +1632,10 @@ class Trade {
           ${useMedian
             ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY avg_return_pct) FILTER (WHERE avg_return_pct IS NOT NULL), 0)::numeric as avg_return_pct'
             : 'COALESCE(AVG(avg_return_pct) FILTER (WHERE avg_return_pct IS NOT NULL), 0)::numeric as avg_return_pct'
+          },
+          ${useMedian
+            ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY r_value) FILTER (WHERE r_value IS NOT NULL), 0)::numeric as avg_r_value'
+            : 'COALESCE(AVG(r_value) FILTER (WHERE r_value IS NOT NULL), 0)::numeric as avg_r_value'
           },
           COALESCE(STDDEV(trade_pnl), 0)::numeric as pnl_stddev,
           COUNT(DISTINCT symbol)::integer as symbols_traded,
@@ -1714,7 +1729,8 @@ class Trade {
       totalTrades: analytics.total_trades,
       winningTrades: analytics.winning_trades,
       losingTrades: analytics.losing_trades,
-      totalPnL: analytics.total_pnl
+      totalPnL: analytics.total_pnl,
+      avgRValue: analytics.avg_r_value
     });
     console.log('Drawdown debug info:', {
       max_drawdown: analytics.max_drawdown,
@@ -1898,7 +1914,8 @@ class Trade {
         maxDailyLoss: parseFloat(analytics.max_daily_loss) || 0,
         symbolsTraded: parseInt(analytics.symbols_traded) || 0,
         tradingDays: parseInt(analytics.trading_days) || 0,
-        avgReturnPercent: parseFloat(analytics.avg_return_pct) || 0
+        avgReturnPercent: parseFloat(analytics.avg_return_pct) || 0,
+        avgRValue: parseFloat(analytics.avg_r_value) || 0
       },
       performanceBySymbol: symbolResult.rows,
       dailyPnL: dailyPnLResult.rows,

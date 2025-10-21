@@ -1097,16 +1097,52 @@ const tradeController = {
 
       // Get open trades
       console.log('Fetching open trades...');
-      const openTrades = await Trade.findByUser(req.user.id, { 
+      const openTrades = await Trade.findByUser(req.user.id, {
         status: 'open',
         limit: 200
       });
-      
+
       console.log(`Found ${openTrades.length} open trades`);
 
       if (openTrades.length === 0) {
         return res.json({ positions: [] });
       }
+
+      // Parse executions JSON for each trade
+      openTrades.forEach(trade => {
+        if (trade.executions) {
+          try {
+            trade.executions = typeof trade.executions === 'string'
+              ? JSON.parse(trade.executions)
+              : trade.executions;
+          } catch (error) {
+            console.warn(`Failed to parse executions for trade ${trade.id}:`, error.message);
+            trade.executions = [];
+          }
+        }
+      });
+
+      // Helper function to calculate net position from executions
+      const calculateNetPosition = (trade) => {
+        // If trade has executions, calculate net position from them
+        if (trade.executions && Array.isArray(trade.executions) && trade.executions.length > 0) {
+          let netPosition = 0;
+          trade.executions.forEach(execution => {
+            const qty = parseFloat(execution.quantity) || 0;
+            const action = execution.action || execution.side || 'unknown';
+
+            if (action === 'buy' || action === 'long') {
+              netPosition += qty;
+            } else if (action === 'sell' || action === 'short') {
+              netPosition -= qty;
+            }
+          });
+          return netPosition;
+        }
+
+        // Fallback to trade.quantity if no executions
+        return trade.side === 'long' ? trade.quantity : -trade.quantity;
+      };
 
       // Group trades by symbol and calculate net position
       const positionMap = {};
@@ -1126,15 +1162,15 @@ const tradeController = {
 
         positionMap[trade.symbol].trades.push(trade);
 
-        // Calculate net position considering trade direction
-        const quantity = trade.side === 'long' ? trade.quantity : -trade.quantity;
-        positionMap[trade.symbol].totalQuantity += quantity;
+        // Calculate net position considering executions or trade direction
+        const netPosition = calculateNetPosition(trade);
+        positionMap[trade.symbol].totalQuantity += netPosition;
 
         // For cost calculation, account for contract size (options/futures multiplier)
         const contractMultiplier = trade.instrument_type === 'option' || trade.instrument_type === 'future'
           ? (trade.contract_size || 100)
           : 1;
-        positionMap[trade.symbol].totalCost += Math.abs(quantity) * trade.entry_price * contractMultiplier;
+        positionMap[trade.symbol].totalCost += Math.abs(netPosition) * trade.entry_price * contractMultiplier;
       });
 
       // Calculate average prices and determine position side

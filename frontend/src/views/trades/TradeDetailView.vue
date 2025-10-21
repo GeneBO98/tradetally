@@ -101,7 +101,9 @@
                 </div>
                 <div>
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Quantity</dt>
-                  <dd class="mt-1 text-sm text-gray-900 dark:text-white">{{ formatQuantity(trade.quantity) }}</dd>
+                  <dd class="mt-1 text-sm text-gray-900 dark:text-white">
+                    {{ formatQuantity(trade.executions && trade.executions.length > 0 ? executionSummary.totalShareQuantity : trade.quantity) }}
+                  </dd>
                 </div>
                 <div>
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Status</dt>
@@ -747,6 +749,7 @@ const processedExecutions = computed(() => {
 const executionSummary = computed(() => {
   if (!trade.value?.executions || !Array.isArray(trade.value.executions)) return {
     totalVolume: 0,
+    totalShareQuantity: 0,
     totalFees: 0,
     finalPosition: 0
   }
@@ -756,6 +759,7 @@ const executionSummary = computed(() => {
   const contractSize = isOption ? (trade.value.contract_size || 100) : 1
 
   let totalVolume = 0
+  let totalShareQuantity = 0
   let totalFees = 0
   let finalPosition = 0
 
@@ -766,20 +770,22 @@ const executionSummary = computed(() => {
     const price = parseFloat(execution.price) || parseFloat(execution.entry_price) || 0  // Use price from execution, fallback to entry_price from trade record
     const fees = (parseFloat(execution.commission) || 0) + (parseFloat(execution.fees) || 0)
     const action = execution.action || execution.side || 'unknown'  // Use action from execution, fallback to side from trade record
-    
+
     // For options, include contract multiplier in volume calculation
     totalVolume += isOption ? (quantity * price * contractSize) : (quantity * price)
+    totalShareQuantity += Math.abs(quantity)  // Sum of all absolute quantities
     totalFees += fees
-    
+
     if (action === 'buy' || action === 'long') {
       finalPosition += quantity
     } else if (action === 'sell' || action === 'short') {
       finalPosition -= quantity
     }
   })
-  
+
   return {
     totalVolume,
+    totalShareQuantity,
     totalFees,
     finalPosition
   }

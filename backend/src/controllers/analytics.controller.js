@@ -315,7 +315,7 @@ const analyticsController = {
       const overviewQuery = `
         WITH completed_trades AS (
             -- Each trade with both entry and exit price is a complete round trip
-            SELECT 
+            SELECT
                 *
             FROM trades
             WHERE user_id = $1 ${filterConditions}
@@ -324,18 +324,18 @@ const analyticsController = {
         ),
         individual_trades AS (
             -- Get best/worst individual executions
-            SELECT 
+            SELECT
                 COALESCE(MAX(pnl), 0) as individual_best_trade,
                 COALESCE(MIN(pnl), 0) as individual_worst_trade
             FROM completed_trades
         )
-        SELECT 
+        SELECT
           (SELECT COUNT(*) FROM completed_trades)::integer as total_trades,
           (SELECT COUNT(*) FROM completed_trades WHERE pnl > 0)::integer as winning_trades,
           (SELECT COUNT(*) FROM completed_trades WHERE pnl < 0)::integer as losing_trades,
           (SELECT COUNT(*) FROM completed_trades WHERE pnl = 0)::integer as breakeven_trades,
           COALESCE(SUM(pnl), 0)::numeric as total_pnl,
-          ${useMedian 
+          ${useMedian
             ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl), 0)::numeric as avg_pnl'
             : 'COALESCE(AVG(pnl), 0)::numeric as avg_pnl'
           },
@@ -346,6 +346,10 @@ const analyticsController = {
           ${useMedian
             ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE pnl < 0), 0)::numeric as avg_loss'
             : 'COALESCE(AVG(pnl) FILTER (WHERE pnl < 0), 0)::numeric as avg_loss'
+          },
+          ${useMedian
+            ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY r_value) FILTER (WHERE r_value IS NOT NULL), 0)::numeric as avg_r_value'
+            : 'COALESCE(AVG(r_value) FILTER (WHERE r_value IS NOT NULL), 0)::numeric as avg_r_value'
           },
           -- Best/worst trades
           (SELECT individual_best_trade FROM individual_trades) as best_trade,
@@ -400,13 +404,14 @@ const analyticsController = {
       overview.losing_trades = parseInt(overview.losing_trades) || 0;
       overview.breakeven_trades = parseInt(overview.breakeven_trades) || 0;
       overview.total_executions = parseInt(overview.total_executions) || 0;
-      
+
       overview.total_pnl = parseFloat(overview.total_pnl) || 0;
       overview.avg_pnl = parseFloat(overview.avg_pnl) || 0;
       overview.avg_win = parseFloat(overview.avg_win) || 0;
       overview.avg_loss = parseFloat(overview.avg_loss) || 0;
       overview.best_trade = parseFloat(overview.best_trade) || 0;
       overview.worst_trade = parseFloat(overview.worst_trade) || 0;
+      overview.avg_r_value = parseFloat(overview.avg_r_value) || 0;
 
       overview.win_rate = overview.total_trades > 0 
         ? (overview.winning_trades / overview.total_trades * 100).toFixed(2)
