@@ -84,6 +84,7 @@ const schemas = {
       quantity: Joi.number().positive().required(),
       price: Joi.number().positive().required(),
       datetime: Joi.date().iso().required(),
+      commission: Joi.number().min(0).default(0),
       fees: Joi.number().min(0).default(0)
     })).optional()
   }),
@@ -137,6 +138,7 @@ const schemas = {
       quantity: Joi.number().positive().required(),
       price: Joi.number().positive().required(),
       datetime: Joi.date().iso().required(),
+      commission: Joi.number().min(0).default(0),
       fees: Joi.number().min(0).default(0)
     })).optional()
   }).min(1),
