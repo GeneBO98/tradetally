@@ -204,6 +204,17 @@ const tradeController = {
         }
       }
 
+      // Normalize executions to ensure 'action' field exists
+      if (trade.executions && Array.isArray(trade.executions)) {
+        trade.executions = trade.executions.map(exec => {
+          // If execution has 'side' but not 'action', copy it to 'action'
+          if (!exec.action && exec.side) {
+            exec.action = exec.side;
+          }
+          return exec;
+        });
+      }
+
       // Map snake_case database fields to camelCase for API response
       // This ensures frontend compatibility
       if (trade.contract_month !== undefined) trade.contractMonth = trade.contract_month;

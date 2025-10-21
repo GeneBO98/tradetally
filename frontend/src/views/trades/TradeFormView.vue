@@ -843,14 +843,22 @@ async function loadTrade() {
       pointValue: trade.point_value || trade.pointValue || null,
       // Executions
       executions: trade.executions && Array.isArray(trade.executions) && trade.executions.length > 0
-        ? trade.executions.map(exec => ({
-            action: exec.action || exec.side || '',
-            quantity: exec.quantity || '',
-            price: exec.price || '',
-            datetime: exec.datetime ? formatDateTimeLocal(exec.datetime) : '',
-            commission: exec.commission || 0,
-            fees: exec.fees || 0
-          }))
+        ? trade.executions.map(exec => {
+            // Handle both 'action' and 'side' fields, normalize to 'buy' or 'sell'
+            let action = exec.action || exec.side || ''
+            // Normalize action to 'buy' or 'sell'
+            if (action === 'long') action = 'buy'
+            if (action === 'short') action = 'sell'
+
+            return {
+              action: action,
+              quantity: exec.quantity || '',
+              price: exec.price || '',
+              datetime: exec.datetime ? formatDateTimeLocal(exec.datetime) : '',
+              commission: exec.commission || 0,
+              fees: exec.fees || 0
+            }
+          })
         : []
     }
 
@@ -943,7 +951,9 @@ async function handleSubmit() {
     }
 
     const tradeData = {
-      ...form.value,
+      symbol: form.value.symbol,
+      side: form.value.side,
+      instrumentType: form.value.instrumentType,
       entryTime: calculatedEntryTime,
       exitTime: calculatedExitTime || null,
       entryPrice: calculatedEntryPrice,
@@ -954,6 +964,11 @@ async function handleSubmit() {
       mae: form.value.mae ? parseFloat(form.value.mae) : null,
       mfe: form.value.mfe ? parseFloat(form.value.mfe) : null,
       confidence: parseInt(form.value.confidence) || 5,
+      broker: form.value.broker || '',
+      strategy: form.value.strategy || '',
+      setup: form.value.setup || '',
+      notes: form.value.notes || '',
+      isPublic: form.value.isPublic || false,
       tags: tagsInput.value ? tagsInput.value.split(',').map(tag => tag.trim()).filter(Boolean) : [],
       // Risk management fields
       stopLoss: form.value.stopLoss && form.value.stopLoss !== '' ? parseFloat(form.value.stopLoss) : null,
@@ -973,24 +988,6 @@ async function handleSubmit() {
       // Executions array
       executions: processedExecutions
     }
-
-    // Remove any snake_case database fields that might have been spread from form.value
-    delete tradeData.contract_month
-    delete tradeData.contract_year
-    delete tradeData.underlying_asset
-    delete tradeData.tick_size
-    delete tradeData.point_value
-    delete tradeData.stop_loss
-    delete tradeData.take_profit
-    delete tradeData.entry_time
-    delete tradeData.exit_time
-    delete tradeData.entry_price
-    delete tradeData.exit_price
-    delete tradeData.underlying_symbol
-    delete tradeData.option_type
-    delete tradeData.strike_price
-    delete tradeData.expiration_date
-    delete tradeData.contract_size
 
     console.log('[TRADE FORM] form.value.contractMonth:', form.value.contractMonth)
     console.log('[TRADE FORM] Submitting trade data:', JSON.stringify(tradeData, null, 2))
