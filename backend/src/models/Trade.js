@@ -64,11 +64,10 @@ class Trade {
     const pnl = providedPnL !== undefined ? providedPnL : this.calculatePnL(entryPrice, cleanExitPrice, quantity, side, commission, fees, instrumentType, contractSize, pointValue);
     const pnlPercent = providedPnLPercent !== undefined ? providedPnLPercent : this.calculatePnLPercent(entryPrice, cleanExitPrice, side, pnl, quantity, instrumentType, pointValue);
 
-    // Calculate R-value if stop loss is provided
-    // If take profit is not provided but exit price exists, use exit price as take profit
-    const effectiveTakeProfit = takeProfit || cleanExitPrice;
-    const rValue = (stopLoss && effectiveTakeProfit && entryPrice && side)
-      ? this.calculateRValue(entryPrice, stopLoss, effectiveTakeProfit, side)
+    // Calculate R-Multiple if stop loss and exit price are provided
+    // R-Multiple measures actual performance vs initial risk, so we need the actual exit price
+    const rValue = (stopLoss && cleanExitPrice && entryPrice && side)
+      ? this.calculateRValue(entryPrice, stopLoss, cleanExitPrice, side)
       : null;
 
     // Use exit date as trade date if available, otherwise use entry date
@@ -894,25 +893,24 @@ class Trade {
       paramCount++;
     }
 
-    // Recalculate R-value if any of the relevant fields are updated
+    // Recalculate R-Multiple if any of the relevant fields are updated
+    // Note: takeProfit does NOT affect R-Multiple calculation (only exitPrice matters)
     if (updates.entryPrice !== undefined || updates.exitPrice !== undefined ||
-        updates.stopLoss !== undefined || updates.takeProfit !== undefined || updates.side) {
+        updates.stopLoss !== undefined || updates.side) {
       const entryPrice = updates.entryPrice || currentTrade.entry_price;
       const exitPrice = updates.exitPrice !== undefined ? updates.exitPrice : currentTrade.exit_price;
       const stopLoss = updates.stopLoss !== undefined ? updates.stopLoss : currentTrade.stop_loss;
-      const takeProfit = updates.takeProfit !== undefined ? updates.takeProfit : currentTrade.take_profit;
       const side = updates.side || currentTrade.side;
 
-      console.log('[R-VALUE CALC] Inputs:', { entryPrice, stopLoss, takeProfit, exitPrice, side });
+      console.log('[R-MULTIPLE CALC] Inputs:', { entryPrice, stopLoss, exitPrice, side });
 
-      // Calculate R-value if stop loss is provided
-      // If take profit is not provided but exit price exists, use exit price as take profit
-      const effectiveTakeProfit = takeProfit || exitPrice;
-      const rValue = (stopLoss && effectiveTakeProfit && entryPrice && side)
-        ? this.calculateRValue(entryPrice, stopLoss, effectiveTakeProfit, side)
+      // Calculate R-Multiple if stop loss and exit price are provided
+      // R-Multiple measures actual performance vs initial risk
+      const rValue = (stopLoss && exitPrice && entryPrice && side)
+        ? this.calculateRValue(entryPrice, stopLoss, exitPrice, side)
         : null;
 
-      console.log('[R-VALUE CALC] Result:', rValue);
+      console.log('[R-MULTIPLE CALC] Result:', rValue);
 
       fields.push(`r_value = $${paramCount}`);
       values.push(rValue);
@@ -1139,92 +1137,93 @@ class Trade {
   }
 
   /**
-   * Calculate R-value (Risk/Reward Ratio)
-   * R-value represents the reward-to-risk ratio for a trade
+   * Calculate R-Multiple (Actual Risk/Reward achieved)
+   * R-Multiple represents the actual profit/loss in terms of initial risk (R)
    *
-   * For Long positions: R = (takeProfit - entryPrice) / (entryPrice - stopLoss)
-   * For Short positions: R = (entryPrice - takeProfit) / (stopLoss - entryPrice)
+   * R-Multiple = Actual P/L / Initial Risk
    *
-   * Example: An R-value of 2.0 means the potential reward is 2x the potential risk
-   *          (a 1:2 risk/reward ratio - risk $1 to potentially gain $2)
+   * For Long positions:
+   *   - Risk = entryPrice - stopLoss
+   *   - Actual P/L = exitPrice - entryPrice
+   *   - R-Multiple = (exitPrice - entryPrice) / (entryPrice - stopLoss)
+   *
+   * For Short positions:
+   *   - Risk = stopLoss - entryPrice
+   *   - Actual P/L = entryPrice - exitPrice
+   *   - R-Multiple = (entryPrice - exitPrice) / (stopLoss - entryPrice)
+   *
+   * Examples:
+   *   - R-Multiple of 2.0 means you made 2x your initial risk
+   *   - R-Multiple of -1.0 means you lost exactly your initial risk (stop loss hit)
+   *   - R-Multiple of 0 means you broke even at entry price
    *
    * @param {number} entryPrice - The entry price of the trade
    * @param {number} stopLoss - The stop loss price level
-   * @param {number} takeProfit - The take profit price level
+   * @param {number} exitPrice - The actual exit price of the trade
    * @param {string} side - The trade side ('long' or 'short')
-   * @returns {number|null} The calculated R-value, or null if inputs are invalid
+   * @returns {number|null} The calculated R-Multiple, or null if inputs are invalid
    */
-  static calculateRValue(entryPrice, stopLoss, takeProfit, side) {
-    // Validate inputs
-    if (!entryPrice || !stopLoss || !takeProfit || !side) {
-      console.warn('[R-VALUE] Missing required inputs:', { entryPrice, stopLoss, takeProfit, side });
+  static calculateRValue(entryPrice, stopLoss, exitPrice, side) {
+    // Validate inputs - exitPrice is required, not takeProfit
+    if (!entryPrice || !stopLoss || !exitPrice || !side) {
+      console.warn('[R-MULTIPLE] Missing required inputs:', { entryPrice, stopLoss, exitPrice, side });
       return null;
     }
 
     // Ensure all values are positive
-    if (entryPrice <= 0 || stopLoss <= 0 || takeProfit <= 0) {
-      console.warn('[R-VALUE] All values must be positive:', { entryPrice, stopLoss, takeProfit });
+    if (entryPrice <= 0 || stopLoss <= 0 || exitPrice <= 0) {
+      console.warn('[R-MULTIPLE] All values must be positive:', { entryPrice, stopLoss, exitPrice });
       return null;
     }
 
     let risk;
-    let reward;
+    let actualPL;
 
     if (side === 'long') {
       // For long positions:
-      // Risk = entry price - stop loss (how much we can lose)
-      // Reward = take profit - entry price (how much we can gain)
-      risk = Math.abs(entryPrice - stopLoss);
-      reward = Math.abs(takeProfit - entryPrice);
+      // Risk = entry price - stop loss (how much we risked)
+      // Actual P/L = exit price - entry price (what we actually made/lost)
+      risk = entryPrice - stopLoss;
+      actualPL = exitPrice - entryPrice;
 
-      // Typical validation: stop loss below entry, take profit above entry
-      // But we'll use abs() to handle edge cases
+      // Validation: stop loss should be below entry for long
       if (stopLoss >= entryPrice) {
-        console.warn('[R-VALUE] Warning: stop loss should typically be below entry for long positions');
-        // Don't return null, calculate anyway with absolute values
-      }
-      if (takeProfit <= entryPrice) {
-        console.warn('[R-VALUE] Warning: take profit should typically be above entry for long positions');
-        // Don't return null, calculate anyway with absolute values
+        console.warn('[R-MULTIPLE] Warning: stop loss should be below entry for long positions');
+        return null;
       }
     } else if (side === 'short') {
       // For short positions:
-      // Risk = stop loss - entry price (how much we can lose)
-      // Reward = entry price - take profit (how much we can gain)
-      risk = Math.abs(stopLoss - entryPrice);
-      reward = Math.abs(entryPrice - takeProfit);
+      // Risk = stop loss - entry price (how much we risked)
+      // Actual P/L = entry price - exit price (what we actually made/lost)
+      risk = stopLoss - entryPrice;
+      actualPL = entryPrice - exitPrice;
 
-      // Typical validation: stop loss above entry, take profit below entry
-      // But we'll use abs() to handle edge cases
+      // Validation: stop loss should be above entry for short
       if (stopLoss <= entryPrice) {
-        console.warn('[R-VALUE] Warning: stop loss should typically be above entry for short positions');
-        // Don't return null, calculate anyway with absolute values
-      }
-      if (takeProfit >= entryPrice) {
-        console.warn('[R-VALUE] Warning: take profit should typically be below entry for short positions');
-        // Don't return null, calculate anyway with absolute values
+        console.warn('[R-MULTIPLE] Warning: stop loss should be above entry for short positions');
+        return null;
       }
     } else {
-      console.warn('[R-VALUE] Invalid side value:', side);
+      console.warn('[R-MULTIPLE] Invalid side value:', side);
       return null;
     }
 
-    // Calculate R-value as reward/risk
+    // Calculate R-Multiple as actual P/L divided by risk
     if (risk <= 0) {
-      console.warn('[R-VALUE] Risk must be positive, got:', risk);
+      console.warn('[R-MULTIPLE] Risk must be positive, got:', risk);
       return null;
     }
 
-    const rValue = reward / risk;
+    const rMultiple = actualPL / risk;
 
-    // Guard against NaN, Infinity, or negative values
-    if (!isFinite(rValue) || rValue < 0) {
-      console.warn('[R-VALUE] Invalid calculated R-value:', rValue);
+    // Guard against NaN or Infinity (negative values are allowed)
+    if (!isFinite(rMultiple)) {
+      console.warn('[R-MULTIPLE] Invalid calculated R-Multiple:', rMultiple);
       return null;
     }
 
     // Round to 2 decimal places
-    return Math.round(rValue * 100) / 100;
+    return Math.round(rMultiple * 100) / 100;
   }
 
   static async getCountWithFilters(userId, filters = {}) {

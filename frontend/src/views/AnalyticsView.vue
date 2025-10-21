@@ -521,10 +521,10 @@
         <div class="card">
           <div class="card-body">
             <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
-              {{ calculationMethod }} R-Value
+              {{ calculationMethod }} R-Multiple
             </dt>
             <dd class="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">
-              {{ overview.avg_r_value !== undefined && overview.avg_r_value !== null ? Number(overview.avg_r_value).toFixed(2) : '0.00' }}
+              {{ overview.avg_r_value !== undefined && overview.avg_r_value !== null ? Number(overview.avg_r_value).toFixed(1) + 'R' : '0.0R' }}
             </dd>
           </div>
         </div>

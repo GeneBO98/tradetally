@@ -559,16 +559,20 @@ function applyTradeGrouping(trades, settings) {
 
       if (!currentGroup) {
         // Start new group - initialize with executionData array (matches Trade model)
+        // For grouped trades, each execution represents a complete round-trip sub-trade
         currentGroup = {
           ...trade,
           groupedTrades: 1,
           executionData: trade.executionData || trade.executions || [{
-            datetime: trade.entryTime,
-            price: trade.entryPrice,
+            entryTime: trade.entryTime,
+            entryPrice: trade.entryPrice,
+            exitTime: trade.exitTime,
+            exitPrice: trade.exitPrice,
             quantity: trade.quantity,
             side: trade.side,
             commission: trade.commission || 0,
-            fees: trade.fees || 0
+            fees: trade.fees || 0,
+            pnl: trade.profitLoss || 0
           }]
         };
         lastEntryTime = entryTime;
@@ -583,13 +587,17 @@ function applyTradeGrouping(trades, settings) {
           console.log(`  [GROUPING] Merging trade: ${timeSinceLastEntry.toFixed(1)}min gap (${trade.side} ${trade.quantity}@${trade.entryPrice})`);
 
           // Add this trade's execution to the executionData array
+          // For grouped trades, each execution represents a complete round-trip sub-trade
           const newExecution = {
-            datetime: trade.entryTime,
-            price: trade.entryPrice,
+            entryTime: trade.entryTime,
+            entryPrice: trade.entryPrice,
+            exitTime: trade.exitTime,
+            exitPrice: trade.exitPrice,
             quantity: trade.quantity,
             side: trade.side,
             commission: trade.commission || 0,
-            fees: trade.fees || 0
+            fees: trade.fees || 0,
+            pnl: trade.profitLoss || 0
           };
 
           // If trade has its own executionData/executions array, merge those; otherwise add as single execution
@@ -640,12 +648,15 @@ function applyTradeGrouping(trades, settings) {
             ...trade,
             groupedTrades: 1,
             executionData: trade.executionData || trade.executions || [{
-              datetime: trade.entryTime,
-              price: trade.entryPrice,
+              entryTime: trade.entryTime,
+              entryPrice: trade.entryPrice,
+              exitTime: trade.exitTime,
+              exitPrice: trade.exitPrice,
               quantity: trade.quantity,
               side: trade.side,
               commission: trade.commission || 0,
-              fees: trade.fees || 0
+              fees: trade.fees || 0,
+              pnl: trade.profitLoss || 0
             }]
           };
           lastEntryTime = entryTime;

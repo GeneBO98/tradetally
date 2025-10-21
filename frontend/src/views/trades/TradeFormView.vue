@@ -1,5 +1,5 @@
 <template>
-  <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  <div class="w-full max-w-[75%] mx-auto px-4 sm:px-6 lg:px-8 py-8">
     <div class="mb-8">
       <h1 class="text-2xl font-bold text-gray-900 dark:text-white">
         {{ isEdit ? 'Edit Trade' : 'Add New Trade' }}
@@ -169,7 +169,126 @@
                 </button>
               </div>
 
-              <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <!-- Check if this is a grouped trade execution (has entryPrice/exitPrice) or individual fill -->
+              <div v-if="execution.entryPrice !== undefined || execution.exitPrice !== undefined" class="space-y-4">
+                <!-- Grouped trade execution format -->
+                <!-- Row 1: Side and Quantity -->
+                <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div>
+                    <label :for="`exec-side-${index}`" class="label">Side *</label>
+                    <select
+                      :id="`exec-side-${index}`"
+                      v-model="execution.side"
+                      required
+                      class="input"
+                    >
+                      <option value="">Select</option>
+                      <option value="long">Long</option>
+                      <option value="short">Short</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label :for="`exec-quantity-${index}`" class="label">Quantity *</label>
+                    <input
+                      :id="`exec-quantity-${index}`"
+                      v-model="execution.quantity"
+                      type="number"
+                      min="0.0001"
+                      step="0.0001"
+                      required
+                      class="input"
+                      placeholder="100"
+                    />
+                  </div>
+                </div>
+
+                <!-- Row 2: Entry Price and Exit Price -->
+                <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div>
+                    <label :for="`exec-entry-price-${index}`" class="label">Entry Price *</label>
+                    <input
+                      :id="`exec-entry-price-${index}`"
+                      v-model="execution.entryPrice"
+                      type="number"
+                      step="0.000001"
+                      min="0"
+                      required
+                      class="input"
+                      placeholder="0.00"
+                    />
+                  </div>
+
+                  <div>
+                    <label :for="`exec-exit-price-${index}`" class="label">Exit Price</label>
+                    <input
+                      :id="`exec-exit-price-${index}`"
+                      v-model="execution.exitPrice"
+                      type="number"
+                      step="0.000001"
+                      min="0"
+                      class="input"
+                      placeholder="0.00"
+                    />
+                  </div>
+                </div>
+
+                <!-- Row 3: Entry Time and Exit Time -->
+                <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div>
+                    <label :for="`exec-entry-time-${index}`" class="label">Entry Time *</label>
+                    <input
+                      :id="`exec-entry-time-${index}`"
+                      v-model="execution.entryTime"
+                      type="datetime-local"
+                      required
+                      class="input"
+                    />
+                  </div>
+
+                  <div>
+                    <label :for="`exec-exit-time-${index}`" class="label">Exit Time</label>
+                    <input
+                      :id="`exec-exit-time-${index}`"
+                      v-model="execution.exitTime"
+                      type="datetime-local"
+                      class="input"
+                    />
+                  </div>
+                </div>
+
+                <!-- Row 4: Commission and Fees -->
+                <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div>
+                    <label :for="`exec-commission-${index}`" class="label">Commission</label>
+                    <input
+                      :id="`exec-commission-${index}`"
+                      v-model="execution.commission"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      class="input"
+                      placeholder="0.00"
+                    />
+                  </div>
+
+                  <div>
+                    <label :for="`exec-fees-${index}`" class="label">Fees</label>
+                    <input
+                      :id="`exec-fees-${index}`"
+                      v-model="execution.fees"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      class="input"
+                      placeholder="0.00"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <!-- Individual fill format -->
+              <div v-else class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <div>
                   <label :for="`exec-datetime-${index}`" class="label">Date/Time *</label>
                   <input
@@ -842,8 +961,10 @@ async function loadTrade() {
       tickSize: trade.tick_size || trade.tickSize || null,
       pointValue: trade.point_value || trade.pointValue || null,
       // Executions
-      executions: trade.executions && Array.isArray(trade.executions) && trade.executions.length > 0
-        ? trade.executions.map(exec => {
+      executions: (() => {
+        if (trade.executions && Array.isArray(trade.executions) && trade.executions.length > 0) {
+          // Use existing executions
+          return trade.executions.map(exec => {
             // Handle both 'action' and 'side' fields, normalize to 'buy' or 'sell'
             let action = exec.action || exec.side || ''
             // Normalize action to 'buy' or 'sell'
@@ -859,7 +980,22 @@ async function loadTrade() {
               fees: exec.fees || 0
             }
           })
-        : []
+        } else {
+          // No executions array - create a synthetic grouped execution from trade entry/exit data
+          // Use the grouped format (entryPrice/exitPrice) for easier editing
+          return [{
+            side: trade.side,
+            quantity: trade.quantity || '',
+            entryPrice: trade.entry_price || '',
+            exitPrice: trade.exit_price || null,
+            entryTime: trade.entry_time ? formatDateTimeLocal(trade.entry_time) : '',
+            exitTime: trade.exit_time ? formatDateTimeLocal(trade.exit_time) : null,
+            commission: trade.commission || 0,
+            fees: trade.fees || 0,
+            pnl: trade.pnl || 0
+          }]
+        }
+      })()
     }
 
     tagsInput.value = trade.tags ? trade.tags.join(', ') : ''
@@ -902,51 +1038,107 @@ async function handleSubmit() {
     let calculatedFees = parseFloat(form.value.fees) || 0
 
     const processedExecutions = form.value.executions && form.value.executions.length > 0
-      ? form.value.executions.map(exec => ({
-          action: exec.action,
-          quantity: parseFloat(exec.quantity),
-          price: parseFloat(exec.price),
-          datetime: exec.datetime,
-          commission: parseFloat(exec.commission) || 0,
-          fees: parseFloat(exec.fees) || 0
-        }))
+      ? form.value.executions.map(exec => {
+          // Check if this is a grouped execution (has entryPrice/exitPrice) or individual fill
+          if (exec.entryPrice !== undefined || exec.exitPrice !== undefined) {
+            // Grouped format - keep entry/exit fields
+            return {
+              side: exec.side,
+              quantity: parseFloat(exec.quantity),
+              entryPrice: parseFloat(exec.entryPrice),
+              exitPrice: exec.exitPrice ? parseFloat(exec.exitPrice) : null,
+              entryTime: exec.entryTime,
+              exitTime: exec.exitTime || null,
+              commission: parseFloat(exec.commission) || 0,
+              fees: parseFloat(exec.fees) || 0,
+              pnl: exec.pnl || 0
+            }
+          } else {
+            // Individual fill format - keep action/price/datetime
+            return {
+              action: exec.action,
+              quantity: parseFloat(exec.quantity),
+              price: parseFloat(exec.price),
+              datetime: exec.datetime,
+              commission: parseFloat(exec.commission) || 0,
+              fees: parseFloat(exec.fees) || 0
+            }
+          }
+        })
       : undefined
 
     // If we have executions, calculate summary values from them
     if (processedExecutions && processedExecutions.length > 0) {
-      // Total quantity is sum of ALL execution quantities (not net position)
-      calculatedQuantity = processedExecutions.reduce((sum, exec) => sum + exec.quantity, 0)
+      // Check if we have grouped executions (with entryPrice/exitPrice) or individual fills
+      const hasGroupedExecutions = processedExecutions.some(e => e.entryPrice !== undefined || e.exitPrice !== undefined)
 
-      // Total commission and fees from all executions
-      calculatedCommission = processedExecutions.reduce((sum, exec) => sum + (exec.commission || 0), 0)
-      calculatedFees = processedExecutions.reduce((sum, exec) => sum + (exec.fees || 0), 0)
+      if (hasGroupedExecutions) {
+        // Handle grouped executions (round-trip sub-trades)
+        // Total quantity is sum of ALL execution quantities
+        calculatedQuantity = processedExecutions.reduce((sum, exec) => sum + exec.quantity, 0)
 
-      // Entry time is earliest execution
-      const sortedByTime = [...processedExecutions].sort((a, b) =>
-        new Date(a.datetime) - new Date(b.datetime)
-      )
-      calculatedEntryTime = sortedByTime[0].datetime
+        // Total commission and fees from all executions
+        calculatedCommission = processedExecutions.reduce((sum, exec) => sum + (exec.commission || 0), 0)
+        calculatedFees = processedExecutions.reduce((sum, exec) => sum + (exec.fees || 0), 0)
 
-      // Exit time is latest execution (if there are sell executions)
-      const hasSellExecution = processedExecutions.some(e => e.action === 'sell')
-      if (hasSellExecution) {
-        calculatedExitTime = sortedByTime[sortedByTime.length - 1].datetime
-      }
+        // For grouped executions, use the first execution's entry time
+        calculatedEntryTime = processedExecutions[0].entryTime
 
-      // Entry price is weighted average of buy executions
-      const buyExecutions = processedExecutions.filter(e => e.action === 'buy')
-      if (buyExecutions.length > 0) {
-        const totalBuyValue = buyExecutions.reduce((sum, exec) => sum + (exec.price * exec.quantity), 0)
-        const totalBuyQty = buyExecutions.reduce((sum, exec) => sum + exec.quantity, 0)
-        calculatedEntryPrice = totalBuyValue / totalBuyQty
-      }
+        // For exit time, use the latest exit time (if any)
+        const executionsWithExit = processedExecutions.filter(e => e.exitTime)
+        if (executionsWithExit.length > 0) {
+          const sortedByExitTime = [...executionsWithExit].sort((a, b) =>
+            new Date(b.exitTime) - new Date(a.exitTime)
+          )
+          calculatedExitTime = sortedByExitTime[0].exitTime
+        }
 
-      // Exit price is weighted average of sell executions
-      const sellExecutions = processedExecutions.filter(e => e.action === 'sell')
-      if (sellExecutions.length > 0) {
-        const totalSellValue = sellExecutions.reduce((sum, exec) => sum + (exec.price * exec.quantity), 0)
-        const totalSellQty = sellExecutions.reduce((sum, exec) => sum + exec.quantity, 0)
-        calculatedExitPrice = totalSellValue / totalSellQty
+        // Entry price is weighted average of all entry prices
+        const totalEntryValue = processedExecutions.reduce((sum, exec) => sum + (exec.entryPrice * exec.quantity), 0)
+        calculatedEntryPrice = totalEntryValue / calculatedQuantity
+
+        // Exit price is weighted average of exit prices (if any)
+        if (executionsWithExit.length > 0) {
+          const totalExitValue = executionsWithExit.reduce((sum, exec) => sum + (exec.exitPrice * exec.quantity), 0)
+          const totalExitQty = executionsWithExit.reduce((sum, exec) => sum + exec.quantity, 0)
+          calculatedExitPrice = totalExitValue / totalExitQty
+        }
+      } else {
+        // Handle individual fill format
+        // Total quantity is sum of ALL execution quantities (not net position)
+        calculatedQuantity = processedExecutions.reduce((sum, exec) => sum + exec.quantity, 0)
+
+        // Total commission and fees from all executions
+        calculatedCommission = processedExecutions.reduce((sum, exec) => sum + (exec.commission || 0), 0)
+        calculatedFees = processedExecutions.reduce((sum, exec) => sum + (exec.fees || 0), 0)
+
+        // Entry time is earliest execution
+        const sortedByTime = [...processedExecutions].sort((a, b) =>
+          new Date(a.datetime) - new Date(b.datetime)
+        )
+        calculatedEntryTime = sortedByTime[0].datetime
+
+        // Exit time is latest execution (if there are sell executions)
+        const hasSellExecution = processedExecutions.some(e => e.action === 'sell')
+        if (hasSellExecution) {
+          calculatedExitTime = sortedByTime[sortedByTime.length - 1].datetime
+        }
+
+        // Entry price is weighted average of buy executions
+        const buyExecutions = processedExecutions.filter(e => e.action === 'buy')
+        if (buyExecutions.length > 0) {
+          const totalBuyValue = buyExecutions.reduce((sum, exec) => sum + (exec.price * exec.quantity), 0)
+          const totalBuyQty = buyExecutions.reduce((sum, exec) => sum + exec.quantity, 0)
+          calculatedEntryPrice = totalBuyValue / totalBuyQty
+        }
+
+        // Exit price is weighted average of sell executions
+        const sellExecutions = processedExecutions.filter(e => e.action === 'sell')
+        if (sellExecutions.length > 0) {
+          const totalSellValue = sellExecutions.reduce((sum, exec) => sum + (exec.price * exec.quantity), 0)
+          const totalSellQty = sellExecutions.reduce((sum, exec) => sum + exec.quantity, 0)
+          calculatedExitPrice = totalSellValue / totalSellQty
+        }
       }
     }
 
