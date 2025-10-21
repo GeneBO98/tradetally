@@ -78,15 +78,32 @@ const schemas = {
     contractYear: Joi.number().integer().min(2020).max(2100).allow(null, ''),
     tickSize: Joi.number().positive().allow(null, ''),
     pointValue: Joi.number().positive().allow(null, ''),
-    // Executions array for multiple fills
-    executions: Joi.array().items(Joi.object({
-      action: Joi.string().valid('buy', 'sell').required(),
-      quantity: Joi.number().positive().required(),
-      price: Joi.number().positive().required(),
-      datetime: Joi.date().iso().required(),
-      commission: Joi.number().min(0).default(0),
-      fees: Joi.number().min(0).default(0)
-    })).optional()
+    // Executions array - supports both individual fills and grouped round-trip executions
+    executions: Joi.array().items(
+      Joi.alternatives().try(
+        // Individual fill format
+        Joi.object({
+          action: Joi.string().valid('buy', 'sell').required(),
+          quantity: Joi.number().positive().required(),
+          price: Joi.number().positive().required(),
+          datetime: Joi.date().iso().required(),
+          commission: Joi.number().min(0).default(0),
+          fees: Joi.number().min(0).default(0)
+        }),
+        // Grouped round-trip format
+        Joi.object({
+          side: Joi.string().valid('long', 'short').required(),
+          quantity: Joi.number().positive().required(),
+          entryPrice: Joi.number().positive().required(),
+          exitPrice: Joi.number().positive().allow(null).optional(),
+          entryTime: Joi.date().iso().required(),
+          exitTime: Joi.date().iso().allow(null).optional(),
+          commission: Joi.number().min(0).default(0),
+          fees: Joi.number().min(0).default(0),
+          pnl: Joi.number().allow(null).optional()
+        })
+      )
+    ).optional()
   }),
 
   updateTrade: Joi.object({
@@ -132,15 +149,32 @@ const schemas = {
     contractYear: Joi.number().integer().min(2020).max(2100).allow(null, ''),
     tickSize: Joi.number().positive().allow(null, ''),
     pointValue: Joi.number().positive().allow(null, ''),
-    // Executions array for multiple fills
-    executions: Joi.array().items(Joi.object({
-      action: Joi.string().valid('buy', 'sell').required(),
-      quantity: Joi.number().positive().required(),
-      price: Joi.number().positive().required(),
-      datetime: Joi.date().iso().required(),
-      commission: Joi.number().min(0).default(0),
-      fees: Joi.number().min(0).default(0)
-    })).optional()
+    // Executions array - supports both individual fills and grouped round-trip executions
+    executions: Joi.array().items(
+      Joi.alternatives().try(
+        // Individual fill format
+        Joi.object({
+          action: Joi.string().valid('buy', 'sell').required(),
+          quantity: Joi.number().positive().required(),
+          price: Joi.number().positive().required(),
+          datetime: Joi.date().iso().required(),
+          commission: Joi.number().min(0).default(0),
+          fees: Joi.number().min(0).default(0)
+        }),
+        // Grouped round-trip format
+        Joi.object({
+          side: Joi.string().valid('long', 'short').required(),
+          quantity: Joi.number().positive().required(),
+          entryPrice: Joi.number().positive().required(),
+          exitPrice: Joi.number().positive().allow(null).optional(),
+          entryTime: Joi.date().iso().required(),
+          exitTime: Joi.date().iso().allow(null).optional(),
+          commission: Joi.number().min(0).default(0),
+          fees: Joi.number().min(0).default(0),
+          pnl: Joi.number().allow(null).optional()
+        })
+      )
+    ).optional()
   }).min(1),
 
   updateSettings: Joi.object({

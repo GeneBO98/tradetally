@@ -175,7 +175,7 @@ const defaultColumns = [
   { key: 'roi', label: 'ROI %', visible: false, width: 'auto' },
   { key: 'stopLoss', label: 'Stop Loss', visible: false, width: 'auto' },
   { key: 'takeProfit', label: 'Take Profit', visible: false, width: 'auto' },
-  { key: 'rValue', label: 'R-Value', visible: false, width: 'auto' },
+  { key: 'rValue', label: 'R-Multiple', visible: false, width: 'auto' },
   { key: 'instrumentType', label: 'Instrument Type', visible: false, width: 'auto' },
   { key: 'underlyingSymbol', label: 'Underlying Symbol', visible: false, width: 'auto' },
   { key: 'optionType', label: 'Option Type', visible: false, width: 'auto' },

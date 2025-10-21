@@ -540,10 +540,10 @@
                     @click="$router.push(`/trades/${trade.id}`)">
                   <div v-if="trade.rValue != null && trade.rValue !== undefined" class="text-sm font-medium" :class="[
                     trade.rValue >= 2 ? 'text-green-600 dark:text-green-400' :
-                    trade.rValue >= 1 ? 'text-yellow-600 dark:text-yellow-400' :
+                    trade.rValue >= 0 ? 'text-yellow-600 dark:text-yellow-400' :
                     'text-red-600 dark:text-red-400'
                   ]">
-                    1:{{ Number(trade.rValue).toFixed(2) }}
+                    {{ Number(trade.rValue).toFixed(1) }}R
                   </div>
                   <div v-else class="text-sm text-gray-500">-</div>
                 </td>

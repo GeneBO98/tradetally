@@ -1,5 +1,5 @@
 <template>
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  <div class="w-full max-w-[75%] mx-auto px-4 sm:px-6 lg:px-8 py-8">
     <!-- Back Button -->
     <div class="mb-6">
       <button 
@@ -82,20 +82,20 @@
                   <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">${{ formatNumber(trade.takeProfit) }}</dd>
                 </div>
                 <div v-if="trade.rValue !== null && trade.rValue !== undefined">
-                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">R-Value (Risk/Reward)</dt>
+                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">R-Multiple</dt>
                   <dd class="mt-1">
                     <span class="text-sm font-semibold font-mono"
                       :class="[
                         Number(trade.rValue) >= 2
                           ? 'text-green-600 dark:text-green-400'
-                          : Number(trade.rValue) >= 1
+                          : Number(trade.rValue) >= 0
                           ? 'text-yellow-600 dark:text-yellow-400'
                           : 'text-red-600 dark:text-red-400'
                       ]">
-                      1:{{ Number(trade.rValue).toFixed(2) }}
+                      {{ Number(trade.rValue).toFixed(1) }}R
                     </span>
                     <span class="ml-2 text-xs text-gray-500 dark:text-gray-400">
-                      ({{ Number(trade.rValue) >= 2 ? 'Excellent' : Number(trade.rValue) >= 1 ? 'Good' : 'Poor' }} ratio)
+                      ({{ Number(trade.rValue) >= 2 ? 'Excellent' : Number(trade.rValue) >= 0 ? 'Good' : 'Loss' }})
                     </span>
                   </dd>
                 </div>
@@ -167,10 +167,10 @@
 
 
           <!-- Executions -->
-          <div v-if="trade.executions && trade.executions.length > 0" class="card">
+          <div v-if="processedExecutions && processedExecutions.length > 0" class="card">
             <div class="card-body">
               <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
-                Executions ({{ trade.executions.length }})
+                Executions ({{ processedExecutions.length }})
               </h3>
               
               <!-- Desktop Table View -->
@@ -185,22 +185,22 @@
                         Quantity
                       </th>
                       <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Price
+                        Entry Price
                       </th>
                       <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Value
+                        Exit Price
+                      </th>
+                      <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        P&L
                       </th>
                       <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                         Fees
                       </th>
                       <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Position
+                        Entry Time
                       </th>
                       <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Avg Cost
-                      </th>
-                      <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Time
+                        Exit Time
                       </th>
                     </tr>
                   </thead>
@@ -210,35 +210,42 @@
                       <td class="px-3 py-4 whitespace-nowrap">
                         <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
                               :class="[
-                                (execution.action || '').toLowerCase() === 'buy' 
+                                (execution.action || execution.side || '').toLowerCase() === 'buy' || (execution.action || execution.side || '').toLowerCase() === 'long'
                                   ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
-                                  : (execution.action || '').toLowerCase() === 'sell'
+                                  : (execution.action || execution.side || '').toLowerCase() === 'sell' || (execution.action || execution.side || '').toLowerCase() === 'short'
                                   ? 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
                                   : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
                               ]">
-                          {{ (execution.action || 'N/A').toUpperCase() }}
+                          {{ ((execution.action || execution.side) || 'N/A').toUpperCase() }}
                         </span>
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap text-sm font-mono text-gray-900 dark:text-white">
                         {{ formatQuantity(execution.quantity) }}
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap text-sm font-mono text-gray-900 dark:text-white">
-                        ${{ formatNumber(execution.price) }}
+                        ${{ formatNumber(execution.entryPrice || execution.price) }}
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap text-sm font-mono text-gray-900 dark:text-white">
-                        ${{ formatNumber(execution.value) }}
+                        {{ execution.exitPrice ? `$${formatNumber(execution.exitPrice)}` : '-' }}
+                      </td>
+                      <td class="px-3 py-4 whitespace-nowrap text-sm font-mono"
+                          :class="[
+                            execution.pnl > 0
+                              ? 'text-green-600 dark:text-green-400'
+                              : execution.pnl < 0
+                              ? 'text-red-600 dark:text-red-400'
+                              : 'text-gray-900 dark:text-white'
+                          ]">
+                        {{ execution.pnl !== undefined && execution.pnl !== null ? `$${formatNumber(execution.pnl)}` : '-' }}
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap text-sm font-mono text-gray-600 dark:text-gray-400">
-                        {{ execution.fees ? `$${formatNumber(execution.fees)}` : '-' }}
-                      </td>
-                      <td class="px-3 py-4 whitespace-nowrap text-sm font-mono text-gray-900 dark:text-white">
-                        {{ formatQuantity(execution.runningPosition) }}
-                      </td>
-                      <td class="px-3 py-4 whitespace-nowrap text-sm font-mono text-gray-900 dark:text-white">
-                        {{ execution.avgCost ? `$${formatNumber(execution.avgCost)}` : '-' }}
+                        {{ execution.fees || execution.commission ? `$${formatNumber((execution.fees || 0) + (execution.commission || 0))}` : '-' }}
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">
-                        {{ execution.datetime ? formatDateTime(execution.datetime) : '-' }}
+                        {{ execution.entryTime ? formatDateTime(execution.entryTime) : (execution.datetime ? formatDateTime(execution.datetime) : '-') }}
+                      </td>
+                      <td class="px-3 py-4 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">
+                        {{ execution.exitTime ? formatDateTime(execution.exitTime) : '-' }}
                       </td>
                     </tr>
                   </tbody>
@@ -247,53 +254,66 @@
 
               <!-- Mobile Card View -->
               <div class="md:hidden space-y-3">
-                <div v-for="(execution, index) in processedExecutions" :key="index" 
+                <div v-for="(execution, index) in processedExecutions" :key="index"
                      class="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
                   <div class="flex items-center justify-between mb-3">
                     <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
                           :class="[
-                            (execution.action || '').toLowerCase() === 'buy' 
+                            (execution.action || execution.side || '').toLowerCase() === 'buy' || (execution.action || execution.side || '').toLowerCase() === 'long'
                               ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
-                              : (execution.action || '').toLowerCase() === 'sell'
+                              : (execution.action || execution.side || '').toLowerCase() === 'sell' || (execution.action || execution.side || '').toLowerCase() === 'short'
                               ? 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
                               : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
                           ]">
-                      {{ (execution.action || 'N/A').toUpperCase() }}
+                      {{ ((execution.action || execution.side) || 'N/A').toUpperCase() }}
                     </span>
                     <div class="text-xs text-gray-500 dark:text-gray-400">
-                      {{ execution.datetime ? formatDateTime(execution.datetime) : '-' }}
+                      {{ execution.entryTime ? formatDateTime(execution.entryTime) : (execution.datetime ? formatDateTime(execution.datetime) : '-') }}
                     </div>
                   </div>
-                  
+
                   <div class="grid grid-cols-2 gap-3 text-sm">
                     <div>
-                      <div class="text-gray-500 dark:text-gray-400 text-xs">Quantity × Price</div>
+                      <div class="text-gray-500 dark:text-gray-400 text-xs">Quantity</div>
                       <div class="font-mono text-gray-900 dark:text-white">
-                        {{ formatNumber(execution.quantity, 0) }} × ${{ formatNumber(execution.price) }}
+                        {{ formatNumber(execution.quantity, 0) }}
                       </div>
                     </div>
                     <div>
-                      <div class="text-gray-500 dark:text-gray-400 text-xs">Value</div>
+                      <div class="text-gray-500 dark:text-gray-400 text-xs">Entry Price</div>
                       <div class="font-mono text-gray-900 dark:text-white">
-                        ${{ formatNumber(execution.value) }}
+                        ${{ formatNumber(execution.entryPrice || execution.price) }}
                       </div>
                     </div>
-                    <div>
-                      <div class="text-gray-500 dark:text-gray-400 text-xs">Position</div>
+                    <div v-if="execution.exitPrice">
+                      <div class="text-gray-500 dark:text-gray-400 text-xs">Exit Price</div>
                       <div class="font-mono text-gray-900 dark:text-white">
-                        {{ formatNumber(execution.runningPosition, 0) }}
+                        ${{ formatNumber(execution.exitPrice) }}
                       </div>
                     </div>
-                    <div>
-                      <div class="text-gray-500 dark:text-gray-400 text-xs">Avg Cost</div>
-                      <div class="font-mono text-gray-900 dark:text-white">
-                        {{ execution.avgCost ? `$${formatNumber(execution.avgCost)}` : '-' }}
+                    <div v-if="execution.exitTime">
+                      <div class="text-gray-500 dark:text-gray-400 text-xs">Exit Time</div>
+                      <div class="text-xs text-gray-500 dark:text-gray-400">
+                        {{ formatDateTime(execution.exitTime) }}
                       </div>
                     </div>
-                    <div v-if="execution.fees" class="col-span-2">
+                    <div v-if="execution.pnl !== undefined && execution.pnl !== null">
+                      <div class="text-gray-500 dark:text-gray-400 text-xs">P&L</div>
+                      <div class="font-mono"
+                           :class="[
+                             execution.pnl > 0
+                               ? 'text-green-600 dark:text-green-400'
+                               : execution.pnl < 0
+                               ? 'text-red-600 dark:text-red-400'
+                               : 'text-gray-900 dark:text-white'
+                           ]">
+                        ${{ formatNumber(execution.pnl) }}
+                      </div>
+                    </div>
+                    <div v-if="execution.fees || execution.commission">
                       <div class="text-gray-500 dark:text-gray-400 text-xs">Fees</div>
                       <div class="font-mono text-gray-600 dark:text-gray-400">
-                        ${{ formatNumber(execution.fees) }}
+                        ${{ formatNumber((execution.fees || 0) + (execution.commission || 0)) }}
                       </div>
                     </div>
                   </div>
@@ -677,13 +697,28 @@ const editCommentText = ref('')
 
 // Computed properties for enhanced execution display
 const processedExecutions = computed(() => {
-  if (!trade.value?.executions || !Array.isArray(trade.value.executions)) {
-    return []
-  }
-
   // Check if this is an options trade and get contract multiplier
-  const isOption = trade.value.instrument_type === 'option'
+  const isOption = trade.value?.instrument_type === 'option'
   const contractSize = isOption ? (trade.value.contract_size || 100) : 1
+
+  // If no executions array, create a synthetic execution from trade entry/exit data
+  if (!trade.value?.executions || !Array.isArray(trade.value.executions) || trade.value.executions.length === 0) {
+    if (!trade.value) return []
+
+    // Create a single execution representing the entire trade
+    return [{
+      side: trade.value.side,
+      action: trade.value.side,
+      quantity: trade.value.quantity || 0,
+      entryPrice: trade.value.entry_price || 0,
+      exitPrice: trade.value.exit_price || null,
+      entryTime: trade.value.entry_time,
+      exitTime: trade.value.exit_time || null,
+      commission: trade.value.commission || 0,
+      fees: trade.value.fees || 0,
+      pnl: trade.value.pnl || 0
+    }]
+  }
 
   let runningPosition = 0
   let totalCost = 0
