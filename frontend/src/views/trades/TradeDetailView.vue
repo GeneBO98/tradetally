@@ -131,6 +131,36 @@
                     </div>
                   </dd>
                 </div>
+                <div class="sm:col-span-2">
+                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Quality Grade</dt>
+                  <dd class="mt-1">
+                    <div v-if="trade.qualityGrade" class="flex items-center space-x-3">
+                      <span class="px-3 py-1 inline-flex text-sm font-semibold rounded"
+                        :class="{
+                          'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400': trade.qualityGrade === 'A',
+                          'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400': trade.qualityGrade === 'B',
+                          'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400': trade.qualityGrade === 'C',
+                          'bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400': trade.qualityGrade === 'D',
+                          'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400': trade.qualityGrade === 'F'
+                        }">
+                        Grade {{ trade.qualityGrade }}
+                      </span>
+                      <span v-if="trade.qualityScore" class="text-sm text-gray-600 dark:text-gray-400">
+                        ({{ Number(trade.qualityScore).toFixed(1) }}/5.0)
+                      </span>
+                    </div>
+                    <div v-else class="flex items-center space-x-2">
+                      <span class="text-sm text-gray-500 dark:text-gray-400">Not calculated</span>
+                      <button
+                        @click="calculateQuality"
+                        :disabled="calculatingQuality"
+                        class="text-xs px-3 py-1 bg-primary-600 text-white rounded hover:bg-primary-700 disabled:opacity-50"
+                      >
+                        {{ calculatingQuality ? 'Calculating...' : 'Calculate Quality' }}
+                      </button>
+                    </div>
+                  </dd>
+                </div>
                 <div v-if="trade.sector">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Sector</dt>
                   <dd class="mt-1 text-sm text-gray-900 dark:text-white">{{ trade.sector }}</dd>
@@ -159,10 +189,249 @@
             </div>
           </div>
 
+          <!-- Quality Metrics Breakdown -->
+          <div v-if="trade.qualityGrade && trade.qualityMetrics" class="card">
+            <div class="card-body">
+              <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Quality Metrics Breakdown</h3>
+
+              <div class="space-y-4">
+                <!-- News Sentiment (35% weight) -->
+                <div class="border-l-4 pl-4 py-2"
+                  :class="[
+                    getScore(trade.qualityMetrics.newsSentimentScore) >= 0.8 ? 'border-green-400' :
+                    getScore(trade.qualityMetrics.newsSentimentScore) >= 0.6 ? 'border-blue-400' :
+                    getScore(trade.qualityMetrics.newsSentimentScore) >= 0.4 ? 'border-yellow-400' :
+                    'border-red-400'
+                  ]">
+                  <div class="flex items-center justify-between mb-2">
+                    <div>
+                      <h4 class="text-sm font-semibold text-gray-900 dark:text-white">News Sentiment</h4>
+                      <p class="text-xs text-gray-500 dark:text-gray-400">Weight: 35% (Highest)</p>
+                    </div>
+                    <div class="text-right">
+                      <div class="text-sm font-semibold"
+                        :class="[
+                          getScore(trade.qualityMetrics.newsSentimentScore) >= 0.8 ? 'text-green-600 dark:text-green-400' :
+                          getScore(trade.qualityMetrics.newsSentimentScore) >= 0.6 ? 'text-blue-600 dark:text-blue-400' :
+                          getScore(trade.qualityMetrics.newsSentimentScore) >= 0.4 ? 'text-yellow-600 dark:text-yellow-400' :
+                          'text-red-600 dark:text-red-400'
+                        ]">
+                        {{ (getScore(trade.qualityMetrics.newsSentimentScore) * 100).toFixed(0) }}%
+                      </div>
+                      <div class="text-xs text-gray-500 dark:text-gray-400">
+                        {{ trade.qualityMetrics.newsSentiment !== null && trade.qualityMetrics.newsSentiment !== undefined ? Number(trade.qualityMetrics.newsSentiment).toFixed(2) : 'N/A' }}
+                      </div>
+                    </div>
+                  </div>
+                  <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                    <div class="h-2 rounded-full transition-all"
+                      :class="[
+                        getScore(trade.qualityMetrics.newsSentimentScore) >= 0.8 ? 'bg-green-500' :
+                        getScore(trade.qualityMetrics.newsSentimentScore) >= 0.6 ? 'bg-blue-500' :
+                        getScore(trade.qualityMetrics.newsSentimentScore) >= 0.4 ? 'bg-yellow-500' :
+                        'bg-red-500'
+                      ]"
+                      :style="{ width: (getScore(trade.qualityMetrics.newsSentimentScore) * 100) + '%' }">
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Float (25% weight) -->
+                <div class="border-l-4 pl-4 py-2"
+                  :class="[
+                    getScore(trade.qualityMetrics?.floatScore) >= 0.8 ? 'border-green-400' :
+                    getScore(trade.qualityMetrics?.floatScore) >= 0.6 ? 'border-blue-400' :
+                    getScore(trade.qualityMetrics?.floatScore) >= 0.4 ? 'border-yellow-400' :
+                    'border-red-400'
+                  ]">
+                  <div class="flex items-center justify-between mb-2">
+                    <div>
+                      <h4 class="text-sm font-semibold text-gray-900 dark:text-white">Float (Shares Outstanding)</h4>
+                      <p class="text-xs text-gray-500 dark:text-gray-400">Weight: 25%</p>
+                    </div>
+                    <div class="text-right">
+                      <div class="text-sm font-semibold"
+                        :class="[
+                          getScore(trade.qualityMetrics?.floatScore) >= 0.8 ? 'text-green-600 dark:text-green-400' :
+                          getScore(trade.qualityMetrics?.floatScore) >= 0.6 ? 'text-blue-600 dark:text-blue-400' :
+                          getScore(trade.qualityMetrics?.floatScore) >= 0.4 ? 'text-yellow-600 dark:text-yellow-400' :
+                          'text-red-600 dark:text-red-400'
+                        ]">
+                        {{ (getScore(trade.qualityMetrics?.floatScore) * 100).toFixed(0) }}%
+                      </div>
+                      <div class="text-xs text-gray-500 dark:text-gray-400">
+                        {{ formatFloat(trade.qualityMetrics?.float) }}
+                      </div>
+                    </div>
+                  </div>
+                  <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                    <div class="h-2 rounded-full transition-all"
+                      :class="[
+                        getScore(trade.qualityMetrics?.floatScore) >= 0.8 ? 'bg-green-500' :
+                        getScore(trade.qualityMetrics?.floatScore) >= 0.6 ? 'bg-blue-500' :
+                        getScore(trade.qualityMetrics?.floatScore) >= 0.4 ? 'bg-yellow-500' :
+                        'bg-red-500'
+                      ]"
+                      :style="{ width: (getScore(trade.qualityMetrics?.floatScore) * 100) + '%' }">
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Relative Volume (20% weight) -->
+                <div class="border-l-4 pl-4 py-2"
+                  :class="[
+                    getScore(trade.qualityMetrics.relativeVolumeScore) >= 0.8 ? 'border-green-400' :
+                    getScore(trade.qualityMetrics.relativeVolumeScore) >= 0.6 ? 'border-blue-400' :
+                    getScore(trade.qualityMetrics.relativeVolumeScore) >= 0.4 ? 'border-yellow-400' :
+                    'border-red-400'
+                  ]">
+                  <div class="flex items-center justify-between mb-2">
+                    <div>
+                      <h4 class="text-sm font-semibold text-gray-900 dark:text-white">Relative Volume</h4>
+                      <p class="text-xs text-gray-500 dark:text-gray-400">Weight: 20%</p>
+                    </div>
+                    <div class="text-right">
+                      <div class="text-sm font-semibold"
+                        :class="[
+                          getScore(trade.qualityMetrics.relativeVolumeScore) >= 0.8 ? 'text-green-600 dark:text-green-400' :
+                          getScore(trade.qualityMetrics.relativeVolumeScore) >= 0.6 ? 'text-blue-600 dark:text-blue-400' :
+                          getScore(trade.qualityMetrics.relativeVolumeScore) >= 0.4 ? 'text-yellow-600 dark:text-yellow-400' :
+                          'text-red-600 dark:text-red-400'
+                        ]">
+                        {{ (getScore(trade.qualityMetrics.relativeVolumeScore) * 100).toFixed(0) }}%
+                      </div>
+                      <div class="text-xs text-gray-500 dark:text-gray-400">
+                        {{ trade.qualityMetrics.relativeVolume !== null && trade.qualityMetrics.relativeVolume !== undefined ? Number(trade.qualityMetrics.relativeVolume).toFixed(1) + 'x' : 'N/A' }}
+                      </div>
+                    </div>
+                  </div>
+                  <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                    <div class="h-2 rounded-full transition-all"
+                      :class="[
+                        getScore(trade.qualityMetrics.relativeVolumeScore) >= 0.8 ? 'bg-green-500' :
+                        getScore(trade.qualityMetrics.relativeVolumeScore) >= 0.6 ? 'bg-blue-500' :
+                        getScore(trade.qualityMetrics.relativeVolumeScore) >= 0.4 ? 'bg-yellow-500' :
+                        'bg-red-500'
+                      ]"
+                      :style="{ width: (getScore(trade.qualityMetrics.relativeVolumeScore) * 100) + '%' }">
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Price Range (15% weight) -->
+                <div class="border-l-4 pl-4 py-2"
+                  :class="[
+                    getScore(trade.qualityMetrics.priceScore) >= 0.8 ? 'border-green-400' :
+                    getScore(trade.qualityMetrics.priceScore) >= 0.6 ? 'border-blue-400' :
+                    getScore(trade.qualityMetrics.priceScore) >= 0.4 ? 'border-yellow-400' :
+                    'border-red-400'
+                  ]">
+                  <div class="flex items-center justify-between mb-2">
+                    <div>
+                      <h4 class="text-sm font-semibold text-gray-900 dark:text-white">Price Range</h4>
+                      <p class="text-xs text-gray-500 dark:text-gray-400">Weight: 15%</p>
+                    </div>
+                    <div class="text-right">
+                      <div class="text-sm font-semibold"
+                        :class="[
+                          getScore(trade.qualityMetrics.priceScore) >= 0.8 ? 'text-green-600 dark:text-green-400' :
+                          getScore(trade.qualityMetrics.priceScore) >= 0.6 ? 'text-blue-600 dark:text-blue-400' :
+                          getScore(trade.qualityMetrics.priceScore) >= 0.4 ? 'text-yellow-600 dark:text-yellow-400' :
+                          'text-red-600 dark:text-red-400'
+                        ]">
+                        {{ (getScore(trade.qualityMetrics.priceScore) * 100).toFixed(0) }}%
+                      </div>
+                      <div class="text-xs text-gray-500 dark:text-gray-400">
+                        {{ trade.qualityMetrics.price !== null && trade.qualityMetrics.price !== undefined ? '$' + Number(trade.qualityMetrics.price).toFixed(2) : 'N/A' }}
+                      </div>
+                    </div>
+                  </div>
+                  <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                    <div class="h-2 rounded-full transition-all"
+                      :class="[
+                        getScore(trade.qualityMetrics.priceScore) >= 0.8 ? 'bg-green-500' :
+                        getScore(trade.qualityMetrics.priceScore) >= 0.6 ? 'bg-blue-500' :
+                        getScore(trade.qualityMetrics.priceScore) >= 0.4 ? 'bg-yellow-500' :
+                        'bg-red-500'
+                      ]"
+                      :style="{ width: (getScore(trade.qualityMetrics.priceScore) * 100) + '%' }">
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Gap from Previous Close (5% weight) -->
+                <div class="border-l-4 pl-4 py-2"
+                  :class="[
+                    getScore(trade.qualityMetrics.intradayGainScore) >= 0.8 ? 'border-green-400' :
+                    getScore(trade.qualityMetrics.intradayGainScore) >= 0.6 ? 'border-blue-400' :
+                    getScore(trade.qualityMetrics.intradayGainScore) >= 0.4 ? 'border-yellow-400' :
+                    'border-red-400'
+                  ]">
+                  <div class="flex items-center justify-between mb-2">
+                    <div>
+                      <h4 class="text-sm font-semibold text-gray-900 dark:text-white">Gap from Previous Close</h4>
+                      <p class="text-xs text-gray-500 dark:text-gray-400">Weight: 5% (Previous close to entry price)</p>
+                    </div>
+                    <div class="text-right">
+                      <div class="text-sm font-semibold"
+                        :class="[
+                          getScore(trade.qualityMetrics.intradayGainScore) >= 0.8 ? 'text-green-600 dark:text-green-400' :
+                          getScore(trade.qualityMetrics.intradayGainScore) >= 0.6 ? 'text-blue-600 dark:text-blue-400' :
+                          getScore(trade.qualityMetrics.intradayGainScore) >= 0.4 ? 'text-yellow-600 dark:text-yellow-400' :
+                          'text-red-600 dark:text-red-400'
+                        ]">
+                        {{ (getScore(trade.qualityMetrics.intradayGainScore) * 100).toFixed(0) }}%
+                      </div>
+                      <div class="text-xs text-gray-500 dark:text-gray-400">
+                        {{ trade.qualityMetrics.intradayGain !== null && trade.qualityMetrics.intradayGain !== undefined ? (Number(trade.qualityMetrics.intradayGain) > 0 ? '+' : '') + Number(trade.qualityMetrics.intradayGain).toFixed(2) + '%' : 'N/A' }}
+                      </div>
+                    </div>
+                  </div>
+                  <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                    <div class="h-2 rounded-full transition-all"
+                      :class="[
+                        getScore(trade.qualityMetrics.intradayGainScore) >= 0.8 ? 'bg-green-500' :
+                        getScore(trade.qualityMetrics.intradayGainScore) >= 0.6 ? 'bg-blue-500' :
+                        getScore(trade.qualityMetrics.intradayGainScore) >= 0.4 ? 'bg-yellow-500' :
+                        'bg-red-500'
+                      ]"
+                      :style="{ width: (getScore(trade.qualityMetrics.intradayGainScore) * 100) + '%' }">
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Overall Score Summary -->
+              <div class="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <h4 class="text-sm font-semibold text-gray-900 dark:text-white">Overall Quality Score</h4>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">Weighted average of all metrics</p>
+                  </div>
+                  <div class="text-right">
+                    <div class="text-2xl font-bold"
+                      :class="{
+                        'text-green-600 dark:text-green-400': trade.qualityGrade === 'A',
+                        'text-blue-600 dark:text-blue-400': trade.qualityGrade === 'B',
+                        'text-yellow-600 dark:text-yellow-400': trade.qualityGrade === 'C',
+                        'text-orange-600 dark:text-orange-400': trade.qualityGrade === 'D',
+                        'text-red-600 dark:text-red-400': trade.qualityGrade === 'F'
+                      }">
+                      {{ Number(trade.qualityScore).toFixed(1) }}/5.0
+                    </div>
+                    <div class="text-sm font-semibold text-gray-600 dark:text-gray-400">
+                      Grade {{ trade.qualityGrade }}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- Trade Chart Visualization -->
-          <TradeChartVisualization 
-            v-if="trade.exit_price && trade.exit_time" 
-            :trade-id="trade.id" 
+          <TradeChartVisualization
+            v-if="trade.exit_price && trade.exit_time"
+            :trade-id="trade.id"
           />
 
 
@@ -686,6 +955,21 @@ const { showSuccess, showError, showConfirmation } = useNotification()
 
 const loading = ref(true)
 const trade = ref(null)
+const calculatingQuality = ref(false)
+
+// Helper function to safely get numeric score value
+const getScore = (value) => {
+  if (value === null || value === undefined) return 0
+  return Number(value)
+}
+
+// Helper function to safely format float value
+const formatFloat = (value) => {
+  if (value === null || value === undefined || value === 0) return 'N/A'
+  const num = Number(value)
+  if (isNaN(num)) return 'N/A'
+  return num.toFixed(2) + 'M'
+}
 
 // Comments state
 const comments = ref([])
@@ -1120,6 +1404,31 @@ async function deleteTrade() {
       }
     }
   )
+}
+
+async function calculateQuality() {
+  if (!trade.value || calculatingQuality.value) return
+
+  try {
+    calculatingQuality.value = true
+    const response = await api.post(`/trades/${trade.value.id}/quality`)
+
+    if (response.data.success) {
+      // Update the trade with the new quality data
+      trade.value.qualityGrade = response.data.quality.grade
+      trade.value.qualityScore = response.data.quality.score
+      trade.value.qualityMetrics = response.data.quality.metrics
+
+      showSuccess('Success', `Quality grade calculated: ${response.data.quality.grade}`)
+    } else {
+      showError('Error', 'Failed to calculate quality grade')
+    }
+  } catch (error) {
+    console.error('Error calculating quality:', error)
+    showError('Error', error.response?.data?.error || 'Failed to calculate quality grade')
+  } finally {
+    calculatingQuality.value = false
+  }
 }
 
 async function loadTrade() {

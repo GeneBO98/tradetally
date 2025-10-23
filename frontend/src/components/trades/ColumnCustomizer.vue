@@ -161,6 +161,7 @@ const defaultColumns = [
   { key: 'exit', label: 'Exit', visible: true, width: 'auto' },
   { key: 'pnl', label: 'P&L', visible: true, width: 'auto' },
   { key: 'confidence', label: 'Confidence', visible: true, width: 'auto' },
+  { key: 'quality', label: 'Quality', visible: true, width: 'auto' },
   { key: 'sector', label: 'Sector', visible: true, width: 'auto' },
   { key: 'status', label: 'Status', visible: true, width: 'auto' },
   { key: 'comments', label: 'Comments', visible: true, width: 'auto' },
@@ -204,16 +205,52 @@ const loadSavedColumns = () => {
       const savedColumns = JSON.parse(saved)
       console.log('[COLUMNS] Loaded saved columns from localStorage:', savedColumns.length, 'columns')
 
-      // Merge saved preferences with default columns to handle new columns
-      // Preserve order from saved columns, then append any new columns
-      const savedKeys = new Set(savedColumns.map(c => c.key))
-      const mergedColumns = [...savedColumns]
+      // Check if quality column exists in saved preferences
+      const hasQualityColumn = savedColumns.some(c => c.key === 'quality')
 
-      // Add any new columns that weren't in saved config
-      defaultColumns.forEach(defaultCol => {
-        if (!savedKeys.has(defaultCol.key)) {
-          mergedColumns.push(defaultCol)
+      if (!hasQualityColumn) {
+        console.log('[COLUMNS] MIGRATION: Adding missing quality column to saved preferences')
+        // Find the confidence column index to insert quality after it
+        const confidenceIndex = savedColumns.findIndex(c => c.key === 'confidence')
+        if (confidenceIndex !== -1) {
+          // Insert quality column after confidence
+          savedColumns.splice(confidenceIndex + 1, 0, {
+            key: 'quality',
+            label: 'Quality',
+            visible: true,
+            width: 'auto'
+          })
+        } else {
+          // If confidence not found, just add at a reasonable position
+          savedColumns.push({
+            key: 'quality',
+            label: 'Quality',
+            visible: true,
+            width: 'auto'
+          })
+        }
+        // Save the updated columns back to localStorage
+        localStorage.setItem('tradeListColumns', JSON.stringify(savedColumns))
+        console.log('[COLUMNS] MIGRATION: Quality column added and saved')
+      }
+
+      // Merge saved preferences with default columns to handle new columns
+      // Use default column order, but preserve visibility settings from saved columns
+      const savedMap = new Map(savedColumns.map(c => [c.key, c]))
+
+      const mergedColumns = defaultColumns.map(defaultCol => {
+        const savedCol = savedMap.get(defaultCol.key)
+        if (savedCol) {
+          // Column exists in saved preferences, use saved visibility and width
+          return {
+            ...defaultCol,
+            visible: savedCol.visible,
+            width: savedCol.width || defaultCol.width
+          }
+        } else {
+          // New column, use default configuration
           console.log('[COLUMNS] Adding new column:', defaultCol.key)
+          return { ...defaultCol }
         }
       })
 

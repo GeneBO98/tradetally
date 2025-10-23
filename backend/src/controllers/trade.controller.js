@@ -19,7 +19,7 @@ const tradeController = {
     try {
       const {
         symbol, startDate, endDate, tags, strategy, sector,
-        strategies, sectors, hasNews, daysOfWeek, instrumentTypes, optionTypes,
+        strategies, sectors, hasNews, daysOfWeek, instrumentTypes, optionTypes, qualityGrades,
         side, minPrice, maxPrice, minQuantity, maxQuantity,
         status, minPnl, maxPnl, pnlType, broker, brokers,
         limit = 50, offset = 0
@@ -39,6 +39,7 @@ const tradeController = {
         daysOfWeek: daysOfWeek ? daysOfWeek.split(',').map(d => parseInt(d)) : undefined,
         instrumentTypes: instrumentTypes ? instrumentTypes.split(',') : undefined,
         optionTypes: optionTypes ? optionTypes.split(',') : undefined,
+        qualityGrades: qualityGrades ? qualityGrades.split(',') : undefined,
         // New advanced filters
         side,
         minPrice: minPrice ? parseFloat(minPrice) : undefined,
@@ -60,6 +61,10 @@ const tradeController = {
         console.log('[TAGS] Filtering by tags:', filters.tags);
       }
 
+      if (filters.qualityGrades && filters.qualityGrades.length > 0) {
+        console.log('[QUALITY] Filtering by quality grades:', filters.qualityGrades);
+      }
+
       // Get trades with pagination
       const trades = await Trade.findByUser(req.user.id, filters);
 
@@ -79,6 +84,9 @@ const tradeController = {
         if (trade.stop_loss !== undefined) trade.stopLoss = trade.stop_loss;
         if (trade.take_profit !== undefined) trade.takeProfit = trade.take_profit;
         if (trade.r_value !== undefined) trade.rValue = trade.r_value;
+        if (trade.quality_grade !== undefined) trade.qualityGrade = trade.quality_grade;
+        if (trade.quality_score !== undefined) trade.qualityScore = trade.quality_score;
+        if (trade.quality_metrics !== undefined) trade.qualityMetrics = trade.quality_metrics;
       });
 
       // Get total count without pagination
@@ -204,6 +212,16 @@ const tradeController = {
         }
       }
 
+      // Parse quality_metrics JSON if it exists
+      if (trade.quality_metrics && typeof trade.quality_metrics === 'string') {
+        try {
+          trade.quality_metrics = JSON.parse(trade.quality_metrics);
+        } catch (e) {
+          console.warn('Failed to parse quality_metrics JSON:', e);
+          trade.quality_metrics = null;
+        }
+      }
+
       // Normalize executions to ensure 'action' field exists
       if (trade.executions && Array.isArray(trade.executions)) {
         trade.executions = trade.executions.map(exec => {
@@ -231,6 +249,11 @@ const tradeController = {
       if (trade.stop_loss !== undefined) trade.stopLoss = trade.stop_loss;
       if (trade.take_profit !== undefined) trade.takeProfit = trade.take_profit;
       if (trade.r_value !== undefined) trade.rValue = trade.r_value;
+
+      // Map quality grading fields
+      if (trade.quality_grade !== undefined) trade.qualityGrade = trade.quality_grade;
+      if (trade.quality_score !== undefined) trade.qualityScore = trade.quality_score;
+      if (trade.quality_metrics !== undefined) trade.qualityMetrics = trade.quality_metrics;
 
       res.json({ trade });
     } catch (error) {
@@ -1420,7 +1443,7 @@ const tradeController = {
         strategies, sectors, // Add multi-select parameters
         side, minPrice, maxPrice, minQuantity, maxQuantity,
         status, minPnl, maxPnl, pnlType, broker, brokers, hasNews,
-        holdTime, minHoldTime, maxHoldTime, daysOfWeek, instrumentTypes
+        holdTime, minHoldTime, maxHoldTime, daysOfWeek, instrumentTypes, optionTypes, qualityGrades
       } = req.query;
 
       const filters = {
@@ -1447,7 +1470,9 @@ const tradeController = {
         hasNews,
         holdTime,
         daysOfWeek: daysOfWeek ? daysOfWeek.split(',').map(d => parseInt(d)) : undefined,
-        instrumentTypes: instrumentTypes ? instrumentTypes.split(',') : undefined
+        instrumentTypes: instrumentTypes ? instrumentTypes.split(',') : undefined,
+        optionTypes: optionTypes ? optionTypes.split(',') : undefined,
+        qualityGrades: qualityGrades ? qualityGrades.split(',') : undefined
       };
       
       console.log('[ANALYTICS] Raw query:', req.query);
@@ -2794,6 +2819,215 @@ const tradeController = {
 
     } catch (error) {
       logger.logError('Error auto-closing expired options:', error);
+      next(error);
+    }
+  },
+
+  /**
+   * Calculate quality grade for a single trade
+   */
+  async calculateTradeQuality(req, res, next) {
+    try {
+      const { id } = req.params;
+      const tradeQualityService = require('../services/tradeQuality.service');
+
+      // Fetch the trade
+      const trade = await Trade.findById(id, req.user.id);
+      if (!trade) {
+        return res.status(404).json({ error: 'Trade not found' });
+      }
+
+      // Calculate quality
+      const quality = await tradeQualityService.calculateQuality(
+        trade.symbol,
+        trade.entry_time,
+        trade.entry_price
+      );
+
+      if (!quality) {
+        return res.status(400).json({
+          error: 'Unable to calculate quality. Finnhub API may be unavailable or data not found for this symbol.'
+        });
+      }
+
+      // Update trade with quality data
+      const updateQuery = `
+        UPDATE trades
+        SET quality_grade = $1,
+            quality_score = $2,
+            quality_metrics = $3
+        WHERE id = $4 AND user_id = $5
+        RETURNING *
+      `;
+
+      const result = await db.query(updateQuery, [
+        quality.grade,
+        quality.score,
+        JSON.stringify(quality.metrics),
+        id,
+        req.user.id
+      ]);
+
+      logger.info(`Calculated quality for trade ${id}: ${quality.grade} (${quality.score}/5.0) for ${trade.symbol}`);
+
+      res.json({
+        success: true,
+        trade: result.rows[0],
+        quality
+      });
+
+    } catch (error) {
+      logger.logError('Error calculating trade quality:', error);
+      next(error);
+    }
+  },
+
+  /**
+   * Calculate quality grades for multiple trades (batch)
+   */
+  async calculateBatchQuality(req, res, next) {
+    try {
+      const { tradeIds } = req.body;
+      const tradeQualityService = require('../services/tradeQuality.service');
+
+      if (!Array.isArray(tradeIds) || tradeIds.length === 0) {
+        return res.status(400).json({ error: 'tradeIds must be a non-empty array' });
+      }
+
+      // Fetch trades
+      const tradesQuery = `
+        SELECT id, symbol, entry_time, entry_price
+        FROM trades
+        WHERE id = ANY($1) AND user_id = $2
+      `;
+      const tradesResult = await db.query(tradesQuery, [tradeIds, req.user.id]);
+
+      if (tradesResult.rows.length === 0) {
+        return res.status(404).json({ error: 'No trades found' });
+      }
+
+      // Calculate quality for each trade
+      const results = await tradeQualityService.calculateBatchQuality(tradesResult.rows);
+
+      // Update trades with quality data
+      const updates = [];
+      for (const result of results) {
+        if (result.quality) {
+          const updateQuery = `
+            UPDATE trades
+            SET quality_grade = $1,
+                quality_score = $2,
+                quality_metrics = $3
+            WHERE id = $4 AND user_id = $5
+          `;
+          updates.push(
+            db.query(updateQuery, [
+              result.quality.grade,
+              result.quality.score,
+              JSON.stringify(result.quality.metrics),
+              result.tradeId,
+              req.user.id
+            ])
+          );
+        }
+      }
+
+      await Promise.all(updates);
+
+      logger.logInfo(`Calculated quality for ${updates.length} trades`, {
+        userId: req.user.id,
+        tradesUpdated: updates.length
+      });
+
+      res.json({
+        success: true,
+        message: `Quality calculated for ${updates.length} trade(s)`,
+        results: results.map(r => ({
+          tradeId: r.tradeId,
+          grade: r.quality?.grade,
+          score: r.quality?.score
+        }))
+      });
+
+    } catch (error) {
+      logger.logError('Error calculating batch quality:', error);
+      next(error);
+    }
+  },
+
+  /**
+   * Calculate quality for all user trades (async job)
+   */
+  async calculateAllTradesQuality(req, res, next) {
+    try {
+      const tradeQualityService = require('../services/tradeQuality.service');
+
+      // Get all trades for user
+      const tradesQuery = `
+        SELECT id, symbol, entry_time, entry_price
+        FROM trades
+        WHERE user_id = $1
+        ORDER BY entry_time DESC
+      `;
+      const tradesResult = await db.query(tradesQuery, [req.user.id]);
+
+      if (tradesResult.rows.length === 0) {
+        return res.json({
+          success: true,
+          message: 'No trades found to calculate quality for'
+        });
+      }
+
+      logger.logInfo(`Starting quality calculation for ${tradesResult.rows.length} trades`, {
+        userId: req.user.id
+      });
+
+      // Start async processing (don't await)
+      setImmediate(async () => {
+        try {
+          const results = await tradeQualityService.calculateBatchQuality(tradesResult.rows);
+
+          const updates = [];
+          for (const result of results) {
+            if (result.quality) {
+              const updateQuery = `
+                UPDATE trades
+                SET quality_grade = $1,
+                    quality_score = $2,
+                    quality_metrics = $3
+                WHERE id = $4 AND user_id = $5
+              `;
+              updates.push(
+                db.query(updateQuery, [
+                  result.quality.grade,
+                  result.quality.score,
+                  JSON.stringify(result.quality.metrics),
+                  result.tradeId,
+                  req.user.id
+                ])
+              );
+            }
+          }
+
+          await Promise.all(updates);
+
+          logger.logInfo(`Completed quality calculation for ${updates.length} trades`, {
+            userId: req.user.id
+          });
+        } catch (error) {
+          logger.logError('Error in async quality calculation:', error);
+        }
+      });
+
+      // Return immediately
+      res.json({
+        success: true,
+        message: `Quality calculation started for ${tradesResult.rows.length} trade(s). This may take a few minutes.`,
+        totalTrades: tradesResult.rows.length
+      });
+
+    } catch (error) {
+      logger.logError('Error starting quality calculation:', error);
       next(error);
     }
   }

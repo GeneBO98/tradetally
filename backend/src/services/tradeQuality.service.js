@@ -1,0 +1,606 @@
+const axios = require('axios');
+
+/**
+ * Trade Quality Grading Service
+ *
+ * Grades trades based on stock metrics from Finnhub API (using historical data from trade entry date):
+ * - News sentiment (highest weight - 35%) - from /news-sentiment API with keyword analysis fallback
+ * - Float/Shares Outstanding (second weight - 25%) - from /stock/profile2
+ * - Relative volume (third weight - 20%) - calculated from /stock/candle volume vs /stock/metric 10-day avg
+ * - Price range (fourth weight - 15%) - from trade entry price
+ * - Intraday gain (fifth weight - 5%) - calculated from /stock/candle (open to close on trade date)
+ *
+ * Scoring: 5/5 = A, 4/5 = B, 3/5 = C, 2/5 = D, 0-1/5 = F
+ */
+
+class TradeQualityService {
+  constructor() {
+    this.finnhubApiKey = process.env.FINNHUB_API_KEY;
+    this.baseUrl = 'https://finnhub.io/api/v1';
+  }
+
+  /**
+   * Calculate trade quality grade
+   * @param {string} symbol - Stock symbol
+   * @param {Date} entryTime - Trade entry time
+   * @param {number} entryPrice - Trade entry price
+   * @returns {Promise<Object>} Quality grade and metrics
+   */
+  async calculateQuality(symbol, entryTime, entryPrice) {
+    if (!this.finnhubApiKey) {
+      console.log('[QUALITY] Finnhub API key not configured, skipping quality calculation');
+      return null;
+    }
+
+    try {
+      console.log(`[QUALITY] Calculating quality for ${symbol} at ${entryPrice}`);
+
+      // Fetch all required data in parallel with error handling
+      let profile, quote, sentiment, financials;
+
+      try {
+        [profile, quote, sentiment, financials] = await Promise.all([
+          this.getStockProfile(symbol),
+          this.getQuote(symbol, entryTime),
+          this.getNewsSentiment(symbol, entryTime),
+          this.getBasicFinancials(symbol)
+        ]);
+      } catch (fetchError) {
+        console.error(`[QUALITY] Error fetching data for ${symbol}:`, fetchError);
+        throw fetchError;
+      }
+
+      console.log(`[QUALITY] Data fetched for ${symbol}:`, {
+        hasProfile: !!profile,
+        hasQuote: !!quote,
+        hasSentiment: !!sentiment,
+        hasFinancials: !!financials,
+        sentimentValue: sentiment
+      });
+
+      // Get shares outstanding (float) - try profile first, then financials
+      const sharesOutstanding = profile?.shareOutstanding || financials?.sharesOutstanding || null;
+
+      if (!sharesOutstanding) {
+        console.log(`[QUALITY] WARNING: No shares outstanding data found for ${symbol}`);
+        console.log(`[QUALITY] Profile shareOutstanding: ${profile?.shareOutstanding}`);
+        console.log(`[QUALITY] Financials sharesOutstanding: ${financials?.sharesOutstanding}`);
+      } else {
+        const source = profile?.shareOutstanding ? 'profile' : 'financials';
+        console.log(`[QUALITY] Shares outstanding for ${symbol}: ${sharesOutstanding} (from ${source})`);
+      }
+
+      // Calculate gap from previous day's close to entry price
+      const gap = (quote?.previousClose && entryPrice)
+        ? ((entryPrice - quote.previousClose) / quote.previousClose) * 100
+        : null;
+
+      console.log(`[QUALITY] Gap calculation for ${symbol}: entryPrice=${entryPrice}, previousClose=${quote?.previousClose}, gap=${gap?.toFixed(2)}%`);
+
+      // Calculate individual metric scores
+      let metrics;
+      try {
+        metrics = {
+          float: this.scoreFloat(sharesOutstanding),
+          relativeVolume: this.scoreRelativeVolume(quote, financials?.avgVolume10Day),
+          priceRange: this.scorePriceRange(entryPrice),
+          intradayGain: this.scoreGap(gap),
+          newsSentiment: this.scoreNewsSentiment(sentiment)
+        };
+
+        console.log(`[QUALITY] Individual scores calculated:`, metrics);
+      } catch (scoringError) {
+        console.error(`[QUALITY] Error calculating individual scores for ${symbol}:`, scoringError);
+        throw scoringError;
+      }
+
+      // Calculate weighted score
+      const weightedScore = this.calculateWeightedScore(metrics);
+
+      // Determine grade
+      const grade = this.scoreToGrade(weightedScore);
+
+      // Calculate actual relative volume ratio
+      const actualVolume = quote?.v || null;
+      const avgVolume = financials?.avgVolume10Day || null;
+      // avgVolume is in millions, so convert to actual shares before calculating ratio
+      const relativeVolumeRatio = (actualVolume && avgVolume && avgVolume > 0)
+        ? actualVolume / (avgVolume * 1000000)
+        : null;
+
+      console.log(`[QUALITY] ${symbol} quality: ${grade} (${weightedScore.toFixed(2)}/5.0)`);
+      console.log(`[QUALITY] Metrics:`, metrics);
+      console.log(`[QUALITY] Volume data: actual=${actualVolume}, 10-day avg=${avgVolume}, relative=${relativeVolumeRatio?.toFixed(2)}x`);
+
+      return {
+        grade,
+        score: Math.round(weightedScore * 10) / 10, // Round to 1 decimal
+        metrics: {
+          float: sharesOutstanding,
+          floatScore: metrics.float,
+          relativeVolume: relativeVolumeRatio,
+          relativeVolumeScore: metrics.relativeVolume,
+          price: entryPrice,
+          priceScore: metrics.priceRange,
+          intradayGain: gap,
+          intradayGainScore: metrics.intradayGain,
+          newsSentiment: sentiment?.sentiment || null,
+          newsSentimentScore: metrics.newsSentiment
+        }
+      };
+    } catch (error) {
+      console.error(`[QUALITY] Error calculating quality for ${symbol}:`, error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Get stock profile from Finnhub
+   * Uses company-profile endpoint for more comprehensive data including float
+   */
+  async getStockProfile(symbol) {
+    try {
+      // Try company-profile endpoint first (has more detailed data)
+      const profileResponse = await axios.get(`${this.baseUrl}/stock/profile`, {
+        params: {
+          symbol,
+          token: this.finnhubApiKey
+        },
+        timeout: 5000
+      });
+
+      const profileData = profileResponse.data;
+
+      // Log what we received
+      console.log(`[QUALITY] Profile data for ${symbol}:`, {
+        shareOutstanding: profileData?.shareOutstanding,
+        marketCapitalization: profileData?.marketCapitalization,
+        name: profileData?.name
+      });
+
+      // Return profile data with shareOutstanding (float)
+      return profileData;
+    } catch (error) {
+      console.error(`[QUALITY] Error fetching profile for ${symbol}:`, error.message);
+
+      // Fallback to profile2 endpoint if profile fails
+      try {
+        console.log(`[QUALITY] Trying fallback profile2 endpoint for ${symbol}`);
+        const profile2Response = await axios.get(`${this.baseUrl}/stock/profile2`, {
+          params: {
+            symbol,
+            token: this.finnhubApiKey
+          },
+          timeout: 5000
+        });
+
+        console.log(`[QUALITY] Profile2 data for ${symbol}:`, {
+          shareOutstanding: profile2Response.data?.shareOutstanding,
+          marketCapitalization: profile2Response.data?.marketCapitalization
+        });
+
+        return profile2Response.data;
+      } catch (fallbackError) {
+        console.error(`[QUALITY] Both profile endpoints failed for ${symbol}:`, fallbackError.message);
+        return null;
+      }
+    }
+  }
+
+  /**
+   * Get basic financials including 10-day average volume and shares outstanding
+   */
+  async getBasicFinancials(symbol) {
+    try {
+      const response = await axios.get(`${this.baseUrl}/stock/metric`, {
+        params: {
+          symbol,
+          metric: 'all',
+          token: this.finnhubApiKey
+        },
+        timeout: 5000
+      });
+
+      const metrics = response.data?.metric || {};
+      const avgVolume10Day = metrics['10DayAverageTradingVolume'];
+      const sharesOutstanding = metrics['sharesOutstanding'];
+
+      console.log(`[QUALITY] Basic financials for ${symbol}:`, {
+        '10DayAvgVolume': avgVolume10Day,
+        'sharesOutstanding': sharesOutstanding
+      });
+
+      return {
+        avgVolume10Day: avgVolume10Day || null,
+        sharesOutstanding: sharesOutstanding || null
+      };
+    } catch (error) {
+      console.error(`[QUALITY] Error fetching basic financials for ${symbol}:`, error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Get stock quote data for a specific date (historical)
+   * Uses candlestick data to get OHLCV for the trade entry date and previous day
+   */
+  async getQuote(symbol, entryTime) {
+    try {
+      // Convert entryTime to Unix timestamp (seconds)
+      const entryDate = new Date(entryTime);
+
+      // Get data for 2 days (current day and previous day) to calculate gap
+      const startDate = new Date(entryDate);
+      startDate.setDate(startDate.getDate() - 2); // Go back 2 days to ensure we get previous trading day
+      startDate.setHours(0, 0, 0, 0);
+
+      const endDate = new Date(entryDate);
+      endDate.setHours(23, 59, 59, 999);
+
+      const from = Math.floor(startDate.getTime() / 1000);
+      const to = Math.floor(endDate.getTime() / 1000);
+
+      // Get daily candle data for the trade date and previous days
+      const response = await axios.get(`${this.baseUrl}/stock/candle`, {
+        params: {
+          symbol,
+          resolution: 'D', // Daily candle
+          from,
+          to,
+          token: this.finnhubApiKey
+        },
+        timeout: 5000
+      });
+
+      const data = response.data;
+
+      // Check if we have valid data
+      if (!data || data.s !== 'ok' || !data.o || data.o.length === 0) {
+        console.log(`[QUALITY] No historical data available for ${symbol} on ${entryDate.toISOString()}`);
+        return null;
+      }
+
+      // Get the most recent day's data (last element)
+      const lastIndex = data.o.length - 1;
+      const open = data.o[lastIndex];
+      const high = data.h[lastIndex];
+      const low = data.l[lastIndex];
+      const close = data.c[lastIndex];
+      const volume = data.v[lastIndex];
+
+      // Get previous day's close if available
+      const previousClose = lastIndex > 0 ? data.c[lastIndex - 1] : null;
+
+      console.log(`[QUALITY] Historical data for ${symbol}: open=${open}, close=${close}, previousClose=${previousClose}`);
+
+      return {
+        o: open,
+        h: high,
+        l: low,
+        c: close,
+        v: volume,
+        previousClose,
+        relativeVolume: null // Will need additional API call for average volume
+      };
+    } catch (error) {
+      console.error(`[QUALITY] Error fetching historical quote for ${symbol}:`, error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Get news sentiment from Finnhub
+   * First tries the news-sentiment API endpoint, falls back to keyword-based analysis
+   */
+  async getNewsSentiment(symbol, entryTime) {
+    try {
+      // First, try to get sentiment from Finnhub's news-sentiment endpoint
+      const sentimentResponse = await axios.get(`${this.baseUrl}/news-sentiment`, {
+        params: {
+          symbol,
+          token: this.finnhubApiKey
+        },
+        timeout: 5000
+      });
+
+      // Check if we have valid sentiment data
+      if (sentimentResponse.data && sentimentResponse.data.sentiment) {
+        const bullishPercent = sentimentResponse.data.sentiment.bullishPercent || 0;
+        const bearishPercent = sentimentResponse.data.sentiment.bearishPercent || 0;
+
+        // Convert bullish/bearish percentages to a sentiment score (-1 to 1)
+        // If we have valid percentages, use them
+        if (bullishPercent > 0 || bearishPercent > 0) {
+          const sentimentScore = bullishPercent - bearishPercent;
+          console.log(`[QUALITY] News sentiment API for ${symbol}: bullish=${bullishPercent}, bearish=${bearishPercent}, score=${sentimentScore}`);
+          return { sentiment: sentimentScore };
+        }
+      }
+
+      // Fallback: Use company news endpoint with keyword analysis
+      console.log(`[QUALITY] No sentiment data from API for ${symbol}, falling back to keyword analysis`);
+      return await this.getNewsSentimentFromKeywords(symbol, entryTime);
+
+    } catch (error) {
+      console.error(`[QUALITY] Error fetching sentiment for ${symbol}:`, error.message);
+
+      // Try fallback to keyword-based analysis
+      try {
+        return await this.getNewsSentimentFromKeywords(symbol, entryTime);
+      } catch (fallbackError) {
+        console.error(`[QUALITY] Fallback sentiment analysis also failed:`, fallbackError.message);
+        return null;
+      }
+    }
+  }
+
+  /**
+   * Fallback method: Get sentiment from company news using keyword analysis
+   */
+  async getNewsSentimentFromKeywords(symbol, entryTime) {
+    try {
+      // Get news for the trade date and day before
+      const tradeDate = new Date(entryTime);
+      const toDate = tradeDate.toISOString().split('T')[0];
+      const fromDate = new Date(tradeDate.getTime() - 24 * 60 * 60 * 1000)
+        .toISOString().split('T')[0];
+
+      const newsResponse = await axios.get(`${this.baseUrl}/company-news`, {
+        params: {
+          symbol,
+          from: fromDate,
+          to: toDate,
+          token: this.finnhubApiKey
+        },
+        timeout: 5000
+      });
+
+      const articles = newsResponse.data || [];
+
+      if (articles.length === 0) {
+        console.log(`[QUALITY] No news articles found for ${symbol} between ${fromDate} and ${toDate}`);
+        return { sentiment: 0 }; // Neutral
+      }
+
+      // Analyze sentiment using keywords
+      let positiveCount = 0;
+      let negativeCount = 0;
+
+      articles.slice(0, 10).forEach(article => {
+        const text = (article.headline + ' ' + (article.summary || '')).toLowerCase();
+        const sentiment = this.analyzeKeywordSentiment(text);
+
+        if (sentiment === 'positive') positiveCount++;
+        else if (sentiment === 'negative') negativeCount++;
+      });
+
+      const total = Math.min(articles.length, 10);
+      const sentimentScore = total > 0 ? (positiveCount - negativeCount) / total : 0;
+
+      console.log(`[QUALITY] Keyword sentiment for ${symbol}: ${positiveCount} positive, ${negativeCount} negative out of ${total} articles, score=${sentimentScore}`);
+
+      return { sentiment: sentimentScore };
+
+    } catch (error) {
+      console.error(`[QUALITY] Error in keyword sentiment analysis for ${symbol}:`, error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Analyze text sentiment using financial keywords
+   */
+  analyzeKeywordSentiment(text) {
+    // Strong positive indicators
+    const strongPositive = [
+      'beat estimates', 'exceeded expectations', 'surpassed forecasts', 'record revenue',
+      'record earnings', 'record profit', 'strong earnings', 'earnings beat',
+      'breakthrough', 'milestone', 'major contract', 'blockbuster deal',
+      'upgraded to buy', 'price target raised', 'fda approval', 'regulatory approval'
+    ];
+
+    // Moderate positive indicators
+    const moderatePositive = [
+      'growth', 'expansion', 'profit', 'gains', 'surge', 'rally', 'climb',
+      'advance', 'rise', 'increase', 'improve', 'bullish', 'optimistic'
+    ];
+
+    // Strong negative indicators
+    const strongNegative = [
+      'missed estimates', 'below expectations', 'disappointing', 'guidance cut',
+      'downgraded', 'lawsuit', 'investigation', 'fraud', 'bankruptcy', 'default',
+      'recall', 'scandal', 'plunge', 'crash', 'collapse', 'suspended'
+    ];
+
+    // Moderate negative indicators
+    const moderateNegative = [
+      'decline', 'drop', 'fall', 'decrease', 'loss', 'weak', 'concern',
+      'risk', 'bearish', 'pessimistic', 'uncertainty', 'volatile'
+    ];
+
+    let score = 0;
+
+    // Check strong indicators first (weight: 3)
+    strongPositive.forEach(term => {
+      if (text.includes(term)) score += 3;
+    });
+    strongNegative.forEach(term => {
+      if (text.includes(term)) score -= 3;
+    });
+
+    // Check moderate indicators (weight: 1)
+    moderatePositive.forEach(term => {
+      if (text.includes(term)) score += 1;
+    });
+    moderateNegative.forEach(term => {
+      if (text.includes(term)) score -= 1;
+    });
+
+    if (score > 2) return 'positive';
+    if (score < -2) return 'negative';
+    return 'neutral';
+  }
+
+  /**
+   * Score float (shares outstanding)
+   * Ideal: < 1M, Acceptable: < 5M, Poor: > 5M
+   * @returns {number} Score from 0 to 1
+   */
+  scoreFloat(floatShares) {
+    if (!floatShares) return 0;
+
+    // Finnhub returns shares outstanding already in millions
+    // So we use the value as-is
+    const floatInMillions = floatShares;
+
+    if (floatInMillions < 1) return 1.0;      // Ideal
+    if (floatInMillions < 5) return 0.7;      // Acceptable
+    if (floatInMillions < 10) return 0.4;     // Marginal
+    if (floatInMillions < 20) return 0.2;     // Poor
+    return 0.1;                                // Very poor
+  }
+
+  /**
+   * Score relative volume
+   * Ideal: >= 5x, Acceptable: >= 3x, Poor: < 2x
+   * @param {Object} quote - Historical quote data with volume
+   * @param {number} avgVolume10Day - 10-day average trading volume
+   * @returns {number} Score from 0 to 1
+   */
+  scoreRelativeVolume(quote, avgVolume10Day) {
+    // If we don't have the required data, return neutral score
+    if (!quote || !quote.v || !avgVolume10Day || avgVolume10Day <= 0) {
+      return 0.5; // Default neutral score
+    }
+
+    const actualVolume = quote.v;
+    // Finnhub returns avgVolume10Day in millions, so convert to actual shares
+    const avgVolumeInShares = avgVolume10Day * 1000000;
+    const relativeVolume = actualVolume / avgVolumeInShares;
+
+    // Score based on relative volume multiples
+    if (relativeVolume >= 5.0) return 1.0;      // Excellent - 5x+ average volume
+    if (relativeVolume >= 3.0) return 0.8;      // Good - 3x+ average volume
+    if (relativeVolume >= 2.0) return 0.6;      // Moderate - 2x+ average volume
+    if (relativeVolume >= 1.0) return 0.4;      // Average volume
+    if (relativeVolume >= 0.5) return 0.3;      // Below average
+    return 0.2;                                  // Very low volume
+  }
+
+  /**
+   * Score price range
+   * Ideal: $2-20, Acceptable: $1-30, Poor: outside range
+   * @returns {number} Score from 0 to 1
+   */
+  scorePriceRange(price) {
+    if (!price) return 0;
+
+    if (price >= 2 && price <= 20) return 1.0;    // Ideal
+    if (price >= 1 && price < 2) return 0.7;      // Low but acceptable
+    if (price > 20 && price <= 30) return 0.7;    // High but acceptable
+    if (price > 30 && price <= 50) return 0.4;    // Marginal
+    if (price < 1) return 0.3;                    // Too low
+    return 0.2;                                    // Too high
+  }
+
+  /**
+   * Score gap from previous day's close to entry price
+   * Measures how much the stock has moved from previous close to entry point
+   * @param {number} gap - Gap percentage (positive = gapping up, negative = gapping down)
+   * @returns {number} Score from 0 to 1
+   */
+  scoreGap(gap) {
+    if (gap === null || gap === undefined) return 0.5; // Neutral if no data
+
+    // Positive gaps (stock gapping up from previous close)
+    if (gap >= 10) return 1.0;      // Excellent - A setup (10%+ gap up)
+    if (gap >= 5) return 0.8;       // Good - (5%+ gap up)
+    if (gap >= 2) return 0.6;       // Moderate - (2%+ gap up)
+    if (gap >= 0) return 0.4;       // Slight gap up or flat
+
+    // Negative gaps (stock gapping down from previous close)
+    return 0.2;                      // Gapping down
+  }
+
+  /**
+   * Score news sentiment
+   * Positive sentiment is heavily weighted
+   * @returns {number} Score from 0 to 1
+   */
+  scoreNewsSentiment(sentiment) {
+    if (!sentiment || sentiment.sentiment === undefined) {
+      return 0.5; // Neutral if no data
+    }
+
+    const score = sentiment.sentiment || 0;
+
+    if (score >= 0.5) return 1.0;      // Very positive
+    if (score >= 0.25) return 0.8;     // Positive
+    if (score >= 0) return 0.6;        // Slightly positive
+    if (score >= -0.25) return 0.4;    // Slightly negative
+    if (score >= -0.5) return 0.2;     // Negative
+    return 0.1;                         // Very negative
+  }
+
+  /**
+   * Calculate weighted score
+   * Weights: News (35%), Float (25%), Relative Volume (20%), Price (15%), Intraday Gain (5%)
+   */
+  calculateWeightedScore(metrics) {
+    const weights = {
+      newsSentiment: 0.35,    // Highest weight
+      float: 0.25,            // Second
+      relativeVolume: 0.20,   // Third
+      priceRange: 0.15,       // Fourth
+      intradayGain: 0.05      // Fifth
+    };
+
+    const score =
+      metrics.newsSentiment * weights.newsSentiment +
+      metrics.float * weights.float +
+      metrics.relativeVolume * weights.relativeVolume +
+      metrics.priceRange * weights.priceRange +
+      metrics.intradayGain * weights.intradayGain;
+
+    return score * 5; // Convert to 0-5 scale
+  }
+
+  /**
+   * Convert numeric score to letter grade
+   * 5/5 = A, 4/5 = B, 3/5 = C, 2/5 = D, 0-1/5 = F
+   */
+  scoreToGrade(score) {
+    if (score >= 4.5) return 'A';
+    if (score >= 3.5) return 'B';
+    if (score >= 2.5) return 'C';
+    if (score >= 1.5) return 'D';
+    return 'F';
+  }
+
+  /**
+   * Batch calculate quality for multiple trades
+   */
+  async calculateBatchQuality(trades) {
+    const results = [];
+
+    for (const trade of trades) {
+      const quality = await this.calculateQuality(
+        trade.symbol,
+        trade.entry_time,
+        trade.entry_price
+      );
+
+      results.push({
+        tradeId: trade.id,
+        quality
+      });
+
+      // Add small delay to avoid rate limiting
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    return results;
+  }
+}
+
+module.exports = new TradeQualityService();

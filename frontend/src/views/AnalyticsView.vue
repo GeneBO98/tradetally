@@ -14,429 +14,11 @@
     <div v-else class="space-y-8">
       <!-- Filters -->
       <div class="card">
-        <div class="card-body space-y-4">
-          <!-- Basic filters always visible -->
-          <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-6">
-            <div>
-              <label for="symbol" class="label">Symbol</label>
-              <input
-                id="symbol"
-                v-model="localFilters.symbol"
-                type="text"
-                class="input"
-                placeholder="e.g., AAPL"
-                @keydown.enter="applyFilters"
-              />
-            </div>
-            
-            <div>
-              <label for="startDate" class="label">Start Date</label>
-              <input
-                id="startDate"
-                v-model="localFilters.startDate"
-                type="date"
-                class="input"
-                @keydown.enter="applyFilters"
-              />
-            </div>
-            
-            <div>
-              <label for="endDate" class="label">End Date</label>
-              <input
-                id="endDate"
-                v-model="localFilters.endDate"
-                type="date"
-                class="input"
-                @keydown.enter="applyFilters"
-              />
-            </div>
-            
-            <div>
-              <label class="label">Strategy</label>
-              <div class="relative" data-dropdown="strategy">
-                <button
-                  @click.stop="showStrategyDropdown = !showStrategyDropdown"
-                  class="input w-full text-left flex items-center justify-between"
-                  type="button"
-                >
-                  <span class="truncate">
-                    {{ getSelectedStrategyText() }}
-                  </span>
-                  <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-                  </svg>
-                </button>
-                
-                <div v-if="showStrategyDropdown" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
-                  <div class="p-1">
-                    <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
-                      <input
-                        type="checkbox"
-                        :checked="localFilters.strategies.length === 0"
-                        @change="toggleAllStrategies"
-                        class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
-                      />
-                      <span class="ml-3 text-sm text-gray-900 dark:text-white">All Strategies</span>
-                    </label>
-                  </div>
-                  <div class="border-t border-gray-200 dark:border-gray-600">
-                    <div v-for="strategy in strategyOptions" :key="strategy.value" class="p-1">
-                      <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
-                        <input
-                          type="checkbox"
-                          :value="strategy.value"
-                          v-model="localFilters.strategies"
-                          class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
-                        />
-                        <span class="ml-3 text-sm text-gray-900 dark:text-white">{{ strategy.label }}</span>
-                      </label>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            <div>
-              <label class="label">Sector</label>
-              <div class="relative" data-dropdown="sector">
-                <button
-                  @click.stop="showSectorDropdown = !showSectorDropdown"
-                  class="input w-full text-left flex items-center justify-between"
-                  type="button"
-                  :disabled="loadingSectorsFilter"
-                >
-                  <span class="truncate">
-                    {{ getSelectedSectorText() }}
-                  </span>
-                  <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-                  </svg>
-                </button>
-                
-                <div v-if="showSectorDropdown && !loadingSectorsFilter" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
-                  <div class="p-1">
-                    <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
-                      <input
-                        type="checkbox"
-                        :checked="localFilters.sectors.length === 0"
-                        @change="toggleAllSectors"
-                        class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
-                      />
-                      <span class="ml-3 text-sm text-gray-900 dark:text-white">All Sectors</span>
-                    </label>
-                  </div>
-                  <div class="border-t border-gray-200 dark:border-gray-600">
-                    <div v-for="sector in availableSectorsFilter" :key="sector" class="p-1">
-                      <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
-                        <input
-                          type="checkbox"
-                          :value="sector"
-                          v-model="localFilters.sectors"
-                          class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
-                        />
-                        <span class="ml-3 text-sm text-gray-900 dark:text-white">{{ sector }}</span>
-                      </label>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <label class="label">Tags</label>
-              <TagManagement v-model="localFilters.tags" />
-            </div>
-
-            <div>
-              <label for="hasNews" class="label">News</label>
-              <select
-                id="hasNews"
-                v-model="localFilters.hasNews"
-                class="input"
-              >
-                <option value="">All Trades</option>
-                <option value="true">With News</option>
-                <option value="false">No News</option>
-              </select>
-            </div>
-          </div>
-
-          <!-- Advanced filters toggle -->
-          <div class="pt-2">
-            <button
-              @click="showAdvanced = !showAdvanced"
-              class="flex items-center text-sm text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200"
-            >
-              <svg 
-                :class="[showAdvanced ? 'rotate-90' : '', 'h-4 w-4 mr-1 transition-transform']"
-                fill="none" stroke="currentColor" viewBox="0 0 24 24"
-              >
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-              </svg>
-              Advanced Filters
-              <span v-if="activeAdvancedCount > 0" class="ml-2 bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400 text-xs px-2 py-0.5 rounded-full">
-                {{ activeAdvancedCount }}
-              </span>
-            </button>
-          </div>
-
-          <!-- Advanced filters (collapsible) -->
-          <div v-if="showAdvanced" class="border-t border-gray-200 dark:border-gray-700 pt-4 space-y-4">
-            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <!-- Position Type -->
-              <div>
-                <label class="label">Position Type</label>
-                <div class="mt-2 space-y-2">
-                  <label class="inline-flex items-center">
-                    <input
-                      type="radio"
-                      v-model="localFilters.side"
-                      value=""
-                      class="form-radio text-primary-600"
-                    />
-                    <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">All</span>
-                  </label>
-                  <label class="inline-flex items-center ml-4">
-                    <input
-                      type="radio"
-                      v-model="localFilters.side"
-                      value="long"
-                      class="form-radio text-primary-600"
-                    />
-                    <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">Long</span>
-                  </label>
-                  <label class="inline-flex items-center ml-4">
-                    <input
-                      type="radio"
-                      v-model="localFilters.side"
-                      value="short"
-                      class="form-radio text-primary-600"
-                    />
-                    <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">Short</span>
-                  </label>
-                </div>
-              </div>
-
-              <!-- Price Range -->
-              <div>
-                <label class="label">Entry Price Range</label>
-                <div class="flex items-center space-x-2">
-                  <input
-                    v-model.number="localFilters.minPrice"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    class="input"
-                    placeholder="Min"
-                  />
-                  <span class="text-gray-500 dark:text-gray-400">-</span>
-                  <input
-                    v-model.number="localFilters.maxPrice"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    class="input"
-                    placeholder="Max"
-                  />
-                </div>
-              </div>
-
-              <!-- Quantity Range -->
-              <div>
-                <label class="label">Share Quantity</label>
-                <div class="flex items-center space-x-2">
-                  <input
-                    v-model.number="localFilters.minQuantity"
-                    type="number"
-                    min="0"
-                    class="input"
-                    placeholder="Min"
-                  />
-                  <span class="text-gray-500 dark:text-gray-400">-</span>
-                  <input
-                    v-model.number="localFilters.maxQuantity"
-                    type="number"
-                    min="0"
-                    class="input"
-                    placeholder="Max"
-                  />
-                </div>
-              </div>
-
-              <!-- Trade Status -->
-              <div>
-                <label class="label">Trade Status</label>
-                <select v-model="localFilters.status" class="input">
-                  <option value="">All Trades</option>
-                  <option value="open">Open Only</option>
-                  <option value="closed">Closed Only</option>
-                </select>
-              </div>
-            </div>
-
-            <!-- P&L Filters and Broker -->
-            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <div>
-                <label class="label">Broker</label>
-                <div class="relative" data-dropdown="broker">
-                  <button
-                    @click.stop="showBrokerDropdown = !showBrokerDropdown"
-                    class="input w-full text-left flex items-center justify-between"
-                    type="button"
-                    :disabled="loadingBrokersFilter"
-                  >
-                    <span class="truncate">
-                      {{ getSelectedBrokerText() }}
-                    </span>
-                    <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-                    </svg>
-                  </button>
-                  
-                  <div v-if="showBrokerDropdown && !loadingBrokersFilter" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
-                    <div class="p-1">
-                      <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
-                        <input
-                          type="checkbox"
-                          :checked="localFilters.brokers.length === 0"
-                          @change="toggleAllBrokers"
-                          class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
-                        />
-                        <span class="ml-3 text-sm text-gray-900 dark:text-white">All Brokers</span>
-                      </label>
-                    </div>
-                    <div class="border-t border-gray-200 dark:border-gray-600">
-                      <div v-for="broker in availableBrokersFilter" :key="broker" class="p-1">
-                        <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
-                          <input
-                            type="checkbox"
-                            :value="broker"
-                            v-model="localFilters.brokers"
-                            class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
-                          />
-                          <span class="ml-3 text-sm text-gray-900 dark:text-white">{{ broker }}</span>
-                        </label>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <label class="label">P&L Range ($)</label>
-                <div class="flex items-center space-x-2">
-                  <input
-                    v-model.number="localFilters.minPnl"
-                    type="number"
-                    step="0.01"
-                    class="input"
-                    placeholder="Min"
-                  />
-                  <span class="text-gray-500 dark:text-gray-400">-</span>
-                  <input
-                    v-model.number="localFilters.maxPnl"
-                    type="number"
-                    step="0.01"
-                    class="input"
-                    placeholder="Max"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label class="label">P&L Type</label>
-                <select v-model="localFilters.pnlType" class="input">
-                  <option value="">All</option>
-                  <option value="profit">Profit Only</option>
-                  <option value="loss">Loss Only</option>
-                </select>
-              </div>
-              
-              <div>
-                <label class="label">Hold Time</label>
-                <select v-model="localFilters.holdTime" class="input">
-                  <option value="">All</option>
-                  <option value="< 1 min">< 1 minute</option>
-                  <option value="1-5 min">1-5 minutes</option>
-                  <option value="5-15 min">5-15 minutes</option>
-                  <option value="15-30 min">15-30 minutes</option>
-                  <option value="30-60 min">30-60 minutes</option>
-                  <option value="1-2 hours">1-2 hours</option>
-                  <option value="2-4 hours">2-4 hours</option>
-                  <option value="4-24 hours">4-24 hours</option>
-                  <option value="1-7 days">1-7 days</option>
-                  <option value="1-4 weeks">1-4 weeks</option>
-                  <option value="1+ months">1+ months</option>
-                </select>
-              </div>
-            </div>
-
-            <!-- Day of Week Filter -->
-            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 mt-4">
-              <div>
-                <label class="label">Day of Week</label>
-                <div class="relative" data-dropdown="dayOfWeek">
-                  <button
-                    @click.stop="showDayOfWeekDropdown = !showDayOfWeekDropdown"
-                    class="input w-full text-left flex items-center justify-between"
-                    type="button"
-                  >
-                    <span class="truncate">
-                      {{ getSelectedDayOfWeekText() }}
-                    </span>
-                    <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-                    </svg>
-                  </button>
-                  
-                  <div v-if="showDayOfWeekDropdown" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
-                    <div class="p-1">
-                      <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
-                        <input
-                          type="checkbox"
-                          :checked="localFilters.daysOfWeek.length === 0"
-                          @change="toggleAllDaysOfWeek"
-                          class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
-                        />
-                        <span class="ml-3 text-sm text-gray-900 dark:text-white">All Days</span>
-                      </label>
-                    </div>
-                    <div class="border-t border-gray-200 dark:border-gray-600">
-                      <div v-for="day in dayOfWeekOptions" :key="day.value" class="p-1">
-                        <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
-                          <input
-                            type="checkbox"
-                            :value="day.value"
-                            v-model="localFilters.daysOfWeek"
-                            class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
-                          />
-                          <span class="ml-3 text-sm text-gray-900 dark:text-white">{{ day.label }}</span>
-                        </label>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          <div class="flex justify-between items-center">
-            <div v-if="activeFiltersCount > 0" class="text-sm text-gray-600 dark:text-gray-400">
-              {{ activeFiltersCount }} filter{{ activeFiltersCount !== 1 ? 's' : '' }} active
-            </div>
-            <div v-else></div>
-            <div class="flex space-x-3">
-              <button @click="resetFilters" class="btn-secondary">
-                Reset
-              </button>
-              <button @click="applyFilters" class="btn-primary">
-                Apply Filters
-              </button>
-            </div>
-          </div>
+        <div class="card-body">
+          <TradeFilters @filter="handleFilter" />
 
           <!-- R-Value Mode Toggle -->
-          <div class="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+          <div class="mt-6 border-t border-gray-200 dark:border-gray-700 pt-4">
             <div class="flex items-center justify-between">
               <div>
                 <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -466,25 +48,25 @@
 
           <!-- AI Recommendations button -->
           <div class="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4 flex justify-end">
-            <button 
-              @click="getRecommendations" 
+            <button
+              @click="getRecommendations"
               :disabled="loadingRecommendations"
               class="px-3 py-2 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed min-w-[120px] flex items-center justify-center"
             >
               <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                </svg>
-                <span v-if="loadingRecommendations" class="flex items-center">
-                  <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></div>
-                  Analyzing...
-                </span>
-                <span v-else>
-                  AI Recommendations
-                </span>
-              </button>
-            </div>
+              </svg>
+              <span v-if="loadingRecommendations" class="flex items-center">
+                <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></div>
+                Analyzing...
+              </span>
+              <span v-else>
+                AI Recommendations
+              </span>
+            </button>
           </div>
         </div>
+      </div>
 
       <!-- Overview Stats -->
       <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-6">
@@ -1292,6 +874,7 @@ import PerformanceChart from '@/components/charts/PerformanceChart.vue'
 import MdiIcon from '@/components/MdiIcon.vue'
 import NewsCorrelationAnalytics from '@/components/analytics/NewsCorrelationAnalytics.vue'
 import TagManagement from '@/components/trades/TagManagement.vue'
+import TradeFilters from '@/components/trades/TradeFilters.vue'
 import Chart from 'chart.js/auto'
 import { marked } from 'marked'
 import { 
@@ -1367,7 +950,10 @@ const localFilters = ref({
   pnlType: '',
   holdTime: '',
   brokers: [],
-  daysOfWeek: []
+  daysOfWeek: [],
+  instrumentTypes: [],
+  optionTypes: [],
+  qualityGrades: []
 })
 
 // Filters that are sent to API (converted from localFilters)
@@ -1392,7 +978,10 @@ const filters = ref({
   pnlType: '',
   holdTime: '',
   brokers: '',
-  daysOfWeek: ''
+  daysOfWeek: '',
+  instrumentTypes: '',
+  optionTypes: '',
+  qualityGrades: ''
 })
 
 const overview = ref({
@@ -2511,6 +2100,45 @@ async function fetchDrawdownData() {
   }
 }
 
+// Handle filter changes from TradeFilters component
+async function handleFilter(newFilters) {
+  // Directly apply the filters from TradeFilters component
+  filters.value = { ...newFilters }
+
+  loading.value = true
+
+  // Fetch all analytics data with the new filters
+  await Promise.all([
+    fetchOverview(),
+    fetchPerformance(),
+    fetchSymbolStats(),
+    fetchTagStats(),
+    fetchChartData(),
+    fetchDrawdownData()
+  ])
+
+  // Load sector data asynchronously
+  fetchSectorData()
+  loading.value = false
+
+  // Create charts after loading is complete and DOM is updated
+  await nextTick()
+  setTimeout(() => {
+    try {
+      createTradeDistributionChart()
+      createPerformanceByPriceChart()
+      createPerformanceByVolumeChart()
+      createPerformanceByPositionSizeChart()
+      createPerformanceByHoldTimeChart()
+      createDayOfWeekChart()
+      createDailyVolumeChart()
+      createDrawdownChart()
+    } catch (error) {
+      console.error('Error creating charts:', error)
+    }
+  }, 100)
+}
+
 async function applyFilters(newFilters = null) {
   // Convert localFilters to API format
   filters.value = {
@@ -2534,7 +2162,10 @@ async function applyFilters(newFilters = null) {
     pnlType: localFilters.value.pnlType,
     holdTime: localFilters.value.holdTime,
     brokers: (localFilters.value.brokers || []).join(','),
-    daysOfWeek: (localFilters.value.daysOfWeek || []).join(',')
+    daysOfWeek: (localFilters.value.daysOfWeek || []).join(','),
+    instrumentTypes: (localFilters.value.instrumentTypes || []).join(','),
+    optionTypes: (localFilters.value.optionTypes || []).join(','),
+    qualityGrades: (localFilters.value.qualityGrades || []).join(',')
   }
   
   loading.value = true
@@ -2593,9 +2224,12 @@ async function resetFilters() {
     pnlType: '',
     holdTime: '',
     brokers: [],
-    daysOfWeek: []
+    daysOfWeek: [],
+    instrumentTypes: [],
+    optionTypes: [],
+    qualityGrades: []
   }
-  
+
   // Reset and reload data
   await clearFilters()
 }
@@ -2620,9 +2254,12 @@ async function clearFilters() {
     pnlType: '',
     holdTime: '',
     brokers: [],
-    daysOfWeek: []
+    daysOfWeek: [],
+    instrumentTypes: [],
+    optionTypes: [],
+    qualityGrades: []
   }
-  
+
   // Reset API filters
   filters.value = {
     // Basic filters
@@ -2644,7 +2281,10 @@ async function clearFilters() {
     pnlType: '',
     holdTime: '',
     brokers: '',
-    daysOfWeek: ''
+    daysOfWeek: '',
+    instrumentTypes: '',
+    optionTypes: '',
+    qualityGrades: ''
   }
   
   // Clear localStorage to ensure fresh defaults

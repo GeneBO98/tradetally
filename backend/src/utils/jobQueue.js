@@ -267,6 +267,9 @@ class JobQueue {
         case 'news_enrichment':
           result = await this.processNewsEnrichment(data);
           break;
+        case 'quality_backfill':
+          result = await this.processQualityBackfill(data);
+          break;
         default:
           throw new Error(`Unknown job type: ${job.type}`);
       }
@@ -612,6 +615,75 @@ class JobQueue {
     });
 
     return { message: 'News backfill completed' };
+  }
+
+  /**
+   * Process quality backfill job
+   */
+  async processQualityBackfill(data) {
+    const tradeQualityService = require('../services/tradeQuality.service');
+    const { userId, batchSize = 10, maxTrades = null } = data;
+
+    logger.logImport(`Starting quality backfill for user ${userId}`);
+
+    // Get trades that need quality grading
+    const tradesQuery = `
+      SELECT id, symbol, entry_time, entry_price
+      FROM trades
+      WHERE user_id = $1
+        AND quality_grade IS NULL
+      ORDER BY trade_date DESC
+      ${maxTrades ? `LIMIT ${maxTrades}` : ''}
+    `;
+
+    const result = await db.query(tradesQuery, [userId]);
+    const trades = result.rows;
+
+    logger.logImport(`Found ${trades.length} trades to grade for quality`);
+
+    let graded = 0;
+    let skipped = 0;
+
+    // Process in batches to avoid overwhelming the Finnhub API
+    for (let i = 0; i < trades.length; i += batchSize) {
+      const batch = trades.slice(i, i + batchSize);
+
+      for (const trade of batch) {
+        try {
+          const quality = await tradeQualityService.calculateQuality(
+            trade.symbol,
+            trade.entry_time,
+            trade.entry_price
+          );
+
+          if (quality) {
+            // Update trade with quality data
+            await db.query(
+              `UPDATE trades
+               SET quality_grade = $1,
+                   quality_score = $2,
+                   quality_metrics = $3
+               WHERE id = $4`,
+              [quality.grade, quality.score, JSON.stringify(quality.metrics), trade.id]
+            );
+            graded++;
+          } else {
+            skipped++;
+          }
+        } catch (error) {
+          logger.logError(`Failed to grade quality for trade ${trade.id}: ${error.message}`);
+          skipped++;
+        }
+      }
+
+      // Add delay between batches to respect API rate limits
+      if (i + batchSize < trades.length) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+
+    logger.logImport(`Quality backfill completed: ${graded} graded, ${skipped} skipped`);
+    return { message: `Quality backfill completed: ${graded} graded, ${skipped} skipped` };
   }
 
   /**

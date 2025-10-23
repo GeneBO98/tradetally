@@ -367,6 +367,52 @@
               <option value="loss">Loss Only</option>
             </select>
           </div>
+
+          <!-- Quality Grade -->
+          <div>
+            <label class="label">Quality Grade</label>
+            <div class="relative" data-dropdown="qualityGrade">
+              <button
+                @click.stop="showQualityGradeDropdown = !showQualityGradeDropdown"
+                class="input w-full text-left flex items-center justify-between"
+                type="button"
+              >
+                <span class="truncate">
+                  {{ getSelectedQualityGradeText() }}
+                </span>
+                <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                </svg>
+              </button>
+
+              <div v-if="showQualityGradeDropdown" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
+                <div class="p-1">
+                  <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                    <input
+                      type="checkbox"
+                      :checked="!filters.qualityGrades || filters.qualityGrades.length === 0"
+                      @change="toggleAllQualityGrades"
+                      class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                    />
+                    <span class="ml-3 text-sm text-gray-900 dark:text-white">All Grades</span>
+                  </label>
+                </div>
+                <div class="border-t border-gray-200 dark:border-gray-600">
+                  <div v-for="grade in qualityGradeOptions" :key="grade.value" class="p-1">
+                    <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                      <input
+                        type="checkbox"
+                        :value="grade.value"
+                        v-model="filters.qualityGrades"
+                        class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                      />
+                      <span class="ml-3 text-sm text-gray-900 dark:text-white">{{ grade.label }}</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -528,6 +574,7 @@ const showDayOfWeekDropdown = ref(false)
 const showBrokerDropdown = ref(false)
 const showInstrumentTypeDropdown = ref(false)
 const showOptionTypeDropdown = ref(false)
+const showQualityGradeDropdown = ref(false)
 
 // Day of week options (weekdays only - markets are closed weekends)
 const dayOfWeekOptions = [
@@ -549,6 +596,15 @@ const instrumentTypeOptions = [
 const optionTypeOptions = [
   { value: 'call', label: 'Calls' },
   { value: 'put', label: 'Puts' }
+]
+
+// Quality grade options
+const qualityGradeOptions = [
+  { value: 'A', label: 'A - Excellent' },
+  { value: 'B', label: 'B - Good' },
+  { value: 'C', label: 'C - Average' },
+  { value: 'D', label: 'D - Below Average' },
+  { value: 'F', label: 'F - Poor' }
 ]
 
 // Strategy options
@@ -594,7 +650,8 @@ const filters = ref({
   brokers: [], // New multi-select array
   daysOfWeek: [], // New multi-select array for days
   instrumentTypes: [], // New multi-select array for instrument types
-  optionTypes: [] // New multi-select array for option types (call/put)
+  optionTypes: [], // New multi-select array for option types (call/put)
+  qualityGrades: [] // New multi-select array for quality grades
 })
 
 // Helper methods for multi-select dropdowns
@@ -684,6 +741,18 @@ function toggleAllOptionTypes(event) {
   }
 }
 
+function getSelectedQualityGradeText() {
+  if (!filters.value.qualityGrades || filters.value.qualityGrades.length === 0) return 'All Grades'
+  if (filters.value.qualityGrades.length === 1) return `Grade ${filters.value.qualityGrades[0]}`
+  return `${filters.value.qualityGrades.length} grades selected`
+}
+
+function toggleAllQualityGrades(event) {
+  if (event.target.checked) {
+    filters.value.qualityGrades = []
+  }
+}
+
 // Count active filters
 const activeFiltersCount = computed(() => {
   let count = 0
@@ -708,6 +777,7 @@ const activeFiltersCount = computed(() => {
   if (filters.value.brokers && filters.value.brokers.length > 0) count++
   if (filters.value.daysOfWeek && filters.value.daysOfWeek.length > 0) count++
   if (filters.value.optionTypes && filters.value.optionTypes.length > 0) count++
+  if (filters.value.qualityGrades && filters.value.qualityGrades.length > 0) count++
   return count
 })
 
@@ -727,6 +797,7 @@ const activeAdvancedCount = computed(() => {
   if (filters.value.holdTime) count++
   if (filters.value.daysOfWeek && filters.value.daysOfWeek.length > 0) count++
   if (filters.value.optionTypes && filters.value.optionTypes.length > 0) count++
+  if (filters.value.qualityGrades && filters.value.qualityGrades.length > 0) count++
   return count
 })
 
@@ -790,6 +861,11 @@ function applyFilters() {
     cleanFilters.optionTypes = filters.value.optionTypes.join(',')
   }
 
+  // Handle multi-select quality grades - convert to comma-separated
+  if (filters.value.qualityGrades.length > 0) {
+    cleanFilters.qualityGrades = filters.value.qualityGrades.join(',')
+  }
+
   emit('filter', cleanFilters)
 }
 
@@ -818,7 +894,8 @@ function resetFilters() {
     brokers: [],
     daysOfWeek: [],
     instrumentTypes: [],
-    optionTypes: []
+    optionTypes: [],
+    qualityGrades: []
   }
   // Emit empty filters to trigger immediate refresh
   emit('filter', {})
@@ -923,6 +1000,14 @@ function handleClickOutside(event) {
       showOptionTypeDropdown.value = false
     }
   }
+
+  // Check if click is outside quality grade dropdown
+  if (showQualityGradeDropdown.value) {
+    const qualityGradeDropdown = target.closest('[data-dropdown="qualityGrade"]')
+    if (!qualityGradeDropdown) {
+      showQualityGradeDropdown.value = false
+    }
+  }
 }
 
 onMounted(() => {
@@ -963,7 +1048,8 @@ onMounted(() => {
     brokers: [],
     daysOfWeek: [],
     instrumentTypes: [],
-    optionTypes: []
+    optionTypes: [],
+    qualityGrades: []
   }
 
   // Then set only the filters from query parameters
@@ -1085,8 +1171,14 @@ onMounted(() => {
     shouldApply = true
   }
 
+  // Handle quality grades from query parameters
+  if (route.query.qualityGrades) {
+    filters.value.qualityGrades = route.query.qualityGrades.split(',')
+    shouldApply = true
+  }
+
   // Auto-expand advanced filters if any advanced filter is set
-  if (route.query.minPrice || route.query.maxPrice || route.query.minQuantity || route.query.maxQuantity || route.query.holdTime || route.query.broker || route.query.minHoldTime || route.query.maxHoldTime || route.query.daysOfWeek || route.query.instrumentTypes || route.query.optionTypes) {
+  if (route.query.minPrice || route.query.maxPrice || route.query.minQuantity || route.query.maxQuantity || route.query.holdTime || route.query.broker || route.query.minHoldTime || route.query.maxHoldTime || route.query.daysOfWeek || route.query.instrumentTypes || route.query.optionTypes || route.query.qualityGrades) {
     showAdvanced.value = true
   }
   

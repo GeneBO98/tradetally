@@ -403,8 +403,8 @@ const userController = {
       const db = require('../config/database');
       const jobQueue = require('../utils/jobQueue');
 
-      // Count trades that need enrichment
-      const countQuery = `
+      // Count trades that need news enrichment
+      const newsCountQuery = `
         SELECT COUNT(*) as count
         FROM trades
         WHERE user_id = $1
@@ -413,29 +413,63 @@ const userController = {
           AND (has_news IS NULL OR news_checked_at IS NULL)
       `;
 
-      const countResult = await db.query(countQuery, [userId]);
-      const tradesCount = parseInt(countResult.rows[0].count);
+      // Count trades that need quality grading
+      const qualityCountQuery = `
+        SELECT COUNT(*) as count
+        FROM trades
+        WHERE user_id = $1
+          AND quality_grade IS NULL
+      `;
 
-      if (tradesCount === 0) {
+      const [newsCountResult, qualityCountResult] = await Promise.all([
+        db.query(newsCountQuery, [userId]),
+        db.query(qualityCountQuery, [userId])
+      ]);
+
+      const newsTradesCount = parseInt(newsCountResult.rows[0].count);
+      const qualityTradesCount = parseInt(qualityCountResult.rows[0].count);
+      const totalTradesCount = Math.max(newsTradesCount, qualityTradesCount);
+
+      if (totalTradesCount === 0) {
         return res.json({
-          message: 'All trades are already enriched',
+          message: 'All trades are already enriched with news and quality data',
           tradesQueued: 0
         });
       }
 
-      // Queue news enrichment job
-      const jobId = await jobQueue.addJob('news_backfill', {
-        userId: userId,
-        batchSize: 50,
-        maxTrades: null
-      });
+      const jobIds = [];
+      const enrichments = [];
 
-      console.log(`[SUCCESS] Queued news enrichment for ${tradesCount} trades (job ${jobId})`);
+      // Queue news enrichment job if needed
+      if (newsTradesCount > 0) {
+        const newsJobId = await jobQueue.addJob('news_backfill', {
+          userId: userId,
+          batchSize: 50,
+          maxTrades: null
+        });
+        jobIds.push(newsJobId);
+        enrichments.push(`news (${newsTradesCount} trades)`);
+        console.log(`[SUCCESS] Queued news enrichment for ${newsTradesCount} trades (job ${newsJobId})`);
+      }
+
+      // Queue quality grading job if needed
+      if (qualityTradesCount > 0) {
+        const qualityJobId = await jobQueue.addJob('quality_backfill', {
+          userId: userId,
+          batchSize: 10, // Smaller batches for API rate limiting
+          maxTrades: null
+        });
+        jobIds.push(qualityJobId);
+        enrichments.push(`quality (${qualityTradesCount} trades)`);
+        console.log(`[SUCCESS] Queued quality enrichment for ${qualityTradesCount} trades (job ${qualityJobId})`);
+      }
 
       res.json({
-        message: `Enrichment job queued for ${tradesCount} trades`,
-        tradesQueued: tradesCount,
-        jobId: jobId
+        message: `Enrichment jobs queued: ${enrichments.join(', ')}`,
+        tradesQueued: totalTradesCount,
+        newsTradesQueued: newsTradesCount,
+        qualityTradesQueued: qualityTradesCount,
+        jobIds: jobIds
       });
     } catch (error) {
       console.error('[ERROR] Failed to queue trade enrichment:', error.message);
