@@ -434,7 +434,36 @@
               </button>
             </div>
           </div>
-          
+
+          <!-- R-Value Mode Toggle -->
+          <div class="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Display Charts in R-Multiples
+                </label>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Show performance in terms of risk units instead of dollar amounts
+                </p>
+              </div>
+              <button
+                @click="rValueMode = !rValueMode"
+                :class="[
+                  rValueMode ? 'bg-primary-600' : 'bg-gray-200 dark:bg-gray-700',
+                  'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2'
+                ]"
+                type="button"
+              >
+                <span
+                  :class="[
+                    rValueMode ? 'translate-x-5' : 'translate-x-0',
+                    'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out'
+                  ]"
+                />
+              </button>
+            </div>
+          </div>
+
           <!-- AI Recommendations button -->
           <div class="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4 flex justify-end">
             <button 
@@ -835,7 +864,7 @@
             </select>
           </div>
           <div class="h-80">
-            <PerformanceChart :data="performanceData" />
+            <PerformanceChart :data="performanceData" :r-value-mode="rValueMode" />
           </div>
         </div>
       </div>
@@ -1256,7 +1285,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, nextTick, computed } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import api from '@/services/api'
 import PerformanceChart from '@/components/charts/PerformanceChart.vue'
@@ -1273,6 +1302,7 @@ import {
 } from '@mdi/js'
 
 const loading = ref(true)
+const rValueMode = ref(false)
 const performancePeriod = ref('daily')
 const userSettings = ref(null)
 const router = useRouter()
@@ -1588,9 +1618,13 @@ let drawdownChartInstance = null
 // Chart data
 const tradeDistributionData = ref([])
 const performanceByPriceData = ref([])
+const performanceByPriceRData = ref([])
 const performanceByVolumeData = ref([])
+const performanceByVolumeRData = ref([])
 const performanceByPositionSizeData = ref([])
+const performanceByPositionSizeRData = ref([])
 const performanceByHoldTimeData = ref([])
+const performanceByHoldTimeRData = ref([])
 const dayOfWeekData = ref([])
 const dailyVolumeData = ref([])
 const drawdownData = ref([])
@@ -1730,15 +1764,20 @@ function createPerformanceByPriceChart() {
     performanceByPriceChartInstance.destroy()
   }
   const labels = ['< $2', '$2-4.99', '$5-9.99', '$10-19.99', '$20-49.99', '$50-99.99', '$100-199.99', '$200+']
-  
+
+  // Use R-value data if in R-value mode, otherwise use P&L data
+  const chartData = rValueMode.value ? performanceByPriceRData.value : performanceByPriceData.value
+  const chartLabel = rValueMode.value ? 'Total R-Multiple' : 'Total P&L'
+  const xAxisLabel = rValueMode.value ? 'Total R-Multiple' : 'Total P&L ($)'
+
   performanceByPriceChartInstance = new Chart(ctx, {
     type: 'bar',
     data: {
       labels: labels,
       datasets: [{
-        label: 'Total P&L',
-        data: performanceByPriceData.value,
-        backgroundColor: performanceByPriceData.value.map(val => val >= 0 ? '#4ade80' : '#f87171'),
+        label: chartLabel,
+        data: chartData,
+        backgroundColor: chartData.map(val => val >= 0 ? '#4ade80' : '#f87171'),
         borderWidth: 1
       }]
     },
@@ -1757,7 +1796,7 @@ function createPerformanceByPriceChart() {
         x: {
           title: {
             display: true,
-            text: 'Total P&L ($)'
+            text: xAxisLabel
           },
           grid: {
             color: function(context) {
@@ -1782,6 +1821,9 @@ function createPerformanceByPriceChart() {
         tooltip: {
           callbacks: {
             label: function(context) {
+              if (rValueMode.value) {
+                return `Total R-Multiple: ${context.parsed.x.toFixed(2)}R`
+              }
               return `Total P&L: $${context.parsed.x.toFixed(2)}`
             }
           }
@@ -1796,23 +1838,28 @@ function createPerformanceByVolumeChart() {
     performanceByVolumeChartInstance.destroy()
   }
 
+  // Use R-value data if in R-value mode, otherwise use P&L data
+  const chartData = rValueMode.value ? performanceByVolumeRData.value : performanceByVolumeData.value
+
   // Only create chart if there's data to display
-  if (!performanceByVolumeData.value.length || performanceByVolumeData.value.every(val => val === 0)) {
+  if (!chartData.length || chartData.every(val => val === 0)) {
     console.log('No volume data to display, skipping chart creation')
     return
   }
 
   const ctx = performanceByVolumeChart.value.getContext('2d')
   const labels = chartLabels.value.volume.length > 0 ? chartLabels.value.volume : []
-  
+  const chartLabel = rValueMode.value ? 'Total R-Multiple' : 'Total P&L'
+  const xAxisLabel = rValueMode.value ? 'Total R-Multiple' : 'Total P&L ($)'
+
   performanceByVolumeChartInstance = new Chart(ctx, {
     type: 'bar',
     data: {
       labels: labels,
       datasets: [{
-        label: 'Total P&L',
-        data: performanceByVolumeData.value,
-        backgroundColor: performanceByVolumeData.value.map(val => val >= 0 ? '#4ade80' : '#f87171'),
+        label: chartLabel,
+        data: chartData,
+        backgroundColor: chartData.map(val => val >= 0 ? '#4ade80' : '#f87171'),
         borderWidth: 1
       }]
     },
@@ -1831,7 +1878,7 @@ function createPerformanceByVolumeChart() {
         x: {
           title: {
             display: true,
-            text: 'Total P&L ($)'
+            text: xAxisLabel
           },
           grid: {
             color: function(context) {
@@ -1856,6 +1903,9 @@ function createPerformanceByVolumeChart() {
         tooltip: {
           callbacks: {
             label: function(context) {
+              if (rValueMode.value) {
+                return `Total R-Multiple: ${context.parsed.x.toFixed(2)}R`
+              }
               return `Total P&L: $${context.parsed.x.toFixed(2)}`
             }
           }
@@ -1870,23 +1920,28 @@ function createPerformanceByPositionSizeChart() {
     performanceByPositionSizeChartInstance.destroy()
   }
 
+  // Use R-value data if in R-value mode, otherwise use P&L data
+  const chartData = rValueMode.value ? performanceByPositionSizeRData.value : performanceByPositionSizeData.value
+
   // Only create chart if there's data to display
-  if (!performanceByPositionSizeData.value.length || performanceByPositionSizeData.value.every(val => val === 0)) {
+  if (!chartData.length || chartData.every(val => val === 0)) {
     console.log('No position size data to display, skipping chart creation')
     return
   }
 
   const ctx = performanceByPositionSizeChart.value.getContext('2d')
   const labels = chartLabels.value.positionSize?.length > 0 ? chartLabels.value.positionSize : []
+  const chartLabel = rValueMode.value ? 'Total R-Multiple' : 'Total P&L'
+  const xAxisLabel = rValueMode.value ? 'Total R-Multiple' : 'Total P&L ($)'
 
   performanceByPositionSizeChartInstance = new Chart(ctx, {
     type: 'bar',
     data: {
       labels: labels,
       datasets: [{
-        label: 'Total P&L',
-        data: performanceByPositionSizeData.value,
-        backgroundColor: performanceByPositionSizeData.value.map(val => val >= 0 ? '#4ade80' : '#f87171'),
+        label: chartLabel,
+        data: chartData,
+        backgroundColor: chartData.map(val => val >= 0 ? '#4ade80' : '#f87171'),
         borderWidth: 1
       }]
     },
@@ -1905,7 +1960,7 @@ function createPerformanceByPositionSizeChart() {
         x: {
           title: {
             display: true,
-            text: 'Total P&L ($)'
+            text: xAxisLabel
           },
           grid: {
             color: function(context) {
@@ -1930,6 +1985,9 @@ function createPerformanceByPositionSizeChart() {
         tooltip: {
           callbacks: {
             label: function(context) {
+              if (rValueMode.value) {
+                return `Total R-Multiple: ${context.parsed.x.toFixed(2)}R`
+              }
               return `Total P&L: $${context.parsed.x.toFixed(2)}`
             }
           }
@@ -1952,16 +2010,24 @@ function createDayOfWeekChart() {
   const ctx = dayOfWeekChart.value.getContext('2d')
   // Only show weekdays since markets are closed on weekends
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
-  const weekdayData = dayOfWeekData.value.slice(1, 6) // Skip Sunday (0) and Saturday (6)
-  
+  // Backend already returns only weekdays (Monday-Friday), no need to slice
+  const weekdayData = dayOfWeekData.value
+
+  // Use R-value data if in R-value mode, otherwise use P&L data
+  const chartData = rValueMode.value
+    ? weekdayData.map(d => d.total_r_value || 0)
+    : weekdayData.map(d => d.total_pnl || 0)
+  const chartLabel = rValueMode.value ? 'Total R-Multiple' : 'Total P&L'
+  const xAxisLabel = rValueMode.value ? 'Total R-Multiple' : 'Total P&L ($)'
+
   dayOfWeekChartInstance = new Chart(ctx, {
     type: 'bar',
     data: {
       labels: days,
       datasets: [{
-        label: 'Total P&L',
-        data: weekdayData.map(d => d.total_pnl || 0),
-        backgroundColor: weekdayData.map(d => (d.total_pnl || 0) >= 0 ? '#4ade80' : '#f87171'),
+        label: chartLabel,
+        data: chartData,
+        backgroundColor: chartData.map(val => val >= 0 ? '#4ade80' : '#f87171'),
         borderWidth: 1,
         barThickness: 30,
         categoryPercentage: 0.7
@@ -1983,7 +2049,7 @@ function createDayOfWeekChart() {
           beginAtZero: true,
           title: {
             display: true,
-            text: 'Total P&L ($)'
+            text: xAxisLabel
           },
           grid: {
             color: function(context) {
@@ -2008,6 +2074,9 @@ function createDayOfWeekChart() {
         tooltip: {
           callbacks: {
             label: function(context) {
+              if (rValueMode.value) {
+                return `R-Multiple: ${context.parsed.x.toFixed(2)}R`
+              }
               return `P&L: $${context.parsed.x.toFixed(2)}`
             }
           }
@@ -2029,15 +2098,20 @@ function createPerformanceByHoldTimeChart() {
 
   const ctx = performanceByHoldTimeChart.value.getContext('2d')
   const labels = ['< 1 min', '1-5 min', '5-15 min', '15-30 min', '30-60 min', '1-2 hours', '2-4 hours', '4-24 hours', '1-7 days', '1-4 weeks', '1+ months']
-  
+
+  // Use R-value data if in R-value mode, otherwise use P&L data
+  const chartData = rValueMode.value ? performanceByHoldTimeRData.value : performanceByHoldTimeData.value
+  const chartLabel = rValueMode.value ? 'Total R-Multiple' : 'Total P&L'
+  const xAxisLabel = rValueMode.value ? 'Total R-Multiple' : 'Total P&L ($)'
+
   performanceByHoldTimeChartInstance = new Chart(ctx, {
     type: 'bar',
     data: {
       labels: labels,
       datasets: [{
-        label: 'Total P&L',
-        data: performanceByHoldTimeData.value,
-        backgroundColor: performanceByHoldTimeData.value.map(val => val >= 0 ? '#4ade80' : '#f87171'),
+        label: chartLabel,
+        data: chartData,
+        backgroundColor: chartData.map(val => val >= 0 ? '#4ade80' : '#f87171'),
         borderWidth: 1,
         barThickness: 20,
         categoryPercentage: 0.4
@@ -2067,7 +2141,7 @@ function createPerformanceByHoldTimeChart() {
           beginAtZero: true,
           title: {
             display: true,
-            text: 'Total P&L ($)'
+            text: xAxisLabel
           },
           grid: {
             color: function(context) {
@@ -2092,6 +2166,9 @@ function createPerformanceByHoldTimeChart() {
         tooltip: {
           callbacks: {
             label: function(context) {
+              if (rValueMode.value) {
+                return `Total R-Multiple: ${context.parsed.x.toFixed(2)}R`
+              }
               return `Total P&L: $${context.parsed.x.toFixed(2)}`
             }
           }
@@ -2207,8 +2284,14 @@ function createDrawdownChart() {
     const date = new Date(d.trade_date)
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   })
-  const drawdowns = drawdownData.value.map(d => d.drawdown)
-  
+
+  // Use R-value drawdown if in R-value mode, otherwise use dollar drawdown
+  const drawdowns = rValueMode.value
+    ? drawdownData.value.map(d => d.r_value_drawdown || 0)
+    : drawdownData.value.map(d => d.drawdown)
+
+  const yAxisLabel = rValueMode.value ? 'Drawdown (R)' : 'Drawdown ($)'
+
   // Log drawdown data for debugging
   console.log('Drawdown chart data:', {
     maxDrawdown: Math.min(...drawdowns),
@@ -2216,7 +2299,7 @@ function createDrawdownChart() {
     firstFewDrawdowns: drawdowns.slice(0, 5),
     lastFewDrawdowns: drawdowns.slice(-5)
   })
-  
+
   drawdownChartInstance = new Chart(ctx, {
     type: 'line',
     data: {
@@ -2262,7 +2345,7 @@ function createDrawdownChart() {
         y: {
           title: {
             display: true,
-            text: 'Drawdown ($)'
+            text: yAxisLabel
           },
           afterDataLimits: function(scale) {
             const minValue = Math.min(...drawdowns)
@@ -2279,6 +2362,9 @@ function createDrawdownChart() {
         tooltip: {
           callbacks: {
             label: function(context) {
+              if (rValueMode.value) {
+                return `Drawdown: ${context.parsed.y.toFixed(2)}R`
+              }
               return `Drawdown: $${context.parsed.y.toFixed(2)}`
             },
             title: function(context) {
@@ -2304,12 +2390,16 @@ async function fetchChartData() {
     const response = await api.get('/analytics/charts', { params })
     
     console.log('Chart data received:', response.data)
-    
+
     tradeDistributionData.value = response.data.tradeDistribution
     performanceByPriceData.value = response.data.performanceByPrice
+    performanceByPriceRData.value = response.data.performanceByPriceR || []
     performanceByVolumeData.value = response.data.performanceByVolume
+    performanceByVolumeRData.value = response.data.performanceByVolumeR || []
     performanceByPositionSizeData.value = response.data.performanceByPositionSize
+    performanceByPositionSizeRData.value = response.data.performanceByPositionSizeR || []
     performanceByHoldTimeData.value = response.data.performanceByHoldTime
+    performanceByHoldTimeRData.value = response.data.performanceByHoldTimeR || []
     dayOfWeekData.value = response.data.dayOfWeek
     dailyVolumeData.value = response.data.dailyVolume
     
@@ -3132,6 +3222,26 @@ function collapseSectors() {
   sectorsToShow.value = 10
   console.log(`[DISPLAY] Collapsed to show ${sectorsToShow.value} sectors`)
 }
+
+// Watch for R-value mode changes and recreate all charts
+watch(() => rValueMode.value, () => {
+  nextTick(() => {
+    setTimeout(() => {
+      try {
+        createTradeDistributionChart()
+        createPerformanceByPriceChart()
+        createPerformanceByVolumeChart()
+        createPerformanceByPositionSizeChart()
+        createPerformanceByHoldTimeChart()
+        createDayOfWeekChart()
+        createDailyVolumeChart()
+        createDrawdownChart()
+      } catch (error) {
+        console.error('Error recreating charts:', error)
+      }
+    }, 100)
+  })
+})
 </script>
 
 <style scoped>

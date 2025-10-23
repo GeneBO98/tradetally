@@ -15,6 +15,10 @@ const props = defineProps({
   data: {
     type: Array,
     required: true
+  },
+  rValueMode: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -31,10 +35,20 @@ function createChart() {
   const gridColor = isDark ? '#374151' : '#E5E7EB'
 
   const ctx = chartCanvas.value.getContext('2d')
-  
+
   const labels = props.data.map(d => format(new Date(d.period), 'MMM dd'))
-  const pnlData = props.data.map(d => d.pnl)
-  const cumulativeData = props.data.map(d => d.cumulative_pnl)
+
+  // Use R-value data if in R-value mode, otherwise use P&L data
+  const dailyData = props.rValueMode
+    ? props.data.map(d => d.r_value || 0)
+    : props.data.map(d => d.pnl)
+
+  const cumulativeData = props.rValueMode
+    ? props.data.map(d => d.cumulative_r_value || 0)
+    : props.data.map(d => d.cumulative_pnl)
+
+  const dailyLabel = props.rValueMode ? 'Daily R-Multiple' : 'Daily P&L'
+  const cumulativeLabel = props.rValueMode ? 'Cumulative R-Multiple' : 'Cumulative P&L'
 
   chart = new Chart(ctx, {
     type: 'line',
@@ -42,15 +56,15 @@ function createChart() {
       labels,
       datasets: [
         {
-          label: 'Daily P&L',
-          data: pnlData,
+          label: dailyLabel,
+          data: dailyData,
           borderColor: '#3B82F6',
           backgroundColor: 'rgba(59, 130, 246, 0.1)',
           tension: 0.4,
           yAxisID: 'y'
         },
         {
-          label: 'Cumulative P&L',
+          label: cumulativeLabel,
           data: cumulativeData,
           borderColor: '#10B981',
           backgroundColor: 'rgba(16, 185, 129, 0.1)',
@@ -120,6 +134,12 @@ watch(() => props.data, () => {
     createChart()
   }
 }, { deep: true })
+
+watch(() => props.rValueMode, () => {
+  if (props.data.length > 0) {
+    createChart()
+  }
+})
 
 watch(() => document.documentElement.classList.contains('dark'), () => {
   if (props.data.length > 0) {

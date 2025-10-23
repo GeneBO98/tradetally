@@ -656,11 +656,13 @@ const analyticsController = {
       const params = [req.user.id, ...filterParams];
 
       const performanceQuery = `
-        SELECT 
+        SELECT
           ${groupBy} as period,
           COUNT(*) as trades,
           COALESCE(SUM(pnl), 0) as pnl,
-          COALESCE(SUM(SUM(pnl)) OVER (ORDER BY ${groupBy}), 0) as cumulative_pnl
+          COALESCE(SUM(SUM(pnl)) OVER (ORDER BY ${groupBy}), 0) as cumulative_pnl,
+          COALESCE(SUM(r_value), 0) as r_value,
+          COALESCE(SUM(SUM(r_value)) OVER (ORDER BY ${groupBy}), 0) as cumulative_r_value
         FROM trades
         WHERE user_id = $1 ${filterConditions}
         GROUP BY ${groupBy}
@@ -871,8 +873,8 @@ const analyticsController = {
       // Performance by Price
       const performanceByPriceQuery = `
         WITH price_ranges AS (
-          SELECT 
-            CASE 
+          SELECT
+            CASE
               WHEN entry_price < 2 THEN '< $2'
               WHEN entry_price < 5 THEN '$2-4.99'
               WHEN entry_price < 10 THEN '$5-9.99'
@@ -882,7 +884,7 @@ const analyticsController = {
               WHEN entry_price < 200 THEN '$100-199.99'
               ELSE '$200+'
             END as price_range,
-            CASE 
+            CASE
               WHEN entry_price < 2 THEN 1
               WHEN entry_price < 5 THEN 2
               WHEN entry_price < 10 THEN 3
@@ -892,11 +894,15 @@ const analyticsController = {
               WHEN entry_price < 200 THEN 7
               ELSE 8
             END as range_order,
-            pnl
+            pnl,
+            r_value
           FROM trades
           WHERE user_id = $1 ${filterConditions}
         )
-        SELECT price_range, COALESCE(SUM(pnl), 0) as total_pnl
+        SELECT
+          price_range,
+          COALESCE(SUM(pnl), 0) as total_pnl,
+          COALESCE(SUM(r_value), 0) as total_r_value
         FROM price_ranges
         GROUP BY price_range, range_order
         ORDER BY range_order
@@ -905,8 +911,8 @@ const analyticsController = {
       // Performance by Volume
       const performanceByVolumeQuery = `
         WITH trade_volumes AS (
-          SELECT 
-            CASE 
+          SELECT
+            CASE
               WHEN executions IS NOT NULL AND jsonb_array_length(executions) > 0 THEN
                 (
                   SELECT COALESCE(SUM((exec->>'quantity')::integer), 0)
@@ -914,13 +920,14 @@ const analyticsController = {
                 )
               ELSE quantity  -- Fallback to trade quantity if no executions data
             END as total_volume,
-            pnl
+            pnl,
+            r_value
           FROM trades
           WHERE user_id = $1 ${filterConditions}
         ),
         volume_ranges AS (
-          SELECT 
-            CASE 
+          SELECT
+            CASE
               WHEN total_volume BETWEEN 2 AND 4 THEN '2-4'
               WHEN total_volume BETWEEN 5 AND 9 THEN '5-9'
               WHEN total_volume BETWEEN 10 AND 19 THEN '10-19'
@@ -936,7 +943,7 @@ const analyticsController = {
               WHEN total_volume >= 20000 THEN '20K+'
               ELSE 'Other'
             END as volume_range,
-            CASE 
+            CASE
               WHEN total_volume BETWEEN 2 AND 4 THEN 1
               WHEN total_volume BETWEEN 5 AND 9 THEN 2
               WHEN total_volume BETWEEN 10 AND 19 THEN 3
@@ -952,10 +959,14 @@ const analyticsController = {
               WHEN total_volume >= 20000 THEN 13
               ELSE 14
             END as range_order,
-            pnl
+            pnl,
+            r_value
           FROM trade_volumes
         )
-        SELECT volume_range, COALESCE(SUM(pnl), 0) as total_pnl
+        SELECT
+          volume_range,
+          COALESCE(SUM(pnl), 0) as total_pnl,
+          COALESCE(SUM(r_value), 0) as total_r_value
         FROM volume_ranges
         GROUP BY volume_range, range_order
         ORDER BY range_order
@@ -966,7 +977,8 @@ const analyticsController = {
         WITH position_sizes AS (
           SELECT
             (entry_price * quantity) as position_size,
-            pnl
+            pnl,
+            r_value
           FROM trades
           WHERE user_id = $1 ${filterConditions}
         ),
@@ -982,6 +994,7 @@ const analyticsController = {
           SELECT
             position_size,
             pnl,
+            r_value,
             -- Dynamically create ranges based on min/max
             CASE
               -- If max is under $1000, use $100 increments
@@ -1012,6 +1025,7 @@ const analyticsController = {
         SELECT
           range_start,
           COALESCE(SUM(pnl), 0) as total_pnl,
+          COALESCE(SUM(r_value), 0) as total_r_value,
           COUNT(*) as trade_count
         FROM dynamic_ranges
         GROUP BY range_start
@@ -1021,8 +1035,8 @@ const analyticsController = {
       // Performance by Hold Time
       const performanceByHoldTimeQuery = `
         WITH hold_time_analysis AS (
-          SELECT 
-            CASE 
+          SELECT
+            CASE
               WHEN entry_time IS NULL OR exit_time IS NULL THEN 'Open Position'
               WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 60 THEN '< 1 min'
               WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 300 THEN '1-5 min'
@@ -1036,7 +1050,7 @@ const analyticsController = {
               WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 2592000 THEN '1-4 weeks'
               ELSE '1+ months'
             END as hold_time_range,
-            CASE 
+            CASE
               WHEN entry_time IS NULL OR exit_time IS NULL THEN 0
               WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 60 THEN 1
               WHEN EXTRACT(EPOCH FROM (exit_time::timestamp - entry_time::timestamp)) < 300 THEN 2
@@ -1051,13 +1065,15 @@ const analyticsController = {
               ELSE 11
             END as range_order,
             pnl,
+            r_value,
             CASE WHEN pnl > 0 THEN 1 ELSE 0 END as is_winner
           FROM trades
           WHERE user_id = $1 ${filterConditions} AND pnl IS NOT NULL
         )
-        SELECT 
-          hold_time_range, 
+        SELECT
+          hold_time_range,
           COALESCE(SUM(pnl), 0) as total_pnl,
+          COALESCE(SUM(r_value), 0) as total_r_value,
           COUNT(*) as trade_count,
           SUM(is_winner) as winning_trades
         FROM hold_time_analysis
@@ -1096,11 +1112,17 @@ const analyticsController = {
         return found ? parseFloat(found.total_pnl) : 0;
       });
 
+      const performanceByPriceR = priceLabels.map(label => {
+        const found = perfByPriceResult.rows.find(row => row.price_range === label);
+        return found ? parseFloat(found.total_r_value) : 0;
+      });
+
       // Dynamic volume categories - only include categories with data
       const volumeDataMap = new Map();
+      const volumeRDataMap = new Map();
       const volumeOrderMap = {
         '2-4': 1, '5-9': 2, '10-19': 3, '20-49': 4, '50-99': 5, '100-500': 6,
-        '500-999': 7, '1K-2K': 8, '2K-3K': 9, '3K-5K': 10, '5K-10K': 11, 
+        '500-999': 7, '1K-2K': 8, '2K-3K': 9, '3K-5K': 10, '5K-10K': 11,
         '10K-20K': 12, '20K+': 13
       };
 
@@ -1108,6 +1130,7 @@ const analyticsController = {
       perfByVolumeResult.rows.forEach(row => {
         if (row.volume_range && row.volume_range !== 'Other' && parseFloat(row.total_pnl) !== 0) {
           volumeDataMap.set(row.volume_range, parseFloat(row.total_pnl));
+          volumeRDataMap.set(row.volume_range, parseFloat(row.total_r_value || 0));
         }
       });
 
@@ -1117,6 +1140,7 @@ const analyticsController = {
 
       const dynamicVolumeLabels = sortedVolumeEntries.map(([label]) => label);
       const performanceByVolume = sortedVolumeEntries.map(([, pnl]) => pnl);
+      const performanceByVolumeR = sortedVolumeEntries.map(([label]) => volumeRDataMap.get(label) || 0);
 
       // Process dynamic position size data
       const formatPositionSizeRange = (rangeStart) => {
@@ -1150,6 +1174,7 @@ const analyticsController = {
           const label = formatPositionSizeRange(row.range_start);
           positionSizeDataMap.set(label, {
             pnl: parseFloat(row.total_pnl),
+            rValue: parseFloat(row.total_r_value || 0),
             rangeStart: parseFloat(row.range_start)
           });
         }
@@ -1161,10 +1186,16 @@ const analyticsController = {
 
       const dynamicPositionSizeLabels = sortedPositionSizeEntries.map(([label]) => label);
       const performanceByPositionSize = sortedPositionSizeEntries.map(([, data]) => data.pnl);
+      const performanceByPositionSizeR = sortedPositionSizeEntries.map(([, data]) => data.rValue);
 
       const performanceByHoldTime = holdTimeLabels.map(label => {
         const found = perfByHoldTimeResult.rows.find(row => row.hold_time_range === label);
         return found ? parseFloat(found.total_pnl) : 0;
+      });
+
+      const performanceByHoldTimeR = holdTimeLabels.map(label => {
+        const found = perfByHoldTimeResult.rows.find(row => row.hold_time_range === label);
+        return found ? parseFloat(found.total_r_value) : 0;
       });
 
       // Day of Week Performance (timezone-aware and excluding weekends)
@@ -1176,10 +1207,11 @@ const analyticsController = {
       
       if (userTimezone !== 'UTC') {
         dayOfWeekQuery = `
-          SELECT 
+          SELECT
             EXTRACT(DOW FROM (entry_time AT TIME ZONE 'UTC' AT TIME ZONE $2)) as day_of_week,
             COUNT(*) as trade_count,
-            COALESCE(SUM(pnl), 0) as total_pnl
+            COALESCE(SUM(pnl), 0) as total_pnl,
+            COALESCE(SUM(r_value), 0) as total_r_value
           FROM trades
           WHERE user_id = $1 ${filterConditions}
             AND EXTRACT(DOW FROM (entry_time AT TIME ZONE 'UTC' AT TIME ZONE $2)) NOT IN (0, 6) -- Exclude weekends
@@ -1189,10 +1221,11 @@ const analyticsController = {
         dayOfWeekParams = params.concat([userTimezone]);
       } else {
         dayOfWeekQuery = `
-          SELECT 
+          SELECT
             EXTRACT(DOW FROM entry_time) as day_of_week,
             COUNT(*) as trade_count,
-            COALESCE(SUM(pnl), 0) as total_pnl
+            COALESCE(SUM(pnl), 0) as total_pnl,
+            COALESCE(SUM(r_value), 0) as total_r_value
           FROM trades
           WHERE user_id = $1 ${filterConditions}
             AND EXTRACT(DOW FROM entry_time) NOT IN (0, 6) -- Exclude weekends
@@ -1211,6 +1244,7 @@ const analyticsController = {
         const found = dayOfWeekResult.rows.find(row => parseInt(row.day_of_week) === i);
         dayOfWeekData.push({
           total_pnl: found ? parseFloat(found.total_pnl) : 0,
+          total_r_value: found ? parseFloat(found.total_r_value) : 0,
           trade_count: found ? parseInt(found.trade_count) : 0
         });
       }
@@ -1245,9 +1279,13 @@ const analyticsController = {
       const responseData = {
         tradeDistribution,
         performanceByPrice,
+        performanceByPriceR,
         performanceByVolume,
+        performanceByVolumeR,
         performanceByPositionSize,
+        performanceByPositionSizeR,
         performanceByHoldTime,
+        performanceByHoldTimeR,
         dayOfWeek: dayOfWeekData,
         dailyVolume: dailyVolumeResult.rows,
         // Include dynamic labels for charts
