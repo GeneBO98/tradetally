@@ -250,7 +250,24 @@
               </div>
             </div>
           </div>
-          
+
+          <!-- Quality Grade -->
+          <div v-if="trade.qualityGrade" class="mt-3 pt-2 border-t border-gray-200 dark:border-gray-700">
+            <div class="flex items-center justify-between">
+              <div class="text-xs text-gray-500 dark:text-gray-400">Quality</div>
+              <span class="px-2 py-1 inline-flex text-xs font-semibold rounded"
+                :class="{
+                  'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400': trade.qualityGrade === 'A',
+                  'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400': trade.qualityGrade === 'B',
+                  'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400': trade.qualityGrade === 'C',
+                  'bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400': trade.qualityGrade === 'D',
+                  'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400': trade.qualityGrade === 'F'
+                }">
+                {{ trade.qualityGrade }}
+              </span>
+            </div>
+          </div>
+
           <!-- Sector Information -->
           <div v-if="trade.sector" class="mt-3 pt-2 border-t border-gray-200 dark:border-gray-700">
             <div class="text-xs text-gray-500 dark:text-gray-400">Sector</div>
@@ -402,8 +419,8 @@
                 </td>
                 
                 <!-- Confidence Column -->
-                <td v-else-if="column.visible && column.key === 'confidence'" 
-                    :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']" 
+                <td v-else-if="column.visible && column.key === 'confidence'"
+                    :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
                   <div v-if="trade.confidence" class="flex items-center space-x-2">
                     <div class="flex space-x-1">
@@ -415,7 +432,25 @@
                   </div>
                   <div v-else class="text-sm text-gray-500 dark:text-gray-400">-</div>
                 </td>
-                
+
+                <!-- Quality Column -->
+                <td v-else-if="column.visible && column.key === 'quality'"
+                    :class="[getCellPadding, 'whitespace-nowrap cursor-pointer text-center']"
+                    @click="$router.push(`/trades/${trade.id}`)">
+                  <span v-if="trade.qualityGrade"
+                    class="px-2 py-1 inline-flex text-xs font-semibold rounded"
+                    :class="{
+                      'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400': trade.qualityGrade === 'A',
+                      'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400': trade.qualityGrade === 'B',
+                      'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400': trade.qualityGrade === 'C',
+                      'bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400': trade.qualityGrade === 'D',
+                      'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400': trade.qualityGrade === 'F'
+                    }">
+                    {{ trade.qualityGrade }}
+                  </span>
+                  <span v-else class="text-sm text-gray-500 dark:text-gray-400">-</span>
+                </td>
+
                 <!-- Sector Column -->
                 <td v-else-if="column.visible && column.key === 'sector'" 
                     :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']" 

@@ -463,22 +463,26 @@
         <div class="card-body">
           <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Trade Enrichment</h3>
           <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
-            Enrich your existing trades with news sentiment data and other analytics. This process runs in the background and may take a few minutes depending on the number of trades.
+            Enrich your existing trades with additional data and analytics. This process runs in the background and may take a few minutes depending on the number of trades.
           </p>
 
-          <div class="flex items-center justify-between">
+          <div class="flex items-start justify-between">
             <div class="flex-1">
               <p class="text-sm font-medium text-gray-900 dark:text-white">
-                News Sentiment Enrichment
+                Comprehensive Trade Enrichment
               </p>
               <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                Add news events and sentiment analysis to trades that are missing this data
+                Enriches trades with:
               </p>
+              <ul class="text-xs text-gray-500 dark:text-gray-400 mt-2 space-y-1 ml-4 list-disc">
+                <li>News events and sentiment analysis</li>
+                <li>Quality grading based on stock metrics (float, volume, price range, gap, sentiment)</li>
+              </ul>
             </div>
             <button
               @click="enrichTrades"
               :disabled="enrichmentLoading"
-              class="btn-primary ml-4"
+              class="btn-primary ml-4 flex-shrink-0"
             >
               <span v-if="enrichmentLoading" class="flex items-center">
                 <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>

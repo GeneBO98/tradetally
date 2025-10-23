@@ -633,6 +633,16 @@ class Trade {
       paramCount++;
     }
 
+    // Quality grade filter - multi-select support (A, B, C, D, F)
+    if (filters.qualityGrades && filters.qualityGrades.length > 0) {
+      console.log('[QUALITY] Applying quality grade filter:', filters.qualityGrades);
+      const placeholders = filters.qualityGrades.map((_, index) => `$${paramCount + index}`).join(',');
+      query += ` AND t.quality_grade IN (${placeholders})`;
+      filters.qualityGrades.forEach(grade => values.push(grade));
+      paramCount += filters.qualityGrades.length;
+      console.log('[QUALITY] Added quality filter to query, values:', filters.qualityGrades);
+    }
+
     // Hold time filter
     if (filters.holdTime) {
       query += this.getHoldTimeFilter(filters.holdTime);

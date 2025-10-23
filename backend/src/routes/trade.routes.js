@@ -606,6 +606,11 @@ router.get('/:id/comments', optionalAuth, tradeController.getComments);
 router.put('/:id/comments/:commentId', authenticate, tradeController.updateComment);
 router.delete('/:id/comments/:commentId', authenticate, tradeController.deleteComment);
 
+// Trade quality grading routes
+router.post('/:id/quality', authenticate, tradeController.calculateTradeQuality);
+router.post('/quality/batch', authenticate, tradeController.calculateBatchQuality);
+router.post('/quality/all', authenticate, tradeController.calculateAllTradesQuality);
+
 // Health data integration routes
 router.put('/:id/health', authenticate, tradeController.updateTradeHealthData);
 router.put('/health/bulk', authenticate, tradeController.bulkUpdateHealthData);
