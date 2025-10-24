@@ -1,5 +1,5 @@
 <template>
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  <div class="max-w-[75%] mx-auto px-4 sm:px-6 lg:px-8 py-8">
     <div class="mb-8">
       <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Analytics</h1>
       <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
@@ -69,13 +69,13 @@
       </div>
 
       <!-- Overview Stats -->
-      <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-6">
-        <div class="card">
+      <div class="flex flex-wrap gap-5">
+        <div class="card flex-1 min-w-[180px]">
           <div class="card-body">
             <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
               Total P&L
             </dt>
-            <dd class="mt-1 text-2xl font-semibold" :class="[
+            <dd class="mt-1 text-2xl font-semibold whitespace-nowrap" :class="[
               overview.total_pnl >= 0 ? 'text-green-600' : 'text-red-600'
             ]">
               ${{ formatNumber(overview.total_pnl) }}
@@ -83,34 +83,34 @@
           </div>
         </div>
 
-        <div class="card">
+        <div class="card flex-1 min-w-[180px]">
           <div class="card-body">
             <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
               Win Rate
             </dt>
-            <dd class="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">
+            <dd class="mt-1 text-2xl font-semibold text-gray-900 dark:text-white whitespace-nowrap">
               {{ overview.win_rate }}%
             </dd>
           </div>
         </div>
 
-        <div class="card">
+        <div class="card flex-1 min-w-[180px]">
           <div class="card-body">
             <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
               Total Trades
             </dt>
-            <dd class="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">
+            <dd class="mt-1 text-2xl font-semibold text-gray-900 dark:text-white whitespace-nowrap">
               {{ overview.total_trades }}
             </dd>
           </div>
         </div>
 
-        <div class="card">
+        <div class="card flex-1 min-w-[180px]">
           <div class="card-body">
             <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
               {{ calculationMethod }} Trade
             </dt>
-            <dd class="mt-1 text-2xl font-semibold" :class="[
+            <dd class="mt-1 text-2xl font-semibold whitespace-nowrap" :class="[
               overview.avg_pnl >= 0 ? 'text-green-600' : 'text-red-600'
             ]">
               ${{ formatNumber(overview.avg_pnl) }}
@@ -118,23 +118,23 @@
           </div>
         </div>
 
-        <div class="card">
+        <div class="card flex-1 min-w-[180px]">
           <div class="card-body">
             <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
               Profit Factor
             </dt>
-            <dd class="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">
+            <dd class="mt-1 text-2xl font-semibold text-gray-900 dark:text-white whitespace-nowrap">
               {{ overview.profit_factor ?? '0.00' }}
             </dd>
           </div>
         </div>
 
-        <div class="card">
+        <div class="card flex-1 min-w-[180px]">
           <div class="card-body">
             <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
               {{ calculationMethod }} R-Multiple
             </dt>
-            <dd class="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">
+            <dd class="mt-1 text-2xl font-semibold text-gray-900 dark:text-white whitespace-nowrap">
               {{ overview.avg_r_value !== undefined && overview.avg_r_value !== null ? Number(overview.avg_r_value).toFixed(1) + 'R' : '0.0R' }}
             </dd>
           </div>

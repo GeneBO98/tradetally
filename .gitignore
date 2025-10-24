@@ -268,3 +268,4 @@ certificates/
 *claude.md*
 *CLAUDE.md*
 .claude/*
+performance-test.js

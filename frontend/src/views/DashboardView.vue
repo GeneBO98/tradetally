@@ -1,5 +1,5 @@
 <template>
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  <div class="max-w-[75%] mx-auto px-4 sm:px-6 lg:px-8 py-8">
     <!-- Header with Filters -->
     <div class="mb-8">
       <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between">
@@ -304,13 +304,13 @@
       />
 
       <!-- Key Metrics Cards -->
-      <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-        <div class="card">
+      <div class="flex flex-wrap gap-5">
+        <div class="card flex-1 min-w-[200px]">
           <div class="card-body">
             <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
               Total P&L
             </dt>
-            <dd class="mt-1 text-3xl font-semibold" :class="[
+            <dd class="mt-1 text-3xl font-semibold whitespace-nowrap" :class="[
               analytics.summary.totalPnL >= 0 ? 'text-green-600' : 'text-red-600'
             ]">
               ${{ formatCurrency(analytics.summary.totalPnL) }}
@@ -321,12 +321,12 @@
           </div>
         </div>
 
-        <div class="card">
+        <div class="card flex-1 min-w-[200px]">
           <div class="card-body">
             <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
               Win Rate
             </dt>
-            <dd class="mt-1 text-3xl font-semibold" :class="[
+            <dd class="mt-1 text-3xl font-semibold whitespace-nowrap" :class="[
               analytics.summary.winRate >= 50 ? 'text-green-600' : 'text-red-600'
             ]">
               {{ formatPercent(analytics.summary.winRate) }}%
@@ -337,12 +337,12 @@
           </div>
         </div>
 
-        <div class="card">
+        <div class="card flex-1 min-w-[200px]">
           <div class="card-body">
             <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
               Profit Factor
             </dt>
-            <dd class="mt-1 text-3xl font-semibold" :class="[
+            <dd class="mt-1 text-3xl font-semibold whitespace-nowrap" :class="[
               analytics.summary.profitFactor >= 1 ? 'text-green-600' : 'text-red-600'
             ]">
               {{ formatNumber(analytics.summary.profitFactor) }}
@@ -353,12 +353,12 @@
           </div>
         </div>
 
-        <div class="card cursor-pointer hover:shadow-lg transition-shadow" @click="navigateToAnalytics('drawdown')">
+        <div class="card flex-1 min-w-[200px] cursor-pointer hover:shadow-lg transition-shadow" @click="navigateToAnalytics('drawdown')">
           <div class="card-body">
             <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
               Max Drawdown
             </dt>
-            <dd class="mt-1 text-3xl font-semibold text-red-600">
+            <dd class="mt-1 text-3xl font-semibold text-red-600 whitespace-nowrap">
               ${{ formatCurrency(Math.abs(analytics.summary.maxDrawdown)) }}
             </dd>
             <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
@@ -369,46 +369,46 @@
       </div>
 
       <!-- Additional Metrics Row -->
-      <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-        <div class="card cursor-pointer hover:shadow-lg transition-shadow" @click="navigateToTradesFiltered('avgWin')">
+      <div class="flex flex-wrap gap-5">
+        <div class="card flex-1 min-w-[200px] cursor-pointer hover:shadow-lg transition-shadow" @click="navigateToTradesFiltered('avgWin')">
           <div class="card-body">
             <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
               {{ calculationMethod }} Win
             </dt>
-            <dd class="mt-1 text-2xl font-semibold text-green-600">
+            <dd class="mt-1 text-2xl font-semibold text-green-600 whitespace-nowrap">
               ${{ formatCurrency(analytics.summary.avgWin) }}
             </dd>
           </div>
         </div>
 
-        <div class="card cursor-pointer hover:shadow-lg transition-shadow" @click="navigateToTradesFiltered('avgLoss')">
+        <div class="card flex-1 min-w-[200px] cursor-pointer hover:shadow-lg transition-shadow" @click="navigateToTradesFiltered('avgLoss')">
           <div class="card-body">
             <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
               {{ calculationMethod }} Loss
             </dt>
-            <dd class="mt-1 text-2xl font-semibold text-red-600">
+            <dd class="mt-1 text-2xl font-semibold text-red-600 whitespace-nowrap">
               ${{ formatCurrency(Math.abs(analytics.summary.avgLoss)) }}
             </dd>
           </div>
         </div>
 
-        <div class="card cursor-pointer hover:shadow-lg transition-shadow" @click="navigateToTradesFiltered('best')">
+        <div class="card flex-1 min-w-[200px] cursor-pointer hover:shadow-lg transition-shadow" @click="navigateToTradesFiltered('best')">
           <div class="card-body">
             <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
               Best Trade
             </dt>
-            <dd class="mt-1 text-2xl font-semibold text-green-600">
+            <dd class="mt-1 text-2xl font-semibold text-green-600 whitespace-nowrap">
               ${{ formatCurrency(analytics.summary.bestTrade) }}
             </dd>
           </div>
         </div>
 
-        <div class="card cursor-pointer hover:shadow-lg transition-shadow" @click="navigateToTradesFiltered('worst')">
+        <div class="card flex-1 min-w-[200px] cursor-pointer hover:shadow-lg transition-shadow" @click="navigateToTradesFiltered('worst')">
           <div class="card-body">
             <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
               Worst Trade
             </dt>
-            <dd class="mt-1 text-2xl font-semibold text-red-600">
+            <dd class="mt-1 text-2xl font-semibold text-red-600 whitespace-nowrap">
               ${{ formatCurrency(analytics.summary.worstTrade) }}
             </dd>
           </div>
