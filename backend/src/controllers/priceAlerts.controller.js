@@ -132,7 +132,7 @@ const priceAlertsController = {
       // Get current price for reference
       let currentPrice = null;
       try {
-        const priceData = await finnhub.getQuote(symbolUpper);
+        const priceData = await finnhub.getQuote(symbolUpper, userId);
         if (priceData && priceData.c) {
           currentPrice = priceData.c;
           
@@ -248,7 +248,7 @@ const priceAlertsController = {
         
         // Get current price and validate direction
         try {
-          const priceData = await finnhub.getQuote(alertSymbol);
+          const priceData = await finnhub.getQuote(alertSymbol, userId);
           if (priceData && priceData.c) {
             const currentPrice = priceData.c;
             

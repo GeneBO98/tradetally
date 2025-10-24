@@ -205,6 +205,56 @@ router.put('/password', authenticate, userController.changePassword);
 router.get('/quality-weights', authenticate, userController.getQualityWeights);
 router.put('/quality-weights', authenticate, userController.updateQualityWeights);
 
+/**
+ * @swagger
+ * /api/users/api-usage:
+ *   get:
+ *     summary: Get API usage statistics for current user
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: API usage statistics
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     tier:
+ *                       type: string
+ *                       enum: [free, pro]
+ *                     billingEnabled:
+ *                       type: boolean
+ *                     unlimited:
+ *                       type: boolean
+ *                     endpoints:
+ *                       type: object
+ *                       properties:
+ *                         quote:
+ *                           type: object
+ *                           properties:
+ *                             limit:
+ *                               oneOf:
+ *                                 - type: integer
+ *                                 - type: string
+ *                             used:
+ *                               type: integer
+ *                             remaining:
+ *                               oneOf:
+ *                                 - type: integer
+ *                                 - type: string
+ *                             resetAt:
+ *                               type: string
+ *                               format: date-time
+ */
+router.get('/api-usage', authenticate, userController.getApiUsage);
+
 // Admin-only user management routes
 router.get('/admin/users', requireAdmin, userController.getAllUsers);
 router.get('/admin/statistics', requireAdmin, userController.getStatistics);

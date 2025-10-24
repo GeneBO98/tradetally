@@ -187,7 +187,7 @@
                   type="number"
                   step="0.01"
                   min="0"
-                  class="input text-sm w-32"
+                  class="input text-sm flex-1"
                   placeholder="Min"
                 />
                 <span class="text-xs text-gray-400">-</span>
@@ -196,7 +196,7 @@
                   type="number"
                   step="0.01"
                   min="0"
-                  class="input text-sm w-32"
+                  class="input text-sm flex-1"
                   placeholder="Max"
                 />
               </div>
@@ -210,7 +210,7 @@
                   v-model.number="filters.minQuantity"
                   type="number"
                   min="0"
-                  class="input text-sm w-32"
+                  class="input text-sm flex-1"
                   placeholder="Min"
                 />
                 <span class="text-xs text-gray-400">-</span>
@@ -218,7 +218,7 @@
                   v-model.number="filters.maxQuantity"
                   type="number"
                   min="0"
-                  class="input text-sm w-32"
+                  class="input text-sm flex-1"
                   placeholder="Max"
                 />
               </div>
@@ -232,7 +232,7 @@
                   v-model.number="filters.minPnl"
                   type="number"
                   step="0.01"
-                  class="input text-sm w-32"
+                  class="input text-sm flex-1"
                   placeholder="Min"
                 />
                 <span class="text-xs text-gray-400">-</span>
@@ -240,7 +240,7 @@
                   v-model.number="filters.maxPnl"
                   type="number"
                   step="0.01"
-                  class="input text-sm w-32"
+                  class="input text-sm flex-1"
                   placeholder="Max"
                 />
               </div>

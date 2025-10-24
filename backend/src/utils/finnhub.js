@@ -1,6 +1,8 @@
 const axios = require('axios');
 const cache = require('./cache');
 const aiService = require('./aiService');
+const ApiUsageService = require('../services/apiUsageService');
+const TierService = require('../services/tierService');
 
 class FinnhubClient {
   constructor() {
@@ -93,9 +95,23 @@ class FinnhubClient {
     }
   }
 
-  async getQuote(symbol) {
+  async getQuote(symbol, userId = null) {
     const symbolUpper = symbol.toUpperCase();
-    
+
+    // Check tier and usage limits if userId provided
+    if (userId) {
+      const userTier = await TierService.getUserTier(userId);
+      const limitCheck = await ApiUsageService.checkLimit(userId, 'quote', userTier);
+
+      if (!limitCheck.allowed) {
+        const error = new Error(limitCheck.message || 'API limit exceeded');
+        error.code = limitCheck.upgradeRequired ? 'PRO_REQUIRED' : 'RATE_LIMIT_EXCEEDED';
+        error.resetAt = limitCheck.resetAt;
+        error.remaining = limitCheck.remaining;
+        throw error;
+      }
+    }
+
     // Check cache first
     const cached = await cache.get('quote', symbolUpper);
     if (cached) {
@@ -104,7 +120,7 @@ class FinnhubClient {
 
     try {
       const quote = await this.makeRequest('/quote', { symbol: symbolUpper });
-      
+
       // Validate quote data
       if (!quote || quote.c === undefined || quote.c === 0) {
         throw new Error(`No quote data available for ${symbol}`);
@@ -112,6 +128,11 @@ class FinnhubClient {
 
       // Cache the result
       await cache.set('quote', symbolUpper, quote);
+
+      // Track usage if userId provided
+      if (userId) {
+        await ApiUsageService.trackApiCall(userId, 'quote');
+      }
 
       return quote;
     } catch (error) {
@@ -282,12 +303,26 @@ class FinnhubClient {
     }
   }
 
-  async getStockCandles(symbol, resolution = '1', from, to) {
+  async getStockCandles(symbol, resolution = '1', from, to, userId = null) {
     const symbolUpper = symbol.toUpperCase();
-    
+
+    // Check tier and usage limits if userId provided
+    if (userId) {
+      const userTier = await TierService.getUserTier(userId);
+      const limitCheck = await ApiUsageService.checkLimit(userId, 'candle', userTier);
+
+      if (!limitCheck.allowed) {
+        const error = new Error(limitCheck.message || 'API limit exceeded');
+        error.code = limitCheck.upgradeRequired ? 'PRO_REQUIRED' : 'RATE_LIMIT_EXCEEDED';
+        error.resetAt = limitCheck.resetAt;
+        error.remaining = limitCheck.remaining;
+        throw error;
+      }
+    }
+
     // Create cache key with parameters
     const cacheKey = `${symbolUpper}_${resolution}_${from}_${to}`;
-    
+
     // Check cache first (5 minute TTL for recent candle data)
     const cached = await cache.get('stock_candles', cacheKey);
     if (cached) {
@@ -301,7 +336,7 @@ class FinnhubClient {
         from,
         to
       });
-      
+
       // Validate candles data
       if (!candles || candles.s !== 'ok' || !candles.c || candles.c.length === 0) {
         throw new Error(`No candle data available for ${symbol}`);
@@ -319,10 +354,15 @@ class FinnhubClient {
           volume: candles.v[i]
         });
       }
-      
+
       // Cache the result
       await cache.set('stock_candles', cacheKey, formattedCandles);
-      
+
+      // Track usage if userId provided
+      if (userId) {
+        await ApiUsageService.trackApiCall(userId, 'candle');
+      }
+
       return formattedCandles;
     } catch (error) {
       console.warn(`Failed to get stock candles for ${symbol}: ${error.message}`);
@@ -331,7 +371,7 @@ class FinnhubClient {
   }
 
   // Get appropriate candle data based on trade duration for Pro users
-  async getTradeChartData(symbol, entryDate, exitDate = null) {
+  async getTradeChartData(symbol, entryDate, exitDate = null, userId = null) {
     // Log the dates we're working with to debug timezone issues
     console.log('getTradeChartData input dates:', {
       entryDate,
@@ -414,8 +454,8 @@ class FinnhubClient {
         console.log(`Fetching daily Finnhub data for ${symbol} (${Math.ceil(chartDuration / oneDayMs)} day chart window)`);
       }
       
-      const candles = await this.getStockCandles(symbol, resolution, fromTimestamp, toTimestamp);
-      
+      const candles = await this.getStockCandles(symbol, resolution, fromTimestamp, toTimestamp, userId);
+
       return {
         type: resolution === 'D' ? 'daily' : 'intraday',
         interval: intervalName,
@@ -1125,13 +1165,26 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
     }
   }
 
-  // Get technical indicators
-  async getTechnicalIndicator(symbol, resolution, from, to, indicator, indicatorFields = {}) {
+  // Get technical indicators (Pro only)
+  async getTechnicalIndicator(symbol, resolution, from, to, indicator, indicatorFields = {}, userId = null) {
+    // Check tier - this is a Pro feature
+    if (userId) {
+      const userTier = await TierService.getUserTier(userId);
+      const limitCheck = await ApiUsageService.checkLimit(userId, 'indicator', userTier);
+
+      if (!limitCheck.allowed) {
+        const error = new Error(limitCheck.message || 'Technical indicators require a Pro subscription');
+        error.code = 'PRO_REQUIRED';
+        error.feature = 'Technical Indicators';
+        throw error;
+      }
+    }
+
     const symbolUpper = symbol.toUpperCase();
-    
+
     // Create cache key with all parameters
     const cacheKey = `${symbolUpper}_${resolution}_${from}_${to}_${indicator}_${JSON.stringify(indicatorFields)}`;
-    
+
     // Check cache first (1 hour TTL for technical indicators)
     const cached = await cache.get('technical_indicator', cacheKey);
     if (cached) {
@@ -1149,7 +1202,7 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
       };
 
       const result = await this.makeRequest('/indicator', params);
-      
+
       // Cache the result
       await cache.set('technical_indicator', cacheKey, result);
 
@@ -1160,13 +1213,26 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
     }
   }
 
-  // Get pattern recognition
-  async getPatternRecognition(symbol, resolution) {
+  // Get pattern recognition (Pro only)
+  async getPatternRecognition(symbol, resolution, userId = null) {
+    // Check tier - this is a Pro feature
+    if (userId) {
+      const userTier = await TierService.getUserTier(userId);
+      const limitCheck = await ApiUsageService.checkLimit(userId, 'pattern', userTier);
+
+      if (!limitCheck.allowed) {
+        const error = new Error(limitCheck.message || 'Pattern recognition requires a Pro subscription');
+        error.code = 'PRO_REQUIRED';
+        error.feature = 'Pattern Recognition';
+        throw error;
+      }
+    }
+
     const symbolUpper = symbol.toUpperCase();
-    
+
     // Create cache key
     const cacheKey = `${symbolUpper}_${resolution}`;
-    
+
     // Check cache first (4 hour TTL for patterns)
     const cached = await cache.get('pattern_recognition', cacheKey);
     if (cached) {
@@ -1178,7 +1244,7 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
         symbol: symbolUpper,
         resolution
       });
-      
+
       // Cache the result
       await cache.set('pattern_recognition', cacheKey, patterns);
 
@@ -1189,13 +1255,26 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
     }
   }
 
-  // Get support and resistance levels
-  async getSupportResistance(symbol, resolution) {
+  // Get support and resistance levels (Pro only)
+  async getSupportResistance(symbol, resolution, userId = null) {
+    // Check tier - this is a Pro feature
+    if (userId) {
+      const userTier = await TierService.getUserTier(userId);
+      const limitCheck = await ApiUsageService.checkLimit(userId, 'support_resistance', userTier);
+
+      if (!limitCheck.allowed) {
+        const error = new Error(limitCheck.message || 'Support/Resistance levels require a Pro subscription');
+        error.code = 'PRO_REQUIRED';
+        error.feature = 'Support/Resistance Levels';
+        throw error;
+      }
+    }
+
     const symbolUpper = symbol.toUpperCase();
-    
+
     // Create cache key
     const cacheKey = `${symbolUpper}_${resolution}`;
-    
+
     // Check cache first (4 hour TTL for support/resistance)
     const cached = await cache.get('support_resistance', cacheKey);
     if (cached) {
@@ -1207,7 +1286,7 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
         symbol: symbolUpper,
         resolution
       });
-      
+
       // Cache the result
       await cache.set('support_resistance', cacheKey, levels);
 
@@ -1267,12 +1346,26 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
     }
   }
 
-  async getStockCandles(symbol, resolution = '1', from, to) {
+  async getStockCandles(symbol, resolution = '1', from, to, userId = null) {
     const symbolUpper = symbol.toUpperCase();
-    
+
+    // Check tier and usage limits if userId provided
+    if (userId) {
+      const userTier = await TierService.getUserTier(userId);
+      const limitCheck = await ApiUsageService.checkLimit(userId, 'candle', userTier);
+
+      if (!limitCheck.allowed) {
+        const error = new Error(limitCheck.message || 'API limit exceeded');
+        error.code = limitCheck.upgradeRequired ? 'PRO_REQUIRED' : 'RATE_LIMIT_EXCEEDED';
+        error.resetAt = limitCheck.resetAt;
+        error.remaining = limitCheck.remaining;
+        throw error;
+      }
+    }
+
     // Create cache key with parameters
     const cacheKey = `${symbolUpper}_${resolution}_${from}_${to}`;
-    
+
     // Check cache first (5 minute TTL for recent candle data)
     const cached = await cache.get('stock_candles', cacheKey);
     if (cached) {
@@ -1286,7 +1379,7 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
         from,
         to
       });
-      
+
       // Validate candles data
       if (!candles || candles.s !== 'ok' || !candles.c || candles.c.length === 0) {
         throw new Error(`No candle data available for ${symbol}`);
@@ -1304,10 +1397,15 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
           volume: candles.v[i]
         });
       }
-      
+
       // Cache the result
       await cache.set('stock_candles', cacheKey, formattedCandles);
-      
+
+      // Track usage if userId provided
+      if (userId) {
+        await ApiUsageService.trackApiCall(userId, 'candle');
+      }
+
       return formattedCandles;
     } catch (error) {
       console.warn(`Failed to get stock candles for ${symbol}: ${error.message}`);
@@ -1316,7 +1414,7 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
   }
 
   // Get appropriate candle data based on trade duration for Pro users
-  async getTradeChartData(symbol, entryDate, exitDate = null) {
+  async getTradeChartData(symbol, entryDate, exitDate = null, userId = null) {
     // Log the dates we're working with to debug timezone issues
     console.log('getTradeChartData input dates:', {
       entryDate,
@@ -1399,8 +1497,8 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
         console.log(`Fetching daily Finnhub data for ${symbol} (${Math.ceil(chartDuration / oneDayMs)} day chart window)`);
       }
       
-      const candles = await this.getStockCandles(symbol, resolution, fromTimestamp, toTimestamp);
-      
+      const candles = await this.getStockCandles(symbol, resolution, fromTimestamp, toTimestamp, userId);
+
       return {
         type: resolution === 'D' ? 'daily' : 'intraday',
         interval: intervalName,
