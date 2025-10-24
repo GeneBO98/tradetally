@@ -7,8 +7,8 @@
             <img src="https://zipline.id10tips.com/u/tradetally-favicon.svg" alt="" class="h-8 w-auto mr-2" />
             TradeTally
           </router-link>
-          
-          <div class="hidden sm:ml-6 sm:flex sm:space-x-8">
+
+          <div class="hidden sm:ml-12 sm:flex sm:space-x-6">
             <template v-if="authStore.isAuthenticated">
               <template v-for="item in navigation" :key="item.name">
                 <!-- Dropdown navigation item -->
@@ -59,35 +59,17 @@
           </div>
         </div>
 
-        <div class="flex items-center space-x-4">
+        <div class="flex items-center space-x-8">
           <!-- Desktop Navigation -->
-          <div class="hidden sm:flex sm:items-center sm:space-x-4">
-            <button
-              @click="toggleDarkMode"
-              class="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-              :aria-label="isDark ? 'Switch to light mode' : 'Switch to dark mode'"
-            >
-              <SunIcon v-if="isDark" class="h-5 w-5" />
-              <MoonIcon v-else class="h-5 w-5" />
-            </button>
-
+          <div class="hidden sm:flex sm:items-center sm:space-x-8">
             <div v-if="authStore.isAuthenticated" class="flex items-center space-x-3">
-              <NotificationBell />
-              <a v-if="config.showDonationButton"
-                href="https://www.paypal.com/donate/?business=EHMBRET4CNELL&no_recurring=0&currency_code=USD"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                title="Support TradeTally development"
-              >
-                <MdiIcon :icon="mdiCoffee" :size="20" />
-              </a>
-              <router-link 
-                to="/profile" 
+              <router-link
+                to="/profile"
                 class="text-sm text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white underline"
               >
                 {{ authStore.user?.username }}
               </router-link>
+              <NotificationBell />
               <button
                 @click="authStore.logout"
                 class="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
@@ -104,6 +86,15 @@
                 Sign Up
               </router-link>
             </div>
+
+            <button
+              @click="toggleDarkMode"
+              class="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              :aria-label="isDark ? 'Switch to light mode' : 'Switch to dark mode'"
+            >
+              <SunIcon v-if="isDark" class="h-5 w-5" />
+              <MoonIcon v-else class="h-5 w-5" />
+            </button>
           </div>
 
           <!-- Mobile menu button -->
@@ -239,20 +230,6 @@
               </router-link>
             </div>
           </template>
-          
-          <!-- Donation link (subtle placement at bottom) -->
-          <div v-if="config.showDonationButton" class="border-t border-gray-200 dark:border-gray-700 pt-4 pb-3 px-3 mt-4">
-            <a
-              href="https://www.paypal.com/donate/?business=EHMBRET4CNELL&no_recurring=0&currency_code=USD"
-              target="_blank"
-              rel="noopener noreferrer"
-              @click="isMobileMenuOpen = false"
-              class="flex items-center text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
-            >
-              <MdiIcon :icon="mdiCoffee" :size="20" class="mr-2" />
-              <span>Support development</span>
-            </a>
-          </div>
         </div>
       </div>
     </div>
@@ -267,8 +244,6 @@ import { SunIcon, MoonIcon, Bars3Icon, XMarkIcon } from '@heroicons/vue/24/outli
 import config from '@/config'
 import NavDropdown from '@/components/common/NavDropdown.vue'
 import NotificationBell from '@/components/common/NotificationBell.vue'
-import MdiIcon from '@/components/MdiIcon.vue'
-import { mdiCoffee } from '@mdi/js'
 
 const authStore = useAuthStore()
 const { showSEOPages } = useRegistrationMode()
@@ -381,6 +356,12 @@ const navigation = computed(() => {
           to: '/admin/oauth',
           route: 'oauth-clients',
           description: 'Manage OAuth2 clients and integrations'
+        },
+        {
+          name: 'Backup Management',
+          to: '/admin/backups',
+          route: 'admin-backups',
+          description: 'Full site backups and restore'
         }
       ]
     })

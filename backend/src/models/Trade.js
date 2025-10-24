@@ -1569,6 +1569,16 @@ class Trade {
       paramCount += filters.instrumentTypes.length;
     }
 
+    // Quality grade filter - multi-select support (A, B, C, D, F)
+    if (filters.qualityGrades && filters.qualityGrades.length > 0) {
+      console.log('[QUALITY] ANALYTICS: Applying quality grade filter:', filters.qualityGrades);
+      const placeholders = filters.qualityGrades.map((_, index) => `$${paramCount + index}`).join(',');
+      whereClause += ` AND t.quality_grade IN (${placeholders})`;
+      filters.qualityGrades.forEach(grade => values.push(grade));
+      paramCount += filters.qualityGrades.length;
+      console.log('[QUALITY] ANALYTICS: Added quality filter to query, values:', filters.qualityGrades);
+    }
+
     console.log('Analytics query - whereClause:', whereClause);
     console.log('Analytics query - values:', values);
     

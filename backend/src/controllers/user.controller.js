@@ -475,6 +475,130 @@ const userController = {
       console.error('[ERROR] Failed to queue trade enrichment:', error.message);
       next(error);
     }
+  },
+
+  /**
+   * Get user's quality weight preferences
+   */
+  async getQualityWeights(req, res, next) {
+    try {
+      const db = require('../config/database');
+
+      const query = `
+        SELECT
+          quality_weight_news,
+          quality_weight_gap,
+          quality_weight_relative_volume,
+          quality_weight_float,
+          quality_weight_price_range
+        FROM users
+        WHERE id = $1
+      `;
+
+      const result = await db.query(query, [req.user.id]);
+
+      if (!result.rows || result.rows.length === 0) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      const weights = result.rows[0];
+
+      res.json({
+        qualityWeights: {
+          news: weights.quality_weight_news || 30,
+          gap: weights.quality_weight_gap || 20,
+          relativeVolume: weights.quality_weight_relative_volume || 20,
+          float: weights.quality_weight_float || 15,
+          priceRange: weights.quality_weight_price_range || 15
+        }
+      });
+    } catch (error) {
+      console.error('[ERROR] Failed to fetch quality weights:', error.message);
+      next(error);
+    }
+  },
+
+  /**
+   * Update user's quality weight preferences
+   */
+  async updateQualityWeights(req, res, next) {
+    try {
+      const db = require('../config/database');
+      const { news, gap, relativeVolume, float, priceRange } = req.body;
+
+      // Validate that all weights are provided
+      if (news === undefined || gap === undefined || relativeVolume === undefined ||
+          float === undefined || priceRange === undefined) {
+        return res.status(400).json({
+          error: 'All quality weights must be provided (news, gap, relativeVolume, float, priceRange)'
+        });
+      }
+
+      // Validate that all weights are numbers
+      if (typeof news !== 'number' || typeof gap !== 'number' ||
+          typeof relativeVolume !== 'number' || typeof float !== 'number' ||
+          typeof priceRange !== 'number') {
+        return res.status(400).json({ error: 'All weights must be numbers' });
+      }
+
+      // Validate ranges (0-100)
+      if (news < 0 || news > 100 || gap < 0 || gap > 100 ||
+          relativeVolume < 0 || relativeVolume > 100 ||
+          float < 0 || float > 100 || priceRange < 0 || priceRange > 100) {
+        return res.status(400).json({ error: 'All weights must be between 0 and 100' });
+      }
+
+      // Validate that weights sum to 100
+      const total = news + gap + relativeVolume + float + priceRange;
+      if (total !== 100) {
+        return res.status(400).json({
+          error: `Weights must sum to 100. Current total: ${total}`
+        });
+      }
+
+      // Update user's quality weights
+      const query = `
+        UPDATE users
+        SET
+          quality_weight_news = $1,
+          quality_weight_gap = $2,
+          quality_weight_relative_volume = $3,
+          quality_weight_float = $4,
+          quality_weight_price_range = $5,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = $6
+        RETURNING
+          quality_weight_news,
+          quality_weight_gap,
+          quality_weight_relative_volume,
+          quality_weight_float,
+          quality_weight_price_range
+      `;
+
+      const result = await db.query(query, [
+        news, gap, relativeVolume, float, priceRange, req.user.id
+      ]);
+
+      if (!result.rows || result.rows.length === 0) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      const weights = result.rows[0];
+
+      res.json({
+        message: 'Quality weights updated successfully',
+        qualityWeights: {
+          news: weights.quality_weight_news,
+          gap: weights.quality_weight_gap,
+          relativeVolume: weights.quality_weight_relative_volume,
+          float: weights.quality_weight_float,
+          priceRange: weights.quality_weight_price_range
+        }
+      });
+    } catch (error) {
+      console.error('[ERROR] Failed to update quality weights:', error.message);
+      next(error);
+    }
   }
 };
 

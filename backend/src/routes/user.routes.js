@@ -124,6 +124,87 @@ router.delete('/avatar', authenticate, userController.deleteAvatar);
  */
 router.put('/password', authenticate, userController.changePassword);
 
+/**
+ * @swagger
+ * /api/users/quality-weights:
+ *   get:
+ *     summary: Get user's quality grading weight preferences
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: User's quality weight preferences
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 qualityWeights:
+ *                   type: object
+ *                   properties:
+ *                     news:
+ *                       type: integer
+ *                       description: News sentiment weight percentage (0-100)
+ *                     gap:
+ *                       type: integer
+ *                       description: Gap from previous close weight percentage (0-100)
+ *                     relativeVolume:
+ *                       type: integer
+ *                       description: Relative volume weight percentage (0-100)
+ *                     float:
+ *                       type: integer
+ *                       description: Float/shares outstanding weight percentage (0-100)
+ *                     priceRange:
+ *                       type: integer
+ *                       description: Price range weight percentage (0-100)
+ *   put:
+ *     summary: Update user's quality grading weight preferences
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [news, gap, relativeVolume, float, priceRange]
+ *             properties:
+ *               news:
+ *                 type: integer
+ *                 minimum: 0
+ *                 maximum: 100
+ *                 description: News sentiment weight percentage
+ *               gap:
+ *                 type: integer
+ *                 minimum: 0
+ *                 maximum: 100
+ *                 description: Gap from previous close weight percentage
+ *               relativeVolume:
+ *                 type: integer
+ *                 minimum: 0
+ *                 maximum: 100
+ *                 description: Relative volume weight percentage
+ *               float:
+ *                 type: integer
+ *                 minimum: 0
+ *                 maximum: 100
+ *                 description: Float/shares outstanding weight percentage
+ *               priceRange:
+ *                 type: integer
+ *                 minimum: 0
+ *                 maximum: 100
+ *                 description: Price range weight percentage
+ *     responses:
+ *       200:
+ *         description: Quality weights updated successfully
+ *       400:
+ *         description: Invalid weights (must sum to 100)
+ */
+router.get('/quality-weights', authenticate, userController.getQualityWeights);
+router.put('/quality-weights', authenticate, userController.updateQualityWeights);
+
 // Admin-only user management routes
 router.get('/admin/users', requireAdmin, userController.getAllUsers);
 router.get('/admin/statistics', requireAdmin, userController.getStatistics);
