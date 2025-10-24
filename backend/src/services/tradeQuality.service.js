@@ -1,14 +1,17 @@
 const axios = require('axios');
+const db = require('../config/database');
 
 /**
  * Trade Quality Grading Service
  *
  * Grades trades based on stock metrics from Finnhub API (using historical data from trade entry date):
- * - News sentiment (highest weight - 35%) - from /news-sentiment API with keyword analysis fallback
- * - Float/Shares Outstanding (second weight - 25%) - from /stock/profile2
- * - Relative volume (third weight - 20%) - calculated from /stock/candle volume vs /stock/metric 10-day avg
- * - Price range (fourth weight - 15%) - from trade entry price
- * - Intraday gain (fifth weight - 5%) - calculated from /stock/candle (open to close on trade date)
+ * - News sentiment (default weight - 30%) - from /news-sentiment API with keyword analysis fallback
+ * - Gap from previous close (default weight - 20%) - calculated from previous day close vs entry price
+ * - Relative volume (default weight - 20%) - calculated from /stock/candle volume vs /stock/metric 10-day avg
+ * - Float/Shares Outstanding (default weight - 15%) - from /stock/profile2
+ * - Price range (default weight - 15%) - from trade entry price
+ *
+ * NOTE: Weights are user-customizable in user profile settings
  *
  * Scoring: 5/5 = A, 4/5 = B, 3/5 = C, 2/5 = D, 0-1/5 = F
  */
@@ -20,42 +23,199 @@ class TradeQualityService {
   }
 
   /**
+   * Get user's quality weight preferences from database
+   * Falls back to default weights if user not found or weights not set
+   * @param {number} userId - User ID
+   * @returns {Promise<Object>} User's quality weights (percentages as decimals)
+   */
+  async getUserQualityWeights(userId) {
+    try {
+      // Default weights (matching database defaults)
+      const defaultWeights = {
+        newsSentiment: 0.30,
+        gap: 0.20,
+        relativeVolume: 0.20,
+        float: 0.15,
+        priceRange: 0.15
+      };
+
+      // If no userId provided, return defaults
+      if (!userId) {
+        console.log('[QUALITY] No userId provided, using default weights');
+        return defaultWeights;
+      }
+
+      // Fetch user's custom weights from database
+      const query = `
+        SELECT
+          quality_weight_news,
+          quality_weight_gap,
+          quality_weight_relative_volume,
+          quality_weight_float,
+          quality_weight_price_range
+        FROM users
+        WHERE id = $1
+      `;
+
+      const result = await db.query(query, [userId]);
+
+      // If user not found or weights not set, return defaults
+      if (!result.rows || result.rows.length === 0) {
+        console.log(`[QUALITY] User ${userId} not found, using default weights`);
+        return defaultWeights;
+      }
+
+      const userWeights = result.rows[0];
+
+      // Convert from percentage integers (0-100) to decimals (0-1)
+      const weights = {
+        newsSentiment: (userWeights.quality_weight_news || 30) / 100,
+        gap: (userWeights.quality_weight_gap || 20) / 100,
+        relativeVolume: (userWeights.quality_weight_relative_volume || 20) / 100,
+        float: (userWeights.quality_weight_float || 15) / 100,
+        priceRange: (userWeights.quality_weight_price_range || 15) / 100
+      };
+
+      console.log(`[QUALITY] User ${userId} custom weights:`, {
+        news: `${userWeights.quality_weight_news}%`,
+        gap: `${userWeights.quality_weight_gap}%`,
+        relativeVolume: `${userWeights.quality_weight_relative_volume}%`,
+        float: `${userWeights.quality_weight_float}%`,
+        priceRange: `${userWeights.quality_weight_price_range}%`
+      });
+
+      return weights;
+    } catch (error) {
+      console.error('[QUALITY] Error fetching user quality weights:', error.message);
+      // Return defaults on error
+      return {
+        newsSentiment: 0.30,
+        gap: 0.20,
+        relativeVolume: 0.20,
+        float: 0.15,
+        priceRange: 0.15
+      };
+    }
+  }
+
+  /**
+   * Retry API call with exponential backoff for 429 rate limit errors
+   * @param {Function} apiCall - Function that returns a promise
+   * @param {number} maxRetries - Maximum number of retries (default: 3)
+   * @returns {Promise} Result of API call
+   */
+  async retryWithBackoff(apiCall, maxRetries = 3) {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await apiCall();
+      } catch (error) {
+        // Check if it's a 429 rate limit error
+        const is429 = error.response?.status === 429 ||
+                      error.message?.includes('429') ||
+                      error.message?.includes('rate limit');
+
+        // If it's the last attempt or not a 429 error, throw
+        if (attempt === maxRetries || !is429) {
+          throw error;
+        }
+
+        // Calculate exponential backoff delay: 1s, 2s, 4s
+        const delay = Math.pow(2, attempt) * 1000;
+        console.log(`[QUALITY] Rate limit hit (attempt ${attempt + 1}/${maxRetries + 1}), waiting ${delay}ms before retry...`);
+
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+
+  /**
+   * Convert categorical sentiment to numeric score
+   * @param {string} sentiment - Categorical sentiment ('positive', 'negative', 'neutral', 'mixed')
+   * @returns {number|null} Numeric sentiment score between -1 and 1, or null if no sentiment
+   */
+  convertCategoricalSentiment(sentiment) {
+    if (!sentiment) return null;
+
+    const sentimentLower = sentiment.toLowerCase();
+
+    switch (sentimentLower) {
+      case 'positive':
+        return 0.7;   // Positive sentiment (maps to 0.8 score in scoreNewsSentiment)
+      case 'negative':
+        return -0.7;  // Negative sentiment (maps to 0.2 score)
+      case 'neutral':
+        return 0.0;   // Neutral sentiment (maps to 0.5 score)
+      case 'mixed':
+        return 0.0;   // Mixed sentiment treated as neutral (maps to 0.5 score)
+      default:
+        console.log(`[QUALITY] Unknown sentiment value: ${sentiment}, treating as neutral`);
+        return 0.0;
+    }
+  }
+
+  /**
    * Calculate trade quality grade
    * @param {string} symbol - Stock symbol
    * @param {Date} entryTime - Trade entry time
    * @param {number} entryPrice - Trade entry price
+   * @param {string} side - Trade side ('long' or 'short')
+   * @param {number} userId - User ID (optional, for custom quality weights)
+   * @param {string} newsSentiment - Categorical news sentiment ('positive', 'negative', 'neutral', 'mixed')
    * @returns {Promise<Object>} Quality grade and metrics
    */
-  async calculateQuality(symbol, entryTime, entryPrice) {
+  async calculateQuality(symbol, entryTime, entryPrice, side = 'long', userId = null, newsSentiment = null) {
     if (!this.finnhubApiKey) {
       console.log('[QUALITY] Finnhub API key not configured, skipping quality calculation');
       return null;
     }
 
     try {
-      console.log(`[QUALITY] Calculating quality for ${symbol} at ${entryPrice}`);
+      console.log(`[QUALITY] Calculating quality for ${symbol} at ${entryPrice}${userId ? ` (user ${userId})` : ''}`);
+      console.log(`[QUALITY] Using provided news sentiment: ${newsSentiment || 'none'}`);
 
-      // Fetch all required data in parallel with error handling
-      let profile, quote, sentiment, financials;
+      // Convert categorical sentiment to numeric score
+      const sentimentScore = this.convertCategoricalSentiment(newsSentiment);
 
-      try {
-        [profile, quote, sentiment, financials] = await Promise.all([
-          this.getStockProfile(symbol),
-          this.getQuote(symbol, entryTime),
-          this.getNewsSentiment(symbol, entryTime),
-          this.getBasicFinancials(symbol)
-        ]);
-      } catch (fetchError) {
-        console.error(`[QUALITY] Error fetching data for ${symbol}:`, fetchError);
-        throw fetchError;
-      }
+      // Fetch user's quality weights and all required data in parallel
+      // Use allSettled to continue even if some API calls fail
+      // Note: Removed getNewsSentiment call - using provided sentiment instead
+      const results = await Promise.allSettled([
+        this.getUserQualityWeights(userId),
+        this.getStockProfile(symbol),
+        this.getQuote(symbol, entryTime),
+        this.getBasicFinancials(symbol)
+      ]);
+
+      // Extract successful results, use null/defaults for failures
+      const weights = results[0].status === 'fulfilled' ? results[0].value : {
+        newsSentiment: 0.30,
+        gap: 0.20,
+        relativeVolume: 0.20,
+        float: 0.15,
+        priceRange: 0.15
+      };
+      const profile = results[1].status === 'fulfilled' ? results[1].value : null;
+      const quote = results[2].status === 'fulfilled' ? results[2].value : null;
+      const financials = results[3].status === 'fulfilled' ? results[3].value : null;
+
+      // Create sentiment object from converted score
+      const sentiment = sentimentScore !== null ? { sentiment: sentimentScore } : null;
+
+      // Log any failures
+      results.forEach((result, index) => {
+        if (result.status === 'rejected') {
+          const apiName = ['weights', 'profile', 'quote', 'financials'][index];
+          console.log(`[QUALITY] Failed to fetch ${apiName} for ${symbol}: ${result.reason?.message || result.reason}`);
+        }
+      });
 
       console.log(`[QUALITY] Data fetched for ${symbol}:`, {
         hasProfile: !!profile,
         hasQuote: !!quote,
         hasSentiment: !!sentiment,
         hasFinancials: !!financials,
-        sentimentValue: sentiment
+        sentimentValue: sentiment,
+        categoricalSentiment: newsSentiment
       });
 
       // Get shares outstanding (float) - try profile first, then financials
@@ -77,25 +237,19 @@ class TradeQualityService {
 
       console.log(`[QUALITY] Gap calculation for ${symbol}: entryPrice=${entryPrice}, previousClose=${quote?.previousClose}, gap=${gap?.toFixed(2)}%`);
 
-      // Calculate individual metric scores
-      let metrics;
-      try {
-        metrics = {
-          float: this.scoreFloat(sharesOutstanding),
-          relativeVolume: this.scoreRelativeVolume(quote, financials?.avgVolume10Day),
-          priceRange: this.scorePriceRange(entryPrice),
-          intradayGain: this.scoreGap(gap),
-          newsSentiment: this.scoreNewsSentiment(sentiment)
-        };
+      // Calculate individual metric scores with error handling
+      const metrics = {
+        float: this.scoreFloat(sharesOutstanding),
+        relativeVolume: this.scoreRelativeVolume(quote, financials?.avgVolume10Day),
+        priceRange: this.scorePriceRange(entryPrice),
+        gap: this.scoreGap(gap),
+        newsSentiment: this.scoreNewsSentiment(sentiment, side)
+      };
 
-        console.log(`[QUALITY] Individual scores calculated:`, metrics);
-      } catch (scoringError) {
-        console.error(`[QUALITY] Error calculating individual scores for ${symbol}:`, scoringError);
-        throw scoringError;
-      }
+      console.log(`[QUALITY] Individual scores calculated:`, metrics);
 
-      // Calculate weighted score
-      const weightedScore = this.calculateWeightedScore(metrics);
+      // Calculate weighted score using user's custom weights
+      const weightedScore = this.calculateWeightedScore(metrics, weights);
 
       // Determine grade
       const grade = this.scoreToGrade(weightedScore);
@@ -122,15 +276,35 @@ class TradeQualityService {
           relativeVolumeScore: metrics.relativeVolume,
           price: entryPrice,
           priceScore: metrics.priceRange,
-          intradayGain: gap,
-          intradayGainScore: metrics.intradayGain,
+          gap: gap,
+          gapScore: metrics.gap,
           newsSentiment: sentiment?.sentiment || null,
           newsSentimentScore: metrics.newsSentiment
         }
       };
     } catch (error) {
       console.error(`[QUALITY] Error calculating quality for ${symbol}:`, error.message);
-      return null;
+      console.error(`[QUALITY] Stack trace:`, error.stack);
+
+      // Return a fallback grade instead of null to prevent N/A results
+      // This ensures trades always get a grade even when data is unavailable
+      console.log(`[QUALITY] Returning fallback grade C for ${symbol} due to error`);
+      return {
+        grade: 'C',
+        score: 3.0,
+        metrics: {
+          float: null,
+          floatScore: 0,
+          relativeVolume: null,
+          relativeVolumeScore: 0.5,
+          price: entryPrice,
+          priceScore: 0.5,
+          gap: null,
+          gapScore: 0.5,
+          newsSentiment: null,
+          newsSentimentScore: 0.5
+        }
+      };
     }
   }
 
@@ -140,14 +314,16 @@ class TradeQualityService {
    */
   async getStockProfile(symbol) {
     try {
-      // Try company-profile endpoint first (has more detailed data)
-      const profileResponse = await axios.get(`${this.baseUrl}/stock/profile`, {
-        params: {
-          symbol,
-          token: this.finnhubApiKey
-        },
-        timeout: 5000
-      });
+      // Try company-profile endpoint first (has more detailed data) with retry logic
+      const profileResponse = await this.retryWithBackoff(() =>
+        axios.get(`${this.baseUrl}/stock/profile`, {
+          params: {
+            symbol,
+            token: this.finnhubApiKey
+          },
+          timeout: 5000
+        })
+      );
 
       const profileData = profileResponse.data;
 
@@ -166,13 +342,15 @@ class TradeQualityService {
       // Fallback to profile2 endpoint if profile fails
       try {
         console.log(`[QUALITY] Trying fallback profile2 endpoint for ${symbol}`);
-        const profile2Response = await axios.get(`${this.baseUrl}/stock/profile2`, {
-          params: {
-            symbol,
-            token: this.finnhubApiKey
-          },
-          timeout: 5000
-        });
+        const profile2Response = await this.retryWithBackoff(() =>
+          axios.get(`${this.baseUrl}/stock/profile2`, {
+            params: {
+              symbol,
+              token: this.finnhubApiKey
+            },
+            timeout: 5000
+          })
+        );
 
         console.log(`[QUALITY] Profile2 data for ${symbol}:`, {
           shareOutstanding: profile2Response.data?.shareOutstanding,
@@ -192,14 +370,16 @@ class TradeQualityService {
    */
   async getBasicFinancials(symbol) {
     try {
-      const response = await axios.get(`${this.baseUrl}/stock/metric`, {
-        params: {
-          symbol,
-          metric: 'all',
-          token: this.finnhubApiKey
-        },
-        timeout: 5000
-      });
+      const response = await this.retryWithBackoff(() =>
+        axios.get(`${this.baseUrl}/stock/metric`, {
+          params: {
+            symbol,
+            metric: 'all',
+            token: this.finnhubApiKey
+          },
+          timeout: 5000
+        })
+      );
 
       const metrics = response.data?.metric || {};
       const avgVolume10Day = metrics['10DayAverageTradingVolume'];
@@ -240,17 +420,19 @@ class TradeQualityService {
       const from = Math.floor(startDate.getTime() / 1000);
       const to = Math.floor(endDate.getTime() / 1000);
 
-      // Get daily candle data for the trade date and previous days
-      const response = await axios.get(`${this.baseUrl}/stock/candle`, {
-        params: {
-          symbol,
-          resolution: 'D', // Daily candle
-          from,
-          to,
-          token: this.finnhubApiKey
-        },
-        timeout: 5000
-      });
+      // Get daily candle data for the trade date and previous days with retry logic
+      const response = await this.retryWithBackoff(() =>
+        axios.get(`${this.baseUrl}/stock/candle`, {
+          params: {
+            symbol,
+            resolution: 'D', // Daily candle
+            from,
+            to,
+            token: this.finnhubApiKey
+          },
+          timeout: 5000
+        })
+      );
 
       const data = response.data;
 
@@ -294,14 +476,16 @@ class TradeQualityService {
    */
   async getNewsSentiment(symbol, entryTime) {
     try {
-      // First, try to get sentiment from Finnhub's news-sentiment endpoint
-      const sentimentResponse = await axios.get(`${this.baseUrl}/news-sentiment`, {
-        params: {
-          symbol,
-          token: this.finnhubApiKey
-        },
-        timeout: 5000
-      });
+      // First, try to get sentiment from Finnhub's news-sentiment endpoint with retry logic
+      const sentimentResponse = await this.retryWithBackoff(() =>
+        axios.get(`${this.baseUrl}/news-sentiment`, {
+          params: {
+            symbol,
+            token: this.finnhubApiKey
+          },
+          timeout: 5000
+        })
+      );
 
       // Check if we have valid sentiment data
       if (sentimentResponse.data && sentimentResponse.data.sentiment) {
@@ -345,15 +529,17 @@ class TradeQualityService {
       const fromDate = new Date(tradeDate.getTime() - 24 * 60 * 60 * 1000)
         .toISOString().split('T')[0];
 
-      const newsResponse = await axios.get(`${this.baseUrl}/company-news`, {
-        params: {
-          symbol,
-          from: fromDate,
-          to: toDate,
-          token: this.finnhubApiKey
-        },
-        timeout: 5000
-      });
+      const newsResponse = await this.retryWithBackoff(() =>
+        axios.get(`${this.baseUrl}/company-news`, {
+          params: {
+            symbol,
+            from: fromDate,
+            to: toDate,
+            token: this.finnhubApiKey
+          },
+          timeout: 5000
+        })
+      );
 
       const articles = newsResponse.data || [];
 
@@ -524,43 +710,71 @@ class TradeQualityService {
 
   /**
    * Score news sentiment
-   * Positive sentiment is heavily weighted
+   * Positive sentiment is heavily weighted for longs, negative for shorts
+   * @param {Object} sentiment - Sentiment object with numeric sentiment score
+   * @param {string} side - Trade side ('long' or 'short')
    * @returns {number} Score from 0 to 1
    */
-  scoreNewsSentiment(sentiment) {
-    if (!sentiment || sentiment.sentiment === undefined) {
-      return 0.5; // Neutral if no data
+  scoreNewsSentiment(sentiment, side = 'long') {
+    // No news data - use neutral score
+    if (!sentiment || sentiment.sentiment === undefined || sentiment.sentiment === null) {
+      return 0.5; // Neutral score when sentiment is not available
     }
 
     const score = sentiment.sentiment || 0;
+    const isShort = side?.toLowerCase() === 'short';
 
-    if (score >= 0.5) return 1.0;      // Very positive
-    if (score >= 0.25) return 0.8;     // Positive
-    if (score >= 0) return 0.6;        // Slightly positive
-    if (score >= -0.25) return 0.4;    // Slightly negative
-    if (score >= -0.5) return 0.2;     // Negative
-    return 0.1;                         // Very negative
+    // For LONG positions: positive news = good, negative news = bad
+    // For SHORT positions: negative news = good, positive news = bad
+    let qualityScore;
+
+    if (score >= 0.7) {
+      qualityScore = 1.0;      // Very positive news (strongly bullish)
+    } else if (score >= 0.4) {
+      qualityScore = 0.8;      // Positive news (bullish)
+    } else if (score > 0.1) {
+      qualityScore = 0.6;      // Slightly positive news
+    } else if (score >= -0.1) {
+      qualityScore = 0.5;      // Neutral news (between -0.1 and 0.1)
+    } else if (score >= -0.4) {
+      qualityScore = 0.4;      // Slightly negative news
+    } else if (score >= -0.7) {
+      qualityScore = 0.2;      // Negative news (bearish)
+    } else {
+      qualityScore = 0.1;      // Very negative news (strongly bearish)
+    }
+
+    // Reverse the score for short positions
+    if (isShort) {
+      qualityScore = 1.0 - qualityScore + 0.1; // Invert but keep some range
+      qualityScore = Math.max(0.1, Math.min(1.0, qualityScore)); // Clamp to 0.1-1.0
+    }
+
+    return qualityScore;
   }
 
   /**
-   * Calculate weighted score
-   * Weights: News (35%), Float (25%), Relative Volume (20%), Price (15%), Intraday Gain (5%)
+   * Calculate weighted score using custom or default weights
+   * @param {Object} metrics - Individual metric scores (0-1 scale)
+   * @param {Object} weights - Custom weight percentages (as decimals, should sum to 1.0)
+   * @returns {number} Weighted score on 0-5 scale
    */
-  calculateWeightedScore(metrics) {
-    const weights = {
-      newsSentiment: 0.35,    // Highest weight
-      float: 0.25,            // Second
-      relativeVolume: 0.20,   // Third
-      priceRange: 0.15,       // Fourth
-      intradayGain: 0.05      // Fifth
+  calculateWeightedScore(metrics, weights = null) {
+    // Use provided weights or fall back to defaults
+    const finalWeights = weights || {
+      newsSentiment: 0.30,    // Default 30%
+      gap: 0.20,              // Default 20%
+      relativeVolume: 0.20,   // Default 20%
+      float: 0.15,            // Default 15%
+      priceRange: 0.15        // Default 15%
     };
 
     const score =
-      metrics.newsSentiment * weights.newsSentiment +
-      metrics.float * weights.float +
-      metrics.relativeVolume * weights.relativeVolume +
-      metrics.priceRange * weights.priceRange +
-      metrics.intradayGain * weights.intradayGain;
+      metrics.newsSentiment * finalWeights.newsSentiment +
+      metrics.float * finalWeights.float +
+      metrics.relativeVolume * finalWeights.relativeVolume +
+      metrics.priceRange * finalWeights.priceRange +
+      metrics.gap * finalWeights.gap;
 
     return score * 5; // Convert to 0-5 scale
   }
@@ -579,6 +793,8 @@ class TradeQualityService {
 
   /**
    * Batch calculate quality for multiple trades
+   * @param {Array} trades - Array of trade objects with symbol, entry_time, entry_price, user_id
+   * @returns {Promise<Array>} Array of quality results
    */
   async calculateBatchQuality(trades) {
     const results = [];
@@ -587,7 +803,9 @@ class TradeQualityService {
       const quality = await this.calculateQuality(
         trade.symbol,
         trade.entry_time,
-        trade.entry_price
+        trade.entry_price,
+        trade.side || 'long',
+        trade.user_id
       );
 
       results.push({

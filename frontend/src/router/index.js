@@ -161,6 +161,12 @@ const router = createRouter({
       meta: { requiresAuth: true, requiresAdmin: true }
     },
     {
+      path: '/admin/backups',
+      name: 'admin-backups',
+      component: () => import('@/views/admin/BackupManagementView.vue'),
+      meta: { requiresAuth: true, requiresAdmin: true }
+    },
+    {
       path: '/oauth/authorize',
       name: 'oauth-authorize',
       component: () => import('@/views/OAuth/AuthorizeView.vue')

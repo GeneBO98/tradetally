@@ -2837,11 +2837,14 @@ const tradeController = {
         return res.status(404).json({ error: 'Trade not found' });
       }
 
-      // Calculate quality
+      // Calculate quality with user's custom weights and existing news sentiment
       const quality = await tradeQualityService.calculateQuality(
         trade.symbol,
         trade.entry_time,
-        trade.entry_price
+        trade.entry_price,
+        trade.side,
+        req.user.id,
+        trade.news_sentiment
       );
 
       if (!quality) {

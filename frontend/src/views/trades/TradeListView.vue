@@ -1,5 +1,5 @@
 <template>
-  <div :class="[isFullWidth ? 'max-w-full px-4 sm:px-6 lg:px-12' : 'max-w-7xl px-4 sm:px-6 lg:px-8', 'mx-auto py-8 transition-all duration-300']">
+  <div :class="[isFullWidth ? 'max-w-full px-4 sm:px-6 lg:px-12' : 'max-w-[75%] px-4 sm:px-6 lg:px-8', 'mx-auto py-8 transition-all duration-300']">
     <!-- Title -->
     <div class="mb-6">
       <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Trades</h1>

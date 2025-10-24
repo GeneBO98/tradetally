@@ -628,7 +628,7 @@ class JobQueue {
 
     // Get trades that need quality grading
     const tradesQuery = `
-      SELECT id, symbol, entry_time, entry_price
+      SELECT id, symbol, entry_time, entry_price, side, news_sentiment
       FROM trades
       WHERE user_id = $1
         AND quality_grade IS NULL
@@ -653,7 +653,10 @@ class JobQueue {
           const quality = await tradeQualityService.calculateQuality(
             trade.symbol,
             trade.entry_time,
-            trade.entry_price
+            trade.entry_price,
+            trade.side,
+            userId,
+            trade.news_sentiment
           );
 
           if (quality) {

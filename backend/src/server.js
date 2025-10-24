@@ -36,8 +36,10 @@ const diaryTemplateRoutes = require('./routes/diaryTemplate.routes');
 const healthRoutes = require('./routes/health.routes');
 const oauth2Routes = require('./routes/oauth2.routes');
 const tagsRoutes = require('./routes/tags.routes');
+const backupRoutes = require('./routes/backup.routes');
 const BillingService = require('./services/billingService');
 const priceMonitoringService = require('./services/priceMonitoringService');
+const backupScheduler = require('./services/backupScheduler.service');
 const GamificationScheduler = require('./services/gamificationScheduler');
 const TrialScheduler = require('./services/trialScheduler');
 const OptionsScheduler = require('./services/optionsScheduler');
@@ -176,6 +178,7 @@ app.use('/api/diary', diaryRoutes);
 app.use('/api/diary-templates', diaryTemplateRoutes);
 app.use('/api/health', healthRoutes);
 app.use('/api/tags', tagsRoutes);
+app.use('/api/admin/backup', backupRoutes);
 
 // OAuth2 Provider endpoints
 app.use('/oauth', oauth2Routes);
@@ -440,7 +443,16 @@ async function startServer() {
     } else {
       console.log('Enrichment cache cleanup disabled (ENABLE_ENRICHMENT_CACHE_CLEANUP=false)');
     }
-    
+
+    // Initialize backup scheduler
+    if (process.env.ENABLE_BACKUP_SCHEDULER !== 'false') {
+      console.log('Initializing backup scheduler...');
+      await backupScheduler.initialize();
+      console.log('✓ Backup scheduler initialized');
+    } else {
+      console.log('Backup scheduler disabled (ENABLE_BACKUP_SCHEDULER=false)');
+    }
+
     // Start the server
     app.listen(PORT, () => {
       logger.info(`✓ TradeTally server running on port ${PORT}`);
@@ -467,6 +479,7 @@ process.on('SIGTERM', async () => {
   TrialScheduler.stopScheduler();
   jobRecoveryService.stop();
   globalEnrichmentCacheCleanupService.stop();
+  backupScheduler.stopAll();
   await backgroundWorker.stop();
   process.exit(0);
 });
@@ -479,6 +492,7 @@ process.on('SIGINT', async () => {
   TrialScheduler.stopScheduler();
   jobRecoveryService.stop();
   globalEnrichmentCacheCleanupService.stop();
+  backupScheduler.stopAll();
   await backgroundWorker.stop();
   process.exit(0);
 });

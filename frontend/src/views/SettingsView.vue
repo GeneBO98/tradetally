@@ -1,5 +1,5 @@
 <template>
-  <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  <div class="max-w-[75%] mx-auto px-4 sm:px-6 lg:px-8 py-8">
     <div class="mb-8">
       <h1 class="text-2xl font-bold text-gray-900 dark:text-white">App Settings</h1>
       <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
@@ -7,503 +7,686 @@
       </p>
     </div>
 
-    <div class="space-y-8">
-      <!-- AI Provider Settings -->
-      <div class="card">
-        <div class="card-body">
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-6">AI Provider Settings</h3>
-          <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
-            Configure which AI provider to use for analytics recommendations and CUSIP lookups.
-            <span v-if="authStore.user?.role === 'admin'" class="block mt-2 text-blue-600 dark:text-blue-400 font-medium">
-              Note: As an admin, you can also configure default settings for all users below.
-            </span>
-            <span v-else class="block mt-2 text-blue-600 dark:text-blue-400 font-medium">
-              Note: If you leave these settings empty, admin-configured defaults will be used.
-            </span>
-          </p>
+    <!-- Tabs Navigation -->
+    <div class="border-b border-gray-200 dark:border-gray-700 mb-8">
+      <nav class="-mb-px flex space-x-8" aria-label="Tabs">
+        <button
+          v-for="tab in tabs"
+          :key="tab.id"
+          @click="activeTab = tab.id"
+          :class="[
+            activeTab === tab.id
+              ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300',
+            'whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors'
+          ]"
+        >
+          {{ tab.label }}
+        </button>
+      </nav>
+    </div>
 
-          <form @submit.prevent="updateAISettings" class="space-y-6">
-            <div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
+    <!-- Tab Content -->
+    <div class="space-y-8">
+      <!-- General Tab -->
+      <template v-if="activeTab === 'general'">
+        <!-- Analytics Preferences -->
+        <div class="card">
+          <div class="card-body">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-6">Analytics Preferences</h3>
+            <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
+              Customize how your trading analytics are calculated and displayed.
+            </p>
+
+            <form @submit.prevent="updateAnalyticsSettings" class="space-y-6">
               <div>
-                <label for="aiProvider" class="label">AI Provider</label>
+                <label for="statisticsCalculation" class="label">Statistics Calculation Method</label>
                 <select
-                  id="aiProvider"
-                  v-model="aiForm.provider"
+                  id="statisticsCalculation"
+                  v-model="analyticsForm.statisticsCalculation"
                   class="input"
-                  @change="onProviderChange"
                 >
-                  <option value="gemini">Google Gemini</option>
-                  <option value="claude">Anthropic Claude</option>
-                  <option value="openai">OpenAI</option>
-                  <option value="ollama">Ollama</option>
-                  <option value="lmstudio">LM Studio</option>
-                  <option value="perplexity">Perplexity AI</option>
-                  <option value="local">Local/Custom</option>
+                  <option value="average">Average (Mean)</option>
+                  <option value="median">Median</option>
                 </select>
                 <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                  Choose your preferred AI provider for analytics and CUSIP resolution.
+                  Choose whether to use averages or medians for calculations like Average P&L, Average Win, Average Loss, etc.
+                  Medians are less affected by outliers and may provide a more representative view of typical performance.
+                  <span class="block mt-2 text-blue-600 dark:text-blue-400 font-medium">
+                    Note: Changes take effect immediately and will update labels throughout the application.
+                  </span>
                 </p>
               </div>
 
-              <div>
-                <label for="aiModel" class="label">Model (Optional)</label>
-                <input
-                  id="aiModel"
-                  v-model="aiForm.model"
-                  type="text"
-                  class="input"
-                  :placeholder="getModelPlaceholder()"
-                />
-                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                  Specific model to use. Leave blank for default.
-                </p>
+              <div class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                <div class="flex-1">
+                  <label for="autoCloseExpiredOptions" class="block text-sm font-medium text-gray-900 dark:text-white">
+                    Auto-Close Expired Options
+                  </label>
+                  <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                    Automatically close expired options positions with appropriate P&L (Long: -100%, Short: +100%).
+                    The system checks hourly for expired options.
+                  </p>
+                </div>
+                <div class="ml-4 flex-shrink-0">
+                  <button
+                    type="button"
+                    @click="analyticsForm.autoCloseExpiredOptions = !analyticsForm.autoCloseExpiredOptions"
+                    :class="[
+                      analyticsForm.autoCloseExpiredOptions ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700',
+                      'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2'
+                    ]"
+                    role="switch"
+                    :aria-checked="analyticsForm.autoCloseExpiredOptions"
+                  >
+                    <span
+                      :class="[
+                        analyticsForm.autoCloseExpiredOptions ? 'translate-x-5' : 'translate-x-0',
+                        'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out'
+                      ]"
+                    />
+                  </button>
+                </div>
               </div>
-            </div>
 
-            <div v-if="aiForm.provider === 'local' || aiForm.provider === 'ollama' || aiForm.provider === 'lmstudio'">
-              <label for="aiUrl" class="label">API URL</label>
-              <input
-                id="aiUrl"
-                v-model="aiForm.url"
-                type="url"
-                class="input"
-                :placeholder="aiForm.provider === 'ollama' ? 'http://localhost:11434' : aiForm.provider === 'lmstudio' ? 'http://localhost:1234' : 'http://localhost:8000'"
-                required
-              />
-              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                {{ aiForm.provider === 'ollama' ? 'Ollama server URL' : 'Custom AI API endpoint URL' }}
-              </p>
-            </div>
-
-            <div v-if="aiForm.provider !== 'local'">
-              <label for="aiApiKey" class="label">API Key</label>
-              <input
-                id="aiApiKey"
-                v-model="aiForm.apiKey"
-                type="password"
-                class="input"
-                :placeholder="getApiKeyPlaceholder()"
-                :required="aiForm.provider !== 'ollama'"
-              />
-              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                {{ getApiKeyHelp() }}
-              </p>
-            </div>
-
-            <div class="flex justify-end">
-              <button
-                type="submit"
-                :disabled="aiLoading"
-                class="btn-primary"
-              >
-                <span v-if="aiLoading" class="flex items-center">
-                  <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  Saving...
-                </span>
-                <span v-else>Save AI Settings</span>
-              </button>
-            </div>
-          </form>
+              <div class="flex justify-end">
+                <button
+                  type="submit"
+                  :disabled="analyticsLoading"
+                  class="btn-primary"
+                >
+                  <span v-if="analyticsLoading" class="flex items-center">
+                    <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Saving...
+                  </span>
+                  <span v-else>Save Analytics Settings</span>
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
-      </div>
 
-      <!-- Analytics Preferences -->
-      <div class="card">
-        <div class="card-body">
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-6">Analytics Preferences</h3>
-          <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
-            Customize how your trading analytics are calculated and displayed.
-          </p>
-
-          <form @submit.prevent="updateAnalyticsSettings" class="space-y-6">
-            <div>
-              <label for="statisticsCalculation" class="label">Statistics Calculation Method</label>
-              <select
-                id="statisticsCalculation"
-                v-model="analyticsForm.statisticsCalculation"
-                class="input"
-              >
-                <option value="average">Average (Mean)</option>
-                <option value="median">Median</option>
-              </select>
-              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                Choose whether to use averages or medians for calculations like Average P&L, Average Win, Average Loss, etc.
-                Medians are less affected by outliers and may provide a more representative view of typical performance.
-                <span class="block mt-2 text-blue-600 dark:text-blue-400 font-medium">
-                  Note: Changes take effect immediately and will update labels throughout the application.
-                </span>
-              </p>
-            </div>
+        <!-- API Documentation -->
+        <div class="card">
+          <div class="card-body">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-6">API Documentation</h3>
+            <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
+              Access comprehensive API documentation for integrating with TradeTally programmatically.
+            </p>
 
             <div class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
               <div class="flex-1">
-                <label for="autoCloseExpiredOptions" class="block text-sm font-medium text-gray-900 dark:text-white">
-                  Auto-Close Expired Options
-                </label>
-                <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                  Automatically close expired options positions with appropriate P&L (Long: -100%, Short: +100%).
-                  The system checks hourly for expired options.
+                <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-2">Interactive API Explorer</h4>
+                <p class="text-sm text-gray-600 dark:text-gray-400">
+                  Browse all available API endpoints, test requests, and view response schemas using our Swagger documentation.
                 </p>
               </div>
-              <div class="ml-4 flex-shrink-0">
+              <a
+                :href="getApiDocsUrl()"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="btn-primary flex-shrink-0 ml-4"
+              >
+                <MdiIcon :icon="apiIcon" :size="16" class="mr-2" />
+                Open API Docs
+              </a>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <!-- AI & Integrations Tab -->
+      <template v-if="activeTab === 'ai'">
+        <!-- AI Provider Settings -->
+        <div class="card">
+          <div class="card-body">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-6">AI Provider Settings</h3>
+            <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
+              Configure which AI provider to use for analytics recommendations and CUSIP lookups.
+              <span v-if="authStore.user?.role === 'admin'" class="block mt-2 text-blue-600 dark:text-blue-400 font-medium">
+                Note: As an admin, you can also configure default settings for all users below.
+              </span>
+              <span v-else class="block mt-2 text-blue-600 dark:text-blue-400 font-medium">
+                Note: If you leave these settings empty, admin-configured defaults will be used.
+              </span>
+            </p>
+
+            <form @submit.prevent="updateAISettings" class="space-y-6">
+              <div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                <div>
+                  <label for="aiProvider" class="label">AI Provider</label>
+                  <select
+                    id="aiProvider"
+                    v-model="aiForm.provider"
+                    class="input"
+                    @change="onProviderChange"
+                  >
+                    <option value="gemini">Google Gemini</option>
+                    <option value="claude">Anthropic Claude</option>
+                    <option value="openai">OpenAI</option>
+                    <option value="ollama">Ollama</option>
+                    <option value="lmstudio">LM Studio</option>
+                    <option value="perplexity">Perplexity AI</option>
+                    <option value="local">Local/Custom</option>
+                  </select>
+                  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    Choose your preferred AI provider for analytics and CUSIP resolution.
+                  </p>
+                </div>
+
+                <div>
+                  <label for="aiModel" class="label">Model (Optional)</label>
+                  <input
+                    id="aiModel"
+                    v-model="aiForm.model"
+                    type="text"
+                    class="input"
+                    :placeholder="getModelPlaceholder()"
+                  />
+                  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    Specific model to use. Leave blank for default.
+                  </p>
+                </div>
+              </div>
+
+              <div v-if="aiForm.provider === 'local' || aiForm.provider === 'ollama' || aiForm.provider === 'lmstudio'">
+                <label for="aiUrl" class="label">API URL</label>
+                <input
+                  id="aiUrl"
+                  v-model="aiForm.url"
+                  type="url"
+                  class="input"
+                  :placeholder="aiForm.provider === 'ollama' ? 'http://localhost:11434' : aiForm.provider === 'lmstudio' ? 'http://localhost:1234' : 'http://localhost:8000'"
+                  required
+                />
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  {{ aiForm.provider === 'ollama' ? 'Ollama server URL' : 'Custom AI API endpoint URL' }}
+                </p>
+              </div>
+
+              <div v-if="aiForm.provider !== 'local'">
+                <label for="aiApiKey" class="label">API Key</label>
+                <input
+                  id="aiApiKey"
+                  v-model="aiForm.apiKey"
+                  type="password"
+                  class="input"
+                  :placeholder="getApiKeyPlaceholder()"
+                  :required="aiForm.provider !== 'ollama'"
+                />
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  {{ getApiKeyHelp() }}
+                </p>
+              </div>
+
+              <div class="flex justify-end">
+                <button
+                  type="submit"
+                  :disabled="aiLoading"
+                  class="btn-primary"
+                >
+                  <span v-if="aiLoading" class="flex items-center">
+                    <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Saving...
+                  </span>
+                  <span v-else>Save AI Settings</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <!-- Admin AI Provider Settings -->
+        <div v-if="authStore.user?.role === 'admin'" class="card">
+          <div class="card-body">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-6">Admin AI Provider Settings</h3>
+            <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
+              Configure default AI provider settings for all users. Users can override these settings for their own accounts.
+            </p>
+
+            <form @submit.prevent="updateAdminAISettings" class="space-y-6">
+              <div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                <div>
+                  <label for="adminAiProvider" class="label">Default AI Provider</label>
+                  <select
+                    id="adminAiProvider"
+                    v-model="adminAiForm.provider"
+                    class="input"
+                    @change="onAdminProviderChange"
+                  >
+                    <option value="gemini">Google Gemini</option>
+                    <option value="claude">Anthropic Claude</option>
+                    <option value="openai">OpenAI</option>
+                    <option value="ollama">Ollama</option>
+                    <option value="lmstudio">LM Studio</option>
+                    <option value="perplexity">Perplexity AI</option>
+                    <option value="local">Local/Custom</option>
+                  </select>
+                  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    Default AI provider for all users (unless they override it).
+                  </p>
+                </div>
+
+                <div>
+                  <label for="adminAiModel" class="label">Default Model (Optional)</label>
+                  <input
+                    id="adminAiModel"
+                    v-model="adminAiForm.model"
+                    type="text"
+                    class="input"
+                    :placeholder="getAdminModelPlaceholder()"
+                  />
+                  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    Default model to use. Leave blank for provider default.
+                  </p>
+                </div>
+              </div>
+
+              <div v-if="adminAiForm.provider === 'local' || adminAiForm.provider === 'ollama' || adminAiForm.provider === 'lmstudio'">
+                <label for="adminAiUrl" class="label">Default API URL</label>
+                <input
+                  id="adminAiUrl"
+                  v-model="adminAiForm.url"
+                  type="url"
+                  class="input"
+                  :placeholder="adminAiForm.provider === 'ollama' ? 'http://localhost:11434' : adminAiForm.provider === 'lmstudio' ? 'http://localhost:1234' : 'http://localhost:8000'"
+                  required
+                />
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  Default {{ adminAiForm.provider === 'ollama' ? 'Ollama server URL' : 'custom AI API endpoint URL' }} for all users.
+                </p>
+              </div>
+
+              <div v-if="adminAiForm.provider !== 'local'">
+                <label for="adminAiApiKey" class="label">Default API Key</label>
+                <input
+                  id="adminAiApiKey"
+                  v-model="adminAiForm.apiKey"
+                  type="password"
+                  class="input"
+                  :placeholder="getAdminApiKeyPlaceholder()"
+                  :required="adminAiForm.provider !== 'ollama'"
+                />
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  {{ getAdminApiKeyHelp() }}
+                </p>
+              </div>
+
+              <div class="flex justify-end">
+                <button
+                  type="submit"
+                  :disabled="adminAiLoading"
+                  class="btn-primary"
+                >
+                  <span v-if="adminAiLoading" class="flex items-center">
+                    <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Saving...
+                  </span>
+                  <span v-else>Save Admin AI Settings</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </template>
+
+      <!-- Trading Tab -->
+      <template v-if="activeTab === 'trading'">
+        <!-- Quality Grading Weights -->
+        <div class="card">
+          <div class="card-body">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Quality Grading Weights</h3>
+            <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
+              Customize how much each metric contributes to your trade quality score.
+              Weights must sum to 100%. Quality scores are calculated based on news sentiment, gap from previous close, relative volume, float, and price range.
+            </p>
+
+            <form @submit.prevent="updateQualityWeights" class="space-y-6">
+              <!-- Weight Sliders -->
+              <div class="space-y-6">
+                <!-- News Sentiment Weight -->
+                <div>
+                  <div class="flex justify-between items-center mb-2">
+                    <label for="newsWeight" class="label text-sm">News Sentiment</label>
+                    <span class="text-sm font-medium text-gray-900 dark:text-white">{{ qualityWeightsForm.news }}%</span>
+                  </div>
+                  <input
+                    id="newsWeight"
+                    v-model.number="qualityWeightsForm.news"
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="5"
+                    class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
+                  />
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Weight for news sentiment analysis (bullish/bearish market sentiment)
+                  </p>
+                </div>
+
+                <!-- Gap Weight -->
+                <div>
+                  <div class="flex justify-between items-center mb-2">
+                    <label for="gapWeight" class="label text-sm">Gap from Previous Close</label>
+                    <span class="text-sm font-medium text-gray-900 dark:text-white">{{ qualityWeightsForm.gap }}%</span>
+                  </div>
+                  <input
+                    id="gapWeight"
+                    v-model.number="qualityWeightsForm.gap"
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="5"
+                    class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
+                  />
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Weight for gap percentage from previous day's close
+                  </p>
+                </div>
+
+                <!-- Relative Volume Weight -->
+                <div>
+                  <div class="flex justify-between items-center mb-2">
+                    <label for="relativeVolumeWeight" class="label text-sm">Relative Volume</label>
+                    <span class="text-sm font-medium text-gray-900 dark:text-white">{{ qualityWeightsForm.relativeVolume }}%</span>
+                  </div>
+                  <input
+                    id="relativeVolumeWeight"
+                    v-model.number="qualityWeightsForm.relativeVolume"
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="5"
+                    class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
+                  />
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Weight for volume compared to 10-day average
+                  </p>
+                </div>
+
+                <!-- Float Weight -->
+                <div>
+                  <div class="flex justify-between items-center mb-2">
+                    <label for="floatWeight" class="label text-sm">Float (Shares Outstanding)</label>
+                    <span class="text-sm font-medium text-gray-900 dark:text-white">{{ qualityWeightsForm.float }}%</span>
+                  </div>
+                  <input
+                    id="floatWeight"
+                    v-model.number="qualityWeightsForm.float"
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="5"
+                    class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
+                  />
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Weight for number of shares outstanding (lower float is better)
+                  </p>
+                </div>
+
+                <!-- Price Range Weight -->
+                <div>
+                  <div class="flex justify-between items-center mb-2">
+                    <label for="priceRangeWeight" class="label text-sm">Price Range</label>
+                    <span class="text-sm font-medium text-gray-900 dark:text-white">{{ qualityWeightsForm.priceRange }}%</span>
+                  </div>
+                  <input
+                    id="priceRangeWeight"
+                    v-model.number="qualityWeightsForm.priceRange"
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="5"
+                    class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
+                  />
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Weight for stock price range ($2-20 is ideal)
+                  </p>
+                </div>
+              </div>
+
+              <!-- Total Display -->
+              <div class="p-4 rounded-md" :class="weightsTotal === 100 ? 'bg-green-50 dark:bg-green-900/20' : 'bg-red-50 dark:bg-red-900/20'">
+                <div class="flex justify-between items-center">
+                  <span class="text-sm font-medium" :class="weightsTotal === 100 ? 'text-green-800 dark:text-green-200' : 'text-red-800 dark:text-red-200'">
+                    Total Weight:
+                  </span>
+                  <span class="text-lg font-bold" :class="weightsTotal === 100 ? 'text-green-900 dark:text-green-100' : 'text-red-900 dark:text-red-100'">
+                    {{ weightsTotal }}%
+                  </span>
+                </div>
+                <p v-if="weightsTotal !== 100" class="text-xs text-red-600 dark:text-red-400 mt-1">
+                  Weights must sum to exactly 100%
+                </p>
+              </div>
+
+              <div class="flex justify-end space-x-3">
                 <button
                   type="button"
-                  @click="analyticsForm.autoCloseExpiredOptions = !analyticsForm.autoCloseExpiredOptions"
-                  :class="[
-                    analyticsForm.autoCloseExpiredOptions ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700',
-                    'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2'
-                  ]"
-                  role="switch"
-                  :aria-checked="analyticsForm.autoCloseExpiredOptions"
-                >
-                  <span
-                    :class="[
-                      analyticsForm.autoCloseExpiredOptions ? 'translate-x-5' : 'translate-x-0',
-                      'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out'
-                    ]"
-                  />
-                </button>
-              </div>
-            </div>
-
-            <div class="flex justify-end">
-              <button
-                type="submit"
-                :disabled="analyticsLoading"
-                class="btn-primary"
-              >
-                <span v-if="analyticsLoading" class="flex items-center">
-                  <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  Saving...
-                </span>
-                <span v-else>Save Analytics Settings</span>
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-
-      <!-- Trade Import Settings -->
-      <div class="card">
-        <div class="card-body">
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-6">Trade Import Settings</h3>
-          <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
-            Configure how executions are grouped when importing trades from broker CSV files.
-          </p>
-
-          <form @submit.prevent="updateTradeImportSettings" class="space-y-6">
-            <!-- Trade Grouping Toggle -->
-            <div class="flex items-start">
-              <div class="flex items-center h-5">
-                <input
-                  id="enableTradeGrouping"
-                  v-model="tradeImportForm.enableTradeGrouping"
-                  type="checkbox"
-                  class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                />
-              </div>
-              <div class="ml-3">
-                <label for="enableTradeGrouping" class="text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Enable Trade Grouping
-                </label>
-                <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                  When enabled, multiple executions within the specified time gap will be grouped into a single trade.
-                  This is useful for scaling in/out of positions.
-                </p>
-              </div>
-            </div>
-
-            <!-- Time Gap Setting -->
-            <div v-if="tradeImportForm.enableTradeGrouping">
-              <label for="tradeGroupingTimeGap" class="label">Time Gap for Grouping (minutes)</label>
-              <input
-                id="tradeGroupingTimeGap"
-                v-model.number="tradeImportForm.tradeGroupingTimeGapMinutes"
-                type="number"
-                min="1"
-                max="1440"
-                class="input"
-                placeholder="60"
-              />
-              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                Maximum time gap (in minutes) between executions to group them into the same trade.
-                Default is 60 minutes (1 hour), following TradeSviz industry standard.
-              </p>
-            </div>
-
-            <div class="flex justify-end">
-              <button
-                type="submit"
-                :disabled="tradeImportLoading"
-                class="btn-primary"
-              >
-                <span v-if="tradeImportLoading" class="flex items-center">
-                  <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  Saving...
-                </span>
-                <span v-else>Update Import Settings</span>
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-
-      <!-- Admin AI Provider Settings -->
-      <div v-if="authStore.user?.role === 'admin'" class="card">
-        <div class="card-body">
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-6">Admin AI Provider Settings</h3>
-          <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
-            Configure default AI provider settings for all users. Users can override these settings for their own accounts.
-          </p>
-
-          <form @submit.prevent="updateAdminAISettings" class="space-y-6">
-            <div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
-              <div>
-                <label for="adminAiProvider" class="label">Default AI Provider</label>
-                <select
-                  id="adminAiProvider"
-                  v-model="adminAiForm.provider"
-                  class="input"
-                  @change="onAdminProviderChange"
-                >
-                  <option value="gemini">Google Gemini</option>
-                  <option value="claude">Anthropic Claude</option>
-                  <option value="openai">OpenAI</option>
-                  <option value="ollama">Ollama</option>
-                  <option value="lmstudio">LM Studio</option>
-                  <option value="perplexity">Perplexity AI</option>
-                  <option value="local">Local/Custom</option>
-                </select>
-                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                  Default AI provider for all users (unless they override it).
-                </p>
-              </div>
-
-              <div>
-                <label for="adminAiModel" class="label">Default Model (Optional)</label>
-                <input
-                  id="adminAiModel"
-                  v-model="adminAiForm.model"
-                  type="text"
-                  class="input"
-                  :placeholder="getAdminModelPlaceholder()"
-                />
-                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                  Default model to use. Leave blank for provider default.
-                </p>
-              </div>
-            </div>
-
-            <div v-if="adminAiForm.provider === 'local' || adminAiForm.provider === 'ollama' || adminAiForm.provider === 'lmstudio'">
-              <label for="adminAiUrl" class="label">Default API URL</label>
-              <input
-                id="adminAiUrl"
-                v-model="adminAiForm.url"
-                type="url"
-                class="input"
-                :placeholder="adminAiForm.provider === 'ollama' ? 'http://localhost:11434' : adminAiForm.provider === 'lmstudio' ? 'http://localhost:1234' : 'http://localhost:8000'"
-                required
-              />
-              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                Default {{ adminAiForm.provider === 'ollama' ? 'Ollama server URL' : 'custom AI API endpoint URL' }} for all users.
-              </p>
-            </div>
-
-            <div v-if="adminAiForm.provider !== 'local'">
-              <label for="adminAiApiKey" class="label">Default API Key</label>
-              <input
-                id="adminAiApiKey"
-                v-model="adminAiForm.apiKey"
-                type="password"
-                class="input"
-                :placeholder="getAdminApiKeyPlaceholder()"
-                :required="adminAiForm.provider !== 'ollama'"
-              />
-              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                {{ getAdminApiKeyHelp() }}
-              </p>
-            </div>
-
-            <div class="flex justify-end">
-              <button
-                type="submit"
-                :disabled="adminAiLoading"
-                class="btn-primary"
-              >
-                <span v-if="adminAiLoading" class="flex items-center">
-                  <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  Saving...
-                </span>
-                <span v-else>Save Admin AI Settings</span>
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-
-      <!-- API Documentation -->
-      <div class="card">
-        <div class="card-body">
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-6">API Documentation</h3>
-          <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
-            Access comprehensive API documentation for integrating with TradeTally programmatically.
-          </p>
-          
-          <div class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-            <div class="flex-1">
-              <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-2">Interactive API Explorer</h4>
-              <p class="text-sm text-gray-600 dark:text-gray-400">
-                Browse all available API endpoints, test requests, and view response schemas using our Swagger documentation.
-              </p>
-            </div>
-            <a 
-              :href="getApiDocsUrl()" 
-              target="_blank"
-              rel="noopener noreferrer"
-              class="btn-primary flex-shrink-0 ml-4"
-            >
-              <MdiIcon :icon="apiIcon" :size="16" class="mr-2" />
-              Open API Docs
-            </a>
-          </div>
-        </div>
-      </div>
-
-      <!-- Data Export & Import -->
-      <div class="card">
-        <div class="card-body">
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-6">Data Export & Import</h3>
-          <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
-            Export all your trading data, settings, and trading profile as a JSON file. You can also import previously exported data.
-          </p>
-
-          <div class="space-y-6">
-            <!-- Export Section -->
-            <div class="flex items-start space-x-4">
-              <div class="flex-1">
-                <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-3">Export Your Data</h4>
-                <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                  Download a complete backup of your TradeTally data including trades, diary entries, playbook entries, settings, tags, and equity history.
-                </p>
-              </div>
-              <button
-                @click="exportUserData"
-                :disabled="exportLoading"
-                class="btn-primary flex-shrink-0"
-              >
-                <span v-if="exportLoading" class="flex items-center">
-                  <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  Preparing Export...
-                </span>
-                <span v-else class="flex items-center">
-                  <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                  </svg>
-                  Export All Data
-                </span>
-              </button>
-            </div>
-
-            <!-- Import Section -->
-            <div class="flex items-start space-x-4">
-              <div class="flex-1">
-                <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-3">Import Data</h4>
-                <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                  Import previously exported TradeTally data. This will merge with your existing data without duplicating trades.
-                </p>
-              </div>
-              <div class="flex-shrink-0">
-                <input
-                  ref="fileInput"
-                  type="file"
-                  accept=".json,application/json"
-                  @change="handleFileSelect"
-                  class="hidden"
-                />
-                <button
-                  @click="$refs.fileInput.click()"
+                  @click="resetQualityWeights"
                   class="btn-secondary"
                 >
-                  <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"></path>
-                  </svg>
-                  Choose File
+                  Reset to Defaults
+                </button>
+                <button
+                  type="submit"
+                  :disabled="qualityWeightsLoading || weightsTotal !== 100"
+                  class="btn-primary"
+                >
+                  <span v-if="qualityWeightsLoading" class="flex items-center">
+                    <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Saving...
+                  </span>
+                  <span v-else>Update Quality Weights</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <!-- Trade Import Settings -->
+        <div class="card">
+          <div class="card-body">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-6">Trade Import Settings</h3>
+            <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
+              Configure how executions are grouped when importing trades from broker CSV files.
+            </p>
+
+            <form @submit.prevent="updateTradeImportSettings" class="space-y-6">
+              <!-- Trade Grouping Toggle -->
+              <div class="flex items-start">
+                <div class="flex items-center h-5">
+                  <input
+                    id="enableTradeGrouping"
+                    v-model="tradeImportForm.enableTradeGrouping"
+                    type="checkbox"
+                    class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                  />
+                </div>
+                <div class="ml-3">
+                  <label for="enableTradeGrouping" class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Enable Trade Grouping
+                  </label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                    When enabled, multiple executions within the specified time gap will be grouped into a single trade.
+                    This is useful for scaling in/out of positions.
+                  </p>
+                </div>
+              </div>
+
+              <!-- Time Gap Setting -->
+              <div v-if="tradeImportForm.enableTradeGrouping">
+                <label for="tradeGroupingTimeGap" class="label">Time Gap for Grouping (minutes)</label>
+                <input
+                  id="tradeGroupingTimeGap"
+                  v-model.number="tradeImportForm.tradeGroupingTimeGapMinutes"
+                  type="number"
+                  min="1"
+                  max="1440"
+                  class="input"
+                  placeholder="60"
+                />
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  Maximum time gap (in minutes) between executions to group them into the same trade.
+                  Default is 60 minutes (1 hour), following TradeSviz industry standard.
+                </p>
+              </div>
+
+              <div class="flex justify-end">
+                <button
+                  type="submit"
+                  :disabled="tradeImportLoading"
+                  class="btn-primary"
+                >
+                  <span v-if="tradeImportLoading" class="flex items-center">
+                    <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Saving...
+                  </span>
+                  <span v-else>Update Import Settings</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <!-- Trade Enrichment -->
+        <div class="card">
+          <div class="card-body">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Trade Enrichment</h3>
+            <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
+              Enrich your existing trades with additional data and analytics. This process runs in the background and may take a few minutes depending on the number of trades.
+            </p>
+
+            <div class="flex items-start justify-between">
+              <div class="flex-1">
+                <p class="text-sm font-medium text-gray-900 dark:text-white">
+                  Comprehensive Trade Enrichment
+                </p>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Enriches trades with:
+                </p>
+                <ul class="text-xs text-gray-500 dark:text-gray-400 mt-2 space-y-1 ml-4 list-disc">
+                  <li>News events and sentiment analysis</li>
+                  <li>Quality grading based on stock metrics (float, volume, price range, gap, sentiment)</li>
+                </ul>
+              </div>
+              <button
+                @click="enrichTrades"
+                :disabled="enrichmentLoading"
+                class="btn-primary ml-4 flex-shrink-0"
+              >
+                <span v-if="enrichmentLoading" class="flex items-center">
+                  <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Processing...
+                </span>
+                <span v-else>Enrich Trades</span>
+              </button>
+            </div>
+
+            <div v-if="enrichmentMessage" class="mt-4 p-3 rounded-md" :class="enrichmentSuccess ? 'bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-200' : 'bg-blue-50 dark:bg-blue-900/20 text-blue-800 dark:text-blue-200'">
+              <p class="text-sm">{{ enrichmentMessage }}</p>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <!-- Data Management Tab -->
+      <template v-if="activeTab === 'data'">
+        <!-- Data Export & Import -->
+        <div class="card">
+          <div class="card-body">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-6">Data Export & Import</h3>
+            <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
+              Export all your trading data, settings, and trading profile as a JSON file. You can also import previously exported data.
+            </p>
+
+            <div class="space-y-6">
+              <!-- Export Section -->
+              <div class="flex items-start space-x-4">
+                <div class="flex-1">
+                  <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-3">Export Your Data</h4>
+                  <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                    Download a complete backup of your TradeTally data including trades, diary entries, playbook entries, settings, tags, and equity history.
+                  </p>
+                </div>
+                <button
+                  @click="exportUserData"
+                  :disabled="exportLoading"
+                  class="btn-primary flex-shrink-0"
+                >
+                  <span v-if="exportLoading" class="flex items-center">
+                    <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Preparing Export...
+                  </span>
+                  <span v-else class="flex items-center">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    </svg>
+                    Export All Data
+                  </span>
+                </button>
+              </div>
+
+              <!-- Import Section -->
+              <div class="flex items-start space-x-4">
+                <div class="flex-1">
+                  <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-3">Import Data</h4>
+                  <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                    Import previously exported TradeTally data. This will merge with your existing data without duplicating trades.
+                  </p>
+                </div>
+                <div class="flex-shrink-0">
+                  <input
+                    ref="fileInput"
+                    type="file"
+                    accept=".json,application/json"
+                    @change="handleFileSelect"
+                    class="hidden"
+                  />
+                  <button
+                    @click="$refs.fileInput.click()"
+                    class="btn-secondary"
+                  >
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"></path>
+                    </svg>
+                    Choose File
+                  </button>
+                </div>
+              </div>
+
+              <!-- Selected File and Import Button -->
+              <div v-if="selectedFile" class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                <span class="text-sm text-gray-600 dark:text-gray-400 truncate mr-4">
+                  Selected: {{ selectedFile.name }}
+                </span>
+                <button
+                  @click="importUserData"
+                  :disabled="importLoading"
+                  class="btn-primary flex-shrink-0"
+                >
+                  <span v-if="importLoading" class="flex items-center">
+                    <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Importing...
+                  </span>
+                  <span v-else class="flex items-center">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                    </svg>
+                    Import Data
+                  </span>
                 </button>
               </div>
             </div>
-            
-            <!-- Selected File and Import Button -->
-            <div v-if="selectedFile" class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-              <span class="text-sm text-gray-600 dark:text-gray-400 truncate mr-4">
-                Selected: {{ selectedFile.name }}
-              </span>
-              <button
-                @click="importUserData"
-                :disabled="importLoading"
-                class="btn-primary flex-shrink-0"
-              >
-                <span v-if="importLoading" class="flex items-center">
-                  <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  Importing...
-                </span>
-                <span v-else class="flex items-center">
-                  <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
-                  </svg>
-                  Import Data
-                </span>
-              </button>
-            </div>
           </div>
         </div>
-      </div>
-
-      <!-- Trade Enrichment -->
-      <div class="card">
-        <div class="card-body">
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Trade Enrichment</h3>
-          <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
-            Enrich your existing trades with additional data and analytics. This process runs in the background and may take a few minutes depending on the number of trades.
-          </p>
-
-          <div class="flex items-start justify-between">
-            <div class="flex-1">
-              <p class="text-sm font-medium text-gray-900 dark:text-white">
-                Comprehensive Trade Enrichment
-              </p>
-              <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                Enriches trades with:
-              </p>
-              <ul class="text-xs text-gray-500 dark:text-gray-400 mt-2 space-y-1 ml-4 list-disc">
-                <li>News events and sentiment analysis</li>
-                <li>Quality grading based on stock metrics (float, volume, price range, gap, sentiment)</li>
-              </ul>
-            </div>
-            <button
-              @click="enrichTrades"
-              :disabled="enrichmentLoading"
-              class="btn-primary ml-4 flex-shrink-0"
-            >
-              <span v-if="enrichmentLoading" class="flex items-center">
-                <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                Processing...
-              </span>
-              <span v-else>Enrich Trades</span>
-            </button>
-          </div>
-
-          <div v-if="enrichmentMessage" class="mt-4 p-3 rounded-md" :class="enrichmentSuccess ? 'bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-200' : 'bg-blue-50 dark:bg-blue-900/20 text-blue-800 dark:text-blue-200'">
-            <p class="text-sm">{{ enrichmentMessage }}</p>
-          </div>
-        </div>
-      </div>
-
+      </template>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useNotification } from '@/composables/useNotification'
 import api from '@/services/api'
@@ -515,6 +698,19 @@ const { showSuccess, showError } = useNotification()
 
 // Icons
 const apiIcon = mdiApi
+
+// Active tab
+const activeTab = ref('general')
+
+// Tabs configuration
+const tabs = computed(() => {
+  return [
+    { id: 'general', label: 'General' },
+    { id: 'ai', label: 'AI & Integrations' },
+    { id: 'trading', label: 'Trading' },
+    { id: 'data', label: 'Data Management' }
+  ]
+})
 
 // AI Provider Settings
 const aiForm = ref({
@@ -541,6 +737,25 @@ const tradeImportForm = ref({
 })
 const tradeImportLoading = ref(false)
 
+// Quality Weights Settings
+const qualityWeightsForm = ref({
+  news: 30,
+  gap: 20,
+  relativeVolume: 20,
+  float: 15,
+  priceRange: 15
+})
+const qualityWeightsLoading = ref(false)
+
+// Computed property for total weights
+const weightsTotal = computed(() => {
+  return qualityWeightsForm.value.news +
+         qualityWeightsForm.value.gap +
+         qualityWeightsForm.value.relativeVolume +
+         qualityWeightsForm.value.float +
+         qualityWeightsForm.value.priceRange
+})
+
 // Admin AI Settings
 const adminAiForm = ref({
   provider: 'gemini',
@@ -564,12 +779,12 @@ const enrichmentSuccess = ref(false)
 function getApiDocsUrl() {
   // Check if we're in development and need to use a different port
   const currentUrl = window.location
-  
+
   // If frontend is on port 5173 (Vite dev), backend is on port 3000
   if (currentUrl.port === '5173' || currentUrl.hostname === 'localhost') {
     return `http://localhost:3000/api-docs`
   }
-  
+
   // Otherwise use the same origin
   return `${currentUrl.origin}/api-docs`
 }
@@ -748,6 +963,54 @@ async function updateTradeImportSettings() {
   }
 }
 
+// Quality Weights Functions
+async function fetchQualityWeights() {
+  try {
+    const response = await api.get('/users/quality-weights')
+    if (response.data && response.data.qualityWeights) {
+      qualityWeightsForm.value = {
+        news: response.data.qualityWeights.news,
+        gap: response.data.qualityWeights.gap,
+        relativeVolume: response.data.qualityWeights.relativeVolume,
+        float: response.data.qualityWeights.float,
+        priceRange: response.data.qualityWeights.priceRange
+      }
+    }
+  } catch (error) {
+    console.error('Failed to fetch quality weights:', error)
+    // Don't show error to user, just use defaults
+  }
+}
+
+async function updateQualityWeights() {
+  qualityWeightsLoading.value = true
+  try {
+    await api.put('/users/quality-weights', {
+      news: qualityWeightsForm.value.news,
+      gap: qualityWeightsForm.value.gap,
+      relativeVolume: qualityWeightsForm.value.relativeVolume,
+      float: qualityWeightsForm.value.float,
+      priceRange: qualityWeightsForm.value.priceRange
+    })
+    showSuccess('Success', 'Quality grading weights updated successfully')
+  } catch (error) {
+    console.error('Failed to update quality weights:', error)
+    showError('Error', error.response?.data?.error || 'Failed to update quality weights')
+  } finally {
+    qualityWeightsLoading.value = false
+  }
+}
+
+function resetQualityWeights() {
+  qualityWeightsForm.value = {
+    news: 30,
+    gap: 20,
+    relativeVolume: 20,
+    float: 15,
+    priceRange: 15
+  }
+}
+
 // Admin AI Settings Functions
 async function fetchAdminAISettings() {
   try {
@@ -847,23 +1110,23 @@ async function exportUserData() {
     const response = await api.get('/settings/export', {
       responseType: 'blob'
     })
-    
+
     // Create a download link
     const blob = new Blob([response.data], { type: 'application/json' })
     const url = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    
+
     // Generate filename with current date
     const today = new Date().toISOString().split('T')[0]
     link.download = `tradetally-export-${today}.json`
-    
+
     // Trigger download
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
     window.URL.revokeObjectURL(url)
-    
+
     showSuccess('Export Complete', 'Your data has been exported successfully')
   } catch (error) {
     console.error('Export failed:', error)
@@ -885,24 +1148,24 @@ async function importUserData() {
     showError('No File Selected', 'Please select a file to import')
     return
   }
-  
+
   importLoading.value = true
   try {
     const formData = new FormData()
     formData.append('file', selectedFile.value)
-    
+
     const response = await api.post('/settings/import', formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }
     })
-    
+
     const { tradesAdded, tagsAdded, equityAdded } = response.data
     showSuccess(
-      'Import Complete', 
+      'Import Complete',
       `Successfully imported ${tradesAdded} trades, ${tagsAdded} tags, and ${equityAdded} equity records`
     )
-    
+
     // Clear the selected file
     selectedFile.value = null
     // Reset the file input
@@ -949,6 +1212,7 @@ onMounted(() => {
   loadAISettings()
   loadAnalyticsSettings()
   loadTradeImportSettings()
+  fetchQualityWeights()
 
   // Load admin AI settings if user is admin
   if (authStore.user?.role === 'admin') {
