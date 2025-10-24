@@ -2539,10 +2539,10 @@ class Trade {
         indicators.rsi = null;
       } else {
         try {
-          indicators.rsi = await finnhub.getTechnicalIndicator(symbol, resolution, analysisStart, analysisEnd, 'rsi', { timeperiod: 14 });
+          indicators.rsi = await finnhub.getTechnicalIndicator(symbol, resolution, analysisStart, analysisEnd, 'rsi', { timeperiod: 14 }, userId);
         } catch (error) {
           console.warn(`RSI failed for ${symbol}: ${error.message}`);
-          
+
           // Try one simple fallback: daily data with minimal range
           if (error.message.includes('Timeperiod is too long') || error.message.includes('422')) {
             try {
@@ -2550,7 +2550,7 @@ class Trade {
               console.warn(`Retrying RSI for ${symbol} with minimal daily data`);
               const minimalStart = tradeStart - (30 * 24 * 60 * 60); // 30 days only
               const minimalEnd = tradeEnd; // No extra days after
-              indicators.rsi = await finnhub.getTechnicalIndicator(symbol, 'D', minimalStart, minimalEnd, 'rsi', { timeperiod: 14 });
+              indicators.rsi = await finnhub.getTechnicalIndicator(symbol, 'D', minimalStart, minimalEnd, 'rsi', { timeperiod: 14 }, userId);
             } catch (minimalError) {
               console.warn(`RSI minimal fallback failed for ${symbol}, adding to problematic symbols list: ${minimalError.message}`);
               indicators.rsi = null;
@@ -2560,28 +2560,28 @@ class Trade {
           }
         }
       }
-      
+
       // MACD - requires more data
       try {
-        indicators.macd = await finnhub.getTechnicalIndicator(symbol, resolution, analysisStart, analysisEnd, 'macd', { 
-          fastperiod: 12, slowperiod: 26, signalperiod: 9 
-        });
+        indicators.macd = await finnhub.getTechnicalIndicator(symbol, resolution, analysisStart, analysisEnd, 'macd', {
+          fastperiod: 12, slowperiod: 26, signalperiod: 9
+        }, userId);
       } catch (error) {
         console.warn(`MACD failed for ${symbol}: ${error.message}`);
-        
+
         // Skip MACD on this error since it requires even more data than RSI
         console.warn(`Skipping MACD for ${symbol} due to data range limitations`);
         indicators.macd = null;
       }
-      
+
       // Bollinger Bands - also requires significant data
       try {
-        indicators.bbands = await finnhub.getTechnicalIndicator(symbol, resolution, analysisStart, analysisEnd, 'bbands', { 
-          timeperiod: 20, nbdevup: 2, nbdevdn: 2 
-        });
+        indicators.bbands = await finnhub.getTechnicalIndicator(symbol, resolution, analysisStart, analysisEnd, 'bbands', {
+          timeperiod: 20, nbdevup: 2, nbdevdn: 2
+        }, userId);
       } catch (error) {
         console.warn(`BBands failed for ${symbol}: ${error.message}`);
-        
+
         // Try fallback with shorter BBands period
         if (error.message.includes('Timeperiod is too long') || error.message.includes('422')) {
           try {
@@ -2589,9 +2589,9 @@ class Trade {
             console.warn(`Retrying BBands for ${symbol} with shorter period (10) and daily resolution`);
             const dailyStart = Math.floor((tradeStart - (30 * 24 * 60 * 60)) / (24 * 60 * 60)) * 24 * 60 * 60; // 30 days for BBands-10
             const dailyEnd = Math.floor((tradeEnd + (3 * 24 * 60 * 60)) / (24 * 60 * 60)) * 24 * 60 * 60; // 3 days after
-            indicators.bbands = await finnhub.getTechnicalIndicator(symbol, 'D', dailyStart, dailyEnd, 'bbands', { 
-              timeperiod: 10, nbdevup: 2, nbdevdn: 2 
-            });
+            indicators.bbands = await finnhub.getTechnicalIndicator(symbol, 'D', dailyStart, dailyEnd, 'bbands', {
+              timeperiod: 10, nbdevup: 2, nbdevdn: 2
+            }, userId);
           } catch (fallbackError) {
             console.warn(`BBands fallback failed for ${symbol}: ${fallbackError.message}`);
             indicators.bbands = null;

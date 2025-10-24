@@ -19,7 +19,7 @@ class ChartService {
       if (isProUser && finnhub.isConfigured()) {
         console.log('Using Finnhub for Pro user chart data');
         try {
-          return await finnhub.getTradeChartData(symbol, entryDate, exitDate);
+          return await finnhub.getTradeChartData(symbol, entryDate, exitDate, userId);
         } catch (error) {
           console.warn(`Finnhub failed for symbol ${symbol}: ${error.message}`);
 

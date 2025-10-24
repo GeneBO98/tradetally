@@ -1,6 +1,7 @@
 const User = require('../models/User');
 const TierService = require('../services/tierService');
 const EmailService = require('../services/emailService');
+const ApiUsageService = require('../services/apiUsageService');
 
 const userController = {
   async getProfile(req, res, next) {
@@ -597,6 +598,22 @@ const userController = {
       });
     } catch (error) {
       console.error('[ERROR] Failed to update quality weights:', error.message);
+      next(error);
+    }
+  },
+
+  // Get API usage statistics for the current user
+  async getApiUsage(req, res, next) {
+    try {
+      const userId = req.user.id;
+      const usage = await ApiUsageService.getAllUserUsage(userId);
+
+      res.json({
+        success: true,
+        data: usage
+      });
+    } catch (error) {
+      console.error('[ERROR] Failed to get API usage:', error.message);
       next(error);
     }
   }

@@ -289,7 +289,7 @@ const watchlistController = {
       // Get current price for the symbol
       let currentPrice = null;
       try {
-        const priceData = await finnhub.getQuote(symbolUpper);
+        const priceData = await finnhub.getQuote(symbolUpper, userId);
         if (priceData && priceData.c) {
           currentPrice = priceData.c;
           
