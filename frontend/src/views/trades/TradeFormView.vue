@@ -962,24 +962,30 @@ async function loadTrade() {
       pointValue: trade.point_value || trade.pointValue || null,
       // Executions
       executions: (() => {
+        console.log('[TRADE FORM] Raw trade.executions:', JSON.stringify(trade.executions, null, 2))
         if (trade.executions && Array.isArray(trade.executions) && trade.executions.length > 0) {
           // Use existing executions
-          return trade.executions.map(exec => {
+          const mapped = trade.executions.map(exec => {
+            console.log('[TRADE FORM] Processing execution:', exec)
             // Handle both 'action' and 'side' fields, normalize to 'buy' or 'sell'
             let action = exec.action || exec.side || ''
             // Normalize action to 'buy' or 'sell'
             if (action === 'long') action = 'buy'
             if (action === 'short') action = 'sell'
 
-            return {
+            const result = {
               action: action,
               quantity: exec.quantity || '',
-              price: exec.price || '',
-              datetime: exec.datetime ? formatDateTimeLocal(exec.datetime) : '',
+              price: exec.price || exec.entryPrice || '',
+              datetime: (exec.datetime || exec.entryTime) ? formatDateTimeLocal(exec.datetime || exec.entryTime) : '',
               commission: exec.commission || 0,
               fees: exec.fees || 0
             }
+            console.log('[TRADE FORM] Mapped execution:', result)
+            return result
           })
+          console.log('[TRADE FORM] All mapped executions:', mapped)
+          return mapped
         } else {
           // No executions array - create a synthetic grouped execution from trade entry/exit data
           // Use the grouped format (entryPrice/exitPrice) for easier editing
