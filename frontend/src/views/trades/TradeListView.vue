@@ -302,43 +302,48 @@
           <table class="w-full divide-y divide-gray-300 dark:divide-gray-700" :style="tableLayoutStyle">
           <thead class="bg-gray-50 dark:bg-gray-800">
             <tr>
+              <!-- Checkbox Column -->
+              <th v-if="tableColumns.find(c => c.key === 'checkbox')?.visible" :class="[getCheckboxPadding, 'text-left']" style="width: 30px;">
+                <input
+                  type="checkbox"
+                  :checked="isAllSelected"
+                  @change="toggleSelectAll"
+                  class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                />
+              </th>
+              <!-- Column Customizer immediately after checkbox -->
+              <th class="pl-0 pr-2 py-3 text-center relative" style="width: 30px;">
+                <ColumnCustomizer :columns="tableColumns" @update:columns="handleColumnsUpdate" />
+              </th>
+              <!-- All other columns -->
               <template v-for="column in tableColumns" :key="column.key">
-                <th v-if="column.visible && column.key === 'checkbox'" :class="[getHeaderPadding, 'text-left']">
-                  <input
-                    type="checkbox"
-                    :checked="isAllSelected"
-                    @change="toggleSelectAll"
-                    class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                  />
-                </th>
-                <th v-else-if="column.visible"
-                    :class="[getHeaderPadding, 'text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider', { 'text-center': column.key === 'comments' }]">
+                <th v-if="column.visible && column.key !== 'checkbox'"
+                    :class="[column.key === 'symbol' ? 'pl-0 pr-2 py-3' : getHeaderPadding, 'text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider', { 'text-center': column.key === 'comments' || column.key === 'quality' }]">
                   {{ column.label }}
                 </th>
               </template>
-              <!-- Column Customizer in header -->
-              <th class="px-2 py-3 text-center relative" style="width: 40px;">
-                <ColumnCustomizer :columns="tableColumns" @update:columns="handleColumnsUpdate" />
-              </th>
             </tr>
           </thead>
           <tbody class="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
-            <tr v-for="trade in tradesStore.trades" :key="trade.id" 
+            <tr v-for="trade in tradesStore.trades" :key="trade.id"
                 class="hover:bg-gray-50 dark:hover:bg-gray-800">
-              <template v-for="column in tableColumns" :key="`${trade.id}-${column.key}`">
-                <!-- Checkbox Column -->
-                <td v-if="column.visible && column.key === 'checkbox'" :class="[getCellPadding, 'whitespace-nowrap']">
-                  <input
-                    type="checkbox"
-                    :value="trade.id"
-                    v-model="selectedTrades"
-                    class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                  />
-                </td>
-                
+              <!-- Checkbox Column -->
+              <td v-if="tableColumns.find(c => c.key === 'checkbox')?.visible" :class="[getCheckboxPadding, 'whitespace-nowrap']" style="width: 30px;">
+                <input
+                  type="checkbox"
+                  :value="trade.id"
+                  v-model="selectedTrades"
+                  class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                />
+              </td>
+              <!-- Empty cell to align with column customizer -->
+              <td class="pl-0 pr-2 py-4" style="width: 30px;"></td>
+
+              <template v-for="column in tableColumns.filter(c => c.key !== 'checkbox')" :key="`${trade.id}-${column.key}`">
+
                 <!-- Symbol Column -->
-                <td v-else-if="column.visible && column.key === 'symbol'"
-                    :class="[getCellPadding, 'cursor-pointer']"
+                <td v-if="column.visible && column.key === 'symbol'"
+                    :class="[getSymbolPadding, 'cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
                   <div class="flex items-center gap-1.5 flex-wrap max-w-xs">
                     <div class="text-sm font-medium text-gray-900 dark:text-white truncate max-w-[200px]" :title="trade.symbol">
@@ -365,7 +370,7 @@
                     </span>
                   </div>
                 </td>
-                
+
                 <!-- Date Column -->
                 <td v-else-if="column.visible && column.key === 'date'"
                     :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']"
@@ -438,7 +443,7 @@
                     :class="[getCellPadding, 'whitespace-nowrap cursor-pointer text-center']"
                     @click="$router.push(`/trades/${trade.id}`)">
                   <span v-if="trade.qualityGrade"
-                    class="px-2 py-1 inline-flex text-xs font-semibold rounded"
+                    class="px-2 py-1 inline-block text-xs font-semibold rounded"
                     :class="{
                       'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400': trade.qualityGrade === 'A',
                       'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400': trade.qualityGrade === 'B',
@@ -648,8 +653,6 @@
                   {{ trade.sleep_score ? Math.round(trade.sleep_score) : '-' }}
                 </td>
               </template>
-              <!-- Empty cell to align with column customizer -->
-              <td class="px-2 py-4" style="width: 40px;"></td>
             </tr>
           </tbody>
           </table>
@@ -925,11 +928,11 @@ const getCellPadding = computed(() => {
   const visibleColumns = tableColumns.value.filter(col => col.visible).length
 
   if (visibleColumns <= 6) {
-    return 'px-6 py-4'
+    return 'px-1.5 py-4'
   } else if (visibleColumns <= 10) {
-    return 'px-4 py-3'
+    return 'px-1 py-3'
   } else {
-    return 'px-3 py-2'
+    return 'px-0.5 py-2'
   }
 })
 
@@ -937,12 +940,22 @@ const getHeaderPadding = computed(() => {
   const visibleColumns = tableColumns.value.filter(col => col.visible).length
 
   if (visibleColumns <= 6) {
-    return 'px-6 py-3'
+    return 'px-1.5 py-3'
   } else if (visibleColumns <= 10) {
-    return 'px-4 py-2'
+    return 'px-1 py-2'
   } else {
-    return 'px-3 py-2'
+    return 'px-0.5 py-2'
   }
+})
+
+// Special padding for checkbox column to minimize space
+const getCheckboxPadding = computed(() => {
+  return 'pl-3 pr-0 py-4'
+})
+
+// Special padding for symbol column (first data column after checkbox)
+const getSymbolPadding = computed(() => {
+  return 'pl-0 pr-2 py-4'
 })
 
 // Dynamic text size for better fit
