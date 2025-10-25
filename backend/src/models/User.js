@@ -180,7 +180,8 @@ class User {
       defaultBroker: 'default_broker',
       enableTradeGrouping: 'enable_trade_grouping',
       tradeGroupingTimeGapMinutes: 'trade_grouping_time_gap_minutes',
-      autoCloseExpiredOptions: 'auto_close_expired_options'
+      autoCloseExpiredOptions: 'auto_close_expired_options',
+      analyticsChartLayout: 'analytics_chart_layout'
     };
 
     Object.entries(settings).forEach(([key, value]) => {

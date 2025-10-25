@@ -46,8 +46,37 @@
             </div>
           </div>
 
-          <!-- AI Recommendations button -->
-          <div class="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4 flex justify-end">
+          <!-- AI Recommendations and Chart Customization buttons -->
+          <div class="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4 flex justify-between items-center gap-3">
+            <div class="flex gap-2 flex-wrap">
+              <button
+                @click="toggleCustomization"
+                class="px-3 py-2 text-sm font-medium border rounded-md transition-colors"
+                :class="isCustomizing ? 'bg-primary-100 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300 border-primary-300 dark:border-primary-700' : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700'"
+              >
+                <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+                {{ isCustomizing ? 'Done' : 'Reorder Charts' }}
+              </button>
+              <button
+                @click="showLayoutSettings = true"
+                class="px-3 py-2 text-sm font-medium border rounded-md transition-colors bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
+              >
+                <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+                Show/Hide Charts
+              </button>
+              <button
+                v-if="isCustomizing"
+                @click="resetChartLayout"
+                class="px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+              >
+                Reset to Default
+              </button>
+            </div>
             <button
               @click="getRecommendations"
               :disabled="loadingRecommendations"
@@ -68,7 +97,50 @@
         </div>
       </div>
 
-      <!-- Overview Stats -->
+      <!-- Customization Mode Message -->
+      <div v-if="isCustomizing" class="card bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
+        <div class="card-body">
+          <div class="flex items-center gap-3">
+            <svg class="w-5 h-5 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div>
+              <p class="text-sm font-medium text-blue-900 dark:text-blue-100">Customization Mode Active</p>
+              <p class="text-xs text-blue-700 dark:text-blue-300 mt-1">Drag and drop chart sections to reorder them. Charts will auto-resize based on their width setting.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Draggable Grid Container -->
+      <draggable
+        v-model="chartLayout"
+        :disabled="!isCustomizing"
+        item-key="id"
+        class="grid grid-cols-1 lg:grid-cols-2 gap-8"
+        handle=".drag-handle"
+      >
+        <template #item="{ element }">
+          <div
+            v-if="element.visible"
+            :class="[
+              getChartSizeClass(element),
+              isCustomizing ? 'ring-2 ring-primary-300 dark:ring-primary-700 rounded-lg transition-all' : ''
+            ]"
+          >
+            <!-- Drag Handle (only visible in customize mode) -->
+            <div v-if="isCustomizing" class="drag-handle flex items-center justify-center py-2 bg-gray-100 dark:bg-gray-800 rounded-t-lg cursor-move hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
+              <div class="flex items-center gap-2">
+                <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16" />
+                </svg>
+                <span class="text-xs text-gray-500 dark:text-gray-400">{{ getChartDefinition(element.id)?.title }}</span>
+              </div>
+            </div>
+
+            <!-- Overview Stats -->
+            <template v-if="element.id === 'overview'">
+              <!-- Overview Stats -->
       <div class="flex flex-wrap gap-5">
         <div class="card flex-1 min-w-[180px]">
           <div class="card-body">
@@ -167,7 +239,10 @@
           </div>
         </div>
       </div>
+            </template>
 
+            <!-- Detailed Stats -->
+            <template v-else-if="element.id === 'detailed-stats'">
       <!-- Advanced Trading Metrics -->
       <div class="card mb-8">
         <div class="card-body">
@@ -433,8 +508,10 @@
           </div>
         </div>
       </div>
+            </template>
 
-      <!-- Performance Chart -->
+            <!-- Performance Chart -->
+            <template v-else-if="element.id === 'performance-chart'">
       <div class="card">
         <div class="card-body">
           <div class="flex items-center justify-between mb-4">
@@ -450,8 +527,10 @@
           </div>
         </div>
       </div>
+            </template>
 
-      <!-- Sector Performance -->
+            <!-- Sector Performance -->
+            <template v-else-if="element.id === 'sector-performance'">
       <div class="card">
         <div class="card-body">
           <div class="flex items-center justify-between mb-4">
@@ -606,8 +685,10 @@
           </div>
         </div>
       </div>
+            </template>
 
-      <!-- Drawdown Chart -->
+            <!-- Drawdown Chart -->
+            <template v-else-if="element.id === 'drawdown-chart'">
       <div id="drawdown" class="card">
         <div class="card-body">
           <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Drawdown Analysis</h3>
@@ -616,8 +697,10 @@
           </div>
         </div>
       </div>
+            </template>
 
-      <!-- Daily Volume Chart -->
+            <!-- Daily Volume Chart -->
+            <template v-else-if="element.id === 'daily-volume-chart'">
       <div class="card">
         <div class="card-body">
           <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Daily Volume Traded</h3>
@@ -626,8 +709,10 @@
           </div>
         </div>
       </div>
+            </template>
 
-      <!-- Day of Week Performance -->
+            <!-- Day of Week Performance -->
+            <template v-else-if="element.id === 'day-of-week'">
       <div class="card">
         <div class="card-body">
           <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Performance by Day of Week</h3>
@@ -636,8 +721,10 @@
           </div>
         </div>
       </div>
+            </template>
 
-      <!-- Performance by Hold Time -->
+            <!-- Performance by Hold Time -->
+            <template v-else-if="element.id === 'performance-by-hold-time'">
       <div class="card">
         <div class="card-body">
           <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Performance by Hold Time</h3>
@@ -646,84 +733,15 @@
           </div>
         </div>
       </div>
+            </template>
 
-      <!-- News Sentiment Correlation Analytics -->
+            <!-- News Sentiment Correlation Analytics -->
+            <template v-else-if="element.id === 'news-sentiment'">
       <NewsCorrelationAnalytics />
+            </template>
 
-      <!-- New Chart Section -->
-      <div class="grid grid-cols-1 gap-8 lg:grid-cols-2 xl:grid-cols-3">
-        <!-- Trade Distribution by Price -->
-        <div class="card">
-          <div class="card-body">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Trade Distribution by Price</h3>
-            <div class="h-80 relative">
-              <canvas ref="tradeDistributionChart" class="absolute inset-0 w-full h-full"></canvas>
-            </div>
-          </div>
-        </div>
-
-        <!-- Performance by Price -->
-        <div class="card">
-          <div class="card-body">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Performance by Price</h3>
-            <div class="h-80 relative">
-              <canvas ref="performanceByPriceChart" class="absolute inset-0 w-full h-full"></canvas>
-            </div>
-          </div>
-        </div>
-
-        <!-- Performance by Volume Traded -->
-        <div class="card">
-          <div class="card-body">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Performance by Volume Traded</h3>
-            <div class="h-80 relative">
-              <canvas 
-                ref="performanceByVolumeChart" 
-                class="absolute inset-0 w-full h-full"
-                :class="{ 'hidden': !performanceByVolumeData.length || performanceByVolumeData.every(val => val === 0) }"
-              ></canvas>
-              <div 
-                v-if="!performanceByVolumeData.length || performanceByVolumeData.every(val => val === 0)"
-                class="absolute inset-0 flex items-center justify-center text-gray-500 dark:text-gray-400"
-              >
-                <div class="text-center">
-                  <svg class="w-12 h-12 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
-                  </svg>
-                  <p>No volume data available for the selected period</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Performance by Position Size -->
-        <div class="card">
-          <div class="card-body">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Performance by Position Size ($)</h3>
-            <div class="h-80 relative">
-              <canvas
-                ref="performanceByPositionSizeChart"
-                class="absolute inset-0 w-full h-full"
-                :class="{ 'hidden': !performanceByPositionSizeData.length || performanceByPositionSizeData.every(val => val === 0) }"
-              ></canvas>
-              <div
-                v-if="!performanceByPositionSizeData.length || performanceByPositionSizeData.every(val => val === 0)"
-                class="absolute inset-0 flex items-center justify-center text-gray-500 dark:text-gray-400"
-              >
-                <div class="text-center">
-                  <svg class="w-12 h-12 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                  </svg>
-                  <p>No position size data available for the selected period</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Tag Performance -->
+            <!-- Tag Performance -->
+            <template v-else-if="element.id === 'tag-performance'">
       <div v-if="tagStats.length > 0" class="card">
         <div class="card-body">
           <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Tag Performance</h3>
@@ -779,8 +797,10 @@
           </div>
         </div>
       </div>
+            </template>
 
-      <!-- Strategy/Setup Performance -->
+            <!-- Strategy/Setup Performance -->
+            <template v-else-if="element.id === 'strategy-performance'">
       <div v-if="strategyStats.length > 0" class="card">
         <div class="card-body">
           <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Strategy/Setup Performance</h3>
@@ -836,8 +856,10 @@
           </div>
         </div>
       </div>
+            </template>
 
-      <!-- Hour of Day Performance -->
+            <!-- Hour of Day Performance -->
+            <template v-else-if="element.id === 'hour-of-day-performance'">
       <div v-if="hourOfDayStats.length > 0" class="card">
         <div class="card-body">
           <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Hour of Day Performance</h3>
@@ -890,6 +912,123 @@
                 </tr>
               </tbody>
             </table>
+          </div>
+        </div>
+      </div>
+            </template>
+
+          </div>
+        </template>
+      </draggable>
+    </div>
+
+    <!-- Chart Layout Settings Modal -->
+    <div v-if="showLayoutSettings" class="fixed inset-0 z-50 overflow-y-auto" @click="showLayoutSettings = false">
+      <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"></div>
+
+        <span class="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
+
+        <div
+          class="inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full sm:p-6"
+          @click.stop
+        >
+          <div class="flex items-center justify-between mb-6">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white">
+              Chart Visibility & Size
+            </h3>
+            <button
+              @click="showLayoutSettings = false"
+              class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+            >
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          <div class="space-y-6">
+            <!-- Stats Section -->
+            <div>
+              <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Statistics</h4>
+              <div class="space-y-2">
+                <div v-for="chart in chartDefinitions.filter(c => c.category === 'stats')" :key="chart.id" class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                  <div class="flex items-center gap-3">
+                    <label class="flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        :checked="chartLayout.find(c => c.id === chart.id)?.visible"
+                        @change="toggleChartVisibility(chart.id)"
+                        class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                      />
+                      <span class="ml-2 text-sm text-gray-900 dark:text-white">{{ chart.title }}</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Charts Section -->
+            <div>
+              <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Charts</h4>
+              <div class="space-y-2">
+                <div v-for="chart in chartDefinitions.filter(c => c.category === 'charts')" :key="chart.id" class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                  <div class="flex items-center gap-3">
+                    <label class="flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        :checked="chartLayout.find(c => c.id === chart.id)?.visible"
+                        @change="toggleChartVisibility(chart.id)"
+                        class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                      />
+                      <span class="ml-2 text-sm text-gray-900 dark:text-white">{{ chart.title }}</span>
+                    </label>
+                  </div>
+                  <button
+                    v-if="chartLayout.find(c => c.id === chart.id)?.visible"
+                    @click="toggleChartSize(chart.id)"
+                    class="px-2 py-1 text-xs font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-600 border border-gray-300 dark:border-gray-500 rounded hover:bg-gray-50 dark:hover:bg-gray-500"
+                  >
+                    {{ chartLayout.find(c => c.id === chart.id)?.size === 'full' ? 'Full Width' : 'Half Width' }}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tables Section -->
+            <div>
+              <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Performance Tables</h4>
+              <div class="space-y-2">
+                <div v-for="chart in chartDefinitions.filter(c => c.category === 'tables')" :key="chart.id" class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                  <div class="flex items-center gap-3">
+                    <label class="flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        :checked="chartLayout.find(c => c.id === chart.id)?.visible"
+                        @change="toggleChartVisibility(chart.id)"
+                        class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                      />
+                      <span class="ml-2 text-sm text-gray-900 dark:text-white">{{ chart.title }}</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-6 flex justify-between">
+            <button
+              @click="resetChartLayout"
+              class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600"
+            >
+              Reset to Defaults
+            </button>
+            <button
+              @click="showLayoutSettings = false"
+              class="px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-md hover:bg-primary-700"
+            >
+              Done
+            </button>
           </div>
         </div>
       </div>
@@ -993,7 +1132,8 @@ import TagManagement from '@/components/trades/TagManagement.vue'
 import TradeFilters from '@/components/trades/TradeFilters.vue'
 import Chart from 'chart.js/auto'
 import { marked } from 'marked'
-import { 
+import draggable from 'vuedraggable'
+import {
   mdiCheckCircle,
   mdiTarget,
   mdiChartBox,
@@ -1158,10 +1298,53 @@ const categorizationProgress = ref({
 
 const showCompletionMessage = ref(false)
 
+// Chart layout customization
+const chartDefinitions = [
+  { id: 'overview', title: 'Overview Stats', defaultSize: 'full', category: 'stats' },
+  { id: 'detailed-stats', title: 'Detailed Stats', defaultSize: 'full', category: 'stats' },
+  { id: 'performance-chart', title: 'Performance Over Time', defaultSize: 'full', category: 'charts' },
+  { id: 'sector-performance', title: 'Sector Performance', defaultSize: 'full', category: 'charts' },
+  { id: 'drawdown-chart', title: 'Drawdown Analysis', defaultSize: 'half', category: 'charts' },
+  { id: 'daily-volume-chart', title: 'Daily Volume', defaultSize: 'half', category: 'charts' },
+  { id: 'day-of-week', title: 'Day of Week Performance', defaultSize: 'half', category: 'charts' },
+  { id: 'performance-by-hold-time', title: 'Performance by Hold Time', defaultSize: 'half', category: 'charts' },
+  { id: 'news-sentiment', title: 'News Sentiment Correlation', defaultSize: 'full', category: 'charts' },
+  { id: 'tag-performance', title: 'Tag Performance', defaultSize: 'full', category: 'tables' },
+  { id: 'strategy-performance', title: 'Strategy/Setup Performance', defaultSize: 'full', category: 'tables' },
+  { id: 'hour-of-day-performance', title: 'Hour of Day Performance', defaultSize: 'full', category: 'tables' }
+]
+
+const defaultChartLayout = chartDefinitions.map(chart => ({
+  id: chart.id,
+  visible: true,
+  size: chart.defaultSize
+}))
+
+const chartLayout = ref(JSON.parse(JSON.stringify(defaultChartLayout)))
+const isCustomizing = ref(false)
+const showLayoutSettings = ref(false)
+
 // Computed property for calculation method
 const calculationMethod = computed(() => {
   return userSettings.value?.statisticsCalculation === 'median' ? 'Median' : 'Average'
 })
+
+// Computed property for visible charts in order
+const visibleCharts = computed(() => {
+  return chartLayout.value.filter(chart => chart.visible)
+})
+
+// Get chart definition by ID
+function getChartDefinition(id) {
+  return chartDefinitions.find(chart => chart.id === id)
+}
+
+// Get chart size class
+function getChartSizeClass(chart) {
+  if (chart.size === 'full') return 'col-span-1 lg:col-span-2'
+  if (chart.size === 'half') return 'col-span-1'
+  return 'col-span-1'
+}
 
 
 
@@ -2153,10 +2336,92 @@ async function fetchUserSettings() {
   try {
     const response = await api.get('/settings')
     userSettings.value = response.data.settings
+
+    // Load chart layout if saved
+    if (userSettings.value.analyticsChartLayout && Array.isArray(userSettings.value.analyticsChartLayout)) {
+      // Merge saved layout with defaults (in case new charts were added)
+      const savedLayout = userSettings.value.analyticsChartLayout
+      chartLayout.value = defaultChartLayout.map(defaultChart => {
+        const savedChart = savedLayout.find(s => s.id === defaultChart.id)
+        return savedChart || defaultChart
+      })
+
+      // Add any new charts that weren't in the saved layout
+      const savedIds = savedLayout.map(s => s.id)
+      const newCharts = defaultChartLayout.filter(d => !savedIds.includes(d.id))
+      chartLayout.value = [...chartLayout.value, ...newCharts]
+    }
   } catch (error) {
     console.error('Failed to load user settings:', error)
     // Default to average if loading fails
     userSettings.value = { statisticsCalculation: 'average' }
+  }
+}
+
+async function saveChartLayout() {
+  try {
+    await api.put('/settings', {
+      analyticsChartLayout: chartLayout.value
+    })
+    console.log('[CHART LAYOUT] Layout saved successfully')
+  } catch (error) {
+    console.error('[CHART LAYOUT] Failed to save layout:', error)
+  }
+}
+
+async function resetChartLayout() {
+  chartLayout.value = JSON.parse(JSON.stringify(defaultChartLayout))
+  await saveChartLayout()
+}
+
+function toggleCustomization() {
+  isCustomizing.value = !isCustomizing.value
+}
+
+function toggleChartVisibility(chartId) {
+  const chart = chartLayout.value.find(c => c.id === chartId)
+  if (chart) {
+    chart.visible = !chart.visible
+  }
+}
+
+function toggleChartSize(chartId) {
+  const chart = chartLayout.value.find(c => c.id === chartId)
+  if (chart) {
+    chart.size = chart.size === 'full' ? 'half' : 'full'
+  }
+}
+
+// Save layout when chart layout changes (with debounce)
+let saveLayoutTimeout = null
+watch(chartLayout, () => {
+  if (saveLayoutTimeout) clearTimeout(saveLayoutTimeout)
+  saveLayoutTimeout = setTimeout(() => {
+    saveChartLayout()
+  }, 1000) // Save 1 second after user stops making changes
+}, { deep: true })
+
+// Reinitialize charts when layout changes (after DOM updates)
+watch(chartLayout, async () => {
+  await nextTick()
+  setTimeout(() => {
+    initializeAllCharts()
+  }, 100)
+}, { deep: true })
+
+// Helper function to initialize all charts
+function initializeAllCharts() {
+  try {
+    if (drawdownChart.value) createDrawdownChart()
+    if (dailyVolumeChart.value) createDailyVolumeChart()
+    if (dayOfWeekChart.value) createDayOfWeekChart()
+    if (performanceByHoldTimeChart.value) createPerformanceByHoldTimeChart()
+    if (tradeDistributionChart.value) createTradeDistributionChart()
+    if (performanceByPriceChart.value) createPerformanceByPriceChart()
+    if (performanceByVolumeChart.value) createPerformanceByVolumeChart()
+    if (performanceByPositionSizeChart.value) createPerformanceByPositionSizeChart()
+  } catch (error) {
+    console.error('[CHART] Error initializing charts:', error)
   }
 }
 
@@ -2288,18 +2553,7 @@ async function handleFilter(newFilters) {
   // Create charts after loading is complete and DOM is updated
   await nextTick()
   setTimeout(() => {
-    try {
-      createTradeDistributionChart()
-      createPerformanceByPriceChart()
-      createPerformanceByVolumeChart()
-      createPerformanceByPositionSizeChart()
-      createPerformanceByHoldTimeChart()
-      createDayOfWeekChart()
-      createDailyVolumeChart()
-      createDrawdownChart()
-    } catch (error) {
-      console.error('Error creating charts:', error)
-    }
+    initializeAllCharts()
   }, 100)
 }
 
@@ -2351,22 +2605,11 @@ async function applyFilters(newFilters = null) {
   // Load sector data asynchronously after page loads
   fetchSectorData()
   loading.value = false
-  
+
   // Create charts after loading is complete and DOM is updated
   await nextTick()
   setTimeout(() => {
-    try {
-      createTradeDistributionChart()
-      createPerformanceByPriceChart()
-      createPerformanceByVolumeChart()
-      createPerformanceByPositionSizeChart()
-      createPerformanceByHoldTimeChart()
-      createDayOfWeekChart()
-      createDailyVolumeChart()
-      createDrawdownChart()
-    } catch (error) {
-      console.error('Error creating charts:', error)
-    }
+    initializeAllCharts()
   }, 100)
 }
 
@@ -3033,18 +3276,7 @@ function collapseSectors() {
 watch(() => rValueMode.value, () => {
   nextTick(() => {
     setTimeout(() => {
-      try {
-        createTradeDistributionChart()
-        createPerformanceByPriceChart()
-        createPerformanceByVolumeChart()
-        createPerformanceByPositionSizeChart()
-        createPerformanceByHoldTimeChart()
-        createDayOfWeekChart()
-        createDailyVolumeChart()
-        createDrawdownChart()
-      } catch (error) {
-        console.error('Error recreating charts:', error)
-      }
+      initializeAllCharts()
     }, 100)
   })
 })
