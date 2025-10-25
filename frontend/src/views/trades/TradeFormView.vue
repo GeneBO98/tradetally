@@ -84,7 +84,7 @@
               />
             </div>
 
-            <div>
+            <div v-if="!hasGroupedExecutions">
               <label for="side" class="label">Side *</label>
               <select id="side" v-model="form.side" required class="input">
                 <option value="">Select side</option>
@@ -103,7 +103,7 @@
             </div>
           </div>
 
-          <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 mt-6">
+          <div v-if="!hasGroupedExecutions" class="grid grid-cols-1 gap-6 sm:grid-cols-2 mt-6">
             <div>
               <label for="stopLoss" class="label">Stop Loss</label>
               <input
@@ -130,6 +130,13 @@
               />
             </div>
           </div>
+
+          <!-- Info message when fields are hidden -->
+          <div v-if="hasGroupedExecutions" class="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+            <p class="text-sm text-blue-800 dark:text-blue-200">
+              <span class="font-medium">Note:</span> Side, Stop Loss, and Take Profit are configured per execution below since this trade contains grouped complete trades.
+            </p>
+          </div>
         </div>
 
         <!-- Executions Section -->
@@ -138,16 +145,25 @@
             <div>
               <h2 class="text-lg font-medium text-gray-900 dark:text-white">Executions</h2>
               <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                Add each individual fill/execution for this trade
+                Add individual fills or complete trades (grouped)
               </p>
             </div>
-            <button
-              type="button"
-              @click="addExecution"
-              class="px-4 py-2 bg-primary-600 text-white rounded hover:bg-primary-700 text-sm font-medium"
-            >
-              + Add Execution
-            </button>
+            <div class="flex gap-2">
+              <button
+                type="button"
+                @click="addExecution"
+                class="px-4 py-2 bg-primary-600 text-white rounded hover:bg-primary-700 text-sm font-medium"
+              >
+                + Add Fill
+              </button>
+              <button
+                type="button"
+                @click="addGroupedExecution"
+                class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium"
+              >
+                + Add Complete Trade
+              </button>
+            </div>
           </div>
 
           <div v-if="form.executions && form.executions.length > 0" class="space-y-4">
@@ -279,6 +295,35 @@
                       v-model="execution.fees"
                       type="number"
                       step="0.01"
+                      min="0"
+                      class="input"
+                      placeholder="0.00"
+                    />
+                  </div>
+                </div>
+
+                <!-- Row 5: Stop Loss and Take Profit -->
+                <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div>
+                    <label :for="`exec-stop-loss-${index}`" class="label">Stop Loss</label>
+                    <input
+                      :id="`exec-stop-loss-${index}`"
+                      v-model="execution.stopLoss"
+                      type="number"
+                      step="0.000001"
+                      min="0"
+                      class="input"
+                      placeholder="0.00"
+                    />
+                  </div>
+
+                  <div>
+                    <label :for="`exec-take-profit-${index}`" class="label">Take Profit</label>
+                    <input
+                      :id="`exec-take-profit-${index}`"
+                      v-model="execution.takeProfit"
+                      type="number"
+                      step="0.000001"
                       min="0"
                       class="input"
                       placeholder="0.00"
@@ -782,6 +827,17 @@ const hasProAccess = ref(false)
 
 const isEdit = computed(() => !!route.params.id)
 
+// Check if we have grouped executions (complete trades with entry/exit)
+const hasGroupedExecutions = computed(() => {
+  return form.value.executions &&
+    form.value.executions.length > 0 &&
+    form.value.executions.some(exec =>
+      exec.entryPrice !== undefined ||
+      exec.exitPrice !== undefined ||
+      exec.entryTime !== undefined
+    )
+})
+
 const form = ref({
   symbol: '',
   entryTime: '',
@@ -964,25 +1020,48 @@ async function loadTrade() {
       executions: (() => {
         console.log('[TRADE FORM] Raw trade.executions:', JSON.stringify(trade.executions, null, 2))
         if (trade.executions && Array.isArray(trade.executions) && trade.executions.length > 0) {
-          // Use existing executions
+          // Use existing executions - preserve format (grouped vs individual)
           const mapped = trade.executions.map(exec => {
             console.log('[TRADE FORM] Processing execution:', exec)
-            // Handle both 'action' and 'side' fields, normalize to 'buy' or 'sell'
-            let action = exec.action || exec.side || ''
-            // Normalize action to 'buy' or 'sell'
-            if (action === 'long') action = 'buy'
-            if (action === 'short') action = 'sell'
 
-            const result = {
-              action: action,
-              quantity: exec.quantity || '',
-              price: exec.price || exec.entryPrice || '',
-              datetime: (exec.datetime || exec.entryTime) ? formatDateTimeLocal(exec.datetime || exec.entryTime) : '',
-              commission: exec.commission || 0,
-              fees: exec.fees || 0
+            // Check if this is a grouped execution (complete trade with entry/exit)
+            if (exec.entryPrice !== undefined || exec.exitPrice !== undefined || exec.entryTime !== undefined) {
+              // Preserve grouped format
+              const result = {
+                side: exec.side,
+                quantity: exec.quantity || '',
+                entryPrice: exec.entryPrice || '',
+                exitPrice: exec.exitPrice || null,
+                entryTime: exec.entryTime ? formatDateTimeLocal(exec.entryTime) : '',
+                exitTime: exec.exitTime ? formatDateTimeLocal(exec.exitTime) : null,
+                commission: exec.commission || 0,
+                fees: exec.fees || 0,
+                pnl: exec.pnl || null,
+                stopLoss: exec.stopLoss || exec.stop_loss || null,
+                takeProfit: exec.takeProfit || exec.take_profit || null
+              }
+              console.log('[TRADE FORM] Mapped grouped execution:', result)
+              return result
+            } else {
+              // Individual fill format
+              let action = exec.action || exec.side || ''
+              // Normalize action to 'buy' or 'sell'
+              if (action === 'long') action = 'buy'
+              if (action === 'short') action = 'sell'
+
+              const result = {
+                action: action,
+                quantity: exec.quantity || '',
+                price: exec.price || '',
+                datetime: exec.datetime ? formatDateTimeLocal(exec.datetime) : '',
+                commission: exec.commission || 0,
+                fees: exec.fees || 0,
+                stopLoss: exec.stopLoss || exec.stop_loss || null,
+                takeProfit: exec.takeProfit || exec.take_profit || null
+              }
+              console.log('[TRADE FORM] Mapped individual fill:', result)
+              return result
             }
-            console.log('[TRADE FORM] Mapped execution:', result)
-            return result
           })
           console.log('[TRADE FORM] All mapped executions:', mapped)
           return mapped
@@ -998,7 +1077,9 @@ async function loadTrade() {
             exitTime: trade.exit_time ? formatDateTimeLocal(trade.exit_time) : null,
             commission: trade.commission || 0,
             fees: trade.fees || 0,
-            pnl: trade.pnl || 0
+            pnl: trade.pnl || 0,
+            stopLoss: trade.stop_loss || trade.stopLoss || null,
+            takeProfit: trade.take_profit || trade.takeProfit || null
           }]
         }
       })()
@@ -1057,7 +1138,9 @@ async function handleSubmit() {
               exitTime: exec.exitTime || null,
               commission: parseFloat(exec.commission) || 0,
               fees: parseFloat(exec.fees) || 0,
-              pnl: exec.pnl || 0
+              pnl: exec.pnl || 0,
+              stopLoss: exec.stopLoss && exec.stopLoss !== '' ? parseFloat(exec.stopLoss) : null,
+              takeProfit: exec.takeProfit && exec.takeProfit !== '' ? parseFloat(exec.takeProfit) : null
             }
           } else {
             // Individual fill format - keep action/price/datetime
@@ -1067,7 +1150,9 @@ async function handleSubmit() {
               price: parseFloat(exec.price),
               datetime: exec.datetime,
               commission: parseFloat(exec.commission) || 0,
-              fees: parseFloat(exec.fees) || 0
+              fees: parseFloat(exec.fees) || 0,
+              stopLoss: exec.stopLoss && exec.stopLoss !== '' ? parseFloat(exec.stopLoss) : null,
+              takeProfit: exec.takeProfit && exec.takeProfit !== '' ? parseFloat(exec.takeProfit) : null
             }
           }
         })
@@ -1465,7 +1550,25 @@ function addExecution() {
     price: '',
     datetime: formatDateTimeLocal(now),
     commission: 0,
-    fees: 0
+    fees: 0,
+    stopLoss: null,
+    takeProfit: null
+  })
+}
+
+function addGroupedExecution() {
+  const now = new Date()
+  form.value.executions.push({
+    side: form.value.side || '',
+    quantity: '',
+    entryPrice: '',
+    exitPrice: null,
+    entryTime: formatDateTimeLocal(now),
+    exitTime: null,
+    commission: 0,
+    fees: 0,
+    stopLoss: null,
+    takeProfit: null
   })
 }
 
