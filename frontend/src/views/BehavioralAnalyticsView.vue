@@ -1,6 +1,6 @@
 <template>
   <div class="min-h-screen bg-gray-50 dark:bg-gray-900 py-8">
-    <div class="max-w-[75%] mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="max-w-[65%] mx-auto px-4 sm:px-6 lg:px-8">
       <!-- Back Button and Title -->
       <div class="flex items-center justify-between mb-6">
         <button 

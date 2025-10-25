@@ -972,7 +972,7 @@ const analyticsController = {
         ORDER BY range_order
       `;
 
-      // Performance by Position Size - Dynamic ranges based on actual data
+      // Performance by Position Size - Consistent dynamic ranges based on actual data
       const performanceByPositionSizeQuery = `
         WITH position_sizes AS (
           SELECT
@@ -986,49 +986,49 @@ const analyticsController = {
           SELECT
             MIN(position_size) as min_size,
             MAX(position_size) as max_size,
-            COUNT(*) as total_trades
+            COUNT(*) as total_trades,
+            -- Determine increment based on max position size
+            CASE
+              WHEN MAX(position_size) <= 1000 THEN 100
+              WHEN MAX(position_size) <= 5000 THEN 500
+              WHEN MAX(position_size) <= 10000 THEN 1000
+              WHEN MAX(position_size) <= 50000 THEN 5000
+              WHEN MAX(position_size) <= 100000 THEN 10000
+              WHEN MAX(position_size) <= 500000 THEN 50000
+              ELSE 100000
+            END as increment
           FROM position_sizes
           WHERE position_size > 0
         ),
-        dynamic_ranges AS (
+        range_buckets AS (
+          -- Generate consistent range buckets from 0 to max
           SELECT
-            position_size,
-            pnl,
-            r_value,
-            -- Dynamically create ranges based on min/max
-            CASE
-              -- If max is under $1000, use $100 increments
-              WHEN (SELECT max_size FROM stats) <= 1000 THEN
-                FLOOR(position_size / 100) * 100
-              -- If max is under $5000, use $500 increments
-              WHEN (SELECT max_size FROM stats) <= 5000 THEN
-                FLOOR(position_size / 500) * 500
-              -- If max is under $10000, use $1000 increments
-              WHEN (SELECT max_size FROM stats) <= 10000 THEN
-                FLOOR(position_size / 1000) * 1000
-              -- If max is under $50000, use $5000 increments
-              WHEN (SELECT max_size FROM stats) <= 50000 THEN
-                FLOOR(position_size / 5000) * 5000
-              -- If max is under $100000, use $10000 increments
-              WHEN (SELECT max_size FROM stats) <= 100000 THEN
-                FLOOR(position_size / 10000) * 10000
-              -- If max is under $500000, use $50000 increments
-              WHEN (SELECT max_size FROM stats) <= 500000 THEN
-                FLOOR(position_size / 50000) * 50000
-              -- Otherwise use $100000 increments
-              ELSE
-                FLOOR(position_size / 100000) * 100000
-            END as range_start
-          FROM position_sizes
-          WHERE position_size > 0
+            generate_series(
+              0,
+              (SELECT CEIL(max_size / increment) * increment FROM stats),
+              (SELECT increment FROM stats)
+            ) as range_start
+          FROM stats
+        ),
+        bucketed_trades AS (
+          SELECT
+            rb.range_start,
+            ps.pnl,
+            ps.r_value
+          FROM position_sizes ps
+          CROSS JOIN stats s
+          JOIN range_buckets rb ON ps.position_size >= rb.range_start
+            AND ps.position_size < rb.range_start + s.increment
+          WHERE ps.position_size > 0
         )
         SELECT
           range_start,
           COALESCE(SUM(pnl), 0) as total_pnl,
           COALESCE(SUM(r_value), 0) as total_r_value,
           COUNT(*) as trade_count
-        FROM dynamic_ranges
+        FROM bucketed_trades
         GROUP BY range_start
+        HAVING COUNT(*) > 0
         ORDER BY range_start
       `;
 
