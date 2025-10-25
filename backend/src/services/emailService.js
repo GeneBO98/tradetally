@@ -57,11 +57,11 @@ class EmailService {
               <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" style="max-width: 600px; background-color: #ffffff;">
                 <!-- Header -->
                 <tr>
-                  <td style="background-color: #667eea; padding: 40px 20px; text-align: center;">
+                  <td style="background-color: #F0812A; padding: 40px 20px; text-align: center;">
                     <h1 style="color: #ffffff; font-size: 32px; font-weight: bold; margin: 0 0 8px 0; font-family: Arial, sans-serif;">
                       TradeTally
                     </h1>
-                    <p style="color: #e2e8f0; font-size: 16px; margin: 0; font-family: Arial, sans-serif;">
+                    <p style="color: #fef5ea; font-size: 16px; margin: 0; font-family: Arial, sans-serif;">
                       Smart Trading Analytics
                     </p>
                   </td>
@@ -82,14 +82,14 @@ class EmailService {
                     </p>
                     <p style="color: #94a3b8; font-size: 12px; line-height: 1.5; margin: 0 0 20px 0; font-family: Arial, sans-serif;">
                       This email was sent to you because you have an account with TradeTally.<br>
-                      If you have any questions, contact us at <a href="mailto:support@tradetally.io" style="color: #667eea; text-decoration: none;">support@tradetally.io</a>
+                      If you have any questions, contact us at <a href="mailto:support@tradetally.io" style="color: #F0812A; text-decoration: none;">support@tradetally.io</a>
                     </p>
                     <p style="margin: 0; font-family: Arial, sans-serif;">
-                      <a href="https://tradetally.io" style="color: #667eea; text-decoration: none; font-size: 12px;">Visit TradeTally</a>
+                      <a href="https://tradetally.io" style="color: #F0812A; text-decoration: none; font-size: 12px;">Visit TradeTally</a>
                       <span style="color: #cbd5e1; margin: 0 8px;">|</span>
-                      <a href="https://tradetally.io/privacy" style="color: #667eea; text-decoration: none; font-size: 12px;">Privacy Policy</a>
+                      <a href="https://tradetally.io/privacy" style="color: #F0812A; text-decoration: none; font-size: 12px;">Privacy Policy</a>
                       <span style="color: #cbd5e1; margin: 0 8px;">|</span>
-                      <a href="https://tradetally.io/terms" style="color: #667eea; text-decoration: none; font-size: 12px;">Terms of Service</a>
+                      <a href="https://tradetally.io/terms" style="color: #F0812A; text-decoration: none; font-size: 12px;">Terms of Service</a>
                     </p>
                   </td>
                 </tr>
@@ -104,7 +104,7 @@ class EmailService {
 
   static getButtonStyle() {
     return `
-      background-color: #667eea;
+      background-color: #F0812A;
       color: #ffffff;
       padding: 16px 32px;
       text-decoration: none;
@@ -135,7 +135,7 @@ class EmailService {
         </p>
       </div>
       
-      <div style="background-color: #f8fafc; padding: 30px; border-radius: 12px; border-left: 4px solid #667eea; margin: 30px 0;">
+      <div style="background-color: #f8fafc; padding: 30px; border-radius: 12px; border-left: 4px solid #F0812A; margin: 30px 0;">
         <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
           To get started with TradeTally and unlock powerful trading analytics, please verify your email address:
         </p>
@@ -148,7 +148,7 @@ class EmailService {
         
         <p style="color: #64748b; font-size: 14px; margin: 20px 0 0 0;">
           Or copy and paste this link into your browser:<br>
-          <span style="word-break: break-all; color: #667eea;">${verificationUrl}</span>
+          <span style="word-break: break-all; color: #F0812A;">${verificationUrl}</span>
         </p>
       </div>
       
@@ -207,7 +207,7 @@ class EmailService {
         </p>
       </div>
       
-      <div style="background-color: #f8fafc; padding: 30px; border-radius: 12px; border-left: 4px solid #667eea; margin: 30px 0;">
+      <div style="background-color: #f8fafc; padding: 30px; border-radius: 12px; border-left: 4px solid #F0812A; margin: 30px 0;">
         <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
           You requested to reset your password for your TradeTally account. Click the button below to create a new password:
         </p>
@@ -220,7 +220,7 @@ class EmailService {
         
         <p style="color: #64748b; font-size: 14px; margin: 20px 0 0 0;">
           Or copy and paste this link into your browser:<br>
-          <span style="word-break: break-all; color: #667eea;">${resetUrl}</span>
+          <span style="word-break: break-all; color: #F0812A;">${resetUrl}</span>
         </p>
       </div>
       
@@ -279,7 +279,7 @@ class EmailService {
         </p>
       </div>
       
-      <div style="background-color: #f8fafc; padding: 30px; border-radius: 12px; border-left: 4px solid #667eea; margin: 30px 0;">
+      <div style="background-color: #f8fafc; padding: 30px; border-radius: 12px; border-left: 4px solid #F0812A; margin: 30px 0;">
         <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
           You have requested to change your email address for your TradeTally account. Please verify your new email address:
         </p>
@@ -292,7 +292,7 @@ class EmailService {
         
         <p style="color: #64748b; font-size: 14px; margin: 20px 0 0 0;">
           Or copy and paste this link into your browser:<br>
-          <span style="word-break: break-all; color: #667eea;">${verificationUrl}</span>
+          <span style="word-break: break-all; color: #F0812A;">${verificationUrl}</span>
         </p>
       </div>
       
@@ -353,7 +353,7 @@ class EmailService {
         </p>
       </div>
       
-      <div style="background-color: #f8fafc; padding: 30px; border-radius: 12px; border-left: 4px solid #667eea; margin: 30px 0;">
+      <div style="background-color: #f8fafc; padding: 30px; border-radius: 12px; border-left: 4px solid #F0812A; margin: 30px 0;">
         <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
           Hi ${username},
         </p>
