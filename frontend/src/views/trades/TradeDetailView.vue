@@ -1,5 +1,5 @@
 <template>
-  <div class="w-full max-w-[75%] mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  <div class="w-full max-w-[65%] mx-auto px-4 sm:px-6 lg:px-8 py-8">
     <!-- Back Button -->
     <div class="mb-6">
       <button 

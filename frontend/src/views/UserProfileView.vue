@@ -1,5 +1,5 @@
 <template>
-  <div class="max-w-[75%] mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  <div class="max-w-[65%] mx-auto px-4 sm:px-6 lg:px-8 py-8">
     <div v-if="loading" class="flex justify-center py-12">
       <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
     </div>

@@ -1,5 +1,5 @@
 <template>
-  <div class="max-w-[75%] mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  <div class="max-w-[65%] mx-auto px-4 sm:px-6 lg:px-8 py-8">
     <!-- Breadcrumbs -->
     <nav class="flex mb-6" aria-label="Breadcrumb">
       <ol class="inline-flex items-center space-x-1 md:space-x-3">
