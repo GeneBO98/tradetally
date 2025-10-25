@@ -721,12 +721,14 @@ const analyticsController = {
       const params = [req.user.id, ...filterParams];
 
       const tagQuery = `
-        SELECT 
+        SELECT
           UNNEST(tags) as tag,
           COUNT(*) as total_trades,
           COUNT(CASE WHEN pnl > 0 THEN 1 END) as winning_trades,
           COALESCE(SUM(pnl), 0) as total_pnl,
-          COALESCE(AVG(pnl), 0) as avg_pnl
+          COALESCE(AVG(pnl), 0) as avg_pnl,
+          COALESCE(SUM(r_value), 0) as total_r_value,
+          COALESCE(AVG(r_value), 0) as avg_r_value
         FROM trades
         WHERE user_id = $1 ${filterConditions} AND tags IS NOT NULL
         GROUP BY tag
@@ -734,8 +736,92 @@ const analyticsController = {
       `;
 
       const result = await db.query(tagQuery, params);
-      
+
       res.json({ tags: result.rows });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async getStrategyStats(req, res, next) {
+    try {
+      const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
+      const params = [req.user.id, ...filterParams];
+
+      const strategyQuery = `
+        SELECT
+          strategy,
+          COUNT(*) as total_trades,
+          COUNT(CASE WHEN pnl > 0 THEN 1 END) as winning_trades,
+          COALESCE(SUM(pnl), 0) as total_pnl,
+          COALESCE(AVG(pnl), 0) as avg_pnl,
+          COALESCE(SUM(r_value), 0) as total_r_value,
+          COALESCE(AVG(r_value), 0) as avg_r_value
+        FROM trades
+        WHERE user_id = $1 ${filterConditions} AND strategy IS NOT NULL AND strategy != ''
+        GROUP BY strategy
+        ORDER BY total_trades DESC
+      `;
+
+      const result = await db.query(strategyQuery, params);
+
+      res.json({ strategies: result.rows });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async getHourOfDayStats(req, res, next) {
+    try {
+      const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
+      const params = [req.user.id, ...filterParams];
+
+      // Get user timezone for proper hour calculation
+      const { getUserTimezone } = require('../utils/timezone');
+      const userTimezone = await getUserTimezone(req.user.id);
+
+      let hourQuery;
+      let hourParams;
+
+      if (userTimezone !== 'UTC') {
+        hourQuery = `
+          SELECT
+            EXTRACT(HOUR FROM (entry_time AT TIME ZONE 'UTC' AT TIME ZONE $2)) as hour,
+            COUNT(*) as total_trades,
+            COUNT(CASE WHEN pnl > 0 THEN 1 END) as winning_trades,
+            COALESCE(SUM(pnl), 0) as total_pnl,
+            COALESCE(AVG(pnl), 0) as avg_pnl,
+            COALESCE(SUM(r_value), 0) as total_r_value,
+            COALESCE(AVG(r_value), 0) as avg_r_value
+          FROM trades
+          WHERE user_id = $1 ${filterConditions}
+            AND entry_time IS NOT NULL
+          GROUP BY EXTRACT(HOUR FROM (entry_time AT TIME ZONE 'UTC' AT TIME ZONE $2))
+          ORDER BY hour
+        `;
+        hourParams = params.concat([userTimezone]);
+      } else {
+        hourQuery = `
+          SELECT
+            EXTRACT(HOUR FROM entry_time) as hour,
+            COUNT(*) as total_trades,
+            COUNT(CASE WHEN pnl > 0 THEN 1 END) as winning_trades,
+            COALESCE(SUM(pnl), 0) as total_pnl,
+            COALESCE(AVG(pnl), 0) as avg_pnl,
+            COALESCE(SUM(r_value), 0) as total_r_value,
+            COALESCE(AVG(r_value), 0) as avg_r_value
+          FROM trades
+          WHERE user_id = $1 ${filterConditions}
+            AND entry_time IS NOT NULL
+          GROUP BY EXTRACT(HOUR FROM entry_time)
+          ORDER BY hour
+        `;
+        hourParams = params;
+      }
+
+      const result = await db.query(hourQuery, hourParams);
+
+      res.json({ hours: result.rows });
     } catch (error) {
       next(error);
     }
@@ -966,7 +1052,8 @@ const analyticsController = {
         SELECT
           volume_range,
           COALESCE(SUM(pnl), 0) as total_pnl,
-          COALESCE(SUM(r_value), 0) as total_r_value
+          COALESCE(SUM(r_value), 0) as total_r_value,
+          COUNT(*) as trade_count
         FROM volume_ranges
         GROUP BY volume_range, range_order
         ORDER BY range_order
@@ -1117,9 +1204,15 @@ const analyticsController = {
         return found ? parseFloat(found.total_r_value) : 0;
       });
 
+      const performanceByPriceCounts = priceLabels.map(label => {
+        const found = tradeDistResult.rows.find(row => row.price_range === label);
+        return found ? parseInt(found.trade_count) : 0;
+      });
+
       // Dynamic volume categories - only include categories with data
       const volumeDataMap = new Map();
       const volumeRDataMap = new Map();
+      const volumeCountMap = new Map();
       const volumeOrderMap = {
         '2-4': 1, '5-9': 2, '10-19': 3, '20-49': 4, '50-99': 5, '100-500': 6,
         '500-999': 7, '1K-2K': 8, '2K-3K': 9, '3K-5K': 10, '5K-10K': 11,
@@ -1131,6 +1224,7 @@ const analyticsController = {
         if (row.volume_range && row.volume_range !== 'Other' && parseFloat(row.total_pnl) !== 0) {
           volumeDataMap.set(row.volume_range, parseFloat(row.total_pnl));
           volumeRDataMap.set(row.volume_range, parseFloat(row.total_r_value || 0));
+          volumeCountMap.set(row.volume_range, parseInt(row.trade_count || 0));
         }
       });
 
@@ -1141,6 +1235,7 @@ const analyticsController = {
       const dynamicVolumeLabels = sortedVolumeEntries.map(([label]) => label);
       const performanceByVolume = sortedVolumeEntries.map(([, pnl]) => pnl);
       const performanceByVolumeR = sortedVolumeEntries.map(([label]) => volumeRDataMap.get(label) || 0);
+      const performanceByVolumeCounts = sortedVolumeEntries.map(([label]) => volumeCountMap.get(label) || 0);
 
       // Process dynamic position size data
       const formatPositionSizeRange = (rangeStart) => {
@@ -1175,6 +1270,7 @@ const analyticsController = {
           positionSizeDataMap.set(label, {
             pnl: parseFloat(row.total_pnl),
             rValue: parseFloat(row.total_r_value || 0),
+            tradeCount: parseInt(row.trade_count || 0),
             rangeStart: parseFloat(row.range_start)
           });
         }
@@ -1187,6 +1283,7 @@ const analyticsController = {
       const dynamicPositionSizeLabels = sortedPositionSizeEntries.map(([label]) => label);
       const performanceByPositionSize = sortedPositionSizeEntries.map(([, data]) => data.pnl);
       const performanceByPositionSizeR = sortedPositionSizeEntries.map(([, data]) => data.rValue);
+      const performanceByPositionSizeCounts = sortedPositionSizeEntries.map(([, data]) => data.tradeCount);
 
       const performanceByHoldTime = holdTimeLabels.map(label => {
         const found = perfByHoldTimeResult.rows.find(row => row.hold_time_range === label);
@@ -1196,6 +1293,11 @@ const analyticsController = {
       const performanceByHoldTimeR = holdTimeLabels.map(label => {
         const found = perfByHoldTimeResult.rows.find(row => row.hold_time_range === label);
         return found ? parseFloat(found.total_r_value) : 0;
+      });
+
+      const performanceByHoldTimeCounts = holdTimeLabels.map(label => {
+        const found = perfByHoldTimeResult.rows.find(row => row.hold_time_range === label);
+        return found ? parseInt(found.trade_count) : 0;
       });
 
       // Day of Week Performance (timezone-aware and excluding weekends)
@@ -1280,12 +1382,16 @@ const analyticsController = {
         tradeDistribution,
         performanceByPrice,
         performanceByPriceR,
+        performanceByPriceCounts,
         performanceByVolume,
         performanceByVolumeR,
+        performanceByVolumeCounts,
         performanceByPositionSize,
         performanceByPositionSizeR,
+        performanceByPositionSizeCounts,
         performanceByHoldTime,
         performanceByHoldTimeR,
+        performanceByHoldTimeCounts,
         dayOfWeek: dayOfWeekData,
         dailyVolume: dailyVolumeResult.rows,
         // Include dynamic labels for charts

@@ -741,10 +741,10 @@
                     Win Rate
                   </th>
                   <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    P&L
+                    {{ rValueMode ? 'Total R' : 'Total P&L' }}
                   </th>
                   <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    {{ calculationMethod }} P&L
+                    {{ calculationMethod }} {{ rValueMode ? 'R' : 'P&L' }}
                   </th>
                 </tr>
               </thead>
@@ -762,14 +762,130 @@
                     {{ (tag.winning_trades / tag.total_trades * 100).toFixed(1) }}%
                   </td>
                   <td class="px-6 py-4 whitespace-nowrap text-sm" :class="[
-                    tag.total_pnl >= 0 ? 'text-green-600' : 'text-red-600'
+                    (rValueMode ? tag.total_r_value : tag.total_pnl) >= 0 ? 'text-green-600' : 'text-red-600'
                   ]">
-                    ${{ formatNumber(tag.total_pnl) }}
+                    <span v-if="rValueMode">{{ formatNumber(tag.total_r_value) }}R</span>
+                    <span v-else>${{ formatNumber(tag.total_pnl) }}</span>
                   </td>
                   <td class="px-6 py-4 whitespace-nowrap text-sm" :class="[
-                    tag.avg_pnl >= 0 ? 'text-green-600' : 'text-red-600'
+                    (rValueMode ? tag.avg_r_value : tag.avg_pnl) >= 0 ? 'text-green-600' : 'text-red-600'
                   ]">
-                    ${{ formatNumber(tag.avg_pnl) }}
+                    <span v-if="rValueMode">{{ formatNumber(tag.avg_r_value) }}R</span>
+                    <span v-else>${{ formatNumber(tag.avg_pnl) }}</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Strategy/Setup Performance -->
+      <div v-if="strategyStats.length > 0" class="card">
+        <div class="card-body">
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Strategy/Setup Performance</h3>
+          <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+              <thead>
+                <tr>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Strategy
+                  </th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Trades
+                  </th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Win Rate
+                  </th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    {{ rValueMode ? 'Total R' : 'Total P&L' }}
+                  </th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    {{ calculationMethod }} {{ rValueMode ? 'R' : 'P&L' }}
+                  </th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                <tr v-for="strategy in strategyStats" :key="strategy.strategy">
+                  <td class="px-6 py-4 whitespace-nowrap">
+                    <span class="px-2 py-1 bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400 text-xs rounded-full">
+                      {{ strategy.strategy }}
+                    </span>
+                  </td>
+                  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                    {{ strategy.total_trades }}
+                  </td>
+                  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                    {{ (strategy.winning_trades / strategy.total_trades * 100).toFixed(1) }}%
+                  </td>
+                  <td class="px-6 py-4 whitespace-nowrap text-sm" :class="[
+                    (rValueMode ? strategy.total_r_value : strategy.total_pnl) >= 0 ? 'text-green-600' : 'text-red-600'
+                  ]">
+                    <span v-if="rValueMode">{{ formatNumber(strategy.total_r_value) }}R</span>
+                    <span v-else>${{ formatNumber(strategy.total_pnl) }}</span>
+                  </td>
+                  <td class="px-6 py-4 whitespace-nowrap text-sm" :class="[
+                    (rValueMode ? strategy.avg_r_value : strategy.avg_pnl) >= 0 ? 'text-green-600' : 'text-red-600'
+                  ]">
+                    <span v-if="rValueMode">{{ formatNumber(strategy.avg_r_value) }}R</span>
+                    <span v-else>${{ formatNumber(strategy.avg_pnl) }}</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Hour of Day Performance -->
+      <div v-if="hourOfDayStats.length > 0" class="card">
+        <div class="card-body">
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Hour of Day Performance</h3>
+          <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+              <thead>
+                <tr>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Hour
+                  </th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Trades
+                  </th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Win Rate
+                  </th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    {{ rValueMode ? 'Total R' : 'Total P&L' }}
+                  </th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    {{ calculationMethod }} {{ rValueMode ? 'R' : 'P&L' }}
+                  </th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                <tr v-for="hour in hourOfDayStats" :key="hour.hour">
+                  <td class="px-6 py-4 whitespace-nowrap">
+                    <span class="px-2 py-1 bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400 text-xs rounded-full">
+                      {{ formatHour(hour.hour) }}
+                    </span>
+                  </td>
+                  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                    {{ hour.total_trades }}
+                  </td>
+                  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                    {{ (hour.winning_trades / hour.total_trades * 100).toFixed(1) }}%
+                  </td>
+                  <td class="px-6 py-4 whitespace-nowrap text-sm" :class="[
+                    (rValueMode ? hour.total_r_value : hour.total_pnl) >= 0 ? 'text-green-600' : 'text-red-600'
+                  ]">
+                    <span v-if="rValueMode">{{ formatNumber(hour.total_r_value) }}R</span>
+                    <span v-else>${{ formatNumber(hour.total_pnl) }}</span>
+                  </td>
+                  <td class="px-6 py-4 whitespace-nowrap text-sm" :class="[
+                    (rValueMode ? hour.avg_r_value : hour.avg_pnl) >= 0 ? 'text-green-600' : 'text-red-600'
+                  ]">
+                    <span v-if="rValueMode">{{ formatNumber(hour.avg_r_value) }}R</span>
+                    <span v-else>${{ formatNumber(hour.avg_pnl) }}</span>
                   </td>
                 </tr>
               </tbody>
@@ -1011,6 +1127,8 @@ const overview = ref({
 const performanceData = ref([])
 const symbolStats = ref([])
 const tagStats = ref([])
+const strategyStats = ref([])
+const hourOfDayStats = ref([])
 
 // Recommendations
 const loadingRecommendations = ref(false)
@@ -1214,6 +1332,10 @@ const performanceByPositionSizeData = ref([])
 const performanceByPositionSizeRData = ref([])
 const performanceByHoldTimeData = ref([])
 const performanceByHoldTimeRData = ref([])
+const performanceByPriceCounts = ref([])
+const performanceByVolumeCounts = ref([])
+const performanceByPositionSizeCounts = ref([])
+const performanceByHoldTimeCounts = ref([])
 const dayOfWeekData = ref([])
 const dailyVolumeData = ref([])
 const drawdownData = ref([])
@@ -1235,6 +1357,14 @@ function formatNumber(num) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   }).format(num || 0)
+}
+
+function formatHour(hour) {
+  const h = parseInt(hour)
+  if (h === 0) return '12:00 AM'
+  if (h < 12) return `${h}:00 AM`
+  if (h === 12) return '12:00 PM'
+  return `${h - 12}:00 PM`
 }
 
 function getWinPercentage() {
@@ -1410,10 +1540,12 @@ function createPerformanceByPriceChart() {
         tooltip: {
           callbacks: {
             label: function(context) {
+              const index = context.dataIndex
+              const tradeCount = performanceByPriceCounts.value[index] || 0
               if (rValueMode.value) {
-                return `Total R-Multiple: ${context.parsed.x.toFixed(2)}R`
+                return `Total R-Multiple: ${context.parsed.x.toFixed(2)}R (${tradeCount} trades)`
               }
-              return `Total P&L: $${context.parsed.x.toFixed(2)}`
+              return `Total P&L: $${context.parsed.x.toFixed(2)} (${tradeCount} trades)`
             }
           }
         }
@@ -1492,10 +1624,12 @@ function createPerformanceByVolumeChart() {
         tooltip: {
           callbacks: {
             label: function(context) {
+              const index = context.dataIndex
+              const tradeCount = performanceByVolumeCounts.value[index] || 0
               if (rValueMode.value) {
-                return `Total R-Multiple: ${context.parsed.x.toFixed(2)}R`
+                return `Total R-Multiple: ${context.parsed.x.toFixed(2)}R (${tradeCount} trades)`
               }
-              return `Total P&L: $${context.parsed.x.toFixed(2)}`
+              return `Total P&L: $${context.parsed.x.toFixed(2)} (${tradeCount} trades)`
             }
           }
         }
@@ -1574,10 +1708,12 @@ function createPerformanceByPositionSizeChart() {
         tooltip: {
           callbacks: {
             label: function(context) {
+              const index = context.dataIndex
+              const tradeCount = performanceByPositionSizeCounts.value[index] || 0
               if (rValueMode.value) {
-                return `Total R-Multiple: ${context.parsed.x.toFixed(2)}R`
+                return `Total R-Multiple: ${context.parsed.x.toFixed(2)}R (${tradeCount} trades)`
               }
-              return `Total P&L: $${context.parsed.x.toFixed(2)}`
+              return `Total P&L: $${context.parsed.x.toFixed(2)} (${tradeCount} trades)`
             }
           }
         }
@@ -1755,10 +1891,12 @@ function createPerformanceByHoldTimeChart() {
         tooltip: {
           callbacks: {
             label: function(context) {
+              const index = context.dataIndex
+              const tradeCount = performanceByHoldTimeCounts.value[index] || 0
               if (rValueMode.value) {
-                return `Total R-Multiple: ${context.parsed.x.toFixed(2)}R`
+                return `Total R-Multiple: ${context.parsed.x.toFixed(2)}R (${tradeCount} trades)`
               }
-              return `Total P&L: $${context.parsed.x.toFixed(2)}`
+              return `Total P&L: $${context.parsed.x.toFixed(2)} (${tradeCount} trades)`
             }
           }
         }
@@ -1983,12 +2121,16 @@ async function fetchChartData() {
     tradeDistributionData.value = response.data.tradeDistribution
     performanceByPriceData.value = response.data.performanceByPrice
     performanceByPriceRData.value = response.data.performanceByPriceR || []
+    performanceByPriceCounts.value = response.data.performanceByPriceCounts || []
     performanceByVolumeData.value = response.data.performanceByVolume
     performanceByVolumeRData.value = response.data.performanceByVolumeR || []
+    performanceByVolumeCounts.value = response.data.performanceByVolumeCounts || []
     performanceByPositionSizeData.value = response.data.performanceByPositionSize
     performanceByPositionSizeRData.value = response.data.performanceByPositionSizeR || []
+    performanceByPositionSizeCounts.value = response.data.performanceByPositionSizeCounts || []
     performanceByHoldTimeData.value = response.data.performanceByHoldTime
     performanceByHoldTimeRData.value = response.data.performanceByHoldTimeR || []
+    performanceByHoldTimeCounts.value = response.data.performanceByHoldTimeCounts || []
     dayOfWeekData.value = response.data.dayOfWeek
     dailyVolumeData.value = response.data.dailyVolume
     
@@ -2090,6 +2232,26 @@ async function fetchTagStats() {
   }
 }
 
+async function fetchStrategyStats() {
+  try {
+    const params = buildFilterParams()
+    const response = await api.get('/analytics/strategies', { params })
+    strategyStats.value = response.data.strategies
+  } catch (error) {
+    console.error('Failed to fetch strategy stats:', error)
+  }
+}
+
+async function fetchHourOfDayStats() {
+  try {
+    const params = buildFilterParams()
+    const response = await api.get('/analytics/hours', { params })
+    hourOfDayStats.value = response.data.hours
+  } catch (error) {
+    console.error('Failed to fetch hour of day stats:', error)
+  }
+}
+
 async function fetchDrawdownData() {
   try {
     const params = buildFilterParams()
@@ -2113,6 +2275,8 @@ async function handleFilter(newFilters) {
     fetchPerformance(),
     fetchSymbolStats(),
     fetchTagStats(),
+    fetchStrategyStats(),
+    fetchHourOfDayStats(),
     fetchChartData(),
     fetchDrawdownData()
   ])
@@ -2178,10 +2342,12 @@ async function applyFilters(newFilters = null) {
     fetchPerformance(),
     fetchSymbolStats(),
     fetchTagStats(),
+    fetchStrategyStats(),
+    fetchHourOfDayStats(),
     fetchChartData(),
     fetchDrawdownData()
   ])
-  
+
   // Load sector data asynchronously after page loads
   fetchSectorData()
   loading.value = false
