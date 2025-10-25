@@ -83,6 +83,35 @@ router.get('/symbols', authenticate, analyticsController.getSymbolStats);
  *         description: Tag performance statistics
  */
 router.get('/tags', authenticate, analyticsController.getTagStats);
+
+/**
+ * @swagger
+ * /api/analytics/strategies:
+ *   get:
+ *     summary: Get strategy/setup statistics
+ *     tags: [Analytics]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Strategy performance statistics
+ */
+router.get('/strategies', authenticate, analyticsController.getStrategyStats);
+
+/**
+ * @swagger
+ * /api/analytics/hours:
+ *   get:
+ *     summary: Get hour of day statistics
+ *     tags: [Analytics]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Hour of day performance statistics
+ */
+router.get('/hours', authenticate, analyticsController.getHourOfDayStats);
+
 router.get('/calendar', authenticate, analyticsController.getCalendarData);
 router.get('/export', authenticate, analyticsController.exportData);
 router.get('/charts', authenticate, analyticsController.getChartData);
