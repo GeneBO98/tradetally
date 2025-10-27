@@ -238,7 +238,7 @@
                   type="password"
                   class="input"
                   :placeholder="getApiKeyPlaceholder()"
-                  :required="aiForm.provider !== 'ollama'"
+                  :required="!['ollama', 'lmstudio'].includes(aiForm.provider)"
                 />
                 <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
                   {{ getApiKeyHelp() }}
@@ -331,7 +331,7 @@
                   type="password"
                   class="input"
                   :placeholder="getAdminApiKeyPlaceholder()"
-                  :required="adminAiForm.provider !== 'ollama'"
+                  :required="!['ollama', 'lmstudio'].includes(adminAiForm.provider)"
                 />
                 <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
                   {{ getAdminApiKeyHelp() }}

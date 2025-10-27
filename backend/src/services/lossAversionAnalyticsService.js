@@ -434,14 +434,17 @@ class LossAversionAnalyticsService {
         
         const exitTime = new Date(trade.exit_time);
         const entryTime = new Date(trade.entry_time);
-        
-        // Get price data for different time horizons after exit (dynamic based on trader profile)
+        const holdTimeMinutes = (exitTime - entryTime) / (1000 * 60);
+
+        // Get price data for time horizons proportional to hold time
         const priceAnalysis = await this.analyzePriceMovementAfterExit(
           trade.symbol,
           trade.exit_price,
           exitTime,
           trade.side,
-          userId
+          userId,
+          entryTime,
+          holdTimeMinutes
         );
         
         // Skip market indicators for now to reduce API calls
@@ -542,53 +545,127 @@ class LossAversionAnalyticsService {
     };
   }
 
-  // Analyze price movement after a trade was closed (dynamic based on trader profile)
-  static async analyzePriceMovementAfterExit(symbol, exitPrice, exitTime, side, userId = null) {
+  // Analyze price movement after a trade was closed (PROPORTIONAL TO HOLD TIME)
+  // This function calculates missed profit opportunities by analyzing price movement
+  // for a period proportional to how long the trade was actually held.
+  // Logic: If you held for 10 minutes, we look 1 hour ahead. If you held for 1 day,
+  // we look 1 day ahead. This reflects realistic missed opportunities based on your
+  // actual trading timeframe and style.
+  static async analyzePriceMovementAfterExit(symbol, exitPrice, exitTime, side, userId = null, entryTime = null, holdTimeMinutes = null) {
     try {
-      // Get dynamic analysis parameters based on trader profile
-      const analysisParams = await this.getAnalysisParameters(userId);
-      
+      // Calculate hold time if not provided
+      let actualHoldTimeMinutes = holdTimeMinutes;
+      if (!actualHoldTimeMinutes && entryTime) {
+        actualHoldTimeMinutes = (exitTime.getTime() - new Date(entryTime).getTime()) / (1000 * 60);
+      }
+
+      // Determine lookforward window based on hold time
+      // Use a multiplier to give reasonable analysis window
+      let lookforwardMinutes;
+      let analysisDescription;
+      let candleResolution;
+      let pullbackThreshold;
+
+      if (!actualHoldTimeMinutes || actualHoldTimeMinutes < 30) {
+        // Very short holds (< 30 min) - scalping style
+        // Look ahead 1-2 hours to see if there was immediate continuation
+        lookforwardMinutes = 120;
+        analysisDescription = 'Scalping (2 hours forward)';
+        candleResolution = '1'; // 1-minute candles
+        pullbackThreshold = 0.05; // 5% pullback
+      } else if (actualHoldTimeMinutes < 240) {
+        // Short holds (30 min - 4 hours) - day trading style
+        // Look ahead proportionally (about 2x hold time)
+        lookforwardMinutes = Math.min(actualHoldTimeMinutes * 2, 480); // Cap at 8 hours
+        analysisDescription = `Day trading (${Math.round(lookforwardMinutes / 60)}h forward)`;
+        candleResolution = '5'; // 5-minute candles
+        pullbackThreshold = 0.08; // 8% pullback
+      } else if (actualHoldTimeMinutes < 1440) {
+        // Intraday to overnight (4-24 hours)
+        // Look ahead 1 day
+        lookforwardMinutes = 1440; // 1 day
+        analysisDescription = 'Intraday (1 day forward)';
+        candleResolution = '15'; // 15-minute candles
+        pullbackThreshold = 0.10; // 10% pullback
+      } else if (actualHoldTimeMinutes < 10080) {
+        // Multi-day holds (1-7 days) - swing trading
+        // Look ahead proportionally (about 1x hold time, capped at 2 weeks)
+        const daysHeld = actualHoldTimeMinutes / 1440;
+        lookforwardMinutes = Math.min(actualHoldTimeMinutes, 20160); // Cap at 2 weeks
+        analysisDescription = `Swing trading (${Math.round(lookforwardMinutes / 1440)}d forward)`;
+        candleResolution = '60'; // 1-hour candles
+        pullbackThreshold = 0.15; // 15% pullback
+      } else {
+        // Long holds (> 1 week) - position trading
+        // Look ahead same duration or cap at 30 days
+        const daysHeld = actualHoldTimeMinutes / 1440;
+        const weeksHeld = actualHoldTimeMinutes / (1440 * 7);
+        lookforwardMinutes = Math.min(actualHoldTimeMinutes, 43200); // Cap at 30 days
+        analysisDescription = `Position trading (held ${Math.round(daysHeld)}d, looking ${Math.round(lookforwardMinutes / 1440)}d forward)`;
+        candleResolution = 'D'; // Daily candles
+        pullbackThreshold = 0.20; // 20% pullback
+      }
+
       const startTime = Math.floor(exitTime.getTime() / 1000);
-      const endTime = startTime + analysisParams.maxLookAheadSeconds;
-      
-      // Use appropriate candle resolution based on time horizon
-      const resolution = analysisParams.candleResolution;
-      const candles = await finnhub.getCandles(symbol, resolution, startTime, endTime);
-      
+      const endTime = startTime + (lookforwardMinutes * 60);
+
+      console.log(`[MISSED PROFIT] ${symbol}: Held ${Math.round(actualHoldTimeMinutes)} min (${Math.round(actualHoldTimeMinutes / 1440)} days), analyzing ${Math.round(lookforwardMinutes)} min (${Math.round(lookforwardMinutes / 1440)} days) forward using ${candleResolution} candles (${analysisDescription})`);
+      console.log(`[MISSED PROFIT] ${symbol}: Date range: ${new Date(startTime * 1000).toISOString()} to ${new Date(endTime * 1000).toISOString()}`);
+
+      const candles = await finnhub.getCandles(symbol, candleResolution, startTime, endTime);
+
       if (!candles || !candles.c || candles.c.length === 0) {
         throw new Error(`No price data available for ${symbol}`);
       }
-      
+
       const prices = candles.c;
       const times = candles.t;
-      
-      // Apply pullback logic based on trader type
-      const { 
-        effectivePrices, 
-        effectiveTimes, 
-        pullbackTime, 
-        maxBeforePullback, 
-        minBeforePullback 
-      } = this.findPricesUntilPullback(prices, times, exitPrice, side, analysisParams.pullbackThreshold);
-      
-      // Find prices at intervals appropriate for this trader type
-      const intervals = analysisParams.timeIntervals;
+      const highs = candles.h || prices; // Use highs if available, fallback to close
+      const lows = candles.l || prices;  // Use lows if available, fallback to close
+
+      console.log(`[MISSED PROFIT] ${symbol}: Received ${prices.length} candles. Exit price: ${exitPrice}, First price: ${prices[0]}, Last price: ${prices[prices.length - 1]}, Max high: ${Math.max(...highs)}, Min low: ${Math.min(...lows)}`);
+
+      // Apply pullback logic with dynamic threshold based on hold time
+      // For more accurate missed profit, use highs for long positions and lows for short positions
+      const pricesToAnalyze = (side === 'long' || side === 'buy') ? highs : lows;
+
+      const {
+        effectivePrices,
+        effectiveTimes,
+        pullbackTime,
+        maxBeforePullback,
+        minBeforePullback
+      } = this.findPricesUntilPullback(pricesToAnalyze, times, exitPrice, side, pullbackThreshold);
+
+      console.log(`[MISSED PROFIT] ${symbol}: After pullback analysis - Max: ${maxBeforePullback}, Min: ${minBeforePullback}, Pullback occurred: ${pullbackTime !== null}`);
+
+      // Calculate time-interval checkpoints based on lookforward window
       const priceResults = {};
-      
-      intervals.forEach(interval => {
-        const targetTime = startTime + interval.seconds;
-        priceResults[interval.name] = this.findPriceAtTime(effectiveTimes, effectivePrices, targetTime) || exitPrice;
-      });
-      
+      const lookforwardSeconds = lookforwardMinutes * 60;
+
+      // Define checkpoints at strategic intervals
+      if (lookforwardSeconds >= 3600) { // If looking ahead at least 1 hour
+        const oneHourTime = startTime + 3600;
+        priceResults.priceAfter1Hour = this.findPriceAtTime(effectiveTimes, effectivePrices, oneHourTime) || exitPrice;
+      }
+      if (lookforwardSeconds >= 14400) { // If looking ahead at least 4 hours
+        const fourHourTime = startTime + 14400;
+        priceResults.priceAfter4Hours = this.findPriceAtTime(effectiveTimes, effectivePrices, fourHourTime) || exitPrice;
+      }
+      if (lookforwardSeconds >= 86400) { // If looking ahead at least 1 day
+        const oneDayTime = startTime + 86400;
+        priceResults.priceAfter1Day = this.findPriceAtTime(effectiveTimes, effectivePrices, oneDayTime) || exitPrice;
+      }
+
       // Use max/min only until the pullback point
       const maxPrice = maxBeforePullback;
       const minPrice = minBeforePullback;
       const maxPriceIndex = effectivePrices.indexOf(maxPrice);
       const minPriceIndex = effectivePrices.indexOf(minPrice);
-      
+
       return {
         ...priceResults,
-        maxPriceWithin24Hours: maxPrice,
+        maxPriceWithin24Hours: maxPrice, // This is now relative to hold time
         minPriceWithin24Hours: minPrice,
         maxPriceTime: effectiveTimes[maxPriceIndex],
         minPriceTime: effectiveTimes[minPriceIndex],
@@ -596,24 +673,171 @@ class LossAversionAnalyticsService {
         volatility: ((maxPrice - minPrice) / exitPrice) * 100,
         pullbackOccurred: pullbackTime !== null,
         pullbackTime: pullbackTime,
-        analysisHorizon: analysisParams.description,
-        traderType: analysisParams.traderType
+        analysisHorizon: analysisDescription,
+        holdTimeMinutes: Math.round(actualHoldTimeMinutes),
+        lookforwardMinutes: lookforwardMinutes,
+        proportionalAnalysis: true
       };
     } catch (error) {
-      console.error(`Error getting price movement for ${symbol}:`, error);
+      console.error(`[MISSED PROFIT] Error analyzing price movement for ${symbol}:`, error.message);
       return {
         priceAfter1Hour: exitPrice,
-        priceAfter4Hours: exitPrice,
-        priceAfter1Day: exitPrice,
         maxPriceWithin24Hours: exitPrice,
         minPriceWithin24Hours: exitPrice,
         priceDirection: 'unknown',
         volatility: 0,
         pullbackOccurred: false,
         pullbackTime: null,
-        analysisHorizon: 'default',
-        traderType: 'unknown'
+        analysisHorizon: 'error',
+        holdTimeMinutes: holdTimeMinutes || 0,
+        lookforwardMinutes: 0,
+        error: true
       };
+    }
+  }
+
+  // Analyze price movement BEFORE entry to find better entry opportunities
+  // This looks back proportionally to hold time to see if waiting would have improved entry
+  static async analyzeBetterEntryPrice(symbol, entryPrice, entryTime, side, exitPrice = null, holdTimeMinutes = null) {
+    try {
+      // Determine lookback window based on hold time
+      // Look back similar duration to what they held for
+      let lookbackMinutes;
+      let analysisDescription;
+      let candleResolution;
+
+      if (!holdTimeMinutes || holdTimeMinutes < 30) {
+        // Scalping - look back 1-2 hours before entry
+        lookbackMinutes = 120;
+        analysisDescription = 'Scalping (2h lookback)';
+        candleResolution = '1';
+      } else if (holdTimeMinutes < 240) {
+        // Day trading - look back proportionally
+        lookbackMinutes = Math.min(holdTimeMinutes * 2, 480);
+        analysisDescription = `Day trading (${Math.round(lookbackMinutes / 60)}h lookback)`;
+        candleResolution = '5';
+      } else if (holdTimeMinutes < 1440) {
+        // Intraday - look back 1 day
+        lookbackMinutes = 1440;
+        analysisDescription = 'Intraday (1d lookback)';
+        candleResolution = '15';
+      } else if (holdTimeMinutes < 10080) {
+        // Swing - look back proportionally
+        lookbackMinutes = Math.min(holdTimeMinutes, 10080); // Cap at 1 week
+        analysisDescription = `Swing (${Math.round(lookbackMinutes / 1440)}d lookback)`;
+        candleResolution = '60';
+      } else {
+        // Position - look back up to 2 weeks
+        lookbackMinutes = Math.min(holdTimeMinutes * 0.5, 20160); // Cap at 2 weeks
+        analysisDescription = `Position (${Math.round(lookbackMinutes / 1440)}d lookback)`;
+        candleResolution = 'D';
+      }
+
+      const entryTimestamp = Math.floor(new Date(entryTime).getTime() / 1000);
+      const startTime = entryTimestamp - (lookbackMinutes * 60);
+      const endTime = entryTimestamp;
+
+      console.log(`[ENTRY TIMING] ${symbol}: Analyzing ${Math.round(lookbackMinutes)} min before entry (${analysisDescription})`);
+
+      const candles = await finnhub.getCandles(symbol, candleResolution, startTime, endTime);
+
+      if (!candles || !candles.c || candles.c.length === 0) {
+        throw new Error(`No price data available for ${symbol}`);
+      }
+
+      const prices = candles.c;
+      const times = candles.t;
+      const lows = candles.l;
+      const highs = candles.h;
+
+      // Find the best entry price in the lookback window
+      let bestEntryPrice;
+      let bestEntryTime;
+      let improvementPercent = 0;
+      let improvementDollar = 0;
+
+      if (side === 'long' || side === 'buy') {
+        // For long positions, best entry is the lowest price
+        const minPrice = Math.min(...lows);
+        const minIndex = lows.indexOf(minPrice);
+        bestEntryPrice = minPrice;
+        bestEntryTime = times[minIndex];
+
+        // Calculate improvement
+        improvementDollar = entryPrice - bestEntryPrice;
+        improvementPercent = (improvementDollar / entryPrice) * 100;
+      } else {
+        // For short positions, best entry is the highest price
+        const maxPrice = Math.max(...highs);
+        const maxIndex = highs.indexOf(maxPrice);
+        bestEntryPrice = maxPrice;
+        bestEntryTime = times[maxIndex];
+
+        // Calculate improvement
+        improvementDollar = bestEntryPrice - entryPrice;
+        improvementPercent = (improvementDollar / entryPrice) * 100;
+      }
+
+      // Calculate how much better the P&L would have been with better entry
+      let improvedPnL = null;
+      if (exitPrice) {
+        const quantity = 100; // Assume 100 shares for calculation
+        let actualPnL;
+        let betterPnL;
+
+        if (side === 'long' || side === 'buy') {
+          actualPnL = (exitPrice - entryPrice) * quantity;
+          betterPnL = (exitPrice - bestEntryPrice) * quantity;
+        } else {
+          actualPnL = (entryPrice - exitPrice) * quantity;
+          betterPnL = (bestEntryPrice - exitPrice) * quantity;
+        }
+
+        improvedPnL = {
+          actual: actualPnL,
+          withBetterEntry: betterPnL,
+          improvement: betterPnL - actualPnL,
+          improvementPercent: actualPnL !== 0 ? ((betterPnL - actualPnL) / Math.abs(actualPnL)) * 100 : 0
+        };
+      }
+
+      // Calculate how many minutes before entry the best price occurred
+      const minutesBeforeEntry = (entryTimestamp - bestEntryTime) / 60;
+
+      return {
+        actualEntryPrice: entryPrice,
+        bestEntryPrice: bestEntryPrice,
+        bestEntryTime: new Date(bestEntryTime * 1000).toISOString(),
+        minutesBeforeEntry: Math.round(minutesBeforeEntry),
+        improvementDollar: Math.round(improvementDollar * 100) / 100,
+        improvementPercent: Math.round(improvementPercent * 100) / 100,
+        improvedPnL: improvedPnL,
+        analysisHorizon: analysisDescription,
+        lookbackMinutes: lookbackMinutes,
+        recommendation: this.generateEntryTimingRecommendation(improvementPercent, minutesBeforeEntry)
+      };
+    } catch (error) {
+      console.error(`[ENTRY TIMING] Error analyzing entry timing for ${symbol}:`, error.message);
+      return {
+        actualEntryPrice: entryPrice,
+        bestEntryPrice: entryPrice,
+        improvementDollar: 0,
+        improvementPercent: 0,
+        error: true
+      };
+    }
+  }
+
+  // Generate recommendation for entry timing
+  static generateEntryTimingRecommendation(improvementPercent, minutesBeforeEntry) {
+    if (improvementPercent < 1) {
+      return 'Excellent entry timing - you entered near the optimal price point';
+    } else if (improvementPercent < 3) {
+      return `Good entry timing - only ${improvementPercent.toFixed(1)}% from optimal. Consider waiting ${Math.round(minutesBeforeEntry)} minutes for better setups`;
+    } else if (improvementPercent < 5) {
+      return `Fair entry timing - you could have saved ${improvementPercent.toFixed(1)}% by waiting ${Math.round(minutesBeforeEntry)} minutes. Watch for pullbacks before entering`;
+    } else {
+      return `Entry was ${improvementPercent.toFixed(1)}% above optimal price ${Math.round(minutesBeforeEntry)} minutes earlier. Consider using limit orders or waiting for better price action`;
     }
   }
 
@@ -1332,7 +1556,7 @@ class LossAversionAnalyticsService {
   }
 
   // Get top missed trades by percentage of missed opportunity
-  static async getTopMissedTrades(userId, limit = 20) {
+  static async getTopMissedTrades(userId, limit = 20, startDate = null, endDate = null) {
     try {
       // Check tier access
       const hasAccess = await TierService.hasFeatureAccess(userId, 'behavioral_analytics');
@@ -1340,20 +1564,40 @@ class LossAversionAnalyticsService {
         throw new Error('Loss aversion analytics requires Pro tier');
       }
 
-      // Check cache first
-      const cacheKey = AnalyticsCache.generateKey('top_missed_trades', { limit });
+      // Check cache first (include date filters in cache key)
+      const cacheKey = AnalyticsCache.generateKey('top_missed_trades', { limit, startDate, endDate });
       const cachedData = await AnalyticsCache.get(userId, cacheKey);
-      
+
       if (cachedData) {
-        // console.log(`Returning cached top missed trades for user ${userId}`);
+        console.log(`[MISSED PROFIT] Returning cached results for user ${userId}`);
         return cachedData;
       }
 
-      // console.log(`Cache miss - computing top missed trades for user ${userId}`);
+      console.log(`[MISSED PROFIT] Cache miss - computing for user ${userId}, date range: ${startDate || 'all'} to ${endDate || 'now'}`);
+
+      // Build date filter conditions
+      let dateFilter = '';
+      const queryParams = [userId];
+      let paramCount = 2;
+
+      if (startDate) {
+        dateFilter += ` AND t.exit_time >= $${paramCount}`;
+        queryParams.push(startDate);
+        paramCount++;
+      } else {
+        // Default to 1 year if no start date provided
+        dateFilter += ` AND t.exit_time >= NOW() - INTERVAL '1 year'`;
+      }
+
+      if (endDate) {
+        dateFilter += ` AND t.exit_time <= $${paramCount}`;
+        queryParams.push(endDate);
+        paramCount++;
+      }
 
       // Get all completed winning trades that could have been held longer
       const tradesQuery = `
-        SELECT 
+        SELECT
           t.id,
           t.symbol,
           t.entry_time,
@@ -1374,12 +1618,12 @@ class LossAversionAnalyticsService {
           AND t.exit_time IS NOT NULL
           AND t.entry_time IS NOT NULL
           AND t.pnl > 0
-          AND t.exit_time >= NOW() - INTERVAL '1 year'
+          ${dateFilter}
           AND UPPER(t.symbol) NOT IN ('TEST', 'DEMO', 'EXAMPLE', 'XXX', 'UNKNOWN')
         ORDER BY t.exit_time DESC
       `;
 
-      const tradesResult = await db.query(tradesQuery, [userId]);
+      const tradesResult = await db.query(tradesQuery, queryParams);
       const trades = tradesResult.rows;
 
       if (trades.length === 0) {
@@ -1430,7 +1674,9 @@ class LossAversionAnalyticsService {
                 parseFloat(trade.exit_price),
                 new Date(trade.exit_time),
                 trade.side,
-                userId
+                userId,
+                new Date(trade.entry_time),
+                parseFloat(trade.hold_time_minutes)
               );
 
               if (priceAnalysis && priceAnalysis.maxPriceWithin24Hours) {
@@ -1454,6 +1700,31 @@ class LossAversionAnalyticsService {
                   };
                 }
               }
+
+              // Also analyze entry timing (with longer delay to respect rate limits)
+              let entryAnalysis = null;
+              try {
+                await new Promise(resolve => setTimeout(resolve, 600));
+
+                entryAnalysis = await this.analyzeBetterEntryPrice(
+                  trade.symbol,
+                  parseFloat(trade.entry_price),
+                  new Date(trade.entry_time),
+                  trade.side,
+                  parseFloat(trade.exit_price),
+                  parseFloat(trade.hold_time_minutes)
+                );
+
+                console.log(`[ENTRY TIMING] ${trade.symbol}: Entry analysis - ${entryAnalysis.improvementPercent}% improvement possible`);
+              } catch (entryError) {
+                console.warn(`[ENTRY TIMING] Entry analysis failed for ${trade.symbol}: ${entryError.message}`);
+              }
+
+              // Add entry analysis to missed opportunity data
+              if (missedOpportunityData) {
+                missedOpportunityData.entryAnalysis = entryAnalysis;
+              }
+
             } catch (priceError) {
               // Skip logging for test symbols or commonly problematic symbols
               const problematicSymbols = ['TEST', 'DEMO', 'EXAMPLE', 'XXX', 'UNKNOWN'];
@@ -1487,6 +1758,13 @@ class LossAversionAnalyticsService {
 
           // Only include trades with significant missed opportunity (>10%)
           if (missedOpportunityPercent > 10) {
+            const holdTimeMinutes = Math.round(parseFloat(trade.hold_time_minutes) || 0);
+
+            // Log if hold time is 0 or invalid
+            if (holdTimeMinutes <= 0) {
+              console.warn(`[HOLD TIME] Trade ${trade.id} (${trade.symbol}) has invalid hold time: ${trade.hold_time_minutes} minutes. Entry: ${trade.entry_time}, Exit: ${trade.exit_time}`);
+            }
+
             analyzedTrades.push({
               id: trade.id,
               tradeId: trade.id,
@@ -1498,7 +1776,7 @@ class LossAversionAnalyticsService {
               quantity: parseFloat(trade.quantity),
               side: trade.side,
               actualProfit: parseFloat(trade.pnl),
-              holdTimeMinutes: Math.round(parseFloat(trade.hold_time_minutes)),
+              holdTimeMinutes: holdTimeMinutes,
               exitQualityScore: parseFloat(trade.exit_quality_score) || null,
               prematureExit: trade.premature_exit || null,
               missedOpportunityPercent: Math.round(missedOpportunityPercent * 10) / 10,
@@ -1512,6 +1790,7 @@ class LossAversionAnalyticsService {
                 volatility: missedOpportunityPercent
               },
               hasRealPriceData: missedOpportunityData.hasRealPriceData,
+              entryAnalysis: missedOpportunityData.entryAnalysis || null,
               recommendation: this.generateMissedOpportunityRecommendation(missedOpportunityPercent, actualMissedProfit, parseFloat(trade.pnl))
             });
 

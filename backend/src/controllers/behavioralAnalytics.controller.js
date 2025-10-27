@@ -6,6 +6,7 @@ const TradingPersonalityService = require('../services/tradingPersonalityService
 const RevengeTradeDetector = require('../services/revengeTradeDetector');
 const TierService = require('../services/tierService');
 const TickDataService = require('../services/tickDataService');
+const db = require('../config/database');
 
 const behavioralAnalyticsController = {
   
@@ -676,7 +677,9 @@ const behavioralAnalyticsController = {
     try {
       const userId = req.user.id;
       const { startDate, endDate, page, limit } = req.query;
-      
+
+      console.log(`[OVERCONFIDENCE] GET analysis request - userId: ${userId}, startDate: ${startDate}, endDate: ${endDate}, page: ${page}, limit: ${limit}`);
+
       const dateFilter = {};
       if (startDate) dateFilter.startDate = startDate;
       if (endDate) dateFilter.endDate = endDate;
@@ -686,35 +689,22 @@ const behavioralAnalyticsController = {
         limit: parseInt(limit) || 20
       };
 
+      console.log(`[OVERCONFIDENCE] Calling service.getOverconfidenceAnalysis with dateFilter:`, dateFilter);
       const analysis = await OverconfidenceAnalyticsService.getOverconfidenceAnalysis(userId, dateFilter, paginationOptions);
-      
-      // First, run historical analysis if no events exist
-      if (!analysis.events || analysis.events.length === 0) {
-        console.log('No overconfidence events found, running historical analysis...');
-        const historicalAnalysis = await OverconfidenceAnalyticsService.analyzeHistoricalTrades(userId);
-        console.log(`Historical analysis complete: ${historicalAnalysis.overconfidenceEventsCreated} events created`);
-        
-        // Fetch the analysis again after historical analysis
-        const updatedAnalysis = await OverconfidenceAnalyticsService.getOverconfidenceAnalysis(userId, dateFilter, paginationOptions);
-        
-        res.json({
-          success: true,
-          data: {
-            analysis: updatedAnalysis,
-            message: historicalAnalysis.overconfidenceEventsCreated > 0 
-              ? `Detected ${historicalAnalysis.overconfidenceEventsCreated} overconfidence events in your trading history`
-              : 'No overconfidence patterns detected in your trading history'
-          }
-        });
-      } else {
-        res.json({
-          success: true,
-          data: {
-            analysis: analysis
-          }
-        });
-      }
+      console.log(`[OVERCONFIDENCE] Service returned analysis with ${analysis.events?.length || 0} events`);
+
+      // Simply return existing data - don't auto-run analysis
+      // Analysis should only be run when explicitly requested via the analyze-historical endpoint
+      console.log(`[OVERCONFIDENCE] Returning analysis with ${analysis.events?.length || 0} events`);
+      res.json({
+        success: true,
+        data: {
+          analysis: analysis
+        }
+      });
     } catch (error) {
+      console.error(`[OVERCONFIDENCE] Error in getOverconfidenceAnalysis:`, error);
+      console.error(`[OVERCONFIDENCE] Error stack:`, error.stack);
       if (error.message.includes('requires Pro tier')) {
         return res.status(403).json({
           error: 'Pro tier required',
@@ -722,7 +712,11 @@ const behavioralAnalyticsController = {
           upgradeRequired: true
         });
       }
-      next(error);
+      res.status(500).json({
+        error: 'Failed to fetch overconfidence analysis',
+        message: error.message,
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      });
     }
   },
 
@@ -730,7 +724,10 @@ const behavioralAnalyticsController = {
   async analyzeOverconfidenceHistoricalTrades(req, res, next) {
     try {
       const userId = req.user.id;
-      
+      const { startDate, endDate } = req.query;
+
+      console.log(`[OVERCONFIDENCE] Analyzing trades for user ${userId}, date range: ${startDate || 'all'} to ${endDate || 'now'}`);
+
       // Check if user has access to overconfidence analytics
       const hasAccess = await TierService.hasFeatureAccess(userId, 'overconfidence_analytics');
       if (!hasAccess) {
@@ -741,15 +738,20 @@ const behavioralAnalyticsController = {
         });
       }
 
-      const analysis = await OverconfidenceAnalyticsService.analyzeHistoricalTrades(userId);
-      
+      const dateFilter = {};
+      if (startDate) dateFilter.startDate = startDate;
+      if (endDate) dateFilter.endDate = endDate;
+
+      const analysis = await OverconfidenceAnalyticsService.analyzeHistoricalTrades(userId, dateFilter);
+
       res.json({
         success: true,
         data: analysis,
         message: `Overconfidence analysis complete. Analyzed ${analysis.tradesAnalyzed} trades and detected ${analysis.overconfidenceEventsCreated} overconfidence events.`
       });
     } catch (error) {
-      console.error('Error analyzing overconfidence historical trades:', error);
+      console.error('[OVERCONFIDENCE] Error analyzing historical trades:', error);
+      console.error('[OVERCONFIDENCE] Error stack:', error.stack);
       if (error.message.includes('requires Pro tier')) {
         return res.status(403).json({
           error: 'Pro tier required',
@@ -757,7 +759,58 @@ const behavioralAnalyticsController = {
           upgradeRequired: true
         });
       }
-      next(error);
+      res.status(500).json({
+        error: 'Analysis failed',
+        message: error.message,
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      });
+    }
+  },
+
+  // Regenerate AI recommendations for existing overconfidence events
+  async regenerateOverconfidenceAIRecommendations(req, res, next) {
+    try {
+      const userId = req.user.id;
+
+      console.log(`[OVERCONFIDENCE] Regenerating AI recommendations for user ${userId}`);
+
+      // Check if user has access to overconfidence analytics
+      const hasAccess = await TierService.hasFeatureAccess(userId, 'overconfidence_analytics');
+      if (!hasAccess) {
+        return res.status(403).json({
+          error: 'Pro tier required',
+          message: 'Overconfidence analysis requires Pro tier access',
+          upgradeRequired: true
+        });
+      }
+
+      // Clear AI recommendations from all events
+      const clearQuery = `
+        UPDATE overconfidence_events
+        SET ai_recommendations = NULL
+        WHERE user_id = $1
+        RETURNING id
+      `;
+      const clearResult = await db.query(clearQuery, [userId]);
+
+      console.log(`[OVERCONFIDENCE] Cleared AI recommendations from ${clearResult.rows.length} events`);
+
+      // Clear the analytics cache so recommendations will be regenerated on next fetch
+      const AnalyticsCache = require('../services/analyticsCache');
+      await AnalyticsCache.delete(userId); // Delete all cache for this user
+
+      res.json({
+        success: true,
+        message: `Cleared AI recommendations from ${clearResult.rows.length} events. Recommendations will be regenerated with your current AI provider when you view the analysis.`,
+        eventsCleared: clearResult.rows.length
+      });
+    } catch (error) {
+      console.error('[OVERCONFIDENCE] Error regenerating AI recommendations:', error);
+      res.status(500).json({
+        error: 'Failed to regenerate recommendations',
+        message: error.message,
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      });
     }
   },
 
@@ -955,11 +1008,11 @@ const behavioralAnalyticsController = {
   async getTopMissedTrades(req, res, next) {
     try {
       const userId = req.user.id;
-      const { limit = 20 } = req.query;
-      
-      console.log(`Top missed trades requested for user ${userId}, limit: ${limit}`);
-      
-      const analysis = await LossAversionAnalyticsService.getTopMissedTrades(userId, parseInt(limit));
+      const { limit = 20, startDate, endDate } = req.query;
+
+      console.log(`Top missed trades requested for user ${userId}, limit: ${limit}, dateRange: ${startDate} to ${endDate}`);
+
+      const analysis = await LossAversionAnalyticsService.getTopMissedTrades(userId, parseInt(limit), startDate, endDate);
       
       res.json({
         success: true,

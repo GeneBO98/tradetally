@@ -56,6 +56,7 @@ router.get('/tick-data/:symbol/:datetime', behavioralAnalyticsController.getTick
 // Overconfidence analytics routes
 router.get('/overconfidence', behavioralAnalyticsController.getOverconfidenceAnalysis);
 router.post('/overconfidence/analyze-historical', behavioralAnalyticsController.analyzeOverconfidenceHistoricalTrades);
+router.post('/overconfidence/regenerate-ai', behavioralAnalyticsController.regenerateOverconfidenceAIRecommendations);
 router.get('/overconfidence/settings', behavioralAnalyticsController.getOverconfidenceSettings);
 router.put('/overconfidence/settings', behavioralAnalyticsController.updateOverconfidenceSettings);
 router.post('/overconfidence/detect-realtime', behavioralAnalyticsController.detectOverconfidenceInRealTime);
