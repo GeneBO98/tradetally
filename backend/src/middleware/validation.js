@@ -88,7 +88,9 @@ const schemas = {
           price: Joi.number().positive().required(),
           datetime: Joi.date().iso().required(),
           commission: Joi.number().min(0).default(0),
-          fees: Joi.number().min(0).default(0)
+          fees: Joi.number().min(0).default(0),
+          stopLoss: Joi.number().positive().allow(null, '').optional(),
+          takeProfit: Joi.number().positive().allow(null, '').optional()
         }),
         // Grouped round-trip format
         Joi.object({
@@ -159,7 +161,9 @@ const schemas = {
           price: Joi.number().positive().required(),
           datetime: Joi.date().iso().required(),
           commission: Joi.number().min(0).default(0),
-          fees: Joi.number().min(0).default(0)
+          fees: Joi.number().min(0).default(0),
+          stopLoss: Joi.number().positive().allow(null, '').optional(),
+          takeProfit: Joi.number().positive().allow(null, '').optional()
         }),
         // Grouped round-trip format
         Joi.object({

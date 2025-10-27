@@ -80,13 +80,13 @@ const router = createRouter({
       path: '/analytics/behavioral',
       name: 'behavioral-analytics',
       component: () => import('@/views/BehavioralAnalyticsView.vue'),
-      meta: { requiresAuth: true }
+      meta: { requiresAuth: true, requiresTier: 'pro' }
     },
     {
       path: '/analytics/health',
       name: 'health-analytics',
       component: () => import('@/views/HealthAnalyticsView.vue'),
-      meta: { requiresAuth: true }
+      meta: { requiresAuth: true, requiresTier: 'pro' }
     },
     {
       path: '/diary',
@@ -229,7 +229,7 @@ const router = createRouter({
       path: '/markets',
       name: 'markets',
       component: () => import('@/views/MarketsView.vue'),
-      meta: { requiresAuth: true }
+      meta: { requiresAuth: true, requiresTier: 'pro' }
     },
     {
       path: '/watchlists',
@@ -239,7 +239,7 @@ const router = createRouter({
       path: '/watchlists/:id',
       name: 'watchlist-detail',
       component: () => import('@/views/WatchlistDetailView.vue'),
-      meta: { requiresAuth: true }
+      meta: { requiresAuth: true, requiresTier: 'pro' }
     },
     {
       path: '/price-alerts',
@@ -267,22 +267,22 @@ const router = createRouter({
 router.beforeEach(async (to, from, next) => {
   const authStore = useAuthStore()
   const { fetchRegistrationConfig, isClosedMode, showSEOPages } = useRegistrationMode()
-  
+
   // Fetch registration config for all routes
   await fetchRegistrationConfig()
-  
+
   // Handle closed mode - redirect home to login
   if (isClosedMode.value && to.name === 'home' && !authStore.isAuthenticated) {
     next({ name: 'login' })
     return
   }
-  
+
   // Handle SEO pages - only show when registration mode is 'open'
   if (to.meta.requiresOpen && !showSEOPages.value) {
     next({ name: 'home' })
     return
   }
-  
+
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
     next({ name: 'login', query: { redirect: to.fullPath } })
   } else if (to.meta.guest && authStore.isAuthenticated) {
@@ -298,9 +298,38 @@ router.beforeEach(async (to, from, next) => {
         return
       }
     }
-    
+
     if (authStore.user?.role !== 'admin') {
       next({ name: 'dashboard' })
+    } else {
+      next()
+    }
+  } else if (to.meta.requiresTier) {
+    // Ensure user data is loaded for tier check
+    if (authStore.isAuthenticated && !authStore.user) {
+      try {
+        await authStore.fetchUser()
+      } catch (error) {
+        console.error('Failed to fetch user data:', error)
+        next({ name: 'login' })
+        return
+      }
+    }
+
+    const requiredTier = to.meta.requiresTier
+    const userTier = authStore.user?.tier || 'free'
+
+    // Check if user has required tier (pro is higher than free)
+    if (requiredTier === 'pro' && userTier !== 'pro') {
+      // Redirect to pricing page with info about the feature they tried to access
+      next({
+        name: 'pricing',
+        query: {
+          upgrade: 'required',
+          feature: to.name,
+          from: to.fullPath
+        }
+      })
     } else {
       next()
     }

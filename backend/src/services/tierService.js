@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const db = require('../config/database');
+const { getTierLimits, hasReachedLimit, getRemainingQuota, PRICING } = require('../config/tierLimits');
 
 class TierService {
   // Check if billing is enabled (for self-hosted vs SaaS)
@@ -186,13 +187,13 @@ class TierService {
       SELECT user_id FROM subscriptions WHERE stripe_subscription_id = $1
     `;
     const result = await db.query(query, [stripeSubscriptionId]);
-    
+
     if (!result.rows[0]) {
       throw new Error('Subscription not found');
     }
-    
+
     const userId = result.rows[0].user_id;
-    
+
     // Update user tier based on subscription status
     if (status === 'active') {
       await User.updateTier(userId, 'pro');
@@ -203,8 +204,136 @@ class TierService {
         await User.updateTier(userId, 'free');
       }
     }
-    
+
     return userId;
+  }
+
+  // Get tier limits for a user
+  static async getUserLimits(userId) {
+    const tier = await this.getUserTier(userId);
+    return getTierLimits(tier);
+  }
+
+  // Check if user can import trades (batch limit for free tier)
+  static async canImportTrades(userId, count) {
+    const tier = await this.getUserTier(userId);
+    const limits = getTierLimits(tier);
+
+    // Pro tier has unlimited imports
+    if (tier === 'pro' || limits.maxTradesPerImport === null) {
+      return {
+        allowed: true,
+        remaining: null,
+        tier
+      };
+    }
+
+    const maxPerImport = limits.maxTradesPerImport;
+    const allowed = count <= maxPerImport;
+
+    return {
+      allowed,
+      remaining: allowed ? maxPerImport - count : 0,
+      max: maxPerImport,
+      tier,
+      message: allowed
+        ? null
+        : `Free tier is limited to ${maxPerImport} trades per import. You attempted to import ${count} trades. Please upgrade to Pro for unlimited batch imports, or split your import into smaller batches.`
+    };
+  }
+
+  // Get user's current usage statistics
+  static async getUserUsageStats(userId) {
+    const tier = await this.getUserTier(userId);
+    const limits = getTierLimits(tier);
+
+    // Get trade count
+    const tradeCountQuery = `SELECT COUNT(*) as trade_count FROM trades WHERE user_id = $1`;
+    const tradeResult = await db.query(tradeCountQuery, [userId]);
+    const tradeCount = parseInt(tradeResult.rows[0].trade_count);
+
+    // Get journal entry count
+    const journalCountQuery = `SELECT COUNT(*) as entry_count FROM diary_entries WHERE user_id = $1`;
+    const journalResult = await db.query(journalCountQuery, [userId]);
+    const journalCount = parseInt(journalResult.rows[0].entry_count);
+
+    // Get watchlist count
+    const watchlistCountQuery = `SELECT COUNT(*) as watchlist_count FROM watchlists WHERE user_id = $1`;
+    const watchlistResult = await db.query(watchlistCountQuery, [userId]);
+    const watchlistCount = parseInt(watchlistResult.rows[0].watchlist_count);
+
+    // Get price alerts count
+    const alertCountQuery = `SELECT COUNT(*) as alert_count FROM price_alerts WHERE user_id = $1`;
+    const alertResult = await db.query(alertCountQuery, [userId]);
+    const alertCount = parseInt(alertResult.rows[0].alert_count);
+
+    return {
+      tier,
+      trades: {
+        current: tradeCount,
+        max: null, // Unlimited for all tiers
+        remaining: null, // Unlimited
+        maxPerImport: limits.maxTradesPerImport // Batch import limit for free tier
+      },
+      journalEntries: {
+        current: journalCount,
+        max: null, // Unlimited for all tiers
+        remaining: null // Unlimited
+      },
+      watchlists: {
+        current: watchlistCount,
+        max: limits.maxWatchlists,
+        remaining: limits.maxWatchlists ? Math.max(0, limits.maxWatchlists - watchlistCount) : null
+      },
+      priceAlerts: {
+        current: alertCount,
+        max: limits.maxPriceAlerts,
+        remaining: limits.maxPriceAlerts ? Math.max(0, limits.maxPriceAlerts - alertCount) : null
+      }
+    };
+  }
+
+  // Get pricing information
+  static getPricing() {
+    return PRICING;
+  }
+
+  // Get tier comparison info
+  static getTierComparison() {
+    return {
+      free: {
+        name: 'Free',
+        tagline: 'Get started journaling easily',
+        price: 0,
+        features: [
+          'Basic dashboard',
+          'Unlimited trade journaling + core metrics (P/L, win rate, profit factor)',
+          'Unlimited journal entries',
+          'Calendar view (P/L per day)',
+          'Leaderboard (view-only, limited)',
+          'Basic charts (equity curve, volume, performance by day)',
+          'Batch imports up to 100 trades at once'
+        ]
+      },
+      pro: {
+        name: 'Pro',
+        tagline: 'Unlock your trading edge',
+        price: 8,
+        interval: 'month',
+        features: [
+          'Unlimited batch imports',
+          'Financial news feed + upcoming earnings',
+          'All advanced analytics (SQN, Kelly, MAE/MFE, K-ratio, sector breakdowns, time-of-day)',
+          'Behavioral analytics suite (revenge trading, loss aversion, personality typing)',
+          'Health analytics (heart rate, sleep, stress correlations)',
+          'Watchlists + alerts (email + iOS push)',
+          'Advanced leaderboard filters (compare by strategy, time frame)',
+          'API access',
+          'AI Insights'
+        ],
+        upgradeMessage: 'Upgrade to Pro to understand why you win or lose — not just how often.'
+      }
+    };
   }
 }
 
