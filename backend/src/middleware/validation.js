@@ -187,7 +187,8 @@ const schemas = {
     statisticsCalculation: Joi.string().valid('average', 'median'),
     enableTradeGrouping: Joi.boolean(),
     tradeGroupingTimeGapMinutes: Joi.number().integer().min(1).max(1440),
-    autoCloseExpiredOptions: Joi.boolean()
+    autoCloseExpiredOptions: Joi.boolean(),
+    defaultStopLossPercent: Joi.number().min(0).max(100).allow(null)
   }).min(1),
 
   // Mobile-specific validation schemas

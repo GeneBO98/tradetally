@@ -64,11 +64,9 @@ class Trade {
     const pnl = providedPnL !== undefined ? providedPnL : this.calculatePnL(entryPrice, cleanExitPrice, quantity, side, commission, fees, instrumentType, contractSize, pointValue);
     const pnlPercent = providedPnLPercent !== undefined ? providedPnLPercent : this.calculatePnLPercent(entryPrice, cleanExitPrice, side, pnl, quantity, instrumentType, pointValue);
 
-    // Calculate R-Multiple if stop loss and exit price are provided
-    // R-Multiple measures actual performance vs initial risk, so we need the actual exit price
-    const rValue = (stopLoss && cleanExitPrice && entryPrice && side)
-      ? this.calculateRValue(entryPrice, stopLoss, cleanExitPrice, side)
-      : null;
+    // Calculate R-Multiple later after applying default stop loss
+    // Will be calculated after finalStopLoss is determined
+    let rValue = null;
 
     // Use exit date as trade date if available, otherwise use entry date
     // If tradeDate is explicitly provided (e.g., from imports), use it directly
@@ -202,6 +200,42 @@ class Trade {
       await this.ensureTagsExist(userId, tags);
     }
 
+    // Apply default stop loss if none provided
+    let finalStopLoss = stopLoss;
+    if (!finalStopLoss && entryPrice) {
+      try {
+        const User = require('./User');
+        const userSettings = await User.getSettings(userId);
+
+        if (userSettings?.default_stop_loss_percent && userSettings.default_stop_loss_percent > 0) {
+          const stopLossPercent = parseFloat(userSettings.default_stop_loss_percent);
+
+          // Calculate stop loss price based on entry price and side
+          // For long positions: entry price - (entry price * stop loss %)
+          // For short positions: entry price + (entry price * stop loss %)
+          if (side === 'long' || side === 'buy') {
+            finalStopLoss = entryPrice * (1 - stopLossPercent / 100);
+          } else if (side === 'short' || side === 'sell') {
+            finalStopLoss = entryPrice * (1 + stopLossPercent / 100);
+          }
+
+          // Round to 2 decimal places for stocks, 4 for precise pricing
+          finalStopLoss = Math.round(finalStopLoss * 10000) / 10000;
+
+          console.log(`[STOP LOSS] Applied default ${stopLossPercent}% stop loss for ${side} position: $${finalStopLoss}`);
+        }
+      } catch (error) {
+        console.warn('[STOP LOSS] Failed to apply default stop loss:', error.message);
+        // Continue without default stop loss if there's an error
+      }
+    }
+
+    // Calculate R-Multiple if stop loss and exit price are provided
+    // R-Multiple measures actual performance vs initial risk, so we need the actual exit price
+    if (finalStopLoss && cleanExitPrice && entryPrice && side) {
+      rValue = this.calculateRValue(entryPrice, finalStopLoss, cleanExitPrice, side);
+    }
+
     const query = `
       INSERT INTO trades (
         user_id, symbol, trade_date, entry_time, exit_time, entry_price, exit_price,
@@ -231,7 +265,7 @@ class Trade {
       importId || null,
       originalCurrency || 'USD', exchangeRate || 1.0, originalEntryPriceCurrency || null, originalExitPriceCurrency || null,
       originalPnlCurrency || null, originalCommissionCurrency || null, originalFeesCurrency || null,
-      stopLoss || null, takeProfit || null, rValue
+      finalStopLoss || null, takeProfit || null, rValue
     ];
 
     const result = await db.query(query, values);

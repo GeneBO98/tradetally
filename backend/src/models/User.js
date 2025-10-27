@@ -181,7 +181,8 @@ class User {
       enableTradeGrouping: 'enable_trade_grouping',
       tradeGroupingTimeGapMinutes: 'trade_grouping_time_gap_minutes',
       autoCloseExpiredOptions: 'auto_close_expired_options',
-      analyticsChartLayout: 'analytics_chart_layout'
+      analyticsChartLayout: 'analytics_chart_layout',
+      defaultStopLossPercent: 'default_stop_loss_percent'
     };
 
     Object.entries(settings).forEach(([key, value]) => {

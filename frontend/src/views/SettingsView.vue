@@ -89,6 +89,32 @@
                 </div>
               </div>
 
+              <div>
+                <label for="defaultStopLoss" class="label">Default Stop Loss Percentage</label>
+                <div class="mt-1 relative rounded-md shadow-sm">
+                  <input
+                    type="number"
+                    id="defaultStopLoss"
+                    v-model.number="analyticsForm.defaultStopLossPercent"
+                    step="0.1"
+                    min="0"
+                    max="100"
+                    placeholder="0"
+                    class="input pr-12"
+                  />
+                  <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                    <span class="text-gray-500 dark:text-gray-400">%</span>
+                  </div>
+                </div>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  Automatically apply this stop loss percentage to all new and imported trades. Leave empty to not set a default.
+                  For long positions, the stop loss will be below entry price. For short positions, it will be above entry price.
+                  <span class="block mt-2 text-blue-600 dark:text-blue-400 font-medium">
+                    Example: 2% stop loss on a $100 long entry = $98 stop loss price
+                  </span>
+                </p>
+              </div>
+
               <div class="flex justify-end">
                 <button
                   type="submit"
@@ -725,7 +751,8 @@ const aiLoading = ref(false)
 // Analytics Settings
 const analyticsForm = ref({
   statisticsCalculation: 'average',
-  autoCloseExpiredOptions: true
+  autoCloseExpiredOptions: true,
+  defaultStopLossPercent: null
 })
 
 const analyticsLoading = ref(false)
@@ -903,13 +930,15 @@ async function loadAnalyticsSettings() {
       statisticsCalculation: response.data.settings.statisticsCalculation || 'average',
       autoCloseExpiredOptions: response.data.settings.autoCloseExpiredOptions !== undefined
         ? response.data.settings.autoCloseExpiredOptions
-        : true
+        : true,
+      defaultStopLossPercent: response.data.settings.defaultStopLossPercent || null
     }
   } catch (error) {
     console.error('Failed to load analytics settings:', error)
     // Default values if loading fails
     analyticsForm.value.statisticsCalculation = 'average'
     analyticsForm.value.autoCloseExpiredOptions = true
+    analyticsForm.value.defaultStopLossPercent = null
   }
 }
 
@@ -918,7 +947,8 @@ async function updateAnalyticsSettings() {
   try {
     await api.put('/settings', {
       statisticsCalculation: analyticsForm.value.statisticsCalculation,
-      autoCloseExpiredOptions: analyticsForm.value.autoCloseExpiredOptions
+      autoCloseExpiredOptions: analyticsForm.value.autoCloseExpiredOptions,
+      defaultStopLossPercent: analyticsForm.value.defaultStopLossPercent || null
     })
     showSuccess('Success', 'Analytics preferences updated successfully')
   } catch (error) {
