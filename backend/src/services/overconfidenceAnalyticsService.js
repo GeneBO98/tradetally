@@ -21,29 +21,49 @@ class OverconfidenceAnalyticsService {
   }
 
   // Analyze historical trades for overconfidence patterns
-  static async analyzeHistoricalTrades(userId) {
+  static async analyzeHistoricalTrades(userId, dateFilter = {}) {
     const hasAccess = await TierService.hasFeatureAccess(userId, 'overconfidence_analytics');
     if (!hasAccess) {
       throw new Error('Overconfidence analytics requires Pro tier');
     }
 
-    // Clear existing data
-    await this.clearHistoricalData(userId);
+    console.log(`[OVERCONFIDENCE] Analyzing trades with date filter:`, dateFilter);
+
+    // Clear existing data (only for the filtered date range if provided)
+    await this.clearHistoricalData(userId, dateFilter);
+
+    // Build date filter conditions
+    let dateFilterSQL = '';
+    const queryParams = [userId];
+    let paramCount = 2;
+
+    if (dateFilter.startDate) {
+      dateFilterSQL += ` AND exit_time >= $${paramCount}`;
+      queryParams.push(dateFilter.startDate);
+      paramCount++;
+    }
+
+    if (dateFilter.endDate) {
+      dateFilterSQL += ` AND exit_time <= $${paramCount}`;
+      queryParams.push(dateFilter.endDate);
+      paramCount++;
+    }
 
     // Get all completed trades for the user, ordered by entry time
     const tradesQuery = `
-      SELECT 
-        id, symbol, entry_time, exit_time, entry_price, exit_price, 
+      SELECT
+        id, symbol, entry_time, exit_time, entry_price, exit_price,
         quantity, side, commission, fees, pnl
-      FROM trades 
-      WHERE user_id = $1 
-        AND exit_price IS NOT NULL 
+      FROM trades
+      WHERE user_id = $1
+        AND exit_price IS NOT NULL
         AND exit_time IS NOT NULL
+        ${dateFilterSQL}
         AND UPPER(symbol) NOT IN ('TEST', 'DEMO', 'EXAMPLE', 'XXX', 'UNKNOWN')
       ORDER BY entry_time ASC
     `;
 
-    const tradesResult = await db.query(tradesQuery, [userId]);
+    const tradesResult = await db.query(tradesQuery, queryParams);
     const trades = tradesResult.rows;
 
     if (trades.length < 10) {
@@ -165,6 +185,11 @@ class OverconfidenceAnalyticsService {
       }
     }
 
+    // Clear analytics cache so next fetch will regenerate AI recommendations
+    console.log(`[OVERCONFIDENCE] Clearing analytics cache for user ${userId} after historical analysis`);
+    const AnalyticsCache = require('./analyticsCache');
+    await AnalyticsCache.delete(userId);
+
     return {
       tradesAnalyzed: trades.length,
       overconfidenceEventsCreated,
@@ -243,16 +268,238 @@ class OverconfidenceAnalyticsService {
     };
   }
 
+  // Analyze outcome trade to determine if it was truly overconfidence
+  static async analyzeOutcomeTrade(userId, outcomeTradeId) {
+    if (!outcomeTradeId) return null;
+
+    try {
+      // Get outcome trade details
+      const tradeQuery = `
+        SELECT id, symbol, entry_time, exit_time, entry_price, exit_price,
+               quantity, side, pnl, stop_loss, commission, fees
+        FROM trades
+        WHERE id = $1 AND user_id = $2
+      `;
+      const tradeResult = await db.query(tradeQuery, [outcomeTradeId, userId]);
+      if (tradeResult.rows.length === 0) return null;
+
+      const trade = tradeResult.rows[0];
+      const holdTimeMinutes = (new Date(trade.exit_time) - new Date(trade.entry_time)) / (1000 * 60);
+
+      // Get user's default stop loss setting
+      const User = require('../models/User');
+      const userSettings = await User.getSettings(userId);
+      const defaultStopLossPercent = parseFloat(userSettings?.default_stop_loss_percent || 0);
+
+      // Import loss aversion service for price analysis
+      const LossAversionService = require('./lossAversionAnalyticsService');
+
+      // 1. Analyze entry timing - was entry near peak/trough?
+      const entryAnalysis = await LossAversionService.analyzeBetterEntryPrice(
+        trade.symbol,
+        parseFloat(trade.entry_price),
+        new Date(trade.entry_time),
+        trade.side,
+        parseFloat(trade.exit_price),
+        holdTimeMinutes
+      ).catch(err => {
+        console.warn(`[OVERCONFIDENCE] Entry analysis failed for ${trade.symbol}: ${err.message}`);
+        return null;
+      });
+
+      // 2. Analyze exit timing and stop loss adherence
+      const stopLossAnalysis = await this.analyzeStopLossAdherence(
+        trade,
+        defaultStopLossPercent
+      ).catch(err => {
+        console.warn(`[OVERCONFIDENCE] Stop loss analysis failed for ${trade.symbol}: ${err.message}`);
+        return null;
+      });
+
+      // 3. Analyze price movement after exit
+      const exitAnalysis = await LossAversionService.analyzePriceMovementAfterExit(
+        trade.symbol,
+        parseFloat(trade.exit_price),
+        new Date(trade.exit_time),
+        trade.side,
+        userId,
+        new Date(trade.entry_time),
+        holdTimeMinutes
+      ).catch(err => {
+        console.warn(`[OVERCONFIDENCE] Exit analysis failed for ${trade.symbol}: ${err.message}`);
+        return null;
+      });
+
+      // 4. Determine if trade was truly due to overconfidence
+      const verdict = this.determineOverconfidenceVerdict(
+        trade,
+        entryAnalysis,
+        stopLossAnalysis,
+        exitAnalysis,
+        defaultStopLossPercent
+      );
+
+      return {
+        entryAnalysis,
+        stopLossAnalysis,
+        exitAnalysis,
+        verdict,
+        tradeDetails: {
+          symbol: trade.symbol,
+          entryPrice: parseFloat(trade.entry_price),
+          exitPrice: parseFloat(trade.exit_price),
+          side: trade.side,
+          pnl: parseFloat(trade.pnl),
+          holdTimeMinutes: Math.round(holdTimeMinutes),
+          actualStopLoss: trade.stop_loss ? parseFloat(trade.stop_loss) : null
+        }
+      };
+    } catch (error) {
+      console.error(`[OVERCONFIDENCE] Error analyzing outcome trade:`, error);
+      return null;
+    }
+  }
+
+  // Analyze if trader adhered to stop loss
+  static async analyzeStopLossAdherence(trade, defaultStopLossPercent) {
+    const entryPrice = parseFloat(trade.entry_price);
+    const exitPrice = parseFloat(trade.exit_price);
+    const side = trade.side;
+    const actualStopLoss = trade.stop_loss ? parseFloat(trade.stop_loss) : null;
+
+    // Calculate where stop loss should have been
+    let recommendedStopLoss = null;
+    if (defaultStopLossPercent > 0) {
+      if (side === 'long' || side === 'buy') {
+        recommendedStopLoss = entryPrice * (1 - defaultStopLossPercent / 100);
+      } else if (side === 'short' || side === 'sell') {
+        recommendedStopLoss = entryPrice * (1 + defaultStopLossPercent / 100);
+      }
+    }
+
+    // Check if trade hit the recommended stop loss
+    let shouldHaveExited = false;
+    let heldPastStopLoss = false;
+    let additionalLoss = 0;
+
+    if (recommendedStopLoss) {
+      if (side === 'long' || side === 'buy') {
+        // For longs, check if exit price went below stop loss
+        shouldHaveExited = exitPrice < recommendedStopLoss;
+        if (shouldHaveExited) {
+          heldPastStopLoss = true;
+          // Calculate additional loss from not respecting stop
+          additionalLoss = (recommendedStopLoss - exitPrice) * parseFloat(trade.quantity);
+        }
+      } else if (side === 'short' || side === 'sell') {
+        // For shorts, check if exit price went above stop loss
+        shouldHaveExited = exitPrice > recommendedStopLoss;
+        if (shouldHaveExited) {
+          heldPastStopLoss = true;
+          additionalLoss = (exitPrice - recommendedStopLoss) * parseFloat(trade.quantity);
+        }
+      }
+    }
+
+    return {
+      hadStopLoss: actualStopLoss !== null,
+      actualStopLoss,
+      recommendedStopLoss,
+      defaultStopLossPercent,
+      heldPastStopLoss,
+      shouldHaveExited,
+      additionalLoss: Math.abs(additionalLoss),
+      adherenceRating: heldPastStopLoss ? 'poor' : (actualStopLoss ? 'good' : 'none')
+    };
+  }
+
+  // Determine final verdict on whether trade was overconfidence
+  static determineOverconfidenceVerdict(trade, entryAnalysis, stopLossAnalysis, exitAnalysis, defaultStopLossPercent) {
+    const tradePnL = parseFloat(trade.pnl);
+    const isLoss = tradePnL < 0;
+
+    let overconfidenceScore = 0;
+    let reasons = [];
+    let positiveFactors = [];
+
+    // Entry timing analysis
+    if (entryAnalysis && entryAnalysis.improvementPercent > 5) {
+      overconfidenceScore += 2;
+      reasons.push(`Poor entry timing: Could have entered ${entryAnalysis.improvementPercent.toFixed(1)}% better`);
+    } else if (entryAnalysis && entryAnalysis.improvementPercent < 2) {
+      positiveFactors.push('Entry timing was near optimal');
+    }
+
+    // Stop loss adherence
+    if (stopLossAnalysis && stopLossAnalysis.heldPastStopLoss) {
+      overconfidenceScore += 3;
+      reasons.push(`Held past recommended stop loss: Additional loss of $${stopLossAnalysis.additionalLoss.toFixed(2)}`);
+    } else if (stopLossAnalysis && stopLossAnalysis.hadStopLoss) {
+      positiveFactors.push('Respected stop loss discipline');
+    }
+
+    // No stop loss when recommended
+    if (stopLossAnalysis && !stopLossAnalysis.hadStopLoss && defaultStopLossPercent > 0) {
+      overconfidenceScore += 1;
+      reasons.push('No stop loss set despite having default stop loss configured');
+    }
+
+    // Exit timing (for losses)
+    if (isLoss && exitAnalysis && exitAnalysis.wouldHaveRecovered) {
+      positiveFactors.push('Exited at appropriate time before further decline');
+    }
+
+    // Determine verdict
+    let verdict = 'unknown';
+    let verdictLabel = 'Unknown';
+    let recommendation = '';
+
+    if (overconfidenceScore >= 3) {
+      verdict = 'true_overconfidence';
+      verdictLabel = 'True Overconfidence';
+      recommendation = 'This loss was preventable. The combination of poor entry timing and not respecting stop loss indicates overconfidence from the winning streak.';
+    } else if (overconfidenceScore === 0 && positiveFactors.length >= 2) {
+      verdict = 'prudent_trade';
+      verdictLabel = 'Prudent Trade';
+      recommendation = 'This was a well-executed trade with good entry timing and stop loss discipline. The loss was due to market conditions, not overconfidence.';
+    } else if (overconfidenceScore > 0 && overconfidenceScore < 3) {
+      verdict = 'partial_overconfidence';
+      verdictLabel = 'Partial Overconfidence';
+      recommendation = 'Some aspects of this trade showed overconfidence. Review the specific issues to improve future trades.';
+    } else {
+      verdict = 'bad_luck';
+      verdictLabel = 'Bad Luck';
+      recommendation = 'The trade setup was reasonable, but market conditions were unfavorable.';
+    }
+
+    return {
+      verdict,
+      verdictLabel,
+      overconfidenceScore,
+      maxScore: 6,
+      isOverconfidence: overconfidenceScore >= 2,
+      reasons,
+      positiveFactors,
+      recommendation
+    };
+  }
+
   // Create overconfidence event record
   static async createOverconfidenceEvent(userId, eventData, outcomeTradeId = null, outcomeAmount = null, outcomeType = 'ongoing') {
+    // Analyze outcome trade if provided
+    let outcomeAnalysis = null;
+    if (outcomeTradeId) {
+      outcomeAnalysis = await this.analyzeOutcomeTrade(userId, outcomeTradeId);
+    }
+
     const query = `
       INSERT INTO overconfidence_events (
         user_id, win_streak_length, win_streak_start_date, win_streak_end_date,
         baseline_position_size, peak_position_size, position_size_increase_percent,
         total_streak_profit, streak_trades, severity, confidence_score,
-        outcome_after_streak, outcome_trade_id, outcome_amount
+        outcome_after_streak, outcome_trade_id, outcome_amount, outcome_analysis
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
       RETURNING id
     `;
 
@@ -270,7 +517,8 @@ class OverconfidenceAnalyticsService {
       eventData.confidenceScore,
       outcomeType,
       outcomeTradeId,
-      outcomeAmount
+      outcomeAmount,
+      outcomeAnalysis ? JSON.stringify(outcomeAnalysis) : null
     ]);
 
     // Also create behavioral pattern entry
@@ -308,6 +556,8 @@ class OverconfidenceAnalyticsService {
 
   // Get overconfidence analysis for a user
   static async getOverconfidenceAnalysis(userId, dateFilter = '', paginationOptions = {}) {
+    console.log(`[OVERCONFIDENCE SERVICE] getOverconfidenceAnalysis called for user ${userId}`, { dateFilter, paginationOptions });
+
     const hasAccess = await TierService.hasFeatureAccess(userId, 'overconfidence_analytics');
     if (!hasAccess) {
       throw new Error('Overconfidence analytics requires Pro tier');
@@ -318,19 +568,20 @@ class OverconfidenceAnalyticsService {
     const offset = (page - 1) * limit;
 
     // Check cache first
-    const cacheKey = AnalyticsCache.generateKey('overconfidence_analysis', { 
-      ...dateFilter, 
-      page, 
-      limit 
+    const cacheKey = AnalyticsCache.generateKey('overconfidence_analysis', {
+      ...dateFilter,
+      page,
+      limit
     });
     const cachedData = await AnalyticsCache.get(userId, cacheKey);
-    
+
     if (cachedData) {
-      // console.log(`Returning cached overconfidence analysis for user ${userId}`);
+      console.log(`[OVERCONFIDENCE SERVICE] Returning cached data with ${cachedData.events?.length || 0} events`);
       return cachedData;
     }
 
-    // console.log(`Cache miss - computing overconfidence analysis for user ${userId}`);
+    console.log(`[OVERCONFIDENCE SERVICE] Cache miss - querying database for fresh data`);
+    console.log(`[OVERCONFIDENCE SERVICE] Will generate fresh AI recommendations for events...`);
 
     // Build base parameters for date filtering
     const baseParams = [userId];
@@ -340,6 +591,7 @@ class OverconfidenceAnalyticsService {
     if (dateFilter.startDate && dateFilter.endDate) {
       dateCondition = ` AND created_at >= $${++paramCount} AND created_at <= $${++paramCount}`;
       baseParams.push(dateFilter.startDate, dateFilter.endDate);
+      console.log(`[OVERCONFIDENCE SERVICE] Date filter applied: ${dateFilter.startDate} to ${dateFilter.endDate}`);
     }
 
     // Get total count for pagination
@@ -348,8 +600,10 @@ class OverconfidenceAnalyticsService {
       FROM overconfidence_events
       WHERE user_id = $1 ${dateCondition}
     `;
+    console.log(`[OVERCONFIDENCE SERVICE] Running count query:`, countQuery, baseParams);
     const countResult = await db.query(countQuery, baseParams);
     const totalCount = parseInt(countResult.rows[0].total_count);
+    console.log(`[OVERCONFIDENCE SERVICE] Total events found: ${totalCount}`);
 
     // Get overconfidence events with pagination
     const eventsQuery = `
@@ -372,7 +626,7 @@ class OverconfidenceAnalyticsService {
 
     // Transform events to camelCase for frontend with AI recommendations
     const transformedEvents = [];
-    
+
     // Process AI recommendations in batches to respect rate limits
     const batchSize = 3; // Process max 3 events at a time
     const fallbackRecommendations = [
@@ -380,6 +634,8 @@ class OverconfidenceAnalyticsService {
       'Set a maximum position size relative to your account',
       'Take partial profits during extended win streaks'
     ];
+
+    console.log(`[OVERCONFIDENCE AI] Processing ${eventsResult.rows.length} events for AI recommendations`);
 
     for (let i = 0; i < eventsResult.rows.length; i += batchSize) {
       const batch = eventsResult.rows.slice(i, i + batchSize);
@@ -391,10 +647,19 @@ class OverconfidenceAnalyticsService {
 
       for (const event of batch) {
         // Generate AI recommendations for each event
+        console.log(`[OVERCONFIDENCE AI] Processing event ${event.id}`);
         const aiRecommendations = await this.generateAIRecommendations(event, userId).catch((error) => {
-          console.warn(`Failed to generate AI recommendations for event ${event.id}:`, error.message);
-          return fallbackRecommendations;
+          console.warn(`[OVERCONFIDENCE AI] Failed to generate AI recommendations for event ${event.id}:`, error.message);
+          console.warn(`[OVERCONFIDENCE AI] Error stack:`, error.stack);
+          return null; // Return null to use fallback
         });
+
+        // Log what type of recommendations we're using
+        if (aiRecommendations && aiRecommendations.length > 0) {
+          console.log(`[OVERCONFIDENCE AI] Using AI recommendations for event ${event.id} (${aiRecommendations.length} recommendations)`);
+        } else {
+          console.log(`[OVERCONFIDENCE AI] Using fallback recommendations for event ${event.id}`);
+        }
 
         transformedEvents.push({
           id: event.id,
@@ -414,6 +679,7 @@ class OverconfidenceAnalyticsService {
           totalImpact: parseFloat(event.outcome_amount || 0),
           streakTrades: event.streak_trades,
           outcomeStatus: event.outcome_status,
+          outcomeAnalysis: event.outcome_analysis ? (typeof event.outcome_analysis === 'string' ? JSON.parse(event.outcome_analysis) : event.outcome_analysis) : null,
           recommendations: aiRecommendations || fallbackRecommendations
         });
       }
@@ -528,9 +794,11 @@ class OverconfidenceAnalyticsService {
       }
     };
 
+    console.log(`[OVERCONFIDENCE SERVICE] Returning result with ${result.events.length} events, totalEvents: ${result.statistics.totalEvents}`);
+
     // Cache the result for 2 hours
     await AnalyticsCache.set(userId, cacheKey, result, 120);
-    
+
     return result;
   }
 
@@ -574,14 +842,47 @@ class OverconfidenceAnalyticsService {
   }
 
   // Clear existing historical data
-  static async clearHistoricalData(userId) {
+  static async clearHistoricalData(userId, dateFilter = {}) {
+    let eventsDateFilterSQL = '';
+    let patternsDateFilterSQL = '';
+    const eventsParams = [userId];
+    const patternsParams = [userId, 'overconfidence_bias'];
+
+    // Add date filters if provided
+    if (dateFilter.startDate || dateFilter.endDate) {
+      let eventsParamCount = 2;
+      let patternsParamCount = 3;
+
+      if (dateFilter.startDate) {
+        eventsDateFilterSQL += ` AND created_at >= $${eventsParamCount}`;
+        patternsDateFilterSQL += ` AND detected_at >= $${patternsParamCount}`;
+        eventsParams.push(dateFilter.startDate);
+        patternsParams.push(dateFilter.startDate);
+        eventsParamCount++;
+        patternsParamCount++;
+      }
+
+      if (dateFilter.endDate) {
+        eventsDateFilterSQL += ` AND created_at <= $${eventsParamCount}`;
+        patternsDateFilterSQL += ` AND detected_at <= $${patternsParamCount}`;
+        eventsParams.push(dateFilter.endDate);
+        patternsParams.push(dateFilter.endDate);
+        eventsParamCount++;
+        patternsParamCount++;
+      }
+
+      console.log(`[OVERCONFIDENCE] Clearing historical data with date filter: ${dateFilter.startDate || 'all'} to ${dateFilter.endDate || 'now'}`);
+    } else {
+      console.log(`[OVERCONFIDENCE] Clearing all historical data`);
+    }
+
     const queries = [
-      'DELETE FROM overconfidence_events WHERE user_id = $1',
-      'DELETE FROM behavioral_patterns WHERE user_id = $1 AND pattern_type = $2'
+      `DELETE FROM overconfidence_events WHERE user_id = $1${eventsDateFilterSQL}`,
+      `DELETE FROM behavioral_patterns WHERE user_id = $1 AND pattern_type = $2${patternsDateFilterSQL}`
     ];
 
-    await db.query(queries[0], [userId]);
-    await db.query(queries[1], [userId, 'overconfidence_bias']);
+    await db.query(queries[0], eventsParams);
+    await db.query(queries[1], patternsParams);
   }
 
   // Real-time overconfidence detection for new trades
@@ -749,27 +1050,44 @@ class OverconfidenceAnalyticsService {
   // Generate AI-powered recommendations for overconfidence events
   static async generateAIRecommendations(event, userId) {
     try {
+      console.log(`[AI REC] Starting AI recommendation generation for event ${event.id}, user ${userId}`);
+
       // First check if we already have cached AI recommendations for this event
       const cachedRecommendations = await this.getCachedAIRecommendations(event.id);
       if (cachedRecommendations && cachedRecommendations.length > 0) {
-        // console.log(`Using cached AI recommendations for event ${event.id}`);
+        console.log(`[AI REC] Found cached AI recommendations for event ${event.id}: ${cachedRecommendations.length} recommendations already stored in database`);
         return cachedRecommendations;
       }
+      console.log(`[AI REC] No cached recommendations found for event ${event.id}, will generate new ones`);
 
       // Check for similar events with existing AI recommendations
       const similarEventRecommendations = await this.findSimilarEventRecommendations(event, userId);
       if (similarEventRecommendations && similarEventRecommendations.length > 0) {
-        console.log(`Using recommendations from similar event for event ${event.id}`);
+        console.log(`[AI REC] Using recommendations from similar event for event ${event.id}`);
         // Store these recommendations for this event too
         await this.storeAIRecommendations(event.id, similarEventRecommendations, 'cached_similar');
         return similarEventRecommendations;
       }
 
       // Get user AI settings (with admin defaults as fallback)
+      console.log(`[AI REC] Fetching user AI settings for user ${userId}`);
       const aiSettings = await aiService.getUserSettings(userId);
-      
-      if (!aiSettings.provider || !aiSettings.apiKey) {
-        console.log('AI recommendations not available - no AI provider configured');
+      console.log(`[AI REC] User AI settings:`, {
+        provider: aiSettings?.provider,
+        hasApiKey: !!aiSettings?.apiKey,
+        hasApiUrl: !!aiSettings?.apiUrl,
+        model: aiSettings?.model
+      });
+
+      if (!aiSettings.provider) {
+        console.log('[AI REC] AI recommendations not available - no AI provider configured');
+        return null;
+      }
+
+      // For local providers (ollama, lmstudio, local), API key is optional
+      const needsApiKey = !['ollama', 'lmstudio', 'local'].includes(aiSettings.provider);
+      if (needsApiKey && !aiSettings.apiKey) {
+        console.log(`[AI REC] AI recommendations not available - API key required for ${aiSettings.provider} but not configured`);
         return null;
       }
 
@@ -799,39 +1117,47 @@ class OverconfidenceAnalyticsService {
       }
       
       // Create a comprehensive prompt for the AI
+      console.log(`[AI REC] Building prompt for event ${event.id}`);
       const prompt = this.buildOverconfidencePrompt(event, userContext);
-      
+      console.log(`[AI REC] Prompt length: ${prompt.length} characters`);
+
       // Use AI provider to generate recommendations
       const provider = aiService.providers[aiSettings.provider];
       if (!provider) {
-        console.log(`AI provider ${aiSettings.provider} not supported for recommendations`);
+        console.log(`[AI REC] AI provider ${aiSettings.provider} not supported for recommendations`);
         return null;
       }
 
-      const response = await provider(prompt, aiSettings, { 
+      console.log(`[AI REC] Calling ${aiSettings.provider} provider with prompt...`);
+      const response = await provider(prompt, aiSettings, {
         maxTokens: 500,
-        temperature: 0.7 
+        temperature: 0.7
       });
-      
+      console.log(`[AI REC] Received response from ${aiSettings.provider}, length: ${JSON.stringify(response).length}`);
+
       // Parse the AI response into an array of recommendations
       const recommendations = this.parseAIRecommendations(response);
-      
+      console.log(`[AI REC] Parsed ${recommendations?.length || 0} recommendations from AI response`);
+
       // Store the AI recommendations for future use and caching with event data for similarity hashing
       await this.storeAIRecommendations(event.id, recommendations, aiSettings.provider, event);
-      
+      console.log(`[AI REC] Stored recommendations for event ${event.id}`);
+
       // Update rate limiting tracking
       await this.updateAIRateLimit(aiSettings.provider);
-      
+
       return recommendations;
       
     } catch (error) {
-      console.error('Error generating AI recommendations:', error.message);
-      
+      console.error('[AI REC] Error generating AI recommendations:', error.message);
+      console.error('[AI REC] Error stack:', error.stack);
+
       // If it's a rate limit error, track it
       if (error.message.includes('429') || error.message.includes('quota') || error.message.includes('rate limit')) {
+        console.log('[AI REC] Rate limit error detected, tracking...');
         await this.handleAIRateLimit(error);
       }
-      
+
       return null;
     }
   }

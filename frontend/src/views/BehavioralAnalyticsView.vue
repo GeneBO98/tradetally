@@ -35,106 +35,29 @@
 
       <!-- Main Content -->
       <div v-else class="space-y-8">
-        <!-- Date Filter -->
+        <!-- Filters -->
         <div class="card">
           <div class="card-body">
-            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <div>
-                <label for="startDate" class="label">Start Date</label>
-                <input
-                  id="startDate"
-                  v-model="filters.startDate"
-                  type="date"
-                  class="input"
-                />
-              </div>
-              <div>
-                <label for="endDate" class="label">End Date</label>
-                <input
-                  id="endDate"
-                  v-model="filters.endDate"
-                  type="date"
-                  class="input"
-                />
-              </div>
-              
-              <!-- Mobile: Stack buttons vertically -->
-              <div class="flex flex-col space-y-2 sm:hidden">
-                <div class="flex space-x-2">
-                  <button 
-                    @click="applyFilters"
-                    :disabled="loading"
-                    class="flex-1 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700"
-                  >
-                    <span v-if="loading" class="flex items-center justify-center">
-                      <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></div>
-                      Applying
-                    </span>
-                    <span v-else>Apply</span>
-                  </button>
-                  <button 
-                    @click="clearFilters"
-                    :disabled="loading"
-                    class="flex-1 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700"
-                  >
-                    Clear
-                  </button>
-                </div>
-                <button 
-                  @click="analyzeHistoricalTrades" 
-                  :disabled="loadingHistorical"
-                  class="w-full px-3 py-2 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-                >
-                  <svg class="w-4 h-4 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                  </svg>
-                  <span v-if="loadingHistorical" class="flex items-center">
-                    <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></div>
-                    Analyzing...
-                  </span>
-                  <span v-else class="whitespace-nowrap">
-                    Analyze History
-                  </span>
-                </button>
-              </div>
-              
-              <!-- Desktop: Keep inline -->
-              <div class="hidden sm:flex items-end space-x-2">
-                <button 
-                  @click="applyFilters"
-                  :disabled="loading"
-                  class="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700"
-                >
-                  <span v-if="loading" class="flex items-center">
-                    <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></div>
-                    Applying
-                  </span>
-                  <span v-else>Apply</span>
-                </button>
-                <button 
-                  @click="clearFilters"
-                  :disabled="loading"
-                  class="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700"
-                >
-                  Clear
-                </button>
-                <button 
-                  @click="analyzeHistoricalTrades" 
-                  :disabled="loadingHistorical"
-                  class="px-3 py-2 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed min-w-[120px] flex items-center justify-center"
-                >
-                  <svg class="w-4 h-4 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                  </svg>
-                  <span v-if="loadingHistorical" class="flex items-center">
-                    <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></div>
-                    Analyzing...
-                  </span>
-                  <span v-else>
-                    Analyze History
-                  </span>
-                </button>
-              </div>
+            <TradeFilters @filter="handleFilter" />
+
+            <!-- Analyze History Button -->
+            <div class="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+              <button
+                @click="analyzeHistoricalTrades"
+                :disabled="loadingHistorical"
+                class="w-full sm:w-auto px-4 py-2 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+              >
+                <svg class="w-4 h-4 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+                <span v-if="loadingHistorical" class="flex items-center">
+                  <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></div>
+                  Analyzing Historical Trades...
+                </span>
+                <span v-else>
+                  Analyze Historical Trades
+                </span>
+              </button>
             </div>
           </div>
         </div>
@@ -790,11 +713,13 @@
                         >
                           <div class="flex items-center justify-between mb-2">
                             <div class="flex items-center space-x-2">
-                              <span v-if="pattern.pattern_type === 'same_symbol_revenge'" class="text-sm font-medium text-orange-800 dark:text-orange-400">
-                                [TARGET] Same Symbol Revenge
+                              <span v-if="pattern.pattern_type === 'same_symbol_revenge'" class="text-sm font-medium text-orange-800 dark:text-orange-400 flex items-center">
+                                <MdiIcon :icon="mdiTarget" :size="16" class="mr-1" />
+                                Same Symbol Revenge
                               </span>
-                              <span v-else class="text-sm font-medium text-purple-800 dark:text-purple-400">
-                                [FAST] Emotional Spillover
+                              <span v-else class="text-sm font-medium text-purple-800 dark:text-purple-400 flex items-center">
+                                <MdiIcon :icon="mdiLightningBolt" :size="16" class="mr-1" />
+                                Emotional Spillover
                               </span>
                               <span 
                                 class="px-2 py-0.5 text-xs rounded"
@@ -894,11 +819,13 @@
                                  'text-orange-600 dark:text-orange-400': pattern.pattern_type === 'same_symbol_revenge',
                                  'text-purple-600 dark:text-purple-400': pattern.pattern_type === 'emotional_reactive_trading'
                                }">
-                            <span v-if="pattern.pattern_type === 'same_symbol_revenge'">
-                              [ANALYTICS] Tried to recover losses by trading {{ pattern.symbol }} again
+                            <span v-if="pattern.pattern_type === 'same_symbol_revenge'" class="flex items-center">
+                              <MdiIcon :icon="mdiChartBox" :size="16" class="mr-1.5" />
+                              Tried to recover losses by trading {{ pattern.symbol }} again
                             </span>
-                            <span v-else>
-                              [THOUGHT] Emotional reaction led to trading {{ pattern.symbol }} (different from trigger symbol)
+                            <span v-else class="flex items-center">
+                              <MdiIcon :icon="mdiLightningBolt" :size="16" class="mr-1.5" />
+                              Emotional reaction led to trading {{ pattern.symbol }} (different from trigger symbol)
                             </span>
                           </div>
                         </div>
@@ -913,8 +840,9 @@
                            'bg-gray-50 dark:bg-gray-900/10': event.outcome_type === 'neutral'
                          }">
                       <div class="flex items-center justify-between mb-2">
-                        <h5 class="text-sm font-semibold text-gray-800 dark:text-gray-200">
-                          [STATS] Revenge Trading Outcome
+                        <h5 class="text-sm font-semibold text-gray-800 dark:text-gray-200 flex items-center">
+                          <MdiIcon :icon="mdiChartBox" :size="18" class="mr-1.5" />
+                          Revenge Trading Outcome
                         </h5>
                         <span 
                           class="inline-flex px-3 py-1 text-sm font-semibold rounded-full"
@@ -924,9 +852,18 @@
                             'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400': event.outcome_type === 'neutral'
                           }"
                         >
-                          <span v-if="event.outcome_type === 'loss'">[ERROR] Made it worse</span>
-                          <span v-else-if="event.outcome_type === 'profit'">[SUCCESS] Recovered losses</span>
-                          <span v-else>[-] Broke even</span>
+                          <span v-if="event.outcome_type === 'loss'" class="flex items-center">
+                            <MdiIcon :icon="mdiClose" :size="16" class="mr-1" />
+                            Made it worse
+                          </span>
+                          <span v-else-if="event.outcome_type === 'profit'" class="flex items-center">
+                            <MdiIcon :icon="mdiCheck" :size="16" class="mr-1" />
+                            Recovered losses
+                          </span>
+                          <span v-else class="flex items-center">
+                            <MdiIcon :icon="mdiScale" :size="16" class="mr-1" />
+                            Broke even
+                          </span>
                         </span>
                       </div>
                       
@@ -967,14 +904,17 @@
                              'text-green-700 dark:text-green-300': event.outcome_type === 'profit',
                              'text-gray-700 dark:text-gray-300': event.outcome_type === 'neutral'
                            }">
-                        <span v-if="event.outcome_type === 'loss'">
-                          [BROKEN] The revenge trading made the situation worse by adding ${{ Math.abs(parseFloat(event.total_additional_loss)).toFixed(2) }} in additional losses
+                        <span v-if="event.outcome_type === 'loss'" class="flex items-start">
+                          <MdiIcon :icon="mdiTrendingDown" :size="16" class="mr-1.5 mt-0.5 flex-shrink-0" />
+                          <span>The revenge trading made the situation worse by adding ${{ Math.abs(parseFloat(event.total_additional_loss)).toFixed(2) }} in additional losses</span>
                         </span>
-                        <span v-else-if="event.outcome_type === 'profit'">
-                          [MONEY] The revenge trading actually worked this time, recovering ${{ Math.abs(parseFloat(event.total_additional_loss)).toFixed(2) }}
+                        <span v-else-if="event.outcome_type === 'profit'" class="flex items-start">
+                          <MdiIcon :icon="mdiCurrencyUsd" :size="16" class="mr-1.5 mt-0.5 flex-shrink-0" />
+                          <span>The revenge trading actually worked this time, recovering ${{ Math.abs(parseFloat(event.total_additional_loss)).toFixed(2) }}</span>
                         </span>
-                        <span v-else>
-                          [BALANCED] The revenge trading broke even - no additional gains or losses
+                        <span v-else class="flex items-start">
+                          <MdiIcon :icon="mdiScale" :size="16" class="mr-1.5 mt-0.5 flex-shrink-0" />
+                          <span>The revenge trading broke even - no additional gains or losses</span>
                         </span>
                       </div>
                     </div>
@@ -1095,8 +1035,9 @@
               >
                 <h4 class="font-medium text-gray-900 dark:text-white">{{ insight.title }}</h4>
                 <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">{{ insight.message }}</p>
-                <p class="text-sm font-medium text-gray-700 dark:text-gray-300 mt-2">
-                  [IDEA] {{ insight.recommendation }}
+                <p class="text-sm font-medium text-gray-700 dark:text-gray-300 mt-2 flex items-start">
+                  <MdiIcon :icon="mdiLightbulb" :size="16" class="mr-1.5 mt-0.5 flex-shrink-0" />
+                  <span>{{ insight.recommendation }}</span>
                 </p>
               </div>
             </div>
@@ -1294,9 +1235,10 @@
                   <div class="flex space-x-2">
                     <button
                       @click="scrollToTopMissedTrades"
-                      class="px-3 py-2 text-sm font-medium text-orange-600 bg-orange-50 border border-orange-200 rounded-md hover:bg-orange-100 dark:bg-orange-900/20 dark:text-orange-400 dark:border-orange-800 dark:hover:bg-orange-900/30 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500"
+                      class="px-3 py-2 text-sm font-medium text-orange-600 bg-orange-50 border border-orange-200 rounded-md hover:bg-orange-100 dark:bg-orange-900/20 dark:text-orange-400 dark:border-orange-800 dark:hover:bg-orange-900/30 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 flex items-center"
                     >
-                      [TARGET] View Specific Trades You Exited Early
+                      <MdiIcon :icon="mdiTarget" :size="16" class="mr-1" />
+                      View Specific Trades You Exited Early
                     </button>
                     <button
                       @click="viewLossAversionTrades"
@@ -1491,8 +1433,9 @@
 
               <!-- Top Missed Trades List -->
               <div v-if="topMissedTrades.topMissedTrades.length > 0" class="space-y-4">
-                <h4 class="text-lg font-medium text-gray-700 dark:text-gray-300 mb-4">
-                  [TARGET] Specific Trades Where You Exited Too Early (Sorted by % Profit Missed)
+                <h4 class="text-lg font-medium text-gray-700 dark:text-gray-300 mb-4 flex items-center">
+                  <MdiIcon :icon="mdiTarget" :size="20" class="mr-2" />
+                  Specific Trades Where You Exited Too Early (Sorted by % Profit Missed)
                 </h4>
                 
                 <div 
@@ -1587,6 +1530,36 @@
                         <p class="text-xs text-red-700 dark:text-red-400">
                           vs ${{ (trade.actualProfit || 0).toFixed(2) }} actual profit
                         </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Better Entry Price Analysis (if available) -->
+                  <div v-if="trade.entryAnalysis && trade.entryAnalysis.improvementPercent > 0" class="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 mb-4">
+                    <div class="flex items-start space-x-2 mb-2">
+                      <svg class="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                      </svg>
+                      <div class="flex-1">
+                        <p class="text-sm font-medium text-blue-800 dark:text-blue-300 mb-1">Better Entry Opportunity</p>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                          <div>
+                            <p class="text-xs text-blue-700 dark:text-blue-400">Optimal Entry Price</p>
+                            <p class="font-bold text-blue-900 dark:text-blue-200">${{ trade.entryAnalysis.bestEntryPrice.toFixed(2) }}</p>
+                            <p class="text-xs text-blue-600 dark:text-blue-500">{{ trade.entryAnalysis.minutesBeforeEntry }} min earlier</p>
+                          </div>
+                          <div>
+                            <p class="text-xs text-blue-700 dark:text-blue-400">Entry Improvement</p>
+                            <p class="font-bold text-blue-900 dark:text-blue-200">{{ trade.entryAnalysis.improvementPercent.toFixed(1) }}%</p>
+                            <p class="text-xs text-blue-600 dark:text-blue-500">${{ trade.entryAnalysis.improvementDollar.toFixed(2) }} per share</p>
+                          </div>
+                          <div v-if="trade.entryAnalysis.improvedPnL">
+                            <p class="text-xs text-blue-700 dark:text-blue-400">P&L with Better Entry</p>
+                            <p class="font-bold text-blue-900 dark:text-blue-200">${{ trade.entryAnalysis.improvedPnL.withBetterEntry.toFixed(2) }}</p>
+                            <p class="text-xs text-green-600 dark:text-green-500">+${{ trade.entryAnalysis.improvedPnL.improvement.toFixed(2) }}</p>
+                          </div>
+                        </div>
+                        <p class="text-xs text-blue-700 dark:text-blue-400 mt-2 italic">{{ trade.entryAnalysis.recommendation }}</p>
                       </div>
                     </div>
                   </div>
@@ -1791,8 +1764,9 @@
                 >
                   <div class="flex justify-between items-start mb-3">
                     <div>
-                      <h5 class="font-medium text-gray-900 dark:text-white">
-                        [HOT] {{ event.winStreakLength }} Consecutive Wins → Overconfidence Risk
+                      <h5 class="font-medium text-gray-900 dark:text-white flex items-center">
+                        <MdiIcon :icon="mdiFire" :size="18" class="mr-1.5 text-red-600" />
+                        {{ event.winStreakLength }} Consecutive Wins → Overconfidence Risk
                       </h5>
                       <p class="text-sm text-gray-500 dark:text-gray-400">
                         {{ new Date(event.detectionDate).toLocaleDateString() }} • 
@@ -1824,9 +1798,10 @@
                         <span class="font-medium ml-1">${{ (event.peakPositionSize || 0).toLocaleString() }}</span>
                       </div>
                     </div>
-                    <div class="mt-2 text-xs text-orange-700 dark:text-orange-400">
-                      [STATS] Position increased by <span class="font-bold">{{ event.positionSizeIncrease?.toFixed(1) || 0 }}%</span> 
-                      (from ${{ (event.baselinePositionSize || 0).toLocaleString() }} baseline to ${{ (event.peakPositionSize || 0).toLocaleString() }} peak)
+                    <div class="mt-2 text-xs text-orange-700 dark:text-orange-400 flex items-start">
+                      <MdiIcon :icon="mdiTrendingUp" :size="14" class="mr-1 mt-0.5 flex-shrink-0" />
+                      <span>Position increased by <span class="font-bold">{{ event.positionSizeIncrease?.toFixed(1) || 0 }}%</span>
+                      (from ${{ (event.baselinePositionSize || 0).toLocaleString() }} baseline to ${{ (event.peakPositionSize || 0).toLocaleString() }} peak)</span>
                     </div>
                   </div>
 
@@ -1863,6 +1838,196 @@
                     </div>
                   </div>
 
+                  <!-- Outcome Trade After Streak -->
+                  <div v-if="event.outcomeTradeDetails" class="mt-4 p-4 rounded-lg border-2"
+                       :class="{
+                         'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800': parseFloat(event.outcomeTradeDetails.pnl || 0) < 0,
+                         'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800': parseFloat(event.outcomeTradeDetails.pnl || 0) > 0,
+                         'bg-gray-50 dark:bg-gray-900/20 border-gray-200 dark:border-gray-800': parseFloat(event.outcomeTradeDetails.pnl || 0) === 0
+                       }">
+                    <div class="flex items-center mb-3">
+                      <MdiIcon
+                        :icon="parseFloat(event.outcomeTradeDetails.pnl || 0) < 0 ? mdiClose : mdiCheck"
+                        :size="20"
+                        class="mr-2"
+                        :class="{
+                          'text-red-600': parseFloat(event.outcomeTradeDetails.pnl || 0) < 0,
+                          'text-green-600': parseFloat(event.outcomeTradeDetails.pnl || 0) > 0,
+                          'text-gray-600': parseFloat(event.outcomeTradeDetails.pnl || 0) === 0
+                        }" />
+                      <h6 class="text-sm font-semibold"
+                          :class="{
+                            'text-red-900 dark:text-red-200': parseFloat(event.outcomeTradeDetails.pnl || 0) < 0,
+                            'text-green-900 dark:text-green-200': parseFloat(event.outcomeTradeDetails.pnl || 0) > 0,
+                            'text-gray-900 dark:text-gray-200': parseFloat(event.outcomeTradeDetails.pnl || 0) === 0
+                          }">
+                        Trade Taken After {{ event.winStreakLength }}-Win Streak
+                      </h6>
+                    </div>
+
+                    <div class="bg-white dark:bg-gray-800 rounded-md p-3">
+                      <div class="flex items-center justify-between mb-2">
+                        <div>
+                          <p class="font-semibold text-gray-900 dark:text-white">{{ event.outcomeTradeDetails.symbol }}</p>
+                          <p class="text-xs text-gray-500 dark:text-gray-400">
+                            {{ new Date(event.outcomeTradeDetails.entry_time).toLocaleDateString() }} •
+                            {{ event.outcomeTradeDetails.side?.toUpperCase() }} {{ event.outcomeTradeDetails.quantity }} shares
+                          </p>
+                        </div>
+                        <div class="text-right">
+                          <p class="text-lg font-bold"
+                             :class="{
+                               'text-red-600 dark:text-red-400': parseFloat(event.outcomeTradeDetails.pnl || 0) < 0,
+                               'text-green-600 dark:text-green-400': parseFloat(event.outcomeTradeDetails.pnl || 0) > 0,
+                               'text-gray-600 dark:text-gray-400': parseFloat(event.outcomeTradeDetails.pnl || 0) === 0
+                             }">
+                            {{ parseFloat(event.outcomeTradeDetails.pnl || 0) >= 0 ? '+' : '' }}${{ parseFloat(event.outcomeTradeDetails.pnl || 0).toFixed(2) }}
+                          </p>
+                          <p class="text-xs text-gray-500 dark:text-gray-400">P&L</p>
+                        </div>
+                      </div>
+
+                      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+                        <div>
+                          <p class="text-gray-500 dark:text-gray-400">Entry Price</p>
+                          <p class="font-medium">${{ parseFloat(event.outcomeTradeDetails.entry_price || 0).toFixed(2) }}</p>
+                        </div>
+                        <div>
+                          <p class="text-gray-500 dark:text-gray-400">Exit Price</p>
+                          <p class="font-medium">${{ parseFloat(event.outcomeTradeDetails.exit_price || 0).toFixed(2) }}</p>
+                        </div>
+                        <div>
+                          <p class="text-gray-500 dark:text-gray-400">Position Size</p>
+                          <p class="font-medium">${{ (parseFloat(event.outcomeTradeDetails.entry_price || 0) * parseFloat(event.outcomeTradeDetails.quantity || 0)).toLocaleString() }}</p>
+                        </div>
+                        <div>
+                          <p class="text-gray-500 dark:text-gray-400">Fees</p>
+                          <p class="font-medium">${{ (parseFloat(event.outcomeTradeDetails.commission || 0) + parseFloat(event.outcomeTradeDetails.fees || 0)).toFixed(2) }}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="mt-3 text-xs flex items-start"
+                         :class="{
+                           'text-red-800 dark:text-red-200': parseFloat(event.outcomeTradeDetails.pnl || 0) < 0,
+                           'text-green-800 dark:text-green-200': parseFloat(event.outcomeTradeDetails.pnl || 0) > 0,
+                           'text-gray-800 dark:text-gray-200': parseFloat(event.outcomeTradeDetails.pnl || 0) === 0
+                         }">
+                      <MdiIcon :icon="mdiLightningBolt" :size="14" class="mr-1.5 mt-0.5 flex-shrink-0" />
+                      <p v-if="parseFloat(event.outcomeTradeDetails.pnl || 0) < 0">
+                        <strong>What happened:</strong> After {{ event.winStreakLength }} consecutive wins, overconfidence led to
+                        <span v-if="event.positionSizeIncrease > 0">a {{ event.positionSizeIncrease.toFixed(1) }}% larger position size</span>
+                        <span v-else>risky trading decisions</span>
+                        that resulted in this losing trade, giving back
+                        <strong>${{ Math.abs(parseFloat(event.outcomeTradeDetails.pnl || 0)).toFixed(2) }}</strong> of the streak's profits.
+                      </p>
+                      <p v-else-if="parseFloat(event.outcomeTradeDetails.pnl || 0) > 0">
+                        <strong>Lucky break:</strong> After {{ event.winStreakLength }} consecutive wins,
+                        <span v-if="event.positionSizeIncrease > 0">the {{ event.positionSizeIncrease.toFixed(1) }}% larger position size</span>
+                        <span v-else>the elevated confidence</span>
+                        resulted in a winning trade. However, this reinforces overconfidence and increases future risk.
+                      </p>
+                      <p v-else>
+                        <strong>Break even:</strong> The trade after the {{ event.winStreakLength }}-win streak resulted in no gain or loss.
+                      </p>
+                    </div>
+
+                    <!-- Detailed Outcome Analysis -->
+                    <div v-if="event.outcomeAnalysis && event.outcomeAnalysis.verdict" class="mt-4 p-3 rounded-lg border-2"
+                         :class="{
+                           'bg-red-100 dark:bg-red-900/30 border-red-300 dark:border-red-700': event.outcomeAnalysis.verdict.verdict === 'true_overconfidence',
+                           'bg-orange-100 dark:bg-orange-900/30 border-orange-300 dark:border-orange-700': event.outcomeAnalysis.verdict.verdict === 'partial_overconfidence',
+                           'bg-green-100 dark:bg-green-900/30 border-green-300 dark:border-green-700': event.outcomeAnalysis.verdict.verdict === 'prudent_trade',
+                           'bg-gray-100 dark:bg-gray-900/30 border-gray-300 dark:border-gray-700': event.outcomeAnalysis.verdict.verdict === 'bad_luck'
+                         }">
+                      <div class="flex items-center justify-between mb-2">
+                        <h6 class="text-sm font-bold flex items-center"
+                            :class="{
+                              'text-red-900 dark:text-red-200': event.outcomeAnalysis.verdict.verdict === 'true_overconfidence',
+                              'text-orange-900 dark:text-orange-200': event.outcomeAnalysis.verdict.verdict === 'partial_overconfidence',
+                              'text-green-900 dark:text-green-200': event.outcomeAnalysis.verdict.verdict === 'prudent_trade',
+                              'text-gray-900 dark:text-gray-200': event.outcomeAnalysis.verdict.verdict === 'bad_luck'
+                            }">
+                          <MdiIcon
+                            :icon="event.outcomeAnalysis.verdict.isOverconfidence ? mdiClose : mdiCheck"
+                            :size="16"
+                            class="mr-1.5"
+                          />
+                          Trade Analysis: {{ event.outcomeAnalysis.verdict.verdictLabel }}
+                        </h6>
+                        <div class="text-xs font-semibold px-2 py-1 rounded"
+                             :class="{
+                               'bg-red-200 dark:bg-red-800 text-red-900 dark:text-red-100': event.outcomeAnalysis.verdict.verdict === 'true_overconfidence',
+                               'bg-orange-200 dark:bg-orange-800 text-orange-900 dark:text-orange-100': event.outcomeAnalysis.verdict.verdict === 'partial_overconfidence',
+                               'bg-green-200 dark:bg-green-800 text-green-900 dark:text-green-100': event.outcomeAnalysis.verdict.verdict === 'prudent_trade',
+                               'bg-gray-200 dark:bg-gray-800 text-gray-900 dark:text-gray-100': event.outcomeAnalysis.verdict.verdict === 'bad_luck'
+                             }">
+                          Score: {{ event.outcomeAnalysis.verdict.overconfidenceScore }}/{{ event.outcomeAnalysis.verdict.maxScore }}
+                        </div>
+                      </div>
+
+                      <p class="text-xs mb-3"
+                         :class="{
+                           'text-red-800 dark:text-red-200': event.outcomeAnalysis.verdict.verdict === 'true_overconfidence',
+                           'text-orange-800 dark:text-orange-200': event.outcomeAnalysis.verdict.verdict === 'partial_overconfidence',
+                           'text-green-800 dark:text-green-200': event.outcomeAnalysis.verdict.verdict === 'prudent_trade',
+                           'text-gray-800 dark:text-gray-200': event.outcomeAnalysis.verdict.verdict === 'bad_luck'
+                         }">
+                        {{ event.outcomeAnalysis.verdict.recommendation }}
+                      </p>
+
+                      <!-- Issues Found -->
+                      <div v-if="event.outcomeAnalysis.verdict.reasons && event.outcomeAnalysis.verdict.reasons.length > 0" class="mb-2">
+                        <p class="text-xs font-semibold text-red-900 dark:text-red-200 mb-1">Issues Found:</p>
+                        <ul class="text-xs space-y-1">
+                          <li v-for="(reason, idx) in event.outcomeAnalysis.verdict.reasons" :key="idx" class="flex items-start">
+                            <span class="text-red-600 mr-1.5">•</span>
+                            <span class="text-red-800 dark:text-red-300">{{ reason }}</span>
+                          </li>
+                        </ul>
+                      </div>
+
+                      <!-- Positive Factors -->
+                      <div v-if="event.outcomeAnalysis.verdict.positiveFactors && event.outcomeAnalysis.verdict.positiveFactors.length > 0">
+                        <p class="text-xs font-semibold text-green-900 dark:text-green-200 mb-1">What Went Well:</p>
+                        <ul class="text-xs space-y-1">
+                          <li v-for="(factor, idx) in event.outcomeAnalysis.verdict.positiveFactors" :key="idx" class="flex items-start">
+                            <span class="text-green-600 mr-1.5">✓</span>
+                            <span class="text-green-800 dark:text-green-300">{{ factor }}</span>
+                          </li>
+                        </ul>
+                      </div>
+
+                      <!-- Detailed Analysis Sections -->
+                      <div v-if="event.outcomeAnalysis.stopLossAnalysis" class="mt-3 pt-3 border-t border-gray-300 dark:border-gray-600">
+                        <p class="text-xs font-semibold mb-2">Stop Loss Analysis:</p>
+                        <div class="grid grid-cols-2 gap-2 text-xs">
+                          <div>
+                            <p class="text-gray-600 dark:text-gray-400">Recommended Stop:</p>
+                            <p class="font-medium">
+                              {{ event.outcomeAnalysis.stopLossAnalysis.recommendedStopLoss ?
+                                `$${event.outcomeAnalysis.stopLossAnalysis.recommendedStopLoss.toFixed(2)}` : 'N/A' }}
+                            </p>
+                          </div>
+                          <div>
+                            <p class="text-gray-600 dark:text-gray-400">Adherence:</p>
+                            <p class="font-medium capitalize"
+                               :class="{
+                                 'text-green-600': event.outcomeAnalysis.stopLossAnalysis.adherenceRating === 'good',
+                                 'text-red-600': event.outcomeAnalysis.stopLossAnalysis.adherenceRating === 'poor',
+                                 'text-gray-600': event.outcomeAnalysis.stopLossAnalysis.adherenceRating === 'none'
+                               }">
+                              {{ event.outcomeAnalysis.stopLossAnalysis.adherenceRating }}
+                            </p>
+                          </div>
+                        </div>
+                        <p v-if="event.outcomeAnalysis.stopLossAnalysis.heldPastStopLoss" class="text-xs text-red-700 dark:text-red-300 mt-2">
+                          Additional loss from not respecting stop: ${{ event.outcomeAnalysis.stopLossAnalysis.additionalLoss.toFixed(2) }}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
                   <div v-if="event.recommendations && event.recommendations.length > 0" class="mt-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-md">
                     <p class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Recommendations:</p>
                     <ul class="text-sm text-gray-600 dark:text-gray-400 space-y-1">
@@ -1877,8 +2042,9 @@
                   <div class="mt-4 border-t border-gray-200 dark:border-gray-600 pt-4">
                     <div class="flex items-center justify-between mb-3">
                       <div>
-                        <h6 class="text-sm font-medium text-gray-700 dark:text-gray-300">
-                          [ACHIEVEMENT] The {{ event.winStreakLength }} Consecutive Winning Trades
+                        <h6 class="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center">
+                          <MdiIcon :icon="mdiTrophy" :size="16" class="mr-1.5 text-yellow-600" />
+                          The {{ event.winStreakLength }} Consecutive Winning Trades
                         </h6>
                         <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
                           These {{ event.winStreakLength }} wins in a row led to escalating position sizes as confidence grew
@@ -2055,6 +2221,7 @@ import { useNotification } from '@/composables/useNotification'
 import { useAuthStore } from '@/stores/auth'
 import ProUpgradePrompt from '@/components/ProUpgradePrompt.vue'
 import MdiIcon from '@/components/MdiIcon.vue'
+import TradeFilters from '@/components/trades/TradeFilters.vue'
 import { 
   mdiChartBox,
   mdiTrendingDown,
@@ -2099,8 +2266,27 @@ const settings = ref({
 })
 
 const filters = ref({
+  symbol: '',
   startDate: '',
-  endDate: ''
+  endDate: '',
+  strategies: [],
+  sectors: [],
+  tags: [],
+  status: '',
+  side: '',
+  instrumentTypes: [],
+  optionTypes: [],
+  qualityGrades: [],
+  daysOfWeek: [],
+  brokers: [],
+  hasNews: null,
+  pnlType: '',
+  minPrice: null,
+  maxPrice: null,
+  minQuantity: null,
+  maxQuantity: null,
+  minPnl: null,
+  maxPnl: null
 })
 
 const pagination = ref({
@@ -2196,17 +2382,48 @@ const applyFilters = async () => {
   }
 }
 
+// Handle filter changes from TradeFilters component
+const handleFilter = (newFilters) => {
+  // Directly apply the filters from TradeFilters component
+  filters.value = { ...newFilters }
+
+  // Save filters and reload data
+  saveFilters()
+  applyFilters()
+}
+
 // Clear filters
 const clearFilters = async () => {
-  filters.value.startDate = ''
-  filters.value.endDate = ''
-  
+  filters.value = {
+    symbol: '',
+    startDate: '',
+    endDate: '',
+    strategies: [],
+    sectors: [],
+    tags: [],
+    status: '',
+    side: '',
+    instrumentTypes: [],
+    optionTypes: [],
+    qualityGrades: [],
+    daysOfWeek: [],
+    brokers: [],
+    hasNews: null,
+    pnlType: '',
+    minPrice: null,
+    maxPrice: null,
+    minQuantity: null,
+    maxQuantity: null,
+    minPnl: null,
+    maxPnl: null
+  }
+
   // Reset pagination
   pagination.value.page = 1
-  
+
   // Clear localStorage
   localStorage.removeItem('behavioralAnalyticsFilters')
-  
+
   // Apply the cleared filters
   await applyFilters()
 }
@@ -2530,36 +2747,30 @@ const analyzeLossAversion = async () => {
 const analyzeOverconfidence = async () => {
   try {
     loadingOverconfidence.value = true
-    
-    // First, check cache and load immediately to show existing data
+
+    // Clear frontend cache when user deliberately clicks "Analyze History"
+    // This ensures fresh AI recommendations are generated
     const cacheKey = `overconfidence_analysis_${authStore.user?.id}_${filters.value.startDate || 'all'}_${filters.value.endDate || 'all'}`
-    const cachedData = localStorage.getItem(cacheKey)
-    if (cachedData) {
-      try {
-        const parsed = JSON.parse(cachedData)
-        const cacheAge = Date.now() - parsed.timestamp
-        const maxAge = 7 * 24 * 60 * 60 * 1000 // 7 days
-        
-        if (cacheAge < maxAge && parsed.data) {
-          overconfidenceData.value = parsed.data
-          console.log('Loaded overconfidence analysis from cache (will update in background)')
-        }
-      } catch (e) {
-        console.warn('Invalid cached overconfidence data')
-      }
-    }
-    
-    const response = await api.post('/behavioral-analytics/overconfidence/analyze-historical', {
-      startDate: filters.value.startDate,
-      endDate: filters.value.endDate
-    })
-    
+    localStorage.removeItem(cacheKey)
+    console.log('[OVERCONFIDENCE] Cleared frontend cache - will generate fresh AI recommendations')
+
+    // Build query params for date filters
+    const queryParams = new URLSearchParams()
+    if (filters.value.startDate) queryParams.append('startDate', filters.value.startDate)
+    if (filters.value.endDate) queryParams.append('endDate', filters.value.endDate)
+
+    const response = await api.post(`/behavioral-analytics/overconfidence/analyze-historical?${queryParams}`)
+
     if (response.data.success) {
       // Get the analysis from the response - need to fetch the full analysis after historical processing
-      const analysisResponse = await api.get('/behavioral-analytics/overconfidence')
+      const analysisResponse = await api.get(`/behavioral-analytics/overconfidence?${queryParams}`)
       if (analysisResponse.data.success && analysisResponse.data.data) {
         overconfidenceData.value = analysisResponse.data.data
-      
+
+        console.log('[OVERCONFIDENCE] Analysis response:', analysisResponse.data.data)
+        console.log('[OVERCONFIDENCE] Events found:', analysisResponse.data.data.analysis?.events?.length || 0)
+        console.log('[OVERCONFIDENCE] Statistics:', analysisResponse.data.data.analysis?.statistics)
+
         // Cache the overconfidence data
         const cacheData = {
           data: analysisResponse.data.data,
@@ -2567,11 +2778,12 @@ const analyzeOverconfidence = async () => {
           filters: { ...filters.value }
         }
         localStorage.setItem(cacheKey, JSON.stringify(cacheData))
-        
+
         if (analysisResponse.data.data.error) {
           showError('Analysis Error', analysisResponse.data.data.message)
         } else {
-          showSuccess('Analysis Complete', response.data.message || 'Overconfidence patterns analyzed successfully')
+          const eventsCount = analysisResponse.data.data.analysis?.events?.length || analysisResponse.data.data.analysis?.statistics?.totalEvents || 0
+          showSuccess('Analysis Complete', response.data.message || `Found ${eventsCount} overconfidence events`)
         }
       }
     }
@@ -2762,15 +2974,24 @@ const viewTradesByStrategy = (strategy) => {
 
 // Format minutes to human-readable time
 const formatMinutes = (minutes) => {
-  if (minutes < 60) {
-    return `${minutes}m`
-  } else if (minutes < 1440) {
-    const hours = Math.floor(minutes / 60)
-    const mins = minutes % 60
-    return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`
+  // Handle edge cases
+  if (minutes === null || minutes === undefined || isNaN(minutes)) {
+    return 'N/A'
+  }
+
+  const mins = Math.round(Number(minutes))
+
+  if (mins < 1) {
+    return '< 1m'
+  } else if (mins < 60) {
+    return `${mins}m`
+  } else if (mins < 1440) {
+    const hours = Math.floor(mins / 60)
+    const remainingMins = mins % 60
+    return remainingMins > 0 ? `${hours}h ${remainingMins}m` : `${hours}h`
   } else {
-    const days = Math.floor(minutes / 1440)
-    const remainingMinutes = minutes % 1440
+    const days = Math.floor(mins / 1440)
+    const remainingMinutes = mins % 1440
     const hours = Math.floor(remainingMinutes / 60)
     return hours > 0 ? `${days}d ${hours}h` : `${days}d`
   }
