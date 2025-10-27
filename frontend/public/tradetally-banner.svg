@@ -1,0 +1,217 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="7000mm"
+   height="1024mm"
+   viewBox="0 0 7000 1024"
+   version="1.1"
+   id="svg5"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs2">
+    <clipPath
+       clipPathUnits="userSpaceOnUse"
+       id="clipPath403">
+      <path
+         id="lpe_path-effect407"
+         style="fill:#cb7200;fill-opacity:0.956863;stroke-width:5.80001;stroke-linejoin:round;stroke-opacity:0.956863"
+         class="powerclip"
+         d="M 57.16481,202.87547 H 872.03546 V 914.56934 H 57.16481 Z m 400.07372,-0.83986 v 61.34685 h 199.58174 v -61.34685 z" />
+    </clipPath>
+    <clipPath
+       clipPathUnits="userSpaceOnUse"
+       id="clipath_lpe_path-effect4677">
+      <path
+         id="lpe_path-effect4677"
+         style="fill:#cb7200;fill-opacity:0.956863;stroke-width:5.80001;stroke-linejoin:round;stroke-opacity:0.956863"
+         class="powerclip"
+         d="M 57.16481,202.87547 H 872.03546 V 914.56934 H 57.16481 Z m 400.07372,-0.83986 v 61.34685 h 199.58174 v -61.34685 z" />
+    </clipPath>
+    <filter
+       style="color-interpolation-filters:sRGB"
+       id="filter9239"
+       x="-0.011211171"
+       y="-0.014079115"
+       width="1.0224223"
+       height="1.0281582">
+      <feGaussianBlur
+         stdDeviation="4.33389"
+         result="blur"
+         id="feGaussianBlur9231" />
+      <feComposite
+         in="SourceGraphic"
+         in2="blur"
+         operator="atop"
+         result="composite1"
+         id="feComposite9233" />
+      <feComposite
+         in2="composite1"
+         operator="in"
+         result="composite2"
+         id="feComposite9235" />
+      <feComposite
+         in2="composite2"
+         operator="in"
+         result="composite3"
+         id="feComposite9237" />
+    </filter>
+    <filter
+       style="color-interpolation-filters:sRGB"
+       id="filter10876"
+       x="-0.0089112706"
+       y="-0.011190874"
+       width="1.0178225"
+       height="1.0223817">
+      <feGaussianBlur
+         in="SourceGraphic"
+         stdDeviation="3.44482"
+         result="blur"
+         id="feGaussianBlur10866" />
+      <feDiffuseLighting
+         diffuseConstant="1"
+         surfaceScale="10"
+         lighting-color="#ffa966"
+         result="diffuse"
+         id="feDiffuseLighting10870">
+        <feDistantLight
+           elevation="42"
+           azimuth="319"
+           id="feDistantLight10868" />
+      </feDiffuseLighting>
+      <feComposite
+         in="diffuse"
+         in2="diffuse"
+         operator="arithmetic"
+         k1="1"
+         result="composite1"
+         id="feComposite10872"
+         k2="0"
+         k3="0"
+         k4="0" />
+      <feComposite
+         in="composite1"
+         in2="SourceGraphic"
+         k1="1"
+         operator="arithmetic"
+         k3="1"
+         result="composite2"
+         id="feComposite10874"
+         k2="0"
+         k4="0" />
+    </filter>
+  </defs>
+  <g
+     id="layer1"
+     style="display:inline">
+    <g
+       id="g461"
+       transform="translate(85.067631,13.087328)">
+      <g
+         id="g4673"
+         transform="translate(-29.22394,23.919252)"
+         style="fill:#c8600e;fill-opacity:1;filter:url(#filter9239)">
+        <rect
+           style="fill:#c8600e;fill-opacity:1;stroke-width:5.42665;stroke-linejoin:round;stroke-opacity:0.956863"
+           id="rect4657"
+           width="119.04588"
+           height="99.837799"
+           x="356.49203"
+           y="726.43567"
+           transform="matrix(0.7213173,-0.69260476,0.69626494,0.71778488,0,0)" />
+        <g
+           id="g4669"
+           clip-path="url(#clipath_lpe_path-effect4677)"
+           style="fill:#c8600e;fill-opacity:1"
+           transform="matrix(0.93802645,0,0,0.93322361,19.330426,1.4355485)">
+          <path
+             id="path4659"
+             d="m 176.67892,528.40094 h 109.60637 v 381.1684 H 176.67892 Z"
+             style="fill:#c8600e;fill-opacity:1;stroke-width:5.90634;stroke-linejoin:round;stroke-opacity:0.956863" />
+          <path
+             id="path4661"
+             d="M 624.91998,264.6015 H 752.52143 V 909.56927 H 624.91998 Z"
+             style="fill:#c8600e;fill-opacity:1;stroke-width:8.2897;stroke-linejoin:round;stroke-opacity:0.956863" />
+          <path
+             id="path4663"
+             d="M 62.16481,423.70224 H 404.07124 V 530.03677 H 62.16481 Z"
+             style="fill:#c8600e;fill-opacity:1;stroke-width:5.80001;stroke-linejoin:round;stroke-opacity:0.956863" />
+          <path
+             id="path4665"
+             d="M 507.13394,263.38248 H 867.03546 V 369.71701 H 507.13394 Z"
+             style="fill:#c8600e;fill-opacity:1;stroke-width:5.95069;stroke-linejoin:round;stroke-opacity:0.956863" />
+          <path
+             id="path4667"
+             transform="rotate(-47.62697)"
+             d="M -119.33588,548.83118 H 219.29871 V 655.16571 H -119.33588 Z"
+             style="fill:#c8600e;fill-opacity:1;stroke-width:5.80001;stroke-linejoin:round;stroke-opacity:0.956863" />
+        </g>
+        <path
+           style="fill:#c8600e;fill-opacity:1;stroke:none;stroke-width:4.99999;stroke-linejoin:round;stroke-dasharray:none;stroke-opacity:1"
+           id="path4671"
+           d="M 578.38367,68.24926 547.20877,266.7038 390.92954,140.47827 Z"
+           transform="rotate(7.0961969,443.2142,3533.3208)" />
+      </g>
+      <g
+         id="g9426"
+         style="fill:#f0812a;fill-opacity:1;filter:url(#filter10876)"
+         transform="translate(-10.410906,3.4703018)">
+        <g
+           id="g4655"
+           style="opacity:1;mix-blend-mode:lighten;fill:#f0812a;fill-opacity:1">
+          <rect
+             style="fill:#f0812a;fill-opacity:1;stroke-width:5.42665;stroke-linejoin:round;stroke-opacity:0.956863"
+             id="rect413"
+             width="119.04588"
+             height="99.837799"
+             x="356.49203"
+             y="726.43567"
+             transform="matrix(0.7213173,-0.69260476,0.69626494,0.71778488,0,0)" />
+          <g
+             id="g401"
+             clip-path="url(#clipPath403)"
+             style="fill:#f0812a;fill-opacity:1"
+             transform="matrix(0.93802645,0,0,0.93322361,19.330426,1.4355485)">
+            <path
+               id="rect184"
+               d="m 176.67892,528.40094 h 109.60637 v 381.1684 H 176.67892 Z"
+               style="fill:#f0812a;fill-opacity:1;stroke-width:5.90634;stroke-linejoin:round;stroke-opacity:0.956863" />
+            <path
+               id="rect186"
+               d="M 624.91998,264.6015 H 752.52143 V 909.56927 H 624.91998 Z"
+               style="fill:#f0812a;fill-opacity:1;stroke-width:8.2897;stroke-linejoin:round;stroke-opacity:0.956863" />
+            <path
+               id="rect352"
+               d="M 62.16481,423.70224 H 404.07124 V 530.03677 H 62.16481 Z"
+               style="fill:#f0812a;fill-opacity:1;stroke-width:5.80001;stroke-linejoin:round;stroke-opacity:0.956863" />
+            <path
+               id="rect356"
+               d="M 507.13394,263.38248 H 867.03546 V 369.71701 H 507.13394 Z"
+               style="fill:#f0812a;fill-opacity:1;stroke-width:5.95069;stroke-linejoin:round;stroke-opacity:0.956863" />
+            <path
+               id="rect354"
+               transform="rotate(-47.62697)"
+               d="M -119.33588,548.83118 H 219.29871 V 655.16571 H -119.33588 Z"
+               style="fill:#f0812a;fill-opacity:1;stroke-width:5.80001;stroke-linejoin:round;stroke-opacity:0.956863" />
+          </g>
+          <path
+             style="fill:#f0812a;fill-opacity:1;stroke:none;stroke-width:4.99999;stroke-linejoin:round;stroke-dasharray:none;stroke-opacity:1"
+             id="path4576"
+             d="M 578.38367,68.24926 547.20877,266.7038 390.92954,140.47827 Z"
+             transform="rotate(7.0961969,443.2142,3533.3208)" />
+        </g>
+      </g>
+    </g>
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:800px;font-family:Bebas;-inkscape-font-specification:Bebas;fill:#ff9a2d;stroke-width:4.99999;stroke-linejoin:round"
+       x="1151.4825"
+       y="863.07294"
+       id="text336"><tspan
+         id="tspan334"
+         x="1151.4825"
+         y="863.07294"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:800px;font-family:Bebas;-inkscape-font-specification:Bebas;stroke-width:5">Dominate With Data</tspan></text>
+  </g>
+</svg>
