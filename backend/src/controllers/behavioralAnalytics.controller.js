@@ -1008,12 +1008,20 @@ const behavioralAnalyticsController = {
   async getTopMissedTrades(req, res, next) {
     try {
       const userId = req.user.id;
-      const { limit = 20, startDate, endDate } = req.query;
+      const { limit = 20, startDate, endDate, forceRefresh } = req.query;
 
-      console.log(`Top missed trades requested for user ${userId}, limit: ${limit}, dateRange: ${startDate} to ${endDate}`);
+      const shouldForceRefresh = forceRefresh === 'true' || forceRefresh === true;
 
-      const analysis = await LossAversionAnalyticsService.getTopMissedTrades(userId, parseInt(limit), startDate, endDate);
-      
+      console.log(`Top missed trades requested for user ${userId}, limit: ${limit}, dateRange: ${startDate} to ${endDate}, forceRefresh: ${shouldForceRefresh}`);
+
+      const analysis = await LossAversionAnalyticsService.getTopMissedTrades(
+        userId,
+        parseInt(limit),
+        startDate,
+        endDate,
+        shouldForceRefresh
+      );
+
       res.json({
         success: true,
         data: analysis

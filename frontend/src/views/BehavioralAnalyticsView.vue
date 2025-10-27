@@ -1367,7 +1367,7 @@
               </div>
               <div class="flex space-x-2">
                 <button
-                  @click="loadTopMissedTrades"
+                  @click="loadTopMissedTrades(true)"
                   :disabled="loadingTopMissedTrades"
                   class="btn btn-primary btn-sm"
                 >
@@ -2802,36 +2802,42 @@ const analyzeOverconfidence = async () => {
 }
 
 // Load top missed trades by percentage of missed opportunity
-const loadTopMissedTrades = async () => {
+const loadTopMissedTrades = async (forceRefresh = false) => {
   try {
     loadingTopMissedTrades.value = true
     showAllMissedTrades.value = false // Reset expanded state
-    
-    console.log('Loading top missed trades...')
-    
-    // First, check cache and load immediately to show existing data
+
+    console.log(`Loading top missed trades... (forceRefresh: ${forceRefresh})`)
+
+    // Check cache only if NOT force refreshing and load immediately to show existing data
     const cacheKey = `top_missed_trades_${authStore.user?.id}_${filters.value.startDate || 'all'}_${filters.value.endDate || 'all'}`
-    const cachedData = localStorage.getItem(cacheKey)
-    if (cachedData) {
-      try {
-        const parsed = JSON.parse(cachedData)
-        const cacheAge = Date.now() - parsed.timestamp
-        const maxAge = 7 * 24 * 60 * 60 * 1000 // 7 days
-        
-        if (cacheAge < maxAge && parsed.data) {
-          topMissedTrades.value = parsed.data
-          console.log('Loaded top missed trades from cache (will update in background)')
+    if (!forceRefresh) {
+      const cachedData = localStorage.getItem(cacheKey)
+      if (cachedData) {
+        try {
+          const parsed = JSON.parse(cachedData)
+          const cacheAge = Date.now() - parsed.timestamp
+          const maxAge = 7 * 24 * 60 * 60 * 1000 // 7 days
+
+          if (cacheAge < maxAge && parsed.data) {
+            topMissedTrades.value = parsed.data
+            console.log('Loaded top missed trades from cache (will update in background)')
+          }
+        } catch (e) {
+          console.warn('Invalid cached top missed trades data')
         }
-      } catch (e) {
-        console.warn('Invalid cached top missed trades data')
       }
+    } else {
+      console.log('Force refresh - clearing frontend cache')
+      localStorage.removeItem(cacheKey)
     }
-    
+
     const queryParams = new URLSearchParams()
     if (filters.value.startDate) queryParams.append('startDate', filters.value.startDate)
     if (filters.value.endDate) queryParams.append('endDate', filters.value.endDate)
     queryParams.append('limit', '50')
-    
+    if (forceRefresh) queryParams.append('forceRefresh', 'true')
+
     const response = await api.get(`/behavioral-analytics/loss-aversion/top-missed-trades?${queryParams}`)
     
     if (response.data.data) {
