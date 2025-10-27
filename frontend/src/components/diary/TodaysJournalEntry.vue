@@ -307,24 +307,29 @@ const cancelQuickEntry = () => {
 const saveQuickEntry = async () => {
   try {
     saving.value = true
-    
+
     const entryData = {
+      entryDate: new Date().toISOString().split('T')[0], // Today's date in YYYY-MM-DD format
       entryType: 'diary',
       marketBias: quickEntry.value.marketBias || null,
       content: quickEntry.value.content || null
     }
 
-    await diaryStore.saveEntry(entryData)
-    
+    const savedEntry = await diaryStore.saveEntry(entryData)
+    console.log('[DIARY] Entry saved successfully:', savedEntry)
+
     showQuickForm.value = false
     quickEntry.value = {
       marketBias: '',
       content: ''
     }
-    
+
     // Auto-expand to show the new entry
     expanded.value = true
-    
+
+    // Force refresh today's entry to ensure UI updates
+    await diaryStore.fetchTodaysEntry()
+
   } catch (error) {
     console.error('Error saving quick entry:', error)
   } finally {
