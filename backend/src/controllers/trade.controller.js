@@ -774,6 +774,25 @@ const tradeController = {
 
           logger.logImport(`Parsed ${trades.length} trades from CSV`);
 
+          // Check tier limits for batch import
+          const TierService = require('../services/tierService');
+          const importCheck = await TierService.canImportTrades(fileUserId, trades.length);
+
+          if (!importCheck.allowed) {
+            logger.logImport(`Import blocked by tier limit: ${importCheck.message}`);
+            await db.query(`
+              UPDATE import_logs
+              SET status = 'failed',
+                  error_details = $1,
+                  completed_at = CURRENT_TIMESTAMP
+              WHERE id = $2
+            `, [{ error: importCheck.message, tier: importCheck.tier }, importId]);
+
+            throw new Error(importCheck.message);
+          }
+
+          logger.logImport(`Tier check passed: ${importCheck.tier} tier, importing ${trades.length} trades (max per import: ${importCheck.max || 'unlimited'})`);
+
           // Apply currency conversion if a currency column was detected
           if (context.hasCurrencyColumn && context.currencyRecords) {
             logger.logImport('[CURRENCY] Applying currency conversion to parsed trades');

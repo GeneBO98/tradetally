@@ -291,16 +291,16 @@
         </div>
       </div>
 
-      <!-- Upcoming Earnings Section -->
-      <UpcomingEarningsSection 
-        v-if="openTradeSymbols.length > 0" 
-        :symbols="openTradeSymbols" 
+      <!-- Upcoming Earnings Section (Pro Only) -->
+      <UpcomingEarningsSection
+        v-if="openTradeSymbols.length > 0 && authStore.user?.tier === 'pro'"
+        :symbols="openTradeSymbols"
       />
 
-      <!-- Trade News Section -->
-      <TradeNewsSection 
-        v-if="openTradeSymbols.length > 0" 
-        :symbols="openTradeSymbols" 
+      <!-- Trade News Section (Pro Only) -->
+      <TradeNewsSection
+        v-if="openTradeSymbols.length > 0 && authStore.user?.tier === 'pro'"
+        :symbols="openTradeSymbols"
       />
 
       <!-- Key Metrics Cards -->

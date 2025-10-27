@@ -657,7 +657,7 @@
         </div>
         <div class="mt-5 sm:mt-6 sm:grid sm:grid-cols-2 sm:gap-3 sm:grid-flow-row-dense">
           <router-link
-            to="/settings"
+            to="/pricing"
             class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-primary-600 text-base font-medium text-white hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:col-start-2 sm:text-sm"
             @click="showCurrencyProModal = false"
           >
@@ -679,6 +679,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { useTradesStore } from '@/stores/trades'
+import { useAuthStore } from '@/stores/auth'
 import { useNotification } from '@/composables/useNotification'
 import { format } from 'date-fns'
 import { ArrowUpTrayIcon, XMarkIcon, ExclamationTriangleIcon, Cog6ToothIcon, MagnifyingGlassIcon } from '@heroicons/vue/24/outline'
@@ -688,6 +689,7 @@ import AllCusipMappingsModal from '@/components/cusip/AllCusipMappingsModal.vue'
 import { usePriceAlertNotifications } from '@/composables/usePriceAlertNotifications'
 
 const tradesStore = useTradesStore()
+const authStore = useAuthStore()
 const { showSuccess, showError } = useNotification()
 const { celebrationQueue } = usePriceAlertNotifications()
 
@@ -852,6 +854,26 @@ function getStatusText(status) {
   }
 }
 
+// Count CSV rows (excluding header)
+async function countCSVRows(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      try {
+        const text = e.target.result
+        const lines = text.split('\n').filter(line => line.trim())
+        // Subtract 1 for header row
+        const rowCount = Math.max(0, lines.length - 1)
+        resolve(rowCount)
+      } catch (error) {
+        reject(error)
+      }
+    }
+    reader.onerror = () => reject(reader.error)
+    reader.readAsText(file)
+  })
+}
+
 async function handleImport() {
   if (!selectedFile.value || !selectedBroker.value) {
     error.value = 'Please select a file and broker format'
@@ -869,6 +891,24 @@ async function handleImport() {
   error.value = null
 
   try {
+    // Pre-check: Count rows and check tier limits before uploading
+    const tradeCount = await countCSVRows(selectedFile.value)
+    console.log(`[IMPORT] Detected ${tradeCount} trades in CSV file`)
+
+    // Check tier limits for free users
+    const userTier = authStore.user?.tier || 'free'
+    const FREE_TIER_IMPORT_LIMIT = 100
+
+    if (userTier === 'free' && tradeCount > FREE_TIER_IMPORT_LIMIT) {
+      console.log(`[IMPORT] Free tier user attempting to import ${tradeCount} trades (limit: ${FREE_TIER_IMPORT_LIMIT})`)
+      loading.value = false
+      showCurrencyProModal.value = true
+      currencyProMessage.value = `Free tier is limited to ${FREE_TIER_IMPORT_LIMIT} trades per import. You are attempting to import ${tradeCount} trades. Please upgrade to Pro for unlimited batch imports, or split your import into smaller batches.`
+      return
+    }
+
+    console.log(`[IMPORT] Tier check passed (${userTier}), proceeding with import`)
+
     const result = await tradesStore.importTrades(selectedFile.value, selectedBroker.value)
     console.log('Import result:', result)
     showSuccess('Import Started', `Import has been queued. Import ID: ${result.importId}`)
@@ -959,7 +999,13 @@ async function handleImport() {
       const message = errorMessage.split(':')[1] || 'Currency conversion is a Pro feature. Please upgrade to Pro to import trades with non-USD currencies.'
       showCurrencyProModal.value = true
       currencyProMessage.value = message
-    } else {
+    }
+    // Check if this is a batch import limit error
+    else if (errorMessage.includes('trades per import') || errorMessage.includes('batch import')) {
+      showCurrencyProModal.value = true
+      currencyProMessage.value = errorMessage
+    }
+    else {
       error.value = errorMessage
       showError('Import Failed', error.value)
     }
