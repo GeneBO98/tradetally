@@ -247,43 +247,75 @@ const expandedMonthWeeks = computed(() => {
 
 const expandedMonthWeekdays = computed(() => {
   if (!expandedMonth.value) return []
-  const days = expandedMonthDays.value
+  const monthStart = startOfMonth(expandedMonth.value)
+  const monthEnd = endOfMonth(expandedMonth.value)
+  const allDays = eachDayOfInterval({ start: monthStart, end: monthEnd })
+
   const weeks = []
   let currentWeek = { days: [], weekPnl: 0 }
-  
-  days.forEach((day, index) => {
-    if (day.date) {
-      const dayOfWeek = getDay(day.date)
-      // Skip weekends (0 = Sunday, 6 = Saturday)
-      if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-        currentWeek.days.push(day)
-        if (day.pnl !== undefined) {
-          currentWeek.weekPnl += day.pnl
+
+  allDays.forEach((date) => {
+    const dayOfWeek = getDay(date) // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+
+    // Skip weekends
+    if (dayOfWeek === 0 || dayOfWeek === 6) {
+      // If we hit Sunday and have accumulated weekdays, finish the week
+      if (dayOfWeek === 0 && currentWeek.days.length > 0) {
+        // Pad to 5 days if needed (for partial weeks)
+        while (currentWeek.days.length < 5) {
+          currentWeek.days.push({ date: null })
         }
+        weeks.push(currentWeek)
+        currentWeek = { days: [], weekPnl: 0 }
       }
-      
-      // Start new week on Monday or if it's the last day
-      if (dayOfWeek === 0 || index === days.length - 1) {
-        if (currentWeek.days.length > 0) {
-          // Pad the week if it has less than 5 days
-          while (currentWeek.days.length < 5) {
-            currentWeek.days.push({ date: null })
-          }
-          weeks.push(currentWeek)
-          currentWeek = { days: [], weekPnl: 0 }
-        }
+      return
+    }
+
+    // If it's Monday and we already have days, start a new week
+    if (dayOfWeek === 1 && currentWeek.days.length > 0) {
+      // Pad to 5 days if needed (for partial weeks)
+      while (currentWeek.days.length < 5) {
+        currentWeek.days.push({ date: null })
+      }
+      weeks.push(currentWeek)
+      currentWeek = { days: [], weekPnl: 0 }
+    }
+
+    // Add padding for the first week if it doesn't start on Monday
+    if (weeks.length === 0 && currentWeek.days.length === 0 && dayOfWeek > 1) {
+      for (let i = 1; i < dayOfWeek; i++) {
+        currentWeek.days.push({ date: null })
       }
     }
+
+    // Get trade data for this day
+    const dayTrades = trades.value.filter(trade => {
+      const [year, month, day] = trade.trade_date.split('T')[0].split('-')
+      const tradeDate = new Date(year, month - 1, day)
+      return tradeDate.toDateString() === date.toDateString()
+    })
+
+    const dayPnl = dayTrades.reduce((sum, trade) => sum + (parseFloat(trade.pnl) || 0), 0)
+
+    currentWeek.days.push({
+      date,
+      trades: dayTrades.length,
+      pnl: dayTrades.length > 0 ? dayPnl : undefined
+    })
+
+    if (dayTrades.length > 0 && dayPnl !== undefined) {
+      currentWeek.weekPnl += dayPnl
+    }
   })
-  
-  // Add any remaining days
+
+  // Add any remaining days as the last week
   if (currentWeek.days.length > 0) {
     while (currentWeek.days.length < 5) {
       currentWeek.days.push({ date: null })
     }
     weeks.push(currentWeek)
   }
-  
+
   return weeks
 })
 
