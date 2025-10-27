@@ -24,14 +24,16 @@
             <td class="px-6 py-4 text-gray-700 dark:text-gray-300">Free Plan Trade Limit</td>
             <td class="px-6 py-4 text-center">
               <span class="text-green-600 dark:text-green-400 font-semibold">Unlimited</span>
+              <div class="text-xs text-gray-500">(100 per batch import)</div>
             </td>
             <td class="px-6 py-4 text-center text-gray-600 dark:text-gray-400">100 trades/month</td>
           </tr>
-          
+
           <tr class="bg-gray-50 dark:bg-gray-900/50">
             <td class="px-6 py-4 text-gray-700 dark:text-gray-300">Price (Monthly)</td>
             <td class="px-6 py-4 text-center">
-              <span class="text-green-600 dark:text-green-400 font-semibold">Free Forever</span>
+              <span class="text-green-600 dark:text-green-400 font-semibold">Free or $8/mo</span>
+              <div class="text-xs text-gray-500">(Pro for advanced features)</div>
             </td>
             <td class="px-6 py-4 text-center text-gray-600 dark:text-gray-400">$29-$79/month</td>
           </tr>
@@ -67,9 +69,19 @@
           </tr>
           
           <tr class="bg-gray-50 dark:bg-gray-900/50">
-            <td class="px-6 py-4 text-gray-700 dark:text-gray-300">Advanced Analytics</td>
+            <td class="px-6 py-4 text-gray-700 dark:text-gray-300">Basic Analytics (P/L, Win Rate, Charts)</td>
+            <td class="px-6 py-4 text-center">
+              <span class="text-green-600 dark:text-green-400 font-semibold">Free</span>
+            </td>
             <td class="px-6 py-4 text-center">
               <CheckIcon class="h-5 w-5 text-green-500 mx-auto" />
+            </td>
+          </tr>
+
+          <tr>
+            <td class="px-6 py-4 text-gray-700 dark:text-gray-300">Advanced Analytics (SQN, Kelly, K-Ratio, MAE/MFE)</td>
+            <td class="px-6 py-4 text-center">
+              <span class="text-blue-600 dark:text-blue-400 font-semibold">Pro ($8/mo)</span>
             </td>
             <td class="px-6 py-4 text-center">
               <CheckIcon class="h-5 w-5 text-green-500 mx-auto" />
@@ -99,7 +111,7 @@
           <tr>
             <td class="px-6 py-4 text-gray-700 dark:text-gray-300">API Access</td>
             <td class="px-6 py-4 text-center">
-              <span class="text-green-600 dark:text-green-400 font-semibold">Free</span>
+              <span class="text-blue-600 dark:text-blue-400 font-semibold">Pro ($8/mo)</span>
             </td>
             <td class="px-6 py-4 text-center text-gray-600 dark:text-gray-400">Premium only</td>
           </tr>
@@ -107,9 +119,49 @@
           <tr class="bg-gray-50 dark:bg-gray-900/50">
             <td class="px-6 py-4 text-gray-700 dark:text-gray-300">Data Export</td>
             <td class="px-6 py-4 text-center">
-              <span class="text-green-600 dark:text-green-400 font-semibold">Unlimited</span>
+              <span class="text-green-600 dark:text-green-400 font-semibold">CSV Export Free</span>
             </td>
             <td class="px-6 py-4 text-center text-gray-600 dark:text-gray-400">Limited on free</td>
+          </tr>
+
+          <tr>
+            <td class="px-6 py-4 text-gray-700 dark:text-gray-300">Behavioral Analytics (Revenge Trading, Loss Aversion)</td>
+            <td class="px-6 py-4 text-center">
+              <span class="text-blue-600 dark:text-blue-400 font-semibold">Pro ($8/mo)</span>
+            </td>
+            <td class="px-6 py-4 text-center">
+              <XMarkIcon class="h-5 w-5 text-red-500 mx-auto" />
+            </td>
+          </tr>
+
+          <tr class="bg-gray-50 dark:bg-gray-900/50">
+            <td class="px-6 py-4 text-gray-700 dark:text-gray-300">Watchlists & Price Alerts</td>
+            <td class="px-6 py-4 text-center">
+              <span class="text-blue-600 dark:text-blue-400 font-semibold">Pro ($8/mo)</span>
+            </td>
+            <td class="px-6 py-4 text-center">
+              <XMarkIcon class="h-5 w-5 text-red-500 mx-auto" />
+            </td>
+          </tr>
+
+          <tr>
+            <td class="px-6 py-4 text-gray-700 dark:text-gray-300">AI-Powered Insights</td>
+            <td class="px-6 py-4 text-center">
+              <span class="text-blue-600 dark:text-blue-400 font-semibold">Pro ($8/mo)</span>
+            </td>
+            <td class="px-6 py-4 text-center">
+              <XMarkIcon class="h-5 w-5 text-red-500 mx-auto" />
+            </td>
+          </tr>
+
+          <tr class="bg-gray-50 dark:bg-gray-900/50">
+            <td class="px-6 py-4 text-gray-700 dark:text-gray-300">News Feed & Earnings Calendar</td>
+            <td class="px-6 py-4 text-center">
+              <span class="text-blue-600 dark:text-blue-400 font-semibold">Pro ($8/mo)</span>
+            </td>
+            <td class="px-6 py-4 text-center">
+              <XMarkIcon class="h-5 w-5 text-red-500 mx-auto" />
+            </td>
           </tr>
         </tbody>
       </table>
@@ -126,9 +178,9 @@
           <div class="flex items-start">
             <CheckCircleIcon class="h-6 w-6 text-green-500 mt-1 mr-3 flex-shrink-0" />
             <div>
-              <h3 class="font-semibold text-gray-900 dark:text-white">No Artificial Limits</h3>
+              <h3 class="font-semibold text-gray-900 dark:text-white">Unlimited Trade Storage</h3>
               <p class="text-gray-600 dark:text-gray-400">
-                Track unlimited trades on our free plan. No monthly limits or feature restrictions.
+                Track unlimited trades on our free plan. Basic analytics and core metrics included. Upgrade to Pro for $8/mo for advanced features.
               </p>
             </div>
           </div>
@@ -159,6 +211,16 @@
               <h3 class="font-semibold text-gray-900 dark:text-white">Open Source Transparency</h3>
               <p class="text-gray-600 dark:text-gray-400">
                 Review our code, verify our privacy claims, and even contribute to development.
+              </p>
+            </div>
+          </div>
+
+          <div class="flex items-start">
+            <CheckCircleIcon class="h-6 w-6 text-green-500 mt-1 mr-3 flex-shrink-0" />
+            <div>
+              <h3 class="font-semibold text-gray-900 dark:text-white">Affordable Pro Tier</h3>
+              <p class="text-gray-600 dark:text-gray-400">
+                Our Pro tier is just $8/month - far less than TraderVue's $29-$79/month plans - and includes advanced analytics, AI insights, behavioral analytics, and more.
               </p>
             </div>
           </div>
