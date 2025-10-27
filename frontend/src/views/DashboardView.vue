@@ -1394,7 +1394,11 @@ async function fetchExpiredOptionsCount() {
   }
 }
 
+let marketStatusChecker = null
+
 onMounted(async () => {
+  console.log('Dashboard: Component mounted')
+
   await Promise.all([
     fetchAnalytics(),
     fetchFilterOptions(),
@@ -1402,24 +1406,39 @@ onMounted(async () => {
     fetchUserSettings(),
     fetchExpiredOptionsCount()
   ])
-  
+
   // Set initial refresh timestamp
   lastRefresh.value = new Date()
-  
+
   // Start auto-update functionality
   startAutoUpdate()
-  
+
   // Check market status every minute to handle market open/close transitions
-  const marketStatusChecker = setInterval(checkMarketStatus, 60000) // Check every minute
-  
-  // Clean up on unmount
-  onUnmounted(() => {
-    stopAutoUpdate()
-    clearInterval(marketStatusChecker)
-  })
+  marketStatusChecker = setInterval(checkMarketStatus, 60000) // Check every minute
 })
 
 onUnmounted(() => {
+  console.log('Dashboard: Component unmounting - cleaning up all intervals...')
+
+  // Stop auto-update (clears updateInterval and countdownInterval)
   stopAutoUpdate()
+
+  // Clear market status checker
+  if (marketStatusChecker) {
+    clearInterval(marketStatusChecker)
+    marketStatusChecker = null
+  }
+
+  // Defensive cleanup - ensure all intervals are cleared
+  if (updateInterval) {
+    clearInterval(updateInterval)
+    updateInterval = null
+  }
+  if (countdownInterval) {
+    clearInterval(countdownInterval)
+    countdownInterval = null
+  }
+
+  console.log('Dashboard: All intervals cleared')
 })
 </script>

@@ -1556,7 +1556,7 @@ class LossAversionAnalyticsService {
   }
 
   // Get top missed trades by percentage of missed opportunity
-  static async getTopMissedTrades(userId, limit = 20, startDate = null, endDate = null) {
+  static async getTopMissedTrades(userId, limit = 20, startDate = null, endDate = null, forceRefresh = false) {
     try {
       // Check tier access
       const hasAccess = await TierService.hasFeatureAccess(userId, 'behavioral_analytics');
@@ -1564,16 +1564,21 @@ class LossAversionAnalyticsService {
         throw new Error('Loss aversion analytics requires Pro tier');
       }
 
-      // Check cache first (include date filters in cache key)
+      // Check cache first (include date filters in cache key) - but skip if forceRefresh is true
       const cacheKey = AnalyticsCache.generateKey('top_missed_trades', { limit, startDate, endDate });
-      const cachedData = await AnalyticsCache.get(userId, cacheKey);
 
-      if (cachedData) {
-        console.log(`[MISSED PROFIT] Returning cached results for user ${userId}`);
-        return cachedData;
+      if (!forceRefresh) {
+        const cachedData = await AnalyticsCache.get(userId, cacheKey);
+
+        if (cachedData) {
+          console.log(`[MISSED PROFIT] Returning cached results for user ${userId}`);
+          return cachedData;
+        }
+      } else {
+        console.log(`[MISSED PROFIT] Force refresh requested - bypassing cache for user ${userId}`);
       }
 
-      console.log(`[MISSED PROFIT] Cache miss - computing for user ${userId}, date range: ${startDate || 'all'} to ${endDate || 'now'}`);
+      console.log(`[MISSED PROFIT] Computing fresh results for user ${userId}, date range: ${startDate || 'all'} to ${endDate || 'now'}`);
 
       // Build date filter conditions
       let dateFilter = '';
