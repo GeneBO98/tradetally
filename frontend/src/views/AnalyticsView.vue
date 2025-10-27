@@ -244,8 +244,27 @@
             <!-- Detailed Stats -->
             <template v-else-if="element.id === 'detailed-stats'">
       <!-- Advanced Trading Metrics -->
-      <div class="card mb-8">
-        <div class="card-body">
+      <div class="card mb-8 relative">
+        <!-- Pro Tier Overlay for Free Users -->
+        <div v-if="isFreeTier" class="absolute inset-0 z-10 flex items-center justify-center bg-white/60 dark:bg-gray-900/60 backdrop-blur-sm rounded-lg">
+          <div class="text-center p-8 bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md">
+            <svg class="mx-auto h-12 w-12 text-primary-600 dark:text-primary-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+            <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-2">Pro Feature</h3>
+            <p class="text-gray-600 dark:text-gray-400 mb-6">
+              Unlock advanced trading metrics including SQN, Kelly Criterion, K-Ratio, MAE/MFE, and more with Pro.
+            </p>
+            <router-link
+              to="/pricing"
+              class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+            >
+              Upgrade to Pro - $8/month
+            </router-link>
+          </div>
+        </div>
+
+        <div class="card-body" :class="{ 'filter blur-sm pointer-events-none': isFreeTier }">
           <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Advanced Trading Metrics</h3>
           <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
             <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-3 relative group">
@@ -737,7 +756,30 @@
 
             <!-- News Sentiment Correlation Analytics -->
             <template v-else-if="element.id === 'news-sentiment'">
-      <NewsCorrelationAnalytics />
+      <div class="relative">
+        <!-- Pro Tier Overlay for Free Users -->
+        <div v-if="isFreeTier" class="absolute inset-0 z-10 flex items-center justify-center bg-white/60 dark:bg-gray-900/60 backdrop-blur-sm rounded-lg">
+          <div class="text-center p-8 bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md">
+            <svg class="mx-auto h-12 w-12 text-primary-600 dark:text-primary-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+            <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-2">Pro Feature</h3>
+            <p class="text-gray-600 dark:text-gray-400 mb-6">
+              Unlock news sentiment correlation analytics to see how news affects your trading performance with Pro.
+            </p>
+            <router-link
+              to="/pricing"
+              class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+            >
+              Upgrade to Pro - $8/month
+            </router-link>
+          </div>
+        </div>
+
+        <div :class="{ 'filter blur-sm pointer-events-none': isFreeTier }">
+          <NewsCorrelationAnalytics />
+        </div>
+      </div>
             </template>
 
             <!-- Tag Performance -->
@@ -1124,6 +1166,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, nextTick, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 import api from '@/services/api'
 import PerformanceChart from '@/components/charts/PerformanceChart.vue'
 import MdiIcon from '@/components/MdiIcon.vue'
@@ -1146,7 +1189,13 @@ const performancePeriod = ref('daily')
 const userSettings = ref(null)
 const router = useRouter()
 const route = useRoute()
+const authStore = useAuthStore()
 const showAdvanced = ref(false)
+
+// Check if user is on free tier
+const isFreeTier = computed(() => {
+  return authStore.user?.tier !== 'pro'
+})
 
 // Dropdown visibility
 const showStrategyDropdown = ref(false)
