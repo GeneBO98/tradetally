@@ -1006,11 +1006,12 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
 
     // Generic parser - Use transaction-based processing for better position tracking
     // Check for user preference or use enhanced mode by default when context is available
+    // Custom mappings now support position tracking!
     const useEnhancedMode = context.usePositionTracking !== false; // Default to true
 
     if (useEnhancedMode && existingPositions && Object.keys(existingPositions).length >= 0) {
       console.log('Using enhanced generic parser with position tracking');
-      const result = await parseGenericTransactions(records, existingPositions);
+      const result = await parseGenericTransactions(records, existingPositions, context.customMapping);
       console.log('Finished generic transaction-based parsing');
 
       // Apply trade grouping if enabled
@@ -1023,9 +1024,54 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
     }
 
     // Fallback to simple row-by-row parsing (legacy mode)
-    // Used when position tracking is disabled or no context available
+    // Used when position tracking is disabled, no context available, OR custom mapping is used
     console.log('Using simple generic parser (legacy mode - no position tracking)');
-    const parser = brokerParsers[broker] || brokerParsers.generic;
+    // Create custom parser if custom mapping is provided
+    let parser;
+    if (context.customMapping) {
+      const mapping = context.customMapping;
+      console.log(`[CUSTOM MAPPING] Using custom mapping: ${mapping.mapping_name}`);
+      console.log(`[CUSTOM MAPPING] Column mappings:`, {
+        symbol: mapping.symbol_column,
+        side: mapping.side_column,
+        quantity: mapping.quantity_column,
+        entryPrice: mapping.entry_price_column,
+        exitPrice: mapping.exit_price_column,
+        date: mapping.entry_date_column
+      });
+
+      parser = (row) => {
+        const quantity = parseInteger(row[mapping.quantity_column]);
+
+        // Infer side from quantity if no side column specified
+        let side;
+        if (mapping.side_column && row[mapping.side_column]) {
+          side = parseSide(row[mapping.side_column]);
+        } else {
+          // Infer from quantity sign: positive = long, negative = short
+          side = quantity >= 0 ? 'long' : 'short';
+        }
+
+        return {
+          symbol: row[mapping.symbol_column] || '',
+          tradeDate: mapping.entry_date_column ? parseDate(row[mapping.entry_date_column]) : new Date(),
+          entryTime: mapping.entry_date_column ? parseDateTime(row[mapping.entry_date_column]) : new Date(),
+          exitTime: mapping.exit_date_column ? parseDateTime(row[mapping.exit_date_column]) : null,
+          entryPrice: parseNumeric(row[mapping.entry_price_column]),
+          exitPrice: mapping.exit_price_column ? parseNumeric(row[mapping.exit_price_column]) : null,
+          quantity: Math.abs(quantity), // Use absolute value
+          side: side,
+          commission: mapping.fees_column ? parseNumeric(row[mapping.fees_column]) : 0,
+          fees: mapping.fees_column ? parseNumeric(row[mapping.fees_column]) : 0,
+          pnl: mapping.pnl_column ? parseNumeric(row[mapping.pnl_column]) : null,
+          notes: mapping.notes_column ? row[mapping.notes_column] : '',
+          broker: 'custom'
+        };
+      };
+    } else {
+      parser = brokerParsers[broker] || brokerParsers.generic;
+    }
+
     const trades = [];
 
     for (const record of records) {
@@ -3865,17 +3911,55 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
  * @param {Object} existingPositions - Map of existing open positions by symbol
  * @returns {Array} - Array of completed and open trades
  */
-async function parseGenericTransactions(records, existingPositions = {}) {
+async function parseGenericTransactions(records, existingPositions = {}, customMapping = null) {
   console.log(`Processing ${records.length} generic CSV records with position tracking`);
+  if (customMapping) {
+    console.log(`[CUSTOM MAPPING] Using custom mapping in position tracking mode: ${customMapping.mapping_name}`);
+  }
 
   const transactions = [];
   const completedTrades = [];
+  const lastTradeEndTime = {}; // Track last trade end time for each symbol
 
   // First, parse all records into transactions
   for (const record of records) {
     try {
-      // Use the generic parser to extract basic trade data
-      const parser = brokerParsers.generic;
+      // Use custom mapping parser if provided, otherwise use generic parser
+      let parser;
+      if (customMapping) {
+        const mapping = customMapping;
+        parser = (row) => {
+          // Parse quantity preserving sign (don't use parseInteger as it returns absolute value)
+          const rawQuantityStr = (row[mapping.quantity_column] || '0').toString().trim().replace(/[,]/g, '');
+          const rawQuantity = parseInt(rawQuantityStr) || 0;
+          const rawPrice = parseNumeric(row[mapping.entry_price_column]);
+
+          // Infer side from quantity sign if no side column specified
+          // Positive quantity = buy, Negative quantity = sell
+          let side;
+          if (mapping.side_column && row[mapping.side_column]) {
+            side = parseSide(row[mapping.side_column]);
+          } else {
+            // Infer from quantity sign: negative quantity = sell, positive = buy
+            side = rawQuantity < 0 ? 'short' : 'long';
+          }
+
+          return {
+            symbol: row[mapping.symbol_column] || '',
+            tradeDate: mapping.entry_date_column ? parseDate(row[mapping.entry_date_column]) : new Date(),
+            entryTime: mapping.entry_date_column ? parseDateTime(row[mapping.entry_date_column]) : new Date(),
+            entryPrice: Math.abs(rawPrice), // Use absolute value for price
+            quantity: Math.abs(rawQuantity), // Use absolute value for quantity
+            side: side,
+            commission: mapping.fees_column ? parseNumeric(row[mapping.fees_column]) : 0,
+            fees: mapping.fees_column ? parseNumeric(row[mapping.fees_column]) : 0,
+            broker: 'custom'
+          };
+        };
+      } else {
+        parser = brokerParsers.generic;
+      }
+
       const trade = parser(record);
 
       if (!isValidTrade(trade)) {
@@ -3887,17 +3971,30 @@ async function parseGenericTransactions(records, existingPositions = {}) {
       // We need to convert this to buy/sell transactions
       let transactionSide;
 
-      // Check if there's an explicit action/type field in the CSV
-      const action = (record.Action || record.Type || record.Side || '').toLowerCase();
-
-      if (action.includes('buy') || action.includes('purchase') || action.includes('bot')) {
-        transactionSide = 'buy';
-      } else if (action.includes('sell') || action.includes('sold') || action.includes('sld')) {
-        transactionSide = 'sell';
+      // If custom mapping was used with a side column, check that first
+      if (customMapping && customMapping.side_column && record[customMapping.side_column]) {
+        const sideValue = record[customMapping.side_column].toString().toLowerCase();
+        if (sideValue.includes('buy') || sideValue.includes('purchase') || sideValue.includes('bot') || sideValue.includes('long')) {
+          transactionSide = 'buy';
+        } else if (sideValue.includes('sell') || sideValue.includes('sold') || sideValue.includes('sld') || sideValue.includes('short')) {
+          transactionSide = 'sell';
+        } else {
+          // Fallback based on parsed side
+          transactionSide = trade.side === 'short' ? 'sell' : 'buy';
+        }
       } else {
-        // Fallback: use the parsed side from generic parser
-        // If side is 'long', assume it's a buy; if 'short', assume it's a sell
-        transactionSide = trade.side === 'short' ? 'sell' : 'buy';
+        // Check if there's an explicit action/type field in the CSV
+        const action = (record.Action || record.Type || record.Side || '').toLowerCase();
+
+        if (action.includes('buy') || action.includes('purchase') || action.includes('bot')) {
+          transactionSide = 'buy';
+        } else if (action.includes('sell') || action.includes('sold') || action.includes('sld')) {
+          transactionSide = 'sell';
+        } else {
+          // Fallback: use the parsed side from generic parser
+          // If side is 'long', assume it's a buy; if 'short', assume it's a sell
+          transactionSide = trade.side === 'short' ? 'sell' : 'buy';
+        }
       }
 
       transactions.push({

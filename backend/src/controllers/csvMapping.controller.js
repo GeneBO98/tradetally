@@ -123,11 +123,12 @@ const csvMappingController = {
         });
       }
 
-      // Validate that at least symbol, side, quantity, and entry_price are mapped
-      if (!symbol_column || !side_column || !quantity_column || !entry_price_column) {
+      // Validate that at least symbol, quantity, and entry_price are mapped
+      // Side column is optional - if not provided, it will be inferred from quantity sign
+      if (!symbol_column || !quantity_column || !entry_price_column) {
         return res.status(400).json({
           success: false,
-          error: 'At minimum, symbol, side, quantity, and entry price columns must be mapped'
+          error: 'At minimum, symbol, quantity, and entry price columns must be mapped'
         });
       }
 
@@ -166,7 +167,7 @@ const csvMappingController = {
         parsing_options || {}
       ]);
 
-      logger.logInfo(`CSV mapping created: ${mapping_name} for user ${userId}`);
+      logger.info(`CSV mapping created: ${mapping_name} for user ${userId}`);
 
       res.status(201).json({
         success: true,

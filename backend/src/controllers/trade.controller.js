@@ -793,9 +793,10 @@ const tradeController = {
       }
 
       const importId = uuidv4();
-      const { broker = 'generic' } = req.body;
-      
+      const { broker = 'generic', mappingId = null } = req.body;
+
       console.log('Selected broker:', broker);
+      console.log('Mapping ID:', mappingId);
       console.log('Import ID:', importId);
 
       const insertQuery = `
@@ -885,13 +886,31 @@ const tradeController = {
             userSettings = await User.createSettings(req.user.id);
           }
 
+          // Fetch custom mapping if provided
+          let customMapping = null;
+          if (mappingId) {
+            logger.logImport(`Fetching custom CSV mapping: ${mappingId}`);
+            const mappingQuery = `
+              SELECT * FROM custom_csv_mappings
+              WHERE id = $1 AND user_id = $2
+            `;
+            const mappingResult = await db.query(mappingQuery, [mappingId, fileUserId]);
+            if (mappingResult.rows.length > 0) {
+              customMapping = mappingResult.rows[0];
+              logger.logImport(`Using custom mapping: ${customMapping.mapping_name}`);
+            } else {
+              logger.logWarn(`Custom mapping ${mappingId} not found for user ${fileUserId}`);
+            }
+          }
+
           const context = {
             existingPositions,
             userId: req.user.id,
             tradeGroupingSettings: {
               enabled: userSettings.enable_trade_grouping ?? true,
               timeGapMinutes: userSettings.trade_grouping_time_gap_minutes ?? 60
-            }
+            },
+            customMapping
           };
           const parseResult = await parseCSV(fileBuffer, broker, context);
 
