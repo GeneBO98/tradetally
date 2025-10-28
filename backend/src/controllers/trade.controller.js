@@ -47,8 +47,8 @@ const tradeController = {
         minQuantity: minQuantity ? parseInt(minQuantity) : undefined,
         maxQuantity: maxQuantity ? parseInt(maxQuantity) : undefined,
         status,
-        minPnl: minPnl ? parseFloat(minPnl) : undefined,
-        maxPnl: maxPnl ? parseFloat(maxPnl) : undefined,
+        minPnl: (minPnl !== undefined && minPnl !== null && minPnl !== '') ? parseFloat(minPnl) : undefined,
+        maxPnl: (maxPnl !== undefined && maxPnl !== null && maxPnl !== '') ? parseFloat(maxPnl) : undefined,
         pnlType,
         broker, // Keep for backward compatibility
         brokers, // New multi-select broker filter
@@ -132,8 +132,8 @@ const tradeController = {
         minQuantity: minQuantity ? parseInt(minQuantity) : undefined,
         maxQuantity: maxQuantity ? parseInt(maxQuantity) : undefined,
         status,
-        minPnl: minPnl ? parseFloat(minPnl) : undefined,
-        maxPnl: maxPnl ? parseFloat(maxPnl) : undefined,
+        minPnl: (minPnl !== undefined && minPnl !== null && minPnl !== '') ? parseFloat(minPnl) : undefined,
+        maxPnl: (maxPnl !== undefined && maxPnl !== null && maxPnl !== '') ? parseFloat(maxPnl) : undefined,
         pnlType,
         broker,
         limit: parseInt(limit),

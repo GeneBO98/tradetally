@@ -4,6 +4,7 @@ const finnhub = require('./finnhub');
 const cache = require('./cache');
 const cusipQueue = require('./cusipQueue');
 const currencyConverter = require('./currencyConverter');
+const db = require('../config/database');
 
 // CUSIP resolution is now handled by the cusipQueue module
 
@@ -884,7 +885,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
 
     if (broker === 'lightspeed') {
       console.log('Starting Lightspeed transaction parsing');
-      const result = await parseLightspeedTransactions(records, existingPositions);
+      const result = await parseLightspeedTransactions(records, existingPositions, context.userId);
       console.log('Finished Lightspeed transaction parsing');
 
       // Apply trade grouping if enabled
@@ -1618,19 +1619,19 @@ function calculateLightspeedFees(row) {
 
 
 
-async function parseLightspeedTransactions(records, existingPositions = {}) {
-  console.log(`Processing ${records.length} Lightspeed records`);
-  
+async function parseLightspeedTransactions(records, existingPositions = {}, userId = null) {
+  console.log(`Processing ${records.length} Lightspeed records for user ${userId}`);
+
   if (records.length === 0) {
     return [];
   }
-  
+
   // First, collect all unique CUSIPs for batch lookup
   const cusipsToResolve = new Set();
   records.forEach(record => {
     const symbol = cleanString(record.Symbol);
     const cusip = cleanString(record.CUSIP);
-    
+
     // Check if symbol looks like CUSIP
     if (symbol && symbol.length === 9 && /^[0-9A-Z]{8}[0-9]$/.test(symbol)) {
       cusipsToResolve.add(symbol);
@@ -1640,34 +1641,57 @@ async function parseLightspeedTransactions(records, existingPositions = {}) {
       cusipsToResolve.add(cusip);
     }
   });
-  
-  // Only check cache during import, schedule background CUSIP resolution
+
+  // Check database first, then cache, then schedule background resolution
   let cusipToTickerMap = {};
   const unresolvedCusips = [];
-  
+
   if (cusipsToResolve.size > 0) {
-    console.log(`Found ${cusipsToResolve.size} unique CUSIPs to resolve`);
-    
-    // Only check cache during import
+    console.log(`[CUSIP] Found ${cusipsToResolve.size} unique CUSIPs to resolve`);
+
+    // Check database mappings first (both user-specific and global)
     for (const cusip of cusipsToResolve) {
       const cleanCusip = cusip.replace(/\s/g, '').toUpperCase();
+      let resolved = false;
+
       try {
-        const cached = await cache.get('cusip_resolution', cleanCusip);
-        
-        if (cached) {
-          cusipToTickerMap[cleanCusip] = cached;
-          console.log(`CUSIP ${cleanCusip} found in cache: ${cached}`);
-        } else {
-          unresolvedCusips.push(cleanCusip);
-          console.log(`CUSIP ${cleanCusip} not in cache, will resolve in background`);
+        // Check database using get_cusip_mapping function
+        const query = `SELECT * FROM get_cusip_mapping($1, $2)`;
+        const result = await db.query(query, [cleanCusip, userId]);
+
+        if (result.rows.length > 0) {
+          const mapping = result.rows[0];
+          cusipToTickerMap[cleanCusip] = mapping.ticker;
+          console.log(`[CUSIP] ${cleanCusip} found in database: ${mapping.ticker} (${mapping.resolution_source}${mapping.is_user_override ? ', user override' : ', global'})`);
+          resolved = true;
         }
       } catch (error) {
-        console.warn(`Failed to check cache for CUSIP ${cleanCusip}:`, error.message);
+        console.warn(`[CUSIP] Failed to check database for ${cleanCusip}:`, error.message);
+      }
+
+      // If not in database, check cache
+      if (!resolved) {
+        try {
+          const cached = await cache.get('cusip_resolution', cleanCusip);
+
+          if (cached) {
+            cusipToTickerMap[cleanCusip] = cached;
+            console.log(`[CUSIP] ${cleanCusip} found in cache: ${cached}`);
+            resolved = true;
+          }
+        } catch (error) {
+          console.warn(`[CUSIP] Failed to check cache for ${cleanCusip}:`, error.message);
+        }
+      }
+
+      // If still not resolved, add to queue
+      if (!resolved) {
         unresolvedCusips.push(cleanCusip);
+        console.log(`[CUSIP] ${cleanCusip} not resolved, will process in background`);
       }
     }
     
-    console.log(`Using cached results for ${Object.keys(cusipToTickerMap).length} of ${cusipsToResolve.size} CUSIPs. ${unresolvedCusips.length} will be queued for background processing.`);
+    console.log(`[CUSIP] Resolved ${Object.keys(cusipToTickerMap).length} of ${cusipsToResolve.size} CUSIPs from database/cache. ${unresolvedCusips.length} will be queued for background processing.`);
     
     // Add unresolved CUSIPs to the processing queue
     if (unresolvedCusips.length > 0) {
@@ -2170,7 +2194,10 @@ async function parseSchwabTransactions(records, existingPositions = {}) {
   });
   
   console.log(`Parsed ${transactions.length} valid transactions`);
-  
+
+  // Track the last trade end time for each symbol (for time-gap-based grouping)
+  const lastTradeEndTime = {};
+
   // Group transactions by symbol
   const transactionsBySymbol = {};
   for (const transaction of transactions) {
@@ -2179,7 +2206,7 @@ async function parseSchwabTransactions(records, existingPositions = {}) {
     }
     transactionsBySymbol[transaction.symbol].push(transaction);
   }
-  
+
   // Process transactions using round-trip trade grouping (like TradersVue)
   for (const symbol in transactionsBySymbol) {
     const symbolTransactions = transactionsBySymbol[symbol];
