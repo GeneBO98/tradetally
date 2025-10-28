@@ -281,10 +281,9 @@
                       :id="`exec-commission-${index}`"
                       v-model="execution.commission"
                       type="number"
-                      step="0.01"
-                      min="0"
+                      step="0.00001"
                       class="input"
-                      placeholder="0.00"
+                      placeholder="0.00000"
                     />
                   </div>
 
@@ -294,10 +293,9 @@
                       :id="`exec-fees-${index}`"
                       v-model="execution.fees"
                       type="number"
-                      step="0.01"
-                      min="0"
+                      step="0.00001"
                       class="input"
-                      placeholder="0.00"
+                      placeholder="0.00000"
                     />
                   </div>
                 </div>
@@ -393,10 +391,9 @@
                     :id="`exec-commission-${index}`"
                     v-model="execution.commission"
                     type="number"
-                    step="0.01"
-                    min="0"
+                    step="0.00001"
                     class="input"
-                    placeholder="0.00"
+                    placeholder="0.00000"
                   />
                 </div>
 
@@ -406,10 +403,9 @@
                     :id="`exec-fees-${index}`"
                     v-model="execution.fees"
                     type="number"
-                    step="0.01"
-                    min="0"
+                    step="0.00001"
                     class="input"
-                    placeholder="0.00"
+                    placeholder="0.00000"
                   />
                 </div>
               </div>
@@ -1171,8 +1167,8 @@ async function handleSubmit() {
     let calculatedExitTime = form.value.exitTime
     let calculatedEntryPrice = parseFloat(form.value.entryPrice) || 0
     let calculatedExitPrice = form.value.exitPrice ? parseFloat(form.value.exitPrice) : null
-    let calculatedCommission = (parseFloat(form.value.entryCommission) || 0) + (parseFloat(form.value.exitCommission) || 0)
-    let calculatedFees = parseFloat(form.value.fees) || 0
+    let calculatedCommission = Math.abs(parseFloat(form.value.entryCommission) || 0) + Math.abs(parseFloat(form.value.exitCommission) || 0)
+    let calculatedFees = Math.abs(parseFloat(form.value.fees) || 0)
 
     const processedExecutions = form.value.executions && form.value.executions.length > 0
       ? form.value.executions.map(exec => {
@@ -1186,8 +1182,8 @@ async function handleSubmit() {
               exitPrice: exec.exitPrice ? parseFloat(exec.exitPrice) : null,
               entryTime: exec.entryTime,
               exitTime: exec.exitTime || null,
-              commission: parseFloat(exec.commission) || 0,
-              fees: parseFloat(exec.fees) || 0,
+              commission: Math.abs(parseFloat(exec.commission) || 0),
+              fees: Math.abs(parseFloat(exec.fees) || 0),
               pnl: exec.pnl || 0,
               stopLoss: exec.stopLoss && exec.stopLoss !== '' ? parseFloat(exec.stopLoss) : null,
               takeProfit: exec.takeProfit && exec.takeProfit !== '' ? parseFloat(exec.takeProfit) : null
@@ -1199,8 +1195,8 @@ async function handleSubmit() {
               quantity: parseFloat(exec.quantity),
               price: parseFloat(exec.price),
               datetime: exec.datetime,
-              commission: parseFloat(exec.commission) || 0,
-              fees: parseFloat(exec.fees) || 0,
+              commission: Math.abs(parseFloat(exec.commission) || 0),
+              fees: Math.abs(parseFloat(exec.fees) || 0),
               stopLoss: exec.stopLoss && exec.stopLoss !== '' ? parseFloat(exec.stopLoss) : null,
               takeProfit: exec.takeProfit && exec.takeProfit !== '' ? parseFloat(exec.takeProfit) : null
             }
@@ -1218,9 +1214,9 @@ async function handleSubmit() {
         // Total quantity is sum of ALL execution quantities
         calculatedQuantity = processedExecutions.reduce((sum, exec) => sum + exec.quantity, 0)
 
-        // Total commission and fees from all executions
-        calculatedCommission = processedExecutions.reduce((sum, exec) => sum + (exec.commission || 0), 0)
-        calculatedFees = processedExecutions.reduce((sum, exec) => sum + (exec.fees || 0), 0)
+        // Total commission and fees from all executions (always positive)
+        calculatedCommission = processedExecutions.reduce((sum, exec) => sum + Math.abs(exec.commission || 0), 0)
+        calculatedFees = processedExecutions.reduce((sum, exec) => sum + Math.abs(exec.fees || 0), 0)
 
         // For grouped executions, use the first execution's entry time
         calculatedEntryTime = processedExecutions[0].entryTime
@@ -1276,9 +1272,9 @@ async function handleSubmit() {
           calculatedExitPrice = totalSellValue / totalSellQty
         }
 
-        // Total commission and fees from all executions
-        calculatedCommission = processedExecutions.reduce((sum, exec) => sum + (exec.commission || 0), 0)
-        calculatedFees = processedExecutions.reduce((sum, exec) => sum + (exec.fees || 0), 0)
+        // Total commission and fees from all executions (always positive)
+        calculatedCommission = processedExecutions.reduce((sum, exec) => sum + Math.abs(exec.commission || 0), 0)
+        calculatedFees = processedExecutions.reduce((sum, exec) => sum + Math.abs(exec.fees || 0), 0)
       }
     }
 
@@ -1400,6 +1396,9 @@ function handleImageDeleted(imageId) {
 watch(() => form.value.isPublic, async (newValue, oldValue) => {
   // Only trigger if changing from false to true
   if (newValue && !oldValue) {
+    // Fetch fresh user data to get current public profile status
+    await authStore.fetchUser()
+
     // Check if user's profile is already public
     const userSettings = authStore.user?.settings || {}
     const isProfilePublic = userSettings.publicProfile || false

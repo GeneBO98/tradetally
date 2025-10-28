@@ -3951,8 +3951,8 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
             entryPrice: Math.abs(rawPrice), // Use absolute value for price
             quantity: Math.abs(rawQuantity), // Use absolute value for quantity
             side: side,
-            commission: mapping.fees_column ? parseNumeric(row[mapping.fees_column]) : 0,
-            fees: mapping.fees_column ? parseNumeric(row[mapping.fees_column]) : 0,
+            commission: mapping.fees_column ? Math.abs(parseNumeric(row[mapping.fees_column])) : 0,
+            fees: mapping.fees_column ? Math.abs(parseNumeric(row[mapping.fees_column])) : 0,
             broker: 'custom'
           };
         };
