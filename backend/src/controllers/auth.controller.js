@@ -22,9 +22,9 @@ function getRegistrationMode() {
   return validModes.includes(mode) ? mode : 'open';
 }
 
-// Get billing mode from environment (defaults to false)
-function getBillingMode() {
-  return process.env.BILLING_MODE === 'true';
+// Get billing enabled from environment (defaults to false)
+function getBillingEnabled() {
+  return process.env.BILLING_ENABLED === 'true';
 }
 
 const authController = {
@@ -470,13 +470,13 @@ const authController = {
     try {
       const registrationMode = getRegistrationMode();
       const emailConfigured = isEmailConfigured();
-      const billingMode = getBillingMode();
+      const billingEnabled = getBillingEnabled();
 
       res.json({
         registrationMode,
         emailVerificationEnabled: emailConfigured,
         allowRegistration: registrationMode !== 'disabled',
-        billingMode
+        billingEnabled
       });
     } catch (error) {
       next(error);
