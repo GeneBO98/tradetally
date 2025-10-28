@@ -91,18 +91,6 @@
               <div class="text-sm text-gray-500 dark:text-gray-400">Win Rate</div>
               <div class="text-lg font-medium text-gray-900 dark:text-white">{{ tradesStore.winRate }}%</div>
             </div>
-            <!-- Export CSV Button -->
-            <button
-              @click="exportToCSV"
-              :disabled="exportingCSV"
-              class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50"
-              :title="exportingCSV ? 'Exporting...' : 'Export trades to CSV'"
-            >
-              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              {{ exportingCSV ? 'Exporting...' : 'Export CSV' }}
-            </button>
             <!-- Fullwidth Toggle -->
             <button
               @click="toggleFullWidth"
@@ -853,9 +841,6 @@ const newspaperIcon = mdiNewspaper
 // Fullwidth mode
 const isFullWidth = ref(false)
 
-// CSV Export
-const exportingCSV = ref(false)
-
 // Scroll synchronization
 const topScroll = ref(null)
 const bottomScroll = ref(null)
@@ -1125,75 +1110,6 @@ function goToPage(page) {
 
 function nextPage() {
   tradesStore.nextPage()
-}
-
-async function exportToCSV() {
-  if (exportingCSV.value) return
-
-  try {
-    exportingCSV.value = true
-
-    // Build query params from current filters
-    const params = new URLSearchParams()
-    const filters = tradesStore.filters
-
-    if (filters.symbol) params.append('symbol', filters.symbol)
-    if (filters.startDate) params.append('startDate', filters.startDate)
-    if (filters.endDate) params.append('endDate', filters.endDate)
-    if (filters.tags && filters.tags.length > 0) params.append('tags', filters.tags.join(','))
-    if (filters.strategy) params.append('strategy', filters.strategy)
-    if (filters.sector) params.append('sector', filters.sector)
-    if (filters.strategies && filters.strategies.length > 0) params.append('strategies', filters.strategies.join(','))
-    if (filters.sectors && filters.sectors.length > 0) params.append('sectors', filters.sectors.join(','))
-    if (filters.hasNews !== undefined) params.append('hasNews', filters.hasNews)
-    if (filters.daysOfWeek && filters.daysOfWeek.length > 0) params.append('daysOfWeek', filters.daysOfWeek.join(','))
-    if (filters.instrumentTypes && filters.instrumentTypes.length > 0) params.append('instrumentTypes', filters.instrumentTypes.join(','))
-    if (filters.optionTypes && filters.optionTypes.length > 0) params.append('optionTypes', filters.optionTypes.join(','))
-    if (filters.qualityGrades && filters.qualityGrades.length > 0) params.append('qualityGrades', filters.qualityGrades.join(','))
-    if (filters.side) params.append('side', filters.side)
-    if (filters.minPrice !== undefined) params.append('minPrice', filters.minPrice)
-    if (filters.maxPrice !== undefined) params.append('maxPrice', filters.maxPrice)
-    if (filters.minQuantity !== undefined) params.append('minQuantity', filters.minQuantity)
-    if (filters.maxQuantity !== undefined) params.append('maxQuantity', filters.maxQuantity)
-    if (filters.status) params.append('status', filters.status)
-    if (filters.minPnl !== undefined) params.append('minPnl', filters.minPnl)
-    if (filters.maxPnl !== undefined) params.append('maxPnl', filters.maxPnl)
-    if (filters.pnlType) params.append('pnlType', filters.pnlType)
-    if (filters.broker) params.append('broker', filters.broker)
-    if (filters.brokers && filters.brokers.length > 0) params.append('brokers', filters.brokers.join(','))
-
-    // Make request to export endpoint
-    const response = await api.get(`/trades/export/csv?${params.toString()}`, {
-      responseType: 'blob'
-    })
-
-    // Create download link
-    const blob = new Blob([response.data], { type: 'text/csv' })
-    const url = window.URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-
-    // Get filename from Content-Disposition header or use default
-    const contentDisposition = response.headers['content-disposition']
-    let filename = 'tradetally-export.csv'
-    if (contentDisposition) {
-      const match = contentDisposition.match(/filename="(.+)"/)
-      if (match) filename = match[1]
-    }
-
-    link.setAttribute('download', filename)
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    window.URL.revokeObjectURL(url)
-
-    console.log('[SUCCESS] Trades exported to CSV:', filename)
-  } catch (error) {
-    console.error('[ERROR] Failed to export trades:', error)
-    // You could add a notification here
-  } finally {
-    exportingCSV.value = false
-  }
 }
 
 function prevPage() {

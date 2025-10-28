@@ -48,9 +48,14 @@ export const useAuthStore = defineStore('auth', () => {
 
       const { user: userData, token: authToken } = response.data
 
-      user.value = userData
       token.value = authToken
       localStorage.setItem('token', authToken)
+
+      // Set authorization header for subsequent requests
+      api.defaults.headers.common['Authorization'] = `Bearer ${authToken}`
+
+      // Fetch complete user data with settings
+      await fetchUser()
 
       // If there's a return URL (from OAuth flow), redirect there instead of dashboard
       if (returnUrl) {
@@ -119,11 +124,23 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function fetchUser() {
     if (!token.value) return
-    
+
     try {
       const response = await api.get('/auth/me')
-      user.value = response.data.user
-      return response.data.user
+      // Merge settings into user object (convert snake_case to camelCase)
+      const settings = response.data.settings || {}
+      user.value = {
+        ...response.data.user,
+        settings: {
+          publicProfile: settings.public_profile ?? false,
+          emailNotifications: settings.email_notifications ?? true,
+          defaultTags: settings.default_tags || [],
+          accountEquity: settings.account_equity || 0,
+          // Add other settings as needed
+          ...settings
+        }
+      }
+      return user.value
     } catch (err) {
       if (err.response?.status === 401) {
         logout()
