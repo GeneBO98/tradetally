@@ -216,7 +216,12 @@ const router = createRouter({
     {
       path: '/compare/tradervue',
       name: 'compare-tradervue',
-      component: () => import('@/views/CompareTraderVueView.vue'),
+      redirect: '/compare'
+    },
+    {
+      path: '/compare',
+      name: 'comparison',
+      component: () => import('@/views/ComparisonView.vue'),
       meta: { requiresOpen: true }
     },
     {
@@ -268,10 +273,33 @@ const router = createRouter({
 
 router.beforeEach(async (to, from, next) => {
   const authStore = useAuthStore()
-  const { fetchRegistrationConfig, isClosedMode, showSEOPages } = useRegistrationMode()
+  const { fetchRegistrationConfig, isClosedMode, isBillingMode, showSEOPages } = useRegistrationMode()
 
   // Fetch registration config for all routes
   await fetchRegistrationConfig()
+
+  // Handle billing mode - when FALSE (default), redirect home to login and block public pages
+  // When TRUE, show public pages for SaaS offering
+  if (!isBillingMode.value) {
+    // Billing mode is false (private instance) - hide public pages
+    if (to.name === 'home') {
+      if (authStore.isAuthenticated) {
+        next({ name: 'dashboard' })
+      } else {
+        next({ name: 'login' })
+      }
+      return
+    }
+    // Block access to public/SEO pages when billing mode is false
+    if (to.meta.requiresOpen) {
+      if (authStore.isAuthenticated) {
+        next({ name: 'dashboard' })
+      } else {
+        next({ name: 'login' })
+      }
+      return
+    }
+  }
 
   // Handle closed mode - redirect home to login
   if (isClosedMode.value && to.name === 'home' && !authStore.isAuthenticated) {
@@ -279,7 +307,7 @@ router.beforeEach(async (to, from, next) => {
     return
   }
 
-  // Handle SEO pages - only show when registration mode is 'open'
+  // Handle SEO pages - only show when registration mode is 'open' and not in billing mode
   if (to.meta.requiresOpen && !showSEOPages.value) {
     next({ name: 'home' })
     return

@@ -2,10 +2,11 @@
   <div class="max-w-7xl mx-auto py-8 px-4">
     <div class="text-center mb-12">
       <h1 class="text-4xl font-bold text-gray-900 dark:text-white mb-4">
-        Powerful Features for Serious Traders
+        Advanced Trading Journal Features
       </h1>
       <p class="text-xl text-gray-600 dark:text-gray-400 max-w-3xl mx-auto">
-        Everything you need to track, analyze, and improve your trading performance in one comprehensive platform.
+        Professional trade tracking platform with automated import, performance analytics, broker integration, and AI-powered insights.
+        Everything day traders need to analyze and improve trading performance.
       </p>
     </div>
 
@@ -18,7 +19,8 @@
           <h3 class="text-xl font-semibold text-gray-900 dark:text-white">Universal Trade Import</h3>
         </div>
         <p class="text-gray-600 dark:text-gray-400">
-          Import trades from any broker via CSV. Support for stocks, options, futures, and forex with automatic symbol resolution.
+          Automated trade import from verified brokers: Lightspeed, Schwab/ThinkorSwim, IBKR, E*TRADE, TD Ameritrade.
+          Custom CSV column mapping for other brokers. Support for stocks and options with automatic symbol resolution.
         </p>
       </div>
 
@@ -29,7 +31,8 @@
           <h3 class="text-xl font-semibold text-gray-900 dark:text-white">Advanced Analytics</h3>
         </div>
         <p class="text-gray-600 dark:text-gray-400">
-          Comprehensive performance metrics, win/loss analysis, and custom date ranges. Track P&L, win rate, and risk metrics.
+          Advanced trading performance analytics including Sharpe ratio, Kelly criterion, SQN, K-ratio, MAE/MFE analysis.
+          Comprehensive P&L tracking, win rate calculation, and risk-adjusted returns for serious day traders.
         </p>
       </div>
 
@@ -226,18 +229,24 @@ import { onMounted } from 'vue'
 
 // Set document title and meta tags
 onMounted(() => {
-  document.title = 'Features - TradeTally Trading Journal'
-  
+  document.title = 'Advanced Trading Journal Features - Automated Import, Analytics & Broker Integration | TradeTally'
+
   // Update meta description
   let metaDescription = document.querySelector('meta[name="description"]')
-  if (metaDescription) {
-    metaDescription.setAttribute('content', 'Explore TradeTally features: trade import, advanced analytics, detailed journaling, public sharing, calendar view, and self-hosting options for serious traders.')
+  if (!metaDescription) {
+    metaDescription = document.createElement('meta')
+    metaDescription.setAttribute('name', 'description')
+    document.head.appendChild(metaDescription)
   }
-  
+  metaDescription.setAttribute('content', 'Complete trading journal features: automated trade import from Lightspeed, Schwab, IBKR, E*TRADE, TD Ameritrade. Advanced performance analytics, AI insights, charting tools for stocks and options. Mobile access and self-hosting available.')
+
   // Update meta keywords
   let metaKeywords = document.querySelector('meta[name="keywords"]')
-  if (metaKeywords) {
-    metaKeywords.setAttribute('content', 'trading journal features, trade tracking tools, trading analytics, trade import, self-hosted trading journal')
+  if (!metaKeywords) {
+    metaKeywords = document.createElement('meta')
+    metaKeywords.setAttribute('name', 'keywords')
+    document.head.appendChild(metaKeywords)
   }
+  metaKeywords.setAttribute('content', 'trading journal features, automated trade import, broker integration, trading performance analytics, stock trading journal, options trading journal, forex trading journal, trade tracking tools, AI trading insights, self-hosted trading journal, mobile trading app')
 })
 </script>
