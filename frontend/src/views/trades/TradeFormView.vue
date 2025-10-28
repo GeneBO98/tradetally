@@ -1341,8 +1341,8 @@ async function handleSubmit() {
         strategy: tradeData.strategy,
         notes: !!tradeData.notes
       })
-      // For edits, go back to the trade detail page
-      router.push(`/trades/${route.params.id}`)
+      // For edits, go back to the trade detail page (replace history so back button works logically)
+      router.replace(`/trades/${route.params.id}`)
     } else {
       // Analyze for revenge trading before creating (non-blocking)
       if (hasProAccess.value) {
