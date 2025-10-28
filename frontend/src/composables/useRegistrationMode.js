@@ -12,7 +12,7 @@ export function useRegistrationMode() {
         registrationConfig.value = await authStore.getRegistrationConfig()
         console.log('[REGISTRATION] Config fetched:', {
           registrationMode: registrationConfig.value.registrationMode,
-          billingMode: registrationConfig.value.billingMode,
+          billingEnabled: registrationConfig.value.billingEnabled,
           allowRegistration: registrationConfig.value.allowRegistration
         })
       } catch (error) {
@@ -21,7 +21,7 @@ export function useRegistrationMode() {
         registrationConfig.value = {
           registrationMode: 'open',
           allowRegistration: true,
-          billingMode: false
+          billingEnabled: false
         }
       }
     }
@@ -44,25 +44,24 @@ export function useRegistrationMode() {
     return registrationConfig.value?.allowRegistration === true
   })
 
-  const isBillingMode = computed(() => {
-    const billingEnabled = registrationConfig.value?.billingMode === true
+  const isBillingEnabled = computed(() => {
+    const enabled = registrationConfig.value?.billingEnabled === true
     if (registrationConfig.value) {
-      console.log('[BILLING MODE] Enabled:', billingEnabled, 'billingMode value:', registrationConfig.value.billingMode)
+      console.log('[BILLING] Enabled:', enabled, 'billingEnabled value:', registrationConfig.value.billingEnabled)
     }
-    return billingEnabled
+    return enabled
   })
 
   const showSEOPages = computed(() => {
-    // Only show SEO pages when billing mode is TRUE (SaaS/public offering)
-    // When billing mode is FALSE (default), hide public pages (private instance)
-    if (!isBillingMode.value) {
-      console.log('[SEO PAGES] Hidden - billing mode is false (private instance)')
+    // Only show SEO pages when billing is enabled (SaaS/public offering)
+    // When billing is disabled (default), hide public pages (private instance)
+    if (!isBillingEnabled.value) {
+      console.log('[SEO PAGES] Hidden - billing disabled (private instance)')
       return false
     }
-    // When billing mode is true, also check if registration is open
-    const show = isOpenMode.value
-    console.log('[SEO PAGES] Show:', show, 'Billing mode true, Open mode:', isOpenMode.value)
-    return show
+    // When billing is enabled, show SEO pages (public SaaS offering)
+    console.log('[SEO PAGES] Show: true - billing enabled (public instance)')
+    return true
   })
 
   return {
@@ -72,7 +71,7 @@ export function useRegistrationMode() {
     isClosedMode,
     isSemiMode,
     allowRegistration,
-    isBillingMode,
+    isBillingEnabled,
     showSEOPages
   }
 }
