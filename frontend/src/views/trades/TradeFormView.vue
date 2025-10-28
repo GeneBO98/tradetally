@@ -798,6 +798,52 @@
         </div>
       </div>
     </form>
+
+    <!-- Public Profile Modal -->
+    <div v-if="showPublicProfileModal" class="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+      <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" @click="closePublicProfileModal"></div>
+        <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+        <div class="inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
+          <div class="sm:flex sm:items-start">
+            <div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-primary-100 dark:bg-primary-900/20 sm:mx-0 sm:h-10 sm:w-10">
+              <svg class="h-6 w-6 text-primary-600 dark:text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+              </svg>
+            </div>
+            <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
+              <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white" id="modal-title">
+                Enable Public Profile?
+              </h3>
+              <div class="mt-2">
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                  To share public trades, you need to enable your public profile. This will allow other users to see your public trades and username.
+                </p>
+                <p class="text-sm text-gray-500 dark:text-gray-400 mt-2">
+                  Would you like to make your profile public now?
+                </p>
+              </div>
+            </div>
+          </div>
+          <div class="mt-5 sm:mt-4 sm:flex sm:flex-row-reverse">
+            <button
+              type="button"
+              @click="enablePublicProfile"
+              class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-primary-600 text-base font-medium text-white hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:ml-3 sm:w-auto sm:text-sm"
+            >
+              Yes, make my profile public
+            </button>
+            <button
+              type="button"
+              @click="closePublicProfileModal"
+              class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 dark:border-gray-600 shadow-sm px-4 py-2 bg-white dark:bg-gray-700 text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:mt-0 sm:w-auto sm:text-sm"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -805,6 +851,7 @@
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTradesStore } from '@/stores/trades'
+import { useAuthStore } from '@/stores/auth'
 import { useNotification } from '@/composables/useNotification'
 import { useAnalytics } from '@/composables/useAnalytics'
 import ImageUpload from '@/components/trades/ImageUpload.vue'
@@ -815,6 +862,7 @@ const showMoreOptions = ref(false)
 const route = useRoute()
 const router = useRouter()
 const tradesStore = useTradesStore()
+const authStore = useAuthStore()
 const { showSuccess, showError } = useNotification()
 const { trackTradeAction } = useAnalytics()
 
@@ -824,6 +872,8 @@ const behavioralAlert = ref(null)
 const tradeBlocked = ref(false)
 const tradeBlockingInfo = ref(null)
 const hasProAccess = ref(false)
+const showPublicProfileModal = ref(false)
+const previousIsPublicValue = ref(false)
 
 const isEdit = computed(() => !!route.params.id)
 
@@ -1196,13 +1246,6 @@ async function handleSubmit() {
         }
       } else {
         // Handle individual fill format
-        // Total quantity is sum of ALL execution quantities (not net position)
-        calculatedQuantity = processedExecutions.reduce((sum, exec) => sum + exec.quantity, 0)
-
-        // Total commission and fees from all executions
-        calculatedCommission = processedExecutions.reduce((sum, exec) => sum + (exec.commission || 0), 0)
-        calculatedFees = processedExecutions.reduce((sum, exec) => sum + (exec.fees || 0), 0)
-
         // Entry time is earliest execution
         const sortedByTime = [...processedExecutions].sort((a, b) =>
           new Date(a.datetime) - new Date(b.datetime)
@@ -1221,6 +1264,8 @@ async function handleSubmit() {
           const totalBuyValue = buyExecutions.reduce((sum, exec) => sum + (exec.price * exec.quantity), 0)
           const totalBuyQty = buyExecutions.reduce((sum, exec) => sum + exec.quantity, 0)
           calculatedEntryPrice = totalBuyValue / totalBuyQty
+          // Quantity is the sum of BUY executions (position size), not all executions
+          calculatedQuantity = totalBuyQty
         }
 
         // Exit price is weighted average of sell executions
@@ -1230,6 +1275,10 @@ async function handleSubmit() {
           const totalSellQty = sellExecutions.reduce((sum, exec) => sum + exec.quantity, 0)
           calculatedExitPrice = totalSellValue / totalSellQty
         }
+
+        // Total commission and fees from all executions
+        calculatedCommission = processedExecutions.reduce((sum, exec) => sum + (exec.commission || 0), 0)
+        calculatedFees = processedExecutions.reduce((sum, exec) => sum + (exec.fees || 0), 0)
       }
     }
 
@@ -1345,6 +1394,48 @@ function handleImageUploaded() {
 function handleImageDeleted(imageId) {
   // Remove the deleted image from the current images array
   currentImages.value = currentImages.value.filter(img => img.id !== imageId)
+}
+
+// Watch for changes to isPublic checkbox
+watch(() => form.value.isPublic, async (newValue, oldValue) => {
+  // Only trigger if changing from false to true
+  if (newValue && !oldValue) {
+    // Check if user's profile is already public
+    const userSettings = authStore.user?.settings || {}
+    const isProfilePublic = userSettings.publicProfile || false
+
+    if (!isProfilePublic) {
+      // Profile is not public, show modal
+      previousIsPublicValue.value = oldValue
+      showPublicProfileModal.value = true
+    }
+  }
+})
+
+// Close modal and revert checkbox
+function closePublicProfileModal() {
+  showPublicProfileModal.value = false
+  form.value.isPublic = previousIsPublicValue.value
+}
+
+// Enable public profile and close modal
+async function enablePublicProfile() {
+  try {
+    // Update user settings to enable public profile
+    await api.put('/settings', { publicProfile: true })
+
+    // Refresh user data to get updated settings
+    await authStore.fetchUser()
+
+    showPublicProfileModal.value = false
+    showSuccess('Success', 'Your profile is now public')
+  } catch (error) {
+    console.error('Failed to enable public profile:', error)
+    showError('Error', 'Failed to enable public profile. Please try again.')
+    // Revert the checkbox
+    form.value.isPublic = previousIsPublicValue.value
+    showPublicProfileModal.value = false
+  }
 }
 
 // Check if user has access to behavioral analytics

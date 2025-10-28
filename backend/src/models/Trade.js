@@ -358,7 +358,10 @@ class Trade {
 
   static async findById(id, userId = null) {
     let query = `
-      SELECT t.*, u.username, u.avatar_url,
+      SELECT t.*,
+        u.username,
+        u.avatar_url,
+        COALESCE(gp.display_name, u.username) as display_name,
         t.strategy, t.setup,
         json_agg(
           json_build_object(
@@ -376,6 +379,7 @@ class Trade {
         sc.company_name as company_name
       FROM trades t
       LEFT JOIN users u ON t.user_id = u.id
+      LEFT JOIN gamification_profile gp ON u.id = gp.user_id
       LEFT JOIN trade_attachments ta ON t.id = ta.trade_id
       LEFT JOIN trade_comments tc ON t.id = tc.trade_id
       LEFT JOIN symbol_categories sc ON t.symbol = sc.symbol
@@ -391,7 +395,7 @@ class Trade {
       query += ` AND t.is_public = true`;
     }
 
-    query += ` GROUP BY t.id, u.username, u.avatar_url, sc.finnhub_industry, sc.company_name`;
+    query += ` GROUP BY t.id, u.username, u.avatar_url, gp.display_name, sc.finnhub_industry, sc.company_name`;
 
     const result = await db.query(query, values);
     const trade = result.rows[0];
@@ -812,61 +816,28 @@ class Trade {
       }
     }
 
-    // Special handling for executions to merge instead of replace
-    let mergedExecutions = null;
-    if (updates.executions) {
-      // Get existing executions from current trade
-      let existingExecutions = [];
-      try {
-        existingExecutions = currentTrade.executions
-          ? (typeof currentTrade.executions === 'string'
-              ? JSON.parse(currentTrade.executions)
-              : currentTrade.executions)
-          : [];
-      } catch (e) {
-        console.warn(`Failed to parse existing executions for trade ${id}:`, e.message);
-        existingExecutions = [];
+    // Special handling for executions - replace instead of merge to prevent duplicates
+    let executionsToSet = null;
+    if (updates.executions && updates.executions.length > 0) {
+      // Check if executions have actually changed by comparing JSON strings
+      const currentExecutionsJson = JSON.stringify(currentTrade.executions || []);
+      const newExecutionsJson = JSON.stringify(updates.executions);
+
+      if (currentExecutionsJson !== newExecutionsJson) {
+        // Executions have changed, replace them completely
+        executionsToSet = updates.executions;
+
+        console.log(`\n=== EXECUTION UPDATE for Trade ${id} ===`);
+        console.log(`Replacing ${(currentTrade.executions || []).length} existing executions with ${executionsToSet.length} new executions`);
+        if (executionsToSet.length > 0) {
+          console.log(`First execution: ${executionsToSet[0].datetime} @ $${executionsToSet[0].price}`);
+          console.log(`Last execution: ${executionsToSet[executionsToSet.length-1].datetime} @ $${executionsToSet[executionsToSet.length-1].price}`);
+        }
+        console.log(`=== END EXECUTION UPDATE ===\n`);
+      } else {
+        console.log(`[EXECUTION UPDATE] Executions unchanged for trade ${id}, skipping update`);
       }
 
-      // Get new executions from updates
-      const newExecutions = updates.executions;
-
-      console.log(`\n=== EXECUTION MERGE DEBUG for Trade ${id} ===`);
-      console.log(`Current trade symbol: ${currentTrade.symbol}`);
-      console.log(`Existing executions count: ${existingExecutions.length}`);
-      if (existingExecutions.length > 0) {
-        console.log(`First existing execution: ${existingExecutions[0].datetime} @ $${existingExecutions[0].price}`);
-        console.log(`Last existing execution: ${existingExecutions[existingExecutions.length-1].datetime} @ $${existingExecutions[existingExecutions.length-1].price}`);
-      }
-      console.log(`New executions count: ${newExecutions.length}`);
-      if (newExecutions.length > 0) {
-        console.log(`First new execution: ${newExecutions[0].datetime} @ $${newExecutions[0].price}`);
-        console.log(`Last new execution: ${newExecutions[newExecutions.length-1].datetime} @ $${newExecutions[newExecutions.length-1].price}`);
-      }
-
-      // Create a set of existing execution timestamps for fast lookup
-      const existingTimestamps = new Set(
-        existingExecutions.map(exec => {
-          const timestamp = new Date(exec.datetime).getTime();
-          console.log(`  Existing timestamp: ${exec.datetime} -> ${timestamp}`);
-          return timestamp;
-        })
-      );
-
-      // Filter out duplicate executions from new executions
-      const uniqueNewExecutions = newExecutions.filter(exec => {
-        const execTime = new Date(exec.datetime).getTime();
-        const isDuplicate = existingTimestamps.has(execTime);
-        console.log(`  Checking new: ${exec.datetime} -> ${execTime} -> ${isDuplicate ? 'DUPLICATE' : 'UNIQUE'}`);
-        return !isDuplicate;
-      });
-
-      console.log(`RESULT: ${existingExecutions.length} existing + ${uniqueNewExecutions.length} unique new = ${existingExecutions.length + uniqueNewExecutions.length} total`);
-      console.log(`=== END EXECUTION MERGE DEBUG ===\n`);
-      
-      // Merge existing and new executions
-      mergedExecutions = [...existingExecutions, ...uniqueNewExecutions];
-      
       // Remove executions from updates since we'll handle it separately
       delete updates.executions;
     }
@@ -894,10 +865,10 @@ class Trade {
       }
     });
     
-    // Add merged executions if we have them
-    if (mergedExecutions !== null) {
+    // Add executions if we have them
+    if (executionsToSet !== null) {
       fields.push(`executions = $${paramCount}`);
-      values.push(JSON.stringify(mergedExecutions));
+      values.push(JSON.stringify(executionsToSet));
       paramCount++;
     }
 
@@ -1065,12 +1036,16 @@ class Trade {
 
   static async getPublicTrades(filters = {}) {
     let query = `
-      SELECT t.*, u.username, u.avatar_url,
+      SELECT t.*,
+        u.username,
+        u.avatar_url,
+        COALESCE(gp.display_name, u.username) as display_name,
         array_agg(DISTINCT ta.file_url) FILTER (WHERE ta.id IS NOT NULL) as attachment_urls,
         count(DISTINCT tc.id)::integer as comment_count
       FROM trades t
       JOIN users u ON t.user_id = u.id
       JOIN user_settings us ON u.id = us.user_id
+      LEFT JOIN gamification_profile gp ON u.id = gp.user_id
       LEFT JOIN trade_attachments ta ON t.id = ta.trade_id
       LEFT JOIN trade_comments tc ON t.id = tc.trade_id
       WHERE t.is_public = true AND us.public_profile = true
@@ -1091,7 +1066,7 @@ class Trade {
       paramCount++;
     }
 
-    query += ` GROUP BY t.id, u.username, u.avatar_url ORDER BY t.created_at DESC`;
+    query += ` GROUP BY t.id, u.username, u.avatar_url, gp.display_name ORDER BY t.created_at DESC`;
 
     if (filters.limit) {
       query += ` LIMIT $${paramCount}`;

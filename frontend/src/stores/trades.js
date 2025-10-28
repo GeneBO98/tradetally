@@ -342,26 +342,29 @@ export const useTradesStore = defineStore('trades', () => {
     }
   }
 
-  async function importTrades(file, broker) {
+  async function importTrades(file, broker, mappingId = null) {
     loading.value = true
     error.value = null
-    
+
     try {
-      console.log('Creating FormData with file:', file.name, 'broker:', broker)
+      console.log('Creating FormData with file:', file.name, 'broker:', broker, 'mappingId:', mappingId)
       const formData = new FormData()
       formData.append('file', file)
       formData.append('broker', broker)
-      
+      if (mappingId) {
+        formData.append('mappingId', mappingId)
+      }
+
       console.log('FormData contents:')
       for (let [key, value] of formData.entries()) {
         console.log(key, value)
       }
-      
+
       console.log('Making API request to /trades/import')
       const response = await api.post('/trades/import', formData, {
         timeout: 60000 // 60 second timeout
       })
-      
+
       console.log('API response:', response.data)
       return response.data
     } catch (err) {

@@ -132,6 +132,63 @@
           </div>
         </div>
 
+        <!-- Privacy Settings -->
+        <div class="card">
+          <div class="card-body">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-6">Privacy Settings</h3>
+            <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
+              Control who can see your trading activity and profile information.
+            </p>
+
+            <form @submit.prevent="updatePrivacySettings" class="space-y-6">
+              <div class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                <div class="flex-1">
+                  <label for="publicProfile" class="block text-sm font-medium text-gray-900 dark:text-white">
+                    Public Profile
+                  </label>
+                  <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                    Allow others to view your public trades. When enabled, trades marked as "public" will be visible to all users.
+                    Your username and avatar will also be visible on public trades.
+                  </p>
+                </div>
+                <div class="ml-4 flex-shrink-0">
+                  <button
+                    type="button"
+                    @click="privacyForm.publicProfile = !privacyForm.publicProfile"
+                    :class="[
+                      privacyForm.publicProfile ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700',
+                      'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2'
+                    ]"
+                    role="switch"
+                    :aria-checked="privacyForm.publicProfile"
+                  >
+                    <span
+                      :class="[
+                        privacyForm.publicProfile ? 'translate-x-5' : 'translate-x-0',
+                        'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out'
+                      ]"
+                    />
+                  </button>
+                </div>
+              </div>
+
+              <div class="flex justify-end">
+                <button
+                  type="submit"
+                  :disabled="privacyLoading"
+                  class="btn-primary"
+                >
+                  <span v-if="privacyLoading" class="flex items-center">
+                    <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Saving...
+                  </span>
+                  <span v-else>Save Privacy Settings</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+
         <!-- API Documentation -->
         <div class="card">
           <div class="card-body">
@@ -783,6 +840,12 @@ const analyticsForm = ref({
 
 const analyticsLoading = ref(false)
 
+// Privacy Settings
+const privacyForm = ref({
+  publicProfile: false
+})
+const privacyLoading = ref(false)
+
 // Trade Import Settings
 const tradeImportForm = ref({
   enableTradeGrouping: true,
@@ -983,6 +1046,41 @@ async function updateAnalyticsSettings() {
     showError('Error', error.response?.data?.error || 'Failed to update analytics settings')
   } finally {
     analyticsLoading.value = false
+  }
+}
+
+// Privacy Settings Functions
+async function loadPrivacySettings() {
+  try {
+    const response = await api.get('/settings')
+    const settings = response.data.settings
+
+    privacyForm.value = {
+      publicProfile: settings.publicProfile ?? false
+    }
+  } catch (error) {
+    console.error('Failed to load privacy settings:', error)
+    // Default to false if loading fails
+    privacyForm.value.publicProfile = false
+  }
+}
+
+async function updatePrivacySettings() {
+  privacyLoading.value = true
+  try {
+    await api.put('/settings', {
+      publicProfile: privacyForm.value.publicProfile
+    })
+
+    // Refresh user data to update settings in auth store
+    await authStore.fetchUser()
+
+    showSuccess('Success', 'Privacy settings updated successfully')
+  } catch (error) {
+    console.error('Failed to update privacy settings:', error)
+    showError('Error', error.response?.data?.error || 'Failed to update privacy settings')
+  } finally {
+    privacyLoading.value = false
   }
 }
 
@@ -1304,6 +1402,7 @@ async function enrichTrades() {
 onMounted(() => {
   loadAISettings()
   loadAnalyticsSettings()
+  loadPrivacySettings()
   loadTradeImportSettings()
   fetchQualityWeights()
 
