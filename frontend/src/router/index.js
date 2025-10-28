@@ -243,7 +243,9 @@ const router = createRouter({
     },
     {
       path: '/price-alerts',
-      redirect: '/markets'
+      name: 'price-alerts',
+      component: () => import('@/views/PriceAlertsView.vue'),
+      meta: { requiresAuth: true }
     },
     {
       path: '/notifications',

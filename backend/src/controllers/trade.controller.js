@@ -2554,9 +2554,7 @@ const tradeController = {
         UPDATE trades
         SET
           enrichment_status = 'completed',
-          enrichment_completed_at = CURRENT_TIMESTAMP,
-          enrichment_attempts = COALESCE(enrichment_attempts, 0),
-          last_enrichment_error = 'Force completed by user'
+          enrichment_completed_at = CURRENT_TIMESTAMP
         WHERE user_id = $1
           AND (enrichment_status IN ('pending', 'failed') OR enrichment_status IS NULL)
         RETURNING id, symbol, enrichment_status

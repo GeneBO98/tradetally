@@ -256,16 +256,22 @@ class PriceMonitoringService {
       }
     }
 
+    // Parse values as numbers to ensure numeric comparison (not string comparison)
+    const currentPriceNum = parseFloat(current_price);
+    const targetPriceNum = parseFloat(target_price);
+    const percentChangeNum = parseFloat(percent_change);
+    const changePercentNum = parseFloat(change_percent);
+
     switch (alert_type) {
       case 'above':
-        return current_price >= target_price;
-      
+        return currentPriceNum >= targetPriceNum;
+
       case 'below':
-        return current_price <= target_price;
-      
+        return currentPriceNum <= targetPriceNum;
+
       case 'change_percent':
-        return Math.abs(percent_change) >= Math.abs(change_percent);
-      
+        return Math.abs(percentChangeNum) >= Math.abs(changePercentNum);
+
       default:
         return false;
     }
