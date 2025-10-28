@@ -110,6 +110,133 @@ const tradeController = {
     }
   },
 
+  async exportTradesToCSV(req, res, next) {
+    try {
+      const {
+        symbol, startDate, endDate, tags, strategy, sector,
+        strategies, sectors, hasNews, daysOfWeek, instrumentTypes, optionTypes, qualityGrades,
+        side, minPrice, maxPrice, minQuantity, maxQuantity,
+        status, minPnl, maxPnl, pnlType, broker, brokers
+      } = req.query;
+
+      const filters = {
+        symbol,
+        startDate,
+        endDate,
+        tags: tags ? tags.split(',').map(t => t.trim()).filter(Boolean) : undefined,
+        strategy,
+        sector,
+        strategies: strategies ? strategies.split(',') : undefined,
+        sectors: sectors ? sectors.split(',') : undefined,
+        hasNews,
+        daysOfWeek: daysOfWeek ? daysOfWeek.split(',').map(d => parseInt(d)) : undefined,
+        instrumentTypes: instrumentTypes ? instrumentTypes.split(',') : undefined,
+        optionTypes: optionTypes ? optionTypes.split(',') : undefined,
+        qualityGrades: qualityGrades ? qualityGrades.split(',') : undefined,
+        side,
+        minPrice: minPrice ? parseFloat(minPrice) : undefined,
+        maxPrice: maxPrice ? parseFloat(maxPrice) : undefined,
+        minQuantity: minQuantity ? parseInt(minQuantity) : undefined,
+        maxQuantity: maxQuantity ? parseInt(maxQuantity) : undefined,
+        status,
+        minPnl: (minPnl !== undefined && minPnl !== null && minPnl !== '') ? parseFloat(minPnl) : undefined,
+        maxPnl: (maxPnl !== undefined && maxPnl !== null && maxPnl !== '') ? parseFloat(maxPnl) : undefined,
+        pnlType,
+        broker,
+        brokers: brokers ? brokers.split(',') : undefined,
+        // No pagination - export all matching trades
+        limit: 999999,
+        offset: 0
+      };
+
+      const trades = await Trade.findByUser(req.user.id, filters);
+
+      // Convert trades to CSV format with generic headers
+      const csvHeaders = [
+        'Symbol',
+        'Side',
+        'Quantity',
+        'Entry Price',
+        'Exit Price',
+        'Entry Date',
+        'Exit Date',
+        'P&L',
+        'Fees',
+        'Commission',
+        'Notes',
+        'Strategy',
+        'Setup',
+        'Tags',
+        'Broker',
+        'Status',
+        'Instrument Type',
+        'Option Type',
+        'Strike Price',
+        'Expiration Date',
+        'Quality Grade'
+      ].join(',');
+
+      const csvRows = trades.map(trade => {
+        // Helper function to escape CSV values
+        const escapeCsv = (value) => {
+          if (value === null || value === undefined) return '';
+          const str = String(value);
+          // If the value contains comma, newline, or quotes, wrap in quotes and escape quotes
+          if (str.includes(',') || str.includes('\n') || str.includes('"')) {
+            return `"${str.replace(/"/g, '""')}"`;
+          }
+          return str;
+        };
+
+        // Format dates
+        const formatDate = (date) => {
+          if (!date) return '';
+          return new Date(date).toISOString().split('T')[0]; // YYYY-MM-DD
+        };
+
+        return [
+          escapeCsv(trade.symbol),
+          escapeCsv(trade.side),
+          escapeCsv(trade.quantity),
+          escapeCsv(trade.entry_price),
+          escapeCsv(trade.exit_price),
+          formatDate(trade.entry_date),
+          formatDate(trade.exit_date),
+          escapeCsv(trade.pnl),
+          escapeCsv(trade.fees),
+          escapeCsv(trade.commission),
+          escapeCsv(trade.notes),
+          escapeCsv(trade.strategy),
+          escapeCsv(trade.setup),
+          escapeCsv(trade.tags ? trade.tags.join('; ') : ''),
+          escapeCsv(trade.broker),
+          escapeCsv(trade.status || (trade.exit_price ? 'Closed' : 'Open')),
+          escapeCsv(trade.instrument_type),
+          escapeCsv(trade.option_type),
+          escapeCsv(trade.strike_price),
+          formatDate(trade.expiration_date),
+          escapeCsv(trade.quality_grade)
+        ].join(',');
+      });
+
+      const csv = [csvHeaders, ...csvRows].join('\n');
+
+      // Generate filename with date
+      const timestamp = new Date().toISOString().split('T')[0];
+      const filename = `tradetally-export-${timestamp}.csv`;
+
+      // Set headers for CSV download
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(csv);
+
+      logger.logInfo(`Exported ${trades.length} trades to CSV for user ${req.user.id}`);
+    } catch (error) {
+      logger.logError('Error exporting trades to CSV:', error);
+      next(error);
+    }
+  },
+
   async getRoundTripTrades(req, res, next) {
     try {
       const { 

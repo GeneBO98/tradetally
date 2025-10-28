@@ -653,8 +653,34 @@
                 </button>
               </div>
 
+              <!-- CSV Export Section -->
+              <div class="flex items-start space-x-4 pt-6 border-t border-gray-200 dark:border-gray-700">
+                <div class="flex-1">
+                  <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-3">Export Trades to CSV</h4>
+                  <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                    Export all your trades to a CSV file with generic headers compatible with Excel, Google Sheets, and other trading journals. Exports all trades with full details.
+                  </p>
+                </div>
+                <button
+                  @click="exportTradesToCSV"
+                  :disabled="csvExportLoading"
+                  class="btn-secondary flex-shrink-0"
+                >
+                  <span v-if="csvExportLoading" class="flex items-center">
+                    <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600 mr-2"></div>
+                    Exporting...
+                  </span>
+                  <span v-else class="flex items-center">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    </svg>
+                    Export Trades CSV
+                  </span>
+                </button>
+              </div>
+
               <!-- Import Section -->
-              <div class="flex items-start space-x-4">
+              <div class="flex items-start space-x-4 pt-6 border-t border-gray-200 dark:border-gray-700">
                 <div class="flex-1">
                   <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-3">Import Data</h4>
                   <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
@@ -794,6 +820,7 @@ const adminAiLoading = ref(false)
 
 // Export/Import Settings
 const exportLoading = ref(false)
+const csvExportLoading = ref(false)
 const importLoading = ref(false)
 const selectedFile = ref(null)
 
@@ -1163,6 +1190,42 @@ async function exportUserData() {
     showError('Export Failed', error.response?.data?.error || 'Failed to export user data')
   } finally {
     exportLoading.value = false
+  }
+}
+
+async function exportTradesToCSV() {
+  csvExportLoading.value = true
+  try {
+    const response = await api.get('/trades/export/csv', {
+      responseType: 'blob'
+    })
+
+    // Create download link
+    const blob = new Blob([response.data], { type: 'text/csv' })
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+
+    // Get filename from Content-Disposition header or use default
+    const contentDisposition = response.headers['content-disposition']
+    let filename = 'tradetally-export.csv'
+    if (contentDisposition) {
+      const match = contentDisposition.match(/filename="(.+)"/)
+      if (match) filename = match[1]
+    }
+
+    link.setAttribute('download', filename)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+
+    showSuccess('Export Complete', 'Your trades have been exported to CSV successfully')
+  } catch (error) {
+    console.error('CSV export failed:', error)
+    showError('Export Failed', error.response?.data?.error || 'Failed to export trades to CSV')
+  } finally {
+    csvExportLoading.value = false
   }
 }
 
