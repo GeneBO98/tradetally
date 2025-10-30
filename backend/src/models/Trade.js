@@ -1957,6 +1957,154 @@ class Trade {
     };
   }
 
+  static async getMonthlyPerformance(userId, year) {
+    console.log(`[MONTHLY] Getting monthly performance for user ${userId}, year ${year}`);
+
+    const monthlyQuery = `
+      WITH monthly_trades AS (
+        SELECT
+          EXTRACT(MONTH FROM trade_date) as month,
+          COUNT(*)::integer as total_trades,
+          COUNT(*) FILTER (WHERE pnl > 0)::integer as winning_trades,
+          COUNT(*) FILTER (WHERE pnl < 0)::integer as losing_trades,
+          COUNT(*) FILTER (WHERE pnl = 0)::integer as breakeven_trades,
+          COALESCE(SUM(pnl), 0)::numeric as total_pnl,
+          COALESCE(AVG(pnl), 0)::numeric as avg_pnl,
+          COALESCE(AVG(pnl) FILTER (WHERE pnl > 0), 0)::numeric as avg_win,
+          COALESCE(AVG(pnl) FILTER (WHERE pnl < 0), 0)::numeric as avg_loss,
+          COALESCE(MAX(pnl), 0)::numeric as best_trade,
+          COALESCE(MIN(pnl), 0)::numeric as worst_trade,
+          COALESCE(AVG(r_value) FILTER (WHERE r_value IS NOT NULL), 0)::numeric as avg_r_value,
+          COUNT(DISTINCT symbol)::integer as symbols_traded,
+          COUNT(DISTINCT trade_date)::integer as trading_days
+        FROM trades
+        WHERE user_id = $1
+          AND EXTRACT(YEAR FROM trade_date) = $2
+          AND exit_price IS NOT NULL
+          AND pnl IS NOT NULL
+        GROUP BY EXTRACT(MONTH FROM trade_date)
+      ),
+      all_months AS (
+        SELECT generate_series(1, 12) as month
+      )
+      SELECT
+        am.month,
+        COALESCE(mt.total_trades, 0) as total_trades,
+        COALESCE(mt.winning_trades, 0) as winning_trades,
+        COALESCE(mt.losing_trades, 0) as losing_trades,
+        COALESCE(mt.breakeven_trades, 0) as breakeven_trades,
+        COALESCE(mt.total_pnl, 0) as total_pnl,
+        COALESCE(mt.avg_pnl, 0) as avg_pnl,
+        COALESCE(mt.avg_win, 0) as avg_win,
+        COALESCE(mt.avg_loss, 0) as avg_loss,
+        COALESCE(mt.best_trade, 0) as best_trade,
+        COALESCE(mt.worst_trade, 0) as worst_trade,
+        COALESCE(mt.avg_r_value, 0) as avg_r_value,
+        COALESCE(mt.symbols_traded, 0) as symbols_traded,
+        COALESCE(mt.trading_days, 0) as trading_days,
+        CASE
+          WHEN COALESCE(mt.total_trades, 0) = 0 THEN 0
+          ELSE (COALESCE(mt.winning_trades, 0) * 100.0 / mt.total_trades)
+        END as win_rate,
+        TO_CHAR(TO_DATE(am.month::text, 'MM'), 'Month') as month_name
+      FROM all_months am
+      LEFT JOIN monthly_trades mt ON am.month = mt.month
+      ORDER BY am.month
+    `;
+
+    try {
+      const result = await db.query(monthlyQuery, [userId, year]);
+
+      // Format the data for easier consumption
+      const monthlyData = result.rows.map(row => ({
+        month: parseInt(row.month),
+        monthName: row.month_name.trim(),
+        trades: {
+          total: parseInt(row.total_trades) || 0,
+          wins: parseInt(row.winning_trades) || 0,
+          losses: parseInt(row.losing_trades) || 0,
+          breakeven: parseInt(row.breakeven_trades) || 0
+        },
+        pnl: {
+          total: parseFloat(row.total_pnl) || 0,
+          average: parseFloat(row.avg_pnl) || 0,
+          avgWin: parseFloat(row.avg_win) || 0,
+          avgLoss: parseFloat(row.avg_loss) || 0,
+          best: parseFloat(row.best_trade) || 0,
+          worst: parseFloat(row.worst_trade) || 0
+        },
+        metrics: {
+          winRate: parseFloat(row.win_rate) || 0,
+          avgRValue: parseFloat(row.avg_r_value) || 0,
+          symbolsTraded: parseInt(row.symbols_traded) || 0,
+          tradingDays: parseInt(row.trading_days) || 0
+        }
+      }));
+
+      // Calculate year totals
+      const yearTotals = monthlyData.reduce((acc, month) => {
+        acc.trades.total += month.trades.total;
+        acc.trades.wins += month.trades.wins;
+        acc.trades.losses += month.trades.losses;
+        acc.trades.breakeven += month.trades.breakeven;
+        acc.pnl.total += month.pnl.total;
+
+        // Track best/worst across all months
+        if (month.pnl.best > acc.pnl.best) {
+          acc.pnl.best = month.pnl.best;
+        }
+        if (month.pnl.worst < acc.pnl.worst) {
+          acc.pnl.worst = month.pnl.worst;
+        }
+
+        // Accumulate for averaging
+        if (month.trades.total > 0) {
+          acc.monthsWithTrades++;
+          acc.totalRValue += month.metrics.avgRValue * month.trades.total;
+        }
+
+        return acc;
+      }, {
+        trades: { total: 0, wins: 0, losses: 0, breakeven: 0 },
+        pnl: { total: 0, best: 0, worst: 0 },
+        monthsWithTrades: 0,
+        totalRValue: 0
+      });
+
+      // Calculate year averages
+      yearTotals.metrics = {
+        winRate: yearTotals.trades.total > 0
+          ? (yearTotals.trades.wins * 100.0 / yearTotals.trades.total)
+          : 0,
+        avgRValue: yearTotals.trades.total > 0
+          ? yearTotals.totalRValue / yearTotals.trades.total
+          : 0,
+        avgMonthlyPnL: yearTotals.monthsWithTrades > 0
+          ? yearTotals.pnl.total / yearTotals.monthsWithTrades
+          : 0
+      };
+
+      console.log(`[MONTHLY] Found data for ${monthlyData.length} months in year ${year}`);
+
+      return {
+        monthly: monthlyData,
+        yearTotals: {
+          trades: yearTotals.trades,
+          pnl: {
+            total: yearTotals.pnl.total,
+            best: yearTotals.pnl.best,
+            worst: yearTotals.pnl.worst,
+            avgMonthly: yearTotals.metrics.avgMonthlyPnL
+          },
+          metrics: yearTotals.metrics
+        }
+      };
+    } catch (error) {
+      console.error('[ERROR] Failed to get monthly performance:', error);
+      throw error;
+    }
+  }
+
   static async getSymbolList(userId) {
     const query = `
       SELECT DISTINCT symbol

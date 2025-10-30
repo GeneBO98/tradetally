@@ -1665,6 +1665,24 @@ const tradeController = {
     }
   },
 
+  async getMonthlyPerformance(req, res, next) {
+    try {
+      const year = parseInt(req.query.year) || new Date().getFullYear();
+
+      console.log('[MONTHLY] Getting monthly performance for user:', req.user.id, 'year:', year);
+
+      const data = await Trade.getMonthlyPerformance(req.user.id, year);
+
+      res.json({
+        year,
+        ...data
+      });
+    } catch (error) {
+      console.error('[ERROR] Monthly performance error:', error);
+      next(error);
+    }
+  },
+
   async getSymbolList(req, res, next) {
     try {
       const symbols = await Trade.getSymbolList(req.user.id);

@@ -481,7 +481,7 @@ const billingController = {
   async debugResetTrial(req, res, next) {
     try {
       const userId = req.user.id;
-      
+
       // Only allow in development/testing environments
       if (process.env.NODE_ENV === 'production') {
         return res.status(403).json({
@@ -491,15 +491,15 @@ const billingController = {
       }
 
       console.log('DEBUG: Resetting trial status for user:', userId);
-      
+
       // Delete any existing trial tier overrides
       // The database trigger will automatically reset the trial_used flag
       const deleteQuery = `
-        DELETE FROM tier_overrides 
+        DELETE FROM tier_overrides
         WHERE user_id = $1 AND reason ILIKE '%trial%'
       `;
       const result = await db.query(deleteQuery, [userId]);
-      
+
       console.log('DEBUG: Deleted', result.rowCount, 'trial records for user:', userId);
       console.log('DEBUG: trial_used flag automatically reset by database trigger');
 
@@ -511,6 +511,161 @@ const billingController = {
     } catch (error) {
       console.error('Error resetting trial status:', error);
       next(error);
+    }
+  },
+
+  // Apple In-App Purchase verification
+  async verifyAppleReceipt(req, res, next) {
+    try {
+      const userId = req.user.id;
+      const { transaction_id, product_id, receipt_data, environment } = req.body;
+
+      console.log('Apple receipt verification requested:', {
+        userId,
+        transaction_id,
+        product_id,
+        environment,
+        receipt_length: receipt_data ? receipt_data.length : 0
+      });
+
+      // Validate required fields
+      if (!transaction_id || !product_id || !receipt_data) {
+        return res.status(400).json({
+          success: false,
+          error: 'missing_fields',
+          message: 'transaction_id, product_id, and receipt_data are required'
+        });
+      }
+
+      // Check for duplicate transaction
+      const existingTransaction = await db.query(
+        'SELECT * FROM apple_transactions WHERE transaction_id = $1',
+        [transaction_id]
+      );
+
+      if (existingTransaction.rows.length > 0) {
+        console.log('Transaction already processed:', transaction_id);
+        return res.json({
+          success: true,
+          message: 'Transaction already processed',
+          subscription: {
+            tier: 'pro',
+            is_active: true
+          }
+        });
+      }
+
+      // For Xcode/testing environment, skip Apple verification
+      if (environment === 'Xcode') {
+        console.log('Xcode environment detected, granting Pro access without Apple verification');
+
+        // Grant Pro tier
+        await TierService.setUserTier(userId, 'pro', 'Apple IAP (Xcode Test)');
+
+        // Store transaction
+        await db.query(`
+          INSERT INTO apple_transactions
+          (user_id, transaction_id, product_id, purchase_date, environment)
+          VALUES ($1, $2, $3, NOW(), $4)
+        `, [userId, transaction_id, product_id, environment]);
+
+        return res.json({
+          success: true,
+          message: 'Test subscription verified (Xcode environment)',
+          subscription: {
+            tier: 'pro',
+            is_active: true
+          }
+        });
+      }
+
+      // Verify with Apple (Production/Sandbox)
+      const appleVerifyUrl = environment === 'Production'
+        ? 'https://buy.itunes.apple.com/verifyReceipt'
+        : 'https://sandbox.itunes.apple.com/verifyReceipt';
+
+      const verifyResponse = await fetch(appleVerifyUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          'receipt-data': receipt_data,
+          'password': process.env.APPLE_SHARED_SECRET, // Add this to your .env
+          'exclude-old-transactions': true
+        })
+      });
+
+      const verifyData = await verifyResponse.json();
+      console.log('Apple verification response status:', verifyData.status);
+
+      // Handle Apple response codes
+      if (verifyData.status === 21007) {
+        // Receipt is from sandbox, try sandbox endpoint
+        console.log('Receipt is from sandbox, retrying with sandbox URL');
+        const sandboxResponse = await fetch('https://sandbox.itunes.apple.com/verifyReceipt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            'receipt-data': receipt_data,
+            'password': process.env.APPLE_SHARED_SECRET,
+            'exclude-old-transactions': true
+          })
+        });
+        const sandboxData = await sandboxResponse.json();
+        if (sandboxData.status !== 0) {
+          throw new Error(`Apple verification failed: ${sandboxData.status}`);
+        }
+        Object.assign(verifyData, sandboxData);
+      } else if (verifyData.status !== 0) {
+        throw new Error(`Apple verification failed: ${verifyData.status}`);
+      }
+
+      // Extract subscription info
+      const latestReceipt = verifyData.latest_receipt_info?.[0] || verifyData.receipt?.in_app?.[0];
+      if (!latestReceipt) {
+        throw new Error('No transaction found in receipt');
+      }
+
+      const expiresDate = latestReceipt.expires_date_ms
+        ? new Date(parseInt(latestReceipt.expires_date_ms))
+        : null;
+
+      // Grant Pro tier
+      await TierService.setUserTier(userId, 'pro', 'Apple In-App Purchase');
+
+      // Store transaction in database
+      await db.query(`
+        INSERT INTO apple_transactions
+        (user_id, transaction_id, original_transaction_id, product_id,
+         purchase_date, expires_date, is_trial, environment)
+        VALUES ($1, $2, $3, $4, NOW(), $5, $6, $7)
+      `, [
+        userId,
+        transaction_id,
+        latestReceipt.original_transaction_id || transaction_id,
+        product_id,
+        expiresDate,
+        latestReceipt.is_trial_period === 'true',
+        environment
+      ]);
+
+      console.log('Apple receipt verified successfully for user:', userId);
+
+      res.json({
+        success: true,
+        message: 'Subscription verified and activated',
+        subscription: {
+          tier: 'pro',
+          expires_at: expiresDate,
+          is_active: true
+        }
+      });
+    } catch (error) {
+      console.error('Error verifying Apple receipt:', error);
+      res.status(500).json({
+        success: false,
+        error: 'verification_failed',
+        message: error.message || 'Failed to verify receipt with Apple'
+      });
     }
   }
 };

@@ -297,6 +297,26 @@ router.get('/analytics', authenticate, tradeController.getAnalytics);
 
 /**
  * @swagger
+ * /api/trades/analytics/monthly:
+ *   get:
+ *     summary: Get monthly performance metrics
+ *     tags: [Trades]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: year
+ *         schema:
+ *           type: integer
+ *         description: Year for monthly breakdown (defaults to current year)
+ *     responses:
+ *       200:
+ *         description: Monthly performance metrics
+ */
+router.get('/analytics/monthly', authenticate, tradeController.getMonthlyPerformance);
+
+/**
+ * @swagger
  * /api/trades/symbols:
  *   get:
  *     summary: Get symbol list

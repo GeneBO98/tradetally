@@ -77,6 +77,12 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
+      path: '/analytics/monthly',
+      name: 'monthly-performance',
+      component: () => import('@/views/MonthlyPerformanceView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
       path: '/analytics/behavioral',
       name: 'behavioral-analytics',
       component: () => import('@/views/BehavioralAnalyticsView.vue'),
