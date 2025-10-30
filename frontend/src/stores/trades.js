@@ -380,6 +380,21 @@ export const useTradesStore = defineStore('trades', () => {
     }
   }
 
+  async function getMonthlyPerformance(year) {
+    try {
+      console.log('[STORE] Fetching monthly performance for year:', year)
+      const response = await api.get('/trades/analytics/monthly', {
+        params: { year }
+      })
+      console.log('[STORE] Monthly performance response:', response.data)
+      return response.data
+    } catch (err) {
+      console.error('[ERROR] Failed to fetch monthly performance:', err)
+      error.value = err.response?.data?.error || 'Failed to fetch monthly performance'
+      throw err
+    }
+  }
+
   function setFilters(newFilters) {
     // If newFilters is empty object, reset all filters
     if (Object.keys(newFilters).length === 0) {
@@ -460,6 +475,7 @@ export const useTradesStore = defineStore('trades', () => {
     deleteTrade,
     bulkDeleteTrades,
     importTrades,
+    getMonthlyPerformance,
     setFilters,
     resetFilters,
     setPage,

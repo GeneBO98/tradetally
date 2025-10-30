@@ -282,15 +282,21 @@ const baseNavigation = [
     ]
   },
   { name: 'Trades', to: '/trades', route: 'trades' },
-  { 
-    name: 'Analytics', 
+  {
+    name: 'Analytics',
     type: 'dropdown',
     items: [
-      { 
-        name: 'Performance Analytics', 
-        to: '/analytics', 
+      {
+        name: 'Performance Analytics',
+        to: '/analytics',
         route: 'analytics',
         description: 'Trading performance metrics and statistics'
+      },
+      {
+        name: 'Monthly Performance',
+        to: '/analytics/monthly',
+        route: 'monthly-performance',
+        description: 'Month-by-month performance breakdown and comparison'
       },
       {
         name: 'Behavioral Analytics',
