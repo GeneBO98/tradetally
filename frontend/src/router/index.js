@@ -341,6 +341,13 @@ router.beforeEach(async (to, from, next) => {
       next()
     }
   } else if (to.meta.requiresTier) {
+    // CRITICAL: Skip tier check if billing is disabled (self-hosted mode)
+    if (!isBillingEnabled.value) {
+      console.log('[ROUTER] Billing disabled - skipping tier check for', to.name)
+      next()
+      return
+    }
+
     // Ensure user data is loaded for tier check
     if (authStore.isAuthenticated && !authStore.user) {
       try {
