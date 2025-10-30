@@ -910,12 +910,41 @@ class Trade {
 
     // Recalculate R-Multiple if any of the relevant fields are updated
     // Note: takeProfit does NOT affect R-Multiple calculation (only exitPrice matters)
+    // Check executions for stopLoss values (use executionsToSet since updates.executions was deleted above)
+    const executionsForRCalc = executionsToSet || currentTrade.executions || [];
+    const hasExecutionStopLoss = executionsForRCalc.length > 0 &&
+      executionsForRCalc.some(ex => ex.stopLoss !== null && ex.stopLoss !== undefined);
+
     if (updates.entryPrice !== undefined || updates.exitPrice !== undefined ||
-        updates.stopLoss !== undefined || updates.side) {
-      const entryPrice = updates.entryPrice || currentTrade.entry_price;
-      const exitPrice = updates.exitPrice !== undefined ? updates.exitPrice : currentTrade.exit_price;
-      const stopLoss = updates.stopLoss !== undefined ? updates.stopLoss : currentTrade.stop_loss;
+        updates.stopLoss !== undefined || updates.side || executionsToSet !== null) {
+      let entryPrice = updates.entryPrice || currentTrade.entry_price;
+      let exitPrice = updates.exitPrice !== undefined ? updates.exitPrice : currentTrade.exit_price;
+      let stopLoss = updates.stopLoss !== undefined ? updates.stopLoss : currentTrade.stop_loss;
       const side = updates.side || currentTrade.side;
+
+      // If stopLoss is in executions, calculate weighted average
+      if (!stopLoss && hasExecutionStopLoss) {
+        // For grouped executions with entry/exit prices, use weighted average
+        const executionsWithStopLoss = executionsForRCalc.filter(ex => ex.stopLoss);
+        if (executionsWithStopLoss.length > 0) {
+          // Calculate weighted average entry price and stop loss from executions
+          const totalQty = executionsWithStopLoss.reduce((sum, ex) => sum + (ex.quantity || 0), 0);
+          if (totalQty > 0) {
+            const weightedEntry = executionsWithStopLoss.reduce((sum, ex) =>
+              sum + ((ex.entryPrice || 0) * (ex.quantity || 0)), 0) / totalQty;
+            const weightedStopLoss = executionsWithStopLoss.reduce((sum, ex) =>
+              sum + ((ex.stopLoss || 0) * (ex.quantity || 0)), 0) / totalQty;
+            const weightedExit = executionsWithStopLoss.reduce((sum, ex) =>
+              sum + ((ex.exitPrice || 0) * (ex.quantity || 0)), 0) / totalQty;
+
+            entryPrice = weightedEntry;
+            stopLoss = weightedStopLoss;
+            exitPrice = weightedExit || exitPrice;
+
+            console.log('[R-MULTIPLE] Using weighted averages from executions:', { entryPrice, stopLoss, exitPrice });
+          }
+        }
+      }
 
       console.log('[R-MULTIPLE CALC] Inputs:', { entryPrice, stopLoss, exitPrice, side });
 

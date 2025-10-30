@@ -5,40 +5,49 @@ const { getTierLimits, hasReachedLimit, getRemainingQuota, PRICING } = require('
 class TierService {
   // Check if billing is enabled (for self-hosted vs SaaS)
   static async isBillingEnabled(hostHeader = null) {
+    // First check environment variable (CRITICAL: Check this FIRST for self-hosted)
+    if (process.env.BILLING_ENABLED !== undefined) {
+      const enabled = process.env.BILLING_ENABLED === 'true';
+      console.log(`[BILLING] Environment variable check: BILLING_ENABLED=${process.env.BILLING_ENABLED}, returning:`, enabled);
+      return enabled;
+    }
+
+    // Also check FEATURES_BILLING_ENABLED for backwards compatibility
+    if (process.env.FEATURES_BILLING_ENABLED !== undefined) {
+      const enabled = process.env.FEATURES_BILLING_ENABLED === 'true';
+      console.log(`[BILLING] Features env variable check: FEATURES_BILLING_ENABLED=${process.env.FEATURES_BILLING_ENABLED}, returning:`, enabled);
+      return enabled;
+    }
+
     // Auto-disable billing for non-tradetally.io domains (self-hosted)
     const frontendUrl = process.env.FRONTEND_URL || '';
-    
+
     // Check host header if provided (for runtime domain detection)
-    // Allow localhost for development, disable for other non-tradetally.io domains
-    if (hostHeader && !hostHeader.includes('tradetally.io') && !hostHeader.includes('localhost')) { 
-      console.log(`Billing disabled for host: ${hostHeader} (not tradetally.io or localhost)`);
+    // Only ENABLE for tradetally.io, disable for everything else (including localhost for self-hosted)
+    if (hostHeader && !hostHeader.includes('tradetally.io')) {
+      console.log(`[BILLING] Disabled for host: ${hostHeader} (not tradetally.io)`);
       return false;
     }
-    
+
     // Check frontend URL if no host header provided
-    // Allow localhost for development, disable for other non-tradetally.io domains  
-    if (!hostHeader && frontendUrl && !frontendUrl.includes('tradetally.io') && !frontendUrl.includes('localhost')) {
-      console.log(`Billing disabled for frontend URL: ${frontendUrl} (not tradetally.io or localhost)`);
+    // Only ENABLE for tradetally.io, disable for everything else
+    if (!hostHeader && frontendUrl && !frontendUrl.includes('tradetally.io')) {
+      console.log(`[BILLING] Disabled for frontend URL: ${frontendUrl} (not tradetally.io)`);
       return false;
     }
-    
-    // First check environment variable
-    if (process.env.BILLING_ENABLED !== undefined) {
-      return process.env.BILLING_ENABLED === 'true';
-    }
-    
+
     // Fallback to database config
     const query = `SELECT value FROM instance_config WHERE key = 'billing_enabled'`;
     const result = await db.query(query);
-    
+
     if (!result.rows[0]) return false;
     const value = result.rows[0].value;
-    
+
     // Handle JSONB, string, and boolean values
     if (typeof value === 'boolean') return value;
     if (typeof value === 'string') return value === 'true';
     if (value === null || value === undefined) return false;
-    
+
     // For JSONB stored as object
     return value === true || value === 'true';
   }
