@@ -9,12 +9,19 @@ WITH corrections AS (
     exit_price as new_entry,  -- Swap: old exit becomes new entry
     entry_price as new_exit,  -- Swap: old entry becomes new exit
     (exit_price - entry_price) * quantity - COALESCE(commission, 0) - COALESCE(fees, 0) as new_pnl,
-    ((exit_price - entry_price) * quantity - COALESCE(commission, 0) - COALESCE(fees, 0)) / (exit_price * quantity) * 100 as new_pnl_percent
+    CASE
+      WHEN exit_price != 0 AND quantity != 0 THEN
+        ((exit_price - entry_price) * quantity - COALESCE(commission, 0) - COALESCE(fees, 0)) / NULLIF(exit_price * quantity, 0) * 100
+      ELSE
+        0
+    END as new_pnl_percent
   FROM trades
   WHERE side = 'short'
     AND entry_price IS NOT NULL
     AND exit_price IS NOT NULL
     AND exit_price != entry_price
+    AND quantity IS NOT NULL
+    AND quantity != 0
 )
 UPDATE trades t
 SET
