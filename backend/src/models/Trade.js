@@ -2004,6 +2004,7 @@ class Trade {
           COALESCE(MAX(pnl), 0)::numeric as best_trade,
           COALESCE(MIN(pnl), 0)::numeric as worst_trade,
           COALESCE(AVG(r_value) FILTER (WHERE r_value IS NOT NULL), 0)::numeric as avg_r_value,
+          COALESCE(SUM(r_value) FILTER (WHERE r_value IS NOT NULL), 0)::numeric as total_r_value,
           COUNT(DISTINCT symbol)::integer as symbols_traded,
           COUNT(DISTINCT trade_date)::integer as trading_days
         FROM trades
@@ -2029,6 +2030,7 @@ class Trade {
         COALESCE(mt.best_trade, 0) as best_trade,
         COALESCE(mt.worst_trade, 0) as worst_trade,
         COALESCE(mt.avg_r_value, 0) as avg_r_value,
+        COALESCE(mt.total_r_value, 0) as total_r_value,
         COALESCE(mt.symbols_traded, 0) as symbols_traded,
         COALESCE(mt.trading_days, 0) as trading_days,
         CASE
@@ -2065,6 +2067,7 @@ class Trade {
         metrics: {
           winRate: parseFloat(row.win_rate) || 0,
           avgRValue: parseFloat(row.avg_r_value) || 0,
+          totalRValue: parseFloat(row.total_r_value) || 0,
           symbolsTraded: parseInt(row.symbols_traded) || 0,
           tradingDays: parseInt(row.trading_days) || 0
         }

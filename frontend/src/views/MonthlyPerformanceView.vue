@@ -99,6 +99,7 @@
                   <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Avg Win</th>
                   <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Avg Loss</th>
                   <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Avg R</th>
+                  <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Total R</th>
                   <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Days</th>
                 </tr>
               </thead>
@@ -147,6 +148,9 @@
                   </td>
                   <td class="px-6 py-4 whitespace-nowrap text-center text-sm font-medium text-primary-600">
                     {{ month.metrics.avgRValue !== 0 ? formatNumber(month.metrics.avgRValue, 2) + 'R' : '-' }}
+                  </td>
+                  <td class="px-6 py-4 whitespace-nowrap text-center text-sm font-semibold" :class="month.trades.total > 0 ? getRValueClass(month.metrics.totalRValue) : 'text-gray-400'">
+                    {{ month.trades.total > 0 && month.metrics.totalRValue !== 0 ? formatNumber(month.metrics.totalRValue, 2) + 'R' : '-' }}
                   </td>
                   <td class="px-6 py-4 whitespace-nowrap text-center">
                     <span v-if="month.metrics.tradingDays > 0" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
@@ -209,7 +213,22 @@ const tradesStore = useTradesStore();
 
 const loading = ref(false);
 const error = ref(null);
-const selectedYear = ref(new Date().getFullYear());
+
+// Load saved year from localStorage, or default to current year
+const getSavedYear = () => {
+  const saved = localStorage.getItem('monthlyPerformanceYear');
+  if (saved) {
+    const year = parseInt(saved);
+    const currentYear = new Date().getFullYear();
+    // Validate year is reasonable (within 10 years of current)
+    if (!isNaN(year) && year >= currentYear - 10 && year <= currentYear) {
+      return year;
+    }
+  }
+  return new Date().getFullYear();
+};
+
+const selectedYear = ref(getSavedYear());
 const monthlyData = ref([]);
 const yearTotals = ref({
   trades: { total: 0, wins: 0, losses: 0, breakeven: 0 },
@@ -239,6 +258,11 @@ const monthlyTotalRValues = computed(() => {
     // Calculate total R for the month: avgRValue * number of trades
     return month.metrics.avgRValue * month.trades.total;
   });
+});
+
+// Watch for year changes and save to localStorage
+watch(selectedYear, (newYear) => {
+  localStorage.setItem('monthlyPerformanceYear', newYear.toString());
 });
 
 const toggleRValue = () => {
