@@ -2108,12 +2108,14 @@ class Trade {
         avgRValue: yearTotals.trades.total > 0
           ? yearTotals.totalRValue / yearTotals.trades.total
           : 0,
+        totalRValue: yearTotals.totalRValue,
         avgMonthlyPnL: yearTotals.monthsWithTrades > 0
           ? yearTotals.pnl.total / yearTotals.monthsWithTrades
           : 0
       };
 
       console.log(`[MONTHLY] Found data for ${monthlyData.length} months in year ${year}`);
+      console.log(`[MONTHLY] Total R-Value sum: ${yearTotals.totalRValue.toFixed(2)}R`);
 
       return {
         monthly: monthlyData,

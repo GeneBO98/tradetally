@@ -58,10 +58,10 @@
             </div>
 
             <div class="text-center p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
-              <div class="text-2xl font-bold text-primary-600">
-                {{ formatNumber(yearTotals.metrics.avgRValue, 2) }}R
+              <div class="text-2xl font-bold" :class="getRValueClass(yearTotals.metrics.totalRValue)">
+                {{ formatNumber(yearTotals.metrics.totalRValue, 2) }}R
               </div>
-              <div class="text-xs text-gray-600 dark:text-gray-400 mt-1">Avg R-Value</div>
+              <div class="text-xs text-gray-600 dark:text-gray-400 mt-1">Total R</div>
             </div>
 
             <div class="text-center p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
@@ -165,7 +165,20 @@
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div class="card">
           <div class="card-body">
-            <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Monthly P&L Trend</h3>
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
+                Monthly {{ showRValue ? 'R-Value' : 'P&L' }} Trend
+              </h3>
+              <button
+                @click="toggleRValue"
+                class="px-3 py-1.5 text-xs font-medium rounded-md transition-colors"
+                :class="showRValue
+                  ? 'bg-primary-600 text-white hover:bg-primary-700'
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'"
+              >
+                {{ showRValue ? 'Show P&L ($)' : 'Show R-Value' }}
+              </button>
+            </div>
             <div class="h-80">
               <canvas ref="pnlChartCanvas" id="pnl-chart"></canvas>
             </div>
@@ -201,8 +214,10 @@ const monthlyData = ref([]);
 const yearTotals = ref({
   trades: { total: 0, wins: 0, losses: 0, breakeven: 0 },
   pnl: { total: 0, best: 0, worst: 0, avgMonthly: 0 },
-  metrics: { winRate: 0, avgRValue: 0 }
+  metrics: { winRate: 0, avgRValue: 0, totalRValue: 0 }
 });
+
+const showRValue = ref(false);
 
 const pnlChartCanvas = ref(null);
 const winRateChartCanvas = ref(null);
@@ -218,6 +233,19 @@ const availableYears = computed(() => {
   return years;
 });
 
+// Computed property for total R-values per month
+const monthlyTotalRValues = computed(() => {
+  return monthlyData.value.map(month => {
+    // Calculate total R for the month: avgRValue * number of trades
+    return month.metrics.avgRValue * month.trades.total;
+  });
+});
+
+const toggleRValue = () => {
+  showRValue.value = !showRValue.value;
+  createPnLChart();
+};
+
 const loadMonthlyData = async () => {
   loading.value = true;
   error.value = null;
@@ -231,7 +259,7 @@ const loadMonthlyData = async () => {
       yearTotals.value = response.yearTotals || {
         trades: { total: 0, wins: 0, losses: 0, breakeven: 0 },
         pnl: { total: 0, best: 0, worst: 0, avgMonthly: 0 },
-        metrics: { winRate: 0, avgRValue: 0 }
+        metrics: { winRate: 0, avgRValue: 0, totalRValue: 0 }
       };
 
       console.log('[MONTHLY] Data loaded - months:', monthlyData.value.length);
@@ -273,7 +301,7 @@ const createPnLChart = () => {
     return;
   }
 
-  console.log('[CHARTS] Creating P&L chart...');
+  console.log('[CHARTS] Creating chart... showRValue:', showRValue.value);
 
   // Destroy existing chart
   if (pnlChartInstance) {
@@ -282,21 +310,26 @@ const createPnLChart = () => {
 
   const ctx = pnlChartCanvas.value.getContext('2d');
   const labels = monthlyData.value.map(m => m.monthName.trim().substring(0, 3));
-  const data = monthlyData.value.map(m => m.pnl.total);
+
+  // Use R-values or P&L based on toggle
+  const data = showRValue.value
+    ? monthlyTotalRValues.value
+    : monthlyData.value.map(m => m.pnl.total);
+
   const colors = data.map(value => {
     if (value > 0) return 'rgba(16, 185, 129, 0.8)'; // green
     if (value < 0) return 'rgba(239, 68, 68, 0.8)'; // red
     return 'rgba(156, 163, 175, 0.8)'; // gray
   });
 
-  console.log('[CHARTS] P&L data:', { labels, data });
+  console.log('[CHARTS] Chart data:', { labels, data, showRValue: showRValue.value });
 
   pnlChartInstance = new Chart(ctx, {
     type: 'bar',
     data: {
       labels,
       datasets: [{
-        label: 'Monthly P&L',
+        label: showRValue.value ? 'Monthly R-Value' : 'Monthly P&L',
         data,
         backgroundColor: colors,
         borderColor: colors.map(c => c.replace('0.8', '1')),
@@ -313,7 +346,9 @@ const createPnLChart = () => {
         },
         tooltip: {
           callbacks: {
-            label: (context) => `P&L: ${formatCurrency(context.raw)}`
+            label: (context) => showRValue.value
+              ? `R-Value: ${context.raw.toFixed(2)}R`
+              : `P&L: ${formatCurrency(context.raw)}`
           }
         }
       },
@@ -321,14 +356,16 @@ const createPnLChart = () => {
         y: {
           beginAtZero: true,
           ticks: {
-            callback: (value) => formatCurrency(value, true)
+            callback: (value) => showRValue.value
+              ? `${value.toFixed(1)}R`
+              : formatCurrency(value, true)
           }
         }
       }
     }
   });
 
-  console.log('[CHARTS] P&L chart created successfully');
+  console.log('[CHARTS] Chart created successfully');
 };
 
 const createWinRateChart = () => {
@@ -436,6 +473,12 @@ const getWinRateBadgeClass = (value) => {
   if (value >= 60) return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
   if (value >= 50) return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
   return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
+};
+
+const getRValueClass = (value) => {
+  if (value > 0) return 'text-success';
+  if (value < 0) return 'text-danger';
+  return 'text-gray-500';
 };
 
 onMounted(() => {
