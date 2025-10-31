@@ -351,6 +351,7 @@ const analyticsController = {
             ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY r_value) FILTER (WHERE r_value IS NOT NULL), 0)::numeric as avg_r_value'
             : 'COALESCE(AVG(r_value) FILTER (WHERE r_value IS NOT NULL), 0)::numeric as avg_r_value'
           },
+          COALESCE(SUM(r_value) FILTER (WHERE r_value IS NOT NULL), 0)::numeric as total_r_value,
           -- Best/worst trades
           (SELECT individual_best_trade FROM individual_trades) as best_trade,
           (SELECT individual_worst_trade FROM individual_trades) as worst_trade,
