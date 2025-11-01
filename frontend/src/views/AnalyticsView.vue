@@ -7,11 +7,7 @@
       </p>
     </div>
 
-    <div v-if="loading" class="flex justify-center py-12">
-      <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
-    </div>
-
-    <div v-else class="space-y-8">
+    <div class="space-y-8">
       <!-- Filters -->
       <div class="card">
         <div class="card-body">
@@ -112,8 +108,13 @@
         </div>
       </div>
 
+      <!-- Loading Overlay for Charts -->
+      <div v-if="loading" class="flex justify-center py-12">
+        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+      </div>
+
       <!-- Draggable Grid Container -->
-      <draggable
+      <draggable v-show="!loading"
         v-model="chartLayout"
         :disabled="!isCustomizing"
         item-key="id"
