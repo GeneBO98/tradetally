@@ -9,6 +9,65 @@ const db = require('../config/database');
 // CUSIP resolution is now handled by the cusipQueue module
 
 /**
+ * Check if an execution already exists in any existing trade
+ * @param {Object} execution - The execution to check
+ * @param {String} symbol - The symbol
+ * @param {Object} context - Context object containing existingExecutions
+ * @returns {boolean} - True if execution already exists
+ */
+function isExecutionDuplicate(execution, symbol, context) {
+  // Safety checks
+  if (!context || !context.existingExecutions || !context.existingExecutions[symbol]) {
+    return false;
+  }
+
+  // Check if execution has required fields
+  if (!execution || !execution.datetime) {
+    return false;
+  }
+
+  const symbolExecutions = context.existingExecutions[symbol];
+
+  return symbolExecutions.some(existingExec => {
+    // Skip if existingExec is invalid
+    if (!existingExec) {
+      return false;
+    }
+
+    // Check by trade number if available (most reliable for Lightspeed)
+    if (execution.tradeNumber && existingExec.tradeNumber) {
+      return existingExec.tradeNumber === execution.tradeNumber;
+    }
+
+    // Check by order ID if available (for Interactive Brokers)
+    if (execution.orderId && existingExec.orderId) {
+      return existingExec.orderId === execution.orderId;
+    }
+
+    // Fallback to timestamp + quantity + price matching
+    // Skip if datetime is missing
+    if (!existingExec.datetime) {
+      return false;
+    }
+
+    const existingTime = new Date(existingExec.datetime).getTime();
+    const newTime = new Date(execution.datetime).getTime();
+
+    // Skip if dates are invalid
+    if (isNaN(existingTime) || isNaN(newTime)) {
+      return false;
+    }
+
+    const timeDiff = Math.abs(existingTime - newTime);
+
+    // Allow up to 1 second difference in timestamps (some brokers round differently)
+    return timeDiff <= 1000 &&
+           existingExec.quantity === execution.quantity &&
+           Math.abs((existingExec.price || 0) - (execution.price || 0)) < 0.01;
+  });
+}
+
+/**
  * Detects if CSV contains a currency column
  * @param {Array} records - Parsed CSV records
  * @returns {boolean} - True if currency column is detected
@@ -885,7 +944,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
 
     if (broker === 'lightspeed') {
       console.log('Starting Lightspeed transaction parsing');
-      const result = await parseLightspeedTransactions(records, existingPositions, context.userId);
+      const result = await parseLightspeedTransactions(records, existingPositions, context.userId, context);
       console.log('Finished Lightspeed transaction parsing');
 
       // Apply trade grouping if enabled
@@ -899,7 +958,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
 
     if (broker === 'schwab') {
       console.log('Starting Schwab trade parsing');
-      const result = await parseSchwabTrades(records, existingPositions);
+      const result = await parseSchwabTrades(records, existingPositions, context);
       console.log('Finished Schwab trade parsing');
 
       // Apply trade grouping if enabled
@@ -913,7 +972,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
 
     if (broker === 'thinkorswim') {
       console.log('Starting thinkorswim transaction parsing');
-      const result = await parseThinkorswimTransactions(records, existingPositions);
+      const result = await parseThinkorswimTransactions(records, existingPositions, context);
       console.log('Finished thinkorswim transaction parsing');
 
       // Apply trade grouping if enabled
@@ -927,7 +986,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
 
     if (broker === 'papermoney') {
       // console.log('Starting PaperMoney transaction parsing');
-      const result = await parsePaperMoneyTransactions(records, existingPositions);
+      const result = await parsePaperMoneyTransactions(records, existingPositions, context);
       console.log('Finished PaperMoney transaction parsing');
 
       // Apply trade grouping if enabled
@@ -941,7 +1000,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
 
     if (broker === 'tradingview') {
       console.log('Starting TradingView transaction parsing');
-      const result = await parseTradingViewTransactions(records, existingPositions);
+      const result = await parseTradingViewTransactions(records, existingPositions, context);
       console.log('Finished TradingView transaction parsing');
 
       // Apply trade grouping if enabled
@@ -956,7 +1015,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
     if (broker === 'ibkr' || broker === 'ibkr_trade_confirmation') {
       console.log(`Starting IBKR transaction parsing (${broker} format)`);
       const tradeGroupingSettings = context.tradeGroupingSettings || { enabled: true, timeGapMinutes: 60 };
-      const result = await parseIBKRTransactions(records, existingPositions, tradeGroupingSettings);
+      const result = await parseIBKRTransactions(records, existingPositions, tradeGroupingSettings, context);
       console.log('Finished IBKR transaction parsing');
       return result;
     }
@@ -1011,7 +1070,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
 
     if (useEnhancedMode && existingPositions && Object.keys(existingPositions).length >= 0) {
       console.log('Using enhanced generic parser with position tracking');
-      const result = await parseGenericTransactions(records, existingPositions, context.customMapping);
+      const result = await parseGenericTransactions(records, existingPositions, context.customMapping, context);
       console.log('Finished generic transaction-based parsing');
 
       // Apply trade grouping if enabled
@@ -1665,7 +1724,7 @@ function calculateLightspeedFees(row) {
 
 
 
-async function parseLightspeedTransactions(records, existingPositions = {}, userId = null) {
+async function parseLightspeedTransactions(records, existingPositions = {}, userId = null, context = {}) {
   console.log(`Processing ${records.length} Lightspeed records for user ${userId}`);
 
   if (records.length === 0) {
@@ -1921,19 +1980,29 @@ async function parseLightspeedTransactions(records, existingPositions = {}, user
           tradeNumber: transaction.tradeNumber,  // Include unique trade number
           sequenceNumber: transaction.sequenceNumber  // Include unique sequence number
         };
-        
-        // Use Trade Number for duplicate check - it's unique per execution in Lightspeed
-        const executionExists = currentTrade.executions.some(exec => {
+
+        // First, check if this execution exists in ANY existing trade (complete or open)
+        const existsGlobally = isExecutionDuplicate(newExecution, symbol, context);
+
+        // Then check if it exists in the current trade being built
+        const executionExists = existsGlobally || currentTrade.executions.some(exec => {
           // If both have trade numbers, use that for comparison (most reliable)
           if (exec.tradeNumber && newExecution.tradeNumber) {
             return exec.tradeNumber === newExecution.tradeNumber;
           }
           // Fallback to timestamp comparison for older data without trade numbers
+          if (!exec.datetime || !newExecution.datetime) {
+            return false;
+          }
           const existingTime = new Date(exec.datetime).toISOString();
           const newTime = new Date(newExecution.datetime).toISOString();
           return existingTime === newTime;
         });
-        
+
+        if (existsGlobally) {
+          console.log(`  [SKIP] Execution already exists in a completed or open trade: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
+        }
+
         if (!executionExists) {
           currentTrade.executions.push(newExecution);
           if (currentTrade.isExistingPosition) {
@@ -1997,10 +2066,15 @@ async function parseLightspeedTransactions(records, existingPositions = {}, user
         currentTrade.commission = currentTrade.totalFees;
         currentTrade.fees = 0;
         // FIXED: Calculate proper entry and exit times from all executions
-        const executionTimes = currentTrade.executions.map(e => new Date(e.datetime));
+        const executionTimes = currentTrade.executions
+          .filter(e => e.datetime)
+          .map(e => new Date(e.datetime))
+          .filter(d => !isNaN(d.getTime()));
         const sortedTimes = executionTimes.sort((a, b) => a - b);
-        currentTrade.entryTime = sortedTimes[0].toISOString();
-        currentTrade.exitTime = sortedTimes[sortedTimes.length - 1].toISOString();
+        if (sortedTimes.length > 0) {
+          currentTrade.entryTime = sortedTimes[0].toISOString();
+          currentTrade.exitTime = sortedTimes[sortedTimes.length - 1].toISOString();
+        }
 
         // Executions are stored in the executions field (no need for executionData)
 
@@ -2014,9 +2088,14 @@ async function parseLightspeedTransactions(records, existingPositions = {}, user
           console.log(`  [SUCCESS] Completed ${currentTrade.side} trade: ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions, P/L: $${currentTrade.pnl.toFixed(2)}`);
         }
         
-        // Map executions to executionData for Trade.create
-      currentTrade.executionData = currentTrade.executions;
-      completedTrades.push(currentTrade);
+        // Only add trade if it has executions (skip if all were duplicates)
+        if (currentTrade.executions.length > 0) {
+          // Map executions to executionData for Trade.create
+          currentTrade.executionData = currentTrade.executions;
+          completedTrades.push(currentTrade);
+        } else {
+          console.log(`  [SKIP] Trade has no executions (all were duplicates), not creating trade`);
+        }
         currentTrade = null;
       }
     }
@@ -2034,6 +2113,14 @@ async function parseLightspeedTransactions(records, existingPositions = {}, user
     if (currentTrade) {
       console.log(`Active trade: ${currentTrade.side} ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions`);
 
+      // Skip if no executions (all were duplicates)
+      if (currentTrade.executions.length === 0) {
+        console.log(`  [SKIP] Trade has no executions (all were duplicates), not creating trade`);
+        currentTrade = null;
+      }
+    }
+
+    if (currentTrade) {
       // Add open position as incomplete trade
       // For open positions, use the net position, not the accumulated totalQuantity
       const netQuantity = Math.abs(currentPosition);
@@ -2070,7 +2157,7 @@ async function parseLightspeedTransactions(records, existingPositions = {}, user
   return { trades: completedTrades };
 }
 
-async function parseSchwabTrades(records, existingPositions = {}) {
+async function parseSchwabTrades(records, existingPositions = {}, context = {}) {
   console.log(`Processing ${records.length} Schwab trade records`);
   
   // Check if this is the new transaction format: Date,Action,Symbol,Description,Quantity,Price,Fees & Comm,Amount
@@ -2161,7 +2248,7 @@ async function parseSchwabTrades(records, existingPositions = {}) {
   return completedTrades;
 }
 
-async function parseSchwabTransactions(records, existingPositions = {}) {
+async function parseSchwabTransactions(records, existingPositions = {}, context = {}) {
   console.log(`Processing ${records.length} Schwab transaction records`);
   
   const transactions = [];
@@ -2328,12 +2415,20 @@ async function parseSchwabTransactions(records, existingPositions = {}) {
           datetime: transaction.datetime,
           fees: transaction.fees || 0
         };
-        
-        // Check if this execution already exists (prevent duplicates on re-import)
-        const executionExists = currentTrade.executions.some(exec => 
+
+        // First, check if this execution exists in ANY existing trade (complete or open)
+        const existsGlobally = isExecutionDuplicate(newExecution, symbol, context);
+
+        // Then check if it exists in the current trade being built
+        const executionExists = existsGlobally || currentTrade.executions.some(exec =>
+          exec.datetime && newExecution.datetime &&
           new Date(exec.datetime).toISOString() === new Date(newExecution.datetime).toISOString()
         );
-        
+
+        if (existsGlobally) {
+          console.log(`  [SKIP] Execution already exists in a completed or open trade: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
+        }
+
         if (!executionExists) {
           currentTrade.executions.push(newExecution);
           currentTrade.totalFees += (transaction.fees || 0);
@@ -2409,10 +2504,15 @@ async function parseSchwabTransactions(records, existingPositions = {}) {
         currentTrade.fees = 0;
 
         // Calculate proper entry and exit times from all executions
-        const executionTimes = currentTrade.executions.map(e => new Date(e.datetime));
+        const executionTimes = currentTrade.executions
+          .filter(e => e.datetime)
+          .map(e => new Date(e.datetime))
+          .filter(d => !isNaN(d.getTime()));
         const sortedTimes = executionTimes.sort((a, b) => a - b);
-        currentTrade.entryTime = sortedTimes[0].toISOString();
-        currentTrade.exitTime = sortedTimes[sortedTimes.length - 1].toISOString();
+        if (sortedTimes.length > 0) {
+          currentTrade.entryTime = sortedTimes[0].toISOString();
+          currentTrade.exitTime = sortedTimes[sortedTimes.length - 1].toISOString();
+        }
 
         currentTrade.executionData = currentTrade.executions;
 
@@ -2469,7 +2569,7 @@ async function parseSchwabTransactions(records, existingPositions = {}) {
   return completedTrades;
 }
 
-async function parseThinkorswimTransactions(records, existingPositions = {}) {
+async function parseThinkorswimTransactions(records, existingPositions = {}, context = {}) {
   console.log(`Processing ${records.length} thinkorswim transaction records`);
 
   // Thinkorswim is stock trading, so contract multiplier is always 1
@@ -2689,12 +2789,20 @@ async function parseThinkorswimTransactions(records, existingPositions = {}) {
           datetime: transaction.datetime,
           fees: transaction.fees
         };
-        
-        // Check if this execution already exists (prevent duplicates on re-import)
-        const executionExists = currentTrade.executions.some(exec => 
+
+        // First, check if this execution exists in ANY existing trade (complete or open)
+        const existsGlobally = isExecutionDuplicate(newExecution, symbol, context);
+
+        // Then check if it exists in the current trade being built
+        const executionExists = existsGlobally || currentTrade.executions.some(exec =>
+          exec.datetime && newExecution.datetime &&
           new Date(exec.datetime).toISOString() === new Date(newExecution.datetime).toISOString()
         );
-        
+
+        if (existsGlobally) {
+          console.log(`  [SKIP] Execution already exists in a completed or open trade: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
+        }
+
         if (!executionExists) {
           currentTrade.executions.push(newExecution);
           currentTrade.totalFees += transaction.fees;
@@ -2748,10 +2856,15 @@ async function parseThinkorswimTransactions(records, existingPositions = {}) {
         currentTrade.fees = 0;
 
         // Calculate proper entry and exit times from all executions
-        const executionTimes = currentTrade.executions.map(e => new Date(e.datetime));
+        const executionTimes = currentTrade.executions
+          .filter(e => e.datetime)
+          .map(e => new Date(e.datetime))
+          .filter(d => !isNaN(d.getTime()));
         const sortedTimes = executionTimes.sort((a, b) => a - b);
-        currentTrade.entryTime = sortedTimes[0].toISOString();
-        currentTrade.exitTime = sortedTimes[sortedTimes.length - 1].toISOString();
+        if (sortedTimes.length > 0) {
+          currentTrade.entryTime = sortedTimes[0].toISOString();
+          currentTrade.exitTime = sortedTimes[sortedTimes.length - 1].toISOString();
+        }
 
         currentTrade.executionData = currentTrade.executions;
         // Add instrument data for options/futures
@@ -2772,9 +2885,14 @@ async function parseThinkorswimTransactions(records, existingPositions = {}) {
           console.log(`  [SUCCESS] Completed ${currentTrade.side} trade: ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions, P/L: $${currentTrade.pnl.toFixed(2)}`);
         }
         
-        // Map executions to executionData for Trade.create
-      currentTrade.executionData = currentTrade.executions;
-      completedTrades.push(currentTrade);
+        // Only add trade if it has executions (skip if all were duplicates)
+        if (currentTrade.executions.length > 0) {
+          // Map executions to executionData for Trade.create
+          currentTrade.executionData = currentTrade.executions;
+          completedTrades.push(currentTrade);
+        } else {
+          console.log(`  [SKIP] Trade has no executions (all were duplicates), not creating trade`);
+        }
         currentTrade = null;
       }
     }
@@ -2821,7 +2939,7 @@ async function parseThinkorswimTransactions(records, existingPositions = {}) {
   return completedTrades;
 }
 
-async function parsePaperMoneyTransactions(records, existingPositions = {}) {
+async function parsePaperMoneyTransactions(records, existingPositions = {}, context = {}) {
   const DEBUG = process.env.DEBUG_IMPORT === 'true';
   if (DEBUG) console.log(`Processing ${records.length} PaperMoney transaction records`);
   
@@ -2989,12 +3107,20 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}) {
           datetime: transaction.datetime,
           fees: transaction.fees
         };
-        
-        // Check if this execution already exists (prevent duplicates on re-import)
-        const executionExists = currentTrade.executions.some(exec =>
+
+        // First, check if this execution exists in ANY existing trade (complete or open)
+        const existsGlobally = isExecutionDuplicate(newExecution, symbol, context);
+
+        // Then check if it exists in the current trade being built
+        const executionExists = existsGlobally || currentTrade.executions.some(exec =>
+          exec.datetime && newExecution.datetime &&
           new Date(exec.datetime).toISOString() === new Date(newExecution.datetime).toISOString()
         );
-        
+
+        if (existsGlobally) {
+          console.log(`  [SKIP] Execution already exists in a completed or open trade: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
+        }
+
         if (!executionExists) {
           currentTrade.executions.push(newExecution);
           currentTrade.totalFees += transaction.fees;
@@ -3005,7 +3131,7 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}) {
           console.log(`  → Skipping duplicate execution: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
         }
       }
-      
+
       // Update position and values
       if (transaction.action === 'buy') {
         currentPosition += qty;
@@ -3048,10 +3174,15 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}) {
         currentTrade.fees = 0;
 
         // Calculate proper entry and exit times from all executions
-        const executionTimes = currentTrade.executions.map(e => new Date(e.datetime));
+        const executionTimes = currentTrade.executions
+          .filter(e => e.datetime)
+          .map(e => new Date(e.datetime))
+          .filter(d => !isNaN(d.getTime()));
         const sortedTimes = executionTimes.sort((a, b) => a - b);
-        currentTrade.entryTime = sortedTimes[0].toISOString();
-        currentTrade.exitTime = sortedTimes[sortedTimes.length - 1].toISOString();
+        if (sortedTimes.length > 0) {
+          currentTrade.entryTime = sortedTimes[0].toISOString();
+          currentTrade.exitTime = sortedTimes[sortedTimes.length - 1].toISOString();
+        }
 
         currentTrade.executionData = currentTrade.executions;
         // Add instrument data for options/futures
@@ -3072,9 +3203,14 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}) {
           console.log(`  [SUCCESS] Completed ${currentTrade.side} trade: ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions, P/L: $${currentTrade.pnl.toFixed(2)}`);
         }
         
-        // Map executions to executionData for Trade.create
-      currentTrade.executionData = currentTrade.executions;
-      completedTrades.push(currentTrade);
+        // Only add trade if it has executions (skip if all were duplicates)
+        if (currentTrade.executions.length > 0) {
+          // Map executions to executionData for Trade.create
+          currentTrade.executionData = currentTrade.executions;
+          completedTrades.push(currentTrade);
+        } else {
+          console.log(`  [SKIP] Trade has no executions (all were duplicates), not creating trade`);
+        }
         currentTrade = null;
       }
     }
@@ -3121,7 +3257,7 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}) {
   return completedTrades;
 }
 
-async function parseTradingViewTransactions(records, existingPositions = {}) {
+async function parseTradingViewTransactions(records, existingPositions = {}, context = {}) {
   console.log(`Processing ${records.length} TradingView transaction records`);
 
   const transactions = [];
@@ -3289,14 +3425,24 @@ async function parseTradingViewTransactions(records, existingPositions = {}) {
           orderId: transaction.orderId
         };
 
-        // Check if this execution already exists using order ID
-        const executionExists = currentTrade.executions.some(exec => {
+        // First, check if this execution exists in ANY existing trade (complete or open)
+        const existsGlobally = isExecutionDuplicate(newExecution, symbol, context);
+
+        // Then check if it exists in the current trade being built
+        const executionExists = existsGlobally || currentTrade.executions.some(exec => {
           if (exec.orderId && newExecution.orderId) {
             return exec.orderId === newExecution.orderId;
           }
           // Fallback to timestamp comparison
+          if (!exec.datetime || !newExecution.datetime) {
+            return false;
+          }
           return new Date(exec.datetime).toISOString() === new Date(newExecution.datetime).toISOString();
         });
+
+        if (existsGlobally) {
+          console.log(`  [SKIP] Execution already exists in a completed or open trade: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
+        }
 
         if (!executionExists) {
           currentTrade.executions.push(newExecution);
@@ -3367,10 +3513,15 @@ async function parseTradingViewTransactions(records, existingPositions = {}) {
         currentTrade.fees = 0;
 
         // Calculate proper entry and exit times from all executions
-        const executionTimes = currentTrade.executions.map(e => new Date(e.datetime));
+        const executionTimes = currentTrade.executions
+          .filter(e => e.datetime)
+          .map(e => new Date(e.datetime))
+          .filter(d => !isNaN(d.getTime()));
         const sortedTimes = executionTimes.sort((a, b) => a - b);
-        currentTrade.entryTime = sortedTimes[0].toISOString();
-        currentTrade.exitTime = sortedTimes[sortedTimes.length - 1].toISOString();
+        if (sortedTimes.length > 0) {
+          currentTrade.entryTime = sortedTimes[0].toISOString();
+          currentTrade.exitTime = sortedTimes[sortedTimes.length - 1].toISOString();
+        }
 
         currentTrade.executionData = currentTrade.executions;
         // Add instrument data for options/futures
@@ -3404,6 +3555,14 @@ async function parseTradingViewTransactions(records, existingPositions = {}) {
     if (currentTrade) {
       console.log(`Active trade: ${currentTrade.side} ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions`);
 
+      // Skip if no executions (all were duplicates)
+      if (currentTrade.executions.length === 0) {
+        console.log(`  [SKIP] Trade has no executions (all were duplicates), not creating trade`);
+        currentTrade = null;
+      }
+    }
+
+    if (currentTrade) {
       // Add open position as incomplete trade
       // Divide by multiplier to get per-contract/per-share price
       currentTrade.entryPrice = currentTrade.entryValue / (currentTrade.totalQuantity * valueMultiplier);
@@ -3440,7 +3599,7 @@ async function parseTradingViewTransactions(records, existingPositions = {}) {
   return completedTrades;
 }
 
-async function parseIBKRTransactions(records, existingPositions = {}, tradeGroupingSettings = { enabled: true, timeGapMinutes: 60 }) {
+async function parseIBKRTransactions(records, existingPositions = {}, tradeGroupingSettings = { enabled: true, timeGapMinutes: 60 }, context = {}) {
   console.log(`\n=== IBKR TRANSACTION PARSER ===`);
   console.log(`Processing ${records.length} IBKR transaction records`);
   console.log(`Existing open positions passed to parser: ${Object.keys(existingPositions).length}`);
@@ -3753,14 +3912,22 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
           fees: transaction.fees
         };
 
-        // Check if this execution already exists (prevent duplicates on re-import)
+        // First, check if this execution exists in ANY existing trade (complete or open)
+        const existsGlobally = isExecutionDuplicate(newExecution, symbol, context);
+
+        // Then check if it exists in the current trade being built
         // Include fees in duplicate check to handle multiple partial fills at same time/price
-        const executionExists = currentTrade.executions.some(exec =>
+        const executionExists = existsGlobally || currentTrade.executions.some(exec =>
+          exec.datetime && newExecution.datetime &&
           new Date(exec.datetime).toISOString() === new Date(newExecution.datetime).toISOString() &&
           exec.quantity === newExecution.quantity &&
           exec.price === newExecution.price &&
           exec.fees === newExecution.fees
         );
+
+        if (existsGlobally) {
+          console.log(`  [SKIP] Execution already exists in a completed or open trade: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
+        }
 
         if (!executionExists) {
           currentTrade.executions.push(newExecution);
@@ -3831,10 +3998,15 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         currentTrade.fees = 0;
 
         // Calculate proper entry and exit times from all executions
-        const executionTimes = currentTrade.executions.map(e => new Date(e.datetime));
+        const executionTimes = currentTrade.executions
+          .filter(e => e.datetime)
+          .map(e => new Date(e.datetime))
+          .filter(d => !isNaN(d.getTime()));
         const sortedTimes = executionTimes.sort((a, b) => a - b);
-        currentTrade.entryTime = sortedTimes[0].toISOString();
-        currentTrade.exitTime = sortedTimes[sortedTimes.length - 1].toISOString();
+        if (sortedTimes.length > 0) {
+          currentTrade.entryTime = sortedTimes[0].toISOString();
+          currentTrade.exitTime = sortedTimes[sortedTimes.length - 1].toISOString();
+        }
 
         currentTrade.executionData = currentTrade.executions;
         // Add instrument data for options/futures
@@ -3868,6 +4040,14 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
     if (currentTrade) {
       console.log(`Active trade: ${currentTrade.side} ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions`);
 
+      // Skip if no executions (all were duplicates)
+      if (currentTrade.executions.length === 0) {
+        console.log(`  [SKIP] Trade has no executions (all were duplicates), not creating trade`);
+        currentTrade = null;
+      }
+    }
+
+    if (currentTrade) {
       // Add open position as incomplete trade
       // Divide by multiplier to get per-contract/per-share price
       currentTrade.entryPrice = currentTrade.entryValue / (currentTrade.totalQuantity * valueMultiplier);
@@ -3911,7 +4091,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
  * @param {Object} existingPositions - Map of existing open positions by symbol
  * @returns {Array} - Array of completed and open trades
  */
-async function parseGenericTransactions(records, existingPositions = {}, customMapping = null) {
+async function parseGenericTransactions(records, existingPositions = {}, customMapping = null, context = {}) {
   console.log(`Processing ${records.length} generic CSV records with position tracking`);
   if (customMapping) {
     console.log(`[CUSTOM MAPPING] Using custom mapping in position tracking mode: ${customMapping.mapping_name}`);
@@ -4096,14 +4276,24 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
           fees: transaction.commission + transaction.fees
         };
 
-        // Check for duplicate executions
-        const executionExists = currentTrade.executions.some(exec => {
+        // First, check if this execution exists in ANY existing trade (complete or open)
+        const existsGlobally = isExecutionDuplicate(newExecution, symbol, context);
+
+        // Then check for duplicate executions in current trade
+        const executionExists = existsGlobally || currentTrade.executions.some(exec => {
+          if (!exec.datetime || !newExecution.datetime) {
+            return false;
+          }
           const existingTime = new Date(exec.datetime).getTime();
           const newTime = new Date(newExecution.datetime).getTime();
           return existingTime === newTime &&
                  exec.quantity === newExecution.quantity &&
                  exec.price === newExecution.price;
         });
+
+        if (existsGlobally) {
+          console.log(`  [SKIP] Execution already exists in a completed or open trade: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
+        }
 
         if (!executionExists) {
           currentTrade.executions.push(newExecution);
@@ -4165,10 +4355,15 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
         currentTrade.fees = 0;
 
         // Set proper entry and exit times
-        const executionTimes = currentTrade.executions.map(e => new Date(e.datetime));
+        const executionTimes = currentTrade.executions
+          .filter(e => e.datetime)
+          .map(e => new Date(e.datetime))
+          .filter(d => !isNaN(d.getTime()));
         const sortedTimes = executionTimes.sort((a, b) => a - b);
-        currentTrade.entryTime = sortedTimes[0].toISOString();
-        currentTrade.exitTime = sortedTimes[sortedTimes.length - 1].toISOString();
+        if (sortedTimes.length > 0) {
+          currentTrade.entryTime = sortedTimes[0].toISOString();
+          currentTrade.exitTime = sortedTimes[sortedTimes.length - 1].toISOString();
+        }
 
         // Mark as update if this was an existing position
         if (currentTrade.isExistingPosition) {
