@@ -844,6 +844,19 @@ const tradeController = {
           `;
           const openPositionsResult = await db.query(openPositionsQuery, [fileUserId]);
           logger.logImport(`Found ${openPositionsResult.rows.length} existing open positions`);
+
+          // Also fetch completed trades to check for duplicate executions
+          logger.logImport(`Fetching completed trades for duplicate detection...`);
+          const completedTradesQuery = `
+            SELECT id, symbol, executions
+            FROM trades
+            WHERE user_id = $1
+            AND exit_price IS NOT NULL
+            AND executions IS NOT NULL
+            ORDER BY symbol, entry_time
+          `;
+          const completedTradesResult = await db.query(completedTradesQuery, [fileUserId]);
+          logger.logImport(`Found ${completedTradesResult.rows.length} completed trades for duplicate checking`);
           
           // Convert to context format
           const existingPositions = {};
@@ -880,6 +893,37 @@ const tradeController = {
             logger.logImport(`  ${symbol}: ${pos.side} ${pos.quantity} shares @ $${pos.entryPrice}`);
           });
 
+          // Build a map of all existing executions for duplicate detection
+          const existingExecutions = {};
+          completedTradesResult.rows.forEach(row => {
+            let parsedExecutions = [];
+            if (row.executions) {
+              try {
+                parsedExecutions = typeof row.executions === 'string'
+                  ? JSON.parse(row.executions)
+                  : row.executions;
+              } catch (e) {
+                console.warn(`Failed to parse executions for completed trade ${row.id}:`, e);
+                parsedExecutions = [];
+              }
+            }
+
+            if (!existingExecutions[row.symbol]) {
+              existingExecutions[row.symbol] = [];
+            }
+            existingExecutions[row.symbol].push(...parsedExecutions);
+          });
+
+          // Also add executions from open positions
+          Object.entries(existingPositions).forEach(([symbol, pos]) => {
+            if (!existingExecutions[symbol]) {
+              existingExecutions[symbol] = [];
+            }
+            existingExecutions[symbol].push(...pos.executions);
+          });
+
+          logger.logImport(`Built execution index for ${Object.keys(existingExecutions).length} symbols`);
+
           // Fetch user settings for trade grouping configuration
           let userSettings = await User.getSettings(req.user.id);
           if (!userSettings) {
@@ -905,6 +949,7 @@ const tradeController = {
 
           const context = {
             existingPositions,
+            existingExecutions,
             userId: req.user.id,
             tradeGroupingSettings: {
               enabled: userSettings.enable_trade_grouping ?? true,
