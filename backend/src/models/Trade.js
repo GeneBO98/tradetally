@@ -1274,6 +1274,96 @@ class Trade {
     return Math.round(rMultiple * 100) / 100;
   }
 
+  /**
+   * Apply default stop loss to all trades without a stop loss
+   * This is called when a user updates their default stop loss percentage setting
+   * @param {number} userId - The user ID
+   * @param {number} defaultStopLossPercent - The default stop loss percentage
+   * @returns {Promise<number>} The number of trades updated
+   */
+  static async applyDefaultStopLossToExistingTrades(userId, defaultStopLossPercent) {
+    if (!defaultStopLossPercent || defaultStopLossPercent <= 0) {
+      console.log('[STOP LOSS] Invalid default stop loss percentage, skipping update');
+      return 0;
+    }
+
+    console.log(`[STOP LOSS] Applying ${defaultStopLossPercent}% default stop loss to existing trades without stop loss for user ${userId}`);
+
+    // Use a transaction to update all trades at once
+    const client = await db.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Find all trades without a stop loss that have the necessary data
+      const tradesQuery = `
+        SELECT id, entry_price, exit_price, side
+        FROM trades
+        WHERE user_id = $1
+          AND stop_loss IS NULL
+          AND entry_price IS NOT NULL
+          AND side IS NOT NULL
+      `;
+
+      const tradesResult = await client.query(tradesQuery, [userId]);
+      const trades = tradesResult.rows;
+
+      console.log(`[STOP LOSS] Found ${trades.length} trades without stop loss`);
+
+      if (trades.length === 0) {
+        await client.query('COMMIT');
+        return 0;
+      }
+
+      let updatedCount = 0;
+
+      // Update each trade with the calculated stop loss
+      for (const trade of trades) {
+        const { id, entry_price, exit_price, side } = trade;
+
+        // Calculate stop loss based on entry price and side
+        let stopLoss;
+        if (side === 'long' || side === 'buy') {
+          stopLoss = entry_price * (1 - defaultStopLossPercent / 100);
+        } else if (side === 'short' || side === 'sell') {
+          stopLoss = entry_price * (1 + defaultStopLossPercent / 100);
+        } else {
+          console.warn(`[STOP LOSS] Unknown side "${side}" for trade ${id}, skipping`);
+          continue;
+        }
+
+        // Round to 4 decimal places
+        stopLoss = Math.round(stopLoss * 10000) / 10000;
+
+        // Calculate R value if exit price exists
+        let rValue = null;
+        if (exit_price) {
+          rValue = this.calculateRValue(entry_price, stopLoss, exit_price, side);
+        }
+
+        // Update the trade
+        const updateQuery = `
+          UPDATE trades
+          SET stop_loss = $1, r_value = $2
+          WHERE id = $3 AND user_id = $4
+        `;
+
+        await client.query(updateQuery, [stopLoss, rValue, id, userId]);
+        updatedCount++;
+      }
+
+      await client.query('COMMIT');
+      console.log(`[STOP LOSS] Successfully updated ${updatedCount} trades with default stop loss`);
+      return updatedCount;
+
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('[STOP LOSS] Error applying default stop loss to existing trades:', error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
   static async getCountWithFilters(userId, filters = {}) {
     const { getUserTimezone } = require('../utils/timezone');
     console.log('[COUNT] getCountWithFilters called with userId:', userId, 'filters:', filters);
@@ -2092,7 +2182,7 @@ class Trade {
         // Accumulate for averaging
         if (month.trades.total > 0) {
           acc.monthsWithTrades++;
-          acc.totalRValue += month.metrics.avgRValue * month.trades.total;
+          acc.totalRValue += month.metrics.totalRValue;
         }
 
         return acc;
