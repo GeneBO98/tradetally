@@ -255,8 +255,8 @@ const availableYears = computed(() => {
 // Computed property for total R-values per month
 const monthlyTotalRValues = computed(() => {
   return monthlyData.value.map(month => {
-    // Calculate total R for the month: avgRValue * number of trades
-    return month.metrics.avgRValue * month.trades.total;
+    // Use the correct totalRValue from backend (which is SUM of r_value)
+    return month.metrics.totalRValue;
   });
 });
 
