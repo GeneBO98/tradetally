@@ -1096,19 +1096,23 @@ const tradeController = {
                 // This is the most precise duplicate detection
                 if (tradeData.executionData && tradeData.executionData.length > 0 && existingExecutions.length > 0) {
                   // Create a set of execution timestamps from the new trade
+                  // Handle both datetime (Lightspeed) and entryTime (ProjectX) formats
                   const newExecutionTimestamps = new Set(
-                    tradeData.executionData.map(exec => 
-                      new Date(exec.datetime).getTime()
-                    )
+                    tradeData.executionData.map(exec => {
+                      const timestamp = exec.datetime || exec.entryTime;
+                      return timestamp ? new Date(timestamp).getTime() : null;
+                    }).filter(t => t !== null && !isNaN(t))
                   );
-                  
+
                   // Check if any existing execution has the same timestamp
                   // If we find even one matching timestamp, it's likely a duplicate
                   const hasMatchingExecution = existingExecutions.some(exec => {
-                    const execTime = new Date(exec.datetime).getTime();
-                    return newExecutionTimestamps.has(execTime);
+                    const timestamp = exec.datetime || exec.entryTime;
+                    if (!timestamp) return false;
+                    const execTime = new Date(timestamp).getTime();
+                    return !isNaN(execTime) && newExecutionTimestamps.has(execTime);
                   });
-                  
+
                   if (hasMatchingExecution) {
                     logger.logImport(`Found duplicate based on execution timestamp match`);
                     return true;
