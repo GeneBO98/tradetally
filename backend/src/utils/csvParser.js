@@ -1268,6 +1268,16 @@ function parseDateTime(dateTimeStr) {
   const cleanDateTimeStr = dateTimeStr.toString().replace(/^[\x27\x22\u2018\u2019\u201C\u201D]|[\x27\x22\u2018\u2019\u201C\u201D]$/g, '').trim();
 
   try {
+    // Check for MM/DD/YYYY HH:MM:SS +TZ format (ProjectX with timezone)
+    const mmddyyyyTimeWithTzMatch = cleanDateTimeStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})\s+[+-]\d{2}:\d{2}$/);
+    if (mmddyyyyTimeWithTzMatch) {
+      const [, month, day, year, hour, minute, second] = mmddyyyyTimeWithTzMatch;
+      const monthPadded = month.padStart(2, '0');
+      const dayPadded = day.padStart(2, '0');
+      const hourPadded = hour.padStart(2, '0');
+      return `${year}-${monthPadded}-${dayPadded}T${hourPadded}:${minute}:${second}`;
+    }
+
     // Check for MM/DD/YYYY HH:MM:SS format (common in many CSVs)
     const mmddyyyyTimeMatch = cleanDateTimeStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})$/);
     if (mmddyyyyTimeMatch) {

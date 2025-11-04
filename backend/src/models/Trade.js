@@ -817,8 +817,10 @@ class Trade {
     }
 
     // Special handling for executions - replace instead of merge to prevent duplicates
+    // Only allow execution updates during imports (skipApiCalls=true) to prevent
+    // frontend timestamp truncation from breaking duplicate detection
     let executionsToSet = null;
-    if (updates.executions && updates.executions.length > 0) {
+    if (updates.executions && updates.executions.length > 0 && options.skipApiCalls) {
       // Check if executions have actually changed by comparing JSON strings
       const currentExecutionsJson = JSON.stringify(currentTrade.executions || []);
       const newExecutionsJson = JSON.stringify(updates.executions);
@@ -830,17 +832,19 @@ class Trade {
         console.log(`\n=== EXECUTION UPDATE for Trade ${id} ===`);
         console.log(`Replacing ${(currentTrade.executions || []).length} existing executions with ${executionsToSet.length} new executions`);
         if (executionsToSet.length > 0) {
-          console.log(`First execution: ${executionsToSet[0].datetime} @ $${executionsToSet[0].price}`);
-          console.log(`Last execution: ${executionsToSet[executionsToSet.length-1].datetime} @ $${executionsToSet[executionsToSet.length-1].price}`);
+          console.log(`First execution: ${executionsToSet[0].datetime || executionsToSet[0].entryTime} @ $${executionsToSet[0].price || executionsToSet[0].entryPrice}`);
+          console.log(`Last execution: ${executionsToSet[executionsToSet.length-1].datetime || executionsToSet[executionsToSet.length-1].entryTime} @ $${executionsToSet[executionsToSet.length-1].price || executionsToSet[executionsToSet.length-1].entryPrice}`);
         }
         console.log(`=== END EXECUTION UPDATE ===\n`);
       } else {
         console.log(`[EXECUTION UPDATE] Executions unchanged for trade ${id}, skipping update`);
       }
-
-      // Remove executions from updates since we'll handle it separately
-      delete updates.executions;
+    } else if (updates.executions) {
+      console.log(`[EXECUTION UPDATE] Ignoring executions from non-import update (prevents timestamp truncation)`);
     }
+
+    // Always remove executions from updates since we handle it separately
+    delete updates.executions;
 
     // Process all other fields
     Object.entries(updates).forEach(([key, value]) => {
