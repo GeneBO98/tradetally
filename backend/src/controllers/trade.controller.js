@@ -230,7 +230,7 @@ const tradeController = {
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
       res.send(csv);
 
-      logger.logInfo(`Exported ${trades.length} trades to CSV for user ${req.user.id}`);
+      logger.info(`Exported ${trades.length} trades to CSV for user ${req.user.id}`);
     } catch (error) {
       logger.logError('Error exporting trades to CSV:', error);
       next(error);
@@ -2855,7 +2855,7 @@ const tradeController = {
         req.user.id
       ]);
 
-      logger.logInfo(`Updated health data for trade ${tradeId} for user ${req.user.id}`);
+      logger.info(`Updated health data for trade ${tradeId} for user ${req.user.id}`);
 
       res.json({
         success: true,
@@ -2918,7 +2918,7 @@ const tradeController = {
         }
       }
 
-      logger.logInfo(`Bulk updated ${updatedCount} trades with health data for user ${req.user.id}`);
+      logger.info(`Bulk updated ${updatedCount} trades with health data for user ${req.user.id}`);
 
       res.json({
         success: true,
@@ -2953,7 +2953,7 @@ const tradeController = {
 
       const result = await db.query(query, [req.user.id, today]);
 
-      logger.logInfo(`Found ${result.rows.length} expired options for user ${req.user.id}`);
+      logger.info(`Found ${result.rows.length} expired options for user ${req.user.id}`);
 
       res.json({
         success: true,
@@ -2996,7 +2996,7 @@ const tradeController = {
         });
       }
 
-      logger.logInfo(`Found ${expiredOptions.rows.length} expired options for user ${req.user.id}. Dry run: ${dryRun}`);
+      logger.info(`Found ${expiredOptions.rows.length} expired options for user ${req.user.id}. Dry run: ${dryRun}`);
 
       if (dryRun) {
         return res.json({
@@ -3032,9 +3032,7 @@ const tradeController = {
 
       const result = await db.query(updateQuery, [closedAt, req.user.id, today]);
 
-      logger.logInfo(`Auto-closed ${result.rows.length} expired options for user ${req.user.id}`, {
-        closedTrades: result.rows.map(t => ({ id: t.id, symbol: t.symbol, expirationDate: t.expiration_date }))
-      });
+      logger.info(`Auto-closed ${result.rows.length} expired options for user ${req.user.id}`, 'app');
 
       res.json({
         success: true,
@@ -3163,10 +3161,7 @@ const tradeController = {
 
       await Promise.all(updates);
 
-      logger.logInfo(`Calculated quality for ${updates.length} trades`, {
-        userId: req.user.id,
-        tradesUpdated: updates.length
-      });
+      logger.info(`Calculated quality for ${updates.length} trades for user ${req.user.id}`, 'app');
 
       res.json({
         success: true,
@@ -3207,9 +3202,7 @@ const tradeController = {
         });
       }
 
-      logger.logInfo(`Starting quality calculation for ${tradesResult.rows.length} trades`, {
-        userId: req.user.id
-      });
+      logger.info(`Starting quality calculation for ${tradesResult.rows.length} trades for user ${req.user.id}`, 'app');
 
       // Start async processing (don't await)
       setImmediate(async () => {
@@ -3240,9 +3233,7 @@ const tradeController = {
 
           await Promise.all(updates);
 
-          logger.logInfo(`Completed quality calculation for ${updates.length} trades`, {
-            userId: req.user.id
-          });
+          logger.info(`Completed quality calculation for ${updates.length} trades for user ${req.user.id}`, 'app');
         } catch (error) {
           logger.logError('Error in async quality calculation:', error);
         }
