@@ -1094,28 +1094,48 @@ const tradeController = {
                 
                 // If both trades have executions, check for exact timestamp matches
                 // This is the most precise duplicate detection
-                if (tradeData.executionData && tradeData.executionData.length > 0 && existingExecutions.length > 0) {
+                // For trades without executionData array, create one from the trade fields
+                let tradeExecutionsToCheck = tradeData.executionData;
+                if (!tradeExecutionsToCheck || tradeExecutionsToCheck.length === 0) {
+                  // Trade doesn't have executionData (e.g., non-grouped single trade)
+                  // Create a temporary execution from the trade's entry/exit times
+                  tradeExecutionsToCheck = [{
+                    datetime: tradeData.datetime,
+                    entryTime: tradeData.entryTime,
+                    exitTime: tradeData.exitTime,
+                    entryPrice: tradeData.entryPrice,
+                    quantity: tradeData.quantity,
+                    side: tradeData.side
+                  }];
+                }
+
+                if (tradeExecutionsToCheck && tradeExecutionsToCheck.length > 0 && existingExecutions.length > 0) {
                   // Create a set of execution timestamps from the new trade
                   // Handle both datetime (Lightspeed) and entryTime (ProjectX) formats
                   const newExecutionTimestamps = new Set(
-                    tradeData.executionData.map(exec => {
+                    tradeExecutionsToCheck.map(exec => {
                       const timestamp = exec.datetime || exec.entryTime;
                       return timestamp ? new Date(timestamp).getTime() : null;
                     }).filter(t => t !== null && !isNaN(t))
                   );
 
-                  // Check if any existing execution has the same timestamp
-                  // If we find even one matching timestamp, it's likely a duplicate
-                  const hasMatchingExecution = existingExecutions.some(exec => {
-                    const timestamp = exec.datetime || exec.entryTime;
-                    if (!timestamp) return false;
-                    const execTime = new Date(timestamp).getTime();
-                    return !isNaN(execTime) && newExecutionTimestamps.has(execTime);
-                  });
+                  if (newExecutionTimestamps.size === 0) {
+                    // No valid timestamps found, skip timestamp matching
+                    logger.logImport(`[DEBUG] No valid timestamps in new trade's executions, falling back to price/PnL matching`);
+                  } else {
+                    // Check if any existing execution has the same timestamp
+                    // If we find even one matching timestamp, it's likely a duplicate
+                    const hasMatchingExecution = existingExecutions.some(exec => {
+                      const timestamp = exec.datetime || exec.entryTime;
+                      if (!timestamp) return false;
+                      const execTime = new Date(timestamp).getTime();
+                      return !isNaN(execTime) && newExecutionTimestamps.has(execTime);
+                    });
 
-                  if (hasMatchingExecution) {
-                    logger.logImport(`Found duplicate based on execution timestamp match`);
-                    return true;
+                    if (hasMatchingExecution) {
+                      logger.logImport(`Found duplicate based on execution timestamp match`);
+                      return true;
+                    }
                   }
                 }
                 
