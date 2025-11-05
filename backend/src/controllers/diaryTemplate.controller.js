@@ -87,16 +87,17 @@ const createTemplate = async (req, res) => {
 
     const templateData = {
       name: formData.name.trim(),
-      description: formData.description,
+      description: formData.description || null,
       entryType: formData.entryType || 'diary',
-      title: formData.title,
-      content: formData.content,
-      marketBias: formData.marketBias,
-      keyLevels: formData.keyLevels,
+      title: formData.title || null,
+      content: formData.content || null,
+      // Convert empty string to null for marketBias (CHECK constraint requires 'bullish', 'bearish', 'neutral', or NULL)
+      marketBias: formData.marketBias || null,
+      keyLevels: formData.keyLevels || null,
       watchlist: formData.watchlist || [],
       tags: formData.tags || [],
       followedPlan: formData.followedPlan,
-      lessonsLearned: formData.lessonsLearned,
+      lessonsLearned: formData.lessonsLearned || null,
       isDefault: formData.isDefault || false
     };
 
@@ -132,16 +133,17 @@ const updateTemplate = async (req, res) => {
 
     const updates = {};
     if (formData.name !== undefined) updates.name = formData.name.trim();
-    if (formData.description !== undefined) updates.description = formData.description;
+    if (formData.description !== undefined) updates.description = formData.description || null;
     if (formData.entryType !== undefined) updates.entryType = formData.entryType;
-    if (formData.title !== undefined) updates.title = formData.title;
-    if (formData.content !== undefined) updates.content = formData.content;
-    if (formData.marketBias !== undefined) updates.marketBias = formData.marketBias;
-    if (formData.keyLevels !== undefined) updates.keyLevels = formData.keyLevels;
+    if (formData.title !== undefined) updates.title = formData.title || null;
+    if (formData.content !== undefined) updates.content = formData.content || null;
+    // Convert empty string to null for marketBias (CHECK constraint requires 'bullish', 'bearish', 'neutral', or NULL)
+    if (formData.marketBias !== undefined) updates.marketBias = formData.marketBias || null;
+    if (formData.keyLevels !== undefined) updates.keyLevels = formData.keyLevels || null;
     if (formData.watchlist !== undefined) updates.watchlist = formData.watchlist;
     if (formData.tags !== undefined) updates.tags = formData.tags;
     if (formData.followedPlan !== undefined) updates.followedPlan = formData.followedPlan;
-    if (formData.lessonsLearned !== undefined) updates.lessonsLearned = formData.lessonsLearned;
+    if (formData.lessonsLearned !== undefined) updates.lessonsLearned = formData.lessonsLearned || null;
     if (formData.isDefault !== undefined) updates.isDefault = formData.isDefault;
 
     const template = await DiaryTemplate.update(id, userId, updates);
