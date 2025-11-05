@@ -1,5 +1,6 @@
 const DiaryTemplate = require('../models/DiaryTemplate');
 const { validate, schemas } = require('../middleware/validation');
+const logger = require('../utils/logger');
 
 /**
  * Get all templates for the authenticated user
@@ -126,6 +127,9 @@ const updateTemplate = async (req, res) => {
     const { id } = req.params;
     const formData = req.body;
 
+    logger.info(`[TEMPLATE] User ${userId} updating template ${id}`, 'app');
+    logger.debug(`[TEMPLATE] Update data: ${JSON.stringify(formData)}`, 'app');
+
     const updates = {};
     if (formData.name !== undefined) updates.name = formData.name.trim();
     if (formData.description !== undefined) updates.description = formData.description;
@@ -143,15 +147,17 @@ const updateTemplate = async (req, res) => {
     const template = await DiaryTemplate.update(id, userId, updates);
 
     if (!template) {
+      logger.warn(`[TEMPLATE] Template ${id} not found for user ${userId}`, 'app');
       return res.status(404).json({ error: 'Template not found' });
     }
 
+    logger.info(`[TEMPLATE] Successfully updated template ${id}`, 'app');
     res.json({
       template,
       message: 'Template updated successfully'
     });
   } catch (error) {
-    console.error('Error updating template:', error);
+    logger.error(`[TEMPLATE] Error updating template ${req.params.id} for user ${req.user.id}`, error, 'error');
 
     // Handle unique constraint violation
     if (error.code === '23505') {
