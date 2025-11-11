@@ -1083,8 +1083,9 @@ async function loadTrade() {
                 commission: exec.commission || 0,
                 fees: exec.fees || 0,
                 pnl: exec.pnl || null,
-                stopLoss: exec.stopLoss || exec.stop_loss || null,
-                takeProfit: exec.takeProfit || exec.take_profit || null
+                // Fall back to trade-level stop loss if not in execution
+                stopLoss: exec.stopLoss || exec.stop_loss || trade.stop_loss || trade.stopLoss || null,
+                takeProfit: exec.takeProfit || exec.take_profit || trade.take_profit || trade.takeProfit || null
               }
               console.log('[TRADE FORM] Mapped grouped execution:', result)
               return result
@@ -1102,8 +1103,9 @@ async function loadTrade() {
                 datetime: exec.datetime ? formatDateTimeLocal(exec.datetime) : '',
                 commission: exec.commission || 0,
                 fees: exec.fees || 0,
-                stopLoss: exec.stopLoss || exec.stop_loss || null,
-                takeProfit: exec.takeProfit || exec.take_profit || null
+                // Fall back to trade-level stop loss if not in execution
+                stopLoss: exec.stopLoss || exec.stop_loss || trade.stop_loss || trade.stopLoss || null,
+                takeProfit: exec.takeProfit || exec.take_profit || trade.take_profit || trade.takeProfit || null
               }
               console.log('[TRADE FORM] Mapped individual fill:', result)
               return result
