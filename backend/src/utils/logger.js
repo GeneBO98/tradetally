@@ -259,17 +259,15 @@ class Logger {
         
         console.log(`SEARCH: Found ${searchedLines.length} lines matching "${searchQuery}" (${searchMatchCount} total matches)`);
       }
-      
-      // Reverse to show newest entries first
-      const reversedLines = searchedLines.reverse();
-      
-      const total = reversedLines.length;
+
+      // Keep chronological order (oldest first, newest last)
+      const total = searchedLines.length;
       const allLinesCount = lines.length;
       const filteredCount = filteredLines.length;
       const totalPages = Math.ceil(total / limit);
       const startIndex = (page - 1) * limit;
       const endIndex = startIndex + limit;
-      const pageLines = reversedLines.slice(startIndex, endIndex);
+      const pageLines = searchedLines.slice(startIndex, endIndex);
       
       return {
         content: pageLines.join('\n'),
