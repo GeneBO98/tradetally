@@ -790,6 +790,11 @@
           </div>
         </div>
       </template>
+
+      <!-- System Logs Tab (Admin Only) -->
+      <template v-if="activeTab === 'admin' && authStore.user?.role === 'admin'">
+        <LogsViewer />
+      </template>
     </div>
   </div>
 </template>
@@ -801,6 +806,7 @@ import { useNotification } from '@/composables/useNotification'
 import api from '@/services/api'
 import MdiIcon from '@/components/MdiIcon.vue'
 import { mdiApi } from '@mdi/js'
+import LogsViewer from '@/components/admin/LogsViewer.vue'
 
 const authStore = useAuthStore()
 const { showSuccess, showError } = useNotification()
@@ -813,12 +819,19 @@ const activeTab = ref('general')
 
 // Tabs configuration
 const tabs = computed(() => {
-  return [
+  const baseTabs = [
     { id: 'general', label: 'General' },
     { id: 'ai', label: 'AI & Integrations' },
     { id: 'trading', label: 'Trading' },
     { id: 'data', label: 'Data Management' }
   ]
+
+  // Add System Logs tab for admin users
+  if (authStore.user?.role === 'admin') {
+    baseTabs.push({ id: 'admin', label: 'System Logs' })
+  }
+
+  return baseTabs
 })
 
 // AI Provider Settings

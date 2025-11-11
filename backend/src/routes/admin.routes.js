@@ -3,6 +3,7 @@ const router = express.Router();
 const { requireAdmin } = require('../middleware/auth');
 const stockSplitService = require('../services/stockSplitService');
 const StockSplit = require('../models/StockSplit');
+const logger = require('../utils/logger');
 
 // Check for stock splits manually
 router.post('/stock-splits/check', requireAdmin, async (req, res, next) => {
@@ -136,6 +137,60 @@ router.get('/database/health', requireAdmin, async (req, res, next) => {
         'Ensure migrations 058, 064 have been applied for numeric field fixes'
       ] : null
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Get list of log files
+router.get('/logs/files', requireAdmin, async (req, res, next) => {
+  try {
+    const { showAll = false, page = 1, limit = 10 } = req.query;
+    const result = logger.getLogFiles(showAll === 'true', parseInt(page), parseInt(limit));
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Read a specific log file
+router.get('/logs/files/:filename', requireAdmin, async (req, res, next) => {
+  try {
+    const { filename } = req.params;
+    const { page = 1, limit = 100, showAll = false, search = '' } = req.query;
+
+    const result = logger.readLogFile(
+      filename,
+      parseInt(page),
+      parseInt(limit),
+      showAll === 'true',
+      search
+    );
+
+    if (!result) {
+      return res.status(404).json({ error: 'Log file not found' });
+    }
+
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Get recent logs (latest entries from today's app log)
+router.get('/logs/recent', requireAdmin, async (req, res, next) => {
+  try {
+    const { limit = 50 } = req.query;
+    const today = new Date().toISOString().split('T')[0];
+    const appLogFilename = `app_${today}.log`;
+
+    const result = logger.readLogFile(appLogFilename, 1, parseInt(limit), false, '');
+
+    if (!result) {
+      return res.json({ content: '', pagination: { total: 0 } });
+    }
+
+    res.json(result);
   } catch (error) {
     next(error);
   }
