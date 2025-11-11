@@ -94,13 +94,13 @@
                     {{ trade.exit_time ? `$${formatNumber(trade.exit_price)}` : 'Open' }}
                   </dd>
                 </div>
-                <div v-if="trade.stopLoss">
+                <div v-if="trade.stopLoss || trade.stop_loss">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Stop Loss</dt>
-                  <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">${{ formatNumber(trade.stopLoss) }}</dd>
+                  <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">${{ formatNumber(trade.stop_loss || trade.stopLoss) }}</dd>
                 </div>
-                <div v-if="trade.takeProfit">
+                <div v-if="trade.takeProfit || trade.take_profit">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Take Profit</dt>
-                  <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">${{ formatNumber(trade.takeProfit) }}</dd>
+                  <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">${{ formatNumber(trade.take_profit || trade.takeProfit) }}</dd>
                 </div>
                 <div v-if="trade.rValue !== null && trade.rValue !== undefined">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">R-Multiple</dt>

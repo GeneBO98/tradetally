@@ -1042,8 +1042,8 @@ async function loadTrade() {
       fees: trade.fees || 0,
       mae: trade.mae || null,
       mfe: trade.mfe || null,
-      stopLoss: trade.stopLoss || null,
-      takeProfit: trade.takeProfit || null,
+      stopLoss: trade.stop_loss || trade.stopLoss || null,
+      takeProfit: trade.take_profit || trade.takeProfit || null,
       broker: trade.broker || '',
       strategy: trade.strategy || '',
       setup: trade.setup || '',
@@ -1210,6 +1210,23 @@ async function handleSubmit() {
       const hasGroupedExecutions = processedExecutions.some(e => e.entryPrice !== undefined || e.exitPrice !== undefined)
 
       if (hasGroupedExecutions) {
+        // For grouped executions, calculate weighted average stop loss/take profit from executions
+        // and set at trade level (backend ignores execution updates from non-imports)
+        const executionsWithStopLoss = processedExecutions.filter(e => e.stopLoss !== null && e.stopLoss !== undefined);
+        const executionsWithTakeProfit = processedExecutions.filter(e => e.takeProfit !== null && e.takeProfit !== undefined);
+
+        if (executionsWithStopLoss.length > 0) {
+          const totalQty = executionsWithStopLoss.reduce((sum, e) => sum + e.quantity, 0);
+          const weightedStopLoss = executionsWithStopLoss.reduce((sum, e) => sum + (e.stopLoss * e.quantity), 0) / totalQty;
+          form.value.stopLoss = weightedStopLoss;
+        }
+
+        if (executionsWithTakeProfit.length > 0) {
+          const totalQty = executionsWithTakeProfit.reduce((sum, e) => sum + e.quantity, 0);
+          const weightedTakeProfit = executionsWithTakeProfit.reduce((sum, e) => sum + (e.takeProfit * e.quantity), 0) / totalQty;
+          form.value.takeProfit = weightedTakeProfit;
+        }
+
         // Handle grouped executions (round-trip sub-trades)
         // Total quantity is sum of ALL execution quantities
         calculatedQuantity = processedExecutions.reduce((sum, exec) => sum + exec.quantity, 0)

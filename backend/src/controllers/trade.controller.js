@@ -649,17 +649,22 @@ const tradeController = {
       `;
 
       const insertResult = await db.query(insertQuery, [req.params.id, req.user.id, comment]);
-      
+
+      // For public trades, use anonymous names to protect privacy
+      const usernameField = trade.is_public
+        ? 'generate_anonymous_name(u.id) as username'
+        : 'u.username';
+
       // Get the comment with user information
       const selectQuery = `
-        SELECT tc.*, u.username, u.avatar_url
+        SELECT tc.*, ${usernameField}, u.avatar_url
         FROM trade_comments tc
         JOIN users u ON tc.user_id = u.id
         WHERE tc.id = $1
       `;
-      
+
       const selectResult = await db.query(selectQuery, [insertResult.rows[0].id]);
-      
+
       res.status(201).json({ comment: selectResult.rows[0] });
     } catch (error) {
       next(error);
@@ -673,8 +678,13 @@ const tradeController = {
         return res.status(404).json({ error: 'Trade not found' });
       }
 
+      // For public trades, use anonymous names to protect privacy
+      const usernameField = trade.is_public
+        ? 'generate_anonymous_name(u.id) as username'
+        : 'u.username';
+
       const query = `
-        SELECT tc.*, u.username, u.avatar_url
+        SELECT tc.*, ${usernameField}, u.avatar_url
         FROM trade_comments tc
         JOIN users u ON tc.user_id = u.id
         WHERE tc.trade_id = $1
@@ -682,7 +692,7 @@ const tradeController = {
       `;
 
       const result = await db.query(query, [req.params.id]);
-      
+
       res.json({ comments: result.rows });
     } catch (error) {
       next(error);
@@ -718,22 +728,27 @@ const tradeController = {
 
       // Update comment
       const updateQuery = `
-        UPDATE trade_comments 
+        UPDATE trade_comments
         SET comment = $1, edited_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
         WHERE id = $2
         RETURNING *
       `;
       const updateResult = await db.query(updateQuery, [comment.trim(), commentId]);
 
+      // For public trades, use anonymous names to protect privacy
+      const usernameField = trade.is_public
+        ? 'generate_anonymous_name(u.id) as username'
+        : 'u.username';
+
       // Get updated comment with user info
       const query = `
-        SELECT tc.*, u.username, u.avatar_url
+        SELECT tc.*, ${usernameField}, u.avatar_url
         FROM trade_comments tc
         JOIN users u ON tc.user_id = u.id
         WHERE tc.id = $1
       `;
       const result = await db.query(query, [commentId]);
-      
+
       res.json({ comment: result.rows[0] });
     } catch (error) {
       next(error);
