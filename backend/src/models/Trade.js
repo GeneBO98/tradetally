@@ -709,12 +709,19 @@ class Trade {
   }
 
   static async update(id, userId, updates, options = {}) {
+    // Log stopLoss updates for debugging
+    if (updates.stopLoss !== undefined) {
+      console.log(`[STOP LOSS UPDATE] Trade ${id}: stopLoss=${updates.stopLoss}`);
+    }
+
     // First get the current trade data for calculations
     const currentTrade = await this.findById(id, userId);
-    
+
     // Convert empty strings to null for optional fields
     if (updates.exitTime === '') updates.exitTime = null;
     if (updates.exitPrice === '') updates.exitPrice = null;
+    if (updates.stopLoss === '') updates.stopLoss = null;
+    if (updates.takeProfit === '') updates.takeProfit = null;
     
     const fields = [];
     const values = [];
@@ -980,6 +987,15 @@ class Trade {
       RETURNING *
     `;
 
+    // Log stopLoss in final query
+    if (updates.stopLoss !== undefined) {
+      const stopLossIndex = fields.findIndex(f => f.includes('stop_loss'));
+      console.log(`[STOP LOSS UPDATE] Final query includes stop_loss: ${stopLossIndex >= 0}`);
+      if (stopLossIndex >= 0) {
+        console.log(`[STOP LOSS UPDATE] Final value: ${values[stopLossIndex]}`);
+      }
+    }
+
     const result = await db.query(query, values);
     
     // Check for new achievements after trade update (async, don't wait for completion)
@@ -1070,9 +1086,9 @@ class Trade {
   static async getPublicTrades(filters = {}) {
     let query = `
       SELECT t.*,
-        u.username,
+        generate_anonymous_name(u.id) as username,
         u.avatar_url,
-        COALESCE(gp.display_name, u.username) as display_name,
+        COALESCE(gp.display_name, generate_anonymous_name(u.id)) as display_name,
         array_agg(DISTINCT ta.file_url) FILTER (WHERE ta.id IS NOT NULL) as attachment_urls,
         count(DISTINCT tc.id)::integer as comment_count
       FROM trades t
