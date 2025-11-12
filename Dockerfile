@@ -27,16 +27,15 @@ RUN apk add --no-cache \
 
 COPY backend/package*.json ./
 
-# Update npm to latest version to fix cross-spawn vulnerability
-RUN npm install -g npm@latest
+# Update npm and install node-gyp globally for native module builds
+RUN npm install -g npm@latest node-gyp
 
 # Install dependencies
+# Sharp will automatically download prebuilt binaries for Alpine Linux
 RUN npm install --omit=dev
 
-# Force reinstall Sharp with proper architecture detection
-# This will automatically detect and build for the correct platform
-RUN npm uninstall sharp && \
-    npm install sharp --build-from-source
+# Rebuild Sharp to ensure it's compiled for the correct architecture
+RUN npm rebuild sharp
 
 COPY backend/ ./
 
@@ -47,7 +46,6 @@ RUN apk update && apk upgrade --no-cache && \
     nginx \
     netcat-openbsd \
     vips \
-    vips-dev \
     libc6-compat
 WORKDIR /app
 
