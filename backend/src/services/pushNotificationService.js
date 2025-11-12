@@ -108,7 +108,7 @@ class PushNotificationService {
           const result = await this.apnProvider.send(notification, device.device_token);
           
           if (result.sent.length > 0) {
-            logger.logInfo(`Push notification sent successfully to device ${device.device_token.substring(0, 8)}...`);
+            logger.info(`Push notification sent successfully to device ${device.device_token.substring(0, 8)}...`);
             results.push({ success: true, device: device.device_token });
           } else if (result.failed.length > 0) {
             const failure = result.failed[0];
@@ -146,7 +146,7 @@ class PushNotificationService {
         'UPDATE device_tokens SET active = false WHERE device_token = $1',
         [deviceToken]
       );
-      logger.logInfo(`Marked device token as inactive: ${deviceToken.substring(0, 8)}...`);
+      logger.info(`Marked device token as inactive: ${deviceToken.substring(0, 8)}...`);
     } catch (error) {
       logger.logError('Error marking device token inactive:', error);
     }

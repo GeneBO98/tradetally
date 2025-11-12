@@ -511,7 +511,7 @@ const priceAlertsController = {
   // Check and trigger price alerts (called by background job)
   async checkAndTriggerAlerts() {
     try {
-      logger.logInfo('Starting price alert check...');
+      logger.info('Starting price alert check...');
       
       // Get all active alerts with current prices
       const alertsQuery = `
@@ -538,7 +538,7 @@ const priceAlertsController = {
       `;
       
       const alerts = await db.query(alertsQuery);
-      logger.logInfo(`Found ${alerts.rows.length} active alerts to check`);
+      logger.info(`Found ${alerts.rows.length} active alerts to check`);
       
       for (const alert of alerts.rows) {
         const shouldTrigger = this.shouldTriggerAlert(alert);
@@ -548,7 +548,7 @@ const priceAlertsController = {
         }
       }
       
-      logger.logInfo('Price alert check completed');
+      logger.info('Price alert check completed');
     } catch (error) {
       logger.logError('Error in price alert check:', error);
     }
@@ -646,7 +646,7 @@ const priceAlertsController = {
         currentPrice, targetPrice, alert.change_percent, message
       ]);
       
-      logger.logInfo(`Price alert triggered for user ${alert.user_id}: ${alert.symbol} at $${currentPrice}`);
+      logger.info(`Price alert triggered for user ${alert.user_id}: ${alert.symbol} at $${currentPrice}`);
       
     } catch (error) {
       logger.logError(`Error triggering alert ${alert.id}:`, error);
@@ -666,7 +666,7 @@ const priceAlertsController = {
       });
 
       if (result.success) {
-        logger.logInfo(`Push notification sent to ${result.successCount}/${result.devicesTargeted} devices for user ${userId}`);
+        logger.info(`Push notification sent to ${result.successCount}/${result.devicesTargeted} devices for user ${userId}`);
       } else {
         logger.logWarn(`Push notification failed for user ${userId}: ${result.reason || result.error}`);
       }

@@ -25,9 +25,18 @@
                 <option value="etrade">E*TRADE</option>
                 <option value="papermoney">PaperMoney</option>
                 <option value="tradingview">TradingView</option>
+                <optgroup v-if="customMappings.length > 0" label="Custom Importers">
+                  <option
+                    v-for="mapping in customMappings"
+                    :key="mapping.id"
+                    :value="`custom:${mapping.id}`"
+                  >
+                    {{ mapping.mapping_name }}
+                  </option>
+                </optgroup>
               </select>
               <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                Choose the format that matches your CSV file structure, or use Auto-Detect.
+                Choose the format that matches your CSV file structure, or use Auto-Detect. If your format isn't recognized, you'll be prompted to create a custom column mapping.
               </p>
             </div>
 
@@ -87,6 +96,70 @@
               </button>
             </div>
           </form>
+        </div>
+      </div>
+
+      <!-- Manage Custom Importers -->
+      <div v-if="customMappings.length > 0" class="card">
+        <div class="card-body">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white">Custom Importers</h3>
+            <button
+              @click="showCustomMappings = !showCustomMappings"
+              class="flex items-center space-x-2 text-sm text-primary-600 dark:text-primary-400 hover:text-primary-500"
+            >
+              <span>{{ showCustomMappings ? 'Hide' : 'Show' }} Importers</span>
+              <svg
+                class="w-4 h-4 transition-transform duration-200"
+                :class="{ 'rotate-180': showCustomMappings }"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+          </div>
+
+          <div v-show="showCustomMappings" class="space-y-3">
+            <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+              Manage your custom CSV importers. These appear in the broker format dropdown for quick reuse.
+            </p>
+
+            <div
+              v-for="mapping in customMappings"
+              :key="mapping.id"
+              class="flex items-start justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700"
+            >
+              <div class="flex-1 min-w-0">
+                <h4 class="text-sm font-medium text-gray-900 dark:text-white">
+                  {{ mapping.mapping_name }}
+                </h4>
+                <p v-if="mapping.description" class="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                  {{ mapping.description }}
+                </p>
+                <div class="flex items-center gap-4 mt-2 text-xs text-gray-500 dark:text-gray-400">
+                  <span v-if="mapping.use_count > 0">Used {{ mapping.use_count }} time{{ mapping.use_count !== 1 ? 's' : '' }}</span>
+                  <span v-if="mapping.last_used_at">Last used {{ formatDate(mapping.last_used_at) }}</span>
+                  <span v-else>Never used</span>
+                </div>
+                <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                  <span class="font-medium">Columns:</span>
+                  {{ mapping.symbol_column }}, {{ mapping.quantity_column }}, {{ mapping.entry_price_column }}
+                  <span v-if="mapping.side_column">, {{ mapping.side_column }}</span>
+                </div>
+              </div>
+
+              <button
+                @click="confirmDeleteMapping(mapping)"
+                :disabled="deletingMappingId === mapping.id"
+                class="ml-4 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Delete importer"
+              >
+                <XMarkIcon class="h-5 w-5" />
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -630,6 +703,15 @@
     </div>
   </div>
 
+  <!-- CSV Column Mapping Modal -->
+  <CSVColumnMappingModal
+    :is-open="showMappingModal"
+    :csv-headers="csvHeaders"
+    :csv-file="currentMappingFile"
+    @close="showMappingModal = false"
+    @mapping-saved="handleMappingSaved"
+  />
+
   <!-- Currency Pro Feature Modal -->
   <div v-if="showCurrencyProModal" class="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
     <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
@@ -674,6 +756,57 @@
       </div>
     </div>
   </div>
+
+  <!-- Delete Importer Confirmation Modal -->
+  <Teleport to="body">
+    <div v-if="showDeleteMappingModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+      <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white dark:bg-gray-800">
+        <div class="mt-3 text-center">
+          <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 dark:bg-red-900">
+            <ExclamationTriangleIcon class="h-6 w-6 text-red-600 dark:text-red-400" />
+          </div>
+          <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white mt-4">
+            Delete Custom Importer
+          </h3>
+          <div class="mt-2 px-7 py-3">
+            <p class="text-sm text-gray-500 dark:text-gray-400">
+              Are you sure you want to delete this custom importer?
+            </p>
+            <div v-if="mappingToDelete" class="mt-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-md text-left">
+              <p class="text-sm font-medium text-gray-900 dark:text-white">{{ mappingToDelete.mapping_name }}</p>
+              <p v-if="mappingToDelete.description" class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                {{ mappingToDelete.description }}
+              </p>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                <span v-if="mappingToDelete.use_count > 0">Used {{ mappingToDelete.use_count }} time{{ mappingToDelete.use_count !== 1 ? 's' : '' }}</span>
+                <span v-else>Never used</span>
+              </p>
+            </div>
+            <p class="text-xs text-red-600 dark:text-red-400 mt-2 font-medium">
+              This action cannot be undone.
+            </p>
+          </div>
+          <div class="flex gap-3 justify-center mt-4">
+            <button
+              @click="cancelDeleteMapping"
+              class="px-4 py-2 bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-300 text-base font-medium rounded-md shadow-sm hover:bg-gray-400 dark:hover:bg-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-300"
+              :disabled="deletingMappingId !== null"
+            >
+              Cancel
+            </button>
+            <button
+              @click="deleteMapping"
+              class="px-4 py-2 bg-red-600 text-white text-base font-medium rounded-md shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50"
+              :disabled="deletingMappingId !== null"
+            >
+              <span v-if="deletingMappingId !== null">Deleting...</span>
+              <span v-else>Delete</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </Teleport>
 </template>
 
 <script setup>
@@ -686,6 +819,7 @@ import { ArrowUpTrayIcon, XMarkIcon, ExclamationTriangleIcon, Cog6ToothIcon, Mag
 import api from '@/services/api'
 import UnmappedCusipsModal from '@/components/cusip/UnmappedCusipsModal.vue'
 import AllCusipMappingsModal from '@/components/cusip/AllCusipMappingsModal.vue'
+import CSVColumnMappingModal from '@/components/import/CSVColumnMappingModal.vue'
 import { usePriceAlertNotifications } from '@/composables/usePriceAlertNotifications'
 
 const tradesStore = useTradesStore()
@@ -756,8 +890,18 @@ const showAllMappingsModal = ref(false)
 const allMappings = ref([])
 const allMappingsLoading = ref(false)
 
+// CSV Column Mapping Modal
+const showMappingModal = ref(false)
+const csvHeaders = ref([])
+const currentMappingFile = ref(null)
+const customMappings = ref([])
+const showCustomMappings = ref(false)
+const deletingMappingId = ref(null)
+const mappingToDelete = ref(null)
+
 // Delete confirmation modal
 const showDeleteModal = ref(false)
+const showDeleteMappingModal = ref(false)
 const deleteImportId = ref(null)
 const deleteImportData = ref(null)
 
@@ -874,6 +1018,136 @@ async function countCSVRows(file) {
   })
 }
 
+// Parse CSV headers from file
+async function parseCSVHeaders(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      try {
+        const text = e.target.result
+        const lines = text.split('\n')
+
+        // Find first non-empty line (should be headers)
+        let headerLine = ''
+        for (let i = 0; i < Math.min(10, lines.length); i++) {
+          const line = lines[i].trim()
+          if (line) {
+            headerLine = line
+            break
+          }
+        }
+
+        if (!headerLine) {
+          resolve([])
+          return
+        }
+
+        // Try different delimiters
+        let headers = []
+        const delimiters = [',', ';', '\t', '|']
+
+        for (const delimiter of delimiters) {
+          const cols = headerLine.split(delimiter).map(h => h.trim().replace(/^["']|["']$/g, ''))
+          if (cols.length > 1) {
+            headers = cols
+            break
+          }
+        }
+
+        resolve(headers.filter(h => h))
+      } catch (error) {
+        reject(error)
+      }
+    }
+    reader.onerror = () => reject(reader.error)
+    reader.readAsText(file)
+  })
+}
+
+// Detect if headers match a known format
+function detectKnownFormat(headers) {
+  if (!headers || headers.length === 0) return false
+
+  const lowerHeaders = headers.map(h => h.toLowerCase())
+  const headersStr = lowerHeaders.join(',')
+
+  // ThinkorSwim detection
+  if (headersStr.includes('date') && headersStr.includes('time') && headersStr.includes('type') &&
+      headersStr.includes('ref #') && headersStr.includes('description')) {
+    return true
+  }
+
+  // TradingView detection
+  if (headersStr.includes('symbol') && headersStr.includes('side') &&
+      headersStr.includes('fill price') && headersStr.includes('status') &&
+      headersStr.includes('order id') && headersStr.includes('leverage')) {
+    return true
+  }
+
+  // Lightspeed detection
+  if ((headersStr.includes('trade number') || headersStr.includes('sequence number')) &&
+      (headersStr.includes('execution time') || headersStr.includes('raw exec')) &&
+      (headersStr.includes('commission amount') || headersStr.includes('feesec'))) {
+    return true
+  }
+
+  // PaperMoney detection
+  if (headersStr.includes('exec time') && headersStr.includes('pos effect') &&
+      headersStr.includes('spread')) {
+    return true
+  }
+
+  // Schwab detection (two formats)
+  if ((headersStr.includes('opened date') && headersStr.includes('closed date') && headersStr.includes('gain/loss')) ||
+      (headersStr.includes('symbol') && headersStr.includes('quantity') && headersStr.includes('cost per share') && headersStr.includes('proceeds per share'))) {
+    return true
+  }
+  if (headersStr.includes('action') && headersStr.includes('fees & comm') &&
+      (headersStr.includes('date') && headersStr.includes('symbol') && headersStr.includes('description'))) {
+    return true
+  }
+
+  // IBKR detection (two formats)
+  if (headersStr.includes('underlyingsymbol') && headersStr.includes('strike') &&
+      headersStr.includes('expiry') && headersStr.includes('put/call') &&
+      headersStr.includes('multiplier') && headersStr.includes('buy/sell')) {
+    return true
+  }
+  if (headersStr.includes('symbol') &&
+      (headersStr.includes('date/time') || headersStr.includes('datetime')) &&
+      headersStr.includes('quantity') && headersStr.includes('price') &&
+      !headersStr.includes('action')) {
+    return true
+  }
+
+  // E*TRADE detection
+  if (headersStr.includes('transaction date') && headersStr.includes('transaction type') &&
+      (headersStr.includes('buy') || headersStr.includes('sell'))) {
+    return true
+  }
+
+  // ProjectX detection
+  if (headersStr.includes('contractname') && headersStr.includes('enteredat') &&
+      headersStr.includes('exitedat') && headersStr.includes('pnl') &&
+      headersStr.includes('tradeduration')) {
+    return true
+  }
+
+  // Generic CSV detection - check if it has basic required fields
+  const hasSymbol = lowerHeaders.some(h => h.includes('symbol') || h.includes('ticker') || h.includes('stock'))
+  const hasSide = lowerHeaders.some(h => h.includes('side') || h.includes('direction') || h.includes('type') || h.includes('action'))
+  const hasQuantity = lowerHeaders.some(h => h.includes('quantity') || h.includes('qty') || h.includes('shares') || h.includes('size'))
+  const hasPrice = lowerHeaders.some(h => h.includes('price') || h.includes('fill'))
+
+  // If it has these basic fields, consider it a generic format
+  if (hasSymbol && hasSide && hasQuantity && hasPrice) {
+    return true
+  }
+
+  // No known format detected
+  return false
+}
+
 async function handleImport() {
   if (!selectedFile.value || !selectedBroker.value) {
     error.value = 'Please select a file and broker format'
@@ -907,14 +1181,52 @@ async function handleImport() {
       return
     }
 
-    console.log(`[IMPORT] Tier check passed (${userTier}), proceeding with import`)
+    console.log(`[IMPORT] Tier check passed (${userTier}), proceeding with format detection`)
 
-    const result = await tradesStore.importTrades(selectedFile.value, selectedBroker.value)
+    // Extract mapping ID if custom mapping is selected
+    let mappingId = null
+    let broker = selectedBroker.value
+
+    if (selectedBroker.value.startsWith('custom:')) {
+      mappingId = selectedBroker.value.substring(7) // Remove "custom:" prefix
+      broker = 'generic' // Use generic parser with custom mapping
+      console.log(`[IMPORT] Using custom mapping ID: ${mappingId}`)
+    }
+
+    // Pre-check: Try to detect format if using auto-detect or generic (and no custom mapping)
+    if ((selectedBroker.value === 'auto' || selectedBroker.value === 'generic') && !mappingId) {
+      const headers = await parseCSVHeaders(selectedFile.value)
+      console.log(`[IMPORT] Parsed headers:`, headers)
+
+      const formatDetected = detectKnownFormat(headers)
+      console.log(`[IMPORT] Format detection result:`, formatDetected)
+
+      // If no known format detected, show mapping modal before importing
+      if (!formatDetected) {
+        console.log('[IMPORT] Unknown format - showing column mapping modal')
+        loading.value = false
+        csvHeaders.value = headers
+        currentMappingFile.value = selectedFile.value
+        showMappingModal.value = true
+        showError(
+          'Format Not Recognized',
+          'Your CSV format was not recognized. Please map the columns to import your trades.'
+        )
+        return
+      }
+
+      console.log(`[IMPORT] Known format detected, proceeding with import`)
+    }
+
+    const result = await tradesStore.importTrades(selectedFile.value, broker, mappingId)
     console.log('Import result:', result)
     showSuccess('Import Started', `Import has been queued. Import ID: ${result.importId}`)
 
     // Save broker preference to localStorage
     localStorage.setItem('lastSelectedBroker', selectedBroker.value)
+
+    // Keep reference to file for potential column mapping modal
+    const importedFile = selectedFile.value
 
     // Reset form (but keep broker selection)
     selectedFile.value = null
@@ -922,73 +1234,12 @@ async function handleImport() {
     if (fileInput.value) {
       fileInput.value.value = ''
     }
-    
+
     // Refresh import history
     fetchImportHistory()
 
-    // Poll import status until completed, then trigger achievement check as fallback
-    try {
-      const importId = result.importId
-      const poll = async () => {
-        try {
-          const statusRes = await api.get(`/trades/import/status/${importId}`)
-          const status = statusRes.data.importLog?.status
-          if (status === 'completed' || status === 'failed') {
-            if (status === 'completed') {
-              // Fallback achievement check + local celebration for non-SSE users
-              try {
-                // Get stats before
-                const before = await api.get('/gamification/dashboard')
-                const beforeStats = before.data?.data?.stats || {}
-                const beforeXP = beforeStats.experience_points || 0
-                const beforeLevel = beforeStats.level || 1
-                const beforeMin = beforeStats.level_progress?.current_level_min_xp || 0
-                const beforeNext = beforeStats.level_progress?.next_level_min_xp || 100
-
-                const checkRes = await api.post('/gamification/achievements/check')
-                const newAchievements = checkRes.data?.data?.newAchievements || []
-                const count = newAchievements.length
-                if (count > 0) {
-                  // Queue each achievement for overlay
-                  newAchievements.forEach(a => {
-                    celebrationQueue.value.push({ type: 'achievement', payload: { achievement: a } })
-                  })
-                  // Fetch stats after to compute XP delta and show progress animation
-                  const after = await api.get('/gamification/dashboard')
-                  const afterStats = after.data?.data?.stats || {}
-                  const afterXP = afterStats.experience_points || beforeXP
-                  const afterLevel = afterStats.level || beforeLevel
-                  const afterMin = afterStats.level_progress?.current_level_min_xp || beforeMin
-                  const afterNext = afterStats.level_progress?.next_level_min_xp || beforeNext
-                  const deltaXP = Math.max(0, afterXP - beforeXP)
-                  celebrationQueue.value.push({
-                    type: 'xp_update',
-                    payload: {
-                      oldXP: beforeXP,
-                      newXP: afterXP,
-                      deltaXP,
-                      oldLevel: beforeLevel,
-                      newLevel: afterLevel,
-                      currentLevelMinXPBefore: beforeMin,
-                      nextLevelMinXPBefore: beforeNext,
-                      currentLevelMinXPAfter: afterMin,
-                      nextLevelMinXPAfter: afterNext
-                    }
-                  })
-                  if (afterLevel > beforeLevel) {
-                    celebrationQueue.value.push({ type: 'level_up', payload: { oldLevel: beforeLevel, newLevel: afterLevel } })
-                  }
-                  showSuccess(`New Achievements!`, `${count} unlocked just now`)
-                }
-              } catch (_) {}
-            }
-            return
-          }
-        } catch (_) {}
-        setTimeout(poll, 2000)
-      }
-      poll()
-    } catch (_) {}
+    // Poll import status for achievements
+    pollImportStatus(result.importId)
   } catch (err) {
     console.error('Import error:', err)
     console.error('Error response:', err.response)
@@ -1004,6 +1255,32 @@ async function handleImport() {
     else if (errorMessage.includes('trades per import') || errorMessage.includes('batch import')) {
       showCurrencyProModal.value = true
       currencyProMessage.value = errorMessage
+    }
+    // Check if this is an unsupported format or missing columns error
+    else if (
+      errorMessage.toLowerCase().includes('unsupported') ||
+      errorMessage.toLowerCase().includes('not supported') ||
+      errorMessage.toLowerCase().includes('unknown format') ||
+      errorMessage.toLowerCase().includes('missing required') ||
+      errorMessage.toLowerCase().includes('could not parse') ||
+      errorMessage.toLowerCase().includes('failed to parse')
+    ) {
+      // Parse CSV headers and show mapping modal
+      try {
+        const headers = await parseCSVHeaders(selectedFile.value)
+        if (headers.length > 0) {
+          csvHeaders.value = headers
+          currentMappingFile.value = selectedFile.value
+          showMappingModal.value = true
+        } else {
+          error.value = 'Could not parse CSV headers. Please check your file format.'
+          showError('Import Failed', error.value)
+        }
+      } catch (parseErr) {
+        console.error('Error parsing CSV headers:', parseErr)
+        error.value = errorMessage
+        showError('Import Failed', error.value)
+      }
     }
     else {
       error.value = errorMessage
@@ -1402,28 +1679,213 @@ function handleMappingCreated() {
 // Handle resolution started - start polling for updates
 function handleResolutionStarted(data) {
   console.log(`[CUSIP POLLING] Resolution started for ${data.total} CUSIPs - starting polling every 3 seconds`)
-  
+
   let pollCount = 0
-  
+
   // Start polling every 3 seconds to update the count
   const pollInterval = setInterval(async () => {
     pollCount++
     console.log(`[CUSIP POLLING] Poll #${pollCount} - checking for updates...`)
-    
+
     await fetchUnmappedCusipsCount()
-    
+
     // Stop polling if no more unmapped CUSIPs
     if (unmappedCusipsCount.value === 0) {
       clearInterval(pollInterval)
       console.log(`[CUSIP POLLING] Polling stopped after ${pollCount} polls - all CUSIPs resolved!`)
     }
   }, 3000)
-  
+
   // Stop polling after 5 minutes regardless (safety net)
   setTimeout(() => {
     clearInterval(pollInterval)
     console.log(`[CUSIP POLLING] Polling stopped after 5 minutes timeout (${pollCount} polls completed)`)
   }, 5 * 60 * 1000)
+}
+
+// Poll import status for achievements
+function pollImportStatus(importId) {
+  const poll = async () => {
+    try {
+      const statusRes = await api.get(`/trades/import/status/${importId}`)
+      const importLog = statusRes.data.importLog
+      const status = importLog?.status
+
+      if (status === 'completed' || status === 'failed') {
+        if (status === 'completed') {
+          // Fallback achievement check + local celebration for non-SSE users
+          try {
+            const before = await api.get('/gamification/dashboard')
+            const beforeStats = before.data?.data?.stats || {}
+            const beforeXP = beforeStats.experience_points || 0
+            const beforeLevel = beforeStats.level || 1
+            const beforeMin = beforeStats.level_progress?.current_level_min_xp || 0
+            const beforeNext = beforeStats.level_progress?.next_level_min_xp || 100
+
+            const checkRes = await api.post('/gamification/achievements/check')
+            const newAchievements = checkRes.data?.data?.newAchievements || []
+            const count = newAchievements.length
+            if (count > 0) {
+              newAchievements.forEach(a => {
+                celebrationQueue.value.push({ type: 'achievement', payload: { achievement: a } })
+              })
+              const after = await api.get('/gamification/dashboard')
+              const afterStats = after.data?.data?.stats || {}
+              const afterXP = afterStats.experience_points || beforeXP
+              const afterLevel = afterStats.level || beforeLevel
+              const afterMin = afterStats.level_progress?.current_level_min_xp || beforeMin
+              const afterNext = afterStats.level_progress?.next_level_min_xp || beforeNext
+              const deltaXP = Math.max(0, afterXP - beforeXP)
+              celebrationQueue.value.push({
+                type: 'xp_update',
+                payload: {
+                  oldXP: beforeXP,
+                  newXP: afterXP,
+                  deltaXP,
+                  oldLevel: beforeLevel,
+                  newLevel: afterLevel,
+                  currentLevelMinXPBefore: beforeMin,
+                  nextLevelMinXPBefore: beforeNext,
+                  currentLevelMinXPAfter: afterMin,
+                  nextLevelMinXPAfter: afterNext
+                }
+              })
+              if (afterLevel > beforeLevel) {
+                celebrationQueue.value.push({ type: 'level_up', payload: { oldLevel: beforeLevel, newLevel: afterLevel } })
+              }
+              showSuccess(`New Achievements!`, `${count} unlocked just now`)
+            }
+          } catch (_) {}
+        }
+        return
+      }
+    } catch (_) {}
+    setTimeout(poll, 2000)
+  }
+  poll()
+}
+
+// Fetch custom CSV mappings
+async function fetchCustomMappings() {
+  try {
+    const response = await api.get('/csv-mappings')
+    if (response.data.success) {
+      customMappings.value = response.data.data || []
+      console.log('[CSV MAPPINGS] Loaded custom mappings:', customMappings.value.length)
+    }
+  } catch (err) {
+    console.error('Error fetching custom mappings:', err)
+  }
+}
+
+// Confirm delete mapping
+function confirmDeleteMapping(mapping) {
+  console.log('[DELETE MAPPING] Confirming delete for:', mapping)
+  mappingToDelete.value = mapping
+  showDeleteMappingModal.value = true
+  console.log('[DELETE MAPPING] showDeleteMappingModal set to:', showDeleteMappingModal.value)
+  console.log('[DELETE MAPPING] mappingToDelete set to:', mappingToDelete.value)
+}
+
+// Cancel delete mapping
+function cancelDeleteMapping() {
+  console.log('[DELETE MAPPING] Cancelled')
+  mappingToDelete.value = null
+  showDeleteMappingModal.value = false
+}
+
+// Delete a custom CSV mapping
+async function deleteMapping() {
+  console.log('[DELETE MAPPING] deleteMapping() function called')
+  console.log('[DELETE MAPPING] mappingToDelete.value:', mappingToDelete.value)
+
+  if (!mappingToDelete.value) {
+    console.error('[DELETE MAPPING] No mapping to delete')
+    return
+  }
+
+  const mapping = mappingToDelete.value
+  console.log('[DELETE MAPPING] Deleting mapping:', mapping.id, mapping.mapping_name)
+  deletingMappingId.value = mapping.id
+
+  try {
+    console.log('[DELETE MAPPING] Making API call to /csv-mappings/' + mapping.id)
+    const response = await api.delete(`/csv-mappings/${mapping.id}`)
+    console.log('[DELETE MAPPING] API response:', response.data)
+
+    if (response.data.success) {
+      showSuccess('Importer Deleted', `"${mapping.mapping_name}" has been deleted`)
+      console.log('[DELETE MAPPING] Fetching updated mappings list')
+      await fetchCustomMappings()
+
+      // If the deleted mapping was selected, reset to auto-detect
+      if (selectedBroker.value === `custom:${mapping.id}`) {
+        console.log('[DELETE MAPPING] Deleted mapping was selected, resetting to auto')
+        selectedBroker.value = 'auto'
+      }
+    } else {
+      console.error('[DELETE MAPPING] API returned success: false')
+      showError('Delete Failed', 'Server returned unsuccessful response')
+    }
+  } catch (err) {
+    console.error('[DELETE MAPPING] Error deleting mapping:', err)
+    console.error('[DELETE MAPPING] Error response:', err.response)
+    showError('Delete Failed', err.response?.data?.error || 'Failed to delete importer')
+  } finally {
+    deletingMappingId.value = null
+    cancelDeleteMapping()
+  }
+}
+
+// Handle CSV mapping saved - now trigger the actual import
+async function handleMappingSaved(mapping) {
+  console.log('[CSV MAPPING] Mapping saved:', mapping)
+  showSuccess(
+    'Mapping Saved',
+    'Your CSV column mapping has been saved. Starting import...'
+  )
+
+  // Close the modal
+  showMappingModal.value = false
+
+  // Refresh the list of custom mappings
+  await fetchCustomMappings()
+
+  // Now actually import using the saved mapping
+  if (!currentMappingFile.value) {
+    showError('Import Error', 'No file selected for import')
+    return
+  }
+
+  loading.value = true
+  error.value = null
+
+  try {
+    // Import with the mapping ID
+    const result = await tradesStore.importTrades(currentMappingFile.value, 'generic', mapping.id)
+    console.log('Import result:', result)
+    showSuccess('Import Started', `Import has been queued. Import ID: ${result.importId}`)
+
+    // Save broker preference
+    localStorage.setItem('lastSelectedBroker', 'generic')
+
+    // Clear the file reference
+    currentMappingFile.value = null
+    csvHeaders.value = []
+
+    // Refresh import history
+    fetchImportHistory()
+
+    // Poll for completion (for achievements)
+    pollImportStatus(result.importId)
+  } catch (err) {
+    console.error('Import error after mapping:', err)
+    const errorMessage = err.response?.data?.error || err.message || 'Import failed'
+    error.value = errorMessage
+    showError('Import Failed', error.value)
+  } finally {
+    loading.value = false
+  }
 }
 
 onMounted(() => {
@@ -1435,6 +1897,7 @@ onMounted(() => {
 
   fetchImportHistory()
   fetchUnmappedCusipsCount()
+  fetchCustomMappings()
   setInterval(fetchImportHistory, 5000)
 })
 </script>

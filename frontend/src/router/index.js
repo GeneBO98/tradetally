@@ -77,6 +77,12 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
+      path: '/analytics/monthly',
+      name: 'monthly-performance',
+      component: () => import('@/views/MonthlyPerformanceView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
       path: '/analytics/behavioral',
       name: 'behavioral-analytics',
       component: () => import('@/views/BehavioralAnalyticsView.vue'),
@@ -216,7 +222,12 @@ const router = createRouter({
     {
       path: '/compare/tradervue',
       name: 'compare-tradervue',
-      component: () => import('@/views/CompareTraderVueView.vue'),
+      redirect: '/compare'
+    },
+    {
+      path: '/compare',
+      name: 'comparison',
+      component: () => import('@/views/ComparisonView.vue'),
       meta: { requiresOpen: true }
     },
     {
@@ -243,7 +254,9 @@ const router = createRouter({
     },
     {
       path: '/price-alerts',
-      redirect: '/markets'
+      name: 'price-alerts',
+      component: () => import('@/views/PriceAlertsView.vue'),
+      meta: { requiresAuth: true }
     },
     {
       path: '/notifications',
@@ -266,10 +279,33 @@ const router = createRouter({
 
 router.beforeEach(async (to, from, next) => {
   const authStore = useAuthStore()
-  const { fetchRegistrationConfig, isClosedMode, showSEOPages } = useRegistrationMode()
+  const { fetchRegistrationConfig, isClosedMode, isBillingEnabled, showSEOPages } = useRegistrationMode()
 
   // Fetch registration config for all routes
   await fetchRegistrationConfig()
+
+  // Handle billing enabled - when FALSE (default), redirect home to login and block public pages
+  // When TRUE, show public pages for SaaS offering
+  if (!isBillingEnabled.value) {
+    // Billing mode is false (private instance) - hide public pages
+    if (to.name === 'home') {
+      if (authStore.isAuthenticated) {
+        next({ name: 'dashboard' })
+      } else {
+        next({ name: 'login' })
+      }
+      return
+    }
+    // Block access to public/SEO pages when billing mode is false
+    if (to.meta.requiresOpen) {
+      if (authStore.isAuthenticated) {
+        next({ name: 'dashboard' })
+      } else {
+        next({ name: 'login' })
+      }
+      return
+    }
+  }
 
   // Handle closed mode - redirect home to login
   if (isClosedMode.value && to.name === 'home' && !authStore.isAuthenticated) {
@@ -277,7 +313,7 @@ router.beforeEach(async (to, from, next) => {
     return
   }
 
-  // Handle SEO pages - only show when registration mode is 'open'
+  // Handle SEO pages - only show when registration mode is 'open' and not in billing mode
   if (to.meta.requiresOpen && !showSEOPages.value) {
     next({ name: 'home' })
     return
@@ -305,6 +341,13 @@ router.beforeEach(async (to, from, next) => {
       next()
     }
   } else if (to.meta.requiresTier) {
+    // CRITICAL: Skip tier check if billing is disabled (self-hosted mode)
+    if (!isBillingEnabled.value) {
+      console.log('[ROUTER] Billing disabled - skipping tier check for', to.name)
+      next()
+      return
+    }
+
     // Ensure user data is loaded for tier check
     if (authStore.isAuthenticated && !authStore.user) {
       try {

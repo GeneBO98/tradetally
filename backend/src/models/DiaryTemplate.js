@@ -1,4 +1,5 @@
 const db = require('../config/database');
+const logger = require('../utils/logger');
 
 class DiaryTemplate {
   /**
@@ -151,7 +152,19 @@ class DiaryTemplate {
 
     // If setting as default, unset other defaults first
     if (updates.isDefault === true) {
-      const entryType = updates.entryType || 'diary';
+      // If entryType is not provided in updates, fetch the current template to get its entry_type
+      let entryType = updates.entryType;
+      if (!entryType) {
+        logger.debug(`[TEMPLATE] Fetching current template to determine entry_type for template ${id}`, 'app');
+        const currentTemplate = await this.findById(id, userId);
+        if (!currentTemplate) {
+          logger.error(`[TEMPLATE] Template ${id} not found when trying to set as default`, null, 'error');
+          throw new Error('Template not found');
+        }
+        entryType = currentTemplate.entry_type;
+        logger.debug(`[TEMPLATE] Using existing entry_type: ${entryType}`, 'app');
+      }
+      logger.debug(`[TEMPLATE] Unsetting other default templates for user ${userId}, entryType ${entryType}`, 'app');
       await this.unsetDefaultTemplates(userId, entryType, id);
     }
 
@@ -163,7 +176,13 @@ class DiaryTemplate {
       RETURNING *
     `;
 
+    logger.debug(`[TEMPLATE] Executing update query with ${values.length} parameters`, 'app');
     const result = await db.query(query, values);
+
+    if (!result.rows[0]) {
+      logger.warn(`[TEMPLATE] Update query returned no rows for template ${id}`, 'app');
+    }
+
     return result.rows[0] || null;
   }
 

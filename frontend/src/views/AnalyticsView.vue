@@ -7,11 +7,7 @@
       </p>
     </div>
 
-    <div v-if="loading" class="flex justify-center py-12">
-      <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
-    </div>
-
-    <div v-else class="space-y-8">
+    <div class="space-y-8">
       <!-- Filters -->
       <div class="card">
         <div class="card-body">
@@ -112,8 +108,13 @@
         </div>
       </div>
 
+      <!-- Loading Overlay for Charts -->
+      <div v-if="loading" class="flex justify-center py-12">
+        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+      </div>
+
       <!-- Draggable Grid Container -->
-      <draggable
+      <draggable v-show="!loading"
         v-model="chartLayout"
         :disabled="!isCustomizing"
         item-key="id"
@@ -125,7 +126,8 @@
             v-if="element.visible"
             :class="[
               getChartSizeClass(element),
-              isCustomizing ? 'ring-2 ring-primary-300 dark:ring-primary-700 rounded-lg transition-all' : ''
+              isCustomizing ? 'ring-2 ring-primary-300 dark:ring-primary-700 rounded-lg transition-all' : '',
+              'overflow-visible'
             ]"
           >
             <!-- Drag Handle (only visible in customize mode) -->
@@ -201,20 +203,56 @@
           </div>
         </div>
 
-        <div class="card flex-1 min-w-[180px]">
-          <div class="card-body">
-            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
-              {{ calculationMethod }} R-Multiple
-            </dt>
-            <dd class="mt-1 text-2xl font-semibold text-gray-900 dark:text-white whitespace-nowrap">
-              {{ overview.avg_r_value !== undefined && overview.avg_r_value !== null ? Number(overview.avg_r_value).toFixed(1) + 'R' : '0.0R' }}
-            </dd>
+        <div
+          class="card flex-1 min-w-[180px] cursor-pointer hover:shadow-lg transition-all duration-300 relative group"
+          @click="toggleRMultipleDisplay"
+          style="perspective: 1000px;"
+        >
+          <div
+            class="card-body relative transition-transform duration-500"
+            :style="{ transform: rMultipleFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)', transformStyle: 'preserve-3d' }"
+          >
+            <!-- Front (Average R) -->
+            <div
+              v-show="!rMultipleFlipped"
+              style="backface-visibility: hidden;"
+            >
+              <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
+                {{ calculationMethod }} R-Multiple
+                <span class="ml-1 text-xs text-gray-400">↻</span>
+              </dt>
+              <dd class="mt-1 text-2xl font-semibold text-gray-900 dark:text-white whitespace-nowrap">
+                {{ overview.avg_r_value !== undefined && overview.avg_r_value !== null ? Number(overview.avg_r_value).toFixed(1) + 'R' : '0.0R' }}
+              </dd>
+            </div>
+
+            <!-- Back (Total R) -->
+            <div
+              v-show="rMultipleFlipped"
+              class="absolute inset-0 p-6"
+              style="backface-visibility: hidden; transform: rotateY(180deg);"
+            >
+              <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
+                Total R
+                <span class="ml-1 text-xs text-gray-400">↻</span>
+              </dt>
+              <dd class="mt-1 text-2xl font-semibold whitespace-nowrap" :class="[
+                (overview.total_r_value ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'
+              ]">
+                {{ overview.total_r_value !== undefined && overview.total_r_value !== null ? Number(overview.total_r_value).toFixed(2) + 'R' : '0.00R' }}
+              </dd>
+            </div>
+          </div>
+
+          <!-- Click hint tooltip -->
+          <div class="absolute bottom-2 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+            <span class="text-xs text-gray-400 dark:text-gray-500 whitespace-nowrap">Click to toggle</span>
           </div>
         </div>
       </div>
 
       <!-- Equity Notice for K-Ratio -->
-      <div v-if="overview.k_ratio === '0.00'" class="card mb-6">
+      <div v-if="overview.k_ratio === '0.00'" class="card mt-6 mb-8">
         <div class="card-body">
           <div class="flex items-start space-x-3">
             <div class="flex-shrink-0">
@@ -244,7 +282,7 @@
             <!-- Detailed Stats -->
             <template v-else-if="element.id === 'detailed-stats'">
       <!-- Advanced Trading Metrics -->
-      <div class="card mb-8 relative">
+      <div class="card mb-8 relative overflow-visible">
         <!-- Pro Tier Overlay for Free Users -->
         <div v-if="isFreeTier" class="absolute inset-0 z-10 flex items-center justify-center bg-white/60 dark:bg-gray-900/60 backdrop-blur-sm rounded-lg">
           <div class="text-center p-8 bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md">
@@ -1185,6 +1223,7 @@ import {
 
 const loading = ref(true)
 const rValueMode = ref(false)
+const rMultipleFlipped = ref(false)
 const performancePeriod = ref('daily')
 const userSettings = ref(null)
 const router = useRouter()
@@ -1310,7 +1349,8 @@ const overview = ref({
   total_fees: 0,
   avg_mae: 'N/A',
   avg_mfe: 'N/A',
-  avg_r_value: 0
+  avg_r_value: 0,
+  total_r_value: 0
 })
 
 const performanceData = ref([])
@@ -2425,6 +2465,10 @@ async function resetChartLayout() {
 
 function toggleCustomization() {
   isCustomizing.value = !isCustomizing.value
+}
+
+function toggleRMultipleDisplay() {
+  rMultipleFlipped.value = !rMultipleFlipped.value
 }
 
 function toggleChartVisibility(chartId) {

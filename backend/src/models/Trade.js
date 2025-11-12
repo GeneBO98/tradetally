@@ -358,7 +358,10 @@ class Trade {
 
   static async findById(id, userId = null) {
     let query = `
-      SELECT t.*, u.username, u.avatar_url,
+      SELECT t.*,
+        u.username,
+        u.avatar_url,
+        COALESCE(gp.display_name, u.username) as display_name,
         t.strategy, t.setup,
         json_agg(
           json_build_object(
@@ -376,6 +379,7 @@ class Trade {
         sc.company_name as company_name
       FROM trades t
       LEFT JOIN users u ON t.user_id = u.id
+      LEFT JOIN gamification_profile gp ON u.id = gp.user_id
       LEFT JOIN trade_attachments ta ON t.id = ta.trade_id
       LEFT JOIN trade_comments tc ON t.id = tc.trade_id
       LEFT JOIN symbol_categories sc ON t.symbol = sc.symbol
@@ -391,7 +395,7 @@ class Trade {
       query += ` AND t.is_public = true`;
     }
 
-    query += ` GROUP BY t.id, u.username, u.avatar_url, sc.finnhub_industry, sc.company_name`;
+    query += ` GROUP BY t.id, u.username, u.avatar_url, gp.display_name, sc.finnhub_industry, sc.company_name`;
 
     const result = await db.query(query, values);
     const trade = result.rows[0];
@@ -705,12 +709,19 @@ class Trade {
   }
 
   static async update(id, userId, updates, options = {}) {
+    // Log stopLoss updates for debugging
+    if (updates.stopLoss !== undefined) {
+      console.log(`[STOP LOSS UPDATE] Trade ${id}: stopLoss=${updates.stopLoss}`);
+    }
+
     // First get the current trade data for calculations
     const currentTrade = await this.findById(id, userId);
-    
+
     // Convert empty strings to null for optional fields
     if (updates.exitTime === '') updates.exitTime = null;
     if (updates.exitPrice === '') updates.exitPrice = null;
+    if (updates.stopLoss === '') updates.stopLoss = null;
+    if (updates.takeProfit === '') updates.takeProfit = null;
     
     const fields = [];
     const values = [];
@@ -812,64 +823,35 @@ class Trade {
       }
     }
 
-    // Special handling for executions to merge instead of replace
-    let mergedExecutions = null;
-    if (updates.executions) {
-      // Get existing executions from current trade
-      let existingExecutions = [];
-      try {
-        existingExecutions = currentTrade.executions
-          ? (typeof currentTrade.executions === 'string'
-              ? JSON.parse(currentTrade.executions)
-              : currentTrade.executions)
-          : [];
-      } catch (e) {
-        console.warn(`Failed to parse existing executions for trade ${id}:`, e.message);
-        existingExecutions = [];
+    // Special handling for executions - replace instead of merge to prevent duplicates
+    // Only allow execution updates during imports (skipApiCalls=true) to prevent
+    // frontend timestamp truncation from breaking duplicate detection
+    let executionsToSet = null;
+    if (updates.executions && updates.executions.length > 0 && options.skipApiCalls) {
+      // Check if executions have actually changed by comparing JSON strings
+      const currentExecutionsJson = JSON.stringify(currentTrade.executions || []);
+      const newExecutionsJson = JSON.stringify(updates.executions);
+
+      if (currentExecutionsJson !== newExecutionsJson) {
+        // Executions have changed, replace them completely
+        executionsToSet = updates.executions;
+
+        console.log(`\n=== EXECUTION UPDATE for Trade ${id} ===`);
+        console.log(`Replacing ${(currentTrade.executions || []).length} existing executions with ${executionsToSet.length} new executions`);
+        if (executionsToSet.length > 0) {
+          console.log(`First execution: ${executionsToSet[0].datetime || executionsToSet[0].entryTime} @ $${executionsToSet[0].price || executionsToSet[0].entryPrice}`);
+          console.log(`Last execution: ${executionsToSet[executionsToSet.length-1].datetime || executionsToSet[executionsToSet.length-1].entryTime} @ $${executionsToSet[executionsToSet.length-1].price || executionsToSet[executionsToSet.length-1].entryPrice}`);
+        }
+        console.log(`=== END EXECUTION UPDATE ===\n`);
+      } else {
+        console.log(`[EXECUTION UPDATE] Executions unchanged for trade ${id}, skipping update`);
       }
-
-      // Get new executions from updates
-      const newExecutions = updates.executions;
-
-      console.log(`\n=== EXECUTION MERGE DEBUG for Trade ${id} ===`);
-      console.log(`Current trade symbol: ${currentTrade.symbol}`);
-      console.log(`Existing executions count: ${existingExecutions.length}`);
-      if (existingExecutions.length > 0) {
-        console.log(`First existing execution: ${existingExecutions[0].datetime} @ $${existingExecutions[0].price}`);
-        console.log(`Last existing execution: ${existingExecutions[existingExecutions.length-1].datetime} @ $${existingExecutions[existingExecutions.length-1].price}`);
-      }
-      console.log(`New executions count: ${newExecutions.length}`);
-      if (newExecutions.length > 0) {
-        console.log(`First new execution: ${newExecutions[0].datetime} @ $${newExecutions[0].price}`);
-        console.log(`Last new execution: ${newExecutions[newExecutions.length-1].datetime} @ $${newExecutions[newExecutions.length-1].price}`);
-      }
-
-      // Create a set of existing execution timestamps for fast lookup
-      const existingTimestamps = new Set(
-        existingExecutions.map(exec => {
-          const timestamp = new Date(exec.datetime).getTime();
-          console.log(`  Existing timestamp: ${exec.datetime} -> ${timestamp}`);
-          return timestamp;
-        })
-      );
-
-      // Filter out duplicate executions from new executions
-      const uniqueNewExecutions = newExecutions.filter(exec => {
-        const execTime = new Date(exec.datetime).getTime();
-        const isDuplicate = existingTimestamps.has(execTime);
-        console.log(`  Checking new: ${exec.datetime} -> ${execTime} -> ${isDuplicate ? 'DUPLICATE' : 'UNIQUE'}`);
-        return !isDuplicate;
-      });
-
-      console.log(`RESULT: ${existingExecutions.length} existing + ${uniqueNewExecutions.length} unique new = ${existingExecutions.length + uniqueNewExecutions.length} total`);
-      console.log(`=== END EXECUTION MERGE DEBUG ===\n`);
-      
-      // Merge existing and new executions
-      mergedExecutions = [...existingExecutions, ...uniqueNewExecutions];
-      
-      // Remove executions from updates since we'll handle it separately
-      delete updates.executions;
+    } else if (updates.executions) {
+      console.log(`[EXECUTION UPDATE] Ignoring executions from non-import update (prevents timestamp truncation)`);
     }
+
+    // Always remove executions from updates since we handle it separately
+    delete updates.executions;
 
     // Process all other fields
     Object.entries(updates).forEach(([key, value]) => {
@@ -894,10 +876,10 @@ class Trade {
       }
     });
     
-    // Add merged executions if we have them
-    if (mergedExecutions !== null) {
+    // Add executions if we have them
+    if (executionsToSet !== null) {
       fields.push(`executions = $${paramCount}`);
-      values.push(JSON.stringify(mergedExecutions));
+      values.push(JSON.stringify(executionsToSet));
       paramCount++;
     }
 
@@ -939,12 +921,41 @@ class Trade {
 
     // Recalculate R-Multiple if any of the relevant fields are updated
     // Note: takeProfit does NOT affect R-Multiple calculation (only exitPrice matters)
+    // Check executions for stopLoss values (use executionsToSet since updates.executions was deleted above)
+    const executionsForRCalc = executionsToSet || currentTrade.executions || [];
+    const hasExecutionStopLoss = executionsForRCalc.length > 0 &&
+      executionsForRCalc.some(ex => ex.stopLoss !== null && ex.stopLoss !== undefined);
+
     if (updates.entryPrice !== undefined || updates.exitPrice !== undefined ||
-        updates.stopLoss !== undefined || updates.side) {
-      const entryPrice = updates.entryPrice || currentTrade.entry_price;
-      const exitPrice = updates.exitPrice !== undefined ? updates.exitPrice : currentTrade.exit_price;
-      const stopLoss = updates.stopLoss !== undefined ? updates.stopLoss : currentTrade.stop_loss;
+        updates.stopLoss !== undefined || updates.side || executionsToSet !== null) {
+      let entryPrice = updates.entryPrice || currentTrade.entry_price;
+      let exitPrice = updates.exitPrice !== undefined ? updates.exitPrice : currentTrade.exit_price;
+      let stopLoss = updates.stopLoss !== undefined ? updates.stopLoss : currentTrade.stop_loss;
       const side = updates.side || currentTrade.side;
+
+      // If stopLoss is in executions, calculate weighted average
+      if (!stopLoss && hasExecutionStopLoss) {
+        // For grouped executions with entry/exit prices, use weighted average
+        const executionsWithStopLoss = executionsForRCalc.filter(ex => ex.stopLoss);
+        if (executionsWithStopLoss.length > 0) {
+          // Calculate weighted average entry price and stop loss from executions
+          const totalQty = executionsWithStopLoss.reduce((sum, ex) => sum + (ex.quantity || 0), 0);
+          if (totalQty > 0) {
+            const weightedEntry = executionsWithStopLoss.reduce((sum, ex) =>
+              sum + ((ex.entryPrice || 0) * (ex.quantity || 0)), 0) / totalQty;
+            const weightedStopLoss = executionsWithStopLoss.reduce((sum, ex) =>
+              sum + ((ex.stopLoss || 0) * (ex.quantity || 0)), 0) / totalQty;
+            const weightedExit = executionsWithStopLoss.reduce((sum, ex) =>
+              sum + ((ex.exitPrice || 0) * (ex.quantity || 0)), 0) / totalQty;
+
+            entryPrice = weightedEntry;
+            stopLoss = weightedStopLoss;
+            exitPrice = weightedExit || exitPrice;
+
+            console.log('[R-MULTIPLE] Using weighted averages from executions:', { entryPrice, stopLoss, exitPrice });
+          }
+        }
+      }
 
       console.log('[R-MULTIPLE CALC] Inputs:', { entryPrice, stopLoss, exitPrice, side });
 
@@ -975,6 +986,15 @@ class Trade {
       WHERE id = $${paramCount} AND user_id = $${paramCount + 1}
       RETURNING *
     `;
+
+    // Log stopLoss in final query
+    if (updates.stopLoss !== undefined) {
+      const stopLossIndex = fields.findIndex(f => f.includes('stop_loss'));
+      console.log(`[STOP LOSS UPDATE] Final query includes stop_loss: ${stopLossIndex >= 0}`);
+      if (stopLossIndex >= 0) {
+        console.log(`[STOP LOSS UPDATE] Final value: ${values[stopLossIndex]}`);
+      }
+    }
 
     const result = await db.query(query, values);
     
@@ -1065,12 +1085,16 @@ class Trade {
 
   static async getPublicTrades(filters = {}) {
     let query = `
-      SELECT t.*, u.username, u.avatar_url,
+      SELECT t.*,
+        generate_anonymous_name(u.id) as username,
+        u.avatar_url,
+        COALESCE(gp.display_name, generate_anonymous_name(u.id)) as display_name,
         array_agg(DISTINCT ta.file_url) FILTER (WHERE ta.id IS NOT NULL) as attachment_urls,
         count(DISTINCT tc.id)::integer as comment_count
       FROM trades t
       JOIN users u ON t.user_id = u.id
       JOIN user_settings us ON u.id = us.user_id
+      LEFT JOIN gamification_profile gp ON u.id = gp.user_id
       LEFT JOIN trade_attachments ta ON t.id = ta.trade_id
       LEFT JOIN trade_comments tc ON t.id = tc.trade_id
       WHERE t.is_public = true AND us.public_profile = true
@@ -1091,7 +1115,7 @@ class Trade {
       paramCount++;
     }
 
-    query += ` GROUP BY t.id, u.username, u.avatar_url ORDER BY t.created_at DESC`;
+    query += ` GROUP BY t.id, u.username, u.avatar_url, gp.display_name ORDER BY t.created_at DESC`;
 
     if (filters.limit) {
       query += ` LIMIT $${paramCount}`;
@@ -1268,6 +1292,96 @@ class Trade {
 
     // Round to 2 decimal places
     return Math.round(rMultiple * 100) / 100;
+  }
+
+  /**
+   * Apply default stop loss to all trades without a stop loss
+   * This is called when a user updates their default stop loss percentage setting
+   * @param {number} userId - The user ID
+   * @param {number} defaultStopLossPercent - The default stop loss percentage
+   * @returns {Promise<number>} The number of trades updated
+   */
+  static async applyDefaultStopLossToExistingTrades(userId, defaultStopLossPercent) {
+    if (!defaultStopLossPercent || defaultStopLossPercent <= 0) {
+      console.log('[STOP LOSS] Invalid default stop loss percentage, skipping update');
+      return 0;
+    }
+
+    console.log(`[STOP LOSS] Applying ${defaultStopLossPercent}% default stop loss to existing trades without stop loss for user ${userId}`);
+
+    // Use a transaction to update all trades at once
+    const client = await db.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Find all trades without a stop loss that have the necessary data
+      const tradesQuery = `
+        SELECT id, entry_price, exit_price, side
+        FROM trades
+        WHERE user_id = $1
+          AND stop_loss IS NULL
+          AND entry_price IS NOT NULL
+          AND side IS NOT NULL
+      `;
+
+      const tradesResult = await client.query(tradesQuery, [userId]);
+      const trades = tradesResult.rows;
+
+      console.log(`[STOP LOSS] Found ${trades.length} trades without stop loss`);
+
+      if (trades.length === 0) {
+        await client.query('COMMIT');
+        return 0;
+      }
+
+      let updatedCount = 0;
+
+      // Update each trade with the calculated stop loss
+      for (const trade of trades) {
+        const { id, entry_price, exit_price, side } = trade;
+
+        // Calculate stop loss based on entry price and side
+        let stopLoss;
+        if (side === 'long' || side === 'buy') {
+          stopLoss = entry_price * (1 - defaultStopLossPercent / 100);
+        } else if (side === 'short' || side === 'sell') {
+          stopLoss = entry_price * (1 + defaultStopLossPercent / 100);
+        } else {
+          console.warn(`[STOP LOSS] Unknown side "${side}" for trade ${id}, skipping`);
+          continue;
+        }
+
+        // Round to 4 decimal places
+        stopLoss = Math.round(stopLoss * 10000) / 10000;
+
+        // Calculate R value if exit price exists
+        let rValue = null;
+        if (exit_price) {
+          rValue = this.calculateRValue(entry_price, stopLoss, exit_price, side);
+        }
+
+        // Update the trade
+        const updateQuery = `
+          UPDATE trades
+          SET stop_loss = $1, r_value = $2
+          WHERE id = $3 AND user_id = $4
+        `;
+
+        await client.query(updateQuery, [stopLoss, rValue, id, userId]);
+        updatedCount++;
+      }
+
+      await client.query('COMMIT');
+      console.log(`[STOP LOSS] Successfully updated ${updatedCount} trades with default stop loss`);
+      return updatedCount;
+
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('[STOP LOSS] Error applying default stop loss to existing trades:', error);
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   static async getCountWithFilters(userId, filters = {}) {
@@ -1980,6 +2094,159 @@ class Trade {
       bestTradeDetails: bestTrade,
       worstTradeDetails: worstTrade
     };
+  }
+
+  static async getMonthlyPerformance(userId, year) {
+    console.log(`[MONTHLY] Getting monthly performance for user ${userId}, year ${year}`);
+
+    const monthlyQuery = `
+      WITH monthly_trades AS (
+        SELECT
+          EXTRACT(MONTH FROM trade_date) as month,
+          COUNT(*)::integer as total_trades,
+          COUNT(*) FILTER (WHERE pnl > 0)::integer as winning_trades,
+          COUNT(*) FILTER (WHERE pnl < 0)::integer as losing_trades,
+          COUNT(*) FILTER (WHERE pnl = 0)::integer as breakeven_trades,
+          COALESCE(SUM(pnl), 0)::numeric as total_pnl,
+          COALESCE(AVG(pnl), 0)::numeric as avg_pnl,
+          COALESCE(AVG(pnl) FILTER (WHERE pnl > 0), 0)::numeric as avg_win,
+          COALESCE(AVG(pnl) FILTER (WHERE pnl < 0), 0)::numeric as avg_loss,
+          COALESCE(MAX(pnl), 0)::numeric as best_trade,
+          COALESCE(MIN(pnl), 0)::numeric as worst_trade,
+          COALESCE(AVG(r_value) FILTER (WHERE r_value IS NOT NULL), 0)::numeric as avg_r_value,
+          COALESCE(SUM(r_value) FILTER (WHERE r_value IS NOT NULL), 0)::numeric as total_r_value,
+          COUNT(DISTINCT symbol)::integer as symbols_traded,
+          COUNT(DISTINCT trade_date)::integer as trading_days
+        FROM trades
+        WHERE user_id = $1
+          AND EXTRACT(YEAR FROM trade_date) = $2
+          AND exit_price IS NOT NULL
+          AND pnl IS NOT NULL
+        GROUP BY EXTRACT(MONTH FROM trade_date)
+      ),
+      all_months AS (
+        SELECT generate_series(1, 12) as month
+      )
+      SELECT
+        am.month,
+        COALESCE(mt.total_trades, 0) as total_trades,
+        COALESCE(mt.winning_trades, 0) as winning_trades,
+        COALESCE(mt.losing_trades, 0) as losing_trades,
+        COALESCE(mt.breakeven_trades, 0) as breakeven_trades,
+        COALESCE(mt.total_pnl, 0) as total_pnl,
+        COALESCE(mt.avg_pnl, 0) as avg_pnl,
+        COALESCE(mt.avg_win, 0) as avg_win,
+        COALESCE(mt.avg_loss, 0) as avg_loss,
+        COALESCE(mt.best_trade, 0) as best_trade,
+        COALESCE(mt.worst_trade, 0) as worst_trade,
+        COALESCE(mt.avg_r_value, 0) as avg_r_value,
+        COALESCE(mt.total_r_value, 0) as total_r_value,
+        COALESCE(mt.symbols_traded, 0) as symbols_traded,
+        COALESCE(mt.trading_days, 0) as trading_days,
+        CASE
+          WHEN COALESCE(mt.total_trades, 0) = 0 THEN 0
+          ELSE (COALESCE(mt.winning_trades, 0) * 100.0 / mt.total_trades)
+        END as win_rate,
+        TO_CHAR(TO_DATE(am.month::text, 'MM'), 'Month') as month_name
+      FROM all_months am
+      LEFT JOIN monthly_trades mt ON am.month = mt.month
+      ORDER BY am.month
+    `;
+
+    try {
+      const result = await db.query(monthlyQuery, [userId, year]);
+
+      // Format the data for easier consumption
+      const monthlyData = result.rows.map(row => ({
+        month: parseInt(row.month),
+        monthName: row.month_name.trim(),
+        trades: {
+          total: parseInt(row.total_trades) || 0,
+          wins: parseInt(row.winning_trades) || 0,
+          losses: parseInt(row.losing_trades) || 0,
+          breakeven: parseInt(row.breakeven_trades) || 0
+        },
+        pnl: {
+          total: parseFloat(row.total_pnl) || 0,
+          average: parseFloat(row.avg_pnl) || 0,
+          avgWin: parseFloat(row.avg_win) || 0,
+          avgLoss: parseFloat(row.avg_loss) || 0,
+          best: parseFloat(row.best_trade) || 0,
+          worst: parseFloat(row.worst_trade) || 0
+        },
+        metrics: {
+          winRate: parseFloat(row.win_rate) || 0,
+          avgRValue: parseFloat(row.avg_r_value) || 0,
+          totalRValue: parseFloat(row.total_r_value) || 0,
+          symbolsTraded: parseInt(row.symbols_traded) || 0,
+          tradingDays: parseInt(row.trading_days) || 0
+        }
+      }));
+
+      // Calculate year totals
+      const yearTotals = monthlyData.reduce((acc, month) => {
+        acc.trades.total += month.trades.total;
+        acc.trades.wins += month.trades.wins;
+        acc.trades.losses += month.trades.losses;
+        acc.trades.breakeven += month.trades.breakeven;
+        acc.pnl.total += month.pnl.total;
+
+        // Track best/worst across all months
+        if (month.pnl.best > acc.pnl.best) {
+          acc.pnl.best = month.pnl.best;
+        }
+        if (month.pnl.worst < acc.pnl.worst) {
+          acc.pnl.worst = month.pnl.worst;
+        }
+
+        // Accumulate for averaging
+        if (month.trades.total > 0) {
+          acc.monthsWithTrades++;
+          acc.totalRValue += month.metrics.totalRValue;
+        }
+
+        return acc;
+      }, {
+        trades: { total: 0, wins: 0, losses: 0, breakeven: 0 },
+        pnl: { total: 0, best: 0, worst: 0 },
+        monthsWithTrades: 0,
+        totalRValue: 0
+      });
+
+      // Calculate year averages
+      yearTotals.metrics = {
+        winRate: yearTotals.trades.total > 0
+          ? (yearTotals.trades.wins * 100.0 / yearTotals.trades.total)
+          : 0,
+        avgRValue: yearTotals.trades.total > 0
+          ? yearTotals.totalRValue / yearTotals.trades.total
+          : 0,
+        totalRValue: yearTotals.totalRValue,
+        avgMonthlyPnL: yearTotals.monthsWithTrades > 0
+          ? yearTotals.pnl.total / yearTotals.monthsWithTrades
+          : 0
+      };
+
+      console.log(`[MONTHLY] Found data for ${monthlyData.length} months in year ${year}`);
+      console.log(`[MONTHLY] Total R-Value sum: ${yearTotals.totalRValue.toFixed(2)}R`);
+
+      return {
+        monthly: monthlyData,
+        yearTotals: {
+          trades: yearTotals.trades,
+          pnl: {
+            total: yearTotals.pnl.total,
+            best: yearTotals.pnl.best,
+            worst: yearTotals.pnl.worst,
+            avgMonthly: yearTotals.metrics.avgMonthlyPnL
+          },
+          metrics: yearTotals.metrics
+        }
+      };
+    } catch (error) {
+      console.error('[ERROR] Failed to get monthly performance:', error);
+      throw error;
+    }
   }
 
   static async getSymbolList(userId) {

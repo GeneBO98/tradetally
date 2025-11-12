@@ -102,7 +102,9 @@ const schemas = {
           exitTime: Joi.date().iso().allow(null).optional(),
           commission: Joi.number().min(0).default(0),
           fees: Joi.number().min(0).default(0),
-          pnl: Joi.number().allow(null).optional()
+          pnl: Joi.number().allow(null).optional(),
+          stopLoss: Joi.number().positive().allow(null, '').optional(),
+          takeProfit: Joi.number().positive().allow(null, '').optional()
         })
       )
     ).optional()
@@ -175,7 +177,9 @@ const schemas = {
           exitTime: Joi.date().iso().allow(null).optional(),
           commission: Joi.number().min(0).default(0),
           fees: Joi.number().min(0).default(0),
-          pnl: Joi.number().allow(null).optional()
+          pnl: Joi.number().allow(null).optional(),
+          stopLoss: Joi.number().positive().allow(null, '').optional(),
+          takeProfit: Joi.number().positive().allow(null, '').optional()
         })
       )
     ).optional()
