@@ -205,6 +205,19 @@ class User {
 
     try {
       const result = await db.query(query, values);
+
+      // If default stop loss percentage was updated, apply it to existing trades without a stop loss
+      if (settings.defaultStopLossPercent !== undefined && settings.defaultStopLossPercent > 0) {
+        const Trade = require('./Trade');
+        Trade.applyDefaultStopLossToExistingTrades(userId, settings.defaultStopLossPercent)
+          .then(count => {
+            console.log(`[SETTINGS] Applied default stop loss to ${count} existing trades`);
+          })
+          .catch(error => {
+            console.error('[SETTINGS] Failed to apply default stop loss to existing trades:', error);
+          });
+      }
+
       return result.rows[0];
     } catch (error) {
       // If statistics_calculation column doesn't exist, try update without it
@@ -215,7 +228,7 @@ class User {
           const field = fields[index];
           return field && !field.includes('statistics_calculation');
         });
-        
+
         if (filteredFields.length > 0) {
           const fallbackQuery = `
             UPDATE user_settings
@@ -225,6 +238,19 @@ class User {
           `;
           filteredValues.push(userId);
           const result = await db.query(fallbackQuery, filteredValues);
+
+          // If default stop loss percentage was updated, apply it to existing trades without a stop loss
+          if (settings.defaultStopLossPercent !== undefined && settings.defaultStopLossPercent > 0) {
+            const Trade = require('./Trade');
+            Trade.applyDefaultStopLossToExistingTrades(userId, settings.defaultStopLossPercent)
+              .then(count => {
+                console.log(`[SETTINGS] Applied default stop loss to ${count} existing trades`);
+              })
+              .catch(error => {
+                console.error('[SETTINGS] Failed to apply default stop loss to existing trades:', error);
+              });
+          }
+
           return result.rows[0];
         }
       }

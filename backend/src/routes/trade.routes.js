@@ -124,6 +124,46 @@ router.post('/', authenticate, validate(schemas.createTrade), tradeController.cr
 
 /**
  * @swagger
+ * /api/trades/export/csv:
+ *   get:
+ *     summary: Export trades to CSV
+ *     description: Export all trades matching the filter criteria to a CSV file with generic headers
+ *     tags: [Trades]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: symbol
+ *         schema:
+ *           type: string
+ *         description: Filter by symbol
+ *       - in: query
+ *         name: startDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Start date for filtering
+ *       - in: query
+ *         name: endDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: End date for filtering
+ *     responses:
+ *       200:
+ *         description: CSV file download
+ *         content:
+ *           text/csv:
+ *             schema:
+ *               type: string
+ *               format: binary
+ *       401:
+ *         description: Unauthorized
+ */
+router.get('/export/csv', authenticate, tradeController.exportTradesToCSV);
+
+/**
+ * @swagger
  * /api/trades/round-trip:
  *   get:
  *     summary: Get round trip trades
@@ -254,6 +294,26 @@ router.get('/public', optionalAuth, tradeController.getPublicTrades);
  *         description: Trade analytics data
  */
 router.get('/analytics', authenticate, tradeController.getAnalytics);
+
+/**
+ * @swagger
+ * /api/trades/analytics/monthly:
+ *   get:
+ *     summary: Get monthly performance metrics
+ *     tags: [Trades]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: year
+ *         schema:
+ *           type: integer
+ *         description: Year for monthly breakdown (defaults to current year)
+ *     responses:
+ *       200:
+ *         description: Monthly performance metrics
+ */
+router.get('/analytics/monthly', authenticate, tradeController.getMonthlyPerformance);
 
 /**
  * @swagger

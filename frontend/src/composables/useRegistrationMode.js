@@ -10,12 +10,18 @@ export function useRegistrationMode() {
     if (!registrationConfig.value) {
       try {
         registrationConfig.value = await authStore.getRegistrationConfig()
+        console.log('[REGISTRATION] Config fetched:', {
+          registrationMode: registrationConfig.value.registrationMode,
+          billingEnabled: registrationConfig.value.billingEnabled,
+          allowRegistration: registrationConfig.value.allowRegistration
+        })
       } catch (error) {
         console.error('Failed to fetch registration config:', error)
         // Default to open mode on error
         registrationConfig.value = {
           registrationMode: 'open',
-          allowRegistration: true
+          allowRegistration: true,
+          billingEnabled: false
         }
       }
     }
@@ -38,8 +44,24 @@ export function useRegistrationMode() {
     return registrationConfig.value?.allowRegistration === true
   })
 
+  const isBillingEnabled = computed(() => {
+    const enabled = registrationConfig.value?.billingEnabled === true
+    if (registrationConfig.value) {
+      console.log('[BILLING] Enabled:', enabled, 'billingEnabled value:', registrationConfig.value.billingEnabled)
+    }
+    return enabled
+  })
+
   const showSEOPages = computed(() => {
-    return isOpenMode.value
+    // Only show SEO pages when billing is enabled (SaaS/public offering)
+    // When billing is disabled (default), hide public pages (private instance)
+    if (!isBillingEnabled.value) {
+      console.log('[SEO PAGES] Hidden - billing disabled (private instance)')
+      return false
+    }
+    // When billing is enabled, show SEO pages (public SaaS offering)
+    console.log('[SEO PAGES] Show: true - billing enabled (public instance)')
+    return true
   })
 
   return {
@@ -49,6 +71,7 @@ export function useRegistrationMode() {
     isClosedMode,
     isSemiMode,
     allowRegistration,
+    isBillingEnabled,
     showSEOPages
   }
 }

@@ -8,9 +8,9 @@ class CacheCleanupService {
    */
   static async cleanupExpiredEntries() {
     try {
-      logger.logInfo('Starting cache cleanup job...');
+      logger.info('Starting cache cleanup job...');
       const deletedCount = await AnalyticsCache.cleanupExpired();
-      logger.logInfo(`Cache cleanup completed: ${deletedCount} expired entries removed`);
+      logger.info(`Cache cleanup completed: ${deletedCount} expired entries removed`);
       return deletedCount;
     } catch (error) {
       logger.logError('Cache cleanup failed:', error);
@@ -37,7 +37,7 @@ class CacheCleanupService {
   static startPeriodicCleanup() {
     const CLEANUP_INTERVAL = 6 * 60 * 60 * 1000; // 6 hours in milliseconds
     
-    logger.logInfo('Starting periodic cache cleanup service (every 6 hours)');
+    logger.info('Starting periodic cache cleanup service (every 6 hours)');
     
     // Run initial cleanup
     this.cleanupExpiredEntries();

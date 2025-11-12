@@ -92,7 +92,7 @@ class AnalyticsCache {
     try {
       const query = 'DELETE FROM analytics_cache WHERE expires_at <= CURRENT_TIMESTAMP';
       const result = await db.query(query);
-      logger.logInfo(`Cleaned up ${result.rowCount} expired cache entries`);
+      logger.info(`Cleaned up ${result.rowCount} expired cache entries`);
       return result.rowCount;
     } catch (error) {
       logger.logError('Error cleaning up expired cache entries:', error);

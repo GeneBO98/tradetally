@@ -132,6 +132,63 @@
           </div>
         </div>
 
+        <!-- Privacy Settings -->
+        <div class="card">
+          <div class="card-body">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-6">Privacy Settings</h3>
+            <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
+              Control who can see your trading activity and profile information.
+            </p>
+
+            <form @submit.prevent="updatePrivacySettings" class="space-y-6">
+              <div class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                <div class="flex-1">
+                  <label for="publicProfile" class="block text-sm font-medium text-gray-900 dark:text-white">
+                    Public Profile
+                  </label>
+                  <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                    Allow others to view your public trades. When enabled, trades marked as "public" will be visible to all users.
+                    Your username and avatar will also be visible on public trades.
+                  </p>
+                </div>
+                <div class="ml-4 flex-shrink-0">
+                  <button
+                    type="button"
+                    @click="privacyForm.publicProfile = !privacyForm.publicProfile"
+                    :class="[
+                      privacyForm.publicProfile ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700',
+                      'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2'
+                    ]"
+                    role="switch"
+                    :aria-checked="privacyForm.publicProfile"
+                  >
+                    <span
+                      :class="[
+                        privacyForm.publicProfile ? 'translate-x-5' : 'translate-x-0',
+                        'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out'
+                      ]"
+                    />
+                  </button>
+                </div>
+              </div>
+
+              <div class="flex justify-end">
+                <button
+                  type="submit"
+                  :disabled="privacyLoading"
+                  class="btn-primary"
+                >
+                  <span v-if="privacyLoading" class="flex items-center">
+                    <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Saving...
+                  </span>
+                  <span v-else>Save Privacy Settings</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+
         <!-- API Documentation -->
         <div class="card">
           <div class="card-body">
@@ -653,8 +710,34 @@
                 </button>
               </div>
 
+              <!-- CSV Export Section -->
+              <div class="flex items-start space-x-4 pt-6 border-t border-gray-200 dark:border-gray-700">
+                <div class="flex-1">
+                  <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-3">Export Trades to CSV</h4>
+                  <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                    Export all your trades to a CSV file with generic headers compatible with Excel, Google Sheets, and other trading journals. Exports all trades with full details.
+                  </p>
+                </div>
+                <button
+                  @click="exportTradesToCSV"
+                  :disabled="csvExportLoading"
+                  class="btn-secondary flex-shrink-0"
+                >
+                  <span v-if="csvExportLoading" class="flex items-center">
+                    <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600 mr-2"></div>
+                    Exporting...
+                  </span>
+                  <span v-else class="flex items-center">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    </svg>
+                    Export Trades CSV
+                  </span>
+                </button>
+              </div>
+
               <!-- Import Section -->
-              <div class="flex items-start space-x-4">
+              <div class="flex items-start space-x-4 pt-6 border-t border-gray-200 dark:border-gray-700">
                 <div class="flex-1">
                   <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-3">Import Data</h4>
                   <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
@@ -707,6 +790,11 @@
           </div>
         </div>
       </template>
+
+      <!-- System Logs Tab (Admin Only) -->
+      <template v-if="activeTab === 'admin' && authStore.user?.role === 'admin'">
+        <LogsViewer />
+      </template>
     </div>
   </div>
 </template>
@@ -718,6 +806,7 @@ import { useNotification } from '@/composables/useNotification'
 import api from '@/services/api'
 import MdiIcon from '@/components/MdiIcon.vue'
 import { mdiApi } from '@mdi/js'
+import LogsViewer from '@/components/admin/LogsViewer.vue'
 
 const authStore = useAuthStore()
 const { showSuccess, showError } = useNotification()
@@ -730,12 +819,19 @@ const activeTab = ref('general')
 
 // Tabs configuration
 const tabs = computed(() => {
-  return [
+  const baseTabs = [
     { id: 'general', label: 'General' },
     { id: 'ai', label: 'AI & Integrations' },
     { id: 'trading', label: 'Trading' },
     { id: 'data', label: 'Data Management' }
   ]
+
+  // Add System Logs tab for admin users
+  if (authStore.user?.role === 'admin') {
+    baseTabs.push({ id: 'admin', label: 'System Logs' })
+  }
+
+  return baseTabs
 })
 
 // AI Provider Settings
@@ -756,6 +852,12 @@ const analyticsForm = ref({
 })
 
 const analyticsLoading = ref(false)
+
+// Privacy Settings
+const privacyForm = ref({
+  publicProfile: false
+})
+const privacyLoading = ref(false)
 
 // Trade Import Settings
 const tradeImportForm = ref({
@@ -794,6 +896,7 @@ const adminAiLoading = ref(false)
 
 // Export/Import Settings
 const exportLoading = ref(false)
+const csvExportLoading = ref(false)
 const importLoading = ref(false)
 const selectedFile = ref(null)
 
@@ -956,6 +1059,41 @@ async function updateAnalyticsSettings() {
     showError('Error', error.response?.data?.error || 'Failed to update analytics settings')
   } finally {
     analyticsLoading.value = false
+  }
+}
+
+// Privacy Settings Functions
+async function loadPrivacySettings() {
+  try {
+    const response = await api.get('/settings')
+    const settings = response.data.settings
+
+    privacyForm.value = {
+      publicProfile: settings.publicProfile ?? false
+    }
+  } catch (error) {
+    console.error('Failed to load privacy settings:', error)
+    // Default to false if loading fails
+    privacyForm.value.publicProfile = false
+  }
+}
+
+async function updatePrivacySettings() {
+  privacyLoading.value = true
+  try {
+    await api.put('/settings', {
+      publicProfile: privacyForm.value.publicProfile
+    })
+
+    // Refresh user data to update settings in auth store
+    await authStore.fetchUser()
+
+    showSuccess('Success', 'Privacy settings updated successfully')
+  } catch (error) {
+    console.error('Failed to update privacy settings:', error)
+    showError('Error', error.response?.data?.error || 'Failed to update privacy settings')
+  } finally {
+    privacyLoading.value = false
   }
 }
 
@@ -1166,6 +1304,42 @@ async function exportUserData() {
   }
 }
 
+async function exportTradesToCSV() {
+  csvExportLoading.value = true
+  try {
+    const response = await api.get('/trades/export/csv', {
+      responseType: 'blob'
+    })
+
+    // Create download link
+    const blob = new Blob([response.data], { type: 'text/csv' })
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+
+    // Get filename from Content-Disposition header or use default
+    const contentDisposition = response.headers['content-disposition']
+    let filename = 'tradetally-export.csv'
+    if (contentDisposition) {
+      const match = contentDisposition.match(/filename="(.+)"/)
+      if (match) filename = match[1]
+    }
+
+    link.setAttribute('download', filename)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+
+    showSuccess('Export Complete', 'Your trades have been exported to CSV successfully')
+  } catch (error) {
+    console.error('CSV export failed:', error)
+    showError('Export Failed', error.response?.data?.error || 'Failed to export trades to CSV')
+  } finally {
+    csvExportLoading.value = false
+  }
+}
+
 function handleFileSelect(event) {
   const file = event.target.files[0]
   if (file) {
@@ -1241,6 +1415,7 @@ async function enrichTrades() {
 onMounted(() => {
   loadAISettings()
   loadAnalyticsSettings()
+  loadPrivacySettings()
   loadTradeImportSettings()
   fetchQualityWeights()
 

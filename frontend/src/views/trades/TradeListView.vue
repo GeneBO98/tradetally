@@ -563,7 +563,7 @@
                     :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
                   <div class="text-sm text-gray-900 dark:text-white font-mono">
-                    {{ trade.stopLoss ? `$${formatNumber(trade.stopLoss)}` : '-' }}
+                    {{ (trade.stop_loss || trade.stopLoss) ? `$${formatNumber(trade.stop_loss || trade.stopLoss)}` : '-' }}
                   </div>
                 </td>
 
@@ -571,7 +571,7 @@
                     :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
                   <div class="text-sm text-gray-900 dark:text-white font-mono">
-                    {{ trade.takeProfit ? `$${formatNumber(trade.takeProfit)}` : '-' }}
+                    {{ (trade.take_profit || trade.takeProfit) ? `$${formatNumber(trade.take_profit || trade.takeProfit)}` : '-' }}
                   </div>
                 </td>
 

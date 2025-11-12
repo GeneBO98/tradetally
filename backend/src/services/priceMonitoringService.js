@@ -13,6 +13,7 @@ class PriceMonitoringService {
     this.monitoringInterval = null;
     this.intervalMs = 30000; // 30 seconds
     this.emailTransporter = null;
+    this.failedSymbols = new Map(); // Track failed symbols to reduce log spam
     this.initializeEmailTransporter();
   }
 
@@ -144,16 +145,37 @@ class PriceMonitoringService {
         if (!priceData || !priceData.c) {
           throw new Error('Invalid price data from Finnhub');
         }
+
+        // Success - remove from failed symbols if it was there
+        if (this.failedSymbols.has(symbol)) {
+          logger.info(`${symbol} is now working again after previous failures`);
+          this.failedSymbols.delete(symbol);
+        }
       } catch (finnhubError) {
         const errorMsg = finnhubError?.message || 'Unknown Finnhub error';
-        
-        // Only log detailed errors for non-502 errors to avoid spam during outages
-        if (errorMsg.includes('502')) {
-          logger.debug(`Finnhub temporarily unavailable for ${symbol} (502 error)`);
-        } else {
-          logger.warn(`Finnhub failed for ${symbol}: ${errorMsg}`);
+
+        // Track failed attempts to reduce log spam
+        const failureData = this.failedSymbols.get(symbol) || { count: 0, firstSeen: Date.now() };
+        failureData.count++;
+        failureData.lastSeen = Date.now();
+        this.failedSymbols.set(symbol, failureData);
+
+        // Only log on first failure, then every 10th failure, or once per hour
+        const minutesSinceFirst = (Date.now() - failureData.firstSeen) / (1000 * 60);
+        const shouldLog = failureData.count === 1 ||
+                         failureData.count % 10 === 0 ||
+                         minutesSinceFirst > 60;
+
+        if (shouldLog) {
+          if (errorMsg.includes('502')) {
+            logger.debug(`Finnhub temporarily unavailable for ${symbol} (502 error)`);
+          } else if (errorMsg.includes('No quote data available')) {
+            logger.warn(`${symbol} is not supported by Finnhub (${failureData.count} failures). Consider removing from watchlist/alerts.`);
+          } else {
+            logger.warn(`Finnhub failed for ${symbol}: ${errorMsg} (${failureData.count} failures)`);
+          }
         }
-        
+
         // Return false to indicate failure
         return false;
       }
@@ -256,16 +278,22 @@ class PriceMonitoringService {
       }
     }
 
+    // Parse values as numbers to ensure numeric comparison (not string comparison)
+    const currentPriceNum = parseFloat(current_price);
+    const targetPriceNum = parseFloat(target_price);
+    const percentChangeNum = parseFloat(percent_change);
+    const changePercentNum = parseFloat(change_percent);
+
     switch (alert_type) {
       case 'above':
-        return current_price >= target_price;
-      
+        return currentPriceNum >= targetPriceNum;
+
       case 'below':
-        return current_price <= target_price;
-      
+        return currentPriceNum <= targetPriceNum;
+
       case 'change_percent':
-        return Math.abs(percent_change) >= Math.abs(change_percent);
-      
+        return Math.abs(percentChangeNum) >= Math.abs(changePercentNum);
+
       default:
         return false;
     }

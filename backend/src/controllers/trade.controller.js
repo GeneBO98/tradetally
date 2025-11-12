@@ -110,6 +110,133 @@ const tradeController = {
     }
   },
 
+  async exportTradesToCSV(req, res, next) {
+    try {
+      const {
+        symbol, startDate, endDate, tags, strategy, sector,
+        strategies, sectors, hasNews, daysOfWeek, instrumentTypes, optionTypes, qualityGrades,
+        side, minPrice, maxPrice, minQuantity, maxQuantity,
+        status, minPnl, maxPnl, pnlType, broker, brokers
+      } = req.query;
+
+      const filters = {
+        symbol,
+        startDate,
+        endDate,
+        tags: tags ? tags.split(',').map(t => t.trim()).filter(Boolean) : undefined,
+        strategy,
+        sector,
+        strategies: strategies ? strategies.split(',') : undefined,
+        sectors: sectors ? sectors.split(',') : undefined,
+        hasNews,
+        daysOfWeek: daysOfWeek ? daysOfWeek.split(',').map(d => parseInt(d)) : undefined,
+        instrumentTypes: instrumentTypes ? instrumentTypes.split(',') : undefined,
+        optionTypes: optionTypes ? optionTypes.split(',') : undefined,
+        qualityGrades: qualityGrades ? qualityGrades.split(',') : undefined,
+        side,
+        minPrice: minPrice ? parseFloat(minPrice) : undefined,
+        maxPrice: maxPrice ? parseFloat(maxPrice) : undefined,
+        minQuantity: minQuantity ? parseInt(minQuantity) : undefined,
+        maxQuantity: maxQuantity ? parseInt(maxQuantity) : undefined,
+        status,
+        minPnl: (minPnl !== undefined && minPnl !== null && minPnl !== '') ? parseFloat(minPnl) : undefined,
+        maxPnl: (maxPnl !== undefined && maxPnl !== null && maxPnl !== '') ? parseFloat(maxPnl) : undefined,
+        pnlType,
+        broker,
+        brokers: brokers ? brokers.split(',') : undefined,
+        // No pagination - export all matching trades
+        limit: 999999,
+        offset: 0
+      };
+
+      const trades = await Trade.findByUser(req.user.id, filters);
+
+      // Convert trades to CSV format with generic headers
+      const csvHeaders = [
+        'Symbol',
+        'Side',
+        'Quantity',
+        'Entry Price',
+        'Exit Price',
+        'Entry Date',
+        'Exit Date',
+        'P&L',
+        'Fees',
+        'Commission',
+        'Notes',
+        'Strategy',
+        'Setup',
+        'Tags',
+        'Broker',
+        'Status',
+        'Instrument Type',
+        'Option Type',
+        'Strike Price',
+        'Expiration Date',
+        'Quality Grade'
+      ].join(',');
+
+      const csvRows = trades.map(trade => {
+        // Helper function to escape CSV values
+        const escapeCsv = (value) => {
+          if (value === null || value === undefined) return '';
+          const str = String(value);
+          // If the value contains comma, newline, or quotes, wrap in quotes and escape quotes
+          if (str.includes(',') || str.includes('\n') || str.includes('"')) {
+            return `"${str.replace(/"/g, '""')}"`;
+          }
+          return str;
+        };
+
+        // Format dates
+        const formatDate = (date) => {
+          if (!date) return '';
+          return new Date(date).toISOString().split('T')[0]; // YYYY-MM-DD
+        };
+
+        return [
+          escapeCsv(trade.symbol),
+          escapeCsv(trade.side),
+          escapeCsv(trade.quantity),
+          escapeCsv(trade.entry_price),
+          escapeCsv(trade.exit_price),
+          formatDate(trade.entry_date),
+          formatDate(trade.exit_date),
+          escapeCsv(trade.pnl),
+          escapeCsv(trade.fees),
+          escapeCsv(trade.commission),
+          escapeCsv(trade.notes),
+          escapeCsv(trade.strategy),
+          escapeCsv(trade.setup),
+          escapeCsv(trade.tags ? trade.tags.join('; ') : ''),
+          escapeCsv(trade.broker),
+          escapeCsv(trade.status || (trade.exit_price ? 'Closed' : 'Open')),
+          escapeCsv(trade.instrument_type),
+          escapeCsv(trade.option_type),
+          escapeCsv(trade.strike_price),
+          formatDate(trade.expiration_date),
+          escapeCsv(trade.quality_grade)
+        ].join(',');
+      });
+
+      const csv = [csvHeaders, ...csvRows].join('\n');
+
+      // Generate filename with date
+      const timestamp = new Date().toISOString().split('T')[0];
+      const filename = `tradetally-export-${timestamp}.csv`;
+
+      // Set headers for CSV download
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(csv);
+
+      logger.info(`Exported ${trades.length} trades to CSV for user ${req.user.id}`);
+    } catch (error) {
+      logger.logError('Error exporting trades to CSV:', error);
+      next(error);
+    }
+  },
+
   async getRoundTripTrades(req, res, next) {
     try {
       const { 
@@ -522,17 +649,22 @@ const tradeController = {
       `;
 
       const insertResult = await db.query(insertQuery, [req.params.id, req.user.id, comment]);
-      
+
+      // For public trades, use anonymous names to protect privacy
+      const usernameField = trade.is_public
+        ? 'generate_anonymous_name(u.id) as username'
+        : 'u.username';
+
       // Get the comment with user information
       const selectQuery = `
-        SELECT tc.*, u.username, u.avatar_url
+        SELECT tc.*, ${usernameField}, u.avatar_url
         FROM trade_comments tc
         JOIN users u ON tc.user_id = u.id
         WHERE tc.id = $1
       `;
-      
+
       const selectResult = await db.query(selectQuery, [insertResult.rows[0].id]);
-      
+
       res.status(201).json({ comment: selectResult.rows[0] });
     } catch (error) {
       next(error);
@@ -546,8 +678,13 @@ const tradeController = {
         return res.status(404).json({ error: 'Trade not found' });
       }
 
+      // For public trades, use anonymous names to protect privacy
+      const usernameField = trade.is_public
+        ? 'generate_anonymous_name(u.id) as username'
+        : 'u.username';
+
       const query = `
-        SELECT tc.*, u.username, u.avatar_url
+        SELECT tc.*, ${usernameField}, u.avatar_url
         FROM trade_comments tc
         JOIN users u ON tc.user_id = u.id
         WHERE tc.trade_id = $1
@@ -555,7 +692,7 @@ const tradeController = {
       `;
 
       const result = await db.query(query, [req.params.id]);
-      
+
       res.json({ comments: result.rows });
     } catch (error) {
       next(error);
@@ -591,22 +728,27 @@ const tradeController = {
 
       // Update comment
       const updateQuery = `
-        UPDATE trade_comments 
+        UPDATE trade_comments
         SET comment = $1, edited_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
         WHERE id = $2
         RETURNING *
       `;
       const updateResult = await db.query(updateQuery, [comment.trim(), commentId]);
 
+      // For public trades, use anonymous names to protect privacy
+      const usernameField = trade.is_public
+        ? 'generate_anonymous_name(u.id) as username'
+        : 'u.username';
+
       // Get updated comment with user info
       const query = `
-        SELECT tc.*, u.username, u.avatar_url
+        SELECT tc.*, ${usernameField}, u.avatar_url
         FROM trade_comments tc
         JOIN users u ON tc.user_id = u.id
         WHERE tc.id = $1
       `;
       const result = await db.query(query, [commentId]);
-      
+
       res.json({ comment: result.rows[0] });
     } catch (error) {
       next(error);
@@ -666,9 +808,10 @@ const tradeController = {
       }
 
       const importId = uuidv4();
-      const { broker = 'generic' } = req.body;
-      
+      const { broker = 'generic', mappingId = null } = req.body;
+
       console.log('Selected broker:', broker);
+      console.log('Mapping ID:', mappingId);
       console.log('Import ID:', importId);
 
       const insertQuery = `
@@ -716,6 +859,19 @@ const tradeController = {
           `;
           const openPositionsResult = await db.query(openPositionsQuery, [fileUserId]);
           logger.logImport(`Found ${openPositionsResult.rows.length} existing open positions`);
+
+          // Also fetch completed trades to check for duplicate executions
+          logger.logImport(`Fetching completed trades for duplicate detection...`);
+          const completedTradesQuery = `
+            SELECT id, symbol, executions
+            FROM trades
+            WHERE user_id = $1
+            AND exit_price IS NOT NULL
+            AND executions IS NOT NULL
+            ORDER BY symbol, entry_time
+          `;
+          const completedTradesResult = await db.query(completedTradesQuery, [fileUserId]);
+          logger.logImport(`Found ${completedTradesResult.rows.length} completed trades for duplicate checking`);
           
           // Convert to context format
           const existingPositions = {};
@@ -752,19 +908,69 @@ const tradeController = {
             logger.logImport(`  ${symbol}: ${pos.side} ${pos.quantity} shares @ $${pos.entryPrice}`);
           });
 
+          // Build a map of all existing executions for duplicate detection
+          const existingExecutions = {};
+          completedTradesResult.rows.forEach(row => {
+            let parsedExecutions = [];
+            if (row.executions) {
+              try {
+                parsedExecutions = typeof row.executions === 'string'
+                  ? JSON.parse(row.executions)
+                  : row.executions;
+              } catch (e) {
+                console.warn(`Failed to parse executions for completed trade ${row.id}:`, e);
+                parsedExecutions = [];
+              }
+            }
+
+            if (!existingExecutions[row.symbol]) {
+              existingExecutions[row.symbol] = [];
+            }
+            existingExecutions[row.symbol].push(...parsedExecutions);
+          });
+
+          // Also add executions from open positions
+          Object.entries(existingPositions).forEach(([symbol, pos]) => {
+            if (!existingExecutions[symbol]) {
+              existingExecutions[symbol] = [];
+            }
+            existingExecutions[symbol].push(...pos.executions);
+          });
+
+          logger.logImport(`Built execution index for ${Object.keys(existingExecutions).length} symbols`);
+
           // Fetch user settings for trade grouping configuration
           let userSettings = await User.getSettings(req.user.id);
           if (!userSettings) {
             userSettings = await User.createSettings(req.user.id);
           }
 
+          // Fetch custom mapping if provided
+          let customMapping = null;
+          if (mappingId) {
+            logger.logImport(`Fetching custom CSV mapping: ${mappingId}`);
+            const mappingQuery = `
+              SELECT * FROM custom_csv_mappings
+              WHERE id = $1 AND user_id = $2
+            `;
+            const mappingResult = await db.query(mappingQuery, [mappingId, fileUserId]);
+            if (mappingResult.rows.length > 0) {
+              customMapping = mappingResult.rows[0];
+              logger.logImport(`Using custom mapping: ${customMapping.mapping_name}`);
+            } else {
+              logger.logWarn(`Custom mapping ${mappingId} not found for user ${fileUserId}`);
+            }
+          }
+
           const context = {
             existingPositions,
+            existingExecutions,
             userId: req.user.id,
             tradeGroupingSettings: {
               enabled: userSettings.enable_trade_grouping ?? true,
               timeGapMinutes: userSettings.trade_grouping_time_gap_minutes ?? 60
-            }
+            },
+            customMapping
           };
           const parseResult = await parseCSV(fileBuffer, broker, context);
 
@@ -903,24 +1109,48 @@ const tradeController = {
                 
                 // If both trades have executions, check for exact timestamp matches
                 // This is the most precise duplicate detection
-                if (tradeData.executionData && tradeData.executionData.length > 0 && existingExecutions.length > 0) {
+                // For trades without executionData array, create one from the trade fields
+                let tradeExecutionsToCheck = tradeData.executionData;
+                if (!tradeExecutionsToCheck || tradeExecutionsToCheck.length === 0) {
+                  // Trade doesn't have executionData (e.g., non-grouped single trade)
+                  // Create a temporary execution from the trade's entry/exit times
+                  tradeExecutionsToCheck = [{
+                    datetime: tradeData.datetime,
+                    entryTime: tradeData.entryTime,
+                    exitTime: tradeData.exitTime,
+                    entryPrice: tradeData.entryPrice,
+                    quantity: tradeData.quantity,
+                    side: tradeData.side
+                  }];
+                }
+
+                if (tradeExecutionsToCheck && tradeExecutionsToCheck.length > 0 && existingExecutions.length > 0) {
                   // Create a set of execution timestamps from the new trade
+                  // Handle both datetime (Lightspeed) and entryTime (ProjectX) formats
                   const newExecutionTimestamps = new Set(
-                    tradeData.executionData.map(exec => 
-                      new Date(exec.datetime).getTime()
-                    )
+                    tradeExecutionsToCheck.map(exec => {
+                      const timestamp = exec.datetime || exec.entryTime;
+                      return timestamp ? new Date(timestamp).getTime() : null;
+                    }).filter(t => t !== null && !isNaN(t))
                   );
-                  
-                  // Check if any existing execution has the same timestamp
-                  // If we find even one matching timestamp, it's likely a duplicate
-                  const hasMatchingExecution = existingExecutions.some(exec => {
-                    const execTime = new Date(exec.datetime).getTime();
-                    return newExecutionTimestamps.has(execTime);
-                  });
-                  
-                  if (hasMatchingExecution) {
-                    logger.logImport(`Found duplicate based on execution timestamp match`);
-                    return true;
+
+                  if (newExecutionTimestamps.size === 0) {
+                    // No valid timestamps found, skip timestamp matching
+                    logger.logImport(`[DEBUG] No valid timestamps in new trade's executions, falling back to price/PnL matching`);
+                  } else {
+                    // Check if any existing execution has the same timestamp
+                    // If we find even one matching timestamp, it's likely a duplicate
+                    const hasMatchingExecution = existingExecutions.some(exec => {
+                      const timestamp = exec.datetime || exec.entryTime;
+                      if (!timestamp) return false;
+                      const execTime = new Date(timestamp).getTime();
+                      return !isNaN(execTime) && newExecutionTimestamps.has(execTime);
+                    });
+
+                    if (hasMatchingExecution) {
+                      logger.logImport(`Found duplicate based on execution timestamp match`);
+                      return true;
+                    }
                   }
                 }
                 
@@ -1515,6 +1745,24 @@ const tradeController = {
       res.json(analytics);
     } catch (error) {
       console.error('Analytics error:', error);
+      next(error);
+    }
+  },
+
+  async getMonthlyPerformance(req, res, next) {
+    try {
+      const year = parseInt(req.query.year) || new Date().getFullYear();
+
+      console.log('[MONTHLY] Getting monthly performance for user:', req.user.id, 'year:', year);
+
+      const data = await Trade.getMonthlyPerformance(req.user.id, year);
+
+      res.json({
+        year,
+        ...data
+      });
+    } catch (error) {
+      console.error('[ERROR] Monthly performance error:', error);
       next(error);
     }
   },
@@ -2554,9 +2802,7 @@ const tradeController = {
         UPDATE trades
         SET
           enrichment_status = 'completed',
-          enrichment_completed_at = CURRENT_TIMESTAMP,
-          enrichment_attempts = COALESCE(enrichment_attempts, 0),
-          last_enrichment_error = 'Force completed by user'
+          enrichment_completed_at = CURRENT_TIMESTAMP
         WHERE user_id = $1
           AND (enrichment_status IN ('pending', 'failed') OR enrichment_status IS NULL)
         RETURNING id, symbol, enrichment_status
@@ -2648,7 +2894,7 @@ const tradeController = {
         req.user.id
       ]);
 
-      logger.logInfo(`Updated health data for trade ${tradeId} for user ${req.user.id}`);
+      logger.info(`Updated health data for trade ${tradeId} for user ${req.user.id}`);
 
       res.json({
         success: true,
@@ -2711,7 +2957,7 @@ const tradeController = {
         }
       }
 
-      logger.logInfo(`Bulk updated ${updatedCount} trades with health data for user ${req.user.id}`);
+      logger.info(`Bulk updated ${updatedCount} trades with health data for user ${req.user.id}`);
 
       res.json({
         success: true,
@@ -2746,7 +2992,7 @@ const tradeController = {
 
       const result = await db.query(query, [req.user.id, today]);
 
-      logger.logInfo(`Found ${result.rows.length} expired options for user ${req.user.id}`);
+      logger.info(`Found ${result.rows.length} expired options for user ${req.user.id}`);
 
       res.json({
         success: true,
@@ -2789,7 +3035,7 @@ const tradeController = {
         });
       }
 
-      logger.logInfo(`Found ${expiredOptions.rows.length} expired options for user ${req.user.id}. Dry run: ${dryRun}`);
+      logger.info(`Found ${expiredOptions.rows.length} expired options for user ${req.user.id}. Dry run: ${dryRun}`);
 
       if (dryRun) {
         return res.json({
@@ -2825,9 +3071,7 @@ const tradeController = {
 
       const result = await db.query(updateQuery, [closedAt, req.user.id, today]);
 
-      logger.logInfo(`Auto-closed ${result.rows.length} expired options for user ${req.user.id}`, {
-        closedTrades: result.rows.map(t => ({ id: t.id, symbol: t.symbol, expirationDate: t.expiration_date }))
-      });
+      logger.info(`Auto-closed ${result.rows.length} expired options for user ${req.user.id}`, 'app');
 
       res.json({
         success: true,
@@ -2956,10 +3200,7 @@ const tradeController = {
 
       await Promise.all(updates);
 
-      logger.logInfo(`Calculated quality for ${updates.length} trades`, {
-        userId: req.user.id,
-        tradesUpdated: updates.length
-      });
+      logger.info(`Calculated quality for ${updates.length} trades for user ${req.user.id}`, 'app');
 
       res.json({
         success: true,
@@ -3000,9 +3241,7 @@ const tradeController = {
         });
       }
 
-      logger.logInfo(`Starting quality calculation for ${tradesResult.rows.length} trades`, {
-        userId: req.user.id
-      });
+      logger.info(`Starting quality calculation for ${tradesResult.rows.length} trades for user ${req.user.id}`, 'app');
 
       // Start async processing (don't await)
       setImmediate(async () => {
@@ -3033,9 +3272,7 @@ const tradeController = {
 
           await Promise.all(updates);
 
-          logger.logInfo(`Completed quality calculation for ${updates.length} trades`, {
-            userId: req.user.id
-          });
+          logger.info(`Completed quality calculation for ${updates.length} trades for user ${req.user.id}`, 'app');
         } catch (error) {
           logger.logError('Error in async quality calculation:', error);
         }

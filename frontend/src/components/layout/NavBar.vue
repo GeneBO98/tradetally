@@ -3,8 +3,8 @@
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="flex justify-between h-16">
         <div class="flex items-center">
-          <router-link to="/" class="flex items-center px-2 py-2 text-xl font-bold text-primary-600">
-            <img src="https://zipline.id10tips.com/u/tradetally-favicon.svg" alt="" class="h-8 w-auto mr-2" />
+          <router-link :to="authStore.isAuthenticated ? '/dashboard' : '/'" class="flex items-center px-2 py-2 text-xl font-bold text-primary-600">
+            <img src="/favicon.svg" alt="TradeTally Logo" class="h-8 w-auto mr-2" />
             TradeTally
           </router-link>
 
@@ -282,15 +282,21 @@ const baseNavigation = [
     ]
   },
   { name: 'Trades', to: '/trades', route: 'trades' },
-  { 
-    name: 'Analytics', 
+  {
+    name: 'Analytics',
     type: 'dropdown',
     items: [
-      { 
-        name: 'Performance Analytics', 
-        to: '/analytics', 
+      {
+        name: 'Performance Analytics',
+        to: '/analytics',
         route: 'analytics',
         description: 'Trading performance metrics and statistics'
+      },
+      {
+        name: 'Monthly Performance',
+        to: '/analytics/monthly',
+        route: 'monthly-performance',
+        description: 'Month-by-month performance breakdown and comparison'
       },
       {
         name: 'Behavioral Analytics',

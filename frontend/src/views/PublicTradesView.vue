@@ -32,7 +32,7 @@
                 <img
                   v-if="trade.avatar_url"
                   :src="trade.avatar_url"
-                  :alt="trade.username"
+                  :alt="trade.display_name || trade.username"
                   class="h-10 w-10 rounded-full"
                 />
                 <div
@@ -40,7 +40,7 @@
                   class="h-10 w-10 rounded-full bg-primary-600 flex items-center justify-center"
                 >
                   <span class="text-sm font-medium text-white">
-                    {{ trade.username.charAt(0).toUpperCase() }}
+                    {{ (trade.display_name || trade.username).charAt(0).toUpperCase() }}
                   </span>
                 </div>
               </div>
@@ -51,7 +51,7 @@
                   </h3>
                   <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
                     :class="[
-                      trade.side === 'long' 
+                      trade.side === 'long'
                         ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
                         : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
                     ]">
@@ -59,7 +59,7 @@
                   </span>
                   <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
                     :class="[
-                      trade.exit_price 
+                      trade.exit_price
                         ? 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
                         : 'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400'
                     ]">
@@ -67,7 +67,7 @@
                   </span>
                 </div>
                 <p class="text-sm text-gray-500 dark:text-gray-400">
-                  by @{{ trade.username }} • {{ formatDate(trade.trade_date) }}
+                  by @{{ trade.display_name || trade.username }} • {{ formatDate(trade.trade_date) }}
                 </p>
               </div>
             </div>

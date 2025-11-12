@@ -22,6 +22,9 @@ router.post('/trial', billingController.startTrial);
 router.post('/portal', billingController.createPortalSession);
 router.get('/checkout/:sessionId', billingController.getCheckoutSession);
 
+// Apple In-App Purchase routes
+router.post('/apple/verify', billingController.verifyAppleReceipt);
+
 // Debug endpoints (development only)
 router.delete('/debug/reset-trial', billingController.debugResetTrial);
 
