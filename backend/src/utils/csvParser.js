@@ -224,6 +224,14 @@ function detectBrokerFormat(fileBuffer) {
       return 'etrade';
     }
 
+    // Webull detection - look for Name, Symbol, Side, Status, Filled, Price, Time-in-Force, Placed Time, Filled Time
+    if (headers.includes('name') && headers.includes('symbol') && headers.includes('side') &&
+        headers.includes('status') && headers.includes('filled') && headers.includes('time-in-force') &&
+        headers.includes('placed time') && headers.includes('filled time')) {
+      console.log('[AUTO-DETECT] Detected: Webull (options)');
+      return 'webull';
+    }
+
     // ProjectX detection - look for ContractName, EnteredAt, ExitedAt, PnL columns
     if (headers.includes('contractname') &&
         headers.includes('enteredat') &&
@@ -1017,6 +1025,20 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       const tradeGroupingSettings = context.tradeGroupingSettings || { enabled: true, timeGapMinutes: 60 };
       const result = await parseIBKRTransactions(records, existingPositions, tradeGroupingSettings, context);
       console.log('Finished IBKR transaction parsing');
+      return result;
+    }
+
+    if (broker === 'webull') {
+      console.log('Starting Webull transaction parsing');
+      const result = await parseWebullTransactions(records, existingPositions, context);
+      console.log('Finished Webull transaction parsing');
+
+      // Apply trade grouping if enabled
+      const tradeGroupingSettings = context.tradeGroupingSettings || { enabled: true, timeGapMinutes: 60 };
+      if (tradeGroupingSettings.enabled && result.length > 0) {
+        return applyTradeGrouping(result, tradeGroupingSettings);
+      }
+
       return result;
     }
 
@@ -4091,6 +4113,386 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
   }
 
   console.log(`Created ${completedTrades.length} IBKR trades (including open positions) from ${transactions.length} transactions`);
+  return completedTrades;
+}
+
+/**
+ * Parse Webull options CSV transactions with position tracking
+ * Webull format: Name, Symbol, Side, Status, Filled, Total Qty, Price, Avg Price, Time-in-Force, Placed Time, Filled Time
+ * Options symbol format: SPY251114C00672000 (underlying + YYMMDD + C/P + strike*1000)
+ * @param {Array} records - CSV records to parse
+ * @param {Object} existingPositions - Map of existing open positions by symbol
+ * @param {Object} context - Context object containing existingExecutions
+ * @returns {Array} - Array of completed and open trades
+ */
+async function parseWebullTransactions(records, existingPositions = {}, context = {}) {
+  console.log(`\n=== WEBULL TRANSACTION PARSER ===`);
+  console.log(`Processing ${records.length} Webull transaction records`);
+  console.log(`Existing open positions passed to parser: ${Object.keys(existingPositions).length}`);
+
+  if (Object.keys(existingPositions).length > 0) {
+    console.log(`Existing positions:`);
+    Object.entries(existingPositions).forEach(([symbol, position]) => {
+      console.log(`  ${symbol}: ${position.side} ${position.quantity} @ $${position.entryPrice} (Trade ID: ${position.id})`);
+    });
+  }
+
+  const transactions = [];
+  const completedTrades = [];
+
+  // Debug: Log first few records to see structure
+  console.log('\nSample Webull records:');
+  records.slice(0, 5).forEach((record, i) => {
+    console.log(`Record ${i}:`, JSON.stringify(record));
+  });
+
+  // First, parse all transactions
+  for (const record of records) {
+    try {
+      // Get symbol from Symbol column (full option symbol like SPY251114C00672000)
+      const symbol = cleanString(record.Symbol || record.symbol);
+      const side = cleanString(record.Side || record.side).toLowerCase();
+      const status = cleanString(record.Status || record.status);
+      const filled = parseInt(record.Filled || record.filled || 0);
+      const price = parseFloat(record['Avg Price'] || record['avg price'] || record.Price || record.price || 0);
+      const filledTime = record['Filled Time'] || record['filled time'] || '';
+
+      // Only process filled orders
+      if (status.toLowerCase() !== 'filled' || filled === 0) {
+        console.log(`Skipping Webull record - not filled or zero quantity:`, { symbol, status, filled });
+        continue;
+      }
+
+      // Skip if missing essential data
+      if (!symbol || !side || price === 0 || !filledTime) {
+        console.log(`Skipping Webull record missing data:`, { symbol, side, filled, price, filledTime });
+        continue;
+      }
+
+      // Parse the filled time (format: "11/14/2025 11:31:56 EST")
+      let tradeDate = null;
+      let entryTime = null;
+      if (filledTime) {
+        // Remove timezone abbreviation and parse
+        const cleanedTime = filledTime.replace(/\s+(EST|EDT|CST|CDT|MST|MDT|PST|PDT)$/, '').trim();
+        tradeDate = parseDate(cleanedTime);
+        entryTime = parseDateTime(cleanedTime);
+      }
+
+      if (!tradeDate || !entryTime) {
+        console.log(`Skipping Webull record with invalid date: ${filledTime}`);
+        continue;
+      }
+
+      // Validate date is reasonable (not in future, not too old)
+      const now = new Date();
+      const maxFutureDate = new Date(now.getTime() + 24 * 60 * 60 * 1000); // Allow 1 day in future for timezone issues
+      const minPastDate = new Date('2000-01-01');
+
+      if (entryTime > maxFutureDate) {
+        console.log(`Skipping Webull record with future date: ${filledTime}`);
+        continue;
+      }
+
+      if (entryTime < minPastDate) {
+        console.log(`Skipping Webull record with date too far in past: ${filledTime}`);
+        continue;
+      }
+
+      // Determine action from side
+      const action = side === 'buy' ? 'buy' : 'sell';
+
+      transactions.push({
+        symbol,
+        date: tradeDate,
+        datetime: entryTime,
+        action: action,
+        quantity: filled,
+        price: price,
+        fees: 0, // Webull doesn't show fees separately in this format
+        description: `Webull ${action}`,
+        raw: record
+      });
+
+      console.log(`Parsed Webull transaction: ${action} ${filled} ${symbol} @ $${price.toFixed(2)}`);
+    } catch (error) {
+      console.error('Error parsing Webull transaction:', error, record);
+    }
+  }
+
+  // Sort transactions by symbol and datetime
+  transactions.sort((a, b) => {
+    if (a.symbol !== b.symbol) return a.symbol.localeCompare(b.symbol);
+    return new Date(a.datetime) - new Date(b.datetime);
+  });
+
+  console.log(`Parsed ${transactions.length} valid Webull trade transactions`);
+
+  // Group transactions by symbol
+  const transactionsBySymbol = {};
+  for (const transaction of transactions) {
+    if (!transactionsBySymbol[transaction.symbol]) {
+      transactionsBySymbol[transaction.symbol] = [];
+    }
+    transactionsBySymbol[transaction.symbol].push(transaction);
+  }
+
+  // Log all available existing positions for debugging
+  console.log(`\n[WEBULL] Available existing positions:`);
+  if (Object.keys(existingPositions).length === 0) {
+    console.log(`  → No existing positions found`);
+  } else {
+    Object.entries(existingPositions).forEach(([sym, pos]) => {
+      console.log(`  → ${sym}: ${pos.side} ${pos.quantity} @ $${pos.entryPrice} (ID: ${pos.id})`);
+    });
+  }
+
+  // Process transactions using round-trip trade grouping
+  for (const symbol in transactionsBySymbol) {
+    const symbolTransactions = transactionsBySymbol[symbol];
+
+    console.log(`\n=== Processing ${symbolTransactions.length} Webull transactions for ${symbol} ===`);
+
+    // Parse instrument data from symbol (options format: SPY251114C00672000)
+    const instrumentData = parseInstrumentData(symbol);
+
+    console.log(`Instrument type: ${instrumentData.instrumentType}`);
+    if (instrumentData.instrumentType === 'option') {
+      console.log(`  Underlying: ${instrumentData.underlyingSymbol}`);
+      console.log(`  Strike: $${instrumentData.strikePrice}`);
+      console.log(`  Expiration: ${instrumentData.expirationDate}`);
+      console.log(`  Type: ${instrumentData.optionType}`);
+    }
+
+    // For options, quantity is in contracts but prices are per-share
+    // We need to apply a multiplier when calculating dollar values (entryValue/exitValue)
+    const contractMultiplier = 1; // Quantity is already in contracts
+    const valueMultiplier = instrumentData.instrumentType === 'option' ? 100 :
+                            instrumentData.instrumentType === 'future' ? (instrumentData.pointValue || 1) : 1;
+
+    // Track position and round-trip trades
+    // For options, try looking up by underlying symbol since that's what gets saved to database
+    let existingPosition = existingPositions[symbol];
+    if (!existingPosition && instrumentData.instrumentType === 'option' && instrumentData.underlyingSymbol) {
+      existingPosition = existingPositions[instrumentData.underlyingSymbol];
+      if (existingPosition) {
+        console.log(`  → Found existing position using underlying symbol: ${instrumentData.underlyingSymbol}`);
+      }
+    }
+
+    if (!existingPosition) {
+      console.log(`  → No existing position found for symbol: ${symbol}`);
+      if (instrumentData.instrumentType === 'option' && instrumentData.underlyingSymbol) {
+        console.log(`  → Also checked underlying symbol: ${instrumentData.underlyingSymbol}`);
+      }
+    }
+
+    let currentPosition = existingPosition ?
+      (existingPosition.side === 'long' ? existingPosition.quantity : -existingPosition.quantity) : 0;
+    let currentTrade = existingPosition ? {
+      symbol: symbol,
+      entryTime: existingPosition.entryTime,
+      tradeDate: existingPosition.tradeDate,
+      side: existingPosition.side,
+      executions: Array.isArray(existingPosition.executions)
+        ? existingPosition.executions
+        : (existingPosition.executions ? JSON.parse(existingPosition.executions) : []),
+      totalQuantity: existingPosition.quantity,
+      totalFees: existingPosition.commission || 0,
+      entryValue: existingPosition.quantity * existingPosition.entryPrice * valueMultiplier,
+      exitValue: 0,
+      broker: existingPosition.broker || 'webull',
+      isExistingPosition: true,
+      existingTradeId: existingPosition.id,
+      newExecutionsAdded: 0
+    } : null;
+
+    if (existingPosition) {
+      console.log(`  → Starting with existing ${existingPosition.side} position: ${existingPosition.quantity} ${instrumentData.instrumentType === 'option' ? 'contracts' : 'shares'} @ $${existingPosition.entryPrice}`);
+      console.log(`  → Initial position: ${currentPosition}, entryValue: $${currentTrade.entryValue.toFixed(2)}`);
+    }
+
+    for (const transaction of symbolTransactions) {
+      const qty = transaction.quantity;
+      const prevPosition = currentPosition;
+
+      console.log(`\n${transaction.action} ${qty} @ $${transaction.price} | Position: ${currentPosition}`);
+
+      // Start new trade if going from flat to position
+      if (currentPosition === 0) {
+        currentTrade = {
+          symbol: symbol,
+          entryTime: transaction.datetime,
+          tradeDate: transaction.date,
+          side: transaction.action === 'buy' ? 'long' : 'short',
+          executions: [],
+          totalQuantity: 0,
+          totalFees: 0,
+          entryValue: 0,
+          exitValue: 0,
+          broker: 'webull'
+        };
+        console.log(`  → Started new ${currentTrade.side} trade`);
+      }
+
+      // Add execution to current trade (check for duplicates first)
+      if (currentTrade) {
+        const newExecution = {
+          action: transaction.action,
+          quantity: qty,
+          price: transaction.price,
+          datetime: transaction.datetime,
+          fees: transaction.fees
+        };
+
+        // First, check if this execution exists in ANY existing trade (complete or open)
+        const existsGlobally = isExecutionDuplicate(newExecution, symbol, context);
+
+        // Then check if it exists in the current trade being built
+        const executionExists = existsGlobally || currentTrade.executions.some(exec =>
+          exec.datetime && newExecution.datetime &&
+          new Date(exec.datetime).toISOString() === new Date(newExecution.datetime).toISOString()
+        );
+
+        if (existsGlobally) {
+          console.log(`  [SKIP] Execution already exists in a completed or open trade: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
+        }
+
+        if (!executionExists) {
+          currentTrade.executions.push(newExecution);
+          currentTrade.totalFees += transaction.fees;
+          if (currentTrade.isExistingPosition) {
+            currentTrade.newExecutionsAdded++;
+          }
+        } else {
+          console.log(`  → Skipping duplicate execution: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
+        }
+      }
+
+      // Update position and values
+      if (transaction.action === 'buy') {
+        currentPosition += qty;
+
+        if (currentTrade && currentTrade.side === 'long') {
+          currentTrade.entryValue += qty * transaction.price * valueMultiplier;
+          currentTrade.totalQuantity += qty;
+        } else if (currentTrade && currentTrade.side === 'short') {
+          currentTrade.exitValue += qty * transaction.price * valueMultiplier;
+        }
+      } else if (transaction.action === 'sell') {
+        currentPosition -= qty;
+
+        if (currentTrade && currentTrade.side === 'short') {
+          currentTrade.entryValue += qty * transaction.price * valueMultiplier;
+          currentTrade.totalQuantity += qty;
+        } else if (currentTrade && currentTrade.side === 'long') {
+          currentTrade.exitValue += qty * transaction.price * valueMultiplier;
+        }
+      }
+
+      console.log(`  Position: ${prevPosition} → ${currentPosition}`);
+
+      // Close trade if position goes to zero
+      if (currentPosition === 0 && currentTrade && currentTrade.totalQuantity > 0) {
+        // Calculate weighted average prices (divide by valueMultiplier to get per-share/per-contract price)
+        currentTrade.entryPrice = currentTrade.entryValue / (currentTrade.totalQuantity * valueMultiplier);
+        currentTrade.exitPrice = currentTrade.exitValue / (currentTrade.totalQuantity * valueMultiplier);
+
+        // Calculate P/L
+        if (currentTrade.side === 'long') {
+          currentTrade.pnl = currentTrade.exitValue - currentTrade.entryValue - currentTrade.totalFees;
+        } else {
+          currentTrade.pnl = currentTrade.entryValue - currentTrade.exitValue - currentTrade.totalFees;
+        }
+
+        currentTrade.pnlPercent = (currentTrade.pnl / currentTrade.entryValue) * 100;
+        currentTrade.quantity = currentTrade.totalQuantity * contractMultiplier;
+        currentTrade.commission = currentTrade.totalFees;
+        currentTrade.fees = 0;
+
+        // Calculate proper entry and exit times from all executions
+        const executionTimes = currentTrade.executions
+          .filter(e => e.datetime)
+          .map(e => new Date(e.datetime))
+          .filter(d => !isNaN(d.getTime()));
+        const sortedTimes = executionTimes.sort((a, b) => a - b);
+        if (sortedTimes.length > 0) {
+          currentTrade.entryTime = sortedTimes[0].toISOString();
+          currentTrade.exitTime = sortedTimes[sortedTimes.length - 1].toISOString();
+        }
+
+        currentTrade.executionData = currentTrade.executions;
+        // Add instrument data for options/futures
+        Object.assign(currentTrade, instrumentData);
+
+        // For options, update symbol to use underlying symbol instead of the full option symbol
+        if (instrumentData.instrumentType === 'option' && instrumentData.underlyingSymbol) {
+          currentTrade.symbol = instrumentData.underlyingSymbol;
+        }
+
+        // Mark as update if this was an existing position
+        if (currentTrade.isExistingPosition) {
+          currentTrade.isUpdate = currentTrade.newExecutionsAdded > 0;
+          currentTrade.notes = `Closed existing position: ${currentTrade.executions.length} closing executions`;
+          console.log(`  [SUCCESS] CLOSED existing ${currentTrade.side} position: ${currentTrade.totalQuantity} contracts, P/L: $${currentTrade.pnl.toFixed(2)}`);
+        } else {
+          currentTrade.notes = `Round trip: ${currentTrade.executions.length} executions`;
+          console.log(`  [SUCCESS] Completed ${currentTrade.side} trade: ${currentTrade.totalQuantity} contracts, ${currentTrade.executions.length} executions, P/L: $${currentTrade.pnl.toFixed(2)}`);
+        }
+
+        // Only add trade if it has executions (skip if all were duplicates)
+        if (currentTrade.executions.length > 0) {
+          currentTrade.executionData = currentTrade.executions;
+          completedTrades.push(currentTrade);
+        } else {
+          console.log(`  [SKIP] Trade has no executions (all were duplicates), not creating trade`);
+        }
+        currentTrade = null;
+      }
+    }
+
+    console.log(`\n${symbol} Final Position: ${currentPosition} ${instrumentData.instrumentType === 'option' ? 'contracts' : 'shares'}`);
+    if (currentTrade) {
+      console.log(`Active trade: ${currentTrade.side} ${currentTrade.totalQuantity} ${instrumentData.instrumentType === 'option' ? 'contracts' : 'shares'}, ${currentTrade.executions.length} executions`);
+
+      // Add open position as incomplete trade
+      currentTrade.entryPrice = currentTrade.entryValue / (currentTrade.totalQuantity * valueMultiplier);
+      currentTrade.exitPrice = null;
+      currentTrade.quantity = currentTrade.totalQuantity;
+      currentTrade.commission = currentTrade.totalFees;
+      currentTrade.fees = 0;
+      currentTrade.exitTime = null;
+      currentTrade.pnl = 0;
+      currentTrade.pnlPercent = 0;
+      currentTrade.notes = `Open position: ${currentTrade.executions.length} executions`;
+      currentTrade.executionData = currentTrade.executions;
+
+      // Add instrument data for options/futures
+      Object.assign(currentTrade, instrumentData);
+
+      // For options, update symbol to use underlying symbol instead of the full option symbol
+      if (instrumentData.instrumentType === 'option' && instrumentData.underlyingSymbol) {
+        currentTrade.symbol = instrumentData.underlyingSymbol;
+      }
+
+      // Mark as update if this was an existing position
+      if (currentTrade.isExistingPosition) {
+        currentTrade.isUpdate = currentTrade.newExecutionsAdded > 0;
+        console.log(`  → Updated existing position with ${currentTrade.newExecutionsAdded} new executions`);
+      } else {
+        console.log(`  → Creating new open position`);
+      }
+
+      // Only add if it has executions (skip if all were duplicates)
+      if (currentTrade.executions.length > 0) {
+        completedTrades.push(currentTrade);
+      } else {
+        console.log(`  [SKIP] Open position has no executions (all were duplicates), not creating trade`);
+      }
+    }
+  }
+
+  console.log(`\nCreated ${completedTrades.length} Webull trades (including open positions) from ${transactions.length} transactions`);
   return completedTrades;
 }
 
