@@ -22,6 +22,7 @@
                 <option value="schwab">Charles Schwab</option>
                 <option value="thinkorswim">ThinkorSwim</option>
                 <option value="ibkr">Interactive Brokers</option>
+                <option value="webull">Webull</option>
                 <option value="etrade">E*TRADE</option>
                 <option value="papermoney">PaperMoney</option>
                 <option value="tradingview">TradingView</option>
@@ -243,6 +244,21 @@
               </div>
               <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
                 <strong>Required columns:</strong> Symbol, DateTime, Quantity (positive=buy, negative=sell), Price. Optional: Commission, Fees
+              </p>
+            </div>
+
+            <div>
+              <h4 class="font-medium text-gray-900 dark:text-white">Webull</h4>
+              <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
+                Export from Webull's "Orders" > "Options Orders" history. Supports options trading with automatic roundtrip trade detection.
+              </p>
+              <div class="bg-gray-50 dark:bg-gray-800 rounded-md p-3 text-xs font-mono overflow-x-auto">
+                Name,Symbol,Side,Status,Filled,Total Qty,Price,Avg Price,Time-in-Force,Placed Time,Filled Time<br>
+                SPY251114C00672000,SPY251114C00672000,Buy,Filled,3,3,1.82,1.82,DAY,11/14/2025 11:10:02 EST,11/14/2025 11:10:02 EST<br>
+                SPY251114C00672000,SPY251114C00672000,Sell,Filled,3,3,2.87,2.87,DAY,11/14/2025 11:31:56 EST,11/14/2025 11:31:56 EST
+              </div>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                <strong>Required columns:</strong> Symbol, Side, Status, Filled, Avg Price, Filled Time. Automatically parses option symbols (format: SPY251114C00672000).
               </p>
             </div>
 
