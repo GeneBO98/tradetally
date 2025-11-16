@@ -288,17 +288,9 @@ const createTradeChart = () => {
       },
     })
 
-    console.log('[DEBUG] Chart created:', chart)
-    console.log('[DEBUG] Chart methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(chart)))
-
     // Create candlestick series using LightweightCharts v5 API
-    if (typeof chart.addCandlestickSeries !== 'function') {
-      console.error('[ERROR] addCandlestickSeries method not found on chart object!')
-      console.error('[ERROR] Available methods:', Object.keys(chart))
-      throw new Error('Chart API mismatch - addCandlestickSeries not available')
-    }
-
-    candleSeries = chart.addCandlestickSeries({
+    // In v5, use addSeries with 'Candlestick' type instead of addCandlestickSeries
+    candleSeries = chart.addSeries('Candlestick', {
       upColor: '#10b981',
       downColor: '#ef4444',
       borderUpColor: '#10b981',
