@@ -76,7 +76,7 @@
                   <dd class="mt-1">
                     <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
                       :class="[
-                        trade.side === 'long' 
+                        trade.side === 'long'
                           ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
                           : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
                       ]">
@@ -84,12 +84,50 @@
                     </span>
                   </dd>
                 </div>
+                <!-- Options-specific fields -->
+                <div v-if="trade.instrument_type === 'option'">
+                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Instrument Type</dt>
+                  <dd class="mt-1">
+                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400">
+                      Option
+                    </span>
+                  </dd>
+                </div>
+                <div v-if="trade.instrument_type === 'option' && trade.option_type">
+                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Option Type</dt>
+                  <dd class="mt-1">
+                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
+                      :class="[
+                        trade.option_type === 'call'
+                          ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
+                          : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
+                      ]">
+                      {{ trade.option_type.toUpperCase() }}
+                    </span>
+                  </dd>
+                </div>
+                <div v-if="trade.instrument_type === 'option' && trade.strike_price">
+                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Strike Price</dt>
+                  <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">${{ formatNumber(trade.strike_price) }}</dd>
+                </div>
+                <div v-if="trade.instrument_type === 'option' && trade.expiration_date">
+                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Expiration Date</dt>
+                  <dd class="mt-1 text-sm text-gray-900 dark:text-white">{{ formatDate(trade.expiration_date) }}</dd>
+                </div>
+                <div v-if="trade.instrument_type === 'option' && trade.contract_size">
+                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Contract Size</dt>
+                  <dd class="mt-1 text-sm text-gray-900 dark:text-white">{{ trade.contract_size }} shares/contract</dd>
+                </div>
                 <div>
-                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Entry Price</dt>
+                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
+                    {{ trade.instrument_type === 'option' ? 'Entry Price (per share)' : 'Entry Price' }}
+                  </dt>
                   <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">${{ formatNumber(trade.entry_price) }}</dd>
                 </div>
                 <div>
-                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Exit Price</dt>
+                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
+                    {{ trade.instrument_type === 'option' ? 'Exit Price (per share)' : 'Exit Price' }}
+                  </dt>
                   <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">
                     {{ trade.exit_time ? `$${formatNumber(trade.exit_price)}` : 'Open' }}
                   </dd>
@@ -121,9 +159,14 @@
                   </dd>
                 </div>
                 <div>
-                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Quantity</dt>
+                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
+                    {{ trade.instrument_type === 'option' ? 'Contracts' : 'Quantity' }}
+                  </dt>
                   <dd class="mt-1 text-sm text-gray-900 dark:text-white">
                     {{ formatQuantity(trade.executions && trade.executions.length > 0 ? executionSummary.totalShareQuantity : trade.quantity) }}
+                    <span v-if="trade.instrument_type === 'option' && trade.contract_size" class="text-xs text-gray-500 dark:text-gray-400 ml-1">
+                      ({{ formatQuantity((trade.executions && trade.executions.length > 0 ? executionSummary.totalShareQuantity : trade.quantity) * trade.contract_size) }} shares)
+                    </span>
                   </dd>
                 </div>
                 <div>
@@ -532,7 +575,7 @@
                         {{ execution.fees || execution.commission ? `$${formatNumber((execution.fees || 0) + (execution.commission || 0))}` : '-' }}
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">
-                        {{ execution.entryTime ? formatDateTime(execution.entryTime) : (execution.datetime ? formatDateTime(execution.datetime) : '-') }}
+                        {{ execution.entryTime ? formatDateTime(execution.entryTime) : '-' }}
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">
                         {{ execution.exitTime ? formatDateTime(execution.exitTime) : '-' }}
@@ -558,7 +601,7 @@
                       {{ ((execution.action || execution.side) || 'N/A').toUpperCase() }}
                     </span>
                     <div class="text-xs text-gray-500 dark:text-gray-400">
-                      {{ execution.entryTime ? formatDateTime(execution.entryTime) : (execution.datetime ? formatDateTime(execution.datetime) : '-') }}
+                      {{ execution.entryTime ? formatDateTime(execution.entryTime) : (execution.exitTime ? formatDateTime(execution.exitTime) : '-') }}
                     </div>
                   </div>
 
@@ -1088,7 +1131,14 @@ const processedExecutions = computed(() => {
     // For options: average cost per contract (price per share of the option)
     // For stocks: average cost per share
     const avgCost = totalContracts > 0 ? (totalCost / (totalContracts * contractSize)) : 0
-    
+
+    // Determine if this execution is opening or closing the position
+    // For LONG trades: Buy = entry, Sell = exit
+    // For SHORT trades: Sell = entry, Buy = exit
+    const tradeSide = trade.value.side
+    const isOpening = (tradeSide === 'long' && (action === 'buy' || action === 'long')) ||
+                      (tradeSide === 'short' && (action === 'sell' || action === 'short'))
+
     return {
       // Keep original execution data
       ...execution,
@@ -1100,7 +1150,10 @@ const processedExecutions = computed(() => {
       fees,
       datetime,
       runningPosition,
-      avgCost: avgCost > 0 ? avgCost : null
+      avgCost: avgCost > 0 ? avgCost : null,
+      // Set entryTime/exitTime based on whether this execution opens or closes the position
+      entryTime: isOpening ? datetime : null,
+      exitTime: isOpening ? null : datetime
     }
   })
 })
@@ -1201,10 +1254,11 @@ function formatDateTime(date) {
     const dateStr = date.toString()
 
     // If it's an ISO datetime string, parse components directly
-    const isoMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/)
+    // Updated regex to handle milliseconds and timezone (but we ignore them to parse as local time)
+    const isoMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?/)
     if (isoMatch) {
       const [, year, month, day, hour, minute, second] = isoMatch.map(Number)
-      // Create date in local timezone
+      // Create date in local timezone (ignoring any timezone info from the string)
       const dateObj = new Date(year, month - 1, day, hour, minute, second)
       return format(dateObj, 'MMM dd, yyyy HH:mm')
     }

@@ -2387,9 +2387,10 @@ const tradeController = {
                return res.status(400).json({ error: 'Trade missing entry date information' });
       }
 
-      // Get chart data using the ChartService
+      // Get chart data using the ChartService (for both stocks and options)
+      // For options, this fetches the underlying stock's candlestick data (e.g., SPY)
       const chartData = await ChartService.getTradeChartData(userId, symbol, entryDate, exitDate);
-      
+
       // Add trade information to the response
       chartData.trade = {
         id: trade.id,
@@ -2410,7 +2411,15 @@ const tradeController = {
         quantity: trade.quantity,
         side: trade.side,
         pnl: trade.pnl,
-        pnlPercent: trade.pnl_percent
+        pnlPercent: trade.pnl_percent,
+        // Options-specific fields
+        instrumentType: trade.instrument_type,
+        strikePrice: trade.strike_price,
+        expirationDate: trade.expiration_date,
+        optionType: trade.option_type,
+        contractSize: trade.contract_size,
+        // Include executions for options trades (to display actual option prices instead of underlying stock)
+        executions: trade.executions ? (typeof trade.executions === 'string' ? JSON.parse(trade.executions) : trade.executions) : null
       };
 
       console.log('Sending trade data to frontend:', {
