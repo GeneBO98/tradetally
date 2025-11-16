@@ -1231,13 +1231,17 @@ function formatDate(date) {
     // Parse date string manually to avoid timezone issues
     // If it's a date-only string (YYYY-MM-DD), parse components directly
     const dateStr = date.toString()
-    if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
-      const [year, month, day] = dateStr.split('-').map(Number)
+
+    // Match date-only format (YYYY-MM-DD) or date with midnight time (YYYY-MM-DDT00:00:00...)
+    const dateOnlyMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})(?:T00:00:00(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?$/)
+    if (dateOnlyMatch) {
+      const [, year, month, day] = dateOnlyMatch.map(Number)
       // Create date in local timezone (month is 0-indexed)
       const dateObj = new Date(year, month - 1, day)
       return format(dateObj, 'MMM dd, yyyy')
     }
-    // For datetime strings, use as-is
+
+    // For datetime strings with non-midnight times, use as-is
     const dateObj = new Date(date)
     if (isNaN(dateObj.getTime())) return 'Invalid Date'
     return format(dateObj, 'MMM dd, yyyy')
