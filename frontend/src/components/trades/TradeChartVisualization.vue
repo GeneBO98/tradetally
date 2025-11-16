@@ -288,9 +288,9 @@ const createTradeChart = () => {
       },
     })
 
-    // Create candlestick series using LightweightCharts v5 API
-    // Pass the series class directly (not a string type)
-    candleSeries = chart.addSeries(LightweightCharts.CandlestickSeries, {
+    // Create candlestick series using standard LightweightCharts API
+    // Use addCandlestickSeries method directly (works in all versions)
+    candleSeries = chart.addCandlestickSeries({
       upColor: '#10b981',
       downColor: '#ef4444',
       borderUpColor: '#10b981',
@@ -580,11 +580,11 @@ const createTradeChart = () => {
           })
         })
 
-        // Set all markers at once using v5 API
+        // Set all markers at once using standard API
         console.log(`[OPTIONS] Attempting to set ${allMarkers.length} markers:`, allMarkers)
         try {
-          // LightweightCharts v5 uses createSeriesMarkers instead of series.setMarkers
-          LightweightCharts.createSeriesMarkers(candleSeries, allMarkers)
+          // Use standard setMarkers method on the series
+          candleSeries.setMarkers(allMarkers)
           console.log(`[OPTIONS] ✓ Successfully set ${allMarkers.length} execution markers`)
         } catch (error) {
           console.error('[OPTIONS] ✗ Error setting markers:', error)
@@ -710,11 +710,11 @@ const createTradeChart = () => {
           size: 2
         }
         
-        // Add both entry and exit markers together using v5 API
+        // Add both entry and exit markers together using standard API
         const allMarkers = entryMarker ? [entryMarker, exitMarker] : [exitMarker]
         console.log('[STOCK] Setting', allMarkers.length, 'markers')
         try {
-          LightweightCharts.createSeriesMarkers(candleSeries, allMarkers)
+          candleSeries.setMarkers(allMarkers)
           console.log('[STOCK] ✓ Successfully set', allMarkers.length, 'markers')
         } catch (markerError) {
           console.error('[STOCK] ✗ Error setting markers:', markerError)
