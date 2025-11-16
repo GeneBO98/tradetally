@@ -145,7 +145,7 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted, watch, computed } from 'vue'
-import { createChart } from 'lightweight-charts'
+import * as LightweightCharts from 'lightweight-charts'
 import api from '@/services/api'
 import { useNotification } from '@/composables/useNotification'
 import { useAuthStore } from '@/stores/auth'
@@ -267,7 +267,7 @@ const createTradeChart = () => {
     const isDark = document.documentElement.classList.contains('dark')
 
     // Create LightweightCharts chart that uses OUR data
-    chart = createChart(chartContainer.value, {
+    chart = LightweightCharts.createChart(chartContainer.value, {
       width: chartContainer.value.clientWidth,
       height: 384,
       layout: {
@@ -288,9 +288,8 @@ const createTradeChart = () => {
       },
     })
 
-    // Create candlestick series using LightweightCharts v5 API
-    // In v5, use addSeries with 'Candlestick' type instead of addCandlestickSeries
-    candleSeries = chart.addSeries('Candlestick', {
+    // Create candlestick series using LightweightCharts v4 API
+    candleSeries = chart.addCandlestickSeries({
       upColor: '#10b981',
       downColor: '#ef4444',
       borderUpColor: '#10b981',
