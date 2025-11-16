@@ -145,7 +145,7 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted, watch, computed } from 'vue'
-import * as LightweightCharts from 'lightweight-charts'
+import { createChart } from 'lightweight-charts'
 import api from '@/services/api'
 import { useNotification } from '@/composables/useNotification'
 import { useAuthStore } from '@/stores/auth'
@@ -267,7 +267,7 @@ const createTradeChart = () => {
     const isDark = document.documentElement.classList.contains('dark')
 
     // Create LightweightCharts chart that uses OUR data
-    chart = LightweightCharts.createChart(chartContainer.value, {
+    chart = createChart(chartContainer.value, {
       width: chartContainer.value.clientWidth,
       height: 384,
       layout: {
@@ -288,8 +288,16 @@ const createTradeChart = () => {
       },
     })
 
-    // Create candlestick series using standard LightweightCharts API
-    // Use addCandlestickSeries method directly (works in all versions)
+    console.log('[DEBUG] Chart created:', chart)
+    console.log('[DEBUG] Chart methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(chart)))
+
+    // Create candlestick series using LightweightCharts v5 API
+    if (typeof chart.addCandlestickSeries !== 'function') {
+      console.error('[ERROR] addCandlestickSeries method not found on chart object!')
+      console.error('[ERROR] Available methods:', Object.keys(chart))
+      throw new Error('Chart API mismatch - addCandlestickSeries not available')
+    }
+
     candleSeries = chart.addCandlestickSeries({
       upColor: '#10b981',
       downColor: '#ef4444',
