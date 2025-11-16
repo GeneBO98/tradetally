@@ -7,7 +7,10 @@
           <span class="text-xs text-gray-500 dark:text-gray-400">
             {{ chartData.interval === 'daily' ? 'Daily' : chartData.interval }} chart
           </span>
-          <span v-if="chartData.source" class="text-xs px-2 py-1 rounded-full" 
+          <span v-if="chartData.trade && chartData.trade.instrumentType === 'option'" class="text-xs px-2 py-1 rounded-full bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
+            Options Trade
+          </span>
+          <span v-if="chartData.source" class="text-xs px-2 py-1 rounded-full"
                 :class="getSourceBadgeClass(chartData.source)">
             {{ getSourceLabel(chartData.source) }}
           </span>
@@ -95,8 +98,20 @@
       </div>
 
       <div v-else-if="showChart" class="relative">
+        <!-- Options trade chart explanation -->
+        <div v-if="chartData && chartData.trade && chartData.trade.instrumentType === 'option'" class="mb-3 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+          <div class="flex items-start space-x-2">
+            <svg class="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div class="text-sm text-blue-800 dark:text-blue-200">
+              <strong>Options Trade Chart:</strong> This chart shows the <strong>underlying stock</strong> price movement. Arrows indicate execution <strong>timing</strong> (when you entered/exited), not option contract prices. See execution prices in the table below.
+            </div>
+          </div>
+        </div>
+
         <div ref="chartContainer" class="w-full h-96"></div>
-        
+
         <div v-if="chartData && chartData.trade" class="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
           <div>
             <dt class="text-gray-500 dark:text-gray-400">Entry</dt>
@@ -188,11 +203,39 @@ const formatNumber = (num) => {
   return parseFloat(num).toFixed(2)
 }
 
+// Parse datetime string to Unix timestamp (seconds) without timezone conversion
+// Same logic as formatDateTime to ensure consistency
+const parseDateTimeToTimestamp = (dateStr) => {
+  if (!dateStr) return null
+
+  try {
+    const str = dateStr.toString()
+
+    // If it's an ISO datetime string, parse components directly to avoid timezone issues
+    // Matches formats like: 2025-11-15T14:30:00 or 2025-11-15T14:30:00.000Z
+    const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?/)
+    if (isoMatch) {
+      const [, year, month, day, hour, minute, second] = isoMatch.map(Number)
+      // Create date in local timezone (ignoring any timezone info from the string)
+      const dateObj = new Date(year, month - 1, day, hour, minute, second)
+      return Math.floor(dateObj.getTime() / 1000)
+    }
+
+    // Fallback to standard parsing (will have timezone issues but better than nothing)
+    const dateObj = new Date(dateStr)
+    if (isNaN(dateObj.getTime())) return null
+    return Math.floor(dateObj.getTime() / 1000)
+  } catch (error) {
+    console.error('Error parsing datetime to timestamp:', error, 'for date:', dateStr)
+    return null
+  }
+}
+
 const createTradeChart = () => {
   if (!chartContainer.value || !chartData.value) {
-    console.error('Missing chart container or data:', { 
-      container: !!chartContainer.value, 
-      data: !!chartData.value 
+    console.error('Missing chart container or data:', {
+      container: !!chartContainer.value,
+      data: !!chartData.value
     })
     return
   }
@@ -202,6 +245,8 @@ const createTradeChart = () => {
     chart.remove()
   }
 
+  const trade = chartData.value.trade
+
   if (!chartData.value.candles || chartData.value.candles.length === 0) {
     const symbol = chartData.value.symbol || 'Unknown'
     showWarning('Chart Data Unavailable', `Chart information could not be resolved for ${symbol}. This is common for smaller stocks or ETFs. Try major symbols like AAPL, MSFT, or GOOGL.`)
@@ -210,17 +255,16 @@ const createTradeChart = () => {
 
   try {
     console.log('Creating focused single-day chart using our backend data...')
-    
+
     // Check if chart container exists
     if (!chartContainer.value) {
       console.error('Chart container not found')
       error.value = 'Chart container not available'
       return
     }
-    
+
     // Get current theme
     const isDark = document.documentElement.classList.contains('dark')
-    const trade = chartData.value.trade
 
     // Create LightweightCharts chart that uses OUR data
     chart = LightweightCharts.createChart(chartContainer.value, {
@@ -244,7 +288,8 @@ const createTradeChart = () => {
       },
     })
 
-    // Create candlestick series
+    // Create candlestick series using LightweightCharts v5 API
+    // Pass the series class directly (not a string type)
     candleSeries = chart.addSeries(LightweightCharts.CandlestickSeries, {
       upColor: '#10b981',
       downColor: '#ef4444',
@@ -253,6 +298,9 @@ const createTradeChart = () => {
       wickUpColor: '#10b981',
       wickDownColor: '#ef4444',
     })
+
+    console.log('[DEBUG] ✓ Series created successfully!')
+    console.log('[DEBUG] setMarkers available:', typeof candleSeries.setMarkers)
 
     // Process and validate our backend data
     const validatedCandles = chartData.value.candles.map((candle, index) => {
@@ -413,23 +461,23 @@ const createTradeChart = () => {
     try {
       // Use entryTime field (which contains entry_time from database)
       const entryTime = trade.entryTime || trade.entryDate
-      entryTimestamp = Math.floor(new Date(entryTime).getTime() / 1000)
-      
-      // Use exitTime field (which contains exit_time from database)  
+      entryTimestamp = parseDateTimeToTimestamp(entryTime)
+
+      // Use exitTime field (which contains exit_time from database)
       const exitTime = trade.exitTime
       if (exitTime) {
-        exitTimestamp = Math.floor(new Date(exitTime).getTime() / 1000)
+        exitTimestamp = parseDateTimeToTimestamp(exitTime)
       }
-      
+
       // Debug timestamp calculation
       console.log('[TIME] FIXED TIMESTAMP CALCULATION:')
       console.log('Browser timezone:', Intl.DateTimeFormat().resolvedOptions().timeZone)
       console.log('Using entryTime field:', trade.entryTime)
       console.log('Using exitTime field:', trade.exitTime)
       console.log('Fallback entryDate field:', trade.entryDate)
-      
-      console.log('[SUCCESS] Calculated entryTimestamp:', entryTimestamp, new Date(entryTimestamp * 1000).toISOString())
-      console.log('[SUCCESS] Entry time in your timezone:', new Date(entryTimestamp * 1000).toLocaleString())
+
+      console.log('[SUCCESS] Calculated entryTimestamp:', entryTimestamp, entryTimestamp ? new Date(entryTimestamp * 1000).toISOString() : 'none')
+      console.log('[SUCCESS] Entry time in your timezone:', entryTimestamp ? new Date(entryTimestamp * 1000).toLocaleString() : 'none')
       console.log('[SUCCESS] Calculated exitTimestamp:', exitTimestamp, exitTimestamp ? new Date(exitTimestamp * 1000).toISOString() : 'none')
     } catch (dateError) {
       console.warn('Error parsing trade dates:', dateError.message)
@@ -470,12 +518,84 @@ const createTradeChart = () => {
       console.log('[TARGET] STARTING MARKER CREATION PROCESS...')
       console.log('Entry timestamp:', entryTimestamp, entryTimestamp ? new Date(entryTimestamp * 1000).toISOString() : 'none')
       console.log('Exit timestamp:', exitTimestamp, exitTimestamp ? new Date(exitTimestamp * 1000).toISOString() : 'none')
-      
-      // Declare entryMarker in outer scope
-      let entryMarker = null
-      
-      // Create precise trade execution indicators
-      if (entryTimestamp) {
+
+      const isOption = trade.instrumentType === 'option'
+
+      // For options trades with executions, create markers for each execution
+      if (isOption && trade.executions && trade.executions.length > 0) {
+        console.log('[OPTIONS] Creating execution markers for options trade')
+        const allMarkers = []
+
+        // Track exit execution index to alternate positions and avoid overlap
+        let exitCount = 0
+
+        trade.executions.forEach((execution, index) => {
+          const execTimestamp = parseDateTimeToTimestamp(execution.datetime)
+          if (!execTimestamp) {
+            console.warn(`[OPTIONS] Skipping execution ${index} - invalid datetime:`, execution.datetime)
+            return
+          }
+
+          const execPrice = parseFloat(execution.price)
+          const execAction = execution.action.toLowerCase()
+          const execQty = execution.quantity
+
+          // Find closest candle to this execution time
+          const execCandle = uniqueCandles.reduce((closest, candle) => {
+            const currentDiff = Math.abs(candle.time - execTimestamp)
+            const closestDiff = Math.abs(closest.time - execTimestamp)
+            return currentDiff < closestDiff ? candle : closest
+          })
+
+          // Determine if this is entry or exit
+          const isEntry = (trade.side === 'long' && execAction === 'buy') ||
+                         (trade.side === 'short' && execAction === 'sell')
+
+          console.log(`[OPTIONS] Execution ${index}: ${execAction} ${execQty} @ option price $${execPrice}`)
+          console.log(`  → Execution time: ${new Date(execTimestamp * 1000).toLocaleString()}`)
+          console.log(`  → Closest candle: ${new Date(execCandle.time * 1000).toLocaleString()}`)
+          console.log(`  → Time diff: ${Math.abs(execCandle.time - execTimestamp)} seconds`)
+          console.log(`  → Underlying stock price at execution: $${formatNumber(execCandle.close)}`)
+          console.log(`  → Option contract price: $${execPrice}`)
+
+          // For exits, alternate between above and below to avoid overlap
+          let position = isEntry ? 'belowBar' : 'aboveBar'
+          if (!isEntry) {
+            position = exitCount % 2 === 0 ? 'aboveBar' : 'belowBar'
+            exitCount++
+          }
+
+          // For options trades, markers show TIMING only (not price)
+          // The chart shows underlying stock prices, not option prices
+          // Option execution prices are shown in the executions table
+          const actionLabel = isEntry ? (trade.side === 'long' ? 'BUY' : 'SELL') : (trade.side === 'long' ? 'SELL' : 'BUY')
+
+          allMarkers.push({
+            time: execCandle.time,
+            position: position,
+            color: isEntry ? '#10b981' : '#ef4444',
+            shape: isEntry ? 'arrowUp' : 'arrowDown',
+            text: `${actionLabel} ${execQty}x`,  // Show action and quantity only, no price
+            size: 2
+          })
+        })
+
+        // Set all markers at once using v5 API
+        console.log(`[OPTIONS] Attempting to set ${allMarkers.length} markers:`, allMarkers)
+        try {
+          // LightweightCharts v5 uses createSeriesMarkers instead of series.setMarkers
+          LightweightCharts.createSeriesMarkers(candleSeries, allMarkers)
+          console.log(`[OPTIONS] ✓ Successfully set ${allMarkers.length} execution markers`)
+        } catch (error) {
+          console.error('[OPTIONS] ✗ Error setting markers:', error)
+        }
+      } else {
+        // For stock trades, use the original single marker logic
+        // Declare entryMarker in outer scope
+        let entryMarker = null
+
+        // Create precise trade execution indicators
+        if (entryTimestamp) {
         console.log('[SUCCESS] Entry timestamp found, creating entry marker...')
         // Find the closest candle to entry time
         const entryCandle = uniqueCandles.reduce((closest, candle) => {
@@ -533,25 +653,8 @@ const createTradeChart = () => {
           size: 2
         }
         
-        // Set entry marker using v5 API with fallback
-        console.log('[START] Creating entry marker with data:', entryMarker)
-        try {
-          if (LightweightCharts.createSeriesMarkers) {
-            const entryMarkersInstance = LightweightCharts.createSeriesMarkers(candleSeries, [entryMarker])
-            console.log('[SUCCESS] Entry marker created successfully:', entryMarkersInstance)
-          } else if (candleSeries.setMarkers) {
-            // Fallback to older API if available
-            console.log('[CLIP] Using fallback setMarkers API')
-            candleSeries.setMarkers([entryMarker])
-            console.log('[SUCCESS] Entry marker created using fallback API')
-          } else {
-            console.error('[ERROR] No marker API available in this version')
-            console.log('Available candleSeries methods:', Object.getOwnPropertyNames(candleSeries))
-            console.log('Available LightweightCharts methods:', Object.keys(LightweightCharts))
-          }
-        } catch (markerError) {
-          console.error('[ERROR] Failed to create entry marker:', markerError)
-        }
+        // Note: Don't set entry marker yet - wait for exit marker to set both together
+        console.log('[INFO] Entry marker created, will be set with exit marker')
 
         // Just use the arrow marker - no stupid giant lines
 
@@ -607,23 +710,14 @@ const createTradeChart = () => {
           size: 2
         }
         
-        // Add both entry and exit markers together using v5 API with fallback
+        // Add both entry and exit markers together using v5 API
         const allMarkers = entryMarker ? [entryMarker, exitMarker] : [exitMarker]
-        console.log('[START] Creating exit markers with data:', allMarkers)
+        console.log('[STOCK] Setting', allMarkers.length, 'markers')
         try {
-          if (LightweightCharts.createSeriesMarkers) {
-            const exitMarkersInstance = LightweightCharts.createSeriesMarkers(candleSeries, allMarkers)
-            console.log('[SUCCESS] Exit markers created successfully:', exitMarkersInstance)
-          } else if (candleSeries.setMarkers) {
-            // Fallback to older API if available
-            console.log('[CLIP] Using fallback setMarkers API for exit')
-            candleSeries.setMarkers(allMarkers)
-            console.log('[SUCCESS] Exit markers created using fallback API')
-          } else {
-            console.error('[ERROR] No marker API available for exit markers')
-          }
+          LightweightCharts.createSeriesMarkers(candleSeries, allMarkers)
+          console.log('[STOCK] ✓ Successfully set', allMarkers.length, 'markers')
         } catch (markerError) {
-          console.error('[ERROR] Failed to create exit markers:', markerError)
+          console.error('[STOCK] ✗ Error setting markers:', markerError)
         }
 
         // Just use the arrow marker - no stupid giant lines
@@ -635,6 +729,7 @@ const createTradeChart = () => {
           timeDiff: `${Math.abs(exitCandle.time - exitTimestamp)} seconds from actual execution`
         })
       }
+      } // End of else block for stock trades
     } catch (markerError) {
       console.warn('Failed to add trade execution markers, but chart data is set:', markerError)
     }
