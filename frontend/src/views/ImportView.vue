@@ -26,6 +26,7 @@
                 <option value="etrade">E*TRADE</option>
                 <option value="papermoney">PaperMoney</option>
                 <option value="tradingview">TradingView</option>
+                <option value="tradeovate">Tradeovate</option>
                 <optgroup v-if="customMappings.length > 0" label="Custom Importers">
                   <option
                     v-for="mapping in customMappings"
@@ -1146,6 +1147,14 @@ function detectKnownFormat(headers) {
   if (headersStr.includes('contractname') && headersStr.includes('enteredat') &&
       headersStr.includes('exitedat') && headersStr.includes('pnl') &&
       headersStr.includes('tradeduration')) {
+    return true
+  }
+
+  // Tradeovate detection
+  if (headersStr.includes('b/s') && headersStr.includes('contract') &&
+      headersStr.includes('product') && headersStr.includes('fill time') &&
+      (headersStr.includes('avgprice') || headersStr.includes('avg fill price')) &&
+      (headersStr.includes('filledqty') || headersStr.includes('filled qty'))) {
     return true
   }
 
