@@ -1047,12 +1047,71 @@ const tradeController = {
             trades = convertedTrades;
             logger.logImport(`[CURRENCY] Completed currency conversion for ${trades.length} trades`);
           }
-          
+
+          // Apply broker fee settings if available
+          try {
+            const brokerFeeQuery = `
+              SELECT commission_per_contract, commission_per_side, exchange_fee_per_contract,
+                     nfa_fee_per_contract, clearing_fee_per_contract, platform_fee_per_contract
+              FROM broker_fee_settings
+              WHERE user_id = $1 AND broker = $2
+            `;
+            const brokerFeeResult = await db.query(brokerFeeQuery, [fileUserId, broker.toLowerCase()]);
+
+            if (brokerFeeResult.rows.length > 0) {
+              const feeSettings = brokerFeeResult.rows[0];
+              const feePerContract =
+                (parseFloat(feeSettings.commission_per_contract) || 0) +
+                (parseFloat(feeSettings.exchange_fee_per_contract) || 0) +
+                (parseFloat(feeSettings.nfa_fee_per_contract) || 0) +
+                (parseFloat(feeSettings.clearing_fee_per_contract) || 0) +
+                (parseFloat(feeSettings.platform_fee_per_contract) || 0);
+              const feePerSide = parseFloat(feeSettings.commission_per_side) || 0;
+
+              logger.logImport(`[BROKER FEES] Applying fee settings for ${broker}: $${feePerContract.toFixed(4)}/contract + $${feePerSide.toFixed(2)}/side`);
+
+              trades = trades.map(trade => {
+                // Only apply fees if the trade doesn't already have commission/fees set
+                if ((!trade.commission || trade.commission === 0) && (!trade.fees || trade.fees === 0)) {
+                  const quantity = trade.quantity || trade.totalQuantity || 1;
+
+                  // Calculate total fees for a round-trip trade
+                  // Entry: (feePerContract * quantity) + feePerSide
+                  // Exit: (feePerContract * quantity) + feePerSide
+                  const entryFees = (feePerContract * quantity) + feePerSide;
+                  const exitFees = trade.exitPrice ? (feePerContract * quantity) + feePerSide : 0;
+                  const totalFees = entryFees + exitFees;
+
+                  // Split fees between entry and exit commissions
+                  trade.entryCommission = entryFees;
+                  trade.exitCommission = exitFees;
+                  trade.commission = totalFees;
+                  trade.fees = 0; // Commission covers everything
+
+                  // Recalculate P&L with fees if it's a closed trade
+                  if (trade.exitPrice && trade.pnl !== undefined && trade.pnl !== null) {
+                    trade.pnl = trade.pnl - totalFees;
+                  }
+
+                  logger.logImport(`[BROKER FEES] Applied $${totalFees.toFixed(2)} fees to ${trade.symbol} (${quantity} contracts)`);
+                }
+                return trade;
+              });
+
+              logger.logImport(`[BROKER FEES] Completed fee application for ${trades.length} trades`);
+            } else {
+              logger.logImport(`[BROKER FEES] No fee settings found for broker: ${broker}`);
+            }
+          } catch (feeError) {
+            logger.logWarn(`[BROKER FEES] Error applying broker fees: ${feeError.message}`);
+            // Continue without applying fees
+          }
+
           let imported = 0;
           let failed = 0;
           let duplicates = 0;
           const failedTrades = [];
-          
+
           // Clear timeout since we're proceeding normally
           clearTimeout(importTimeout);
 

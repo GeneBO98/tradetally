@@ -556,10 +556,10 @@
                         {{ formatQuantity(execution.quantity) }}
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap text-sm font-mono text-gray-900 dark:text-white">
-                        ${{ formatNumber(execution.entryPrice || execution.price) }}
+                        {{ execution.entryPrice !== null && execution.entryPrice !== undefined ? `$${formatNumber(execution.entryPrice)}` : '-' }}
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap text-sm font-mono text-gray-900 dark:text-white">
-                        {{ execution.exitPrice ? `$${formatNumber(execution.exitPrice)}` : '-' }}
+                        {{ execution.exitPrice !== null && execution.exitPrice !== undefined ? `$${formatNumber(execution.exitPrice)}` : '-' }}
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap text-sm font-mono"
                           :class="[
@@ -612,13 +612,13 @@
                         {{ formatNumber(execution.quantity, 0) }}
                       </div>
                     </div>
-                    <div>
+                    <div v-if="execution.entryPrice !== null && execution.entryPrice !== undefined">
                       <div class="text-gray-500 dark:text-gray-400 text-xs">Entry Price</div>
                       <div class="font-mono text-gray-900 dark:text-white">
-                        ${{ formatNumber(execution.entryPrice || execution.price) }}
+                        ${{ formatNumber(execution.entryPrice) }}
                       </div>
                     </div>
-                    <div v-if="execution.exitPrice">
+                    <div v-if="execution.exitPrice !== null && execution.exitPrice !== undefined">
                       <div class="text-gray-500 dark:text-gray-400 text-xs">Exit Price</div>
                       <div class="font-mono text-gray-900 dark:text-white">
                         ${{ formatNumber(execution.exitPrice) }}
@@ -1064,9 +1064,14 @@ const hasIncompleteQuality = computed(() => {
 
 // Computed properties for enhanced execution display
 const processedExecutions = computed(() => {
-  // Check if this is an options trade and get contract multiplier
+  // Check instrument type and get appropriate multiplier
   const isOption = trade.value?.instrument_type === 'option'
+  const isFuture = trade.value?.instrument_type === 'future'
   const contractSize = isOption ? (trade.value.contract_size || 100) : 1
+  const pointValue = isFuture ? (trade.value.point_value || 1) : 1
+
+  // Determine the value multiplier based on instrument type
+  const valueMultiplier = isFuture ? pointValue : contractSize
 
   // If no executions array, create a synthetic execution from trade entry/exit data
   if (!trade.value?.executions || !Array.isArray(trade.value.executions) || trade.value.executions.length === 0) {
@@ -1087,9 +1092,12 @@ const processedExecutions = computed(() => {
     }]
   }
 
+  const tradeSide = trade.value.side
   let runningPosition = 0
-  let totalCost = 0
-  let totalContracts = 0
+
+  // Track entry executions for calculating average entry price
+  let totalEntryQuantity = 0
+  let totalEntryValue = 0
 
   return trade.value.executions.map((execution, index) => {
     // Handle null/undefined execution
@@ -1102,42 +1110,54 @@ const processedExecutions = computed(() => {
         fees: 0,
         runningPosition: 0,
         avgCost: null,
-        datetime: null
+        datetime: null,
+        pnl: null
       }
     }
 
     // Map trade record fields to execution format
-    // For round-trip trades, executions are full trade records
     const quantity = parseFloat(execution.quantity) || 0
-    const price = parseFloat(execution.price) || parseFloat(execution.entry_price) || 0  // Use price from execution, fallback to entry_price from trade record
-
-    // For options, the actual dollar value includes the contract multiplier
-    const value = isOption ? (quantity * price * contractSize) : (quantity * price)
+    const price = parseFloat(execution.price) || parseFloat(execution.entry_price) || 0
+    const value = quantity * price * valueMultiplier
     const fees = (parseFloat(execution.commission) || 0) + (parseFloat(execution.fees) || 0)
-    const action = execution.action || execution.side || 'unknown'  // Use action from execution, fallback to side from trade record
-    const datetime = execution.datetime || execution.entry_time  // Use datetime from execution, fallback to entry_time from trade record
-
-    // Update running position
-    if (action === 'buy' || action === 'long') {
-      runningPosition += quantity
-      totalCost += value + fees
-      totalContracts += quantity
-    } else if (action === 'sell' || action === 'short') {
-      runningPosition -= quantity
-      // For sells, we don't add to total cost
-    }
-
-    // Calculate average cost
-    // For options: average cost per contract (price per share of the option)
-    // For stocks: average cost per share
-    const avgCost = totalContracts > 0 ? (totalCost / (totalContracts * contractSize)) : 0
+    const action = execution.action || execution.side || 'unknown'
+    const datetime = execution.datetime || execution.entry_time
 
     // Determine if this execution is opening or closing the position
     // For LONG trades: Buy = entry, Sell = exit
     // For SHORT trades: Sell = entry, Buy = exit
-    const tradeSide = trade.value.side
     const isOpening = (tradeSide === 'long' && (action === 'buy' || action === 'long')) ||
                       (tradeSide === 'short' && (action === 'sell' || action === 'short'))
+
+    // Update running position
+    if (action === 'buy' || action === 'long') {
+      runningPosition += quantity
+    } else if (action === 'sell' || action === 'short') {
+      runningPosition -= quantity
+    }
+
+    // Track entry values for average entry price calculation
+    if (isOpening) {
+      totalEntryQuantity += quantity
+      totalEntryValue += quantity * price
+    }
+
+    // Calculate average entry price so far
+    const avgEntryPrice = totalEntryQuantity > 0 ? (totalEntryValue / totalEntryQuantity) : 0
+
+    // Calculate P&L for exit (closing) executions
+    // Use the average entry price from all entry executions so far
+    let executionPnl = null
+    if (!isOpening && avgEntryPrice > 0) {
+      // For exit executions, calculate P&L based on average entry price
+      if (tradeSide === 'long') {
+        // Long: profit when exit price > entry price
+        executionPnl = (price - avgEntryPrice) * quantity * valueMultiplier - fees
+      } else {
+        // Short: profit when exit price < entry price
+        executionPnl = (avgEntryPrice - price) * quantity * valueMultiplier - fees
+      }
+    }
 
     return {
       // Keep original execution data
@@ -1150,10 +1170,16 @@ const processedExecutions = computed(() => {
       fees,
       datetime,
       runningPosition,
-      avgCost: avgCost > 0 ? avgCost : null,
+      avgCost: avgEntryPrice > 0 ? avgEntryPrice : null,
+      // Set entryPrice/exitPrice based on whether this execution opens or closes the position
+      // Only show entry price on entry executions, exit price on exit executions
+      entryPrice: isOpening ? price : null,
+      exitPrice: isOpening ? null : price,
       // Set entryTime/exitTime based on whether this execution opens or closes the position
       entryTime: isOpening ? datetime : null,
-      exitTime: isOpening ? null : datetime
+      exitTime: isOpening ? null : datetime,
+      // P&L is only calculated for exit (closing) executions
+      pnl: executionPnl
     }
   })
 })
