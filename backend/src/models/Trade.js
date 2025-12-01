@@ -824,17 +824,38 @@ class Trade {
     }
 
     // Special handling for executions - replace instead of merge to prevent duplicates
-    // Only allow execution updates during imports (skipApiCalls=true) to prevent
-    // frontend timestamp truncation from breaking duplicate detection
+    // Allow execution updates from:
+    // 1. Imports (skipApiCalls=true)
+    // 2. Frontend edits (to allow commission/fees updates)
     let executionsToSet = null;
-    if (updates.executions && updates.executions.length > 0 && options.skipApiCalls) {
+    if (updates.executions && updates.executions.length > 0) {
       // Check if executions have actually changed by comparing JSON strings
       const currentExecutionsJson = JSON.stringify(currentTrade.executions || []);
       const newExecutionsJson = JSON.stringify(updates.executions);
 
       if (currentExecutionsJson !== newExecutionsJson) {
-        // Executions have changed, replace them completely
-        executionsToSet = updates.executions;
+        // For frontend updates (non-imports), preserve original timestamps from current executions
+        // to prevent timestamp truncation from breaking duplicate detection
+        if (!options.skipApiCalls && currentTrade.executions && currentTrade.executions.length === updates.executions.length) {
+          // Merge: keep original timestamps but update other fields (commission, fees, etc.)
+          executionsToSet = updates.executions.map((newExec, index) => {
+            const currentExec = currentTrade.executions[index];
+            if (currentExec) {
+              return {
+                ...newExec,
+                // Preserve original timestamps from the database
+                datetime: currentExec.datetime || newExec.datetime,
+                entryTime: currentExec.entryTime || newExec.entryTime,
+                exitTime: currentExec.exitTime || newExec.exitTime
+              };
+            }
+            return newExec;
+          });
+          console.log(`[EXECUTION UPDATE] Merging execution updates for trade ${id} (preserving timestamps)`);
+        } else {
+          // Full replacement for imports or when execution count changes
+          executionsToSet = updates.executions;
+        }
 
         console.log(`\n=== EXECUTION UPDATE for Trade ${id} ===`);
         console.log(`Replacing ${(currentTrade.executions || []).length} existing executions with ${executionsToSet.length} new executions`);
@@ -846,8 +867,6 @@ class Trade {
       } else {
         console.log(`[EXECUTION UPDATE] Executions unchanged for trade ${id}, skipping update`);
       }
-    } else if (updates.executions) {
-      console.log(`[EXECUTION UPDATE] Ignoring executions from non-import update (prevents timestamp truncation)`);
     }
 
     // Always remove executions from updates since we handle it separately

@@ -632,6 +632,219 @@
           </div>
         </div>
 
+        <!-- Broker Commission Settings -->
+        <div class="card">
+          <div class="card-body">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Broker Commission & Fee Settings</h3>
+            <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
+              Configure default commission and fee rates for brokers that don't include this data in their CSV exports (e.g., Tradovate).
+              These rates will be automatically applied during import.
+            </p>
+
+            <!-- Existing Broker Settings -->
+            <div v-if="brokerFeeSettings.length > 0" class="mb-6 space-y-3">
+              <div
+                v-for="setting in brokerFeeSettings"
+                :key="setting.id"
+                class="flex items-start justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700"
+              >
+                <div class="flex-1">
+                  <div class="flex items-center space-x-2">
+                    <span class="text-sm font-medium text-gray-900 dark:text-white capitalize">{{ setting.broker }}</span>
+                    <span class="text-xs text-gray-500 dark:text-gray-400">
+                      Total: ${{ calculateTotalFees(setting).toFixed(6) }}/contract/side
+                    </span>
+                  </div>
+                  <div class="mt-2 grid grid-cols-2 md:grid-cols-3 gap-2 text-xs text-gray-600 dark:text-gray-400">
+                    <span v-if="setting.commissionPerContract > 0">Commission: ${{ setting.commissionPerContract }}/contract</span>
+                    <span v-if="setting.commissionPerSide > 0">Per Side: ${{ setting.commissionPerSide }}</span>
+                    <span v-if="setting.exchangeFeePerContract > 0">Exchange: ${{ setting.exchangeFeePerContract }}/contract</span>
+                    <span v-if="setting.nfaFeePerContract > 0">NFA: ${{ setting.nfaFeePerContract }}/contract</span>
+                    <span v-if="setting.clearingFeePerContract > 0">Clearing: ${{ setting.clearingFeePerContract }}/contract</span>
+                    <span v-if="setting.platformFeePerContract > 0">Platform: ${{ setting.platformFeePerContract }}/contract</span>
+                  </div>
+                  <p v-if="setting.notes" class="mt-1 text-xs text-gray-500 dark:text-gray-400 italic">{{ setting.notes }}</p>
+                </div>
+                <div class="flex items-center space-x-2 ml-4">
+                  <button
+                    @click="editBrokerFee(setting)"
+                    class="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                    title="Edit"
+                  >
+                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                  </button>
+                  <button
+                    @click="deleteBrokerFee(setting.id)"
+                    class="text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                    title="Delete"
+                  >
+                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Add/Edit Broker Fee Form -->
+            <div class="border-t border-gray-200 dark:border-gray-700 pt-6">
+              <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-4">
+                {{ editingBrokerFee ? 'Edit Broker Fees' : 'Add Broker Fees' }}
+              </h4>
+
+              <form @submit.prevent="saveBrokerFee" class="space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label for="brokerName" class="label">Broker</label>
+                    <select
+                      id="brokerName"
+                      v-model="brokerFeeForm.broker"
+                      class="input"
+                      :disabled="editingBrokerFee"
+                    >
+                      <option value="">Select a broker</option>
+                      <option value="tradeovate">Tradovate</option>
+                      <option value="ninjatrader">NinjaTrader</option>
+                      <option value="thinkorswim">ThinkorSwim</option>
+                      <option value="ibkr">Interactive Brokers</option>
+                      <option value="schwab">Charles Schwab</option>
+                      <option value="lightspeed">Lightspeed</option>
+                      <option value="webull">Webull</option>
+                      <option value="etrade">E*TRADE</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label for="commissionPerContract" class="label">Commission per Contract</label>
+                    <div class="relative">
+                      <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500 dark:text-gray-400">$</span>
+                      <input
+                        type="number"
+                        id="commissionPerContract"
+                        v-model.number="brokerFeeForm.commissionPerContract"
+                        step="0.000001"
+                        min="0"
+                        class="input pl-7"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label for="exchangeFee" class="label">Exchange Fee per Contract</label>
+                    <div class="relative">
+                      <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500 dark:text-gray-400">$</span>
+                      <input
+                        type="number"
+                        id="exchangeFee"
+                        v-model.number="brokerFeeForm.exchangeFeePerContract"
+                        step="0.000001"
+                        min="0"
+                        class="input pl-7"
+                      />
+                    </div>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">CME, CBOT, etc.</p>
+                  </div>
+
+                  <div>
+                    <label for="nfaFee" class="label">NFA Fee per Contract</label>
+                    <div class="relative">
+                      <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500 dark:text-gray-400">$</span>
+                      <input
+                        type="number"
+                        id="nfaFee"
+                        v-model.number="brokerFeeForm.nfaFeePerContract"
+                        step="0.000001"
+                        min="0"
+                        class="input pl-7"
+                      />
+                    </div>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Typically $0.02/contract</p>
+                  </div>
+
+                  <div>
+                    <label for="clearingFee" class="label">Clearing Fee per Contract</label>
+                    <div class="relative">
+                      <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500 dark:text-gray-400">$</span>
+                      <input
+                        type="number"
+                        id="clearingFee"
+                        v-model.number="brokerFeeForm.clearingFeePerContract"
+                        step="0.000001"
+                        min="0"
+                        class="input pl-7"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label for="platformFee" class="label">Platform Fee per Contract</label>
+                    <div class="relative">
+                      <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500 dark:text-gray-400">$</span>
+                      <input
+                        type="number"
+                        id="platformFee"
+                        v-model.number="brokerFeeForm.platformFeePerContract"
+                        step="0.000001"
+                        min="0"
+                        class="input pl-7"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label for="feeNotes" class="label">Notes (optional)</label>
+                  <input
+                    type="text"
+                    id="feeNotes"
+                    v-model="brokerFeeForm.notes"
+                    class="input"
+                    placeholder="e.g., Micro E-mini rates, updated Jan 2025"
+                  />
+                </div>
+
+                <!-- Total Preview -->
+                <div class="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-md">
+                  <div class="flex justify-between items-center">
+                    <span class="text-sm text-blue-800 dark:text-blue-200">Total fees per contract per side:</span>
+                    <span class="text-lg font-bold text-blue-900 dark:text-blue-100">
+                      ${{ calculateTotalFees(brokerFeeForm).toFixed(6) }}
+                    </span>
+                  </div>
+                  <p class="text-xs text-blue-700 dark:text-blue-300 mt-1">
+                    For a round-trip trade, total fees = ${{ (calculateTotalFees(brokerFeeForm) * 2).toFixed(6) }} per contract
+                  </p>
+                </div>
+
+                <div class="flex justify-end space-x-3">
+                  <button
+                    v-if="editingBrokerFee"
+                    type="button"
+                    @click="cancelEditBrokerFee"
+                    class="btn-secondary"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    :disabled="!brokerFeeForm.broker || brokerFeeLoading"
+                    class="btn-primary"
+                  >
+                    <span v-if="brokerFeeLoading" class="flex items-center">
+                      <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Saving...
+                    </span>
+                    <span v-else>{{ editingBrokerFee ? 'Update' : 'Add' }} Broker Fees</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+
         <!-- Trade Enrichment -->
         <div class="card">
           <div class="card-body">
@@ -865,6 +1078,21 @@ const tradeImportForm = ref({
   tradeGroupingTimeGapMinutes: 60
 })
 const tradeImportLoading = ref(false)
+
+// Broker Fee Settings
+const brokerFeeSettings = ref([])
+const brokerFeeForm = ref({
+  broker: '',
+  commissionPerContract: 0,
+  commissionPerSide: 0,
+  exchangeFeePerContract: 0,
+  nfaFeePerContract: 0.02,
+  clearingFeePerContract: 0,
+  platformFeePerContract: 0,
+  notes: ''
+})
+const brokerFeeLoading = ref(false)
+const editingBrokerFee = ref(null)
 
 // Quality Weights Settings
 const qualityWeightsForm = ref({
@@ -1128,6 +1356,96 @@ async function updateTradeImportSettings() {
     showError('Error', error.response?.data?.error || 'Failed to update trade import settings')
   } finally {
     tradeImportLoading.value = false
+  }
+}
+
+// Broker Fee Settings Functions
+async function loadBrokerFeeSettings() {
+  try {
+    const response = await api.get('/settings/broker-fees')
+    if (response.data.success) {
+      brokerFeeSettings.value = response.data.data
+    }
+  } catch (error) {
+    console.error('Failed to load broker fee settings:', error)
+  }
+}
+
+function calculateTotalFees(setting) {
+  return (
+    (parseFloat(setting.commissionPerContract) || 0) +
+    (parseFloat(setting.commissionPerSide) || 0) +
+    (parseFloat(setting.exchangeFeePerContract) || 0) +
+    (parseFloat(setting.nfaFeePerContract) || 0) +
+    (parseFloat(setting.clearingFeePerContract) || 0) +
+    (parseFloat(setting.platformFeePerContract) || 0)
+  )
+}
+
+function editBrokerFee(setting) {
+  editingBrokerFee.value = setting.id
+  brokerFeeForm.value = {
+    broker: setting.broker,
+    commissionPerContract: setting.commissionPerContract || 0,
+    commissionPerSide: setting.commissionPerSide || 0,
+    exchangeFeePerContract: setting.exchangeFeePerContract || 0,
+    nfaFeePerContract: setting.nfaFeePerContract || 0.02,
+    clearingFeePerContract: setting.clearingFeePerContract || 0,
+    platformFeePerContract: setting.platformFeePerContract || 0,
+    notes: setting.notes || ''
+  }
+}
+
+function cancelEditBrokerFee() {
+  editingBrokerFee.value = null
+  resetBrokerFeeForm()
+}
+
+function resetBrokerFeeForm() {
+  brokerFeeForm.value = {
+    broker: '',
+    commissionPerContract: 0,
+    commissionPerSide: 0,
+    exchangeFeePerContract: 0,
+    nfaFeePerContract: 0.02,
+    clearingFeePerContract: 0,
+    platformFeePerContract: 0,
+    notes: ''
+  }
+}
+
+async function saveBrokerFee() {
+  if (!brokerFeeForm.value.broker) {
+    showError('Error', 'Please select a broker')
+    return
+  }
+
+  brokerFeeLoading.value = true
+  try {
+    await api.post('/settings/broker-fees', brokerFeeForm.value)
+    showSuccess('Success', `Broker fee settings for ${brokerFeeForm.value.broker} saved successfully`)
+    await loadBrokerFeeSettings()
+    cancelEditBrokerFee()
+  } catch (error) {
+    console.error('Failed to save broker fee settings:', error)
+    showError('Error', error.response?.data?.error || 'Failed to save broker fee settings')
+  } finally {
+    brokerFeeLoading.value = false
+  }
+}
+
+async function deleteBrokerFee(id) {
+  if (!confirm('Are you sure you want to delete this broker fee configuration?')) {
+    return
+  }
+
+  try {
+    await api.delete(`/settings/broker-fees/${id}`)
+    showSuccess('Success', 'Broker fee settings deleted')
+    await loadBrokerFeeSettings()
+  } catch (error) {
+    console.error('Failed to delete broker fee settings:', error)
+    showError('Error', error.response?.data?.error || 'Failed to delete broker fee settings')
   }
 }
 
@@ -1417,6 +1735,7 @@ onMounted(() => {
   loadAnalyticsSettings()
   loadPrivacySettings()
   loadTradeImportSettings()
+  loadBrokerFeeSettings()
   fetchQualityWeights()
 
   // Load admin AI settings if user is admin
