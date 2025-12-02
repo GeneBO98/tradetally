@@ -527,6 +527,9 @@
                         P&L
                       </th>
                       <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        Commission
+                      </th>
+                      <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                         Fees
                       </th>
                       <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
@@ -572,7 +575,10 @@
                         {{ execution.pnl !== undefined && execution.pnl !== null ? `$${formatNumber(execution.pnl)}` : '-' }}
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap text-sm font-mono text-gray-600 dark:text-gray-400">
-                        {{ execution.fees || execution.commission ? `$${formatNumber((execution.fees || 0) + (execution.commission || 0))}` : '-' }}
+                        {{ execution.commission ? `$${formatNumber(execution.commission)}` : '-' }}
+                      </td>
+                      <td class="px-3 py-4 whitespace-nowrap text-sm font-mono text-gray-600 dark:text-gray-400">
+                        {{ execution.fees ? `$${formatNumber(execution.fees)}` : '-' }}
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">
                         {{ execution.entryTime ? formatDateTime(execution.entryTime) : '-' }}
@@ -643,10 +649,16 @@
                         ${{ formatNumber(execution.pnl) }}
                       </div>
                     </div>
-                    <div v-if="execution.fees || execution.commission">
+                    <div v-if="execution.commission">
+                      <div class="text-gray-500 dark:text-gray-400 text-xs">Commission</div>
+                      <div class="font-mono text-gray-600 dark:text-gray-400">
+                        ${{ formatNumber(execution.commission) }}
+                      </div>
+                    </div>
+                    <div v-if="execution.fees">
                       <div class="text-gray-500 dark:text-gray-400 text-xs">Fees</div>
                       <div class="font-mono text-gray-600 dark:text-gray-400">
-                        ${{ formatNumber((execution.fees || 0) + (execution.commission || 0)) }}
+                        ${{ formatNumber(execution.fees) }}
                       </div>
                     </div>
                   </div>
@@ -1099,6 +1111,15 @@ const processedExecutions = computed(() => {
   let totalEntryQuantity = 0
   let totalEntryValue = 0
 
+  // Check if any executions have their own commission/fees values
+  const hasExecutionCommissions = trade.value.executions.some(exec => exec && exec.commission > 0)
+  const hasExecutionFees = trade.value.executions.some(exec => exec && exec.fees > 0)
+
+  // Calculate total quantity for proportional distribution
+  const totalQuantity = trade.value.executions.reduce((sum, exec) => sum + (parseFloat(exec?.quantity) || 0), 0)
+  const tradeCommission = parseFloat(trade.value.commission) || 0
+  const tradeFees = parseFloat(trade.value.fees) || 0
+
   return trade.value.executions.map((execution, index) => {
     // Handle null/undefined execution
     if (!execution) {
@@ -1107,6 +1128,7 @@ const processedExecutions = computed(() => {
         quantity: 0,
         price: 0,
         value: 0,
+        commission: 0,
         fees: 0,
         runningPosition: 0,
         avgCost: null,
@@ -1119,9 +1141,18 @@ const processedExecutions = computed(() => {
     const quantity = parseFloat(execution.quantity) || 0
     const price = parseFloat(execution.price) || parseFloat(execution.entry_price) || 0
     const value = quantity * price * valueMultiplier
-    const fees = (parseFloat(execution.commission) || 0) + (parseFloat(execution.fees) || 0)
     const action = execution.action || execution.side || 'unknown'
     const datetime = execution.datetime || execution.entry_time
+
+    // Calculate proportional commission/fees if not set at execution level
+    const proportion = totalQuantity > 0 ? quantity / totalQuantity : 0
+    const commission = hasExecutionCommissions
+      ? (parseFloat(execution.commission) || 0)
+      : (tradeCommission * proportion)
+    const fees = hasExecutionFees
+      ? (parseFloat(execution.fees) || 0)
+      : (tradeFees * proportion)
+    const totalCost = commission + fees
 
     // Determine if this execution is opening or closing the position
     // For LONG trades: Buy = entry, Sell = exit
@@ -1150,12 +1181,13 @@ const processedExecutions = computed(() => {
     let executionPnl = null
     if (!isOpening && avgEntryPrice > 0) {
       // For exit executions, calculate P&L based on average entry price
+      // Subtract both commission and fees from the P&L
       if (tradeSide === 'long') {
         // Long: profit when exit price > entry price
-        executionPnl = (price - avgEntryPrice) * quantity * valueMultiplier - fees
+        executionPnl = (price - avgEntryPrice) * quantity * valueMultiplier - totalCost
       } else {
         // Short: profit when exit price < entry price
-        executionPnl = (avgEntryPrice - price) * quantity * valueMultiplier - fees
+        executionPnl = (avgEntryPrice - price) * quantity * valueMultiplier - totalCost
       }
     }
 
@@ -1167,6 +1199,7 @@ const processedExecutions = computed(() => {
       quantity,
       price,
       value,
+      commission,
       fees,
       datetime,
       runningPosition,

@@ -1066,9 +1066,30 @@ async function loadTrade() {
       executions: (() => {
         console.log('[TRADE FORM] Raw trade.executions:', JSON.stringify(trade.executions, null, 2))
         if (trade.executions && Array.isArray(trade.executions) && trade.executions.length > 0) {
+          // Check if any executions have commission values
+          const hasExecutionCommissions = trade.executions.some(exec => exec.commission > 0)
+          const hasExecutionFees = trade.executions.some(exec => exec.fees > 0)
+
+          // Calculate total quantity for proportional distribution
+          const totalQuantity = trade.executions.reduce((sum, exec) => sum + (parseFloat(exec.quantity) || 0), 0)
+          const tradeCommission = parseFloat(trade.commission) || 0
+          const tradeFees = parseFloat(trade.fees) || 0
+
           // Use existing executions - preserve format (grouped vs individual)
           const mapped = trade.executions.map(exec => {
             console.log('[TRADE FORM] Processing execution:', exec)
+
+            // Calculate proportional commission/fees if not set at execution level
+            const execQuantity = parseFloat(exec.quantity) || 0
+            const proportion = totalQuantity > 0 ? execQuantity / totalQuantity : 0
+
+            // Use execution-level commission if available, otherwise distribute trade-level proportionally
+            const execCommission = hasExecutionCommissions
+              ? (exec.commission || 0)
+              : (tradeCommission * proportion)
+            const execFees = hasExecutionFees
+              ? (exec.fees || 0)
+              : (tradeFees * proportion)
 
             // Check if this is a grouped execution (complete trade with entry/exit)
             if (exec.entryPrice !== undefined || exec.exitPrice !== undefined || exec.entryTime !== undefined) {
@@ -1080,8 +1101,8 @@ async function loadTrade() {
                 exitPrice: exec.exitPrice || null,
                 entryTime: exec.entryTime ? formatDateTimeLocal(exec.entryTime) : '',
                 exitTime: exec.exitTime ? formatDateTimeLocal(exec.exitTime) : null,
-                commission: exec.commission || 0,
-                fees: exec.fees || 0,
+                commission: execCommission,
+                fees: execFees,
                 pnl: exec.pnl || null,
                 // Fall back to trade-level stop loss if not in execution
                 stopLoss: exec.stopLoss || exec.stop_loss || trade.stop_loss || trade.stopLoss || null,
@@ -1101,8 +1122,8 @@ async function loadTrade() {
                 quantity: exec.quantity || '',
                 price: exec.price || '',
                 datetime: exec.datetime ? formatDateTimeLocal(exec.datetime) : '',
-                commission: exec.commission || 0,
-                fees: exec.fees || 0,
+                commission: execCommission,
+                fees: execFees,
                 // Fall back to trade-level stop loss if not in execution
                 stopLoss: exec.stopLoss || exec.stop_loss || trade.stop_loss || trade.stopLoss || null,
                 takeProfit: exec.takeProfit || exec.take_profit || trade.take_profit || trade.takeProfit || null
