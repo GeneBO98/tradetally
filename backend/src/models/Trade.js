@@ -772,15 +772,16 @@ class Trade {
       };
 
       // Calculate updated P&L and hold time
+      // Use !== undefined to properly handle 0 values for commission and fees
       updatedTrade.pnl = this.calculatePnL(
         updatedTrade.entry_price,
         updatedTrade.exit_price,
         updatedTrade.quantity,
         updatedTrade.side,
-        updates.commission || currentTrade.commission,
-        updates.fees || currentTrade.fees,
+        updates.commission !== undefined ? updates.commission : currentTrade.commission,
+        updates.fees !== undefined ? updates.fees : currentTrade.fees,
         updates.instrumentType || currentTrade.instrument_type || 'stock',
-        updates.contractSize || currentTrade.contract_size || 1
+        updates.contractSize !== undefined ? updates.contractSize : (currentTrade.contract_size || 1)
       );
 
       if (updatedTrade.exit_time) {
@@ -902,26 +903,35 @@ class Trade {
       paramCount++;
     }
 
-    if (updates.entryPrice || updates.exitPrice || updates.quantity || updates.side || updates.commission || updates.fees || updates.instrumentType || updates.contractSize) {
+    // Check if any P&L-affecting field was provided (using !== undefined to allow 0 values)
+    const hasPnLUpdate = updates.entryPrice !== undefined || updates.exitPrice !== undefined ||
+                         updates.quantity !== undefined || updates.side !== undefined ||
+                         updates.commission !== undefined || updates.fees !== undefined ||
+                         updates.instrumentType !== undefined || updates.contractSize !== undefined;
+
+    if (hasPnLUpdate) {
       const instrumentType = updates.instrumentType || currentTrade.instrument_type || 'stock';
-      const quantity = updates.quantity || currentTrade.quantity;
-      const pointValue = updates.pointValue || currentTrade.point_value;
-      const contractSize = updates.contractSize || currentTrade.contract_size || 1;
+      const quantity = updates.quantity !== undefined ? updates.quantity : currentTrade.quantity;
+      const pointValue = updates.pointValue !== undefined ? updates.pointValue : currentTrade.point_value;
+      const contractSize = updates.contractSize !== undefined ? updates.contractSize : (currentTrade.contract_size || 1);
+      // Use !== undefined to properly handle 0 values for commission and fees
+      const commission = updates.commission !== undefined ? updates.commission : currentTrade.commission;
+      const fees = updates.fees !== undefined ? updates.fees : currentTrade.fees;
 
       const pnl = this.calculatePnL(
-        updates.entryPrice || currentTrade.entry_price,
-        updates.exitPrice || currentTrade.exit_price,
+        updates.entryPrice !== undefined ? updates.entryPrice : currentTrade.entry_price,
+        updates.exitPrice !== undefined ? updates.exitPrice : currentTrade.exit_price,
         quantity,
         updates.side || currentTrade.side,
-        updates.commission || currentTrade.commission,
-        updates.fees || currentTrade.fees,
+        commission,
+        fees,
         instrumentType,
         contractSize,
         pointValue
       );
       const pnlPercent = this.calculatePnLPercent(
-        updates.entryPrice || currentTrade.entry_price,
-        updates.exitPrice || currentTrade.exit_price,
+        updates.entryPrice !== undefined ? updates.entryPrice : currentTrade.entry_price,
+        updates.exitPrice !== undefined ? updates.exitPrice : currentTrade.exit_price,
         updates.side || currentTrade.side,
         pnl,
         quantity,

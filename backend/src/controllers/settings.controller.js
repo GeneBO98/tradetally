@@ -1036,7 +1036,7 @@ const settingsController = {
     try {
       const query = `
         SELECT
-          id, broker,
+          id, broker, instrument,
           commission_per_contract,
           commission_per_side,
           exchange_fee_per_contract,
@@ -1048,7 +1048,7 @@ const settingsController = {
           updated_at
         FROM broker_fee_settings
         WHERE user_id = $1
-        ORDER BY broker
+        ORDER BY broker, instrument
       `;
 
       const result = await db.query(query, [req.user.id]);
@@ -1057,6 +1057,7 @@ const settingsController = {
       const settings = result.rows.map(row => ({
         id: row.id,
         broker: row.broker,
+        instrument: row.instrument || '',
         commissionPerContract: parseFloat(row.commission_per_contract) || 0,
         commissionPerSide: parseFloat(row.commission_per_side) || 0,
         exchangeFeePerContract: parseFloat(row.exchange_fee_per_contract) || 0,
@@ -1077,22 +1078,48 @@ const settingsController = {
   async getBrokerFeeSettingByBroker(req, res, next) {
     try {
       const { broker } = req.params;
+      const { instrument } = req.query;
 
-      const query = `
-        SELECT
-          id, broker,
-          commission_per_contract,
-          commission_per_side,
-          exchange_fee_per_contract,
-          nfa_fee_per_contract,
-          clearing_fee_per_contract,
-          platform_fee_per_contract,
-          notes
-        FROM broker_fee_settings
-        WHERE user_id = $1 AND broker = $2
-      `;
+      // If instrument is provided, try to find instrument-specific setting first
+      // Then fall back to broker-wide default (instrument = '')
+      let query;
+      let params;
 
-      const result = await db.query(query, [req.user.id, broker]);
+      if (instrument) {
+        query = `
+          SELECT
+            id, broker, instrument,
+            commission_per_contract,
+            commission_per_side,
+            exchange_fee_per_contract,
+            nfa_fee_per_contract,
+            clearing_fee_per_contract,
+            platform_fee_per_contract,
+            notes
+          FROM broker_fee_settings
+          WHERE user_id = $1 AND broker = $2 AND instrument IN ($3, '')
+          ORDER BY CASE WHEN instrument = $3 THEN 0 ELSE 1 END
+          LIMIT 1
+        `;
+        params = [req.user.id, broker, instrument.toUpperCase()];
+      } else {
+        query = `
+          SELECT
+            id, broker, instrument,
+            commission_per_contract,
+            commission_per_side,
+            exchange_fee_per_contract,
+            nfa_fee_per_contract,
+            clearing_fee_per_contract,
+            platform_fee_per_contract,
+            notes
+          FROM broker_fee_settings
+          WHERE user_id = $1 AND broker = $2 AND instrument = ''
+        `;
+        params = [req.user.id, broker];
+      }
+
+      const result = await db.query(query, params);
 
       if (result.rows.length === 0) {
         return res.json({ success: true, data: null });
@@ -1102,6 +1129,7 @@ const settingsController = {
       const setting = {
         id: row.id,
         broker: row.broker,
+        instrument: row.instrument || '',
         commissionPerContract: parseFloat(row.commission_per_contract) || 0,
         commissionPerSide: parseFloat(row.commission_per_side) || 0,
         exchangeFeePerContract: parseFloat(row.exchange_fee_per_contract) || 0,
@@ -1121,6 +1149,7 @@ const settingsController = {
     try {
       const {
         broker,
+        instrument = '',
         commissionPerContract = 0,
         commissionPerSide = 0,
         exchangeFeePerContract = 0,
@@ -1130,20 +1159,26 @@ const settingsController = {
         notes = ''
       } = req.body;
 
-      if (!broker) {
+      if (!broker || typeof broker !== 'string') {
         return res.status(400).json({ error: 'Broker name is required' });
       }
 
+      console.log('[BROKER FEES] Saving broker fee settings:', {
+        broker,
+        instrument,
+        userId: req.user?.id
+      });
+
       const query = `
         INSERT INTO broker_fee_settings (
-          user_id, broker,
+          user_id, broker, instrument,
           commission_per_contract, commission_per_side,
           exchange_fee_per_contract, nfa_fee_per_contract,
           clearing_fee_per_contract, platform_fee_per_contract,
           notes, updated_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP)
-        ON CONFLICT (user_id, broker) DO UPDATE SET
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CURRENT_TIMESTAMP)
+        ON CONFLICT (user_id, broker, instrument) DO UPDATE SET
           commission_per_contract = EXCLUDED.commission_per_contract,
           commission_per_side = EXCLUDED.commission_per_side,
           exchange_fee_per_contract = EXCLUDED.exchange_fee_per_contract,
@@ -1158,6 +1193,7 @@ const settingsController = {
       const result = await db.query(query, [
         req.user.id,
         broker.toLowerCase(),
+        (instrument || '').toUpperCase(),
         commissionPerContract,
         commissionPerSide,
         exchangeFeePerContract,
@@ -1171,6 +1207,7 @@ const settingsController = {
       const setting = {
         id: row.id,
         broker: row.broker,
+        instrument: row.instrument || '',
         commissionPerContract: parseFloat(row.commission_per_contract) || 0,
         commissionPerSide: parseFloat(row.commission_per_side) || 0,
         exchangeFeePerContract: parseFloat(row.exchange_fee_per_contract) || 0,
@@ -1182,6 +1219,8 @@ const settingsController = {
 
       res.json({ success: true, data: setting });
     } catch (error) {
+      console.error('[BROKER FEES] Error saving broker fee settings:', error.message);
+      console.error('[BROKER FEES] Stack:', error.stack);
       next(error);
     }
   },
