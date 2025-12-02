@@ -1050,23 +1050,40 @@ const tradeController = {
 
           // Apply broker fee settings if available
           // Supports per-instrument fees with fallback to broker-wide default
+          // When broker is 'auto', we need to look up fees per-trade based on each trade's detected broker
           try {
+            // Get the effective broker - use trade's broker if 'auto' was selected
+            const getEffectiveBroker = (trade) => {
+              if (broker.toLowerCase() === 'auto' && trade.broker) {
+                return trade.broker.toLowerCase();
+              }
+              return broker.toLowerCase();
+            };
+
+            // Get unique brokers from trades when using 'auto'
+            const brokersToLookup = broker.toLowerCase() === 'auto'
+              ? [...new Set(trades.map(t => t.broker?.toLowerCase()).filter(Boolean))]
+              : [broker.toLowerCase()];
+
+            logger.logImport(`[BROKER FEES] Looking up fees for brokers: ${brokersToLookup.join(', ')}`);
+
+            // Fetch fee settings for all relevant brokers
             const brokerFeeQuery = `
-              SELECT instrument, commission_per_contract, commission_per_side, exchange_fee_per_contract,
+              SELECT broker, instrument, commission_per_contract, commission_per_side, exchange_fee_per_contract,
                      nfa_fee_per_contract, clearing_fee_per_contract, platform_fee_per_contract
               FROM broker_fee_settings
-              WHERE user_id = $1 AND broker = $2
-              ORDER BY instrument DESC
+              WHERE user_id = $1 AND broker = ANY($2)
+              ORDER BY broker, instrument DESC
             `;
-            const brokerFeeResult = await db.query(brokerFeeQuery, [fileUserId, broker.toLowerCase()]);
+            const brokerFeeResult = await db.query(brokerFeeQuery, [fileUserId, brokersToLookup]);
 
             if (brokerFeeResult.rows.length > 0) {
-              // Build a map of instrument -> fee settings
+              // Build a nested map: broker -> instrument -> fee settings
               // Empty string instrument = broker-wide default
-              const feeSettingsMap = new Map();
-              let defaultFeeSettings = null;
+              const brokerFeeMap = new Map();
 
               brokerFeeResult.rows.forEach(row => {
+                const brokerName = (row.broker || '').toLowerCase();
                 const instrument = (row.instrument || '').toUpperCase();
                 // Separate broker commission from regulatory/exchange fees
                 const settings = {
@@ -1081,12 +1098,17 @@ const tradeController = {
                     (parseFloat(row.platform_fee_per_contract) || 0)
                 };
 
+                if (!brokerFeeMap.has(brokerName)) {
+                  brokerFeeMap.set(brokerName, { instruments: new Map(), default: null });
+                }
+
+                const brokerSettings = brokerFeeMap.get(brokerName);
                 if (instrument === '') {
-                  defaultFeeSettings = settings;
-                  logger.logImport(`[BROKER FEES] Default for ${broker}: commission=$${settings.commissionPerContract.toFixed(4)}/contract + $${settings.commissionPerSide.toFixed(2)}/side, fees=$${settings.feesPerContract.toFixed(4)}/contract`);
+                  brokerSettings.default = settings;
+                  logger.logImport(`[BROKER FEES] Default for ${brokerName}: commission=$${settings.commissionPerContract.toFixed(4)}/contract + $${settings.commissionPerSide.toFixed(2)}/side, fees=$${settings.feesPerContract.toFixed(4)}/contract`);
                 } else {
-                  feeSettingsMap.set(instrument, settings);
-                  logger.logImport(`[BROKER FEES] ${instrument} for ${broker}: commission=$${settings.commissionPerContract.toFixed(4)}/contract + $${settings.commissionPerSide.toFixed(2)}/side, fees=$${settings.feesPerContract.toFixed(4)}/contract`);
+                  brokerSettings.instruments.set(instrument, settings);
+                  logger.logImport(`[BROKER FEES] ${instrument} for ${brokerName}: commission=$${settings.commissionPerContract.toFixed(4)}/contract + $${settings.commissionPerSide.toFixed(2)}/side, fees=$${settings.feesPerContract.toFixed(4)}/contract`);
                 }
               });
 
@@ -1095,6 +1117,16 @@ const tradeController = {
                 if ((!trade.commission || trade.commission === 0) && (!trade.fees || trade.fees === 0)) {
                   const symbol = (trade.symbol || '').toUpperCase();
                   const quantity = trade.quantity || trade.totalQuantity || 1;
+                  const effectiveBroker = getEffectiveBroker(trade);
+
+                  // Get broker-specific fee settings
+                  const brokerSettings = brokerFeeMap.get(effectiveBroker);
+                  if (!brokerSettings) {
+                    return trade; // No fee settings for this broker
+                  }
+
+                  const feeSettingsMap = brokerSettings.instruments;
+                  const defaultFeeSettings = brokerSettings.default;
 
                   // Look up fee settings with fallback chain:
                   // 1. Exact symbol match (e.g., MESZ5)
@@ -1171,7 +1203,7 @@ const tradeController = {
 
               logger.logImport(`[BROKER FEES] Completed fee application for ${trades.length} trades`);
             } else {
-              logger.logImport(`[BROKER FEES] No fee settings found for broker: ${broker}`);
+              logger.logImport(`[BROKER FEES] No fee settings found for broker(s): ${brokersToLookup.join(', ')}`);
             }
           } catch (feeError) {
             logger.logWarn(`[BROKER FEES] Error applying broker fees: ${feeError.message}`);
