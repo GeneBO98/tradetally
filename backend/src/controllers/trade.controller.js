@@ -1049,51 +1049,77 @@ const tradeController = {
           }
 
           // Apply broker fee settings if available
+          // Supports per-instrument fees with fallback to broker-wide default
           try {
             const brokerFeeQuery = `
-              SELECT commission_per_contract, commission_per_side, exchange_fee_per_contract,
+              SELECT instrument, commission_per_contract, commission_per_side, exchange_fee_per_contract,
                      nfa_fee_per_contract, clearing_fee_per_contract, platform_fee_per_contract
               FROM broker_fee_settings
               WHERE user_id = $1 AND broker = $2
+              ORDER BY instrument DESC
             `;
             const brokerFeeResult = await db.query(brokerFeeQuery, [fileUserId, broker.toLowerCase()]);
 
             if (brokerFeeResult.rows.length > 0) {
-              const feeSettings = brokerFeeResult.rows[0];
-              const feePerContract =
-                (parseFloat(feeSettings.commission_per_contract) || 0) +
-                (parseFloat(feeSettings.exchange_fee_per_contract) || 0) +
-                (parseFloat(feeSettings.nfa_fee_per_contract) || 0) +
-                (parseFloat(feeSettings.clearing_fee_per_contract) || 0) +
-                (parseFloat(feeSettings.platform_fee_per_contract) || 0);
-              const feePerSide = parseFloat(feeSettings.commission_per_side) || 0;
+              // Build a map of instrument -> fee settings
+              // Empty string instrument = broker-wide default
+              const feeSettingsMap = new Map();
+              let defaultFeeSettings = null;
 
-              logger.logImport(`[BROKER FEES] Applying fee settings for ${broker}: $${feePerContract.toFixed(4)}/contract + $${feePerSide.toFixed(2)}/side`);
+              brokerFeeResult.rows.forEach(row => {
+                const instrument = (row.instrument || '').toUpperCase();
+                const settings = {
+                  feePerContract:
+                    (parseFloat(row.commission_per_contract) || 0) +
+                    (parseFloat(row.exchange_fee_per_contract) || 0) +
+                    (parseFloat(row.nfa_fee_per_contract) || 0) +
+                    (parseFloat(row.clearing_fee_per_contract) || 0) +
+                    (parseFloat(row.platform_fee_per_contract) || 0),
+                  feePerSide: parseFloat(row.commission_per_side) || 0
+                };
+
+                if (instrument === '') {
+                  defaultFeeSettings = settings;
+                  logger.logImport(`[BROKER FEES] Default for ${broker}: $${settings.feePerContract.toFixed(6)}/contract + $${settings.feePerSide.toFixed(2)}/side`);
+                } else {
+                  feeSettingsMap.set(instrument, settings);
+                  logger.logImport(`[BROKER FEES] ${instrument} for ${broker}: $${settings.feePerContract.toFixed(6)}/contract + $${settings.feePerSide.toFixed(2)}/side`);
+                }
+              });
 
               trades = trades.map(trade => {
                 // Only apply fees if the trade doesn't already have commission/fees set
                 if ((!trade.commission || trade.commission === 0) && (!trade.fees || trade.fees === 0)) {
+                  const symbol = (trade.symbol || '').toUpperCase();
                   const quantity = trade.quantity || trade.totalQuantity || 1;
 
-                  // Calculate total fees for a round-trip trade
-                  // Entry: (feePerContract * quantity) + feePerSide
-                  // Exit: (feePerContract * quantity) + feePerSide
-                  const entryFees = (feePerContract * quantity) + feePerSide;
-                  const exitFees = trade.exitPrice ? (feePerContract * quantity) + feePerSide : 0;
-                  const totalFees = entryFees + exitFees;
+                  // Look up fee settings: instrument-specific first, then broker default
+                  let feeSettings = feeSettingsMap.get(symbol) || defaultFeeSettings;
 
-                  // Split fees between entry and exit commissions
-                  trade.entryCommission = entryFees;
-                  trade.exitCommission = exitFees;
-                  trade.commission = totalFees;
-                  trade.fees = 0; // Commission covers everything
+                  if (feeSettings) {
+                    const { feePerContract, feePerSide } = feeSettings;
 
-                  // Recalculate P&L with fees if it's a closed trade
-                  if (trade.exitPrice && trade.pnl !== undefined && trade.pnl !== null) {
-                    trade.pnl = trade.pnl - totalFees;
+                    // Calculate total fees for a round-trip trade
+                    // Entry: (feePerContract * quantity) + feePerSide
+                    // Exit: (feePerContract * quantity) + feePerSide
+                    const entryFees = (feePerContract * quantity) + feePerSide;
+                    const exitFees = trade.exitPrice ? (feePerContract * quantity) + feePerSide : 0;
+                    const totalFees = entryFees + exitFees;
+
+                    // Split fees between entry and exit commissions
+                    trade.entryCommission = entryFees;
+                    trade.exitCommission = exitFees;
+                    trade.commission = totalFees;
+                    trade.fees = 0; // Commission covers everything
+
+                    // Recalculate P&L with fees if it's a closed trade
+                    if (trade.exitPrice && trade.pnl !== undefined && trade.pnl !== null) {
+                      trade.pnl = trade.pnl - totalFees;
+                    }
+
+                    const matchType = feeSettingsMap.has(symbol) ? 'instrument-specific' : 'broker-default';
+                    logger.logImport(`[BROKER FEES] Applied $${totalFees.toFixed(2)} fees to ${symbol} (${quantity} contracts) [${matchType}]`);
                   }
-
-                  logger.logImport(`[BROKER FEES] Applied $${totalFees.toFixed(2)} fees to ${trade.symbol} (${quantity} contracts)`);
                 }
                 return trade;
               });

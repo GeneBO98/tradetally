@@ -651,6 +651,12 @@
                 <div class="flex-1">
                   <div class="flex items-center space-x-2">
                     <span class="text-sm font-medium text-gray-900 dark:text-white capitalize">{{ setting.broker }}</span>
+                    <span v-if="setting.instrument" class="px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 rounded">
+                      {{ setting.instrument }}
+                    </span>
+                    <span v-else class="px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 rounded">
+                      All Instruments
+                    </span>
                     <span class="text-xs text-gray-500 dark:text-gray-400">
                       Total: ${{ calculateTotalFees(setting).toFixed(6) }}/contract/side
                     </span>
@@ -715,6 +721,21 @@
                       <option value="etrade">E*TRADE</option>
                       <option value="other">Other</option>
                     </select>
+                  </div>
+
+                  <div>
+                    <label for="instrument" class="label">Instrument (optional)</label>
+                    <input
+                      type="text"
+                      id="instrument"
+                      v-model="brokerFeeForm.instrument"
+                      class="input uppercase"
+                      :disabled="editingBrokerFee"
+                      placeholder="e.g., MES, NQ, ES (leave blank for all)"
+                    />
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      Leave blank to set default fees for all instruments with this broker
+                    </p>
                   </div>
 
                   <div>
@@ -1083,6 +1104,7 @@ const tradeImportLoading = ref(false)
 const brokerFeeSettings = ref([])
 const brokerFeeForm = ref({
   broker: '',
+  instrument: '',
   commissionPerContract: 0,
   commissionPerSide: 0,
   exchangeFeePerContract: 0,
@@ -1386,6 +1408,7 @@ function editBrokerFee(setting) {
   editingBrokerFee.value = setting.id
   brokerFeeForm.value = {
     broker: setting.broker,
+    instrument: setting.instrument || '',
     commissionPerContract: setting.commissionPerContract || 0,
     commissionPerSide: setting.commissionPerSide || 0,
     exchangeFeePerContract: setting.exchangeFeePerContract || 0,
@@ -1404,6 +1427,7 @@ function cancelEditBrokerFee() {
 function resetBrokerFeeForm() {
   brokerFeeForm.value = {
     broker: '',
+    instrument: '',
     commissionPerContract: 0,
     commissionPerSide: 0,
     exchangeFeePerContract: 0,

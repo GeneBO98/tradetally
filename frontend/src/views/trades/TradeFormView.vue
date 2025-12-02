@@ -1267,28 +1267,35 @@ async function handleSubmit() {
         )
         calculatedEntryTime = sortedByTime[0].datetime
 
-        // Exit time is latest execution (if there are sell executions)
-        const hasSellExecution = processedExecutions.some(e => e.action === 'sell')
-        if (hasSellExecution) {
+        // Determine which action is entry vs exit based on trade side
+        // For LONG trades: buy = entry, sell = exit
+        // For SHORT trades: sell = entry, buy = exit
+        const tradeSide = form.value.side
+        const entryAction = tradeSide === 'short' ? 'sell' : 'buy'
+        const exitAction = tradeSide === 'short' ? 'buy' : 'sell'
+
+        // Exit time is latest execution (if there are exit executions)
+        const hasExitExecution = processedExecutions.some(e => e.action === exitAction)
+        if (hasExitExecution) {
           calculatedExitTime = sortedByTime[sortedByTime.length - 1].datetime
         }
 
-        // Entry price is weighted average of buy executions
-        const buyExecutions = processedExecutions.filter(e => e.action === 'buy')
-        if (buyExecutions.length > 0) {
-          const totalBuyValue = buyExecutions.reduce((sum, exec) => sum + (exec.price * exec.quantity), 0)
-          const totalBuyQty = buyExecutions.reduce((sum, exec) => sum + exec.quantity, 0)
-          calculatedEntryPrice = totalBuyValue / totalBuyQty
-          // Quantity is the sum of BUY executions (position size), not all executions
-          calculatedQuantity = totalBuyQty
+        // Entry price is weighted average of entry executions
+        const entryExecutions = processedExecutions.filter(e => e.action === entryAction)
+        if (entryExecutions.length > 0) {
+          const totalEntryValue = entryExecutions.reduce((sum, exec) => sum + (exec.price * exec.quantity), 0)
+          const totalEntryQty = entryExecutions.reduce((sum, exec) => sum + exec.quantity, 0)
+          calculatedEntryPrice = totalEntryValue / totalEntryQty
+          // Quantity is the sum of ENTRY executions (position size), not all executions
+          calculatedQuantity = totalEntryQty
         }
 
-        // Exit price is weighted average of sell executions
-        const sellExecutions = processedExecutions.filter(e => e.action === 'sell')
-        if (sellExecutions.length > 0) {
-          const totalSellValue = sellExecutions.reduce((sum, exec) => sum + (exec.price * exec.quantity), 0)
-          const totalSellQty = sellExecutions.reduce((sum, exec) => sum + exec.quantity, 0)
-          calculatedExitPrice = totalSellValue / totalSellQty
+        // Exit price is weighted average of exit executions
+        const exitExecutions = processedExecutions.filter(e => e.action === exitAction)
+        if (exitExecutions.length > 0) {
+          const totalExitValue = exitExecutions.reduce((sum, exec) => sum + (exec.price * exec.quantity), 0)
+          const totalExitQty = exitExecutions.reduce((sum, exec) => sum + exec.quantity, 0)
+          calculatedExitPrice = totalExitValue / totalExitQty
         }
 
         // Total commission and fees from all executions (always positive)
