@@ -719,48 +719,14 @@
             </div>
           </div>
 
-          <!-- TradingView Chart Link -->
-          <div v-if="trade.chart_url || trade.chartUrl" class="card">
-            <div class="card-body">
-              <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">TradingView Chart</h3>
-
-              <!-- Display the chart image if it's a TradingView snapshot -->
-              <div v-if="tradingViewImageUrl" class="mb-4">
-                <a :href="trade.chart_url || trade.chartUrl" target="_blank" rel="noopener noreferrer">
-                  <img
-                    :src="tradingViewImageUrl"
-                    alt="TradingView Chart"
-                    class="w-full rounded-lg border border-gray-200 dark:border-gray-700 hover:opacity-90 transition-opacity cursor-pointer"
-                    @error="handleChartImageError"
-                  />
-                </a>
-              </div>
-
-              <!-- Display the link -->
-              <div class="flex items-center space-x-2">
-                <svg class="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                </svg>
-                <a
-                  :href="trade.chart_url || trade.chartUrl"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class="text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 text-sm truncate"
-                >
-                  {{ trade.chart_url || trade.chartUrl }}
-                </a>
-                <button
-                  @click="copyChartUrl"
-                  class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-                  title="Copy link"
-                >
-                  <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-          </div>
+          <!-- TradingView Charts -->
+          <TradeCharts
+            v-if="trade.charts && trade.charts.length > 0"
+            :trade-id="trade.id"
+            :charts="trade.charts"
+            :can-delete="trade.user_id === authStore.user?.id"
+            @deleted="handleChartDeleted"
+          />
 
           <!-- Trade Images -->
           <TradeImages
@@ -1065,6 +1031,7 @@ import api from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
 import TradeChartVisualization from '@/components/trades/TradeChartVisualization.vue'
 import TradeImages from '@/components/trades/TradeImages.vue'
+import TradeCharts from '@/components/trades/TradeCharts.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -1680,9 +1647,10 @@ function handleImageDeleted(imageId) {
   }
 }
 
-function handleChartImageError() {
-  // If the image fails to load, hide the image and just show the link
-  chartImageFailed.value = true
+function handleChartDeleted(chartId) {
+  if (trade.value && trade.value.charts) {
+    trade.value.charts = trade.value.charts.filter(chart => chart.id !== chartId)
+  }
 }
 
 async function copyChartUrl() {

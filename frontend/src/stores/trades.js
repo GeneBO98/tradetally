@@ -254,7 +254,7 @@ export const useTradesStore = defineStore('trades', () => {
   async function fetchTrade(id) {
     loading.value = true
     error.value = null
-    
+
     try {
       const response = await api.get(`/trades/${id}`)
       currentTrade.value = response.data.trade

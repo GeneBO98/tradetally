@@ -2876,6 +2876,75 @@ const tradeController = {
     }
   },
 
+  // Chart management endpoints
+  async addTradeChart(req, res, next) {
+    try {
+      const tradeId = req.params.id;
+      const { chartUrl, chartTitle } = req.body;
+
+      // Validate chart URL
+      if (!chartUrl || typeof chartUrl !== 'string' || chartUrl.trim().length === 0) {
+        return res.status(400).json({ error: 'Chart URL is required' });
+      }
+
+      // Verify trade belongs to user
+      const trade = await Trade.findById(tradeId, req.user.id);
+      if (!trade) {
+        return res.status(404).json({ error: 'Trade not found' });
+      }
+
+      // Add chart to database
+      const chartData = {
+        chartUrl: chartUrl.trim(),
+        chartTitle: chartTitle?.trim() || null
+      };
+
+      const chart = await Trade.addChart(tradeId, chartData);
+
+      // Convert to camelCase for frontend consistency
+      const chartResponse = {
+        id: chart.id,
+        chartUrl: chart.chart_url,
+        chartTitle: chart.chart_title,
+        uploadedAt: chart.uploaded_at
+      };
+
+      res.status(201).json({
+        message: 'Chart added successfully',
+        chart: chartResponse
+      });
+
+    } catch (error) {
+      console.error('Add chart error:', error);
+      next(error);
+    }
+  },
+
+  async deleteTradeChart(req, res, next) {
+    try {
+      const { id: tradeId, chartId } = req.params;
+
+      // Verify trade belongs to user
+      const trade = await Trade.findById(tradeId, req.user.id);
+      if (!trade) {
+        return res.status(404).json({ error: 'Trade not found' });
+      }
+
+      // Delete chart from database
+      const deletedChart = await Trade.deleteChart(chartId, req.user.id);
+
+      if (!deletedChart) {
+        return res.status(404).json({ error: 'Chart not found' });
+      }
+
+      res.json({ message: 'Chart deleted successfully' });
+
+    } catch (error) {
+      console.error('Delete chart error:', error);
+      next(error);
+    }
+  },
+
   async getEnrichmentStatus(req, res, next) {
     try {
       const userId = req.user.id;

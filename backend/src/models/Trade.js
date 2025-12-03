@@ -374,6 +374,14 @@ class Trade {
             'uploaded_at', ta.uploaded_at
           )
         ) FILTER (WHERE ta.id IS NOT NULL) as attachments,
+        json_agg(
+          DISTINCT jsonb_build_object(
+            'id', tch.id,
+            'chart_url', tch.chart_url,
+            'chart_title', tch.chart_title,
+            'uploaded_at', tch.uploaded_at
+          )
+        ) FILTER (WHERE tch.id IS NOT NULL) as charts,
         count(DISTINCT tc.id)::integer as comment_count,
         sc.finnhub_industry as sector,
         sc.company_name as company_name
@@ -381,6 +389,7 @@ class Trade {
       LEFT JOIN users u ON t.user_id = u.id
       LEFT JOIN gamification_profile gp ON u.id = gp.user_id
       LEFT JOIN trade_attachments ta ON t.id = ta.trade_id
+      LEFT JOIN trade_charts tch ON t.id = tch.trade_id
       LEFT JOIN trade_comments tc ON t.id = tc.trade_id
       LEFT JOIN symbol_categories sc ON t.symbol = sc.symbol
       WHERE t.id = $1
@@ -399,12 +408,12 @@ class Trade {
 
     const result = await db.query(query, values);
     const trade = result.rows[0];
-    
+
     // Parse executions from JSONB column if they exist
     if (trade && trade.executions) {
       try {
-        trade.executions = typeof trade.executions === 'string' 
-          ? JSON.parse(trade.executions) 
+        trade.executions = typeof trade.executions === 'string'
+          ? JSON.parse(trade.executions)
           : trade.executions;
       } catch (error) {
         console.warn(`Failed to parse executions for trade ${trade.id}:`, error.message);
@@ -413,7 +422,17 @@ class Trade {
     } else if (trade) {
       trade.executions = [];
     }
-    
+
+    // Convert charts from snake_case to camelCase for frontend
+    if (trade && trade.charts && Array.isArray(trade.charts)) {
+      trade.charts = trade.charts.map(chart => ({
+        id: chart.id,
+        chartUrl: chart.chart_url,
+        chartTitle: chart.chart_title,
+        uploadedAt: chart.uploaded_at
+      }));
+    }
+
     return trade;
   }
 
@@ -465,11 +484,13 @@ class Trade {
       SELECT t.*,
         t.strategy, t.setup,
         array_agg(DISTINCT ta.file_url) FILTER (WHERE ta.id IS NOT NULL) as attachment_urls,
+        array_agg(DISTINCT tch.chart_url) FILTER (WHERE tch.id IS NOT NULL) as chart_urls,
         count(DISTINCT tc.id)::integer as comment_count,
         sc.finnhub_industry as sector,
         sc.company_name as company_name
       FROM trades t
       LEFT JOIN trade_attachments ta ON t.id = ta.trade_id
+      LEFT JOIN trade_charts tch ON t.id = tch.trade_id
       LEFT JOIN trade_comments tc ON t.id = tc.trade_id
       LEFT JOIN symbol_categories sc ON t.symbol = sc.symbol
       WHERE t.user_id = $1
@@ -1109,6 +1130,31 @@ class Trade {
     `;
 
     const result = await db.query(query, [attachmentId, userId]);
+    return result.rows[0];
+  }
+
+  static async addChart(tradeId, chartData) {
+    const { chartUrl, chartTitle } = chartData;
+
+    const query = `
+      INSERT INTO trade_charts (trade_id, chart_url, chart_title)
+      VALUES ($1, $2, $3)
+      RETURNING *
+    `;
+
+    const result = await db.query(query, [tradeId, chartUrl, chartTitle || null]);
+    return result.rows[0];
+  }
+
+  static async deleteChart(chartId, userId) {
+    const query = `
+      DELETE FROM trade_charts tch
+      USING trades t
+      WHERE tch.id = $1 AND tch.trade_id = t.id AND t.user_id = $2
+      RETURNING tch.id
+    `;
+
+    const result = await db.query(query, [chartId, userId]);
     return result.rows[0];
   }
 
