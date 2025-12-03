@@ -752,10 +752,29 @@
           />
         </div>
 
+        <!-- Chart URL Input -->
+        <div>
+          <label for="chartUrl" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+            TradingView Chart Link
+          </label>
+          <div class="mt-1">
+            <input
+              id="chartUrl"
+              v-model="form.chartUrl"
+              type="url"
+              placeholder="https://www.tradingview.com/x/..."
+              class="shadow-sm focus:ring-primary-500 focus:border-primary-500 block w-full sm:text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md"
+            />
+          </div>
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            Paste a TradingView snapshot link to display the chart
+          </p>
+        </div>
+
         <!-- Image Upload Section -->
         <div v-if="isEdit && route.params.id">
-          <ImageUpload 
-            :trade-id="route.params.id" 
+          <ImageUpload
+            :trade-id="route.params.id"
             @uploaded="handleImageUploaded"
           />
         </div>
@@ -904,6 +923,8 @@ const form = ref({
   notes: '',
   isPublic: false,
   confidence: 5,
+  // Chart URL for TradingView links
+  chartUrl: '',
   // Risk management fields
   stopLoss: null,
   takeProfit: null,
@@ -1050,6 +1071,8 @@ async function loadTrade() {
       notes: trade.notes || '',
       isPublic: trade.is_public || false,
       confidence: trade.confidence || 5,
+      // Chart URL
+      chartUrl: trade.chart_url || trade.chartUrl || '',
       // Options-specific fields
       underlyingSymbol: trade.underlying_symbol || '',
       optionType: trade.option_type || '',
@@ -1345,6 +1368,8 @@ async function handleSubmit() {
       notes: form.value.notes || '',
       isPublic: form.value.isPublic || false,
       tags: tagsInput.value ? tagsInput.value.split(',').map(tag => tag.trim()).filter(Boolean) : [],
+      // Chart URL
+      chartUrl: form.value.chartUrl || null,
       // Risk management fields
       stopLoss: form.value.stopLoss && form.value.stopLoss !== '' ? parseFloat(form.value.stopLoss) : null,
       takeProfit: form.value.takeProfit && form.value.takeProfit !== '' ? parseFloat(form.value.takeProfit) : null,
