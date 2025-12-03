@@ -46,7 +46,7 @@ class Trade {
       originalCurrency, exchangeRate, originalEntryPriceCurrency,
       originalExitPriceCurrency, originalPnlCurrency, originalCommissionCurrency,
       originalFeesCurrency,
-      stopLoss, takeProfit
+      stopLoss, takeProfit, chartUrl
     } = tradeData;
 
     // Convert empty strings to null for optional fields
@@ -247,9 +247,9 @@ class Trade {
         contract_month, contract_year, tick_size, point_value, underlying_asset, import_id,
         original_currency, exchange_rate, original_entry_price_currency, original_exit_price_currency,
         original_pnl_currency, original_commission_currency, original_fees_currency,
-        stop_loss, take_profit, r_value
+        stop_loss, take_profit, r_value, chart_url
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56)
       RETURNING *
     `;
 
@@ -265,7 +265,7 @@ class Trade {
       importId || null,
       originalCurrency || 'USD', exchangeRate || 1.0, originalEntryPriceCurrency || null, originalExitPriceCurrency || null,
       originalPnlCurrency || null, originalCommissionCurrency || null, originalFeesCurrency || null,
-      finalStopLoss || null, takeProfit || null, rValue
+      finalStopLoss || null, takeProfit || null, rValue, chartUrl || null
     ];
 
     const result = await db.query(query, values);

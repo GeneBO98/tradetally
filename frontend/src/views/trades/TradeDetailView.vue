@@ -719,6 +719,49 @@
             </div>
           </div>
 
+          <!-- TradingView Chart Link -->
+          <div v-if="trade.chart_url || trade.chartUrl" class="card">
+            <div class="card-body">
+              <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">TradingView Chart</h3>
+
+              <!-- Display the chart image if it's a TradingView snapshot -->
+              <div v-if="tradingViewImageUrl" class="mb-4">
+                <a :href="trade.chart_url || trade.chartUrl" target="_blank" rel="noopener noreferrer">
+                  <img
+                    :src="tradingViewImageUrl"
+                    alt="TradingView Chart"
+                    class="w-full rounded-lg border border-gray-200 dark:border-gray-700 hover:opacity-90 transition-opacity cursor-pointer"
+                    @error="handleChartImageError"
+                  />
+                </a>
+              </div>
+
+              <!-- Display the link -->
+              <div class="flex items-center space-x-2">
+                <svg class="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                </svg>
+                <a
+                  :href="trade.chart_url || trade.chartUrl"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 text-sm truncate"
+                >
+                  {{ trade.chart_url || trade.chartUrl }}
+                </a>
+                <button
+                  @click="copyChartUrl"
+                  class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                  title="Copy link"
+                >
+                  <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+
           <!-- Trade Images -->
           <TradeImages
             :trade-id="trade.id"
@@ -1072,6 +1115,31 @@ const hasIncompleteQuality = computed(() => {
     metrics.price === null || metrics.price === undefined
 
   return hasNullMetrics
+})
+
+// Ref to track if chart image failed to load
+const chartImageFailed = ref(false)
+
+// Computed property to extract TradingView snapshot image URL
+const tradingViewImageUrl = computed(() => {
+  if (chartImageFailed.value) return null
+
+  const chartUrl = trade.value?.chart_url || trade.value?.chartUrl
+  if (!chartUrl) return null
+
+  // TradingView snapshot URLs: https://www.tradingview.com/x/ABCD1234/
+  // The actual image is at: https://s3.tradingview.com/snapshots/x/ABCD1234.png
+  const snapshotMatch = chartUrl.match(/tradingview\.com\/x\/([a-zA-Z0-9]+)/i)
+  if (snapshotMatch) {
+    return `https://s3.tradingview.com/snapshots/x/${snapshotMatch[1]}.png`
+  }
+
+  // If it's already a direct image URL, use it
+  if (chartUrl.match(/\.(png|jpg|jpeg|gif|webp)(\?.*)?$/i)) {
+    return chartUrl
+  }
+
+  return null
 })
 
 // Computed properties for enhanced execution display
@@ -1591,6 +1659,7 @@ async function calculateQuality() {
 async function loadTrade() {
   try {
     loading.value = true
+    chartImageFailed.value = false // Reset chart image state for new trade
     trade.value = await tradesStore.fetchTrade(route.params.id)
     
     // Load comments after trade is loaded
@@ -1608,6 +1677,23 @@ async function loadTrade() {
 function handleImageDeleted(imageId) {
   if (trade.value && trade.value.attachments) {
     trade.value.attachments = trade.value.attachments.filter(img => img.id !== imageId)
+  }
+}
+
+function handleChartImageError() {
+  // If the image fails to load, hide the image and just show the link
+  chartImageFailed.value = true
+}
+
+async function copyChartUrl() {
+  const chartUrl = trade.value?.chart_url || trade.value?.chartUrl
+  if (chartUrl) {
+    try {
+      await navigator.clipboard.writeText(chartUrl)
+      // Could add a toast notification here if desired
+    } catch (err) {
+      console.error('Failed to copy chart URL:', err)
+    }
   }
 }
 
