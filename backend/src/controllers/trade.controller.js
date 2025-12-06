@@ -14,6 +14,16 @@ const path = require('path');
 const fs = require('fs').promises;
 const ChartService = require('../services/chartService');
 
+// Helper function to invalidate analytics cache for a user
+function invalidateAnalyticsCache(userId) {
+  // Clear all analytics cache entries for this user
+  const cacheKeys = Object.keys(cache.data).filter(key =>
+    key.startsWith(`analytics:user_${userId}:`)
+  );
+  cacheKeys.forEach(key => cache.del(key));
+  console.log(`[CACHE] Invalidated ${cacheKeys.length} analytics cache entries for user ${userId}`);
+}
+
 const tradeController = {
   async getUserTrades(req, res, next) {
     try {
@@ -305,7 +315,10 @@ const tradeController = {
       } catch (cacheError) {
         console.warn('[WARNING] Failed to invalidate sector performance cache:', cacheError.message);
       }
-      
+
+      // Invalidate analytics cache for this user
+      invalidateAnalyticsCache(req.user.id);
+
       res.status(201).json({ trade });
     } catch (error) {
       next(error);
@@ -408,6 +421,9 @@ const tradeController = {
         console.warn('[WARNING] Failed to invalidate sector performance cache:', cacheError.message);
       }
 
+      // Invalidate analytics cache for this user
+      invalidateAnalyticsCache(req.user.id);
+
       res.json({ trade });
     } catch (error) {
       next(error);
@@ -437,6 +453,9 @@ const tradeController = {
       } catch (cacheError) {
         console.warn('[WARNING] Failed to invalidate sector performance cache:', cacheError.message);
       }
+
+      // Invalidate analytics cache for this user
+      invalidateAnalyticsCache(req.user.id);
 
       res.json({ message: 'Trade deleted successfully' });
     } catch (error) {
@@ -494,6 +513,9 @@ const tradeController = {
       } catch (cacheError) {
         console.warn('[WARNING] Failed to invalidate sector performance cache:', cacheError.message);
       }
+
+      // Invalidate analytics cache for this user
+      invalidateAnalyticsCache(req.user.id);
 
       res.json({
         message: `Bulk delete completed. ${deletedCount} trades deleted successfully.`,
@@ -1047,12 +1069,174 @@ const tradeController = {
             trades = convertedTrades;
             logger.logImport(`[CURRENCY] Completed currency conversion for ${trades.length} trades`);
           }
-          
+
+          // Apply broker fee settings if available
+          // Supports per-instrument fees with fallback to broker-wide default
+          // When broker is 'auto', we need to look up fees per-trade based on each trade's detected broker
+          try {
+            // Get the effective broker - use trade's broker if 'auto' was selected
+            const getEffectiveBroker = (trade) => {
+              if (broker.toLowerCase() === 'auto' && trade.broker) {
+                return trade.broker.toLowerCase();
+              }
+              return broker.toLowerCase();
+            };
+
+            // Get unique brokers from trades when using 'auto'
+            const brokersToLookup = broker.toLowerCase() === 'auto'
+              ? [...new Set(trades.map(t => t.broker?.toLowerCase()).filter(Boolean))]
+              : [broker.toLowerCase()];
+
+            logger.logImport(`[BROKER FEES] Looking up fees for brokers: ${brokersToLookup.join(', ')}`);
+
+            // Fetch fee settings for all relevant brokers
+            const brokerFeeQuery = `
+              SELECT broker, instrument, commission_per_contract, commission_per_side, exchange_fee_per_contract,
+                     nfa_fee_per_contract, clearing_fee_per_contract, platform_fee_per_contract
+              FROM broker_fee_settings
+              WHERE user_id = $1 AND broker = ANY($2)
+              ORDER BY broker, instrument DESC
+            `;
+            const brokerFeeResult = await db.query(brokerFeeQuery, [fileUserId, brokersToLookup]);
+
+            if (brokerFeeResult.rows.length > 0) {
+              // Build a nested map: broker -> instrument -> fee settings
+              // Empty string instrument = broker-wide default
+              const brokerFeeMap = new Map();
+
+              brokerFeeResult.rows.forEach(row => {
+                const brokerName = (row.broker || '').toLowerCase();
+                const instrument = (row.instrument || '').toUpperCase();
+                // Separate broker commission from regulatory/exchange fees
+                const settings = {
+                  // Commission = broker's commission charges
+                  commissionPerContract: parseFloat(row.commission_per_contract) || 0,
+                  commissionPerSide: parseFloat(row.commission_per_side) || 0,
+                  // Fees = regulatory and exchange fees (NFA, exchange, clearing, platform)
+                  feesPerContract:
+                    (parseFloat(row.exchange_fee_per_contract) || 0) +
+                    (parseFloat(row.nfa_fee_per_contract) || 0) +
+                    (parseFloat(row.clearing_fee_per_contract) || 0) +
+                    (parseFloat(row.platform_fee_per_contract) || 0)
+                };
+
+                if (!brokerFeeMap.has(brokerName)) {
+                  brokerFeeMap.set(brokerName, { instruments: new Map(), default: null });
+                }
+
+                const brokerSettings = brokerFeeMap.get(brokerName);
+                if (instrument === '') {
+                  brokerSettings.default = settings;
+                  logger.logImport(`[BROKER FEES] Default for ${brokerName}: commission=$${settings.commissionPerContract.toFixed(4)}/contract + $${settings.commissionPerSide.toFixed(2)}/side, fees=$${settings.feesPerContract.toFixed(4)}/contract`);
+                } else {
+                  brokerSettings.instruments.set(instrument, settings);
+                  logger.logImport(`[BROKER FEES] ${instrument} for ${brokerName}: commission=$${settings.commissionPerContract.toFixed(4)}/contract + $${settings.commissionPerSide.toFixed(2)}/side, fees=$${settings.feesPerContract.toFixed(4)}/contract`);
+                }
+              });
+
+              trades = trades.map(trade => {
+                // Only apply fees if the trade doesn't already have commission/fees set
+                if ((!trade.commission || trade.commission === 0) && (!trade.fees || trade.fees === 0)) {
+                  const symbol = (trade.symbol || '').toUpperCase();
+                  const quantity = trade.quantity || trade.totalQuantity || 1;
+                  const effectiveBroker = getEffectiveBroker(trade);
+
+                  // Get broker-specific fee settings
+                  const brokerSettings = brokerFeeMap.get(effectiveBroker);
+                  if (!brokerSettings) {
+                    return trade; // No fee settings for this broker
+                  }
+
+                  const feeSettingsMap = brokerSettings.instruments;
+                  const defaultFeeSettings = brokerSettings.default;
+
+                  // Look up fee settings with fallback chain:
+                  // 1. Exact symbol match (e.g., MESZ5)
+                  // 2. Base futures symbol without contract suffix (e.g., MES from MESZ5 or ESH25)
+                  // 3. Broker-wide default
+                  let feeSettings = feeSettingsMap.get(symbol);
+
+                  if (!feeSettings) {
+                    // Try to extract base futures symbol
+                    // Futures format: BASE + MONTH_CODE + YEAR (e.g., MESZ5, ESH25, NQM24)
+                    // Month codes: F,G,H,J,K,M,N,Q,U,V,X,Z
+                    const futuresMatch = symbol.match(/^([A-Z]{2,4})([FGHJKMNQUVXZ])(\d{1,2})$/);
+                    if (futuresMatch) {
+                      const baseSymbol = futuresMatch[1];
+                      feeSettings = feeSettingsMap.get(baseSymbol);
+                      if (feeSettings) {
+                        logger.logImport(`[BROKER FEES] Matched ${symbol} to base symbol ${baseSymbol}`);
+                      }
+                    }
+                  }
+
+                  // Fall back to broker default if no instrument match
+                  if (!feeSettings) {
+                    feeSettings = defaultFeeSettings;
+                  }
+
+                  if (feeSettings) {
+                    const { commissionPerContract, commissionPerSide, feesPerContract } = feeSettings;
+
+                    // Calculate commission and fees separately for a round-trip trade
+                    // Commission = broker commission (per contract + per side)
+                    // Fees = regulatory/exchange fees (NFA, exchange, clearing, platform)
+                    const isRoundTrip = !!trade.exitPrice;
+                    const sides = isRoundTrip ? 2 : 1;
+
+                    // Commission: (perContract * quantity * sides) + (perSide * sides)
+                    const totalCommission = (commissionPerContract * quantity * sides) + (commissionPerSide * sides);
+                    // Fees: perContract * quantity * sides
+                    const totalFees = feesPerContract * quantity * sides;
+
+                    // Split between entry and exit
+                    const entryCommission = (commissionPerContract * quantity) + commissionPerSide;
+                    const exitCommission = isRoundTrip ? (commissionPerContract * quantity) + commissionPerSide : 0;
+                    const entryFees = feesPerContract * quantity;
+                    const exitFees = isRoundTrip ? feesPerContract * quantity : 0;
+
+                    trade.entryCommission = entryCommission;
+                    trade.exitCommission = exitCommission;
+                    trade.commission = totalCommission;
+                    trade.fees = totalFees;
+
+                    // Recalculate P&L with commission and fees if it's a closed trade
+                    if (isRoundTrip && trade.pnl !== undefined && trade.pnl !== null) {
+                      trade.pnl = trade.pnl - totalCommission - totalFees;
+                    }
+
+                    // Determine match type for logging
+                    let matchType = 'broker-default';
+                    if (feeSettingsMap.has(symbol)) {
+                      matchType = 'exact-symbol';
+                    } else {
+                      // Check if we matched on base futures symbol
+                      const futuresMatch = symbol.match(/^([A-Z]{2,4})([FGHJKMNQUVXZ])(\d{1,2})$/);
+                      if (futuresMatch && feeSettingsMap.has(futuresMatch[1])) {
+                        matchType = `base-symbol (${futuresMatch[1]})`;
+                      }
+                    }
+                    const totalCost = totalCommission + totalFees;
+                    logger.logImport(`[BROKER FEES] Applied to ${symbol} (${quantity} contracts): commission=$${totalCommission.toFixed(2)}, fees=$${totalFees.toFixed(2)}, total=$${totalCost.toFixed(2)} [${matchType}]`);
+                  }
+                }
+                return trade;
+              });
+
+              logger.logImport(`[BROKER FEES] Completed fee application for ${trades.length} trades`);
+            } else {
+              logger.logImport(`[BROKER FEES] No fee settings found for broker(s): ${brokersToLookup.join(', ')}`);
+            }
+          } catch (feeError) {
+            logger.logWarn(`[BROKER FEES] Error applying broker fees: ${feeError.message}`);
+            // Continue without applying fees
+          }
+
           let imported = 0;
           let failed = 0;
           let duplicates = 0;
           const failedTrades = [];
-          
+
           // Clear timeout since we're proceeding normally
           clearTimeout(importTimeout);
 
@@ -1686,7 +1870,7 @@ const tradeController = {
       console.log('Query params:', req.query);
       console.log('User ID:', req.user.id);
       console.log('Side filter specifically:', req.query.side);
-      
+
       const {
         startDate, endDate, symbol, sector, strategy, tags,
         strategies, sectors, // Add multi-select parameters
@@ -1723,7 +1907,7 @@ const tradeController = {
         optionTypes: optionTypes ? optionTypes.split(',') : undefined,
         qualityGrades: qualityGrades ? qualityGrades.split(',') : undefined
       };
-      
+
       console.log('[ANALYTICS] Raw query:', req.query);
       console.log('[ANALYTICS] Parsed filters:', JSON.stringify(filters, null, 2));
 
@@ -1732,16 +1916,31 @@ const tradeController = {
         const minTime = parseInt(minHoldTime) || 0;
         const maxTime = parseInt(maxHoldTime) || Infinity;
         const holdTimeRange = Trade.convertHoldTimeRange(minTime, maxTime);
-        
+
         if (holdTimeRange) {
           filters.holdTime = holdTimeRange;
         }
       }
-      
+
+      // Generate cache key based on userId and filters
+      const cacheKey = `analytics:user_${req.user.id}:${JSON.stringify(filters)}`;
+
+      // Check cache first
+      const cachedAnalytics = cache.get(cacheKey);
+      if (cachedAnalytics) {
+        console.log('[CACHE] Analytics cache hit for user:', req.user.id);
+        return res.json(cachedAnalytics);
+      }
+
+      console.log('[CACHE] Analytics cache miss for user:', req.user.id);
       const analytics = await Trade.getAnalytics(req.user.id, filters);
-      
+
+      // Cache the result for 5 minutes (300000ms)
+      cache.set(cacheKey, analytics, 300000);
+      console.log('[CACHE] Cached analytics for 5 minutes');
+
       console.log('Analytics result:', JSON.stringify(analytics, null, 2));
-      
+
       res.json(analytics);
     } catch (error) {
       console.error('Analytics error:', error);
@@ -2710,6 +2909,75 @@ const tradeController = {
       res.json({ message: 'Image deleted successfully' });
 
     } catch (error) {
+      next(error);
+    }
+  },
+
+  // Chart management endpoints
+  async addTradeChart(req, res, next) {
+    try {
+      const tradeId = req.params.id;
+      const { chartUrl, chartTitle } = req.body;
+
+      // Validate chart URL
+      if (!chartUrl || typeof chartUrl !== 'string' || chartUrl.trim().length === 0) {
+        return res.status(400).json({ error: 'Chart URL is required' });
+      }
+
+      // Verify trade belongs to user
+      const trade = await Trade.findById(tradeId, req.user.id);
+      if (!trade) {
+        return res.status(404).json({ error: 'Trade not found' });
+      }
+
+      // Add chart to database
+      const chartData = {
+        chartUrl: chartUrl.trim(),
+        chartTitle: chartTitle?.trim() || null
+      };
+
+      const chart = await Trade.addChart(tradeId, chartData);
+
+      // Convert to camelCase for frontend consistency
+      const chartResponse = {
+        id: chart.id,
+        chartUrl: chart.chart_url,
+        chartTitle: chart.chart_title,
+        uploadedAt: chart.uploaded_at
+      };
+
+      res.status(201).json({
+        message: 'Chart added successfully',
+        chart: chartResponse
+      });
+
+    } catch (error) {
+      console.error('Add chart error:', error);
+      next(error);
+    }
+  },
+
+  async deleteTradeChart(req, res, next) {
+    try {
+      const { id: tradeId, chartId } = req.params;
+
+      // Verify trade belongs to user
+      const trade = await Trade.findById(tradeId, req.user.id);
+      if (!trade) {
+        return res.status(404).json({ error: 'Trade not found' });
+      }
+
+      // Delete chart from database
+      const deletedChart = await Trade.deleteChart(chartId, req.user.id);
+
+      if (!deletedChart) {
+        return res.status(404).json({ error: 'Chart not found' });
+      }
+
+      res.json({ message: 'Chart deleted successfully' });
+
+    } catch (error) {
+      console.error('Delete chart error:', error);
       next(error);
     }
   },

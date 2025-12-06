@@ -137,6 +137,14 @@ class PriceMonitoringService {
   async updateSymbolPrice(symbol) {
     try {
       let priceData = null;
+      // Check if symbol has exceeded failure limit
+      const MAX_FAILURES = 15; // Stop attempting after 15 failures
+      const existingFailure = this.failedSymbols.get(symbol);
+      if (existingFailure && existingFailure.count >= MAX_FAILURES) {
+        // Silently skip - we've already warned them
+        return false;
+      }
+
       let dataSource = 'finnhub';
 
       // Try Finnhub first
@@ -160,10 +168,10 @@ class PriceMonitoringService {
         failureData.lastSeen = Date.now();
         this.failedSymbols.set(symbol, failureData);
 
-        // Only log on first failure, then every 10th failure, or once per hour
+        // Only log on first failure, then every 10th failure, or once per hour, up to max failures
         const minutesSinceFirst = (Date.now() - failureData.firstSeen) / (1000 * 60);
         const shouldLog = failureData.count === 1 ||
-                         failureData.count % 10 === 0 ||
+                         (failureData.count % 10 === 0 && failureData.count < MAX_FAILURES) ||
                          minutesSinceFirst > 60;
 
         if (shouldLog) {
@@ -174,6 +182,11 @@ class PriceMonitoringService {
           } else {
             logger.warn(`Finnhub failed for ${symbol}: ${errorMsg} (${failureData.count} failures)`);
           }
+        }
+
+        // Log final warning when reaching max failures
+        if (failureData.count === MAX_FAILURES) {
+          logger.error(`${symbol} has failed ${MAX_FAILURES} times. Stopping further attempts. Please remove from watchlist/alerts or verify the symbol is correct.`);
         }
 
         // Return false to indicate failure

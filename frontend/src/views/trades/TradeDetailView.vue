@@ -527,6 +527,9 @@
                         P&L
                       </th>
                       <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        Commission
+                      </th>
+                      <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                         Fees
                       </th>
                       <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
@@ -556,10 +559,10 @@
                         {{ formatQuantity(execution.quantity) }}
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap text-sm font-mono text-gray-900 dark:text-white">
-                        ${{ formatNumber(execution.entryPrice || execution.price) }}
+                        {{ execution.entryPrice !== null && execution.entryPrice !== undefined ? `$${formatNumber(execution.entryPrice)}` : '-' }}
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap text-sm font-mono text-gray-900 dark:text-white">
-                        {{ execution.exitPrice ? `$${formatNumber(execution.exitPrice)}` : '-' }}
+                        {{ execution.exitPrice !== null && execution.exitPrice !== undefined ? `$${formatNumber(execution.exitPrice)}` : '-' }}
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap text-sm font-mono"
                           :class="[
@@ -572,7 +575,10 @@
                         {{ execution.pnl !== undefined && execution.pnl !== null ? `$${formatNumber(execution.pnl)}` : '-' }}
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap text-sm font-mono text-gray-600 dark:text-gray-400">
-                        {{ execution.fees || execution.commission ? `$${formatNumber((execution.fees || 0) + (execution.commission || 0))}` : '-' }}
+                        {{ execution.commission ? `$${formatNumber(execution.commission)}` : '-' }}
+                      </td>
+                      <td class="px-3 py-4 whitespace-nowrap text-sm font-mono text-gray-600 dark:text-gray-400">
+                        {{ execution.fees ? `$${formatNumber(execution.fees)}` : '-' }}
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">
                         {{ execution.entryTime ? formatDateTime(execution.entryTime) : '-' }}
@@ -612,13 +618,13 @@
                         {{ formatNumber(execution.quantity, 0) }}
                       </div>
                     </div>
-                    <div>
+                    <div v-if="execution.entryPrice !== null && execution.entryPrice !== undefined">
                       <div class="text-gray-500 dark:text-gray-400 text-xs">Entry Price</div>
                       <div class="font-mono text-gray-900 dark:text-white">
-                        ${{ formatNumber(execution.entryPrice || execution.price) }}
+                        ${{ formatNumber(execution.entryPrice) }}
                       </div>
                     </div>
-                    <div v-if="execution.exitPrice">
+                    <div v-if="execution.exitPrice !== null && execution.exitPrice !== undefined">
                       <div class="text-gray-500 dark:text-gray-400 text-xs">Exit Price</div>
                       <div class="font-mono text-gray-900 dark:text-white">
                         ${{ formatNumber(execution.exitPrice) }}
@@ -643,10 +649,16 @@
                         ${{ formatNumber(execution.pnl) }}
                       </div>
                     </div>
-                    <div v-if="execution.fees || execution.commission">
+                    <div v-if="execution.commission">
+                      <div class="text-gray-500 dark:text-gray-400 text-xs">Commission</div>
+                      <div class="font-mono text-gray-600 dark:text-gray-400">
+                        ${{ formatNumber(execution.commission) }}
+                      </div>
+                    </div>
+                    <div v-if="execution.fees">
                       <div class="text-gray-500 dark:text-gray-400 text-xs">Fees</div>
                       <div class="font-mono text-gray-600 dark:text-gray-400">
-                        ${{ formatNumber((execution.fees || 0) + (execution.commission || 0)) }}
+                        ${{ formatNumber(execution.fees) }}
                       </div>
                     </div>
                   </div>
@@ -706,6 +718,15 @@
               <p class="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{{ trade.notes }}</p>
             </div>
           </div>
+
+          <!-- TradingView Charts -->
+          <TradeCharts
+            v-if="trade.charts && trade.charts.length > 0"
+            :trade-id="trade.id"
+            :charts="trade.charts"
+            :can-delete="trade.user_id === authStore.user?.id"
+            @deleted="handleChartDeleted"
+          />
 
           <!-- Trade Images -->
           <TradeImages
@@ -1010,6 +1031,7 @@ import api from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
 import TradeChartVisualization from '@/components/trades/TradeChartVisualization.vue'
 import TradeImages from '@/components/trades/TradeImages.vue'
+import TradeCharts from '@/components/trades/TradeCharts.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -1062,11 +1084,41 @@ const hasIncompleteQuality = computed(() => {
   return hasNullMetrics
 })
 
+// Ref to track if chart image failed to load
+const chartImageFailed = ref(false)
+
+// Computed property to extract TradingView snapshot image URL
+const tradingViewImageUrl = computed(() => {
+  if (chartImageFailed.value) return null
+
+  const chartUrl = trade.value?.chart_url || trade.value?.chartUrl
+  if (!chartUrl) return null
+
+  // TradingView snapshot URLs: https://www.tradingview.com/x/ABCD1234/
+  // The actual image is at: https://s3.tradingview.com/snapshots/x/ABCD1234.png
+  const snapshotMatch = chartUrl.match(/tradingview\.com\/x\/([a-zA-Z0-9]+)/i)
+  if (snapshotMatch) {
+    return `https://s3.tradingview.com/snapshots/x/${snapshotMatch[1]}.png`
+  }
+
+  // If it's already a direct image URL, use it
+  if (chartUrl.match(/\.(png|jpg|jpeg|gif|webp)(\?.*)?$/i)) {
+    return chartUrl
+  }
+
+  return null
+})
+
 // Computed properties for enhanced execution display
 const processedExecutions = computed(() => {
-  // Check if this is an options trade and get contract multiplier
+  // Check instrument type and get appropriate multiplier
   const isOption = trade.value?.instrument_type === 'option'
+  const isFuture = trade.value?.instrument_type === 'future'
   const contractSize = isOption ? (trade.value.contract_size || 100) : 1
+  const pointValue = isFuture ? (trade.value.point_value || 1) : 1
+
+  // Determine the value multiplier based on instrument type
+  const valueMultiplier = isFuture ? pointValue : contractSize
 
   // If no executions array, create a synthetic execution from trade entry/exit data
   if (!trade.value?.executions || !Array.isArray(trade.value.executions) || trade.value.executions.length === 0) {
@@ -1087,9 +1139,21 @@ const processedExecutions = computed(() => {
     }]
   }
 
+  const tradeSide = trade.value.side
   let runningPosition = 0
-  let totalCost = 0
-  let totalContracts = 0
+
+  // Track entry executions for calculating average entry price
+  let totalEntryQuantity = 0
+  let totalEntryValue = 0
+
+  // Check if any executions have their own commission/fees values
+  const hasExecutionCommissions = trade.value.executions.some(exec => exec && exec.commission > 0)
+  const hasExecutionFees = trade.value.executions.some(exec => exec && exec.fees > 0)
+
+  // Calculate total quantity for proportional distribution
+  const totalQuantity = trade.value.executions.reduce((sum, exec) => sum + (parseFloat(exec?.quantity) || 0), 0)
+  const tradeCommission = parseFloat(trade.value.commission) || 0
+  const tradeFees = parseFloat(trade.value.fees) || 0
 
   return trade.value.executions.map((execution, index) => {
     // Handle null/undefined execution
@@ -1099,45 +1163,68 @@ const processedExecutions = computed(() => {
         quantity: 0,
         price: 0,
         value: 0,
+        commission: 0,
         fees: 0,
         runningPosition: 0,
         avgCost: null,
-        datetime: null
+        datetime: null,
+        pnl: null
       }
     }
 
     // Map trade record fields to execution format
-    // For round-trip trades, executions are full trade records
     const quantity = parseFloat(execution.quantity) || 0
-    const price = parseFloat(execution.price) || parseFloat(execution.entry_price) || 0  // Use price from execution, fallback to entry_price from trade record
+    const price = parseFloat(execution.price) || parseFloat(execution.entry_price) || 0
+    const value = quantity * price * valueMultiplier
+    const action = execution.action || execution.side || 'unknown'
+    const datetime = execution.datetime || execution.entry_time
 
-    // For options, the actual dollar value includes the contract multiplier
-    const value = isOption ? (quantity * price * contractSize) : (quantity * price)
-    const fees = (parseFloat(execution.commission) || 0) + (parseFloat(execution.fees) || 0)
-    const action = execution.action || execution.side || 'unknown'  // Use action from execution, fallback to side from trade record
-    const datetime = execution.datetime || execution.entry_time  // Use datetime from execution, fallback to entry_time from trade record
-
-    // Update running position
-    if (action === 'buy' || action === 'long') {
-      runningPosition += quantity
-      totalCost += value + fees
-      totalContracts += quantity
-    } else if (action === 'sell' || action === 'short') {
-      runningPosition -= quantity
-      // For sells, we don't add to total cost
-    }
-
-    // Calculate average cost
-    // For options: average cost per contract (price per share of the option)
-    // For stocks: average cost per share
-    const avgCost = totalContracts > 0 ? (totalCost / (totalContracts * contractSize)) : 0
+    // Calculate proportional commission/fees if not set at execution level
+    const proportion = totalQuantity > 0 ? quantity / totalQuantity : 0
+    const commission = hasExecutionCommissions
+      ? (parseFloat(execution.commission) || 0)
+      : (tradeCommission * proportion)
+    const fees = hasExecutionFees
+      ? (parseFloat(execution.fees) || 0)
+      : (tradeFees * proportion)
+    const totalCost = commission + fees
 
     // Determine if this execution is opening or closing the position
     // For LONG trades: Buy = entry, Sell = exit
     // For SHORT trades: Sell = entry, Buy = exit
-    const tradeSide = trade.value.side
     const isOpening = (tradeSide === 'long' && (action === 'buy' || action === 'long')) ||
                       (tradeSide === 'short' && (action === 'sell' || action === 'short'))
+
+    // Update running position
+    if (action === 'buy' || action === 'long') {
+      runningPosition += quantity
+    } else if (action === 'sell' || action === 'short') {
+      runningPosition -= quantity
+    }
+
+    // Track entry values for average entry price calculation
+    if (isOpening) {
+      totalEntryQuantity += quantity
+      totalEntryValue += quantity * price
+    }
+
+    // Calculate average entry price so far
+    const avgEntryPrice = totalEntryQuantity > 0 ? (totalEntryValue / totalEntryQuantity) : 0
+
+    // Calculate P&L for exit (closing) executions
+    // Use the average entry price from all entry executions so far
+    let executionPnl = null
+    if (!isOpening && avgEntryPrice > 0) {
+      // For exit executions, calculate P&L based on average entry price
+      // Subtract both commission and fees from the P&L
+      if (tradeSide === 'long') {
+        // Long: profit when exit price > entry price
+        executionPnl = (price - avgEntryPrice) * quantity * valueMultiplier - totalCost
+      } else {
+        // Short: profit when exit price < entry price
+        executionPnl = (avgEntryPrice - price) * quantity * valueMultiplier - totalCost
+      }
+    }
 
     return {
       // Keep original execution data
@@ -1147,13 +1234,20 @@ const processedExecutions = computed(() => {
       quantity,
       price,
       value,
+      commission,
       fees,
       datetime,
       runningPosition,
-      avgCost: avgCost > 0 ? avgCost : null,
+      avgCost: avgEntryPrice > 0 ? avgEntryPrice : null,
+      // Set entryPrice/exitPrice based on whether this execution opens or closes the position
+      // Only show entry price on entry executions, exit price on exit executions
+      entryPrice: isOpening ? price : null,
+      exitPrice: isOpening ? null : price,
       // Set entryTime/exitTime based on whether this execution opens or closes the position
       entryTime: isOpening ? datetime : null,
-      exitTime: isOpening ? null : datetime
+      exitTime: isOpening ? null : datetime,
+      // P&L is only calculated for exit (closing) executions
+      pnl: executionPnl
     }
   })
 })
@@ -1532,6 +1626,7 @@ async function calculateQuality() {
 async function loadTrade() {
   try {
     loading.value = true
+    chartImageFailed.value = false // Reset chart image state for new trade
     trade.value = await tradesStore.fetchTrade(route.params.id)
     
     // Load comments after trade is loaded
@@ -1549,6 +1644,24 @@ async function loadTrade() {
 function handleImageDeleted(imageId) {
   if (trade.value && trade.value.attachments) {
     trade.value.attachments = trade.value.attachments.filter(img => img.id !== imageId)
+  }
+}
+
+function handleChartDeleted(chartId) {
+  if (trade.value && trade.value.charts) {
+    trade.value.charts = trade.value.charts.filter(chart => chart.id !== chartId)
+  }
+}
+
+async function copyChartUrl() {
+  const chartUrl = trade.value?.chart_url || trade.value?.chartUrl
+  if (chartUrl) {
+    try {
+      await navigator.clipboard.writeText(chartUrl)
+      // Could add a toast notification here if desired
+    } catch (err) {
+      console.error('Failed to copy chart URL:', err)
+    }
   }
 }
 
