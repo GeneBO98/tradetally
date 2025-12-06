@@ -7,26 +7,26 @@ class ImageProcessor {
     // Supported formats
     this.supportedFormats = ['jpeg', 'jpg', 'png', 'webp'];
     
-    // Compression settings - aggressive but practical
+    // Compression settings - balanced quality and file size
     this.compressionSettings = {
       // JPEG settings
       jpeg: {
-        quality: 70,
+        quality: 85,
         progressive: true,
         mozjpeg: true,
         optimizeCoding: true
       },
-      
+
       // PNG settings (convert to JPEG for better compression)
       png: {
-        quality: 70,
+        quality: 85,
         compressionLevel: 9,
         adaptiveFiltering: true
       },
-      
+
       // WebP settings (best compression)
       webp: {
-        quality: 70,
+        quality: 85,
         effort: 6,
         smartSubsample: true
       }

@@ -46,7 +46,7 @@ class Trade {
       originalCurrency, exchangeRate, originalEntryPriceCurrency,
       originalExitPriceCurrency, originalPnlCurrency, originalCommissionCurrency,
       originalFeesCurrency,
-      stopLoss, takeProfit
+      stopLoss, takeProfit, chartUrl
     } = tradeData;
 
     // Convert empty strings to null for optional fields
@@ -247,9 +247,9 @@ class Trade {
         contract_month, contract_year, tick_size, point_value, underlying_asset, import_id,
         original_currency, exchange_rate, original_entry_price_currency, original_exit_price_currency,
         original_pnl_currency, original_commission_currency, original_fees_currency,
-        stop_loss, take_profit, r_value
+        stop_loss, take_profit, r_value, chart_url
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56)
       RETURNING *
     `;
 
@@ -265,7 +265,7 @@ class Trade {
       importId || null,
       originalCurrency || 'USD', exchangeRate || 1.0, originalEntryPriceCurrency || null, originalExitPriceCurrency || null,
       originalPnlCurrency || null, originalCommissionCurrency || null, originalFeesCurrency || null,
-      finalStopLoss || null, takeProfit || null, rValue
+      finalStopLoss || null, takeProfit || null, rValue, chartUrl || null
     ];
 
     const result = await db.query(query, values);
@@ -374,6 +374,14 @@ class Trade {
             'uploaded_at', ta.uploaded_at
           )
         ) FILTER (WHERE ta.id IS NOT NULL) as attachments,
+        json_agg(
+          DISTINCT jsonb_build_object(
+            'id', tch.id,
+            'chart_url', tch.chart_url,
+            'chart_title', tch.chart_title,
+            'uploaded_at', tch.uploaded_at
+          )
+        ) FILTER (WHERE tch.id IS NOT NULL) as charts,
         count(DISTINCT tc.id)::integer as comment_count,
         sc.finnhub_industry as sector,
         sc.company_name as company_name
@@ -381,6 +389,7 @@ class Trade {
       LEFT JOIN users u ON t.user_id = u.id
       LEFT JOIN gamification_profile gp ON u.id = gp.user_id
       LEFT JOIN trade_attachments ta ON t.id = ta.trade_id
+      LEFT JOIN trade_charts tch ON t.id = tch.trade_id
       LEFT JOIN trade_comments tc ON t.id = tc.trade_id
       LEFT JOIN symbol_categories sc ON t.symbol = sc.symbol
       WHERE t.id = $1
@@ -399,12 +408,12 @@ class Trade {
 
     const result = await db.query(query, values);
     const trade = result.rows[0];
-    
+
     // Parse executions from JSONB column if they exist
     if (trade && trade.executions) {
       try {
-        trade.executions = typeof trade.executions === 'string' 
-          ? JSON.parse(trade.executions) 
+        trade.executions = typeof trade.executions === 'string'
+          ? JSON.parse(trade.executions)
           : trade.executions;
       } catch (error) {
         console.warn(`Failed to parse executions for trade ${trade.id}:`, error.message);
@@ -413,7 +422,17 @@ class Trade {
     } else if (trade) {
       trade.executions = [];
     }
-    
+
+    // Convert charts from snake_case to camelCase for frontend
+    if (trade && trade.charts && Array.isArray(trade.charts)) {
+      trade.charts = trade.charts.map(chart => ({
+        id: chart.id,
+        chartUrl: chart.chart_url,
+        chartTitle: chart.chart_title,
+        uploadedAt: chart.uploaded_at
+      }));
+    }
+
     return trade;
   }
 
@@ -465,11 +484,13 @@ class Trade {
       SELECT t.*,
         t.strategy, t.setup,
         array_agg(DISTINCT ta.file_url) FILTER (WHERE ta.id IS NOT NULL) as attachment_urls,
+        array_agg(DISTINCT tch.chart_url) FILTER (WHERE tch.id IS NOT NULL) as chart_urls,
         count(DISTINCT tc.id)::integer as comment_count,
         sc.finnhub_industry as sector,
         sc.company_name as company_name
       FROM trades t
       LEFT JOIN trade_attachments ta ON t.id = ta.trade_id
+      LEFT JOIN trade_charts tch ON t.id = tch.trade_id
       LEFT JOIN trade_comments tc ON t.id = tc.trade_id
       LEFT JOIN symbol_categories sc ON t.symbol = sc.symbol
       WHERE t.user_id = $1
@@ -772,15 +793,16 @@ class Trade {
       };
 
       // Calculate updated P&L and hold time
+      // Use !== undefined to properly handle 0 values for commission and fees
       updatedTrade.pnl = this.calculatePnL(
         updatedTrade.entry_price,
         updatedTrade.exit_price,
         updatedTrade.quantity,
         updatedTrade.side,
-        updates.commission || currentTrade.commission,
-        updates.fees || currentTrade.fees,
+        updates.commission !== undefined ? updates.commission : currentTrade.commission,
+        updates.fees !== undefined ? updates.fees : currentTrade.fees,
         updates.instrumentType || currentTrade.instrument_type || 'stock',
-        updates.contractSize || currentTrade.contract_size || 1
+        updates.contractSize !== undefined ? updates.contractSize : (currentTrade.contract_size || 1)
       );
 
       if (updatedTrade.exit_time) {
@@ -824,17 +846,38 @@ class Trade {
     }
 
     // Special handling for executions - replace instead of merge to prevent duplicates
-    // Only allow execution updates during imports (skipApiCalls=true) to prevent
-    // frontend timestamp truncation from breaking duplicate detection
+    // Allow execution updates from:
+    // 1. Imports (skipApiCalls=true)
+    // 2. Frontend edits (to allow commission/fees updates)
     let executionsToSet = null;
-    if (updates.executions && updates.executions.length > 0 && options.skipApiCalls) {
+    if (updates.executions && updates.executions.length > 0) {
       // Check if executions have actually changed by comparing JSON strings
       const currentExecutionsJson = JSON.stringify(currentTrade.executions || []);
       const newExecutionsJson = JSON.stringify(updates.executions);
 
       if (currentExecutionsJson !== newExecutionsJson) {
-        // Executions have changed, replace them completely
-        executionsToSet = updates.executions;
+        // For frontend updates (non-imports), preserve original timestamps from current executions
+        // to prevent timestamp truncation from breaking duplicate detection
+        if (!options.skipApiCalls && currentTrade.executions && currentTrade.executions.length === updates.executions.length) {
+          // Merge: keep original timestamps but update other fields (commission, fees, etc.)
+          executionsToSet = updates.executions.map((newExec, index) => {
+            const currentExec = currentTrade.executions[index];
+            if (currentExec) {
+              return {
+                ...newExec,
+                // Preserve original timestamps from the database
+                datetime: currentExec.datetime || newExec.datetime,
+                entryTime: currentExec.entryTime || newExec.entryTime,
+                exitTime: currentExec.exitTime || newExec.exitTime
+              };
+            }
+            return newExec;
+          });
+          console.log(`[EXECUTION UPDATE] Merging execution updates for trade ${id} (preserving timestamps)`);
+        } else {
+          // Full replacement for imports or when execution count changes
+          executionsToSet = updates.executions;
+        }
 
         console.log(`\n=== EXECUTION UPDATE for Trade ${id} ===`);
         console.log(`Replacing ${(currentTrade.executions || []).length} existing executions with ${executionsToSet.length} new executions`);
@@ -846,8 +889,6 @@ class Trade {
       } else {
         console.log(`[EXECUTION UPDATE] Executions unchanged for trade ${id}, skipping update`);
       }
-    } else if (updates.executions) {
-      console.log(`[EXECUTION UPDATE] Ignoring executions from non-import update (prevents timestamp truncation)`);
     }
 
     // Always remove executions from updates since we handle it separately
@@ -883,26 +924,35 @@ class Trade {
       paramCount++;
     }
 
-    if (updates.entryPrice || updates.exitPrice || updates.quantity || updates.side || updates.commission || updates.fees || updates.instrumentType || updates.contractSize) {
+    // Check if any P&L-affecting field was provided (using !== undefined to allow 0 values)
+    const hasPnLUpdate = updates.entryPrice !== undefined || updates.exitPrice !== undefined ||
+                         updates.quantity !== undefined || updates.side !== undefined ||
+                         updates.commission !== undefined || updates.fees !== undefined ||
+                         updates.instrumentType !== undefined || updates.contractSize !== undefined;
+
+    if (hasPnLUpdate) {
       const instrumentType = updates.instrumentType || currentTrade.instrument_type || 'stock';
-      const quantity = updates.quantity || currentTrade.quantity;
-      const pointValue = updates.pointValue || currentTrade.point_value;
-      const contractSize = updates.contractSize || currentTrade.contract_size || 1;
+      const quantity = updates.quantity !== undefined ? updates.quantity : currentTrade.quantity;
+      const pointValue = updates.pointValue !== undefined ? updates.pointValue : currentTrade.point_value;
+      const contractSize = updates.contractSize !== undefined ? updates.contractSize : (currentTrade.contract_size || 1);
+      // Use !== undefined to properly handle 0 values for commission and fees
+      const commission = updates.commission !== undefined ? updates.commission : currentTrade.commission;
+      const fees = updates.fees !== undefined ? updates.fees : currentTrade.fees;
 
       const pnl = this.calculatePnL(
-        updates.entryPrice || currentTrade.entry_price,
-        updates.exitPrice || currentTrade.exit_price,
+        updates.entryPrice !== undefined ? updates.entryPrice : currentTrade.entry_price,
+        updates.exitPrice !== undefined ? updates.exitPrice : currentTrade.exit_price,
         quantity,
         updates.side || currentTrade.side,
-        updates.commission || currentTrade.commission,
-        updates.fees || currentTrade.fees,
+        commission,
+        fees,
         instrumentType,
         contractSize,
         pointValue
       );
       const pnlPercent = this.calculatePnLPercent(
-        updates.entryPrice || currentTrade.entry_price,
-        updates.exitPrice || currentTrade.exit_price,
+        updates.entryPrice !== undefined ? updates.entryPrice : currentTrade.entry_price,
+        updates.exitPrice !== undefined ? updates.exitPrice : currentTrade.exit_price,
         updates.side || currentTrade.side,
         pnl,
         quantity,
@@ -1080,6 +1130,31 @@ class Trade {
     `;
 
     const result = await db.query(query, [attachmentId, userId]);
+    return result.rows[0];
+  }
+
+  static async addChart(tradeId, chartData) {
+    const { chartUrl, chartTitle } = chartData;
+
+    const query = `
+      INSERT INTO trade_charts (trade_id, chart_url, chart_title)
+      VALUES ($1, $2, $3)
+      RETURNING *
+    `;
+
+    const result = await db.query(query, [tradeId, chartUrl, chartTitle || null]);
+    return result.rows[0];
+  }
+
+  static async deleteChart(chartId, userId) {
+    const query = `
+      DELETE FROM trade_charts tch
+      USING trades t
+      WHERE tch.id = $1 AND tch.trade_id = t.id AND t.user_id = $2
+      RETURNING tch.id
+    `;
+
+    const result = await db.query(query, [chartId, userId]);
     return result.rows[0];
   }
 

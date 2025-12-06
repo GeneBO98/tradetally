@@ -12,17 +12,16 @@ COPY frontend/ ./
 RUN npm run build
 
 FROM node:20-alpine AS backend-builder
-# Update packages to fix vulnerabilities  
+# Update packages to fix vulnerabilities
 RUN apk update && apk upgrade --no-cache
 WORKDIR /app/backend
 
-# Install build dependencies for Sharp and other native modules
-RUN apk add --no-cache \
+# Install build dependencies for native modules (excluding vips-dev to avoid Sharp build issues)
+RUN apk add --no-cache --no-scripts \
     python3 \
     make \
     g++ \
     libc6-compat \
-    vips-dev \
     build-base
 
 COPY backend/package*.json ./
@@ -32,17 +31,16 @@ RUN npm install -g npm@latest node-gyp
 
 # Install dependencies
 # Sharp will automatically download prebuilt binaries for Alpine Linux
+# Set environment variable to ensure Sharp uses prebuilt binaries
+ENV SHARP_IGNORE_GLOBAL_LIBVIPS=1
 RUN npm install --omit=dev
-
-# Rebuild Sharp to ensure it's compiled for the correct architecture
-RUN npm rebuild sharp
 
 COPY backend/ ./
 
 FROM node:20-alpine
 # Update packages to fix vulnerabilities
 RUN apk update && apk upgrade --no-cache && \
-    apk add --no-cache \
+    apk add --no-cache --no-scripts \
     nginx \
     netcat-openbsd \
     vips \

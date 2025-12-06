@@ -661,6 +661,9 @@ router.delete('/:id/attachments/:attachmentId', authenticate, tradeController.de
 router.post('/:id/images', authenticate, imageUpload.array('images', 10), tradeController.uploadTradeImages);
 router.get('/:id/images/:filename', optionalAuth, tradeController.getTradeImage);
 router.delete('/:id/images/:attachmentId', authenticate, tradeController.deleteTradeImage);
+// Chart management routes
+router.post('/:id/charts', authenticate, tradeController.addTradeChart);
+router.delete('/:id/charts/:chartId', authenticate, tradeController.deleteTradeChart);
 router.post('/:id/comments', authenticate, tradeController.addComment);
 router.get('/:id/comments', optionalAuth, tradeController.getComments);
 router.put('/:id/comments/:commentId', authenticate, tradeController.updateComment);

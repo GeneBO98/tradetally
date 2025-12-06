@@ -514,10 +514,12 @@
               Lessons Learned
             </label>
             <textarea
+              ref="lessonsLearnedEditor"
               v-model="form.lessonsLearned"
-              rows="4"
+              rows="8"
               placeholder="What went well? What could be improved? Key takeaways..."
               class="input resize-none"
+              @input="adjustLessonsTextareaHeight"
             ></textarea>
           </div>
         </div>
@@ -578,6 +580,7 @@ const showTemplates = ref(false)
 const availableTemplates = ref([])
 
 const contentEditor = ref(null)
+const lessonsLearnedEditor = ref(null)
 const newWatchlistSymbol = ref('')
 const newTag = ref('')
 
@@ -860,6 +863,14 @@ const adjustTextareaHeight = () => {
   }
 }
 
+const adjustLessonsTextareaHeight = () => {
+  const textarea = lessonsLearnedEditor.value
+  if (textarea) {
+    textarea.style.height = 'auto'
+    textarea.style.height = Math.max(200, textarea.scrollHeight) + 'px'
+  }
+}
+
 const addWatchlistSymbol = () => {
   const symbol = newWatchlistSymbol.value.trim().toUpperCase()
   if (symbol && !form.value.watchlist.includes(symbol)) {
@@ -1032,6 +1043,7 @@ onMounted(async () => {
   // Adjust textarea height after content is loaded
   nextTick(() => {
     adjustTextareaHeight()
+    adjustLessonsTextareaHeight()
   })
 })
 </script>
