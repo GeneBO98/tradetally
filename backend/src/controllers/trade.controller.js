@@ -14,6 +14,16 @@ const path = require('path');
 const fs = require('fs').promises;
 const ChartService = require('../services/chartService');
 
+// Helper function to invalidate analytics cache for a user
+function invalidateAnalyticsCache(userId) {
+  // Clear all analytics cache entries for this user
+  const cacheKeys = Object.keys(cache.data).filter(key =>
+    key.startsWith(`analytics:user_${userId}:`)
+  );
+  cacheKeys.forEach(key => cache.del(key));
+  console.log(`[CACHE] Invalidated ${cacheKeys.length} analytics cache entries for user ${userId}`);
+}
+
 const tradeController = {
   async getUserTrades(req, res, next) {
     try {
@@ -305,7 +315,10 @@ const tradeController = {
       } catch (cacheError) {
         console.warn('[WARNING] Failed to invalidate sector performance cache:', cacheError.message);
       }
-      
+
+      // Invalidate analytics cache for this user
+      invalidateAnalyticsCache(req.user.id);
+
       res.status(201).json({ trade });
     } catch (error) {
       next(error);
@@ -408,6 +421,9 @@ const tradeController = {
         console.warn('[WARNING] Failed to invalidate sector performance cache:', cacheError.message);
       }
 
+      // Invalidate analytics cache for this user
+      invalidateAnalyticsCache(req.user.id);
+
       res.json({ trade });
     } catch (error) {
       next(error);
@@ -437,6 +453,9 @@ const tradeController = {
       } catch (cacheError) {
         console.warn('[WARNING] Failed to invalidate sector performance cache:', cacheError.message);
       }
+
+      // Invalidate analytics cache for this user
+      invalidateAnalyticsCache(req.user.id);
 
       res.json({ message: 'Trade deleted successfully' });
     } catch (error) {
@@ -494,6 +513,9 @@ const tradeController = {
       } catch (cacheError) {
         console.warn('[WARNING] Failed to invalidate sector performance cache:', cacheError.message);
       }
+
+      // Invalidate analytics cache for this user
+      invalidateAnalyticsCache(req.user.id);
 
       res.json({
         message: `Bulk delete completed. ${deletedCount} trades deleted successfully.`,
@@ -1848,7 +1870,7 @@ const tradeController = {
       console.log('Query params:', req.query);
       console.log('User ID:', req.user.id);
       console.log('Side filter specifically:', req.query.side);
-      
+
       const {
         startDate, endDate, symbol, sector, strategy, tags,
         strategies, sectors, // Add multi-select parameters
@@ -1885,7 +1907,7 @@ const tradeController = {
         optionTypes: optionTypes ? optionTypes.split(',') : undefined,
         qualityGrades: qualityGrades ? qualityGrades.split(',') : undefined
       };
-      
+
       console.log('[ANALYTICS] Raw query:', req.query);
       console.log('[ANALYTICS] Parsed filters:', JSON.stringify(filters, null, 2));
 
@@ -1894,16 +1916,31 @@ const tradeController = {
         const minTime = parseInt(minHoldTime) || 0;
         const maxTime = parseInt(maxHoldTime) || Infinity;
         const holdTimeRange = Trade.convertHoldTimeRange(minTime, maxTime);
-        
+
         if (holdTimeRange) {
           filters.holdTime = holdTimeRange;
         }
       }
-      
+
+      // Generate cache key based on userId and filters
+      const cacheKey = `analytics:user_${req.user.id}:${JSON.stringify(filters)}`;
+
+      // Check cache first
+      const cachedAnalytics = cache.get(cacheKey);
+      if (cachedAnalytics) {
+        console.log('[CACHE] Analytics cache hit for user:', req.user.id);
+        return res.json(cachedAnalytics);
+      }
+
+      console.log('[CACHE] Analytics cache miss for user:', req.user.id);
       const analytics = await Trade.getAnalytics(req.user.id, filters);
-      
+
+      // Cache the result for 5 minutes (300000ms)
+      cache.set(cacheKey, analytics, 300000);
+      console.log('[CACHE] Cached analytics for 5 minutes');
+
       console.log('Analytics result:', JSON.stringify(analytics, null, 2));
-      
+
       res.json(analytics);
     } catch (error) {
       console.error('Analytics error:', error);
