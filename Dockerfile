@@ -40,7 +40,7 @@ COPY backend/ ./
 FROM node:20-alpine
 # Update packages to fix vulnerabilities
 RUN apk update && apk upgrade --no-cache && \
-    apk add --no-cache --no-scripts \
+    apk add --no-cache \
     nginx \
     netcat-openbsd \
     vips \
