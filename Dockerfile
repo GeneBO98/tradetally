@@ -39,8 +39,11 @@ COPY backend/ ./
 
 FROM node:20-alpine
 # Update packages to fix vulnerabilities
+# Create nginx user/group manually since --no-scripts skips post-install scripts
 RUN apk update && apk upgrade --no-cache && \
-    apk add --no-cache \
+    addgroup -g 101 -S nginx && \
+    adduser -S -D -H -u 101 -h /var/lib/nginx -s /sbin/nologin -G nginx -g nginx nginx && \
+    apk add --no-cache --no-scripts \
     nginx \
     netcat-openbsd \
     vips \
