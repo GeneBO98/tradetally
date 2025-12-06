@@ -752,10 +752,30 @@
           />
         </div>
 
+        <!-- Chart Management Section -->
+        <div v-if="isEdit && route.params.id">
+          <!-- Display existing charts -->
+          <TradeCharts
+            v-if="trade && trade.charts && trade.charts.length > 0"
+            :trade-id="route.params.id"
+            :charts="trade.charts"
+            :can-delete="true"
+            @deleted="handleChartDeleted"
+          />
+
+          <!-- Add new charts -->
+          <div class="mt-6">
+            <ChartUpload
+              :trade-id="route.params.id"
+              @added="handleChartAdded"
+            />
+          </div>
+        </div>
+
         <!-- Image Upload Section -->
         <div v-if="isEdit && route.params.id">
-          <ImageUpload 
-            :trade-id="route.params.id" 
+          <ImageUpload
+            :trade-id="route.params.id"
             @uploaded="handleImageUploaded"
           />
         </div>
@@ -852,6 +872,8 @@ import { useNotification } from '@/composables/useNotification'
 import { useAnalytics } from '@/composables/useAnalytics'
 import ImageUpload from '@/components/trades/ImageUpload.vue'
 import TradeImages from '@/components/trades/TradeImages.vue'
+import ChartUpload from '@/components/trades/ChartUpload.vue'
+import TradeCharts from '@/components/trades/TradeCharts.vue'
 import api from '@/services/api'
 
 const showMoreOptions = ref(false)
@@ -925,6 +947,7 @@ const form = ref({
 
 const tagsInput = ref('')
 const currentImages = ref([])
+const trade = ref(null) // Store full trade data including charts
 const strategiesList = ref([])
 const setupsList = ref([])
 const brokersList = ref([])
@@ -1023,52 +1046,76 @@ function convertMonthAbbreviationToNumber(monthAbbr) {
 
 async function loadTrade() {
   if (!isEdit.value) return
-  
+
   try {
     loading.value = true
-    const trade = await tradesStore.fetchTrade(route.params.id)
-    
+    trade.value = await tradesStore.fetchTrade(route.params.id)
+
+    // Create local reference for easier access
+    const tradeData = trade.value
+
     form.value = {
-      symbol: trade.symbol,
-      entryTime: formatDateTimeLocal(trade.entry_time),
-      exitTime: trade.exit_time ? formatDateTimeLocal(trade.exit_time) : '',
-      entryPrice: trade.entry_price,
-      exitPrice: trade.exit_price || '',
-      quantity: trade.quantity,
-      side: trade.side,
-      instrumentType: trade.instrument_type || 'stock',
-      entryCommission: trade.entry_commission || trade.commission || 0,
-      exitCommission: trade.exit_commission || 0,
-      fees: trade.fees || 0,
-      mae: trade.mae || null,
-      mfe: trade.mfe || null,
-      stopLoss: trade.stop_loss || trade.stopLoss || null,
-      takeProfit: trade.take_profit || trade.takeProfit || null,
-      broker: trade.broker || '',
-      strategy: trade.strategy || '',
-      setup: trade.setup || '',
-      notes: trade.notes || '',
-      isPublic: trade.is_public || false,
-      confidence: trade.confidence || 5,
+      symbol: tradeData.symbol,
+      entryTime: formatDateTimeLocal(tradeData.entry_time),
+      exitTime: tradeData.exit_time ? formatDateTimeLocal(tradeData.exit_time) : '',
+      entryPrice: tradeData.entry_price,
+      exitPrice: tradeData.exit_price || '',
+      quantity: tradeData.quantity,
+      side: tradeData.side,
+      instrumentType: tradeData.instrument_type || 'stock',
+      entryCommission: tradeData.entry_commission || tradeData.commission || 0,
+      exitCommission: tradeData.exit_commission || 0,
+      fees: tradeData.fees || 0,
+      mae: tradeData.mae || null,
+      mfe: tradeData.mfe || null,
+      stopLoss: tradeData.stop_loss || tradeData.stopLoss || null,
+      takeProfit: tradeData.take_profit || tradeData.takeProfit || null,
+      broker: tradeData.broker || '',
+      strategy: tradeData.strategy || '',
+      setup: tradeData.setup || '',
+      notes: tradeData.notes || '',
+      isPublic: tradeData.is_public || false,
+      confidence: tradeData.confidence || 5,
       // Options-specific fields
-      underlyingSymbol: trade.underlying_symbol || '',
-      optionType: trade.option_type || '',
-      strikePrice: trade.strike_price || null,
-      expirationDate: trade.expiration_date ? formatDateOnly(trade.expiration_date) : '',
-      contractSize: trade.contract_size || 100,
+      underlyingSymbol: tradeData.underlying_symbol || '',
+      optionType: tradeData.option_type || '',
+      strikePrice: tradeData.strike_price || null,
+      expirationDate: tradeData.expiration_date ? formatDateOnly(tradeData.expiration_date) : '',
+      contractSize: tradeData.contract_size || 100,
       // Futures-specific fields
-      underlyingAsset: trade.underlying_asset || '',
-      contractMonth: convertMonthNumberToAbbreviation(trade.contract_month || trade.contractMonth) || '',
-      contractYear: trade.contract_year || trade.contractYear || null,
-      tickSize: trade.tick_size || trade.tickSize || null,
-      pointValue: trade.point_value || trade.pointValue || null,
+      underlyingAsset: tradeData.underlying_asset || '',
+      contractMonth: convertMonthNumberToAbbreviation(tradeData.contract_month || tradeData.contractMonth) || '',
+      contractYear: tradeData.contract_year || tradeData.contractYear || null,
+      tickSize: tradeData.tick_size || tradeData.tickSize || null,
+      pointValue: tradeData.point_value || tradeData.pointValue || null,
       // Executions
       executions: (() => {
-        console.log('[TRADE FORM] Raw trade.executions:', JSON.stringify(trade.executions, null, 2))
-        if (trade.executions && Array.isArray(trade.executions) && trade.executions.length > 0) {
+        console.log('[TRADE FORM] Raw tradeData.executions:', JSON.stringify(tradeData.executions, null, 2))
+        if (tradeData.executions && Array.isArray(tradeData.executions) && tradeData.executions.length > 0) {
+          // Check if any executions have commission values
+          const hasExecutionCommissions = tradeData.executions.some(exec => exec.commission > 0)
+          const hasExecutionFees = tradeData.executions.some(exec => exec.fees > 0)
+
+          // Calculate total quantity for proportional distribution
+          const totalQuantity = tradeData.executions.reduce((sum, exec) => sum + (parseFloat(exec.quantity) || 0), 0)
+          const tradeCommission = parseFloat(tradeData.commission) || 0
+          const tradeFees = parseFloat(tradeData.fees) || 0
+
           // Use existing executions - preserve format (grouped vs individual)
-          const mapped = trade.executions.map(exec => {
+          const mapped = tradeData.executions.map(exec => {
             console.log('[TRADE FORM] Processing execution:', exec)
+
+            // Calculate proportional commission/fees if not set at execution level
+            const execQuantity = parseFloat(exec.quantity) || 0
+            const proportion = totalQuantity > 0 ? execQuantity / totalQuantity : 0
+
+            // Use execution-level commission if available, otherwise distribute trade-level proportionally
+            const execCommission = hasExecutionCommissions
+              ? (exec.commission || 0)
+              : (tradeCommission * proportion)
+            const execFees = hasExecutionFees
+              ? (exec.fees || 0)
+              : (tradeFees * proportion)
 
             // Check if this is a grouped execution (complete trade with entry/exit)
             if (exec.entryPrice !== undefined || exec.exitPrice !== undefined || exec.entryTime !== undefined) {
@@ -1080,12 +1127,12 @@ async function loadTrade() {
                 exitPrice: exec.exitPrice || null,
                 entryTime: exec.entryTime ? formatDateTimeLocal(exec.entryTime) : '',
                 exitTime: exec.exitTime ? formatDateTimeLocal(exec.exitTime) : null,
-                commission: exec.commission || 0,
-                fees: exec.fees || 0,
+                commission: execCommission,
+                fees: execFees,
                 pnl: exec.pnl || null,
                 // Fall back to trade-level stop loss if not in execution
-                stopLoss: exec.stopLoss || exec.stop_loss || trade.stop_loss || trade.stopLoss || null,
-                takeProfit: exec.takeProfit || exec.take_profit || trade.take_profit || trade.takeProfit || null
+                stopLoss: exec.stopLoss || exec.stop_loss || tradeData.stop_loss || tradeData.stopLoss || null,
+                takeProfit: exec.takeProfit || exec.take_profit || tradeData.take_profit || tradeData.takeProfit || null
               }
               console.log('[TRADE FORM] Mapped grouped execution:', result)
               return result
@@ -1101,11 +1148,11 @@ async function loadTrade() {
                 quantity: exec.quantity || '',
                 price: exec.price || '',
                 datetime: exec.datetime ? formatDateTimeLocal(exec.datetime) : '',
-                commission: exec.commission || 0,
-                fees: exec.fees || 0,
+                commission: execCommission,
+                fees: execFees,
                 // Fall back to trade-level stop loss if not in execution
-                stopLoss: exec.stopLoss || exec.stop_loss || trade.stop_loss || trade.stopLoss || null,
-                takeProfit: exec.takeProfit || exec.take_profit || trade.take_profit || trade.takeProfit || null
+                stopLoss: exec.stopLoss || exec.stop_loss || tradeData.stop_loss || tradeData.stopLoss || null,
+                takeProfit: exec.takeProfit || exec.take_profit || tradeData.take_profit || tradeData.takeProfit || null
               }
               console.log('[TRADE FORM] Mapped individual fill:', result)
               return result
@@ -1117,24 +1164,24 @@ async function loadTrade() {
           // No executions array - create a synthetic grouped execution from trade entry/exit data
           // Use the grouped format (entryPrice/exitPrice) for easier editing
           return [{
-            side: trade.side,
-            quantity: trade.quantity || '',
-            entryPrice: trade.entry_price || '',
-            exitPrice: trade.exit_price || null,
-            entryTime: trade.entry_time ? formatDateTimeLocal(trade.entry_time) : '',
-            exitTime: trade.exit_time ? formatDateTimeLocal(trade.exit_time) : null,
-            commission: trade.commission || 0,
-            fees: trade.fees || 0,
-            pnl: trade.pnl || 0,
-            stopLoss: trade.stop_loss || trade.stopLoss || null,
-            takeProfit: trade.take_profit || trade.takeProfit || null
+            side: tradeData.side,
+            quantity: tradeData.quantity || '',
+            entryPrice: tradeData.entry_price || '',
+            exitPrice: tradeData.exit_price || null,
+            entryTime: tradeData.entry_time ? formatDateTimeLocal(tradeData.entry_time) : '',
+            exitTime: tradeData.exit_time ? formatDateTimeLocal(tradeData.exit_time) : null,
+            commission: tradeData.commission || 0,
+            fees: tradeData.fees || 0,
+            pnl: tradeData.pnl || 0,
+            stopLoss: tradeData.stop_loss || tradeData.stopLoss || null,
+            takeProfit: tradeData.take_profit || tradeData.takeProfit || null
           }]
         }
       })()
     }
 
-    tagsInput.value = trade.tags ? trade.tags.join(', ') : ''
-    currentImages.value = trade.attachments || []
+    tagsInput.value = tradeData.tags ? tradeData.tags.join(', ') : ''
+    currentImages.value = tradeData.attachments || []
   } catch (err) {
     showError('Error', 'Failed to load trade')
     router.push('/trades')
@@ -1267,28 +1314,35 @@ async function handleSubmit() {
         )
         calculatedEntryTime = sortedByTime[0].datetime
 
-        // Exit time is latest execution (if there are sell executions)
-        const hasSellExecution = processedExecutions.some(e => e.action === 'sell')
-        if (hasSellExecution) {
+        // Determine which action is entry vs exit based on trade side
+        // For LONG trades: buy = entry, sell = exit
+        // For SHORT trades: sell = entry, buy = exit
+        const tradeSide = form.value.side
+        const entryAction = tradeSide === 'short' ? 'sell' : 'buy'
+        const exitAction = tradeSide === 'short' ? 'buy' : 'sell'
+
+        // Exit time is latest execution (if there are exit executions)
+        const hasExitExecution = processedExecutions.some(e => e.action === exitAction)
+        if (hasExitExecution) {
           calculatedExitTime = sortedByTime[sortedByTime.length - 1].datetime
         }
 
-        // Entry price is weighted average of buy executions
-        const buyExecutions = processedExecutions.filter(e => e.action === 'buy')
-        if (buyExecutions.length > 0) {
-          const totalBuyValue = buyExecutions.reduce((sum, exec) => sum + (exec.price * exec.quantity), 0)
-          const totalBuyQty = buyExecutions.reduce((sum, exec) => sum + exec.quantity, 0)
-          calculatedEntryPrice = totalBuyValue / totalBuyQty
-          // Quantity is the sum of BUY executions (position size), not all executions
-          calculatedQuantity = totalBuyQty
+        // Entry price is weighted average of entry executions
+        const entryExecutions = processedExecutions.filter(e => e.action === entryAction)
+        if (entryExecutions.length > 0) {
+          const totalEntryValue = entryExecutions.reduce((sum, exec) => sum + (exec.price * exec.quantity), 0)
+          const totalEntryQty = entryExecutions.reduce((sum, exec) => sum + exec.quantity, 0)
+          calculatedEntryPrice = totalEntryValue / totalEntryQty
+          // Quantity is the sum of ENTRY executions (position size), not all executions
+          calculatedQuantity = totalEntryQty
         }
 
-        // Exit price is weighted average of sell executions
-        const sellExecutions = processedExecutions.filter(e => e.action === 'sell')
-        if (sellExecutions.length > 0) {
-          const totalSellValue = sellExecutions.reduce((sum, exec) => sum + (exec.price * exec.quantity), 0)
-          const totalSellQty = sellExecutions.reduce((sum, exec) => sum + exec.quantity, 0)
-          calculatedExitPrice = totalSellValue / totalSellQty
+        // Exit price is weighted average of exit executions
+        const exitExecutions = processedExecutions.filter(e => e.action === exitAction)
+        if (exitExecutions.length > 0) {
+          const totalExitValue = exitExecutions.reduce((sum, exec) => sum + (exec.price * exec.quantity), 0)
+          const totalExitQty = exitExecutions.reduce((sum, exec) => sum + exec.quantity, 0)
+          calculatedExitPrice = totalExitValue / totalExitQty
         }
 
         // Total commission and fees from all executions (always positive)
@@ -1409,6 +1463,17 @@ function handleImageUploaded() {
 function handleImageDeleted(imageId) {
   // Remove the deleted image from the current images array
   currentImages.value = currentImages.value.filter(img => img.id !== imageId)
+}
+
+async function handleChartAdded() {
+  // Refresh trade data to show new charts
+  await loadTrade()
+  showSuccess('Chart Added', 'TradingView chart added successfully')
+}
+
+async function handleChartDeleted(chartId) {
+  // Reload trade to update charts list
+  await loadTrade()
 }
 
 // Watch for changes to isPublic checkbox

@@ -104,32 +104,21 @@ export const useTradesStore = defineStore('trades', () => {
   async function fetchTrades(params = {}) {
     loading.value = true
     error.value = null
-    
+
     try {
       const offset = (pagination.value.page - 1) * pagination.value.limit
-      
-      // Fetch both trades and analytics data for consistent P&L
-      const [tradesResponse, analyticsResponse] = await Promise.all([
-        api.get('/trades', { 
-          params: { 
-            ...filters.value, 
-            ...params,
-            limit: pagination.value.limit,
-            offset: offset
-          }
-        }),
-        api.get('/trades/analytics', { 
-          params: { 
-            ...filters.value, 
-            ...params
-          }
-        })
-      ])
-      
-      // Store analytics data for consistent P&L calculations FIRST
-      analytics.value = analyticsResponse.data
-      
-      // Always use the trades data from the trades API, not analytics
+
+      // Only fetch trades, not analytics (performance optimization)
+      const tradesResponse = await api.get('/trades', {
+        params: {
+          ...filters.value,
+          ...params,
+          limit: pagination.value.limit,
+          offset: offset
+        }
+      })
+
+      // Always use the trades data from the trades API
       if (tradesResponse.data.hasOwnProperty('trades')) {
         trades.value = tradesResponse.data.trades
         console.log('[TRADES] Set from tradesResponse.data.trades:', trades.value.length)
@@ -137,28 +126,7 @@ export const useTradesStore = defineStore('trades', () => {
         trades.value = tradesResponse.data
         console.log('[TRADES] Set from tradesResponse.data (fallback):', trades.value.length)
       }
-      
-      // Log if there's a mismatch between trades and analytics for debugging
-      if (analyticsResponse.data.summary?.totalTrades === 0 && trades.value.length > 0) {
-        console.log('[WARNING] MISMATCH: Analytics shows 0 trades but trades API returned', trades.value.length, 'trades')
-      }
-      console.log('Analytics data received:', {
-        summary: analyticsResponse.data.summary,
-        totalPnL: analyticsResponse.data.summary?.totalPnL,
-        winRate: analyticsResponse.data.summary?.winRate,
-        totalTrades: analyticsResponse.data.summary?.totalTrades
-      })
-      console.log('Full analytics response:', JSON.stringify(analyticsResponse.data, null, 2))
-      
-      // Final verification of trades array
-      console.log('[FINAL] trades array state:', {
-        tradesLength: trades.value?.length || 0,
-        isArray: Array.isArray(trades.value),
-        isEmpty: trades.value?.length === 0,
-        shouldShowEmpty: trades.value?.length === 0 && analyticsResponse.data.summary?.totalTrades === 0,
-        firstTradeSymbol: trades.value?.[0]?.symbol || 'none'
-      })
-      
+
       // If the response includes pagination metadata, update it
       console.log('[PAGINATION] Trades response:', tradesResponse.data)
       if (tradesResponse.data.total !== undefined) {
@@ -168,7 +136,7 @@ export const useTradesStore = defineStore('trades', () => {
       } else {
         console.log('[PAGINATION] No total in response!')
       }
-      
+
       return tradesResponse.data
     } catch (err) {
       error.value = err.response?.data?.error || 'Failed to fetch trades'
@@ -181,32 +149,21 @@ export const useTradesStore = defineStore('trades', () => {
   async function fetchRoundTripTrades(params = {}) {
     loading.value = true
     error.value = null
-    
+
     try {
       const offset = (pagination.value.page - 1) * pagination.value.limit
-      
-      // Fetch both round-trip trades and analytics data for consistent P&L
-      const [tradesResponse, analyticsResponse] = await Promise.all([
-        api.get('/trades/round-trip', { 
-          params: { 
-            ...filters.value, 
-            ...params,
-            limit: pagination.value.limit,
-            offset: offset
-          }
-        }),
-        api.get('/trades/analytics', { 
-          params: { 
-            ...filters.value, 
-            ...params
-          }
-        })
-      ])
-      
-      // Store analytics data for consistent P&L calculations FIRST
-      analytics.value = analyticsResponse.data
-      
-      // Always use the trades data from the trades API, not analytics
+
+      // Only fetch trades, not analytics (performance optimization)
+      const tradesResponse = await api.get('/trades/round-trip', {
+        params: {
+          ...filters.value,
+          ...params,
+          limit: pagination.value.limit,
+          offset: offset
+        }
+      })
+
+      // Always use the trades data from the trades API
       if (tradesResponse.data.hasOwnProperty('trades')) {
         trades.value = tradesResponse.data.trades
         console.log('[TRADES] Set from tradesResponse.data.trades:', trades.value.length)
@@ -214,34 +171,13 @@ export const useTradesStore = defineStore('trades', () => {
         trades.value = tradesResponse.data
         console.log('[TRADES] Set from tradesResponse.data (fallback):', trades.value.length)
       }
-      
-      // Log if there's a mismatch between trades and analytics for debugging
-      if (analyticsResponse.data.summary?.totalTrades === 0 && trades.value.length > 0) {
-        console.log('[WARNING] MISMATCH: Analytics shows 0 trades but trades API returned', trades.value.length, 'trades')
-      }
-      console.log('Analytics data received:', {
-        summary: analyticsResponse.data.summary,
-        totalPnL: analyticsResponse.data.summary?.totalPnL,
-        winRate: analyticsResponse.data.summary?.winRate,
-        totalTrades: analyticsResponse.data.summary?.totalTrades
-      })
-      console.log('Full analytics response:', JSON.stringify(analyticsResponse.data, null, 2))
-      
-      // Final verification of trades array
-      console.log('[FINAL] trades array state:', {
-        tradesLength: trades.value?.length || 0,
-        isArray: Array.isArray(trades.value),
-        isEmpty: trades.value?.length === 0,
-        shouldShowEmpty: trades.value?.length === 0 && analyticsResponse.data.summary?.totalTrades === 0,
-        firstTradeSymbol: trades.value?.[0]?.symbol || 'none'
-      })
-      
+
       // If the response includes pagination metadata, update it
       if (tradesResponse.data.total !== undefined) {
         pagination.value.total = tradesResponse.data.total
         pagination.value.totalPages = Math.ceil(tradesResponse.data.total / pagination.value.limit)
       }
-      
+
       return tradesResponse.data
     } catch (err) {
       error.value = err.response?.data?.error || 'Failed to fetch round-trip trades'
@@ -251,10 +187,37 @@ export const useTradesStore = defineStore('trades', () => {
     }
   }
 
+  async function fetchAnalytics(params = {}) {
+    try {
+      console.log('[ANALYTICS] Fetching analytics with params:', params)
+      const analyticsResponse = await api.get('/trades/analytics', {
+        params: {
+          ...filters.value,
+          ...params
+        }
+      })
+
+      // Store analytics data for consistent P&L calculations
+      analytics.value = analyticsResponse.data
+
+      console.log('[ANALYTICS] Analytics data received:', {
+        summary: analyticsResponse.data.summary,
+        totalPnL: analyticsResponse.data.summary?.totalPnL,
+        winRate: analyticsResponse.data.summary?.winRate,
+        totalTrades: analyticsResponse.data.summary?.totalTrades
+      })
+
+      return analyticsResponse.data
+    } catch (err) {
+      error.value = err.response?.data?.error || 'Failed to fetch analytics'
+      throw err
+    }
+  }
+
   async function fetchTrade(id) {
     loading.value = true
     error.value = null
-    
+
     try {
       const response = await api.get(`/trades/${id}`)
       currentTrade.value = response.data.trade
@@ -469,6 +432,7 @@ export const useTradesStore = defineStore('trades', () => {
     totalTrades,
     fetchTrades,
     fetchRoundTripTrades,
+    fetchAnalytics,
     fetchTrade,
     createTrade,
     updateTrade,

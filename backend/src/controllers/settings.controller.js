@@ -1018,14 +1018,230 @@ const settingsController = {
       }
 
       const settings = await adminSettingsService.getAllSettings();
-      
+
       // Mask sensitive settings
       const maskedSettings = { ...settings };
       if (maskedSettings.default_ai_api_key) {
         maskedSettings.default_ai_api_key = '***';
       }
-      
+
       res.json({ settings: maskedSettings });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  // Broker Fee Settings
+  async getBrokerFeeSettings(req, res, next) {
+    try {
+      const query = `
+        SELECT
+          id, broker, instrument,
+          commission_per_contract,
+          commission_per_side,
+          exchange_fee_per_contract,
+          nfa_fee_per_contract,
+          clearing_fee_per_contract,
+          platform_fee_per_contract,
+          notes,
+          created_at,
+          updated_at
+        FROM broker_fee_settings
+        WHERE user_id = $1
+        ORDER BY broker, instrument
+      `;
+
+      const result = await db.query(query, [req.user.id]);
+
+      // Convert to camelCase
+      const settings = result.rows.map(row => ({
+        id: row.id,
+        broker: row.broker,
+        instrument: row.instrument || '',
+        commissionPerContract: parseFloat(row.commission_per_contract) || 0,
+        commissionPerSide: parseFloat(row.commission_per_side) || 0,
+        exchangeFeePerContract: parseFloat(row.exchange_fee_per_contract) || 0,
+        nfaFeePerContract: parseFloat(row.nfa_fee_per_contract) || 0,
+        clearingFeePerContract: parseFloat(row.clearing_fee_per_contract) || 0,
+        platformFeePerContract: parseFloat(row.platform_fee_per_contract) || 0,
+        notes: row.notes,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at
+      }));
+
+      res.json({ success: true, data: settings });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async getBrokerFeeSettingByBroker(req, res, next) {
+    try {
+      const { broker } = req.params;
+      const { instrument } = req.query;
+
+      // If instrument is provided, try to find instrument-specific setting first
+      // Then fall back to broker-wide default (instrument = '')
+      let query;
+      let params;
+
+      if (instrument) {
+        query = `
+          SELECT
+            id, broker, instrument,
+            commission_per_contract,
+            commission_per_side,
+            exchange_fee_per_contract,
+            nfa_fee_per_contract,
+            clearing_fee_per_contract,
+            platform_fee_per_contract,
+            notes
+          FROM broker_fee_settings
+          WHERE user_id = $1 AND broker = $2 AND instrument IN ($3, '')
+          ORDER BY CASE WHEN instrument = $3 THEN 0 ELSE 1 END
+          LIMIT 1
+        `;
+        params = [req.user.id, broker, instrument.toUpperCase()];
+      } else {
+        query = `
+          SELECT
+            id, broker, instrument,
+            commission_per_contract,
+            commission_per_side,
+            exchange_fee_per_contract,
+            nfa_fee_per_contract,
+            clearing_fee_per_contract,
+            platform_fee_per_contract,
+            notes
+          FROM broker_fee_settings
+          WHERE user_id = $1 AND broker = $2 AND instrument = ''
+        `;
+        params = [req.user.id, broker];
+      }
+
+      const result = await db.query(query, params);
+
+      if (result.rows.length === 0) {
+        return res.json({ success: true, data: null });
+      }
+
+      const row = result.rows[0];
+      const setting = {
+        id: row.id,
+        broker: row.broker,
+        instrument: row.instrument || '',
+        commissionPerContract: parseFloat(row.commission_per_contract) || 0,
+        commissionPerSide: parseFloat(row.commission_per_side) || 0,
+        exchangeFeePerContract: parseFloat(row.exchange_fee_per_contract) || 0,
+        nfaFeePerContract: parseFloat(row.nfa_fee_per_contract) || 0,
+        clearingFeePerContract: parseFloat(row.clearing_fee_per_contract) || 0,
+        platformFeePerContract: parseFloat(row.platform_fee_per_contract) || 0,
+        notes: row.notes
+      };
+
+      res.json({ success: true, data: setting });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async upsertBrokerFeeSetting(req, res, next) {
+    try {
+      const {
+        broker,
+        instrument = '',
+        commissionPerContract = 0,
+        commissionPerSide = 0,
+        exchangeFeePerContract = 0,
+        nfaFeePerContract = 0,
+        clearingFeePerContract = 0,
+        platformFeePerContract = 0,
+        notes = ''
+      } = req.body;
+
+      if (!broker || typeof broker !== 'string') {
+        return res.status(400).json({ error: 'Broker name is required' });
+      }
+
+      console.log('[BROKER FEES] Saving broker fee settings:', {
+        broker,
+        instrument,
+        userId: req.user?.id
+      });
+
+      const query = `
+        INSERT INTO broker_fee_settings (
+          user_id, broker, instrument,
+          commission_per_contract, commission_per_side,
+          exchange_fee_per_contract, nfa_fee_per_contract,
+          clearing_fee_per_contract, platform_fee_per_contract,
+          notes, updated_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CURRENT_TIMESTAMP)
+        ON CONFLICT (user_id, broker, instrument) DO UPDATE SET
+          commission_per_contract = EXCLUDED.commission_per_contract,
+          commission_per_side = EXCLUDED.commission_per_side,
+          exchange_fee_per_contract = EXCLUDED.exchange_fee_per_contract,
+          nfa_fee_per_contract = EXCLUDED.nfa_fee_per_contract,
+          clearing_fee_per_contract = EXCLUDED.clearing_fee_per_contract,
+          platform_fee_per_contract = EXCLUDED.platform_fee_per_contract,
+          notes = EXCLUDED.notes,
+          updated_at = CURRENT_TIMESTAMP
+        RETURNING *
+      `;
+
+      const result = await db.query(query, [
+        req.user.id,
+        broker.toLowerCase(),
+        (instrument || '').toUpperCase(),
+        commissionPerContract,
+        commissionPerSide,
+        exchangeFeePerContract,
+        nfaFeePerContract,
+        clearingFeePerContract,
+        platformFeePerContract,
+        notes
+      ]);
+
+      const row = result.rows[0];
+      const setting = {
+        id: row.id,
+        broker: row.broker,
+        instrument: row.instrument || '',
+        commissionPerContract: parseFloat(row.commission_per_contract) || 0,
+        commissionPerSide: parseFloat(row.commission_per_side) || 0,
+        exchangeFeePerContract: parseFloat(row.exchange_fee_per_contract) || 0,
+        nfaFeePerContract: parseFloat(row.nfa_fee_per_contract) || 0,
+        clearingFeePerContract: parseFloat(row.clearing_fee_per_contract) || 0,
+        platformFeePerContract: parseFloat(row.platform_fee_per_contract) || 0,
+        notes: row.notes
+      };
+
+      res.json({ success: true, data: setting });
+    } catch (error) {
+      console.error('[BROKER FEES] Error saving broker fee settings:', error.message);
+      console.error('[BROKER FEES] Stack:', error.stack);
+      next(error);
+    }
+  },
+
+  async deleteBrokerFeeSetting(req, res, next) {
+    try {
+      const { id } = req.params;
+
+      const query = `
+        DELETE FROM broker_fee_settings
+        WHERE id = $1 AND user_id = $2
+        RETURNING id
+      `;
+
+      const result = await db.query(query, [id, req.user.id]);
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: 'Broker fee setting not found' });
+      }
+
+      res.json({ success: true, message: 'Broker fee setting deleted' });
     } catch (error) {
       next(error);
     }
