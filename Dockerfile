@@ -39,7 +39,7 @@ COPY backend/ ./
 
 FROM node:20-alpine
 # Update packages to fix vulnerabilities
-# Create nginx user/group manually since --no-scripts skips post-install scripts
+# Create nginx user/group and directories manually since --no-scripts skips post-install scripts
 RUN apk update && apk upgrade --no-cache && \
     addgroup -g 101 -S nginx && \
     adduser -S -D -H -u 101 -h /var/lib/nginx -s /sbin/nologin -G nginx -g nginx nginx && \
@@ -47,7 +47,9 @@ RUN apk update && apk upgrade --no-cache && \
     nginx \
     netcat-openbsd \
     vips \
-    libc6-compat
+    libc6-compat && \
+    mkdir -p /run/nginx /var/lib/nginx /var/lib/nginx/tmp /var/log/nginx && \
+    chown -R nginx:nginx /run/nginx /var/lib/nginx /var/log/nginx
 WORKDIR /app
 
 # Copy built frontend
