@@ -380,7 +380,16 @@
                     <div class="text-xs text-gray-500 dark:text-gray-400">{{ formatDateYear(trade.trade_date) }}</div>
                   </div>
                 </td>
-                
+
+                <!-- Entry Time Column -->
+                <td v-else-if="column.visible && column.key === 'entryTime'"
+                    :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']"
+                    @click="$router.push(`/trades/${trade.id}`)">
+                  <div class="text-sm text-gray-900 dark:text-white">
+                    {{ trade.entry_time ? formatTime(trade.entry_time) : '-' }}
+                  </div>
+                </td>
+
                 <!-- Side Column -->
                 <td v-else-if="column.visible && column.key === 'side'" 
                     :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']" 
@@ -651,6 +660,27 @@
                     :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
                   {{ trade.sleep_score ? Math.round(trade.sleep_score) : '-' }}
+                </td>
+
+                <!-- TradingView Link Column -->
+                <td v-else-if="column.visible && column.key === 'tradingviewLink'"
+                    :class="[getCellPadding, 'whitespace-nowrap']">
+                  <a
+                    v-if="trade.chart_urls && trade.chart_urls.length > 0"
+                    :href="trade.chart_urls[0]"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="inline-flex items-center text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 text-sm font-medium"
+                    @click.stop
+                    :title="trade.chart_urls.length > 1 ? `${trade.chart_urls.length} charts available` : 'View chart'"
+                  >
+                    <svg class="h-4 w-4 mr-1" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M7.5 3h9a1.5 1.5 0 0 1 1.5 1.5v15a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 6 19.5v-15A1.5 1.5 0 0 1 7.5 3zm1.5 3v2.5h6V6H9zm0 4v2h6v-2H9zm0 3.5v2h6v-2H9z"/>
+                    </svg>
+                    <span>Chart</span>
+                    <span v-if="trade.chart_urls.length > 1" class="ml-1 text-xs">({{ trade.chart_urls.length }})</span>
+                  </a>
+                  <span v-else class="text-sm text-gray-500 dark:text-gray-400">-</span>
                 </td>
               </template>
             </tr>
@@ -998,6 +1028,7 @@ watch(
   () => tradesStore.pagination.page,
   () => {
     tradesStore.fetchTrades()
+    tradesStore.fetchAnalytics()
   }
 )
 
@@ -1099,9 +1130,21 @@ function formatHoldTime(trade) {
   return `${days} days`
 }
 
+function formatTime(datetime) {
+  if (!datetime) return '-'
+  try {
+    const date = new Date(datetime)
+    return format(date, 'HH:mm:ss')
+  } catch (error) {
+    console.error('Time formatting error:', error, 'for datetime:', datetime)
+    return '-'
+  }
+}
+
 function handleFilter(filters) {
   tradesStore.setFilters(filters)
   tradesStore.fetchTrades()
+  tradesStore.fetchAnalytics()
 }
 
 function goToPage(page) {
@@ -1249,6 +1292,7 @@ onMounted(() => {
   // TradeFilters component will handle URL parameters and trigger fetch automatically
   if (!hasFiltersInUrl) {
     tradesStore.fetchTrades()
+    tradesStore.fetchAnalytics()
   }
 
   // Initialize table scroll width after component is mounted

@@ -156,6 +156,7 @@ const defaultColumns = [
   { key: 'checkbox', label: 'Select', visible: true, width: 'auto', required: true },
   { key: 'symbol', label: 'Symbol', visible: true, width: 'auto', required: true },
   { key: 'date', label: 'Date', visible: true, width: 'auto' },
+  { key: 'entryTime', label: 'Entry Time', visible: false, width: 'auto' },
   { key: 'side', label: 'Side', visible: true, width: 'auto' },
   { key: 'entry', label: 'Entry', visible: true, width: 'auto' },
   { key: 'exit', label: 'Exit', visible: true, width: 'auto' },
@@ -185,7 +186,8 @@ const defaultColumns = [
   { key: 'contractSize', label: 'Contract Size', visible: false, width: 'auto' },
   { key: 'heartRate', label: 'Heart Rate', visible: false, width: 'auto' },
   { key: 'sleepHours', label: 'Sleep Hours', visible: false, width: 'auto' },
-  { key: 'sleepScore', label: 'Sleep Score', visible: false, width: 'auto' }
+  { key: 'sleepScore', label: 'Sleep Score', visible: false, width: 'auto' },
+  { key: 'tradingviewLink', label: 'TradingView', visible: false, width: 'auto' }
 ]
 
 const showMenu = ref(false)
