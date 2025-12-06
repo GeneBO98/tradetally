@@ -66,6 +66,8 @@ const schemas = {
       Joi.number().positive(),
       Joi.valid(null, '')
     ),
+    // Chart URL for TradingView links
+    chartUrl: Joi.string().uri().max(1000).allow(null, ''),
     // Options-specific fields
     underlyingSymbol: Joi.string().max(10).allow(null, ''),
     optionType: Joi.string().valid('call', 'put').allow(null, ''),
@@ -141,6 +143,8 @@ const schemas = {
       Joi.number().positive(),
       Joi.valid(null, '')
     ),
+    // Chart URL for TradingView links
+    chartUrl: Joi.string().uri().max(1000).allow(null, ''),
     // Options-specific fields
     underlyingSymbol: Joi.string().max(10).allow(null, ''),
     optionType: Joi.string().valid('call', 'put').allow(null, ''),

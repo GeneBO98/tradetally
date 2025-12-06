@@ -38,4 +38,10 @@ router.get('/admin/ai', authenticate, settingsController.getAdminAISettings);
 router.put('/admin/ai', authenticate, settingsController.updateAdminAISettings);
 router.get('/admin/all', authenticate, settingsController.getAllAdminSettings);
 
+// Broker Fee Settings Routes
+router.get('/broker-fees', authenticate, settingsController.getBrokerFeeSettings);
+router.get('/broker-fees/:broker', authenticate, settingsController.getBrokerFeeSettingByBroker);
+router.post('/broker-fees', authenticate, settingsController.upsertBrokerFeeSetting);
+router.delete('/broker-fees/:id', authenticate, settingsController.deleteBrokerFeeSetting);
+
 module.exports = router;
