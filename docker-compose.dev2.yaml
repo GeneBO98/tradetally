@@ -1,0 +1,85 @@
+#version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: tradetally-db
+    shm_size: '512m' # Increased for Postgres sorting/queries
+    mem_limit: '1g' # RAM limit for DB caching (DS218+ optimized)
+    environment:
+      POSTGRES_USER: '${DB_USER:-trader}'
+      POSTGRES_PASSWORD: '${DB_PASSWORD:-trader_password}'
+      POSTGRES_DB: '${DB_NAME:-tradetally}'
+    volumes:
+      - /volume1/docker/tradetally/postgres:/var/lib/postgresql/data
+    networks:
+      - trader-network
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${DB_USER:-trader} -d ${DB_NAME:-tradetally}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  app:
+    image: potentialmidas/tradetally:latest
+    container_name: tradetally-app
+    mem_limit: '2g' # RAM for front end + back end + analytics
+    shm_size: '256m' # For Behavioral Analytics/IPC
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: '${NODE_ENV:-production}'
+      PORT: '${PORT:-3000}'
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: '${DB_USER:-trader}'
+      DB_PASSWORD: '${DB_PASSWORD:-trader_password}'
+      DB_NAME: '${DB_NAME:-tradetally}'
+      JWT_SECRET: '${JWT_SECRET:-change_me_generate_32plus_chars}'
+      JWT_EXPIRES_IN: '${JWT_EXPIRES_IN:-7d}'
+      EMAIL_HOST: '${EMAIL_HOST:-smtp.gmail.com}'
+      EMAIL_PORT: '${EMAIL_PORT:-587}'
+      EMAIL_USER: '${EMAIL_USER:-}'
+      EMAIL_PASS: '${EMAIL_PASS:-}'
+      EMAIL_FROM: '${EMAIL_FROM:-noreply@tradetally.io}'
+      BILLING_ENABLED: '${BILLING_ENABLED:-false}'
+      FEATURES_BILLING_ENABLED: '${FEATURES_BILLING_ENABLED:-false}'
+      VITE_API_URL: '${VITE_API_URL:-http://localhost/api}'
+      FRONTEND_URL: '${FRONTEND_URL:-http://localhost:5173}'
+      CORS_ORIGINS: '${CORS_ORIGINS:-}'
+      REGISTRATION_MODE: '${REGISTRATION_MODE:-open}'
+      FINNHUB_API_KEY: '${FINNHUB_API_KEY:-}'
+      ALPHA_VANTAGE_API_KEY: '${ALPHA_VANTAGE_API_KEY:-}'
+      ENABLE_AI_CUSIP_RESOLUTION: '${ENABLE_AI_CUSIP_RESOLUTION:-false}'
+      RUN_MIGRATIONS: '${RUN_MIGRATIONS:-true}'
+      FEATURES_BEHAVIORAL_ANALYTICS_ENABLED: '${FEATURES_BEHAVIORAL_ANALYTICS_ENABLED:-true}'
+    ports:
+      - '8085:80'
+      - '3000:3000'
+    volumes:
+      - /volume1/docker/tradetally/backend/logs:/app/backend/src/logs
+      - /volume1/docker/tradetally/backend/data:/app/backend/src/data
+    networks:
+      - trader-network
+    restart: unless-stopped
+
+  adminer:
+    image: adminer:latest
+    container_name: tradetally-adminer
+    mem_limit: '256m' # For DB queries in Adminer
+    depends_on:
+      - postgres
+    ports:
+      - '8080:8080'
+    networks:
+      - trader-network
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+    restart: unless-stopped
+
+networks:
+  trader-network:
+    driver: bridge
+

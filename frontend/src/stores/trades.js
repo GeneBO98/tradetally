@@ -68,15 +68,26 @@ export const useTradesStore = defineStore('trades', () => {
     try {
       const offset = (pagination.value.page - 1) * pagination.value.limit
 
-      // Only fetch trades, not analytics (performance optimization)
-      const tradesResponse = await api.get('/trades', {
-        params: {
-          ...filters.value,
-          ...params,
-          limit: pagination.value.limit,
-          offset: offset
-        }
-      })
+      // Fetch both trades and analytics in parallel for better performance
+      const [tradesResponse, analyticsResponse] = await Promise.all([
+        api.get('/trades', {
+          params: {
+            ...filters.value,
+            ...params,
+            limit: pagination.value.limit,
+            offset: offset
+          }
+        }),
+        api.get('/trades/analytics', {
+          params: {
+            ...filters.value,
+            ...params
+          }
+        })
+      ])
+
+      // Store analytics data for consistent P&L calculations
+      analytics.value = analyticsResponse.data
 
       // Always use the trades data from the trades API
       if (tradesResponse.data.hasOwnProperty('trades')) {
@@ -107,15 +118,26 @@ export const useTradesStore = defineStore('trades', () => {
     try {
       const offset = (pagination.value.page - 1) * pagination.value.limit
 
-      // Only fetch trades, not analytics (performance optimization)
-      const tradesResponse = await api.get('/trades/round-trip', {
-        params: {
-          ...filters.value,
-          ...params,
-          limit: pagination.value.limit,
-          offset: offset
-        }
-      })
+      // Fetch both trades and analytics in parallel for better performance
+      const [tradesResponse, analyticsResponse] = await Promise.all([
+        api.get('/trades/round-trip', {
+          params: {
+            ...filters.value,
+            ...params,
+            limit: pagination.value.limit,
+            offset: offset
+          }
+        }),
+        api.get('/trades/analytics', {
+          params: {
+            ...filters.value,
+            ...params
+          }
+        })
+      ])
+
+      // Store analytics data for consistent P&L calculations
+      analytics.value = analyticsResponse.data
 
       // Always use the trades data from the trades API
       if (tradesResponse.data.hasOwnProperty('trades')) {

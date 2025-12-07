@@ -923,55 +923,45 @@ const tableColumns = ref([])
 
 const handleColumnsUpdate = (columns) => {
   tableColumns.value = columns
-  console.log('[TRADE LIST] Columns updated, visible columns:', columns.filter(c => c.visible).map(c => c.label))
 }
+
+// Cache the visible column count to avoid repeated array filtering
+const visibleColumnCount = computed(() => {
+  let count = 0
+  for (const col of tableColumns.value) {
+    if (col.visible) count++
+  }
+  return count
+})
 
 // Dynamic table layout based on visible columns
 const tableLayoutStyle = computed(() => {
-  const visibleColumns = tableColumns.value.filter(col => col.visible).length
+  const count = visibleColumnCount.value
 
   // Use auto layout for better scaling, only force fixed when there are many columns
-  if (visibleColumns <= 8) {
-    return {
-      tableLayout: 'auto'
-    }
-  } else if (visibleColumns <= 12) {
-    return {
-      tableLayout: 'fixed',
-      minWidth: '100%'
-    }
+  if (count <= 8) {
+    return { tableLayout: 'auto' }
+  } else if (count <= 12) {
+    return { tableLayout: 'fixed', minWidth: '100%' }
   } else {
     // For many columns, allow horizontal scroll
-    return {
-      tableLayout: 'fixed',
-      minWidth: '1800px'
-    }
+    return { tableLayout: 'fixed', minWidth: '1800px' }
   }
 })
 
 // Dynamic cell padding based on visible columns
 const getCellPadding = computed(() => {
-  const visibleColumns = tableColumns.value.filter(col => col.visible).length
-
-  if (visibleColumns <= 6) {
-    return 'px-1.5 py-4'
-  } else if (visibleColumns <= 10) {
-    return 'px-1 py-3'
-  } else {
-    return 'px-0.5 py-2'
-  }
+  const count = visibleColumnCount.value
+  if (count <= 6) return 'px-1.5 py-4'
+  if (count <= 10) return 'px-1 py-3'
+  return 'px-0.5 py-2'
 })
 
 const getHeaderPadding = computed(() => {
-  const visibleColumns = tableColumns.value.filter(col => col.visible).length
-
-  if (visibleColumns <= 6) {
-    return 'px-1.5 py-3'
-  } else if (visibleColumns <= 10) {
-    return 'px-1 py-2'
-  } else {
-    return 'px-0.5 py-2'
-  }
+  const count = visibleColumnCount.value
+  if (count <= 6) return 'px-1.5 py-3'
+  if (count <= 10) return 'px-1 py-2'
+  return 'px-0.5 py-2'
 })
 
 // Special padding for checkbox column to minimize space
@@ -986,15 +976,9 @@ const getSymbolPadding = computed(() => {
 
 // Dynamic text size for better fit
 const getTextSize = computed(() => {
-  const visibleColumns = tableColumns.value.filter(col => col.visible).length
-
-  if (visibleColumns <= 8) {
-    return 'text-sm'
-  } else if (visibleColumns <= 12) {
-    return 'text-xs'
-  } else {
-    return 'text-xs'
-  }
+  const count = visibleColumnCount.value
+  if (count <= 8) return 'text-sm'
+  return 'text-xs'
 })
 
 // Pagination computed properties
@@ -1019,12 +1003,12 @@ const isAllSelected = computed(() => {
   return tradesStore.trades.length > 0 && selectedTrades.value.length === tradesStore.trades.length
 })
 
-// Watch for pagination changes and refetch
+// Watch for pagination changes and refetch trades only
+// Analytics don't need to be refetched on pagination since they represent totals across ALL filtered data
 watch(
   () => tradesStore.pagination.page,
   () => {
     tradesStore.fetchTrades()
-    tradesStore.fetchAnalytics()
   }
 )
 
@@ -1032,18 +1016,14 @@ watch(
 watch(
   () => tradesStore.trades.length,
   () => {
-    // Use nextTick to ensure DOM has updated
-    setTimeout(() => updateTableScrollWidth(), 100)
+    setTimeout(updateTableScrollWidth, 100)
   }
 )
 
-// Watch for column changes to update scroll width
-watch(
-  () => tableColumns.value.filter(c => c.visible).length,
-  () => {
-    setTimeout(() => updateTableScrollWidth(), 100)
-  }
-)
+// Watch for column changes to update scroll width (uses cached visibleColumnCount)
+watch(visibleColumnCount, () => {
+  setTimeout(updateTableScrollWidth, 100)
+})
 
 function formatNumber(num) {
   return new Intl.NumberFormat('en-US', {
@@ -1156,8 +1136,7 @@ function formatTime(datetime) {
 
 function handleFilter(filters) {
   tradesStore.setFilters(filters)
-  tradesStore.fetchTrades()
-  tradesStore.fetchAnalytics()
+  tradesStore.fetchTrades() // fetchTrades now includes analytics in parallel
 }
 
 function goToPage(page) {
@@ -1304,8 +1283,7 @@ onMounted(() => {
   // Only fetch trades immediately if there are no URL parameters
   // TradeFilters component will handle URL parameters and trigger fetch automatically
   if (!hasFiltersInUrl) {
-    tradesStore.fetchTrades()
-    tradesStore.fetchAnalytics()
+    tradesStore.fetchTrades() // fetchTrades now includes analytics in parallel
   }
 
   // Initialize table scroll width after component is mounted

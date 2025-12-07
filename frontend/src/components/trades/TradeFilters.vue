@@ -832,9 +832,7 @@ function applyFilters() {
 
   if (filters.value.hasNews) cleanFilters.hasNews = filters.value.hasNews
 
-  console.log('[TARGET] APPLYING FILTERS:', cleanFilters)
-  
-  // Advanced filters
+// Advanced filters
   if (filters.value.side) cleanFilters.side = filters.value.side
   if (filters.value.minPrice !== null && filters.value.minPrice !== '') cleanFilters.minPrice = filters.value.minPrice
   if (filters.value.maxPrice !== null && filters.value.maxPrice !== '') cleanFilters.maxPrice = filters.value.maxPrice
@@ -891,9 +889,8 @@ function applyFilters() {
     })
 
     localStorage.setItem('tradeFilters', JSON.stringify(filtersToSave))
-    console.log('[FILTERS] Saved to localStorage:', filtersToSave)
   } catch (e) {
-    console.error('[FILTERS] Error saving to localStorage:', e)
+    // localStorage save failed
   }
 
   emit('filter', cleanFilters)
@@ -931,9 +928,8 @@ function resetFilters() {
   // Clear localStorage
   try {
     localStorage.removeItem('tradeFilters')
-    console.log('[FILTERS] Cleared from localStorage')
   } catch (e) {
-    console.error('[FILTERS] Error clearing localStorage:', e)
+    // localStorage clear failed
   }
 
   // Emit empty filters to trigger immediate refresh
@@ -1050,8 +1046,6 @@ function handleClickOutside(event) {
 }
 
 onMounted(() => {
-  console.log('[FILTERS] Component mounted, initializing filters...')
-
   // Add click outside listener after a small delay to avoid conflicts
   setTimeout(() => {
     document.addEventListener('click', handleClickOutside)
@@ -1097,9 +1091,8 @@ onMounted(() => {
       }
 
       filters.value = { ...filters.value, ...parsed }
-      console.log('[FILTERS] Loaded from localStorage:', filters.value)
     } catch (e) {
-      console.error('[FILTERS] Error loading from localStorage:', e)
+      // localStorage parse failed
     }
   }
 
@@ -1133,7 +1126,6 @@ onMounted(() => {
     }
 
     filters.value = { ...filters.value, ...storeFilters }
-    console.log('[FILTERS] Loaded from store:', filters.value)
   }
 
   // Then set only the filters from query parameters
@@ -1273,7 +1265,6 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  console.log('[FILTERS] Component unmounting...')
   document.removeEventListener('click', handleClickOutside)
 })
 </script>

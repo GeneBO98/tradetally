@@ -197,6 +197,29 @@ const currentYear = ref(new Date().getFullYear())
 const selectedDay = ref(null)
 const expandedMonthContainer = ref(null)
 
+// Pre-compute a map of date string to trades for O(1) lookup
+const tradesByDate = computed(() => {
+  const map = new Map()
+  for (const trade of trades.value) {
+    const dateKey = trade.trade_date.split('T')[0]
+    if (!map.has(dateKey)) {
+      map.set(dateKey, [])
+    }
+    map.get(dateKey).push(trade)
+  }
+  return map
+})
+
+// Helper to get trades for a date using the cached map
+function getTradesForDate(date) {
+  if (!date) return []
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const dateKey = `${year}-${month}-${day}`
+  return tradesByDate.value.get(dateKey) || []
+}
+
 const yearlyCalendar = computed(() => {
   const start = startOfYear(new Date(currentYear.value, 0, 1))
   const end = endOfYear(new Date(currentYear.value, 0, 1))
@@ -254,7 +277,7 @@ const expandedMonthWeekdays = computed(() => {
   const weeks = []
   let currentWeek = { days: [], weekPnl: 0 }
 
-  allDays.forEach((date) => {
+  for (const date of allDays) {
     const dayOfWeek = getDay(date) // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
 
     // Skip weekends
@@ -268,7 +291,7 @@ const expandedMonthWeekdays = computed(() => {
         weeks.push(currentWeek)
         currentWeek = { days: [], weekPnl: 0 }
       }
-      return
+      continue
     }
 
     // If it's Monday and we already have days, start a new week
@@ -288,14 +311,12 @@ const expandedMonthWeekdays = computed(() => {
       }
     }
 
-    // Get trade data for this day
-    const dayTrades = trades.value.filter(trade => {
-      const [year, month, day] = trade.trade_date.split('T')[0].split('-')
-      const tradeDate = new Date(year, month - 1, day)
-      return tradeDate.toDateString() === date.toDateString()
-    })
-
-    const dayPnl = dayTrades.reduce((sum, trade) => sum + (parseFloat(trade.pnl) || 0), 0)
+    // Get trade data using optimized lookup
+    const dayTrades = getTradesForDate(date)
+    let dayPnl = 0
+    for (const trade of dayTrades) {
+      dayPnl += parseFloat(trade.pnl) || 0
+    }
 
     currentWeek.days.push({
       date,
@@ -303,10 +324,10 @@ const expandedMonthWeekdays = computed(() => {
       pnl: dayTrades.length > 0 ? dayPnl : undefined
     })
 
-    if (dayTrades.length > 0 && dayPnl !== undefined) {
+    if (dayTrades.length > 0) {
       currentWeek.weekPnl += dayPnl
     }
-  })
+  }
 
   // Add any remaining days as the last week
   if (currentWeek.days.length > 0) {
@@ -321,12 +342,7 @@ const expandedMonthWeekdays = computed(() => {
 
 const selectedDayTrades = computed(() => {
   if (!selectedDay.value || !selectedDay.value.date) return []
-  return trades.value.filter(trade => {
-    // Parse date as local date to avoid timezone issues
-    const [year, month, day] = trade.trade_date.split('T')[0].split('-')
-    const tradeDate = new Date(year, month - 1, day)
-    return tradeDate.toDateString() === selectedDay.value.date.toDateString()
-  })
+  return getTradesForDate(selectedDay.value.date)
 })
 
 const expandedMonthTrades = computed(() => {
@@ -355,36 +371,59 @@ const monthlyPnl = computed(() => {
   }, 0)
 })
 
+// Cache max profit/loss for expanded month to avoid recalculating in each color function
+const expandedMonthPnlRange = computed(() => {
+  const days = expandedMonthDays.value
+  let maxProfit = 0
+  let maxLoss = 0
+  for (const d of days) {
+    if (d.pnl !== undefined) {
+      if (d.pnl > 0 && d.pnl > maxProfit) maxProfit = d.pnl
+      if (d.pnl < 0 && Math.abs(d.pnl) > maxLoss) maxLoss = Math.abs(d.pnl)
+    }
+  }
+  return { maxProfit, maxLoss }
+})
+
+// Cache max profit/loss for yearly view
+const yearlyPnlRange = computed(() => {
+  let maxProfit = 0
+  let maxLoss = 0
+  for (const month of yearlyCalendar.value) {
+    for (const d of month.days) {
+      if (d.pnl !== undefined) {
+        if (d.pnl > 0 && d.pnl > maxProfit) maxProfit = d.pnl
+        if (d.pnl < 0 && Math.abs(d.pnl) > maxLoss) maxLoss = Math.abs(d.pnl)
+      }
+    }
+  }
+  return { maxProfit, maxLoss }
+})
+
 function generateMonthDays(monthStart, monthEnd) {
   const days = []
   const startPadding = getDay(monthStart)
-  
+
   // Add padding for days before month starts
   for (let i = 0; i < startPadding; i++) {
     days.push({ date: null })
   }
 
-  // Add all days of the month
+  // Add all days of the month using optimized lookup
   const monthDays = eachDayOfInterval({ start: monthStart, end: monthEnd })
-  monthDays.forEach(date => {
-    const dayTrades = trades.value.filter(trade => {
-      // Parse date as local date to avoid timezone issues
-      const [year, month, day] = trade.trade_date.split('T')[0].split('-')
-      const tradeDate = new Date(year, month - 1, day)
-      return tradeDate.toDateString() === date.toDateString()
-    })
+  for (const date of monthDays) {
+    const dayTrades = getTradesForDate(date)
+    let dayPnl = 0
+    for (const trade of dayTrades) {
+      dayPnl += parseFloat(trade.pnl) || 0
+    }
 
-    const dayPnl = dayTrades.reduce((sum, trade) => {
-      const pnl = parseFloat(trade.pnl) || 0
-      return sum + pnl
-    }, 0)
-    
     days.push({
       date,
       trades: dayTrades.length,
       pnl: dayTrades.length > 0 ? dayPnl : undefined
     })
-  })
+  }
 
   return days
 }
@@ -398,63 +437,45 @@ function getDayClass(day) {
 function getDayStyle(day) {
   if (!day.date || day.pnl === undefined) return {}
 
-  // Get all days with P/L for the expanded month to calculate relative intensity
-  const daysWithPnl = expandedMonthDays.value.filter(d => d.pnl !== undefined)
-  if (daysWithPnl.length === 0) return {}
-
-  const maxProfit = Math.max(...daysWithPnl.filter(d => d.pnl > 0).map(d => d.pnl), 0)
-  const maxLoss = Math.abs(Math.min(...daysWithPnl.filter(d => d.pnl < 0).map(d => d.pnl), 0))
+  const { maxProfit, maxLoss } = expandedMonthPnlRange.value
+  if (maxProfit === 0 && maxLoss === 0) return {}
 
   if (day.pnl >= 0) {
-    // Green for profits - scale from light to dark based on relative size
     const intensity = maxProfit > 0 ? Math.min(day.pnl / maxProfit, 1) : 0.5
     const saturation = 50 + intensity * 30
     const lightness = 95 - (intensity * 45)
-    return {
-      backgroundColor: `hsl(142, ${saturation}%, ${lightness}%)`
-    }
+    return { backgroundColor: `hsl(142, ${saturation}%, ${lightness}%)` }
   } else {
-    // Red for losses - scale from light to dark based on relative size
     const intensity = maxLoss > 0 ? Math.min(Math.abs(day.pnl) / maxLoss, 1) : 0.5
     const saturation = 50 + intensity * 30
     const lightness = 95 - (intensity * 45)
-    return {
-      backgroundColor: `hsl(0, ${saturation}%, ${lightness}%)`
-    }
+    return { backgroundColor: `hsl(0, ${saturation}%, ${lightness}%)` }
   }
 }
 
 function getDayTextColor(day) {
   if (!day.date || day.pnl === undefined) return 'text-gray-900 dark:text-white'
 
-  const daysWithPnl = expandedMonthDays.value.filter(d => d.pnl !== undefined)
-  if (daysWithPnl.length === 0) return 'text-gray-900 dark:text-white'
-
-  const maxProfit = Math.max(...daysWithPnl.filter(d => d.pnl > 0).map(d => d.pnl), 0)
-  const maxLoss = Math.abs(Math.min(...daysWithPnl.filter(d => d.pnl < 0).map(d => d.pnl), 0))
+  const { maxProfit, maxLoss } = expandedMonthPnlRange.value
+  if (maxProfit === 0 && maxLoss === 0) return 'text-gray-900 dark:text-white'
 
   const intensity = day.pnl >= 0
     ? (maxProfit > 0 ? Math.min(day.pnl / maxProfit, 1) : 0.5)
     : (maxLoss > 0 ? Math.min(Math.abs(day.pnl) / maxLoss, 1) : 0.5)
 
-  // Use dark text for light backgrounds (low intensity), white for dark backgrounds (high intensity)
   return intensity > 0.4 ? 'text-white' : 'text-gray-900'
 }
 
 function getDayPnlTextColor(day) {
   if (!day.date || day.pnl === undefined) return day.pnl >= 0 ? 'text-green-600' : 'text-red-600'
 
-  const daysWithPnl = expandedMonthDays.value.filter(d => d.pnl !== undefined)
-  if (daysWithPnl.length === 0) return day.pnl >= 0 ? 'text-green-600' : 'text-red-600'
-
-  const maxProfit = Math.max(...daysWithPnl.filter(d => d.pnl > 0).map(d => d.pnl), 0)
-  const maxLoss = Math.abs(Math.min(...daysWithPnl.filter(d => d.pnl < 0).map(d => d.pnl), 0))
+  const { maxProfit, maxLoss } = expandedMonthPnlRange.value
+  if (maxProfit === 0 && maxLoss === 0) return day.pnl >= 0 ? 'text-green-600' : 'text-red-600'
 
   const intensity = day.pnl >= 0
     ? (maxProfit > 0 ? Math.min(day.pnl / maxProfit, 1) : 0.5)
     : (maxLoss > 0 ? Math.min(Math.abs(day.pnl) / maxLoss, 1) : 0.5)
 
-  // Use white/light colors for dark backgrounds, darker colors for light backgrounds
   if (intensity > 0.4) {
     return 'text-white font-bold'
   } else {
@@ -465,11 +486,8 @@ function getDayPnlTextColor(day) {
 function getDaySubTextColor(day) {
   if (!day.date || day.pnl === undefined) return 'text-gray-500 dark:text-gray-400'
 
-  const daysWithPnl = expandedMonthDays.value.filter(d => d.pnl !== undefined)
-  if (daysWithPnl.length === 0) return 'text-gray-500 dark:text-gray-400'
-
-  const maxProfit = Math.max(...daysWithPnl.filter(d => d.pnl > 0).map(d => d.pnl), 0)
-  const maxLoss = Math.abs(Math.min(...daysWithPnl.filter(d => d.pnl < 0).map(d => d.pnl), 0))
+  const { maxProfit, maxLoss } = expandedMonthPnlRange.value
+  if (maxProfit === 0 && maxLoss === 0) return 'text-gray-500 dark:text-gray-400'
 
   const intensity = day.pnl >= 0
     ? (maxProfit > 0 ? Math.min(day.pnl / maxProfit, 1) : 0.5)
@@ -487,39 +505,22 @@ function getMiniDayClass(day) {
 function getMiniDayStyle(day) {
   if (!day.date || day.pnl === undefined) return {}
 
-  // Get all days with P/L for the year to calculate relative intensity
-  const allDaysWithPnl = []
-  yearlyCalendar.value.forEach(month => {
-    month.days.forEach(d => {
-      if (d.pnl !== undefined) allDaysWithPnl.push(d)
-    })
-  })
+  const { maxProfit, maxLoss } = yearlyPnlRange.value
 
-  if (allDaysWithPnl.length === 0) {
-    return {
-      backgroundColor: day.pnl >= 0 ? 'rgb(34, 197, 94)' : 'rgb(239, 68, 68)'
-    }
+  if (maxProfit === 0 && maxLoss === 0) {
+    return { backgroundColor: day.pnl >= 0 ? 'rgb(34, 197, 94)' : 'rgb(239, 68, 68)' }
   }
 
-  const maxProfit = Math.max(...allDaysWithPnl.filter(d => d.pnl > 0).map(d => d.pnl), 0)
-  const maxLoss = Math.abs(Math.min(...allDaysWithPnl.filter(d => d.pnl < 0).map(d => d.pnl), 0))
-
   if (day.pnl >= 0) {
-    // Green for profits - scale saturation/lightness
     const intensity = maxProfit > 0 ? Math.min(day.pnl / maxProfit, 1) : 0.5
     const saturation = 40 + (intensity * 50)
     const lightness = 55 - (intensity * 15)
-    return {
-      backgroundColor: `hsl(142, ${saturation}%, ${lightness}%)`
-    }
+    return { backgroundColor: `hsl(142, ${saturation}%, ${lightness}%)` }
   } else {
-    // Red for losses - scale saturation/lightness
     const intensity = maxLoss > 0 ? Math.min(Math.abs(day.pnl) / maxLoss, 1) : 0.5
     const saturation = 40 + (intensity * 50)
     const lightness = 55 - (intensity * 15)
-    return {
-      backgroundColor: `hsl(0, ${saturation}%, ${lightness}%)`
-    }
+    return { backgroundColor: `hsl(0, ${saturation}%, ${lightness}%)` }
   }
 }
 
