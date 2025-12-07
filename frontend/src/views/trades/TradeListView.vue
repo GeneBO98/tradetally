@@ -501,10 +501,10 @@
                 </td>
                 
                 <!-- Additional Columns -->
-                <td v-else-if="column.visible && column.key === 'quantity'" 
-                    :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']" 
+                <td v-else-if="column.visible && column.key === 'quantity'"
+                    :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
-                  {{ trade.quantity || '-' }}
+                  {{ getTradeQuantity(trade) || '-' }}
                 </td>
                 
                 <td v-else-if="column.visible && column.key === 'commission'" 
@@ -665,21 +665,17 @@
                 <!-- TradingView Link Column -->
                 <td v-else-if="column.visible && column.key === 'tradingviewLink'"
                     :class="[getCellPadding, 'whitespace-nowrap']">
-                  <a
-                    v-if="trade.chart_urls && trade.chart_urls.length > 0"
-                    :href="trade.chart_urls[0]"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="inline-flex items-center text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 text-sm font-medium"
-                    @click.stop
-                    :title="trade.chart_urls.length > 1 ? `${trade.chart_urls.length} charts available` : 'View chart'"
-                  >
-                    <svg class="h-4 w-4 mr-1" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M7.5 3h9a1.5 1.5 0 0 1 1.5 1.5v15a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 6 19.5v-15A1.5 1.5 0 0 1 7.5 3zm1.5 3v2.5h6V6H9zm0 4v2h6v-2H9zm0 3.5v2h6v-2H9z"/>
-                    </svg>
-                    <span>Chart</span>
-                    <span v-if="trade.chart_urls.length > 1" class="ml-1 text-xs">({{ trade.chart_urls.length }})</span>
-                  </a>
+                  <div v-if="trade.chart_urls && trade.chart_urls.length > 0" class="text-sm">
+                    <template v-for="(url, index) in trade.chart_urls" :key="index">
+                      <a
+                        :href="url"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 hover:underline"
+                        @click.stop
+                      >Chart {{ index + 1 }}</a><span v-if="index < trade.chart_urls.length - 1">, </span>
+                    </template>
+                  </div>
                   <span v-else class="text-sm text-gray-500 dark:text-gray-400">-</span>
                 </td>
               </template>
@@ -1130,9 +1126,26 @@ function formatHoldTime(trade) {
   return `${days} days`
 }
 
+function getTradeQuantity(trade) {
+  // Sum execution quantities if executions exist, otherwise use trade.quantity
+  if (trade.executions && trade.executions.length > 0) {
+    return trade.executions.reduce((sum, exec) => sum + (parseFloat(exec.quantity) || 0), 0)
+  }
+  return trade.quantity
+}
+
 function formatTime(datetime) {
   if (!datetime) return '-'
   try {
+    const dateStr = datetime.toString()
+    // Parse datetime string manually to avoid timezone issues (same as TradeDetailView)
+    const isoMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?/)
+    if (isoMatch) {
+      const [, , , , hour, minute, second] = isoMatch.map(Number)
+      // Format time directly from parsed components, ignoring timezone
+      return `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}:${second.toString().padStart(2, '0')}`
+    }
+    // Fallback
     const date = new Date(datetime)
     return format(date, 'HH:mm:ss')
   } catch (error) {

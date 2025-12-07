@@ -479,6 +479,8 @@ class Trade {
   }
 
   static async findByUser(userId, filters = {}) {
+    const startTime = Date.now();
+    console.log('[PERF] findByUser started for user:', userId);
     const { getUserTimezone } = require('../utils/timezone');
     let query = `
       SELECT t.*,
@@ -725,7 +727,11 @@ class Trade {
       values.push(filters.offset);
     }
 
+    const queryStartTime = Date.now();
     const result = await db.query(query, values);
+    const queryEndTime = Date.now();
+    console.log('[PERF] findByUser query took:', queryEndTime - queryStartTime, 'ms, returned', result.rows.length, 'rows');
+    console.log('[PERF] findByUser total time:', queryEndTime - startTime, 'ms');
     return result.rows;
   }
 

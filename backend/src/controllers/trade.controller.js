@@ -26,6 +26,8 @@ function invalidateAnalyticsCache(userId) {
 
 const tradeController = {
   async getUserTrades(req, res, next) {
+    const requestStartTime = Date.now();
+    console.log('[PERF] getUserTrades started');
     try {
       const {
         symbol, startDate, endDate, tags, strategy, sector,
@@ -76,7 +78,9 @@ const tradeController = {
       }
 
       // Get trades with pagination
+      console.log('[PERF] About to call Trade.findByUser, elapsed:', Date.now() - requestStartTime, 'ms');
       const trades = await Trade.findByUser(req.user.id, filters);
+      console.log('[PERF] Trade.findByUser completed, elapsed:', Date.now() - requestStartTime, 'ms');
 
       // Map snake_case database fields to camelCase for API response
       trades.forEach(trade => {
@@ -105,8 +109,11 @@ const tradeController = {
       delete totalCountFilters.offset;
 
       // Use getCountWithFilters for regular trades table counting
+      console.log('[PERF] About to call Trade.getCountWithFilters, elapsed:', Date.now() - requestStartTime, 'ms');
       const total = await Trade.getCountWithFilters(req.user.id, totalCountFilters);
+      console.log('[PERF] Trade.getCountWithFilters completed, total:', total, ', elapsed:', Date.now() - requestStartTime, 'ms');
 
+      console.log('[PERF] getUserTrades total time:', Date.now() - requestStartTime, 'ms');
       res.json({
         trades,
         count: trades.length,
