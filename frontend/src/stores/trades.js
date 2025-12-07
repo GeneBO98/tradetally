@@ -35,70 +35,30 @@ export const useTradesStore = defineStore('trades', () => {
   const analytics = ref(null)
 
   const totalPnL = computed(() => {
-    console.log('[COMPUTE] totalPnL:', {
-      hasAnalytics: !!analytics.value,
-      hasSummary: !!(analytics.value?.summary),
-      analyticsPnL: analytics.value?.summary?.totalPnL,
-      fallbackTradesLength: trades.value.length
-    })
-    
     // Use analytics data if available, otherwise fall back to trade summation
-    if (analytics.value && analytics.value.summary && analytics.value.summary.totalPnL !== undefined) {
-      const result = parseFloat(analytics.value.summary.totalPnL)
-      console.log('[USING] analytics totalPnL:', result)
-      return result
+    if (analytics.value?.summary?.totalPnL !== undefined) {
+      return parseFloat(analytics.value.summary.totalPnL)
     }
-    
-    const total = trades.value.reduce((sum, trade) => {
-      const pnl = parseFloat(trade.pnl) || 0
-      return sum + pnl
-    }, 0)
-    console.log('[FALLBACK] totalPnL:', total, {
-      tradesCount: trades.value.length,
-      sampleTrades: trades.value.slice(0, 3).map(t => ({ symbol: t.symbol, pnl: t.pnl }))
-    })
-    return total
+    return trades.value.reduce((sum, trade) => sum + (parseFloat(trade.pnl) || 0), 0)
   })
 
   const winRate = computed(() => {
-    console.log('[COMPUTE] winRate:', {
-      hasAnalytics: !!analytics.value,
-      analyticsWinRate: analytics.value?.summary?.winRate,
-      tradesCount: trades.value.length
-    })
-    
     // Use analytics data if available, otherwise fall back to trade calculation
-    if (analytics.value && analytics.value.summary && analytics.value.summary.winRate !== undefined) {
-      const result = parseFloat(analytics.value.summary.winRate).toFixed(2)
-      console.log('[USING] analytics winRate:', result)
-      return result
+    if (analytics.value?.summary?.winRate !== undefined) {
+      return parseFloat(analytics.value.summary.winRate).toFixed(2)
     }
-    
     const winning = trades.value.filter(t => t.pnl > 0).length
     const total = trades.value.length
-    const result = total > 0 ? (winning / total * 100).toFixed(2) : 0
-    console.log('[FALLBACK] winRate:', result, { winning, total })
-    return result
+    return total > 0 ? (winning / total * 100).toFixed(2) : 0
   })
 
   const totalTrades = computed(() => {
-    console.log('[COMPUTE] totalTrades:', {
-      hasAnalytics: !!analytics.value,
-      analyticsTotalTrades: analytics.value?.summary?.totalTrades,
-      paginationTotal: pagination.value.total
-    })
-    
     // Use analytics data if available for total trades count
-    if (analytics.value && analytics.value.summary && analytics.value.summary.totalTrades !== undefined) {
-      const result = analytics.value.summary.totalTrades
-      console.log('[USING] analytics totalTrades:', result)
-      return result
+    if (analytics.value?.summary?.totalTrades !== undefined) {
+      return analytics.value.summary.totalTrades
     }
-    
     // Fall back to pagination total
-    const result = pagination.value.total
-    console.log('[USING] pagination totalTrades:', result)
-    return result
+    return pagination.value.total
   })
 
   async function fetchTrades(params = {}) {
@@ -121,20 +81,14 @@ export const useTradesStore = defineStore('trades', () => {
       // Always use the trades data from the trades API
       if (tradesResponse.data.hasOwnProperty('trades')) {
         trades.value = tradesResponse.data.trades
-        console.log('[TRADES] Set from tradesResponse.data.trades:', trades.value.length)
       } else {
         trades.value = tradesResponse.data
-        console.log('[TRADES] Set from tradesResponse.data (fallback):', trades.value.length)
       }
 
       // If the response includes pagination metadata, update it
-      console.log('[PAGINATION] Trades response:', tradesResponse.data)
       if (tradesResponse.data.total !== undefined) {
         pagination.value.total = tradesResponse.data.total
         pagination.value.totalPages = Math.ceil(tradesResponse.data.total / pagination.value.limit)
-        console.log('[PAGINATION] Set:', pagination.value)
-      } else {
-        console.log('[PAGINATION] No total in response!')
       }
 
       return tradesResponse.data
@@ -166,10 +120,8 @@ export const useTradesStore = defineStore('trades', () => {
       // Always use the trades data from the trades API
       if (tradesResponse.data.hasOwnProperty('trades')) {
         trades.value = tradesResponse.data.trades
-        console.log('[TRADES] Set from tradesResponse.data.trades:', trades.value.length)
       } else {
         trades.value = tradesResponse.data
-        console.log('[TRADES] Set from tradesResponse.data (fallback):', trades.value.length)
       }
 
       // If the response includes pagination metadata, update it
@@ -189,7 +141,6 @@ export const useTradesStore = defineStore('trades', () => {
 
   async function fetchAnalytics(params = {}) {
     try {
-      console.log('[ANALYTICS] Fetching analytics with params:', params)
       const analyticsResponse = await api.get('/trades/analytics', {
         params: {
           ...filters.value,
@@ -199,14 +150,6 @@ export const useTradesStore = defineStore('trades', () => {
 
       // Store analytics data for consistent P&L calculations
       analytics.value = analyticsResponse.data
-
-      console.log('[ANALYTICS] Analytics data received:', {
-        summary: analyticsResponse.data.summary,
-        totalPnL: analyticsResponse.data.summary?.totalPnL,
-        winRate: analyticsResponse.data.summary?.winRate,
-        totalTrades: analyticsResponse.data.summary?.totalTrades
-      })
-
       return analyticsResponse.data
     } catch (err) {
       error.value = err.response?.data?.error || 'Failed to fetch analytics'
