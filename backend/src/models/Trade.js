@@ -930,13 +930,21 @@ class Trade {
       paramCount++;
     }
 
-    // Check if any P&L-affecting field was provided (using !== undefined to allow 0 values)
-    const hasPnLUpdate = updates.entryPrice !== undefined || updates.exitPrice !== undefined ||
-                         updates.quantity !== undefined || updates.side !== undefined ||
-                         updates.commission !== undefined || updates.fees !== undefined ||
-                         updates.instrumentType !== undefined || updates.contractSize !== undefined;
+    // Check if any P&L-affecting field was actually CHANGED (not just provided)
+    // This prevents recalculation when opening and closing a trade without changes
+    const hasPnLUpdate = (
+      (updates.entryPrice !== undefined && parseFloat(updates.entryPrice) !== parseFloat(currentTrade.entry_price)) ||
+      (updates.exitPrice !== undefined && parseFloat(updates.exitPrice) !== parseFloat(currentTrade.exit_price)) ||
+      (updates.quantity !== undefined && parseFloat(updates.quantity) !== parseFloat(currentTrade.quantity)) ||
+      (updates.side !== undefined && updates.side !== currentTrade.side) ||
+      (updates.commission !== undefined && parseFloat(updates.commission) !== parseFloat(currentTrade.commission)) ||
+      (updates.fees !== undefined && parseFloat(updates.fees) !== parseFloat(currentTrade.fees)) ||
+      (updates.instrumentType !== undefined && updates.instrumentType !== currentTrade.instrument_type) ||
+      (updates.contractSize !== undefined && parseFloat(updates.contractSize) !== parseFloat(currentTrade.contract_size))
+    );
 
     if (hasPnLUpdate) {
+      console.log('[PNL UPDATE] Values actually changed, recalculating P&L');
       const instrumentType = updates.instrumentType || currentTrade.instrument_type || 'stock';
       const quantity = updates.quantity !== undefined ? updates.quantity : currentTrade.quantity;
       const pointValue = updates.pointValue !== undefined ? updates.pointValue : currentTrade.point_value;
