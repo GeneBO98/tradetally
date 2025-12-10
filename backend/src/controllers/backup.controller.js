@@ -8,6 +8,56 @@ const fs = require('fs').promises;
  */
 class BackupController {
   /**
+   * Restore from a backup file
+   * POST /api/admin/backup/restore
+   */
+  async restoreBackup(req, res, next) {
+    try {
+      const userId = req.user.id;
+      const { skipUsers } = req.body;
+
+      console.log(`[RESTORE] Restore requested by user ${userId}`);
+
+      if (!req.file) {
+        return res.status(400).json({ error: 'No backup file uploaded' });
+      }
+
+      // Parse the uploaded backup file
+      let backupData;
+      try {
+        const fileContent = req.file.buffer.toString('utf8');
+        backupData = JSON.parse(fileContent);
+      } catch (parseError) {
+        return res.status(400).json({ error: 'Invalid backup file format. Must be valid JSON.' });
+      }
+
+      // Validate backup structure
+      if (!backupData.version || !backupData.tables) {
+        return res.status(400).json({
+          error: 'Invalid backup file structure. Missing version or tables.',
+          hint: 'This appears to be a user export file, not a full site backup. Use Settings > Import for user exports.'
+        });
+      }
+
+      console.log(`[RESTORE] Backup version: ${backupData.version}, Export date: ${backupData.exportDate}`);
+      console.log(`[RESTORE] Tables in backup:`, Object.keys(backupData.tables));
+
+      // Perform the restore
+      const result = await backupService.restoreFromBackup(backupData, {
+        skipUsers: skipUsers === true || skipUsers === 'true'
+      });
+
+      res.json({
+        message: 'Backup restored successfully',
+        ...result
+      });
+    } catch (error) {
+      console.error('[RESTORE] Error restoring backup:', error);
+      res.status(500).json({ error: 'Restore failed', message: error.message });
+    }
+  }
+
+  /**
    * Create a manual backup
    * POST /api/admin/backup
    */
