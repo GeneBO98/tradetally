@@ -9,6 +9,10 @@ RUN npm install -g npm@latest
 RUN npm install
 COPY frontend/ ./
 
+# Set VITE_API_URL to use relative path for Nginx proxy
+ARG VITE_API_URL=/api
+ENV VITE_API_URL=${VITE_API_URL}
+
 RUN npm run build
 
 FROM node:20-alpine AS backend-builder

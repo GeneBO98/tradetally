@@ -280,6 +280,292 @@ class BackupService {
     console.log('[BACKUP] Settings updated:', result.rows[0]);
     return result.rows[0];
   }
+
+  /**
+   * Restore from a backup file
+   * @param {Object} backupData - Parsed backup JSON data
+   * @param {Object} options - Restore options
+   * @returns {Promise<Object>} Restore results
+   */
+  async restoreFromBackup(backupData, options = {}) {
+    const {
+      clearExisting = false,  // Whether to clear existing data before restore
+      skipUsers = false       // Whether to skip user restoration (use existing users)
+    } = options;
+
+    console.log('[RESTORE] Starting backup restoration...');
+    console.log('[RESTORE] Options:', { clearExisting, skipUsers });
+
+    const client = await db.connect();
+    const results = {
+      users: { added: 0, skipped: 0, errors: 0 },
+      trades: { added: 0, skipped: 0, errors: 0 },
+      diaryEntries: { added: 0, skipped: 0, errors: 0 },
+      other: { added: 0, skipped: 0, errors: 0 }
+    };
+
+    // Helper function to safely insert a record using SAVEPOINT
+    // This allows individual records to fail without aborting the entire transaction
+    const safeInsert = async (queryFn, errorPrefix) => {
+      const savepointName = `sp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      try {
+        await client.query(`SAVEPOINT ${savepointName}`);
+        await queryFn();
+        await client.query(`RELEASE SAVEPOINT ${savepointName}`);
+        return { success: true };
+      } catch (error) {
+        await client.query(`ROLLBACK TO SAVEPOINT ${savepointName}`);
+        console.error(`${errorPrefix}:`, error.message);
+        return { success: false, error: error.message };
+      }
+    };
+
+    try {
+      await client.query('BEGIN');
+
+      const tables = backupData.tables;
+
+      // Restore users first (if not skipping)
+      if (!skipUsers && tables.users && tables.users.length > 0) {
+        console.log(`[RESTORE] Processing ${tables.users.length} users...`);
+        for (const user of tables.users) {
+          // Check if user already exists
+          const existingUser = await client.query(
+            'SELECT id FROM users WHERE id = $1 OR email = $2',
+            [user.id, user.email]
+          );
+
+          if (existingUser.rows.length === 0) {
+            const result = await safeInsert(async () => {
+              await client.query(
+                `INSERT INTO users (
+                  id, email, username, password_hash, full_name, avatar_url,
+                  is_verified, is_active, timezone, created_at, updated_at,
+                  role, admin_approved, tier, trial_used
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+                [
+                  user.id, user.email, user.username, user.password_hash,
+                  user.full_name, user.avatar_url, user.is_verified, user.is_active,
+                  user.timezone || 'UTC', user.created_at, user.updated_at,
+                  user.role || 'user', user.admin_approved || false,
+                  user.tier || 'free', user.trial_used || false
+                ]
+              );
+            }, `[RESTORE] Error restoring user ${user.email}`);
+
+            if (result.success) {
+              results.users.added++;
+            } else {
+              results.users.errors++;
+            }
+          } else {
+            results.users.skipped++;
+          }
+        }
+        console.log(`[RESTORE] Users: ${results.users.added} added, ${results.users.skipped} skipped, ${results.users.errors} errors`);
+      }
+
+      // Restore trades using dynamic column insertion
+      if (tables.trades && tables.trades.length > 0) {
+        console.log(`[RESTORE] Processing ${tables.trades.length} trades...`);
+
+        // Columns to exclude from dynamic insert (handled specially or should be null)
+        const excludeColumns = ['import_id', 'round_trip_id'];
+
+        for (const trade of tables.trades) {
+          // Check if trade already exists
+          const existingTrade = await client.query(
+            'SELECT id FROM trades WHERE id = $1',
+            [trade.id]
+          );
+
+          if (existingTrade.rows.length === 0) {
+            // Check if user exists
+            const userExists = await client.query(
+              'SELECT id FROM users WHERE id = $1',
+              [trade.user_id]
+            );
+
+            if (userExists.rows.length === 0) {
+              console.log(`[RESTORE] Skipping trade - user not found: ${trade.user_id}`);
+              results.trades.skipped++;
+              continue;
+            }
+
+            // Build dynamic insert with all columns from backup
+            const columns = [];
+            const values = [];
+            const placeholders = [];
+            let paramIndex = 1;
+
+            for (const [key, value] of Object.entries(trade)) {
+              // Skip excluded columns
+              if (excludeColumns.includes(key)) continue;
+
+              columns.push(key);
+
+              // Handle special cases
+              if (key === 'executions' && value && typeof value === 'object') {
+                values.push(JSON.stringify(value));
+              } else if (key === 'tags' && Array.isArray(value)) {
+                values.push(value);
+              } else if (key === 'news_events' && value && typeof value === 'object') {
+                values.push(JSON.stringify(value));
+              } else if (key === 'classification_metadata' && value && typeof value === 'object') {
+                values.push(JSON.stringify(value));
+              } else {
+                values.push(value);
+              }
+
+              placeholders.push(`$${paramIndex}`);
+              paramIndex++;
+            }
+
+            const result = await safeInsert(async () => {
+              await client.query(
+                `INSERT INTO trades (${columns.join(', ')}) VALUES (${placeholders.join(', ')})`,
+                values
+              );
+            }, `[RESTORE] Error restoring trade ${trade.id}`);
+
+            if (result.success) {
+              results.trades.added++;
+            } else {
+              results.trades.errors++;
+            }
+          } else {
+            results.trades.skipped++;
+          }
+        }
+        console.log(`[RESTORE] Trades: ${results.trades.added} added, ${results.trades.skipped} skipped, ${results.trades.errors} errors`);
+      }
+
+      // Restore diary entries
+      if (tables.diaryEntries && tables.diaryEntries.length > 0) {
+        console.log(`[RESTORE] Processing ${tables.diaryEntries.length} diary entries...`);
+        for (const entry of tables.diaryEntries) {
+          const existingEntry = await client.query(
+            'SELECT id FROM diary_entries WHERE id = $1',
+            [entry.id]
+          );
+
+          if (existingEntry.rows.length === 0) {
+            // Build dynamic insert for diary entries too
+            const columns = [];
+            const values = [];
+            const placeholders = [];
+            let paramIndex = 1;
+
+            for (const [key, value] of Object.entries(entry)) {
+              columns.push(key);
+
+              if (Array.isArray(value)) {
+                values.push(value);
+              } else {
+                values.push(value);
+              }
+
+              placeholders.push(`$${paramIndex}`);
+              paramIndex++;
+            }
+
+            const result = await safeInsert(async () => {
+              await client.query(
+                `INSERT INTO diary_entries (${columns.join(', ')}) VALUES (${placeholders.join(', ')})`,
+                values
+              );
+            }, `[RESTORE] Error restoring diary entry ${entry.id}`);
+
+            if (result.success) {
+              results.diaryEntries.added++;
+            } else {
+              results.diaryEntries.errors++;
+            }
+          } else {
+            results.diaryEntries.skipped++;
+          }
+        }
+        console.log(`[RESTORE] Diary entries: ${results.diaryEntries.added} added, ${results.diaryEntries.skipped} skipped, ${results.diaryEntries.errors} errors`);
+      }
+
+      // Restore other tables (trade_attachments, trade_comments, etc.)
+      const otherTables = [
+        { name: 'tradeAttachments', table: 'trade_attachments', idField: 'id' },
+        { name: 'tradeComments', table: 'trade_comments', idField: 'id' },
+        { name: 'symbolCategories', table: 'symbol_categories', idField: 'id' },
+        { name: 'watchlists', table: 'watchlists', idField: 'id' },
+        { name: 'watchlistItems', table: 'watchlist_items', idField: 'id' },
+        { name: 'healthData', table: 'health_data', idField: 'id' }
+      ];
+
+      for (const tableInfo of otherTables) {
+        if (tables[tableInfo.name] && tables[tableInfo.name].length > 0) {
+          console.log(`[RESTORE] Processing ${tables[tableInfo.name].length} ${tableInfo.name}...`);
+          for (const row of tables[tableInfo.name]) {
+            const existing = await client.query(
+              `SELECT ${tableInfo.idField} FROM ${tableInfo.table} WHERE ${tableInfo.idField} = $1`,
+              [row[tableInfo.idField]]
+            );
+
+            if (existing.rows.length === 0) {
+              // Build dynamic insert query
+              const columns = Object.keys(row);
+              const values = Object.values(row).map(v => {
+                if (v && typeof v === 'object' && !Array.isArray(v)) {
+                  return JSON.stringify(v);
+                }
+                return v;
+              });
+              const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ');
+
+              const result = await safeInsert(async () => {
+                await client.query(
+                  `INSERT INTO ${tableInfo.table} (${columns.join(', ')}) VALUES (${placeholders})`,
+                  values
+                );
+              }, `[RESTORE] Error restoring ${tableInfo.name}`);
+
+              if (result.success) {
+                results.other.added++;
+              } else {
+                results.other.errors++;
+              }
+            } else {
+              results.other.skipped++;
+            }
+          }
+        }
+      }
+
+      await client.query('COMMIT');
+      console.log('[RESTORE] Restore completed successfully');
+
+      // Check if there were any critical errors
+      const totalErrors = results.users.errors + results.trades.errors + results.diaryEntries.errors + results.other.errors;
+      const totalAdded = results.users.added + results.trades.added + results.diaryEntries.added + results.other.added;
+
+      if (totalAdded === 0 && totalErrors > 0) {
+        return {
+          success: false,
+          results,
+          message: `Restore completed with errors. No records were added. ${totalErrors} errors occurred.`
+        };
+      }
+
+      return {
+        success: true,
+        results,
+        message: `Restored: ${results.users.added} users, ${results.trades.added} trades, ${results.diaryEntries.added} diary entries, ${results.other.added} other records` +
+          (totalErrors > 0 ? ` (${totalErrors} errors)` : '')
+      };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('[RESTORE] Restore failed, transaction rolled back:', error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
 }
 
 module.exports = new BackupService();

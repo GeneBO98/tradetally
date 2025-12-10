@@ -422,6 +422,40 @@ const settingsController = {
         console.warn('[EXPORT] Unable to fetch broker fee settings:', error.message);
       }
 
+      // Get trade charts (TradingView links)
+      let tradeCharts = [];
+      try {
+        const chartsResult = await db.query(
+          `SELECT tc.* FROM trade_charts tc
+           INNER JOIN trades t ON tc.trade_id = t.id
+           WHERE t.user_id = $1
+           ORDER BY tc.uploaded_at`,
+          [userId]
+        );
+        tradeCharts = chartsResult.rows;
+        console.log(`[EXPORT] Exporting ${tradeCharts.length} trade charts`);
+      } catch (error) {
+        console.warn('[EXPORT] Unable to fetch trade charts:', error.message);
+      }
+
+      // Get admin settings (only for admin users)
+      let adminSettings = null;
+      if (req.user.role === 'admin') {
+        try {
+          const adminSettingsResult = await db.query(
+            `SELECT setting_key, setting_value FROM admin_settings`
+          );
+          // Convert to object for easier handling
+          adminSettings = {};
+          for (const row of adminSettingsResult.rows) {
+            adminSettings[row.setting_key] = row.setting_value;
+          }
+          console.log(`[EXPORT] Exporting ${Object.keys(adminSettings).length} admin settings`);
+        } catch (error) {
+          console.warn('[EXPORT] Unable to fetch admin settings:', error.message);
+        }
+      }
+
       // Create export data with ALL fields - Version 2.0 with complete data
       const exportData = {
         exportVersion: '2.0',
@@ -613,13 +647,24 @@ const settingsController = {
           notes: setting.notes,
           createdAt: setting.created_at,
           updatedAt: setting.updated_at
-        }))
+        })),
+        // Trade charts (TradingView links) - NEW in v2.1
+        tradeCharts: tradeCharts.map(chart => ({
+          originalTradeId: chart.trade_id,  // Will be remapped during import
+          chartUrl: chart.chart_url,
+          chartTitle: chart.chart_title,
+          uploadedAt: chart.uploaded_at
+        })),
+        // Admin settings (only included for admin exports) - NEW in v2.1
+        adminSettings: adminSettings
       };
 
       console.log('[EXPORT] Export complete. Total trades:', trades.length,
                   'Diary entries:', diaryEntries.length,
                   'Templates:', diaryTemplates.length,
-                  'Broker fees:', brokerFeeSettings.length);
+                  'Broker fees:', brokerFeeSettings.length,
+                  'Trade charts:', tradeCharts.length,
+                  'Admin settings:', adminSettings ? Object.keys(adminSettings).length : 0);
 
       res.setHeader('Content-Type', 'application/json');
       res.setHeader('Content-Disposition', `attachment; filename=tradetally-export-${new Date().toISOString().split('T')[0]}.json`);
@@ -668,6 +713,11 @@ const settingsController = {
         });
         return res.status(400).json({ error: 'Invalid TradeTally export file' });
       }
+
+      // NOTE: No tier limit check for TradeTally export imports
+      // This is for data portability - users should be able to restore their own exported data
+      // The tier limit (100 trades per import for free tier) only applies to CSV broker imports
+      console.log(`[IMPORT] Processing TradeTally export with ${importData.trades?.length || 0} trades (no tier limit for exports)`);
 
       // Ensure database schema is ready before import
       try {
@@ -1204,6 +1254,67 @@ const settingsController = {
           console.log(`[IMPORT] Diary entries: ${diaryAdded} added, ${diarySkipped} skipped`);
         }
 
+        // Import trade charts (TradingView links) - NEW in v2.1
+        let chartsAdded = 0;
+        let chartsSkipped = 0;
+        if (data.tradeCharts && data.tradeCharts.length > 0) {
+          console.log(`[IMPORT] Processing ${data.tradeCharts.length} trade charts`);
+          for (const chart of data.tradeCharts) {
+            try {
+              // Remap the trade ID
+              const newTradeId = tradeIdMap.get(chart.originalTradeId);
+              if (!newTradeId) {
+                console.log(`[IMPORT] Skipping chart - trade not found: ${chart.originalTradeId}`);
+                chartsSkipped++;
+                continue;
+              }
+
+              // Check if chart already exists
+              const existingChart = await client.query(
+                `SELECT id FROM trade_charts WHERE trade_id = $1 AND chart_url = $2`,
+                [newTradeId, chart.chartUrl]
+              );
+
+              if (existingChart.rows.length === 0) {
+                await client.query(
+                  `INSERT INTO trade_charts (trade_id, chart_url, chart_title, uploaded_at)
+                   VALUES ($1, $2, $3, $4)`,
+                  [newTradeId, chart.chartUrl, chart.chartTitle, chart.uploadedAt || new Date()]
+                );
+                chartsAdded++;
+              } else {
+                chartsSkipped++;
+              }
+            } catch (chartError) {
+              console.error('[IMPORT] Error processing trade chart:', chartError.message);
+              chartsSkipped++;
+            }
+          }
+          console.log(`[IMPORT] Trade charts: ${chartsAdded} added, ${chartsSkipped} skipped`);
+        }
+
+        // Import admin settings (only for admin users) - NEW in v2.1
+        let adminSettingsUpdated = 0;
+        if (data.adminSettings && req.user.role === 'admin') {
+          console.log('[IMPORT] Processing admin settings');
+          for (const [key, value] of Object.entries(data.adminSettings)) {
+            try {
+              await client.query(
+                `INSERT INTO admin_settings (setting_key, setting_value)
+                 VALUES ($1, $2)
+                 ON CONFLICT (setting_key) DO UPDATE SET
+                 setting_value = EXCLUDED.setting_value,
+                 updated_at = CURRENT_TIMESTAMP`,
+                [key, value]
+              );
+              adminSettingsUpdated++;
+            } catch (adminError) {
+              console.error('[IMPORT] Error processing admin setting:', key, adminError.message);
+            }
+          }
+          console.log(`[IMPORT] Admin settings: ${adminSettingsUpdated} updated`);
+        }
+
         await client.query('COMMIT');
         console.log('[IMPORT] Transaction committed successfully');
 
@@ -1219,7 +1330,10 @@ const settingsController = {
           templatesSkipped,
           brokerFeesAdded,
           brokerFeesSkipped,
-          message: `Successfully imported: ${tradesAdded} trades, ${tagsAdded} tags, ${equityAdded} equity records, ${diaryAdded} diary entries, ${templatesAdded} templates, ${brokerFeesAdded} broker fee settings. Skipped: ${tradesSkipped} trades, ${diarySkipped} diary entries, ${templatesSkipped} templates, ${brokerFeesSkipped} broker fees (updated).`
+          chartsAdded,
+          chartsSkipped,
+          adminSettingsUpdated,
+          message: `Successfully imported: ${tradesAdded} trades, ${tagsAdded} tags, ${equityAdded} equity records, ${diaryAdded} diary entries, ${templatesAdded} templates, ${brokerFeesAdded} broker fee settings, ${chartsAdded} trade charts, ${adminSettingsUpdated} admin settings. Skipped: ${tradesSkipped} trades, ${diarySkipped} diary entries, ${templatesSkipped} templates, ${brokerFeesSkipped} broker fees, ${chartsSkipped} charts.`
         });
       } catch (error) {
         await client.query('ROLLBACK');
