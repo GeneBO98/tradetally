@@ -342,6 +342,26 @@
                 <p class="mt-1 text-sm font-medium text-gray-900 dark:text-white">
                   {{ selectedRestoreFile?.name }}
                 </p>
+                <!-- Overwrite option -->
+                <div class="mt-4 flex items-start">
+                  <div class="flex items-center h-5">
+                    <input
+                      id="overwrite-users"
+                      v-model="overwriteUsers"
+                      type="checkbox"
+                      class="focus:ring-primary-500 h-4 w-4 text-primary-600 border-gray-300 dark:border-gray-600 dark:bg-gray-700 rounded"
+                    />
+                  </div>
+                  <div class="ml-3 text-sm">
+                    <label for="overwrite-users" class="font-medium text-gray-700 dark:text-gray-300">
+                      Overwrite matching users data
+                    </label>
+                    <p class="text-gray-500 dark:text-gray-400">
+                      Update existing users with data from the backup (name, settings, etc.)
+                    </p>
+                  </div>
+                </div>
+
                 <div class="mt-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-md p-3">
                   <div class="flex">
                     <svg class="h-5 w-5 text-amber-400" fill="currentColor" viewBox="0 0 20 20">
@@ -352,7 +372,8 @@
                       <div class="mt-1 text-sm text-amber-700 dark:text-amber-400">
                         <ul class="list-disc list-inside space-y-1">
                           <li>This will restore users, trades, and other data from the backup</li>
-                          <li>Existing records with the same ID will be skipped</li>
+                          <li v-if="!overwriteUsers">Existing records with the same ID will be skipped</li>
+                          <li v-if="overwriteUsers" class="font-medium">Existing users will be UPDATED with backup data</li>
                           <li>New records from the backup will be added</li>
                           <li>This action may take several minutes for large backups</li>
                         </ul>
@@ -410,6 +431,7 @@ const deleting = ref({});
 // Restore state
 const selectedRestoreFile = ref(null);
 const showRestoreModal = ref(false);
+const overwriteUsers = ref(false);
 
 const settings = ref({
   enabled: false,
@@ -615,6 +637,7 @@ async function executeRestore() {
 
     const formData = new FormData();
     formData.append('file', selectedRestoreFile.value);
+    formData.append('overwriteUsers', overwriteUsers.value);
 
     const response = await api.post('/admin/backup/restore', formData, {
       headers: {
@@ -628,17 +651,19 @@ async function executeRestore() {
       const results = response.data.results;
       const details = [];
       if (results.users?.added > 0) details.push(`${results.users.added} users`);
+      if (results.users?.updated > 0) details.push(`${results.users.updated} users updated`);
       if (results.trades?.added > 0) details.push(`${results.trades.added} trades`);
       if (results.diaryEntries?.added > 0) details.push(`${results.diaryEntries.added} diary entries`);
       if (results.other?.added > 0) details.push(`${results.other.added} other records`);
-      if (details.length > 0) {
-        message += ` - Added: ${details.join(', ')}`;
+      if (details.length > 0 && !message.includes('Restored:')) {
+        message += ` - ${details.join(', ')}`;
       }
     }
 
     successMessage.value = message;
     showRestoreModal.value = false;
     selectedRestoreFile.value = null;
+    overwriteUsers.value = false;
 
     // Reload data to reflect any changes
     await loadData();
@@ -656,6 +681,7 @@ async function executeRestore() {
 function cancelRestore() {
   showRestoreModal.value = false;
   selectedRestoreFile.value = null;
+  overwriteUsers.value = false;
 }
 
 // Format date
