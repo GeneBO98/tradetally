@@ -289,16 +289,17 @@ class BackupService {
    */
   async restoreFromBackup(backupData, options = {}) {
     const {
-      clearExisting = false,  // Whether to clear existing data before restore
-      skipUsers = false       // Whether to skip user restoration (use existing users)
+      clearExisting = false,   // Whether to clear existing data before restore
+      skipUsers = false,       // Whether to skip user restoration (use existing users)
+      overwriteUsers = false   // Whether to overwrite existing users with backup data
     } = options;
 
     console.log('[RESTORE] Starting backup restoration...');
-    console.log('[RESTORE] Options:', { clearExisting, skipUsers });
+    console.log('[RESTORE] Options:', { clearExisting, skipUsers, overwriteUsers });
 
     const client = await db.connect();
     const results = {
-      users: { added: 0, skipped: 0, errors: 0 },
+      users: { added: 0, skipped: 0, updated: 0, errors: 0 },
       trades: { added: 0, skipped: 0, errors: 0 },
       diaryEntries: { added: 0, skipped: 0, errors: 0 },
       other: { added: 0, skipped: 0, errors: 0 }
@@ -325,17 +326,21 @@ class BackupService {
 
       const tables = backupData.tables;
 
+      // Create a mapping of backup user IDs to current database user IDs
+      const userIdMapping = new Map();
+
       // Restore users first (if not skipping)
       if (!skipUsers && tables.users && tables.users.length > 0) {
         console.log(`[RESTORE] Processing ${tables.users.length} users...`);
         for (const user of tables.users) {
-          // Check if user already exists
+          // Check if user already exists by ID or email
           const existingUser = await client.query(
-            'SELECT id FROM users WHERE id = $1 OR email = $2',
+            'SELECT id, email, username FROM users WHERE id = $1 OR email = $2',
             [user.id, user.email]
           );
 
           if (existingUser.rows.length === 0) {
+            // User doesn't exist - insert new user
             const result = await safeInsert(async () => {
               await client.query(
                 `INSERT INTO users (
@@ -355,14 +360,61 @@ class BackupService {
 
             if (result.success) {
               results.users.added++;
+              // Map backup user ID to itself (successfully inserted)
+              userIdMapping.set(user.id, user.id);
             } else {
+              // User failed to insert - try to find existing user by email or username
+              const findExisting = await client.query(
+                'SELECT id FROM users WHERE email = $1 OR username = $2 LIMIT 1',
+                [user.email, user.username]
+              );
+
+              if (findExisting.rows.length > 0) {
+                // Map backup user ID to existing user ID
+                userIdMapping.set(user.id, findExisting.rows[0].id);
+                console.log(`[RESTORE] Mapping user ${user.email} (${user.id}) to existing user (${findExisting.rows[0].id})`);
+              }
+
               results.users.errors++;
             }
           } else {
-            results.users.skipped++;
+            // User already exists
+            const existingUserId = existingUser.rows[0].id;
+            userIdMapping.set(user.id, existingUserId);
+
+            if (overwriteUsers) {
+              // Overwrite existing user with backup data
+              const result = await safeInsert(async () => {
+                await client.query(
+                  `UPDATE users SET
+                    username = $1, password_hash = $2, full_name = $3, avatar_url = $4,
+                    is_verified = $5, is_active = $6, timezone = $7, updated_at = NOW(),
+                    role = $8, admin_approved = $9, tier = $10, trial_used = $11
+                  WHERE id = $12`,
+                  [
+                    user.username, user.password_hash, user.full_name, user.avatar_url,
+                    user.is_verified, user.is_active, user.timezone || 'UTC',
+                    user.role || 'user', user.admin_approved || false,
+                    user.tier || 'free', user.trial_used || false,
+                    existingUserId
+                  ]
+                );
+              }, `[RESTORE] Error updating user ${user.email}`);
+
+              if (result.success) {
+                console.log(`[RESTORE] Updated user ${user.email} (${existingUserId})`);
+                results.users.updated++;
+              } else {
+                results.users.errors++;
+              }
+            } else {
+              // Just skip and map
+              console.log(`[RESTORE] User ${user.email} already exists (${existingUserId})`);
+              results.users.skipped++;
+            }
           }
         }
-        console.log(`[RESTORE] Users: ${results.users.added} added, ${results.users.skipped} skipped, ${results.users.errors} errors`);
+        console.log(`[RESTORE] Users: ${results.users.added} added, ${results.users.updated} updated, ${results.users.skipped} skipped, ${results.users.errors} errors, ${userIdMapping.size} mapped`);
       }
 
       // Restore trades using dynamic column insertion
@@ -380,25 +432,37 @@ class BackupService {
           );
 
           if (existingTrade.rows.length === 0) {
-            // Check if user exists
+            // Map the user_id if a mapping exists
+            let mappedUserId = trade.user_id;
+            if (userIdMapping.has(trade.user_id)) {
+              mappedUserId = userIdMapping.get(trade.user_id);
+            }
+
+            // Check if mapped user exists
             const userExists = await client.query(
               'SELECT id FROM users WHERE id = $1',
-              [trade.user_id]
+              [mappedUserId]
             );
 
             if (userExists.rows.length === 0) {
-              console.log(`[RESTORE] Skipping trade - user not found: ${trade.user_id}`);
+              console.log(`[RESTORE] Skipping trade - user not found: ${trade.user_id} (mapped: ${mappedUserId})`);
               results.trades.skipped++;
               continue;
             }
 
-            // Build dynamic insert with all columns from backup
+            // Update user_id if it was mapped
+            const tradeData = { ...trade };
+            if (mappedUserId !== trade.user_id) {
+              tradeData.user_id = mappedUserId;
+            }
+
+            // Build dynamic insert with all columns from backup (using mapped tradeData)
             const columns = [];
             const values = [];
             const placeholders = [];
             let paramIndex = 1;
 
-            for (const [key, value] of Object.entries(trade)) {
+            for (const [key, value] of Object.entries(tradeData)) {
               // Skip excluded columns
               if (excludeColumns.includes(key)) continue;
 
@@ -540,23 +604,45 @@ class BackupService {
       await client.query('COMMIT');
       console.log('[RESTORE] Restore completed successfully');
 
-      // Check if there were any critical errors
+      // Check totals
       const totalErrors = results.users.errors + results.trades.errors + results.diaryEntries.errors + results.other.errors;
       const totalAdded = results.users.added + results.trades.added + results.diaryEntries.added + results.other.added;
+      const totalSkipped = results.users.skipped + results.trades.skipped + results.diaryEntries.skipped + results.other.skipped;
 
-      if (totalAdded === 0 && totalErrors > 0) {
-        return {
-          success: false,
-          results,
-          message: `Restore completed with errors. No records were added. ${totalErrors} errors occurred.`
-        };
+      // Build message based on what happened
+      const totalUpdated = results.users.updated || 0;
+      let message = '';
+
+      if (totalAdded === 0 && totalUpdated === 0 && totalSkipped > 0) {
+        message = `Restore completed. All ${totalSkipped} records already exist in the database (nothing to restore).`;
+      } else if (totalAdded > 0 || totalUpdated > 0) {
+        const parts = [];
+        if (results.users.added > 0) parts.push(`${results.users.added} users`);
+        if (results.trades.added > 0) parts.push(`${results.trades.added} trades`);
+        if (results.diaryEntries.added > 0) parts.push(`${results.diaryEntries.added} diary entries`);
+        if (results.other.added > 0) parts.push(`${results.other.added} other records`);
+
+        message = 'Restored: ' + parts.join(', ');
+
+        if (totalUpdated > 0) {
+          message += ` | Updated: ${results.users.updated} users`;
+        }
+
+        if (totalSkipped > 0) {
+          message += ` (${totalSkipped} skipped - already exist)`;
+        }
+      } else {
+        message = 'Restore completed. No records added.';
+      }
+
+      if (totalErrors > 0) {
+        message += ` [${totalErrors} non-critical errors occurred]`;
       }
 
       return {
         success: true,
         results,
-        message: `Restored: ${results.users.added} users, ${results.trades.added} trades, ${results.diaryEntries.added} diary entries, ${results.other.added} other records` +
-          (totalErrors > 0 ? ` (${totalErrors} errors)` : '')
+        message
       };
     } catch (error) {
       await client.query('ROLLBACK');
