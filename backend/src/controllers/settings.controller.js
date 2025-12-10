@@ -1257,9 +1257,9 @@ const settingsController = {
         // Import trade charts (TradingView links) - NEW in v2.1
         let chartsAdded = 0;
         let chartsSkipped = 0;
-        if (data.tradeCharts && data.tradeCharts.length > 0) {
-          console.log(`[IMPORT] Processing ${data.tradeCharts.length} trade charts`);
-          for (const chart of data.tradeCharts) {
+        if (importData.tradeCharts && importData.tradeCharts.length > 0) {
+          console.log(`[IMPORT] Processing ${importData.tradeCharts.length} trade charts`);
+          for (const chart of importData.tradeCharts) {
             try {
               // Remap the trade ID
               const newTradeId = tradeIdMap.get(chart.originalTradeId);
@@ -1295,9 +1295,9 @@ const settingsController = {
 
         // Import admin settings (only for admin users) - NEW in v2.1
         let adminSettingsUpdated = 0;
-        if (data.adminSettings && req.user.role === 'admin') {
+        if (importData.adminSettings && req.user.role === 'admin') {
           console.log('[IMPORT] Processing admin settings');
-          for (const [key, value] of Object.entries(data.adminSettings)) {
+          for (const [key, value] of Object.entries(importData.adminSettings)) {
             try {
               await client.query(
                 `INSERT INTO admin_settings (setting_key, setting_value)
