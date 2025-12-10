@@ -47,8 +47,8 @@ services:
       EMAIL_USER: ${EMAIL_USER:-}
       EMAIL_PASS: ${EMAIL_PASS:-}
       EMAIL_FROM: ${EMAIL_FROM:-noreply@tradetally.io}
-      # Frontend API URL
-      VITE_API_URL: ${VITE_API_URL:-http://localhost/api}
+      # Frontend API URL - use relative path so it works on any port
+      VITE_API_URL: ${VITE_API_URL:-/api}
       # CORS Configuration for Mobile Apps
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
       CORS_ORIGINS: ${CORS_ORIGINS:-}

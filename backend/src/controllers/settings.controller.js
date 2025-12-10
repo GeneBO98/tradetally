@@ -642,12 +642,18 @@ const settingsController = {
       }
 
       console.log('[IMPORT] File details:', { name: file.originalname, size: file.size, mimetype: file.mimetype });
+      console.log('[IMPORT] User ID:', userId);
 
       let importData;
       try {
         importData = JSON.parse(file.buffer.toString());
         console.log('[IMPORT] JSON parsed successfully, keys:', Object.keys(importData));
         console.log('[IMPORT] Export version:', importData.exportVersion);
+        console.log('[IMPORT] Number of trades in file:', importData.trades?.length || 0);
+        console.log('[IMPORT] Number of tags in file:', importData.tags?.length || 0);
+        console.log('[IMPORT] Number of diary entries in file:', importData.diaryEntries?.length || 0);
+        console.log('[IMPORT] Number of templates in file:', importData.diaryTemplates?.length || 0);
+        console.log('[IMPORT] Number of broker fees in file:', importData.brokerFeeSettings?.length || 0);
       } catch (error) {
         console.error('[IMPORT] JSON parse error:', error);
         return res.status(400).json({ error: 'Invalid JSON file' });
@@ -747,7 +753,9 @@ const settingsController = {
           for (let i = 0; i < importData.trades.length; i++) {
             const trade = importData.trades[i];
             try {
-              // Check if trade already exists
+              // Check if trade already exists - use entry_time as the unique identifier
+              // (more reliable than created_at for cross-user imports)
+              // Handle NULL entry_time properly using IS NOT DISTINCT FROM
               const existingTrade = await client.query(
                 `SELECT id FROM trades
                  WHERE user_id = $1
@@ -755,8 +763,8 @@ const settingsController = {
                  AND side = $3
                  AND quantity = $4
                  AND entry_price = $5
-                 AND created_at = $6`,
-                [userId, trade.symbol, trade.side, trade.quantity, trade.entryPrice, trade.createdAt]
+                 AND (entry_time IS NOT DISTINCT FROM $6)`,
+                [userId, trade.symbol, trade.side, trade.quantity, trade.entryPrice, trade.entryTime || null]
               );
 
               if (existingTrade.rows.length === 0) {
@@ -832,7 +840,8 @@ const settingsController = {
                     trade.originalCurrency || 'USD', trade.exchangeRate || 1.0,
                     trade.originalEntryPriceCurrency, trade.originalExitPriceCurrency,
                     trade.originalPnlCurrency, trade.originalCommissionCurrency, trade.originalFeesCurrency,
-                    trade.importId, trade.enrichmentStatus || 'completed', trade.enrichmentCompletedAt,
+                    null, // import_id set to null - original import_id won't exist in target database
+                    trade.enrichmentStatus || 'completed', trade.enrichmentCompletedAt,
                     trade.createdAt || new Date(), trade.updatedAt || new Date()
                   ]
                 );
