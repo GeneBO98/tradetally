@@ -2381,12 +2381,37 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
     }
   }
   
+  // Assign unique times to transactions on the same date+symbol to preserve CSV order
+  // This prevents issues with duplicate detection when multiple round trips occur on the same day
+  const transactionsByDateSymbol = {};
+  for (const txn of transactions) {
+    const key = `${txn.symbol}_${txn.date.toISOString().split('T')[0]}`;
+    if (!transactionsByDateSymbol[key]) {
+      transactionsByDateSymbol[key] = [];
+    }
+    transactionsByDateSymbol[key].push(txn);
+  }
+
+  // Assign incremental times (1 millisecond apart) to transactions with the same date+symbol
+  for (const key in transactionsByDateSymbol) {
+    const group = transactionsByDateSymbol[key];
+    if (group.length > 1) {
+      group.forEach((txn, index) => {
+        // Keep the same time but add milliseconds to make each unique
+        const baseTime = new Date(txn.datetime);
+        baseTime.setMilliseconds(index);
+        txn.datetime = baseTime.toISOString();
+      });
+      console.log(`[INFO] Assigned unique times to ${group.length} transactions for ${key} to preserve order`);
+    }
+  }
+
   // Sort transactions by symbol and date
   transactions.sort((a, b) => {
     if (a.symbol !== b.symbol) return a.symbol.localeCompare(b.symbol);
     return new Date(a.datetime) - new Date(b.datetime);
   });
-  
+
   console.log(`Parsed ${transactions.length} valid transactions`);
 
   // Track the last trade end time for each symbol (for time-gap-based grouping)
