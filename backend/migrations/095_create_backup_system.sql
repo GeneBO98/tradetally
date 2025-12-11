@@ -36,9 +36,3 @@ CREATE INDEX IF NOT EXISTS idx_backups_created_at ON backups(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_backups_type ON backups(backup_type);
 CREATE INDEX IF NOT EXISTS idx_backups_status ON backups(status);
 CREATE INDEX IF NOT EXISTS idx_backups_user_id ON backups(user_id);
-
--- Grant permissions (adjust based on your user setup)
--- This assumes you have a 'trader' user
-GRANT SELECT, INSERT, UPDATE, DELETE ON backups TO trader;
-GRANT SELECT, UPDATE ON backup_settings TO trader;
-GRANT USAGE, SELECT ON SEQUENCE backup_settings_id_seq TO trader;
