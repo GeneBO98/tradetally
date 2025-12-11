@@ -2350,10 +2350,9 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
         continue;
       }
       
-      // Detect short sales - check both action and description
-      const isShort = action.includes('sell short') || 
-                     description.toLowerCase().includes('short') ||
-                     action.includes('short');
+      // Detect short sales - only check action field to avoid false positives
+      // from security names containing "short" (e.g., "PROSHARES SHORT QQQ ETF")
+      const isShort = action.includes('sell short');
       
       let transactionType;
       if (action.includes('buy')) {
