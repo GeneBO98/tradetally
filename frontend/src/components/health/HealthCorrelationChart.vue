@@ -24,6 +24,7 @@
             <option value="7">Last 7 Days</option>
             <option value="30">Last 30 Days</option>
             <option value="90">Last 90 Days</option>
+            <option value="all">All Time</option>
           </select>
           <label class="flex items-center text-sm text-gray-700 dark:text-gray-300">
             <input
@@ -150,15 +151,20 @@ async function loadCorrelationData() {
   try {
     // Get trades with health data for the selected period
     const endDate = new Date()
-    const startDate = new Date()
-    startDate.setDate(startDate.getDate() - parseInt(selectedPeriod.value))
-    
+    const params = {
+      endDate: endDate.toISOString().split('T')[0],
+      limit: 1000
+    }
+
+    // Only add startDate if not "All Time"
+    if (selectedPeriod.value !== 'all') {
+      const startDate = new Date()
+      startDate.setDate(startDate.getDate() - parseInt(selectedPeriod.value))
+      params.startDate = startDate.toISOString().split('T')[0]
+    }
+
     const response = await api.get('/trades', {
-      params: {
-        startDate: startDate.toISOString().split('T')[0],
-        endDate: endDate.toISOString().split('T')[0],
-        limit: 1000
-      }
+      params: params
     })
     
     console.log('Total trades loaded:', response.data.trades.length)
