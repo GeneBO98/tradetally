@@ -1,5 +1,5 @@
 <template>
-  <div class="w-full max-w-[65%] mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  <div class="content-wrapper py-8">
     <!-- Back Button -->
     <div class="mb-6">
       <button 
@@ -21,7 +21,7 @@
       <!-- Header -->
       <div class="flex items-center justify-between">
         <div>
-          <h1 class="text-2xl font-bold text-gray-900 dark:text-white">
+          <h1 class="heading-page">
             {{ trade.symbol }} Trade
           </h1>
           <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
@@ -66,7 +66,7 @@
           <div class="card">
             <div class="card-body">
               <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Trade Details</h3>
-              <dl class="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
+              <dl class="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-x-4 sm:gap-y-6">
                 <div>
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Symbol</dt>
                   <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">{{ trade.symbol }}</dd>
@@ -740,7 +740,7 @@
           <div class="card">
             <div class="card-body">
               <div class="flex items-center justify-between mb-4">
-                <h3 class="text-lg font-medium text-gray-900 dark:text-white">
+                <h3 class="heading-card">
                   Comments ({{ comments.length }})
                 </h3>
               </div>
@@ -943,7 +943,7 @@
           <div v-if="trade.has_news && trade.news_events && trade.news_events.length > 0" class="card">
             <div class="card-body">
               <div class="flex items-center justify-between mb-4">
-                <h3 class="text-lg font-medium text-gray-900 dark:text-white">Breaking News</h3>
+                <h3 class="heading-card">Breaking News</h3>
                 <span class="px-3 py-1 text-xs font-semibold rounded-full"
                   :class="[
                     trade.news_sentiment === 'positive' ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400' :

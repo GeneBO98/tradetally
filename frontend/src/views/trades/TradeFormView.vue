@@ -1,7 +1,7 @@
 <template>
-  <div class="w-full max-w-[65%] mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  <div class="w-full content-wrapper py-8">
     <div class="mb-8">
-      <h1 class="text-2xl font-bold text-gray-900 dark:text-white">
+      <h1 class="heading-page">
         {{ isEdit ? 'Edit Trade' : 'Add New Trade' }}
       </h1>
       <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">

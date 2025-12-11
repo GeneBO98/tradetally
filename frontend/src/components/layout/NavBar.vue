@@ -8,11 +8,11 @@
             TradeTally
           </router-link>
 
-          <div class="hidden sm:ml-12 sm:flex sm:space-x-6">
+          <div class="hidden sm:ml-12 sm:flex sm:space-x-2">
             <template v-if="authStore.isAuthenticated">
               <template v-for="item in navigation" :key="item.name">
                 <!-- Dropdown navigation item -->
-                <NavDropdown 
+                <NavDropdown
                   v-if="item.type === 'dropdown'"
                   :title="item.name"
                   :items="item.items"
@@ -21,11 +21,11 @@
                 <router-link
                   v-else
                   :to="item.to"
-                  class="inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
+                  class="inline-flex items-center px-3 py-2 rounded-md text-sm font-semibold transition-all duration-200"
                   :class="[
                     $route.name === item.route
-                      ? 'border-primary-500 text-gray-900 dark:text-white'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-300 dark:hover:text-white'
+                      ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-white dark:hover:bg-gray-700'
                   ]"
                 >
                   {{ item.name }}
@@ -46,11 +46,11 @@
                 v-for="item in publicNavigation"
                 :key="item.name"
                 :to="item.to"
-                class="inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
+                class="inline-flex items-center px-3 py-2 rounded-md text-sm font-semibold transition-all duration-200"
                 :class="[
                   $route.name === item.route
-                    ? 'border-primary-500 text-gray-900 dark:text-white'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-300 dark:hover:text-white'
+                    ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-white dark:hover:bg-gray-700'
                 ]"
               >
                 {{ item.name }}
@@ -125,49 +125,63 @@
         <div class="pt-2 pb-3 space-y-1">
           <template v-if="authStore.isAuthenticated">
             <template v-for="item in navigation" :key="item.name">
-              <!-- Dropdown items - expanded in mobile -->
+              <!-- Dropdown items - collapsible in mobile -->
               <template v-if="item.type === 'dropdown'">
-                <div class="px-3 py-2">
-                  <div class="text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    {{ item.name }}
-                  </div>
-                </div>
-                <router-link
-                  v-for="subItem in item.items"
-                  :key="subItem.name"
-                  :to="subItem.to"
-                  @click="isMobileMenuOpen = false"
-                  class="block pl-6 pr-3 py-2 text-base font-medium"
-                  :class="[
-                    $route.name === subItem.route
-                      ? 'text-primary-600 bg-primary-50 dark:text-primary-400 dark:bg-gray-700'
-                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700'
-                  ]"
+                <button
+                  @click="toggleSection(item.name)"
+                  class="w-full text-left mx-3 px-4 py-3 rounded-lg text-base font-semibold transition-all duration-200 flex items-center justify-between text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700"
                 >
-                  <div class="flex items-center">
-                    {{ subItem.name }}
-                    <span 
-                      v-if="subItem.badge"
-                      class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
-                      :class="{
-                        'bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400': subItem.badge.type === 'pro'
-                      }"
+                  {{ item.name }}
+                  <ChevronDownIcon v-if="!expandedSections[item.name]" class="h-5 w-5" />
+                  <ChevronUpIcon v-else class="h-5 w-5" />
+                </button>
+                <transition
+                  enter-active-class="transition ease-out duration-200"
+                  enter-from-class="opacity-0 -translate-y-1"
+                  enter-to-class="opacity-100 translate-y-0"
+                  leave-active-class="transition ease-in duration-150"
+                  leave-from-class="opacity-100 translate-y-0"
+                  leave-to-class="opacity-0 -translate-y-1"
+                >
+                  <div v-if="expandedSections[item.name]" class="pb-2">
+                    <router-link
+                      v-for="subItem in item.items"
+                      :key="subItem.name"
+                      :to="subItem.to"
+                      @click="isMobileMenuOpen = false"
+                      class="block ml-6 mr-3 pl-3 pr-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200"
+                      :class="[
+                        $route.name === subItem.route
+                          ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300 shadow-sm'
+                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700'
+                      ]"
                     >
-                      {{ subItem.badge.text }}
-                    </span>
+                      <div class="flex items-center">
+                        {{ subItem.name }}
+                        <span
+                          v-if="subItem.badge"
+                          class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
+                          :class="{
+                            'bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400': subItem.badge.type === 'pro'
+                          }"
+                        >
+                          {{ subItem.badge.text }}
+                        </span>
+                      </div>
+                    </router-link>
                   </div>
-                </router-link>
+                </transition>
               </template>
               <!-- Regular navigation item -->
               <router-link
                 v-else
                 :to="item.to"
                 @click="isMobileMenuOpen = false"
-                class="block px-3 py-2 text-base font-medium"
+                class="block mx-3 px-4 py-3 rounded-lg text-base font-semibold transition-all duration-200"
                 :class="[
                   $route.name === item.route
-                    ? 'text-primary-600 bg-primary-50 dark:text-primary-400 dark:bg-gray-700'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700'
+                    ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700'
                 ]"
               >
                 <div class="flex items-center">
@@ -192,7 +206,7 @@
               </div>
               <button
                 @click="authStore.logout(); isMobileMenuOpen = false"
-                class="block w-full text-left px-3 py-2 text-base font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700"
+                class="block w-full text-left mx-3 px-4 py-3 rounded-lg text-base font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700 transition-all duration-200"
               >
                 Logout
               </button>
@@ -204,11 +218,11 @@
               :key="item.name"
               :to="item.to"
               @click="isMobileMenuOpen = false"
-              class="block px-3 py-2 text-base font-medium"
+              class="block mx-3 px-4 py-3 rounded-lg text-base font-semibold transition-all duration-200"
               :class="[
                 $route.name === item.route
-                  ? 'text-primary-600 bg-primary-50 dark:text-primary-400 dark:bg-gray-700'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700'
+                  ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700'
               ]"
             >
               {{ item.name }}
@@ -217,14 +231,14 @@
               <router-link
                 to="/login"
                 @click="isMobileMenuOpen = false"
-                class="block px-3 py-2 text-base font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700"
+                class="block mx-3 px-4 py-3 rounded-lg text-base font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700 transition-all duration-200"
               >
                 Login
               </router-link>
               <router-link
                 to="/register"
                 @click="isMobileMenuOpen = false"
-                class="block px-3 py-2 text-base font-medium text-primary-600 hover:text-primary-700 hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-gray-700"
+                class="block mx-3 px-4 py-3 rounded-lg text-base font-semibold bg-primary-100 text-primary-700 hover:bg-primary-200 dark:bg-primary-900/30 dark:text-primary-300 dark:hover:bg-primary-900/40 shadow-sm transition-all duration-200"
               >
                 Sign Up
               </router-link>
@@ -240,7 +254,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useRegistrationMode } from '@/composables/useRegistrationMode'
-import { SunIcon, MoonIcon, Bars3Icon, XMarkIcon } from '@heroicons/vue/24/outline'
+import { SunIcon, MoonIcon, Bars3Icon, XMarkIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/vue/24/outline'
 import config from '@/config'
 import NavDropdown from '@/components/common/NavDropdown.vue'
 import NotificationBell from '@/components/common/NotificationBell.vue'
@@ -249,6 +263,7 @@ const authStore = useAuthStore()
 const { showSEOPages } = useRegistrationMode()
 const isDark = ref(false)
 const isMobileMenuOpen = ref(false)
+const expandedSections = ref({})
 
 const baseNavigation = [
   { 
@@ -384,6 +399,10 @@ function toggleDarkMode() {
 
 function toggleMobileMenu() {
   isMobileMenuOpen.value = !isMobileMenuOpen.value
+}
+
+function toggleSection(sectionName) {
+  expandedSections.value[sectionName] = !expandedSections.value[sectionName]
 }
 
 onMounted(() => {

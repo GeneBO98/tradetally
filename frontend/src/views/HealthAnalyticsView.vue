@@ -1,9 +1,9 @@
 <template>
-  <div class="max-w-[65%] mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  <div class="content-wrapper py-8">
     <!-- Header -->
     <div class="mb-8 flex items-center justify-between">
       <div>
-        <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Health Analytics</h1>
+        <h1 class="heading-page">Health Analytics</h1>
         <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
           Analyze how your health metrics correlate with trading performance
         </p>
@@ -220,7 +220,7 @@
     <div class="card mt-6">
       <div class="card-body">
         <div class="flex items-center justify-between mb-4">
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white">
+          <h3 class="heading-card">
             Personalized Health Insights
           </h3>
           <button @click="refreshInsights" 

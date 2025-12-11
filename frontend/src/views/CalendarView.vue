@@ -1,8 +1,8 @@
 <template>
-  <div class="max-w-[65%] mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  <div class="content-wrapper py-8">
     <div class="mb-8 flex justify-between items-center">
       <div>
-        <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Trading Calendar</h1>
+        <h1 class="heading-page">Trading Calendar</h1>
         <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
           View your trading performance by date
         </p>
@@ -30,7 +30,7 @@
         <div class="card">
           <div class="card-body">
             <div class="flex justify-between items-center mb-6">
-              <h2 class="text-xl font-semibold text-gray-900 dark:text-white">
+              <h2 class="heading-section">
                 {{ format(expandedMonth, 'MMMM yyyy') }}
               </h2>
               <div class="flex items-center space-x-4">
@@ -124,7 +124,7 @@
       <div class="relative top-20 mx-auto p-5 border w-full max-w-2xl shadow-lg rounded-md bg-white dark:bg-gray-800">
         <div class="mt-3">
           <div class="flex justify-between items-center mb-4">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white">
+            <h3 class="heading-card">
               Trades for {{ format(selectedDay.date, 'MMMM d, yyyy') }}
             </h3>
             <button @click="selectedDay = null" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">

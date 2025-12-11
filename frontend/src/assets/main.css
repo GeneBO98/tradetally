@@ -11,6 +11,7 @@
 @layer components {
   .btn {
     @apply inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors duration-200;
+    min-height: 44px; /* Ensures proper touch target size on mobile */
   }
   
   .btn-primary {
@@ -31,6 +32,8 @@
   
   .input {
     @apply block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-800 dark:border-gray-600;
+    min-height: 44px; /* Ensures proper touch target size on mobile */
+    font-size: 16px; /* Prevents iOS zoom on input focus */
   }
   
   select.input {
@@ -110,6 +113,134 @@
   }
   
   .card-body {
-    @apply p-6;
+    @apply p-3;
+    @apply sm:p-4;
+    @apply lg:p-6;
+  }
+
+  /* Mobile-First Responsive Utilities */
+
+  /* Container System - Replaces max-w-[65%] pattern */
+  .content-wrapper {
+    @apply w-full px-2 mx-auto;
+    @apply sm:px-4 sm:max-w-full;
+    @apply md:px-6;
+    @apply lg:max-w-[85%] lg:px-8;
+    @apply xl:max-w-[75%];
+  }
+
+  /* Card Responsive Utilities */
+  .card-mobile-safe {
+    @apply w-full min-w-0; /* Removes min-width on mobile */
+    @apply sm:min-w-[240px];
+    @apply lg:min-w-[280px];
+  }
+
+  .flex-card-container {
+    @apply flex flex-col gap-4; /* Stack on mobile */
+    @apply sm:flex-row sm:flex-wrap;
+    @apply lg:gap-6;
+  }
+
+  .card-grid-responsive {
+    @apply grid grid-cols-1 gap-4;
+    @apply sm:grid-cols-2 sm:gap-5;
+    @apply lg:grid-cols-3 lg:gap-6;
+    @apply xl:grid-cols-4;
+  }
+
+  /* Typography - Mobile First */
+  .heading-page {
+    @apply text-xl font-bold text-gray-900 dark:text-white;
+    @apply sm:text-2xl;
+    @apply lg:text-3xl;
+  }
+
+  .heading-section {
+    @apply text-lg font-semibold text-gray-900 dark:text-white;
+    @apply sm:text-xl;
+    @apply lg:text-2xl;
+  }
+
+  .heading-card {
+    @apply text-base font-semibold text-gray-900 dark:text-white;
+    @apply sm:text-lg;
+  }
+
+  .text-data-primary {
+    @apply text-sm font-medium text-gray-900 dark:text-white;
+    @apply sm:text-base;
+  }
+
+  .text-data-secondary {
+    @apply text-xs text-gray-600 dark:text-gray-400;
+    @apply sm:text-sm;
+  }
+
+  .text-label {
+    @apply text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide;
+    @apply sm:text-sm sm:tracking-wider;
+  }
+
+  /* Text Truncation Utilities */
+  .text-truncate-mobile {
+    @apply truncate;
+    @apply sm:whitespace-normal;
+  }
+
+  /* Table Mobile Patterns */
+  .table-desktop {
+    @apply hidden lg:table;
+  }
+
+  .table-card-mobile {
+    @apply block lg:hidden;
+  }
+
+  .table-card-item {
+    @apply bg-white dark:bg-gray-800 shadow rounded-lg p-4 mb-3;
+    @apply hover:shadow-md transition-shadow cursor-pointer;
+  }
+
+  .table-card-row {
+    @apply flex justify-between items-start;
+    @apply text-sm;
+  }
+
+  .table-card-label {
+    @apply text-xs font-medium text-gray-500 dark:text-gray-400 uppercase;
+    @apply min-w-[100px];
+  }
+
+  .table-card-value {
+    @apply text-sm font-medium text-gray-900 dark:text-white text-right;
+    @apply flex-1 truncate;
+  }
+
+  /* Responsive table with horizontal scroll fallback */
+  .table-scroll-wrapper {
+    @apply -mx-4 overflow-x-auto;
+    @apply sm:mx-0 sm:overflow-x-visible;
+  }
+
+  .table-responsive {
+    @apply min-w-full;
+    @apply text-xs sm:text-sm;
+  }
+
+  .table-responsive th,
+  .table-responsive td {
+    @apply px-2 py-2;
+    @apply sm:px-4 sm:py-3;
+    @apply lg:px-6 lg:py-4;
+  }
+
+  /* Hide columns progressively on smaller screens */
+  .table-col-hide-mobile {
+    @apply hidden sm:table-cell;
+  }
+
+  .table-col-hide-tablet {
+    @apply hidden lg:table-cell;
   }
 }

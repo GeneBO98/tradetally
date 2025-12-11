@@ -50,7 +50,7 @@
       <!-- Watchlists Tab Content -->
       <div v-show="activeTab === 'watchlists'">
         <div class="flex justify-between items-center mb-6">
-          <h2 class="text-xl font-semibold text-gray-900 dark:text-white">Your Watchlists</h2>
+          <h2 class="heading-section">Your Watchlists</h2>
           <button
             @click="showCreateWatchlistModal = true"
             class="btn-primary"
@@ -77,7 +77,7 @@
           >
             <div class="p-6">
               <div class="flex items-center justify-between mb-3">
-                <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{{ watchlist.name }}</h3>
+                <h3 class="heading-card">{{ watchlist.name }}</h3>
                 <span v-if="watchlist.is_default" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200">
                   Default
                 </span>
@@ -127,7 +127,7 @@
       <!-- Price Alerts Tab Content -->
       <div v-show="activeTab === 'alerts'">
         <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6">
-          <h2 class="text-xl font-semibold text-gray-900 dark:text-white">Your Price Alerts</h2>
+          <h2 class="heading-section">Your Price Alerts</h2>
           <button
             @click="showCreateAlertModal = true"
             class="mt-4 sm:mt-0 btn-primary"

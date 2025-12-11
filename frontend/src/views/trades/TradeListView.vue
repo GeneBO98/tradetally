@@ -1,8 +1,8 @@
 <template>
-  <div :class="[isFullWidth ? 'max-w-full px-4 sm:px-6 lg:px-12' : 'max-w-[65%] px-4 sm:px-6 lg:px-8', 'mx-auto py-8 transition-all duration-300']">
+  <div :class="[isFullWidth ? 'max-w-full px-4 sm:px-6 lg:px-12 mx-auto' : 'content-wrapper', 'py-8 transition-all duration-300']">
     <!-- Title -->
     <div class="mb-6">
-      <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Trades</h1>
+      <h1 class="heading-page">Trades</h1>
       <p class="mt-2 text-sm text-gray-700 dark:text-gray-300">
         A list of all your trades including their details and performance.
       </p>
@@ -775,7 +775,7 @@
     <div v-if="showDeleteConfirm" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
       <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white dark:bg-gray-800">
         <div class="mt-3 text-center">
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white">Delete Trades</h3>
+          <h3 class="heading-card">Delete Trades</h3>
           <div class="mt-2 px-7 py-3">
             <p class="text-sm text-gray-500 dark:text-gray-400">
               Are you sure you want to delete {{ selectedTrades.length }} trade{{ selectedTrades.length === 1 ? '' : 's' }}?
@@ -804,7 +804,7 @@
     <div v-if="showBulkTagModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50" @click.self="showBulkTagModal = false">
       <div class="relative top-20 mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white dark:bg-gray-800">
         <div class="flex justify-between items-center mb-4">
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white">Add Tags to {{ selectedTrades.length }} Trade{{ selectedTrades.length === 1 ? '' : 's' }}</h3>
+          <h3 class="heading-card">Add Tags to {{ selectedTrades.length }} Trade{{ selectedTrades.length === 1 ? '' : 's' }}</h3>
           <button
             @click="showBulkTagModal = false"
             class="text-gray-400 hover:text-gray-500"

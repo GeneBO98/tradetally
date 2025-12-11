@@ -24,7 +24,7 @@
           v-if="showMenu"
           ref="menuRef"
           :style="dropdownStyle"
-          class="fixed w-80 rounded-md shadow-lg bg-white dark:bg-gray-800 ring-1 ring-black ring-opacity-5 z-[9999] flex flex-col overflow-hidden"
+          class="fixed w-full max-w-sm sm:w-96 rounded-md shadow-lg bg-white dark:bg-gray-800 ring-1 ring-black ring-opacity-5 z-[9999] flex flex-col overflow-hidden"
         >
           <!-- Header (Fixed) -->
           <div class="p-4 flex-shrink-0 border-b border-gray-200 dark:border-gray-700">

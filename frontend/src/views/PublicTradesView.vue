@@ -1,7 +1,7 @@
 <template>
-  <div class="max-w-[65%] mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  <div class="content-wrapper py-8">
     <div class="mb-8">
-      <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Public Trades</h1>
+      <h1 class="heading-page">Public Trades</h1>
       <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
         Explore trades shared by the community.
       </p>
@@ -46,7 +46,7 @@
               </div>
               <div>
                 <div class="flex items-center space-x-2">
-                  <h3 class="text-lg font-medium text-gray-900 dark:text-white">
+                  <h3 class="heading-card">
                     {{ trade.symbol }}
                   </h3>
                   <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
