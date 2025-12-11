@@ -1,7 +1,7 @@
 <template>
-  <div class="max-w-[65%] mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  <div class="content-wrapper py-8">
     <div class="mb-8">
-      <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Billing & Subscription</h1>
+      <h1 class="heading-page">Billing & Subscription</h1>
       <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
         Manage your subscription and billing details.
       </p>
@@ -36,7 +36,7 @@
       <div class="card">
         <div class="card-body">
           <div class="flex items-center justify-between mb-6">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white">Current Plan</h3>
+            <h3 class="heading-card">Current Plan</h3>
             <span v-if="subscription.subscription" 
                   :class="getStatusBadgeClass(subscription.subscription.status)"
                   class="px-3 py-1 rounded-full text-sm font-medium">

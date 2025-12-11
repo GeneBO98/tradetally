@@ -1,10 +1,10 @@
 <template>
-  <div class="max-w-[65%] mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  <div class="content-wrapper py-8">
     <!-- Header -->
     <div class="mb-8">
       <div class="flex items-center justify-between">
         <div>
-          <h1 class="text-2xl font-bold text-gray-900 dark:text-white">OAuth2 Applications</h1>
+          <h1 class="heading-page">OAuth2 Applications</h1>
           <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
             Manage OAuth2 clients that can authenticate users via TradeTally
           </p>
@@ -31,7 +31,7 @@
         <div class="flex items-start justify-between">
           <div class="flex-1">
             <div class="flex items-center space-x-3 mb-2">
-              <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
+              <h3 class="heading-card">
                 {{ client.name }}
               </h3>
               <span
@@ -244,7 +244,7 @@
       <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full p-6">
         <div class="flex items-center space-x-3 mb-4">
           <CheckCircleIcon class="w-8 h-8 text-green-500" />
-          <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
+          <h3 class="heading-card">
             Application Created Successfully
           </h3>
         </div>

@@ -1,5 +1,5 @@
 <template>
-  <div class="max-w-[65%] mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  <div class="content-wrapper py-8">
     <!-- Header -->
     <div class="mb-8">
       <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between">
@@ -170,7 +170,7 @@
         <div class="card">
           <div class="card-body">
             <div class="flex items-center justify-between mb-4">
-              <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
+              <h3 class="heading-card">
                 Monthly {{ showRValue ? 'R-Value' : 'P&L' }} Trend
               </h3>
               <button

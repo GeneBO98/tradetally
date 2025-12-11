@@ -1,10 +1,10 @@
 <template>
-  <div class="max-w-[65%] mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  <div class="content-wrapper py-8">
     <!-- Header with Filters -->
     <div class="mb-8">
       <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Dashboard</h1>
+          <h1 class="heading-page">Dashboard</h1>
           <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
             Trading performance analytics and insights
           </p>
@@ -95,7 +95,7 @@
         <div class="card-body">
           <div class="flex items-center justify-between mb-4">
             <div class="flex items-center">
-              <h3 class="text-lg font-medium text-gray-900 dark:text-white">Open Positions</h3>
+              <h3 class="heading-card">Open Positions</h3>
               <button 
                 @click="navigateToOpenTrades"
                 class="ml-3 text-sm text-primary-600 hover:text-primary-900 dark:text-primary-400 dark:hover:text-primary-300"
@@ -107,7 +107,118 @@
               {{ openTrades.length }} {{ openTrades.length === 1 ? 'position' : 'positions' }}
             </span>
           </div>
-          <div class="overflow-x-auto">
+          <!-- Mobile Card View -->
+          <div class="block lg:hidden space-y-3">
+            <div v-for="position in openTrades" :key="position.symbol" class="table-card-item">
+              <!-- Position Header -->
+              <div class="flex justify-between items-start mb-3 pb-3 border-b border-gray-200 dark:border-gray-700">
+                <div>
+                  <div class="text-lg font-bold text-gray-900 dark:text-white">
+                    {{ position.symbol }}
+                  </div>
+                  <span class="inline-flex items-center px-2 py-1 text-xs font-semibold rounded-full mt-1"
+                    :class="[
+                      position.side === 'long'
+                        ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
+                        : position.side === 'short'
+                        ? 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
+                        : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
+                    ]">
+                    {{ position.side === 'neutral' ? 'hedged' : position.side }}
+                  </span>
+                </div>
+                <div v-if="position.unrealizedPnL !== null" class="text-right">
+                  <div class="text-lg font-bold" :class="[
+                    position.unrealizedPnL >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                  ]">
+                    {{ position.unrealizedPnL >= 0 ? '+' : '' }}${{ formatCurrency(Math.abs(position.unrealizedPnL)) }}
+                  </div>
+                  <div class="text-xs font-medium" :class="[
+                    position.unrealizedPnLPercent >= 0 ? 'text-green-500' : 'text-red-500'
+                  ]">
+                    {{ position.unrealizedPnLPercent >= 0 ? '+' : '' }}{{ formatNumber(position.unrealizedPnLPercent) }}%
+                  </div>
+                </div>
+              </div>
+
+              <!-- Key Metrics Grid -->
+              <div class="grid grid-cols-2 gap-3 mb-3">
+                <div class="table-card-row">
+                  <span class="table-card-label">Quantity</span>
+                  <span class="table-card-value">
+                    {{ position.totalQuantity === 0 ? 'Hedged' : (position.totalQuantity || 0).toLocaleString() }}
+                  </span>
+                </div>
+                <div class="table-card-row">
+                  <span class="table-card-label">Avg Price</span>
+                  <span class="table-card-value">${{ formatCurrency(position.avgPrice) }}</span>
+                </div>
+                <div class="table-card-row">
+                  <span class="table-card-label">Total Cost</span>
+                  <span class="table-card-value">${{ formatCurrency(position.totalCost) }}</span>
+                </div>
+                <div class="table-card-row">
+                  <span class="table-card-label">Current Price</span>
+                  <span class="table-card-value">
+                    <span v-if="position.currentPrice !== null">${{ formatCurrency(position.currentPrice) }}</span>
+                    <span v-else class="text-xs text-gray-400">No quote</span>
+                  </span>
+                </div>
+              </div>
+
+              <!-- Individual Trades -->
+              <div class="pt-3 border-t border-gray-200 dark:border-gray-700">
+                <div class="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                  {{ position.trades.length }} {{ position.trades.length === 1 ? 'trade' : 'trades' }}
+                </div>
+                <div class="space-y-2">
+                  <div v-for="trade in position.trades" :key="trade.id"
+                       class="flex justify-between items-center text-sm bg-gray-50 dark:bg-gray-900 rounded px-3 py-2">
+                    <div class="flex items-center space-x-2">
+                      <span class="text-xs text-gray-500">Trade #{{ trade.id }}</span>
+                      <span class="px-1.5 text-xs leading-4 font-medium rounded"
+                        :class="[
+                          trade.side === 'long'
+                            ? 'bg-green-50 text-green-700 dark:bg-green-900/10 dark:text-green-400'
+                            : 'bg-red-50 text-red-700 dark:bg-red-900/10 dark:text-red-400'
+                        ]">
+                        {{ trade.side }}
+                      </span>
+                      <span class="text-xs text-gray-600 dark:text-gray-400">
+                        {{ (trade.quantity || 0).toLocaleString() }} @ ${{ formatCurrency(trade.entry_price) }}
+                      </span>
+                    </div>
+                    <router-link
+                      :to="`/trades/${trade.id}`"
+                      class="text-xs text-primary-600 hover:text-primary-900 dark:hover:text-primary-400 font-medium"
+                    >
+                      View →
+                    </router-link>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Total Summary Card -->
+            <div class="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 border-2 border-gray-300 dark:border-gray-600">
+              <div class="flex justify-between items-center">
+                <div class="text-sm font-bold text-gray-900 dark:text-white">Total Position</div>
+                <div class="text-right">
+                  <div class="text-sm font-bold text-gray-900 dark:text-white">
+                    ${{ formatCurrency(totalOpenCost) }}
+                  </div>
+                  <div v-if="totalUnrealizedPnL !== null" class="text-sm font-bold" :class="[
+                    totalUnrealizedPnL >= 0 ? 'text-green-600' : 'text-red-600'
+                  ]">
+                    {{ totalUnrealizedPnL >= 0 ? '+' : '' }}${{ formatCurrency(Math.abs(totalUnrealizedPnL)) }}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Desktop Table View -->
+          <div class="hidden lg:block overflow-x-auto">
             <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
               <thead>
                 <tr>
@@ -304,13 +415,13 @@
       />
 
       <!-- Key Metrics Cards -->
-      <div class="flex flex-wrap gap-5">
-        <div class="card flex-1 min-w-[200px]">
+      <div class="flex-card-container">
+        <div class="card card-mobile-safe flex-1">
           <div class="card-body">
-            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
+            <dt class="text-data-secondary truncate">
               Total P&L
             </dt>
-            <dd class="mt-1 text-3xl font-semibold whitespace-nowrap" :class="[
+            <dd class="mt-1 text-xl sm:text-2xl lg:text-3xl font-semibold whitespace-nowrap" :class="[
               analytics.summary.totalPnL >= 0 ? 'text-green-600' : 'text-red-600'
             ]">
               ${{ formatCurrency(analytics.summary.totalPnL) }}
@@ -321,12 +432,12 @@
           </div>
         </div>
 
-        <div class="card flex-1 min-w-[200px]">
+        <div class="card card-mobile-safe flex-1">
           <div class="card-body">
-            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
+            <dt class="text-data-secondary truncate">
               Win Rate
             </dt>
-            <dd class="mt-1 text-3xl font-semibold whitespace-nowrap" :class="[
+            <dd class="mt-1 text-xl sm:text-2xl lg:text-3xl font-semibold whitespace-nowrap" :class="[
               analytics.summary.winRate >= 50 ? 'text-green-600' : 'text-red-600'
             ]">
               {{ formatPercent(analytics.summary.winRate) }}%
@@ -337,12 +448,12 @@
           </div>
         </div>
 
-        <div class="card flex-1 min-w-[200px]">
+        <div class="card card-mobile-safe flex-1">
           <div class="card-body">
-            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
+            <dt class="text-data-secondary truncate">
               Profit Factor
             </dt>
-            <dd class="mt-1 text-3xl font-semibold whitespace-nowrap" :class="[
+            <dd class="mt-1 text-xl sm:text-2xl lg:text-3xl font-semibold whitespace-nowrap" :class="[
               analytics.summary.profitFactor >= 1 ? 'text-green-600' : 'text-red-600'
             ]">
               {{ formatNumber(analytics.summary.profitFactor) }}
@@ -353,12 +464,12 @@
           </div>
         </div>
 
-        <div class="card flex-1 min-w-[200px] cursor-pointer hover:shadow-lg transition-shadow" @click="navigateToAnalytics('drawdown')">
+        <div class="card card-mobile-safe flex-1 cursor-pointer hover:shadow-lg transition-shadow" @click="navigateToAnalytics('drawdown')">
           <div class="card-body">
-            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
+            <dt class="text-data-secondary truncate">
               Max Drawdown
             </dt>
-            <dd class="mt-1 text-3xl font-semibold text-red-600 whitespace-nowrap">
+            <dd class="mt-1 text-xl sm:text-2xl lg:text-3xl font-semibold text-red-600 whitespace-nowrap">
               ${{ formatCurrency(Math.abs(analytics.summary.maxDrawdown)) }}
             </dd>
             <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
@@ -369,46 +480,46 @@
       </div>
 
       <!-- Additional Metrics Row -->
-      <div class="flex flex-wrap gap-5">
-        <div class="card flex-1 min-w-[200px] cursor-pointer hover:shadow-lg transition-shadow" @click="navigateToTradesFiltered('avgWin')">
+      <div class="flex-card-container">
+        <div class="card card-mobile-safe flex-1 cursor-pointer hover:shadow-lg transition-shadow" @click="navigateToTradesFiltered('avgWin')">
           <div class="card-body">
-            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
+            <dt class="text-data-secondary truncate">
               {{ calculationMethod }} Win
             </dt>
-            <dd class="mt-1 text-2xl font-semibold text-green-600 whitespace-nowrap">
+            <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-green-600 whitespace-nowrap">
               ${{ formatCurrency(analytics.summary.avgWin) }}
             </dd>
           </div>
         </div>
 
-        <div class="card flex-1 min-w-[200px] cursor-pointer hover:shadow-lg transition-shadow" @click="navigateToTradesFiltered('avgLoss')">
+        <div class="card card-mobile-safe flex-1 cursor-pointer hover:shadow-lg transition-shadow" @click="navigateToTradesFiltered('avgLoss')">
           <div class="card-body">
-            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
+            <dt class="text-data-secondary truncate">
               {{ calculationMethod }} Loss
             </dt>
-            <dd class="mt-1 text-2xl font-semibold text-red-600 whitespace-nowrap">
+            <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-red-600 whitespace-nowrap">
               ${{ formatCurrency(Math.abs(analytics.summary.avgLoss)) }}
             </dd>
           </div>
         </div>
 
-        <div class="card flex-1 min-w-[200px] cursor-pointer hover:shadow-lg transition-shadow" @click="navigateToTradesFiltered('best')">
+        <div class="card card-mobile-safe flex-1 cursor-pointer hover:shadow-lg transition-shadow" @click="navigateToTradesFiltered('best')">
           <div class="card-body">
-            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
+            <dt class="text-data-secondary truncate">
               Best Trade
             </dt>
-            <dd class="mt-1 text-2xl font-semibold text-green-600 whitespace-nowrap">
+            <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-green-600 whitespace-nowrap">
               ${{ formatCurrency(analytics.summary.bestTrade) }}
             </dd>
           </div>
         </div>
 
-        <div class="card flex-1 min-w-[200px] cursor-pointer hover:shadow-lg transition-shadow" @click="navigateToTradesFiltered('worst')">
+        <div class="card card-mobile-safe flex-1 cursor-pointer hover:shadow-lg transition-shadow" @click="navigateToTradesFiltered('worst')">
           <div class="card-body">
-            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
+            <dt class="text-data-secondary truncate">
               Worst Trade
             </dt>
-            <dd class="mt-1 text-2xl font-semibold text-red-600 whitespace-nowrap">
+            <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-red-600 whitespace-nowrap">
               ${{ formatCurrency(analytics.summary.worstTrade) }}
             </dd>
           </div>

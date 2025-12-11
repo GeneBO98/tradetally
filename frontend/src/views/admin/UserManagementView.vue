@@ -1,6 +1,6 @@
 <template>
   <div class="min-h-screen bg-gray-50 dark:bg-gray-900 py-8">
-    <div class="max-w-[65%] mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="content-wrapper">
       <div class="mb-8">
         <h1 class="text-3xl font-bold text-gray-900 dark:text-white">User Management</h1>
         <p class="mt-2 text-gray-600 dark:text-gray-400">
@@ -427,7 +427,7 @@
       <div class="relative top-20 mx-auto p-5 border w-[500px] shadow-lg rounded-md bg-white dark:bg-gray-800">
         <div class="mt-3">
           <div class="flex justify-between items-start mb-4">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white">
+            <h3 class="heading-card">
               Manage Tier - {{ selectedUser?.username }}
             </h3>
             <button

@@ -1,7 +1,7 @@
 <template>
-  <div class="max-w-[65%] mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  <div class="content-wrapper py-8">
     <div class="mb-8">
-      <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Import Trades</h1>
+      <h1 class="heading-page">Import Trades</h1>
       <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
         Import your trades from CSV files exported from major brokers.
       </p>
@@ -105,7 +105,7 @@
       <div v-if="customMappings.length > 0" class="card">
         <div class="card-body">
           <div class="flex items-center justify-between mb-4">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white">Custom Importers</h3>
+            <h3 class="heading-card">Custom Importers</h3>
             <button
               @click="showCustomMappings = !showCustomMappings"
               class="flex items-center space-x-2 text-sm text-primary-600 dark:text-primary-400 hover:text-primary-500"
@@ -169,7 +169,7 @@
       <div class="card">
         <div class="card-body">
           <div class="flex items-center justify-between mb-4">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white">Supported CSV Formats</h3>
+            <h3 class="heading-card">Supported CSV Formats</h3>
             <button
               @click="showFormats = !showFormats"
               class="flex items-center space-x-2 text-sm text-primary-600 dark:text-primary-400 hover:text-primary-500"
@@ -321,7 +321,7 @@
       <div v-if="importHistory.length > 0" class="card">
         <div class="card-body">
           <div class="flex items-center justify-between mb-4">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white">
+            <h3 class="heading-card">
               Import History
               <span v-if="pagination.total > 0" class="text-sm font-normal text-gray-500 dark:text-gray-400">
                 ({{ importHistory.length }} of {{ pagination.total }})
@@ -385,7 +385,7 @@
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg w-11/12 max-w-4xl h-3/4 flex flex-col">
           <!-- Header -->
           <div class="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-700">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white">Import Logs</h3>
+            <h3 class="heading-card">Import Logs</h3>
             <button @click="showLogs = false" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
               <XMarkIcon class="h-6 w-6" />
             </button>

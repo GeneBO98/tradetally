@@ -2,7 +2,7 @@
   <div class="min-h-screen bg-gray-50 dark:bg-gray-900">
     <!-- Header -->
     <div class="bg-white dark:bg-gray-800 shadow">
-      <div class="max-w-[65%] mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="content-wrapper">
         <div class="py-6">
           <div class="flex items-center justify-between">
             <div>
@@ -72,7 +72,7 @@
     </div>
 
     <!-- Navigation Tabs -->
-    <div class="max-w-[65%] mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="content-wrapper">
       <div class="border-b border-gray-200 dark:border-gray-700">
         <nav class="-mb-px flex space-x-8">
           <button
@@ -94,7 +94,7 @@
     </div>
 
     <!-- Tab Content -->
-    <div class="max-w-[65%] mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="content-wrapper py-8">
       <!-- Overview Tab -->
       <div v-if="activeTab === 'overview'">
         <!-- Quick Stats -->
@@ -554,7 +554,7 @@
             >
               <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
                 <div class="flex items-center justify-between">
-                  <h3 class="text-lg font-medium text-gray-900 dark:text-white">
+                  <h3 class="heading-card">
                     {{ leaderboard.name }}
                   </h3>
                   <span v-if="leaderboard.filtered && leaderboard.totalFilteredUsers !== null" class="text-xs text-gray-500 dark:text-gray-400">
