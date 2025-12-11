@@ -985,11 +985,10 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       const result = await parseSchwabTrades(records, existingPositions, context);
       console.log('Finished Schwab trade parsing');
 
-      // Apply trade grouping if enabled
-      const tradeGroupingSettings = context.tradeGroupingSettings || { enabled: true, timeGapMinutes: 60 };
-      if (tradeGroupingSettings.enabled && result.length > 0) {
-        return applyTradeGrouping(result, tradeGroupingSettings);
-      }
+      // IMPORTANT: Do NOT apply trade grouping for Schwab transactions
+      // Schwab parser already uses round-trip position tracking to create properly separated trades
+      // Trade grouping would incorrectly merge multiple round trips on the same day
+      console.log('[INFO] Skipping trade grouping for Schwab (already grouped by round-trip logic)');
 
       return result;
     }
@@ -2385,7 +2384,8 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
   // This prevents issues with duplicate detection when multiple round trips occur on the same day
   const transactionsByDateSymbol = {};
   for (const txn of transactions) {
-    const key = `${txn.symbol}_${txn.date.toISOString().split('T')[0]}`;
+    // txn.date is a string in YYYY-MM-DD format from parseDate()
+    const key = `${txn.symbol}_${txn.date}`;
     if (!transactionsByDateSymbol[key]) {
       transactionsByDateSymbol[key] = [];
     }
@@ -2396,11 +2396,14 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
   for (const key in transactionsByDateSymbol) {
     const group = transactionsByDateSymbol[key];
     if (group.length > 1) {
+      console.log(`[DEBUG] Found ${group.length} transactions for ${key}:`);
       group.forEach((txn, index) => {
+        const originalTime = txn.datetime;
         // Keep the same time but add milliseconds to make each unique
         const baseTime = new Date(txn.datetime);
         baseTime.setMilliseconds(index);
         txn.datetime = baseTime.toISOString();
+        console.log(`[DEBUG]   [${index}] ${txn.action} ${txn.quantity} @ $${txn.price} - Time: ${originalTime} → ${txn.datetime}`);
       });
       console.log(`[INFO] Assigned unique times to ${group.length} transactions for ${key} to preserve order`);
     }
@@ -2518,24 +2521,29 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
         if (!executionExists) {
           currentTrade.executions.push(newExecution);
           currentTrade.totalFees += (transaction.fees || 0);
+          console.log(`  → Added execution: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price} at ${newExecution.datetime}`);
           if (currentTrade.isExistingPosition) {
             currentTrade.newExecutionsAdded++;
           }
         } else {
-          console.log(`  → Skipping duplicate execution: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
+          console.log(`  → Skipping duplicate execution: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price} at ${newExecution.datetime}`);
         }
       }
       
       // Process the transaction
       if (transaction.action === 'buy') {
         currentPosition += qty;
-        
+
         // Add to entry or exit value based on trade direction
         if (currentTrade && currentTrade.side === 'long') {
+          const beforeEntry = currentTrade.entryValue;
+          const beforeQty = currentTrade.totalQuantity;
           currentTrade.entryValue += qty * transaction.price;
           currentTrade.totalQuantity += qty;
+          console.log(`  → [LONG BUY] Added to entry: ${beforeEntry} + ${qty * transaction.price} = ${currentTrade.entryValue}, Qty: ${beforeQty} + ${qty} = ${currentTrade.totalQuantity}`);
         } else if (currentTrade && currentTrade.side === 'short') {
           currentTrade.exitValue += qty * transaction.price;
+          console.log(`  → [SHORT BUY] Added to exit: ${currentTrade.exitValue}`);
         }
         
         openLots.push({
@@ -2548,13 +2556,16 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
         
       } else if (transaction.action === 'short' || transaction.action === 'sell') {
         currentPosition -= qty;
-        
+
         // Add to entry or exit value based on trade direction
         if (currentTrade && currentTrade.side === 'short') {
           currentTrade.entryValue += qty * transaction.price;
           currentTrade.totalQuantity += qty;
+          console.log(`  → [SHORT SELL] Added to entry: ${currentTrade.entryValue}, Qty: ${currentTrade.totalQuantity}`);
         } else if (currentTrade && currentTrade.side === 'long') {
+          const beforeExit = currentTrade.exitValue;
           currentTrade.exitValue += qty * transaction.price;
+          console.log(`  → [LONG SELL] Added to exit: ${beforeExit} + ${qty * transaction.price} = ${currentTrade.exitValue}`);
         }
         
         if (transaction.action === 'short') {
@@ -2651,6 +2662,10 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
   }
 
   console.log(`Created ${completedTrades.length} completed trades (including open positions) from transaction pairing`);
+  console.log(`\n[DEBUG] Schwab trades summary:`);
+  completedTrades.forEach((trade, index) => {
+    console.log(`  Trade #${index + 1}: ${trade.symbol} ${trade.side} ${trade.quantity} shares, Entry: $${trade.entryPrice?.toFixed(2)}, Exit: $${trade.exitPrice?.toFixed(2)}, P&L: $${trade.pnl?.toFixed(2)}`);
+  });
 
   return completedTrades;
 }
