@@ -1341,8 +1341,16 @@ function parseDate(dateStr) {
     if (dayNum < 1 || dayNum > 31) return null;
     if (yearNum < 1900 || yearNum > 2100) return null;
     
-    const date = new Date(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`);
-    return isNaN(date.getTime()) ? null : date.toISOString().split('T')[0];
+    // Validate the date is actually valid (e.g., not Feb 30)
+    const date = new Date(yearNum, monthNum - 1, dayNum);
+    if (date.getFullYear() !== yearNum || date.getMonth() !== monthNum - 1 || date.getDate() !== dayNum) {
+      return null; // Invalid date (e.g., Feb 30)
+    }
+    
+    // Create date in YYYY-MM-DD format directly to avoid timezone issues
+    const monthPadded = monthNum.toString().padStart(2, '0');
+    const dayPadded = dayNum.toString().padStart(2, '0');
+    return `${yearNum}-${monthPadded}-${dayPadded}`;
   }
   
   // Fall back to default date parsing with validation
@@ -2413,10 +2421,23 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
         transactionType = isShort ? 'short' : 'sell'; // Short sell vs regular sell
       }
       
+      // Parse date and skip if invalid
+      const parsedDate = parseDate(date);
+      if (!parsedDate) {
+        console.log(`Skipping transaction with invalid date:`, { symbol, date, action });
+        continue;
+      }
+      
+      const parsedDateTime = parseDateTime(date + ' 09:30');
+      if (!parsedDateTime) {
+        console.log(`Skipping transaction with invalid datetime:`, { symbol, date, action });
+        continue;
+      }
+      
       transactions.push({
         symbol,
-        date: parseDate(date),
-        datetime: parseDateTime(date + ' 09:30'),
+        date: parsedDate,
+        datetime: parsedDateTime,
         action: transactionType,
         quantity,
         price,
@@ -2438,6 +2459,11 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
   const transactionsByDateSymbol = {};
   for (const txn of transactions) {
     // txn.date is a string in YYYY-MM-DD format from parseDate()
+    // Ensure date is valid (not null) before using it
+    if (!txn.date) {
+      console.warn(`[WARNING] Transaction missing date field:`, txn);
+      continue;
+    }
     const key = `${txn.symbol}_${txn.date}`;
     if (!transactionsByDateSymbol[key]) {
       transactionsByDateSymbol[key] = [];

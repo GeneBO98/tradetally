@@ -1038,14 +1038,20 @@ function formatDate(date) {
     // Parse date string manually to avoid timezone issues
     // If it's a date-only string (YYYY-MM-DD), parse components directly
     const dateStr = date.toString()
-    if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
-      const [year, month, day] = dateStr.split('-').map(Number)
+
+    // Match date-only format (YYYY-MM-DD) or date with midnight time (YYYY-MM-DDT00:00:00...)
+    const dateOnlyMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})(?:T00:00:00(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?$/)
+    if (dateOnlyMatch) {
+      const [, year, month, day] = dateOnlyMatch.map(Number)
       // Create date in local timezone (month is 0-indexed)
       const dateObj = new Date(year, month - 1, day)
       return format(dateObj, 'MMM dd, yyyy')
     }
-    // For datetime strings, use as-is
-    return format(new Date(date), 'MMM dd, yyyy')
+
+    // For datetime strings with non-midnight times, use as-is
+    const dateObj = new Date(date)
+    if (isNaN(dateObj.getTime())) return 'Invalid Date'
+    return format(dateObj, 'MMM dd, yyyy')
   } catch (error) {
     console.error('Date formatting error:', error, 'for date:', date)
     return 'Invalid Date'
@@ -1056,12 +1062,16 @@ function formatDateMonthDay(date) {
   if (!date) return 'N/A'
   try {
     const dateStr = date.toString()
-    if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
-      const [year, month, day] = dateStr.split('-').map(Number)
+    // Match date-only format (YYYY-MM-DD) or date with midnight time (YYYY-MM-DDT00:00:00...)
+    const dateOnlyMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})(?:T00:00:00(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?$/)
+    if (dateOnlyMatch) {
+      const [, year, month, day] = dateOnlyMatch.map(Number)
       const dateObj = new Date(year, month - 1, day)
       return format(dateObj, 'MMM dd')
     }
-    return format(new Date(date), 'MMM dd')
+    const dateObj = new Date(date)
+    if (isNaN(dateObj.getTime())) return 'N/A'
+    return format(dateObj, 'MMM dd')
   } catch (error) {
     console.error('Date formatting error:', error, 'for date:', date)
     return 'N/A'
@@ -1072,11 +1082,15 @@ function formatDateYear(date) {
   if (!date) return ''
   try {
     const dateStr = date.toString()
-    if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
-      const [year] = dateStr.split('-').map(Number)
+    // Match date-only format (YYYY-MM-DD) or date with midnight time (YYYY-MM-DDT00:00:00...)
+    const dateOnlyMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})(?:T00:00:00(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?$/)
+    if (dateOnlyMatch) {
+      const [, year] = dateOnlyMatch.map(Number)
       return year.toString()
     }
-    return format(new Date(date), 'yyyy')
+    const dateObj = new Date(date)
+    if (isNaN(dateObj.getTime())) return ''
+    return format(dateObj, 'yyyy')
   } catch (error) {
     console.error('Date formatting error:', error, 'for date:', date)
     return ''
