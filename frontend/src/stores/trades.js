@@ -67,27 +67,19 @@ export const useTradesStore = defineStore('trades', () => {
 
     try {
       const offset = (pagination.value.page - 1) * pagination.value.limit
+      const skipCount = params.skipCount !== false // Default to true for faster initial load
 
-      // Fetch both trades and analytics in parallel for better performance
-      const [tradesResponse, analyticsResponse] = await Promise.all([
-        api.get('/trades', {
-          params: {
-            ...filters.value,
-            ...params,
-            limit: pagination.value.limit,
-            offset: offset
-          }
-        }),
-        api.get('/trades/analytics', {
-          params: {
-            ...filters.value,
-            ...params
-          }
-        })
-      ])
-
-      // Store analytics data for consistent P&L calculations
-      analytics.value = analyticsResponse.data
+      // Fetch trades first (with skipCount for faster response)
+      // This allows the UI to render immediately while count/analytics load in background
+      const tradesResponse = await api.get('/trades', {
+        params: {
+          ...filters.value,
+          ...params,
+          limit: pagination.value.limit,
+          offset: offset,
+          skipCount: skipCount ? 'true' : 'false'
+        }
+      })
 
       // Always use the trades data from the trades API
       if (tradesResponse.data.hasOwnProperty('trades')) {
@@ -96,11 +88,45 @@ export const useTradesStore = defineStore('trades', () => {
         trades.value = tradesResponse.data
       }
 
-      // If the response includes pagination metadata, update it
-      if (tradesResponse.data.total !== undefined) {
+      // If count was included in response, use it
+      if (tradesResponse.data.total !== undefined && tradesResponse.data.total !== null) {
         pagination.value.total = tradesResponse.data.total
         pagination.value.totalPages = Math.ceil(tradesResponse.data.total / pagination.value.limit)
       }
+
+      // Fetch count and analytics in parallel (non-blocking, happens after trades are shown)
+      // These can fail silently without affecting the main UI
+      Promise.all([
+        // Fetch count if it wasn't included
+        skipCount && tradesResponse.data.total === null
+          ? api.get('/trades/count', {
+              params: {
+                ...filters.value,
+                ...params,
+                limit: pagination.value.limit
+              }
+            }).then(response => {
+              pagination.value.total = response.data.total
+              pagination.value.totalPages = response.data.totalPages
+            }).catch(err => {
+              console.warn('Failed to fetch trade count:', err)
+            })
+          : Promise.resolve(),
+        // Fetch analytics (non-blocking)
+        api.get('/trades/analytics', {
+          params: {
+            ...filters.value,
+            ...params
+          }
+        }).then(response => {
+          analytics.value = response.data
+        }).catch(err => {
+          console.warn('Failed to fetch analytics:', err)
+          // Analytics failure shouldn't block the UI
+        })
+      ]).catch(() => {
+        // Ignore errors - these are non-critical background requests
+      })
 
       return tradesResponse.data
     } catch (err) {
