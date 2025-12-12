@@ -901,14 +901,68 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       debugLines.forEach((line, i) => console.log(`Line ${i}: ${line}`));
     }
     
+    // Special handling for IBKR CSV formats
+    if (broker === 'ibkr' || broker === 'ibkr_trade_confirmation') {
+      // IBKR CSVs can have quoted fields with commas inside and variable column counts
+      parseOptions = {
+        columns: true,
+        skip_empty_lines: true,
+        trim: true,
+        delimiter: ',',
+        relax: true, // Relax parsing rules for more permissive parsing
+        relax_column_count: true, // Allow variable column counts
+        quote: '"', // Handle quoted fields
+        escape: '"', // Handle escaped quotes
+        skip_records_with_empty_values: false,
+        skip_records_with_error: true // Skip problematic records instead of failing
+      };
+      console.log('Using special parsing options for IBKR CSV');
+      
+      // Log first few lines for debugging
+      const debugLines = csvString.split('\n').slice(0, 5);
+      console.log('First few lines of IBKR CSV:');
+      debugLines.forEach((line, i) => console.log(`Line ${i}: ${line.substring(0, 200)}`));
+    }
+    
     let records;
     try {
       records = parse(csvString, parseOptions);
     } catch (parseError) {
       console.error('CSV parsing error:', parseError.message);
       
+      // If IBKR parsing fails, try alternative approach
+      if (broker === 'ibkr' || broker === 'ibkr_trade_confirmation') {
+        console.log('Trying alternative parsing approach for IBKR');
+        
+        // Try with even more relaxed options
+        parseOptions = {
+          columns: true,
+          skip_empty_lines: true,
+          trim: true,
+          delimiter: ',',
+          relax: true, // Relax parsing rules
+          relax_column_count: true,
+          skip_records_with_error: true,
+          quote: '"',
+          escape: '"',
+          on_record: (record, context) => {
+            // Log problematic records
+            if (context.error) {
+              console.log(`Error on line ${context.lines}: ${context.error.message}`);
+            }
+            return record;
+          }
+        };
+        
+        try {
+          records = parse(csvString, parseOptions);
+        } catch (retryError) {
+          console.error('Alternative parsing also failed:', retryError.message);
+          throw new Error(`CSV parsing failed: ${retryError.message}`);
+        }
+      }
       // If thinkorswim parsing fails, try alternative approach
-      if (broker === 'thinkorswim') {
+      else if (broker === 'thinkorswim') {
         console.log('Trying alternative parsing approach for thinkorswim');
         
         // Try with different options
@@ -1062,11 +1116,10 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       const result = await parseTradeovateTransactions(records, existingPositions, context);
       console.log('Finished Tradeovate transaction parsing');
 
-      // Apply trade grouping if enabled
-      const tradeGroupingSettings = context.tradeGroupingSettings || { enabled: true, timeGapMinutes: 60 };
-      if (tradeGroupingSettings.enabled && result.length > 0) {
-        return applyTradeGrouping(result, tradeGroupingSettings);
-      }
+      // IMPORTANT: Do NOT apply trade grouping for Tradeovate transactions
+      // Tradeovate parser uses round-trip position tracking to create properly separated trades
+      // Trade grouping would incorrectly merge multiple round trips when exit and new entry have same timestamp
+      console.log('[INFO] Skipping trade grouping for Tradeovate (already grouped by round-trip logic)');
 
       return result;
     }
@@ -4982,10 +5035,17 @@ async function parseTradeovateTransactions(records, existingPositions = {}, cont
     }
   }
 
-  // Sort transactions by symbol and datetime
+  // Sort transactions by symbol, datetime, and orderId
+  // IMPORTANT: orderId is used as tiebreaker for same-timestamp transactions
+  // This ensures correct trade pairing when exit and new entry happen at same timestamp
   transactions.sort((a, b) => {
     if (a.symbol !== b.symbol) return a.symbol.localeCompare(b.symbol);
-    return new Date(a.datetime) - new Date(b.datetime);
+    const timeDiff = new Date(a.datetime) - new Date(b.datetime);
+    if (timeDiff !== 0) return timeDiff;
+    // Use orderId as tiebreaker - lower orderId means earlier execution
+    const orderIdA = parseInt(a.orderId) || 0;
+    const orderIdB = parseInt(b.orderId) || 0;
+    return orderIdA - orderIdB;
   });
 
   console.log(`Parsed ${transactions.length} valid Tradeovate filled orders`);
