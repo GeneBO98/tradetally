@@ -344,7 +344,9 @@ const brokerParsers = {
     const quantity = parseFloat(row.Quantity);
     const absQuantity = Math.abs(quantity);
     const price = parseFloat(row.Price);
-    const commission = Math.abs(parseFloat(row.Commission || 0)); // Commission is negative in IBKR CSVs
+    // IBKR commission: negative = fee paid, positive = rebate received
+    // Convert to our convention: positive = fee paid, negative = rebate (credit)
+    const commission = -(parseFloat(row.Commission || 0));
     const symbol = cleanString(row.Symbol);
 
     // Parse instrument data (options/futures detection)
@@ -3822,7 +3824,9 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         quantity = parseFloat(record.Quantity);
         absQuantity = Math.abs(quantity);
         price = parseFloat(record.Price);
-        commission = Math.abs(parseFloat(record.Commission || 0));
+        // IBKR commission: negative = fee paid, positive = rebate received
+        // Convert to our convention: positive = fee paid, negative = rebate (credit)
+        commission = -(parseFloat(record.Commission || 0));
 
         // Parse date/time - format is YYYYMMDD;HHMMSS
         const dateTimeParts = (record['Date/Time'] || '').split(';');
@@ -3845,7 +3849,9 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         quantity = parseFloat(record.Quantity);
         absQuantity = Math.abs(quantity);
         price = parseFloat(record.Price);
-        commission = Math.abs(parseFloat(record.Commission || 0));
+        // IBKR commission: negative = fee paid, positive = rebate received
+        // Convert to our convention: positive = fee paid, negative = rebate (credit)
+        commission = -(parseFloat(record.Commission || 0));
         // Handle both "DateTime" and "Date/Time" column names
         // Clean DateTime - remove leading and trailing apostrophes/quotes if present
         const rawDateTime = (record.DateTime || record['Date/Time'] || '').toString();
@@ -3855,8 +3861,11 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
 
 
       // Skip if missing essential data
-      if (!symbol || absQuantity === 0 || price === 0 || !dateTime) {
-        console.log(`Skipping IBKR record missing data:`, { symbol, quantity, price, dateTime });
+      // Note: price === 0 is valid for expired options (Code contains "Ep"), so only skip if
+      // price is 0 AND it's not an expiration transaction
+      const isExpiration = code && code.includes('EP');
+      if (!symbol || absQuantity === 0 || (price === 0 && !isExpiration) || !dateTime) {
+        console.log(`Skipping IBKR record missing data:`, { symbol, quantity, price, dateTime, code });
         continue;
       }
 
@@ -3883,6 +3892,9 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         console.log(`[IBKR] Stock quantity: ${processedQuantity} shares`);
       }
 
+      // Detect if this is an expiration transaction
+      const isExpirationTx = code && code.includes('EP');
+
       transactions.push({
         symbol,
         date: tradeDate,
@@ -3891,12 +3903,17 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         quantity: processedQuantity,
         price: price,
         fees: commission,
-        code: code, // O = Open, P = Partial, C = Close
-        description: `IBKR transaction`,
+        code: code, // O = Open, P = Partial, C = Close, Ep = Expired
+        isExpiration: isExpirationTx,
+        description: isExpirationTx ? `IBKR option expiration` : `IBKR transaction`,
         raw: record
       });
 
-      console.log(`Parsed IBKR transaction: ${action} ${processedQuantity} ${symbol} @ $${price}${code ? ` [${code}]` : ''}`);
+      if (isExpirationTx) {
+        console.log(`[IBKR] Parsed EXPIRATION: ${action} ${processedQuantity} ${symbol} @ $${price} [${code}] (options expired worthless)`);
+      } else {
+        console.log(`Parsed IBKR transaction: ${action} ${processedQuantity} ${symbol} @ $${price}${code ? ` [${code}]` : ''}${commission < 0 ? ` (rebate: $${Math.abs(commission).toFixed(2)})` : ''}`);
+      }
     } catch (error) {
       console.error('Error parsing IBKR transaction:', error, record);
     }
