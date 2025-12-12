@@ -1493,7 +1493,7 @@ const tradeController = {
           if (unresolvedCusips.length > 0) {
             logger.logImport(`Scheduling background CUSIP resolution for ${unresolvedCusips.length} CUSIPs`);
             const cusipResolver = require('../utils/cusipResolver');
-            cusipResolver.scheduleResolution(req.user.id, unresolvedCusips);
+            cusipResolver.scheduleResolution(fileUserId, unresolvedCusips);
           }
 
           // Clear timeout on successful completion
@@ -1505,6 +1505,14 @@ const tradeController = {
             WHERE id = $3
           `, [imported, failed, importId, failedTrades.length > 0 ? { failedTrades, duplicates } : { duplicates }]);
           
+          // Invalidate analytics cache after successful import so counts/P&L update immediately
+          try {
+            invalidateAnalyticsCache(fileUserId);
+            console.log('[SUCCESS] Analytics cache invalidated after import completion');
+          } catch (cacheError) {
+            console.warn('[WARNING] Failed to invalidate analytics cache:', cacheError.message);
+          }
+          
           // Invalidate sector performance cache after successful import
           try {
             await cache.invalidate('sector_performance');
@@ -1515,9 +1523,9 @@ const tradeController = {
 
           // Check achievements and trigger leaderboard updates after import
           try {
-            console.log('[ACHIEVEMENT] Checking achievements after import for user', req.user.id);
+            console.log('[ACHIEVEMENT] Checking achievements after import for user', fileUserId);
             const AchievementService = require('../services/achievementService');
-            const newAchievements = await AchievementService.checkAndAwardAchievements(req.user.id);
+            const newAchievements = await AchievementService.checkAndAwardAchievements(fileUserId);
             console.log(`[ACHIEVEMENT] Post-import achievements awarded: ${newAchievements.length}`);
           } catch (achievementError) {
             console.warn('[WARNING] Failed to check/award achievements after import:', achievementError.message);
@@ -1527,7 +1535,7 @@ const tradeController = {
           try {
             console.log('[PROCESS] Starting background symbol categorization after import...');
             // Run categorization in background without blocking the response
-            symbolCategories.categorizeNewSymbols(req.user.id).then(result => {
+            symbolCategories.categorizeNewSymbols(fileUserId).then(result => {
               console.log(`[SUCCESS] Background categorization complete: ${result.processed} of ${result.total} symbols categorized`);
             }).catch(error => {
               console.warn('[WARNING] Background symbol categorization failed:', error.message);
@@ -1542,7 +1550,7 @@ const tradeController = {
               console.log(`[PROCESS] Scheduling background news enrichment for ${imported} imported trades...`);
               const jobQueue = require('../utils/jobQueue');
               await jobQueue.addJob('news_enrichment', {
-                userId: req.user.id,
+                userId: fileUserId,
                 importId: importId,
                 tradeCount: imported
               });
