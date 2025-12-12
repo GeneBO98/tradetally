@@ -120,6 +120,7 @@ const upload = multer({
  *               $ref: '#/components/schemas/Error'
  */
 router.get('/', authenticate, tradeController.getUserTrades);
+router.get('/count', authenticate, tradeController.getTradesCount);
 router.post('/', authenticate, validate(schemas.createTrade), tradeController.createTrade);
 
 /**
