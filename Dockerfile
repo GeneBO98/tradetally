@@ -44,13 +44,13 @@ COPY backend/ ./
 FROM node:20-alpine
 # Update packages to fix vulnerabilities
 # Create nginx user/group and directories manually since --no-scripts skips post-install scripts
+# Note: vips is NOT needed here - Sharp uses bundled libvips via SHARP_IGNORE_GLOBAL_LIBVIPS=1
 RUN apk update && apk upgrade --no-cache && \
     addgroup -g 101 -S nginx && \
     adduser -S -D -H -u 101 -h /var/lib/nginx -s /sbin/nologin -G nginx -g nginx nginx && \
     apk add --no-cache --no-scripts \
     nginx \
     netcat-openbsd \
-    vips \
     libc6-compat && \
     mkdir -p /run/nginx /var/lib/nginx /var/lib/nginx/tmp /var/log/nginx && \
     chown -R nginx:nginx /run/nginx /var/lib/nginx /var/log/nginx
