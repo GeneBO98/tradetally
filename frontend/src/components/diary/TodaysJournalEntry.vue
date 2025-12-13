@@ -18,16 +18,6 @@
         
         <div class="flex items-center space-x-2">
           <button
-            v-if="!entry"
-            @click="createTodaysEntry"
-            class="btn-primary text-sm"
-            :disabled="creating"
-          >
-            <PlusIcon class="w-4 h-4 mr-1" />
-            {{ creating ? 'Creating...' : 'Create Entry' }}
-          </button>
-          
-          <button
             v-if="entry"
             @click="editEntry"
             class="btn-secondary text-sm"

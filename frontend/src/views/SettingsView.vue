@@ -197,22 +197,22 @@
               Access comprehensive API documentation for integrating with TradeTally programmatically.
             </p>
 
-            <div class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-              <div class="flex-1">
-                <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-2">Interactive API Explorer</h4>
-                <p class="text-sm text-gray-600 dark:text-gray-400">
-                  Browse all available API endpoints, test requests, and view response schemas using our Swagger documentation.
-                </p>
+            <div class="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+              <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-2">Interactive API Explorer</h4>
+              <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                Browse all available API endpoints, test requests, and view response schemas using our Swagger documentation.
+              </p>
+              <div class="flex justify-end">
+                <a
+                  :href="getApiDocsUrl()"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="btn-primary"
+                >
+                  <MdiIcon :icon="apiIcon" :size="16" class="mr-2" />
+                  Open API Docs
+                </a>
               </div>
-              <a
-                :href="getApiDocsUrl()"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="btn-primary flex-shrink-0 ml-4"
-              >
-                <MdiIcon :icon="apiIcon" :size="16" class="mr-2" />
-                Open API Docs
-              </a>
             </div>
           </div>
         </div>

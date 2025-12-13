@@ -526,8 +526,8 @@
       <!-- CUSIP Management -->
       <div class="card">
         <div class="card-body">
-          <div class="flex items-start justify-between mb-4">
-            <div>
+          <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-4">
+            <div class="flex-1 min-w-0">
               <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">
                 CUSIP Symbol Mappings
               </h3>
@@ -535,21 +535,22 @@
                 Some brokers export trades with CUSIP codes instead of ticker symbols. Manage how these codes are mapped to ticker symbols for better organization and filtering.
               </p>
             </div>
-            <div class="flex items-center space-x-2 ml-4">
+            <div class="flex items-center gap-2 flex-shrink-0">
               <button
                 @click="showAllMappingsModal = true"
                 class="btn-secondary text-sm"
               >
-                <Cog6ToothIcon class="h-5 w-5 mr-2" />
-                Manage All
+                <Cog6ToothIcon class="h-5 w-5 sm:mr-2" />
+                <span class="hidden sm:inline">Manage All</span>
               </button>
               <button
                 v-if="unmappedCusipsCount > 0"
                 @click="showUnmappedModal = true"
                 class="btn-yellow text-sm"
               >
-                <ExclamationTriangleIcon class="h-5 w-5 mr-2" />
-                {{ unmappedCusipsCount }} Unmapped
+                <ExclamationTriangleIcon class="h-5 w-5 sm:mr-2" />
+                <span class="hidden sm:inline">{{ unmappedCusipsCount }} Unmapped</span>
+                <span class="sm:hidden">{{ unmappedCusipsCount }}</span>
               </button>
             </div>
           </div>
