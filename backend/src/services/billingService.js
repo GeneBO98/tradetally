@@ -450,10 +450,11 @@ class BillingService {
         status, current_period_start, current_period_end, cancel_at_period_end, canceled_at
       )
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-      ON CONFLICT (stripe_customer_id)
+      -- Ensure idempotency by de-duplicating on the Stripe subscription ID, which is unique per subscription.
+      ON CONFLICT (stripe_subscription_id)
       DO UPDATE SET
+        user_id = COALESCE(EXCLUDED.user_id, subscriptions.user_id),
         stripe_customer_id = COALESCE(EXCLUDED.stripe_customer_id, subscriptions.stripe_customer_id),
-        stripe_subscription_id = COALESCE(EXCLUDED.stripe_subscription_id, subscriptions.stripe_subscription_id),
         stripe_price_id = COALESCE(EXCLUDED.stripe_price_id, subscriptions.stripe_price_id),
         status = COALESCE(EXCLUDED.status, subscriptions.status),
         current_period_start = COALESCE(EXCLUDED.current_period_start, subscriptions.current_period_start),
