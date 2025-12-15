@@ -411,6 +411,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { format } from 'date-fns'
+import { formatTradeDate } from '@/utils/date'
 import MdiIcon from '@/components/MdiIcon.vue'
 import { mdiRefresh, mdiAlertCircle, mdiLock, mdiLightbulb, mdiChartLine, mdiClose } from '@mdi/js'
 import api from '@/services/api'
@@ -444,7 +445,7 @@ function formatNumber(num) {
 }
 
 function formatDate(date) {
-  return format(new Date(date), 'MMM dd, yyyy')
+  return formatTradeDate(date, 'MMM dd, yyyy')
 }
 
 async function fetchAnalytics() {
