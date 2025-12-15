@@ -249,20 +249,28 @@ class BillingService {
   // Handle webhook events
   static async handleWebhook(payload, signature) {
     console.log('Webhook received - signature:', signature ? 'present' : 'missing');
-    
+
     const billingAvailable = await this.isBillingAvailable();
     if (!billingAvailable) {
       throw new Error('Billing not available for webhook processing');
     }
 
-    // Get webhook endpoint secret
-    const secretQuery = `SELECT value FROM instance_config WHERE key = 'stripe_webhook_endpoint_secret'`;
-    const result = await db.query(secretQuery);
-    const endpointSecret = result.rows[0]?.value;
+    // Get webhook endpoint secret from environment variable or database
+    let endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+    // Fall back to database if not in environment
+    if (!endpointSecret) {
+      const secretQuery = `SELECT value FROM instance_config WHERE key = 'stripe_webhook_endpoint_secret'`;
+      const result = await db.query(secretQuery);
+      endpointSecret = result.rows[0]?.value;
+    }
 
     if (!endpointSecret) {
+      console.error('Webhook endpoint secret not configured');
       throw new Error('Webhook endpoint secret not configured');
     }
+
+    console.log('Using webhook secret from:', process.env.STRIPE_WEBHOOK_SECRET ? 'environment' : 'database');
 
     let event;
     try {
