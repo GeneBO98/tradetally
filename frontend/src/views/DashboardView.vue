@@ -721,6 +721,7 @@ import { ref, onMounted, nextTick, watch, computed, onUnmounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useRouter } from 'vue-router'
 import { format } from 'date-fns'
+import { formatTradeDate } from '@/utils/date'
 import Chart from 'chart.js/auto'
 import api from '@/services/api'
 import TradeNewsSection from '@/components/dashboard/TradeNewsSection.vue'
@@ -812,7 +813,7 @@ function formatPercent(num) {
 }
 
 function formatDate(dateStr) {
-  return format(new Date(dateStr), 'MMM dd')
+  return formatTradeDate(dateStr, 'MMM dd')
 }
 
 function formatLastRefresh(timestamp) {
