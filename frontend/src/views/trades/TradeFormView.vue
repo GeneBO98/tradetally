@@ -721,13 +721,40 @@
   
         <div>
           <label for="tags" class="label">Tags (comma separated)</label>
-          <input
-            id="tags"
-            v-model="tagsInput"
-            type="text"
-            class="input"
-            placeholder="momentum, earnings, breakout"
-          />
+          <div class="relative">
+            <input
+              id="tags"
+              v-model="tagsInput"
+              type="text"
+              class="input"
+              placeholder="momentum, earnings, breakout"
+              @focus="handleTagsFocus"
+              @blur="handleTagsBlur"
+              @keydown.down.prevent="moveTagSuggestion(1)"
+              @keydown.up.prevent="moveTagSuggestion(-1)"
+              @keydown.enter="applyActiveTagSuggestion"
+            />
+            <div
+              v-if="showTagSuggestions"
+              class="absolute z-10 mt-1 w-full rounded-md bg-white dark:bg-gray-800 shadow-lg border border-gray-200 dark:border-gray-700 max-h-48 overflow-auto"
+            >
+              <ul class="py-1 text-sm text-gray-700 dark:text-gray-200">
+                <li
+                  v-for="(tag, index) in tagSuggestions"
+                  :key="tag"
+                  @mousedown.prevent="selectTagSuggestion(tag)"
+                  :class="[
+                    'px-3 py-1 cursor-pointer flex items-center justify-between',
+                    index === activeTagSuggestionIndex
+                      ? 'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-100'
+                      : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+                  ]"
+                >
+                  <span>{{ tag }}</span>
+                </li>
+              </ul>
+            </div>
+          </div>
         </div>
   
         <div>
@@ -946,6 +973,9 @@ const form = ref({
 })
 
 const tagsInput = ref('')
+const allTags = ref([]) // All saved tags for the user
+const tagsInputFocused = ref(false)
+const activeTagSuggestionIndex = ref(0)
 const currentImages = ref([])
 const trade = ref(null) // Store full trade data including charts
 const strategiesList = ref([])
@@ -1643,6 +1673,126 @@ async function fetchUserSettings() {
   }
 }
 
+// Fetch all user tags for autocomplete suggestions
+async function fetchTags() {
+  try {
+    const response = await api.get('/tags')
+    const tags = response.data?.tags || []
+    // Store only unique tag names, sorted alphabetically
+    const names = Array.from(
+      new Set(
+        tags
+          .map(tag => tag.name)
+          .filter(name => typeof name === 'string' && name.trim().length > 0)
+      )
+    ).sort((a, b) => a.localeCompare(b))
+    allTags.value = names
+  } catch (error) {
+    console.error('Error fetching tags for autocomplete:', error)
+  }
+}
+
+// Computed: current list of tags already entered in input
+const currentTags = computed(() => {
+  if (!tagsInput.value) return []
+  return tagsInput.value
+    .split(',')
+    .map(tag => tag.trim())
+    .filter(Boolean)
+})
+
+// Computed: the partial tag the user is currently typing
+const currentTagQuery = computed(() => {
+  if (!tagsInput.value) return ''
+  const parts = tagsInput.value.split(',')
+  return parts[parts.length - 1].trim()
+})
+
+// Computed: suggestions based on current query and existing tags
+const tagSuggestions = computed(() => {
+  const query = currentTagQuery.value.toLowerCase()
+  if (!query) return []
+
+  const alreadySelected = new Set(currentTags.value.map(t => t.toLowerCase()))
+
+  // Only suggest tags that start with the current query and aren't already selected
+  const matches = allTags.value.filter(name => {
+    const lower = name.toLowerCase()
+    return lower.startsWith(query) && !alreadySelected.has(lower)
+  })
+
+  // Reset active index when the suggestion list changes
+  if (activeTagSuggestionIndex.value >= matches.length) {
+    activeTagSuggestionIndex.value = 0
+  }
+
+  return matches.slice(0, 10)
+})
+
+const showTagSuggestions = computed(() => {
+  return tagsInputFocused.value && tagSuggestions.value.length > 0
+})
+
+function handleTagsFocus() {
+  tagsInputFocused.value = true
+}
+
+function handleTagsBlur() {
+  // Delay hiding so a click on a suggestion can register
+  setTimeout(() => {
+    tagsInputFocused.value = false
+  }, 150)
+}
+
+function selectTagSuggestion(tag) {
+  const parts = tagsInput.value.split(',')
+  // Replace the current partial with the selected tag
+  if (parts.length > 0) {
+    parts[parts.length - 1] = ` ${tag}` // keep preceding comma/space style
+  } else {
+    parts[0] = tag
+  }
+
+  // Normalize spacing: join with comma+space
+  const normalized = parts
+    .map((part, index) => {
+      const trimmed = part.trim()
+      return index === 0 ? trimmed : trimmed
+    })
+    .filter(Boolean)
+    .join(', ')
+
+  tagsInput.value = normalized + ', '
+  // Keep focus on the input so user can continue typing
+  nextTick(() => {
+    const el = document.getElementById('tags')
+    if (el) {
+      el.focus()
+    }
+  })
+}
+
+function moveTagSuggestion(direction) {
+  if (!showTagSuggestions.value) return
+  const total = tagSuggestions.value.length
+  if (total === 0) return
+
+  const nextIndex = (activeTagSuggestionIndex.value + direction + total) % total
+  activeTagSuggestionIndex.value = nextIndex
+}
+
+function applyActiveTagSuggestion(event) {
+  if (!showTagSuggestions.value) {
+    // No suggestions visible, let the form handle Enter normally
+    return
+  }
+  event.preventDefault()
+  const tag = tagSuggestions.value[activeTagSuggestionIndex.value]
+  if (tag) {
+    selectTagSuggestion(tag)
+  }
+}
+
 function handleBrokerSelect(event) {
   if (event.target.value === '__custom__') {
     form.value.broker = ''
@@ -1754,6 +1904,7 @@ onMounted(async () => {
   await checkProAccess()
   await fetchLists()
   await fetchUserSettings()
+  await fetchTags()
 
   if (isEdit.value) {
     loadTrade()
