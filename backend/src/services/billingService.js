@@ -319,6 +319,18 @@ class BillingService {
 
   // Handle subscription created/updated
   static async handleSubscriptionUpdated(subscription) {
+    // Helper to safely convert Stripe timestamps (which may be seconds, ISO strings, or missing) to JS Date or null
+    const toDateOrNull = (value) => {
+      if (!value) return null;
+      if (value instanceof Date) return value;
+      if (typeof value === 'number') {
+        const d = new Date(value * 1000);
+        return isNaN(d.getTime()) ? null : d;
+      }
+      const d = new Date(value);
+      return isNaN(d.getTime()) ? null : d;
+    };
+
     console.log('Updating subscription:', subscription.id, 'customer:', subscription.customer, 'status:', subscription.status);
     const customerId = subscription.customer;
     
@@ -357,14 +369,24 @@ class BillingService {
 
     // Update subscription in database
     console.log('Updating subscription for user:', userId);
+
+    // Stripe's newer API versions may not include current_period_* on the root subscription,
+    // but they are present on the subscription items. Fall back accordingly and guard parsing.
+    const item = subscription.items?.data?.[0] || {};
+
+    const currentPeriodStartRaw =
+      subscription.current_period_start ?? item.current_period_start;
+    const currentPeriodEndRaw =
+      subscription.current_period_end ?? item.current_period_end;
+
     const subscriptionData = {
       stripe_subscription_id: subscription.id,
-      stripe_price_id: subscription.items.data[0]?.price.id,
+      stripe_price_id: item.price?.id,
       status: subscription.status,
-      current_period_start: new Date(subscription.current_period_start * 1000),
-      current_period_end: new Date(subscription.current_period_end * 1000),
-      cancel_at_period_end: subscription.cancel_at_period_end,
-      canceled_at: subscription.canceled_at ? new Date(subscription.canceled_at * 1000) : null
+      current_period_start: toDateOrNull(currentPeriodStartRaw),
+      current_period_end: toDateOrNull(currentPeriodEndRaw),
+      cancel_at_period_end: subscription.cancel_at_period_end ?? false,
+      canceled_at: toDateOrNull(subscription.canceled_at)
     };
     console.log('Subscription data:', subscriptionData);
     
@@ -373,8 +395,24 @@ class BillingService {
 
     // Update user tier
     console.log('Updating user tier for subscription:', subscription.id, 'status:', subscription.status);
-    await TierService.handleSubscriptionUpdate(subscription.id, subscription.status);
-    console.log('User tier updated');
+    try {
+      await TierService.handleSubscriptionUpdate(subscription.id, subscription.status);
+      console.log('User tier updated');
+    } catch (tierError) {
+      // If we don't have a local subscription record yet, don't fail the webhook
+      if (tierError && tierError.message === 'Subscription not found') {
+        console.warn(
+          'Subscription not found in database when handling Stripe subscription update. ' +
+          'This can happen if the checkout session webhook has not yet created the record. ' +
+          'Subscription ID:',
+          subscription.id
+        );
+      } else {
+        console.error('Error updating user tier from subscription:', tierError);
+        // Re-throw to surface unexpected errors
+        throw tierError;
+      }
+    }
   }
 
   // Handle subscription deleted
