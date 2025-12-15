@@ -3809,7 +3809,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
   // First, parse all transactions
   for (const record of records) {
     try {
-      let symbol, quantity, absQuantity, price, commission, dateTime, action;
+      let symbol, quantity, absQuantity, price, commission, dateTime, action, multiplierFromCSV;
 
       // Capture Code column if present (O = Open, P = Partial, C = Close)
       let code = null;
@@ -3843,6 +3843,8 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         // Determine action from Buy/Sell column
         const buySell = cleanString(record['Buy/Sell']).toUpperCase();
         action = buySell === 'BUY' ? 'buy' : 'sell';
+        // Read Multiplier column for Trade Confirmation format
+        multiplierFromCSV = record.Multiplier ? parseFloat(record.Multiplier) : null;
       } else {
         // Activity Statement format (original)
         symbol = cleanString(record.Symbol);
@@ -3857,6 +3859,8 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         const rawDateTime = (record.DateTime || record['Date/Time'] || '').toString();
         dateTime = rawDateTime.replace(/^[\x27\x22\u2018\u2019\u201C\u201D]|[\x27\x22\u2018\u2019\u201C\u201D]$/g, '').trim();
         action = quantity > 0 ? 'buy' : 'sell';
+        // Check for Multiplier column (some IBKR Activity Statement exports include this)
+        multiplierFromCSV = record.Multiplier ? parseFloat(record.Multiplier) : null;
       }
 
 
@@ -3905,6 +3909,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         fees: commission,
         code: code, // O = Open, P = Partial, C = Close, Ep = Expired
         isExpiration: isExpirationTx,
+        multiplier: multiplierFromCSV, // Contract multiplier from CSV (if available)
         description: isExpirationTx ? `IBKR option expiration` : `IBKR transaction`,
         raw: record
       });
@@ -3987,16 +3992,28 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
       instrumentData = parseInstrumentData(symbol);
     }
 
-    // Note: For IBKR, quantity is in contracts for options but prices are per-share
-    // We don't use contractMultiplier for quantity adjustments, but we DO need to apply
-    // a multiplier when calculating dollar values (entryValue/exitValue)
+    // Note: For IBKR, quantity is in contracts for options
+    // Price interpretation varies:
+    //   - Standard options: prices are per-share, multiply by 100 for dollar value
+    //   - Mini options: prices are per-share, multiply by 10 for dollar value
+    //   - Some exports: prices may be per-contract, multiply by 1 for dollar value
+    // We read the Multiplier column from CSV if available to handle all cases correctly
     const contractMultiplier = 1; // Quantity is already in contracts
 
     console.log(`Instrument type: ${instrumentData.instrumentType}, contract multiplier: ${contractMultiplier}`);
 
     // For dollar value calculations (entryValue/exitValue), we need to apply appropriate multipliers
-    const valueMultiplier = instrumentData.instrumentType === 'option' ? 100 :
+    // Priority: CSV Multiplier > Trade Confirmation contractSize > default (100)
+    const csvMultiplier = symbolTransactions[0]?.multiplier;
+    const valueMultiplier = instrumentData.instrumentType === 'option' ?
+                            (csvMultiplier || instrumentData.contractSize || 100) :
                             instrumentData.instrumentType === 'future' ? (instrumentData.pointValue || 1) : 1;
+
+    if (csvMultiplier && instrumentData.instrumentType === 'option') {
+      console.log(`[IBKR] Using multiplier from CSV: ${csvMultiplier} (option price is per-${csvMultiplier === 1 ? 'contract' : csvMultiplier === 10 ? 'share (mini)' : 'share'})`);
+    } else if (instrumentData.instrumentType === 'option') {
+      console.log(`[IBKR] Using default multiplier: ${valueMultiplier} (standard options pricing)`);
+    }
 
     // Track position and round-trip trades
     // Start with existing position if we have one for this symbol
