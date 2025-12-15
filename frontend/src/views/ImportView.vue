@@ -833,6 +833,7 @@ import { useTradesStore } from '@/stores/trades'
 import { useAuthStore } from '@/stores/auth'
 import { useNotification } from '@/composables/useNotification'
 import { format } from 'date-fns'
+import { formatTradeDate } from '@/utils/date'
 import { ArrowUpTrayIcon, XMarkIcon, ExclamationTriangleIcon, Cog6ToothIcon, MagnifyingGlassIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
 import UnmappedCusipsModal from '@/components/cusip/UnmappedCusipsModal.vue'
@@ -952,7 +953,8 @@ function formatFileSize(bytes) {
 }
 
 function formatDate(date) {
-  return format(new Date(date), 'MMM dd, yyyy HH:mm')
+  // Import history dates are stored without timezone context; use safe trade formatter
+  return formatTradeDate(date, 'MMM dd, yyyy HH:mm')
 }
 
 function handleDragOver(event) {

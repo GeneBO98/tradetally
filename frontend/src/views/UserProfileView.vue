@@ -168,7 +168,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { format } from 'date-fns'
+import { formatTradeDate } from '@/utils/date'
 import { DocumentTextIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
 
@@ -187,7 +187,7 @@ function formatNumber(num, decimals = 2) {
 }
 
 function formatDate(date) {
-  return format(new Date(date), 'MMM dd, yyyy')
+  return formatTradeDate(date, 'MMM dd, yyyy')
 }
 
 async function fetchProfile() {
