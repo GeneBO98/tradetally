@@ -1627,7 +1627,11 @@ function parseInstrumentData(symbol) {
     return { instrumentType: 'stock' };
   }
 
-  const normalizedSymbol = symbol.replace(/\s+/g, ' ').trim();
+  // Normalize: uppercase and standardize spaces
+  const normalizedSymbol = symbol.toString().toUpperCase().replace(/\s+/g, ' ').trim();
+
+  // Compact options with space: "Cl 251024C00322500" -> "CL251024C00322500" for pattern matching
+  const symbolNoSpaces = normalizedSymbol.replace(/\s+/g, '');
 
   // Readable IBKR options format: "DIA 10OCT25 466 PUT" (underlying + date + strike + type)
   const readableOptionMatch = normalizedSymbol.match(/^([A-Z]+)\s+(\d{1,2})([A-Z]{3})(\d{2})\s+(\d+(?:\.\d+)?)\s+(PUT|CALL)$/i);
@@ -1653,7 +1657,7 @@ function parseInstrumentData(symbol) {
   }
 
   // Compact IBKR options format: "DIA10OCT25466PUT" (underlying + date + strike + type, no spaces)
-  const compactReadableOptionMatch = normalizedSymbol.match(/^([A-Z]+)(\d{1,2})([A-Z]{3})(\d{2})(\d+(?:\.\d+)?)(PUT|CALL)$/i);
+  const compactReadableOptionMatch = symbolNoSpaces.match(/^([A-Z]+)(\d{1,2})([A-Z]{3})(\d{2})(\d+(?:\.\d+)?)(PUT|CALL)$/i);
   if (compactReadableOptionMatch) {
     const [, underlying, day, monthStr, year, strike, type] = compactReadableOptionMatch;
 
@@ -1677,7 +1681,9 @@ function parseInstrumentData(symbol) {
 
   // IBKR Options format: "SEDG  250801P00025000" or "AMD   251010C00240000" (underlying + spaces + YYMMDD + C/P + strike)
   // This format has the underlying padded with spaces, then date, call/put indicator, and strike*1000
-  const ibkrOptionMatch = normalizedSymbol.match(/^([A-Z]+)\s+(\d{6})([CP])(\d{8})$/);
+  // Try with spaces first (original format), then without spaces (e.g., "Cl 251024C00322500" -> "Cl251024C00322500")
+  const ibkrOptionMatch = normalizedSymbol.match(/^([A-Z]+)\s+(\d{6})([CP])(\d{8})$/) ||
+                          symbolNoSpaces.match(/^([A-Z]+)(\d{6})([CP])(\d{8})$/);
   if (ibkrOptionMatch) {
     const [, underlying, expiry, type, strikeStr] = ibkrOptionMatch;
     const year = 2000 + parseInt(expiry.substr(0, 2));
@@ -1696,7 +1702,8 @@ function parseInstrumentData(symbol) {
   }
 
   // Standard compact options format: "AAPL230120C00150000" (6-char underlying + YYMMDD + C/P + 8-digit strike)
-  const compactOptionMatch = normalizedSymbol.match(/^([A-Z]{1,6})(\d{6})([CP])(\d{8})$/);
+  // Also handles format with spaces like "Cl 251024C00322500" by using symbolNoSpaces
+  const compactOptionMatch = symbolNoSpaces.match(/^([A-Z]{1,6})(\d{6})([CP])(\d{8})$/);
   if (compactOptionMatch) {
     const [, underlying, expiry, type, strikeStr] = compactOptionMatch;
     const year = 2000 + parseInt(expiry.substr(0, 2));
@@ -4100,11 +4107,14 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         }
 
         if (shouldStartNewTrade) {
+          // Determine trade side - for sell-to-open, this is a short position
+          const tradeSide = transaction.action === 'buy' ? 'long' : 'short';
+
           currentTrade = {
             symbol: symbol,
             entryTime: transaction.datetime,
             tradeDate: transaction.date,
-            side: transaction.action === 'buy' ? 'long' : 'short',
+            side: tradeSide,
             executions: [],
             totalQuantity: 0,
             totalFees: 0,
@@ -4112,7 +4122,13 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
             exitValue: 0,
             broker: 'ibkr'
           };
-          console.log(`  → Started new ${currentTrade.side} trade${transactionCode ? ` [Code: ${transactionCode}]` : ''}`);
+
+          // Log with extra detail for short option positions
+          if (tradeSide === 'short' && instrumentData.instrumentType === 'option') {
+            console.log(`  → Started new SHORT OPTION trade (sell-to-open)${transactionCode ? ` [Code: ${transactionCode}]` : ''}`);
+          } else {
+            console.log(`  → Started new ${currentTrade.side} trade${transactionCode ? ` [Code: ${transactionCode}]` : ''}`);
+          }
         }
       }
 
@@ -4168,8 +4184,20 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         currentPosition -= qty;
 
         if (currentTrade && currentTrade.side === 'short') {
-          currentTrade.entryValue += qty * transaction.price * valueMultiplier;
+          // For short positions, entry value is what we receive from selling
+          const saleProceeds = qty * transaction.price * valueMultiplier;
+          currentTrade.entryValue += saleProceeds;
           currentTrade.totalQuantity += qty;
+
+          // For short options, log detailed information about proceeds and commission rebates
+          if (instrumentData.instrumentType === 'option') {
+            // Commission rebates show as negative fees, so net proceeds = sale - fees (adds rebate)
+            const netProceeds = saleProceeds - transaction.fees;
+            console.log(`  [SHORT OPTION ENTRY] Sold ${qty} contracts @ $${transaction.price}/share`);
+            console.log(`    Sale proceeds: $${saleProceeds.toFixed(2)} (${qty} × $${transaction.price} × ${valueMultiplier})`);
+            console.log(`    Commission/rebate: $${transaction.fees.toFixed(2)} ${transaction.fees < 0 ? '(REBATE - credit)' : '(fee - debit)'}`);
+            console.log(`    Net proceeds: $${netProceeds.toFixed(2)}`);
+          }
         } else if (currentTrade && currentTrade.side === 'long') {
           currentTrade.exitValue += qty * transaction.price * valueMultiplier;
         }
@@ -4185,10 +4213,18 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         currentTrade.exitPrice = currentTrade.exitValue / (currentTrade.totalQuantity * valueMultiplier);
 
         // Calculate P/L
+        // For short positions: P/L = what you received (entry) - what you paid (exit) - fees
+        // For long positions: P/L = what you received (exit) - what you paid (entry) - fees
+        // Commission rebates (negative fees) increase profit when subtracted
         if (currentTrade.side === 'long') {
           currentTrade.pnl = currentTrade.exitValue - currentTrade.entryValue - currentTrade.totalFees;
         } else {
           currentTrade.pnl = currentTrade.entryValue - currentTrade.exitValue - currentTrade.totalFees;
+
+          // Log P&L calculation for short options to help debugging
+          if (instrumentData.instrumentType === 'option') {
+            console.log(`  [SHORT OPTION P&L] Entry: $${currentTrade.entryValue.toFixed(2)}, Exit: $${currentTrade.exitValue.toFixed(2)}, Fees: $${currentTrade.totalFees.toFixed(2)}, P&L: $${currentTrade.pnl.toFixed(2)}`);
+          }
         }
 
         currentTrade.pnlPercent = (currentTrade.pnl / currentTrade.entryValue) * 100;
@@ -4270,9 +4306,22 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
       currentTrade.commission = currentTrade.totalFees;
       currentTrade.fees = 0;
       currentTrade.exitTime = null;
-      currentTrade.pnl = 0;
-      currentTrade.pnlPercent = 0;
-      currentTrade.notes = `Open position: ${currentTrade.executions.length} executions`;
+
+      // For open positions, P&L should be null (not yet realized)
+      // This prevents showing incorrect "loss" for open short positions
+      currentTrade.pnl = null;
+      currentTrade.pnlPercent = null;
+
+      // Create descriptive notes for open positions
+      if (currentTrade.side === 'short' && instrumentData.instrumentType === 'option') {
+        // For short options, calculate and show the net proceeds received
+        const netProceeds = currentTrade.entryValue - currentTrade.totalFees;
+        currentTrade.notes = `Open SHORT option position: ${currentTrade.totalQuantity} contracts sold @ $${currentTrade.entryPrice.toFixed(2)}/share, net proceeds: $${netProceeds.toFixed(2)} (${currentTrade.totalFees < 0 ? 'includes rebate' : 'after commission'})`;
+        console.log(`  [OPEN SHORT OPTION] Entry price: $${currentTrade.entryPrice.toFixed(2)}/share, Net proceeds: $${netProceeds.toFixed(2)}, Position: ${currentPosition} contracts`);
+      } else {
+        currentTrade.notes = `Open position: ${currentTrade.executions.length} executions`;
+      }
+
       currentTrade.executionData = currentTrade.executions;
 
       // Add instrument data for options/futures
@@ -4286,8 +4335,16 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
       // Mark as update if this was an existing position with new executions
       if (currentTrade.isExistingPosition && currentTrade.newExecutionsAdded > 0) {
         currentTrade.isUpdate = true;
-        currentTrade.notes = `Updated open position: ${currentTrade.newExecutionsAdded} new executions added`;
-        console.log(`  [SUCCESS] UPDATED open ${currentTrade.side} position: ${currentTrade.totalQuantity} shares, ${currentTrade.newExecutionsAdded} new executions`);
+
+        // Create more descriptive notes for short option updates
+        if (currentTrade.side === 'short' && instrumentData.instrumentType === 'option') {
+          const netProceeds = currentTrade.entryValue - currentTrade.totalFees;
+          currentTrade.notes = `Updated open SHORT option position: ${currentTrade.newExecutionsAdded} new executions added, net proceeds: $${netProceeds.toFixed(2)}`;
+        } else {
+          currentTrade.notes = `Updated open position: ${currentTrade.newExecutionsAdded} new executions added`;
+        }
+
+        console.log(`  [SUCCESS] UPDATED open ${currentTrade.side} position: ${currentTrade.totalQuantity} ${instrumentData.instrumentType === 'option' ? 'contracts' : 'shares'}, ${currentTrade.newExecutionsAdded} new executions`);
       }
 
       completedTrades.push(currentTrade);
