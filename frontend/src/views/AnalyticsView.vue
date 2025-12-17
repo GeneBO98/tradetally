@@ -1,7 +1,7 @@
 <template>
-  <div class="max-w-[65%] mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  <div class="content-wrapper py-8">
     <div class="mb-8">
-      <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Analytics</h1>
+      <h1 class="heading-page">Analytics</h1>
       <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
         Analyze your trading performance and identify areas for improvement.
       </p>
@@ -43,7 +43,7 @@
           </div>
 
           <!-- AI Recommendations and Chart Customization buttons -->
-          <div class="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4 flex justify-between items-center gap-3">
+          <div class="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3">
             <div class="flex gap-2 flex-wrap">
               <button
                 @click="toggleCustomization"
@@ -143,13 +143,13 @@
             <!-- Overview Stats -->
             <template v-if="element.id === 'overview'">
               <!-- Overview Stats -->
-      <div class="flex flex-wrap gap-5">
-        <div class="card flex-1 min-w-[180px]">
+      <div class="flex-card-container">
+        <div class="card card-mobile-safe flex-1">
           <div class="card-body">
-            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
+            <dt class="text-data-secondary truncate">
               Total P&L
             </dt>
-            <dd class="mt-1 text-2xl font-semibold whitespace-nowrap" :class="[
+            <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold whitespace-nowrap" :class="[
               overview.total_pnl >= 0 ? 'text-green-600' : 'text-red-600'
             ]">
               ${{ formatNumber(overview.total_pnl) }}
@@ -157,34 +157,34 @@
           </div>
         </div>
 
-        <div class="card flex-1 min-w-[180px]">
+        <div class="card card-mobile-safe flex-1">
           <div class="card-body">
-            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
+            <dt class="text-data-secondary truncate">
               Win Rate
             </dt>
-            <dd class="mt-1 text-2xl font-semibold text-gray-900 dark:text-white whitespace-nowrap">
+            <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-gray-900 dark:text-white whitespace-nowrap">
               {{ overview.win_rate }}%
             </dd>
           </div>
         </div>
 
-        <div class="card flex-1 min-w-[180px]">
+        <div class="card card-mobile-safe flex-1">
           <div class="card-body">
-            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
+            <dt class="text-data-secondary truncate">
               Total Trades
             </dt>
-            <dd class="mt-1 text-2xl font-semibold text-gray-900 dark:text-white whitespace-nowrap">
+            <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-gray-900 dark:text-white whitespace-nowrap">
               {{ overview.total_trades }}
             </dd>
           </div>
         </div>
 
-        <div class="card flex-1 min-w-[180px]">
+        <div class="card card-mobile-safe flex-1">
           <div class="card-body">
-            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
+            <dt class="text-data-secondary truncate">
               {{ calculationMethod }} Trade
             </dt>
-            <dd class="mt-1 text-2xl font-semibold whitespace-nowrap" :class="[
+            <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold whitespace-nowrap" :class="[
               overview.avg_pnl >= 0 ? 'text-green-600' : 'text-red-600'
             ]">
               ${{ formatNumber(overview.avg_pnl) }}
@@ -192,19 +192,19 @@
           </div>
         </div>
 
-        <div class="card flex-1 min-w-[180px]">
+        <div class="card card-mobile-safe flex-1">
           <div class="card-body">
-            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
+            <dt class="text-data-secondary truncate">
               Profit Factor
             </dt>
-            <dd class="mt-1 text-2xl font-semibold text-gray-900 dark:text-white whitespace-nowrap">
+            <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-gray-900 dark:text-white whitespace-nowrap">
               {{ overview.profit_factor ?? '0.00' }}
             </dd>
           </div>
         </div>
 
         <div
-          class="card flex-1 min-w-[180px] cursor-pointer hover:shadow-lg transition-all duration-300 relative group"
+          class="card card-mobile-safe flex-1 cursor-pointer hover:shadow-lg transition-all duration-300 relative group"
           @click="toggleRMultipleDisplay"
           style="perspective: 1000px;"
         >
@@ -572,7 +572,7 @@
       <div class="card">
         <div class="card-body">
           <div class="flex items-center justify-between mb-4">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white">Performance Over Time</h3>
+            <h3 class="heading-card">Performance Over Time</h3>
             <select v-model="performancePeriod" @change="fetchPerformance" class="input w-auto">
               <option value="daily">Daily</option>
               <option value="weekly">Weekly</option>
@@ -592,7 +592,7 @@
         <div class="card-body">
           <div class="flex items-center justify-between mb-4">
             <div>
-              <h3 class="text-lg font-medium text-gray-900 dark:text-white">Sector Performance</h3>
+              <h3 class="heading-card">Sector Performance</h3>
               <div v-if="sectorStats.uncategorizedSymbols > 0 || showCompletionMessage" class="mt-2">
                 <div class="flex items-center justify-between text-xs mb-1" 
                      :class="showCompletionMessage ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'">
@@ -1014,7 +1014,7 @@
           @click.stop
         >
           <div class="flex items-center justify-between mb-6">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white">
+            <h3 class="heading-card">
               Chart Visibility & Size
             </h3>
             <button
@@ -1126,7 +1126,7 @@
           @click.stop
         >
           <div class="flex items-center justify-between mb-4">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white">
+            <h3 class="heading-card">
               AI Performance Recommendations
             </h3>
             <button 

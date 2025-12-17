@@ -249,20 +249,28 @@ class BillingService {
   // Handle webhook events
   static async handleWebhook(payload, signature) {
     console.log('Webhook received - signature:', signature ? 'present' : 'missing');
-    
+
     const billingAvailable = await this.isBillingAvailable();
     if (!billingAvailable) {
       throw new Error('Billing not available for webhook processing');
     }
 
-    // Get webhook endpoint secret
-    const secretQuery = `SELECT value FROM instance_config WHERE key = 'stripe_webhook_endpoint_secret'`;
-    const result = await db.query(secretQuery);
-    const endpointSecret = result.rows[0]?.value;
+    // Get webhook endpoint secret from environment variable or database
+    let endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+    // Fall back to database if not in environment
+    if (!endpointSecret) {
+      const secretQuery = `SELECT value FROM instance_config WHERE key = 'stripe_webhook_endpoint_secret'`;
+      const result = await db.query(secretQuery);
+      endpointSecret = result.rows[0]?.value;
+    }
 
     if (!endpointSecret) {
+      console.error('Webhook endpoint secret not configured');
       throw new Error('Webhook endpoint secret not configured');
     }
+
+    console.log('Using webhook secret from:', process.env.STRIPE_WEBHOOK_SECRET ? 'environment' : 'database');
 
     let event;
     try {
@@ -311,6 +319,18 @@ class BillingService {
 
   // Handle subscription created/updated
   static async handleSubscriptionUpdated(subscription) {
+    // Helper to safely convert Stripe timestamps (which may be seconds, ISO strings, or missing) to JS Date or null
+    const toDateOrNull = (value) => {
+      if (!value) return null;
+      if (value instanceof Date) return value;
+      if (typeof value === 'number') {
+        const d = new Date(value * 1000);
+        return isNaN(d.getTime()) ? null : d;
+      }
+      const d = new Date(value);
+      return isNaN(d.getTime()) ? null : d;
+    };
+
     console.log('Updating subscription:', subscription.id, 'customer:', subscription.customer, 'status:', subscription.status);
     const customerId = subscription.customer;
     
@@ -349,14 +369,24 @@ class BillingService {
 
     // Update subscription in database
     console.log('Updating subscription for user:', userId);
+
+    // Stripe's newer API versions may not include current_period_* on the root subscription,
+    // but they are present on the subscription items. Fall back accordingly and guard parsing.
+    const item = subscription.items?.data?.[0] || {};
+
+    const currentPeriodStartRaw =
+      subscription.current_period_start ?? item.current_period_start;
+    const currentPeriodEndRaw =
+      subscription.current_period_end ?? item.current_period_end;
+
     const subscriptionData = {
       stripe_subscription_id: subscription.id,
-      stripe_price_id: subscription.items.data[0]?.price.id,
+      stripe_price_id: item.price?.id,
       status: subscription.status,
-      current_period_start: new Date(subscription.current_period_start * 1000),
-      current_period_end: new Date(subscription.current_period_end * 1000),
-      cancel_at_period_end: subscription.cancel_at_period_end,
-      canceled_at: subscription.canceled_at ? new Date(subscription.canceled_at * 1000) : null
+      current_period_start: toDateOrNull(currentPeriodStartRaw),
+      current_period_end: toDateOrNull(currentPeriodEndRaw),
+      cancel_at_period_end: subscription.cancel_at_period_end ?? false,
+      canceled_at: toDateOrNull(subscription.canceled_at)
     };
     console.log('Subscription data:', subscriptionData);
     
@@ -365,8 +395,24 @@ class BillingService {
 
     // Update user tier
     console.log('Updating user tier for subscription:', subscription.id, 'status:', subscription.status);
-    await TierService.handleSubscriptionUpdate(subscription.id, subscription.status);
-    console.log('User tier updated');
+    try {
+      await TierService.handleSubscriptionUpdate(subscription.id, subscription.status);
+      console.log('User tier updated');
+    } catch (tierError) {
+      // If we don't have a local subscription record yet, don't fail the webhook
+      if (tierError && tierError.message === 'Subscription not found') {
+        console.warn(
+          'Subscription not found in database when handling Stripe subscription update. ' +
+          'This can happen if the checkout session webhook has not yet created the record. ' +
+          'Subscription ID:',
+          subscription.id
+        );
+      } else {
+        console.error('Error updating user tier from subscription:', tierError);
+        // Re-throw to surface unexpected errors
+        throw tierError;
+      }
+    }
   }
 
   // Handle subscription deleted
@@ -404,10 +450,11 @@ class BillingService {
         status, current_period_start, current_period_end, cancel_at_period_end, canceled_at
       )
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-      ON CONFLICT (stripe_customer_id)
+      -- Ensure idempotency by de-duplicating on the Stripe subscription ID, which is unique per subscription.
+      ON CONFLICT (stripe_subscription_id)
       DO UPDATE SET
+        user_id = COALESCE(EXCLUDED.user_id, subscriptions.user_id),
         stripe_customer_id = COALESCE(EXCLUDED.stripe_customer_id, subscriptions.stripe_customer_id),
-        stripe_subscription_id = COALESCE(EXCLUDED.stripe_subscription_id, subscriptions.stripe_subscription_id),
         stripe_price_id = COALESCE(EXCLUDED.stripe_price_id, subscriptions.stripe_price_id),
         status = COALESCE(EXCLUDED.status, subscriptions.status),
         current_period_start = COALESCE(EXCLUDED.current_period_start, subscriptions.current_period_start),

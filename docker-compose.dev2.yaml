@@ -1,85 +1,106 @@
-#version: '3.8'
+version: '3.8'
 
 services:
+  # PostgreSQL Database
   postgres:
     image: postgres:16-alpine
-    container_name: tradetally-db
-    shm_size: '512m' # Increased for Postgres sorting/queries
-    mem_limit: '1g' # RAM limit for DB caching (DS218+ optimized)
+    container_name: tradetally-db-dev-new
     environment:
-      POSTGRES_USER: '${DB_USER:-trader}'
-      POSTGRES_PASSWORD: '${DB_PASSWORD:-trader_password}'
-      POSTGRES_DB: '${DB_NAME:-tradetally}'
+      POSTGRES_USER: ${DB_USER:-trader}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-trader_password}
+      POSTGRES_DB: ${DB_NAME:-tradetally}
     volumes:
-      - /volume1/docker/tradetally/postgres:/var/lib/postgresql/data
+      - postgres_data_dev-new:/var/lib/postgresql/data
+    ports:
+      - "5434:5432"
     networks:
-      - trader-network
+      - trader-network-dev-new
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${DB_USER:-trader} -d ${DB_NAME:-tradetally}']
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-trader} -d ${DB_NAME:-tradetally}"]
       interval: 10s
       timeout: 5s
       retries: 5
-    restart: unless-stopped
 
+  # Application (Frontend + Backend) - Built from local Dockerfile
   app:
-    image: potentialmidas/tradetally:latest
-    container_name: tradetally-app
-    mem_limit: '2g' # RAM for front end + back end + analytics
-    shm_size: '256m' # For Behavioral Analytics/IPC
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tradetally-app-dev-new
     depends_on:
       postgres:
         condition: service_healthy
     environment:
-      NODE_ENV: '${NODE_ENV:-production}'
-      PORT: '${PORT:-3000}'
+      # Backend environment variables
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: ${PORT:-3000}
       DB_HOST: postgres
       DB_PORT: 5432
-      DB_USER: '${DB_USER:-trader}'
-      DB_PASSWORD: '${DB_PASSWORD:-trader_password}'
-      DB_NAME: '${DB_NAME:-tradetally}'
-      JWT_SECRET: '${JWT_SECRET:-change_me_generate_32plus_chars}'
-      JWT_EXPIRES_IN: '${JWT_EXPIRES_IN:-7d}'
-      EMAIL_HOST: '${EMAIL_HOST:-smtp.gmail.com}'
-      EMAIL_PORT: '${EMAIL_PORT:-587}'
-      EMAIL_USER: '${EMAIL_USER:-}'
-      EMAIL_PASS: '${EMAIL_PASS:-}'
-      EMAIL_FROM: '${EMAIL_FROM:-noreply@tradetally.io}'
-      BILLING_ENABLED: '${BILLING_ENABLED:-false}'
-      FEATURES_BILLING_ENABLED: '${FEATURES_BILLING_ENABLED:-false}'
-      VITE_API_URL: '${VITE_API_URL:-http://localhost/api}'
-      FRONTEND_URL: '${FRONTEND_URL:-http://localhost:5173}'
-      CORS_ORIGINS: '${CORS_ORIGINS:-}'
-      REGISTRATION_MODE: '${REGISTRATION_MODE:-open}'
-      FINNHUB_API_KEY: '${FINNHUB_API_KEY:-}'
-      ALPHA_VANTAGE_API_KEY: '${ALPHA_VANTAGE_API_KEY:-}'
-      ENABLE_AI_CUSIP_RESOLUTION: '${ENABLE_AI_CUSIP_RESOLUTION:-false}'
-      RUN_MIGRATIONS: '${RUN_MIGRATIONS:-true}'
-      FEATURES_BEHAVIORAL_ANALYTICS_ENABLED: '${FEATURES_BEHAVIORAL_ANALYTICS_ENABLED:-true}'
+      DB_USER: ${DB_USER:-trader}
+      DB_PASSWORD: ${DB_PASSWORD:-trader_password}
+      DB_NAME: ${DB_NAME:-tradetally}
+      JWT_SECRET: ${JWT_SECRET:-your_jwt_secret_here}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      # Email configuration (optional)
+      EMAIL_HOST: ${EMAIL_HOST:-smtp.gmail.com}
+      EMAIL_PORT: ${EMAIL_PORT:-587}
+      EMAIL_USER: ${EMAIL_USER:-}
+      EMAIL_PASS: ${EMAIL_PASS:-}
+      EMAIL_FROM: ${EMAIL_FROM:-noreply@tradetally.io}
+      # Frontend API URL - use relative path so it works on any port
+      VITE_API_URL: ${VITE_API_URL:-/api}
+      # CORS Configuration for Mobile Apps
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      # Mobile Support Configuration
+      ACCESS_TOKEN_EXPIRE: ${ACCESS_TOKEN_EXPIRE:-15m}
+      REFRESH_TOKEN_EXPIRE: ${REFRESH_TOKEN_EXPIRE:-30d}
+      MAX_DEVICES_PER_USER: ${MAX_DEVICES_PER_USER:-10}
+      ENABLE_DEVICE_TRACKING: ${ENABLE_DEVICE_TRACKING:-true}
+      # Analytics Configuration
+      VITE_ANALYTICS_DOMAIN: ${VITE_ANALYTICS_DOMAIN:-}
+      VITE_ANALYTICS_SITE_ID: ${VITE_ANALYTICS_SITE_ID:-}
+      # Registration Control
+      REGISTRATION_MODE: ${REGISTRATION_MODE:-open}
+      # External API Keys
+      FINNHUB_API_KEY: ${FINNHUB_API_KEY:-}
+      ALPHA_VANTAGE_API_KEY: ${ALPHA_VANTAGE_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      ENABLE_AI_CUSIP_RESOLUTION: ${ENABLE_AI_CUSIP_RESOLUTION:-true}
+      PERPLEXITY_API_KEY: ${PERPLEXITY_API_KEY:-}
+      # Billing Configuration
+      BILLING_ENABLED: ${BILLING_ENABLED:-false}
     ports:
-      - '8085:80'
-      - '3000:3000'
+      - "8082:80"
+      - "3001:3000"
     volumes:
-      - /volume1/docker/tradetally/backend/logs:/app/backend/src/logs
-      - /volume1/docker/tradetally/backend/data:/app/backend/src/data
+      - ./backend/src/logs:/app/backend/src/logs
+      - ./backend/src/data:/app/backend/src/data
+      # Mount source code for development (optional - enables hot reload if supported)
+      - ./backend/src:/app/backend/src
+      - ./frontend/src:/app/frontend/src
     networks:
-      - trader-network
+      - trader-network-dev-new
     restart: unless-stopped
 
+  # Optional: Adminer for database management
   adminer:
     image: adminer:latest
-    container_name: tradetally-adminer
-    mem_limit: '256m' # For DB queries in Adminer
+    container_name: tradetally-adminer-dev-new
     depends_on:
       - postgres
     ports:
-      - '8080:8080'
+      - "8088:8080"
     networks:
-      - trader-network
+      - trader-network-dev-new
     environment:
       ADMINER_DEFAULT_SERVER: postgres
     restart: unless-stopped
 
 networks:
-  trader-network:
+  trader-network-dev-new:
     driver: bridge
 
+volumes:
+  postgres_data_dev-new:
+    driver: local

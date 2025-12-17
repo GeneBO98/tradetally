@@ -1,5 +1,5 @@
 <template>
-  <div class="container mx-auto px-4 py-8">
+  <div class="content-wrapper py-8">
     <!-- Header -->
     <div class="flex items-center mb-8">
       <button

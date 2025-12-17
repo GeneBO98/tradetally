@@ -1,72 +1,74 @@
 <template>
-  <div class="max-w-[65%] mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  <div class="content-wrapper py-8">
     <!-- Header -->
     <div class="mb-8">
       <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Trading Journal</h1>
+          <h1 class="heading-page">Trading Journal</h1>
           <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
             Track your daily market thoughts, trading plans, and reflections
           </p>
         </div>
         
-        <div class="mt-4 sm:mt-0 flex items-center space-x-3">
+        <div class="mt-4 sm:mt-0 flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
           <!-- View Toggle -->
-          <div class="flex bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
-            <button
-              @click="currentView = 'list'"
-              :class="[
-                'px-3 py-1 text-sm font-medium rounded-md transition-colors',
-                currentView === 'list'
-                  ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm'
-                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-              ]"
-            >
-              <ListBulletIcon class="w-4 h-4 mr-1 inline" />
-              List
-            </button>
-            <button
-              @click="currentView = 'calendar'"
-              :class="[
-                'px-3 py-1 text-sm font-medium rounded-md transition-colors',
-                currentView === 'calendar'
-                  ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm'
-                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-              ]"
-            >
-              <CalendarDaysIcon class="w-4 h-4 mr-1 inline" />
-              Calendar
-            </button>
-            <button
-              @click="currentView = 'templates'"
-              :class="[
-                'px-3 py-1 text-sm font-medium rounded-md transition-colors',
-                currentView === 'templates'
-                  ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm'
-                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-              ]"
-            >
-              <DocumentTextIcon class="w-4 h-4 mr-1 inline" />
-              Templates
-            </button>
-            <button
-              @click="currentView = 'analysis'"
-              :class="[
-                'px-3 py-1 text-sm font-medium rounded-md transition-colors',
-                currentView === 'analysis'
-                  ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm'
-                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-              ]"
-            >
-              <SparklesIcon class="w-4 h-4 mr-1 inline" />
-              AI Analysis
-            </button>
+          <div class="overflow-x-auto -mx-2 px-2 sm:mx-0 sm:px-0">
+            <div class="flex bg-gray-100 dark:bg-gray-700 rounded-lg p-1 min-w-max">
+              <button
+                @click="currentView = 'list'"
+                :class="[
+                  'px-4 py-2 text-sm font-medium rounded-md transition-colors whitespace-nowrap flex items-center',
+                  currentView === 'list'
+                    ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                ]"
+              >
+                <ListBulletIcon class="w-4 h-4 mr-1" />
+                List
+              </button>
+              <button
+                @click="currentView = 'calendar'"
+                :class="[
+                  'px-4 py-2 text-sm font-medium rounded-md transition-colors whitespace-nowrap flex items-center',
+                  currentView === 'calendar'
+                    ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                ]"
+              >
+                <CalendarDaysIcon class="w-4 h-4 mr-1" />
+                Calendar
+              </button>
+              <button
+                @click="currentView = 'templates'"
+                :class="[
+                  'px-4 py-2 text-sm font-medium rounded-md transition-colors whitespace-nowrap flex items-center',
+                  currentView === 'templates'
+                    ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                ]"
+              >
+                <DocumentTextIcon class="w-4 h-4 mr-1" />
+                Templates
+              </button>
+              <button
+                @click="currentView = 'analysis'"
+                :class="[
+                  'px-4 py-2 text-sm font-medium rounded-md transition-colors whitespace-nowrap flex items-center',
+                  currentView === 'analysis'
+                    ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                ]"
+              >
+                <SparklesIcon class="w-4 h-4 mr-1" />
+                AI Analysis
+              </button>
+            </div>
           </div>
-          
+
           <!-- Create Entry Button -->
           <router-link
             to="/diary/new"
-            class="btn-primary"
+            class="btn-primary flex-shrink-0"
           >
             <PlusIcon class="w-4 h-4 mr-2" />
             New Entry
@@ -339,7 +341,7 @@
         <div v-else-if="currentView === 'calendar'" class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
         <!-- Calendar Header -->
         <div class="flex justify-between items-center mb-6">
-          <h2 class="text-xl font-semibold text-gray-900 dark:text-white">
+          <h2 class="heading-section">
             {{ format(calendarDate, 'MMMM yyyy') }}
           </h2>
           <div class="flex items-center space-x-2">

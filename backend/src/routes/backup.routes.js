@@ -1,13 +1,27 @@
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
 const backupController = require('../controllers/backup.controller');
 const { authenticate, requireAdmin } = require('../middleware/auth');
+
+// Configure multer for backup file upload (in memory)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 100 * 1024 * 1024 }, // 100MB limit for backup files
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === 'application/json' || file.originalname.endsWith('.json')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only JSON backup files are allowed'), false);
+    }
+  }
+});
 
 /**
  * Backup Routes (Admin Only)
  * All endpoints require admin authentication
  *
- * NOTE: Specific routes (settings, cleanup) must come before parameterized routes (:id)
+ * NOTE: Specific routes (settings, cleanup, restore) must come before parameterized routes (:id)
  * to avoid route conflicts
  */
 
@@ -19,6 +33,9 @@ router.put('/settings', authenticate, requireAdmin, backupController.updateSetti
 
 // Cleanup old backups
 router.post('/cleanup', authenticate, requireAdmin, backupController.cleanupOldBackups);
+
+// Restore from backup file
+router.post('/restore', authenticate, requireAdmin, upload.single('file'), backupController.restoreBackup);
 
 // Create a manual backup
 router.post('/', authenticate, requireAdmin, backupController.createBackup);

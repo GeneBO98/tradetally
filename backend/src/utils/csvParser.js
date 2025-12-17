@@ -344,7 +344,9 @@ const brokerParsers = {
     const quantity = parseFloat(row.Quantity);
     const absQuantity = Math.abs(quantity);
     const price = parseFloat(row.Price);
-    const commission = Math.abs(parseFloat(row.Commission || 0)); // Commission is negative in IBKR CSVs
+    // IBKR commission: negative = fee paid, positive = rebate received
+    // Convert to our convention: positive = fee paid, negative = rebate (credit)
+    const commission = -(parseFloat(row.Commission || 0));
     const symbol = cleanString(row.Symbol);
 
     // Parse instrument data (options/futures detection)
@@ -901,14 +903,68 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       debugLines.forEach((line, i) => console.log(`Line ${i}: ${line}`));
     }
     
+    // Special handling for IBKR CSV formats
+    if (broker === 'ibkr' || broker === 'ibkr_trade_confirmation') {
+      // IBKR CSVs can have quoted fields with commas inside and variable column counts
+      parseOptions = {
+        columns: true,
+        skip_empty_lines: true,
+        trim: true,
+        delimiter: ',',
+        relax: true, // Relax parsing rules for more permissive parsing
+        relax_column_count: true, // Allow variable column counts
+        quote: '"', // Handle quoted fields
+        escape: '"', // Handle escaped quotes
+        skip_records_with_empty_values: false,
+        skip_records_with_error: true // Skip problematic records instead of failing
+      };
+      console.log('Using special parsing options for IBKR CSV');
+      
+      // Log first few lines for debugging
+      const debugLines = csvString.split('\n').slice(0, 5);
+      console.log('First few lines of IBKR CSV:');
+      debugLines.forEach((line, i) => console.log(`Line ${i}: ${line.substring(0, 200)}`));
+    }
+    
     let records;
     try {
       records = parse(csvString, parseOptions);
     } catch (parseError) {
       console.error('CSV parsing error:', parseError.message);
       
+      // If IBKR parsing fails, try alternative approach
+      if (broker === 'ibkr' || broker === 'ibkr_trade_confirmation') {
+        console.log('Trying alternative parsing approach for IBKR');
+        
+        // Try with even more relaxed options
+        parseOptions = {
+          columns: true,
+          skip_empty_lines: true,
+          trim: true,
+          delimiter: ',',
+          relax: true, // Relax parsing rules
+          relax_column_count: true,
+          skip_records_with_error: true,
+          quote: '"',
+          escape: '"',
+          on_record: (record, context) => {
+            // Log problematic records
+            if (context.error) {
+              console.log(`Error on line ${context.lines}: ${context.error.message}`);
+            }
+            return record;
+          }
+        };
+        
+        try {
+          records = parse(csvString, parseOptions);
+        } catch (retryError) {
+          console.error('Alternative parsing also failed:', retryError.message);
+          throw new Error(`CSV parsing failed: ${retryError.message}`);
+        }
+      }
       // If thinkorswim parsing fails, try alternative approach
-      if (broker === 'thinkorswim') {
+      else if (broker === 'thinkorswim') {
         console.log('Trying alternative parsing approach for thinkorswim');
         
         // Try with different options
@@ -985,11 +1041,10 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       const result = await parseSchwabTrades(records, existingPositions, context);
       console.log('Finished Schwab trade parsing');
 
-      // Apply trade grouping if enabled
-      const tradeGroupingSettings = context.tradeGroupingSettings || { enabled: true, timeGapMinutes: 60 };
-      if (tradeGroupingSettings.enabled && result.length > 0) {
-        return applyTradeGrouping(result, tradeGroupingSettings);
-      }
+      // IMPORTANT: Do NOT apply trade grouping for Schwab transactions
+      // Schwab parser already uses round-trip position tracking to create properly separated trades
+      // Trade grouping would incorrectly merge multiple round trips on the same day
+      console.log('[INFO] Skipping trade grouping for Schwab (already grouped by round-trip logic)');
 
       return result;
     }
@@ -1063,11 +1118,10 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       const result = await parseTradeovateTransactions(records, existingPositions, context);
       console.log('Finished Tradeovate transaction parsing');
 
-      // Apply trade grouping if enabled
-      const tradeGroupingSettings = context.tradeGroupingSettings || { enabled: true, timeGapMinutes: 60 };
-      if (tradeGroupingSettings.enabled && result.length > 0) {
-        return applyTradeGrouping(result, tradeGroupingSettings);
-      }
+      // IMPORTANT: Do NOT apply trade grouping for Tradeovate transactions
+      // Tradeovate parser uses round-trip position tracking to create properly separated trades
+      // Trade grouping would incorrectly merge multiple round trips when exit and new entry have same timestamp
+      console.log('[INFO] Skipping trade grouping for Tradeovate (already grouped by round-trip logic)');
 
       return result;
     }
@@ -1289,8 +1343,16 @@ function parseDate(dateStr) {
     if (dayNum < 1 || dayNum > 31) return null;
     if (yearNum < 1900 || yearNum > 2100) return null;
     
-    const date = new Date(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`);
-    return isNaN(date.getTime()) ? null : date.toISOString().split('T')[0];
+    // Validate the date is actually valid (e.g., not Feb 30)
+    const date = new Date(yearNum, monthNum - 1, dayNum);
+    if (date.getFullYear() !== yearNum || date.getMonth() !== monthNum - 1 || date.getDate() !== dayNum) {
+      return null; // Invalid date (e.g., Feb 30)
+    }
+    
+    // Create date in YYYY-MM-DD format directly to avoid timezone issues
+    const monthPadded = monthNum.toString().padStart(2, '0');
+    const dayPadded = dayNum.toString().padStart(2, '0');
+    return `${yearNum}-${monthPadded}-${dayPadded}`;
   }
   
   // Fall back to default date parsing with validation
@@ -1565,7 +1627,11 @@ function parseInstrumentData(symbol) {
     return { instrumentType: 'stock' };
   }
 
-  const normalizedSymbol = symbol.replace(/\s+/g, ' ').trim();
+  // Normalize: uppercase and standardize spaces
+  const normalizedSymbol = symbol.toString().toUpperCase().replace(/\s+/g, ' ').trim();
+
+  // Compact options with space: "Cl 251024C00322500" -> "CL251024C00322500" for pattern matching
+  const symbolNoSpaces = normalizedSymbol.replace(/\s+/g, '');
 
   // Readable IBKR options format: "DIA 10OCT25 466 PUT" (underlying + date + strike + type)
   const readableOptionMatch = normalizedSymbol.match(/^([A-Z]+)\s+(\d{1,2})([A-Z]{3})(\d{2})\s+(\d+(?:\.\d+)?)\s+(PUT|CALL)$/i);
@@ -1591,7 +1657,7 @@ function parseInstrumentData(symbol) {
   }
 
   // Compact IBKR options format: "DIA10OCT25466PUT" (underlying + date + strike + type, no spaces)
-  const compactReadableOptionMatch = normalizedSymbol.match(/^([A-Z]+)(\d{1,2})([A-Z]{3})(\d{2})(\d+(?:\.\d+)?)(PUT|CALL)$/i);
+  const compactReadableOptionMatch = symbolNoSpaces.match(/^([A-Z]+)(\d{1,2})([A-Z]{3})(\d{2})(\d+(?:\.\d+)?)(PUT|CALL)$/i);
   if (compactReadableOptionMatch) {
     const [, underlying, day, monthStr, year, strike, type] = compactReadableOptionMatch;
 
@@ -1615,7 +1681,9 @@ function parseInstrumentData(symbol) {
 
   // IBKR Options format: "SEDG  250801P00025000" or "AMD   251010C00240000" (underlying + spaces + YYMMDD + C/P + strike)
   // This format has the underlying padded with spaces, then date, call/put indicator, and strike*1000
-  const ibkrOptionMatch = normalizedSymbol.match(/^([A-Z]+)\s+(\d{6})([CP])(\d{8})$/);
+  // Try with spaces first (original format), then without spaces (e.g., "Cl 251024C00322500" -> "Cl251024C00322500")
+  const ibkrOptionMatch = normalizedSymbol.match(/^([A-Z]+)\s+(\d{6})([CP])(\d{8})$/) ||
+                          symbolNoSpaces.match(/^([A-Z]+)(\d{6})([CP])(\d{8})$/);
   if (ibkrOptionMatch) {
     const [, underlying, expiry, type, strikeStr] = ibkrOptionMatch;
     const year = 2000 + parseInt(expiry.substr(0, 2));
@@ -1634,7 +1702,8 @@ function parseInstrumentData(symbol) {
   }
 
   // Standard compact options format: "AAPL230120C00150000" (6-char underlying + YYMMDD + C/P + 8-digit strike)
-  const compactOptionMatch = normalizedSymbol.match(/^([A-Z]{1,6})(\d{6})([CP])(\d{8})$/);
+  // Also handles format with spaces like "Cl 251024C00322500" by using symbolNoSpaces
+  const compactOptionMatch = symbolNoSpaces.match(/^([A-Z]{1,6})(\d{6})([CP])(\d{8})$/);
   if (compactOptionMatch) {
     const [, underlying, expiry, type, strikeStr] = compactOptionMatch;
     const year = 2000 + parseInt(expiry.substr(0, 2));
@@ -2350,10 +2419,9 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
         continue;
       }
       
-      // Detect short sales - check both action and description
-      const isShort = action.includes('sell short') || 
-                     description.toLowerCase().includes('short') ||
-                     action.includes('short');
+      // Detect short sales - only check action field to avoid false positives
+      // from security names containing "short" (e.g., "PROSHARES SHORT QQQ ETF")
+      const isShort = action.includes('sell short');
       
       let transactionType;
       if (action.includes('buy')) {
@@ -2362,10 +2430,23 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
         transactionType = isShort ? 'short' : 'sell'; // Short sell vs regular sell
       }
       
+      // Parse date and skip if invalid
+      const parsedDate = parseDate(date);
+      if (!parsedDate) {
+        console.log(`Skipping transaction with invalid date:`, { symbol, date, action });
+        continue;
+      }
+      
+      const parsedDateTime = parseDateTime(date + ' 09:30');
+      if (!parsedDateTime) {
+        console.log(`Skipping transaction with invalid datetime:`, { symbol, date, action });
+        continue;
+      }
+      
       transactions.push({
         symbol,
-        date: parseDate(date),
-        datetime: parseDateTime(date + ' 09:30'),
+        date: parsedDate,
+        datetime: parsedDateTime,
         action: transactionType,
         quantity,
         price,
@@ -2382,12 +2463,46 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
     }
   }
   
+  // Assign unique times to transactions on the same date+symbol to preserve CSV order
+  // This prevents issues with duplicate detection when multiple round trips occur on the same day
+  const transactionsByDateSymbol = {};
+  for (const txn of transactions) {
+    // txn.date is a string in YYYY-MM-DD format from parseDate()
+    // Ensure date is valid (not null) before using it
+    if (!txn.date) {
+      console.warn(`[WARNING] Transaction missing date field:`, txn);
+      continue;
+    }
+    const key = `${txn.symbol}_${txn.date}`;
+    if (!transactionsByDateSymbol[key]) {
+      transactionsByDateSymbol[key] = [];
+    }
+    transactionsByDateSymbol[key].push(txn);
+  }
+
+  // Assign incremental times (1 millisecond apart) to transactions with the same date+symbol
+  for (const key in transactionsByDateSymbol) {
+    const group = transactionsByDateSymbol[key];
+    if (group.length > 1) {
+      console.log(`[DEBUG] Found ${group.length} transactions for ${key}:`);
+      group.forEach((txn, index) => {
+        const originalTime = txn.datetime;
+        // Keep the same time but add milliseconds to make each unique
+        const baseTime = new Date(txn.datetime);
+        baseTime.setMilliseconds(index);
+        txn.datetime = baseTime.toISOString();
+        console.log(`[DEBUG]   [${index}] ${txn.action} ${txn.quantity} @ $${txn.price} - Time: ${originalTime} → ${txn.datetime}`);
+      });
+      console.log(`[INFO] Assigned unique times to ${group.length} transactions for ${key} to preserve order`);
+    }
+  }
+
   // Sort transactions by symbol and date
   transactions.sort((a, b) => {
     if (a.symbol !== b.symbol) return a.symbol.localeCompare(b.symbol);
     return new Date(a.datetime) - new Date(b.datetime);
   });
-  
+
   console.log(`Parsed ${transactions.length} valid transactions`);
 
   // Track the last trade end time for each symbol (for time-gap-based grouping)
@@ -2494,24 +2609,29 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
         if (!executionExists) {
           currentTrade.executions.push(newExecution);
           currentTrade.totalFees += (transaction.fees || 0);
+          console.log(`  → Added execution: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price} at ${newExecution.datetime}`);
           if (currentTrade.isExistingPosition) {
             currentTrade.newExecutionsAdded++;
           }
         } else {
-          console.log(`  → Skipping duplicate execution: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
+          console.log(`  → Skipping duplicate execution: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price} at ${newExecution.datetime}`);
         }
       }
       
       // Process the transaction
       if (transaction.action === 'buy') {
         currentPosition += qty;
-        
+
         // Add to entry or exit value based on trade direction
         if (currentTrade && currentTrade.side === 'long') {
+          const beforeEntry = currentTrade.entryValue;
+          const beforeQty = currentTrade.totalQuantity;
           currentTrade.entryValue += qty * transaction.price;
           currentTrade.totalQuantity += qty;
+          console.log(`  → [LONG BUY] Added to entry: ${beforeEntry} + ${qty * transaction.price} = ${currentTrade.entryValue}, Qty: ${beforeQty} + ${qty} = ${currentTrade.totalQuantity}`);
         } else if (currentTrade && currentTrade.side === 'short') {
           currentTrade.exitValue += qty * transaction.price;
+          console.log(`  → [SHORT BUY] Added to exit: ${currentTrade.exitValue}`);
         }
         
         openLots.push({
@@ -2524,13 +2644,16 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
         
       } else if (transaction.action === 'short' || transaction.action === 'sell') {
         currentPosition -= qty;
-        
+
         // Add to entry or exit value based on trade direction
         if (currentTrade && currentTrade.side === 'short') {
           currentTrade.entryValue += qty * transaction.price;
           currentTrade.totalQuantity += qty;
+          console.log(`  → [SHORT SELL] Added to entry: ${currentTrade.entryValue}, Qty: ${currentTrade.totalQuantity}`);
         } else if (currentTrade && currentTrade.side === 'long') {
+          const beforeExit = currentTrade.exitValue;
           currentTrade.exitValue += qty * transaction.price;
+          console.log(`  → [LONG SELL] Added to exit: ${beforeExit} + ${qty * transaction.price} = ${currentTrade.exitValue}`);
         }
         
         if (transaction.action === 'short') {
@@ -2627,6 +2750,10 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
   }
 
   console.log(`Created ${completedTrades.length} completed trades (including open positions) from transaction pairing`);
+  console.log(`\n[DEBUG] Schwab trades summary:`);
+  completedTrades.forEach((trade, index) => {
+    console.log(`  Trade #${index + 1}: ${trade.symbol} ${trade.side} ${trade.quantity} shares, Entry: $${trade.entryPrice?.toFixed(2)}, Exit: $${trade.exitPrice?.toFixed(2)}, P&L: $${trade.pnl?.toFixed(2)}`);
+  });
 
   return completedTrades;
 }
@@ -3689,7 +3816,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
   // First, parse all transactions
   for (const record of records) {
     try {
-      let symbol, quantity, absQuantity, price, commission, dateTime, action;
+      let symbol, quantity, absQuantity, price, commission, dateTime, action, multiplierFromCSV;
 
       // Capture Code column if present (O = Open, P = Partial, C = Close)
       let code = null;
@@ -3704,7 +3831,9 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         quantity = parseFloat(record.Quantity);
         absQuantity = Math.abs(quantity);
         price = parseFloat(record.Price);
-        commission = Math.abs(parseFloat(record.Commission || 0));
+        // IBKR commission: negative = fee paid, positive = rebate received
+        // Convert to our convention: positive = fee paid, negative = rebate (credit)
+        commission = -(parseFloat(record.Commission || 0));
 
         // Parse date/time - format is YYYYMMDD;HHMMSS
         const dateTimeParts = (record['Date/Time'] || '').split(';');
@@ -3721,24 +3850,33 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         // Determine action from Buy/Sell column
         const buySell = cleanString(record['Buy/Sell']).toUpperCase();
         action = buySell === 'BUY' ? 'buy' : 'sell';
+        // Read Multiplier column for Trade Confirmation format
+        multiplierFromCSV = record.Multiplier ? parseFloat(record.Multiplier) : null;
       } else {
         // Activity Statement format (original)
         symbol = cleanString(record.Symbol);
         quantity = parseFloat(record.Quantity);
         absQuantity = Math.abs(quantity);
         price = parseFloat(record.Price);
-        commission = Math.abs(parseFloat(record.Commission || 0));
+        // IBKR commission: negative = fee paid, positive = rebate received
+        // Convert to our convention: positive = fee paid, negative = rebate (credit)
+        commission = -(parseFloat(record.Commission || 0));
         // Handle both "DateTime" and "Date/Time" column names
         // Clean DateTime - remove leading and trailing apostrophes/quotes if present
         const rawDateTime = (record.DateTime || record['Date/Time'] || '').toString();
         dateTime = rawDateTime.replace(/^[\x27\x22\u2018\u2019\u201C\u201D]|[\x27\x22\u2018\u2019\u201C\u201D]$/g, '').trim();
         action = quantity > 0 ? 'buy' : 'sell';
+        // Check for Multiplier column (some IBKR Activity Statement exports include this)
+        multiplierFromCSV = record.Multiplier ? parseFloat(record.Multiplier) : null;
       }
 
 
       // Skip if missing essential data
-      if (!symbol || absQuantity === 0 || price === 0 || !dateTime) {
-        console.log(`Skipping IBKR record missing data:`, { symbol, quantity, price, dateTime });
+      // Note: price === 0 is valid for expired options (Code contains "Ep"), so only skip if
+      // price is 0 AND it's not an expiration transaction
+      const isExpiration = code && code.includes('EP');
+      if (!symbol || absQuantity === 0 || (price === 0 && !isExpiration) || !dateTime) {
+        console.log(`Skipping IBKR record missing data:`, { symbol, quantity, price, dateTime, code });
         continue;
       }
 
@@ -3765,6 +3903,9 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         console.log(`[IBKR] Stock quantity: ${processedQuantity} shares`);
       }
 
+      // Detect if this is an expiration transaction
+      const isExpirationTx = code && code.includes('EP');
+
       transactions.push({
         symbol,
         date: tradeDate,
@@ -3773,12 +3914,18 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         quantity: processedQuantity,
         price: price,
         fees: commission,
-        code: code, // O = Open, P = Partial, C = Close
-        description: `IBKR transaction`,
+        code: code, // O = Open, P = Partial, C = Close, Ep = Expired
+        isExpiration: isExpirationTx,
+        multiplier: multiplierFromCSV, // Contract multiplier from CSV (if available)
+        description: isExpirationTx ? `IBKR option expiration` : `IBKR transaction`,
         raw: record
       });
 
-      console.log(`Parsed IBKR transaction: ${action} ${processedQuantity} ${symbol} @ $${price}${code ? ` [${code}]` : ''}`);
+      if (isExpirationTx) {
+        console.log(`[IBKR] Parsed EXPIRATION: ${action} ${processedQuantity} ${symbol} @ $${price} [${code}] (options expired worthless)`);
+      } else {
+        console.log(`Parsed IBKR transaction: ${action} ${processedQuantity} ${symbol} @ $${price}${code ? ` [${code}]` : ''}${commission < 0 ? ` (rebate: $${Math.abs(commission).toFixed(2)})` : ''}`);
+      }
     } catch (error) {
       console.error('Error parsing IBKR transaction:', error, record);
     }
@@ -3852,16 +3999,28 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
       instrumentData = parseInstrumentData(symbol);
     }
 
-    // Note: For IBKR, quantity is in contracts for options but prices are per-share
-    // We don't use contractMultiplier for quantity adjustments, but we DO need to apply
-    // a multiplier when calculating dollar values (entryValue/exitValue)
+    // Note: For IBKR, quantity is in contracts for options
+    // Price interpretation varies:
+    //   - Standard options: prices are per-share, multiply by 100 for dollar value
+    //   - Mini options: prices are per-share, multiply by 10 for dollar value
+    //   - Some exports: prices may be per-contract, multiply by 1 for dollar value
+    // We read the Multiplier column from CSV if available to handle all cases correctly
     const contractMultiplier = 1; // Quantity is already in contracts
 
     console.log(`Instrument type: ${instrumentData.instrumentType}, contract multiplier: ${contractMultiplier}`);
 
     // For dollar value calculations (entryValue/exitValue), we need to apply appropriate multipliers
-    const valueMultiplier = instrumentData.instrumentType === 'option' ? 100 :
+    // Priority: CSV Multiplier > Trade Confirmation contractSize > default (100)
+    const csvMultiplier = symbolTransactions[0]?.multiplier;
+    const valueMultiplier = instrumentData.instrumentType === 'option' ?
+                            (csvMultiplier || instrumentData.contractSize || 100) :
                             instrumentData.instrumentType === 'future' ? (instrumentData.pointValue || 1) : 1;
+
+    if (csvMultiplier && instrumentData.instrumentType === 'option') {
+      console.log(`[IBKR] Using multiplier from CSV: ${csvMultiplier} (option price is per-${csvMultiplier === 1 ? 'contract' : csvMultiplier === 10 ? 'share (mini)' : 'share'})`);
+    } else if (instrumentData.instrumentType === 'option') {
+      console.log(`[IBKR] Using default multiplier: ${valueMultiplier} (standard options pricing)`);
+    }
 
     // Track position and round-trip trades
     // Start with existing position if we have one for this symbol
@@ -3948,11 +4107,14 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         }
 
         if (shouldStartNewTrade) {
+          // Determine trade side - for sell-to-open, this is a short position
+          const tradeSide = transaction.action === 'buy' ? 'long' : 'short';
+
           currentTrade = {
             symbol: symbol,
             entryTime: transaction.datetime,
             tradeDate: transaction.date,
-            side: transaction.action === 'buy' ? 'long' : 'short',
+            side: tradeSide,
             executions: [],
             totalQuantity: 0,
             totalFees: 0,
@@ -3960,7 +4122,13 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
             exitValue: 0,
             broker: 'ibkr'
           };
-          console.log(`  → Started new ${currentTrade.side} trade${transactionCode ? ` [Code: ${transactionCode}]` : ''}`);
+
+          // Log with extra detail for short option positions
+          if (tradeSide === 'short' && instrumentData.instrumentType === 'option') {
+            console.log(`  → Started new SHORT OPTION trade (sell-to-open)${transactionCode ? ` [Code: ${transactionCode}]` : ''}`);
+          } else {
+            console.log(`  → Started new ${currentTrade.side} trade${transactionCode ? ` [Code: ${transactionCode}]` : ''}`);
+          }
         }
       }
 
@@ -4016,8 +4184,20 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         currentPosition -= qty;
 
         if (currentTrade && currentTrade.side === 'short') {
-          currentTrade.entryValue += qty * transaction.price * valueMultiplier;
+          // For short positions, entry value is what we receive from selling
+          const saleProceeds = qty * transaction.price * valueMultiplier;
+          currentTrade.entryValue += saleProceeds;
           currentTrade.totalQuantity += qty;
+
+          // For short options, log detailed information about proceeds and commission rebates
+          if (instrumentData.instrumentType === 'option') {
+            // Commission rebates show as negative fees, so net proceeds = sale - fees (adds rebate)
+            const netProceeds = saleProceeds - transaction.fees;
+            console.log(`  [SHORT OPTION ENTRY] Sold ${qty} contracts @ $${transaction.price}/share`);
+            console.log(`    Sale proceeds: $${saleProceeds.toFixed(2)} (${qty} × $${transaction.price} × ${valueMultiplier})`);
+            console.log(`    Commission/rebate: $${transaction.fees.toFixed(2)} ${transaction.fees < 0 ? '(REBATE - credit)' : '(fee - debit)'}`);
+            console.log(`    Net proceeds: $${netProceeds.toFixed(2)}`);
+          }
         } else if (currentTrade && currentTrade.side === 'long') {
           currentTrade.exitValue += qty * transaction.price * valueMultiplier;
         }
@@ -4033,10 +4213,18 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         currentTrade.exitPrice = currentTrade.exitValue / (currentTrade.totalQuantity * valueMultiplier);
 
         // Calculate P/L
+        // For short positions: P/L = what you received (entry) - what you paid (exit) - fees
+        // For long positions: P/L = what you received (exit) - what you paid (entry) - fees
+        // Commission rebates (negative fees) increase profit when subtracted
         if (currentTrade.side === 'long') {
           currentTrade.pnl = currentTrade.exitValue - currentTrade.entryValue - currentTrade.totalFees;
         } else {
           currentTrade.pnl = currentTrade.entryValue - currentTrade.exitValue - currentTrade.totalFees;
+
+          // Log P&L calculation for short options to help debugging
+          if (instrumentData.instrumentType === 'option') {
+            console.log(`  [SHORT OPTION P&L] Entry: $${currentTrade.entryValue.toFixed(2)}, Exit: $${currentTrade.exitValue.toFixed(2)}, Fees: $${currentTrade.totalFees.toFixed(2)}, P&L: $${currentTrade.pnl.toFixed(2)}`);
+          }
         }
 
         currentTrade.pnlPercent = (currentTrade.pnl / currentTrade.entryValue) * 100;
@@ -4118,9 +4306,22 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
       currentTrade.commission = currentTrade.totalFees;
       currentTrade.fees = 0;
       currentTrade.exitTime = null;
-      currentTrade.pnl = 0;
-      currentTrade.pnlPercent = 0;
-      currentTrade.notes = `Open position: ${currentTrade.executions.length} executions`;
+
+      // For open positions, P&L should be null (not yet realized)
+      // This prevents showing incorrect "loss" for open short positions
+      currentTrade.pnl = null;
+      currentTrade.pnlPercent = null;
+
+      // Create descriptive notes for open positions
+      if (currentTrade.side === 'short' && instrumentData.instrumentType === 'option') {
+        // For short options, calculate and show the net proceeds received
+        const netProceeds = currentTrade.entryValue - currentTrade.totalFees;
+        currentTrade.notes = `Open SHORT option position: ${currentTrade.totalQuantity} contracts sold @ $${currentTrade.entryPrice.toFixed(2)}/share, net proceeds: $${netProceeds.toFixed(2)} (${currentTrade.totalFees < 0 ? 'includes rebate' : 'after commission'})`;
+        console.log(`  [OPEN SHORT OPTION] Entry price: $${currentTrade.entryPrice.toFixed(2)}/share, Net proceeds: $${netProceeds.toFixed(2)}, Position: ${currentPosition} contracts`);
+      } else {
+        currentTrade.notes = `Open position: ${currentTrade.executions.length} executions`;
+      }
+
       currentTrade.executionData = currentTrade.executions;
 
       // Add instrument data for options/futures
@@ -4134,8 +4335,16 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
       // Mark as update if this was an existing position with new executions
       if (currentTrade.isExistingPosition && currentTrade.newExecutionsAdded > 0) {
         currentTrade.isUpdate = true;
-        currentTrade.notes = `Updated open position: ${currentTrade.newExecutionsAdded} new executions added`;
-        console.log(`  [SUCCESS] UPDATED open ${currentTrade.side} position: ${currentTrade.totalQuantity} shares, ${currentTrade.newExecutionsAdded} new executions`);
+
+        // Create more descriptive notes for short option updates
+        if (currentTrade.side === 'short' && instrumentData.instrumentType === 'option') {
+          const netProceeds = currentTrade.entryValue - currentTrade.totalFees;
+          currentTrade.notes = `Updated open SHORT option position: ${currentTrade.newExecutionsAdded} new executions added, net proceeds: $${netProceeds.toFixed(2)}`;
+        } else {
+          currentTrade.notes = `Updated open position: ${currentTrade.newExecutionsAdded} new executions added`;
+        }
+
+        console.log(`  [SUCCESS] UPDATED open ${currentTrade.side} position: ${currentTrade.totalQuantity} ${instrumentData.instrumentType === 'option' ? 'contracts' : 'shares'}, ${currentTrade.newExecutionsAdded} new executions`);
       }
 
       completedTrades.push(currentTrade);
@@ -4943,10 +5152,17 @@ async function parseTradeovateTransactions(records, existingPositions = {}, cont
     }
   }
 
-  // Sort transactions by symbol and datetime
+  // Sort transactions by symbol, datetime, and orderId
+  // IMPORTANT: orderId is used as tiebreaker for same-timestamp transactions
+  // This ensures correct trade pairing when exit and new entry happen at same timestamp
   transactions.sort((a, b) => {
     if (a.symbol !== b.symbol) return a.symbol.localeCompare(b.symbol);
-    return new Date(a.datetime) - new Date(b.datetime);
+    const timeDiff = new Date(a.datetime) - new Date(b.datetime);
+    if (timeDiff !== 0) return timeDiff;
+    // Use orderId as tiebreaker - lower orderId means earlier execution
+    const orderIdA = parseInt(a.orderId) || 0;
+    const orderIdB = parseInt(b.orderId) || 0;
+    return orderIdA - orderIdB;
   });
 
   console.log(`Parsed ${transactions.length} valid Tradeovate filled orders`);

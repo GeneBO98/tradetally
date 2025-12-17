@@ -77,6 +77,9 @@ const tradeController = {
         console.log('[QUALITY] Filtering by quality grades:', filters.qualityGrades);
       }
 
+      // Check if count should be skipped for faster initial load
+      const skipCount = req.query.skipCount === 'true' || req.query.skipCount === '1';
+      
       // Get trades with pagination
       console.log('[PERF] About to call Trade.findByUser, elapsed:', Date.now() - requestStartTime, 'ms');
       const trades = await Trade.findByUser(req.user.id, filters);
@@ -103,24 +106,83 @@ const tradeController = {
         if (trade.quality_metrics !== undefined) trade.qualityMetrics = trade.quality_metrics;
       });
 
-      // Get total count without pagination
-      const totalCountFilters = { ...filters };
-      delete totalCountFilters.limit;
-      delete totalCountFilters.offset;
-
-      // Use getCountWithFilters for regular trades table counting
-      console.log('[PERF] About to call Trade.getCountWithFilters, elapsed:', Date.now() - requestStartTime, 'ms');
-      const total = await Trade.getCountWithFilters(req.user.id, totalCountFilters);
-      console.log('[PERF] Trade.getCountWithFilters completed, total:', total, ', elapsed:', Date.now() - requestStartTime, 'ms');
-
-      console.log('[PERF] getUserTrades total time:', Date.now() - requestStartTime, 'ms');
-      res.json({
+      // Prepare response with trades immediately
+      const response = {
         trades,
         count: trades.length,
-        total: total,
         limit: filters.limit,
-        offset: filters.offset,
-        totalPages: Math.ceil(total / filters.limit)
+        offset: filters.offset
+      };
+
+      // Get total count without pagination (can be skipped for faster initial load)
+      if (!skipCount) {
+        const totalCountFilters = { ...filters };
+        delete totalCountFilters.limit;
+        delete totalCountFilters.offset;
+
+        // Use getCountWithFilters for regular trades table counting
+        console.log('[PERF] About to call Trade.getCountWithFilters, elapsed:', Date.now() - requestStartTime, 'ms');
+        const total = await Trade.getCountWithFilters(req.user.id, totalCountFilters);
+        console.log('[PERF] Trade.getCountWithFilters completed, total:', total, ', elapsed:', Date.now() - requestStartTime, 'ms');
+        
+        response.total = total;
+        response.totalPages = Math.ceil(total / filters.limit);
+      } else {
+        // Provide estimated total based on current page (can be updated later)
+        response.total = null;
+        response.totalPages = null;
+        console.log('[PERF] Skipped count query for faster response');
+      }
+
+      console.log('[PERF] getUserTrades total time:', Date.now() - requestStartTime, 'ms');
+      res.json(response);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async getTradesCount(req, res, next) {
+    try {
+      const {
+        symbol, startDate, endDate, tags, strategy, sector,
+        strategies, sectors, hasNews, daysOfWeek, instrumentTypes, optionTypes, qualityGrades,
+        side, minPrice, maxPrice, minQuantity, maxQuantity,
+        status, minPnl, maxPnl, pnlType, broker, brokers
+      } = req.query;
+
+      const filters = {
+        symbol,
+        startDate,
+        endDate,
+        tags: tags ? tags.split(',').map(t => t.trim()).filter(Boolean) : undefined,
+        strategy,
+        sector,
+        strategies: strategies ? strategies.split(',') : undefined,
+        sectors: sectors ? sectors.split(',') : undefined,
+        hasNews,
+        daysOfWeek: daysOfWeek ? daysOfWeek.split(',').map(d => parseInt(d)) : undefined,
+        instrumentTypes: instrumentTypes ? instrumentTypes.split(',') : undefined,
+        optionTypes: optionTypes ? optionTypes.split(',') : undefined,
+        qualityGrades: qualityGrades ? qualityGrades.split(',') : undefined,
+        side,
+        minPrice: minPrice ? parseFloat(minPrice) : undefined,
+        maxPrice: maxPrice ? parseFloat(maxPrice) : undefined,
+        minQuantity: minQuantity ? parseInt(minQuantity) : undefined,
+        maxQuantity: maxQuantity ? parseInt(maxQuantity) : undefined,
+        status,
+        minPnl: (minPnl !== undefined && minPnl !== null && minPnl !== '') ? parseFloat(minPnl) : undefined,
+        maxPnl: (maxPnl !== undefined && maxPnl !== null && maxPnl !== '') ? parseFloat(maxPnl) : undefined,
+        pnlType,
+        broker,
+        brokers: brokers ? brokers.split(',') : undefined
+      };
+
+      const total = await Trade.getCountWithFilters(req.user.id, filters);
+      
+      res.json({
+        total: total,
+        limit: parseInt(req.query.limit || '50', 10),
+        totalPages: Math.ceil(total / parseInt(req.query.limit || '50', 10))
       });
     } catch (error) {
       next(error);
@@ -1431,7 +1493,7 @@ const tradeController = {
           if (unresolvedCusips.length > 0) {
             logger.logImport(`Scheduling background CUSIP resolution for ${unresolvedCusips.length} CUSIPs`);
             const cusipResolver = require('../utils/cusipResolver');
-            cusipResolver.scheduleResolution(req.user.id, unresolvedCusips);
+            cusipResolver.scheduleResolution(fileUserId, unresolvedCusips);
           }
 
           // Clear timeout on successful completion
@@ -1443,6 +1505,14 @@ const tradeController = {
             WHERE id = $3
           `, [imported, failed, importId, failedTrades.length > 0 ? { failedTrades, duplicates } : { duplicates }]);
           
+          // Invalidate analytics cache after successful import so counts/P&L update immediately
+          try {
+            invalidateAnalyticsCache(fileUserId);
+            console.log('[SUCCESS] Analytics cache invalidated after import completion');
+          } catch (cacheError) {
+            console.warn('[WARNING] Failed to invalidate analytics cache:', cacheError.message);
+          }
+          
           // Invalidate sector performance cache after successful import
           try {
             await cache.invalidate('sector_performance');
@@ -1453,9 +1523,9 @@ const tradeController = {
 
           // Check achievements and trigger leaderboard updates after import
           try {
-            console.log('[ACHIEVEMENT] Checking achievements after import for user', req.user.id);
+            console.log('[ACHIEVEMENT] Checking achievements after import for user', fileUserId);
             const AchievementService = require('../services/achievementService');
-            const newAchievements = await AchievementService.checkAndAwardAchievements(req.user.id);
+            const newAchievements = await AchievementService.checkAndAwardAchievements(fileUserId);
             console.log(`[ACHIEVEMENT] Post-import achievements awarded: ${newAchievements.length}`);
           } catch (achievementError) {
             console.warn('[WARNING] Failed to check/award achievements after import:', achievementError.message);
@@ -1465,7 +1535,7 @@ const tradeController = {
           try {
             console.log('[PROCESS] Starting background symbol categorization after import...');
             // Run categorization in background without blocking the response
-            symbolCategories.categorizeNewSymbols(req.user.id).then(result => {
+            symbolCategories.categorizeNewSymbols(fileUserId).then(result => {
               console.log(`[SUCCESS] Background categorization complete: ${result.processed} of ${result.total} symbols categorized`);
             }).catch(error => {
               console.warn('[WARNING] Background symbol categorization failed:', error.message);
@@ -1480,7 +1550,7 @@ const tradeController = {
               console.log(`[PROCESS] Scheduling background news enrichment for ${imported} imported trades...`);
               const jobQueue = require('../utils/jobQueue');
               await jobQueue.addJob('news_enrichment', {
-                userId: req.user.id,
+                userId: fileUserId,
                 importId: importId,
                 tradeCount: imported
               });
