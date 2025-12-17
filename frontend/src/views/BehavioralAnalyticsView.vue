@@ -1,6 +1,6 @@
 <template>
   <div class="min-h-screen bg-gray-50 dark:bg-gray-900 py-8">
-    <div class="max-w-[65%] mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="content-wrapper">
       <!-- Back Button and Title -->
       <div class="flex items-center justify-between mb-6">
         <button 
@@ -64,7 +64,7 @@
 
         <!-- Active Alerts -->
         <div v-if="activeAlerts.length > 0" class="space-y-4">
-          <h2 class="text-xl font-semibold text-gray-900 dark:text-white">Active Alerts</h2>
+          <h2 class="heading-section">Active Alerts</h2>
           <div class="grid gap-4">
             <div 
               v-for="alert in activeAlerts" 
@@ -79,7 +79,7 @@
               <div class="card-body">
                 <div class="flex items-start justify-between">
                   <div class="flex-1">
-                    <h3 class="text-lg font-medium text-gray-900 dark:text-white">{{ alert.title }}</h3>
+                    <h3 class="heading-card">{{ alert.title }}</h3>
                     <p class="text-gray-600 dark:text-gray-400 mt-1">{{ alert.message }}</p>
                     <p class="text-sm text-gray-500 dark:text-gray-500 mt-2">
                       {{ formatDate(alert.created_at) }}
@@ -101,7 +101,7 @@
         <div class="card">
           <div class="card-body">
             <div class="flex items-center justify-between mb-6">
-              <h3 class="text-lg font-medium text-gray-900 dark:text-white">Trading Personality Profiling</h3>
+              <h3 class="heading-card">Trading Personality Profiling</h3>
               <button
                 @click="analyzePersonality"
                 :disabled="loadingPersonality"
@@ -1127,7 +1127,7 @@
           <div class="card-body">
             <div class="flex items-center justify-between mb-6">
               <div>
-                <h3 class="text-lg font-medium text-gray-900 dark:text-white">Loss Aversion Behavior Analysis</h3>
+                <h3 class="heading-card">Loss Aversion Behavior Analysis</h3>
                 <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Identifies psychological patterns: Do you hold losers too long and exit winners too early?</p>
               </div>
               <button
@@ -1362,7 +1362,7 @@
           <div class="card-body">
             <div class="flex items-center justify-between mb-6">
               <div>
-                <h3 class="text-lg font-medium text-gray-900 dark:text-white">Top Missed Profit Opportunities</h3>
+                <h3 class="heading-card">Top Missed Profit Opportunities</h3>
                 <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Specific trades where you left money on the table by exiting too early</p>
               </div>
               <div class="flex space-x-2">
@@ -1662,7 +1662,7 @@
         <div class="card">
           <div class="card-body">
             <div class="flex items-center justify-between mb-6">
-              <h3 class="text-lg font-medium text-gray-900 dark:text-white">Overconfidence Indicators</h3>
+              <h3 class="heading-card">Overconfidence Indicators</h3>
               <button
                 @click="analyzeOverconfidence"
                 :disabled="loadingOverconfidence"

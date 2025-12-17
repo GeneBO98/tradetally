@@ -482,33 +482,16 @@ class Trade {
     const startTime = Date.now();
     console.log('[PERF] findByUser started for user:', userId);
     const { getUserTimezone } = require('../utils/timezone');
-    let query = `
-      SELECT t.*,
-        t.strategy, t.setup,
-        array_agg(DISTINCT ta.file_url) FILTER (WHERE ta.id IS NOT NULL) as attachment_urls,
-        array_agg(DISTINCT tch.chart_url) FILTER (WHERE tch.id IS NOT NULL) as chart_urls,
-        count(DISTINCT tc.id)::integer as comment_count,
-        sc.finnhub_industry as sector,
-        sc.company_name as company_name
-      FROM trades t
-      LEFT JOIN trade_attachments ta ON t.id = ta.trade_id
-      LEFT JOIN trade_charts tch ON t.id = tch.trade_id
-      LEFT JOIN trade_comments tc ON t.id = tc.trade_id
-      LEFT JOIN symbol_categories sc ON t.symbol = sc.symbol
-      WHERE t.user_id = $1
-    `;
-
+    
+    // Build the WHERE clause and filter values first
     const values = [userId];
     let paramCount = 2;
+    let whereClause = 'WHERE t.user_id = $1';
+    let needsSectorJoin = false;
 
     if (filters.symbol) {
       // Enhanced symbol filtering to handle both ticker symbols and CUSIPs
-      // This accounts for the fact that some trades may have CUSIPs stored in the symbol field
-      // that should be mapped to ticker symbols for filtering
-      // Check both global and user-specific CUSIP mappings
-      // Also check if the search term might be a ticker that maps to a CUSIP in trades
-      // Now supports partial matching with ILIKE
-      query += ` AND (
+      whereClause += ` AND (
         t.symbol ILIKE $${paramCount} || '%' OR
         EXISTS (
           SELECT 1 FROM cusip_mappings cm
@@ -528,20 +511,20 @@ class Trade {
     }
 
     if (filters.startDate) {
-      query += ` AND t.trade_date >= $${paramCount}`;
+      whereClause += ` AND t.trade_date >= $${paramCount}`;
       values.push(filters.startDate);
       paramCount++;
     }
 
     if (filters.endDate) {
-      query += ` AND t.trade_date <= $${paramCount}`;
+      whereClause += ` AND t.trade_date <= $${paramCount}`;
       values.push(filters.endDate);
       paramCount++;
     }
 
     if (filters.tags && filters.tags.length > 0) {
       console.log('[TAGS] Applying tag filter in Trade.findByUser:', filters.tags);
-      query += ` AND t.tags && $${paramCount}`;
+      whereClause += ` AND t.tags && $${paramCount}`;
       values.push(filters.tags);
       paramCount++;
       console.log('[TAGS] Tag filter SQL added, value:', filters.tags);
@@ -551,25 +534,23 @@ class Trade {
     if (filters.strategies && filters.strategies.length > 0) {
       console.log('[TARGET] APPLYING MULTI-SELECT STRATEGIES:', filters.strategies);
       const placeholders = filters.strategies.map((_, index) => `$${paramCount + index}`).join(',');
-      query += ` AND t.strategy IN (${placeholders})`;
+      whereClause += ` AND t.strategy IN (${placeholders})`;
       filters.strategies.forEach(strategy => values.push(strategy));
       paramCount += filters.strategies.length;
-      console.log('[TARGET] Added strategies filter to query:', query.split('WHERE')[1]);
     }
 
     // Multi-select sectors filter  
     if (filters.sectors && filters.sectors.length > 0) {
+      needsSectorJoin = true;
       const placeholders = filters.sectors.map((_, index) => `$${paramCount + index}`).join(',');
-      query += ` AND sc.finnhub_industry IN (${placeholders})`;
+      whereClause += ` AND sc.finnhub_industry IN (${placeholders})`;
       filters.sectors.forEach(sector => values.push(sector));
       paramCount += filters.sectors.length;
     }
 
-    // Single strategy filter (backward compatibility)
-    // Strategy filter will be handled later with hold time analysis
-
     if (filters.sector) {
-      query += ` AND sc.finnhub_industry = $${paramCount}`;
+      needsSectorJoin = true;
+      whereClause += ` AND sc.finnhub_industry = $${paramCount}`;
       values.push(filters.sector);
       paramCount++;
     }
@@ -577,67 +558,67 @@ class Trade {
     if (filters.hasNews !== undefined && filters.hasNews !== '' && filters.hasNews !== null) {
       console.log('[CHECK] hasNews filter detected:', { value: filters.hasNews, type: typeof filters.hasNews });
       if (filters.hasNews === 'true' || filters.hasNews === true || filters.hasNews === 1 || filters.hasNews === '1') {
-        query += ` AND t.has_news = true`;
+        whereClause += ` AND t.has_news = true`;
         console.log('[CHECK] Applied hasNews=true filter to query');
       } else if (filters.hasNews === 'false' || filters.hasNews === false || filters.hasNews === 0 || filters.hasNews === '0') {
-        query += ` AND (t.has_news = false OR t.has_news IS NULL)`;
+        whereClause += ` AND (t.has_news = false OR t.has_news IS NULL)`;
         console.log('[CHECK] Applied hasNews=false filter to query');
       }
     }
 
     // Advanced filters
     if (filters.side) {
-      query += ` AND t.side = $${paramCount}`;
+      whereClause += ` AND t.side = $${paramCount}`;
       values.push(filters.side);
       paramCount++;
     }
 
     if (filters.minPrice !== undefined) {
-      query += ` AND t.entry_price >= $${paramCount}`;
+      whereClause += ` AND t.entry_price >= $${paramCount}`;
       values.push(filters.minPrice);
       paramCount++;
     }
 
     if (filters.maxPrice !== undefined) {
-      query += ` AND t.entry_price <= $${paramCount}`;
+      whereClause += ` AND t.entry_price <= $${paramCount}`;
       values.push(filters.maxPrice);
       paramCount++;
     }
 
     if (filters.minQuantity !== undefined) {
-      query += ` AND t.quantity >= $${paramCount}`;
+      whereClause += ` AND t.quantity >= $${paramCount}`;
       values.push(filters.minQuantity);
       paramCount++;
     }
 
     if (filters.maxQuantity !== undefined) {
-      query += ` AND t.quantity <= $${paramCount}`;
+      whereClause += ` AND t.quantity <= $${paramCount}`;
       values.push(filters.maxQuantity);
       paramCount++;
     }
 
     if (filters.status === 'open') {
-      query += ` AND t.exit_price IS NULL`;
+      whereClause += ` AND t.exit_price IS NULL`;
     } else if (filters.status === 'closed') {
-      query += ` AND t.exit_price IS NOT NULL`;
+      whereClause += ` AND t.exit_price IS NOT NULL`;
     }
 
     if (filters.minPnl !== undefined) {
-      query += ` AND t.pnl >= $${paramCount}`;
+      whereClause += ` AND t.pnl >= $${paramCount}`;
       values.push(filters.minPnl);
       paramCount++;
     }
 
     if (filters.maxPnl !== undefined) {
-      query += ` AND t.pnl <= $${paramCount}`;
+      whereClause += ` AND t.pnl <= $${paramCount}`;
       values.push(filters.maxPnl);
       paramCount++;
     }
 
     if (filters.pnlType === 'profit') {
-      query += ` AND t.pnl > 0`;
+      whereClause += ` AND t.pnl > 0`;
     } else if (filters.pnlType === 'loss') {
-      query += ` AND t.pnl < 0`;
+      whereClause += ` AND t.pnl < 0`;
     }
 
     // Days of week filter (timezone-aware)
@@ -647,16 +628,15 @@ class Trade {
       console.log(`🕒 Using timezone ${userTimezone} for day-of-week filtering`);
       
       // Use entry_time converted to user's timezone for day calculation
-      // This handles cases where trade_date might be wrong due to timezone issues
       const placeholders = filters.daysOfWeek.map((_, index) => `$${paramCount + index}`).join(',');
       if (userTimezone !== 'UTC') {
-        query += ` AND extract(dow from (t.entry_time AT TIME ZONE 'UTC' AT TIME ZONE $${paramCount + filters.daysOfWeek.length})) IN (${placeholders})`;
+        whereClause += ` AND extract(dow from (t.entry_time AT TIME ZONE 'UTC' AT TIME ZONE $${paramCount + filters.daysOfWeek.length})) IN (${placeholders})`;
         filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
         values.push(userTimezone);
         paramCount += filters.daysOfWeek.length + 1;
       } else {
         // UTC case - can use simpler extraction
-        query += ` AND extract(dow from t.entry_time) IN (${placeholders})`;
+        whereClause += ` AND extract(dow from t.entry_time) IN (${placeholders})`;
         filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
         paramCount += filters.daysOfWeek.length;
       }
@@ -665,7 +645,7 @@ class Trade {
     // Instrument types filter (stock, option, future)
     if (filters.instrumentTypes && filters.instrumentTypes.length > 0) {
       const placeholders = filters.instrumentTypes.map((_, index) => `$${paramCount + index}`).join(',');
-      query += ` AND t.instrument_type IN (${placeholders})`;
+      whereClause += ` AND t.instrument_type IN (${placeholders})`;
       filters.instrumentTypes.forEach(type => values.push(type));
       paramCount += filters.instrumentTypes.length;
     }
@@ -673,7 +653,7 @@ class Trade {
     // Option types filter (call, put) - only applies to options
     if (filters.optionTypes && filters.optionTypes.length > 0) {
       const placeholders = filters.optionTypes.map((_, index) => `$${paramCount + index}`).join(',');
-      query += ` AND t.option_type IN (${placeholders})`;
+      whereClause += ` AND t.option_type IN (${placeholders})`;
       filters.optionTypes.forEach(type => values.push(type));
       paramCount += filters.optionTypes.length;
     }
@@ -683,13 +663,13 @@ class Trade {
       // Handle comma-separated string of brokers (from multi-select)
       const brokerList = filters.brokers.split(',').map(b => b.trim());
       if (brokerList.length > 0) {
-        query += ` AND t.broker = ANY($${paramCount}::text[])`;
+        whereClause += ` AND t.broker = ANY($${paramCount}::text[])`;
         values.push(brokerList);
         paramCount++;
       }
     } else if (filters.broker) {
       // Backward compatibility: single broker
-      query += ` AND t.broker = $${paramCount}`;
+      whereClause += ` AND t.broker = $${paramCount}`;
       values.push(filters.broker);
       paramCount++;
     }
@@ -698,7 +678,7 @@ class Trade {
     if (filters.qualityGrades && filters.qualityGrades.length > 0) {
       console.log('[QUALITY] Applying quality grade filter:', filters.qualityGrades);
       const placeholders = filters.qualityGrades.map((_, index) => `$${paramCount + index}`).join(',');
-      query += ` AND t.quality_grade IN (${placeholders})`;
+      whereClause += ` AND t.quality_grade IN (${placeholders})`;
       filters.qualityGrades.forEach(grade => values.push(grade));
       paramCount += filters.qualityGrades.length;
       console.log('[QUALITY] Added quality filter to query, values:', filters.qualityGrades);
@@ -706,29 +686,56 @@ class Trade {
 
     // Hold time filter
     if (filters.holdTime) {
-      query += this.getHoldTimeFilter(filters.holdTime);
+      whereClause += this.getHoldTimeFilter(filters.holdTime);
     }
 
     // Strategy filter
     if (filters.strategy) {
-      query += this.getStrategyFilter(filters.strategy);
+      whereClause += this.getStrategyFilter(filters.strategy);
     }
 
-    query += ` GROUP BY t.id, sc.finnhub_industry, sc.company_name ORDER BY t.trade_date DESC, t.entry_time DESC`;
-
+    // Build subquery to get trade IDs first (with LIMIT/OFFSET applied early)
+    // This is the key optimization: we get only the IDs we need, then join
+    let subquery = `SELECT t.id FROM trades t`;
+    if (needsSectorJoin) {
+      subquery += ` LEFT JOIN symbol_categories sc ON t.symbol = sc.symbol`;
+    }
+    subquery += ` ${whereClause} ORDER BY t.trade_date DESC, t.entry_time DESC`;
+    
     if (filters.limit) {
-      query += ` LIMIT $${paramCount}`;
+      subquery += ` LIMIT $${paramCount}`;
       values.push(filters.limit);
       paramCount++;
     }
 
     if (filters.offset) {
-      query += ` OFFSET $${paramCount}`;
+      subquery += ` OFFSET $${paramCount}`;
       values.push(filters.offset);
+      paramCount++;
     }
 
+    // Now build the main query that joins only the selected trades
+    // This way we only aggregate data for the trades we actually return
+    const mainQuery = `
+      SELECT t.*,
+        t.strategy, t.setup,
+        array_agg(DISTINCT ta.file_url) FILTER (WHERE ta.id IS NOT NULL) as attachment_urls,
+        array_agg(DISTINCT tch.chart_url) FILTER (WHERE tch.id IS NOT NULL) as chart_urls,
+        count(DISTINCT tc.id)::integer as comment_count,
+        sc.finnhub_industry as sector,
+        sc.company_name as company_name
+      FROM (${subquery}) AS trade_ids
+      INNER JOIN trades t ON t.id = trade_ids.id
+      LEFT JOIN trade_attachments ta ON t.id = ta.trade_id
+      LEFT JOIN trade_charts tch ON t.id = tch.trade_id
+      LEFT JOIN trade_comments tc ON t.id = tc.trade_id
+      LEFT JOIN symbol_categories sc ON t.symbol = sc.symbol
+      GROUP BY t.id, sc.finnhub_industry, sc.company_name
+      ORDER BY t.trade_date DESC, t.entry_time DESC
+    `;
+
     const queryStartTime = Date.now();
-    const result = await db.query(query, values);
+    const result = await db.query(mainQuery, values);
     const queryEndTime = Date.now();
     console.log('[PERF] findByUser query took:', queryEndTime - queryStartTime, 'ms, returned', result.rows.length, 'rows');
     console.log('[PERF] findByUser total time:', queryEndTime - startTime, 'ms');
@@ -930,13 +937,21 @@ class Trade {
       paramCount++;
     }
 
-    // Check if any P&L-affecting field was provided (using !== undefined to allow 0 values)
-    const hasPnLUpdate = updates.entryPrice !== undefined || updates.exitPrice !== undefined ||
-                         updates.quantity !== undefined || updates.side !== undefined ||
-                         updates.commission !== undefined || updates.fees !== undefined ||
-                         updates.instrumentType !== undefined || updates.contractSize !== undefined;
+    // Check if any P&L-affecting field was actually CHANGED (not just provided)
+    // This prevents recalculation when opening and closing a trade without changes
+    const hasPnLUpdate = (
+      (updates.entryPrice !== undefined && parseFloat(updates.entryPrice) !== parseFloat(currentTrade.entry_price)) ||
+      (updates.exitPrice !== undefined && parseFloat(updates.exitPrice) !== parseFloat(currentTrade.exit_price)) ||
+      (updates.quantity !== undefined && parseFloat(updates.quantity) !== parseFloat(currentTrade.quantity)) ||
+      (updates.side !== undefined && updates.side !== currentTrade.side) ||
+      (updates.commission !== undefined && parseFloat(updates.commission) !== parseFloat(currentTrade.commission)) ||
+      (updates.fees !== undefined && parseFloat(updates.fees) !== parseFloat(currentTrade.fees)) ||
+      (updates.instrumentType !== undefined && updates.instrumentType !== currentTrade.instrument_type) ||
+      (updates.contractSize !== undefined && parseFloat(updates.contractSize) !== parseFloat(currentTrade.contract_size))
+    );
 
     if (hasPnLUpdate) {
+      console.log('[PNL UPDATE] Values actually changed, recalculating P&L');
       const instrumentType = updates.instrumentType || currentTrade.instrument_type || 'stock';
       const quantity = updates.quantity !== undefined ? updates.quantity : currentTrade.quantity;
       const pointValue = updates.pointValue !== undefined ? updates.pointValue : currentTrade.point_value;
@@ -1595,20 +1610,6 @@ class Trade {
       useMedian = false;
     }
     
-    // First, check what data exists in the database
-    const dataCheckQuery = `
-      SELECT 
-        COUNT(*) as total_trades,
-        COUNT(*) FILTER (WHERE pnl IS NOT NULL) as trades_with_pnl,
-        COUNT(*) FILTER (WHERE exit_price IS NOT NULL) as trades_with_exit,
-        MIN(trade_date) as earliest_date,
-        MAX(trade_date) as latest_date
-      FROM trades 
-      WHERE user_id = $1
-    `;
-    const dataCheck = await db.query(dataCheckQuery, [userId]);
-    console.log('Analytics: Database data check:', dataCheck.rows[0]);
-    
     // Make analytics less restrictive - only require user_id
     let whereClause = 'WHERE t.user_id = $1';
     const values = [userId];
@@ -1814,25 +1815,12 @@ class Trade {
     // Debug the full query construction
     console.log('[CHECK] About to execute analytics query with', values.length, 'parameters');
     
-    // First, let's count executions (individual database records)
+    // Execute independent queries in parallel for better performance
     const executionCountQuery = `
       SELECT COUNT(*) as execution_count
       FROM trades t
       ${whereClause}
     `;
-    
-    let executionCount = 0;
-    try {
-      console.log('[CHECK] Executing execution count query:', executionCountQuery);
-      const executionResult = await db.query(executionCountQuery, values);
-      executionCount = parseInt(executionResult.rows[0].execution_count) || 0;
-      console.log('Total executions:', executionCount);
-    } catch (error) {
-      console.error('[ERROR] ERROR in execution count query:', error.message);
-      console.error('[ERROR] Query was:', executionCountQuery);
-      console.error('[ERROR] Values were:', values);
-      throw error;
-    }
 
     const analyticsQuery = `
       WITH completed_trades AS (
@@ -1968,7 +1956,115 @@ class Trade {
       LEFT JOIN individual_trades it ON true
     `;
 
-    const analyticsResult = await db.query(analyticsQuery, values);
+    // Execute all independent queries in parallel for better performance
+    const [
+      executionResult,
+      analyticsResult,
+      symbolResult,
+      dailyPnLResult,
+      dailyWinRateResult,
+      topTradesResult,
+      bestWorstResult
+    ] = await Promise.all([
+      db.query(executionCountQuery, values),
+      db.query(analyticsQuery, values),
+        db.query(`
+        WITH symbol_trades AS (
+          SELECT 
+            symbol,
+            trade_date,
+            SUM(COALESCE(pnl, 0)) as trade_pnl,
+            SUM(quantity) as trade_volume,
+            COUNT(*) as execution_count,
+            CASE WHEN SUM(pnl) IS NOT NULL THEN 1 ELSE 0 END as is_completed
+          FROM trades t
+          ${whereClause}
+          GROUP BY symbol, trade_date
+        )
+        SELECT 
+          symbol,
+          COUNT(*) FILTER (WHERE is_completed = 1) as trades,
+          SUM(trade_pnl) as total_pnl,
+          AVG(trade_pnl) FILTER (WHERE is_completed = 1) as avg_pnl,
+          COUNT(*) FILTER (WHERE is_completed = 1 AND trade_pnl > 0) as wins,
+          SUM(trade_volume) as total_volume
+        FROM symbol_trades
+        GROUP BY symbol
+        ORDER BY total_pnl DESC
+        LIMIT 10
+      `, values),
+      // Get daily P&L for charting - simplified to work with any data
+      db.query(`
+        SELECT 
+          trade_date,
+          SUM(COALESCE(pnl, 0)) as daily_pnl,
+          SUM(SUM(COALESCE(pnl, 0))) OVER (ORDER BY trade_date) as cumulative_pnl,
+          COUNT(*) as trade_count
+        FROM trades t
+        ${whereClause}
+        GROUP BY trade_date
+        HAVING COUNT(*) > 0
+        ORDER BY trade_date
+      `, values),
+      // Get daily win rate data - simplified
+      db.query(`
+        SELECT 
+          trade_date,
+          COUNT(*) FILTER (WHERE COALESCE(pnl, 0) > 0) as wins,
+          COUNT(*) FILTER (WHERE COALESCE(pnl, 0) < 0) as losses,
+          COUNT(*) FILTER (WHERE COALESCE(pnl, 0) = 0) as breakeven,
+          COUNT(*) as total_trades,
+          CASE 
+            WHEN COUNT(*) > 0 THEN ROUND((COUNT(*) FILTER (WHERE COALESCE(pnl, 0) > 0)::decimal / COUNT(*)::decimal) * 100, 2)
+            ELSE 0 
+          END as win_rate
+        FROM trades t
+        ${whereClause}
+        GROUP BY trade_date
+        HAVING COUNT(*) > 0
+        ORDER BY trade_date
+      `, values),
+      // Get best and worst individual trades (not grouped)
+      db.query(`
+        (
+          SELECT 'best' as type, id, symbol, entry_price, exit_price, 
+                 quantity, pnl, trade_date
+          FROM trades t
+          ${whereClause} AND pnl IS NOT NULL AND pnl > 0
+          ORDER BY pnl DESC
+          LIMIT 5
+        )
+        UNION ALL
+        (
+          SELECT 'worst' as type, id, symbol, entry_price, exit_price, 
+                 quantity, pnl, trade_date
+          FROM trades t
+          ${whereClause} AND pnl IS NOT NULL AND pnl < 0
+          ORDER BY pnl ASC
+          LIMIT 5
+        )
+      `, values),
+      // Get individual best and worst trades for the metric cards
+      db.query(`
+        (
+          SELECT 'best' as type, id, symbol, pnl, trade_date
+          FROM trades t
+          ${whereClause} AND pnl IS NOT NULL AND pnl > 0
+          ORDER BY pnl DESC
+          LIMIT 1
+        )
+        UNION ALL
+        (
+          SELECT 'worst' as type, id, symbol, pnl, trade_date
+          FROM trades t
+          ${whereClause} AND pnl IS NOT NULL AND pnl < 0
+          ORDER BY pnl ASC
+          LIMIT 1
+        )
+      `, values)
+    ]);
+
+    const executionCount = parseInt(executionResult.rows[0].execution_count) || 0;
     const analytics = analyticsResult.rows[0];
     
     console.log('Analytics main query result:', analytics);
@@ -1980,163 +2076,6 @@ class Trade {
       totalPnL: analytics.total_pnl,
       avgRValue: analytics.avg_r_value
     });
-    console.log('Drawdown debug info:', {
-      max_drawdown: analytics.max_drawdown,
-      debug_max_drawdown: analytics.debug_max_drawdown,
-      drawdown_days: analytics.drawdown_days,
-      min_cumulative_pnl: analytics.min_cumulative_pnl,
-      max_peak: analytics.max_peak,
-      dd_count: analytics.dd_count
-    });
-    
-    // Debug: Get first few days of drawdown data
-    const drawdownSampleQuery = `
-      WITH daily_pnl AS (
-        SELECT 
-          trade_date,
-          COALESCE(SUM(pnl), 0) as daily_pnl
-        FROM trades
-        WHERE user_id = $1
-        GROUP BY trade_date
-        ORDER BY trade_date
-      ),
-      cumulative_pnl AS (
-        SELECT 
-          trade_date,
-          daily_pnl,
-          SUM(daily_pnl) OVER (ORDER BY trade_date) as cumulative_pnl
-        FROM daily_pnl
-      ),
-      drawdown_calc AS (
-        SELECT 
-          trade_date,
-          daily_pnl,
-          cumulative_pnl,
-          MAX(cumulative_pnl) OVER (ORDER BY trade_date ROWS UNBOUNDED PRECEDING) as peak,
-          cumulative_pnl - MAX(cumulative_pnl) OVER (ORDER BY trade_date ROWS UNBOUNDED PRECEDING) as drawdown
-        FROM cumulative_pnl
-      )
-      SELECT * FROM drawdown_calc
-      ORDER BY drawdown ASC
-      LIMIT 5
-    `;
-    
-    const drawdownSample = await db.query(drawdownSampleQuery, [userId]);
-    console.log('Worst drawdown days:', drawdownSample.rows);
-
-    // Get performance by symbol using simple grouping
-    const symbolQuery = `
-      WITH symbol_trades AS (
-        SELECT 
-          symbol,
-          trade_date,
-          SUM(COALESCE(pnl, 0)) as trade_pnl,
-          SUM(quantity) as trade_volume,
-          COUNT(*) as execution_count,
-          CASE WHEN SUM(pnl) IS NOT NULL THEN 1 ELSE 0 END as is_completed
-        FROM trades t
-        ${whereClause}
-        GROUP BY symbol, trade_date
-      )
-      SELECT 
-        symbol,
-        COUNT(*) FILTER (WHERE is_completed = 1) as trades,
-        SUM(trade_pnl) as total_pnl,
-        AVG(trade_pnl) FILTER (WHERE is_completed = 1) as avg_pnl,
-        COUNT(*) FILTER (WHERE is_completed = 1 AND trade_pnl > 0) as wins,
-        SUM(trade_volume) as total_volume
-      FROM symbol_trades
-      GROUP BY symbol
-      ORDER BY total_pnl DESC
-      LIMIT 10
-    `;
-
-    const symbolResult = await db.query(symbolQuery, values);
-
-    // Get daily P&L for charting - simplified to work with any data
-    const dailyPnLQuery = `
-      SELECT 
-        trade_date,
-        SUM(COALESCE(pnl, 0)) as daily_pnl,
-        SUM(SUM(COALESCE(pnl, 0))) OVER (ORDER BY trade_date) as cumulative_pnl,
-        COUNT(*) as trade_count
-      FROM trades t
-      ${whereClause}
-      GROUP BY trade_date
-      HAVING COUNT(*) > 0
-      ORDER BY trade_date
-    `;
-
-    const dailyPnLResult = await db.query(dailyPnLQuery, values);
-    console.log('Analytics: Daily P&L query returned', dailyPnLResult.rows.length, 'rows');
-    console.log('Analytics: Daily P&L sample data:', dailyPnLResult.rows.slice(0, 3));
-
-    // Get daily win rate data - simplified
-    const dailyWinRateQuery = `
-      SELECT 
-        trade_date,
-        COUNT(*) FILTER (WHERE COALESCE(pnl, 0) > 0) as wins,
-        COUNT(*) FILTER (WHERE COALESCE(pnl, 0) < 0) as losses,
-        COUNT(*) FILTER (WHERE COALESCE(pnl, 0) = 0) as breakeven,
-        COUNT(*) as total_trades,
-        CASE 
-          WHEN COUNT(*) > 0 THEN ROUND((COUNT(*) FILTER (WHERE COALESCE(pnl, 0) > 0)::decimal / COUNT(*)::decimal) * 100, 2)
-          ELSE 0 
-        END as win_rate
-      FROM trades t
-      ${whereClause}
-      GROUP BY trade_date
-      HAVING COUNT(*) > 0
-      ORDER BY trade_date
-    `;
-
-    const dailyWinRateResult = await db.query(dailyWinRateQuery, values);
-    console.log('Analytics: Daily win rate query returned', dailyWinRateResult.rows.length, 'rows');
-    console.log('Analytics: Daily win rate sample data:', dailyWinRateResult.rows.slice(0, 3));
-
-    // Get best and worst individual trades (not grouped)
-    const topTradesQuery = `
-      (
-        SELECT 'best' as type, id, symbol, entry_price, exit_price, 
-               quantity, pnl, trade_date
-        FROM trades t
-        ${whereClause} AND pnl IS NOT NULL AND pnl > 0
-        ORDER BY pnl DESC
-        LIMIT 5
-      )
-      UNION ALL
-      (
-        SELECT 'worst' as type, id, symbol, entry_price, exit_price, 
-               quantity, pnl, trade_date
-        FROM trades t
-        ${whereClause} AND pnl IS NOT NULL AND pnl < 0
-        ORDER BY pnl ASC
-        LIMIT 5
-      )
-    `;
-
-    const topTradesResult = await db.query(topTradesQuery, values);
-
-    // Get individual best and worst trades for the metric cards
-    const bestWorstTradesQuery = `
-      (
-        SELECT 'best' as type, id, symbol, pnl, trade_date
-        FROM trades t
-        ${whereClause} AND pnl IS NOT NULL AND pnl > 0
-        ORDER BY pnl DESC
-        LIMIT 1
-      )
-      UNION ALL
-      (
-        SELECT 'worst' as type, id, symbol, pnl, trade_date
-        FROM trades t
-        ${whereClause} AND pnl IS NOT NULL AND pnl < 0
-        ORDER BY pnl ASC
-        LIMIT 1
-      )
-    `;
-
-    const bestWorstResult = await db.query(bestWorstTradesQuery, values);
     const bestTrade = bestWorstResult.rows.find(t => t.type === 'best') || null;
     const worstTrade = bestWorstResult.rows.find(t => t.type === 'worst') || null;
 

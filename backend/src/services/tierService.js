@@ -3,20 +3,48 @@ const db = require('../config/database');
 const { getTierLimits, hasReachedLimit, getRemainingQuota, PRICING } = require('../config/tierLimits');
 
 class TierService {
-  // Check if billing is enabled (for self-hosted vs SaaS)
-  static async isBillingEnabled(hostHeader = null) {
+  // Cache for environment-based billing override so we only log once per process
+  static _billingEnvOverride = undefined; // undefined = not checked yet, null = no override, boolean = forced value
+
+  static _getBillingEnvOverride() {
+    // If we've already resolved the override (including "no override"), just return it
+    if (this._billingEnvOverride !== undefined) {
+      return this._billingEnvOverride;
+    }
+
     // First check environment variable (CRITICAL: Check this FIRST for self-hosted)
     if (process.env.BILLING_ENABLED !== undefined) {
       const enabled = process.env.BILLING_ENABLED === 'true';
-      console.log(`[BILLING] Environment variable check: BILLING_ENABLED=${process.env.BILLING_ENABLED}, returning:`, enabled);
-      return enabled;
+      console.log(
+        `[BILLING] Environment variable check: BILLING_ENABLED=${process.env.BILLING_ENABLED}, returning:`,
+        enabled
+      );
+      this._billingEnvOverride = enabled;
+      return this._billingEnvOverride;
     }
 
     // Also check FEATURES_BILLING_ENABLED for backwards compatibility
     if (process.env.FEATURES_BILLING_ENABLED !== undefined) {
       const enabled = process.env.FEATURES_BILLING_ENABLED === 'true';
-      console.log(`[BILLING] Features env variable check: FEATURES_BILLING_ENABLED=${process.env.FEATURES_BILLING_ENABLED}, returning:`, enabled);
-      return enabled;
+      console.log(
+        `[BILLING] Features env variable check: FEATURES_BILLING_ENABLED=${process.env.FEATURES_BILLING_ENABLED}, returning:`,
+        enabled
+      );
+      this._billingEnvOverride = enabled;
+      return this._billingEnvOverride;
+    }
+
+    // No env override configured
+    this._billingEnvOverride = null;
+    return this._billingEnvOverride;
+  }
+
+  // Check if billing is enabled (for self-hosted vs SaaS)
+  static async isBillingEnabled(hostHeader = null) {
+    // Prefer cached env override if set (only logged once per process)
+    const envOverride = this._getBillingEnvOverride();
+    if (envOverride !== null) {
+      return envOverride;
     }
 
     // Auto-disable billing for non-tradetally.io domains (self-hosted)

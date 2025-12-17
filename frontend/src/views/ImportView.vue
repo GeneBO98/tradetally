@@ -1,7 +1,7 @@
 <template>
-  <div class="max-w-[65%] mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  <div class="content-wrapper py-8">
     <div class="mb-8">
-      <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Import Trades</h1>
+      <h1 class="heading-page">Import Trades</h1>
       <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
         Import your trades from CSV files exported from major brokers.
       </p>
@@ -105,7 +105,7 @@
       <div v-if="customMappings.length > 0" class="card">
         <div class="card-body">
           <div class="flex items-center justify-between mb-4">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white">Custom Importers</h3>
+            <h3 class="heading-card">Custom Importers</h3>
             <button
               @click="showCustomMappings = !showCustomMappings"
               class="flex items-center space-x-2 text-sm text-primary-600 dark:text-primary-400 hover:text-primary-500"
@@ -169,7 +169,7 @@
       <div class="card">
         <div class="card-body">
           <div class="flex items-center justify-between mb-4">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white">Supported CSV Formats</h3>
+            <h3 class="heading-card">Supported CSV Formats</h3>
             <button
               @click="showFormats = !showFormats"
               class="flex items-center space-x-2 text-sm text-primary-600 dark:text-primary-400 hover:text-primary-500"
@@ -321,7 +321,7 @@
       <div v-if="importHistory.length > 0" class="card">
         <div class="card-body">
           <div class="flex items-center justify-between mb-4">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white">
+            <h3 class="heading-card">
               Import History
               <span v-if="pagination.total > 0" class="text-sm font-normal text-gray-500 dark:text-gray-400">
                 ({{ importHistory.length }} of {{ pagination.total }})
@@ -385,7 +385,7 @@
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg w-11/12 max-w-4xl h-3/4 flex flex-col">
           <!-- Header -->
           <div class="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-700">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white">Import Logs</h3>
+            <h3 class="heading-card">Import Logs</h3>
             <button @click="showLogs = false" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
               <XMarkIcon class="h-6 w-6" />
             </button>
@@ -526,8 +526,8 @@
       <!-- CUSIP Management -->
       <div class="card">
         <div class="card-body">
-          <div class="flex items-start justify-between mb-4">
-            <div>
+          <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-4">
+            <div class="flex-1 min-w-0">
               <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">
                 CUSIP Symbol Mappings
               </h3>
@@ -535,21 +535,22 @@
                 Some brokers export trades with CUSIP codes instead of ticker symbols. Manage how these codes are mapped to ticker symbols for better organization and filtering.
               </p>
             </div>
-            <div class="flex items-center space-x-2 ml-4">
+            <div class="flex items-center gap-2 flex-shrink-0">
               <button
                 @click="showAllMappingsModal = true"
                 class="btn-secondary text-sm"
               >
-                <Cog6ToothIcon class="h-5 w-5 mr-2" />
-                Manage All
+                <Cog6ToothIcon class="h-5 w-5 sm:mr-2" />
+                <span class="hidden sm:inline">Manage All</span>
               </button>
               <button
                 v-if="unmappedCusipsCount > 0"
                 @click="showUnmappedModal = true"
                 class="btn-yellow text-sm"
               >
-                <ExclamationTriangleIcon class="h-5 w-5 mr-2" />
-                {{ unmappedCusipsCount }} Unmapped
+                <ExclamationTriangleIcon class="h-5 w-5 sm:mr-2" />
+                <span class="hidden sm:inline">{{ unmappedCusipsCount }} Unmapped</span>
+                <span class="sm:hidden">{{ unmappedCusipsCount }}</span>
               </button>
             </div>
           </div>
@@ -832,6 +833,7 @@ import { useTradesStore } from '@/stores/trades'
 import { useAuthStore } from '@/stores/auth'
 import { useNotification } from '@/composables/useNotification'
 import { format } from 'date-fns'
+import { formatTradeDate } from '@/utils/date'
 import { ArrowUpTrayIcon, XMarkIcon, ExclamationTriangleIcon, Cog6ToothIcon, MagnifyingGlassIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
 import UnmappedCusipsModal from '@/components/cusip/UnmappedCusipsModal.vue'
@@ -951,7 +953,8 @@ function formatFileSize(bytes) {
 }
 
 function formatDate(date) {
-  return format(new Date(date), 'MMM dd, yyyy HH:mm')
+  // Import history dates are stored without timezone context; use safe trade formatter
+  return formatTradeDate(date, 'MMM dd, yyyy HH:mm')
 }
 
 function handleDragOver(event) {

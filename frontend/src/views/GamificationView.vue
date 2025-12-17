@@ -2,7 +2,7 @@
   <div class="min-h-screen bg-gray-50 dark:bg-gray-900">
     <!-- Header -->
     <div class="bg-white dark:bg-gray-800 shadow">
-      <div class="max-w-[65%] mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="content-wrapper">
         <div class="py-6">
           <div class="flex items-center justify-between">
             <div>
@@ -72,7 +72,7 @@
     </div>
 
     <!-- Navigation Tabs -->
-    <div class="max-w-[65%] mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="content-wrapper">
       <div class="border-b border-gray-200 dark:border-gray-700">
         <nav class="-mb-px flex space-x-8">
           <button
@@ -94,7 +94,7 @@
     </div>
 
     <!-- Tab Content -->
-    <div class="max-w-[65%] mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="content-wrapper py-8">
       <!-- Overview Tab -->
       <div v-if="activeTab === 'overview'">
         <!-- Quick Stats -->
@@ -265,88 +265,88 @@
           <p class="mt-2 text-gray-600 dark:text-gray-400">Loading achievements...</p>
         </div>
 
-        <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div v-else class="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div
             v-for="achievement in achievements"
             :key="achievement.id"
             :class="[
               'bg-white dark:bg-gray-800 rounded-lg shadow-sm border-2 transition-all duration-200 hover:shadow-md',
-              achievement.is_earned 
-                ? 'border-primary-200 dark:border-primary-700 bg-gradient-to-br from-primary-50 to-white dark:from-primary-900/20 dark:to-gray-800' 
+              achievement.is_earned
+                ? 'border-primary-200 dark:border-primary-700 bg-gradient-to-br from-primary-50 to-white dark:from-primary-900/20 dark:to-gray-800'
                 : 'border-gray-200 dark:border-gray-700'
             ]"
           >
-            <div class="p-6">
-              <div class="flex items-start justify-between mb-4">
-                <div class="flex items-center">
-                  <div 
+            <div class="p-5">
+              <!-- Badge in top right corner -->
+              <div class="flex justify-end mb-2">
+                <span
+                  v-if="achievement.is_earned"
+                  class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                >
+                  <MdiIcon :icon="mdiCheckCircle" :size="14" />
+                  Earned
+                </span>
+                <span
+                  v-else
+                  class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400"
+                >
+                  <MdiIcon :icon="mdiLock" :size="14" />
+                  Locked
+                </span>
+              </div>
+
+              <!-- Achievement info -->
+              <div class="flex items-start">
+                <div
+                  :class="[
+                    'w-12 h-12 flex-shrink-0 rounded-full flex items-center justify-center',
+                    achievement.is_earned
+                      ? 'bg-primary-100 dark:bg-primary-900'
+                      : 'bg-gray-100 dark:bg-gray-700'
+                  ]"
+                >
+                  <MdiIcon
+                    :icon="mdiTrophy"
+                    :size="24"
+                    :class="achievement.is_earned ? 'text-yellow-500' : 'text-gray-400 grayscale opacity-50'"
+                  />
+                </div>
+                <div class="ml-4 flex-1">
+                  <h3
                     :class="[
-                      'w-12 h-12 rounded-full flex items-center justify-center text-2xl',
-                      achievement.is_earned 
-                        ? 'bg-primary-100 dark:bg-primary-900' 
-                        : 'bg-gray-100 dark:bg-gray-700'
+                      'text-lg font-semibold',
+                      achievement.is_earned
+                        ? 'text-gray-900 dark:text-white'
+                        : 'text-gray-600 dark:text-gray-400'
                     ]"
                   >
-                    <MdiIcon 
-                      :icon="mdiTrophy" 
-                      :size="24" 
-                      :class="achievement.is_earned ? 'text-yellow-500' : 'text-gray-400 grayscale opacity-50'" 
-                    />
-                  </div>
-                  <div class="ml-3">
-                    <h3 
-                      :class="[
-                        'text-lg font-semibold',
-                        achievement.is_earned 
-                          ? 'text-gray-900 dark:text-white' 
-                          : 'text-gray-600 dark:text-gray-400'
-                      ]"
-                    >
-                      {{ achievement.name }}
-                    </h3>
-                    <span 
-                      :class="[
-                        'text-sm font-medium',
-                        achievement.is_earned 
-                          ? 'text-primary-600 dark:text-primary-400' 
-                          : 'text-gray-500 dark:text-gray-500'
-                      ]"
-                    >
-                      +{{ achievement.points }} XP
-                    </span>
-                  </div>
-                </div>
-                
-                <div class="flex-shrink-0">
+                    {{ achievement.name }}
+                  </h3>
                   <span
-                    v-if="achievement.is_earned"
-                    class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                    :class="[
+                      'text-sm font-medium',
+                      achievement.is_earned
+                        ? 'text-primary-600 dark:text-primary-400'
+                        : 'text-gray-500 dark:text-gray-500'
+                    ]"
                   >
-                    <MdiIcon :icon="mdiCheckCircle" :size="16" />
-                    Earned
-                  </span>
-                  <span
-                    v-else
-                    class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400"
-                  >
-                    <MdiIcon :icon="mdiLock" :size="16" />
-                    Locked
+                    +{{ achievement.points }} XP
                   </span>
                 </div>
               </div>
 
-              <p 
+              <p
                 :class="[
-                  'text-sm mb-4',
-                  achievement.is_earned 
-                    ? 'text-gray-700 dark:text-gray-300' 
+                  'text-sm mt-3',
+                  achievement.is_earned
+                    ? 'text-gray-700 dark:text-gray-300'
                     : 'text-gray-500 dark:text-gray-400'
                 ]"
               >
                 {{ achievement.description }}
               </p>
 
-              <div v-if="achievement.is_earned" class="text-xs text-gray-500 dark:text-gray-400">
+              <div v-if="achievement.is_earned" class="text-xs text-gray-500 dark:text-gray-400 mt-3">
                 Earned {{ formatDate(achievement.earned_at) }}
               </div>
             </div>
@@ -554,7 +554,7 @@
             >
               <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
                 <div class="flex items-center justify-between">
-                  <h3 class="text-lg font-medium text-gray-900 dark:text-white">
+                  <h3 class="heading-card">
                     {{ leaderboard.name }}
                   </h3>
                   <span v-if="leaderboard.filtered && leaderboard.totalFilteredUsers !== null" class="text-xs text-gray-500 dark:text-gray-400">
@@ -702,6 +702,7 @@ import api from '@/services/api'
 import MdiIcon from '@/components/MdiIcon.vue'
 import { useNotification } from '@/composables/useNotification'
 import { usePriceAlertNotifications } from '@/composables/usePriceAlertNotifications'
+import { useAuthStore } from '@/stores/auth'
 import { 
   mdiTrophy, 
   mdiChartLine, 
@@ -726,6 +727,7 @@ export default {
   setup() {
     const { showSuccess, showError, showWarning } = useNotification()
     const { celebrationQueue } = usePriceAlertNotifications()
+    const authStore = useAuthStore()
     const activeTab = ref('overview')
     
     const tabs = [
@@ -1131,6 +1133,22 @@ export default {
       // checkForNewAchievements()
     })
 
+    // Get user-specific localStorage keys (so different users don't share celebration state)
+    const getCelebrationStorageKey = () => {
+      const userId = authStore.user?.id
+      return userId ? `tt_celebrated_achievements_${userId}` : 'tt_celebrated_achievements'
+    }
+
+    const getLevelStorageKey = () => {
+      const userId = authStore.user?.id
+      return userId ? `tt_seen_level_${userId}` : 'tt_seen_level'
+    }
+
+    const getXPStorageKey = () => {
+      const userId = authStore.user?.id
+      return userId ? `tt_seen_xp_${userId}` : 'tt_seen_xp'
+    }
+
     const checkForNewAchievements = async () => {
       try {
         checkingAchievements.value = true
@@ -1143,38 +1161,36 @@ export default {
         const beforeNext = beforeStats.level_progress?.next_level_min_xp || 100
 
         const response = await api.post('/gamification/achievements/check')
-        
+
         if (response.data.success && response.data.data.count > 0) {
-          console.log(`Earned ${response.data.data.count} new achievements!`)
-          
+          const newAchievements = response.data.data.newAchievements || []
+          console.log(`[CHECK] Earned ${newAchievements.length} new achievements!`)
+
           // Show achievement names
-          const achievementNames = response.data.data.newAchievements.map(a => a.name).join(', ')
-          console.log(`New achievements: ${achievementNames}`)
-          
+          const achievementNames = newAchievements.map(a => a.name).join(', ')
+          console.log(`[CHECK] New achievements: ${achievementNames}`)
+
           // Show success message to user
           showSuccess(
-            `${response.data.data.count} New Achievement${response.data.data.count > 1 ? 's' : ''} Unlocked!`,
+            `${newAchievements.length} New Achievement${newAchievements.length > 1 ? 's' : ''} Unlocked!`,
             achievementNames
           )
-          
-          // Queue celebrations for each achievement
-          response.data.data.newAchievements.forEach(a => {
-            celebrationQueue.value.push({ type: 'achievement', payload: { achievement: a } })
-          })
-          // Fetch stats after to animate XP/level change
+
+          // Fetch stats after to get updated XP/level
           const afterRes = await api.get('/gamification/dashboard')
           const afterStats = afterRes.data?.data?.stats || {}
           const afterXP = afterStats.experience_points || beforeXP
           const afterLevel = afterStats.level || beforeLevel
           const afterMin = afterStats.level_progress?.current_level_min_xp || beforeMin
           const afterNext = afterStats.level_progress?.next_level_min_xp || beforeNext
-          const deltaXP = Math.max(0, afterXP - beforeXP)
+
+          // IMPORTANT: Push xp_update FIRST to establish baseline
           celebrationQueue.value.push({
             type: 'xp_update',
             payload: {
               oldXP: beforeXP,
               newXP: afterXP,
-              deltaXP,
+              deltaXP: Math.max(0, afterXP - beforeXP),
               oldLevel: beforeLevel,
               newLevel: afterLevel,
               currentLevelMinXPBefore: beforeMin,
@@ -1183,24 +1199,41 @@ export default {
               nextLevelMinXPAfter: afterNext
             }
           })
+
+          // Queue achievements AFTER xp_update
+          newAchievements.forEach(a => {
+            celebrationQueue.value.push({ type: 'achievement', payload: { achievement: a } })
+          })
+
+          // Mark these as celebrated so celebrateUnseenEarned doesn't show them again (user-specific keys)
+          const celebrationKey = getCelebrationStorageKey()
+          const storageIds = localStorage.getItem(celebrationKey)
+          const seenIds = storageIds ? JSON.parse(storageIds) : []
+          const newSeen = [...new Set([...seenIds, ...newAchievements.map(a => a.id)])]
+          localStorage.setItem(celebrationKey, JSON.stringify(newSeen))
+          localStorage.setItem(getLevelStorageKey(), String(afterLevel))
+          localStorage.setItem(getXPStorageKey(), String(afterXP))
+
+          // Add level_up at the end if level increased
           if (afterLevel > beforeLevel) {
             celebrationQueue.value.push({ type: 'level_up', payload: { oldLevel: beforeLevel, newLevel: afterLevel } })
           }
-          
-          // Reload dashboard to show updated stats
+
+          // Reload dashboard to show updated stats (but don't trigger celebration again)
+          celebrationRunThisSession.value = true
           await loadDashboard()
-          
+
           // Optionally reload achievements if we're on that tab
           if (activeTab.value === 'achievements') {
             await loadAchievements()
           }
         } else {
-          console.log('No new achievements found')
+          console.log('[CHECK] No new achievements found')
           // Show info message to user
           showWarning('No New Achievements', 'Keep trading to unlock more achievements!')
         }
       } catch (error) {
-        console.error('Error checking achievements:', error)
+        console.error('[CHECK] Error checking achievements:', error)
         showError('Achievement Check Failed', 'Please try again later.')
       } finally {
         checkingAchievements.value = false
@@ -1209,69 +1242,98 @@ export default {
 
     // Achievement celebration logic - now handles all uncelebrated achievements at once
 
+    // Track if we've already run celebration for this page load
+    const celebrationRunThisSession = ref(false)
+
     const celebrateUnseenEarned = async () => {
+      console.log('[CELEBRATION] celebrateUnseenEarned called')
+
+      // Prevent running twice in the same session
+      if (celebrationRunThisSession.value) {
+        console.log('[CELEBRATION] Already ran this session, skipping')
+        return
+      }
+      celebrationRunThisSession.value = true
+      console.log('[CELEBRATION] Session flag set, fetching data...')
+
       try {
         const [earnedRes, dashRes] = await Promise.all([
           api.get('/gamification/achievements/earned'),
           api.get('/gamification/dashboard')
         ])
+        console.log('[CELEBRATION] API responses received')
+        console.log('[CELEBRATION] Earned response:', earnedRes.data)
+
         const earned = earnedRes.data?.data?.achievements || earnedRes.data?.achievements || []
         const stats = dashRes.data?.data?.stats || {}
         const levelProgress = stats.level_progress || {}
 
-        const storageIds = localStorage.getItem('tt_celebrated_achievements')
+        // Use user-specific localStorage key
+        const storageKey = getCelebrationStorageKey()
+        const storageIds = localStorage.getItem(storageKey)
         const seenIds = storageIds ? JSON.parse(storageIds) : []
-        
-        console.log(`Total earned achievements: ${earned.length}`)
-        console.log(`Previously celebrated IDs:`, seenIds)
-        console.log(`All earned achievements:`, earned.map(a => ({ id: a.id, name: a.name })))
-        
-        // Only filter out achievements that are already in localStorage (permanently celebrated)
-        // Don't filter by shownInSession here - we want to show all uncelebrated achievements
-        const unseen = earned.filter(a => a.id && !seenIds.includes(a.id))
-        
-        console.log(`Found ${unseen.length} uncelebrated achievements:`, unseen.map(a => a.name))
-        
-        if (unseen.length > 0) {
-          // Add all unseen achievements to the celebration queue
-          unseen.forEach(a => {
-            celebrationQueue.value.push({ type: 'achievement', payload: { achievement: a } })
-          })
-          
-          // Mark all as celebrated in localStorage so they don't show again
-          const newSeen = [...new Set([...seenIds, ...unseen.map(a => a.id)])]
-          localStorage.setItem('tt_celebrated_achievements', JSON.stringify(newSeen))
-          
-          console.log(`Queued ${unseen.length} achievements for celebration`)
-        }
 
-        const lastLevel = parseInt(localStorage.getItem('tt_seen_level') || '0')
-        const lastXP = parseInt(localStorage.getItem('tt_seen_xp') || '0')
+        console.log(`[CELEBRATION] Using storage key: ${storageKey}`)
+        console.log(`[CELEBRATION] Total earned achievements: ${earned.length}`)
+        console.log(`[CELEBRATION] Previously celebrated IDs (${seenIds.length}):`, seenIds)
+
+        // Only filter out achievements that are already in localStorage (permanently celebrated)
+        const unseen = earned.filter(a => a.id && !seenIds.includes(a.id))
+
+        console.log(`[CELEBRATION] Found ${unseen.length} uncelebrated achievements:`, unseen.map(a => a.name))
+
+        // Get XP/level info for baseline (user-specific keys)
+        const lastLevel = parseInt(localStorage.getItem(getLevelStorageKey()) || '0')
+        const lastXP = parseInt(localStorage.getItem(getXPStorageKey()) || '0')
         const currentLevel = stats.level || 1
         const currentXP = stats.experience_points || 0
-        if (currentLevel > lastLevel) {
-          celebrationQueue.value.push({ type: 'level_up', payload: { oldLevel: lastLevel || currentLevel - 1, newLevel: currentLevel } })
-        }
-        if (currentXP > lastXP && levelProgress.current_level_min_xp !== undefined) {
+
+        // Push xp_update to establish the CURRENT state
+        // We'll show achievements but NOT animate XP increases because:
+        // 1. Achievement points don't always sum to total XP (server uses different formula)
+        // 2. Animating causes level mismatches
+        // Instead, we show achievements with the correct final XP/level displayed
+        if (unseen.length > 0) {
           celebrationQueue.value.push({
             type: 'xp_update',
             payload: {
-              oldXP: lastXP,
-              newXP: currentXP,
-              deltaXP: Math.max(0, currentXP - lastXP),
-              oldLevel: lastLevel || currentLevel,
-              newLevel: currentLevel,
-              currentLevelMinXPBefore: levelProgress.current_level_min_xp,
-              nextLevelMinXPBefore: levelProgress.next_level_min_xp,
-              currentLevelMinXPAfter: levelProgress.current_level_min_xp,
-              nextLevelMinXPAfter: levelProgress.next_level_min_xp
+              currentXP: currentXP,
+              currentLevel: currentLevel,
+              currentLevelMinXP: levelProgress.current_level_min_xp || 0,
+              nextLevelMinXP: levelProgress.next_level_min_xp || 100
             }
           })
+          console.log(`[CELEBRATION] Current XP: ${currentXP}, Level: ${currentLevel}`)
         }
-        localStorage.setItem('tt_seen_level', String(currentLevel))
-        localStorage.setItem('tt_seen_xp', String(currentXP))
+
+        if (unseen.length > 0) {
+          // Add all unseen achievements to the celebration queue AFTER xp_update
+          unseen.forEach(a => {
+            console.log(`[CELEBRATION] Pushing achievement to queue:`, a.name)
+            celebrationQueue.value.push({ type: 'achievement', payload: { achievement: a } })
+          })
+
+          console.log(`[CELEBRATION] Queue length after pushing:`, celebrationQueue.value.length)
+          console.log(`[CELEBRATION] Queue contents:`, JSON.stringify(celebrationQueue.value.map(i => i.type)))
+
+          // Mark all as celebrated in localStorage so they don't show again (user-specific key)
+          const newSeen = [...new Set([...seenIds, ...unseen.map(a => a.id)])]
+          localStorage.setItem(storageKey, JSON.stringify(newSeen))
+
+          console.log(`[CELEBRATION] Queued ${unseen.length} achievements for celebration`)
+        } else {
+          console.log(`[CELEBRATION] No unseen achievements to celebrate`)
+        }
+
+        // Note: We don't push level_up separately for bulk celebrations
+        // The current level is already shown in the XP bar on each achievement popup
+
+        // Use user-specific keys for level/XP
+        localStorage.setItem(getLevelStorageKey(), String(currentLevel))
+        localStorage.setItem(getXPStorageKey(), String(currentXP))
       } catch (e) {
-        console.error('Error in celebrateUnseenEarned:', e)
+        console.error('[CELEBRATION] Error in celebrateUnseenEarned:', e)
+        celebrationRunThisSession.value = false // Allow retry on error
       }
     }
 
@@ -1281,15 +1343,29 @@ export default {
     }
 
     const resetCelebratedAchievements = () => {
+      // Remove user-specific keys
+      localStorage.removeItem(getCelebrationStorageKey())
+      localStorage.removeItem(getLevelStorageKey())
+      localStorage.removeItem(getXPStorageKey())
+      // Also remove old non-user-specific keys for cleanup
       localStorage.removeItem('tt_celebrated_achievements')
       localStorage.removeItem('tt_seen_level')
       localStorage.removeItem('tt_seen_xp')
-      console.log('Reset all celebrated achievements and level/XP tracking')
+      celebrationRunThisSession.value = false // Allow re-running celebration
+      console.log('[RESET] Cleared all celebrated achievements and level/XP tracking for user:', authStore.user?.id)
+      console.log('[RESET] You can now call triggerCelebration() to show achievements or refresh the page')
     }
 
-    // Expose reset function to window for debugging
+    // Function to manually trigger celebration (for testing)
+    const triggerCelebration = async () => {
+      celebrationRunThisSession.value = false
+      await celebrateUnseenEarned()
+    }
+
+    // Expose functions to window for debugging
     if (typeof window !== 'undefined') {
       window.resetCelebratedAchievements = resetCelebratedAchievements
+      window.triggerCelebration = triggerCelebration
     }
 
     const viewFullLeaderboard = async (leaderboard) => {

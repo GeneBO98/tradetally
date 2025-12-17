@@ -1,9 +1,9 @@
 <template>
-  <div class="max-w-[65%] mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  <div class="content-wrapper py-8">
     <div class="mb-8">
       <div class="flex items-center justify-between">
         <div>
-          <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Equity History</h1>
+          <h1 class="heading-page">Equity History</h1>
           <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
             Track your account equity over time. Click on any day to add or edit your equity amount.
           </p>

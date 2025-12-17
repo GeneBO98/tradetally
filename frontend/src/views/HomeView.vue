@@ -74,19 +74,19 @@
           </p>
           <div class="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 max-w-5xl mx-auto">
             <div class="bg-gray-50 dark:bg-gray-900 rounded-lg p-6">
-              <h3 class="text-lg font-medium text-gray-900 dark:text-white">Unlimited Free Trading Journal</h3>
+              <h3 class="heading-card">Unlimited Free Trading Journal</h3>
               <p class="mt-2 text-gray-600 dark:text-gray-400">
                 Unlike TraderVue's 100 trades/month limit, get unlimited trade storage completely free. No time limits, no hidden fees.
               </p>
             </div>
             <div class="bg-gray-50 dark:bg-gray-900 rounded-lg p-6">
-              <h3 class="text-lg font-medium text-gray-900 dark:text-white">Works With Your Broker</h3>
+              <h3 class="heading-card">Works With Your Broker</h3>
               <p class="mt-2 text-gray-600 dark:text-gray-400">
                 Automated trade import from Lightspeed, Schwab/ThinkorSwim, IBKR, E*TRADE, TD Ameritrade, and custom CSV mapping for any broker.
               </p>
             </div>
             <div class="bg-gray-50 dark:bg-gray-900 rounded-lg p-6">
-              <h3 class="text-lg font-medium text-gray-900 dark:text-white">AI-Powered Analytics</h3>
+              <h3 class="heading-card">AI-Powered Analytics</h3>
               <p class="mt-2 text-gray-600 dark:text-gray-400">
                 Advanced trade analysis with AI insights, behavioral pattern detection, and professional performance metrics.
               </p>

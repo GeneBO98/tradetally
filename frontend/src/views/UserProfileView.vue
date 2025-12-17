@@ -1,5 +1,5 @@
 <template>
-  <div class="max-w-[65%] mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  <div class="content-wrapper py-8">
     <div v-if="loading" class="flex justify-center py-12">
       <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
     </div>
@@ -35,7 +35,7 @@
               </div>
             </div>
             <div>
-              <h1 class="text-2xl font-bold text-gray-900 dark:text-white">
+              <h1 class="heading-page">
                 {{ profile.fullName || profile.username }}
               </h1>
               <p class="text-gray-500 dark:text-gray-400">@{{ profile.username }}</p>
@@ -73,7 +73,7 @@
               <div class="flex items-start justify-between">
                 <div>
                   <div class="flex items-center space-x-3">
-                    <h3 class="text-lg font-medium text-gray-900 dark:text-white">
+                    <h3 class="heading-card">
                       {{ trade.symbol }}
                     </h3>
                     <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
@@ -168,7 +168,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { format } from 'date-fns'
+import { formatTradeDate } from '@/utils/date'
 import { DocumentTextIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
 
@@ -187,7 +187,7 @@ function formatNumber(num, decimals = 2) {
 }
 
 function formatDate(date) {
-  return format(new Date(date), 'MMM dd, yyyy')
+  return formatTradeDate(date, 'MMM dd, yyyy')
 }
 
 async function fetchProfile() {

@@ -292,12 +292,12 @@ const analyticsController = {
       console.log('[CACHE] Cache key for analytics overview:', cacheKey);
       console.log('[CACHE] Normalized filters for cache:', normalizedFiltersForCache);
       
-      // Temporarily disable cache for debugging filters
-      // const cachedData = cache.get(cacheKey);
-      // if (cachedData) {
-      //   console.log('[CACHE] Returning cached data');
-      //   return res.json(cachedData);
-      // }
+      // Check cache first for faster response
+      const cachedData = cache.get(cacheKey);
+      if (cachedData) {
+        console.log('[CACHE] Returning cached analytics data');
+        return res.json(cachedData);
+      }
 
       const { filterConditions, params: filterParams } = filterData;
       const params = [req.user.id, ...filterParams];
@@ -592,8 +592,8 @@ const analyticsController = {
       });
 
       console.log('Analytics overview calculation completed, sending response');
-      // Temporarily disable cache for debugging
-      // cache.set(cacheKey, { overview });
+      // Cache the result for 5 minutes (300000ms)
+      cache.set(cacheKey, { overview }, 300000);
       res.json({ overview });
     } catch (error) {
       console.error('Analytics overview error:', error);

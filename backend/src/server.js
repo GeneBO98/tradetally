@@ -88,6 +88,7 @@ if (process.env.NODE_ENV !== 'production') {
   allowedOrigins.push(
     'http://localhost:3000',
     'http://localhost:8080',
+    'http://localhost:8081',
     'capacitor://localhost',
     'ionic://localhost',
     'http://localhost'
