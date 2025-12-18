@@ -1229,7 +1229,8 @@ class Trade {
   }
 
   static calculatePnL(entryPrice, exitPrice, quantity, side, commission = 0, fees = 0, instrumentType = 'stock', contractSize = 1, pointValue = null) {
-    if (!exitPrice || !entryPrice || quantity <= 0) return null;
+    // Note: exitPrice === 0 is valid for expired worthless options, so use explicit null checks
+    if (exitPrice == null || entryPrice == null || quantity <= 0) return null;
 
     // Determine the multiplier based on instrument type
     let multiplier;
@@ -1262,7 +1263,8 @@ class Trade {
   }
 
   static calculatePnLPercent(entryPrice, exitPrice, side, pnl = null, quantity = null, instrumentType = 'stock', pointValue = null) {
-    if (!exitPrice || !entryPrice || entryPrice <= 0) return null;
+    // Note: exitPrice === 0 is valid for expired worthless options, so use explicit null checks
+    if (exitPrice == null || entryPrice == null || entryPrice <= 0) return null;
 
     let pnlPercent;
 
