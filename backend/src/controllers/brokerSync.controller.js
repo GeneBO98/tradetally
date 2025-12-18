@@ -5,6 +5,8 @@
 
 const BrokerConnection = require('../models/BrokerConnection');
 const ibkrService = require('../services/brokerSync/ibkrService');
+const schwabService = require('../services/brokerSync/schwabService');
+const brokerSyncService = require('../services/brokerSync');
 const logger = require('../utils/logger');
 
 const brokerSyncController = {
@@ -358,68 +360,27 @@ const brokerSyncController = {
         });
       }
 
-      // Create sync log
-      const syncLog = await BrokerConnection.createSyncLog(
-        id,
-        userId,
-        'manual',
-        startDate,
-        endDate
-      );
-
       console.log(`[BROKER-SYNC] Starting manual sync for connection ${id}`);
 
+      // Use the broker sync service orchestrator which handles both IBKR and Schwab
       // Start sync in background
       process.nextTick(async () => {
         try {
-          let result;
-
-          if (connection.brokerType === 'ibkr') {
-            result = await ibkrService.syncTrades(connection, {
-              startDate,
-              endDate,
-              syncLogId: syncLog.id
-            });
-          } else if (connection.brokerType === 'schwab') {
-            // Schwab sync will be implemented later
-            throw new Error('Schwab sync not yet implemented');
-          }
-
-          // Update sync log with results
-          await BrokerConnection.updateSyncLog(syncLog.id, 'completed', {
-            tradesImported: result.imported,
-            tradesSkipped: result.skipped,
-            tradesFailed: result.failed,
-            duplicatesDetected: result.duplicates
+          const result = await brokerSyncService.syncConnection(id, {
+            syncType: 'manual',
+            startDate,
+            endDate
           });
 
-          // Update connection status
-          const nextSync = connection.autoSyncEnabled && connection.syncFrequency !== 'manual'
-            ? BrokerConnection.calculateNextSync(connection.syncFrequency, connection.syncTime)
-            : null;
-
-          await BrokerConnection.updateAfterSync(
-            id,
-            result.imported,
-            result.skipped,
-            nextSync
-          );
-
-          console.log(`[BROKER-SYNC] Sync completed for connection ${id}: ${result.imported} imported`);
+          console.log(`[BROKER-SYNC] Sync completed for connection ${id}: ${result.imported || 0} imported`);
         } catch (error) {
           console.error(`[BROKER-SYNC] Sync failed for connection ${id}:`, error.message);
-
-          await BrokerConnection.updateSyncLog(syncLog.id, 'failed', {
-            errorMessage: error.message
-          });
-
-          await BrokerConnection.updateAfterFailure(id, error.message);
+          // Error handling is done in the service layer
         }
       });
 
       res.status(202).json({
         success: true,
-        syncId: syncLog.id,
         message: 'Sync started'
       });
     } catch (error) {
@@ -503,8 +464,19 @@ const brokerSyncController = {
           connection.ibkrFlexQueryId
         );
       } else if (connection.brokerType === 'schwab') {
-        // Test Schwab connection by making a simple API call
-        testResult = { valid: true, message: 'Schwab connection test not implemented' };
+        // Test Schwab connection by checking token validity
+        const { accessToken, needsReauth } = await schwabService.ensureValidToken(connection);
+        if (needsReauth) {
+          testResult = { valid: false, message: 'Schwab authentication expired. Please re-connect your account.' };
+        } else {
+          // Try to fetch accounts to verify token works
+          try {
+            await schwabService.getAccounts(accessToken);
+            testResult = { valid: true, message: 'Schwab connection is valid' };
+          } catch (error) {
+            testResult = { valid: false, message: `Schwab connection test failed: ${error.message}` };
+          }
+        }
       }
 
       if (testResult.valid) {
