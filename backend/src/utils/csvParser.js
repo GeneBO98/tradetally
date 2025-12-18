@@ -3872,9 +3872,12 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
 
 
       // Skip if missing essential data
-      // Note: price === 0 is valid for expired options (Code contains "Ep"), so only skip if
-      // price is 0 AND it's not an expiration transaction
-      const isExpiration = code && code.includes('EP');
+      // Note: price === 0 is valid for expired options (Code contains "Ep" or "Ex" or "A" or "C")
+      // Also valid when Code is 'C' (close) for options with price=0 (worthless expiration)
+      const isOptionSymbol = symbol && (symbol.includes(' ') || /\d{6}[PC]\d{8}/.test(symbol));
+      const isExpirationCode = code && (code.includes('EP') || code.includes('EX') || code.includes('A'));
+      const isOptionClose = code && code.includes('C') && isOptionSymbol;
+      const isExpiration = isExpirationCode || (price === 0 && isOptionClose);
       if (!symbol || absQuantity === 0 || (price === 0 && !isExpiration) || !dateTime) {
         console.log(`Skipping IBKR record missing data:`, { symbol, quantity, price, dateTime, code });
         continue;
@@ -3904,7 +3907,8 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
       }
 
       // Detect if this is an expiration transaction
-      const isExpirationTx = code && code.includes('EP');
+      // Include EP (expired), EX (exercised), A (assigned), or option close with price=0
+      const isExpirationTx = isExpiration || (price === 0 && instrumentData.instrumentType === 'option');
 
       transactions.push({
         symbol,
@@ -3914,15 +3918,15 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         quantity: processedQuantity,
         price: price,
         fees: commission,
-        code: code, // O = Open, P = Partial, C = Close, Ep = Expired
+        code: code, // O = Open, P = Partial, C = Close, Ep = Expired, Ex = Exercised, A = Assigned
         isExpiration: isExpirationTx,
         multiplier: multiplierFromCSV, // Contract multiplier from CSV (if available)
-        description: isExpirationTx ? `IBKR option expiration` : `IBKR transaction`,
+        description: isExpirationTx ? `IBKR option expiration/assignment` : `IBKR transaction`,
         raw: record
       });
 
       if (isExpirationTx) {
-        console.log(`[IBKR] Parsed EXPIRATION: ${action} ${processedQuantity} ${symbol} @ $${price} [${code}] (options expired worthless)`);
+        console.log(`[IBKR] Parsed EXPIRATION/ASSIGNMENT: ${action} ${processedQuantity} ${symbol} @ $${price} [${code || 'no code'}] (options expired/assigned)`);
       } else {
         console.log(`Parsed IBKR transaction: ${action} ${processedQuantity} ${symbol} @ $${price}${code ? ` [${code}]` : ''}${commission < 0 ? ` (rebate: $${Math.abs(commission).toFixed(2)})` : ''}`);
       }

@@ -163,9 +163,9 @@
                     {{ trade.instrument_type === 'option' ? 'Contracts' : 'Quantity' }}
                   </dt>
                   <dd class="mt-1 text-sm text-gray-900 dark:text-white">
-                    {{ formatQuantity(trade.executions && trade.executions.length > 0 ? executionSummary.totalShareQuantity : trade.quantity) }}
+                    {{ formatQuantity(trade.quantity) }}
                     <span v-if="trade.instrument_type === 'option' && trade.contract_size" class="text-xs text-gray-500 dark:text-gray-400 ml-1">
-                      ({{ formatQuantity((trade.executions && trade.executions.length > 0 ? executionSummary.totalShareQuantity : trade.quantity) * trade.contract_size) }} shares)
+                      ({{ formatQuantity(trade.quantity * trade.contract_size) }} shares)
                     </span>
                   </dd>
                 </div>
@@ -1153,11 +1153,7 @@ const processedExecutions = computed(() => {
   let totalEntryQuantity = 0
   let totalEntryValue = 0
 
-  // Check if any executions have their own commission/fees values
-  const hasExecutionCommissions = trade.value.executions.some(exec => exec && exec.commission > 0)
-  const hasExecutionFees = trade.value.executions.some(exec => exec && exec.fees > 0)
-
-  // Calculate total quantity for proportional distribution
+  // Calculate total quantity for proportional distribution (fallback when no execution-level data)
   const totalQuantity = trade.value.executions.reduce((sum, exec) => sum + (parseFloat(exec?.quantity) || 0), 0)
   const tradeCommission = parseFloat(trade.value.commission) || 0
   const tradeFees = parseFloat(trade.value.fees) || 0
@@ -1186,15 +1182,29 @@ const processedExecutions = computed(() => {
     const action = execution.action || execution.side || 'unknown'
     const datetime = execution.datetime || execution.entry_time
 
-    // Calculate proportional commission/fees if not set at execution level
+    // Calculate commission/fees for this execution
+    // Priority: 1) execution.commission, 2) execution.fees (IBKR bundles commission in fees), 3) proportional
     const proportion = totalQuantity > 0 ? quantity / totalQuantity : 0
-    const commission = hasExecutionCommissions
-      ? (parseFloat(execution.commission) || 0)
-      : (tradeCommission * proportion)
-    const fees = hasExecutionFees
-      ? (parseFloat(execution.fees) || 0)
+
+    // For IBKR and similar brokers, commission is stored in the 'fees' field of the execution
+    // Use execution.fees as the commission value if commission field is not available
+    let commission = 0
+    if (execution.commission !== undefined && execution.commission !== null) {
+      commission = parseFloat(execution.commission) || 0
+    } else if (execution.fees !== undefined && execution.fees !== null) {
+      // Use fees as commission (common for IBKR where everything is bundled)
+      commission = parseFloat(execution.fees) || 0
+    } else {
+      // Fall back to proportional distribution
+      commission = tradeCommission * proportion
+    }
+
+    // Fees is typically separate from commission (exchange fees, etc.)
+    // Only use proportional if no execution-level fees
+    const fees = (execution.fees !== undefined && execution.fees !== null)
+      ? 0  // Already counted in commission above
       : (tradeFees * proportion)
-    const totalCost = commission + fees
+    const totalCost = Math.abs(commission) + Math.abs(fees)
 
     // Determine if this execution is opening or closing the position
     // For LONG trades: Buy = entry, Sell = exit
