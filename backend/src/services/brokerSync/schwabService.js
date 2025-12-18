@@ -26,8 +26,46 @@ class SchwabService {
    * @returns {Promise<{accessToken: string, needsReauth: boolean}>}
    */
   async ensureValidToken(connection) {
+    // Handle missing or invalid expiration date
+    if (!connection.schwabTokenExpiresAt) {
+      console.log('[SCHWAB] No token expiration date, attempting refresh...');
+      try {
+        const newTokens = await this.refreshAccessToken(connection.schwabRefreshToken);
+        await BrokerConnection.updateSchwabTokens(
+          connection.id,
+          newTokens.accessToken,
+          newTokens.refreshToken,
+          newTokens.expiresAt
+        );
+        return { accessToken: newTokens.accessToken, needsReauth: false };
+      } catch (error) {
+        console.error('[SCHWAB] Token refresh failed:', error.message);
+        await BrokerConnection.updateStatus(connection.id, 'expired', 'Refresh token expired - please re-authenticate');
+        return { accessToken: null, needsReauth: true };
+      }
+    }
+
     const expiresAt = new Date(connection.schwabTokenExpiresAt);
     const now = new Date();
+
+    // Check if expiration date is invalid
+    if (isNaN(expiresAt.getTime())) {
+      console.log('[SCHWAB] Invalid token expiration date, attempting refresh...');
+      try {
+        const newTokens = await this.refreshAccessToken(connection.schwabRefreshToken);
+        await BrokerConnection.updateSchwabTokens(
+          connection.id,
+          newTokens.accessToken,
+          newTokens.refreshToken,
+          newTokens.expiresAt
+        );
+        return { accessToken: newTokens.accessToken, needsReauth: false };
+      } catch (error) {
+        console.error('[SCHWAB] Token refresh failed:', error.message);
+        await BrokerConnection.updateStatus(connection.id, 'expired', 'Refresh token expired - please re-authenticate');
+        return { accessToken: null, needsReauth: true };
+      }
+    }
 
     // Check if token is expired or about to expire
     if (expiresAt.getTime() - now.getTime() < TOKEN_REFRESH_BUFFER) {
