@@ -38,12 +38,14 @@ const healthRoutes = require('./routes/health.routes');
 const oauth2Routes = require('./routes/oauth2.routes');
 const tagsRoutes = require('./routes/tags.routes');
 const backupRoutes = require('./routes/backup.routes');
+const brokerSyncRoutes = require('./routes/brokerSync.routes');
 const BillingService = require('./services/billingService');
 const priceMonitoringService = require('./services/priceMonitoringService');
 const backupScheduler = require('./services/backupScheduler.service');
 const GamificationScheduler = require('./services/gamificationScheduler');
 const TrialScheduler = require('./services/trialScheduler');
 const OptionsScheduler = require('./services/optionsScheduler');
+const brokerSyncScheduler = require('./services/brokerSync/brokerSyncScheduler');
 const backgroundWorker = require('./workers/backgroundWorker');
 const jobRecoveryService = require('./services/jobRecoveryService');
 const pushNotificationService = require('./services/pushNotificationService');
@@ -182,6 +184,7 @@ app.use('/api/diary-templates', diaryTemplateRoutes);
 app.use('/api/health', healthRoutes);
 app.use('/api/tags', tagsRoutes);
 app.use('/api/admin/backup', backupRoutes);
+app.use('/api/broker-sync', brokerSyncRoutes);
 
 // OAuth2 Provider endpoints
 app.use('/oauth', oauth2Routes);
@@ -388,6 +391,15 @@ async function startServer() {
       console.log('Options scheduler disabled (ENABLE_OPTIONS_SCHEDULER=false)');
     }
 
+    // Start broker sync scheduler (for automatic trade syncing from connected brokers)
+    if (process.env.ENABLE_BROKER_SYNC_SCHEDULER !== 'false') {
+      console.log('Starting broker sync scheduler...');
+      brokerSyncScheduler.start();
+      console.log('[SUCCESS] Broker sync scheduler started');
+    } else {
+      console.log('Broker sync scheduler disabled (ENABLE_BROKER_SYNC_SCHEDULER=false)');
+    }
+
     // Initialize push notification service
     if (process.env.ENABLE_PUSH_NOTIFICATIONS === 'true') {
       console.log('✓ Push notification service loaded');
@@ -478,6 +490,7 @@ process.on('SIGTERM', async () => {
   console.log('SIGTERM received, shutting down gracefully...');
   await priceMonitoringService.stop();
   OptionsScheduler.stop();
+  brokerSyncScheduler.stop();
   GamificationScheduler.stopScheduler();
   TrialScheduler.stopScheduler();
   jobRecoveryService.stop();
@@ -491,6 +504,7 @@ process.on('SIGINT', async () => {
   console.log('SIGINT received, shutting down gracefully...');
   await priceMonitoringService.stop();
   OptionsScheduler.stop();
+  brokerSyncScheduler.stop();
   GamificationScheduler.stopScheduler();
   TrialScheduler.stopScheduler();
   jobRecoveryService.stop();

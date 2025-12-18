@@ -125,6 +125,18 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
+      path: '/broker-sync',
+      name: 'broker-sync',
+      component: () => import('@/views/BrokerSyncView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/settings/broker-sync',
+      name: 'settings-broker-sync',
+      component: () => import('@/views/BrokerSyncView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
       path: '/settings',
       name: 'settings',
       component: () => import('@/views/SettingsView.vue'),
