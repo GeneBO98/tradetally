@@ -189,6 +189,34 @@
           </div>
         </div>
 
+        <!-- Broker Sync -->
+        <div class="card">
+          <div class="card-body">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-6">Broker Sync</h3>
+            <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
+              Connect your brokerage accounts (Interactive Brokers, Charles Schwab) to automatically sync trades. Each user can configure their own broker connections and auto-sync settings.
+            </p>
+
+            <div class="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+              <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-2">Automated Trade Syncing</h4>
+              <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                Set up automatic daily syncing of your trades from connected brokers. Configure sync frequency, time, and manage your connections.
+              </p>
+              <div class="flex justify-end">
+                <router-link
+                  to="/broker-sync"
+                  class="btn-primary"
+                >
+                  <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                  </svg>
+                  Manage Broker Sync
+                </router-link>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- API Documentation -->
         <div class="card">
           <div class="card-body">
