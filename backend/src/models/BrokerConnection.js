@@ -288,23 +288,65 @@ class BrokerConnection {
   }
 
   /**
-   * Calculate next scheduled sync time
+   * Calculate next scheduled sync time based on frequency
+   * Supported frequencies: manual, hourly, every_4_hours, every_6_hours, every_12_hours, daily
    */
   static calculateNextSync(syncFrequency, syncTime) {
     if (syncFrequency === 'manual') return null;
 
     const now = new Date();
-    const [hours, minutes] = syncTime.split(':').map(Number);
 
-    const next = new Date(now);
-    next.setHours(hours, minutes, 0, 0);
-
-    // If the time has passed today, schedule for tomorrow
-    if (next <= now) {
-      next.setDate(next.getDate() + 1);
+    // For interval-based frequencies, calculate next sync from now
+    switch (syncFrequency) {
+      case 'hourly': {
+        const next = new Date(now);
+        next.setHours(next.getHours() + 1);
+        next.setMinutes(0, 0, 0);
+        return next;
+      }
+      case 'every_4_hours': {
+        const next = new Date(now);
+        const currentHour = next.getHours();
+        const nextSlot = Math.ceil((currentHour + 1) / 4) * 4;
+        next.setHours(nextSlot, 0, 0, 0);
+        if (next <= now) {
+          next.setHours(next.getHours() + 4);
+        }
+        return next;
+      }
+      case 'every_6_hours': {
+        const next = new Date(now);
+        const currentHour = next.getHours();
+        const nextSlot = Math.ceil((currentHour + 1) / 6) * 6;
+        next.setHours(nextSlot, 0, 0, 0);
+        if (next <= now) {
+          next.setHours(next.getHours() + 6);
+        }
+        return next;
+      }
+      case 'every_12_hours': {
+        const next = new Date(now);
+        const currentHour = next.getHours();
+        const nextSlot = currentHour < 12 ? 12 : 24;
+        next.setHours(nextSlot, 0, 0, 0);
+        if (next <= now) {
+          next.setHours(next.getHours() + 12);
+        }
+        return next;
+      }
+      case 'daily':
+      default: {
+        // Daily sync at specific time
+        const [hours, minutes] = syncTime.split(':').map(Number);
+        const next = new Date(now);
+        next.setHours(hours, minutes, 0, 0);
+        // If the time has passed today, schedule for tomorrow
+        if (next <= now) {
+          next.setDate(next.getDate() + 1);
+        }
+        return next;
+      }
     }
-
-    return next;
   }
 
   /**
