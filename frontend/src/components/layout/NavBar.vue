@@ -373,6 +373,12 @@ const navigation = computed(() => {
           description: 'Manage users and permissions'
         },
         {
+          name: 'Platform Analytics',
+          to: '/admin/analytics',
+          route: 'admin-analytics',
+          description: 'View platform usage analytics'
+        },
+        {
           name: 'OAuth Applications',
           to: '/admin/oauth',
           route: 'oauth-clients',

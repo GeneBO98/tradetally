@@ -202,6 +202,9 @@ const authController = {
         });
       }
 
+      // Update last_login_at for analytics tracking
+      await User.updateLastLogin(user.id);
+
       const token = generateToken(user);
 
       // Set HTTP-only cookie for OAuth flow
@@ -283,9 +286,12 @@ const authController = {
         }
       }
 
+      // Update last_login_at for analytics tracking (2FA login)
+      await User.updateLastLogin(user.id);
+
       // Generate full access token
       const token = generateToken(user);
-      
+
       // Get tier and billing status
       const TierService = require('../services/tierService');
       const userTier = await TierService.getUserTier(user.id);

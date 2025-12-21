@@ -328,6 +328,18 @@ class User {
     return result.rows[0];
   }
 
+  static async updateLastLogin(userId) {
+    const query = `
+      UPDATE users
+      SET last_login_at = NOW()
+      WHERE id = $1
+      RETURNING last_login_at
+    `;
+
+    const result = await db.query(query, [userId]);
+    return result.rows[0];
+  }
+
   static async getUserCount() {
     const query = `SELECT COUNT(*) as count FROM users WHERE is_active = true`;
     const result = await db.query(query);
