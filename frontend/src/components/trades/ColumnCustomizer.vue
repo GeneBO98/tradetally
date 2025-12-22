@@ -237,26 +237,47 @@ const loadSavedColumns = () => {
       }
 
       // Merge saved preferences with default columns to handle new columns
-      // Use default column order, but preserve visibility settings from saved columns
-      const savedMap = new Map(savedColumns.map(c => [c.key, c]))
+      // IMPORTANT: Preserve the saved column ORDER while adding any new columns
+      const defaultMap = new Map(defaultColumns.map(c => [c.key, c]))
+      const savedKeys = new Set(savedColumns.map(c => c.key))
 
-      const mergedColumns = defaultColumns.map(defaultCol => {
-        const savedCol = savedMap.get(defaultCol.key)
-        if (savedCol) {
-          // Column exists in saved preferences, use saved visibility and width
+      // Start with saved columns in their saved order
+      const mergedColumns = savedColumns.map(savedCol => {
+        const defaultCol = defaultMap.get(savedCol.key)
+        if (defaultCol) {
+          // Column still exists in defaults, merge saved settings with default properties
           return {
             ...defaultCol,
             visible: savedCol.visible,
             width: savedCol.width || defaultCol.width
           }
         } else {
-          // New column, use default configuration
+          // Column was removed from defaults (rare), keep it anyway
+          return { ...savedCol }
+        }
+      })
+
+      // Add any new columns that don't exist in saved preferences
+      // Insert them at their default position relative to existing columns
+      defaultColumns.forEach((defaultCol, defaultIndex) => {
+        if (!savedKeys.has(defaultCol.key)) {
           console.log('[COLUMNS] Adding new column:', defaultCol.key)
-          return { ...defaultCol }
+          // Find a good insertion point - after the previous default column if it exists
+          let insertIndex = mergedColumns.length
+          for (let i = defaultIndex - 1; i >= 0; i--) {
+            const prevKey = defaultColumns[i].key
+            const prevIndex = mergedColumns.findIndex(c => c.key === prevKey)
+            if (prevIndex !== -1) {
+              insertIndex = prevIndex + 1
+              break
+            }
+          }
+          mergedColumns.splice(insertIndex, 0, { ...defaultCol })
         }
       })
 
       localColumns.value = mergedColumns
+      console.log('[COLUMNS] Loaded columns with preserved order')
     } catch (e) {
       console.error('[COLUMNS] Failed to load saved columns:', e)
       localColumns.value = [...defaultColumns]
