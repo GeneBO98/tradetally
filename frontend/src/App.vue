@@ -1,5 +1,5 @@
 <template>
-  <div id="app">
+  <div id="app" style="width: 100%; min-width: 100%; overflow-x: visible;">
     <NavBar v-if="!isAuthRoute" />
     <main class="min-h-screen">
       <router-view />

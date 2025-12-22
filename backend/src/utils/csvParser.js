@@ -707,29 +707,68 @@ function applyTradeGrouping(trades, settings) {
           // Combine quantities
           currentGroup.quantity = totalQuantity;
 
-          // Sum up P&L and costs
-          // Handle both 'pnl' and 'profitLoss' field names (different parsers use different names)
-          const tradePnl = trade.pnl !== undefined ? trade.pnl : (trade.profitLoss || 0);
-          const groupPnl = currentGroup.pnl !== undefined ? currentGroup.pnl : (currentGroup.profitLoss || 0);
-          const totalPnl = groupPnl + tradePnl;
-          currentGroup.pnl = totalPnl;
-          currentGroup.profitLoss = totalPnl; // Set both for compatibility
+          // Combine costs
           currentGroup.commission = (currentGroup.commission || 0) + (trade.commission || 0);
           currentGroup.fees = (currentGroup.fees || 0) + (trade.fees || 0);
+          const totalFees = (currentGroup.commission || 0) + (currentGroup.fees || 0);
 
           // Track grouped count
           currentGroup.groupedTrades = (currentGroup.groupedTrades || 1) + 1;
 
-          // Use latest exit time and price if available
+          // Calculate weighted average exit price if both have exit prices (do this before P&L calculation)
           if (trade.exitTime) {
             currentGroup.exitTime = trade.exitTime;
-            // Calculate weighted average exit price if both have exit prices
             if (currentGroup.exitPrice && trade.exitPrice) {
               const prevQuantity = currentGroup.quantity - trade.quantity;
               currentGroup.exitPrice = ((currentGroup.exitPrice * prevQuantity) + (trade.exitPrice * trade.quantity)) / totalQuantity;
             } else if (trade.exitPrice) {
               currentGroup.exitPrice = trade.exitPrice;
             }
+          }
+
+          // Preserve instrument type from trade if not already set in group
+          if (!currentGroup.instrumentType && trade.instrumentType) {
+            currentGroup.instrumentType = trade.instrumentType;
+            if (trade.pointValue) {
+              currentGroup.pointValue = trade.pointValue;
+            }
+            if (trade.contractSize !== undefined) {
+              currentGroup.contractSize = trade.contractSize;
+            }
+          }
+
+          // Recalculate P&L from combined entry/exit prices and total fees
+          // This ensures consistency with the weighted average prices
+          // Use the same calculation method as Trade.calculatePnL to ensure exact match
+          if (currentGroup.exitPrice && currentGroup.side && currentGroup.entryPrice && currentGroup.quantity > 0) {
+            // Determine multiplier using same logic as Trade.calculatePnL
+            let multiplier;
+            if (currentGroup.instrumentType === 'future') {
+              multiplier = currentGroup.pointValue || 1;
+            } else if (currentGroup.instrumentType === 'option') {
+              multiplier = currentGroup.contractSize || 100;
+            } else {
+              multiplier = 1;
+            }
+
+            // Calculate P&L using exact same formula as Trade.calculatePnL
+            let pnl;
+            if (currentGroup.side === 'long') {
+              pnl = (currentGroup.exitPrice - currentGroup.entryPrice) * currentGroup.quantity * multiplier;
+            } else {
+              pnl = (currentGroup.entryPrice - currentGroup.exitPrice) * currentGroup.quantity * multiplier;
+            }
+
+            // Subtract commission and fees (matches Trade.calculatePnL: totalPnL = pnl - commission - fees)
+            currentGroup.pnl = pnl - (currentGroup.commission || 0) - (currentGroup.fees || 0);
+            currentGroup.profitLoss = currentGroup.pnl; // Set both for compatibility
+          } else {
+            // If exit price not available, fall back to summing P&L (for open positions)
+            const tradePnl = trade.pnl !== undefined ? trade.pnl : (trade.profitLoss || 0);
+            const groupPnl = currentGroup.pnl !== undefined ? currentGroup.pnl : (currentGroup.profitLoss || 0);
+            const totalPnl = groupPnl + tradePnl;
+            currentGroup.pnl = totalPnl;
+            currentGroup.profitLoss = totalPnl;
           }
 
           // Keep original notes without merging

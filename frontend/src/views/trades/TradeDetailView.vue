@@ -1149,9 +1149,9 @@ const processedExecutions = computed(() => {
   const tradeSide = trade.value.side
   let runningPosition = 0
 
-  // Track entry executions for calculating average entry price
-  let totalEntryQuantity = 0
-  let totalEntryValue = 0
+  // FIFO queue of entry executions: [{quantity, price, remainingQty}]
+  // This allows proper matching of exits to entries
+  const entryQueue = []
 
   // Calculate total quantity for proportional distribution (fallback when no execution-level data)
   const totalQuantity = trade.value.executions.reduce((sum, exec) => sum + (parseFloat(exec?.quantity) || 0), 0)
@@ -1219,29 +1219,53 @@ const processedExecutions = computed(() => {
       runningPosition -= quantity
     }
 
-    // Track entry values for average entry price calculation
-    if (isOpening) {
-      totalEntryQuantity += quantity
-      totalEntryValue += quantity * price
-    }
-
-    // Calculate average entry price so far
-    const avgEntryPrice = totalEntryQuantity > 0 ? (totalEntryValue / totalEntryQuantity) : 0
-
-    // Calculate P&L for exit (closing) executions
-    // Use the average entry price from all entry executions so far
+    // Track entries and calculate P&L using FIFO matching
     let executionPnl = null
-    if (!isOpening && avgEntryPrice > 0) {
-      // For exit executions, calculate P&L based on average entry price
-      // Subtract both commission and fees from the P&L
-      if (tradeSide === 'long') {
-        // Long: profit when exit price > entry price
-        executionPnl = (price - avgEntryPrice) * quantity * valueMultiplier - totalCost
-      } else {
-        // Short: profit when exit price < entry price
-        executionPnl = (avgEntryPrice - price) * quantity * valueMultiplier - totalCost
+    let matchedEntryPrice = null
+
+    if (isOpening) {
+      // Add to entry queue for FIFO matching
+      entryQueue.push({ quantity, price, remainingQty: quantity })
+    } else {
+      // Exit execution - match against entries using FIFO
+      let remainingExitQty = quantity
+      let totalMatchedValue = 0
+      let totalMatchedQty = 0
+
+      // Consume entries from the front of the queue (FIFO)
+      while (remainingExitQty > 0 && entryQueue.length > 0) {
+        const entry = entryQueue[0]
+        const matchQty = Math.min(remainingExitQty, entry.remainingQty)
+
+        totalMatchedValue += matchQty * entry.price
+        totalMatchedQty += matchQty
+        remainingExitQty -= matchQty
+        entry.remainingQty -= matchQty
+
+        // Remove fully consumed entries
+        if (entry.remainingQty <= 0) {
+          entryQueue.shift()
+        }
+      }
+
+      // Calculate P&L based on matched entry price
+      if (totalMatchedQty > 0) {
+        matchedEntryPrice = totalMatchedValue / totalMatchedQty
+
+        if (tradeSide === 'long') {
+          // Long: profit when exit price > entry price
+          executionPnl = (price - matchedEntryPrice) * totalMatchedQty * valueMultiplier - totalCost
+        } else {
+          // Short: profit when exit price < entry price
+          executionPnl = (matchedEntryPrice - price) * totalMatchedQty * valueMultiplier - totalCost
+        }
       }
     }
+
+    // Calculate current average cost basis from remaining entries
+    const totalRemainingQty = entryQueue.reduce((sum, e) => sum + e.remainingQty, 0)
+    const totalRemainingValue = entryQueue.reduce((sum, e) => sum + (e.remainingQty * e.price), 0)
+    const avgCostBasis = totalRemainingQty > 0 ? totalRemainingValue / totalRemainingQty : null
 
     return {
       // Keep original execution data
@@ -1255,7 +1279,7 @@ const processedExecutions = computed(() => {
       fees,
       datetime,
       runningPosition,
-      avgCost: avgEntryPrice > 0 ? avgEntryPrice : null,
+      avgCost: isOpening ? (avgCostBasis || price) : matchedEntryPrice,
       // Set entryPrice/exitPrice based on whether this execution opens or closes the position
       // Only show entry price on entry executions, exit price on exit executions
       entryPrice: isOpening ? price : null,
