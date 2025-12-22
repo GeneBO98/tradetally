@@ -1214,7 +1214,26 @@ function createCharts() {
   }
 }
 
+// Save filters to localStorage immediately when they change
+function saveFiltersToStorage() {
+  try {
+    localStorage.setItem('dashboardTimeRange', filters.value.timeRange)
+    if (filters.value.timeRange === 'custom') {
+      localStorage.setItem('dashboardCustomStartDate', filters.value.startDate || '')
+      localStorage.setItem('dashboardCustomEndDate', filters.value.endDate || '')
+    } else {
+      // Clear custom dates when not in custom mode
+      localStorage.removeItem('dashboardCustomStartDate')
+      localStorage.removeItem('dashboardCustomEndDate')
+    }
+  } catch (e) {
+    // localStorage save failed
+    console.error('Failed to save filters to localStorage:', e)
+  }
+}
+
 function applyFilters() {
+  saveFiltersToStorage()
   fetchAnalytics()
 }
 
@@ -1365,6 +1384,39 @@ watch(loading, (newLoading) => {
   }
 })
 
+// Watch for changes to timeRange and save immediately
+watch(() => filters.value.timeRange, (newRange) => {
+  saveFiltersToStorage()
+  // If switching to custom, restore saved dates if available
+  if (newRange === 'custom') {
+    try {
+      const savedStartDate = localStorage.getItem('dashboardCustomStartDate')
+      const savedEndDate = localStorage.getItem('dashboardCustomEndDate')
+      if (savedStartDate && !filters.value.startDate) {
+        filters.value.startDate = savedStartDate
+      }
+      if (savedEndDate && !filters.value.endDate) {
+        filters.value.endDate = savedEndDate
+      }
+    } catch (e) {
+      console.error('Failed to restore custom dates:', e)
+    }
+  }
+})
+
+// Watch for changes to custom dates and save immediately
+watch(() => filters.value.startDate, (newDate) => {
+  if (filters.value.timeRange === 'custom') {
+    saveFiltersToStorage()
+  }
+})
+
+watch(() => filters.value.endDate, (newDate) => {
+  if (filters.value.timeRange === 'custom') {
+    saveFiltersToStorage()
+  }
+})
+
 async function fetchUserSettings() {
   try {
     const response = await api.get('/settings')
@@ -1510,6 +1562,20 @@ let marketStatusChecker = null
 
 onMounted(async () => {
   console.log('Dashboard: Component mounted')
+
+  // Load saved time range from localStorage
+  try {
+    const savedTimeRange = localStorage.getItem('dashboardTimeRange')
+    if (savedTimeRange) {
+      filters.value.timeRange = savedTimeRange
+      if (savedTimeRange === 'custom') {
+        filters.value.startDate = localStorage.getItem('dashboardCustomStartDate') || ''
+        filters.value.endDate = localStorage.getItem('dashboardCustomEndDate') || ''
+      }
+    }
+  } catch (e) {
+    // localStorage load failed
+  }
 
   await Promise.all([
     fetchAnalytics(),

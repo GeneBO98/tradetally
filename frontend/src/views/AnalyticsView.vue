@@ -2519,42 +2519,39 @@ function initializeAllCharts() {
 }
 
 // Helper function to build filter params
+// IMPORTANT: Use filters.value directly, just like trades store does with ...filters.value
 function buildFilterParams(additionalParams = {}) {
-  const params = { ...additionalParams }
+  // Start with additional params, then spread filters.value directly
+  // This ensures ALL filters are included, even empty ones (which will be filtered out by the API)
+  const params = {
+    ...additionalParams,
+    ...filters.value
+  }
   
-  // Add all filter parameters
-  if (filters.value.symbol) params.symbol = filters.value.symbol
-  if (filters.value.startDate) params.startDate = filters.value.startDate
-  if (filters.value.endDate) params.endDate = filters.value.endDate
-  if (filters.value.strategies) params.strategies = filters.value.strategies
-  if (filters.value.sectors) params.sectors = filters.value.sectors
-  if (filters.value.tags) params.tags = filters.value.tags
-  if (filters.value.hasNews) params.hasNews = filters.value.hasNews
-  if (filters.value.side) params.side = filters.value.side
-  if (filters.value.minPrice !== null) params.minPrice = filters.value.minPrice
-  if (filters.value.maxPrice !== null) params.maxPrice = filters.value.maxPrice
-  if (filters.value.minQuantity !== null) params.minQuantity = filters.value.minQuantity
-  if (filters.value.maxQuantity !== null) params.maxQuantity = filters.value.maxQuantity
-  if (filters.value.status) params.status = filters.value.status
-  if (filters.value.minPnl !== null) params.minPnl = filters.value.minPnl
-  if (filters.value.maxPnl !== null) params.maxPnl = filters.value.maxPnl
-  if (filters.value.pnlType) params.pnlType = filters.value.pnlType
-  if (filters.value.holdTime) params.holdTime = filters.value.holdTime
-  if (filters.value.brokers) params.brokers = filters.value.brokers
-  if (filters.value.daysOfWeek) params.daysOfWeek = filters.value.daysOfWeek
+  // Remove null/undefined/empty string values to keep params clean
+  Object.keys(params).forEach(key => {
+    if (params[key] === null || params[key] === undefined || params[key] === '') {
+      delete params[key]
+    }
+  })
   
+  console.log('[AnalyticsView] buildFilterParams - filters.value:', JSON.stringify(filters.value))
+  console.log('[AnalyticsView] buildFilterParams - returning params:', JSON.stringify(params))
   return params
 }
 
 async function fetchOverview() {
   try {
     const params = buildFilterParams()
+    console.log('[AnalyticsView] fetchOverview - filters.value:', JSON.stringify(filters.value))
+    console.log('[AnalyticsView] fetchOverview - params being sent:', JSON.stringify(params))
     const response = await api.get('/analytics/overview', { params })
-    console.log('Analytics API response:', response.data)
-    console.log('Overview data received:', response.data.overview)
+    console.log('[AnalyticsView] fetchOverview - API response:', response.data)
+    console.log('[AnalyticsView] fetchOverview - Overview data received:', response.data.overview)
     overview.value = response.data.overview
+    console.log('[AnalyticsView] fetchOverview - overview.value updated:', overview.value)
   } catch (error) {
-    console.error('Failed to fetch overview:', error)
+    console.error('[AnalyticsView] Failed to fetch overview:', error)
   }
 }
 
@@ -2621,9 +2618,98 @@ async function fetchDrawdownData() {
 }
 
 // Handle filter changes from TradeFilters component
+// TradeFilters only sends non-empty values, so we need to treat newFilters as the complete active filter set
 async function handleFilter(newFilters) {
-  // Directly apply the filters from TradeFilters component
-  filters.value = { ...newFilters }
+  console.log('[AnalyticsView] handleFilter received:', newFilters)
+  
+  // CRITICAL: TradeFilters only sends non-empty filters, so we must reset all filters first,
+  // then apply only what's in newFilters. This ensures cleared filters are actually cleared.
+  // Reset all filters to defaults
+  filters.value = {
+    symbol: '',
+    startDate: '',
+    endDate: '',
+    strategies: '',
+    sectors: '',
+    tags: '',
+    hasNews: '',
+    side: '',
+    minPrice: null,
+    maxPrice: null,
+    minQuantity: null,
+    maxQuantity: null,
+    status: '',
+    minPnl: null,
+    maxPnl: null,
+    pnlType: '',
+    holdTime: '',
+    brokers: '',
+    daysOfWeek: '',
+    instrumentTypes: '',
+    optionTypes: '',
+    qualityGrades: ''
+  }
+  
+  // Now apply only the filters that TradeFilters sent (the active ones)
+  Object.keys(newFilters).forEach(key => {
+    if (key in filters.value) {
+      filters.value[key] = newFilters[key]
+    }
+  })
+  
+  // Reset localFilters to defaults, then apply new filters
+  localFilters.value = {
+    symbol: '',
+    startDate: '',
+    endDate: '',
+    strategies: [],
+    sectors: [],
+    tags: [],
+    hasNews: '',
+    side: '',
+    minPrice: null,
+    maxPrice: null,
+    minQuantity: null,
+    maxQuantity: null,
+    status: '',
+    minPnl: null,
+    maxPnl: null,
+    pnlType: '',
+    holdTime: '',
+    brokers: [],
+    daysOfWeek: [],
+    instrumentTypes: [],
+    optionTypes: [],
+    qualityGrades: []
+  }
+  
+  // Convert newFilters back to localFilters format (arrays for multi-select)
+  if (newFilters.symbol) localFilters.value.symbol = newFilters.symbol
+  if (newFilters.startDate) localFilters.value.startDate = newFilters.startDate
+  if (newFilters.endDate) localFilters.value.endDate = newFilters.endDate
+  if (newFilters.strategies) localFilters.value.strategies = typeof newFilters.strategies === 'string' ? newFilters.strategies.split(',').filter(Boolean) : newFilters.strategies
+  if (newFilters.sectors) localFilters.value.sectors = typeof newFilters.sectors === 'string' ? newFilters.sectors.split(',').filter(Boolean) : newFilters.sectors
+  if (newFilters.tags) localFilters.value.tags = typeof newFilters.tags === 'string' ? newFilters.tags.split(',').filter(Boolean) : newFilters.tags
+  if (newFilters.hasNews) localFilters.value.hasNews = newFilters.hasNews
+  if (newFilters.side) localFilters.value.side = newFilters.side
+  if (newFilters.status) localFilters.value.status = newFilters.status
+  if (newFilters.minPrice !== undefined && newFilters.minPrice !== null) localFilters.value.minPrice = newFilters.minPrice
+  if (newFilters.maxPrice !== undefined && newFilters.maxPrice !== null) localFilters.value.maxPrice = newFilters.maxPrice
+  if (newFilters.minQuantity !== undefined && newFilters.minQuantity !== null) localFilters.value.minQuantity = newFilters.minQuantity
+  if (newFilters.maxQuantity !== undefined && newFilters.maxQuantity !== null) localFilters.value.maxQuantity = newFilters.maxQuantity
+  if (newFilters.minPnl !== undefined && newFilters.minPnl !== null) localFilters.value.minPnl = newFilters.minPnl
+  if (newFilters.maxPnl !== undefined && newFilters.maxPnl !== null) localFilters.value.maxPnl = newFilters.maxPnl
+  if (newFilters.pnlType) localFilters.value.pnlType = newFilters.pnlType
+  if (newFilters.holdTime) localFilters.value.holdTime = newFilters.holdTime
+  if (newFilters.brokers) localFilters.value.brokers = typeof newFilters.brokers === 'string' ? newFilters.brokers.split(',').filter(Boolean) : newFilters.brokers
+  if (newFilters.daysOfWeek) localFilters.value.daysOfWeek = typeof newFilters.daysOfWeek === 'string' ? newFilters.daysOfWeek.split(',').filter(Boolean).map(Number) : newFilters.daysOfWeek
+  if (newFilters.instrumentTypes) localFilters.value.instrumentTypes = typeof newFilters.instrumentTypes === 'string' ? newFilters.instrumentTypes.split(',').filter(Boolean) : newFilters.instrumentTypes
+  if (newFilters.optionTypes) localFilters.value.optionTypes = typeof newFilters.optionTypes === 'string' ? newFilters.optionTypes.split(',').filter(Boolean) : newFilters.optionTypes
+  if (newFilters.qualityGrades) localFilters.value.qualityGrades = typeof newFilters.qualityGrades === 'string' ? newFilters.qualityGrades.split(',').filter(Boolean) : newFilters.qualityGrades
+
+  console.log('[AnalyticsView] Updated filters.value:', JSON.stringify(filters.value))
+  const params = buildFilterParams()
+  console.log('[AnalyticsView] buildFilterParams will return:', JSON.stringify(params))
 
   loading.value = true
 
@@ -3062,24 +3148,119 @@ function parseMarkdown(text) {
 
 async function loadData() {
   loading.value = true
-  
+
   // Load user settings first
   await fetchUserSettings()
-  
-  // Load saved filters from localStorage
-  const savedFilters = localStorage.getItem('analyticsFilters')
-  if (savedFilters) {
+
+  // Load saved filters from localStorage (use same key as TradeFilters component)
+  const savedFilters = localStorage.getItem('tradeFilters')
+  const savedPeriod = localStorage.getItem('tradeFiltersPeriod')
+
+  console.log('[AnalyticsView] onMounted - Loading from localStorage')
+  console.log('[AnalyticsView] savedFilters:', savedFilters)
+  console.log('[AnalyticsView] savedPeriod:', savedPeriod)
+
+  if (savedFilters || savedPeriod) {
     try {
-      const parsed = JSON.parse(savedFilters)
-      filters.value = parsed
+      // First, always load saved filters if they exist (this includes custom dates)
+      if (savedFilters) {
+        const parsed = JSON.parse(savedFilters)
+        console.log('[AnalyticsView] Parsed filters:', parsed)
+        console.log('[AnalyticsView] parsed startDate:', parsed.startDate, 'endDate:', parsed.endDate)
+        
+        // Update localFilters first (this is what applyFilters uses)
+        localFilters.value = {
+          symbol: parsed.symbol || '',
+          startDate: parsed.startDate || '',
+          endDate: parsed.endDate || '',
+          strategies: Array.isArray(parsed.strategies) ? parsed.strategies : (parsed.strategies ? parsed.strategies.split(',').filter(Boolean) : []),
+          sectors: Array.isArray(parsed.sectors) ? parsed.sectors : (parsed.sectors ? parsed.sectors.split(',').filter(Boolean) : []),
+          tags: Array.isArray(parsed.tags) ? parsed.tags : (parsed.tags ? parsed.tags.split(',').filter(Boolean) : []),
+          hasNews: parsed.hasNews || '',
+          side: parsed.side || '',
+          minPrice: parsed.minPrice || null,
+          maxPrice: parsed.maxPrice || null,
+          minQuantity: parsed.minQuantity || null,
+          maxQuantity: parsed.maxQuantity || null,
+          status: parsed.status || '',
+          minPnl: parsed.minPnl || null,
+          maxPnl: parsed.maxPnl || null,
+          pnlType: parsed.pnlType || '',
+          holdTime: parsed.holdTime || '',
+          brokers: Array.isArray(parsed.brokers) ? parsed.brokers : (parsed.brokers ? parsed.brokers.split(',').filter(Boolean) : []),
+          daysOfWeek: Array.isArray(parsed.daysOfWeek) ? parsed.daysOfWeek : (parsed.daysOfWeek ? parsed.daysOfWeek.split(',').filter(Boolean).map(Number) : []),
+          instrumentTypes: Array.isArray(parsed.instrumentTypes) ? parsed.instrumentTypes : (parsed.instrumentTypes ? parsed.instrumentTypes.split(',').filter(Boolean) : []),
+          optionTypes: Array.isArray(parsed.optionTypes) ? parsed.optionTypes : (parsed.optionTypes ? parsed.optionTypes.split(',').filter(Boolean) : []),
+          qualityGrades: Array.isArray(parsed.qualityGrades) ? parsed.qualityGrades : (parsed.qualityGrades ? parsed.qualityGrades.split(',').filter(Boolean) : [])
+        }
+        
+        // Also merge into filters for backward compatibility
+        Object.keys(parsed).forEach(key => {
+          if (parsed[key] !== undefined && parsed[key] !== null && parsed[key] !== '') {
+            filters.value[key] = parsed[key]
+          }
+        })
+        console.log('[AnalyticsView] After merge, localFilters.value:', JSON.stringify(localFilters.value))
+      }
+
+      // If a period preset is saved (not custom), recalculate dates dynamically
+      // This ensures relative periods like "30d" are always relative to today
+      if (savedPeriod && savedPeriod !== 'custom' && savedPeriod !== 'all') {
+        const now = new Date()
+        const today = now.toISOString().split('T')[0]
+        let startDate = ''
+
+        switch (savedPeriod) {
+          case '7d': {
+            const start = new Date(now)
+            start.setDate(start.getDate() - 7)
+            startDate = start.toISOString().split('T')[0]
+            break
+          }
+          case '30d': {
+            const start = new Date(now)
+            start.setDate(start.getDate() - 30)
+            startDate = start.toISOString().split('T')[0]
+            break
+          }
+          case '90d': {
+            const start = new Date(now)
+            start.setDate(start.getDate() - 90)
+            startDate = start.toISOString().split('T')[0]
+            break
+          }
+          case 'ytd': {
+            const start = new Date(now.getFullYear(), 0, 1)
+            startDate = start.toISOString().split('T')[0]
+            break
+          }
+          case '1y': {
+            const start = new Date(now)
+            start.setFullYear(start.getFullYear() - 1)
+            startDate = start.toISOString().split('T')[0]
+            break
+          }
+        }
+
+        localFilters.value.startDate = startDate
+        localFilters.value.endDate = today
+        filters.value.startDate = startDate
+        filters.value.endDate = today
+      } else if (savedPeriod === 'all') {
+        // All time - no date filters
+        localFilters.value.startDate = ''
+        localFilters.value.endDate = ''
+        filters.value.startDate = ''
+        filters.value.endDate = ''
+      }
+      // For 'custom' period, dates are already loaded from savedFilters above
     } catch (e) {
-      // If parsing fails, use default date range
-      setDefaultDateRange()
+      // If parsing fails, don't set any date filter (show all data)
+      console.error('Failed to parse saved filters:', e)
     }
-  } else {
-    // Set default date range (last 30 days)
-    setDefaultDateRange()
   }
+  // If no saved filters, don't set default dates - let TradeFilters handle it
+  // This prevents overriding the TradeFilters component's saved state
 
   await applyFilters()
 }
@@ -3273,38 +3454,8 @@ onMounted(async () => {
   fetchAvailableSectorsForFilter()
   fetchAvailableBrokersForFilter()
   
+  // loadData() now handles initializing localFilters from saved filters
   await loadData()
-  
-  // Initialize localFilters from saved filters
-  const savedFilters = localStorage.getItem('analyticsFilters')
-  if (savedFilters) {
-    try {
-      const parsed = JSON.parse(savedFilters)
-      // Convert API format back to local format
-      localFilters.value = {
-        symbol: parsed.symbol || '',
-        startDate: parsed.startDate || '',
-        endDate: parsed.endDate || '',
-        strategies: parsed.strategies ? parsed.strategies.split(',').filter(Boolean) : [],
-        sectors: parsed.sectors ? parsed.sectors.split(',').filter(Boolean) : [],
-        hasNews: parsed.hasNews || '',
-        side: parsed.side || '',
-        minPrice: parsed.minPrice || null,
-        maxPrice: parsed.maxPrice || null,
-        minQuantity: parsed.minQuantity || null,
-        maxQuantity: parsed.maxQuantity || null,
-        status: parsed.status || '',
-        minPnl: parsed.minPnl || null,
-        maxPnl: parsed.maxPnl || null,
-        pnlType: parsed.pnlType || '',
-        holdTime: parsed.holdTime || '',
-        brokers: parsed.brokers ? parsed.brokers.split(',').filter(Boolean) : [],
-        daysOfWeek: parsed.daysOfWeek ? parsed.daysOfWeek.split(',').filter(Boolean).map(Number) : []
-      }
-    } catch (e) {
-      console.error('Failed to parse saved filters:', e)
-    }
-  }
   
   // Scroll to hash if present
   if (route.hash) {

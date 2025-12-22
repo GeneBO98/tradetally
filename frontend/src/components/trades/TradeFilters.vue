@@ -15,6 +15,19 @@
       </div>
 
       <div>
+        <label class="label">Time Period</label>
+        <select v-model="selectedPeriod" @change="applyPeriodPreset" class="input">
+          <option value="custom">Custom Range</option>
+          <option value="7d">Last 7 Days</option>
+          <option value="30d">Last 30 Days</option>
+          <option value="90d">Last 90 Days</option>
+          <option value="ytd">Year to Date</option>
+          <option value="1y">Last Year</option>
+          <option value="all">All Time</option>
+        </select>
+      </div>
+
+      <div v-if="selectedPeriod === 'custom'">
         <label for="startDate" class="label">Start Date</label>
         <input
           id="startDate"
@@ -25,7 +38,7 @@
         />
       </div>
 
-      <div>
+      <div v-if="selectedPeriod === 'custom'">
         <label for="endDate" class="label">End Date</label>
         <input
           id="endDate"
@@ -567,6 +580,69 @@ const route = useRoute()
 const tradesStore = useTradesStore()
 
 const showAdvanced = ref(false)
+
+// Load saved period from localStorage on initialization
+const savedPeriodInit = localStorage.getItem('tradeFiltersPeriod')
+const selectedPeriod = ref(savedPeriodInit || 'all')
+console.log('[TradeFilters] Initialized selectedPeriod from localStorage:', selectedPeriod.value)
+
+// Apply a period preset (7d, 30d, etc.)
+function applyPeriodPreset() {
+  const now = new Date()
+  const today = now.toISOString().split('T')[0]
+
+  switch (selectedPeriod.value) {
+    case '7d': {
+      const start = new Date(now)
+      start.setDate(start.getDate() - 7)
+      filters.value.startDate = start.toISOString().split('T')[0]
+      filters.value.endDate = today
+      break
+    }
+    case '30d': {
+      const start = new Date(now)
+      start.setDate(start.getDate() - 30)
+      filters.value.startDate = start.toISOString().split('T')[0]
+      filters.value.endDate = today
+      break
+    }
+    case '90d': {
+      const start = new Date(now)
+      start.setDate(start.getDate() - 90)
+      filters.value.startDate = start.toISOString().split('T')[0]
+      filters.value.endDate = today
+      break
+    }
+    case 'ytd': {
+      const start = new Date(now.getFullYear(), 0, 1)
+      filters.value.startDate = start.toISOString().split('T')[0]
+      filters.value.endDate = today
+      break
+    }
+    case '1y': {
+      const start = new Date(now)
+      start.setFullYear(start.getFullYear() - 1)
+      filters.value.startDate = start.toISOString().split('T')[0]
+      filters.value.endDate = today
+      break
+    }
+    case 'all':
+      filters.value.startDate = ''
+      filters.value.endDate = ''
+      break
+    case 'custom':
+      // Keep existing dates - they're already loaded from localStorage in loadInitialFilters()
+      break
+  }
+
+  // Save selected period to localStorage
+  try {
+    localStorage.setItem('tradeFiltersPeriod', selectedPeriod.value)
+  } catch (e) {
+    // localStorage save failed
+  }
+}
+
 const availableSectors = ref([])
 const loadingSectors = ref(false)
 const availableBrokers = ref([])
@@ -629,7 +705,8 @@ const strategyOptions = [
   { value: 'news_uncertainty', label: 'News Uncertainty' }
 ]
 
-const filters = ref({
+// Initialize filters with defaults, then load from localStorage
+const defaultFilters = {
   // Basic filters
   symbol: '',
   startDate: '',
@@ -657,7 +734,57 @@ const filters = ref({
   instrumentTypes: [], // New multi-select array for instrument types
   optionTypes: [], // New multi-select array for option types (call/put)
   qualityGrades: [] // New multi-select array for quality grades
-})
+}
+
+// Load saved filters from localStorage on initialization
+function loadInitialFilters() {
+  try {
+    const savedFilters = localStorage.getItem('tradeFilters')
+    const savedPeriod = localStorage.getItem('tradeFiltersPeriod')
+    console.log('[TradeFilters] Loading initial filters:', { savedFilters, savedPeriod })
+
+    if (savedFilters) {
+      const parsed = JSON.parse(savedFilters)
+      console.log('[TradeFilters] Parsed filters:', parsed)
+      console.log('[TradeFilters] startDate:', parsed.startDate, 'endDate:', parsed.endDate)
+
+      // Convert comma-separated strings back to arrays
+      if (parsed.strategies && typeof parsed.strategies === 'string') {
+        parsed.strategies = parsed.strategies.split(',').filter(Boolean)
+      }
+      if (parsed.sectors && typeof parsed.sectors === 'string') {
+        parsed.sectors = parsed.sectors.split(',').filter(Boolean)
+      }
+      if (parsed.tags && typeof parsed.tags === 'string') {
+        parsed.tags = parsed.tags.split(',').filter(Boolean)
+      }
+      if (parsed.brokers && typeof parsed.brokers === 'string') {
+        parsed.brokers = parsed.brokers.split(',').filter(Boolean)
+      }
+      if (parsed.daysOfWeek && typeof parsed.daysOfWeek === 'string') {
+        parsed.daysOfWeek = parsed.daysOfWeek.split(',').filter(Boolean).map(Number)
+      }
+      if (parsed.instrumentTypes && typeof parsed.instrumentTypes === 'string') {
+        parsed.instrumentTypes = parsed.instrumentTypes.split(',').filter(Boolean)
+      }
+      if (parsed.optionTypes && typeof parsed.optionTypes === 'string') {
+        parsed.optionTypes = parsed.optionTypes.split(',').filter(Boolean)
+      }
+      if (parsed.qualityGrades && typeof parsed.qualityGrades === 'string') {
+        parsed.qualityGrades = parsed.qualityGrades.split(',').filter(Boolean)
+      }
+      const result = { ...defaultFilters, ...parsed }
+      console.log('[TradeFilters] Final loaded filters - startDate:', result.startDate, 'endDate:', result.endDate, 'savedPeriod:', savedPeriod)
+      console.log('[TradeFilters] Full result object:', JSON.stringify(result, null, 2))
+      return result
+    }
+  } catch (e) {
+    console.warn('Failed to load saved filters:', e)
+  }
+  return { ...defaultFilters }
+}
+
+const filters = ref(loadInitialFilters())
 
 // Helper methods for multi-select dropdowns
 function getSelectedStrategyText() {
@@ -807,9 +934,13 @@ const activeAdvancedCount = computed(() => {
 })
 
 function applyFilters() {
+  console.log('[TradeFilters] applyFilters called')
+  console.log('[TradeFilters] Current filters.value:', JSON.stringify(filters.value))
+  console.log('[TradeFilters] Current selectedPeriod:', selectedPeriod.value)
+
   // Clean up the filters before sending
   const cleanFilters = {}
-  
+
   // Basic filters
   if (filters.value.symbol) cleanFilters.symbol = filters.value.symbol
   if (filters.value.startDate) cleanFilters.startDate = filters.value.startDate
@@ -888,46 +1019,29 @@ function applyFilters() {
       }
     })
 
+    console.log('[TradeFilters] Saving to localStorage - startDate:', filtersToSave.startDate, 'endDate:', filtersToSave.endDate)
+    console.log('[TradeFilters] Full filtersToSave:', JSON.stringify(filtersToSave))
+    console.log('[TradeFilters] Current filters.value.startDate:', filters.value.startDate, 'endDate:', filters.value.endDate)
     localStorage.setItem('tradeFilters', JSON.stringify(filtersToSave))
   } catch (e) {
-    // localStorage save failed
+    console.error('[TradeFilters] localStorage save failed:', e)
   }
 
+  console.log('[TradeFilters] Emitting cleanFilters:', cleanFilters)
   emit('filter', cleanFilters)
 }
 
 function resetFilters() {
-  filters.value = {
-    symbol: '',
-    startDate: '',
-    endDate: '',
-    strategy: '',
-    strategies: [],
-    sector: '',
-    sectors: [],
-    tags: [],
-    hasNews: '',
-    side: '',
-    minPrice: null,
-    maxPrice: null,
-    minQuantity: null,
-    maxQuantity: null,
-    status: '',
-    minPnl: null,
-    maxPnl: null,
-    pnlType: '',
-    holdTime: '',
-    broker: '',
-    brokers: [],
-    daysOfWeek: [],
-    instrumentTypes: [],
-    optionTypes: [],
-    qualityGrades: []
-  }
+  // Reset to defaults
+  filters.value = { ...defaultFilters }
+
+  // Reset period selector
+  selectedPeriod.value = 'all'
 
   // Clear localStorage
   try {
     localStorage.removeItem('tradeFilters')
+    localStorage.removeItem('tradeFiltersPeriod')
   } catch (e) {
     // localStorage clear failed
   }
@@ -1051,52 +1165,52 @@ onMounted(() => {
     document.addEventListener('click', handleClickOutside)
   }, 100)
 
-  // Existing code...
   // Fetch available sectors and brokers for dropdowns
   fetchAvailableSectors()
   fetchAvailableBrokers()
 
-  // Initialize filters from store and localStorage
-  let shouldApply = false
-
-  // First, try to load from localStorage
-  const savedFilters = localStorage.getItem('tradeFilters')
-  if (savedFilters) {
+  // Debug: Check what we have after initialization
+  console.log('[TradeFilters] onMounted - selectedPeriod:', selectedPeriod.value)
+  console.log('[TradeFilters] onMounted - filters.value.startDate:', filters.value.startDate)
+  console.log('[TradeFilters] onMounted - filters.value.endDate:', filters.value.endDate)
+  console.log('[TradeFilters] onMounted - full filters.value:', JSON.stringify(filters.value))
+  
+  // CRITICAL FIX: If period is 'custom' but dates are missing, restore them from localStorage
+  if (selectedPeriod.value === 'custom' && (!filters.value.startDate || !filters.value.endDate)) {
+    console.log('[TradeFilters] Period is custom but dates missing - attempting to restore')
     try {
-      const parsed = JSON.parse(savedFilters)
-      // Convert comma-separated strings back to arrays
-      if (parsed.strategies && typeof parsed.strategies === 'string') {
-        parsed.strategies = parsed.strategies.split(',').filter(Boolean)
+      const savedFilters = localStorage.getItem('tradeFilters')
+      if (savedFilters) {
+        const parsed = JSON.parse(savedFilters)
+        if (parsed.startDate) {
+          filters.value.startDate = parsed.startDate
+          console.log('[TradeFilters] Restored startDate from localStorage:', parsed.startDate)
+        }
+        if (parsed.endDate) {
+          filters.value.endDate = parsed.endDate
+          console.log('[TradeFilters] Restored endDate from localStorage:', parsed.endDate)
+        }
       }
-      if (parsed.sectors && typeof parsed.sectors === 'string') {
-        parsed.sectors = parsed.sectors.split(',').filter(Boolean)
-      }
-      if (parsed.tags && typeof parsed.tags === 'string') {
-        parsed.tags = parsed.tags.split(',').filter(Boolean)
-      }
-      if (parsed.brokers && typeof parsed.brokers === 'string') {
-        parsed.brokers = parsed.brokers.split(',').filter(Boolean)
-      }
-      if (parsed.daysOfWeek && typeof parsed.daysOfWeek === 'string') {
-        parsed.daysOfWeek = parsed.daysOfWeek.split(',').filter(Boolean)
-      }
-      if (parsed.instrumentTypes && typeof parsed.instrumentTypes === 'string') {
-        parsed.instrumentTypes = parsed.instrumentTypes.split(',').filter(Boolean)
-      }
-      if (parsed.optionTypes && typeof parsed.optionTypes === 'string') {
-        parsed.optionTypes = parsed.optionTypes.split(',').filter(Boolean)
-      }
-      if (parsed.qualityGrades && typeof parsed.qualityGrades === 'string') {
-        parsed.qualityGrades = parsed.qualityGrades.split(',').filter(Boolean)
-      }
-
-      filters.value = { ...filters.value, ...parsed }
     } catch (e) {
-      // localStorage parse failed
+      console.error('[TradeFilters] Failed to restore dates on mount:', e)
     }
   }
 
-  // Then override with store filters if they exist
+  // Filters and period are already loaded from localStorage during initialization
+  // Now we just need to handle query params and store overrides
+  let shouldApply = false
+
+  // Check if we have saved filters or custom dates (already loaded at init)
+  const hasFilters = Object.keys(filters.value).some(key => {
+    const value = filters.value[key]
+    if (Array.isArray(value)) return value.length > 0
+    return value !== '' && value !== null && value !== undefined
+  })
+  if (hasFilters) {
+    shouldApply = true
+  }
+
+  // Override with store filters if they exist
   if (tradesStore.filters) {
     const storeFilters = { ...tradesStore.filters }
     // Convert comma-separated strings back to arrays for multi-select fields
@@ -1125,7 +1239,15 @@ onMounted(() => {
       storeFilters.qualityGrades = storeFilters.qualityGrades.split(',').filter(Boolean)
     }
 
+    // IMPORTANT: Preserve dates if period is custom - don't let store filters overwrite them
+    const savedStartDate = filters.value.startDate
+    const savedEndDate = filters.value.endDate
     filters.value = { ...filters.value, ...storeFilters }
+    // Restore dates if period is custom
+    if (selectedPeriod.value === 'custom') {
+      if (savedStartDate) filters.value.startDate = savedStartDate
+      if (savedEndDate) filters.value.endDate = savedEndDate
+    }
   }
 
   // Then set only the filters from query parameters
@@ -1144,14 +1266,22 @@ onMounted(() => {
     shouldApply = true
   }
   
+  // Only override dates from query params if they exist AND period is custom
+  // Otherwise, preserve loaded dates when period is custom
   if (route.query.startDate) {
     filters.value.startDate = route.query.startDate
     shouldApply = true
+  } else if (selectedPeriod.value === 'custom' && filters.value.startDate) {
+    // Preserve loaded startDate when period is custom and no query param
+    console.log('[TradeFilters] Preserving loaded startDate:', filters.value.startDate)
   }
   
   if (route.query.endDate) {
     filters.value.endDate = route.query.endDate
     shouldApply = true
+  } else if (selectedPeriod.value === 'custom' && filters.value.endDate) {
+    // Preserve loaded endDate when period is custom and no query param
+    console.log('[TradeFilters] Preserving loaded endDate:', filters.value.endDate)
   }
   
   if (route.query.pnlType) {
@@ -1263,6 +1393,7 @@ onMounted(() => {
     applyFilters()
   }
 })
+
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)

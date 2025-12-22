@@ -728,7 +728,10 @@ export default {
     const { showSuccess, showError, showWarning } = useNotification()
     const { celebrationQueue } = usePriceAlertNotifications()
     const authStore = useAuthStore()
-    const activeTab = ref('overview')
+
+    // Load saved tab from localStorage
+    const savedTab = localStorage.getItem('gamificationTab')
+    const activeTab = ref(savedTab || 'overview')
     
     const tabs = [
       { key: 'overview', name: 'Overview', icon: mdiChartBox },
@@ -756,8 +759,9 @@ export default {
     const selectedLeaderboard = ref(null)
     const checkingAchievements = ref(false)
     
-    // Filter-related reactive data
-    const showFilters = ref(false)
+    // Filter-related reactive data - load from localStorage
+    const savedShowFilters = localStorage.getItem('gamificationShowFilters')
+    const showFilters = ref(savedShowFilters === 'true')
     const loadingFilters = ref(false)
     const rankingsLoading = ref(false)
     const applyingFilters = ref(false)
@@ -767,7 +771,8 @@ export default {
       volumeRanges: {},
       pnlRanges: {}
     })
-    const filters = ref({
+    const savedFilters = localStorage.getItem('gamificationFilters')
+    const filters = ref(savedFilters ? JSON.parse(savedFilters) : {
       strategy: 'all',
       volumeRange: 'all',
       pnlRange: 'all'
@@ -1014,6 +1019,8 @@ export default {
     // Apply filters to the rankings
     const applyFilters = async () => {
       console.log('Applying filters:', filters.value)
+      // Save filters to localStorage
+      localStorage.setItem('gamificationFilters', JSON.stringify(filters.value))
       applyingFilters.value = true
       try {
         // Load both user rankings and all leaderboards with filters
@@ -1037,6 +1044,8 @@ export default {
         volumeRange: 'all',
         pnlRange: 'all'
       }
+      // Clear from localStorage
+      localStorage.removeItem('gamificationFilters')
       try {
         // Reload both without filters
         await Promise.all([
@@ -1393,9 +1402,17 @@ export default {
       }
     }
 
-    // Watch for tab changes to load data
-    watch(activeTab, loadTabData)
-    
+    // Watch for tab changes to load data and persist to localStorage
+    watch(activeTab, (newTab) => {
+      localStorage.setItem('gamificationTab', newTab)
+      loadTabData()
+    })
+
+    // Watch for showFilters changes to persist to localStorage
+    watch(showFilters, (newValue) => {
+      localStorage.setItem('gamificationShowFilters', String(newValue))
+    })
+
     // Watch for manual filter changes (helpful for debugging)
     watch(filters, (newFilters, oldFilters) => {
       console.log('Filters changed:', { old: oldFilters, new: newFilters })

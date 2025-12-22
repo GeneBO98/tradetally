@@ -939,15 +939,21 @@ class Trade {
 
     // Check if any P&L-affecting field was actually CHANGED (not just provided)
     // This prevents recalculation when opening and closing a trade without changes
+    // Use rounding to avoid floating-point precision issues (e.g., 102.5 vs 102.49999999999999)
+    const roundTo = (num, decimals = 6) => {
+      if (num === null || num === undefined || isNaN(num)) return null;
+      return Math.round(parseFloat(num) * Math.pow(10, decimals)) / Math.pow(10, decimals);
+    };
+
     const hasPnLUpdate = (
-      (updates.entryPrice !== undefined && parseFloat(updates.entryPrice) !== parseFloat(currentTrade.entry_price)) ||
-      (updates.exitPrice !== undefined && parseFloat(updates.exitPrice) !== parseFloat(currentTrade.exit_price)) ||
-      (updates.quantity !== undefined && parseFloat(updates.quantity) !== parseFloat(currentTrade.quantity)) ||
+      (updates.entryPrice !== undefined && roundTo(updates.entryPrice) !== roundTo(currentTrade.entry_price)) ||
+      (updates.exitPrice !== undefined && roundTo(updates.exitPrice) !== roundTo(currentTrade.exit_price)) ||
+      (updates.quantity !== undefined && roundTo(updates.quantity) !== roundTo(currentTrade.quantity)) ||
       (updates.side !== undefined && updates.side !== currentTrade.side) ||
-      (updates.commission !== undefined && parseFloat(updates.commission) !== parseFloat(currentTrade.commission)) ||
-      (updates.fees !== undefined && parseFloat(updates.fees) !== parseFloat(currentTrade.fees)) ||
+      (updates.commission !== undefined && roundTo(updates.commission) !== roundTo(currentTrade.commission)) ||
+      (updates.fees !== undefined && roundTo(updates.fees) !== roundTo(currentTrade.fees)) ||
       (updates.instrumentType !== undefined && updates.instrumentType !== currentTrade.instrument_type) ||
-      (updates.contractSize !== undefined && parseFloat(updates.contractSize) !== parseFloat(currentTrade.contract_size))
+      (updates.contractSize !== undefined && roundTo(updates.contractSize) !== roundTo(currentTrade.contract_size))
     );
 
     if (hasPnLUpdate) {

@@ -353,7 +353,9 @@ export default {
       marketStatus.value = getMarketStatus()
     }, 60000)
 
-    const filters = ref({
+    // Load filters from localStorage
+    const savedFilters = localStorage.getItem('priceAlertsFilters')
+    const filters = ref(savedFilters ? JSON.parse(savedFilters) : {
       symbol: '',
       activeOnly: 'false'
     })
@@ -547,8 +549,9 @@ export default {
       }
     }, { immediate: true })
 
-    // Watch filters and reload
+    // Watch filters and reload, persist to localStorage
     watch(filters, () => {
+      localStorage.setItem('priceAlertsFilters', JSON.stringify(filters.value))
       loadAlerts()
     }, { deep: true })
 
