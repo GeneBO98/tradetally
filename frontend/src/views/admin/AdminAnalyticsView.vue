@@ -257,7 +257,10 @@ const periods = [
   { label: 'All Time', value: 'all' }
 ]
 
-const selectedPeriod = ref('30d')
+// Load saved period from localStorage or default to '30d'
+const savedPeriod = localStorage.getItem('adminAnalyticsPeriod')
+const selectedPeriod = ref(savedPeriod || '30d')
+
 const analytics = ref(null)
 const loading = ref(true)
 const error = ref(null)
@@ -287,7 +290,9 @@ async function fetchAnalytics() {
   }
 }
 
-watch(selectedPeriod, () => {
+watch(selectedPeriod, (newPeriod) => {
+  // Save to localStorage when period changes
+  localStorage.setItem('adminAnalyticsPeriod', newPeriod)
   fetchAnalytics()
 })
 

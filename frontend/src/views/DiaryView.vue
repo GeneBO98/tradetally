@@ -545,9 +545,11 @@ import {
 const diaryStore = useDiaryStore()
 const router = useRouter()
 
-// Component state
-const currentView = ref('list')
-const searchQuery = ref('')
+// Component state - load saved view from localStorage
+const savedView = localStorage.getItem('diaryView')
+const currentView = ref(savedView || 'list')
+const savedSearchQuery = localStorage.getItem('diarySearchQuery')
+const searchQuery = ref(savedSearchQuery || '')
 const searchTimeout = ref(null)
 const showDeleteModal = ref(false)
 const entryToDelete = ref(null)
@@ -558,8 +560,9 @@ const allTags = ref([])
 // Calendar state
 const calendarDate = ref(new Date())
 
-// Filters
-const filters = ref({
+// Filters - load from localStorage
+const savedFilters = localStorage.getItem('diaryFilters')
+const filters = ref(savedFilters ? JSON.parse(savedFilters) : {
   entryType: '',
   marketBias: '',
   startDate: '',
@@ -648,6 +651,8 @@ const truncateHtml = (html, maxLength) => {
 }
 
 const applyFilters = async () => {
+  // Save filters to localStorage
+  localStorage.setItem('diaryFilters', JSON.stringify(filters.value))
   diaryStore.updateFilters(filters.value)
   await loadEntries()
 }
@@ -660,6 +665,9 @@ const clearFilters = async () => {
     endDate: ''
   }
   searchQuery.value = ''
+  // Clear from localStorage
+  localStorage.removeItem('diaryFilters')
+  localStorage.removeItem('diarySearchQuery')
   diaryStore.resetFilters()
   await loadEntries()
 }
@@ -670,6 +678,13 @@ const debounceSearch = () => {
     showTagSuggestions.value = true
   } else {
     showTagSuggestions.value = false
+  }
+
+  // Save search query to localStorage
+  if (searchQuery.value.trim()) {
+    localStorage.setItem('diarySearchQuery', searchQuery.value)
+  } else {
+    localStorage.removeItem('diarySearchQuery')
   }
 
   clearTimeout(searchTimeout.value)
@@ -852,6 +867,11 @@ onMounted(async () => {
 watch(filters, () => {
   applyFilters()
 }, { deep: true })
+
+// Watch for view changes to persist to localStorage
+watch(currentView, (newView) => {
+  localStorage.setItem('diaryView', newView)
+})
 </script>
 
 <style scoped>

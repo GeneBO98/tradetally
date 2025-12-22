@@ -121,8 +121,57 @@ function convertQueryToTradeFilters(query) {
     maxPnl: toNumber(query.maxPnl),
     pnlType: query.pnlType || undefined,
     brokers: brokersRaw, // accept CSV or single broker
-    daysOfWeek: toIntArray(query.daysOfWeek)
+    daysOfWeek: toIntArray(query.daysOfWeek),
+    qualityGrades: toArray(query.qualityGrades),
+    instrumentTypes: toArray(query.instrumentTypes),
+    optionTypes: toArray(query.optionTypes),
+    holdTime: query.holdTime || undefined
   };
+}
+
+// Helper function to generate hold time filter SQL conditions
+function getHoldTimeFilter(holdTimeRange) {
+  let timeCondition = '';
+
+  switch (holdTimeRange) {
+    case '< 1 min':
+      timeCondition = ` AND EXTRACT(EPOCH FROM (COALESCE(exit_time, NOW()) - entry_time)) < 60`;
+      break;
+    case '1-5 min':
+      timeCondition = ` AND EXTRACT(EPOCH FROM (COALESCE(exit_time, NOW()) - entry_time)) BETWEEN 60 AND 300`;
+      break;
+    case '5-15 min':
+      timeCondition = ` AND EXTRACT(EPOCH FROM (COALESCE(exit_time, NOW()) - entry_time)) BETWEEN 300 AND 900`;
+      break;
+    case '15-30 min':
+      timeCondition = ` AND EXTRACT(EPOCH FROM (COALESCE(exit_time, NOW()) - entry_time)) BETWEEN 900 AND 1800`;
+      break;
+    case '30-60 min':
+      timeCondition = ` AND EXTRACT(EPOCH FROM (COALESCE(exit_time, NOW()) - entry_time)) BETWEEN 1800 AND 3600`;
+      break;
+    case '1-2 hours':
+      timeCondition = ` AND EXTRACT(EPOCH FROM (COALESCE(exit_time, NOW()) - entry_time)) BETWEEN 3600 AND 7200`;
+      break;
+    case '2-4 hours':
+      timeCondition = ` AND EXTRACT(EPOCH FROM (COALESCE(exit_time, NOW()) - entry_time)) BETWEEN 7200 AND 14400`;
+      break;
+    case '4-24 hours':
+      timeCondition = ` AND EXTRACT(EPOCH FROM (COALESCE(exit_time, NOW()) - entry_time)) BETWEEN 14400 AND 86400`;
+      break;
+    case '1-7 days':
+      timeCondition = ` AND EXTRACT(EPOCH FROM (COALESCE(exit_time, NOW()) - entry_time)) BETWEEN 86400 AND 604800`;
+      break;
+    case '1-4 weeks':
+      timeCondition = ` AND EXTRACT(EPOCH FROM (COALESCE(exit_time, NOW()) - entry_time)) BETWEEN 604800 AND 2419200`;
+      break;
+    case '1+ months':
+      timeCondition = ` AND EXTRACT(EPOCH FROM (COALESCE(exit_time, NOW()) - entry_time)) >= 2419200`;
+      break;
+    default:
+      timeCondition = '';
+  }
+
+  return timeCondition;
 }
 
 // Helper function to build filter conditions for analytics queries using normalized Trade filters
@@ -260,6 +309,32 @@ function buildFilterConditions(query) {
     }
   }
 
+  // Quality grade filter - multi-select support (A, B, C, D, F)
+  if (filters.qualityGrades && filters.qualityGrades.length > 0) {
+    const placeholders = filters.qualityGrades.map(() => `$${paramIndex++}`).join(',');
+    filterConditions += ` AND quality_grade IN (${placeholders})`;
+    params.push(...filters.qualityGrades);
+  }
+
+  // Instrument types filter (stock, option, future)
+  if (filters.instrumentTypes && filters.instrumentTypes.length > 0) {
+    const placeholders = filters.instrumentTypes.map(() => `$${paramIndex++}`).join(',');
+    filterConditions += ` AND instrument_type IN (${placeholders})`;
+    params.push(...filters.instrumentTypes);
+  }
+
+  // Option types filter (call, put) - only applies to options
+  if (filters.optionTypes && filters.optionTypes.length > 0) {
+    const placeholders = filters.optionTypes.map(() => `$${paramIndex++}`).join(',');
+    filterConditions += ` AND option_type IN (${placeholders})`;
+    params.push(...filters.optionTypes);
+  }
+
+  // Hold time filter
+  if (filters.holdTime) {
+    filterConditions += getHoldTimeFilter(filters.holdTime);
+  }
+
   console.log('--- Filter Results (normalized) ---');
   console.log('Final filter conditions:', filterConditions);
   console.log('Final params:', params);
@@ -293,11 +368,14 @@ const analyticsController = {
       console.log('[CACHE] Normalized filters for cache:', normalizedFiltersForCache);
       
       // Check cache first for faster response
-      const cachedData = cache.get(cacheKey);
-      if (cachedData) {
-        console.log('[CACHE] Returning cached analytics data');
-        return res.json(cachedData);
-      }
+      // TEMPORARILY DISABLED FOR DEBUGGING - filters not applying
+      // const cachedData = cache.get(cacheKey);
+      // if (cachedData) {
+      //   console.log('[CACHE] Returning cached analytics data');
+      //   return res.json(cachedData);
+      // }
+      console.log('[DEBUG] Cache disabled - running fresh query');
+      console.log('[DEBUG] filterData from buildFilterConditions:', JSON.stringify(filterData));
 
       const { filterConditions, params: filterParams } = filterData;
       const params = [req.user.id, ...filterParams];

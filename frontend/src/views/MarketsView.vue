@@ -507,8 +507,9 @@ const authStore = useAuthStore()
 const { showSuccess, showError, showCriticalError, showConfirmation } = useNotification()
 const { isConnected, notifications, requestNotificationPermission } = usePriceAlertNotifications()
 
-// Tab state
-const activeTab = ref('watchlists')
+// Tab state - load from localStorage
+const savedTab = localStorage.getItem('marketsTab')
+const activeTab = ref(savedTab || 'watchlists')
 
 // Watchlist state
 const watchlists = ref([])
@@ -529,7 +530,9 @@ const savingAlert = ref(false)
 const showCreateAlertModal = ref(false)
 const editingAlert = ref(null)
 const marketStatus = ref(getMarketStatus())
-const filters = ref({
+// Load filters from localStorage
+const savedFilters = localStorage.getItem('marketsFilters')
+const filters = ref(savedFilters ? JSON.parse(savedFilters) : {
   symbol: '',
   activeOnly: 'false'
 })
@@ -810,10 +813,16 @@ watch(() => route.query.symbol, (symbol) => {
   }
 }, { immediate: true })
 
-// Watch filters and reload
+// Watch filters and reload, persist to localStorage
 watch(filters, () => {
+  localStorage.setItem('marketsFilters', JSON.stringify(filters.value))
   loadAlerts()
 }, { deep: true })
+
+// Watch for tab changes to persist to localStorage
+watch(activeTab, (newTab) => {
+  localStorage.setItem('marketsTab', newTab)
+})
 
 // Watch for auth loading to complete
 watch(authLoading, (newAuthLoading) => {
