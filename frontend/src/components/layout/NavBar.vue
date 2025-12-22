@@ -1,5 +1,5 @@
 <template>
-  <nav class="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
+  <nav class="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700 w-full">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="flex justify-between h-16">
         <div class="flex items-center">
@@ -59,15 +59,17 @@
           </div>
         </div>
 
-        <div class="flex items-center space-x-8">
+        <div class="flex items-center space-x-6 ml-8">
           <!-- Desktop Navigation -->
-          <div class="hidden sm:flex sm:items-center sm:space-x-8">
-            <div v-if="authStore.isAuthenticated" class="flex items-center space-x-3">
+          <div class="hidden sm:flex sm:items-center sm:space-x-6">
+            <div v-if="authStore.isAuthenticated" class="flex items-center space-x-4">
               <router-link
                 to="/profile"
-                class="text-sm text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white underline"
+                class="p-2 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"
+                :title="authStore.user?.username"
+                :aria-label="`Profile: ${authStore.user?.username}`"
               >
-                {{ authStore.user?.username }}
+                <UserIcon class="h-5 w-5" />
               </router-link>
               <NotificationBell />
               <button
@@ -254,7 +256,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useRegistrationMode } from '@/composables/useRegistrationMode'
-import { SunIcon, MoonIcon, Bars3Icon, XMarkIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/vue/24/outline'
+import { SunIcon, MoonIcon, Bars3Icon, XMarkIcon, ChevronDownIcon, ChevronUpIcon, UserIcon } from '@heroicons/vue/24/outline'
 import config from '@/config'
 import NavDropdown from '@/components/common/NavDropdown.vue'
 import NotificationBell from '@/components/common/NotificationBell.vue'
