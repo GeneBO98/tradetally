@@ -646,8 +646,12 @@ function applyTradeGrouping(trades, settings) {
       if (!currentGroup) {
         // Start new group - initialize with executionData array (matches Trade model)
         // For grouped trades, each execution represents a complete round-trip sub-trade
+        // Handle both 'pnl' and 'profitLoss' field names (different parsers use different names)
+        const tradePnlValue = trade.pnl !== undefined ? trade.pnl : (trade.profitLoss || 0);
         currentGroup = {
           ...trade,
+          pnl: tradePnlValue, // Ensure pnl field is set
+          profitLoss: tradePnlValue, // Set both for compatibility
           groupedTrades: 1,
           executionData: trade.executionData || trade.executions || [{
             entryTime: trade.entryTime,
@@ -658,7 +662,7 @@ function applyTradeGrouping(trades, settings) {
             side: trade.side,
             commission: trade.commission || 0,
             fees: trade.fees || 0,
-            pnl: trade.profitLoss || 0
+            pnl: tradePnlValue
           }]
         };
         lastEntryTime = entryTime;
@@ -674,6 +678,8 @@ function applyTradeGrouping(trades, settings) {
 
           // Add this trade's execution to the executionData array
           // For grouped trades, each execution represents a complete round-trip sub-trade
+          // Handle both 'pnl' and 'profitLoss' field names
+          const executionPnl = trade.pnl !== undefined ? trade.pnl : (trade.profitLoss || 0);
           const newExecution = {
             entryTime: trade.entryTime,
             entryPrice: trade.entryPrice,
@@ -683,7 +689,7 @@ function applyTradeGrouping(trades, settings) {
             side: trade.side,
             commission: trade.commission || 0,
             fees: trade.fees || 0,
-            pnl: trade.profitLoss || 0
+            pnl: executionPnl
           };
 
           // If trade has its own executionData/executions array, merge those; otherwise add as single execution
@@ -702,7 +708,12 @@ function applyTradeGrouping(trades, settings) {
           currentGroup.quantity = totalQuantity;
 
           // Sum up P&L and costs
-          currentGroup.profitLoss = (currentGroup.profitLoss || 0) + (trade.profitLoss || 0);
+          // Handle both 'pnl' and 'profitLoss' field names (different parsers use different names)
+          const tradePnl = trade.pnl !== undefined ? trade.pnl : (trade.profitLoss || 0);
+          const groupPnl = currentGroup.pnl !== undefined ? currentGroup.pnl : (currentGroup.profitLoss || 0);
+          const totalPnl = groupPnl + tradePnl;
+          currentGroup.pnl = totalPnl;
+          currentGroup.profitLoss = totalPnl; // Set both for compatibility
           currentGroup.commission = (currentGroup.commission || 0) + (trade.commission || 0);
           currentGroup.fees = (currentGroup.fees || 0) + (trade.fees || 0);
 
@@ -730,8 +741,12 @@ function applyTradeGrouping(trades, settings) {
           const reason = trade.side !== currentGroup.side ? 'different side' : `gap exceeded (${timeSinceLastEntry.toFixed(1)}min)`;
           console.log(`  [GROUPING] ${reason}, starting new group`);
           groupedTrades.push(currentGroup);
+          // Handle both 'pnl' and 'profitLoss' field names
+          const newGroupPnl = trade.pnl !== undefined ? trade.pnl : (trade.profitLoss || 0);
           currentGroup = {
             ...trade,
+            pnl: newGroupPnl, // Ensure pnl field is set
+            profitLoss: newGroupPnl, // Set both for compatibility
             groupedTrades: 1,
             executionData: trade.executionData || trade.executions || [{
               entryTime: trade.entryTime,
@@ -742,7 +757,7 @@ function applyTradeGrouping(trades, settings) {
               side: trade.side,
               commission: trade.commission || 0,
               fees: trade.fees || 0,
-              pnl: trade.profitLoss || 0
+              pnl: newGroupPnl
             }]
           };
           lastEntryTime = entryTime;
