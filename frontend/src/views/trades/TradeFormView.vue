@@ -281,9 +281,9 @@
                       :id="`exec-commission-${index}`"
                       v-model="execution.commission"
                       type="number"
-                      step="0.00001"
+                      step="0.00000001"
                       class="input"
-                      placeholder="0.00000"
+                      placeholder="0.00000000"
                     />
                   </div>
 
@@ -293,9 +293,9 @@
                       :id="`exec-fees-${index}`"
                       v-model="execution.fees"
                       type="number"
-                      step="0.00001"
+                      step="0.00000001"
                       class="input"
-                      placeholder="0.00000"
+                      placeholder="0.00000000"
                     />
                   </div>
                 </div>
@@ -391,9 +391,9 @@
                     :id="`exec-commission-${index}`"
                     v-model="execution.commission"
                     type="number"
-                    step="0.00001"
+                    step="0.00000001"
                     class="input"
-                    placeholder="0.00000"
+                    placeholder="0.00000000"
                   />
                 </div>
 
@@ -403,9 +403,9 @@
                     :id="`exec-fees-${index}`"
                     v-model="execution.fees"
                     type="number"
-                    step="0.00001"
+                    step="0.00000001"
                     class="input"
-                    placeholder="0.00000"
+                    placeholder="0.00000000"
                   />
                 </div>
               </div>
