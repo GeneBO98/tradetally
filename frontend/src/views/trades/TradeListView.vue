@@ -504,7 +504,7 @@
                 <td v-else-if="column.visible && column.key === 'quantity'"
                     :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
-                  {{ getTradeQuantity(trade) || '-' }}
+                  {{ trade.quantity || '-' }}
                 </td>
                 
                 <td v-else-if="column.visible && column.key === 'commission'" 
@@ -1118,14 +1118,6 @@ function formatHoldTime(trade) {
   const days = Math.floor(minutes / 1440)
   if (days === 1) return '1 day'
   return `${days} days`
-}
-
-function getTradeQuantity(trade) {
-  // Sum execution quantities if executions exist, otherwise use trade.quantity
-  if (trade.executions && trade.executions.length > 0) {
-    return trade.executions.reduce((sum, exec) => sum + (parseFloat(exec.quantity) || 0), 0)
-  }
-  return trade.quantity
 }
 
 function formatTime(datetime) {

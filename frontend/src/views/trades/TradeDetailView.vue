@@ -1347,12 +1347,12 @@ function formatNumber(num, decimals = 2) {
 
 function formatQuantity(num) {
   if (!num) return '0'
-  
+
   // If it's a whole number, show no decimals
   if (num % 1 === 0) {
     return new Intl.NumberFormat('en-US').format(num)
   }
-  
+
   // Otherwise, show up to 4 decimal places, removing trailing zeros
   return new Intl.NumberFormat('en-US', {
     minimumFractionDigits: 0,
