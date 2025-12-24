@@ -762,6 +762,14 @@ function applyTradeGrouping(trades, settings) {
             // Subtract commission and fees (matches Trade.calculatePnL: totalPnL = pnl - commission - fees)
             currentGroup.pnl = pnl - (currentGroup.commission || 0) - (currentGroup.fees || 0);
             currentGroup.profitLoss = currentGroup.pnl; // Set both for compatibility
+
+            // Recalculate PL% based on the recalculated P&L and entry value
+            const entryValue = currentGroup.entryPrice * currentGroup.quantity * multiplier;
+            if (entryValue > 0) {
+              currentGroup.pnlPercent = (currentGroup.pnl / entryValue) * 100;
+            } else {
+              currentGroup.pnlPercent = 0;
+            }
           } else {
             // If exit price not available, fall back to summing P&L (for open positions)
             const tradePnl = trade.pnl !== undefined ? trade.pnl : (trade.profitLoss || 0);
@@ -769,6 +777,36 @@ function applyTradeGrouping(trades, settings) {
             const totalPnl = groupPnl + tradePnl;
             currentGroup.pnl = totalPnl;
             currentGroup.profitLoss = totalPnl;
+
+            // Recalculate PL% for open positions by summing entry values
+            // Calculate entry value from the grouped trade
+            let multiplier;
+            if (currentGroup.instrumentType === 'future') {
+              multiplier = currentGroup.pointValue || 1;
+            } else if (currentGroup.instrumentType === 'option') {
+              multiplier = currentGroup.contractSize || 100;
+            } else {
+              multiplier = 1;
+            }
+            const groupEntryValue = currentGroup.entryPrice * currentGroup.quantity * multiplier;
+            
+            // Calculate entry value for the trade being added
+            let tradeMultiplier;
+            if (trade.instrumentType === 'future') {
+              tradeMultiplier = trade.pointValue || 1;
+            } else if (trade.instrumentType === 'option') {
+              tradeMultiplier = trade.contractSize || 100;
+            } else {
+              tradeMultiplier = 1;
+            }
+            const tradeEntryValue = trade.entryPrice * trade.quantity * tradeMultiplier;
+            
+            const totalEntryValue = groupEntryValue + tradeEntryValue;
+            if (totalEntryValue > 0) {
+              currentGroup.pnlPercent = (totalPnl / totalEntryValue) * 100;
+            } else {
+              currentGroup.pnlPercent = 0;
+            }
           }
 
           // Keep original notes without merging
