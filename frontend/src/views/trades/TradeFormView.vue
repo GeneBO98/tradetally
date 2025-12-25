@@ -113,7 +113,7 @@
                 step="0.000001"
                 min="0"
                 class="input"
-                placeholder="0.000000"
+                placeholder="0"
               />
             </div>
 
@@ -126,7 +126,7 @@
                 step="0.000001"
                 min="0"
                 class="input"
-                placeholder="0.000000"
+                placeholder="0"
               />
             </div>
           </div>
@@ -231,7 +231,7 @@
                       min="0"
                       required
                       class="input"
-                      placeholder="0.00"
+                      placeholder="0"
                     />
                   </div>
 
@@ -244,7 +244,7 @@
                       step="0.000001"
                       min="0"
                       class="input"
-                      placeholder="0.00"
+                      placeholder="0"
                     />
                   </div>
                 </div>
@@ -283,7 +283,7 @@
                       type="number"
                       step="0.00000001"
                       class="input"
-                      placeholder="0.00000000"
+                      placeholder="0"
                     />
                   </div>
 
@@ -295,7 +295,7 @@
                       type="number"
                       step="0.00000001"
                       class="input"
-                      placeholder="0.00000000"
+                      placeholder="0"
                     />
                   </div>
                 </div>
@@ -311,7 +311,7 @@
                       step="0.000001"
                       min="0"
                       class="input"
-                      placeholder="0.00"
+                      placeholder="0"
                     />
                   </div>
 
@@ -324,7 +324,7 @@
                       step="0.000001"
                       min="0"
                       class="input"
-                      placeholder="0.00"
+                      placeholder="0"
                     />
                   </div>
                 </div>
@@ -381,7 +381,7 @@
                     min="0"
                     required
                     class="input"
-                    placeholder="0.00"
+                    placeholder="0"
                   />
                 </div>
 
@@ -393,7 +393,7 @@
                     type="number"
                     step="0.00000001"
                     class="input"
-                    placeholder="0.00000000"
+                    placeholder="0"
                   />
                 </div>
 
@@ -405,7 +405,7 @@
                     type="number"
                     step="0.00000001"
                     class="input"
-                    placeholder="0.00000000"
+                    placeholder="0"
                   />
                 </div>
               </div>
@@ -429,7 +429,7 @@
               type="number"
               step="0.000001"
               class="input"
-              placeholder="0.000000"
+              placeholder="0"
               title="Maximum loss during trade"
             />
           </div>
@@ -442,7 +442,7 @@
               type="number"
               step="0.000001"
               class="input"
-              placeholder="0.000000"
+              placeholder="0"
               title="Maximum profit during trade"
             />
           </div>
@@ -1088,18 +1088,18 @@ async function loadTrade() {
       symbol: tradeData.symbol,
       entryTime: formatDateTimeLocal(tradeData.entry_time),
       exitTime: tradeData.exit_time ? formatDateTimeLocal(tradeData.exit_time) : '',
-      entryPrice: tradeData.entry_price,
-      exitPrice: tradeData.exit_price || '',
-      quantity: tradeData.quantity,
+      entryPrice: tradeData.entry_price != null ? Number(tradeData.entry_price) : '',
+      exitPrice: tradeData.exit_price != null ? Number(tradeData.exit_price) : '',
+      quantity: tradeData.quantity != null ? Number(tradeData.quantity) : '',
       side: tradeData.side,
       instrumentType: tradeData.instrument_type || 'stock',
-      entryCommission: tradeData.entry_commission || tradeData.commission || 0,
-      exitCommission: tradeData.exit_commission || 0,
-      fees: tradeData.fees || 0,
-      mae: tradeData.mae || null,
-      mfe: tradeData.mfe || null,
-      stopLoss: tradeData.stop_loss || tradeData.stopLoss || null,
-      takeProfit: tradeData.take_profit || tradeData.takeProfit || null,
+      entryCommission: tradeData.entry_commission != null ? Number(tradeData.entry_commission) : (tradeData.commission != null ? Number(tradeData.commission) : 0),
+      exitCommission: tradeData.exit_commission != null ? Number(tradeData.exit_commission) : 0,
+      fees: tradeData.fees != null ? Number(tradeData.fees) : 0,
+      mae: tradeData.mae != null ? Number(tradeData.mae) : null,
+      mfe: tradeData.mfe != null ? Number(tradeData.mfe) : null,
+      stopLoss: (tradeData.stop_loss || tradeData.stopLoss) != null ? Number(tradeData.stop_loss || tradeData.stopLoss) : null,
+      takeProfit: (tradeData.take_profit || tradeData.takeProfit) != null ? Number(tradeData.take_profit || tradeData.takeProfit) : null,
       broker: tradeData.broker || '',
       strategy: tradeData.strategy || '',
       setup: tradeData.setup || '',
@@ -1109,15 +1109,15 @@ async function loadTrade() {
       // Options-specific fields
       underlyingSymbol: tradeData.underlying_symbol || '',
       optionType: tradeData.option_type || '',
-      strikePrice: tradeData.strike_price || null,
+      strikePrice: tradeData.strike_price != null ? Number(tradeData.strike_price) : null,
       expirationDate: tradeData.expiration_date ? formatDateOnly(tradeData.expiration_date) : '',
       contractSize: tradeData.contract_size || 100,
       // Futures-specific fields
       underlyingAsset: tradeData.underlying_asset || '',
       contractMonth: convertMonthNumberToAbbreviation(tradeData.contract_month || tradeData.contractMonth) || '',
       contractYear: tradeData.contract_year || tradeData.contractYear || null,
-      tickSize: tradeData.tick_size || tradeData.tickSize || null,
-      pointValue: tradeData.point_value || tradeData.pointValue || null,
+      tickSize: (tradeData.tick_size || tradeData.tickSize) != null ? Number(tradeData.tick_size || tradeData.tickSize) : null,
+      pointValue: (tradeData.point_value || tradeData.pointValue) != null ? Number(tradeData.point_value || tradeData.pointValue) : null,
       // Executions
       executions: (() => {
         console.log('[TRADE FORM] Raw tradeData.executions:', JSON.stringify(tradeData.executions, null, 2))
@@ -1152,17 +1152,17 @@ async function loadTrade() {
               // Preserve grouped format
               const result = {
                 side: exec.side,
-                quantity: exec.quantity || '',
-                entryPrice: exec.entryPrice || '',
-                exitPrice: exec.exitPrice || null,
+                quantity: exec.quantity != null ? Number(exec.quantity) : '',
+                entryPrice: exec.entryPrice != null ? Number(exec.entryPrice) : '',
+                exitPrice: exec.exitPrice != null ? Number(exec.exitPrice) : null,
                 entryTime: exec.entryTime ? formatDateTimeLocal(exec.entryTime) : '',
                 exitTime: exec.exitTime ? formatDateTimeLocal(exec.exitTime) : null,
                 commission: execCommission,
                 fees: execFees,
-                pnl: exec.pnl || null,
+                pnl: exec.pnl != null ? Number(exec.pnl) : null,
                 // Fall back to trade-level stop loss if not in execution
-                stopLoss: exec.stopLoss || exec.stop_loss || tradeData.stop_loss || tradeData.stopLoss || null,
-                takeProfit: exec.takeProfit || exec.take_profit || tradeData.take_profit || tradeData.takeProfit || null
+                stopLoss: (() => { const v = exec.stopLoss || exec.stop_loss || tradeData.stop_loss || tradeData.stopLoss; return v != null ? Number(v) : null; })(),
+                takeProfit: (() => { const v = exec.takeProfit || exec.take_profit || tradeData.take_profit || tradeData.takeProfit; return v != null ? Number(v) : null; })()
               }
               console.log('[TRADE FORM] Mapped grouped execution:', result)
               return result
@@ -1175,14 +1175,14 @@ async function loadTrade() {
 
               const result = {
                 action: action,
-                quantity: exec.quantity || '',
-                price: exec.price || '',
+                quantity: exec.quantity != null ? Number(exec.quantity) : '',
+                price: exec.price != null ? Number(exec.price) : '',
                 datetime: exec.datetime ? formatDateTimeLocal(exec.datetime) : '',
                 commission: execCommission,
                 fees: execFees,
                 // Fall back to trade-level stop loss if not in execution
-                stopLoss: exec.stopLoss || exec.stop_loss || tradeData.stop_loss || tradeData.stopLoss || null,
-                takeProfit: exec.takeProfit || exec.take_profit || tradeData.take_profit || tradeData.takeProfit || null
+                stopLoss: (() => { const v = exec.stopLoss || exec.stop_loss || tradeData.stop_loss || tradeData.stopLoss; return v != null ? Number(v) : null; })(),
+                takeProfit: (() => { const v = exec.takeProfit || exec.take_profit || tradeData.take_profit || tradeData.takeProfit; return v != null ? Number(v) : null; })()
               }
               console.log('[TRADE FORM] Mapped individual fill:', result)
               return result
@@ -1195,16 +1195,16 @@ async function loadTrade() {
           // Use the grouped format (entryPrice/exitPrice) for easier editing
           return [{
             side: tradeData.side,
-            quantity: tradeData.quantity || '',
-            entryPrice: tradeData.entry_price || '',
-            exitPrice: tradeData.exit_price || null,
+            quantity: tradeData.quantity != null ? Number(tradeData.quantity) : '',
+            entryPrice: tradeData.entry_price != null ? Number(tradeData.entry_price) : '',
+            exitPrice: tradeData.exit_price != null ? Number(tradeData.exit_price) : null,
             entryTime: tradeData.entry_time ? formatDateTimeLocal(tradeData.entry_time) : '',
             exitTime: tradeData.exit_time ? formatDateTimeLocal(tradeData.exit_time) : null,
-            commission: tradeData.commission || 0,
-            fees: tradeData.fees || 0,
-            pnl: tradeData.pnl || 0,
-            stopLoss: tradeData.stop_loss || tradeData.stopLoss || null,
-            takeProfit: tradeData.take_profit || tradeData.takeProfit || null
+            commission: tradeData.commission != null ? Number(tradeData.commission) : 0,
+            fees: tradeData.fees != null ? Number(tradeData.fees) : 0,
+            pnl: tradeData.pnl != null ? Number(tradeData.pnl) : 0,
+            stopLoss: (tradeData.stop_loss || tradeData.stopLoss) != null ? Number(tradeData.stop_loss || tradeData.stopLoss) : null,
+            takeProfit: (tradeData.take_profit || tradeData.takeProfit) != null ? Number(tradeData.take_profit || tradeData.takeProfit) : null
           }]
         }
       })()
