@@ -504,7 +504,7 @@
                 <td v-else-if="column.visible && column.key === 'quantity'"
                     :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
-                  {{ trade.quantity || '-' }}
+                  {{ formatQuantity(trade.quantity) || '-' }}
                 </td>
                 
                 <td v-else-if="column.visible && column.key === 'commission'" 
@@ -1030,6 +1030,19 @@ function formatNumber(num) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   }).format(num || 0)
+}
+
+function formatQuantity(num) {
+  if (!num && num !== 0) return '0'
+  // If it's a whole number, show no decimals
+  if (num % 1 === 0) {
+    return new Intl.NumberFormat('en-US').format(num)
+  }
+  // Otherwise, show up to 4 decimal places, removing trailing zeros
+  return new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 4
+  }).format(num)
 }
 
 function formatDate(date) {
