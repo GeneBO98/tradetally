@@ -54,6 +54,6 @@
     "node": ">=14.0.0"
   },
   "optionalDependencies": {
-    "node-gyp": "^12.0.0"
+    "node-gyp": "^12.1.0"
   }
 }
