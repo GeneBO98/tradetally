@@ -1879,6 +1879,9 @@ const tradeController = {
       // Delete the import log (CASCADE will delete any remaining trades if any)
       await db.query(`DELETE FROM import_logs WHERE id = $1`, [importId]);
 
+      // Invalidate analytics cache for this user so totals recalculate
+      invalidateAnalyticsCache(req.user.id);
+
       // Invalidate sector performance cache for this user
       try {
         await cache.invalidate('sector_performance');
