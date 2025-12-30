@@ -204,6 +204,8 @@ class YearWrappedService {
    */
   static async getYearWrapped(userId, year, forceRegenerate = false) {
     try {
+      console.log(`[YEAR_WRAPPED] getYearWrapped called: userId=${userId}, year=${year}, forceRegenerate=${forceRegenerate}`);
+
       // Check cache first (unless forcing regeneration)
       if (!forceRegenerate) {
         const cached = await db.query(`
@@ -213,19 +215,29 @@ class YearWrappedService {
         `, [userId, year]);
 
         if (cached.rows.length > 0) {
-          // Return cached data if it's less than 24 hours old or the year has ended
-          const generatedAt = new Date(cached.rows[0].generated_at);
-          const now = new Date();
-          const hoursSinceGeneration = (now - generatedAt) / (1000 * 60 * 60);
-          const yearEnded = year < now.getFullYear();
+          const cachedData = cached.rows[0].data;
 
-          if (yearEnded || hoursSinceGeneration < 24) {
-            return cached.rows[0].data;
+          // Check if cached data has the new streak fields - if not, regenerate
+          const hasNewStreakFields = cachedData?.streaks?.longestWinStreak !== undefined;
+          if (!hasNewStreakFields) {
+            console.log(`[YEAR_WRAPPED] Cached data missing new streak fields, regenerating...`);
+          } else {
+            // Return cached data if it's less than 24 hours old or the year has ended
+            const generatedAt = new Date(cached.rows[0].generated_at);
+            const now = new Date();
+            const hoursSinceGeneration = (now - generatedAt) / (1000 * 60 * 60);
+            const yearEnded = year < now.getFullYear();
+
+            if (yearEnded || hoursSinceGeneration < 24) {
+              console.log(`[YEAR_WRAPPED] Returning cached data (generated ${hoursSinceGeneration.toFixed(1)} hours ago)`);
+              return cachedData;
+            }
           }
         }
       }
 
       // Generate fresh data
+      console.log(`[YEAR_WRAPPED] Generating fresh data...`);
       const data = await this.generateYearWrapped(userId, year);
 
       // Cache the result
@@ -538,34 +550,42 @@ class YearWrappedService {
       FROM streak_lengths
     `, [userId, year]);
 
-    // Trading days and streak for the year
-    const tradingResult = await db.query(`
-      WITH trading_dates AS (
-        SELECT DISTINCT trade_date
-        FROM trades
-        WHERE user_id = $1
-          AND EXTRACT(YEAR FROM trade_date) = $2
-          AND exit_price IS NOT NULL
-        ORDER BY trade_date
-      ),
-      streaks AS (
-        SELECT
-          trade_date,
-          trade_date - (ROW_NUMBER() OVER (ORDER BY trade_date))::int as streak_group
-        FROM trading_dates
-      ),
-      streak_lengths AS (
-        SELECT
-          streak_group,
-          COUNT(*) as streak_length
-        FROM streaks
-        GROUP BY streak_group
-      )
-      SELECT
-        (SELECT COUNT(*) FROM trading_dates) as trading_days_total,
-        COALESCE(MAX(streak_length), 0) as longest_trading_streak
-      FROM streak_lengths
+    // Get trading dates for the year
+    const tradingDatesResult = await db.query(`
+      SELECT DISTINCT trade_date
+      FROM trades
+      WHERE user_id = $1
+        AND EXTRACT(YEAR FROM trade_date) = $2
+        AND exit_price IS NOT NULL
+      ORDER BY trade_date
     `, [userId, year]);
+
+    // Calculate trading day streak accounting for weekends and holidays
+    const tradingDates = tradingDatesResult.rows.map(r => new Date(r.trade_date));
+    console.log(`[YEAR_WRAPPED] Found ${tradingDates.length} unique trading dates for year ${year}`);
+    if (tradingDates.length > 0) {
+      console.log(`[YEAR_WRAPPED] Trading dates sample:`, tradingDates.slice(0, 10).map(d => d.toISOString().split('T')[0]));
+    }
+    const longestTradingStreak = this.calculateTradingDayStreak(tradingDates, year);
+    console.log(`[YEAR_WRAPPED] Calculated trading day streak: ${longestTradingStreak}`);
+
+    // Get win/loss streaks (consecutive winning/losing trades)
+    const tradeStreaksResult = await db.query(`
+      SELECT id, pnl, trade_date, exit_time
+      FROM trades
+      WHERE user_id = $1
+        AND EXTRACT(YEAR FROM trade_date) = $2
+        AND exit_price IS NOT NULL
+      ORDER BY trade_date ASC, exit_time ASC NULLS LAST, id ASC
+    `, [userId, year]);
+
+    console.log(`[YEAR_WRAPPED] Trade streaks query returned ${tradeStreaksResult.rows.length} trades`);
+    if (tradeStreaksResult.rows.length > 0) {
+      console.log(`[YEAR_WRAPPED] First few trades P&L:`, tradeStreaksResult.rows.slice(0, 10).map(t => parseFloat(t.pnl)));
+    }
+
+    const { longestWinStreak, longestLossStreak } = this.calculateTradeStreaks(tradeStreaksResult.rows);
+    console.log(`[YEAR_WRAPPED] Calculated streaks: win=${longestWinStreak}, loss=${longestLossStreak}`);
 
     // Get all-time streaks from gamification stats
     const allTimeResult = await db.query(`
@@ -579,14 +599,15 @@ class YearWrappedService {
     `, [userId]);
 
     const loginRow = loginResult.rows[0] || {};
-    const tradingRow = tradingResult.rows[0] || {};
     const allTimeRow = allTimeResult.rows[0] || {};
 
-    return {
+    const result = {
       loginDaysTotal: parseInt(loginRow.login_days_total) || 0,
       longestLoginStreak: parseInt(loginRow.longest_login_streak) || 0,
-      tradingDaysTotal: parseInt(tradingRow.trading_days_total) || 0,
-      longestTradingStreak: parseInt(tradingRow.longest_trading_streak) || 0,
+      tradingDaysTotal: tradingDates.length,
+      longestTradingStreak: longestTradingStreak,
+      longestWinStreak: longestWinStreak,
+      longestLossStreak: longestLossStreak,
 
       // All-time stats
       allTime: {
@@ -596,6 +617,207 @@ class YearWrappedService {
         longestTradingStreak: parseInt(allTimeRow.longest_trading_streak_days) || 0
       }
     };
+
+    console.log(`[YEAR_WRAPPED] getStreaks result:`, JSON.stringify(result));
+    return result;
+  }
+
+  /**
+   * Calculate consecutive trading day streak, skipping weekends and US market holidays
+   */
+  static calculateTradingDayStreak(tradingDates, year) {
+    console.log(`[YEAR_WRAPPED] calculateTradingDayStreak called with ${tradingDates.length} dates for year ${year}`);
+
+    if (tradingDates.length === 0) return 0;
+    if (tradingDates.length === 1) return 1;
+
+    // Build holidays set using class methods directly
+    const holidays = new Set();
+
+    // New Year's Day (Jan 1)
+    holidays.add(`${year}-01-01`);
+
+    // MLK Day (3rd Monday of January)
+    const mlkDay = YearWrappedService.getNthWeekdayOfMonth(year, 0, 1, 3);
+    holidays.add(mlkDay);
+
+    // Presidents Day (3rd Monday of February)
+    const presidentsDay = YearWrappedService.getNthWeekdayOfMonth(year, 1, 1, 3);
+    holidays.add(presidentsDay);
+
+    // Good Friday (varies - 2 days before Easter Sunday)
+    const goodFriday = YearWrappedService.getGoodFriday(year);
+    if (goodFriday) holidays.add(goodFriday);
+
+    // Memorial Day (last Monday of May)
+    const memorialDay = YearWrappedService.getLastWeekdayOfMonth(year, 4, 1);
+    holidays.add(memorialDay);
+
+    // Juneteenth (June 19)
+    holidays.add(`${year}-06-19`);
+
+    // Independence Day (July 4)
+    holidays.add(`${year}-07-04`);
+
+    // Labor Day (1st Monday of September)
+    const laborDay = YearWrappedService.getNthWeekdayOfMonth(year, 8, 1, 1);
+    holidays.add(laborDay);
+
+    // Thanksgiving (4th Thursday of November)
+    const thanksgiving = YearWrappedService.getNthWeekdayOfMonth(year, 10, 4, 4);
+    holidays.add(thanksgiving);
+
+    // Christmas (Dec 25)
+    holidays.add(`${year}-12-25`);
+
+    console.log(`[YEAR_WRAPPED] Market holidays for ${year}:`, Array.from(holidays));
+
+    const isMarketOpen = (date) => {
+      const dayOfWeek = date.getDay();
+      // Weekend
+      if (dayOfWeek === 0 || dayOfWeek === 6) return false;
+
+      // Holiday
+      const dateStr = date.toISOString().split('T')[0];
+      if (holidays.has(dateStr)) return false;
+
+      return true;
+    };
+
+    const getNextTradingDay = (date) => {
+      const next = new Date(date);
+      next.setDate(next.getDate() + 1);
+      while (!isMarketOpen(next)) {
+        next.setDate(next.getDate() + 1);
+        // Safety: don't loop more than 10 days
+        if (next - date > 10 * 24 * 60 * 60 * 1000) break;
+      }
+      return next;
+    };
+
+    // Sort dates
+    const sortedDates = [...tradingDates].sort((a, b) => a - b);
+
+    let longestStreak = 1;
+    let currentStreak = 1;
+
+    for (let i = 1; i < sortedDates.length; i++) {
+      const prevDate = new Date(sortedDates[i - 1]);
+      prevDate.setHours(0, 0, 0, 0);
+
+      const currDate = new Date(sortedDates[i]);
+      currDate.setHours(0, 0, 0, 0);
+
+      const expectedNextTradingDay = getNextTradingDay(prevDate);
+      expectedNextTradingDay.setHours(0, 0, 0, 0);
+
+      // Check if current date is the expected next trading day
+      if (currDate.getTime() === expectedNextTradingDay.getTime()) {
+        currentStreak++;
+      } else {
+        longestStreak = Math.max(longestStreak, currentStreak);
+        currentStreak = 1;
+      }
+    }
+
+    return Math.max(longestStreak, currentStreak);
+  }
+
+  /**
+   * Get the nth weekday of a month (e.g., 3rd Monday)
+   */
+  static getNthWeekdayOfMonth(year, month, weekday, n) {
+    const date = new Date(year, month, 1);
+    let count = 0;
+
+    while (count < n) {
+      if (date.getDay() === weekday) {
+        count++;
+        if (count === n) break;
+      }
+      date.setDate(date.getDate() + 1);
+    }
+
+    return date.toISOString().split('T')[0];
+  }
+
+  /**
+   * Get the last weekday of a month (e.g., last Monday of May)
+   */
+  static getLastWeekdayOfMonth(year, month, weekday) {
+    const date = new Date(year, month + 1, 0); // Last day of month
+    while (date.getDay() !== weekday) {
+      date.setDate(date.getDate() - 1);
+    }
+    return date.toISOString().split('T')[0];
+  }
+
+  /**
+   * Calculate Good Friday (2 days before Easter Sunday)
+   */
+  static getGoodFriday(year) {
+    // Anonymous Gregorian algorithm for Easter
+    const a = year % 19;
+    const b = Math.floor(year / 100);
+    const c = year % 100;
+    const d = Math.floor(b / 4);
+    const e = b % 4;
+    const f = Math.floor((b + 8) / 25);
+    const g = Math.floor((b - f + 1) / 3);
+    const h = (19 * a + b - d - g + 15) % 30;
+    const i = Math.floor(c / 4);
+    const k = c % 4;
+    const l = (32 + 2 * e + 2 * i - h - k) % 7;
+    const m = Math.floor((a + 11 * h + 22 * l) / 451);
+    const month = Math.floor((h + l - 7 * m + 114) / 31) - 1;
+    const day = ((h + l - 7 * m + 114) % 31) + 1;
+
+    const easter = new Date(year, month, day);
+    const goodFriday = new Date(easter);
+    goodFriday.setDate(goodFriday.getDate() - 2);
+
+    return goodFriday.toISOString().split('T')[0];
+  }
+
+  /**
+   * Calculate consecutive win and loss streaks from trades
+   */
+  static calculateTradeStreaks(trades) {
+    console.log(`[YEAR_WRAPPED] calculateTradeStreaks called with ${trades.length} trades`);
+
+    if (trades.length === 0) {
+      console.log(`[YEAR_WRAPPED] No trades, returning 0 streaks`);
+      return { longestWinStreak: 0, longestLossStreak: 0 };
+    }
+
+    let longestWinStreak = 0;
+    let longestLossStreak = 0;
+    let currentWinStreak = 0;
+    let currentLossStreak = 0;
+
+    for (const trade of trades) {
+      const pnl = parseFloat(trade.pnl);
+
+      if (pnl > 0) {
+        // Winning trade
+        currentWinStreak++;
+        longestLossStreak = Math.max(longestLossStreak, currentLossStreak);
+        currentLossStreak = 0;
+      } else if (pnl < 0) {
+        // Losing trade
+        currentLossStreak++;
+        longestWinStreak = Math.max(longestWinStreak, currentWinStreak);
+        currentWinStreak = 0;
+      }
+      // Breakeven trades (pnl === 0) don't break either streak
+    }
+
+    // Final check for streaks at the end
+    longestWinStreak = Math.max(longestWinStreak, currentWinStreak);
+    longestLossStreak = Math.max(longestLossStreak, currentLossStreak);
+
+    console.log(`[YEAR_WRAPPED] Trade streaks result: win=${longestWinStreak}, loss=${longestLossStreak}`);
+    return { longestWinStreak, longestLossStreak };
   }
 
   /**

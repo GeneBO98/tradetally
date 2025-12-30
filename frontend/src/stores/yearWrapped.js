@@ -43,14 +43,20 @@ export const useYearWrappedStore = defineStore('yearWrapped', () => {
   }
 
   // Fetch Year Wrapped data for a specific year
-  async function fetchYearWrapped(year) {
+  async function fetchYearWrapped(year, forceRegenerate = false) {
     loading.value = true
     error.value = null
 
     try {
-      const response = await api.get(`/year-wrapped/${year}`)
+      const endpoint = forceRegenerate
+        ? `/year-wrapped/${year}/regenerate`
+        : `/year-wrapped/${year}`
+      const method = forceRegenerate ? 'post' : 'get'
+
+      const response = await api[method](endpoint)
       if (response.data.success) {
         wrappedData.value = response.data.data
+        console.log('[YEAR_WRAPPED] Loaded data:', response.data.data)
       }
     } catch (err) {
       console.error('[YEAR_WRAPPED] Failed to fetch data:', err)
@@ -58,6 +64,11 @@ export const useYearWrappedStore = defineStore('yearWrapped', () => {
     } finally {
       loading.value = false
     }
+  }
+
+  // Force regenerate Year Wrapped data (bypasses cache)
+  async function regenerateYearWrapped(year) {
+    return fetchYearWrapped(year, true)
   }
 
   // Dismiss the banner for this session only (resets on logout/login)
@@ -131,6 +142,7 @@ export const useYearWrappedStore = defineStore('yearWrapped', () => {
     // Actions
     checkBannerStatus,
     fetchYearWrapped,
+    regenerateYearWrapped,
     dismissBannerForSession,
     markAsViewed,
     openModal,
