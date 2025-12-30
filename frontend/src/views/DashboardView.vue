@@ -82,6 +82,12 @@
       </div>
     </div>
 
+    <!-- Year Wrapped Banner -->
+    <YearWrappedBanner />
+
+    <!-- Year Wrapped Modal -->
+    <YearWrappedModal />
+
     <div v-if="loading" class="flex justify-center py-12">
       <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
     </div>
@@ -730,8 +736,12 @@ import TodaysJournalEntry from '@/components/diary/TodaysJournalEntry.vue'
 import MdiIcon from '@/components/MdiIcon.vue'
 import { mdiCheckCircle } from '@mdi/js'
 import { getRefreshInterval, shouldRefreshPrices, getMarketStatus } from '@/utils/marketHours'
+import YearWrappedBanner from '@/components/yearWrapped/YearWrappedBanner.vue'
+import YearWrappedModal from '@/components/yearWrapped/YearWrappedModal.vue'
+import { useYearWrappedStore } from '@/stores/yearWrapped'
 
 const authStore = useAuthStore()
+const yearWrappedStore = useYearWrappedStore()
 const router = useRouter()
 
 const loading = ref(true)
@@ -1584,6 +1594,9 @@ onMounted(async () => {
     fetchUserSettings(),
     fetchExpiredOptionsCount()
   ])
+
+  // Check Year Wrapped banner status (non-blocking)
+  yearWrappedStore.checkBannerStatus()
 
   // Set initial refresh timestamp
   lastRefresh.value = new Date()
