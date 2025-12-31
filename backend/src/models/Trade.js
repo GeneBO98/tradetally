@@ -46,7 +46,8 @@ class Trade {
       originalCurrency, exchangeRate, originalEntryPriceCurrency,
       originalExitPriceCurrency, originalPnlCurrency, originalCommissionCurrency,
       originalFeesCurrency,
-      stopLoss, takeProfit, chartUrl
+      stopLoss, takeProfit, chartUrl,
+      brokerConnectionId, accountIdentifier
     } = tradeData;
 
     // Convert empty strings to null for optional fields
@@ -247,9 +248,9 @@ class Trade {
         contract_month, contract_year, tick_size, point_value, underlying_asset, import_id,
         original_currency, exchange_rate, original_entry_price_currency, original_exit_price_currency,
         original_pnl_currency, original_commission_currency, original_fees_currency,
-        stop_loss, take_profit, r_value, chart_url
+        stop_loss, take_profit, r_value, chart_url, broker_connection_id, account_identifier
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58)
       RETURNING *
     `;
 
@@ -265,7 +266,7 @@ class Trade {
       importId || null,
       originalCurrency || 'USD', exchangeRate || 1.0, originalEntryPriceCurrency || null, originalExitPriceCurrency || null,
       originalPnlCurrency || null, originalCommissionCurrency || null, originalFeesCurrency || null,
-      finalStopLoss || null, takeProfit || null, rValue, chartUrl || null
+      finalStopLoss || null, takeProfit || null, rValue, chartUrl || null, brokerConnectionId || null, accountIdentifier || null
     ];
 
     const result = await db.query(query, values);
@@ -672,6 +673,15 @@ class Trade {
       whereClause += ` AND t.broker = $${paramCount}`;
       values.push(filters.broker);
       paramCount++;
+    }
+
+    // Account identifier filter - multi-select support
+    if (filters.accounts && filters.accounts.length > 0) {
+      console.log('[ACCOUNTS] Applying account filter:', filters.accounts);
+      const placeholders = filters.accounts.map((_, index) => `$${paramCount + index}`).join(',');
+      whereClause += ` AND t.account_identifier IN (${placeholders})`;
+      filters.accounts.forEach(account => values.push(account));
+      paramCount += filters.accounts.length;
     }
 
     // Quality grade filter - multi-select support (A, B, C, D, F)
@@ -1817,6 +1827,15 @@ class Trade {
       console.log('[QUALITY] ANALYTICS: Added quality filter to query, values:', filters.qualityGrades);
     }
 
+    // Account identifier filter - multi-select support for broker accounts
+    if (filters.accounts && filters.accounts.length > 0) {
+      console.log('[ACCOUNTS] ANALYTICS: Applying account filter:', filters.accounts);
+      const placeholders = filters.accounts.map((_, index) => `$${paramCount + index}`).join(',');
+      whereClause += ` AND t.account_identifier IN (${placeholders})`;
+      filters.accounts.forEach(account => values.push(account));
+      paramCount += filters.accounts.length;
+    }
+
     console.log('Analytics query - whereClause:', whereClause);
     console.log('Analytics query - values:', values);
     
@@ -2319,6 +2338,17 @@ class Trade {
     `;
     const result = await db.query(query, [userId]);
     return result.rows.map(row => row.broker);
+  }
+
+  static async getAccountList(userId) {
+    const query = `
+      SELECT DISTINCT account_identifier
+      FROM trades
+      WHERE user_id = $1 AND account_identifier IS NOT NULL AND account_identifier != ''
+      ORDER BY account_identifier
+    `;
+    const result = await db.query(query, [userId]);
+    return result.rows.map(row => row.account_identifier);
   }
 
   // Create a new round trip trade record

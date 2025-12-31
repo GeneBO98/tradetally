@@ -33,7 +33,7 @@ const tradeController = {
         symbol, startDate, endDate, tags, strategy, sector,
         strategies, sectors, hasNews, daysOfWeek, instrumentTypes, optionTypes, qualityGrades,
         side, minPrice, maxPrice, minQuantity, maxQuantity,
-        status, minPnl, maxPnl, pnlType, broker, brokers,
+        status, minPnl, maxPnl, pnlType, broker, brokers, accounts,
         limit = 50, offset = 0
       } = req.query;
 
@@ -64,6 +64,7 @@ const tradeController = {
         pnlType,
         broker, // Keep for backward compatibility
         brokers, // New multi-select broker filter
+        accounts: accounts ? accounts.split(',') : undefined, // Account identifier filter
         // Pagination
         limit: parseInt(limit),
         offset: parseInt(offset)
@@ -1955,7 +1956,7 @@ const tradeController = {
         startDate, endDate, symbol, sector, strategy, tags,
         strategies, sectors, // Add multi-select parameters
         side, minPrice, maxPrice, minQuantity, maxQuantity,
-        status, minPnl, maxPnl, pnlType, broker, brokers, hasNews,
+        status, minPnl, maxPnl, pnlType, broker, brokers, accounts, hasNews,
         holdTime, minHoldTime, maxHoldTime, daysOfWeek, instrumentTypes, optionTypes, qualityGrades
       } = req.query;
 
@@ -1980,6 +1981,7 @@ const tradeController = {
         pnlType,
         broker: broker || undefined,
         brokers: brokers || undefined,  // Support both broker and brokers
+        accounts: accounts ? accounts.split(',') : undefined, // Account identifier filter
         hasNews,
         holdTime,
         daysOfWeek: daysOfWeek ? daysOfWeek.split(',').map(d => parseInt(d)) : undefined,
@@ -2077,6 +2079,15 @@ const tradeController = {
     try {
       const brokers = await Trade.getBrokerList(req.user.id);
       res.json({ brokers });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async getAccountList(req, res, next) {
+    try {
+      const accounts = await Trade.getAccountList(req.user.id);
+      res.json({ accounts });
     } catch (error) {
       next(error);
     }

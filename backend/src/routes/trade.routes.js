@@ -374,6 +374,20 @@ router.get('/brokers', authenticate, tradeController.getBrokerList);
 
 /**
  * @swagger
+ * /api/trades/accounts:
+ *   get:
+ *     summary: Get list of account identifiers used by the user
+ *     tags: [Trades]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of available account identifiers (redacted)
+ */
+router.get('/accounts', authenticate, tradeController.getAccountList);
+
+/**
+ * @swagger
  * /api/trades/import:
  *   post:
  *     summary: Import trades from file

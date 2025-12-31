@@ -27,6 +27,7 @@ export const useTradesStore = defineStore('trades', () => {
     hasNews: '',
     broker: '',
     brokers: [],
+    accounts: [],
     daysOfWeek: [],
     instrumentTypes: []
   })
@@ -366,6 +367,7 @@ export const useTradesStore = defineStore('trades', () => {
         hasNews: '',
         broker: '',
         brokers: [],
+        accounts: [],
         daysOfWeek: [],
         instrumentTypes: []
       }
@@ -388,6 +390,9 @@ export const useTradesStore = defineStore('trades', () => {
       minHoldTime: null,
       maxHoldTime: null,
       hasNews: '',
+      broker: '',
+      brokers: [],
+      accounts: [],
       daysOfWeek: [],
       instrumentTypes: []
     }
