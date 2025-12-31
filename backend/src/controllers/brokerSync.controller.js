@@ -7,7 +7,18 @@ const BrokerConnection = require('../models/BrokerConnection');
 const ibkrService = require('../services/brokerSync/ibkrService');
 const schwabService = require('../services/brokerSync/schwabService');
 const brokerSyncService = require('../services/brokerSync');
+const AnalyticsCache = require('../services/analyticsCache');
+const cache = require('../utils/cache');
 const logger = require('../utils/logger');
+
+// Helper function to invalidate in-memory analytics cache for a user
+function invalidateInMemoryCache(userId) {
+  const cacheKeys = Object.keys(cache.data || {}).filter(key =>
+    key.startsWith(`analytics:user_${userId}:`)
+  );
+  cacheKeys.forEach(key => cache.del(key));
+  console.log(`[BROKER-SYNC] Invalidated ${cacheKeys.length} in-memory analytics cache entries for user ${userId}`);
+}
 
 const brokerSyncController = {
   /**
@@ -539,6 +550,52 @@ const brokerSyncController = {
       });
     } catch (error) {
       logger.logError('Error fetching sync status:', error);
+      next(error);
+    }
+  },
+
+  /**
+   * Delete all trades from a specific broker connection (only synced trades, not manual imports)
+   */
+  async deleteBrokerTrades(req, res, next) {
+    try {
+      const userId = req.user.id;
+      const { id } = req.params;
+
+      // Verify ownership
+      const connection = await BrokerConnection.findById(id, false);
+      if (!connection || connection.userId !== userId) {
+        return res.status(404).json({
+          success: false,
+          error: 'Broker connection not found'
+        });
+      }
+
+      // Delete only trades that were synced from this specific broker connection
+      // This preserves manually imported trades (where broker_connection_id is NULL)
+      const db = require('../config/database');
+      const result = await db.query(
+        `DELETE FROM trades WHERE user_id = $1 AND broker_connection_id = $2 RETURNING id`,
+        [userId, id]
+      );
+
+      const deletedCount = result.rowCount;
+      console.log(`[BROKER-SYNC] Deleted ${deletedCount} synced trades for connection ${id} (user ${userId})`);
+
+      // Invalidate both database and in-memory analytics cache after deleting trades
+      if (deletedCount > 0) {
+        console.log(`[BROKER-SYNC] Invalidating analytics cache for user ${userId}`);
+        await AnalyticsCache.invalidateUserCache(userId);
+        invalidateInMemoryCache(userId);
+      }
+
+      res.json({
+        success: true,
+        message: `Deleted ${deletedCount} synced trades from ${connection.brokerType}`,
+        deletedCount
+      });
+    } catch (error) {
+      logger.logError('Error deleting broker trades:', error);
       next(error);
     }
   }

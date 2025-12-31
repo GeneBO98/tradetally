@@ -46,6 +46,7 @@
             @test="handleTest"
             @settings="openSettingsModal"
             @delete="handleDelete"
+            @deleteTrades="handleDeleteTrades"
           />
         </div>
       </div>
@@ -190,12 +191,16 @@
 import { ref, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useBrokerSyncStore } from '@/stores/brokerSync'
+import { useTradesStore } from '@/stores/trades'
+import { useNotification } from '@/composables/useNotification'
 import BrokerConnectionCard from '@/components/broker-sync/BrokerConnectionCard.vue'
 import IBKRConnectionModal from '@/components/broker-sync/IBKRConnectionModal.vue'
 import ConnectionSettingsModal from '@/components/broker-sync/ConnectionSettingsModal.vue'
 
 const store = useBrokerSyncStore()
+const tradesStore = useTradesStore()
 const route = useRoute()
+const { showConfirmation, showDangerConfirmation } = useNotification()
 
 const showIBKRModal = ref(false)
 const showSettingsModal = ref(false)
@@ -263,10 +268,13 @@ async function handleSync(connection) {
     successMessage.value = 'Sync started! Check the history below for results.'
     setTimeout(() => { successMessage.value = '' }, 5000)
 
-    // Poll for updates
+    // Poll for updates and refresh trades data
     setTimeout(async () => {
       await store.fetchConnections()
       await store.fetchSyncLogs()
+      // Refresh trades data to update P&L and counts after sync
+      await tradesStore.fetchTrades()
+      await tradesStore.fetchAnalytics()
     }, 5000)
   } catch (error) {
     // Error is handled by store
@@ -299,17 +307,47 @@ async function handleSettingsSave(updates) {
 }
 
 async function handleDelete(connection) {
-  if (!confirm(`Are you sure you want to disconnect ${connection.brokerType.toUpperCase()}? This will not delete any imported trades.`)) {
-    return
-  }
+  const brokerName = connection.brokerType.toUpperCase()
 
-  try {
-    await store.deleteConnection(connection.id)
-    successMessage.value = 'Connection removed successfully!'
-    setTimeout(() => { successMessage.value = '' }, 5000)
-  } catch (error) {
-    // Error is handled by store
-  }
+  showConfirmation(
+    `Disconnect ${brokerName}?`,
+    'This will remove the broker connection. Your imported trades will not be deleted.',
+    async () => {
+      try {
+        await store.deleteConnection(connection.id)
+        successMessage.value = 'Connection removed successfully!'
+        setTimeout(() => { successMessage.value = '' }, 5000)
+      } catch (error) {
+        // Error is handled by store
+      }
+    }
+  )
+}
+
+async function handleDeleteTrades(connection) {
+  const brokerName = connection.brokerType.toUpperCase()
+
+  showDangerConfirmation(
+    `Delete All ${brokerName} Trades?`,
+    `This will permanently delete ALL trades that were imported via broker sync from ${brokerName}. This action cannot be undone.`,
+    async () => {
+      try {
+        const result = await store.deleteBrokerTrades(connection.id)
+        successMessage.value = result.message || `Deleted trades from ${brokerName}`
+        setTimeout(() => { successMessage.value = '' }, 5000)
+
+        // Refresh trades data to update P&L and counts
+        console.log('[BROKER-SYNC] Refreshing trades store after delete...')
+        await tradesStore.fetchTrades()
+        await tradesStore.fetchAnalytics()
+        console.log('[BROKER-SYNC] Trades store refreshed. Total P&L:', tradesStore.totalPnL, 'Total trades:', tradesStore.totalTrades)
+      } catch (error) {
+        console.error('[BROKER-SYNC] Error refreshing trades:', error)
+        // Error is handled by store
+      }
+    },
+    { confirmText: 'Delete All Trades' }
+  )
 }
 
 async function refreshLogs() {

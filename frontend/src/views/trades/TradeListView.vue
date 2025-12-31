@@ -525,12 +525,18 @@
                   {{ trade.strategy || '-' }}
                 </td>
                 
-                <td v-else-if="column.visible && column.key === 'broker'" 
-                    :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']" 
+                <td v-else-if="column.visible && column.key === 'broker'"
+                    :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
                   {{ trade.broker || '-' }}
                 </td>
-                
+
+                <td v-else-if="column.visible && column.key === 'account'"
+                    :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']"
+                    @click="$router.push(`/trades/${trade.id}`)">
+                  {{ trade.account_identifier || '-' }}
+                </td>
+
                 <td v-else-if="column.visible && column.key === 'tags'" 
                     :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']" 
                     @click="$router.push(`/trades/${trade.id}`)">
