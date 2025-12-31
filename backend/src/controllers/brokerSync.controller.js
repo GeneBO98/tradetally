@@ -223,8 +223,10 @@ const brokerSyncController = {
 
       // Calculate token expiration
       const expiresAt = new Date(Date.now() + expires_in * 1000);
+      console.log('[SCHWAB-OAUTH] Token expires at:', expiresAt);
 
       // Get account info
+      console.log('[SCHWAB-OAUTH] Fetching account info...');
       const accountsResponse = await axios.get(
         'https://api.schwabapi.com/trader/v1/accounts',
         {
@@ -234,32 +236,35 @@ const brokerSyncController = {
         }
       );
 
-      const accountId = accountsResponse.data?.[0]?.securitiesAccount?.accountId;
+      console.log('[SCHWAB-OAUTH] Accounts response:', JSON.stringify(accountsResponse.data, null, 2));
+      const accountNumber = accountsResponse.data?.[0]?.securitiesAccount?.accountNumber;
+      console.log('[SCHWAB-OAUTH] Account Number:', accountNumber);
 
       // Create or update connection
+      console.log('[SCHWAB-OAUTH] Creating broker connection for user:', userId);
       const connection = await BrokerConnection.create(userId, {
         brokerType: 'schwab',
         schwabAccessToken: access_token,
         schwabRefreshToken: refresh_token,
         schwabTokenExpiresAt: expiresAt,
-        schwabAccountId: accountId,
+        schwabAccountId: accountNumber,
         autoSyncEnabled: false,
         syncFrequency: 'daily'
       });
+      console.log('[SCHWAB-OAUTH] Connection created:', connection.id);
 
       await BrokerConnection.updateStatus(connection.id, 'active', 'OAuth connection successful');
+      console.log('[SCHWAB-OAUTH] Connection status updated to active');
 
       console.log(`[BROKER-SYNC] Schwab connection created for user ${userId}`);
 
       // Redirect back to frontend
       res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?success=schwab`);
     } catch (error) {
-      console.error('[SCHWAB-OAUTH] Full error details:', {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status,
-        stack: error.stack
-      });
+      console.error('[SCHWAB-OAUTH] ERROR MESSAGE:', error.message);
+      console.error('[SCHWAB-OAUTH] ERROR STATUS:', error.response?.status);
+      console.error('[SCHWAB-OAUTH] ERROR RESPONSE:', JSON.stringify(error.response?.data, null, 2));
+      console.error('[SCHWAB-OAUTH] ERROR STACK:', error.stack);
       logger.logError('Error handling Schwab OAuth callback:', error);
 
       // Provide more specific error message in redirect

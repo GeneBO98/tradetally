@@ -72,6 +72,8 @@ services:
       SCHWAB_CLIENT_ID: ${SCHWAB_CLIENT_ID:-}
       SCHWAB_CLIENT_SECRET: ${SCHWAB_CLIENT_SECRET:-}
       SCHWAB_REDIRECT_URI: ${SCHWAB_REDIRECT_URI:-}
+      # Broker token encryption key (generate with: openssl rand -hex 32)
+      BROKER_ENCRYPTION_KEY: ${BROKER_ENCRYPTION_KEY:-}
       # Database Configuration
       RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}
       # Feature Toggles - Background Services
