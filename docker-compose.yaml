@@ -68,6 +68,10 @@ services:
       ALPHA_VANTAGE_API_KEY: ${ALPHA_VANTAGE_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       ENABLE_AI_CUSIP_RESOLUTION: ${ENABLE_AI_CUSIP_RESOLUTION:-false}
+      # Schwab OAuth Configuration
+      SCHWAB_CLIENT_ID: ${SCHWAB_CLIENT_ID:-}
+      SCHWAB_CLIENT_SECRET: ${SCHWAB_CLIENT_SECRET:-}
+      SCHWAB_REDIRECT_URI: ${SCHWAB_REDIRECT_URI:-}
       # Database Configuration
       RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}
       # Feature Toggles - Background Services

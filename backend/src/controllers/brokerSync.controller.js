@@ -196,6 +196,9 @@ const brokerSyncController = {
       const { userId } = stateData;
 
       // Exchange code for tokens
+      console.log('[SCHWAB-OAUTH] Exchanging authorization code for tokens...');
+      console.log('[SCHWAB-OAUTH] Redirect URI:', process.env.SCHWAB_REDIRECT_URI);
+
       const axios = require('axios');
       const tokenResponse = await axios.post(
         'https://api.schwabapi.com/v1/oauth/token',
@@ -215,6 +218,7 @@ const brokerSyncController = {
         }
       );
 
+      console.log('[SCHWAB-OAUTH] Token exchange successful');
       const { access_token, refresh_token, expires_in } = tokenResponse.data;
 
       // Calculate token expiration
@@ -250,8 +254,18 @@ const brokerSyncController = {
       // Redirect back to frontend
       res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?success=schwab`);
     } catch (error) {
+      console.error('[SCHWAB-OAUTH] Full error details:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        stack: error.stack
+      });
       logger.logError('Error handling Schwab OAuth callback:', error);
-      res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=oauth_failed`);
+
+      // Provide more specific error message in redirect
+      const errorCode = error.response?.status || 'unknown';
+      const errorMsg = encodeURIComponent(error.message || 'oauth_failed');
+      res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=oauth_failed&details=${errorMsg}&status=${errorCode}`);
     }
   },
 
