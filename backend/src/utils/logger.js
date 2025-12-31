@@ -218,30 +218,20 @@ class Logger {
       let filteredLines = lines;
       if (!showAll) {
         const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-        console.log(`FILTER DEBUG: showAll=${showAll}, oneDayAgo=${oneDayAgo.toISOString()}, totalLines=${lines.length}`);
-        
+
         filteredLines = lines.filter(line => {
           // Extract timestamp from log line [2025-08-20T20:33:11.897Z]
           const timestampMatch = line.match(/^\[([^\]]+)\]/);
           if (timestampMatch) {
             try {
               const logTime = new Date(timestampMatch[1]);
-              const include = logTime >= oneDayAgo;
-              if (!include) {
-                console.log(`EXCLUDED: ${timestampMatch[1]} (${logTime.toISOString()})`);
-              }
-              return include;
+              return logTime >= oneDayAgo;
             } catch (e) {
-              console.log(`PARSE ERROR: ${timestampMatch[1]}`);
               return true; // Include lines with unparseable timestamps
             }
           }
-          console.log(`NO TIMESTAMP: ${line.substring(0, 50)}...`);
           return true; // Include lines without timestamps
         });
-        console.log(`FILTER RESULT: ${lines.length} lines filtered to ${filteredLines.length} lines`);
-      } else {
-        console.log(`SHOWING ALL: ${lines.length} lines (showAll=${showAll})`);
       }
       
       // Apply search filter if provided
