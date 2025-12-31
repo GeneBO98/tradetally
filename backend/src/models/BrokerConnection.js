@@ -435,7 +435,8 @@ class BrokerConnection {
       syncDetails
     } = details;
 
-    const completedAt = ['completed', 'failed'].includes(status) ? 'CURRENT_TIMESTAMP' : 'NULL';
+    // Determine completion status before query to avoid parameter type issues
+    const isCompleted = ['completed', 'failed'].includes(status);
 
     const query = `
       UPDATE broker_sync_logs
@@ -448,8 +449,8 @@ class BrokerConnection {
           error_message = $8,
           error_details = COALESCE($9, error_details),
           sync_details = COALESCE($10, sync_details),
-          completed_at = CASE WHEN $2 IN ('completed', 'failed') THEN CURRENT_TIMESTAMP ELSE completed_at END,
-          duration_ms = CASE WHEN $2 IN ('completed', 'failed')
+          completed_at = CASE WHEN $11 THEN CURRENT_TIMESTAMP ELSE completed_at END,
+          duration_ms = CASE WHEN $11
             THEN EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - started_at)) * 1000
             ELSE duration_ms END
       WHERE id = $1
@@ -466,7 +467,8 @@ class BrokerConnection {
       duplicatesDetected,
       errorMessage,
       errorDetails ? JSON.stringify(errorDetails) : null,
-      syncDetails ? JSON.stringify(syncDetails) : null
+      syncDetails ? JSON.stringify(syncDetails) : null,
+      isCompleted
     ]);
 
     if (result.rows.length === 0) return null;

@@ -16,7 +16,7 @@ const Trade = require('../../models/Trade');
 const BrokerConnection = require('../../models/BrokerConnection');
 const db = require('../../config/database');
 
-const SCHWAB_API_BASE = 'https://api.schwabapi.com';
+const SCHWAB_API_BASE = 'https://api.schwabapi.com/trader/v1';
 const TOKEN_REFRESH_BUFFER = 5 * 60 * 1000; // Refresh 5 minutes before expiration
 
 class SchwabService {
@@ -103,7 +103,7 @@ class SchwabService {
     console.log('[SCHWAB] Refreshing access token...');
 
     const response = await axios.post(
-      `${SCHWAB_API_BASE}/v1/oauth/token`,
+      'https://api.schwabapi.com/v1/oauth/token',
       new URLSearchParams({
         grant_type: 'refresh_token',
         refresh_token: refreshToken
@@ -132,6 +132,27 @@ class SchwabService {
   }
 
   /**
+   * Get encrypted account numbers (required for all account-specific API calls)
+   * @param {string} accessToken - Valid access token
+   * @returns {Promise<Array<{accountNumber: string, hashValue: string}>>}
+   */
+  async getAccountNumbers(accessToken) {
+    console.log('[SCHWAB] Fetching encrypted account numbers...');
+
+    const response = await axios.get(
+      `${SCHWAB_API_BASE}/accounts/accountNumbers`,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
+      }
+    );
+
+    console.log(`[SCHWAB] Found ${response.data?.length || 0} accounts`);
+    return response.data || [];
+  }
+
+  /**
    * Get account information
    * @param {string} accessToken - Valid access token
    * @returns {Promise<object>}
@@ -140,7 +161,7 @@ class SchwabService {
     console.log('[SCHWAB] Fetching accounts...');
 
     const response = await axios.get(
-      `${SCHWAB_API_BASE}/trader/v1/accounts`,
+      `${SCHWAB_API_BASE}/accounts`,
       {
         headers: {
           Authorization: `Bearer ${accessToken}`
@@ -154,35 +175,57 @@ class SchwabService {
   /**
    * Get transactions for an account
    * @param {string} accessToken - Valid access token
-   * @param {string} accountId - Schwab account ID
-   * @param {string} startDate - Start date (YYYY-MM-DD)
-   * @param {string} endDate - End date (YYYY-MM-DD)
+   * @param {string} accountHash - Encrypted account hash value
+   * @param {string} startDate - Start date (ISO-8601 format)
+   * @param {string} endDate - End date (ISO-8601 format)
    * @returns {Promise<Array>}
    */
-  async getTransactions(accessToken, accountId, startDate, endDate) {
-    console.log(`[SCHWAB] Fetching transactions from ${startDate} to ${endDate}...`);
+  async getTransactions(accessToken, accountHash, startDate, endDate) {
+    // Format dates as full ISO-8601 with time component
+    const start = this.formatDateForApi(startDate || this.getDefaultStartDate());
+    const end = this.formatDateForApi(endDate || new Date().toISOString().split('T')[0]);
 
-    // Format dates for Schwab API
-    const start = startDate || this.getDefaultStartDate();
-    const end = endDate || new Date().toISOString().split('T')[0];
+    console.log(`[SCHWAB] Fetching transactions from ${start} to ${end}...`);
+    console.log(`[SCHWAB] Account hash: ${accountHash?.substring(0, 10)}...`);
 
-    const response = await axios.get(
-      `${SCHWAB_API_BASE}/trader/v1/accounts/${accountId}/transactions`,
-      {
-        params: {
-          types: 'TRADE', // Only get trade transactions
-          startDate: start,
-          endDate: end
-        },
-        headers: {
-          Authorization: `Bearer ${accessToken}`
+    try {
+      const response = await axios.get(
+        `${SCHWAB_API_BASE}/accounts/${accountHash}/transactions`,
+        {
+          params: {
+            types: 'TRADE',
+            startDate: start,
+            endDate: end
+          },
+          headers: {
+            Authorization: `Bearer ${accessToken}`
+          }
         }
-      }
-    );
+      );
 
-    console.log(`[SCHWAB] Fetched ${response.data.length || 0} transactions`);
+      console.log(`[SCHWAB] Fetched ${response.data?.length || 0} transactions`);
+      return response.data || [];
+    } catch (error) {
+      console.error('[SCHWAB] Transaction fetch error:', error.response?.data || error.message);
+      throw error;
+    }
+  }
 
-    return response.data || [];
+  /**
+   * Format date for Schwab API (requires full ISO-8601 with milliseconds)
+   * @param {string} dateStr - Date string (YYYY-MM-DD or ISO format)
+   * @returns {string} - Formatted date string
+   */
+  formatDateForApi(dateStr) {
+    // If already in full ISO format, return as is
+    if (dateStr.includes('T') && dateStr.includes('Z')) {
+      return dateStr;
+    }
+
+    // Convert YYYY-MM-DD to full ISO-8601 format
+    // Use start of day for startDate
+    const date = new Date(dateStr + 'T00:00:00.000Z');
+    return date.toISOString();
   }
 
   /**
@@ -218,27 +261,48 @@ class SchwabService {
 
   /**
    * Parse a single Schwab transaction
+   * Based on Schwab API response structure with transferItems
    * @param {object} tx - Raw transaction
    * @returns {object|null} - Parsed trade or null if not a valid trade
    */
   parseTransaction(tx) {
-    // Skip non-equity transactions for now
-    if (!tx.transactionItem || tx.type !== 'TRADE') {
+    // Only process TRADE type transactions
+    if (tx.type !== 'TRADE') {
       return null;
     }
 
-    const item = tx.transactionItem;
-    const instrument = item.instrument;
+    // Get the transfer items (contains instrument and trade details)
+    const transferItems = tx.transferItems || [];
+    if (transferItems.length === 0) {
+      return null;
+    }
 
-    // Determine side from transaction type
-    const instruction = item.instruction;
+    // Use the first transfer item for the main instrument
+    const item = transferItems[0];
+    const instrument = item.instrument || {};
+
+    const symbol = instrument.symbol;
+    if (!symbol) {
+      console.warn('[SCHWAB] Transaction missing symbol, skipping');
+      return null;
+    }
+
+    // Determine side from positionEffect
     let side;
-    if (instruction === 'BUY' || instruction === 'BUY_TO_COVER') {
-      side = 'long';
-    } else if (instruction === 'SELL' || instruction === 'SELL_SHORT') {
-      side = 'short';
+    const positionEffect = item.positionEffect;
+    const amount = item.amount || 0;
+
+    // OPENING with positive amount = buy/long entry
+    // OPENING with negative amount = short entry
+    // CLOSING with positive amount = buy to cover (closing short)
+    // CLOSING with negative amount = sell (closing long)
+    if (positionEffect === 'OPENING') {
+      side = amount > 0 ? 'long' : 'short';
+    } else if (positionEffect === 'CLOSING') {
+      side = amount > 0 ? 'long' : 'short'; // Buy to cover or sell
     } else {
-      return null; // Skip unknown instruction types
+      // Default based on amount sign
+      side = amount > 0 ? 'long' : 'short';
     }
 
     // Determine instrument type
@@ -248,56 +312,54 @@ class SchwabService {
     let expirationDate = null;
     let underlyingSymbol = null;
 
-    if (instrument.assetType === 'OPTION') {
+    const instType = instrument.type?.toUpperCase();
+    if (instType === 'OPTION' || instType === 'EQUITY_OPTION') {
       instrumentType = 'option';
-      optionType = instrument.putCall?.toLowerCase();
-      strikePrice = instrument.strikePrice;
-      expirationDate = instrument.expirationDate;
-      underlyingSymbol = instrument.underlyingSymbol;
-    } else if (instrument.assetType === 'FUTURE') {
+      // Parse option details from symbol if available
+      // Schwab option symbols are typically in OCC format
+    } else if (instType === 'FUTURE') {
       instrumentType = 'future';
     }
 
-    const symbol = instrument.symbol || instrument.underlyingSymbol;
-    const quantity = Math.abs(parseFloat(item.amount || item.quantity || 0));
-    const price = parseFloat(item.price || 0);
-    const commission = Math.abs(parseFloat(tx.fees?.commission || 0));
-    const fees = Math.abs(parseFloat(tx.fees?.regFee || 0)) +
-                 Math.abs(parseFloat(tx.fees?.additionalFee || 0)) +
-                 Math.abs(parseFloat(tx.fees?.cdscFee || 0));
+    const quantity = Math.abs(parseFloat(amount) || 0);
+    const price = parseFloat(item.price) || 0;
 
-    const tradeDate = tx.transactionDate?.split('T')[0];
-    const entryTime = tx.transactionDate;
-
-    // For completed (closed) trades, calculate P&L
-    let exitPrice = null;
-    let exitTime = null;
-    let pnl = null;
-
-    if (tx.netAmount && instruction.includes('SELL')) {
-      // This is likely a closing trade
-      // Schwab provides net amount which includes P&L
-      pnl = parseFloat(tx.netAmount);
+    // Extract commission from transferItems with feeType = COMMISSION
+    let commission = 0;
+    let fees = 0;
+    for (const ti of transferItems) {
+      if (ti.feeType === 'COMMISSION') {
+        commission += Math.abs(parseFloat(ti.cost) || 0);
+      } else if (ti.feeType) {
+        fees += Math.abs(parseFloat(ti.cost) || 0);
+      }
     }
+
+    const tradeDate = tx.tradeDate?.split('T')[0] || tx.time?.split('T')[0];
+    const entryTime = tx.tradeDate || tx.time;
+
+    // Net amount from transaction (includes P&L for closing trades)
+    const netAmount = tx.netAmount;
 
     return {
       symbol,
       side,
       quantity,
       entryPrice: price,
-      exitPrice,
+      exitPrice: null, // Will be filled if this is a closing trade
       entryTime,
-      exitTime,
+      exitTime: null,
       tradeDate,
       commission,
       fees,
-      pnl,
+      pnl: positionEffect === 'CLOSING' ? netAmount : null,
       broker: 'schwab',
       instrumentType,
       optionType,
       strikePrice,
       expirationDate,
       underlyingSymbol: instrumentType === 'option' ? underlyingSymbol : null,
+      cusip: instrument.cusip,
       executionData: [{
         datetime: entryTime,
         entryTime,
@@ -306,7 +368,7 @@ class SchwabService {
         side,
         commission,
         fees,
-        orderId: tx.orderId || tx.transactionId
+        orderId: tx.orderId?.toString() || tx.activityId?.toString()
       }]
     };
   }
@@ -333,10 +395,35 @@ class SchwabService {
       await BrokerConnection.updateSyncLog(syncLogId, 'fetching');
     }
 
+    // First, get the encrypted account hash
+    const accounts = await this.getAccountNumbers(accessToken);
+    if (!accounts || accounts.length === 0) {
+      throw new Error('No Schwab accounts found');
+    }
+
+    // Find the matching account or use the first one
+    let accountHash = null;
+    for (const account of accounts) {
+      if (account.accountNumber === connection.schwabAccountId) {
+        accountHash = account.hashValue;
+        break;
+      }
+    }
+
+    // If we didn't find a match by account number, use the first account
+    if (!accountHash && accounts.length > 0) {
+      accountHash = accounts[0].hashValue;
+      console.log(`[SCHWAB] Using first available account: ${accounts[0].accountNumber}`);
+    }
+
+    if (!accountHash) {
+      throw new Error('Could not find encrypted account hash');
+    }
+
     // Fetch transactions
     const transactions = await this.getTransactions(
       accessToken,
-      connection.schwabAccountId,
+      accountHash,
       startDate,
       endDate
     );
