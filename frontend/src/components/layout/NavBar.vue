@@ -337,6 +337,12 @@ const baseNavigation = [
     route: 'markets',
     badge: { type: 'pro', text: 'Pro' }
   },
+  {
+    name: 'Investments',
+    to: '/investments',
+    route: 'investments',
+    badge: { type: 'pro', text: 'Pro' }
+  },
   { name: 'Calendar', to: '/calendar', route: 'calendar' },
   { name: 'Import', to: '/import', route: 'import' },
   { name: 'Settings', to: '/settings', route: 'settings' }
