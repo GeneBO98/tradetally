@@ -7,20 +7,33 @@ class AdminAnalytics {
    * @returns {Object} Summary statistics
    */
   static async getSummary(startDate) {
+    // Calculate today's start in server timezone to avoid CURRENT_DATE timezone mismatch
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayStart = today.toISOString();
+
+    const sevenDaysAgo = new Date(today);
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const sevenDaysAgoStart = sevenDaysAgo.toISOString();
+
+    const thirtyDaysAgo = new Date(today);
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const thirtyDaysAgoStart = thirtyDaysAgo.toISOString();
+
     const query = `
       SELECT
         (SELECT COUNT(*) FROM users WHERE is_active = true) as total_users,
         (SELECT COUNT(*) FROM users WHERE created_at >= $1 AND is_active = true) as new_signups,
-        (SELECT COUNT(*) FROM users WHERE last_login_at >= CURRENT_DATE AND is_active = true) as active_today,
-        (SELECT COUNT(*) FROM users WHERE last_login_at >= CURRENT_DATE - INTERVAL '7 days' AND is_active = true) as active_7_days,
-        (SELECT COUNT(*) FROM users WHERE last_login_at >= CURRENT_DATE - INTERVAL '30 days' AND is_active = true) as active_30_days,
+        (SELECT COUNT(*) FROM users WHERE last_login_at >= $2 AND is_active = true) as active_today,
+        (SELECT COUNT(*) FROM users WHERE last_login_at >= $3 AND is_active = true) as active_7_days,
+        (SELECT COUNT(*) FROM users WHERE last_login_at >= $4 AND is_active = true) as active_30_days,
         (SELECT COALESCE(SUM(trades_imported), 0) FROM import_logs WHERE created_at >= $1 AND status = 'completed') as trades_imported,
         (SELECT COUNT(*) FROM import_logs WHERE created_at >= $1 AND status = 'completed') as import_count,
         (SELECT COALESCE(SUM(call_count), 0) FROM api_usage_tracking WHERE created_at >= $1) as api_calls,
         (SELECT COUNT(*) FROM trades WHERE created_at >= $1) as trades_created
     `;
 
-    const result = await db.query(query, [startDate]);
+    const result = await db.query(query, [startDate, todayStart, sevenDaysAgoStart, thirtyDaysAgoStart]);
     const row = result.rows[0];
 
     return {

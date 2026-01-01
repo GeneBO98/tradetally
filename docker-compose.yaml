@@ -89,6 +89,8 @@ services:
       FEATURES_BEHAVIORAL_ANALYTICS_ENABLED: ${FEATURES_BEHAVIORAL_ANALYTICS_ENABLED:-true}
       # Logging
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # Timezone Configuration (affects admin metrics "today" calculations)
+      TZ: ${TZ:-UTC}
     ports:
       - "80:80"
       - "3000:3000"
