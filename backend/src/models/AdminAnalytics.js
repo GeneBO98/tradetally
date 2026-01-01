@@ -160,6 +160,11 @@ class AdminAnalytics {
    * @returns {Object} Broker sync statistics
    */
   static async getBrokerSyncStats(startDate) {
+    // Debug: Log the date being used
+    console.log('[ADMIN-ANALYTICS] Broker sync stats query - startDate:', startDate);
+    console.log('[ADMIN-ANALYTICS] Server time:', new Date().toISOString());
+    console.log('[ADMIN-ANALYTICS] Server timezone:', Intl.DateTimeFormat().resolvedOptions().timeZone);
+
     const query = `
       SELECT
         COUNT(*) as total_syncs,
@@ -173,6 +178,14 @@ class AdminAnalytics {
 
     const result = await db.query(query, [startDate]);
     const row = result.rows[0];
+
+    // Debug: Log the results
+    console.log('[ADMIN-ANALYTICS] Broker sync stats result:', row);
+
+    // Also log total count without date filter for debugging
+    const totalQuery = `SELECT COUNT(*) as total FROM broker_sync_logs`;
+    const totalResult = await db.query(totalQuery);
+    console.log('[ADMIN-ANALYTICS] Total broker_sync_logs (all time):', totalResult.rows[0].total);
 
     return {
       totalSyncs: parseInt(row.total_syncs) || 0,

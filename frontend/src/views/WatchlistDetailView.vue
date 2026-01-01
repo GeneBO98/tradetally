@@ -27,7 +27,7 @@
 
     <!-- Loading State -->
     <div v-if="loading" class="flex justify-center items-center py-12">
-      <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
     </div>
 
     <!-- Watchlist Items -->
@@ -74,7 +74,7 @@
               <td class="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
                 <button
                   @click="createPriceAlert(item.symbol)"
-                  class="text-blue-600 hover:text-blue-900"
+                  class="text-primary-600 hover:text-primary-900"
                 >
                   Alert
                 </button>
@@ -121,7 +121,7 @@
       <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden">
         <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
           <h2 class="text-lg font-medium text-gray-900 dark:text-white flex items-center">
-            <svg class="w-5 h-5 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="w-5 h-5 mr-2 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"></path>
             </svg>
             Recent News
@@ -133,18 +133,18 @@
               <option value="14">Last 14 days</option>
               <option value="30">Last 30 days</option>
             </select>
-            <button 
-              @click="loadWatchlistNews" 
+            <button
+              @click="loadWatchlistNews"
               :disabled="loadingNews"
-              class="text-sm text-blue-600 hover:text-blue-800 disabled:opacity-50"
+              class="text-sm text-primary-600 hover:text-primary-800 disabled:opacity-50"
             >
               {{ loadingNews ? 'Loading...' : 'Refresh' }}
             </button>
           </div>
         </div>
-        
+
         <div v-if="loadingNews" class="flex justify-center items-center py-8">
-          <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+          <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600"></div>
         </div>
         
         <div v-else-if="watchlistNews.length > 0" class="divide-y divide-gray-200 dark:divide-gray-700">
@@ -155,16 +155,16 @@
           >
             <div class="flex items-start space-x-3">
               <div class="flex-shrink-0">
-                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200">
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary-100 dark:bg-primary-900 text-primary-800 dark:text-primary-200">
                   {{ article.symbol }}
                 </span>
               </div>
               <div class="flex-1 min-w-0">
-                <a 
-                  :href="article.url" 
-                  target="_blank" 
+                <a
+                  :href="article.url"
+                  target="_blank"
                   rel="noopener noreferrer"
-                  class="block hover:text-blue-600 transition-colors"
+                  class="block hover:text-primary-600 transition-colors"
                 >
                   <h3 class="text-sm font-medium text-gray-900 dark:text-white mb-1">{{ article.headline }}</h3>
                   <p v-if="article.summary" class="text-sm text-gray-600 dark:text-gray-400 line-clamp-2 mb-2">{{ article.summary }}</p>
@@ -201,10 +201,10 @@
               <option value="30">Next 30 days</option>
               <option value="60">Next 60 days</option>
             </select>
-            <button 
-              @click="loadWatchlistEarnings" 
+            <button
+              @click="loadWatchlistEarnings"
               :disabled="loadingEarnings"
-              class="text-sm text-blue-600 hover:text-blue-800 disabled:opacity-50"
+              class="text-sm text-primary-600 hover:text-primary-800 disabled:opacity-50"
             >
               {{ loadingEarnings ? 'Loading...' : 'Refresh' }}
             </button>
@@ -290,7 +290,7 @@
               <button
                 type="submit"
                 :disabled="adding"
-                class="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 disabled:opacity-50"
+                class="px-4 py-2 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-md hover:bg-primary-700 disabled:opacity-50"
               >
                 {{ adding ? 'Adding...' : 'Add Symbol' }}
               </button>
@@ -327,7 +327,7 @@
               <button
                 type="submit"
                 :disabled="updating"
-                class="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 disabled:opacity-50"
+                class="px-4 py-2 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-md hover:bg-primary-700 disabled:opacity-50"
               >
                 {{ updating ? 'Updating...' : 'Update Notes' }}
               </button>
