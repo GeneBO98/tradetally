@@ -582,6 +582,44 @@ class FundamentalDataService {
       return true;
     }
   }
+
+  /**
+   * Get crypto profile from Finnhub
+   * @param {string} symbol - Crypto symbol (e.g., 'BTC', 'ETH')
+   * @returns {Promise<Object>} Crypto profile data
+   */
+  static async getCryptoProfile(symbol) {
+    const symbolUpper = symbol.toUpperCase();
+
+    try {
+      const profile = await finnhub.getCryptoProfile(symbolUpper);
+      return profile;
+    } catch (error) {
+      console.warn(`[FUNDAMENTAL] Failed to get crypto profile for ${symbolUpper}: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Check if a symbol is a cryptocurrency
+   * Uses the common crypto symbols list from finnhub client
+   * @param {string} symbol - Symbol to check
+   * @returns {Promise<boolean>} True if crypto
+   */
+  static async isCryptoSymbol(symbol) {
+    // Quick check using the finnhub client's crypto symbol list
+    if (finnhub.isCryptoSymbol(symbol)) {
+      return true;
+    }
+
+    // Try to get crypto profile - if it succeeds, it's a crypto
+    try {
+      const profile = await finnhub.getCryptoProfile(symbol.toUpperCase());
+      return profile && profile.name ? true : false;
+    } catch (error) {
+      return false;
+    }
+  }
 }
 
 module.exports = FundamentalDataService;

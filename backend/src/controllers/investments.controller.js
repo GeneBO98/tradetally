@@ -13,8 +13,10 @@ const db = require('../config/database');
 // ========================================
 
 /**
- * Analyze a stock using 8 Pillars methodology
+ * Analyze a stock or crypto using appropriate methodology
  * GET /api/investments/analyze/:symbol
+ * For stocks: Returns 8 Pillars analysis
+ * For crypto: Returns crypto profile data
  */
 const analyzeStock = async (req, res) => {
   try {
@@ -26,12 +28,69 @@ const analyzeStock = async (req, res) => {
 
     console.log(`[INVESTMENTS] Analyzing ${symbol} for user ${req.user.id}`);
 
+    // Check if this is a crypto symbol
+    const isCrypto = await FundamentalDataService.isCryptoSymbol(symbol);
+
+    if (isCrypto) {
+      // Get crypto data from CoinGecko instead of Finnhub (which requires premium)
+      console.log(`[INVESTMENTS] ${symbol} detected as crypto, fetching from CoinGecko`);
+
+      const finnhub = require('../utils/finnhub');
+      const coinGeckoId = finnhub.constructor.CRYPTO_TO_COINGECKO[symbol.toUpperCase()];
+
+      if (!coinGeckoId) {
+        return res.status(404).json({ error: `Unknown crypto symbol: ${symbol}` });
+      }
+
+      try {
+        // Get detailed crypto data from CoinGecko
+        const axios = require('axios');
+        const response = await axios.get(
+          `https://api.coingecko.com/api/v3/coins/${coinGeckoId}?localization=false&tickers=false&community_data=false&developer_data=false`,
+          { timeout: 10000 }
+        );
+
+        const coin = response.data;
+
+        const analysis = {
+          symbol: symbol.toUpperCase(),
+          type: 'crypto',
+          analysisDate: new Date().toISOString(),
+          companyName: coin.name,
+          logo: coin.image?.large || coin.image?.small,
+          description: coin.description?.en?.substring(0, 500) || null,
+          marketCap: coin.market_data?.market_cap?.usd,
+          currentPrice: coin.market_data?.current_price?.usd,
+          totalSupply: coin.market_data?.total_supply,
+          maxSupply: coin.market_data?.max_supply,
+          circulatingSupply: coin.market_data?.circulating_supply,
+          priceChange24h: coin.market_data?.price_change_24h,
+          priceChangePercent24h: coin.market_data?.price_change_percentage_24h,
+          ath: coin.market_data?.ath?.usd,
+          athDate: coin.market_data?.ath_date?.usd,
+          atl: coin.market_data?.atl?.usd,
+          atlDate: coin.market_data?.atl_date?.usd,
+          launchDate: coin.genesis_date,
+          website: coin.links?.homepage?.[0] || null
+        };
+
+        // Record search history
+        await recordSearch(req.user.id, symbol, coin.name);
+
+        return res.json(analysis);
+      } catch (error) {
+        console.error(`[INVESTMENTS] CoinGecko error for ${symbol}:`, error.message);
+        return res.status(500).json({ error: `Failed to fetch crypto data for ${symbol}` });
+      }
+    }
+
+    // Stock analysis - use 8 Pillars
     const analysis = await EightPillarsService.analyzeStock(symbol);
 
     // Record search history
     await recordSearch(req.user.id, symbol, analysis.companyName);
 
-    res.json(analysis);
+    res.json({ ...analysis, type: 'stock' });
   } catch (error) {
     console.error('[INVESTMENTS] Analysis error:', error);
     res.status(500).json({ error: error.message || 'Failed to analyze stock' });
@@ -513,19 +572,22 @@ const compareStocks = async (req, res) => {
 // ========================================
 
 /**
- * Get stock chart data
+ * Get stock or crypto chart data
  * GET /api/investments/chart/:symbol
  */
 const getChartData = async (req, res) => {
   try {
     const { symbol } = req.params;
-    const { period = '1Y' } = req.query; // 1D, 1W, 1M, 3M, 6M, 1Y, 5Y
+    const { period = '1Y', exchange = 'binance' } = req.query; // 1D, 1W, 1M, 3M, 6M, 1Y, 5Y
 
     if (!symbol) {
       return res.status(400).json({ error: 'Symbol is required' });
     }
 
     const finnhub = require('../utils/finnhub');
+
+    // Check if this is a crypto symbol
+    const isCrypto = await FundamentalDataService.isCryptoSymbol(symbol);
 
     // Calculate date range based on period
     const now = Math.floor(Date.now() / 1000);
@@ -566,16 +628,69 @@ const getChartData = async (req, res) => {
         resolution = 'D';
     }
 
-    const candles = await finnhub.getStockCandles(
-      symbol.toUpperCase(),
-      resolution,
-      from,
-      now,
-      req.user.id
-    );
+    let candles;
+
+    if (isCrypto) {
+      // Use CoinGecko for crypto charts (Finnhub crypto requires premium)
+      const coinGeckoId = finnhub.constructor.CRYPTO_TO_COINGECKO[symbol.toUpperCase()];
+
+      if (!coinGeckoId) {
+        return res.status(404).json({ error: `Unknown crypto symbol: ${symbol}` });
+      }
+
+      try {
+        const axios = require('axios');
+        // CoinGecko market_chart endpoint - days parameter
+        let days;
+        switch (period.toUpperCase()) {
+          case '1D': days = 1; break;
+          case '1W': days = 7; break;
+          case '1M': days = 30; break;
+          case '3M': days = 90; break;
+          case '6M': days = 180; break;
+          case '1Y': days = 365; break;
+          case '5Y': days = 1825; break;
+          default: days = 365;
+        }
+
+        console.log(`[INVESTMENTS] Fetching crypto chart from CoinGecko for ${symbol} (${days} days)`);
+
+        const response = await axios.get(
+          `https://api.coingecko.com/api/v3/coins/${coinGeckoId}/market_chart?vs_currency=usd&days=${days}`,
+          { timeout: 15000 }
+        );
+
+        // Convert CoinGecko format to candle format
+        // CoinGecko returns [timestamp, price] arrays
+        const prices = response.data.prices || [];
+
+        candles = prices.map(([timestamp, price]) => ({
+          time: Math.floor(timestamp / 1000), // Convert ms to seconds
+          open: price,
+          high: price,
+          low: price,
+          close: price
+        }));
+
+        console.log(`[INVESTMENTS] Got ${candles.length} crypto data points for ${symbol}`);
+      } catch (error) {
+        console.error(`[INVESTMENTS] CoinGecko chart error for ${symbol}:`, error.message);
+        return res.status(500).json({ error: `Failed to fetch crypto chart for ${symbol}` });
+      }
+    } else {
+      // Use stock candles endpoint
+      candles = await finnhub.getStockCandles(
+        symbol.toUpperCase(),
+        resolution,
+        from,
+        now,
+        req.user.id
+      );
+    }
 
     res.json({
       symbol: symbol.toUpperCase(),
+      type: isCrypto ? 'crypto' : 'stock',
       period,
       resolution,
       candles

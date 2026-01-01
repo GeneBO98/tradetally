@@ -99,6 +99,7 @@
                 <option value="stock">Stock</option>
                 <option value="option">Option</option>
                 <option value="future">Future</option>
+                <option value="crypto">Crypto</option>
               </select>
             </div>
           </div>
