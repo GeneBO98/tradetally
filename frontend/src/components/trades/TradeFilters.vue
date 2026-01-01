@@ -723,7 +723,8 @@ const dayOfWeekOptions = [
 const instrumentTypeOptions = [
   { value: 'stock', label: 'Stocks' },
   { value: 'option', label: 'Options' },
-  { value: 'future', label: 'Futures' }
+  { value: 'future', label: 'Futures' },
+  { value: 'crypto', label: 'Crypto' }
 ]
 
 // Option type options
