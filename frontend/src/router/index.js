@@ -277,6 +277,24 @@ const router = createRouter({
       meta: { requiresAuth: true, requiresTier: 'pro' }
     },
     {
+      path: '/investments',
+      name: 'investments',
+      component: () => import('@/views/InvestmentsView.vue'),
+      meta: { requiresAuth: true, requiresTier: 'pro' }
+    },
+    {
+      path: '/investments/analyze/:symbol',
+      name: 'stock-analysis',
+      component: () => import('@/views/StockAnalysisView.vue'),
+      meta: { requiresAuth: true, requiresTier: 'pro' }
+    },
+    {
+      path: '/investments/holdings/:id',
+      name: 'holding-detail',
+      component: () => import('@/views/HoldingDetailView.vue'),
+      meta: { requiresAuth: true, requiresTier: 'pro' }
+    },
+    {
       path: '/price-alerts',
       name: 'price-alerts',
       component: () => import('@/views/PriceAlertsView.vue'),

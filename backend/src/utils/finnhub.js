@@ -1615,6 +1615,171 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
     console.log(`[TICKER EXTRACT] Could not extract ticker from: ${text}`);
     return null;
   }
+
+  /**
+   * Get standardized financial statements (balance sheet, income statement, cash flow)
+   * Premium endpoint: /stock/financials
+   * @param {string} symbol - Stock symbol
+   * @param {string} frequency - 'annual' or 'quarterly'
+   * @returns {Promise<Object>} Financial statements data
+   */
+  async getFinancialStatements(symbol, frequency = 'annual') {
+    const symbolUpper = symbol.toUpperCase();
+
+    // Create cache key
+    const cacheKey = `financials_${symbolUpper}_${frequency}`;
+
+    // Check cache first (24 hour TTL for financial statements)
+    const cached = await cache.get('financial_statements', cacheKey);
+    if (cached) {
+      console.log(`[FINANCIALS] Using cached financial statements for ${symbolUpper}`);
+      return cached;
+    }
+
+    try {
+      console.log(`[FINANCIALS] Fetching ${frequency} financial statements for ${symbolUpper}`);
+
+      const data = await this.makeRequest('/stock/financials', {
+        symbol: symbolUpper,
+        statement: 'bs,ic,cf', // Balance sheet, income statement, cash flow
+        freq: frequency
+      });
+
+      if (!data || !data.financials || data.financials.length === 0) {
+        console.warn(`[FINANCIALS] No financial data available for ${symbolUpper}`);
+        return null;
+      }
+
+      // Cache the result (24 hours)
+      await cache.set('financial_statements', cacheKey, data);
+
+      console.log(`[FINANCIALS] Retrieved ${data.financials.length} periods for ${symbolUpper}`);
+      return data;
+    } catch (error) {
+      console.warn(`[FINANCIALS] Failed to get financial statements for ${symbol}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Get basic financials / key metrics (P/E, margins, 52-week data, etc.)
+   * Premium endpoint: /stock/metric
+   * @param {string} symbol - Stock symbol
+   * @returns {Promise<Object>} Key financial metrics
+   */
+  async getBasicFinancials(symbol) {
+    const symbolUpper = symbol.toUpperCase();
+
+    // Create cache key
+    const cacheKey = `metrics_${symbolUpper}`;
+
+    // Check cache first (24 hour TTL)
+    const cached = await cache.get('basic_financials', cacheKey);
+    if (cached) {
+      console.log(`[METRICS] Using cached metrics for ${symbolUpper}`);
+      return cached;
+    }
+
+    try {
+      console.log(`[METRICS] Fetching basic financials for ${symbolUpper}`);
+
+      const data = await this.makeRequest('/stock/metric', {
+        symbol: symbolUpper,
+        metric: 'all'
+      });
+
+      if (!data || !data.metric) {
+        console.warn(`[METRICS] No metrics data available for ${symbolUpper}`);
+        return null;
+      }
+
+      // Cache the result (24 hours)
+      await cache.set('basic_financials', cacheKey, data);
+
+      console.log(`[METRICS] Retrieved metrics for ${symbolUpper}`);
+      return data;
+    } catch (error) {
+      console.warn(`[METRICS] Failed to get basic financials for ${symbol}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Get financials as reported (original SEC filing data)
+   * Premium endpoint: /stock/financials-reported
+   * @param {string} symbol - Stock symbol
+   * @param {string} frequency - 'annual' or 'quarterly'
+   * @returns {Promise<Object>} Reported financial data
+   */
+  async getFinancialsReported(symbol, frequency = 'annual') {
+    const symbolUpper = symbol.toUpperCase();
+
+    // Create cache key
+    const cacheKey = `reported_${symbolUpper}_${frequency}`;
+
+    // Check cache first (24 hour TTL)
+    const cached = await cache.get('financials_reported', cacheKey);
+    if (cached) {
+      console.log(`[REPORTED] Using cached reported financials for ${symbolUpper}`);
+      return cached;
+    }
+
+    try {
+      console.log(`[REPORTED] Fetching ${frequency} reported financials for ${symbolUpper}`);
+
+      const data = await this.makeRequest('/stock/financials-reported', {
+        symbol: symbolUpper,
+        freq: frequency
+      });
+
+      if (!data || !data.data || data.data.length === 0) {
+        console.warn(`[REPORTED] No reported financial data available for ${symbolUpper}`);
+        return null;
+      }
+
+      // Cache the result (24 hours)
+      await cache.set('financials_reported', cacheKey, data);
+
+      console.log(`[REPORTED] Retrieved ${data.data.length} periods for ${symbolUpper}`);
+      return data;
+    } catch (error) {
+      console.warn(`[REPORTED] Failed to get reported financials for ${symbol}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Get historical market cap data
+   * @param {string} symbol - Stock symbol
+   * @returns {Promise<Object>} Historical market cap data
+   */
+  async getHistoricalMarketCap(symbol) {
+    const symbolUpper = symbol.toUpperCase();
+
+    // Create cache key
+    const cacheKey = `marketcap_${symbolUpper}`;
+
+    // Check cache first (7 day TTL)
+    const cached = await cache.get('historical_marketcap', cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    try {
+      const data = await this.makeRequest('/stock/historical-market-cap', {
+        symbol: symbolUpper
+      });
+
+      if (data) {
+        await cache.set('historical_marketcap', cacheKey, data);
+      }
+
+      return data;
+    } catch (error) {
+      console.warn(`Failed to get historical market cap for ${symbol}: ${error.message}`);
+      throw error;
+    }
+  }
 }
 
 module.exports = new FinnhubClient();
