@@ -26,7 +26,7 @@
                 <option value="etrade">E*TRADE</option>
                 <option value="papermoney">PaperMoney</option>
                 <option value="tradingview">TradingView</option>
-                <option value="tradeovate">Tradeovate</option>
+                <option value="tradovate">Tradovate</option>
                 <optgroup v-if="customMappings.length > 0" label="Custom Importers">
                   <option
                     v-for="mapping in customMappings"
@@ -39,6 +39,22 @@
               </select>
               <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
                 Choose the format that matches your CSV file structure, or use Auto-Detect. If your format isn't recognized, you'll be prompted to create a custom column mapping.
+              </p>
+            </div>
+
+            <!-- Account Selection (only shown if user has defined accounts) -->
+            <div v-if="requiresAccountSelection">
+              <label for="account" class="label">Trading Account</label>
+              <select id="account" v-model="selectedAccountId" class="input">
+                <option :value="null">Select account...</option>
+                <option v-for="account in accounts" :key="account.id" :value="account.id">
+                  {{ account.name }}{{ account.identifier ? ` (${redactAccountId(account.identifier)})` : '' }}{{ account.broker ? ` - ${formatBrokerName(account.broker)}` : '' }}
+                </option>
+                <option value="none">None (different broker/account)</option>
+              </select>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Select a trading account to associate with this import, or choose "None" if importing from a different broker.
+                <router-link to="/accounts" class="text-primary-600 hover:text-primary-500">Manage accounts</router-link>
               </p>
             </div>
 
@@ -851,6 +867,11 @@ const error = ref(null)
 const selectedBroker = ref('auto')
 const selectedFile = ref(null)
 const showCurrencyProModal = ref(false)
+
+// Account selection for imports
+const accounts = ref([])
+const requiresAccountSelection = ref(false)
+const selectedAccountId = ref(null)
 const currencyProMessage = ref('')
 const fileInput = ref(null)
 const dragOver = ref(false)
@@ -955,6 +976,28 @@ function formatFileSize(bytes) {
 function formatDate(date) {
   // Import history dates are stored without timezone context; use safe trade formatter
   return formatTradeDate(date, 'MMM dd, yyyy HH:mm')
+}
+
+function formatBrokerName(broker) {
+  const brokerLabels = {
+    schwab: 'Charles Schwab',
+    thinkorswim: 'thinkorswim',
+    ibkr: 'Interactive Brokers',
+    lightspeed: 'Lightspeed',
+    webull: 'Webull',
+    etrade: 'E*TRADE',
+    tradingview: 'TradingView',
+    tradovate: 'Tradovate',
+    other: 'Other'
+  }
+  return brokerLabels[broker] || broker
+}
+
+function redactAccountId(accountId) {
+  if (!accountId) return null
+  const str = String(accountId).trim()
+  if (str.length <= 4) return str
+  return '****' + str.slice(-4)
 }
 
 function handleDragOver(event) {
@@ -1153,7 +1196,7 @@ function detectKnownFormat(headers) {
     return true
   }
 
-  // Tradeovate detection
+  // Tradovate detection
   if (headersStr.includes('b/s') && headersStr.includes('contract') &&
       headersStr.includes('product') && headersStr.includes('fill time') &&
       (headersStr.includes('avgprice') || headersStr.includes('avg fill price')) &&
@@ -1181,6 +1224,15 @@ async function handleImport() {
     error.value = 'Please select a file and broker format'
     return
   }
+
+  // Validate account selection if required (null means not selected, "none" means explicitly no account)
+  if (requiresAccountSelection.value && selectedAccountId.value === null) {
+    error.value = 'Please select a trading account or choose "None" for this import'
+    return
+  }
+
+  // Convert "none" to null for the API
+  const accountIdToSend = selectedAccountId.value === 'none' ? null : selectedAccountId.value
 
   console.log('Starting import with:', {
     fileName: selectedFile.value.name,
@@ -1246,7 +1298,7 @@ async function handleImport() {
       console.log(`[IMPORT] Known format detected, proceeding with import`)
     }
 
-    const result = await tradesStore.importTrades(selectedFile.value, broker, mappingId)
+    const result = await tradesStore.importTrades(selectedFile.value, broker, mappingId, accountIdToSend)
     console.log('Import result:', result)
     showSuccess('Import Started', `Import has been queued. Import ID: ${result.importId}`)
 
@@ -1806,6 +1858,26 @@ async function fetchCustomMappings() {
   }
 }
 
+// Fetch import requirements (account selection)
+async function fetchImportRequirements() {
+  try {
+    const response = await api.get('/trades/import/requirements')
+    requiresAccountSelection.value = response.data.requiresAccountSelection
+    accounts.value = response.data.accounts || []
+    console.log('[IMPORT] Requirements loaded:', {
+      requiresAccountSelection: requiresAccountSelection.value,
+      accountCount: accounts.value.length
+    })
+    // Pre-select primary account if exists
+    const primary = accounts.value.find(a => a.isPrimary)
+    if (primary) {
+      selectedAccountId.value = primary.id
+    }
+  } catch (err) {
+    console.error('Error fetching import requirements:', err)
+  }
+}
+
 // Confirm delete mapping
 function confirmDeleteMapping(mapping) {
   console.log('[DELETE MAPPING] Confirming delete for:', mapping)
@@ -1889,8 +1961,9 @@ async function handleMappingSaved(mapping) {
   error.value = null
 
   try {
-    // Import with the mapping ID
-    const result = await tradesStore.importTrades(currentMappingFile.value, 'generic', mapping.id)
+    // Import with the mapping ID (convert "none" to null)
+    const accountIdToSend = selectedAccountId.value === 'none' ? null : selectedAccountId.value
+    const result = await tradesStore.importTrades(currentMappingFile.value, 'generic', mapping.id, accountIdToSend)
     console.log('Import result:', result)
     showSuccess('Import Started', `Import has been queued. Import ID: ${result.importId}`)
 
@@ -1926,6 +1999,7 @@ onMounted(() => {
   fetchImportHistory()
   fetchUnmappedCusipsCount()
   fetchCustomMappings()
+  fetchImportRequirements()
   setInterval(fetchImportHistory, 5000)
 })
 </script>
