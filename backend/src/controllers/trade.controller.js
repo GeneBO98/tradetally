@@ -879,6 +879,31 @@ const tradeController = {
     }
   },
 
+  /**
+   * Check import requirements before uploading a file
+   * Returns whether account selection is required and available accounts
+   */
+  async checkImportRequirements(req, res, next) {
+    try {
+      // Get user's trading accounts
+      const Account = require('../models/Account');
+      const accounts = await Account.findByUser(req.user.id);
+
+      res.json({
+        requiresAccountSelection: accounts.length > 0,
+        accounts: accounts.map(a => ({
+          id: a.id,
+          name: a.account_name,
+          identifier: a.account_identifier,
+          broker: a.broker,
+          isPrimary: a.is_primary
+        }))
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
   async importTrades(req, res, next) {
     try {
       console.log('=== IMPORT TRADES STARTED ===');
@@ -900,10 +925,11 @@ const tradeController = {
       }
 
       const importId = uuidv4();
-      const { broker = 'generic', mappingId = null } = req.body;
+      const { broker = 'generic', mappingId = null, accountId = null } = req.body;
 
       console.log('Selected broker:', broker);
       console.log('Mapping ID:', mappingId);
+      console.log('Account ID:', accountId);
       console.log('Import ID:', importId);
 
       const insertQuery = `
@@ -1054,6 +1080,17 @@ const tradeController = {
             }
           }
 
+          // Look up selected account identifier if accountId was provided
+          let selectedAccountId = null;
+          if (accountId) {
+            const Account = require('../models/Account');
+            const selectedAccount = await Account.findById(accountId, req.user.id);
+            if (selectedAccount) {
+              selectedAccountId = selectedAccount.account_identifier;
+              logger.logImport(`Using selected account: ${selectedAccount.account_name} (${selectedAccountId})`);
+            }
+          }
+
           const context = {
             existingPositions,
             existingExecutions,
@@ -1062,7 +1099,8 @@ const tradeController = {
               enabled: userSettings.enable_trade_grouping ?? true,
               timeGapMinutes: userSettings.trade_grouping_time_gap_minutes ?? 60
             },
-            customMapping
+            customMapping,
+            selectedAccountId
           };
           const parseResult = await parseCSV(fileBuffer, broker, context);
 
@@ -1071,6 +1109,69 @@ const tradeController = {
           const unresolvedCusips = parseResult.unresolvedCusips || [];
 
           logger.logImport(`Parsed ${trades.length} trades from CSV`);
+
+          // Auto-create accounts for new account identifiers found in the import
+          try {
+            const Account = require('../models/Account');
+
+            // Collect unique account identifiers from parsed trades
+            const accountIdentifiers = new Set();
+            logger.logImport(`[ACCOUNTS] Checking ${trades.length} trades for account identifiers`);
+            trades.forEach((trade, index) => {
+              if (index < 3) {
+                logger.logImport(`[ACCOUNTS] Trade ${index} accountIdentifier: ${trade.accountIdentifier || 'NOT SET'}`);
+              }
+              if (trade.accountIdentifier) {
+                accountIdentifiers.add(trade.accountIdentifier);
+              }
+            });
+
+            if (accountIdentifiers.size > 0) {
+              logger.logImport(`[ACCOUNTS] Found ${accountIdentifiers.size} unique account identifier(s) in import`);
+
+              // Get existing accounts for this user
+              const existingAccounts = await Account.findByUser(req.user.id);
+              const existingIdentifiers = new Set(
+                existingAccounts
+                  .filter(a => a.account_identifier)
+                  .map(a => a.account_identifier)
+              );
+
+              // Create accounts for new identifiers
+              const brokerNames = {
+                schwab: 'Schwab',
+                thinkorswim: 'ThinkorSwim',
+                ibkr: 'Interactive Brokers',
+                lightspeed: 'Lightspeed',
+                webull: 'Webull',
+                etrade: 'E*TRADE',
+                tradingview: 'TradingView',
+                tradovate: 'Tradovate'
+              };
+
+              for (const identifier of accountIdentifiers) {
+                if (!existingIdentifiers.has(identifier)) {
+                  try {
+                    const brokerName = brokerNames[broker] || 'Trading';
+                    await Account.create(req.user.id, {
+                      accountName: `${brokerName} Account`,
+                      accountIdentifier: identifier,
+                      broker: broker !== 'auto' && broker !== 'generic' ? broker : null,
+                      initialBalance: 0,
+                      initialBalanceDate: new Date().toISOString().split('T')[0],
+                      isPrimary: existingAccounts.length === 0 && accountIdentifiers.size === 1
+                    });
+                    logger.logImport(`[ACCOUNTS] Auto-created account for identifier: ${identifier}`);
+                  } catch (createError) {
+                    logger.logImport(`[ACCOUNTS] Failed to auto-create account for ${identifier}: ${createError.message}`);
+                  }
+                }
+              }
+            }
+          } catch (accountError) {
+            logger.logImport(`[ACCOUNTS] Error during account auto-creation: ${accountError.message}`);
+            // Don't fail the import if account creation fails
+          }
 
           // Check tier limits for batch import
           const TierService = require('../services/tierService');
