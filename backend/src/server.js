@@ -41,6 +41,8 @@ const tagsRoutes = require('./routes/tags.routes');
 const backupRoutes = require('./routes/backup.routes');
 const brokerSyncRoutes = require('./routes/brokerSync.routes');
 const yearWrappedRoutes = require('./routes/yearWrapped.routes');
+const investmentsRoutes = require('./routes/investments.routes');
+const accountRoutes = require('./routes/account.routes');
 const BillingService = require('./services/billingService');
 const priceMonitoringService = require('./services/priceMonitoringService');
 const backupScheduler = require('./services/backupScheduler.service');
@@ -189,6 +191,8 @@ app.use('/api/tags', tagsRoutes);
 app.use('/api/admin/backup', backupRoutes);
 app.use('/api/broker-sync', brokerSyncRoutes);
 app.use('/api/year-wrapped', yearWrappedRoutes);
+app.use('/api/investments', investmentsRoutes);
+app.use('/api/accounts', accountRoutes);
 
 // OAuth2 Provider endpoints
 app.use('/oauth', oauth2Routes);
