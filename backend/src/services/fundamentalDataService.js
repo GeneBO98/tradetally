@@ -607,18 +607,8 @@ class FundamentalDataService {
    * @returns {Promise<boolean>} True if crypto
    */
   static async isCryptoSymbol(symbol) {
-    // Quick check using the finnhub client's crypto symbol list
-    if (finnhub.isCryptoSymbol(symbol)) {
-      return true;
-    }
-
-    // Try to get crypto profile - if it succeeds, it's a crypto
-    try {
-      const profile = await finnhub.getCryptoProfile(symbol.toUpperCase());
-      return profile && profile.name ? true : false;
-    } catch (error) {
-      return false;
-    }
+    // Only use the known crypto symbols list to avoid misidentifying stocks as crypto
+    return finnhub.isCryptoSymbol(symbol);
   }
 }
 
