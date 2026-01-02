@@ -487,7 +487,10 @@ class HoldingsService {
 
     for (const holding of holdings) {
       try {
-        const quote = await finnhub.getQuote(holding.symbol);
+        // Use crypto quote for crypto symbols
+        const quote = finnhub.isCryptoSymbol(holding.symbol)
+          ? await finnhub.getCryptoQuote(holding.symbol)
+          : await finnhub.getQuote(holding.symbol);
         if (quote && quote.c) {
           const currentPrice = quote.c;
           const currentValue = holding.totalShares * currentPrice;
@@ -528,7 +531,10 @@ class HoldingsService {
     if (!holding) return;
 
     try {
-      const quote = await finnhub.getQuote(holding.symbol);
+      // Use crypto quote for crypto symbols
+      const quote = finnhub.isCryptoSymbol(holding.symbol)
+        ? await finnhub.getCryptoQuote(holding.symbol)
+        : await finnhub.getQuote(holding.symbol);
       if (!quote || !quote.c) return;
 
       const currentPrice = quote.c;
