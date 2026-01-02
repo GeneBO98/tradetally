@@ -409,6 +409,21 @@ router.get('/accounts', authenticate, tradeController.getAccountList);
  *       200:
  *         description: Import started successfully
  */
+
+/**
+ * @swagger
+ * /api/trades/import/requirements:
+ *   get:
+ *     summary: Check import requirements (account selection)
+ *     tags: [Trades]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Import requirements including available accounts
+ */
+router.get('/import/requirements', authenticate, tradeController.checkImportRequirements);
+
 router.post('/import', authenticate, upload.single('file'), tradeController.importTrades);
 
 /**
