@@ -563,6 +563,7 @@ class BehavioralAnalyticsService {
   }
 
   // Calculate trade P&L
+  // Note: This should match Trade.calculatePnL logic exactly, including multipliers for options/futures
   static calculateTradePnL(trade) {
     if (!trade.exit_price) return null;
     
@@ -571,15 +572,42 @@ class BehavioralAnalyticsService {
     const quantity = parseFloat(trade.quantity);
     const commission = parseFloat(trade.commission || 0);
     const fees = parseFloat(trade.fees || 0);
+    
+    // Get instrument type and multipliers (defaults for stocks)
+    const instrumentType = trade.instrument_type || trade.instrumentType || 'stock';
+    const contractSize = trade.contract_size || trade.contractSize || 1;
+    const pointValue = trade.point_value || trade.pointValue || null;
+
+    // Determine the multiplier based on instrument type (same logic as Trade.calculatePnL)
+    let multiplier;
+    if (instrumentType === 'future') {
+      // For futures, use point value (e.g., $5 per point for ES, $2 for MNQ)
+      multiplier = pointValue || 1;
+    } else if (instrumentType === 'option') {
+      // For options, use contract size (typically 100 shares per contract)
+      multiplier = contractSize || 100;
+    } else {
+      // For stocks, no multiplier needed (1 share = 1 share)
+      multiplier = 1;
+    }
 
     let pnl;
     if (trade.side === 'long') {
-      pnl = (exitPrice - entryPrice) * quantity;
+      pnl = (exitPrice - entryPrice) * quantity * multiplier;
     } else if (trade.side === 'short') {
-      pnl = (entryPrice - exitPrice) * quantity;
+      pnl = (entryPrice - exitPrice) * quantity * multiplier;
+    } else {
+      return null; // Invalid side
     }
 
-    return pnl - commission - fees;
+    const totalPnL = pnl - commission - fees;
+
+    // Guard against NaN, Infinity, or invalid values
+    if (!isFinite(totalPnL) || Math.abs(totalPnL) > 99999999) {
+      return null;
+    }
+
+    return totalPnL;
   }
 
   // Calculate revenge trading severity based on total loss percentage
