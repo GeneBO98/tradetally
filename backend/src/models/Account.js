@@ -386,10 +386,13 @@ class Account {
             END
           ), 0) as trade_outflow,
           -- Fees are always outflow
+          -- Avoid double-counting: use entry_commission + exit_commission if set, otherwise use commission
           COALESCE(SUM(
-            COALESCE(commission, 0) +
-            COALESCE(entry_commission, 0) +
-            COALESCE(exit_commission, 0) +
+            CASE
+              WHEN COALESCE(entry_commission, 0) != 0 OR COALESCE(exit_commission, 0) != 0
+                THEN COALESCE(entry_commission, 0) + COALESCE(exit_commission, 0)
+              ELSE COALESCE(commission, 0)
+            END +
             COALESCE(fees, 0)
           ), 0) as fees
         FROM trades
