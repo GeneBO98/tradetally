@@ -727,7 +727,7 @@ import { ref, onMounted, nextTick, watch, computed, onUnmounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useRouter } from 'vue-router'
 import { format } from 'date-fns'
-import { formatTradeDate } from '@/utils/date'
+import { formatTradeDate, formatLocalDate } from '@/utils/date'
 import Chart from 'chart.js/auto'
 import api from '@/services/api'
 import TradeNewsSection from '@/components/dashboard/TradeNewsSection.vue'
@@ -884,10 +884,11 @@ function getDateRange(range) {
     default:
       return { startDate: undefined, endDate: undefined }
   }
-  
+
+  // Use formatLocalDate to avoid timezone issues (e.g., 8PM CST showing as next day)
   return {
-    startDate: start.toISOString().split('T')[0],
-    endDate: now.toISOString().split('T')[0]
+    startDate: formatLocalDate(start),
+    endDate: formatLocalDate(now)
   }
 }
 

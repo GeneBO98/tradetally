@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import api from '@/services/api'
+import { getLocalToday } from '@/utils/date'
 
 export const useDiaryStore = defineStore('diary', () => {
   // State
@@ -146,7 +147,7 @@ export const useDiaryStore = defineStore('diary', () => {
       }
 
       // Update today's entry if it's today's date
-      const today = new Date().toISOString().split('T')[0]
+      const today = getLocalToday()
       const entryDate = savedEntry.entry_date ? savedEntry.entry_date.split('T')[0] : null
       if (entryDate === today && savedEntry.entry_type === 'diary') {
         todaysEntry.value = savedEntry
@@ -179,7 +180,7 @@ export const useDiaryStore = defineStore('diary', () => {
       }
 
       // Update today's entry if applicable
-      const today = new Date().toISOString().split('T')[0]
+      const today = getLocalToday()
       const entryDate = updatedEntry.entry_date ? updatedEntry.entry_date.split('T')[0] : null
       if (entryDate === today && updatedEntry.entry_type === 'diary') {
         todaysEntry.value = updatedEntry

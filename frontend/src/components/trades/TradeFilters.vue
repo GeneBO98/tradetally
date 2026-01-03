@@ -624,6 +624,7 @@ import { ChevronRightIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
 import TagManagement from './TagManagement.vue'
 import { useTradesStore } from '@/stores/trades'
+import { formatLocalDate } from '@/utils/date'
 
 const emit = defineEmits(['filter'])
 const route = useRoute()
@@ -639,40 +640,41 @@ console.log('[TradeFilters] Initialized selectedPeriod from localStorage:', sele
 // Apply a period preset (7d, 30d, etc.)
 function applyPeriodPreset() {
   const now = new Date()
-  const today = now.toISOString().split('T')[0]
+  // Use formatLocalDate to avoid timezone issues (e.g., 8PM CST showing as next day)
+  const today = formatLocalDate(now)
 
   switch (selectedPeriod.value) {
     case '7d': {
       const start = new Date(now)
       start.setDate(start.getDate() - 7)
-      filters.value.startDate = start.toISOString().split('T')[0]
+      filters.value.startDate = formatLocalDate(start)
       filters.value.endDate = today
       break
     }
     case '30d': {
       const start = new Date(now)
       start.setDate(start.getDate() - 30)
-      filters.value.startDate = start.toISOString().split('T')[0]
+      filters.value.startDate = formatLocalDate(start)
       filters.value.endDate = today
       break
     }
     case '90d': {
       const start = new Date(now)
       start.setDate(start.getDate() - 90)
-      filters.value.startDate = start.toISOString().split('T')[0]
+      filters.value.startDate = formatLocalDate(start)
       filters.value.endDate = today
       break
     }
     case 'ytd': {
       const start = new Date(now.getFullYear(), 0, 1)
-      filters.value.startDate = start.toISOString().split('T')[0]
+      filters.value.startDate = formatLocalDate(start)
       filters.value.endDate = today
       break
     }
     case '1y': {
       const start = new Date(now)
       start.setFullYear(start.getFullYear() - 1)
-      filters.value.startDate = start.toISOString().split('T')[0]
+      filters.value.startDate = formatLocalDate(start)
       filters.value.endDate = today
       break
     }

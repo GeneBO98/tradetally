@@ -3289,37 +3289,44 @@ async function loadData() {
       // This ensures relative periods like "30d" are always relative to today
       if (savedPeriod && savedPeriod !== 'custom' && savedPeriod !== 'all') {
         const now = new Date()
-        const today = now.toISOString().split('T')[0]
+        // Use local date formatting to avoid timezone issues (e.g., 8PM CST showing as next day)
+        const formatLocalDate = (date) => {
+          const year = date.getFullYear()
+          const month = String(date.getMonth() + 1).padStart(2, '0')
+          const day = String(date.getDate()).padStart(2, '0')
+          return `${year}-${month}-${day}`
+        }
+        const today = formatLocalDate(now)
         let startDate = ''
 
         switch (savedPeriod) {
           case '7d': {
             const start = new Date(now)
             start.setDate(start.getDate() - 7)
-            startDate = start.toISOString().split('T')[0]
+            startDate = formatLocalDate(start)
             break
           }
           case '30d': {
             const start = new Date(now)
             start.setDate(start.getDate() - 30)
-            startDate = start.toISOString().split('T')[0]
+            startDate = formatLocalDate(start)
             break
           }
           case '90d': {
             const start = new Date(now)
             start.setDate(start.getDate() - 90)
-            startDate = start.toISOString().split('T')[0]
+            startDate = formatLocalDate(start)
             break
           }
           case 'ytd': {
             const start = new Date(now.getFullYear(), 0, 1)
-            startDate = start.toISOString().split('T')[0]
+            startDate = formatLocalDate(start)
             break
           }
           case '1y': {
             const start = new Date(now)
             start.setFullYear(start.getFullYear() - 1)
-            startDate = start.toISOString().split('T')[0]
+            startDate = formatLocalDate(start)
             break
           }
         }
