@@ -1794,16 +1794,17 @@ const tradeController = {
       const positionMap = {};
       openTrades.forEach(trade => {
         if (!positionMap[trade.symbol]) {
-          positionMap[trade.symbol] = {
-            symbol: trade.symbol,
-            side: null, // Will be determined by net position
-            trades: [],
-            totalQuantity: 0,
-            totalCost: 0,
-            avgPrice: 0,
-            instrumentType: trade.instrument_type || 'stock',
-            contractSize: trade.contract_size || 1
-          };
+        positionMap[trade.symbol] = {
+          symbol: trade.symbol,
+          side: null, // Will be determined by net position
+          trades: [],
+          totalQuantity: 0,
+          totalCost: 0,
+          avgPrice: 0,
+          instrumentType: trade.instrument_type || 'stock',
+          contractSize: trade.contract_size || 1,
+          pointValue: trade.point_value || null
+        };
         }
 
         positionMap[trade.symbol].trades.push(trade);
@@ -1812,11 +1813,19 @@ const tradeController = {
         const netPosition = calculateNetPosition(trade);
         positionMap[trade.symbol].totalQuantity += netPosition;
 
-        // For cost calculation, account for contract size (options/futures multiplier)
-        const contractMultiplier = trade.instrument_type === 'option' || trade.instrument_type === 'future'
-          ? (trade.contract_size || 100)
-          : 1;
-        positionMap[trade.symbol].totalCost += Math.abs(netPosition) * trade.entry_price * contractMultiplier;
+        // For cost calculation, account for multipliers (options use contract_size, futures use point_value)
+        let costMultiplier;
+        if (trade.instrument_type === 'future') {
+          // For futures, use point value (e.g., $5 per point for ES, $2 for MNQ)
+          costMultiplier = trade.point_value || 1;
+        } else if (trade.instrument_type === 'option') {
+          // For options, use contract size (typically 100 shares per contract)
+          costMultiplier = trade.contract_size || 100;
+        } else {
+          // For stocks, no multiplier needed
+          costMultiplier = 1;
+        }
+        positionMap[trade.symbol].totalCost += Math.abs(netPosition) * trade.entry_price * costMultiplier;
       });
 
       // Calculate average prices and determine position side
@@ -1835,14 +1844,19 @@ const tradeController = {
         const absQuantity = Math.abs(position.totalQuantity);
         position.totalQuantity = absQuantity;
 
-        // Get contract multiplier from the first trade in the position
+        // Get multiplier from the first trade in the position (for calculating avg price)
         const firstTrade = position.trades[0];
-        const contractMultiplier = firstTrade.instrument_type === 'option' || firstTrade.instrument_type === 'future'
-          ? (firstTrade.contract_size || 100)
-          : 1;
+        let avgPriceMultiplier;
+        if (firstTrade.instrument_type === 'future') {
+          avgPriceMultiplier = firstTrade.point_value || 1;
+        } else if (firstTrade.instrument_type === 'option') {
+          avgPriceMultiplier = firstTrade.contract_size || 100;
+        } else {
+          avgPriceMultiplier = 1;
+        }
 
-        // avgPrice should be per-share price, so divide totalCost by (quantity * multiplier)
-        position.avgPrice = position.totalCost / (absQuantity * contractMultiplier);
+        // avgPrice should be per-share/per-contract price, so divide totalCost by (quantity * multiplier)
+        position.avgPrice = position.totalCost / (absQuantity * avgPriceMultiplier);
       });
       
       // Remove symbols with zero net position
@@ -1874,11 +1888,17 @@ const tradeController = {
 
           if (quote) {
             const currentPrice = quote.c; // Current price
-            // Account for contract multiplier in current value calculation
-            const contractMultiplier = position.instrumentType === 'option' || position.instrumentType === 'future'
-              ? (position.contractSize || 100)
-              : 1;
-            const currentValue = currentPrice * position.totalQuantity * contractMultiplier;
+            // Account for multiplier in current value calculation
+            // For futures: use pointValue; for options: use contractSize; for stocks: use 1
+            let valueMultiplier;
+            if (position.instrumentType === 'future') {
+              valueMultiplier = position.pointValue || 1;
+            } else if (position.instrumentType === 'option') {
+              valueMultiplier = position.contractSize || 100;
+            } else {
+              valueMultiplier = 1;
+            }
+            const currentValue = currentPrice * position.totalQuantity * valueMultiplier;
             // For short positions, profit is made when price goes down
             const unrealizedPnL = position.side === 'short'
               ? position.totalCost - currentValue  // Short: profit when current value < entry cost
