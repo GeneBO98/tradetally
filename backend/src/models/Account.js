@@ -330,31 +330,58 @@ class Account {
 
     // Build the cashflow query
     // This query calculates daily cash movements from trades and transactions
+    // NOTE: For options, we multiply by contract_size (typically 100) to get actual cash value
     const query = `
       WITH daily_trades AS (
         SELECT
           trade_date as date,
           -- Inflow: money coming IN
-          -- LONG exit (selling shares) = exit_price * quantity
-          -- SHORT entry (short sale) = entry_price * quantity
+          -- LONG exit (selling shares/contracts) = exit_price * quantity * contract_multiplier
+          -- SHORT entry (short sale) = entry_price * quantity * contract_multiplier
+          -- For options: multiply by contract_size (default 100)
+          -- For stocks/futures: use point_value if available, otherwise 1
           COALESCE(SUM(
             CASE
               WHEN side IN ('long', 'buy') AND exit_price IS NOT NULL
-                THEN (exit_price * quantity)
+                THEN exit_price * quantity * (
+                  CASE
+                    WHEN instrument_type = 'option' THEN COALESCE(contract_size, 100)
+                    WHEN instrument_type = 'future' THEN COALESCE(point_value, 1)
+                    ELSE 1
+                  END
+                )
               WHEN side IN ('short', 'sell') AND entry_price IS NOT NULL
-                THEN (entry_price * quantity)
+                THEN entry_price * quantity * (
+                  CASE
+                    WHEN instrument_type = 'option' THEN COALESCE(contract_size, 100)
+                    WHEN instrument_type = 'future' THEN COALESCE(point_value, 1)
+                    ELSE 1
+                  END
+                )
               ELSE 0
             END
           ), 0) as trade_inflow,
           -- Outflow: money going OUT
-          -- LONG entry (buying shares) = entry_price * quantity
-          -- SHORT exit (covering) = exit_price * quantity
+          -- LONG entry (buying shares/contracts) = entry_price * quantity * contract_multiplier
+          -- SHORT exit (covering) = exit_price * quantity * contract_multiplier
           COALESCE(SUM(
             CASE
               WHEN side IN ('long', 'buy') AND entry_price IS NOT NULL
-                THEN (entry_price * quantity)
+                THEN entry_price * quantity * (
+                  CASE
+                    WHEN instrument_type = 'option' THEN COALESCE(contract_size, 100)
+                    WHEN instrument_type = 'future' THEN COALESCE(point_value, 1)
+                    ELSE 1
+                  END
+                )
               WHEN side IN ('short', 'sell') AND exit_price IS NOT NULL
-                THEN (exit_price * quantity)
+                THEN exit_price * quantity * (
+                  CASE
+                    WHEN instrument_type = 'option' THEN COALESCE(contract_size, 100)
+                    WHEN instrument_type = 'future' THEN COALESCE(point_value, 1)
+                    ELSE 1
+                  END
+                )
               ELSE 0
             END
           ), 0) as trade_outflow,
