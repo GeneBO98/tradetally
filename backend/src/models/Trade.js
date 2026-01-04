@@ -1,6 +1,7 @@
 const db = require('../config/database');
 const AchievementService = require('../services/achievementService');
 const { getUserLocalDate } = require('../utils/timezone');
+const { getFuturesPointValue, extractUnderlyingFromFuturesSymbol } = require('../utils/futuresUtils');
 
 class Trade {
   /**
@@ -61,9 +62,34 @@ class Trade {
       throw new Error('Entry time is required for creating a trade');
     }
 
+    // Auto-set point value and underlying asset for futures trades if not provided
+    let finalPointValue = pointValue;
+    let finalUnderlyingAsset = underlyingAsset;
+    if (instrumentType === 'future') {
+      // If underlying asset is not provided, try to extract it from the symbol
+      if (!finalUnderlyingAsset && symbol) {
+        finalUnderlyingAsset = extractUnderlyingFromFuturesSymbol(symbol) || underlyingSymbol || null;
+      }
+      
+      // If point value is not provided, look it up based on underlying asset
+      if (!finalPointValue && finalUnderlyingAsset) {
+        finalPointValue = getFuturesPointValue(finalUnderlyingAsset);
+        console.log(`[TRADE] Auto-set point value for ${symbol}: ${finalUnderlyingAsset} = $${finalPointValue} per point`);
+      } else if (!finalPointValue && symbol) {
+        // Fallback: try to extract underlying from symbol and look up point value
+        const extractedUnderlying = extractUnderlyingFromFuturesSymbol(symbol);
+        if (extractedUnderlying) {
+          finalUnderlyingAsset = extractedUnderlying;
+          finalPointValue = getFuturesPointValue(extractedUnderlying);
+          console.log(`[TRADE] Auto-set point value for ${symbol}: ${extractedUnderlying} = $${finalPointValue} per point`);
+        }
+      }
+    }
+
     // Use provided P&L if available (e.g., from Schwab), otherwise calculate it
-    const pnl = providedPnL !== undefined ? providedPnL : this.calculatePnL(entryPrice, cleanExitPrice, quantity, side, commission, fees, instrumentType, contractSize, pointValue);
-    const pnlPercent = providedPnLPercent !== undefined ? providedPnLPercent : this.calculatePnLPercent(entryPrice, cleanExitPrice, side, pnl, quantity, instrumentType, pointValue);
+    // Use finalPointValue which may have been auto-set for futures
+    const pnl = providedPnL !== undefined ? providedPnL : this.calculatePnL(entryPrice, cleanExitPrice, quantity, side, commission, fees, instrumentType, contractSize, finalPointValue);
+    const pnlPercent = providedPnLPercent !== undefined ? providedPnLPercent : this.calculatePnLPercent(entryPrice, cleanExitPrice, side, pnl, quantity, instrumentType, finalPointValue);
 
     // Calculate R-Multiple later after applying default stop loss
     // Will be calculated after finalStopLoss is determined
@@ -262,7 +288,7 @@ class Trade {
       JSON.stringify(newsData.newsEvents || []), newsData.hasNews || false, newsData.sentiment, newsData.checkedAt,
       instrumentType || 'stock', strikePrice || null, expirationDate || null, optionType || null,
       contractSize || (instrumentType === 'option' ? 100 : null), underlyingSymbol || null,
-      contractMonth || null, contractYear || null, tickSize || null, pointValue || null, underlyingAsset || null,
+      contractMonth || null, contractYear || null, tickSize || null, finalPointValue || null, finalUnderlyingAsset || null,
       importId || null,
       originalCurrency || 'USD', exchangeRate || 1.0, originalEntryPriceCurrency || null, originalExitPriceCurrency || null,
       originalPnlCurrency || null, originalCommissionCurrency || null, originalFeesCurrency || null,
@@ -761,6 +787,32 @@ class Trade {
     // First get the current trade data for calculations
     const currentTrade = await this.findById(id, userId);
 
+    // Auto-set point value and underlying asset for futures trades if not provided
+    const instrumentType = updates.instrumentType || currentTrade.instrument_type || 'stock';
+    if (instrumentType === 'future') {
+      // If point value is being updated or is missing, auto-set it
+      if (updates.pointValue === undefined || updates.pointValue === null) {
+        const underlyingAsset = updates.underlyingAsset || currentTrade.underlying_asset;
+        const symbol = updates.symbol || currentTrade.symbol;
+        
+        // Try to extract underlying from symbol if not provided
+        let finalUnderlying = underlyingAsset;
+        if (!finalUnderlying && symbol) {
+          finalUnderlying = extractUnderlyingFromFuturesSymbol(symbol) || updates.underlyingSymbol || currentTrade.underlying_symbol || null;
+        }
+        
+        // Auto-set point value if we have an underlying asset
+        if (finalUnderlying && !currentTrade.point_value) {
+          const autoPointValue = getFuturesPointValue(finalUnderlying);
+          updates.pointValue = autoPointValue;
+          if (!updates.underlyingAsset && !currentTrade.underlying_asset) {
+            updates.underlyingAsset = finalUnderlying;
+          }
+          console.log(`[TRADE UPDATE] Auto-set point value for ${symbol}: ${finalUnderlying} = $${autoPointValue} per point`);
+        }
+      }
+    }
+
     // Convert empty strings to null for optional fields
     if (updates.exitTime === '') updates.exitTime = null;
     if (updates.exitPrice === '') updates.exitPrice = null;
@@ -817,6 +869,7 @@ class Trade {
 
       // Calculate updated P&L and hold time
       // Use !== undefined to properly handle 0 values for commission and fees
+      const pointValue = updates.pointValue !== undefined ? updates.pointValue : currentTrade.point_value;
       updatedTrade.pnl = this.calculatePnL(
         updatedTrade.entry_price,
         updatedTrade.exit_price,
@@ -825,7 +878,8 @@ class Trade {
         updates.commission !== undefined ? updates.commission : currentTrade.commission,
         updates.fees !== undefined ? updates.fees : currentTrade.fees,
         updates.instrumentType || currentTrade.instrument_type || 'stock',
-        updates.contractSize !== undefined ? updates.contractSize : (currentTrade.contract_size || 1)
+        updates.contractSize !== undefined ? updates.contractSize : (currentTrade.contract_size || 1),
+        pointValue
       );
 
       if (updatedTrade.exit_time) {
