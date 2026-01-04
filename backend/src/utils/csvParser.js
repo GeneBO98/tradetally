@@ -5,6 +5,7 @@ const cache = require('./cache');
 const cusipQueue = require('./cusipQueue');
 const currencyConverter = require('./currencyConverter');
 const db = require('../config/database');
+const { getFuturesPointValue, extractUnderlyingFromFuturesSymbol } = require('./futuresUtils');
 
 // CUSIP resolution is now handled by the cusipQueue module
 
@@ -2031,40 +2032,7 @@ function parseInstrumentData(symbol) {
   return { instrumentType: 'stock' };
 }
 
-// Get point value for futures contracts
-function getFuturesPointValue(underlying) {
-  const pointValues = {
-    // E-mini contracts
-    'ES': 50,      // E-mini S&P 500
-    'NQ': 20,      // E-mini NASDAQ-100
-    'YM': 5,       // E-mini Dow
-    'RTY': 50,     // E-mini Russell 2000
-
-    // Micro E-mini contracts (1/10th of E-mini)
-    'MES': 5,      // Micro E-mini S&P 500 (10 Micros = 1 E-mini)
-    'MNQ': 2,      // Micro E-mini NASDAQ-100 (10 Micros = 1 E-mini)
-    'MYM': 0.5,    // Micro E-mini Dow (10 Micros = 1 E-mini)
-    'M2K': 5,      // Micro E-mini Russell 2000 (10 Micros = 1 E-mini)
-
-    // Energy
-    'CL': 1000,    // Crude Oil
-    'NG': 10000,   // Natural Gas
-    'QG': 2500,    // Mini Natural Gas
-
-    // Metals
-    'GC': 100,     // Gold
-    'SI': 5000,    // Silver
-    'HG': 12500,   // Copper
-
-    // Treasuries
-    'ZB': 1000,    // 30-Year Treasury Bond
-    'ZN': 1000,    // 10-Year Treasury Note
-    'ZF': 1000,    // 5-Year Treasury Note
-    'ZT': 2000     // 2-Year Treasury Note
-  };
-
-  return pointValues[underlying] || 50; // Default to $50 multiplier
-}
+// getFuturesPointValue is now imported from futuresUtils
 
 // PostgreSQL 16 compatible numeric parsing
 function parseNumeric(value, defaultValue = 0) {

@@ -331,25 +331,33 @@ class Account {
     // Build the cashflow query
     // This query calculates daily cash movements from trades and transactions
     // NOTE: For options, we multiply by contract_size (typically 100) to get actual cash value
+    //
+    // Commission handling:
+    // - Entry commission: Added to outflow (increases cost basis)
+    // - Exit commission: Subtracted from inflow (reduces sale proceeds)
     const query = `
       WITH daily_trades AS (
         SELECT
           trade_date as date,
-          -- Inflow: money coming IN
-          -- LONG exit (selling shares/contracts) = exit_price * quantity * contract_multiplier
-          -- SHORT entry (short sale) = entry_price * quantity * contract_multiplier
-          -- For options: multiply by contract_size (default 100)
-          -- For stocks/futures: use point_value if available, otherwise 1
+          -- Inflow: money coming IN (sale proceeds MINUS exit commission)
+          -- LONG exit (selling shares/contracts) = (exit_price * quantity * multiplier) - exit_commission
+          -- SHORT entry (short sale) = entry_price * quantity * multiplier (no commission deduction on short entry)
           COALESCE(SUM(
             CASE
               WHEN side IN ('long', 'buy') AND exit_price IS NOT NULL
-                THEN exit_price * quantity * (
+                THEN (exit_price * quantity * (
                   CASE
                     WHEN instrument_type = 'option' THEN COALESCE(contract_size, 100)
                     WHEN instrument_type = 'future' THEN COALESCE(point_value, 1)
                     ELSE 1
                   END
-                )
+                )) - (
+                  CASE
+                    WHEN COALESCE(exit_commission, 0) != 0 THEN COALESCE(exit_commission, 0)
+                    WHEN COALESCE(entry_commission, 0) = 0 AND COALESCE(commission, 0) != 0 THEN COALESCE(commission, 0) / 2
+                    ELSE 0
+                  END
+                ) - COALESCE(fees, 0)
               WHEN side IN ('short', 'sell') AND entry_price IS NOT NULL
                 THEN entry_price * quantity * (
                   CASE
@@ -361,32 +369,43 @@ class Account {
               ELSE 0
             END
           ), 0) as trade_inflow,
-          -- Outflow: money going OUT
-          -- LONG entry (buying shares/contracts) = entry_price * quantity * contract_multiplier
-          -- SHORT exit (covering) = exit_price * quantity * contract_multiplier
+          -- Outflow: money going OUT (purchase cost PLUS entry commission)
+          -- LONG entry (buying shares/contracts) = (entry_price * quantity * multiplier) + entry_commission
+          -- SHORT exit (covering) = (exit_price * quantity * multiplier) + exit_commission
           COALESCE(SUM(
             CASE
               WHEN side IN ('long', 'buy') AND entry_price IS NOT NULL
-                THEN entry_price * quantity * (
+                THEN (entry_price * quantity * (
                   CASE
                     WHEN instrument_type = 'option' THEN COALESCE(contract_size, 100)
                     WHEN instrument_type = 'future' THEN COALESCE(point_value, 1)
                     ELSE 1
+                  END
+                )) + (
+                  CASE
+                    WHEN COALESCE(entry_commission, 0) != 0 THEN COALESCE(entry_commission, 0)
+                    WHEN COALESCE(exit_commission, 0) = 0 AND COALESCE(commission, 0) != 0 THEN COALESCE(commission, 0) / 2
+                    ELSE 0
                   END
                 )
               WHEN side IN ('short', 'sell') AND exit_price IS NOT NULL
-                THEN exit_price * quantity * (
+                THEN (exit_price * quantity * (
                   CASE
                     WHEN instrument_type = 'option' THEN COALESCE(contract_size, 100)
                     WHEN instrument_type = 'future' THEN COALESCE(point_value, 1)
                     ELSE 1
                   END
-                )
+                )) + (
+                  CASE
+                    WHEN COALESCE(exit_commission, 0) != 0 THEN COALESCE(exit_commission, 0)
+                    WHEN COALESCE(entry_commission, 0) = 0 AND COALESCE(commission, 0) != 0 THEN COALESCE(commission, 0) / 2
+                    ELSE 0
+                  END
+                ) + COALESCE(fees, 0)
               ELSE 0
             END
           ), 0) as trade_outflow,
-          -- Fees are always outflow
-          -- Avoid double-counting: use entry_commission + exit_commission if set, otherwise use commission
+          -- Track total fees/commissions for reporting (not used in inflow/outflow calculation)
           COALESCE(SUM(
             CASE
               WHEN COALESCE(entry_commission, 0) != 0 OR COALESCE(exit_commission, 0) != 0
@@ -430,10 +449,10 @@ class Account {
         COALESCE(dtx.deposits, 0) as deposits,
         COALESCE(dtx.withdrawals, 0) as withdrawals,
         (COALESCE(dt.trade_inflow, 0) + COALESCE(dtx.deposits, 0)) as inflow,
-        (COALESCE(dt.trade_outflow, 0) + COALESCE(dtx.withdrawals, 0) + COALESCE(dt.fees, 0)) as outflow,
+        (COALESCE(dt.trade_outflow, 0) + COALESCE(dtx.withdrawals, 0)) as outflow,
         (
           (COALESCE(dt.trade_inflow, 0) + COALESCE(dtx.deposits, 0)) -
-          (COALESCE(dt.trade_outflow, 0) + COALESCE(dtx.withdrawals, 0) + COALESCE(dt.fees, 0))
+          (COALESCE(dt.trade_outflow, 0) + COALESCE(dtx.withdrawals, 0))
         ) as net
       FROM all_dates ad
       LEFT JOIN daily_trades dt ON ad.date = dt.date
@@ -448,6 +467,25 @@ class Account {
       effectiveEndDate,
       accountId
     ]);
+
+    // Calculate YTD deposits and withdrawals (always for current year, independent of filter)
+    const currentYear = new Date().getFullYear();
+    const ytdStartDate = `${currentYear}-01-01`;
+    const ytdEndDate = new Date().toISOString().split('T')[0];
+
+    const ytdQuery = `
+      SELECT
+        COALESCE(SUM(CASE WHEN transaction_type = 'deposit' THEN amount ELSE 0 END), 0) as ytd_deposits,
+        COALESCE(SUM(CASE WHEN transaction_type = 'withdrawal' THEN amount ELSE 0 END), 0) as ytd_withdrawals
+      FROM account_transactions
+      WHERE user_id = $1
+        AND account_id = $2
+        AND transaction_date >= $3
+        AND transaction_date <= $4
+    `;
+
+    const ytdResult = await db.query(ytdQuery, [userId, accountId, ytdStartDate, ytdEndDate]);
+    const ytdData = ytdResult.rows[0] || { ytd_deposits: 0, ytd_withdrawals: 0 };
 
     // Calculate running balance
     let runningBalance = parseFloat(account.initial_balance) || 0;
@@ -480,7 +518,9 @@ class Account {
       totalFees: cashflowData.reduce((sum, d) => sum + d.fees, 0),
       totalTradeInflow: cashflowData.reduce((sum, d) => sum + d.tradeInflow, 0),
       totalTradeOutflow: cashflowData.reduce((sum, d) => sum + d.tradeOutflow, 0),
-      tradingDays: cashflowData.length
+      tradingDays: cashflowData.length,
+      ytdDeposits: parseFloat(ytdData.ytd_deposits) || 0,
+      ytdWithdrawals: parseFloat(ytdData.ytd_withdrawals) || 0
     };
 
     return {

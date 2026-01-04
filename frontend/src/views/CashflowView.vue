@@ -17,15 +17,57 @@
     <div v-else class="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <!-- Left Side: Cashflow Table (2/3 width on large screens) -->
       <div class="lg:col-span-2 space-y-6">
+        <!-- Date Filter -->
+        <div class="card">
+          <div class="card-body">
+            <div class="flex flex-wrap items-end gap-4">
+              <div class="flex-1 min-w-[140px]">
+                <label class="label">Start Date</label>
+                <input
+                  v-model="startDate"
+                  type="date"
+                  class="input w-full"
+                />
+              </div>
+              <div class="flex-1 min-w-[140px]">
+                <label class="label">End Date</label>
+                <input
+                  v-model="endDate"
+                  type="date"
+                  class="input w-full"
+                />
+              </div>
+              <div class="flex gap-2">
+                <button @click="applyDateFilter" class="btn-primary">
+                  Apply
+                </button>
+                <button @click="resetDateFilter" class="btn-secondary">
+                  Reset
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Cashflow Summary Cards -->
-        <div v-if="cashflow" class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div v-if="cashflow" class="grid grid-cols-2 sm:grid-cols-5 gap-4">
           <div class="card">
             <div class="card-body">
               <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
-                Initial Balance
+                YTD Deposits
               </dt>
-              <dd class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
-                ${{ formatNumber(cashflow.summary.initialBalance) }}
+              <dd class="mt-1 text-lg font-semibold text-green-600 dark:text-green-400">
+                +${{ formatNumber(cashflow.summary.ytdDeposits) }}
+              </dd>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-body">
+              <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
+                YTD Withdrawals
+              </dt>
+              <dd class="mt-1 text-lg font-semibold text-red-600 dark:text-red-400">
+                -${{ formatNumber(cashflow.summary.ytdWithdrawals) }}
               </dd>
             </div>
           </div>
@@ -315,6 +357,10 @@ const showAccountModal = ref(false)
 const editingAccount = ref(null)
 const submitting = ref(false)
 
+// Date filter state
+const startDate = ref('')
+const endDate = ref('')
+
 const transactionForm = ref({
   accountId: '',
   type: 'deposit',
@@ -389,12 +435,26 @@ function selectAccount(accountId) {
   loadCashflow()
 }
 
+function applyDateFilter() {
+  loadCashflow()
+}
+
+function resetDateFilter() {
+  startDate.value = ''
+  endDate.value = ''
+  loadCashflow()
+}
+
 async function loadCashflow() {
   if (!selectedAccountId.value) return
 
   try {
-    await store.fetchCashflow(selectedAccountId.value)
-    await store.fetchTransactions(selectedAccountId.value)
+    const options = {}
+    if (startDate.value) options.startDate = startDate.value
+    if (endDate.value) options.endDate = endDate.value
+
+    await store.fetchCashflow(selectedAccountId.value, options)
+    await store.fetchTransactions(selectedAccountId.value, options)
     // Update transaction form to use selected account
     transactionForm.value.accountId = selectedAccountId.value
   } catch (error) {
