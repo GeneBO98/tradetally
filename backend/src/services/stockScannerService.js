@@ -13,17 +13,50 @@ class StockScannerService {
   static BATCH_SIZE = 10;           // Process 10 stocks per batch
   static BATCH_DELAY_MS = 2000;     // 2 seconds between batches (conservative for Finnhub limits)
   static MAX_RETRIES = 2;           // Retry failed stocks twice
+  static USER_ACTIVITY_PAUSE_MS = 10000;  // Pause for 10 seconds after user activity
+  static USER_IDLE_THRESHOLD_MS = 30000;  // Consider user idle after 30 seconds
 
   // Currently running scan (for status checking)
   static currentScan = null;
 
+  // Track last user API activity for prioritization
+  static lastUserActivity = 0;
+
+  /**
+   * Record user activity - call this from user-facing API endpoints
+   * This allows the scanner to pause and yield to user requests
+   */
+  static recordUserActivity() {
+    this.lastUserActivity = Date.now();
+  }
+
+  /**
+   * Check if we should pause for user activity
+   * @returns {boolean} True if scanner should pause
+   */
+  static shouldPauseForUser() {
+    const timeSinceActivity = Date.now() - this.lastUserActivity;
+    return timeSinceActivity < this.USER_IDLE_THRESHOLD_MS;
+  }
+
+  /**
+   * Wait for user activity to subside before continuing scan
+   * @returns {Promise<void>}
+   */
+  static async waitForUserIdle() {
+    while (this.shouldPauseForUser()) {
+      console.log('[SCANNER] Pausing for user activity...');
+      await this.delay(this.USER_ACTIVITY_PAUSE_MS);
+    }
+  }
+
   /**
    * Get US stocks from Finnhub (free tier)
    * Filters to common stocks only, excludes ETFs, ADRs, etc.
-   * @param {number} limit - Maximum number of stocks to scan (default: 500)
+   * @param {number} limit - Maximum number of stocks to scan (0 = no limit)
    * @returns {Promise<Array<string>>} Array of stock symbols
    */
-  static async getUSStocks(limit = 500) {
+  static async getUSStocks(limit = 0) {
     const apiKey = process.env.FINNHUB_API_KEY;
     if (!apiKey) {
       throw new Error('FINNHUB_API_KEY not configured');
@@ -57,11 +90,13 @@ class StockScannerService {
         )
         .map(stock => stock.symbol);
 
-      // Shuffle and limit to avoid always scanning same stocks
+      // Shuffle stocks to vary scan order (helps with rate limiting recovery)
       const shuffled = commonStocks.sort(() => Math.random() - 0.5);
-      const selected = shuffled.slice(0, limit);
 
-      console.log(`[SCANNER] Selected ${selected.length} US stocks from ${commonStocks.length} available`);
+      // Apply limit if specified, otherwise return all
+      const selected = limit > 0 ? shuffled.slice(0, limit) : shuffled;
+
+      console.log(`[SCANNER] Selected ${selected.length} US stocks from ${commonStocks.length} available (limit: ${limit || 'none'})`);
       return selected;
     } catch (error) {
       console.error('[SCANNER] Failed to get US stocks:', error.message);
@@ -106,10 +141,10 @@ class StockScannerService {
   /**
    * Run the nightly scan of US stocks
    * This is designed to be called by cron job or admin trigger
-   * @param {number} stockLimit - Maximum number of stocks to scan (default: 500)
+   * @param {number} stockLimit - Maximum number of stocks to scan (0 = no limit, scans all)
    * @returns {Promise<Object>} Scan summary
    */
-  static async runNightlyScan(stockLimit = 500) {
+  static async runNightlyScan(stockLimit = 0) {
     // Prevent multiple concurrent scans
     if (this.currentScan && this.currentScan.status === 'running') {
       console.log('[SCANNER] Scan already in progress');
@@ -160,6 +195,9 @@ class StockScannerService {
 
       for (let i = 0; i < stocks.length; i += this.BATCH_SIZE) {
         const batch = stocks.slice(i, i + this.BATCH_SIZE);
+
+        // Pause if users are active - prioritize their API calls
+        await this.waitForUserIdle();
 
         // Process batch (sequential to respect rate limits)
         for (const symbol of batch) {

@@ -6,6 +6,7 @@
 const EightPillarsService = require('../services/eightPillarsService');
 const FundamentalDataService = require('../services/fundamentalDataService');
 const HoldingsService = require('../services/holdingsService');
+const StockScannerService = require('../services/stockScannerService');
 const db = require('../config/database');
 
 // ========================================
@@ -20,6 +21,9 @@ const db = require('../config/database');
  */
 const analyzeStock = async (req, res) => {
   try {
+    // Signal user activity to pause background scanner
+    StockScannerService.recordUserActivity();
+
     const { symbol } = req.params;
 
     if (!symbol) {
@@ -103,6 +107,9 @@ const analyzeStock = async (req, res) => {
  */
 const refreshAnalysis = async (req, res) => {
   try {
+    // Signal user activity to pause background scanner
+    StockScannerService.recordUserActivity();
+
     const { symbol } = req.params;
 
     if (!symbol) {
@@ -130,6 +137,9 @@ const refreshAnalysis = async (req, res) => {
  */
 const getFinancials = async (req, res) => {
   try {
+    // Signal user activity to pause background scanner
+    StockScannerService.recordUserActivity();
+
     const { symbol } = req.params;
     const years = parseInt(req.query.years) || 5;
 
@@ -153,6 +163,9 @@ const getFinancials = async (req, res) => {
  */
 const getStatement = async (req, res) => {
   try {
+    // Signal user activity to pause background scanner
+    StockScannerService.recordUserActivity();
+
     const { symbol, type } = req.params;
     const frequency = req.query.frequency || 'annual';
     const years = parseInt(req.query.years) || 20;
@@ -286,6 +299,9 @@ const getStatement = async (req, res) => {
  */
 const getFilings = async (req, res) => {
   try {
+    // Signal user activity to pause background scanner
+    StockScannerService.recordUserActivity();
+
     const { symbol } = req.params;
     const limit = parseInt(req.query.limit) || 40;
     const symbolUpper = symbol.toUpperCase();
@@ -377,6 +393,9 @@ const getFilings = async (req, res) => {
  */
 const getMetrics = async (req, res) => {
   try {
+    // Signal user activity to pause background scanner
+    StockScannerService.recordUserActivity();
+
     const { symbol } = req.params;
 
     const metrics = await FundamentalDataService.getMetrics(symbol);
@@ -398,6 +417,9 @@ const getMetrics = async (req, res) => {
  */
 const getProfile = async (req, res) => {
   try {
+    // Signal user activity to pause background scanner
+    StockScannerService.recordUserActivity();
+
     const { symbol } = req.params;
 
     const profile = await FundamentalDataService.getProfile(symbol);
@@ -423,6 +445,9 @@ const getProfile = async (req, res) => {
  */
 const getHoldings = async (req, res) => {
   try {
+    // Signal user activity to pause background scanner
+    StockScannerService.recordUserActivity();
+
     // Automatically refresh prices to show current values
     const holdings = await HoldingsService.refreshPrices(req.user.id);
 
@@ -440,6 +465,9 @@ const getHoldings = async (req, res) => {
  */
 const getHolding = async (req, res) => {
   try {
+    // Signal user activity to pause background scanner
+    StockScannerService.recordUserActivity();
+
     // Refresh price first to get current value
     await HoldingsService.refreshHoldingPrice(req.user.id, req.params.id);
 
@@ -661,6 +689,9 @@ const recordDividend = async (req, res) => {
  */
 const getPortfolioSummary = async (req, res) => {
   try {
+    // Signal user activity to pause background scanner
+    StockScannerService.recordUserActivity();
+
     // Refresh prices first to ensure accurate portfolio values
     await HoldingsService.refreshPrices(req.user.id);
 
@@ -679,6 +710,9 @@ const getPortfolioSummary = async (req, res) => {
  */
 const refreshPrices = async (req, res) => {
   try {
+    // Signal user activity to pause background scanner
+    StockScannerService.recordUserActivity();
+
     const updated = await HoldingsService.refreshPrices(req.user.id);
 
     res.json({
@@ -786,6 +820,9 @@ const toggleFavorite = async (req, res) => {
  */
 const compareStocks = async (req, res) => {
   try {
+    // Signal user activity to pause background scanner
+    StockScannerService.recordUserActivity();
+
     const { symbols } = req.body;
 
     if (!symbols || !Array.isArray(symbols) || symbols.length < 2 || symbols.length > 3) {
@@ -811,6 +848,9 @@ const compareStocks = async (req, res) => {
  */
 const getChartData = async (req, res) => {
   try {
+    // Signal user activity to pause background scanner
+    StockScannerService.recordUserActivity();
+
     const { symbol } = req.params;
     const { period = '1Y', exchange = 'binance' } = req.query; // 1D, 1W, 1M, 3M, 6M, 1Y, 5Y
 
