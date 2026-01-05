@@ -1,4 +1,5 @@
 const AdminAnalytics = require('../models/AdminAnalytics');
+const { getUserTimezone } = require('../utils/timezone');
 
 const adminAnalyticsController = {
   /**
@@ -17,7 +18,9 @@ const adminAnalyticsController = {
         });
       }
 
-      const analytics = await AdminAnalytics.getAnalytics(period);
+      // Use admin's timezone if available, otherwise default to CST for system-wide analytics
+      const timezone = req.user?.timezone || 'America/Chicago';
+      const analytics = await AdminAnalytics.getAnalytics(period, timezone);
 
       res.json(analytics);
     } catch (error) {
@@ -33,8 +36,10 @@ const adminAnalyticsController = {
   async getSummary(req, res, next) {
     try {
       const { period = '30d' } = req.query;
-      const startDate = AdminAnalytics.getStartDate(period);
-      const summary = await AdminAnalytics.getSummary(startDate);
+      // Use admin's timezone if available, otherwise default to CST for system-wide analytics
+      const timezone = req.user?.timezone || 'America/Chicago';
+      const startDate = AdminAnalytics.getStartDate(period, timezone);
+      const summary = await AdminAnalytics.getSummary(startDate, timezone);
 
       res.json({
         period,
@@ -54,7 +59,8 @@ const adminAnalyticsController = {
   async getSignupTrend(req, res, next) {
     try {
       const { period = '30d' } = req.query;
-      const startDate = AdminAnalytics.getStartDate(period);
+      const timezone = req.user?.timezone || 'America/Chicago';
+      const startDate = AdminAnalytics.getStartDate(period, timezone);
       const trend = await AdminAnalytics.getSignupTrend(startDate);
 
       res.json({
@@ -75,7 +81,8 @@ const adminAnalyticsController = {
   async getLoginTrend(req, res, next) {
     try {
       const { period = '30d' } = req.query;
-      const startDate = AdminAnalytics.getStartDate(period);
+      const timezone = req.user?.timezone || 'America/Chicago';
+      const startDate = AdminAnalytics.getStartDate(period, timezone);
       const trend = await AdminAnalytics.getLoginTrend(startDate);
 
       res.json({
@@ -96,7 +103,8 @@ const adminAnalyticsController = {
   async getImportTrend(req, res, next) {
     try {
       const { period = '30d' } = req.query;
-      const startDate = AdminAnalytics.getStartDate(period);
+      const timezone = req.user?.timezone || 'America/Chicago';
+      const startDate = AdminAnalytics.getStartDate(period, timezone);
       const trend = await AdminAnalytics.getImportTrend(startDate);
 
       res.json({
@@ -117,7 +125,8 @@ const adminAnalyticsController = {
   async getApiUsageTrend(req, res, next) {
     try {
       const { period = '30d' } = req.query;
-      const startDate = AdminAnalytics.getStartDate(period);
+      const timezone = req.user?.timezone || 'America/Chicago';
+      const startDate = AdminAnalytics.getStartDate(period, timezone);
       const trend = await AdminAnalytics.getApiUsageTrend(startDate);
 
       res.json({
