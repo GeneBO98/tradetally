@@ -107,7 +107,27 @@
               <CheckIcon class="h-5 w-5 text-green-500 mx-auto" />
             </td>
           </tr>
-          
+
+          <tr>
+            <td class="px-6 py-4 text-gray-700 dark:text-gray-300">Crypto Trading Support</td>
+            <td class="px-6 py-4 text-center">
+              <CheckIcon class="h-5 w-5 text-green-500 mx-auto" />
+            </td>
+            <td class="px-6 py-4 text-center">
+              <CheckIcon class="h-5 w-5 text-green-500 mx-auto" />
+            </td>
+          </tr>
+
+          <tr class="bg-gray-50 dark:bg-gray-900/50">
+            <td class="px-6 py-4 text-gray-700 dark:text-gray-300">Forex Trading Support</td>
+            <td class="px-6 py-4 text-center">
+              <CheckIcon class="h-5 w-5 text-green-500 mx-auto" />
+            </td>
+            <td class="px-6 py-4 text-center">
+              <CheckIcon class="h-5 w-5 text-green-500 mx-auto" />
+            </td>
+          </tr>
+
           <tr>
             <td class="px-6 py-4 text-gray-700 dark:text-gray-300">API Access</td>
             <td class="px-6 py-4 text-center">

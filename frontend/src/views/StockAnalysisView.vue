@@ -3,7 +3,7 @@
     <!-- Header -->
     <div class="flex items-center mb-8">
       <button
-        @click="$router.push('/investments')"
+        @click="goBack"
         class="mr-4 p-2 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
       >
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -154,6 +154,11 @@
           </div>
         </div>
       </div>
+
+      <!-- Financial Statements Section -->
+      <div class="mt-6">
+        <FinancialStatementTabs :symbol="symbol" />
+      </div>
     </div>
 
     <!-- Add Holding Modal -->
@@ -174,19 +179,32 @@ import { format } from 'date-fns'
 import PillarRow from '@/components/investments/PillarRow.vue'
 import AddHoldingModal from '@/components/investments/AddHoldingModal.vue'
 import StockPriceChart from '@/components/investments/StockPriceChart.vue'
+import FinancialStatementTabs from '@/components/investments/financials/FinancialStatementTabs.vue'
 
 const route = useRoute()
 const router = useRouter()
 const investmentsStore = useInvestmentsStore()
 
-const symbol = ref(route.params.symbol?.toUpperCase() || '')
+// Initialize symbol from route params - this ensures it works on refresh
+const symbol = ref('')
 const analysis = ref(null)
 const loading = ref(false)
 const error = ref(null)
 const showAddHoldingModal = ref(false)
 
+// Initialize symbol immediately
+if (route.params.symbol) {
+  symbol.value = route.params.symbol.toUpperCase()
+}
+
 onMounted(() => {
-  loadAnalysis()
+  // Ensure symbol is set from route params (handles refresh)
+  if (route.params.symbol && !symbol.value) {
+    symbol.value = route.params.symbol.toUpperCase()
+  }
+  if (symbol.value) {
+    loadAnalysis()
+  }
 })
 
 watch(() => route.params.symbol, (newSymbol) => {
@@ -194,7 +212,7 @@ watch(() => route.params.symbol, (newSymbol) => {
     symbol.value = newSymbol.toUpperCase()
     loadAnalysis()
   }
-})
+}, { immediate: true })
 
 async function loadAnalysis() {
   if (!symbol.value) return
@@ -203,7 +221,8 @@ async function loadAnalysis() {
   error.value = null
 
   try {
-    analysis.value = await investmentsStore.analyzeStock(symbol.value)
+    // Always force refresh when loading analysis (user explicitly navigated to this page)
+    analysis.value = await investmentsStore.analyzeStock(symbol.value, true)
   } catch (err) {
     error.value = err.response?.data?.error || 'Failed to load analysis'
     console.error('Load analysis failed:', err)
@@ -228,6 +247,18 @@ async function refreshAnalysis() {
 function onHoldingCreated() {
   showAddHoldingModal.value = false
   router.push('/investments')
+}
+
+function goBack() {
+  // Check if we came from the scanner tab via query param
+  const fromScanner = route.query.from === 'scanner'
+  if (fromScanner) {
+    router.push('/investments?tab=scanner')
+  } else if (window.history.length > 1) {
+    router.back()
+  } else {
+    router.push('/investments')
+  }
 }
 
 function formatCurrency(value) {
