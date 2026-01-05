@@ -487,6 +487,7 @@
                 @change="handleBrokerSelect"
               >
                 <option value="">Select broker</option>
+                <option v-if="form.broker && !brokersList.includes(form.broker)" :value="form.broker">{{ form.broker }}</option>
                 <option v-for="broker in brokersList" :key="broker" :value="broker">{{ broker }}</option>
                 <option value="__custom__">+ Add New Broker</option>
               </select>
@@ -2013,17 +2014,26 @@ function handleBrokerSelect(event) {
 }
 
 function handleBrokerInputEnter() {
-  // Save the broker and switch back to select
-  if (form.value.broker.trim()) {
+  const newBroker = form.value.broker.trim()
+  if (newBroker) {
+    // Add to the list if it's not already there
+    if (!brokersList.value.includes(newBroker)) {
+      brokersList.value.push(newBroker)
+      showSuccess('Added', `Broker "${newBroker}" added`)
+    }
     showBrokerInput.value = false
   }
 }
 
 function handleBrokerInputBlur() {
-  // If the input is empty, switch back to select
-  if (!form.value.broker.trim()) {
-    showBrokerInput.value = false
+  const newBroker = form.value.broker.trim()
+  if (newBroker) {
+    // Add to the list if it's not already there
+    if (!brokersList.value.includes(newBroker)) {
+      brokersList.value.push(newBroker)
+    }
   }
+  showBrokerInput.value = false
 }
 
 function handleStrategySelect(event) {
@@ -2037,17 +2047,26 @@ function handleStrategySelect(event) {
 }
 
 function handleStrategyInputEnter() {
-  // Save the strategy and switch back to select
-  if (form.value.strategy.trim()) {
+  const newStrategy = form.value.strategy.trim()
+  if (newStrategy) {
+    // Add to the list if it's not already there
+    if (!strategiesList.value.includes(newStrategy)) {
+      strategiesList.value.push(newStrategy)
+      showSuccess('Added', `Strategy "${newStrategy}" added`)
+    }
     showStrategyInput.value = false
   }
 }
 
 function handleStrategyInputBlur() {
-  // If the input is empty, switch back to select
-  if (!form.value.strategy.trim()) {
-    showStrategyInput.value = false
+  const newStrategy = form.value.strategy.trim()
+  if (newStrategy) {
+    // Add to the list if it's not already there
+    if (!strategiesList.value.includes(newStrategy)) {
+      strategiesList.value.push(newStrategy)
+    }
   }
+  showStrategyInput.value = false
 }
 
 function handleSetupSelect(event) {
@@ -2061,17 +2080,26 @@ function handleSetupSelect(event) {
 }
 
 function handleSetupInputEnter() {
-  // Save the setup and switch back to select
-  if (form.value.setup.trim()) {
+  const newSetup = form.value.setup.trim()
+  if (newSetup) {
+    // Add to the list if it's not already there
+    if (!setupsList.value.includes(newSetup)) {
+      setupsList.value.push(newSetup)
+      showSuccess('Added', `Setup "${newSetup}" added`)
+    }
     showSetupInput.value = false
   }
 }
 
 function handleSetupInputBlur() {
-  // If the input is empty, switch back to select
-  if (!form.value.setup.trim()) {
-    showSetupInput.value = false
+  const newSetup = form.value.setup.trim()
+  if (newSetup) {
+    // Add to the list if it's not already there
+    if (!setupsList.value.includes(newSetup)) {
+      setupsList.value.push(newSetup)
+    }
   }
+  showSetupInput.value = false
 }
 
 function addExecution() {

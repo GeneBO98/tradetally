@@ -42,10 +42,12 @@ const backupRoutes = require('./routes/backup.routes');
 const brokerSyncRoutes = require('./routes/brokerSync.routes');
 const yearWrappedRoutes = require('./routes/yearWrapped.routes');
 const investmentsRoutes = require('./routes/investments.routes');
+const stockScannerRoutes = require('./routes/stockScanner.routes');
 const accountRoutes = require('./routes/account.routes');
 const BillingService = require('./services/billingService');
 const priceMonitoringService = require('./services/priceMonitoringService');
 const backupScheduler = require('./services/backupScheduler.service');
+const stockScannerScheduler = require('./services/stockScannerScheduler');
 const GamificationScheduler = require('./services/gamificationScheduler');
 const TrialScheduler = require('./services/trialScheduler');
 const OptionsScheduler = require('./services/optionsScheduler');
@@ -192,6 +194,7 @@ app.use('/api/admin/backup', backupRoutes);
 app.use('/api/broker-sync', brokerSyncRoutes);
 app.use('/api/year-wrapped', yearWrappedRoutes);
 app.use('/api/investments', investmentsRoutes);
+app.use('/api/scanner', stockScannerRoutes);
 app.use('/api/accounts', accountRoutes);
 
 // OAuth2 Provider endpoints
@@ -476,6 +479,15 @@ async function startServer() {
       console.log('Backup scheduler disabled (ENABLE_BACKUP_SCHEDULER=false)');
     }
 
+    // Initialize stock scanner scheduler (3 AM nightly Russell 2000 scan)
+    if (process.env.ENABLE_STOCK_SCANNER !== 'false') {
+      console.log('Initializing stock scanner scheduler...');
+      stockScannerScheduler.initialize();
+      console.log('✓ Stock scanner scheduler initialized (runs at 3 AM)');
+    } else {
+      console.log('Stock scanner disabled (ENABLE_STOCK_SCANNER=false)');
+    }
+
     // Start the server
     app.listen(PORT, () => {
       logger.info(`✓ TradeTally server running on port ${PORT}`);
@@ -504,6 +516,7 @@ process.on('SIGTERM', async () => {
   jobRecoveryService.stop();
   globalEnrichmentCacheCleanupService.stop();
   backupScheduler.stopAll();
+  stockScannerScheduler.stop();
   await backgroundWorker.stop();
   process.exit(0);
 });
@@ -518,6 +531,7 @@ process.on('SIGINT', async () => {
   jobRecoveryService.stop();
   globalEnrichmentCacheCleanupService.stop();
   backupScheduler.stopAll();
+  stockScannerScheduler.stop();
   await backgroundWorker.stop();
   process.exit(0);
 });

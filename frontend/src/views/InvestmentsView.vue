@@ -49,6 +49,17 @@
             {{ investmentsStore.holdingCount }}
           </span>
         </button>
+        <button
+          @click="activeTab = 'scanner'"
+          :class="[
+            'py-4 px-1 border-b-2 font-medium text-sm',
+            activeTab === 'scanner'
+              ? 'border-primary-500 text-primary-600 dark:text-primary-400'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+          ]"
+        >
+          Stock Scanner
+        </button>
       </nav>
     </div>
 
@@ -88,6 +99,11 @@
           @add-to-holdings="addToHoldings"
           @add-to-watchlist="openWatchlistModal"
         />
+
+        <!-- Financial Statements Section (only for stocks, not crypto) -->
+        <div v-if="investmentsStore.currentAnalysis.type !== 'crypto'" class="mt-6">
+          <FinancialStatementTabs :symbol="investmentsStore.currentAnalysis.symbol" />
+        </div>
       </div>
 
       <!-- Search History -->
@@ -277,6 +293,52 @@
       </div>
     </div>
 
+    <!-- Stock Scanner Tab -->
+    <div v-if="activeTab === 'scanner'">
+      <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden">
+        <!-- Scanner Header -->
+        <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+          <div class="flex items-center justify-between">
+            <div>
+              <h2 class="text-lg font-medium text-gray-900 dark:text-white">8 Pillars Stock Scanner</h2>
+              <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                Find US stocks that pass the 8 Pillars value investing criteria
+              </p>
+            </div>
+            <ScanStatusBadge />
+          </div>
+        </div>
+
+        <!-- Scanner Content -->
+        <div class="p-6">
+          <!-- Loading State -->
+          <div v-if="scannerStore.loading && !scannerStore.hasResults" class="flex items-center justify-center py-12">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+          </div>
+
+          <!-- No Scan Data Yet -->
+          <div v-else-if="!scannerStore.hasScanData && !scannerStore.loading" class="text-center py-12">
+            <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+            </svg>
+            <h3 class="mt-2 text-sm font-medium text-gray-900 dark:text-white">No scan data available</h3>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              The stock scan runs automatically at 3 AM daily.
+            </p>
+          </div>
+
+          <!-- Scanner Results -->
+          <div v-else class="space-y-6">
+            <!-- Pillar Filters -->
+            <PillarFilterChips @change="onPillarFilterChange" />
+
+            <!-- Results Table -->
+            <ScannerResultsTable />
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Add Holding Modal -->
     <AddHoldingModal
       v-if="showAddHoldingModal"
@@ -357,20 +419,36 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { useInvestmentsStore } from '@/stores/investments'
 import { useNotification } from '@/composables/useNotification'
 import { format } from 'date-fns'
 import api from '@/services/api'
 import EightPillarsCard from '@/components/investments/EightPillarsCard.vue'
 import AddHoldingModal from '@/components/investments/AddHoldingModal.vue'
+import FinancialStatementTabs from '@/components/investments/financials/FinancialStatementTabs.vue'
+import PillarFilterChips from '@/components/investments/scanner/PillarFilterChips.vue'
+import ScannerResultsTable from '@/components/investments/scanner/ScannerResultsTable.vue'
+import ScanStatusBadge from '@/components/investments/scanner/ScanStatusBadge.vue'
+import { useScannerStore } from '@/stores/scanner'
 
 const router = useRouter()
+const route = useRoute()
 const investmentsStore = useInvestmentsStore()
+const scannerStore = useScannerStore()
 const { showSuccess, showError } = useNotification()
 
-const activeTab = ref('screener')
+// Valid tab names
+const validTabs = ['screener', 'holdings', 'scanner']
+
+// Initialize tab from URL or default to 'screener'
+const getInitialTab = () => {
+  const urlTab = route.query.tab
+  return validTabs.includes(urlTab) ? urlTab : 'screener'
+}
+
+const activeTab = ref(getInitialTab())
 const searchSymbol = ref('')
 const showAddHoldingModal = ref(false)
 const showFavoritesOnly = ref(false)
@@ -392,17 +470,60 @@ const filteredSearchHistory = computed(() => {
 })
 
 onMounted(async () => {
-  await Promise.all([
+  const promises = [
     investmentsStore.fetchHoldings(),
     investmentsStore.fetchPortfolioSummary(),
     investmentsStore.fetchSearchHistory()
-  ])
+  ]
+
+  // If starting on scanner tab, also load scanner data
+  if (activeTab.value === 'scanner') {
+    promises.push(loadScannerData())
+  }
+
+  await Promise.all(promises)
 })
+
+// Watch for tab changes to load scanner data and update URL
+watch(activeTab, async (newTab) => {
+  // Update URL with current tab (replace to avoid cluttering browser history)
+  router.replace({ query: { ...route.query, tab: newTab } })
+
+  if (newTab === 'scanner') {
+    await loadScannerData()
+  }
+})
+
+// Watch for pillar filter changes
+watch(() => scannerStore.selectedPillars, async () => {
+  if (activeTab.value === 'scanner') {
+    await scannerStore.fetchResults(1)
+  }
+}, { deep: true })
+
+// Scanner functions
+async function loadScannerData() {
+  try {
+    await Promise.all([
+      scannerStore.fetchResults(1),
+      scannerStore.fetchStatus()
+    ])
+  } catch (error) {
+    console.error('Failed to load scanner data:', error)
+  }
+}
+
+async function onPillarFilterChange() {
+  // Filters are already updated in the store via togglePillar
+  // Just need to refetch results
+  await scannerStore.fetchResults(1)
+}
 
 async function analyzeSymbol() {
   if (!searchSymbol.value) return
   try {
-    await investmentsStore.analyzeStock(searchSymbol.value.toUpperCase())
+    // Always force refresh when user explicitly clicks Analyze button
+    await investmentsStore.analyzeStock(searchSymbol.value.toUpperCase(), true)
     await investmentsStore.fetchSearchHistory()
   } catch (error) {
     console.error('Analysis failed:', error)

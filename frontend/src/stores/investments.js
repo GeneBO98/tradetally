@@ -85,6 +85,52 @@ export const useInvestmentsStore = defineStore('investments', () => {
     }
   }
 
+  async function getBalanceSheet(symbol, frequency = 'annual') {
+    try {
+      const response = await api.get(`/investments/statements/${symbol}/balance-sheet`, {
+        params: { frequency }
+      })
+      return response.data
+    } catch (err) {
+      error.value = err.response?.data?.error || 'Failed to get balance sheet'
+      throw err
+    }
+  }
+
+  async function getIncomeStatement(symbol, frequency = 'annual') {
+    try {
+      const response = await api.get(`/investments/statements/${symbol}/income-statement`, {
+        params: { frequency }
+      })
+      return response.data
+    } catch (err) {
+      error.value = err.response?.data?.error || 'Failed to get income statement'
+      throw err
+    }
+  }
+
+  async function getCashFlow(symbol, frequency = 'annual') {
+    try {
+      const response = await api.get(`/investments/statements/${symbol}/cash-flow`, {
+        params: { frequency }
+      })
+      return response.data
+    } catch (err) {
+      error.value = err.response?.data?.error || 'Failed to get cash flow'
+      throw err
+    }
+  }
+
+  async function getFilings(symbol) {
+    try {
+      const response = await api.get(`/investments/filings/${symbol}`)
+      return response.data
+    } catch (err) {
+      error.value = err.response?.data?.error || 'Failed to get SEC filings'
+      throw err
+    }
+  }
+
   // ========================================
   // HOLDINGS
   // ========================================
@@ -370,6 +416,10 @@ export const useInvestmentsStore = defineStore('investments', () => {
     getFinancials,
     getMetrics,
     getProfile,
+    getBalanceSheet,
+    getIncomeStatement,
+    getCashFlow,
+    getFilings,
 
     // Holdings
     fetchHoldings,
