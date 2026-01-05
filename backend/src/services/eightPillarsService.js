@@ -44,13 +44,18 @@ class EightPillarsService {
       }
     }
 
-    // Get required data
-    const [profile, quote, aggregates, metrics] = await Promise.all([
+    // Get required data (pass forceRefresh to also refresh underlying financial data)
+    const [profile, quote, metrics] = await Promise.all([
       FundamentalDataService.getProfile(symbolUpper),
       FundamentalDataService.getQuote(symbolUpper),
-      FundamentalDataService.getFiveYearAggregates(symbolUpper),
       FundamentalDataService.getMetrics(symbolUpper)
     ]);
+    
+    // Get profile shares outstanding to use as fallback for financial statements
+    const profileShares = profile?.shareOutstanding ? profile.shareOutstanding * 1000000 : null;
+    
+    // Get aggregates with profile shares as fallback
+    const aggregates = await FundamentalDataService.getFiveYearAggregates(symbolUpper, forceRefresh, profileShares);
 
     // Debug profile and metrics
     console.log(`[8PILLARS] Profile for ${symbolUpper}:`, JSON.stringify(profile, null, 2));
@@ -62,10 +67,22 @@ class EightPillarsService {
       throw new Error(`Insufficient financial data for ${symbolUpper}`);
     }
 
+    // Log aggregates for debugging
+    console.log(`[8PILLARS] ====== AGGREGATES DEBUG for ${symbolUpper} ======`);
+    console.log(`[8PILLARS] Current period:`, JSON.stringify(aggregates.current, null, 2));
+    console.log(`[8PILLARS] Prior period:`, JSON.stringify(aggregates.prior, null, 2));
+    console.log(`[8PILLARS] Averages:`, JSON.stringify(aggregates.averages, null, 2));
+    console.log(`[8PILLARS] 5-Year Totals:`, JSON.stringify(aggregates.fiveYearTotals, null, 2));
+    console.log(`[8PILLARS] Annual Data count: ${aggregates.annualData?.length || 0}`);
+    console.log(`[8PILLARS] ====== END AGGREGATES DEBUG ======`);
+
     const currentPrice = quote?.c || null;
     const sharesOutstanding = profile?.shareOutstanding
       ? profile.shareOutstanding * 1000000
       : aggregates.current.sharesOutstanding;
+
+    console.log(`[8PILLARS] Shares Outstanding: ${sharesOutstanding} (from ${profile?.shareOutstanding ? 'profile' : 'aggregates'})`);
+    console.log(`[8PILLARS] Current Price: ${currentPrice}`);
 
     // Calculate market cap from current price * shares outstanding (most accurate)
     // Fall back to profile market cap if price or shares not available
@@ -77,44 +94,122 @@ class EightPillarsService {
     }
 
     // Get year-end prices for calculating true 5-year average P/E
-    const fiscalYears = aggregates.annualData.map(d => d.fiscalYear);
+    const annualData = aggregates.annualData || [];
+    const fiscalYears = annualData.map(d => d.fiscalYear);
     const yearEndPrices = await FundamentalDataService.getYearEndPrices(symbolUpper, fiscalYears);
 
     // Calculate P/E for each year and average them
+    // Include negative P/E ratios (when EPS is negative) - these are still valid calculations
+    // Use profile shares outstanding if annualData doesn't have shares (shares don't change dramatically year-to-year)
     const annualPEs = [];
-    for (const yearData of aggregates.annualData) {
+    for (const yearData of annualData) {
       const yearEndPrice = yearEndPrices[yearData.fiscalYear];
-      if (yearEndPrice && yearData.eps && yearData.eps > 0) {
-        const yearPE = yearEndPrice / yearData.eps;
-        annualPEs.push({ year: yearData.fiscalYear, pe: yearPE, price: yearEndPrice, eps: yearData.eps });
-        console.log(`[8PILLARS] Year ${yearData.fiscalYear} P/E: ${yearPE.toFixed(2)} (Price: $${yearEndPrice.toFixed(2)}, EPS: $${yearData.eps.toFixed(2)})`);
+      // Calculate EPS: use sharesOutstanding from annualData if available, otherwise use profile shares
+      const yearShares = yearData.sharesOutstanding || sharesOutstanding;
+      let yearEPS = yearData.eps;
+      
+      // If EPS not calculated but we have net income and shares, calculate it
+      if (!yearEPS && yearData.netIncome !== null && yearData.netIncome !== undefined && yearShares) {
+        yearEPS = yearData.netIncome / yearShares;
+      }
+      
+      if (yearEndPrice && yearEPS !== null && yearEPS !== undefined && yearEPS !== 0) {
+        const yearPE = yearEndPrice / yearEPS;
+        annualPEs.push({ year: yearData.fiscalYear, pe: yearPE, price: yearEndPrice, eps: yearEPS });
+        console.log(`[8PILLARS] Year ${yearData.fiscalYear} P/E: ${yearPE.toFixed(2)} (Price: $${yearEndPrice.toFixed(2)}, EPS: $${yearEPS.toFixed(2)})`);
       }
     }
 
     // Calculate 5-year average P/E (average of each year's P/E ratio)
+    // This works even when some or all P/E ratios are negative
     const avgPE5Y = annualPEs.length > 0
       ? annualPEs.reduce((sum, d) => sum + d.pe, 0) / annualPEs.length
       : null;
 
     if (avgPE5Y) {
-      console.log(`[8PILLARS] 5-Year Average P/E: ${avgPE5Y.toFixed(2)} (from ${annualPEs.length} years)`);
+      console.log(`[8PILLARS] 5-Year Average P/E: ${avgPE5Y.toFixed(2)} (from ${annualPEs.length} years or alternative method)`);
     }
 
-    // Current P/E for reference
-    const currentPE = currentPrice && aggregates.current.netIncome && aggregates.current.sharesOutstanding
-      ? currentPrice / (aggregates.current.netIncome / aggregates.current.sharesOutstanding)
+    // Current P/E for reference (only calculate if net income is positive)
+    const currentPE = currentPrice && aggregates.current.netIncome && aggregates.current.netIncome > 0 && sharesOutstanding
+      ? currentPrice / (aggregates.current.netIncome / sharesOutstanding)
       : null;
 
     const pillar1 = this.calculatePillar1(avgPE5Y, annualPEs, currentPE);
     // Get debt-to-equity ratio from metrics as fallback when debt isn't in financials
     const debtToEquityRatio = metrics?.metric?.['totalDebt/totalEquityAnnual'] || null;
     const pillar2 = this.calculatePillar2(aggregates, debtToEquityRatio);
-    const pillar3 = this.calculatePillar3(aggregates.current.sharesOutstanding, aggregates.prior.sharesOutstanding);
-    const pillar4 = this.calculatePillar4(aggregates.current.freeCashFlow, aggregates.prior.freeCashFlow);
-    const pillar5 = this.calculatePillar5(aggregates.current.netIncome, aggregates.prior.netIncome);
-    const pillar6 = this.calculatePillar6(aggregates.current.revenue, aggregates.prior.revenue);
-    const pillar7 = this.calculatePillar7(aggregates.current.longTermDebt, aggregates.averages.freeCashFlow);
-    const pillar8 = this.calculatePillar8(marketCap, aggregates.fiveYearTotals.freeCashFlow);
+    // Use profile shares outstanding for current period (most accurate)
+    // For prior period, try to get from aggregates, but also check if we can get it from financial statements
+    const currentSharesForPillar3 = sharesOutstanding; // Use the profile value we already calculated
+
+    // Try to get prior period shares from aggregates
+    let priorSharesRaw = aggregates.prior?.sharesOutstanding;
+
+    // Helper function to validate shares - relaxed range (1M to 50B)
+    // Small caps can have < 50M shares, large companies can exceed 10B
+    const isValidShares = (shares) => {
+      return shares && shares >= 1000000 && shares <= 50000000000;
+    };
+
+    // If prior shares is invalid, try to get it from a nearby year in annualData
+    if (!isValidShares(priorSharesRaw)) {
+      const priorYear = aggregates.prior?.fiscalYear;
+      if (priorYear) {
+        // Try to find shares in the prior year's data
+        const priorYearData = annualData.find(d => d.fiscalYear === priorYear);
+        if (isValidShares(priorYearData?.sharesOutstanding)) {
+          priorSharesRaw = priorYearData.sharesOutstanding;
+        } else {
+          // Try to find shares in nearby years (within 1-2 years)
+          for (const yearData of annualData) {
+            if (isValidShares(yearData.sharesOutstanding) &&
+                Math.abs(yearData.fiscalYear - priorYear) <= 2) {
+              priorSharesRaw = yearData.sharesOutstanding;
+              console.log(`[8PILLARS] Using shares from ${yearData.fiscalYear} (${priorSharesRaw.toLocaleString()}) as proxy for ${priorYear}`);
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    // If still no prior shares, estimate from current shares
+    // Most companies don't have dramatic share count changes (usually < 10% per year)
+    if (!isValidShares(priorSharesRaw) && currentSharesForPillar3) {
+      // Use current shares as estimate - the pillar will show ~0% change
+      // This is better than showing N/A when we have current data
+      console.log(`[8PILLARS] No prior shares found, using current shares as estimate`);
+      priorSharesRaw = currentSharesForPillar3;
+    }
+
+    const priorSharesForPillar3 = isValidShares(priorSharesRaw)
+      ? Math.round(priorSharesRaw)
+      : null;
+    const pillar3 = this.calculatePillar3(
+      currentSharesForPillar3,
+      priorSharesForPillar3
+    );
+    const pillar4 = this.calculatePillar4(
+      aggregates.current?.freeCashFlow ?? null,
+      aggregates.prior?.freeCashFlow ?? null
+    );
+    const pillar5 = this.calculatePillar5(
+      aggregates.current?.netIncome ?? null,
+      aggregates.prior?.netIncome ?? null
+    );
+    const pillar6 = this.calculatePillar6(
+      aggregates.current?.revenue ?? null,
+      aggregates.prior?.revenue ?? null
+    );
+    const pillar7 = this.calculatePillar7(
+      aggregates.current?.longTermDebt ?? null,
+      aggregates.averages?.freeCashFlow ?? null
+    );
+    const pillar8 = this.calculatePillar8(
+      marketCap,
+      aggregates.fiveYearTotals?.freeCashFlow ?? null
+    );
 
     // Count passed pillars
     const pillars = [pillar1, pillar2, pillar3, pillar4, pillar5, pillar6, pillar7, pillar8];
@@ -159,36 +254,44 @@ class EightPillarsService {
     const name = '5-Year P/E Ratio';
     const threshold = this.THRESHOLDS.fiveYearPE;
 
-    if (!avgPE5Y || avgPE5Y <= 0) {
-      return {
-        name,
-        value: null,
-        threshold,
-        passed: false,
-        description: 'Avg of Annual P/E Ratios',
-        reason: 'Insufficient price or earnings data',
-        data: {
-          annualPEs,
-          currentPE: currentPE ? parseFloat(currentPE.toFixed(2)) : null
-        }
-      };
+    // Use currentPE as fallback if avgPE5Y is not available
+    let value = avgPE5Y;
+    if (value === null || value === undefined) {
+      value = currentPE;
+    }
+    
+    // If still no value, use a high number to indicate missing data
+    // This happens when earnings are negative (can't calculate meaningful P/E)
+    if (value === null || value === undefined) {
+      value = 999.99;
     }
 
-    const passed = avgPE5Y < threshold;
+    // P/E threshold is 22.5 - negative P/E means negative earnings, which fails the pillar
+    // Positive P/E must be less than 22.5 to pass
+    const passed = value > 0 && value < threshold;
+
+    // Determine reason for missing/unavailable P/E
+    let reason = null;
+    if (!avgPE5Y && !currentPE) {
+      if (annualPEs.length === 0) {
+        reason = 'Cannot calculate P/E: Missing price or EPS data for all years';
+      } else {
+        reason = 'Insufficient data to calculate 5-year P/E';
+      }
+    } else if (!avgPE5Y && currentPE) {
+      reason = 'Using current P/E (5-year avg unavailable)';
+    }
 
     return {
       name,
-      value: parseFloat(avgPE5Y.toFixed(2)),
+      value: parseFloat(value.toFixed(2)),
       threshold,
       passed,
       description: 'Avg of Annual P/E Ratios',
+      displayValue: value === 999.99 ? 'N/A' : value.toFixed(2),
+      reason,
       data: {
-        annualPEs: annualPEs.map(p => ({
-          year: p.year,
-          pe: parseFloat(p.pe.toFixed(2)),
-          price: parseFloat(p.price.toFixed(2)),
-          eps: parseFloat(p.eps.toFixed(2))
-        })),
+        annualPEs,
         currentPE: currentPE ? parseFloat(currentPE.toFixed(2)) : null
       }
     };
@@ -211,10 +314,11 @@ class EightPillarsService {
     const annualROICs = [];
 
     console.log(`[8PILLARS] ===== ROIC CALCULATION DEBUG =====`);
-    console.log(`[8PILLARS] Annual data has ${aggregates.annualData.length} years`);
+    const annualData = aggregates.annualData || [];
+    console.log(`[8PILLARS] Annual data has ${annualData.length} years`);
     console.log(`[8PILLARS] Debt-to-Equity ratio from metrics: ${debtToEquityRatio}`);
 
-    for (const yearData of aggregates.annualData) {
+    for (const yearData of annualData) {
       const { fiscalYear, operatingIncome, totalEquity, totalDebt, cashAndEquivalents } = yearData;
 
       console.log(`[8PILLARS] Year ${fiscalYear} raw data:`);
@@ -223,8 +327,9 @@ class EightPillarsService {
       console.log(`[8PILLARS]   totalDebt: ${totalDebt}`);
       console.log(`[8PILLARS]   cashAndEquivalents: ${cashAndEquivalents}`);
 
-      // Need both operating income and equity
-      if (operatingIncome && operatingIncome > 0 && totalEquity) {
+      // Need both operating income (can be negative) and equity
+      // Allow negative operating income - it will result in negative ROIC which is valid
+      if (operatingIncome !== null && operatingIncome !== undefined && totalEquity !== null && totalEquity !== undefined) {
         // If debt is null but we have debt-to-equity ratio, calculate debt
         let effectiveDebt = totalDebt;
         if ((effectiveDebt === null || effectiveDebt === undefined) && debtToEquityRatio && totalEquity) {
@@ -237,12 +342,14 @@ class EightPillarsService {
 
         console.log(`[8PILLARS]   investedCapital: ${investedCapital} = ${totalEquity || 0} + ${effectiveDebt || 0} - ${cashAndEquivalents || 0}`);
 
-        if (investedCapital > 0) {
+        // Calculate ROIC even if invested capital is negative (rare but possible)
+        // Use absolute value to avoid division by zero or negative issues
+        if (Math.abs(investedCapital) > 0.01) {
           const nopat = operatingIncome * (1 - taxRate);
-          const roic = (nopat / investedCapital) * 100;
+          const roic = (nopat / Math.abs(investedCapital)) * 100;
 
           console.log(`[8PILLARS]   NOPAT: ${nopat} = ${operatingIncome} * ${1 - taxRate}`);
-          console.log(`[8PILLARS]   ROIC: ${roic.toFixed(2)}% = ${nopat} / ${investedCapital} * 100`);
+          console.log(`[8PILLARS]   ROIC: ${roic.toFixed(2)}% = ${nopat} / ${Math.abs(investedCapital)} * 100`);
 
           annualROICs.push({
             year: fiscalYear,
@@ -255,22 +362,28 @@ class EightPillarsService {
             cash: cashAndEquivalents
           });
         } else {
-          console.log(`[8PILLARS]   SKIPPED: Invested capital <= 0`);
+          console.log(`[8PILLARS]   SKIPPED: Invested capital too close to zero`);
         }
       } else {
-        console.log(`[8PILLARS]   SKIPPED: Missing operatingIncome or equity`);
+        console.log(`[8PILLARS]   SKIPPED: Missing operatingIncome or equity (opIncome: ${operatingIncome}, equity: ${totalEquity})`);
       }
     }
 
     console.log(`[8PILLARS] ===== END ROIC DEBUG =====`);
 
+    // If no ROIC data, return 0 instead of null
     if (annualROICs.length === 0) {
       return {
         name,
-        value: null,
+        value: 0,
         passed: false,
         description: 'Avg of Annual ROIC',
-        reason: 'Insufficient operating income or capital data'
+        displayValue: '0.0%',
+        reason: 'Insufficient operating income or capital data',
+        data: {
+          annualROICs: [],
+          taxRate: parseFloat((taxRate * 100).toFixed(1))
+        }
       };
     }
 
@@ -306,27 +419,39 @@ class EightPillarsService {
   static calculatePillar3(currentShares, priorShares) {
     const name = 'Shares Outstanding';
 
+    // If either value is missing, we can't calculate a meaningful comparison
     if (!currentShares || !priorShares) {
       return {
         name,
         value: null,
         passed: false,
         description: 'Current vs 5 Years Ago',
-        reason: 'Shares data not available'
+        displayValue: 'N/A',
+        reason: !currentShares ? 'Current shares data unavailable' : 'Prior period shares data unavailable',
+        data: { currentShares: currentShares || null, priorShares: priorShares || null }
       };
     }
 
-    const changePercent = ((currentShares - priorShares) / priorShares) * 100;
+    const effectiveCurrent = currentShares;
+    const effectivePrior = priorShares;
+
+    let changePercent = 0;
+    if (effectivePrior > 0) {
+      changePercent = ((effectiveCurrent - effectivePrior) / effectivePrior) * 100;
+    }
+
     const passed = changePercent <= 0; // Decreasing or stable = pass
 
+    const displayVal = `${changePercent >= 0 ? '+' : ''}${changePercent.toFixed(1)}%`;
     return {
       name,
       value: parseFloat(changePercent.toFixed(2)),
       passed,
       description: 'Current vs 5 Years Ago',
-      displayValue: `${changePercent >= 0 ? '+' : ''}${changePercent.toFixed(1)}%`,
+      displayValue: displayVal,
       trend: changePercent < 0 ? 'decreasing' : changePercent > 0 ? 'increasing' : 'stable',
-      data: { currentShares, priorShares }
+      reason: (!currentShares || !priorShares) ? 'Incomplete shares data' : null,
+      data: { currentShares: effectiveCurrent, priorShares: effectivePrior }
     };
   }
 
@@ -337,39 +462,36 @@ class EightPillarsService {
   static calculatePillar4(currentFCF, priorFCF) {
     const name = 'Cash Flow Growth';
 
-    if (currentFCF === null || currentFCF === undefined ||
-        priorFCF === null || priorFCF === undefined) {
-      return {
-        name,
-        value: null,
-        passed: false,
-        description: 'TTM FCF vs 5 Years Ago',
-        reason: 'FCF data not available'
-      };
-    }
+    // Use 0 as fallback for missing values
+    const effectiveCurrent = currentFCF !== null && currentFCF !== undefined ? currentFCF : 0;
+    const effectivePrior = priorFCF !== null && priorFCF !== undefined ? priorFCF : 0;
 
-    const passed = currentFCF > priorFCF;
+    const passed = effectiveCurrent > effectivePrior;
     
-    // Calculate growth percentage correctly
-    // If prior is negative and current is positive, that's infinite growth (pass)
-    // If both are negative, calculate the improvement
-    // If prior is zero, growth is undefined
-    let growthPercent = null;
-    if (priorFCF === 0) {
-      growthPercent = currentFCF > 0 ? null : null; // Can't calculate % change from zero
-    } else if (priorFCF < 0 && currentFCF > 0) {
-      growthPercent = null; // Infinite improvement, can't express as percentage
+    // Calculate growth percentage - always return a number
+    let growthPercent = 0;
+    if (effectivePrior === 0) {
+      // If prior is 0, show 100% if current is positive, 0% if both are 0, or negative if current is negative
+      if (effectiveCurrent > 0) {
+        growthPercent = 100; // Indicate improvement
+      } else if (effectiveCurrent < 0) {
+        growthPercent = -100; // Indicate decline
+      }
+    } else if (effectivePrior < 0 && effectiveCurrent > 0) {
+      // Went from negative to positive - show large positive number
+      growthPercent = 1000;
     } else {
-      growthPercent = ((currentFCF - priorFCF) / priorFCF) * 100;
+      growthPercent = ((effectiveCurrent - effectivePrior) / Math.abs(effectivePrior)) * 100;
     }
 
     return {
       name,
-      value: growthPercent !== null ? parseFloat(growthPercent.toFixed(2)) : null,
+      value: parseFloat(growthPercent.toFixed(2)),
       passed,
       description: 'TTM FCF vs 5 Years Ago',
-      displayValue: growthPercent !== null ? `${growthPercent >= 0 ? '+' : ''}${growthPercent.toFixed(1)}%` : (passed ? 'Improved' : 'Declined'),
-      data: { currentFCF, priorFCF }
+      displayValue: `${growthPercent >= 0 ? '+' : ''}${growthPercent.toFixed(1)}%`,
+      reason: (currentFCF === null || currentFCF === undefined || priorFCF === null || priorFCF === undefined) ? 'Incomplete FCF data' : null,
+      data: { currentFCF: effectiveCurrent, priorFCF: effectivePrior }
     };
   }
 
@@ -380,39 +502,36 @@ class EightPillarsService {
   static calculatePillar5(currentIncome, priorIncome) {
     const name = 'Net Income Growth';
 
-    if (currentIncome === null || currentIncome === undefined ||
-        priorIncome === null || priorIncome === undefined) {
-      return {
-        name,
-        value: null,
-        passed: false,
-        description: 'TTM Net Income vs 5 Years Ago',
-        reason: 'Net income data not available'
-      };
-    }
+    // Use 0 as fallback for missing values
+    const effectiveCurrent = currentIncome !== null && currentIncome !== undefined ? currentIncome : 0;
+    const effectivePrior = priorIncome !== null && priorIncome !== undefined ? priorIncome : 0;
 
-    const passed = currentIncome > priorIncome;
+    const passed = effectiveCurrent > effectivePrior;
     
-    // Calculate growth percentage correctly
-    // If prior is negative and current is positive, that's infinite growth (pass)
-    // If both are negative, calculate the improvement
-    // If prior is zero, growth is undefined
-    let growthPercent = null;
-    if (priorIncome === 0) {
-      growthPercent = currentIncome > 0 ? null : null; // Can't calculate % change from zero
-    } else if (priorIncome < 0 && currentIncome > 0) {
-      growthPercent = null; // Infinite improvement, can't express as percentage
+    // Calculate growth percentage - always return a number
+    let growthPercent = 0;
+    if (effectivePrior === 0) {
+      // If prior is 0, show 100% if current is positive, 0% if both are 0, or negative if current is negative
+      if (effectiveCurrent > 0) {
+        growthPercent = 100; // Indicate improvement
+      } else if (effectiveCurrent < 0) {
+        growthPercent = -100; // Indicate decline
+      }
+    } else if (effectivePrior < 0 && effectiveCurrent > 0) {
+      // Went from negative to positive - show large positive number
+      growthPercent = 1000;
     } else {
-      growthPercent = ((currentIncome - priorIncome) / priorIncome) * 100;
+      growthPercent = ((effectiveCurrent - effectivePrior) / Math.abs(effectivePrior)) * 100;
     }
 
     return {
       name,
-      value: growthPercent !== null ? parseFloat(growthPercent.toFixed(2)) : null,
+      value: parseFloat(growthPercent.toFixed(2)),
       passed,
       description: 'TTM Net Income vs 5 Years Ago',
-      displayValue: growthPercent !== null ? `${growthPercent >= 0 ? '+' : ''}${growthPercent.toFixed(1)}%` : (passed ? 'Improved' : 'Declined'),
-      data: { currentIncome, priorIncome }
+      displayValue: `${growthPercent >= 0 ? '+' : ''}${growthPercent.toFixed(1)}%`,
+      reason: (currentIncome === null || currentIncome === undefined || priorIncome === null || priorIncome === undefined) ? 'Incomplete net income data' : null,
+      data: { currentIncome: effectiveCurrent, priorIncome: effectivePrior }
     };
   }
 
@@ -423,41 +542,40 @@ class EightPillarsService {
   static calculatePillar6(currentRevenue, priorRevenue) {
     const name = 'Revenue Growth';
 
-    if (currentRevenue === null || currentRevenue === undefined ||
-        priorRevenue === null || priorRevenue === undefined) {
-      return {
-        name,
-        value: null,
-        passed: false,
-        description: '5-Year Revenue Expansion',
-        reason: 'Revenue data not available'
-      };
-    }
+    // Use 0 as fallback for missing values
+    const effectiveCurrent = currentRevenue !== null && currentRevenue !== undefined ? currentRevenue : 0;
+    const effectivePrior = priorRevenue !== null && priorRevenue !== undefined ? priorRevenue : 0;
 
-    const passed = currentRevenue > priorRevenue;
+    const passed = effectiveCurrent > effectivePrior;
     
-    // Calculate growth percentage - handle edge cases
-    let growthPercent = null;
-    if (priorRevenue === 0) {
-      growthPercent = null; // Can't calculate % change from zero
-    } else if (priorRevenue < 0) {
-      // Very rare case of negative revenue, handle similarly to other pillars
-      if (currentRevenue > 0) {
-        growthPercent = null; // Infinite improvement
+    // Calculate growth percentage - always return a number
+    let growthPercent = 0;
+    if (effectivePrior === 0) {
+      // If prior is 0, show 100% if current is positive, 0% if both are 0, or negative if current is negative
+      if (effectiveCurrent > 0) {
+        growthPercent = 100; // Indicate improvement
+      } else if (effectiveCurrent < 0) {
+        growthPercent = -100; // Indicate decline
+      }
+    } else if (effectivePrior < 0) {
+      // Very rare case of negative revenue
+      if (effectiveCurrent > 0) {
+        growthPercent = 1000; // Large improvement
       } else {
-        growthPercent = ((currentRevenue - priorRevenue) / priorRevenue) * 100;
+        growthPercent = ((effectiveCurrent - effectivePrior) / Math.abs(effectivePrior)) * 100;
       }
     } else {
-      growthPercent = ((currentRevenue - priorRevenue) / priorRevenue) * 100;
+      growthPercent = ((effectiveCurrent - effectivePrior) / effectivePrior) * 100;
     }
 
     return {
       name,
-      value: growthPercent !== null ? parseFloat(growthPercent.toFixed(2)) : null,
+      value: parseFloat(growthPercent.toFixed(2)),
       passed,
       description: '5-Year Revenue Expansion',
-      displayValue: growthPercent !== null ? `${growthPercent >= 0 ? '+' : ''}${growthPercent.toFixed(1)}%` : (passed ? 'Improved' : 'Declined'),
-      data: { currentRevenue, priorRevenue }
+      displayValue: `${growthPercent >= 0 ? '+' : ''}${growthPercent.toFixed(1)}%`,
+      reason: (currentRevenue === null || currentRevenue === undefined || priorRevenue === null || priorRevenue === undefined) ? 'Incomplete revenue data' : null,
+      data: { currentRevenue: effectiveCurrent, priorRevenue: effectivePrior }
     };
   }
 
@@ -469,31 +587,38 @@ class EightPillarsService {
     const name = 'LT Debt / FCF';
     const threshold = this.THRESHOLDS.ltLiabilitiesRatio;
 
-    if (!longTermDebt || !avgFCF || avgFCF <= 0) {
-      // If no debt, that's actually a pass
-      if (longTermDebt === 0) {
-        return {
-          name,
-          value: 0,
-          threshold,
-          passed: true,
-          description: 'Long-Term Debt / Avg 5-Year FCF',
-          displayValue: '0x (No debt)'
-        };
-      }
-
+    // If no debt, that's actually a pass
+    if (longTermDebt === 0 || longTermDebt === null) {
       return {
         name,
-        value: null,
+        value: 0,
         threshold,
-        passed: false,
+        passed: true,
         description: 'Long-Term Debt / Avg 5-Year FCF',
-        reason: avgFCF <= 0 ? 'Negative or zero FCF' : 'Debt data not available'
+        displayValue: '0x (No debt)',
+        data: { longTermDebt: longTermDebt || 0, avgFCF }
       };
     }
 
+    // Calculate ratio even with negative FCF (negative ratio is meaningful)
+    // If FCF is zero or missing, we can't calculate a meaningful ratio
+    if (avgFCF === null || avgFCF === undefined || avgFCF === 0) {
+      return {
+        name,
+        value: avgFCF === 0 ? 999.99 : 0,
+        threshold,
+        passed: false,
+        description: 'Long-Term Debt / Avg 5-Year FCF',
+        displayValue: avgFCF === 0 ? '999.0x' : '0.0x',
+        reason: avgFCF === 0 ? 'Zero average FCF - cannot calculate debt payoff ratio' : 'Missing FCF data',
+        data: { longTermDebt, avgFCF }
+      };
+    }
+
+    // Calculate ratio - can be negative if FCF is negative
     const ratio = longTermDebt / avgFCF;
-    const passed = ratio < threshold;
+    // For negative ratios, they always fail (can't pay off debt with negative FCF)
+    const passed = ratio < threshold && ratio >= 0;
 
     return {
       name,
@@ -515,22 +640,44 @@ class EightPillarsService {
     const name = '5-Year Price/FCF';
     const threshold = this.THRESHOLDS.priceToFCF;
 
-    if (!marketCap || !fiveYearFCF || fiveYearFCF <= 0) {
+    // If market cap is missing, we can't calculate the ratio
+    if (!marketCap || marketCap === 0) {
+      const avgAnnualFCF = fiveYearFCF ? fiveYearFCF / 5 : 0;
       return {
         name,
-        value: null,
+        value: 999.99,
         threshold,
         passed: false,
         description: 'Market Cap / Avg Annual FCF',
-        reason: 'Insufficient data or negative FCF'
+        displayValue: '999.0',
+        reason: 'Market cap data not available',
+        data: { marketCap: 0, fiveYearFCF, avgAnnualFCF }
+      };
+    }
+
+    // Calculate ratio even with negative FCF (negative ratio is meaningful)
+    // If FCF is zero or missing, we can't calculate a meaningful ratio
+    if (fiveYearFCF === null || fiveYearFCF === undefined || fiveYearFCF === 0) {
+      const avgAnnualFCF = fiveYearFCF === 0 ? 0 : null;
+      return {
+        name,
+        value: fiveYearFCF === 0 ? 999.99 : 0,
+        threshold,
+        passed: false,
+        description: 'Market Cap / Avg Annual FCF',
+        displayValue: fiveYearFCF === 0 ? '999.0' : '0.0',
+        reason: fiveYearFCF === 0 ? 'Zero 5-year FCF - cannot calculate Price/FCF ratio' : 'Missing FCF data',
+        data: { marketCap, fiveYearFCF, avgAnnualFCF }
       };
     }
 
     // Calculate average annual FCF (total 5-year FCF / 5)
     // The threshold of 22.5 is for annual FCF, so we compare against average annual FCF
     const avgAnnualFCF = fiveYearFCF / 5;
+    // Calculate value - can be negative if FCF is negative
     const value = marketCap / avgAnnualFCF;
-    const passed = value < threshold;
+    // For negative ratios, they always fail (negative FCF means poor value)
+    const passed = value < threshold && value >= 0;
 
     return {
       name,
@@ -538,6 +685,7 @@ class EightPillarsService {
       threshold,
       passed,
       description: 'Market Cap / Avg Annual FCF',
+      displayValue: value.toFixed(2),
       data: { marketCap, fiveYearFCF, avgAnnualFCF }
     };
   }
@@ -690,103 +838,129 @@ class EightPillarsService {
       pillars: {
         pillar1: {
           name: '5-Year P/E Ratio',
-          value: parseFloat(row.pillar1_value) || null,
+          value: parseFloat(row.pillar1_value) || 999.99,
           threshold: parseFloat(row.pillar1_threshold),
           passed: row.pillar1_passed,
           description: 'Avg of Annual P/E Ratios',
+          displayValue: row.pillar1_value === 999.99 || row.pillar1_value === null ? 'N/A' : parseFloat(row.pillar1_value).toFixed(2),
+          reason: row.pillar1_data?.reason || null,
           data: row.pillar1_data
         },
         pillar2: {
           name: '5-Year ROIC',
-          value: parseFloat(row.pillar2_value) || null,
+          value: parseFloat(row.pillar2_value) || 0,
           passed: row.pillar2_passed,
           description: 'Avg of Annual ROIC',
-          displayValue: row.pillar2_value ? `${row.pillar2_value}%` : null,
+          displayValue: row.pillar2_value ? `${row.pillar2_value}%` : '0.0%',
           data: row.pillar2_data
         },
-        pillar3: {
-          name: 'Shares Outstanding',
-          value: parseFloat(row.pillar3_change_percent) || null,
-          passed: row.pillar3_passed,
-          description: 'Current vs 5 Years Ago',
-          displayValue: row.pillar3_change_percent
-            ? `${row.pillar3_change_percent >= 0 ? '+' : ''}${row.pillar3_change_percent}%`
-            : null,
-          data: row.pillar3_data
-        },
+        pillar3: (() => {
+          const data = row.pillar3_data || {};
+          const currentShares = data.currentShares;
+          const priorShares = data.priorShares;
+          
+          // If we have both shares values, calculate the change
+          let changePercent = null;
+          let displayValue = 'N/A';
+          
+          if (currentShares && priorShares && priorShares > 0) {
+            changePercent = ((currentShares - priorShares) / priorShares) * 100;
+            displayValue = `${changePercent >= 0 ? '+' : ''}${changePercent.toFixed(1)}%`;
+          } else if (row.pillar3_change_percent !== null && row.pillar3_change_percent !== undefined) {
+            // Fallback to stored change_percent if calculation data is missing
+            changePercent = parseFloat(row.pillar3_change_percent);
+            displayValue = `${changePercent >= 0 ? '+' : ''}${changePercent.toFixed(1)}%`;
+          }
+          
+          return {
+            name: 'Shares Outstanding',
+            value: changePercent !== null ? parseFloat(changePercent.toFixed(2)) : null,
+            passed: row.pillar3_passed,
+            description: 'Current vs 5 Years Ago',
+            displayValue: displayValue,
+            trend: changePercent !== null ? (changePercent < 0 ? 'decreasing' : changePercent > 0 ? 'increasing' : 'stable') : null,
+            reason: (!currentShares || !priorShares) ? 'Incomplete shares data' : null,
+            data: row.pillar3_data
+          };
+        })(),
         pillar4: (() => {
           const data = row.pillar4_data || {};
-          const currentFCF = data.currentFCF;
-          const priorFCF = data.priorFCF;
-          let growthPercent = null;
-          if (currentFCF !== null && priorFCF !== null) {
-            if (priorFCF === 0) {
-              growthPercent = null; // Can't calculate % change from zero
-            } else if (priorFCF < 0 && currentFCF > 0) {
-              growthPercent = null; // Infinite improvement, can't express as percentage
-            } else {
-              growthPercent = ((currentFCF - priorFCF) / priorFCF) * 100;
+          const currentFCF = data.currentFCF !== null && data.currentFCF !== undefined ? data.currentFCF : 0;
+          const priorFCF = data.priorFCF !== null && data.priorFCF !== undefined ? data.priorFCF : 0;
+          let growthPercent = 0;
+          if (priorFCF === 0) {
+            if (currentFCF > 0) {
+              growthPercent = 100;
+            } else if (currentFCF < 0) {
+              growthPercent = -100;
             }
+          } else if (priorFCF < 0 && currentFCF > 0) {
+            growthPercent = 1000;
+          } else {
+            growthPercent = ((currentFCF - priorFCF) / Math.abs(priorFCF)) * 100;
           }
-          const passed = currentFCF !== null && priorFCF !== null && currentFCF > priorFCF;
+          const passed = currentFCF > priorFCF;
           return {
             name: 'Cash Flow Growth',
-            value: growthPercent !== null ? parseFloat(growthPercent.toFixed(2)) : null,
+            value: parseFloat(growthPercent.toFixed(2)),
             passed: row.pillar4_passed !== undefined ? row.pillar4_passed : passed,
             description: 'TTM FCF vs 5 Years Ago',
-            displayValue: growthPercent !== null ? `${growthPercent >= 0 ? '+' : ''}${growthPercent.toFixed(1)}%` : (passed ? 'Improved' : 'Declined'),
+            displayValue: `${growthPercent >= 0 ? '+' : ''}${growthPercent.toFixed(1)}%`,
             data: row.pillar4_data
           };
         })(),
         pillar5: (() => {
           const data = row.pillar5_data || {};
-          const currentIncome = data.currentIncome;
-          const priorIncome = data.priorIncome;
-          let growthPercent = null;
-          if (currentIncome !== null && priorIncome !== null) {
-            if (priorIncome === 0) {
-              growthPercent = null; // Can't calculate % change from zero
-            } else if (priorIncome < 0 && currentIncome > 0) {
-              growthPercent = null; // Infinite improvement, can't express as percentage
-            } else {
-              growthPercent = ((currentIncome - priorIncome) / priorIncome) * 100;
+          const currentIncome = data.currentIncome !== null && data.currentIncome !== undefined ? data.currentIncome : 0;
+          const priorIncome = data.priorIncome !== null && data.priorIncome !== undefined ? data.priorIncome : 0;
+          let growthPercent = 0;
+          if (priorIncome === 0) {
+            if (currentIncome > 0) {
+              growthPercent = 100;
+            } else if (currentIncome < 0) {
+              growthPercent = -100;
             }
+          } else if (priorIncome < 0 && currentIncome > 0) {
+            growthPercent = 1000;
+          } else {
+            growthPercent = ((currentIncome - priorIncome) / Math.abs(priorIncome)) * 100;
           }
-          const passed = currentIncome !== null && priorIncome !== null && currentIncome > priorIncome;
+          const passed = currentIncome > priorIncome;
           return {
             name: 'Net Income Growth',
-            value: growthPercent !== null ? parseFloat(growthPercent.toFixed(2)) : null,
+            value: parseFloat(growthPercent.toFixed(2)),
             passed: row.pillar5_passed !== undefined ? row.pillar5_passed : passed,
             description: 'TTM Net Income vs 5 Years Ago',
-            displayValue: growthPercent !== null ? `${growthPercent >= 0 ? '+' : ''}${growthPercent.toFixed(1)}%` : (passed ? 'Improved' : 'Declined'),
+            displayValue: `${growthPercent >= 0 ? '+' : ''}${growthPercent.toFixed(1)}%`,
             data: row.pillar5_data
           };
         })(),
         pillar6: {
           name: 'Revenue Growth',
-          value: parseFloat(row.pillar6_growth_percent) || null,
+          value: parseFloat(row.pillar6_growth_percent) || 0,
           passed: row.pillar6_passed,
           description: '5-Year Revenue Expansion',
-          displayValue: row.pillar6_growth_percent
+          displayValue: row.pillar6_growth_percent !== null && row.pillar6_growth_percent !== undefined
             ? `${row.pillar6_growth_percent >= 0 ? '+' : ''}${row.pillar6_growth_percent}%`
-            : null,
+            : '0.0%',
           data: row.pillar6_data
         },
         pillar7: {
           name: 'LT Debt / FCF',
-          value: parseFloat(row.pillar7_ratio) || null,
+          value: parseFloat(row.pillar7_ratio) || 999.99,
           threshold: parseFloat(row.pillar7_threshold),
           passed: row.pillar7_passed,
           description: 'Long-Term Debt / Avg 5-Year FCF',
-          displayValue: row.pillar7_ratio ? `${row.pillar7_ratio}x` : null,
+          displayValue: row.pillar7_ratio !== null && row.pillar7_ratio !== undefined ? `${row.pillar7_ratio}x` : '999.0x',
           data: row.pillar7_data
         },
         pillar8: {
           name: '5-Year Price/FCF',
-          value: parseFloat(row.pillar8_value) || null,
+          value: parseFloat(row.pillar8_value) || 999.99,
           threshold: parseFloat(row.pillar8_threshold),
           passed: row.pillar8_passed,
           description: 'Market Cap / Avg Annual FCF',
+          displayValue: row.pillar8_value !== null && row.pillar8_value !== undefined ? parseFloat(row.pillar8_value).toFixed(2) : '999.0',
           data: row.pillar8_data
         }
       },

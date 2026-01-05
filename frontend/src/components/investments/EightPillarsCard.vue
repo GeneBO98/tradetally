@@ -119,12 +119,14 @@ defineProps({
 defineEmits(['view-details', 'add-to-holdings', 'add-to-watchlist'])
 
 function formatPillarValue(pillar) {
-  if (pillar.value === null || pillar.value === undefined) {
-    return 'N/A'
+  // Always return a number - use 0 as fallback if value is null/undefined
+  const value = pillar.value !== null && pillar.value !== undefined 
+    ? pillar.value 
+    : 0
+  
+  if (typeof value === 'number') {
+    return value.toFixed(2)
   }
-  if (typeof pillar.value === 'number') {
-    return pillar.value.toFixed(2)
-  }
-  return pillar.value
+  return String(value)
 }
 </script>
