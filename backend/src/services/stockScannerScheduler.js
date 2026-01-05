@@ -1,7 +1,8 @@
 /**
  * Stock Scanner Scheduler Service
- * Manages the nightly Russell 2000 8 Pillars scan
- * Runs at 3 AM daily (after market close, before open)
+ * Manages the quarterly Russell 2000 8 Pillars scan
+ * Scans Russell 2000 stocks and caches results in database
+ * Runs at 3 AM on the 1st of each quarter (Jan, Apr, Jul, Oct)
  */
 
 const cron = require('node-cron');
@@ -15,21 +16,21 @@ class StockScannerScheduler {
 
   /**
    * Initialize the scheduler
-   * Starts the 3 AM nightly scan job
+   * Starts the quarterly Russell 2000 scan job (3 AM on 1st of quarter)
    */
   initialize() {
     try {
       console.log('[SCANNER SCHEDULER] Initializing...');
 
-      // Schedule nightly scan at 3 AM
+      // Schedule quarterly scan at 3 AM on the 1st of Jan, Apr, Jul, Oct
       // Cron expression: minute hour day-of-month month day-of-week
-      const cronExpression = '0 3 * * *'; // 3 AM every day
+      const cronExpression = '0 3 1 1,4,7,10 *'; // 3 AM on 1st of quarter months
 
       this.job = cron.schedule(cronExpression, async () => {
-        await this.executeNightlyScan();
+        await this.executeQuarterlyScan();
       });
 
-      console.log('[SCANNER SCHEDULER] Scheduled nightly Russell 2000 scan at 3 AM');
+      console.log('[SCANNER SCHEDULER] Scheduled quarterly Russell 2000 scan (Jan 1, Apr 1, Jul 1, Oct 1 at 3 AM)');
       console.log('[SCANNER SCHEDULER] Initialized successfully');
 
     } catch (error) {
@@ -38,23 +39,23 @@ class StockScannerScheduler {
   }
 
   /**
-   * Execute the nightly scan
+   * Execute the quarterly Russell 2000 scan
    */
-  async executeNightlyScan() {
+  async executeQuarterlyScan() {
     if (!this.enabled) {
-      console.log('[SCANNER SCHEDULER] Scanner is disabled, skipping nightly scan');
+      console.log('[SCANNER SCHEDULER] Scanner is disabled, skipping quarterly scan');
       return;
     }
 
     try {
-      console.log('[SCANNER SCHEDULER] Starting nightly Russell 2000 scan...');
+      console.log('[SCANNER SCHEDULER] Starting quarterly Russell 2000 scan...');
 
-      const result = await StockScannerService.runNightlyScan();
+      const result = await StockScannerService.runNightlyScan({ russell2000Only: true });
 
-      console.log(`[SCANNER SCHEDULER] Nightly scan completed:`, result);
+      console.log(`[SCANNER SCHEDULER] Quarterly Russell 2000 scan completed:`, result);
 
     } catch (error) {
-      console.error('[SCANNER SCHEDULER] Error during nightly scan:', error.message);
+      console.error('[SCANNER SCHEDULER] Error during quarterly scan:', error.message);
     }
   }
 
@@ -65,7 +66,7 @@ class StockScannerScheduler {
     if (this.job) {
       this.job.stop();
       this.job = null;
-      console.log('[SCANNER SCHEDULER] Stopped nightly scan job');
+      console.log('[SCANNER SCHEDULER] Stopped quarterly scan job');
     }
   }
 
@@ -86,7 +87,7 @@ class StockScannerScheduler {
     return {
       enabled: this.enabled,
       jobActive: !!this.job,
-      nextRun: this.job ? 'Daily at 3:00 AM' : 'Not scheduled'
+      nextRun: this.job ? 'Quarterly (Jan 1, Apr 1, Jul 1, Oct 1 at 3:00 AM)' : 'Not scheduled'
     };
   }
 }

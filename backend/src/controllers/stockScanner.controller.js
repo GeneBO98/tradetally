@@ -64,14 +64,17 @@ const getScanStatus = async (req, res) => {
 /**
  * Manually trigger a scan (admin only)
  * POST /api/scanner/trigger
+ * Body params (optional):
+ *   - russell2000Only: boolean (default: true) - Scan only Russell 2000
  * @access Admin only
  */
 const triggerScan = async (req, res) => {
   try {
-    console.log(`[SCANNER] Admin ${req.user.id} triggered manual scan`);
+    const { russell2000Only = true } = req.body;
+    console.log(`[SCANNER] Admin ${req.user.id} triggered manual scan (Russell 2000 only: ${russell2000Only})`);
 
     // Start the scan asynchronously
-    StockScannerService.runNightlyScan()
+    StockScannerService.runNightlyScan({ russell2000Only })
       .then(result => {
         console.log('[SCANNER] Manual scan completed:', result);
       })
@@ -83,6 +86,7 @@ const triggerScan = async (req, res) => {
     res.json({
       message: 'Scan started',
       status: 'running',
+      russell2000Only,
       note: 'Scan is running in the background. Check status endpoint for progress.'
     });
   } catch (error) {
@@ -91,8 +95,28 @@ const triggerScan = async (req, res) => {
   }
 };
 
+/**
+ * Clean up stuck scans (admin only)
+ * POST /api/scanner/cleanup
+ * @access Admin only
+ */
+const cleanupStuckScans = async (req, res) => {
+  try {
+    console.log(`[SCANNER] Admin ${req.user.id} triggered cleanup of stuck scans`);
+    const cleanedUp = await StockScannerService.cleanupStuckScans();
+    res.json({
+      message: 'Cleanup completed',
+      scansCleanedUp: cleanedUp
+    });
+  } catch (error) {
+    console.error('[SCANNER] Error cleaning up stuck scans:', error);
+    res.status(500).json({ error: error.message || 'Failed to clean up stuck scans' });
+  }
+};
+
 module.exports = {
   getScanResults,
   getScanStatus,
-  triggerScan
+  triggerScan,
+  cleanupStuckScans
 };

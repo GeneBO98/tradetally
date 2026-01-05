@@ -323,7 +323,7 @@
             </svg>
             <h3 class="mt-2 text-sm font-medium text-gray-900 dark:text-white">No scan data available</h3>
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              The stock scan runs automatically at 3 AM daily.
+              Stock scans run quarterly. Admins can trigger a scan manually.
             </p>
           </div>
 

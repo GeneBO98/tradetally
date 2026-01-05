@@ -479,11 +479,19 @@ async function startServer() {
       console.log('Backup scheduler disabled (ENABLE_BACKUP_SCHEDULER=false)');
     }
 
-    // Initialize stock scanner scheduler (3 AM nightly Russell 2000 scan)
+    // Initialize stock scanner scheduler (3 AM quarterly Russell 2000 scan)
     if (process.env.ENABLE_STOCK_SCANNER !== 'false') {
       console.log('Initializing stock scanner scheduler...');
+      
+      // Clean up any stuck scans on startup
+      const StockScannerService = require('./services/stockScannerService');
+      const cleanedUp = await StockScannerService.cleanupStuckScans();
+      if (cleanedUp > 0) {
+        console.log(`✓ Cleaned up ${cleanedUp} stuck scan(s)`);
+      }
+      
       stockScannerScheduler.initialize();
-      console.log('✓ Stock scanner scheduler initialized (runs at 3 AM)');
+      console.log('✓ Stock scanner scheduler initialized (Russell 2000 scan runs quarterly at 3 AM)');
     } else {
       console.log('Stock scanner disabled (ENABLE_STOCK_SCANNER=false)');
     }
