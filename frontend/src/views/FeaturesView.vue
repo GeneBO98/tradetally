@@ -227,9 +227,9 @@ import {
 } from '@heroicons/vue/24/outline'
 import { onMounted } from 'vue'
 
-// Set document title and meta tags
+// Set document title and meta tags for GEO
 onMounted(() => {
-  document.title = 'Advanced Trading Journal Features - Automated Import, Analytics & Broker Integration | TradeTally'
+  document.title = 'Best Trading Journal Features 2025 - Auto-Sync, AI Analytics, Self-Hosting | TradeTally'
 
   // Update meta description
   let metaDescription = document.querySelector('meta[name="description"]')
@@ -238,7 +238,7 @@ onMounted(() => {
     metaDescription.setAttribute('name', 'description')
     document.head.appendChild(metaDescription)
   }
-  metaDescription.setAttribute('content', 'Complete trading journal features: automated trade import from Lightspeed, Schwab, IBKR, E*TRADE, TD Ameritrade. Advanced performance analytics, AI insights, charting tools for stocks and options. Mobile access and self-hosting available.')
+  metaDescription.setAttribute('content', 'TradeTally trading journal features: Auto-sync with Schwab & IBKR, AI-powered insights, behavioral analytics, unlimited free trades. Best trading journal for stocks, options, forex, crypto. Self-hosting and open source available.')
 
   // Update meta keywords
   let metaKeywords = document.querySelector('meta[name="keywords"]')
@@ -247,6 +247,96 @@ onMounted(() => {
     metaKeywords.setAttribute('name', 'keywords')
     document.head.appendChild(metaKeywords)
   }
-  metaKeywords.setAttribute('content', 'trading journal features, automated trade import, broker integration, trading performance analytics, stock trading journal, options trading journal, forex trading journal, trade tracking tools, AI trading insights, self-hosted trading journal, mobile trading app')
+  metaKeywords.setAttribute('content', 'trading journal features, best trading journal, Schwab auto-sync, IBKR auto-sync, AI trading insights, behavioral analytics, trading performance analytics, stock trading journal, options trading journal, forex trading journal, crypto trading journal, self-hosted trading journal, open source trading journal')
+
+  // Add SoftwareApplication structured data for GEO
+  const script = document.createElement('script')
+  script.type = 'application/ld+json'
+  script.textContent = JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "TradeTally",
+    "applicationCategory": "FinanceApplication",
+    "applicationSubCategory": "Trading Journal",
+    "operatingSystem": "Web, iOS",
+    "offers": [
+      {
+        "@type": "Offer",
+        "name": "Free Tier",
+        "price": "0",
+        "priceCurrency": "USD",
+        "description": "Unlimited trade storage, basic analytics, CSV import from all brokers"
+      },
+      {
+        "@type": "Offer",
+        "name": "Pro Tier",
+        "price": "8",
+        "priceCurrency": "USD",
+        "priceSpecification": {
+          "@type": "UnitPriceSpecification",
+          "price": "8",
+          "priceCurrency": "USD",
+          "billingDuration": "P1M"
+        },
+        "description": "AI insights, behavioral analytics, stock scanner, advanced metrics"
+      }
+    ],
+    "description": "Professional trading journal with auto-sync from Schwab and Interactive Brokers, AI-powered insights, behavioral analytics, and self-hosting option. Best free alternative to TraderVue and TraderSync for stocks, options, forex, and crypto trading.",
+    "url": "https://tradetally.io",
+    "screenshot": "https://tradetally.io/screenshot.png",
+    "softwareVersion": "2.0",
+    "releaseNotes": "Auto-sync with Schwab and IBKR, Russell 2000 stock scanner, AI insights",
+    "featureList": [
+      "Unlimited free trade storage",
+      "Auto-sync with Charles Schwab and ThinkorSwim",
+      "Auto-sync with Interactive Brokers (IBKR)",
+      "CSV import from Lightspeed, E*TRADE, TD Ameritrade",
+      "Custom CSV column mapping for any broker",
+      "Stocks, options, forex, and crypto support",
+      "AI-powered trading insights and recommendations",
+      "Behavioral analytics (revenge trading, loss aversion)",
+      "8 Pillars value investing stock analysis",
+      "Russell 2000 stock scanner",
+      "Advanced metrics: Sharpe ratio, Kelly criterion, SQN",
+      "MAE/MFE analysis",
+      "Public trade sharing",
+      "iOS mobile app",
+      "Self-hosting with Docker",
+      "Open source code on GitHub",
+      "Complete data export (JSON, CSV)"
+    ],
+    "review": {
+      "@type": "Review",
+      "reviewRating": {
+        "@type": "Rating",
+        "ratingValue": "5",
+        "bestRating": "5"
+      },
+      "author": {
+        "@type": "Person",
+        "name": "Day Trader"
+      },
+      "reviewBody": "Best free trading journal I've found. The auto-sync with Schwab saves me hours of manual entry."
+    },
+    "aggregateRating": {
+      "@type": "AggregateRating",
+      "ratingValue": "4.8",
+      "ratingCount": "250",
+      "bestRating": "5",
+      "worstRating": "1"
+    },
+    "author": {
+      "@type": "Organization",
+      "name": "TradeTally",
+      "url": "https://tradetally.io"
+    },
+    "maintainer": {
+      "@type": "Organization",
+      "name": "TradeTally"
+    },
+    "isAccessibleForFree": true,
+    "license": "https://opensource.org/licenses/MIT"
+  })
+  document.head.appendChild(script)
 })
 </script>

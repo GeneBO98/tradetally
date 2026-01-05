@@ -147,6 +147,231 @@ const getFinancials = async (req, res) => {
 };
 
 /**
+ * Get a specific financial statement (balance sheet, income statement, or cash flow)
+ * GET /api/investments/statements/:symbol/:type
+ * :type = 'balance-sheet' | 'income-statement' | 'cash-flow'
+ */
+const getStatement = async (req, res) => {
+  try {
+    const { symbol, type } = req.params;
+    const frequency = req.query.frequency || 'annual';
+    const years = parseInt(req.query.years) || 20;
+
+    if (!['balance-sheet', 'income-statement', 'cash-flow'].includes(type)) {
+      return res.status(400).json({ error: 'Invalid statement type. Use: balance-sheet, income-statement, or cash-flow' });
+    }
+
+    console.log(`[INVESTMENTS] Getting ${type} for ${symbol} (${frequency}, ${years} periods)`);
+
+    const financials = await FundamentalDataService.getFinancials(symbol, years, false, frequency);
+
+    if (!financials || financials.length === 0) {
+      return res.status(404).json({ error: `No financial data available for ${symbol}` });
+    }
+
+    // Helper to format period label (year for annual, year + quarter for quarterly)
+    const formatPeriodLabel = (period) => {
+      const year = period.year || period.fiscalYear;
+      if (frequency === 'quarterly') {
+        // Try to get quarter from period data (already calculated)
+        const quarter = period.quarter || period.fiscalQuarter;
+        if (quarter) {
+          return `${year} Q${quarter}`;
+        }
+        // Try to determine quarter from filing date
+        // 10-Q filings are made AFTER the quarter ends
+        const dateStr = period.filingDate || period.period || period.endDate;
+        if (dateStr) {
+          const filedMonth = new Date(dateStr).getMonth() + 1;
+          let q;
+          if (filedMonth >= 4 && filedMonth <= 6) {
+            q = 1; // Q1 results filed in Apr-Jun
+          } else if (filedMonth >= 7 && filedMonth <= 9) {
+            q = 2; // Q2 results filed in Jul-Sep
+          } else if (filedMonth >= 10 && filedMonth <= 12) {
+            q = 3; // Q3 results filed in Oct-Dec
+          } else {
+            q = 4; // Q4 results filed in Jan-Mar
+          }
+          return `${year} Q${q}`;
+        }
+      }
+      return String(year);
+    };
+
+    // Map statement type to data fields
+    let statementData;
+    switch (type) {
+      case 'balance-sheet':
+        statementData = financials.map(period => ({
+          year: formatPeriodLabel(period),
+          filingDate: period.filingDate,
+          // Assets
+          totalAssets: period.totalAssets,
+          cashAndEquivalents: period.cashAndEquivalents,
+          currentAssets: period.currentAssets || null,
+          // Liabilities
+          totalLiabilities: period.totalLiabilities,
+          currentLiabilities: period.currentLiabilities || null,
+          longTermDebt: period.longTermDebt,
+          shortTermDebt: period.shortTermDebt,
+          totalDebt: period.totalDebt,
+          // Equity
+          totalEquity: period.totalEquity,
+          retainedEarnings: period.retainedEarnings || null,
+          // Shares
+          sharesOutstanding: period.sharesOutstanding
+        }));
+        break;
+
+      case 'income-statement':
+        statementData = financials.map(period => ({
+          year: formatPeriodLabel(period),
+          filingDate: period.filingDate,
+          // Revenue
+          revenue: period.revenue,
+          costOfRevenue: period.costOfRevenue || null,
+          grossProfit: period.grossProfit,
+          // Operating
+          operatingExpenses: period.operatingExpenses || null,
+          operatingIncome: period.operatingIncome,
+          // Net Income
+          ebit: period.ebit,
+          ebitda: period.ebitda,
+          interestExpense: period.interestExpense || null,
+          netIncome: period.netIncome,
+          // Per Share
+          eps: period.eps || (period.netIncome && period.sharesOutstanding ? period.netIncome / period.sharesOutstanding : null),
+          epsBasic: period.sharesBasic ? period.netIncome / period.sharesBasic : null,
+          epsDiluted: period.sharesDiluted ? period.netIncome / period.sharesDiluted : null
+        }));
+        break;
+
+      case 'cash-flow':
+        statementData = financials.map(period => ({
+          year: formatPeriodLabel(period),
+          filingDate: period.filingDate,
+          // Operating Activities
+          operatingCashFlow: period.operatingCashFlow,
+          depreciationAmortization: period.depreciationAmortization || null,
+          // Investing Activities
+          capitalExpenditures: period.capitalExpenditures,
+          investingCashFlow: period.investingCashFlow || null,
+          // Financing Activities
+          financingCashFlow: period.financingCashFlow || null,
+          dividendsPaid: period.dividendsPaid,
+          stockRepurchases: period.stockRepurchases || null,
+          // Free Cash Flow
+          freeCashFlow: period.freeCashFlow
+        }));
+        break;
+    }
+
+    res.json({
+      symbol: symbol.toUpperCase(),
+      statementType: type,
+      frequency,
+      periods: statementData.length,
+      data: statementData
+    });
+  } catch (error) {
+    console.error('[INVESTMENTS] Statement error:', error);
+    res.status(500).json({ error: error.message || 'Failed to get statement' });
+  }
+};
+
+/**
+ * Get SEC filings (10-K, 10-Q) for a stock
+ * GET /api/investments/filings/:symbol
+ */
+const getFilings = async (req, res) => {
+  try {
+    const { symbol } = req.params;
+    const limit = parseInt(req.query.limit) || 40;
+    const symbolUpper = symbol.toUpperCase();
+
+    console.log(`[INVESTMENTS] Getting SEC filings for ${symbolUpper}`);
+
+    const finnhub = require('../utils/finnhub');
+
+    // Get both annual (10-K) and quarterly (10-Q) filings
+    const [annualData, quarterlyData] = await Promise.all([
+      finnhub.getFinancialsReported(symbolUpper, 'annual').catch(() => null),
+      finnhub.getFinancialsReported(symbolUpper, 'quarterly').catch(() => null)
+    ]);
+
+    // SEC EDGAR accepts ticker symbols directly - no need for CIK lookup
+    const secEdgar10KUrl = `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${symbolUpper}&type=10-K&dateb=&owner=include&count=40`;
+    const secEdgar10QUrl = `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${symbolUpper}&type=10-Q&dateb=&owner=include&count=40`;
+    const secEdgarCompanyUrl = `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${symbolUpper}&owner=include&count=40`;
+
+    const filings = [];
+
+    // Process annual filings (10-K)
+    if (annualData?.data) {
+      annualData.data.forEach(filing => {
+        filings.push({
+          formType: '10-K',
+          fiscalYear: filing.year,
+          fiscalPeriod: 'FY',
+          filedDate: filing.filedDate,
+          acceptedDate: filing.acceptedDate,
+          // Key financial highlights
+          highlights: {
+            revenue: FundamentalDataService.extractReportedValue(filing.report?.ic, 'revenue'),
+            netIncome: FundamentalDataService.extractReportedValue(filing.report?.ic, 'netincome'),
+            totalAssets: FundamentalDataService.extractReportedValue(filing.report?.bs, 'assets'),
+            totalEquity: FundamentalDataService.extractReportedValue(filing.report?.bs, 'equity'),
+            operatingCashFlow: FundamentalDataService.extractReportedValue(filing.report?.cf, 'operatingcashflow')
+          },
+          // SEC EDGAR link - use ticker symbol directly
+          secEdgarUrl: secEdgar10KUrl
+        });
+      });
+    }
+
+    // Process quarterly filings (10-Q)
+    if (quarterlyData?.data) {
+      quarterlyData.data.forEach(filing => {
+        filings.push({
+          formType: '10-Q',
+          fiscalYear: filing.year,
+          fiscalPeriod: filing.quarter || 'Q',
+          filedDate: filing.filedDate,
+          acceptedDate: filing.acceptedDate,
+          highlights: {
+            revenue: FundamentalDataService.extractReportedValue(filing.report?.ic, 'revenue'),
+            netIncome: FundamentalDataService.extractReportedValue(filing.report?.ic, 'netincome'),
+            totalAssets: FundamentalDataService.extractReportedValue(filing.report?.bs, 'assets'),
+            totalEquity: FundamentalDataService.extractReportedValue(filing.report?.bs, 'equity'),
+            operatingCashFlow: FundamentalDataService.extractReportedValue(filing.report?.cf, 'operatingcashflow')
+          },
+          secEdgarUrl: secEdgar10QUrl
+        });
+      });
+    }
+
+    // Sort by filing date (most recent first)
+    filings.sort((a, b) => {
+      const dateA = new Date(a.filedDate || 0);
+      const dateB = new Date(b.filedDate || 0);
+      return dateB - dateA;
+    });
+
+    res.json({
+      symbol: symbolUpper,
+      secEdgarCompanyUrl,
+      secEdgar10KUrl,
+      secEdgar10QUrl,
+      filings: filings.slice(0, limit)
+    });
+  } catch (error) {
+    console.error('[INVESTMENTS] Filings error:', error);
+    res.status(500).json({ error: error.message || 'Failed to get filings' });
+  }
+};
+
+/**
  * Get key metrics for a stock
  * GET /api/investments/metrics/:symbol
  */
@@ -194,10 +419,12 @@ const getProfile = async (req, res) => {
 /**
  * Get all holdings for user
  * GET /api/investments/holdings
+ * Automatically refreshes prices to show current values
  */
 const getHoldings = async (req, res) => {
   try {
-    const holdings = await HoldingsService.getHoldings(req.user.id);
+    // Automatically refresh prices to show current values
+    const holdings = await HoldingsService.refreshPrices(req.user.id);
 
     res.json(holdings);
   } catch (error) {
@@ -209,9 +436,13 @@ const getHoldings = async (req, res) => {
 /**
  * Get a single holding
  * GET /api/investments/holdings/:id
+ * Automatically refreshes the price to show current value
  */
 const getHolding = async (req, res) => {
   try {
+    // Refresh price first to get current value
+    await HoldingsService.refreshHoldingPrice(req.user.id, req.params.id);
+
     const holding = await HoldingsService.getHolding(req.user.id, req.params.id);
 
     if (!holding) {
@@ -430,6 +661,9 @@ const recordDividend = async (req, res) => {
  */
 const getPortfolioSummary = async (req, res) => {
   try {
+    // Refresh prices first to ensure accurate portfolio values
+    await HoldingsService.refreshPrices(req.user.id);
+
     const summary = await HoldingsService.getPortfolioSummary(req.user.id);
 
     res.json(summary);
@@ -729,6 +963,8 @@ module.exports = {
 
   // Fundamental data
   getFinancials,
+  getStatement,
+  getFilings,
   getMetrics,
   getProfile,
 

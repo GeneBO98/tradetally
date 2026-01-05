@@ -155,7 +155,10 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { useRoute } from 'vue-router'
+
+const route = useRoute()
 
 const props = defineProps({
   pillarNumber: {
@@ -168,7 +171,90 @@ const props = defineProps({
   }
 })
 
+// Get unique key for localStorage based on symbol and pillar number
+const storageKey = computed(() => {
+  const symbol = route.params.symbol?.toUpperCase() || 'unknown'
+  return `pillar_expanded_${symbol}_${props.pillarNumber}`
+})
+
+// Initialize expanded state from localStorage
 const expanded = ref(false)
+
+// Function to load expanded state from localStorage
+function loadExpandedState() {
+  const symbol = route.params.symbol?.toUpperCase()
+  if (symbol && symbol !== 'UNKNOWN') {
+    const key = `pillar_expanded_${symbol}_${props.pillarNumber}`
+    const stored = localStorage.getItem(key)
+    if (stored === 'true') {
+      expanded.value = true
+      return true // Indicate state was loaded
+    }
+  }
+  return false // Indicate state was not loaded
+}
+
+// Try to load state immediately if route params are available
+if (route.params.symbol) {
+  loadExpandedState()
+}
+
+onMounted(async () => {
+  // Use nextTick to ensure route params are available after Vue has finished updating
+  await nextTick()
+  
+  // Try loading state - if route params weren't available, try again
+  let loaded = loadExpandedState()
+  
+  // If still not loaded, try multiple times with increasing delays
+  // This handles cases where route params become available slightly after mount
+  if (!loaded) {
+    const attempts = [50, 100, 200]
+    for (const delay of attempts) {
+      await new Promise(resolve => setTimeout(resolve, delay))
+      loaded = loadExpandedState()
+      if (loaded) break
+    }
+  }
+})
+
+// Watch for when the pillar prop becomes available (component might mount before analysis loads)
+watch(() => props.pillar, () => {
+  // When pillar data becomes available, ensure state is loaded
+  if (props.pillar && route.params.symbol) {
+    loadExpandedState()
+  }
+}, { immediate: true })
+
+// Watch for route param changes (handles refresh/navigation)
+watch(() => route.params.symbol, (newSymbol, oldSymbol) => {
+  if (newSymbol && newSymbol !== oldSymbol) {
+    // Reset expanded state and reload from localStorage when symbol changes
+    expanded.value = false
+    loadExpandedState()
+  }
+}, { immediate: true })
+
+// Also watch the entire route object to catch when params become available
+watch(() => route.params, (newParams) => {
+  if (newParams.symbol && !expanded.value) {
+    // Only load if not already expanded (to avoid overriding user's current state)
+    loadExpandedState()
+  }
+}, { deep: true, immediate: true })
+
+// Watch for changes and persist to localStorage
+watch(expanded, (newValue) => {
+  const symbol = route.params.symbol?.toUpperCase()
+  if (symbol && symbol !== 'UNKNOWN') {
+    const key = `pillar_expanded_${symbol}_${props.pillarNumber}`
+    if (newValue) {
+      localStorage.setItem(key, 'true')
+    } else {
+      localStorage.removeItem(key)
+    }
+  }
+})
 
 const hasDetails = computed(() => {
   return props.pillar.data && Object.keys(props.pillar.data).length > 0
@@ -185,15 +271,16 @@ const displayValue = computed(() => {
     return props.pillar.displayValue
   }
 
-  if (props.pillar.value === null || props.pillar.value === undefined) {
-    return 'N/A'
+  // Always return a number - use 0 as fallback if value is null/undefined
+  const value = props.pillar.value !== null && props.pillar.value !== undefined 
+    ? props.pillar.value 
+    : 0
+
+  if (typeof value === 'number') {
+    return value.toFixed(2)
   }
 
-  if (typeof props.pillar.value === 'number') {
-    return props.pillar.value.toFixed(2)
-  }
-
-  return props.pillar.value
+  return String(value)
 })
 
 const formatThreshold = computed(() => {

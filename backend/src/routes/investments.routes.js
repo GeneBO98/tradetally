@@ -44,6 +44,23 @@ router.post('/analyze/:symbol/refresh', investmentsController.refreshAnalysis);
 router.get('/financials/:symbol', investmentsController.getFinancials);
 
 /**
+ * @route GET /api/investments/statements/:symbol/:type
+ * @desc Get a specific financial statement (balance-sheet, income-statement, cash-flow)
+ * @query frequency - 'annual' or 'quarterly' (default: annual)
+ * @query years - Number of years of data (default: 5)
+ * @access Pro
+ */
+router.get('/statements/:symbol/:type', investmentsController.getStatement);
+
+/**
+ * @route GET /api/investments/filings/:symbol
+ * @desc Get SEC filings (10-K, 10-Q) for a stock with links to SEC EDGAR
+ * @query limit - Maximum number of filings to return (default: 20)
+ * @access Pro
+ */
+router.get('/filings/:symbol', investmentsController.getFilings);
+
+/**
  * @route GET /api/investments/metrics/:symbol
  * @desc Get key metrics for a stock
  * @access Pro

@@ -11,18 +11,25 @@ class FundamentalDataService {
   /**
    * Get financial statements for a symbol, using cache when available
    * @param {string} symbol - Stock symbol
-   * @param {number} years - Number of years of data to retrieve (default 5)
+   * @param {number} years - Number of years/quarters of data to retrieve (default 20)
    * @param {boolean} forceRefresh - Force refresh from API
+   * @param {string} frequency - 'annual' or 'quarterly' (default: 'annual')
+   * @param {number} profileSharesOutstanding - Optional: shares outstanding from profile to use as fallback
    * @returns {Promise<Array>} Array of financial periods
    */
-  static async getFinancials(symbol, years = 5, forceRefresh = false) {
+  static async getFinancials(symbol, years = 20, forceRefresh = false, frequency = 'annual', profileSharesOutstanding = null) {
     const symbolUpper = symbol.toUpperCase();
+    const freq = frequency === 'quarterly' ? 'quarterly' : 'annual';
+
+    if (forceRefresh) {
+      console.log(`[FUNDAMENTAL] FORCE REFRESH requested for ${symbolUpper} - bypassing cache`);
+    }
 
     // Check cache first (unless force refresh)
     if (!forceRefresh) {
-      const cached = await this.getCachedFinancials(symbolUpper, years);
+      const cached = await this.getCachedFinancials(symbolUpper, years, freq);
       if (cached && cached.length > 0) {
-        console.log(`[FUNDAMENTAL] Using cached financials for ${symbolUpper} (${cached.length} periods)`);
+        console.log(`[FUNDAMENTAL] Using cached ${freq} financials for ${symbolUpper} (${cached.length} periods)`);
         return cached;
       }
     }
@@ -32,11 +39,11 @@ class FundamentalDataService {
 
     // First try the standardized financials endpoint
     try {
-      console.log(`[FUNDAMENTAL] Trying /stock/financials for ${symbolUpper}`);
-      financialData = await finnhub.getFinancialStatements(symbolUpper, 'annual');
+      console.log(`[FUNDAMENTAL] Trying /stock/financials for ${symbolUpper} (${freq})`);
+      financialData = await finnhub.getFinancialStatements(symbolUpper, freq);
       if (financialData && financialData.financials && financialData.financials.length > 0) {
         console.log(`[FUNDAMENTAL] Got ${financialData.financials.length} periods from /stock/financials`);
-        await this.cacheFinancials(symbolUpper, financialData.financials);
+        await this.cacheFinancials(symbolUpper, financialData.financials, freq);
         return financialData.financials.slice(0, years);
       }
     } catch (error) {
@@ -45,20 +52,24 @@ class FundamentalDataService {
 
     // Fall back to financials-reported endpoint
     try {
-      console.log(`[FUNDAMENTAL] Trying /stock/financials-reported for ${symbolUpper}`);
-      const reportedData = await finnhub.getFinancialsReported(symbolUpper, 'annual');
+      console.log(`[FUNDAMENTAL] Trying /stock/financials-reported for ${symbolUpper} (${freq})`);
+      const reportedData = await finnhub.getFinancialsReported(symbolUpper, freq);
       if (reportedData && reportedData.data && reportedData.data.length > 0) {
         console.log(`[FUNDAMENTAL] Got ${reportedData.data.length} periods from /stock/financials-reported`);
+        // Log the years we received
+        const receivedYears = reportedData.data.map(d => `${d.year} (${d.form})`).slice(0, 10);
+        console.log(`[FUNDAMENTAL] Years received: ${receivedYears.join(', ')}`);
         // Convert reported format to standardized format
-        const converted = this.convertReportedToStandard(reportedData.data);
-        await this.cacheFinancials(symbolUpper, converted);
+        const converted = this.convertReportedToStandard(reportedData.data, profileSharesOutstanding);
+        console.log(`[FUNDAMENTAL] Converted ${converted.length} periods, years: ${converted.map(c => c.year).slice(0, 10).join(', ')}`);
+        await this.cacheFinancials(symbolUpper, converted, freq);
         return converted.slice(0, years);
       }
     } catch (error) {
       console.log(`[FUNDAMENTAL] /stock/financials-reported not available: ${error.message}`);
     }
 
-    console.warn(`[FUNDAMENTAL] No financial data available for ${symbolUpper} from any endpoint`);
+    console.warn(`[FUNDAMENTAL] No ${freq} financial data available for ${symbolUpper} from any endpoint`);
     return [];
   }
 
@@ -66,9 +77,10 @@ class FundamentalDataService {
    * Convert financials-reported format to standardized format
    * The reported format has nested arrays like: report.bs = [{concept: "...", value: ...}, ...]
    * @param {Array} reportedData - Data from /stock/financials-reported
+   * @param {number} profileSharesOutstanding - Optional: shares outstanding from profile to use as fallback
    * @returns {Array} Standardized financial data
    */
-  static convertReportedToStandard(reportedData) {
+  static convertReportedToStandard(reportedData, profileSharesOutstanding = null) {
     // Log first period structure for extensive debugging
     if (reportedData.length > 0) {
       const sample = reportedData[0];
@@ -102,6 +114,11 @@ class FundamentalDataService {
       console.log(`[FUNDAMENTAL] ====== DEBUG END ======`);
     }
 
+    // Debug: Log profile shares if available
+    if (profileSharesOutstanding) {
+      console.log(`[FUNDAMENTAL] Profile shares outstanding available as fallback: ${profileSharesOutstanding.toLocaleString()}`);
+    }
+    
     return reportedData.map(period => {
       const report = period.report || {};
       const bs = report.bs || []; // Balance sheet - array of {concept, label, value, unit}
@@ -132,18 +149,72 @@ class FundamentalDataService {
       const totalEquity = findValue(bs, 'stockholdersequity', 'equity', 'totalequity', 'shareownersequity');
       // IMPORTANT: Match LongTermDebtNoncurrent specifically (not LongTermDebtCurrent which is the current portion)
       // Financial companies may use different debt field names
-      const longTermDebt = findValue(bs, 'longtermdebtnoncurrent', 'noncurrentportionoflongtermdebt', 'longtermdebt', 'secureddebt', 'unsecureddebt', 'notespayable', 'debtinstrument', 'securitiessolduderrepurchaseagreement');
+      // Boeing uses LongTermDebtAndCapitalLeaseObligations
+      const longTermDebt = findValue(bs, 'longtermdebtnoncurrent', 'longtermdebtandcapitalleaseobligations', 'noncurrentportionoflongtermdebt', 'longtermdebt', 'secureddebt', 'unsecureddebt', 'notespayable', 'debtinstrument');
       const cashAndEquivalents = findValue(bs, 'cashandcashequivalents', 'cashcashequivalents', 'cash');
 
       // Cash flow items - Finnhub uses "NetCashProvidedByUsedInOperatingActivities" (with UsedIn)
       const operatingCashFlow = findValue(cf, 'netcashprovidedbyusedinoperatingactivities', 'netcashprovidedbyoperatingactivities', 'cashprovidedbyoperatingactivities', 'operatingcashflow');
       const capitalExpenditures = findValue(cf, 'paymentstoacquirepropertyplantandequipment', 'capitalexpenditures', 'purchaseofppe', 'paymentsforpurchaseofpropertyplant');
 
-      // Shares outstanding - try multiple sources
-      let sharesOutstanding = findValue(bs, 'commonstocksharesoutstanding', 'sharesoutstanding');
+      // Shares outstanding - try multiple sources with expanded SEC concept names
+      let sharesOutstanding = findValue(bs,
+        'commonstocksharesoutstanding',
+        'entitycommonstocksharesoutstanding',
+        'sharesoutstanding',
+        'commonstocksharesissued',
+        'commonstocksharesauthorized'
+      );
       if (!sharesOutstanding) {
-        // Try weighted average from income statement
-        sharesOutstanding = findValue(ic, 'weightedaveragesharesoutstandingbasic', 'basicshares', 'weightedaveragenumberofsharesoutstandingbasic');
+        // Try weighted average from income statement (close proxy for shares outstanding)
+        sharesOutstanding = findValue(ic,
+          'weightedaveragesharesoutstandingbasic',
+          'weightedaveragenumberofsharesoutstandingbasic',
+          'weightedaveragenumberofshares',
+          'basicshares',
+          'averagesharesoutstandingbasic'
+        );
+      }
+      // If still not found, calculate from Net Income Available to Common / EPS
+      // This works even when both are negative (negatives cancel out)
+      if (!sharesOutstanding) {
+        const netIncomeToCommon = findValue(ic, 'netincomelossavailabletocommonstockholdersbasic', 'netincomelossavailabletocommonstockholdersdiluted', 'netincomelossavailabletocommon');
+        const eps = findValue(ic, 'earningspersharebasic', 'basicearningspershare', 'epsbasic', 'eps');
+        if (netIncomeToCommon && eps && eps !== 0) {
+          sharesOutstanding = Math.abs(netIncomeToCommon / eps);
+          console.log(`[FUNDAMENTAL] Year ${period.year}: Calculated shares from Net Income to Common / EPS: ${sharesOutstanding.toLocaleString()} (Net Income: ${netIncomeToCommon.toLocaleString()}, EPS: ${eps})`);
+        } else if (!netIncomeToCommon) {
+          console.log(`[FUNDAMENTAL] Year ${period.year}: Net Income to Common not found for shares calculation`);
+        } else if (!eps || eps === 0) {
+          console.log(`[FUNDAMENTAL] Year ${period.year}: EPS not found or zero for shares calculation`);
+        }
+      }
+      // Fallback: try calculating from regular net income / EPS
+      // This works even when both are negative (negatives cancel out)
+      if (!sharesOutstanding && netIncome && netIncome !== 0) {
+        const eps = findValue(ic, 'earningspersharebasic', 'basicearningspershare', 'epsbasic', 'eps');
+        if (eps && eps !== 0) {
+          sharesOutstanding = Math.abs(netIncome / eps);
+          // Validate the calculated shares are reasonable (1M - 50B range)
+          // Relaxed range to handle small caps and large companies
+          if (sharesOutstanding >= 1000000 && sharesOutstanding <= 50000000000) {
+            console.log(`[FUNDAMENTAL] Year ${period.year}: Calculated shares from Net Income / EPS: ${sharesOutstanding.toLocaleString()} (Net Income: ${netIncome.toLocaleString()}, EPS: ${eps})`);
+          } else {
+            console.log(`[FUNDAMENTAL] Year ${period.year}: Calculated shares (${sharesOutstanding.toLocaleString()}) out of reasonable range (1M-50B), using profile value as fallback`);
+            sharesOutstanding = null; // Will use profile value below
+          }
+        }
+      }
+      
+      // Final fallback: use profile shares outstanding if available and calculated value is invalid
+      // Shares outstanding doesn't change dramatically year-to-year, so this is a reasonable proxy
+      if (!sharesOutstanding) {
+        if (profileSharesOutstanding && profileSharesOutstanding >= 1000000) {
+          sharesOutstanding = profileSharesOutstanding;
+          console.log(`[FUNDAMENTAL] Year ${period.year}: Using profile shares outstanding as fallback: ${sharesOutstanding.toLocaleString()}`);
+        } else {
+          console.log(`[FUNDAMENTAL] Year ${period.year}: No profile shares available (profileSharesOutstanding: ${profileSharesOutstanding})`);
+        }
       }
 
       // Calculate free cash flow: OCF - |CapEx|
@@ -165,8 +236,34 @@ class FundamentalDataService {
       const shortTermDebt = findValue(bs, 'shorttermdebt', 'debtcurrent', 'currentportionoflongtermdebt', 'shorttermborrowings');
       const totalDebt = (longTermDebt || 0) + (shortTermDebt || 0);
 
+      // Determine quarter from filing date for quarterly reports
+      // 10-Q filings are made AFTER the quarter ends:
+      // - Q1 (Jan-Mar) → Filed in April/May (months 4-5)
+      // - Q2 (Apr-Jun) → Filed in July/August (months 7-8)
+      // - Q3 (Jul-Sep) → Filed in October/November (months 10-11)
+      let fiscalQuarter = null;
+      if (period.form === '10-Q' && period.filedDate) {
+        const filedMonth = new Date(period.filedDate).getMonth() + 1;
+        // Map filing month to the quarter being reported
+        if (filedMonth >= 4 && filedMonth <= 6) {
+          fiscalQuarter = 1; // Q1 results filed in Apr-Jun
+        } else if (filedMonth >= 7 && filedMonth <= 9) {
+          fiscalQuarter = 2; // Q2 results filed in Jul-Sep
+        } else if (filedMonth >= 10 && filedMonth <= 12) {
+          fiscalQuarter = 3; // Q3 results filed in Oct-Dec
+        } else if (filedMonth >= 1 && filedMonth <= 3) {
+          fiscalQuarter = 4; // Q4 results (but this would be 10-K, not 10-Q)
+        }
+      }
+
+      // Extract EPS directly from income statement (preferred over calculating)
+      const eps = findValue(ic, 'earningspersharebasic', 'basicearningspershare', 'earningspershare', 'epsbasic', 'eps');
+      
       const result = {
         year: period.year,
+        fiscalYear: period.year,
+        quarter: fiscalQuarter,
+        fiscalQuarter: fiscalQuarter,
         period: period.form === '10-K' ? 'annual' : 'quarterly',
         filingDate: period.filedDate,
         // Income Statement
@@ -176,6 +273,7 @@ class FundamentalDataService {
         grossProfit: findValue(ic, 'grossprofit'),
         ebit: operatingIncome,
         ebitda: null,
+        eps, // EPS from financial statements
         // Balance Sheet
         totalAssets,
         totalLiabilities,
@@ -189,10 +287,16 @@ class FundamentalDataService {
         operatingCashFlow,
         capitalExpenditures: capitalExpenditures ? Math.abs(capitalExpenditures) : null,
         dividendsPaid: findValue(cf, 'paymentsofdividends', 'dividendspaid', 'paymentofdividends'),
-        // Shares
-        sharesOutstanding,
-        sharesBasic: findValue(ic, 'weightedaveragesharesoutstandingbasic', 'basicshares', 'weightedaveragenumberofsharesoutstandingbasic'),
-        sharesDiluted: findValue(ic, 'weightedaveragesharesoutstandingdiluted', 'dilutedshares', 'weightedaveragenumberofdilutedshares')
+        // Shares - round to integer for BIGINT database column
+        sharesOutstanding: sharesOutstanding ? Math.round(sharesOutstanding) : null,
+        sharesBasic: (() => {
+          const val = findValue(ic, 'weightedaveragesharesoutstandingbasic', 'basicshares', 'weightedaveragenumberofsharesoutstandingbasic');
+          return val ? Math.round(val) : null;
+        })(),
+        sharesDiluted: (() => {
+          const val = findValue(ic, 'weightedaveragesharesoutstandingdiluted', 'dilutedshares', 'weightedaveragenumberofdilutedshares');
+          return val ? Math.round(val) : null;
+        })()
       };
 
       // Log extracted values for first period
@@ -217,22 +321,23 @@ class FundamentalDataService {
   /**
    * Get cached financials from database
    * @param {string} symbol - Stock symbol
-   * @param {number} years - Number of years to retrieve
+   * @param {number} years - Number of years/quarters to retrieve
+   * @param {string} frequency - 'annual' or 'quarterly'
    * @returns {Promise<Array>} Cached financial data
    */
-  static async getCachedFinancials(symbol, years = 5) {
+  static async getCachedFinancials(symbol, years = 20, frequency = 'annual') {
     const query = `
       SELECT *
       FROM stock_financials_cache
       WHERE symbol = $1
-        AND fiscal_period = 'annual'
+        AND fiscal_period = $2
         AND fetched_at > NOW() - INTERVAL '24 hours'
-      ORDER BY fiscal_year DESC
-      LIMIT $2
+      ORDER BY fiscal_year DESC, COALESCE(fiscal_quarter, 0) DESC
+      LIMIT $3
     `;
 
     try {
-      const result = await db.query(query, [symbol.toUpperCase(), years]);
+      const result = await db.query(query, [symbol.toUpperCase(), frequency, years]);
       return result.rows.map(row => this.rowToFinancialData(row));
     } catch (error) {
       console.error(`[FUNDAMENTAL] Error fetching cached financials: ${error.message}`);
@@ -244,23 +349,25 @@ class FundamentalDataService {
    * Cache financial data in the database
    * @param {string} symbol - Stock symbol
    * @param {Array} financials - Array of financial periods from Finnhub
+   * @param {string} frequency - 'annual' or 'quarterly'
    */
-  static async cacheFinancials(symbol, financials) {
+  static async cacheFinancials(symbol, financials, frequency = 'annual') {
     const symbolUpper = symbol.toUpperCase();
 
     for (const period of financials) {
       try {
+        // Use ON CONFLICT with the new unique index that includes fiscal_quarter
         const query = `
           INSERT INTO stock_financials_cache (
-            symbol, fiscal_year, fiscal_period,
+            symbol, fiscal_year, fiscal_period, fiscal_quarter,
             revenue, net_income, operating_income, gross_profit, ebit, ebitda,
             total_assets, total_liabilities, total_equity, long_term_debt, short_term_debt, total_debt, cash_and_equivalents,
             free_cash_flow, operating_cash_flow, capital_expenditures, dividends_paid,
             shares_outstanding, shares_basic, shares_diluted,
             filing_date, currency, raw_data, fetched_at
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, NOW())
-          ON CONFLICT (symbol, fiscal_year, fiscal_period)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, NOW())
+          ON CONFLICT (symbol, fiscal_year, fiscal_period, COALESCE(fiscal_quarter, 0))
           DO UPDATE SET
             revenue = EXCLUDED.revenue,
             net_income = EXCLUDED.net_income,
@@ -290,11 +397,14 @@ class FundamentalDataService {
         // Extract values from Finnhub response
         // Finnhub uses various field names depending on the data source
         const fiscalYear = period.year || new Date(period.period).getFullYear();
+        // Get fiscal quarter for quarterly data (null for annual)
+        const fiscalQuarter = frequency === 'quarterly' ? (period.quarter || period.fiscalQuarter || null) : null;
 
         await db.query(query, [
           symbolUpper,
           fiscalYear,
-          'annual',
+          frequency,
+          fiscalQuarter,
           this.extractValue(period, ['revenue', 'totalRevenue', 'netSales']),
           this.extractValue(period, ['netIncome', 'netIncomeCommon']),
           this.extractValue(period, ['operatingIncome', 'operatingProfit']),
@@ -312,9 +422,19 @@ class FundamentalDataService {
           this.extractValue(period, ['operatingCashFlow', 'cashFromOperations']),
           this.extractValue(period, ['capitalExpenditures', 'capex']),
           this.extractValue(period, ['dividendsPaid', 'cashDividendsPaid']),
-          this.extractValue(period, ['sharesOutstanding', 'commonSharesOutstanding']),
-          this.extractValue(period, ['sharesBasic', 'basicShares']),
-          this.extractValue(period, ['sharesDiluted', 'dilutedShares']),
+          // Round shares to integers for BIGINT database column
+          (() => {
+            const val = this.extractValue(period, ['sharesOutstanding', 'commonSharesOutstanding']);
+            return val ? Math.round(val) : null;
+          })(),
+          (() => {
+            const val = this.extractValue(period, ['sharesBasic', 'basicShares']);
+            return val ? Math.round(val) : null;
+          })(),
+          (() => {
+            const val = this.extractValue(period, ['sharesDiluted', 'dilutedShares']);
+            return val ? Math.round(val) : null;
+          })(),
           period.filingDate || period.period || null,
           period.currency || 'USD',
           JSON.stringify(period)
@@ -360,10 +480,12 @@ class FundamentalDataService {
   /**
    * Calculate 5-year aggregated metrics for 8 Pillars
    * @param {string} symbol - Stock symbol
+   * @param {boolean} forceRefresh - Force refresh from API (bypass cache)
+   * @param {number} profileSharesOutstanding - Optional: shares outstanding from profile to use as fallback
    * @returns {Promise<Object>} Aggregated metrics
    */
-  static async getFiveYearAggregates(symbol) {
-    const financials = await this.getFinancials(symbol, 5);
+  static async getFiveYearAggregates(symbol, forceRefresh = false, profileSharesOutstanding = null) {
+    const financials = await this.getFinancials(symbol, 5, forceRefresh, 'annual', profileSharesOutstanding);
 
     if (financials.length < 2) {
       console.warn(`[FUNDAMENTAL] Insufficient data for 5-year aggregates (${financials.length} periods)`);
@@ -415,8 +537,8 @@ class FundamentalDataService {
       totalDebt: p.totalDebt,
       cashAndEquivalents: p.cashAndEquivalents,
       sharesOutstanding: p.sharesOutstanding,
-      // EPS = Net Income / Shares Outstanding
-      eps: p.netIncome && p.sharesOutstanding ? p.netIncome / p.sharesOutstanding : null
+      // Use EPS from financial statements if available, otherwise calculate
+      eps: p.eps || (p.netIncome && p.sharesOutstanding ? p.netIncome / p.sharesOutstanding : null)
     }));
 
     return {
@@ -527,7 +649,10 @@ class FundamentalDataService {
    */
   static rowToFinancialData(row) {
     return {
+      year: row.fiscal_year,
       fiscalYear: row.fiscal_year,
+      quarter: row.fiscal_quarter || null,
+      fiscalQuarter: row.fiscal_quarter || null,
       fiscalPeriod: row.fiscal_period,
       revenue: parseFloat(row.revenue) || null,
       netIncome: parseFloat(row.net_income) || null,
@@ -609,6 +734,24 @@ class FundamentalDataService {
   static async isCryptoSymbol(symbol) {
     // Only use the known crypto symbols list to avoid misidentifying stocks as crypto
     return finnhub.isCryptoSymbol(symbol);
+  }
+
+  /**
+   * Extract a value from SEC reported data array
+   * Used for SEC filings display
+   * @param {Array} data - Array of {concept, label, value, unit}
+   * @param {string} conceptName - Partial concept name to search for
+   * @returns {number|null} The value or null
+   */
+  static extractReportedValue(data, conceptName) {
+    if (!Array.isArray(data)) return null;
+
+    const nameLower = conceptName.toLowerCase();
+    const item = data.find(d =>
+      d.concept && d.concept.toLowerCase().includes(nameLower)
+    );
+
+    return item?.value ?? null;
   }
 }
 
