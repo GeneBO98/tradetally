@@ -1,107 +1,193 @@
 /**
  * Stock Scanner Service
- * Scans US stocks against the 8 Pillars methodology
- * Results are cached in database and refreshed nightly at 3 AM
+ * Scans stocks against the 8 Pillars methodology
+ * Can scan Russell 2000 only or comprehensive US stock universe
+ * Results are cached in database and refreshed quarterly at 3 AM
  */
 
 const db = require('../config/database');
 const EightPillarsService = require('./eightPillarsService');
 const FundamentalDataService = require('./fundamentalDataService');
+const path = require('path');
+const fs = require('fs');
 
 class StockScannerService {
   // Rate limiting configuration
   static BATCH_SIZE = 10;           // Process 10 stocks per batch
   static BATCH_DELAY_MS = 2000;     // 2 seconds between batches (conservative for Finnhub limits)
   static MAX_RETRIES = 2;           // Retry failed stocks twice
-  static USER_ACTIVITY_PAUSE_MS = 10000;  // Pause for 10 seconds after user activity
-  static USER_IDLE_THRESHOLD_MS = 30000;  // Consider user idle after 30 seconds
 
   // Currently running scan (for status checking)
   static currentScan = null;
 
-  // Track last user API activity for prioritization
-  static lastUserActivity = 0;
-
   /**
-   * Record user activity - call this from user-facing API endpoints
-   * This allows the scanner to pause and yield to user requests
-   */
-  static recordUserActivity() {
-    this.lastUserActivity = Date.now();
-  }
-
-  /**
-   * Check if we should pause for user activity
-   * @returns {boolean} True if scanner should pause
-   */
-  static shouldPauseForUser() {
-    const timeSinceActivity = Date.now() - this.lastUserActivity;
-    return timeSinceActivity < this.USER_IDLE_THRESHOLD_MS;
-  }
-
-  /**
-   * Wait for user activity to subside before continuing scan
-   * @returns {Promise<void>}
-   */
-  static async waitForUserIdle() {
-    while (this.shouldPauseForUser()) {
-      console.log('[SCANNER] Pausing for user activity...');
-      await this.delay(this.USER_ACTIVITY_PAUSE_MS);
-    }
-  }
-
-  /**
-   * Get US stocks from Finnhub (free tier)
-   * Filters to common stocks only, excludes ETFs, ADRs, etc.
-   * @param {number} limit - Maximum number of stocks to scan (0 = no limit)
+   * Get index constituents from Finnhub
+   * @param {string} symbol - Index symbol (e.g., ^GSPC for S&P 500)
    * @returns {Promise<Array<string>>} Array of stock symbols
    */
-  static async getUSStocks(limit = 0) {
+  static async getIndexConstituents(symbol) {
     const apiKey = process.env.FINNHUB_API_KEY;
     if (!apiKey) {
       throw new Error('FINNHUB_API_KEY not configured');
     }
 
+    const url = `https://finnhub.io/api/v1/index/constituents?symbol=${encodeURIComponent(symbol)}&token=${apiKey}`;
+    console.log(`[SCANNER] Fetching index constituents for ${symbol}...`);
+
     try {
-      // Get all US stock symbols (free endpoint)
-      const response = await fetch(
-        `https://finnhub.io/api/v1/stock/symbol?exchange=US&token=${apiKey}`
-      );
+      const response = await fetch(url);
 
       if (!response.ok) {
-        throw new Error(`Finnhub API error: ${response.status}`);
+        const errorText = await response.text();
+        console.error(`[SCANNER] Failed to fetch ${symbol}: HTTP ${response.status}`);
+        console.error(`[SCANNER] Response: ${errorText}`);
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
 
       const data = await response.json();
 
-      if (!Array.isArray(data)) {
-        throw new Error('Invalid response from Finnhub stock symbols API');
+      if (!data.constituents || !Array.isArray(data.constituents)) {
+        console.error(`[SCANNER] Invalid response for ${symbol}:`, JSON.stringify(data));
+        throw new Error(`No constituents array in response for ${symbol}`);
       }
 
-      // Filter to common stocks only (type = "Common Stock")
-      // Exclude ETFs, ADRs, warrants, etc.
-      const commonStocks = data
-        .filter(stock =>
-          stock.type === 'Common Stock' &&
-          stock.symbol &&
-          !stock.symbol.includes('.') &&  // Exclude class shares like BRK.A
-          !stock.symbol.includes('-') &&  // Exclude preferred shares
-          stock.symbol.length <= 5        // Standard ticker length
-        )
-        .map(stock => stock.symbol);
-
-      // Shuffle stocks to vary scan order (helps with rate limiting recovery)
-      const shuffled = commonStocks.sort(() => Math.random() - 0.5);
-
-      // Apply limit if specified, otherwise return all
-      const selected = limit > 0 ? shuffled.slice(0, limit) : shuffled;
-
-      console.log(`[SCANNER] Selected ${selected.length} US stocks from ${commonStocks.length} available (limit: ${limit || 'none'})`);
-      return selected;
+      console.log(`[SCANNER] ✓ Successfully fetched ${data.constituents.length} stocks from ${symbol}`);
+      return data.constituents;
     } catch (error) {
-      console.error('[SCANNER] Failed to get US stocks:', error.message);
-      throw error;
+      console.error(`[SCANNER] ✗ Error fetching ${symbol}:`, error.message);
+      console.error(`[SCANNER] Error stack:`, error.stack);
+      throw error; // Re-throw instead of returning empty array
     }
+  }
+
+  /**
+   * Fetch Russell 2000 constituents from iShares IWM ETF holdings CSV
+   * This is the primary data source for quarterly scans
+   * @returns {Promise<Array<string>>} Array of stock symbols
+   */
+  static async fetchRussell2000FromIShares() {
+    const url = 'https://www.ishares.com/us/products/239710/ishares-russell-2000-etf/1467271812596.ajax?fileType=csv&fileName=IWM_holdings&dataType=fund';
+
+    console.log('[SCANNER] Fetching Russell 2000 from iShares IWM ETF...');
+
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`iShares fetch failed: HTTP ${response.status}`);
+    }
+
+    const csvText = await response.text();
+
+    // Parse CSV - iShares format has metadata rows, then headers, then data
+    // Ticker is in first column after the header rows
+    const lines = csvText.split('\n');
+    const symbols = [];
+
+    for (const line of lines) {
+      const cols = line.split(',');
+      // Ticker is first column, skip non-stock rows
+      // Valid tickers are 1-5 uppercase letters (some have dots like BRK.B)
+      const ticker = cols[0]?.trim().replace(/"/g, '');
+      if (ticker && /^[A-Z]{1,5}(\.[A-Z])?$/.test(ticker)) {
+        symbols.push(ticker);
+      }
+    }
+
+    console.log(`[SCANNER] Parsed ${symbols.length} symbols from iShares CSV`);
+
+    // Cache to local file for fallback
+    const cacheData = { lastUpdated: new Date().toISOString(), symbols };
+    const cachePath = path.join(__dirname, '../data/russell2000.json');
+    fs.mkdirSync(path.dirname(cachePath), { recursive: true });
+    fs.writeFileSync(cachePath, JSON.stringify(cacheData, null, 2));
+    console.log(`[SCANNER] Cached ${symbols.length} symbols to ${cachePath}`);
+
+    return symbols;
+  }
+
+  /**
+   * Get Russell 2000 stock list
+   * Uses iShares IWM ETF holdings as primary source, with cache and Finnhub API fallbacks
+   * @returns {Promise<Array<string>>} Array of stock symbols
+   */
+  static async getRussell2000Stocks() {
+    console.log('[SCANNER] ========================================');
+    console.log('[SCANNER] Getting Russell 2000 stock list...');
+
+    // Try to fetch fresh data from iShares
+    try {
+      const symbols = await this.fetchRussell2000FromIShares();
+      if (symbols.length >= 1000) {  // IWM holds ~1300-1900 stocks
+        console.log(`[SCANNER] Successfully fetched ${symbols.length} stocks from iShares`);
+        console.log('[SCANNER] ========================================');
+        return symbols.sort(() => Math.random() - 0.5);  // Shuffle
+      }
+      console.warn(`[SCANNER] iShares returned only ${symbols.length} stocks, trying cache...`);
+    } catch (err) {
+      console.warn(`[SCANNER] iShares fetch failed: ${err.message}`);
+    }
+
+    // Try local cache
+    try {
+      const cachePath = path.join(__dirname, '../data/russell2000.json');
+      const cacheData = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
+      if (cacheData.symbols?.length >= 1000) {
+        const daysSinceUpdate = (Date.now() - new Date(cacheData.lastUpdated)) / (1000 * 60 * 60 * 24);
+        console.log(`[SCANNER] Loaded ${cacheData.symbols.length} stocks from cache (${Math.round(daysSinceUpdate)} days old)`);
+        console.log('[SCANNER] ========================================');
+        return cacheData.symbols.sort(() => Math.random() - 0.5);
+      }
+    } catch (cacheErr) {
+      console.warn('[SCANNER] Cache not available or invalid');
+    }
+
+    // Fallback to Finnhub API
+    console.log('[SCANNER] Falling back to Finnhub API...');
+    try {
+      const finnhubStocks = await this.getIndexConstituents('^RUT');
+      if (finnhubStocks.length > 0) {
+        console.log(`[SCANNER] Got ${finnhubStocks.length} stocks from Finnhub API`);
+        console.log('[SCANNER] ========================================');
+        return finnhubStocks.sort(() => Math.random() - 0.5);
+      }
+    } catch (finnhubErr) {
+      console.error('[SCANNER] Finnhub API also failed:', finnhubErr.message);
+    }
+
+    throw new Error('Failed to fetch Russell 2000 stocks from any source');
+  }
+
+  /**
+   * Get comprehensive US stock list by combining multiple indices
+   * Combines S&P 500, S&P 400 (mid-cap), S&P 600 (small-cap), and Russell 2000
+   * @returns {Promise<Array<string>>} Array of unique stock symbols
+   */
+  static async getUSStockUniverse() {
+    const apiKey = process.env.FINNHUB_API_KEY;
+    if (!apiKey) {
+      throw new Error('FINNHUB_API_KEY not configured');
+    }
+
+    console.log('[SCANNER] Fetching US stock universe from multiple indices...');
+
+    // Fetch from multiple indices in parallel
+    const [sp500, sp400, sp600, russell2000] = await Promise.all([
+      this.getIndexConstituents('^GSPC'),   // S&P 500 (large-cap)
+      this.getIndexConstituents('^SP400'),  // S&P 400 (mid-cap)
+      this.getIndexConstituents('^SP600'),  // S&P 600 (small-cap)
+      this.getIndexConstituents('^RUT')     // Russell 2000 (small-cap)
+    ]);
+
+    // Combine and deduplicate
+    const allStocks = new Set([...sp500, ...sp400, ...sp600, ...russell2000]);
+    const uniqueStocks = Array.from(allStocks);
+
+    console.log(`[SCANNER] Combined stock universe: ${uniqueStocks.length} unique stocks`);
+    console.log(`[SCANNER]   - S&P 500: ${sp500.length}, S&P 400: ${sp400.length}, S&P 600: ${sp600.length}, Russell 2000: ${russell2000.length}`);
+
+    // Shuffle to vary scan order
+    const shuffled = uniqueStocks.sort(() => Math.random() - 0.5);
+
+    return shuffled;
   }
 
   /**
@@ -139,22 +225,61 @@ class StockScannerService {
   }
 
   /**
-   * Run the nightly scan of US stocks
+   * Run the scan of stocks
+   * Can scan Russell 2000 only, or comprehensive US stock universe
    * This is designed to be called by cron job or admin trigger
-   * @param {number} stockLimit - Maximum number of stocks to scan (0 = no limit, scans all)
+   * @param {Object} options - Scan options
+   * @param {boolean} options.useCuratedList - Use curated list instead of full universe (default: false)
+   * @param {boolean} options.russell2000Only - Scan only Russell 2000 (default: false)
    * @returns {Promise<Object>} Scan summary
    */
-  static async runNightlyScan(stockLimit = 0) {
+  static async runNightlyScan(options = {}) {
+    console.log('[SCANNER] ========================================');
+    console.log('[SCANNER] runNightlyScan called with options:', JSON.stringify(options));
+    const { useCuratedList = false, russell2000Only = false } = options;
+
+    // Check for stuck scans in database first
+    const stuckScans = await db.query(`
+      SELECT id, created_at, status
+      FROM stock_scans
+      WHERE status = 'running'
+        AND created_at < NOW() - INTERVAL '24 hours'
+    `);
+    
+    if (stuckScans.rows.length > 0) {
+      console.log(`[SCANNER] Found ${stuckScans.rows.length} stuck scan(s), marking as failed...`);
+      for (const stuckScan of stuckScans.rows) {
+        await db.query(`
+          UPDATE stock_scans
+          SET status = 'failed',
+              error_message = 'Scan was stuck (no progress for 24+ hours)',
+              completed_at = NOW()
+          WHERE id = $1
+        `, [stuckScan.id]);
+      }
+    }
+
     // Prevent multiple concurrent scans
     if (this.currentScan && this.currentScan.status === 'running') {
-      console.log('[SCANNER] Scan already in progress');
+      console.log('[SCANNER] Scan already in progress (in-memory)');
       return { error: 'Scan already in progress', scanId: this.currentScan.id };
+    }
+
+    // Also check database for running scans
+    const runningScans = await db.query(`
+      SELECT id FROM stock_scans WHERE status = 'running' LIMIT 1
+    `);
+    
+    if (runningScans.rows.length > 0 && !stuckScans.rows.find(s => s.id === runningScans.rows[0].id)) {
+      console.log('[SCANNER] Scan already in progress (in database)');
+      return { error: 'Scan already in progress', scanId: runningScans.rows[0].id };
     }
 
     const startTime = Date.now();
     let scanId = null;
 
     try {
+      console.log('[SCANNER] Creating new scan record in database...');
       // Create scan record
       const scanResult = await db.query(`
         INSERT INTO stock_scans (scan_date, status, created_at)
@@ -162,14 +287,45 @@ class StockScannerService {
         RETURNING id
       `);
       scanId = scanResult.rows[0].id;
+      console.log(`[SCANNER] Created scan record with ID: ${scanId}`);
 
-      // Get stocks to scan - try API first, fall back to curated list
+      // Get stocks to scan
       let stocks;
-      try {
-        stocks = await this.getUSStocks(stockLimit);
-      } catch (apiError) {
-        console.log('[SCANNER] API failed, using curated stock list');
+      if (useCuratedList) {
         stocks = this.getCuratedStockList();
+        console.log(`[SCANNER] Using curated list of ${stocks.length} quality stocks`);
+      } else if (russell2000Only) {
+        try {
+          stocks = await this.getRussell2000Stocks();
+          // If we got too few stocks, this is a problem - don't silently fall back
+          if (stocks.length < 100) {
+            console.error(`[SCANNER] ERROR: Only got ${stocks.length} stocks from Russell 2000 API (expected ~2000)`);
+            console.error('[SCANNER] This likely indicates an API issue. Check FINNHUB_API_KEY and API limits.');
+            // Still use what we got rather than failing completely, but log the issue
+            if (stocks.length === 0) {
+              throw new Error('Russell 2000 API returned 0 stocks. Check API key and limits.');
+            }
+          } else {
+            console.log(`[SCANNER] Successfully fetched ${stocks.length} stocks from Russell 2000`);
+          }
+        } catch (apiError) {
+          console.error('[SCANNER] ERROR: Failed to fetch Russell 2000 stocks:', apiError.message);
+          console.error('[SCANNER] Stack trace:', apiError.stack);
+          // Don't fall back to curated list - fail the scan instead
+          throw new Error(`Failed to fetch Russell 2000 stocks: ${apiError.message}`);
+        }
+      } else {
+        try {
+          stocks = await this.getUSStockUniverse();
+          // If we got too few stocks, fall back to curated list
+          if (stocks.length < 100) {
+            console.log('[SCANNER] Too few stocks from API, falling back to curated list');
+            stocks = this.getCuratedStockList();
+          }
+        } catch (apiError) {
+          console.log('[SCANNER] API failed, falling back to curated list:', apiError.message);
+          stocks = this.getCuratedStockList();
+        }
       }
 
       // Update total stocks count
@@ -186,39 +342,61 @@ class StockScannerService {
         startTime
       };
 
-      console.log(`[SCANNER] Starting scan ${scanId} for ${stocks.length} stocks`);
+      console.log(`[SCANNER] ====== Starting scan ${scanId} ======`);
+      console.log(`[SCANNER] Scan type: ${russell2000Only ? 'Russell 2000 only' : 'Full US universe'}`);
+      console.log(`[SCANNER] Total stocks to scan: ${stocks.length}`);
+      console.log(`[SCANNER] First 10 stocks: ${stocks.slice(0, 10).join(', ')}`);
+      console.log(`[SCANNER] Batch size: ${this.BATCH_SIZE}, Delay: ${this.BATCH_DELAY_MS}ms`);
+      console.log(`[SCANNER] ======================================`);
 
       // Process stocks in batches with rate limiting
       let stocksAnalyzed = 0;
       let stocksFailed = 0;
       const failedStocks = [];
 
+      console.log(`[SCANNER] Starting to process ${stocks.length} stocks in batches of ${this.BATCH_SIZE}...`);
+
       for (let i = 0; i < stocks.length; i += this.BATCH_SIZE) {
         const batch = stocks.slice(i, i + this.BATCH_SIZE);
-
-        // Pause if users are active - prioritize their API calls
-        await this.waitForUserIdle();
+        console.log(`[SCANNER] Processing batch ${Math.floor(i / this.BATCH_SIZE) + 1}: ${batch.join(', ')}`);
 
         // Process batch (sequential to respect rate limits)
         for (const symbol of batch) {
+          console.log(`[SCANNER] Analyzing stock: ${symbol}`);
           try {
             await this.analyzeAndStoreStock(scanId, symbol);
             stocksAnalyzed++;
             this.currentScan.stocksAnalyzed = stocksAnalyzed;
+            console.log(`[SCANNER] ✓ Successfully analyzed ${symbol} (${stocksAnalyzed}/${stocks.length})`);
 
-            // Log progress every 50 stocks
-            if (stocksAnalyzed % 50 === 0) {
+            // Update progress in database every 10 stocks (more frequent updates)
+            if (stocksAnalyzed % 10 === 0) {
               console.log(`[SCANNER] Progress: ${stocksAnalyzed}/${stocks.length} stocks analyzed`);
               // Update progress in database
               await db.query(`
                 UPDATE stock_scans SET stocks_analyzed = $1 WHERE id = $2
               `, [stocksAnalyzed, scanId]);
+            } else if (stocksAnalyzed % 50 === 0) {
+              // Also log every 50 for less verbose output
+              console.log(`[SCANNER] Progress: ${stocksAnalyzed}/${stocks.length} stocks analyzed`);
             }
           } catch (error) {
-            console.error(`[SCANNER] Failed to analyze ${symbol}:`, error.message);
+            console.error(`[SCANNER] ✗ Failed to analyze ${symbol}:`, error.message);
+            console.error(`[SCANNER] Error stack:`, error.stack);
             stocksFailed++;
             failedStocks.push({ symbol, error: error.message });
+            // Still update count even on failure
+            this.currentScan.stocksAnalyzed = stocksAnalyzed;
           }
+        }
+        
+        // Update database after each batch completes to ensure progress is saved
+        // This ensures progress is visible even if we're between 10-stock update intervals
+        if (stocksAnalyzed > 0) {
+          await db.query(`
+            UPDATE stock_scans SET stocks_analyzed = $1 WHERE id = $2
+          `, [stocksAnalyzed, scanId]);
+          console.log(`[SCANNER] Updated database: ${stocksAnalyzed}/${stocks.length} stocks analyzed`);
         }
 
         // Delay between batches to respect rate limits
@@ -296,6 +474,9 @@ class StockScannerService {
     try {
       // Force refresh to get latest data
       const analysis = await EightPillarsService.analyzeStock(symbol, true);
+
+      // Note: Market cap filter removed - Russell 2000 is already a curated index
+      // Small-cap stocks in Russell 2000 can legitimately be under $500M
 
       // Extract pillar pass/fail and scores
       const p = analysis.pillars;
@@ -413,14 +594,13 @@ class StockScannerService {
       sortOrder = 'DESC'
     } = options;
 
-    // Get latest scan (running or completed) to show live results
+    // Get latest COMPLETED scan only - don't show running scan results
+    // This prevents clearing results while a new scan is in progress
     const latestScan = await db.query(`
       SELECT id, scan_date, total_stocks, stocks_analyzed, status, completed_at, created_at
       FROM stock_scans
-      WHERE status IN ('completed', 'running')
-      ORDER BY
-        CASE WHEN status = 'running' THEN 0 ELSE 1 END,
-        created_at DESC
+      WHERE status = 'completed'
+      ORDER BY created_at DESC
       LIMIT 1
     `);
 
@@ -436,6 +616,13 @@ class StockScannerService {
 
     const scan = latestScan.rows[0];
     const scanId = scan.id;
+
+    // Check if there's a scan currently running (separate from displayed results)
+    const runningCheck = await db.query(`
+      SELECT id, stocks_analyzed, total_stocks FROM stock_scans WHERE status = 'running' LIMIT 1
+    `);
+    const runningScan = runningCheck.rows[0] || null;
+
     const scanInfo = {
       scanId,
       scanDate: scan.scan_date,
@@ -443,7 +630,16 @@ class StockScannerService {
       stocksAnalyzed: scan.stocks_analyzed,
       status: scan.status,
       completedAt: scan.completed_at,
-      isRunning: scan.status === 'running'
+      isRunning: false,  // Displayed scan is always completed
+      // Include running scan progress if one exists
+      runningScanProgress: runningScan ? {
+        scanId: runningScan.id,
+        stocksAnalyzed: runningScan.stocks_analyzed,
+        totalStocks: runningScan.total_stocks,
+        progress: runningScan.total_stocks > 0
+          ? Math.round((runningScan.stocks_analyzed / runningScan.total_stocks) * 100)
+          : 0
+      } : null
     };
 
     // Build WHERE clause for pillar filters
@@ -531,11 +727,117 @@ class StockScannerService {
   }
 
   /**
+   * Clean up stuck scans (scans that are running but haven't made progress)
+   * This should be called on server startup
+   */
+  static async cleanupStuckScans() {
+    try {
+      // Find scans that are stuck (running for more than 1 hour with no progress, or older than 6 hours)
+      const stuckScans = await db.query(`
+        SELECT id, created_at, total_stocks, stocks_analyzed, status
+        FROM stock_scans
+        WHERE status = 'running'
+          AND (
+            (created_at < NOW() - INTERVAL '6 hours')
+            OR (created_at < NOW() - INTERVAL '1 hour' AND stocks_analyzed = 0)
+          )
+      `);
+      
+      if (stuckScans.rows.length > 0) {
+        console.log(`[SCANNER] Found ${stuckScans.rows.length} stuck scan(s), cleaning up...`);
+        for (const stuckScan of stuckScans.rows) {
+          const scanAge = Date.now() - new Date(stuckScan.created_at).getTime();
+          const hoursOld = scanAge / (1000 * 60 * 60);
+          
+          console.warn(`[SCANNER] Marking stuck scan ${stuckScan.id} as failed (${hoursOld.toFixed(1)} hours old, ${stuckScan.stocks_analyzed}/${stuckScan.total_stocks} analyzed)`);
+          
+          await db.query(`
+            UPDATE stock_scans
+            SET status = 'failed',
+                error_message = $1,
+                completed_at = NOW()
+            WHERE id = $2
+          `, [
+            `Scan was stuck (${hoursOld.toFixed(1)} hours old, ${stuckScan.stocks_analyzed}/${stuckScan.total_stocks} stocks analyzed)`,
+            stuckScan.id
+          ]);
+        }
+        console.log(`[SCANNER] Cleaned up ${stuckScans.rows.length} stuck scan(s)`);
+      }
+      
+      return stuckScans.rows.length;
+    } catch (error) {
+      console.error('[SCANNER] Error cleaning up stuck scans:', error);
+      return 0;
+    }
+  }
+
+  /**
    * Get current scan status or latest completed scan info
    * @returns {Promise<Object>} Status info
    */
   static async getScanStatus() {
-    // Check for running scan first
+    // Check for running scan in database first (handles server restarts)
+    const runningScanResult = await db.query(`
+      SELECT id, scan_date, total_stocks, stocks_analyzed, status, created_at
+      FROM stock_scans
+      WHERE status = 'running'
+      ORDER BY created_at DESC
+      LIMIT 1
+    `);
+
+    // If we have a running scan in DB, check if it's actually running or stuck
+    if (runningScanResult.rows.length > 0) {
+      const dbScan = runningScanResult.rows[0];
+      
+      // If we also have it in memory, use the in-memory version (more up-to-date)
+      if (this.currentScan && this.currentScan.id === dbScan.id) {
+        return {
+          status: 'running',
+          scanId: this.currentScan.id,
+          totalStocks: this.currentScan.totalStocks,
+          stocksAnalyzed: this.currentScan.stocksAnalyzed,
+          progress: Math.round((this.currentScan.stocksAnalyzed / this.currentScan.totalStocks) * 100),
+          startedAt: new Date(this.currentScan.startTime).toISOString()
+        };
+      }
+      
+      // Check if scan is stuck (older than 1 hour with no progress, or older than 6 hours)
+      const scanAge = Date.now() - new Date(dbScan.created_at).getTime();
+      const hoursOld = scanAge / (1000 * 60 * 60);
+      const isStuck = hoursOld > 6 || (hoursOld > 1 && dbScan.stocks_analyzed === 0);
+      
+      if (isStuck) {
+        // Mark stuck scan as failed
+        console.warn(`[SCANNER] Detected stuck scan ${dbScan.id} (${hoursOld.toFixed(1)} hours old, ${dbScan.stocks_analyzed}/${dbScan.total_stocks} analyzed), marking as failed`);
+        await db.query(`
+          UPDATE stock_scans
+          SET status = 'failed',
+              error_message = $1,
+              completed_at = NOW()
+          WHERE id = $2
+        `, [
+          `Scan was stuck (${hoursOld.toFixed(1)} hours old, ${dbScan.stocks_analyzed}/${dbScan.total_stocks} stocks analyzed)`,
+          dbScan.id
+        ]);
+        
+        // Continue to get latest scan below
+      } else {
+        // Return the running scan from database
+        return {
+          status: 'running',
+          scanId: dbScan.id,
+          totalStocks: dbScan.total_stocks || 0,
+          stocksAnalyzed: dbScan.stocks_analyzed || 0,
+          progress: dbScan.total_stocks > 0 
+            ? Math.round((dbScan.stocks_analyzed / dbScan.total_stocks) * 100)
+            : 0,
+          startedAt: dbScan.created_at
+        };
+      }
+    }
+    
+    // Check in-memory scan (if no DB running scan or it was stuck)
     if (this.currentScan) {
       return {
         status: 'running',
@@ -552,6 +854,7 @@ class StockScannerService {
       SELECT id, scan_date, total_stocks, stocks_analyzed, status,
              scan_duration_seconds, error_message, completed_at, created_at
       FROM stock_scans
+      WHERE status IN ('completed', 'failed')
       ORDER BY created_at DESC
       LIMIT 1
     `);

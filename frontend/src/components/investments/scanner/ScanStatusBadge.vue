@@ -30,7 +30,7 @@
     <!-- No scans yet -->
     <template v-else-if="scanStatus?.status === 'no_scans'">
       <span class="text-gray-500 dark:text-gray-400">
-        No scans yet. Stock scans run automatically at 3 AM.
+        No scans yet. Stock scans run quarterly or can be triggered by admin.
       </span>
     </template>
 

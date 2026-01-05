@@ -38,4 +38,11 @@ router.get('/status', stockScannerController.getScanStatus);
  */
 router.post('/trigger', requireAdmin, stockScannerController.triggerScan);
 
+/**
+ * @route POST /api/scanner/cleanup
+ * @desc Clean up stuck scans
+ * @access Admin only
+ */
+router.post('/cleanup', requireAdmin, stockScannerController.cleanupStuckScans);
+
 module.exports = router;
