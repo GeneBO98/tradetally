@@ -76,12 +76,19 @@
               v-model="form.syncFrequency"
               class="input"
             >
+              <option value="hourly">Every hour</option>
+              <option value="every_4_hours">Every 4 hours</option>
+              <option value="every_6_hours">Every 6 hours</option>
+              <option value="every_12_hours">Every 12 hours</option>
               <option value="daily">Daily</option>
               <option value="manual">Manual only</option>
             </select>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              More frequent syncing keeps your dashboard up to date with broker data.
+            </p>
           </div>
 
-          <!-- Sync Time -->
+          <!-- Sync Time (only shown for daily frequency) -->
           <div v-if="form.autoSyncEnabled && form.syncFrequency === 'daily'">
             <label for="syncTime" class="label">Sync Time</label>
             <input
@@ -91,7 +98,7 @@
               class="input"
             />
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              Time to automatically sync each day (in your local timezone)
+              Time to sync each day (in your local timezone). Only applies to daily frequency.
             </p>
           </div>
 

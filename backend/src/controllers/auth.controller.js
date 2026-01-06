@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const EmailService = require('../services/emailService');
 const bcrypt = require('bcryptjs');
 const TierService = require('../services/tierService');
+const YearWrappedService = require('../services/yearWrappedService');
 
 // Check if email configuration is available
 function isEmailConfigured() {
@@ -205,6 +206,11 @@ const authController = {
       // Update last_login_at for analytics tracking
       await User.updateLastLogin(user.id);
 
+      // Record login for Year Wrapped streak tracking
+      YearWrappedService.recordLogin(user.id).catch(err => {
+        console.warn('[AUTH] Failed to record login for year wrapped:', err.message);
+      });
+
       const token = generateToken(user);
 
       // Set HTTP-only cookie for OAuth flow
@@ -288,6 +294,11 @@ const authController = {
 
       // Update last_login_at for analytics tracking (2FA login)
       await User.updateLastLogin(user.id);
+
+      // Record login for Year Wrapped streak tracking
+      YearWrappedService.recordLogin(user.id).catch(err => {
+        console.warn('[AUTH] Failed to record login for year wrapped:', err.message);
+      });
 
       // Generate full access token
       const token = generateToken(user);
