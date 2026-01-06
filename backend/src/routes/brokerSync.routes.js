@@ -50,6 +50,9 @@ router.post('/connections/:id/sync', brokerSyncController.triggerSync);
 // Test connection
 router.post('/connections/:id/test', brokerSyncController.testConnection);
 
+// Delete all trades from a broker connection
+router.delete('/connections/:id/trades', brokerSyncController.deleteBrokerTrades);
+
 // Get sync status
 router.get('/sync/:syncId/status', brokerSyncController.getSyncStatus);
 

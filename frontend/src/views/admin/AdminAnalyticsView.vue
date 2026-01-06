@@ -1,6 +1,6 @@
 <template>
-  <div class="min-h-screen bg-gray-50 dark:bg-gray-900 py-8">
-    <div class="content-wrapper">
+  <div class="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div class="content-wrapper py-8">
       <div class="mb-8">
         <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Platform Analytics</h1>
         <p class="mt-2 text-gray-600 dark:text-gray-400">
@@ -301,22 +301,3 @@ onMounted(() => {
 })
 </script>
 
-<style scoped>
-.content-wrapper {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 0 1rem;
-}
-
-@media (min-width: 640px) {
-  .content-wrapper {
-    padding: 0 1.5rem;
-  }
-}
-
-@media (min-width: 1024px) {
-  .content-wrapper {
-    padding: 0 2rem;
-  }
-}
-</style>

@@ -27,7 +27,7 @@
 
     <!-- Loading State -->
     <div v-if="loading" class="flex justify-center items-center py-12">
-      <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
     </div>
 
     <!-- Watchlist Items -->
@@ -74,7 +74,7 @@
               <td class="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
                 <button
                   @click="createPriceAlert(item.symbol)"
-                  class="text-blue-600 hover:text-blue-900"
+                  class="text-primary-600 hover:text-primary-900"
                 >
                   Alert
                 </button>
@@ -121,7 +121,7 @@
       <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden">
         <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
           <h2 class="text-lg font-medium text-gray-900 dark:text-white flex items-center">
-            <svg class="w-5 h-5 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="w-5 h-5 mr-2 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"></path>
             </svg>
             Recent News
@@ -133,18 +133,18 @@
               <option value="14">Last 14 days</option>
               <option value="30">Last 30 days</option>
             </select>
-            <button 
-              @click="loadWatchlistNews" 
+            <button
+              @click="loadWatchlistNews"
               :disabled="loadingNews"
-              class="text-sm text-blue-600 hover:text-blue-800 disabled:opacity-50"
+              class="text-sm text-primary-600 hover:text-primary-800 disabled:opacity-50"
             >
               {{ loadingNews ? 'Loading...' : 'Refresh' }}
             </button>
           </div>
         </div>
-        
+
         <div v-if="loadingNews" class="flex justify-center items-center py-8">
-          <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+          <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600"></div>
         </div>
         
         <div v-else-if="watchlistNews.length > 0" class="divide-y divide-gray-200 dark:divide-gray-700">
@@ -155,16 +155,16 @@
           >
             <div class="flex items-start space-x-3">
               <div class="flex-shrink-0">
-                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200">
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary-100 dark:bg-primary-900 text-primary-800 dark:text-primary-200">
                   {{ article.symbol }}
                 </span>
               </div>
               <div class="flex-1 min-w-0">
-                <a 
-                  :href="article.url" 
-                  target="_blank" 
+                <a
+                  :href="article.url"
+                  target="_blank"
                   rel="noopener noreferrer"
-                  class="block hover:text-blue-600 transition-colors"
+                  class="block hover:text-primary-600 transition-colors"
                 >
                   <h3 class="text-sm font-medium text-gray-900 dark:text-white mb-1">{{ article.headline }}</h3>
                   <p v-if="article.summary" class="text-sm text-gray-600 dark:text-gray-400 line-clamp-2 mb-2">{{ article.summary }}</p>
@@ -201,10 +201,10 @@
               <option value="30">Next 30 days</option>
               <option value="60">Next 60 days</option>
             </select>
-            <button 
-              @click="loadWatchlistEarnings" 
+            <button
+              @click="loadWatchlistEarnings"
               :disabled="loadingEarnings"
-              class="text-sm text-blue-600 hover:text-blue-800 disabled:opacity-50"
+              class="text-sm text-primary-600 hover:text-primary-800 disabled:opacity-50"
             >
               {{ loadingEarnings ? 'Loading...' : 'Refresh' }}
             </button>
@@ -250,6 +250,135 @@
           <p class="text-sm">No upcoming earnings for your watchlist symbols</p>
         </div>
       </div>
+
+      <!-- 8 Pillars Analysis Section -->
+      <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+          <h2 class="text-lg font-medium text-gray-900 dark:text-white flex items-center">
+            <svg class="w-5 h-5 mr-2 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+            </svg>
+            8 Pillars Analysis
+            <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400">
+              Pro
+            </span>
+          </h2>
+          <div class="flex items-center space-x-2">
+            <button
+              v-if="!pillarsLoaded && !loadingPillars"
+              @click="loadWatchlistPillars"
+              class="text-sm text-primary-600 hover:text-primary-800"
+            >
+              Load Analysis
+            </button>
+            <button
+              v-else-if="pillarsLoaded"
+              @click="loadWatchlistPillars"
+              :disabled="loadingPillars"
+              class="text-sm text-primary-600 hover:text-primary-800 disabled:opacity-50"
+            >
+              {{ loadingPillars ? 'Loading...' : 'Refresh' }}
+            </button>
+          </div>
+        </div>
+
+        <div v-if="loadingPillars" class="flex justify-center items-center py-8">
+          <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-600"></div>
+          <span class="ml-3 text-sm text-gray-500 dark:text-gray-400">Analyzing {{ pillarsLoadingSymbol }}...</span>
+        </div>
+
+        <div v-else-if="!pillarsLoaded" class="p-6 text-center text-gray-500 dark:text-gray-400">
+          <svg class="mx-auto h-8 w-8 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+          </svg>
+          <p class="text-sm mb-2">Run fundamental analysis on your watchlist symbols</p>
+          <button
+            @click="loadWatchlistPillars"
+            class="btn-primary text-sm"
+          >
+            Load 8 Pillars Analysis
+          </button>
+        </div>
+
+        <div v-else-if="watchlistPillars.length > 0" class="divide-y divide-gray-200 dark:divide-gray-700">
+          <div
+            v-for="analysis in watchlistPillars"
+            :key="analysis.symbol"
+            class="p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+          >
+            <div class="flex items-center justify-between">
+              <div class="flex items-center space-x-4">
+                <div class="flex-shrink-0">
+                  <img
+                    v-if="analysis.logo"
+                    :src="analysis.logo"
+                    :alt="analysis.symbol"
+                    class="w-10 h-10 rounded-lg"
+                  />
+                  <div
+                    v-else
+                    class="w-10 h-10 rounded-lg bg-gray-100 dark:bg-gray-700 flex items-center justify-center"
+                  >
+                    <span class="text-sm font-bold text-gray-500">{{ analysis.symbol.slice(0, 2) }}</span>
+                  </div>
+                </div>
+                <div>
+                  <div class="flex items-center">
+                    <span class="text-sm font-medium text-gray-900 dark:text-white">{{ analysis.symbol }}</span>
+                    <span v-if="analysis.companyName" class="ml-2 text-xs text-gray-500 dark:text-gray-400 truncate max-w-48">
+                      {{ analysis.companyName }}
+                    </span>
+                  </div>
+                  <div class="flex items-center space-x-1 mt-1">
+                    <!-- Mini pillar indicators -->
+                    <span
+                      v-for="n in 8"
+                      :key="n"
+                      :class="[
+                        'w-4 h-4 rounded-full flex items-center justify-center text-xs',
+                        getPillarPassed(analysis, n)
+                          ? 'bg-green-100 dark:bg-green-900/30 text-green-600'
+                          : 'bg-red-100 dark:bg-red-900/30 text-red-600'
+                      ]"
+                      :title="getPillarName(analysis, n)"
+                    >
+                      <svg v-if="getPillarPassed(analysis, n)" class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path>
+                      </svg>
+                      <svg v-else class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12"></path>
+                      </svg>
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div class="flex items-center space-x-4">
+                <div class="text-right">
+                  <span
+                    :class="[
+                      'text-lg font-bold',
+                      analysis.pillarsPassed >= 6 ? 'text-green-600' : analysis.pillarsPassed >= 4 ? 'text-yellow-600' : 'text-red-600'
+                    ]"
+                  >
+                    {{ analysis.pillarsPassed }}/8
+                  </span>
+                  <p class="text-xs text-gray-500 dark:text-gray-400">Pillars Passed</p>
+                </div>
+                <router-link
+                  :to="`/investments/analyze/${analysis.symbol}`"
+                  class="text-sm text-primary-600 hover:text-primary-800 whitespace-nowrap"
+                >
+                  View Details
+                </router-link>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div v-else-if="pillarsLoaded && watchlistPillars.length === 0" class="p-6 text-center text-gray-500 dark:text-gray-400">
+          <p class="text-sm">No analysis data available</p>
+        </div>
+      </div>
     </div>
 
     <!-- Add Symbol Modal -->
@@ -290,7 +419,7 @@
               <button
                 type="submit"
                 :disabled="adding"
-                class="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 disabled:opacity-50"
+                class="px-4 py-2 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-md hover:bg-primary-700 disabled:opacity-50"
               >
                 {{ adding ? 'Adding...' : 'Add Symbol' }}
               </button>
@@ -327,7 +456,7 @@
               <button
                 type="submit"
                 :disabled="updating"
-                class="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 disabled:opacity-50"
+                class="px-4 py-2 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-md hover:bg-primary-700 disabled:opacity-50"
               >
                 {{ updating ? 'Updating...' : 'Update Notes' }}
               </button>
@@ -343,6 +472,7 @@
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useNotification } from '@/composables/useNotification'
+import { useInvestmentsStore } from '@/stores/investments'
 import api from '@/services/api'
 
 export default {
@@ -351,6 +481,7 @@ export default {
     const route = useRoute()
     const router = useRouter()
     const { showSuccess, showError, showCriticalError, showConfirmation } = useNotification()
+    const investmentsStore = useInvestmentsStore()
 
     const watchlist = ref(null)
     const loading = ref(true)
@@ -364,6 +495,12 @@ export default {
     const watchlistEarnings = ref([])
     const loadingNews = ref(false)
     const loadingEarnings = ref(false)
+
+    // 8 Pillars data
+    const watchlistPillars = ref([])
+    const loadingPillars = ref(false)
+    const pillarsLoaded = ref(false)
+    const pillarsLoadingSymbol = ref('')
 
     const newsFilter = ref({
       days: 7,
@@ -428,7 +565,7 @@ export default {
 
     const loadWatchlistEarnings = async () => {
       if (!watchlist.value?.id) return
-      
+
       try {
         loadingEarnings.value = true
         const response = await api.get(`/watchlists/${watchlist.value.id}/earnings`, {
@@ -444,6 +581,49 @@ export default {
       } finally {
         loadingEarnings.value = false
       }
+    }
+
+    const loadWatchlistPillars = async () => {
+      if (!watchlist.value?.items?.length) return
+
+      try {
+        loadingPillars.value = true
+        watchlistPillars.value = []
+
+        // Load analysis for each symbol sequentially to avoid rate limiting
+        for (const item of watchlist.value.items) {
+          pillarsLoadingSymbol.value = item.symbol
+          try {
+            const analysis = await investmentsStore.analyzeStock(item.symbol)
+            if (analysis) {
+              watchlistPillars.value.push(analysis)
+            }
+          } catch (error) {
+            console.error(`Error loading 8 Pillars for ${item.symbol}:`, error)
+            // Continue with next symbol even if one fails
+          }
+        }
+
+        pillarsLoaded.value = true
+      } catch (error) {
+        console.error('Error loading watchlist pillars:', error)
+        showCriticalError('Error', 'Failed to load 8 Pillars analysis')
+      } finally {
+        loadingPillars.value = false
+        pillarsLoadingSymbol.value = ''
+      }
+    }
+
+    const getPillarPassed = (analysis, pillarNum) => {
+      if (!analysis?.pillars) return false
+      const pillarKey = `pillar${pillarNum}`
+      return analysis.pillars[pillarKey]?.passed || false
+    }
+
+    const getPillarName = (analysis, pillarNum) => {
+      if (!analysis?.pillars) return `Pillar ${pillarNum}`
+      const pillarKey = `pillar${pillarNum}`
+      return analysis.pillars[pillarKey]?.name || `Pillar ${pillarNum}`
     }
 
     const addSymbol = async () => {
@@ -609,6 +789,11 @@ export default {
       loadingEarnings,
       newsFilter,
       earningsFilter,
+      // 8 Pillars
+      watchlistPillars,
+      loadingPillars,
+      pillarsLoaded,
+      pillarsLoadingSymbol,
       addSymbol,
       removeSymbol,
       editNotes,
@@ -618,6 +803,9 @@ export default {
       cancelEditNotes,
       loadWatchlistNews,
       loadWatchlistEarnings,
+      loadWatchlistPillars,
+      getPillarPassed,
+      getPillarName,
       formatPrice,
       formatPriceChange,
       formatPercentChange,
