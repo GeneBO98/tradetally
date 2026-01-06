@@ -62,6 +62,116 @@
       </div>
     </section>
 
+    <!-- Pro Features Section -->
+    <section class="bg-gradient-to-br from-primary-600 to-primary-800 py-16">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center mb-12">
+          <span class="inline-flex items-center px-4 py-1 rounded-full text-sm font-semibold bg-white/20 text-white mb-4">
+            <SparklesIcon class="h-4 w-4 mr-2" />
+            PRO FEATURES
+          </span>
+          <h2 class="text-3xl font-extrabold text-white sm:text-4xl">
+            Take Your Trading to the Next Level
+          </h2>
+          <p class="mt-4 max-w-3xl mx-auto text-lg text-primary-100">
+            Unlock powerful analysis tools and AI-driven insights to make smarter investment decisions.
+          </p>
+        </div>
+
+        <div class="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+          <!-- 8 Pillars Analysis -->
+          <div class="bg-white/10 backdrop-blur-sm rounded-xl p-6 hover:bg-white/15 transition-colors">
+            <div class="flex items-center mb-4">
+              <div class="flex-shrink-0 p-3 bg-white/20 rounded-lg">
+                <ShieldCheckIcon class="h-6 w-6 text-white" />
+              </div>
+              <h3 class="ml-4 text-lg font-semibold text-white">8 Pillars Stock Analysis</h3>
+            </div>
+            <p class="text-primary-100">
+              Evaluate any stock against 8 fundamental value investing criteria. Get instant pass/fail ratings with detailed financial breakdowns.
+            </p>
+          </div>
+
+          <!-- Stock Scanner -->
+          <div class="bg-white/10 backdrop-blur-sm rounded-xl p-6 hover:bg-white/15 transition-colors">
+            <div class="flex items-center mb-4">
+              <div class="flex-shrink-0 p-3 bg-white/20 rounded-lg">
+                <MagnifyingGlassIcon class="h-6 w-6 text-white" />
+              </div>
+              <h3 class="ml-4 text-lg font-semibold text-white">Russell 2000 Scanner</h3>
+            </div>
+            <p class="text-primary-100">
+              Nightly scans of 2,000+ stocks automatically analyzed. Filter by which value pillars pass to find undervalued opportunities.
+            </p>
+          </div>
+
+          <!-- AI Insights -->
+          <div class="bg-white/10 backdrop-blur-sm rounded-xl p-6 hover:bg-white/15 transition-colors">
+            <div class="flex items-center mb-4">
+              <div class="flex-shrink-0 p-3 bg-white/20 rounded-lg">
+                <CpuChipIcon class="h-6 w-6 text-white" />
+              </div>
+              <h3 class="ml-4 text-lg font-semibold text-white">AI-Powered Insights</h3>
+            </div>
+            <p class="text-primary-100">
+              Advanced AI analysis of your trading patterns, personalized recommendations, and actionable suggestions to improve performance.
+            </p>
+          </div>
+
+          <!-- Behavioral Analytics -->
+          <div class="bg-white/10 backdrop-blur-sm rounded-xl p-6 hover:bg-white/15 transition-colors">
+            <div class="flex items-center mb-4">
+              <div class="flex-shrink-0 p-3 bg-white/20 rounded-lg">
+                <PresentationChartLineIcon class="h-6 w-6 text-white" />
+              </div>
+              <h3 class="ml-4 text-lg font-semibold text-white">Behavioral Analytics</h3>
+            </div>
+            <p class="text-primary-100">
+              Discover your trading psychology patterns. Track performance by time of day, day of week, hold duration, and more.
+            </p>
+          </div>
+
+          <!-- Health Correlations -->
+          <div class="bg-white/10 backdrop-blur-sm rounded-xl p-6 hover:bg-white/15 transition-colors">
+            <div class="flex items-center mb-4">
+              <div class="flex-shrink-0 p-3 bg-white/20 rounded-lg">
+                <HeartIcon class="h-6 w-6 text-white" />
+              </div>
+              <h3 class="ml-4 text-lg font-semibold text-white">Health Correlations</h3>
+            </div>
+            <p class="text-primary-100">
+              Connect Apple Health data to analyze how sleep, exercise, and wellness affect your trading performance.
+            </p>
+          </div>
+
+          <!-- Real-time Data -->
+          <div class="bg-white/10 backdrop-blur-sm rounded-xl p-6 hover:bg-white/15 transition-colors">
+            <div class="flex items-center mb-4">
+              <div class="flex-shrink-0 p-3 bg-white/20 rounded-lg">
+                <ChartBarIcon class="h-6 w-6 text-white" />
+              </div>
+              <h3 class="ml-4 text-lg font-semibold text-white">Live Market Data</h3>
+            </div>
+            <p class="text-primary-100">
+              Real-time stock quotes, company profiles, and financial statements powered by professional market data feeds.
+            </p>
+          </div>
+        </div>
+
+        <div class="mt-12 text-center">
+          <router-link
+            to="/pricing"
+            class="inline-flex items-center px-8 py-3 border-2 border-white text-lg font-semibold rounded-lg text-white hover:bg-white hover:text-primary-700 transition-colors"
+          >
+            View Pro Plans - Starting at $8/month
+          </router-link>
+          <p class="mt-4 text-primary-200 text-sm">
+            7-day free trial available. Cancel anytime.
+          </p>
+        </div>
+      </div>
+    </section>
+
     <section v-if="showSEOPages" class="bg-white dark:bg-gray-800 py-16">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="text-center">
@@ -82,7 +192,7 @@
             <div class="bg-gray-50 dark:bg-gray-900 rounded-lg p-6">
               <h3 class="heading-card">Works With Your Broker</h3>
               <p class="mt-2 text-gray-600 dark:text-gray-400">
-                Automated trade import from Lightspeed, Schwab/ThinkorSwim, IBKR, E*TRADE, TD Ameritrade, and custom CSV mapping for any broker.
+                Auto-sync with Schwab and IBKR, plus CSV import from Lightspeed, E*TRADE, TD Ameritrade, and custom mapping for any broker.
               </p>
             </div>
             <div class="bg-gray-50 dark:bg-gray-900 rounded-lg p-6">
@@ -115,9 +225,9 @@
               Import trades automatically from verified brokers:
             </p>
             <ul class="space-y-2 text-gray-600 dark:text-gray-400">
+              <li>✓ <strong>Charles Schwab / ThinkorSwim</strong> - <span class="text-primary-600 font-medium">Auto-Sync</span> + CSV import</li>
+              <li>✓ <strong>Interactive Brokers (IBKR)</strong> - <span class="text-primary-600 font-medium">Auto-Sync</span> + CSV import</li>
               <li>✓ <strong>Lightspeed Trading</strong> - Direct CSV import</li>
-              <li>✓ <strong>Charles Schwab / ThinkorSwim</strong> - Direct CSV import</li>
-              <li>✓ <strong>Interactive Brokers (IBKR)</strong> - Direct CSV import</li>
               <li>✓ <strong>E*TRADE</strong> - Direct CSV import</li>
               <li>✓ <strong>TD Ameritrade</strong> - Direct CSV import</li>
               <li>✓ <strong>Other Brokers</strong> - Custom CSV column mapping</li>
@@ -136,10 +246,12 @@
               <li>✓ <strong>Stocks</strong> - Day trading, swing trading, position trading</li>
               <li>✓ <strong>Options</strong> - Calls, puts, spreads, covered calls, iron condors</li>
               <li>✓ <strong>ETFs</strong> - Market and sector tracking</li>
+              <li>✓ <strong>Crypto</strong> - Bitcoin, Ethereum, and all major cryptocurrencies</li>
+              <li>✓ <strong>Forex</strong> - EUR/USD, GBP/JPY, and all currency pairs</li>
             </ul>
             <div class="mt-6 p-4 bg-gray-50 dark:bg-gray-900 rounded-lg">
               <p class="text-sm text-gray-600 dark:text-gray-400">
-                <strong>Coming Soon:</strong> Futures, Forex, and Crypto support
+                <strong>Coming Soon:</strong> Futures support
               </p>
             </div>
           </div>
@@ -189,7 +301,17 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { ChartBarIcon, DocumentTextIcon, ArrowUpTrayIcon } from '@heroicons/vue/24/outline'
+import {
+  ChartBarIcon,
+  DocumentTextIcon,
+  ArrowUpTrayIcon,
+  SparklesIcon,
+  MagnifyingGlassIcon,
+  CpuChipIcon,
+  PresentationChartLineIcon,
+  HeartIcon,
+  ShieldCheckIcon
+} from '@heroicons/vue/24/outline'
 import { useAuthStore } from '@/stores/auth'
 import { useRegistrationMode } from '@/composables/useRegistrationMode'
 
@@ -216,7 +338,7 @@ onMounted(async () => {
     metaDescription.setAttribute('name', 'description')
     document.head.appendChild(metaDescription)
   }
-  metaDescription.setAttribute('content', 'Best free trading journal software with unlimited trade storage. Automated trade import from Lightspeed, Schwab, IBKR, E*TRADE, TD Ameritrade. Advanced analytics and AI insights. The #1 TraderVue and TraderSync alternative for stocks and options trading.')
+  metaDescription.setAttribute('content', 'Best free trading journal software with unlimited trade storage. Auto-sync with Schwab and Interactive Brokers, plus CSV import from Lightspeed, E*TRADE, TD Ameritrade. Advanced analytics and AI insights. The #1 TraderVue and TraderSync alternative for stocks and options trading.')
 
   let metaKeywords = document.querySelector('meta[name="keywords"]')
   if (!metaKeywords) {
@@ -224,7 +346,7 @@ onMounted(async () => {
     metaKeywords.setAttribute('name', 'keywords')
     document.head.appendChild(metaKeywords)
   }
-  metaKeywords.setAttribute('content', 'trading journal software, best trading journal, free trading journal, TraderVue alternative, TraderSync alternative, trade tracking platform, automated trade import, broker integration, stock trade journal, options trading journal, day trading journal, trading performance analytics, AI trading insights')
+  metaKeywords.setAttribute('content', 'trading journal software, best trading journal, free trading journal, TraderVue alternative, TraderSync alternative, trade tracking platform, automated trade import, broker auto-sync, Schwab trading journal, IBKR trading journal, Interactive Brokers journal, stock trade journal, options trading journal, day trading journal, trading performance analytics, AI trading insights')
 
   // Add structured data for SEO
   if (showSEOPages.value) {
@@ -256,6 +378,7 @@ onMounted(async () => {
       "datePublished": "2024-01-01",
       "featureList": [
         "Unlimited Free Trade Storage",
+        "Auto-Sync with Schwab and Interactive Brokers",
         "Automated Trade Import from Any Broker",
         "Advanced Trading Performance Analytics",
         "AI-Powered Insights and Behavioral Analytics",

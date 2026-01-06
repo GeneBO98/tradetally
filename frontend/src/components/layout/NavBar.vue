@@ -278,13 +278,19 @@ const baseNavigation = [
         route: 'dashboard',
         description: 'Overview of your trading performance and statistics'
       },
-      { 
-        name: 'Trading Journal', 
-        to: '/diary', 
+      {
+        name: 'Trading Journal',
+        to: '/diary',
         route: 'diary',
         description: 'Daily market notes, trade setups, and reflections'
       },
-      { 
+      {
+        name: 'Account & Cashflow',
+        to: '/cashflow',
+        route: 'cashflow',
+        description: 'Track brokerage accounts and daily cash movement'
+      },
+      {
         name: 'Leaderboard', 
         to: '/leaderboard', 
         route: 'leaderboard',
@@ -335,6 +341,12 @@ const baseNavigation = [
     name: 'Markets',
     to: '/markets',
     route: 'markets',
+    badge: { type: 'pro', text: 'Pro' }
+  },
+  {
+    name: 'Investments',
+    to: '/investments',
+    route: 'investments',
     badge: { type: 'pro', text: 'Pro' }
   },
   { name: 'Calendar', to: '/calendar', route: 'calendar' },

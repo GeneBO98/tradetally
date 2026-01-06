@@ -792,6 +792,84 @@
       </div>
             </template>
 
+            <!-- Trade Distribution by Price -->
+            <template v-else-if="element.id === 'trade-distribution'">
+      <div class="card">
+        <div class="card-body">
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Trade Distribution by Price</h3>
+          <div class="h-80 relative">
+            <canvas ref="tradeDistributionChart" class="absolute inset-0 w-full h-full"></canvas>
+          </div>
+        </div>
+      </div>
+            </template>
+
+            <!-- Performance by Price -->
+            <template v-else-if="element.id === 'performance-by-price'">
+      <div class="card">
+        <div class="card-body">
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Performance by Price</h3>
+          <div class="h-80 relative">
+            <canvas ref="performanceByPriceChart" class="absolute inset-0 w-full h-full"></canvas>
+          </div>
+        </div>
+      </div>
+            </template>
+
+            <!-- Performance by Volume Traded -->
+            <template v-else-if="element.id === 'performance-by-volume'">
+      <div class="card">
+        <div class="card-body">
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Performance by Volume Traded</h3>
+          <div class="h-80 relative">
+            <canvas
+              ref="performanceByVolumeChart"
+              class="absolute inset-0 w-full h-full"
+              :class="{ 'hidden': !performanceByVolumeData.length || performanceByVolumeData.every(val => val === 0) }"
+            ></canvas>
+            <div
+              v-if="!performanceByVolumeData.length || performanceByVolumeData.every(val => val === 0)"
+              class="absolute inset-0 flex items-center justify-center text-gray-500 dark:text-gray-400"
+            >
+              <div class="text-center">
+                <svg class="w-12 h-12 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                </svg>
+                <p>No volume data available for the selected period</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+            </template>
+
+            <!-- Performance by Position Size -->
+            <template v-else-if="element.id === 'performance-by-position-size'">
+      <div class="card">
+        <div class="card-body">
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Performance by Position Size ($)</h3>
+          <div class="h-80 relative">
+            <canvas
+              ref="performanceByPositionSizeChart"
+              class="absolute inset-0 w-full h-full"
+              :class="{ 'hidden': !performanceByPositionSizeData.length || performanceByPositionSizeData.every(val => val === 0) }"
+            ></canvas>
+            <div
+              v-if="!performanceByPositionSizeData.length || performanceByPositionSizeData.every(val => val === 0)"
+              class="absolute inset-0 flex items-center justify-center text-gray-500 dark:text-gray-400"
+            >
+              <div class="text-center">
+                <svg class="w-12 h-12 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                <p>No position size data available for the selected period</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+            </template>
+
             <!-- News Sentiment Correlation Analytics -->
             <template v-else-if="element.id === 'news-sentiment'">
       <div class="relative">
@@ -1397,6 +1475,10 @@ const chartDefinitions = [
   { id: 'daily-volume-chart', title: 'Daily Volume', defaultSize: 'half', category: 'charts' },
   { id: 'day-of-week', title: 'Day of Week Performance', defaultSize: 'half', category: 'charts' },
   { id: 'performance-by-hold-time', title: 'Performance by Hold Time', defaultSize: 'half', category: 'charts' },
+  { id: 'trade-distribution', title: 'Trade Distribution by Price', defaultSize: 'half', category: 'charts' },
+  { id: 'performance-by-price', title: 'Performance by Price', defaultSize: 'half', category: 'charts' },
+  { id: 'performance-by-volume', title: 'Performance by Volume', defaultSize: 'half', category: 'charts' },
+  { id: 'performance-by-position-size', title: 'Performance by Position Size', defaultSize: 'half', category: 'charts' },
   { id: 'news-sentiment', title: 'News Sentiment Correlation', defaultSize: 'full', category: 'charts' },
   { id: 'tag-performance', title: 'Tag Performance', defaultSize: 'full', category: 'tables' },
   { id: 'strategy-performance', title: 'Strategy/Setup Performance', defaultSize: 'full', category: 'tables' },
@@ -3207,37 +3289,44 @@ async function loadData() {
       // This ensures relative periods like "30d" are always relative to today
       if (savedPeriod && savedPeriod !== 'custom' && savedPeriod !== 'all') {
         const now = new Date()
-        const today = now.toISOString().split('T')[0]
+        // Use local date formatting to avoid timezone issues (e.g., 8PM CST showing as next day)
+        const formatLocalDate = (date) => {
+          const year = date.getFullYear()
+          const month = String(date.getMonth() + 1).padStart(2, '0')
+          const day = String(date.getDate()).padStart(2, '0')
+          return `${year}-${month}-${day}`
+        }
+        const today = formatLocalDate(now)
         let startDate = ''
 
         switch (savedPeriod) {
           case '7d': {
             const start = new Date(now)
             start.setDate(start.getDate() - 7)
-            startDate = start.toISOString().split('T')[0]
+            startDate = formatLocalDate(start)
             break
           }
           case '30d': {
             const start = new Date(now)
             start.setDate(start.getDate() - 30)
-            startDate = start.toISOString().split('T')[0]
+            startDate = formatLocalDate(start)
             break
           }
           case '90d': {
             const start = new Date(now)
             start.setDate(start.getDate() - 90)
-            startDate = start.toISOString().split('T')[0]
+            startDate = formatLocalDate(start)
             break
           }
           case 'ytd': {
             const start = new Date(now.getFullYear(), 0, 1)
-            startDate = start.toISOString().split('T')[0]
+            startDate = formatLocalDate(start)
             break
           }
           case '1y': {
             const start = new Date(now)
             start.setFullYear(start.getFullYear() - 1)
-            startDate = start.toISOString().split('T')[0]
+            startDate = formatLocalDate(start)
             break
           }
         }
