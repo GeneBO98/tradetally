@@ -171,6 +171,7 @@ const defaultColumns = [
   { key: 'fees', label: 'Fees', visible: false, width: 'auto' },
   { key: 'strategy', label: 'Strategy', visible: true, width: 'auto' },
   { key: 'broker', label: 'Broker', visible: false, width: 'auto' },
+  { key: 'account', label: 'Account', visible: false, width: 'auto' },
   { key: 'tags', label: 'Tags', visible: false, width: 'auto' },
   { key: 'notes', label: 'Notes', visible: false, width: 'auto' },
   { key: 'holdTime', label: 'Hold Time', visible: false, width: 'auto' },

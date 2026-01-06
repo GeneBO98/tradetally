@@ -20,7 +20,7 @@
 
     <!-- Loading State for Auth -->
     <div v-if="authLoading" class="flex justify-center items-center py-12">
-      <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
     </div>
 
     <!-- Pro Feature Notice -->
@@ -32,7 +32,7 @@
 
     <!-- Loading State for Watchlists -->
     <div v-else-if="isProUser && loading" class="flex justify-center items-center py-12">
-      <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
     </div>
 
     <!-- Watchlists Grid -->
@@ -46,7 +46,7 @@
         <div class="p-6">
           <div class="flex items-center justify-between mb-3">
             <h3 class="heading-card">{{ watchlist.name }}</h3>
-            <span v-if="watchlist.is_default" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200">
+            <span v-if="watchlist.is_default" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary-100 dark:bg-primary-900 text-primary-800 dark:text-primary-200">
               Default
             </span>
           </div>
@@ -125,7 +125,7 @@
                 <input
                   v-model="watchlistForm.is_default"
                   type="checkbox"
-                  class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
                 >
                 <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">Set as default watchlist</span>
               </label>
@@ -141,7 +141,7 @@
               <button
                 type="submit"
                 :disabled="saving"
-                class="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 disabled:opacity-50"
+                class="px-4 py-2 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-md hover:bg-primary-700 disabled:opacity-50"
               >
                 {{ saving ? 'Saving...' : (editingWatchlist ? 'Update' : 'Create') }}
               </button>
