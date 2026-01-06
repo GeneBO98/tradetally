@@ -1260,12 +1260,12 @@ const tradeController = {
 
             logger.logImport(`[BROKER FEES] Looking up fees for brokers: ${brokersToLookup.join(', ')}`);
 
-            // Fetch fee settings for all relevant brokers
+            // Fetch fee settings for all relevant brokers (case-insensitive match)
             const brokerFeeQuery = `
               SELECT broker, instrument, commission_per_contract, commission_per_side, exchange_fee_per_contract,
                      nfa_fee_per_contract, clearing_fee_per_contract, platform_fee_per_contract
               FROM broker_fee_settings
-              WHERE user_id = $1 AND broker = ANY($2)
+              WHERE user_id = $1 AND LOWER(broker) = ANY($2)
               ORDER BY broker, instrument DESC
             `;
             const brokerFeeResult = await db.query(brokerFeeQuery, [fileUserId, brokersToLookup]);
@@ -1315,6 +1315,7 @@ const tradeController = {
                   // Get broker-specific fee settings
                   const brokerSettings = brokerFeeMap.get(effectiveBroker);
                   if (!brokerSettings) {
+                    logger.logImport(`[BROKER FEES] No fee settings found for broker '${effectiveBroker}' (symbol: ${symbol}). Available brokers: ${[...brokerFeeMap.keys()].join(', ')}`);
                     return trade; // No fee settings for this broker
                   }
 
@@ -1344,6 +1345,14 @@ const tradeController = {
                   // Fall back to broker default if no instrument match
                   if (!feeSettings) {
                     feeSettings = defaultFeeSettings;
+                    if (feeSettings) {
+                      logger.logImport(`[BROKER FEES] Using broker default for ${symbol}`);
+                    }
+                  }
+
+                  if (!feeSettings) {
+                    logger.logImport(`[BROKER FEES] No fee settings found for ${symbol} (broker: ${effectiveBroker}). No instrument match and no broker default configured.`);
+                    return trade;
                   }
 
                   if (feeSettings) {
