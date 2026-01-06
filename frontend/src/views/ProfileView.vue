@@ -494,6 +494,37 @@
           </form>
         </div>
       </div>
+
+      <!-- Delete Account -->
+      <div class="card border-red-200 dark:border-red-800">
+        <div class="card-body">
+          <h3 class="text-lg font-medium text-red-600 dark:text-red-400 mb-4">Danger Zone</h3>
+          <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
+            Permanently delete your account and all associated data. This action cannot be undone.
+          </p>
+
+          <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-6">
+            <div class="flex items-start">
+              <svg class="w-5 h-5 text-red-600 dark:text-red-400 mr-3 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+              </svg>
+              <div>
+                <h4 class="text-sm font-medium text-red-800 dark:text-red-300">Warning</h4>
+                <p class="text-sm text-red-700 dark:text-red-400 mt-1">
+                  Deleting your account will permanently remove all your trades, analytics data, settings, and any other data associated with your account. This cannot be reversed.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <button
+            @click="showDeleteAccountModal = true"
+            class="btn-danger"
+          >
+            Delete My Account
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- 2FA Setup Modal -->
@@ -749,7 +780,7 @@
       <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white dark:bg-gray-800">
         <div class="mt-3">
           <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">API Key Created</h3>
-          
+
           <div class="space-y-4">
             <div class="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md p-4">
               <p class="text-sm text-yellow-800 dark:text-yellow-400">
@@ -792,15 +823,78 @@
         </div>
       </div>
     </div>
+
+    <!-- Delete Account Modal -->
+    <div v-if="showDeleteAccountModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+      <div class="relative top-20 mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white dark:bg-gray-800">
+        <div class="mt-3">
+          <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 dark:bg-red-900/20 mb-4">
+            <svg class="h-6 w-6 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+            </svg>
+          </div>
+
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white text-center mb-2">Delete Your Account</h3>
+          <p class="text-sm text-gray-600 dark:text-gray-400 text-center mb-6">
+            This action is permanent and cannot be undone. All your data will be deleted.
+          </p>
+
+          <form @submit.prevent="confirmDeleteAccount" class="space-y-4">
+            <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+              <p class="text-sm text-red-700 dark:text-red-400">
+                To confirm, please enter your password below. This will immediately delete your account and log you out.
+              </p>
+            </div>
+
+            <div>
+              <label for="deleteAccountPassword" class="label">Password</label>
+              <input
+                id="deleteAccountPassword"
+                v-model="deleteAccountForm.password"
+                type="password"
+                required
+                class="input"
+                placeholder="Enter your password"
+              />
+            </div>
+
+            <div v-if="deleteAccountError" class="text-sm text-red-600 dark:text-red-400">
+              {{ deleteAccountError }}
+            </div>
+
+            <div class="flex justify-end space-x-3 pt-4">
+              <button
+                type="button"
+                @click="cancelDeleteAccount"
+                class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                :disabled="deleteAccountLoading || !deleteAccountForm.password"
+                class="px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <span v-if="deleteAccountLoading">Deleting...</span>
+                <span v-else>Delete Account</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useNotification } from '@/composables/useNotification'
 import NotificationPreferences from '@/components/profile/NotificationPreferences.vue'
 import api from '@/services/api'
+
+const router = useRouter()
 
 const authStore = useAuthStore()
 const { showSuccess, showError } = useNotification()
@@ -869,6 +963,14 @@ const tradingProfileForm = ref({
   averagePositionSize: 'medium',
   tradingGoals: [],
   preferredSectors: []
+})
+
+// Delete account data
+const showDeleteAccountModal = ref(false)
+const deleteAccountLoading = ref(false)
+const deleteAccountError = ref('')
+const deleteAccountForm = ref({
+  password: ''
 })
 
 // Trading profile options
@@ -1248,6 +1350,37 @@ async function fetchTradingProfile() {
     }
   } catch (error) {
     console.error('Failed to fetch trading profile:', error)
+  }
+}
+
+// Delete account methods
+function cancelDeleteAccount() {
+  showDeleteAccountModal.value = false
+  deleteAccountForm.value.password = ''
+  deleteAccountError.value = ''
+}
+
+async function confirmDeleteAccount() {
+  if (!deleteAccountForm.value.password) {
+    deleteAccountError.value = 'Password is required'
+    return
+  }
+
+  deleteAccountLoading.value = true
+  deleteAccountError.value = ''
+
+  try {
+    await api.delete('/users/account', {
+      data: { password: deleteAccountForm.value.password }
+    })
+
+    // Clear auth state and redirect to home
+    authStore.logout()
+    router.push('/')
+  } catch (error) {
+    deleteAccountError.value = error.response?.data?.error || 'Failed to delete account. Please try again.'
+  } finally {
+    deleteAccountLoading.value = false
   }
 }
 
