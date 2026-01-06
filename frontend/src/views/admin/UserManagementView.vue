@@ -49,8 +49,20 @@
                 </div>
               </div>
             </div>
-            <div class="text-sm text-gray-500 dark:text-gray-400 flex-shrink-0">
-              {{ totalUsers }} user{{ totalUsers !== 1 ? 's' : '' }} found
+            <div class="flex items-center space-x-4 flex-shrink-0">
+              <span class="text-sm text-gray-500 dark:text-gray-400">
+                {{ totalUsers }} user{{ totalUsers !== 1 ? 's' : '' }} found
+              </span>
+              <button
+                @click="exportUsersToCSV"
+                :disabled="loading || users.length === 0"
+                class="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Export CSV
+              </button>
             </div>
           </div>
         </div>
@@ -866,6 +878,95 @@ function formatDate(dateString) {
     month: 'short',
     day: 'numeric'
   })
+}
+
+// CSV Export Function
+async function exportUsersToCSV() {
+  try {
+    loading.value = true
+
+    // Fetch all users (no pagination limit) for export
+    const params = new URLSearchParams({
+      page: '1',
+      limit: '10000' // Large limit to get all users
+    })
+
+    if (searchQuery.value.trim()) {
+      params.append('search', searchQuery.value.trim())
+    }
+
+    const response = await api.get(`/users/admin/users?${params}`)
+    const allUsers = response.data.users
+
+    if (allUsers.length === 0) {
+      showError('No Data', 'No users to export')
+      return
+    }
+
+    // Define CSV columns
+    const headers = [
+      'ID',
+      'Username',
+      'Email',
+      'Full Name',
+      'Role',
+      'Tier',
+      'Status',
+      'Verified',
+      'Admin Approved',
+      'Created At',
+      'Last Login'
+    ]
+
+    // Convert users to CSV rows
+    const rows = allUsers.map(user => [
+      user.id,
+      user.username,
+      user.email,
+      user.full_name || '',
+      user.role,
+      getUserDisplayTier(user),
+      user.is_active ? 'Active' : 'Inactive',
+      user.is_verified ? 'Yes' : 'No',
+      user.admin_approved ? 'Yes' : 'No',
+      user.created_at ? new Date(user.created_at).toISOString() : '',
+      user.last_login ? new Date(user.last_login).toISOString() : ''
+    ])
+
+    // Build CSV content
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => {
+        // Escape cells that contain commas, quotes, or newlines
+        const cellStr = String(cell)
+        if (cellStr.includes(',') || cellStr.includes('"') || cellStr.includes('\n')) {
+          return `"${cellStr.replace(/"/g, '""')}"`
+        }
+        return cellStr
+      }).join(','))
+    ].join('\n')
+
+    // Create and download the file
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement('a')
+    const url = URL.createObjectURL(blob)
+
+    const timestamp = new Date().toISOString().split('T')[0]
+    link.setAttribute('href', url)
+    link.setAttribute('download', `users_export_${timestamp}.csv`)
+    link.style.visibility = 'hidden'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+
+    showSuccess('Export Complete', `Exported ${allUsers.length} users to CSV`)
+  } catch (err) {
+    console.error('Export failed:', err)
+    showError('Export Failed', err.response?.data?.error || 'Failed to export users')
+  } finally {
+    loading.value = false
+  }
 }
 
 // Tier Management Functions

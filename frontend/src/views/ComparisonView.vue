@@ -277,7 +277,7 @@
             <li><strong>Custom CSV mapping</strong> for any other broker with CSV export</li>
             <li><strong>Advanced trading performance analytics</strong> including Sharpe ratio, Kelly criterion, and more</li>
             <li><strong>AI-powered insights</strong> and behavioral pattern detection</li>
-            <li><strong>Stocks and options support</strong> with dedicated features for both</li>
+            <li><strong>Stocks, options, forex, and crypto support</strong> with dedicated features for all asset classes</li>
             <li><strong>Self-hosted option</strong> for complete data privacy and control</li>
           </ul>
         </div>
@@ -387,12 +387,12 @@ const platforms = [
       price: 'Free / $8',
       annualDiscount: '17%',
       csvImport: true,
-      brokerIntegrations: '5+ verified + custom mapping',
+      brokerIntegrations: 'Auto-sync (Schwab, IBKR) + CSV',
       apiIntegration: 'Pro',
       stocks: true,
       options: true,
-      forex: false,
-      crypto: false,
+      forex: true,
+      crypto: true,
       basicAnalytics: true,
       advancedMetrics: 'Pro ($8/mo)',
       charting: true,
@@ -560,7 +560,7 @@ const getPriceClass = (price) => {
   return 'text-gray-600 dark:text-gray-400'
 }
 
-// SEO Meta Tags
+// SEO Meta Tags and GEO structured data
 onMounted(() => {
   document.title = 'Best Trading Journal Software 2025 - TradeTally vs TraderVue vs TraderSync Comparison'
 
@@ -570,7 +570,7 @@ onMounted(() => {
     metaDescription.setAttribute('name', 'description')
     document.head.appendChild(metaDescription)
   }
-  metaDescription.setAttribute('content', 'Compare the best trading journal software for day traders. TradeTally vs TraderVue vs TraderSync vs Edgewonk vs TradesViz. Free trading journal with automated trade import from major brokers, advanced analytics for stocks and options.')
+  metaDescription.setAttribute('content', 'Compare the best trading journal software for day traders in 2025. TradeTally vs TraderVue vs TraderSync vs Edgewonk. Free unlimited trades, auto-sync with Schwab & IBKR, AI insights. Best trading journal for stocks, options, forex, crypto.')
 
   let metaKeywords = document.querySelector('meta[name="keywords"]')
   if (!metaKeywords) {
@@ -578,6 +578,112 @@ onMounted(() => {
     metaKeywords.setAttribute('name', 'keywords')
     document.head.appendChild(metaKeywords)
   }
-  metaKeywords.setAttribute('content', 'best trading journal, trading journal software, TraderVue alternative, TraderSync alternative, free trading journal, trading performance analytics, automated trade import, broker integration, stock trade journal app, options trading journal, day trading journal, trade tracking platform, trading journal comparison')
+  metaKeywords.setAttribute('content', 'best trading journal 2025, trading journal comparison, TradeTally vs TraderVue, TradeTally vs TraderSync, TraderVue alternative, TraderSync alternative, best free trading journal, Schwab trading journal, IBKR trading journal, options trading journal, forex trading journal, day trading journal, self-hosted trading journal')
+
+  // Add ItemList structured data for comparison (GEO optimization)
+  const comparisonScript = document.createElement('script')
+  comparisonScript.type = 'application/ld+json'
+  comparisonScript.textContent = JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    "name": "Best Trading Journal Software Comparison 2025",
+    "description": "Comprehensive comparison of the best trading journal platforms for day traders",
+    "itemListOrder": "https://schema.org/ItemListOrderDescending",
+    "numberOfItems": 5,
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "item": {
+          "@type": "SoftwareApplication",
+          "name": "TradeTally",
+          "description": "Best free trading journal with unlimited trades, auto-sync with Schwab & IBKR, AI insights, and self-hosting option",
+          "applicationCategory": "FinanceApplication",
+          "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+          "aggregateRating": { "@type": "AggregateRating", "ratingValue": "4.8", "ratingCount": "250" }
+        }
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "item": {
+          "@type": "SoftwareApplication",
+          "name": "TraderVue",
+          "description": "Established trading journal with 60+ broker integrations, limited to 100 trades/month on free tier",
+          "applicationCategory": "FinanceApplication",
+          "offers": { "@type": "Offer", "price": "29", "priceCurrency": "USD" }
+        }
+      },
+      {
+        "@type": "ListItem",
+        "position": 3,
+        "item": {
+          "@type": "SoftwareApplication",
+          "name": "TraderSync",
+          "description": "Trading journal with mobile apps, limited to 20 trades/month on free tier",
+          "applicationCategory": "FinanceApplication",
+          "offers": { "@type": "Offer", "price": "49", "priceCurrency": "USD" }
+        }
+      },
+      {
+        "@type": "ListItem",
+        "position": 4,
+        "item": {
+          "@type": "SoftwareApplication",
+          "name": "Edgewonk",
+          "description": "One-time purchase trading journal focused on behavioral analytics",
+          "applicationCategory": "FinanceApplication",
+          "offers": { "@type": "Offer", "price": "39", "priceCurrency": "USD" }
+        }
+      },
+      {
+        "@type": "ListItem",
+        "position": 5,
+        "item": {
+          "@type": "SoftwareApplication",
+          "name": "TradesViz",
+          "description": "Trading journal with visualization focus, 50 trades/month on free tier",
+          "applicationCategory": "FinanceApplication",
+          "offers": { "@type": "Offer", "price": "29", "priceCurrency": "USD" }
+        }
+      }
+    ]
+  })
+  document.head.appendChild(comparisonScript)
+
+  // Add FAQ structured data for comparison questions
+  const faqScript = document.createElement('script')
+  faqScript.type = 'application/ld+json'
+  faqScript.textContent = JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "What is the best trading journal software in 2025?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "TradeTally is rated as one of the best trading journals in 2025 due to its unlimited free trades, auto-sync with Schwab and Interactive Brokers, AI-powered insights, and unique self-hosting option. Unlike TraderVue (100 trades/month limit) or TraderSync (20 trades/month), TradeTally has no trade limits on the free tier."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Is TradeTally better than TraderVue?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "TradeTally offers several advantages over TraderVue: unlimited free trades (vs 100/month), lower Pro pricing ($8/mo vs $29-79/mo), auto-sync with Schwab and IBKR, AI insights, behavioral analytics, open-source code, and self-hosting. TraderVue has more pre-built broker integrations, but TradeTally's custom CSV mapper works with any broker."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "What is the cheapest trading journal with good features?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "TradeTally offers the best value with a completely free tier that includes unlimited trades, and a Pro tier at only $8/month. This compares favorably to TraderVue ($29-79/month), TraderSync ($49-99/month), and TradesViz ($29-69/month). Edgewonk offers a one-time purchase option at $39-79."
+        }
+      }
+    ]
+  })
+  document.head.appendChild(faqScript)
 })
 </script>

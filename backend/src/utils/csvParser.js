@@ -5,6 +5,7 @@ const cache = require('./cache');
 const cusipQueue = require('./cusipQueue');
 const currencyConverter = require('./currencyConverter');
 const db = require('../config/database');
+const { getFuturesPointValue, extractUnderlyingFromFuturesSymbol } = require('./futuresUtils');
 
 // CUSIP resolution is now handled by the cusipQueue module
 
@@ -111,6 +112,80 @@ function detectCurrencyColumn(records) {
 
   console.log('[CURRENCY] No non-USD currency column detected');
   return false;
+}
+
+/**
+ * Account column name patterns for flexible matching (case-insensitive)
+ */
+const ACCOUNT_FIELD_PATTERNS = [
+  'account', 'account_id', 'accountid', 'account_number', 'accountnumber',
+  'acctid', 'acct_id', 'acct', 'account_identifier', 'brokerage_account',
+  'trading_account', 'portfolio'
+];
+
+/**
+ * Redacts an account ID to show only the last 4 characters for privacy
+ * @param {string} accountId - The full account ID
+ * @returns {string|null} - Redacted account ID (e.g., "****1234") or null
+ */
+function redactAccountId(accountId) {
+  if (!accountId) return null;
+  const str = String(accountId).trim();
+  if (str === '') return null;
+  if (str.length <= 4) return str;
+  return '****' + str.slice(-4);
+}
+
+/**
+ * Detects if CSV contains an account column and returns the column name
+ * @param {Array} records - Parsed CSV records
+ * @returns {string|null} - The account column name if found, null otherwise
+ */
+function detectAccountColumn(records) {
+  if (!records || records.length === 0) {
+    console.log('[ACCOUNT] No records to check for account column');
+    return null;
+  }
+
+  // Get all field names from the first record
+  const firstRecord = records[0];
+  const fieldNames = Object.keys(firstRecord);
+
+  // Normalize field names for comparison
+  for (const fieldName of fieldNames) {
+    const normalizedField = fieldName.toLowerCase().replace(/[\s_-]/g, '');
+
+    for (const pattern of ACCOUNT_FIELD_PATTERNS) {
+      const normalizedPattern = pattern.replace(/[\s_-]/g, '');
+      if (normalizedField === normalizedPattern || normalizedField.includes(normalizedPattern)) {
+        // Verify the column has actual data
+        const hasData = records.some(record => {
+          const value = record[fieldName];
+          return value && String(value).trim() !== '';
+        });
+
+        if (hasData) {
+          console.log(`[ACCOUNT] Detected account column: "${fieldName}"`);
+          return fieldName;
+        }
+      }
+    }
+  }
+
+  console.log('[ACCOUNT] No account column detected');
+  return null;
+}
+
+/**
+ * Extracts account identifier from a record using the detected column name
+ * @param {Object} record - CSV record
+ * @param {string} accountColumnName - The detected account column name
+ * @returns {string|null} - Redacted account identifier or null
+ */
+function extractAccountFromRecord(record, accountColumnName) {
+  if (!accountColumnName || !record) return null;
+  const value = record[accountColumnName];
+  return redactAccountId(value);
 }
 
 /**
@@ -246,7 +321,7 @@ function detectBrokerFormat(fileBuffer) {
       return 'projectx';
     }
 
-    // Tradeovate detection - look for B/S, Contract, Product, Fill Time, avgPrice, filledQty columns
+    // Tradovate detection - look for B/S, Contract, Product, Fill Time, avgPrice, filledQty columns
     // Note: Don't rely on first column (orderId) due to potential BOM issues
     if (headers.includes('b/s') &&
         headers.includes('contract') &&
@@ -254,8 +329,8 @@ function detectBrokerFormat(fileBuffer) {
         headers.includes('fill time') &&
         (headers.includes('avgprice') || headers.includes('avg fill price')) &&
         (headers.includes('filledqty') || headers.includes('filled qty'))) {
-      console.log('[AUTO-DETECT] Detected: Tradeovate');
-      return 'tradeovate';
+      console.log('[AUTO-DETECT] Detected: Tradovate');
+      return 'tradovate';
     }
 
     // Default to generic if no specific format detected
@@ -875,7 +950,18 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
     console.log(`=====================\n`);
     
     let csvString = fileBuffer.toString('utf-8');
-    
+
+    // Remove BOM (Byte Order Mark) if present - this can cause parsing issues
+    if (csvString.charCodeAt(0) === 0xFEFF) {
+      csvString = csvString.slice(1);
+      console.log('Removed BOM from CSV file');
+    }
+    // Also handle UTF-8 BOM (EF BB BF)
+    if (csvString.startsWith('\uFEFF')) {
+      csvString = csvString.slice(1);
+      console.log('Removed UTF-8 BOM from CSV file');
+    }
+
     // Handle Lightspeed CSV files that start with a title row
     if (broker === 'lightspeed') {
       const lines = csvString.split('\n');
@@ -959,28 +1045,71 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
     if (broker === 'thinkorswim') {
       // Thinkorswim CSVs have account statement header rows that need to be removed
       const lines = csvString.split('\n');
-      
-      // Find the actual header line (contains "DATE,TIME,TYPE")
-      let headerIndex = -1;
-      for (let i = 0; i < lines.length && i < 10; i++) {
-        if (lines[i].includes('DATE,TIME,TYPE')) {
-          headerIndex = i;
+
+      // Extract account number from header rows before skipping them
+      // Thinkorswim headers often contain: "Account Statement for 123456789" or "Account: 123456789"
+      let tosAccountNumber = null;
+      for (let i = 0; i < Math.min(lines.length, 10); i++) {
+        const line = lines[i];
+        // Match patterns like "Account Statement for 123456789" or "Account: 123456789" or "Account,123456789"
+        const accountMatch = line.match(/Account(?:\s+Statement\s+for|:|,)\s*(\d{6,12})/i);
+        if (accountMatch) {
+          tosAccountNumber = redactAccountId(accountMatch[1]);
+          console.log(`[ACCOUNT] Extracted thinkorswim account from header: ${tosAccountNumber}`);
+          break;
+        }
+        // Also check for standalone account number pattern in the line
+        const standaloneMatch = line.match(/^\s*(\d{9,12})\s*$/);
+        if (standaloneMatch) {
+          tosAccountNumber = redactAccountId(standaloneMatch[1]);
+          console.log(`[ACCOUNT] Found thinkorswim account number in header: ${tosAccountNumber}`);
           break;
         }
       }
-      
+
+      // Store the account number in context for use during parsing
+      if (tosAccountNumber) {
+        context.tosAccountNumber = tosAccountNumber;
+        console.log(`[ACCOUNT] Will use thinkorswim account: ${tosAccountNumber}`);
+      }
+
+      // Find the actual header line - check multiple possible patterns
+      let headerIndex = -1;
+      const headerPatterns = [
+        'DATE,TIME,TYPE',
+        'Date,Time,Type',
+        'DATE,TIME,TRANSACTION',
+        'Date,Time,Transaction',
+        'DATE,TYPE',
+        'Date,Type'
+      ];
+
+      for (let i = 0; i < lines.length && i < 15; i++) {
+        const lineUpper = lines[i].toUpperCase();
+        for (const pattern of headerPatterns) {
+          if (lineUpper.includes(pattern.toUpperCase())) {
+            headerIndex = i;
+            break;
+          }
+        }
+        if (headerIndex >= 0) break;
+      }
+
       if (headerIndex >= 0) {
         // Keep only the header line and data rows
         csvString = lines.slice(headerIndex).join('\n');
         console.log(`Skipped ${headerIndex} header rows in thinkorswim CSV`);
+      } else {
+        console.log('Warning: Could not find thinkorswim header pattern, trying to parse as-is');
       }
-      
+
       // Thinkorswim CSVs have quoted fields with commas inside
       parseOptions = {
         columns: true,
         skip_empty_lines: true,
         trim: true,
         delimiter: ',',
+        relax: true, // Relax parsing rules for more permissive parsing
         relax_column_count: true, // Allow variable column counts
         quote: '"', // Handle quoted fields
         escape: '"', // Handle escaped quotes
@@ -988,7 +1117,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
         skip_records_with_error: true // Skip problematic records
       };
       console.log('Using special parsing options for thinkorswim CSV');
-      
+
       // Log first few lines for debugging
       const debugLines = csvString.split('\n').slice(0, 5);
       console.log('First few lines after cleanup:');
@@ -1058,16 +1187,43 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       // If thinkorswim parsing fails, try alternative approach
       else if (broker === 'thinkorswim') {
         console.log('Trying alternative parsing approach for thinkorswim');
-        
-        // Try with different options
+        console.log('Original error:', parseError.message);
+
+        // Try to find the header line again with more aggressive pattern matching
+        const lines = csvString.split('\n');
+        let headerFound = false;
+
+        for (let i = 0; i < Math.min(lines.length, 20); i++) {
+          // Look for any line that looks like a CSV header (has multiple commas and common column names)
+          const line = lines[i];
+          const commaCount = (line.match(/,/g) || []).length;
+          const hasDateWord = /date/i.test(line);
+          const hasTypeWord = /type|transaction|description/i.test(line);
+
+          if (commaCount >= 3 && hasDateWord && hasTypeWord) {
+            console.log(`Found potential header at line ${i}: ${line.substring(0, 100)}`);
+            csvString = lines.slice(i).join('\n');
+            headerFound = true;
+            break;
+          }
+        }
+
+        if (!headerFound) {
+          console.log('Could not find header, trying to parse raw CSV');
+        }
+
+        // Try with even more relaxed options
         parseOptions = {
           columns: true,
           skip_empty_lines: true,
           trim: true,
           delimiter: ',',
           relax: true, // Relax parsing rules
+          relax_quotes: true, // Be lenient with quotes
           relax_column_count: true,
           skip_records_with_error: true,
+          quote: '"',
+          escape: '"',
           on_record: (record, context) => {
             // Log problematic records
             if (context.error) {
@@ -1076,7 +1232,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
             return record;
           }
         };
-        
+
         try {
           records = parse(csvString, parseOptions);
         } catch (retryError) {
@@ -1112,6 +1268,17 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       // Store currency column info in context for broker parsers to use
       context.hasCurrencyColumn = true;
       context.currencyRecords = records; // Store original records with currency data
+    }
+
+    // Check if CSV contains an account column for automatic account detection
+    const accountColumnName = detectAccountColumn(records);
+    if (accountColumnName) {
+      console.log(`[ACCOUNT] Account column "${accountColumnName}" detected - will extract account IDs from CSV`);
+      context.accountColumnName = accountColumnName;
+      context.hasAccountColumn = true;
+    } else if (context.selectedAccountId) {
+      // User manually selected an account during import
+      console.log(`[ACCOUNT] Using manually selected account: ${context.selectedAccountId}`);
     }
 
     if (broker === 'lightspeed') {
@@ -1205,15 +1372,15 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       return result;
     }
 
-    if (broker === 'tradeovate') {
-      console.log('Starting Tradeovate transaction parsing');
-      const result = await parseTradeovateTransactions(records, existingPositions, context);
-      console.log('Finished Tradeovate transaction parsing');
+    if (broker === 'tradovate') {
+      console.log('Starting Tradovate transaction parsing');
+      const result = await parseTradovateTransactions(records, existingPositions, context);
+      console.log('Finished Tradovate transaction parsing');
 
-      // IMPORTANT: Do NOT apply trade grouping for Tradeovate transactions
-      // Tradeovate parser uses round-trip position tracking to create properly separated trades
+      // IMPORTANT: Do NOT apply trade grouping for Tradovate transactions
+      // Tradovate parser uses round-trip position tracking to create properly separated trades
       // Trade grouping would incorrectly merge multiple round trips when exit and new entry have same timestamp
-      console.log('[INFO] Skipping trade grouping for Tradeovate (already grouped by round-trip logic)');
+      console.log('[INFO] Skipping trade grouping for Tradovate (already grouped by round-trip logic)');
 
       return result;
     }
@@ -1865,40 +2032,7 @@ function parseInstrumentData(symbol) {
   return { instrumentType: 'stock' };
 }
 
-// Get point value for futures contracts
-function getFuturesPointValue(underlying) {
-  const pointValues = {
-    // E-mini contracts
-    'ES': 50,      // E-mini S&P 500
-    'NQ': 20,      // E-mini NASDAQ-100
-    'YM': 5,       // E-mini Dow
-    'RTY': 50,     // E-mini Russell 2000
-
-    // Micro E-mini contracts (1/10th of E-mini)
-    'MES': 5,      // Micro E-mini S&P 500 (10 Micros = 1 E-mini)
-    'MNQ': 2,      // Micro E-mini NASDAQ-100 (10 Micros = 1 E-mini)
-    'MYM': 0.5,    // Micro E-mini Dow (10 Micros = 1 E-mini)
-    'M2K': 5,      // Micro E-mini Russell 2000 (10 Micros = 1 E-mini)
-
-    // Energy
-    'CL': 1000,    // Crude Oil
-    'NG': 10000,   // Natural Gas
-    'QG': 2500,    // Mini Natural Gas
-
-    // Metals
-    'GC': 100,     // Gold
-    'SI': 5000,    // Silver
-    'HG': 12500,   // Copper
-
-    // Treasuries
-    'ZB': 1000,    // 30-Year Treasury Bond
-    'ZN': 1000,    // 10-Year Treasury Note
-    'ZF': 1000,    // 5-Year Treasury Note
-    'ZT': 2000     // 2-Year Treasury Note
-  };
-
-  return pointValues[underlying] || 50; // Default to $50 multiplier
-}
+// getFuturesPointValue is now imported from futuresUtils
 
 // PostgreSQL 16 compatible numeric parsing
 function parseNumeric(value, defaultValue = 0) {
@@ -2066,6 +2200,11 @@ async function parseLightspeedTransactions(records, existingPositions = {}, user
       console.log(`  Resolved Symbol: "${resolvedSymbol}"`);
       console.log(`---`);
       
+      // Determine account identifier - from CSV column or manual selection
+      const accountIdentifier = context.accountColumnName
+        ? extractAccountFromRecord(record, context.accountColumnName)
+        : context.selectedAccountId || null;
+
       const transaction = {
         symbol: resolvedSymbol,
         tradeDate: parseDate(record['Trade Date']),
@@ -2078,7 +2217,8 @@ async function parseLightspeedTransactions(records, existingPositions = {}, user
         broker: 'lightspeed',
         tradeNumber: record['Trade Number'],  // Add unique trade number
         sequenceNumber: record['Sequence Number'],  // Add unique sequence number
-        notes: `Trade #${record['Trade Number']} - ${record['Security Type'] || ''}`
+        notes: `Trade #${record['Trade Number']} - ${record['Security Type'] || ''}`,
+        accountIdentifier: accountIdentifier
       };
 
       if (transaction.symbol && transaction.entryPrice > 0 && transaction.quantity > 0) {
@@ -2187,7 +2327,8 @@ async function parseLightspeedTransactions(records, existingPositions = {}, user
           totalFeesForSymbol: totalCommissions + totalFees, // Include all fees/commissions for the symbol
           entryValue: 0,
           exitValue: 0,
-          broker: 'lightspeed'
+          broker: 'lightspeed',
+          accountIdentifier: transaction.accountIdentifier
         };
         console.log(`  → Started new ${currentTrade.side} trade`);
       }
@@ -2535,6 +2676,11 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
         continue;
       }
       
+      // Determine account identifier - from CSV column or manual selection
+      const accountIdentifier = context.accountColumnName
+        ? extractAccountFromRecord(record, context.accountColumnName)
+        : context.selectedAccountId || null;
+
       transactions.push({
         symbol,
         date: parsedDate,
@@ -2546,7 +2692,8 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
         fees,
         description,
         isShort,
-        raw: record
+        raw: record,
+        accountIdentifier
       });
       
       console.log(`Parsed transaction: ${transactionType} ${quantity} ${symbol} @ $${price} ${isShort ? '(SHORT)' : ''}`);
@@ -2670,11 +2817,12 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
           weightedExitPrice: 0,
           entryValue: 0,
           exitValue: 0,
-          broker: 'schwab'
+          broker: 'schwab',
+          accountIdentifier: transaction.accountIdentifier
         };
         console.log(`  → Started new ${currentTrade.side} trade`);
       }
-      
+
       // Add execution to current trade (check for duplicates first)
       if (currentTrade) {
         const newExecution = {
@@ -2908,6 +3056,11 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
       const commissionsFees = parseFloat((record['Commissions & Fees'] || '0').replace(/[$,]/g, '')) || 0;
       const totalFees = miscFees + commissionsFees;
 
+      // Determine account identifier - from CSV column, header extraction, or manual selection
+      const accountIdentifier = context.accountColumnName
+        ? extractAccountFromRecord(record, context.accountColumnName)
+        : (context.tosAccountNumber || context.selectedAccountId || null);
+
       transactions.push({
         symbol,
         date: parseDate(date),
@@ -2918,9 +3071,10 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
         fees: totalFees,
         description,
         refNum,
-        raw: record
+        raw: record,
+        accountIdentifier
       });
-      
+
       console.log(`Parsed transaction: ${action} ${quantity} ${symbol} @ $${price}`);
     } catch (error) {
       console.error('Error parsing thinkorswim transaction:', error, record);
@@ -3056,11 +3210,12 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
           totalFees: 0,
           entryValue: 0,
           exitValue: 0,
-          broker: 'thinkorswim'
+          broker: 'thinkorswim',
+          accountIdentifier: transaction.accountIdentifier
         };
         console.log(`  → Started new ${currentTrade.side} trade`);
       }
-      
+
       // Add execution to current trade (check for duplicates first)
       if (currentTrade) {
         const newExecution = {
@@ -3287,6 +3442,11 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
         continue;
       }
       
+      // Determine account identifier - from CSV column or manual selection
+      const accountIdentifier = context.accountColumnName
+        ? extractAccountFromRecord(record, context.accountColumnName)
+        : context.selectedAccountId || null;
+
       transactions.push({
         symbol,
         date: tradeDate,
@@ -3298,9 +3458,10 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
         posEffect,
         type,
         description: `${posEffect} - ${type}`,
-        raw: record
+        raw: record,
+        accountIdentifier
       });
-      
+
       console.log(`Parsed PaperMoney transaction: ${side} ${quantity} ${symbol} @ $${price} (${posEffect})`);
     } catch (error) {
       console.error('Error parsing PaperMoney transaction:', error, record);
@@ -3374,11 +3535,12 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
           totalFees: 0,
           entryValue: 0,
           exitValue: 0,
-          broker: 'papermoney'
+          broker: 'papermoney',
+          accountIdentifier: transaction.accountIdentifier
         };
         console.log(`  → Started new ${currentTrade.side} trade`);
       }
-      
+
       // Add execution to current trade (check for duplicates first)
       if (currentTrade) {
         const newExecution = {
@@ -3586,6 +3748,11 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
         continue;
       }
 
+      // Determine account identifier - from CSV column or manual selection
+      const accountIdentifier = context.accountColumnName
+        ? extractAccountFromRecord(record, context.accountColumnName)
+        : context.selectedAccountId || null;
+
       transactions.push({
         symbol,
         date: tradeDate,
@@ -3598,7 +3765,8 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
         orderType,
         leverage,
         description: `${orderType} order ${leverage ? `with ${leverage}` : ''}`,
-        raw: record
+        raw: record,
+        accountIdentifier
       });
 
       console.log(`Parsed TradingView transaction: ${side} ${quantity} ${symbol} @ $${fillPrice} (${orderType})`);
@@ -3690,7 +3858,8 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
           totalFees: 0,
           entryValue: 0,
           exitValue: 0,
-          broker: 'tradingview'
+          broker: 'tradingview',
+          accountIdentifier: transaction.accountIdentifier
         };
         console.log(`  → Started new ${currentTrade.side} trade`);
       }
@@ -4002,6 +4171,11 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
       // Include EP (expired), EX (exercised), A (assigned), or option close with price=0
       const isExpirationTx = isExpiration || (price === 0 && instrumentData.instrumentType === 'option');
 
+      // Determine account identifier - from CSV column or manual selection
+      const accountIdentifier = context.accountColumnName
+        ? extractAccountFromRecord(record, context.accountColumnName)
+        : context.selectedAccountId || null;
+
       transactions.push({
         symbol,
         date: tradeDate,
@@ -4014,7 +4188,8 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         isExpiration: isExpirationTx,
         multiplier: multiplierFromCSV, // Contract multiplier from CSV (if available)
         description: isExpirationTx ? `IBKR option expiration/assignment` : `IBKR transaction`,
-        raw: record
+        raw: record,
+        accountIdentifier
       });
 
       if (isExpirationTx) {
@@ -4216,7 +4391,8 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
             totalFees: 0,
             entryValue: 0,
             exitValue: 0,
-            broker: 'ibkr'
+            broker: 'ibkr',
+            accountIdentifier: transaction.accountIdentifier
           };
 
           // Log with extra detail for short option positions
@@ -4537,6 +4713,11 @@ async function parseWebullTransactions(records, existingPositions = {}, context 
       // Determine action from side
       const action = side === 'buy' ? 'buy' : 'sell';
 
+      // Determine account identifier - from CSV column or manual selection
+      const accountIdentifier = context.accountColumnName
+        ? extractAccountFromRecord(record, context.accountColumnName)
+        : context.selectedAccountId || null;
+
       transactions.push({
         symbol,
         date: tradeDate,
@@ -4546,7 +4727,8 @@ async function parseWebullTransactions(records, existingPositions = {}, context 
         price: price,
         fees: 0, // Webull doesn't show fees separately in this format
         description: `Webull ${action}`,
-        raw: record
+        raw: record,
+        accountIdentifier
       });
 
       console.log(`Parsed Webull transaction: ${action} ${filled} ${symbol} @ $${price.toFixed(2)}`);
@@ -4665,7 +4847,8 @@ async function parseWebullTransactions(records, existingPositions = {}, context 
           totalFees: 0,
           entryValue: 0,
           exitValue: 0,
-          broker: 'webull'
+          broker: 'webull',
+          accountIdentifier: transaction.accountIdentifier
         };
         console.log(`  → Started new ${currentTrade.side} trade`);
       }
@@ -4924,6 +5107,11 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
         }
       }
 
+      // Determine account identifier - from CSV column or manual selection
+      const accountIdentifier = context.accountColumnName
+        ? extractAccountFromRecord(record, context.accountColumnName)
+        : context.selectedAccountId || null;
+
       transactions.push({
         symbol: trade.symbol.toUpperCase(),
         datetime: trade.entryTime,
@@ -4934,7 +5122,8 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
         commission: trade.commission || 0,
         fees: trade.fees || 0,
         broker: trade.broker || 'generic',
-        originalRecord: record
+        originalRecord: record,
+        accountIdentifier
       });
     } catch (error) {
       console.error('Error parsing generic transaction:', error, record);
@@ -5008,7 +5197,8 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
           totalFees: 0,
           entryValue: 0,
           exitValue: 0,
-          broker: transaction.broker
+          broker: transaction.broker,
+          accountIdentifier: transaction.accountIdentifier
         };
         console.log(`  → Started new ${currentTrade.side} trade`);
       }
@@ -5170,19 +5360,19 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
 }
 
 /**
- * Parse Tradeovate futures transactions
- * Tradeovate exports orders with columns: orderId, B/S, Contract, Product, avgPrice, filledQty, Fill Time, Status, Text
+ * Parse Tradovate futures transactions
+ * Tradovate exports orders with columns: orderId, B/S, Contract, Product, avgPrice, filledQty, Fill Time, Status, Text
  * This parser matches entry orders with exit orders to create complete trades
  */
-async function parseTradeovateTransactions(records, existingPositions = {}, context = {}) {
-  console.log(`Processing ${records.length} Tradeovate order records`);
+async function parseTradovateTransactions(records, existingPositions = {}, context = {}) {
+  console.log(`Processing ${records.length} Tradovate order records`);
 
   const transactions = [];
   const completedTrades = [];
   const lastTradeEndTime = {};
 
   // Debug: Log first few records to see structure
-  console.log('Sample Tradeovate records:');
+  console.log('Sample Tradovate records:');
   records.slice(0, 3).forEach((record, i) => {
     console.log(`Record ${i}:`, JSON.stringify(record));
   });
@@ -5210,7 +5400,7 @@ async function parseTradeovateTransactions(records, existingPositions = {}, cont
 
       // Skip if missing essential data
       if (!contract || !side || quantity === 0 || fillPrice === 0 || !fillTime) {
-        console.log(`Skipping Tradeovate record missing data:`, { contract, side, quantity, fillPrice, fillTime });
+        console.log(`Skipping Tradovate record missing data:`, { contract, side, quantity, fillPrice, fillTime });
         continue;
       }
 
@@ -5219,12 +5409,17 @@ async function parseTradeovateTransactions(records, existingPositions = {}, cont
       const entryTime = parseDateTime(fillTime);
 
       if (!tradeDate || !entryTime) {
-        console.log(`Skipping Tradeovate record with invalid date: ${fillTime}`);
+        console.log(`Skipping Tradovate record with invalid date: ${fillTime}`);
         continue;
       }
 
       // Determine if this is an entry or exit order
       const isExit = orderText.toLowerCase().includes('exit');
+
+      // Determine account identifier - from CSV column or manual selection
+      const accountIdentifier = context.accountColumnName
+        ? extractAccountFromRecord(record, context.accountColumnName)
+        : context.selectedAccountId || null;
 
       transactions.push({
         symbol: contract,        // Full contract symbol (e.g., MESZ5)
@@ -5235,16 +5430,17 @@ async function parseTradeovateTransactions(records, existingPositions = {}, cont
         action: side === 'buy' ? 'buy' : 'sell',
         quantity,
         price: fillPrice,
-        fees: 0, // Tradeovate doesn't include fees in this export
+        fees: 0, // Tradovate doesn't include fees in this export
         orderId,
         isExit,
         orderText,
-        raw: record
+        raw: record,
+        accountIdentifier
       });
 
-      console.log(`Parsed Tradeovate transaction: ${side} ${quantity} ${contract} @ $${fillPrice} (${isExit ? 'EXIT' : 'ENTRY'})`);
+      console.log(`Parsed Tradovate transaction: ${side} ${quantity} ${contract} @ $${fillPrice} (${isExit ? 'EXIT' : 'ENTRY'})`);
     } catch (error) {
-      console.error('Error parsing Tradeovate transaction:', error, record);
+      console.error('Error parsing Tradovate transaction:', error, record);
     }
   }
 
@@ -5261,7 +5457,7 @@ async function parseTradeovateTransactions(records, existingPositions = {}, cont
     return orderIdA - orderIdB;
   });
 
-  console.log(`Parsed ${transactions.length} valid Tradeovate filled orders`);
+  console.log(`Parsed ${transactions.length} valid Tradovate filled orders`);
 
   // Group transactions by symbol (full contract symbol)
   const transactionsBySymbol = {};
@@ -5276,7 +5472,7 @@ async function parseTradeovateTransactions(records, existingPositions = {}, cont
   for (const symbol in transactionsBySymbol) {
     const symbolTransactions = transactionsBySymbol[symbol];
 
-    console.log(`\n=== Processing ${symbolTransactions.length} Tradeovate transactions for ${symbol} ===`);
+    console.log(`\n=== Processing ${symbolTransactions.length} Tradovate transactions for ${symbol} ===`);
 
     // Get the base product for point value lookup
     const baseProduct = symbolTransactions[0]?.product || symbol.replace(/[A-Z]?\d+$/, '');
@@ -5333,7 +5529,7 @@ async function parseTradeovateTransactions(records, existingPositions = {}, cont
       totalFees: existingPosition.commission || 0,
       entryValue: existingPosition.quantity * existingPosition.entryPrice * valueMultiplier,
       exitValue: 0,
-      broker: existingPosition.broker || 'tradeovate',
+      broker: existingPosition.broker || 'tradovate',
       isExistingPosition: true,
       existingTradeId: existingPosition.id,
       newExecutionsAdded: 0
@@ -5361,7 +5557,8 @@ async function parseTradeovateTransactions(records, existingPositions = {}, cont
           totalFees: 0,
           entryValue: 0,
           exitValue: 0,
-          broker: 'tradeovate'
+          broker: 'tradovate',
+          accountIdentifier: transaction.accountIdentifier
         };
         console.log(`  Started new ${currentTrade.side} trade`);
       }
@@ -5518,7 +5715,7 @@ async function parseTradeovateTransactions(records, existingPositions = {}, cont
     }
   }
 
-  console.log(`\n[SUCCESS] Created ${completedTrades.length} trades from ${transactions.length} Tradeovate transactions`);
+  console.log(`\n[SUCCESS] Created ${completedTrades.length} trades from ${transactions.length} Tradovate transactions`);
   return completedTrades;
 }
 

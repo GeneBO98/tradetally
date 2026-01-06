@@ -40,9 +40,14 @@ const oauth2Routes = require('./routes/oauth2.routes');
 const tagsRoutes = require('./routes/tags.routes');
 const backupRoutes = require('./routes/backup.routes');
 const brokerSyncRoutes = require('./routes/brokerSync.routes');
+const yearWrappedRoutes = require('./routes/yearWrapped.routes');
+const investmentsRoutes = require('./routes/investments.routes');
+const stockScannerRoutes = require('./routes/stockScanner.routes');
+const accountRoutes = require('./routes/account.routes');
 const BillingService = require('./services/billingService');
 const priceMonitoringService = require('./services/priceMonitoringService');
 const backupScheduler = require('./services/backupScheduler.service');
+const stockScannerScheduler = require('./services/stockScannerScheduler');
 const GamificationScheduler = require('./services/gamificationScheduler');
 const TrialScheduler = require('./services/trialScheduler');
 const OptionsScheduler = require('./services/optionsScheduler');
@@ -187,6 +192,10 @@ app.use('/api/health', healthRoutes);
 app.use('/api/tags', tagsRoutes);
 app.use('/api/admin/backup', backupRoutes);
 app.use('/api/broker-sync', brokerSyncRoutes);
+app.use('/api/year-wrapped', yearWrappedRoutes);
+app.use('/api/investments', investmentsRoutes);
+app.use('/api/scanner', stockScannerRoutes);
+app.use('/api/accounts', accountRoutes);
 
 // OAuth2 Provider endpoints
 app.use('/oauth', oauth2Routes);
@@ -470,6 +479,23 @@ async function startServer() {
       console.log('Backup scheduler disabled (ENABLE_BACKUP_SCHEDULER=false)');
     }
 
+    // Initialize stock scanner scheduler (3 AM quarterly Russell 2000 scan)
+    if (process.env.ENABLE_STOCK_SCANNER !== 'false') {
+      console.log('Initializing stock scanner scheduler...');
+      
+      // Clean up any stuck scans on startup
+      const StockScannerService = require('./services/stockScannerService');
+      const cleanedUp = await StockScannerService.cleanupStuckScans();
+      if (cleanedUp > 0) {
+        console.log(`✓ Cleaned up ${cleanedUp} stuck scan(s)`);
+      }
+      
+      stockScannerScheduler.initialize();
+      console.log('✓ Stock scanner scheduler initialized (Russell 2000 scan runs quarterly at 3 AM)');
+    } else {
+      console.log('Stock scanner disabled (ENABLE_STOCK_SCANNER=false)');
+    }
+
     // Start the server
     app.listen(PORT, () => {
       logger.info(`✓ TradeTally server running on port ${PORT}`);
@@ -498,6 +524,7 @@ process.on('SIGTERM', async () => {
   jobRecoveryService.stop();
   globalEnrichmentCacheCleanupService.stop();
   backupScheduler.stopAll();
+  stockScannerScheduler.stop();
   await backgroundWorker.stop();
   process.exit(0);
 });
@@ -512,6 +539,7 @@ process.on('SIGINT', async () => {
   jobRecoveryService.stop();
   globalEnrichmentCacheCleanupService.stop();
   backupScheduler.stopAll();
+  stockScannerScheduler.stop();
   await backgroundWorker.stop();
   process.exit(0);
 });

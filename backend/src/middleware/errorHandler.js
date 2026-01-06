@@ -1,5 +1,19 @@
 const errorHandler = (err, req, res, next) => {
-  console.error(err.stack);
+  // Skip logging for benign client disconnect errors
+  // These occur when users navigate away, close browser, or network drops
+  const isClientDisconnect = err.message === 'aborted' ||
+                              err.code === 'ECONNRESET' ||
+                              err.code === 'EPIPE' ||
+                              err.code === 'ECONNABORTED';
+
+  if (!isClientDisconnect) {
+    console.error(err.stack);
+  }
+
+  // If client disconnected, no point sending response
+  if (isClientDisconnect) {
+    return;
+  }
 
   if (err.name === 'ValidationError') {
     return res.status(400).json({
