@@ -333,15 +333,17 @@ class Account {
     // NOTE: For options, we multiply by contract_size (typically 100) to get actual cash value
     //
     // Commission handling:
-    // - Entry commission: Added to outflow (increases cost basis)
-    // - Exit commission: Subtracted from inflow (reduces sale proceeds)
+    // - Entry commission: Added to outflow (increases cost basis) for LONG entries
+    //                     Added to inflow (credit/rebate) for SHORT entries
+    // - Exit commission: Subtracted from inflow (reduces sale proceeds) for LONG exits
+    //                    Added to outflow (cost) for SHORT exits
     const query = `
       WITH daily_trades AS (
         SELECT
           trade_date as date,
-          -- Inflow: money coming IN (sale proceeds MINUS exit commission)
-          -- LONG exit (selling shares/contracts) = (exit_price * quantity * multiplier) - exit_commission
-          -- SHORT entry (short sale) = entry_price * quantity * multiplier (no commission deduction on short entry)
+          -- Inflow: money coming IN
+          -- LONG exit (selling shares/contracts) = (exit_price * quantity * multiplier) - exit_commission - fees
+          -- SHORT entry (short sale) = (entry_price * quantity * multiplier) + entry_commission
           COALESCE(SUM(
             CASE
               WHEN side IN ('long', 'buy') AND exit_price IS NOT NULL
@@ -359,11 +361,17 @@ class Account {
                   END
                 ) - COALESCE(fees, 0)
               WHEN side IN ('short', 'sell') AND entry_price IS NOT NULL
-                THEN entry_price * quantity * (
+                THEN (entry_price * quantity * (
                   CASE
                     WHEN instrument_type = 'option' THEN COALESCE(contract_size, 100)
                     WHEN instrument_type = 'future' THEN COALESCE(point_value, 1)
                     ELSE 1
+                  END
+                )) + (
+                  CASE
+                    WHEN COALESCE(entry_commission, 0) != 0 THEN COALESCE(entry_commission, 0)
+                    WHEN COALESCE(exit_commission, 0) = 0 AND COALESCE(commission, 0) != 0 THEN COALESCE(commission, 0) / 2
+                    ELSE 0
                   END
                 )
               ELSE 0
