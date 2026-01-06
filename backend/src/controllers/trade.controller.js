@@ -3542,12 +3542,23 @@ const tradeController = {
       }
 
       // Auto-close all expired options
+      // Note: For LONG options expiring worthless, P&L = -entry_price (total loss)
+      //       For SHORT options expiring worthless, P&L = +entry_price (total gain - seller keeps premium)
       const updateQuery = `
         UPDATE trades
         SET
           exit_time = expiration_date + INTERVAL '16 hours',  -- Set to 4 PM ET on expiration day
           exit_price = 0,  -- Expired worthless
-          pnl = -(entry_price * quantity * COALESCE(contract_size, 100)),  -- Total loss
+          pnl = CASE
+            WHEN side = 'long' THEN -(entry_price * quantity * COALESCE(contract_size, 100))
+            WHEN side = 'short' THEN (entry_price * quantity * COALESCE(contract_size, 100))
+            ELSE -(entry_price * quantity * COALESCE(contract_size, 100))
+          END,
+          pnl_percent = CASE
+            WHEN side = 'long' THEN -100.0
+            WHEN side = 'short' THEN 100.0
+            ELSE -100.0
+          END,
           auto_closed = true,
           auto_close_reason = 'option expired worthless',
           updated_at = $1
@@ -3555,7 +3566,7 @@ const tradeController = {
           AND instrument_type = 'option'
           AND exit_time IS NULL
           AND expiration_date < $3
-        RETURNING id, symbol, expiration_date
+        RETURNING id, symbol, expiration_date, side
       `;
 
       const result = await db.query(updateQuery, [closedAt, req.user.id, today]);
@@ -3776,6 +3787,153 @@ const tradeController = {
 
     } catch (error) {
       logger.logError('Error starting quality calculation:', error);
+      next(error);
+    }
+  },
+
+  /**
+   * Repair trades with inconsistent data
+   * Detects trades where exit_price is set but executions don't show closing transactions
+   * This can happen due to import bugs or data corruption
+   */
+  repairInconsistentTrades: async (req, res, next) => {
+    try {
+      const { dryRun = true, tradeId } = req.query;
+      const isDryRun = dryRun === 'true' || dryRun === true;
+
+      logger.info(`[REPAIR] Starting trade repair for user ${req.user.id}. Dry run: ${isDryRun}`, 'app');
+
+      // Find trades that may have inconsistent data
+      // These are trades where:
+      // 1. exit_price is set (non-null)
+      // 2. executions exist
+      // 3. But the position based on executions is NOT zero (meaning trade should be open)
+      let query = `
+        SELECT
+          t.id,
+          t.symbol,
+          t.side,
+          t.quantity,
+          t.entry_price,
+          t.exit_price,
+          t.pnl,
+          t.executions,
+          t.trade_date,
+          t.instrument_type
+        FROM trades t
+        WHERE t.user_id = $1
+          AND t.exit_price IS NOT NULL
+          AND t.executions IS NOT NULL
+          AND jsonb_array_length(t.executions) > 0
+      `;
+
+      const params = [req.user.id];
+
+      // If specific trade ID provided, only check that trade
+      if (tradeId) {
+        query += ` AND t.id = $2`;
+        params.push(tradeId);
+      }
+
+      const result = await db.query(query, params);
+      const tradesToCheck = result.rows;
+
+      logger.info(`[REPAIR] Found ${tradesToCheck.length} trades to check for user ${req.user.id}`, 'app');
+
+      const inconsistentTrades = [];
+
+      for (const trade of tradesToCheck) {
+        // Calculate net position from executions
+        let netPosition = 0;
+        const executions = trade.executions || [];
+
+        // Determine entry and exit actions based on trade side
+        // For LONG: buy = entry (+), sell = exit (-)
+        // For SHORT: sell = entry (-), buy = exit (+)
+        for (const exec of executions) {
+          const action = (exec.action || exec.side || '').toLowerCase();
+          const quantity = Math.abs(parseFloat(exec.quantity) || 0);
+
+          if (action === 'buy' || action === 'long') {
+            netPosition += quantity;
+          } else if (action === 'sell' || action === 'short') {
+            netPosition -= quantity;
+          }
+        }
+
+        // For a closed trade, netPosition should be 0
+        // If it's not 0, the trade should be "open" (exit_price should be NULL)
+        if (Math.abs(netPosition) > 0.001) { // Use small threshold for floating point comparison
+          inconsistentTrades.push({
+            id: trade.id,
+            symbol: trade.symbol,
+            side: trade.side,
+            quantity: trade.quantity,
+            entryPrice: trade.entry_price,
+            exitPrice: trade.exit_price,
+            pnl: trade.pnl,
+            netPosition: netPosition,
+            executionCount: executions.length,
+            tradeDate: trade.trade_date,
+            issue: `Position should be open (net: ${netPosition}) but has exit_price set`
+          });
+        }
+      }
+
+      logger.info(`[REPAIR] Found ${inconsistentTrades.length} inconsistent trades for user ${req.user.id}`, 'app');
+
+      if (!isDryRun && inconsistentTrades.length > 0) {
+        // Fix the inconsistent trades by clearing exit_price, exit_time, and pnl
+        const updateQuery = `
+          UPDATE trades
+          SET
+            exit_price = NULL,
+            exit_time = NULL,
+            pnl = NULL,
+            pnl_percent = NULL,
+            notes = COALESCE(notes, '') || ' | [REPAIRED] Exit data cleared - position was open based on executions',
+            updated_at = NOW()
+          WHERE id = ANY($1::uuid[])
+            AND user_id = $2
+          RETURNING id, symbol
+        `;
+
+        const tradeIds = inconsistentTrades.map(t => t.id);
+        const updateResult = await db.query(updateQuery, [tradeIds, req.user.id]);
+
+        logger.info(`[REPAIR] Repaired ${updateResult.rows.length} trades for user ${req.user.id}`, 'app');
+
+        // Invalidate caches
+        const AnalyticsCache = require('../services/analyticsCache');
+        const cache = require('../utils/cache');
+
+        await AnalyticsCache.invalidateUserCache(req.user.id);
+        const cacheKeys = Object.keys(cache.data || {}).filter(key =>
+          key.startsWith(`analytics:user_${req.user.id}:`)
+        );
+        cacheKeys.forEach(key => cache.del(key));
+
+        return res.json({
+          success: true,
+          message: `Repaired ${updateResult.rows.length} inconsistent trade(s)`,
+          repairedCount: updateResult.rows.length,
+          repairedTrades: updateResult.rows,
+          dryRun: false
+        });
+      }
+
+      res.json({
+        success: true,
+        message: isDryRun
+          ? `Found ${inconsistentTrades.length} inconsistent trade(s). Run with dryRun=false to repair.`
+          : 'No inconsistent trades found',
+        inconsistentCount: inconsistentTrades.length,
+        inconsistentTrades: inconsistentTrades,
+        dryRun: isDryRun
+      });
+
+    } catch (error) {
+      logger.logError('Error repairing inconsistent trades:', error);
       next(error);
     }
   }
