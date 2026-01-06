@@ -63,6 +63,25 @@ export function useNotification() {
     }
   }
 
+  // Danger confirmation for destructive actions (delete, etc.)
+  function showDangerConfirmation(title, message, onConfirm, options = {}) {
+    modalAlert.value = {
+      type: 'error',
+      title,
+      message,
+      confirmText: options.confirmText || 'Delete',
+      cancelText: options.cancelText || 'Cancel',
+      onConfirm: () => {
+        clearModalAlert()
+        onConfirm()
+      },
+      onCancel: () => {
+        clearModalAlert()
+        if (options.onCancel) options.onCancel()
+      }
+    }
+  }
+
   // New method for success modals
   function showSuccessModal(title, message, options = {}) {
     modalAlert.value = {
@@ -92,6 +111,7 @@ export function useNotification() {
     showCriticalError,
     showImportantWarning,
     showConfirmation,
+    showDangerConfirmation,
     showSuccessModal,
     clearNotification,
     clearModalAlert
