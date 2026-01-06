@@ -233,6 +233,10 @@
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Broker</dt>
                   <dd class="mt-1 text-sm text-gray-900 dark:text-white">{{ trade.broker }}</dd>
                 </div>
+                <div v-if="trade.account_identifier">
+                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Account</dt>
+                  <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">{{ trade.account_identifier }}</dd>
+                </div>
                 <div v-if="trade.strategy">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Strategy</dt>
                   <dd class="mt-1 text-sm text-gray-900 dark:text-white">{{ trade.strategy }}</dd>

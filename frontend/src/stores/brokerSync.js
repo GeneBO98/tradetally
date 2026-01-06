@@ -208,6 +208,22 @@ export const useBrokerSyncStore = defineStore('brokerSync', () => {
     }
   }
 
+  async function deleteBrokerTrades(connectionId) {
+    loading.value = true
+    error.value = null
+
+    try {
+      const response = await api.delete(`/broker-sync/connections/${connectionId}/trades`)
+      return response.data
+    } catch (err) {
+      console.error('[BROKER-SYNC] Failed to delete broker trades:', err)
+      error.value = err.response?.data?.error || 'Failed to delete trades'
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
   function clearError() {
     error.value = null
   }
@@ -241,6 +257,7 @@ export const useBrokerSyncStore = defineStore('brokerSync', () => {
     initSchwabOAuth,
     updateConnection,
     deleteConnection,
+    deleteBrokerTrades,
     triggerSync,
     testConnection,
     fetchSyncLogs,

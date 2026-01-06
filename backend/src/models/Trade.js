@@ -1,6 +1,7 @@
 const db = require('../config/database');
 const AchievementService = require('../services/achievementService');
 const { getUserLocalDate } = require('../utils/timezone');
+const { getFuturesPointValue, extractUnderlyingFromFuturesSymbol } = require('../utils/futuresUtils');
 
 class Trade {
   /**
@@ -46,7 +47,8 @@ class Trade {
       originalCurrency, exchangeRate, originalEntryPriceCurrency,
       originalExitPriceCurrency, originalPnlCurrency, originalCommissionCurrency,
       originalFeesCurrency,
-      stopLoss, takeProfit, chartUrl
+      stopLoss, takeProfit, chartUrl,
+      brokerConnectionId, accountIdentifier
     } = tradeData;
 
     // Convert empty strings to null for optional fields
@@ -60,9 +62,34 @@ class Trade {
       throw new Error('Entry time is required for creating a trade');
     }
 
+    // Auto-set point value and underlying asset for futures trades if not provided
+    let finalPointValue = pointValue;
+    let finalUnderlyingAsset = underlyingAsset;
+    if (instrumentType === 'future') {
+      // If underlying asset is not provided, try to extract it from the symbol
+      if (!finalUnderlyingAsset && symbol) {
+        finalUnderlyingAsset = extractUnderlyingFromFuturesSymbol(symbol) || underlyingSymbol || null;
+      }
+      
+      // If point value is not provided, look it up based on underlying asset
+      if (!finalPointValue && finalUnderlyingAsset) {
+        finalPointValue = getFuturesPointValue(finalUnderlyingAsset);
+        console.log(`[TRADE] Auto-set point value for ${symbol}: ${finalUnderlyingAsset} = $${finalPointValue} per point`);
+      } else if (!finalPointValue && symbol) {
+        // Fallback: try to extract underlying from symbol and look up point value
+        const extractedUnderlying = extractUnderlyingFromFuturesSymbol(symbol);
+        if (extractedUnderlying) {
+          finalUnderlyingAsset = extractedUnderlying;
+          finalPointValue = getFuturesPointValue(extractedUnderlying);
+          console.log(`[TRADE] Auto-set point value for ${symbol}: ${extractedUnderlying} = $${finalPointValue} per point`);
+        }
+      }
+    }
+
     // Use provided P&L if available (e.g., from Schwab), otherwise calculate it
-    const pnl = providedPnL !== undefined ? providedPnL : this.calculatePnL(entryPrice, cleanExitPrice, quantity, side, commission, fees, instrumentType, contractSize, pointValue);
-    const pnlPercent = providedPnLPercent !== undefined ? providedPnLPercent : this.calculatePnLPercent(entryPrice, cleanExitPrice, side, pnl, quantity, instrumentType, pointValue);
+    // Use finalPointValue which may have been auto-set for futures
+    const pnl = providedPnL !== undefined ? providedPnL : this.calculatePnL(entryPrice, cleanExitPrice, quantity, side, commission, fees, instrumentType, contractSize, finalPointValue);
+    const pnlPercent = providedPnLPercent !== undefined ? providedPnLPercent : this.calculatePnLPercent(entryPrice, cleanExitPrice, side, pnl, quantity, instrumentType, finalPointValue);
 
     // Calculate R-Multiple later after applying default stop loss
     // Will be calculated after finalStopLoss is determined
@@ -247,9 +274,9 @@ class Trade {
         contract_month, contract_year, tick_size, point_value, underlying_asset, import_id,
         original_currency, exchange_rate, original_entry_price_currency, original_exit_price_currency,
         original_pnl_currency, original_commission_currency, original_fees_currency,
-        stop_loss, take_profit, r_value, chart_url
+        stop_loss, take_profit, r_value, chart_url, broker_connection_id, account_identifier
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58)
       RETURNING *
     `;
 
@@ -261,11 +288,11 @@ class Trade {
       JSON.stringify(newsData.newsEvents || []), newsData.hasNews || false, newsData.sentiment, newsData.checkedAt,
       instrumentType || 'stock', strikePrice || null, expirationDate || null, optionType || null,
       contractSize || (instrumentType === 'option' ? 100 : null), underlyingSymbol || null,
-      contractMonth || null, contractYear || null, tickSize || null, pointValue || null, underlyingAsset || null,
+      contractMonth || null, contractYear || null, tickSize || null, finalPointValue || null, finalUnderlyingAsset || null,
       importId || null,
       originalCurrency || 'USD', exchangeRate || 1.0, originalEntryPriceCurrency || null, originalExitPriceCurrency || null,
       originalPnlCurrency || null, originalCommissionCurrency || null, originalFeesCurrency || null,
-      finalStopLoss || null, takeProfit || null, rValue, chartUrl || null
+      finalStopLoss || null, takeProfit || null, rValue, chartUrl || null, brokerConnectionId || null, accountIdentifier || null
     ];
 
     const result = await db.query(query, values);
@@ -674,6 +701,15 @@ class Trade {
       paramCount++;
     }
 
+    // Account identifier filter - multi-select support
+    if (filters.accounts && filters.accounts.length > 0) {
+      console.log('[ACCOUNTS] Applying account filter:', filters.accounts);
+      const placeholders = filters.accounts.map((_, index) => `$${paramCount + index}`).join(',');
+      whereClause += ` AND t.account_identifier IN (${placeholders})`;
+      filters.accounts.forEach(account => values.push(account));
+      paramCount += filters.accounts.length;
+    }
+
     // Quality grade filter - multi-select support (A, B, C, D, F)
     if (filters.qualityGrades && filters.qualityGrades.length > 0) {
       console.log('[QUALITY] Applying quality grade filter:', filters.qualityGrades);
@@ -751,6 +787,32 @@ class Trade {
     // First get the current trade data for calculations
     const currentTrade = await this.findById(id, userId);
 
+    // Auto-set point value and underlying asset for futures trades if not provided
+    const instrumentType = updates.instrumentType || currentTrade.instrument_type || 'stock';
+    if (instrumentType === 'future') {
+      // If point value is being updated or is missing, auto-set it
+      if (updates.pointValue === undefined || updates.pointValue === null) {
+        const underlyingAsset = updates.underlyingAsset || currentTrade.underlying_asset;
+        const symbol = updates.symbol || currentTrade.symbol;
+        
+        // Try to extract underlying from symbol if not provided
+        let finalUnderlying = underlyingAsset;
+        if (!finalUnderlying && symbol) {
+          finalUnderlying = extractUnderlyingFromFuturesSymbol(symbol) || updates.underlyingSymbol || currentTrade.underlying_symbol || null;
+        }
+        
+        // Auto-set point value if we have an underlying asset
+        if (finalUnderlying && !currentTrade.point_value) {
+          const autoPointValue = getFuturesPointValue(finalUnderlying);
+          updates.pointValue = autoPointValue;
+          if (!updates.underlyingAsset && !currentTrade.underlying_asset) {
+            updates.underlyingAsset = finalUnderlying;
+          }
+          console.log(`[TRADE UPDATE] Auto-set point value for ${symbol}: ${finalUnderlying} = $${autoPointValue} per point`);
+        }
+      }
+    }
+
     // Convert empty strings to null for optional fields
     if (updates.exitTime === '') updates.exitTime = null;
     if (updates.exitPrice === '') updates.exitPrice = null;
@@ -807,6 +869,7 @@ class Trade {
 
       // Calculate updated P&L and hold time
       // Use !== undefined to properly handle 0 values for commission and fees
+      const pointValue = updates.pointValue !== undefined ? updates.pointValue : currentTrade.point_value;
       updatedTrade.pnl = this.calculatePnL(
         updatedTrade.entry_price,
         updatedTrade.exit_price,
@@ -815,7 +878,8 @@ class Trade {
         updates.commission !== undefined ? updates.commission : currentTrade.commission,
         updates.fees !== undefined ? updates.fees : currentTrade.fees,
         updates.instrumentType || currentTrade.instrument_type || 'stock',
-        updates.contractSize !== undefined ? updates.contractSize : (currentTrade.contract_size || 1)
+        updates.contractSize !== undefined ? updates.contractSize : (currentTrade.contract_size || 1),
+        pointValue
       );
 
       if (updatedTrade.exit_time) {
@@ -1817,6 +1881,15 @@ class Trade {
       console.log('[QUALITY] ANALYTICS: Added quality filter to query, values:', filters.qualityGrades);
     }
 
+    // Account identifier filter - multi-select support for broker accounts
+    if (filters.accounts && filters.accounts.length > 0) {
+      console.log('[ACCOUNTS] ANALYTICS: Applying account filter:', filters.accounts);
+      const placeholders = filters.accounts.map((_, index) => `$${paramCount + index}`).join(',');
+      whereClause += ` AND t.account_identifier IN (${placeholders})`;
+      filters.accounts.forEach(account => values.push(account));
+      paramCount += filters.accounts.length;
+    }
+
     console.log('Analytics query - whereClause:', whereClause);
     console.log('Analytics query - values:', values);
     
@@ -2319,6 +2392,17 @@ class Trade {
     `;
     const result = await db.query(query, [userId]);
     return result.rows.map(row => row.broker);
+  }
+
+  static async getAccountList(userId) {
+    const query = `
+      SELECT DISTINCT account_identifier
+      FROM trades
+      WHERE user_id = $1 AND account_identifier IS NOT NULL AND account_identifier != ''
+      ORDER BY account_identifier
+    `;
+    const result = await db.query(query, [userId]);
+    return result.rows.map(row => row.account_identifier);
   }
 
   // Create a new round trip trade record

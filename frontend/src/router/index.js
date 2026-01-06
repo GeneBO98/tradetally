@@ -83,6 +83,12 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
+      path: '/year-wrapped/:year?',
+      name: 'year-wrapped',
+      component: () => import('@/views/YearWrappedView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
       path: '/analytics/behavioral',
       name: 'behavioral-analytics',
       component: () => import('@/views/BehavioralAnalyticsView.vue'),
@@ -164,6 +170,18 @@ const router = createRouter({
       path: '/equity-history',
       name: 'equity-history',
       component: () => import('@/views/EquityHistoryView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/cashflow',
+      name: 'cashflow',
+      component: () => import('@/views/CashflowView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/accounts',
+      name: 'accounts',
+      component: () => import('@/views/AccountsView.vue'),
       meta: { requiresAuth: true }
     },
     {
@@ -268,6 +286,24 @@ const router = createRouter({
       path: '/watchlists/:id',
       name: 'watchlist-detail',
       component: () => import('@/views/WatchlistDetailView.vue'),
+      meta: { requiresAuth: true, requiresTier: 'pro' }
+    },
+    {
+      path: '/investments',
+      name: 'investments',
+      component: () => import('@/views/InvestmentsView.vue'),
+      meta: { requiresAuth: true, requiresTier: 'pro' }
+    },
+    {
+      path: '/investments/analyze/:symbol',
+      name: 'stock-analysis',
+      component: () => import('@/views/StockAnalysisView.vue'),
+      meta: { requiresAuth: true, requiresTier: 'pro' }
+    },
+    {
+      path: '/investments/holdings/:id',
+      name: 'holding-detail',
+      component: () => import('@/views/HoldingDetailView.vue'),
       meta: { requiresAuth: true, requiresTier: 'pro' }
     },
     {

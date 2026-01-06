@@ -68,6 +68,8 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       ENABLE_AI_CUSIP_RESOLUTION: ${ENABLE_AI_CUSIP_RESOLUTION:-true}
       PERPLEXITY_API_KEY: ${PERPLEXITY_API_KEY:-}
+      # Timezone Configuration
+      TZ: ${TZ:-America/Chicago}
     ports:
       - "8081:80"
       - "3000:3000"

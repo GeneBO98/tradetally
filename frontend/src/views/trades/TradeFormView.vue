@@ -99,6 +99,7 @@
                 <option value="stock">Stock</option>
                 <option value="option">Option</option>
                 <option value="future">Future</option>
+                <option value="crypto">Crypto</option>
               </select>
             </div>
           </div>
@@ -419,7 +420,25 @@
         </div>
 
         <!-- Additional Fields Section -->
-        <div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
+        <div class="border-b border-gray-200 dark:border-gray-700 pb-6">
+          <button
+            type="button"
+            @click="showAdditionalFields = !showAdditionalFields"
+            class="flex items-center justify-between w-full text-left mb-4"
+          >
+            <h2 class="text-lg font-medium text-gray-900 dark:text-white">Additional Fields</h2>
+            <svg
+              class="h-5 w-5 text-gray-500 dark:text-gray-400 transition-transform duration-200"
+              :class="{ 'rotate-180': showAdditionalFields }"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          <div v-show="showAdditionalFields" class="grid grid-cols-1 gap-6 sm:grid-cols-2">
 
           <div>
             <label for="mae" class="label">MAE (Max Adverse Excursion)</label>
@@ -468,6 +487,7 @@
                 @change="handleBrokerSelect"
               >
                 <option value="">Select broker</option>
+                <option v-if="form.broker && !brokersList.includes(form.broker)" :value="form.broker">{{ form.broker }}</option>
                 <option v-for="broker in brokersList" :key="broker" :value="broker">{{ broker }}</option>
                 <option value="__custom__">+ Add New Broker</option>
               </select>
@@ -518,10 +538,30 @@
               </p>
             </div>
           </div>
-          
+
+          </div>
         </div>
-      
-      <div v-if="showMoreOptions" class="space-y-6">
+
+        <!-- More Options Section -->
+        <div class="border-b border-gray-200 dark:border-gray-700 pb-6">
+          <button
+            type="button"
+            @click="showMoreOptions = !showMoreOptions"
+            class="flex items-center justify-between w-full text-left mb-4"
+          >
+            <h2 class="text-lg font-medium text-gray-900 dark:text-white">More Options</h2>
+            <svg
+              class="h-5 w-5 text-gray-500 dark:text-gray-400 transition-transform duration-200"
+              :class="{ 'rotate-180': showMoreOptions }"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+      <div v-show="showMoreOptions" class="space-y-6">
         <!-- Options-specific fields -->
         <div v-if="form.instrumentType === 'option'" class="grid grid-cols-1 gap-6 sm:grid-cols-2 border border-gray-200 dark:border-gray-600 rounded-lg p-4">
           <div class="sm:col-span-2">
@@ -664,109 +704,183 @@
           </div>
         </div>
 
-        <div class="relative">
-          <label for="strategy" class="label">Strategy</label>
-          <div class="relative">
-            <input
-              v-if="showStrategyInput"
-              id="strategy"
-              v-model="form.strategy"
-              type="text"
-              class="input"
-              placeholder="Enter strategy name"
-              @keydown.enter.prevent="handleStrategyInputEnter"
-              @blur="handleStrategyInputBlur"
-            />
-            <select
-              v-else
-              id="strategy"
-              v-model="form.strategy"
-              class="input"
-              @change="handleStrategySelect"
+        <!-- Strategy Field (Collapsible) -->
+        <div class="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+          <button
+            type="button"
+            @click="showStrategy = !showStrategy"
+            class="flex items-center justify-between w-full px-4 py-3 text-left bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800"
+          >
+            <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Strategy</span>
+            <svg
+              class="h-4 w-4 text-gray-500 dark:text-gray-400 transition-transform duration-200"
+              :class="{ 'rotate-180': showStrategy }"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
             >
-              <option value="">Select strategy</option>
-              <option v-if="form.strategy && !strategiesList.includes(form.strategy)" :value="form.strategy">{{ form.strategy }}</option>
-              <option v-for="strategy in strategiesList" :key="strategy" :value="strategy">{{ strategy }}</option>
-              <option value="__custom__">+ Add New Strategy</option>
-            </select>
-          </div>
-        </div>
-        <div class="relative">
-          <label for="setup" class="label">Setup</label>
-          <div class="relative">
-            <input
-              v-if="showSetupInput"
-              id="setup"
-              v-model="form.setup"
-              type="text"
-              class="input"
-              placeholder="Enter setup name"
-              @keydown.enter.prevent="handleSetupInputEnter"
-              @blur="handleSetupInputBlur"
-            />
-            <select
-              v-else
-              id="setup"
-              v-model="form.setup"
-              class="input"
-              @change="handleSetupSelect"
-            >
-              <option value="">Select setup</option>
-              <option v-if="form.setup && !setupsList.includes(form.setup)" :value="form.setup">{{ form.setup }}</option>
-              <option v-for="setup in setupsList" :key="setup" :value="setup">{{ setup }}</option>
-              <option value="__custom__">+ Add New Setup</option>
-            </select>
-          </div>
-        </div>
-  
-        <div>
-          <label for="tags" class="label">Tags (comma separated)</label>
-          <div class="relative">
-            <input
-              id="tags"
-              v-model="tagsInput"
-              type="text"
-              class="input"
-              placeholder="momentum, earnings, breakout"
-              @focus="handleTagsFocus"
-              @blur="handleTagsBlur"
-              @keydown.down.prevent="moveTagSuggestion(1)"
-              @keydown.up.prevent="moveTagSuggestion(-1)"
-              @keydown.enter="applyActiveTagSuggestion"
-            />
-            <div
-              v-if="showTagSuggestions"
-              class="absolute z-10 mt-1 w-full rounded-md bg-white dark:bg-gray-800 shadow-lg border border-gray-200 dark:border-gray-700 max-h-48 overflow-auto"
-            >
-              <ul class="py-1 text-sm text-gray-700 dark:text-gray-200">
-                <li
-                  v-for="(tag, index) in tagSuggestions"
-                  :key="tag"
-                  @mousedown.prevent="selectTagSuggestion(tag)"
-                  :class="[
-                    'px-3 py-1 cursor-pointer flex items-center justify-between',
-                    index === activeTagSuggestionIndex
-                      ? 'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-100'
-                      : 'hover:bg-gray-100 dark:hover:bg-gray-700'
-                  ]"
-                >
-                  <span>{{ tag }}</span>
-                </li>
-              </ul>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          <div v-show="showStrategy" class="p-4">
+            <div class="relative">
+              <input
+                v-if="showStrategyInput"
+                id="strategy"
+                v-model="form.strategy"
+                type="text"
+                class="input"
+                placeholder="Enter strategy name"
+                @keydown.enter.prevent="handleStrategyInputEnter"
+                @blur="handleStrategyInputBlur"
+              />
+              <select
+                v-else
+                id="strategy"
+                v-model="form.strategy"
+                class="input"
+                @change="handleStrategySelect"
+              >
+                <option value="">Select strategy</option>
+                <option v-if="form.strategy && !strategiesList.includes(form.strategy)" :value="form.strategy">{{ form.strategy }}</option>
+                <option v-for="strategy in strategiesList" :key="strategy" :value="strategy">{{ strategy }}</option>
+                <option value="__custom__">+ Add New Strategy</option>
+              </select>
             </div>
           </div>
         </div>
-  
-        <div>
-          <label for="notes" class="label">Notes</label>
-          <textarea
-            id="notes"
-            v-model="form.notes"
-            rows="4"
-            class="input"
-            placeholder="Add your trade notes, observations, and learnings..."
-            @keydown="handleNotesKeydown"
-          ></textarea>
+
+        <!-- Setup Field (Collapsible) -->
+        <div class="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+          <button
+            type="button"
+            @click="showSetup = !showSetup"
+            class="flex items-center justify-between w-full px-4 py-3 text-left bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800"
+          >
+            <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Setup</span>
+            <svg
+              class="h-4 w-4 text-gray-500 dark:text-gray-400 transition-transform duration-200"
+              :class="{ 'rotate-180': showSetup }"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          <div v-show="showSetup" class="p-4">
+            <div class="relative">
+              <input
+                v-if="showSetupInput"
+                id="setup"
+                v-model="form.setup"
+                type="text"
+                class="input"
+                placeholder="Enter setup name"
+                @keydown.enter.prevent="handleSetupInputEnter"
+                @blur="handleSetupInputBlur"
+              />
+              <select
+                v-else
+                id="setup"
+                v-model="form.setup"
+                class="input"
+                @change="handleSetupSelect"
+              >
+                <option value="">Select setup</option>
+                <option v-if="form.setup && !setupsList.includes(form.setup)" :value="form.setup">{{ form.setup }}</option>
+                <option v-for="setup in setupsList" :key="setup" :value="setup">{{ setup }}</option>
+                <option value="__custom__">+ Add New Setup</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tags Field (Collapsible) -->
+        <div class="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+          <button
+            type="button"
+            @click="showTags = !showTags"
+            class="flex items-center justify-between w-full px-4 py-3 text-left bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800"
+          >
+            <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Tags</span>
+            <svg
+              class="h-4 w-4 text-gray-500 dark:text-gray-400 transition-transform duration-200"
+              :class="{ 'rotate-180': showTags }"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          <div v-show="showTags" class="p-4">
+            <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">Comma separated</p>
+            <div class="relative">
+              <input
+                id="tags"
+                v-model="tagsInput"
+                type="text"
+                class="input"
+                placeholder="momentum, earnings, breakout"
+                @focus="handleTagsFocus"
+                @blur="handleTagsBlur"
+                @keydown.down.prevent="moveTagSuggestion(1)"
+                @keydown.up.prevent="moveTagSuggestion(-1)"
+                @keydown.enter="applyActiveTagSuggestion"
+              />
+              <div
+                v-if="showTagSuggestions"
+                class="absolute z-10 mt-1 w-full rounded-md bg-white dark:bg-gray-800 shadow-lg border border-gray-200 dark:border-gray-700 max-h-48 overflow-auto"
+              >
+                <ul class="py-1 text-sm text-gray-700 dark:text-gray-200">
+                  <li
+                    v-for="(tag, index) in tagSuggestions"
+                    :key="tag"
+                    @mousedown.prevent="selectTagSuggestion(tag)"
+                    :class="[
+                      'px-3 py-1 cursor-pointer flex items-center justify-between',
+                      index === activeTagSuggestionIndex
+                        ? 'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-100'
+                        : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+                    ]"
+                  >
+                    <span>{{ tag }}</span>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Notes Field (Collapsible) -->
+        <div class="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+          <button
+            type="button"
+            @click="showNotes = !showNotes"
+            class="flex items-center justify-between w-full px-4 py-3 text-left bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800"
+          >
+            <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Notes</span>
+            <svg
+              class="h-4 w-4 text-gray-500 dark:text-gray-400 transition-transform duration-200"
+              :class="{ 'rotate-180': showNotes }"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          <div v-show="showNotes" class="p-4">
+            <textarea
+              id="notes"
+              v-model="form.notes"
+              rows="4"
+              class="input"
+              placeholder="Add your trade notes, observations, and learnings..."
+              @keydown="handleNotesKeydown"
+            ></textarea>
+          </div>
         </div>
 
         <!-- Current Images (when editing) -->
@@ -779,32 +893,46 @@
           />
         </div>
 
-        <!-- Chart Management Section -->
-        <div v-if="isEdit && route.params.id">
-          <!-- Display existing charts -->
-          <TradeCharts
-            v-if="trade && trade.charts && trade.charts.length > 0"
-            :trade-id="route.params.id"
-            :charts="trade.charts"
-            :can-delete="true"
-            @deleted="handleChartDeleted"
-          />
+        <!-- Chart Management Section (Collapsible) -->
+        <div v-if="isEdit && route.params.id" class="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+          <button
+            type="button"
+            @click="showCharts = !showCharts"
+            class="flex items-center justify-between w-full px-4 py-3 text-left bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800"
+          >
+            <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Charts & Images</span>
+            <svg
+              class="h-4 w-4 text-gray-500 dark:text-gray-400 transition-transform duration-200"
+              :class="{ 'rotate-180': showCharts }"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          <div v-show="showCharts" class="p-4 space-y-6">
+            <!-- Display existing charts -->
+            <TradeCharts
+              v-if="trade && trade.charts && trade.charts.length > 0"
+              :trade-id="route.params.id"
+              :charts="trade.charts"
+              :can-delete="true"
+              @deleted="handleChartDeleted"
+            />
 
-          <!-- Add new charts -->
-          <div class="mt-6">
+            <!-- Add new charts -->
             <ChartUpload
               :trade-id="route.params.id"
               @added="handleChartAdded"
             />
-          </div>
-        </div>
 
-        <!-- Image Upload Section -->
-        <div v-if="isEdit && route.params.id">
-          <ImageUpload
-            :trade-id="route.params.id"
-            @uploaded="handleImageUploaded"
-          />
+            <!-- Image Upload Section -->
+            <ImageUpload
+              :trade-id="route.params.id"
+              @uploaded="handleImageUploaded"
+            />
+          </div>
         </div>
   
         <div class="flex items-center">
@@ -819,9 +947,8 @@
           </label>
         </div>
       </div>
-      <button type="button" @click="showMoreOptions = !showMoreOptions" class="btn-secondary">
-        {{ showMoreOptions ? 'Less Options' : 'More Options' }}
-      </button>
+        </div>
+
       <div v-if="error" class="rounded-md bg-red-50 dark:bg-red-900/20 p-4">
           <p class="text-sm text-red-800 dark:text-red-400">{{ error }}</p>
         </div>
@@ -903,7 +1030,89 @@ import ChartUpload from '@/components/trades/ChartUpload.vue'
 import TradeCharts from '@/components/trades/TradeCharts.vue'
 import api from '@/services/api'
 
-const showMoreOptions = ref(false)
+// Load section preferences from localStorage
+const defaultSectionPrefs = {
+  additionalFields: true,
+  moreOptions: false,
+  // Individual optional fields within More Options
+  strategy: true,
+  setup: true,
+  tags: true,
+  notes: true,
+  charts: true
+}
+
+function loadSectionPreferences() {
+  try {
+    const saved = localStorage.getItem('tradeFormSections')
+    if (saved) {
+      return { ...defaultSectionPrefs, ...JSON.parse(saved) }
+    }
+  } catch (e) {
+    console.warn('Failed to load section preferences:', e)
+  }
+  return { ...defaultSectionPrefs }
+}
+
+function saveSectionPreferences() {
+  try {
+    localStorage.setItem('tradeFormSections', JSON.stringify(sectionPrefs.value))
+  } catch (e) {
+    console.warn('Failed to save section preferences:', e)
+  }
+}
+
+const sectionPrefs = ref(loadSectionPreferences())
+const showMoreOptions = computed({
+  get: () => sectionPrefs.value.moreOptions,
+  set: (val) => {
+    sectionPrefs.value.moreOptions = val
+    saveSectionPreferences()
+  }
+})
+const showAdditionalFields = computed({
+  get: () => sectionPrefs.value.additionalFields,
+  set: (val) => {
+    sectionPrefs.value.additionalFields = val
+    saveSectionPreferences()
+  }
+})
+const showStrategy = computed({
+  get: () => sectionPrefs.value.strategy,
+  set: (val) => {
+    sectionPrefs.value.strategy = val
+    saveSectionPreferences()
+  }
+})
+const showSetup = computed({
+  get: () => sectionPrefs.value.setup,
+  set: (val) => {
+    sectionPrefs.value.setup = val
+    saveSectionPreferences()
+  }
+})
+const showTags = computed({
+  get: () => sectionPrefs.value.tags,
+  set: (val) => {
+    sectionPrefs.value.tags = val
+    saveSectionPreferences()
+  }
+})
+const showNotes = computed({
+  get: () => sectionPrefs.value.notes,
+  set: (val) => {
+    sectionPrefs.value.notes = val
+    saveSectionPreferences()
+  }
+})
+const showCharts = computed({
+  get: () => sectionPrefs.value.charts,
+  set: (val) => {
+    sectionPrefs.value.charts = val
+    saveSectionPreferences()
+  }
+})
+
 const route = useRoute()
 const router = useRouter()
 const tradesStore = useTradesStore()
@@ -1805,17 +2014,26 @@ function handleBrokerSelect(event) {
 }
 
 function handleBrokerInputEnter() {
-  // Save the broker and switch back to select
-  if (form.value.broker.trim()) {
+  const newBroker = form.value.broker.trim()
+  if (newBroker) {
+    // Add to the list if it's not already there
+    if (!brokersList.value.includes(newBroker)) {
+      brokersList.value.push(newBroker)
+      showSuccess('Added', `Broker "${newBroker}" added`)
+    }
     showBrokerInput.value = false
   }
 }
 
 function handleBrokerInputBlur() {
-  // If the input is empty, switch back to select
-  if (!form.value.broker.trim()) {
-    showBrokerInput.value = false
+  const newBroker = form.value.broker.trim()
+  if (newBroker) {
+    // Add to the list if it's not already there
+    if (!brokersList.value.includes(newBroker)) {
+      brokersList.value.push(newBroker)
+    }
   }
+  showBrokerInput.value = false
 }
 
 function handleStrategySelect(event) {
@@ -1829,17 +2047,26 @@ function handleStrategySelect(event) {
 }
 
 function handleStrategyInputEnter() {
-  // Save the strategy and switch back to select
-  if (form.value.strategy.trim()) {
+  const newStrategy = form.value.strategy.trim()
+  if (newStrategy) {
+    // Add to the list if it's not already there
+    if (!strategiesList.value.includes(newStrategy)) {
+      strategiesList.value.push(newStrategy)
+      showSuccess('Added', `Strategy "${newStrategy}" added`)
+    }
     showStrategyInput.value = false
   }
 }
 
 function handleStrategyInputBlur() {
-  // If the input is empty, switch back to select
-  if (!form.value.strategy.trim()) {
-    showStrategyInput.value = false
+  const newStrategy = form.value.strategy.trim()
+  if (newStrategy) {
+    // Add to the list if it's not already there
+    if (!strategiesList.value.includes(newStrategy)) {
+      strategiesList.value.push(newStrategy)
+    }
   }
+  showStrategyInput.value = false
 }
 
 function handleSetupSelect(event) {
@@ -1853,17 +2080,26 @@ function handleSetupSelect(event) {
 }
 
 function handleSetupInputEnter() {
-  // Save the setup and switch back to select
-  if (form.value.setup.trim()) {
+  const newSetup = form.value.setup.trim()
+  if (newSetup) {
+    // Add to the list if it's not already there
+    if (!setupsList.value.includes(newSetup)) {
+      setupsList.value.push(newSetup)
+      showSuccess('Added', `Setup "${newSetup}" added`)
+    }
     showSetupInput.value = false
   }
 }
 
 function handleSetupInputBlur() {
-  // If the input is empty, switch back to select
-  if (!form.value.setup.trim()) {
-    showSetupInput.value = false
+  const newSetup = form.value.setup.trim()
+  if (newSetup) {
+    // Add to the list if it's not already there
+    if (!setupsList.value.includes(newSetup)) {
+      setupsList.value.push(newSetup)
+    }
   }
+  showSetupInput.value = false
 }
 
 function addExecution() {
