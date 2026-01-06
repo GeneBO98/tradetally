@@ -1451,15 +1451,17 @@ function calculateTotalFees(setting) {
 
 function editBrokerFee(setting) {
   editingBrokerFee.value = setting.id
+  // Use nullish coalescing (??) instead of || to preserve 0 values
+  // This ensures that if user explicitly set a fee to 0, it stays 0
   brokerFeeForm.value = {
     broker: setting.broker,
     instrument: setting.instrument || '',
-    commissionPerContract: setting.commissionPerContract || 0,
-    commissionPerSide: setting.commissionPerSide || 0,
-    exchangeFeePerContract: setting.exchangeFeePerContract || 0,
-    nfaFeePerContract: setting.nfaFeePerContract || 0.02,
-    clearingFeePerContract: setting.clearingFeePerContract || 0,
-    platformFeePerContract: setting.platformFeePerContract || 0,
+    commissionPerContract: setting.commissionPerContract ?? 0,
+    commissionPerSide: setting.commissionPerSide ?? 0,
+    exchangeFeePerContract: setting.exchangeFeePerContract ?? 0,
+    nfaFeePerContract: setting.nfaFeePerContract ?? 0,
+    clearingFeePerContract: setting.clearingFeePerContract ?? 0,
+    platformFeePerContract: setting.platformFeePerContract ?? 0,
     notes: setting.notes || ''
   }
 }
