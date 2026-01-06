@@ -622,6 +622,11 @@ router.get('/export', authenticate, tradeController.exportTrades);
 router.get('/expired-options', authenticate, tradeController.getExpiredOptions);
 router.post('/expired-options/auto-close', authenticate, tradeController.autoCloseExpiredOptions);
 
+// Trade data repair route - fixes trades with inconsistent exit data
+// Detects trades where exit_price is set but executions show position is still open
+// Use ?dryRun=true (default) to preview, ?dryRun=false to apply fixes
+router.post('/repair-inconsistent', authenticate, tradeController.repairInconsistentTrades);
+
 // Chart data endpoint - MUST be before /:id route
 router.get('/:id/chart-data', authenticate, tradeController.getTradeChartData);
 
