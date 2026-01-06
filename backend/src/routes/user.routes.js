@@ -255,6 +255,36 @@ router.put('/quality-weights', authenticate, userController.updateQualityWeights
  */
 router.get('/api-usage', authenticate, userController.getApiUsage);
 
+/**
+ * @swagger
+ * /api/users/account:
+ *   delete:
+ *     summary: Delete own account
+ *     description: Permanently delete the authenticated user's account. Requires password confirmation.
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [password]
+ *             properties:
+ *               password:
+ *                 type: string
+ *                 description: Current password to confirm deletion
+ *     responses:
+ *       200:
+ *         description: Account deleted successfully
+ *       400:
+ *         description: Cannot delete last admin account
+ *       401:
+ *         description: Incorrect password
+ */
+router.delete('/account', authenticate, userController.deleteOwnAccount);
+
 // Admin-only user management routes
 router.get('/admin/users', requireAdmin, userController.getAllUsers);
 router.get('/admin/statistics', requireAdmin, userController.getStatistics);

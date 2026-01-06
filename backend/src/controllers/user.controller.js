@@ -616,6 +616,48 @@ const userController = {
       console.error('[ERROR] Failed to get API usage:', error.message);
       next(error);
     }
+  },
+
+  // Delete own account (requires password confirmation)
+  async deleteOwnAccount(req, res, next) {
+    try {
+      const { password } = req.body;
+      const userId = req.user.id;
+
+      if (!password) {
+        return res.status(400).json({ error: 'Password is required to confirm account deletion' });
+      }
+
+      // Get user with password hash
+      const user = await User.findByEmail(req.user.email);
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      // Verify password
+      const isValid = await User.verifyPassword(user, password);
+      if (!isValid) {
+        return res.status(401).json({ error: 'Incorrect password' });
+      }
+
+      // Prevent the last admin from deleting themselves
+      if (user.role === 'admin') {
+        const adminCount = await User.getAdminCount();
+        if (adminCount === 1) {
+          return res.status(400).json({ error: 'Cannot delete the last admin account. Please assign another admin first.' });
+        }
+      }
+
+      // Delete the user account
+      await User.deleteUser(userId);
+
+      console.log(`[INFO] User ${user.username} (ID: ${userId}) deleted their own account`);
+
+      res.json({ message: 'Account deleted successfully' });
+    } catch (error) {
+      console.error('[ERROR] Failed to delete own account:', error.message);
+      next(error);
+    }
   }
 };
 
