@@ -491,6 +491,56 @@
             </div>
           </div>
 
+          <!-- Account -->
+          <div>
+            <label class="label">Account</label>
+            <div class="relative" data-dropdown="account">
+              <button
+                @click.stop="showAccountDropdown = !showAccountDropdown"
+                class="input w-full text-left flex items-center justify-between"
+                type="button"
+                :disabled="loadingAccounts"
+              >
+                <span class="truncate">
+                  {{ getSelectedAccountText() }}
+                </span>
+                <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                </svg>
+              </button>
+
+              <div v-if="showAccountDropdown && !loadingAccounts" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
+                <div class="p-1">
+                  <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                    <input
+                      type="checkbox"
+                      :checked="!filters.accounts || filters.accounts.length === 0"
+                      @change="toggleAllAccounts"
+                      class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                    />
+                    <span class="ml-3 text-sm text-gray-900 dark:text-white">All Accounts</span>
+                  </label>
+                </div>
+                <div v-if="availableAccounts.length > 0" class="border-t border-gray-200 dark:border-gray-600">
+                  <div v-for="account in availableAccounts" :key="account" class="p-1">
+                    <label class="flex items-center w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                      <input
+                        type="checkbox"
+                        :value="account"
+                        v-model="filters.accounts"
+                        class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
+                      />
+                      <span class="ml-3 text-sm text-gray-900 dark:text-white">{{ account }}</span>
+                    </label>
+                  </div>
+                </div>
+                <div v-else class="p-3 text-sm text-gray-500 dark:text-gray-400 text-center">
+                  No accounts available
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- P&L Type -->
           <div>
             <label class="label">P&L Type</label>
@@ -574,6 +624,7 @@ import { ChevronRightIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
 import TagManagement from './TagManagement.vue'
 import { useTradesStore } from '@/stores/trades'
+import { formatLocalDate } from '@/utils/date'
 
 const emit = defineEmits(['filter'])
 const route = useRoute()
@@ -589,40 +640,41 @@ console.log('[TradeFilters] Initialized selectedPeriod from localStorage:', sele
 // Apply a period preset (7d, 30d, etc.)
 function applyPeriodPreset() {
   const now = new Date()
-  const today = now.toISOString().split('T')[0]
+  // Use formatLocalDate to avoid timezone issues (e.g., 8PM CST showing as next day)
+  const today = formatLocalDate(now)
 
   switch (selectedPeriod.value) {
     case '7d': {
       const start = new Date(now)
       start.setDate(start.getDate() - 7)
-      filters.value.startDate = start.toISOString().split('T')[0]
+      filters.value.startDate = formatLocalDate(start)
       filters.value.endDate = today
       break
     }
     case '30d': {
       const start = new Date(now)
       start.setDate(start.getDate() - 30)
-      filters.value.startDate = start.toISOString().split('T')[0]
+      filters.value.startDate = formatLocalDate(start)
       filters.value.endDate = today
       break
     }
     case '90d': {
       const start = new Date(now)
       start.setDate(start.getDate() - 90)
-      filters.value.startDate = start.toISOString().split('T')[0]
+      filters.value.startDate = formatLocalDate(start)
       filters.value.endDate = today
       break
     }
     case 'ytd': {
       const start = new Date(now.getFullYear(), 0, 1)
-      filters.value.startDate = start.toISOString().split('T')[0]
+      filters.value.startDate = formatLocalDate(start)
       filters.value.endDate = today
       break
     }
     case '1y': {
       const start = new Date(now)
       start.setFullYear(start.getFullYear() - 1)
-      filters.value.startDate = start.toISOString().split('T')[0]
+      filters.value.startDate = formatLocalDate(start)
       filters.value.endDate = today
       break
     }
@@ -647,12 +699,15 @@ const availableSectors = ref([])
 const loadingSectors = ref(false)
 const availableBrokers = ref([])
 const loadingBrokers = ref(false)
+const availableAccounts = ref([])
+const loadingAccounts = ref(false)
 
 // Dropdown visibility
 const showStrategyDropdown = ref(false)
 const showSectorDropdown = ref(false)
 const showDayOfWeekDropdown = ref(false)
 const showBrokerDropdown = ref(false)
+const showAccountDropdown = ref(false)
 const showInstrumentTypeDropdown = ref(false)
 const showOptionTypeDropdown = ref(false)
 const showQualityGradeDropdown = ref(false)
@@ -670,7 +725,8 @@ const dayOfWeekOptions = [
 const instrumentTypeOptions = [
   { value: 'stock', label: 'Stocks' },
   { value: 'option', label: 'Options' },
-  { value: 'future', label: 'Futures' }
+  { value: 'future', label: 'Futures' },
+  { value: 'crypto', label: 'Crypto' }
 ]
 
 // Option type options
@@ -730,6 +786,7 @@ const defaultFilters = {
   holdTime: '',
   broker: '', // Keep for backward compatibility
   brokers: [], // New multi-select array
+  accounts: [], // New multi-select array for account identifiers
   daysOfWeek: [], // New multi-select array for days
   instrumentTypes: [], // New multi-select array for instrument types
   optionTypes: [], // New multi-select array for option types (call/put)
@@ -760,6 +817,9 @@ function loadInitialFilters() {
       }
       if (parsed.brokers && typeof parsed.brokers === 'string') {
         parsed.brokers = parsed.brokers.split(',').filter(Boolean)
+      }
+      if (parsed.accounts && typeof parsed.accounts === 'string') {
+        parsed.accounts = parsed.accounts.split(',').filter(Boolean)
       }
       if (parsed.daysOfWeek && typeof parsed.daysOfWeek === 'string') {
         parsed.daysOfWeek = parsed.daysOfWeek.split(',').filter(Boolean).map(Number)
@@ -820,9 +880,21 @@ function getSelectedBrokerText() {
   return `${filters.value.brokers.length} brokers selected`
 }
 
+function getSelectedAccountText() {
+  if (!filters.value.accounts || filters.value.accounts.length === 0) return loadingAccounts.value ? 'Loading accounts...' : 'All Accounts'
+  if (filters.value.accounts.length === 1) return filters.value.accounts[0]
+  return `${filters.value.accounts.length} accounts selected`
+}
+
 function toggleAllBrokers(event) {
   if (event.target.checked) {
     filters.value.brokers = []
+  }
+}
+
+function toggleAllAccounts(event) {
+  if (event.target.checked) {
+    filters.value.accounts = []
   }
 }
 
@@ -907,6 +979,7 @@ const activeFiltersCount = computed(() => {
   if (filters.value.pnlType) count++
   if (filters.value.holdTime) count++
   if (filters.value.brokers && filters.value.brokers.length > 0) count++
+  if (filters.value.accounts && filters.value.accounts.length > 0) count++
   if (filters.value.daysOfWeek && filters.value.daysOfWeek.length > 0) count++
   if (filters.value.optionTypes && filters.value.optionTypes.length > 0) count++
   if (filters.value.qualityGrades && filters.value.qualityGrades.length > 0) count++
@@ -923,6 +996,7 @@ const activeAdvancedCount = computed(() => {
   if (filters.value.minQuantity !== null) count++
   if (filters.value.maxQuantity !== null) count++
   if (filters.value.brokers && filters.value.brokers.length > 0) count++
+  if (filters.value.accounts && filters.value.accounts.length > 0) count++
   if (filters.value.minPnl !== null) count++
   if (filters.value.maxPnl !== null) count++
   if (filters.value.pnlType) count++
@@ -979,7 +1053,12 @@ function applyFilters() {
   if (filters.value.brokers.length > 0) {
     cleanFilters.brokers = filters.value.brokers.join(',')
   }
-  
+
+  // Handle multi-select accounts - convert to comma-separated
+  if (filters.value.accounts.length > 0) {
+    cleanFilters.accounts = filters.value.accounts.join(',')
+  }
+
   // Handle multi-select days of week - convert to comma-separated
   if (filters.value.daysOfWeek.length > 0) {
     cleanFilters.daysOfWeek = filters.value.daysOfWeek.join(',')
@@ -1076,6 +1155,19 @@ async function fetchAvailableBrokers() {
   }
 }
 
+async function fetchAvailableAccounts() {
+  try {
+    loadingAccounts.value = true
+    const response = await api.get('/trades/accounts')
+    availableAccounts.value = response.data.accounts || []
+  } catch (error) {
+    console.warn('Failed to fetch available accounts:', error)
+    availableAccounts.value = []
+  } finally {
+    loadingAccounts.value = false
+  }
+}
+
 // Convert minHoldTime/maxHoldTime to holdTime range option
 const convertHoldTimeRange = (minMinutes, maxMinutes) => {
   // Handle specific strategy ranges first (more inclusive approach)
@@ -1134,6 +1226,14 @@ function handleClickOutside(event) {
     }
   }
 
+  // Check if click is outside account dropdown
+  if (showAccountDropdown.value) {
+    const accountDropdown = target.closest('[data-dropdown="account"]')
+    if (!accountDropdown) {
+      showAccountDropdown.value = false
+    }
+  }
+
   // Check if click is outside instrument type dropdown
   if (showInstrumentTypeDropdown.value) {
     const instrumentTypeDropdown = target.closest('[data-dropdown="instrumentType"]')
@@ -1165,9 +1265,10 @@ onMounted(() => {
     document.addEventListener('click', handleClickOutside)
   }, 100)
 
-  // Fetch available sectors and brokers for dropdowns
+  // Fetch available sectors, brokers, and accounts for dropdowns
   fetchAvailableSectors()
   fetchAvailableBrokers()
+  fetchAvailableAccounts()
 
   // Debug: Check what we have after initialization
   console.log('[TradeFilters] onMounted - selectedPeriod:', selectedPeriod.value)

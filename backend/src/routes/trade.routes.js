@@ -374,6 +374,20 @@ router.get('/brokers', authenticate, tradeController.getBrokerList);
 
 /**
  * @swagger
+ * /api/trades/accounts:
+ *   get:
+ *     summary: Get list of account identifiers used by the user
+ *     tags: [Trades]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of available account identifiers (redacted)
+ */
+router.get('/accounts', authenticate, tradeController.getAccountList);
+
+/**
+ * @swagger
  * /api/trades/import:
  *   post:
  *     summary: Import trades from file
@@ -395,6 +409,21 @@ router.get('/brokers', authenticate, tradeController.getBrokerList);
  *       200:
  *         description: Import started successfully
  */
+
+/**
+ * @swagger
+ * /api/trades/import/requirements:
+ *   get:
+ *     summary: Check import requirements (account selection)
+ *     tags: [Trades]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Import requirements including available accounts
+ */
+router.get('/import/requirements', authenticate, tradeController.checkImportRequirements);
+
 router.post('/import', authenticate, upload.single('file'), tradeController.importTrades);
 
 /**

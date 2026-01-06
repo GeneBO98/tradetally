@@ -191,12 +191,107 @@ class FinnhubClient {
     return null;
   }
 
+  // Common crypto symbols for quick detection
+  static CRYPTO_SYMBOLS = [
+    'BTC', 'ETH', 'XRP', 'LTC', 'BCH', 'ADA', 'DOT', 'LINK', 'XLM', 'DOGE',
+    'UNI', 'USDT', 'USDC', 'BNB', 'SOL', 'AVAX', 'MATIC', 'ATOM', 'FIL', 'TRX',
+    'ETC', 'XMR', 'ALGO', 'VET', 'THETA', 'FTT', 'AAVE', 'EOS', 'MKR', 'COMP',
+    'SHIB', 'CRO', 'DAI', 'LEO', 'WBTC', 'OKB', 'LDO', 'APT', 'ARB', 'OP',
+    'NEAR', 'ICP', 'APE', 'GRT', 'FTM', 'SAND', 'MANA', 'AXS', 'EGLD', 'QNT',
+    'HBAR', 'CHZ', 'FLOW', 'XTZ', 'KAVA', 'NEO', 'RPL', 'GMX', 'PEPE', 'SUI'
+  ];
+
+  isCryptoSymbol(symbol) {
+    return FinnhubClient.CRYPTO_SYMBOLS.includes(symbol.toUpperCase());
+  }
+
+  // Map of crypto symbols to CoinGecko IDs
+  static CRYPTO_TO_COINGECKO = {
+    'BTC': 'bitcoin', 'ETH': 'ethereum', 'XRP': 'ripple', 'LTC': 'litecoin',
+    'BCH': 'bitcoin-cash', 'ADA': 'cardano', 'DOT': 'polkadot', 'LINK': 'chainlink',
+    'XLM': 'stellar', 'DOGE': 'dogecoin', 'UNI': 'uniswap', 'USDT': 'tether',
+    'USDC': 'usd-coin', 'BNB': 'binancecoin', 'SOL': 'solana', 'AVAX': 'avalanche-2',
+    'MATIC': 'matic-network', 'ATOM': 'cosmos', 'FIL': 'filecoin', 'TRX': 'tron',
+    'ETC': 'ethereum-classic', 'XMR': 'monero', 'ALGO': 'algorand', 'VET': 'vechain',
+    'THETA': 'theta-token', 'AAVE': 'aave', 'EOS': 'eos', 'MKR': 'maker',
+    'COMP': 'compound-governance-token', 'SHIB': 'shiba-inu', 'CRO': 'crypto-com-chain',
+    'DAI': 'dai', 'WBTC': 'wrapped-bitcoin', 'LDO': 'lido-dao', 'APT': 'aptos',
+    'ARB': 'arbitrum', 'OP': 'optimism', 'NEAR': 'near', 'ICP': 'internet-computer',
+    'APE': 'apecoin', 'GRT': 'the-graph', 'FTM': 'fantom', 'SAND': 'the-sandbox',
+    'MANA': 'decentraland', 'AXS': 'axie-infinity', 'EGLD': 'elrond-erd-2',
+    'QNT': 'quant-network', 'HBAR': 'hedera-hashgraph', 'CHZ': 'chiliz',
+    'FLOW': 'flow', 'XTZ': 'tezos', 'NEO': 'neo', 'PEPE': 'pepe', 'SUI': 'sui'
+  };
+
+  /**
+   * Get crypto quote using CoinGecko API (free, no API key required)
+   * @param {string} symbol - Crypto symbol (e.g., 'BTC', 'ETH')
+   * @returns {Promise<Object>} Quote-like object with current price
+   */
+  async getCryptoQuote(symbol) {
+    const symbolUpper = symbol.toUpperCase();
+    const coinGeckoId = FinnhubClient.CRYPTO_TO_COINGECKO[symbolUpper];
+
+    if (!coinGeckoId) {
+      throw new Error(`Unknown crypto symbol: ${symbolUpper}`);
+    }
+
+    // Check cache first (1 minute TTL for crypto quotes)
+    const cacheKey = `crypto_quote_${symbolUpper}`;
+    const cached = await cache.get('crypto_quote', cacheKey);
+    if (cached) {
+      console.log(`[CRYPTO] Using cached quote for ${symbolUpper}`);
+      return cached;
+    }
+
+    try {
+      console.log(`[CRYPTO] Fetching quote from CoinGecko for ${symbolUpper} (${coinGeckoId})`);
+
+      // CoinGecko API - free, no key required
+      const url = `https://api.coingecko.com/api/v3/simple/price?ids=${coinGeckoId}&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true&include_last_updated_at=true`;
+
+      const response = await axios.get(url, {
+        timeout: 10000,
+        headers: {
+          'Accept': 'application/json'
+        }
+      });
+
+      const data = response.data[coinGeckoId];
+      if (!data || !data.usd) {
+        throw new Error(`No price data available for ${symbolUpper}`);
+      }
+
+      // Format as a quote-like object (matching stock quote structure)
+      const quote = {
+        c: data.usd,                           // Current price
+        d: data.usd_24h_change ? (data.usd * data.usd_24h_change / 100) : null, // Day's change in $
+        dp: data.usd_24h_change || null,       // Day's change percent
+        h: null,                                // Day's high (not available from simple endpoint)
+        l: null,                                // Day's low (not available)
+        o: null,                                // Day's open (not available)
+        pc: data.usd_24h_change ? data.usd / (1 + data.usd_24h_change / 100) : null, // Previous close (calculated)
+        t: data.last_updated_at,               // Timestamp
+        isCrypto: true                         // Flag to indicate this is crypto
+      };
+
+      // Cache the result (1 minute TTL)
+      await cache.set('crypto_quote', cacheKey, quote);
+
+      console.log(`[CRYPTO] Quote for ${symbolUpper}: $${quote.c.toLocaleString()}`);
+      return quote;
+    } catch (error) {
+      console.warn(`[CRYPTO] Failed to get crypto quote for ${symbol}: ${error.message}`);
+      throw error;
+    }
+  }
+
   async getBatchQuotes(symbols) {
     const results = {};
     const uniqueSymbols = [...new Set(symbols.map(s => s.toUpperCase()))];
-    
+
     console.log(`Getting quotes for ${uniqueSymbols.length} symbols:`, uniqueSymbols);
-    
+
     // Filter out obvious CUSIPs or invalid symbols
     const validSymbols = uniqueSymbols.filter(symbol => {
       // Skip if it looks like a CUSIP (9 characters, alphanumeric)
@@ -211,23 +306,30 @@ class FinnhubClient {
       }
       return true;
     });
-    
+
     console.log(`Filtered to ${validSymbols.length} valid symbols:`, validSymbols);
-    
+
     if (validSymbols.length === 0) {
       console.log('No valid symbols to quote');
       return results;
     }
-    
+
     // Process symbols with automatic rate limiting
     // No need for manual batching since makeRequest handles rate limiting
     console.log(`Getting quotes for ${validSymbols.length} symbols`);
-    
+
     for (const symbol of validSymbols) {
       try {
-        const quote = await this.getQuote(symbol);
-        console.log(`Got quote for ${symbol}:`, quote);
-        results[symbol] = quote;
+        // Check if this is a crypto symbol
+        if (this.isCryptoSymbol(symbol)) {
+          console.log(`[CRYPTO] ${symbol} detected as crypto, using crypto quote`);
+          const quote = await this.getCryptoQuote(symbol);
+          results[symbol] = quote;
+        } else {
+          const quote = await this.getQuote(symbol);
+          console.log(`Got quote for ${symbol}:`, quote);
+          results[symbol] = quote;
+        }
       } catch (error) {
         console.warn(`Failed to get quote for ${symbol}:`, error.message);
       }
@@ -1614,6 +1716,311 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
     
     console.log(`[TICKER EXTRACT] Could not extract ticker from: ${text}`);
     return null;
+  }
+
+  /**
+   * Get standardized financial statements (balance sheet, income statement, cash flow)
+   * Premium endpoint: /stock/financials
+   * @param {string} symbol - Stock symbol
+   * @param {string} frequency - 'annual' or 'quarterly'
+   * @returns {Promise<Object>} Financial statements data
+   */
+  async getFinancialStatements(symbol, frequency = 'annual') {
+    const symbolUpper = symbol.toUpperCase();
+
+    // Create cache key
+    const cacheKey = `financials_${symbolUpper}_${frequency}`;
+
+    // Check cache first (24 hour TTL for financial statements)
+    const cached = await cache.get('financial_statements', cacheKey);
+    if (cached) {
+      console.log(`[FINANCIALS] Using cached financial statements for ${symbolUpper}`);
+      return cached;
+    }
+
+    try {
+      console.log(`[FINANCIALS] Fetching ${frequency} financial statements for ${symbolUpper}`);
+
+      const data = await this.makeRequest('/stock/financials', {
+        symbol: symbolUpper,
+        statement: 'bs,ic,cf', // Balance sheet, income statement, cash flow
+        freq: frequency
+      });
+
+      if (!data || !data.financials || data.financials.length === 0) {
+        console.warn(`[FINANCIALS] No financial data available for ${symbolUpper}`);
+        return null;
+      }
+
+      // Cache the result (24 hours)
+      await cache.set('financial_statements', cacheKey, data);
+
+      console.log(`[FINANCIALS] Retrieved ${data.financials.length} periods for ${symbolUpper}`);
+      return data;
+    } catch (error) {
+      console.warn(`[FINANCIALS] Failed to get financial statements for ${symbol}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Get basic financials / key metrics (P/E, margins, 52-week data, etc.)
+   * Premium endpoint: /stock/metric
+   * @param {string} symbol - Stock symbol
+   * @returns {Promise<Object>} Key financial metrics
+   */
+  async getBasicFinancials(symbol) {
+    const symbolUpper = symbol.toUpperCase();
+
+    // Create cache key
+    const cacheKey = `metrics_${symbolUpper}`;
+
+    // Check cache first (24 hour TTL)
+    const cached = await cache.get('basic_financials', cacheKey);
+    if (cached) {
+      console.log(`[METRICS] Using cached metrics for ${symbolUpper}`);
+      return cached;
+    }
+
+    try {
+      console.log(`[METRICS] Fetching basic financials for ${symbolUpper}`);
+
+      const data = await this.makeRequest('/stock/metric', {
+        symbol: symbolUpper,
+        metric: 'all'
+      });
+
+      if (!data || !data.metric) {
+        console.warn(`[METRICS] No metrics data available for ${symbolUpper}`);
+        return null;
+      }
+
+      // Cache the result (24 hours)
+      await cache.set('basic_financials', cacheKey, data);
+
+      console.log(`[METRICS] Retrieved metrics for ${symbolUpper}`);
+      return data;
+    } catch (error) {
+      console.warn(`[METRICS] Failed to get basic financials for ${symbol}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Get financials as reported (original SEC filing data)
+   * Premium endpoint: /stock/financials-reported
+   * @param {string} symbol - Stock symbol
+   * @param {string} frequency - 'annual' or 'quarterly'
+   * @returns {Promise<Object>} Reported financial data
+   */
+  async getFinancialsReported(symbol, frequency = 'annual') {
+    const symbolUpper = symbol.toUpperCase();
+
+    // Create cache key
+    const cacheKey = `reported_${symbolUpper}_${frequency}`;
+
+    // Check cache first (24 hour TTL)
+    const cached = await cache.get('financials_reported', cacheKey);
+    if (cached) {
+      console.log(`[REPORTED] Using cached reported financials for ${symbolUpper}`);
+      return cached;
+    }
+
+    try {
+      console.log(`[REPORTED] Fetching ${frequency} reported financials for ${symbolUpper}`);
+
+      const data = await this.makeRequest('/stock/financials-reported', {
+        symbol: symbolUpper,
+        freq: frequency
+      });
+
+      if (!data || !data.data || data.data.length === 0) {
+        console.warn(`[REPORTED] No reported financial data available for ${symbolUpper}`);
+        return null;
+      }
+
+      // Cache the result (24 hours)
+      await cache.set('financials_reported', cacheKey, data);
+
+      console.log(`[REPORTED] Retrieved ${data.data.length} periods for ${symbolUpper}`);
+      return data;
+    } catch (error) {
+      console.warn(`[REPORTED] Failed to get reported financials for ${symbol}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Get crypto profile
+   * Premium endpoint: /crypto/profile
+   * @param {string} symbol - Crypto symbol (e.g., 'BTC', 'ETH')
+   * @returns {Promise<Object>} Crypto profile data
+   */
+  async getCryptoProfile(symbol) {
+    const symbolUpper = symbol.toUpperCase();
+
+    // Create cache key
+    const cacheKey = `crypto_profile_${symbolUpper}`;
+
+    // Check cache first (24 hour TTL)
+    const cached = await cache.get('crypto_profile', cacheKey);
+    if (cached) {
+      console.log(`[CRYPTO] Using cached profile for ${symbolUpper}`);
+      return cached;
+    }
+
+    try {
+      console.log(`[CRYPTO] Fetching profile for ${symbolUpper}`);
+
+      const data = await this.makeRequest('/crypto/profile', {
+        symbol: symbolUpper
+      });
+
+      if (!data || !data.name) {
+        console.warn(`[CRYPTO] No profile data available for ${symbolUpper}`);
+        return null;
+      }
+
+      // Cache the result (24 hours)
+      await cache.set('crypto_profile', cacheKey, data);
+
+      console.log(`[CRYPTO] Retrieved profile for ${symbolUpper}: ${data.name}`);
+      return data;
+    } catch (error) {
+      console.warn(`[CRYPTO] Failed to get crypto profile for ${symbol}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Get crypto candles (OHLCV data)
+   * Premium endpoint: /crypto/candle
+   * @param {string} symbol - Crypto symbol with exchange prefix (e.g., 'BINANCE:BTCUSDT')
+   * @param {string} resolution - Resolution: 1, 5, 15, 30, 60, D, W, M
+   * @param {number} from - Unix timestamp start
+   * @param {number} to - Unix timestamp end
+   * @returns {Promise<Array>} Formatted candle data
+   */
+  async getCryptoCandles(symbol, resolution = 'D', from, to) {
+    // Create cache key
+    const cacheKey = `crypto_candles_${symbol}_${resolution}_${from}_${to}`;
+
+    // Check cache first (5 minute TTL for candle data)
+    const cached = await cache.get('crypto_candles', cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    try {
+      console.log(`[CRYPTO] Fetching ${resolution} candles for ${symbol}`);
+
+      const candles = await this.makeRequest('/crypto/candle', {
+        symbol,
+        resolution,
+        from,
+        to
+      });
+
+      // Validate candles data
+      if (!candles || candles.s !== 'ok' || !candles.c || candles.c.length === 0) {
+        throw new Error(`No crypto candle data available for ${symbol}`);
+      }
+
+      // Convert to standard format
+      const formattedCandles = [];
+      for (let i = 0; i < candles.c.length; i++) {
+        formattedCandles.push({
+          time: candles.t[i],
+          open: candles.o[i],
+          high: candles.h[i],
+          low: candles.l[i],
+          close: candles.c[i],
+          volume: candles.v[i]
+        });
+      }
+
+      // Cache the result
+      await cache.set('crypto_candles', cacheKey, formattedCandles);
+
+      console.log(`[CRYPTO] Retrieved ${formattedCandles.length} candles for ${symbol}`);
+      return formattedCandles;
+    } catch (error) {
+      console.warn(`[CRYPTO] Failed to get crypto candles for ${symbol}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Get list of supported crypto symbols for an exchange
+   * @param {string} exchange - Exchange name (e.g., 'binance', 'coinbase')
+   * @returns {Promise<Array>} List of crypto symbols
+   */
+  async getCryptoSymbols(exchange = 'binance') {
+    const exchangeLower = exchange.toLowerCase();
+
+    // Create cache key
+    const cacheKey = `crypto_symbols_${exchangeLower}`;
+
+    // Check cache first (24 hour TTL)
+    const cached = await cache.get('crypto_symbols', cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    try {
+      console.log(`[CRYPTO] Fetching symbols for exchange: ${exchangeLower}`);
+
+      const data = await this.makeRequest('/crypto/symbol', {
+        exchange: exchangeLower
+      });
+
+      if (!data || data.length === 0) {
+        console.warn(`[CRYPTO] No symbols available for exchange ${exchangeLower}`);
+        return [];
+      }
+
+      // Cache the result (24 hours)
+      await cache.set('crypto_symbols', cacheKey, data);
+
+      console.log(`[CRYPTO] Retrieved ${data.length} symbols for ${exchangeLower}`);
+      return data;
+    } catch (error) {
+      console.warn(`[CRYPTO] Failed to get crypto symbols for ${exchange}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Get historical market cap data
+   * @param {string} symbol - Stock symbol
+   * @returns {Promise<Object>} Historical market cap data
+   */
+  async getHistoricalMarketCap(symbol) {
+    const symbolUpper = symbol.toUpperCase();
+
+    // Create cache key
+    const cacheKey = `marketcap_${symbolUpper}`;
+
+    // Check cache first (7 day TTL)
+    const cached = await cache.get('historical_marketcap', cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    try {
+      const data = await this.makeRequest('/stock/historical-market-cap', {
+        symbol: symbolUpper
+      });
+
+      if (data) {
+        await cache.set('historical_marketcap', cacheKey, data);
+      }
+
+      return data;
+    } catch (error) {
+      console.warn(`Failed to get historical market cap for ${symbol}: ${error.message}`);
+      throw error;
+    }
   }
 }
 

@@ -57,6 +57,12 @@
               Test Connection
             </button>
             <button
+              @click="emit('deleteTrades', connection); showMenu = false"
+              class="w-full px-4 py-2 text-left text-sm text-orange-600 dark:text-orange-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+            >
+              Delete All Trades
+            </button>
+            <button
               @click="emit('delete', connection); showMenu = false"
               class="w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700 last:rounded-b-lg"
             >
@@ -117,7 +123,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['sync', 'test', 'settings', 'delete'])
+const emit = defineEmits(['sync', 'test', 'settings', 'delete', 'deleteTrades'])
 
 const store = useBrokerSyncStore()
 const showMenu = ref(false)
