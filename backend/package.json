@@ -13,7 +13,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.0",
     "@google/generative-ai": "^0.24.1",
-    "@parse/node-apn": "^7.0.0",
+    "@parse/node-apn": "^7.0.1",
     "archiver": "^7.0.1",
     "autocannon": "^8.0.0",
     "axios": "^1.13.2",
