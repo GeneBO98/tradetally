@@ -78,6 +78,34 @@
           </p>
         </div>
 
+        <!-- DCF Stock Analyzer - Featured (standalone row) -->
+        <div class="mb-6 bg-white/15 backdrop-blur-sm rounded-xl p-8 hover:bg-white/20 transition-colors border border-white/20">
+          <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+            <div>
+              <div class="flex items-center mb-3">
+                <div class="flex-shrink-0 p-3 bg-white/20 rounded-lg">
+                  <CalculatorIcon class="h-8 w-8 text-white" />
+                </div>
+                <div class="ml-4">
+                  <span class="inline-block px-2 py-0.5 text-xs font-semibold bg-yellow-400 text-yellow-900 rounded mb-1">NEW</span>
+                  <h3 class="text-xl font-bold text-white">DCF Stock Valuation Calculator</h3>
+                </div>
+              </div>
+              <p class="text-primary-100 max-w-2xl">
+                Calculate fair value for any stock using Discounted Cash Flow analysis. View historical ROIC, revenue growth, profit margins, and FCF metrics.
+                Enter your own Bear/Base/Bull assumptions to see if a stock is undervalued or overvalued with margin of safety calculations.
+              </p>
+            </div>
+            <div class="flex-shrink-0">
+              <div class="bg-white/10 rounded-lg p-4 text-center">
+                <div class="text-3xl font-bold text-white">3</div>
+                <div class="text-sm text-primary-200">Scenarios</div>
+                <div class="text-xs text-primary-300 mt-1">Bear / Base / Bull</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div class="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
           <!-- 8 Pillars Analysis -->
           <div class="bg-white/10 backdrop-blur-sm rounded-xl p-6 hover:bg-white/15 transition-colors">
@@ -310,7 +338,8 @@ import {
   CpuChipIcon,
   PresentationChartLineIcon,
   HeartIcon,
-  ShieldCheckIcon
+  ShieldCheckIcon,
+  CalculatorIcon
 } from '@heroicons/vue/24/outline'
 import { useAuthStore } from '@/stores/auth'
 import { useRegistrationMode } from '@/composables/useRegistrationMode'
