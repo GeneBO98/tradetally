@@ -112,9 +112,15 @@ class DCFValuationService {
       current_fcf: sorted[0]?.freeCashFlow || null,
       current_revenue: sorted[0]?.revenue || null,
 
-      // Ratios
+      // Ratios - current and historical averages
       pe_ratio: this.calculatePE(sorted[0], currentPrice),
+      pe_1yr: this.calculateAvgPE(sorted, currentPrice, 1),
+      pe_5yr: this.calculateAvgPE(sorted, currentPrice, 5),
+      pe_10yr: this.calculateAvgPE(sorted, currentPrice, 10),
       price_to_fcf: this.calculatePriceToFCF(currentPrice, profileShares, sorted[0]?.freeCashFlow),
+      pfcf_1yr: this.calculateAvgPFCF(sorted, currentPrice, profileShares, 1),
+      pfcf_5yr: this.calculateAvgPFCF(sorted, currentPrice, profileShares, 5),
+      pfcf_10yr: this.calculateAvgPFCF(sorted, currentPrice, profileShares, 10),
 
       // Additional current values for DCF calculations
       current_net_income: sorted[0]?.netIncome || null,
@@ -250,6 +256,63 @@ class DCFValuationService {
 
     const marketCap = currentPrice * sharesOutstanding;
     return marketCap / fcf;
+  }
+
+  /**
+   * Calculate average P/E ratio over a period
+   * Uses average EPS over the period with current price
+   * @param {Array} financials - Sorted financial data (most recent first)
+   * @param {number} currentPrice - Current stock price
+   * @param {number} years - Number of years to average
+   * @returns {number|null} Average P/E ratio
+   */
+  static calculateAvgPE(financials, currentPrice, years) {
+    if (!currentPrice) return null;
+
+    const periods = financials.slice(0, Math.min(years, financials.length));
+    const epsValues = [];
+
+    for (const period of periods) {
+      if (period.netIncome && period.sharesOutstanding && period.sharesOutstanding > 0) {
+        const eps = period.netIncome / period.sharesOutstanding;
+        if (eps > 0) {
+          epsValues.push(eps);
+        }
+      }
+    }
+
+    if (epsValues.length === 0) return null;
+
+    const avgEPS = epsValues.reduce((sum, e) => sum + e, 0) / epsValues.length;
+    return currentPrice / avgEPS;
+  }
+
+  /**
+   * Calculate average P/FCF ratio over a period
+   * Uses average FCF per share over the period with current price
+   * @param {Array} financials - Sorted financial data (most recent first)
+   * @param {number} currentPrice - Current stock price
+   * @param {number} sharesOutstanding - Current shares outstanding
+   * @param {number} years - Number of years to average
+   * @returns {number|null} Average P/FCF ratio
+   */
+  static calculateAvgPFCF(financials, currentPrice, sharesOutstanding, years) {
+    if (!currentPrice || !sharesOutstanding) return null;
+
+    const periods = financials.slice(0, Math.min(years, financials.length));
+    const fcfValues = [];
+
+    for (const period of periods) {
+      if (period.freeCashFlow && period.freeCashFlow > 0) {
+        fcfValues.push(period.freeCashFlow);
+      }
+    }
+
+    if (fcfValues.length === 0) return null;
+
+    const avgFCF = fcfValues.reduce((sum, f) => sum + f, 0) / fcfValues.length;
+    const marketCap = currentPrice * sharesOutstanding;
+    return marketCap / avgFCF;
   }
 
   /**

@@ -106,7 +106,9 @@
           <!-- P/E -->
           <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
             <td class="px-4 py-3 text-gray-900 dark:text-white font-medium">P/E</td>
-            <td class="px-4 py-3 text-center text-gray-600 dark:text-gray-400" colspan="3">{{ metrics?.pe_ratio ? metrics.pe_ratio.toFixed(1) : '-' }}</td>
+            <td class="px-4 py-3 text-center text-gray-600 dark:text-gray-400">{{ formatRatio(metrics?.pe_1yr) }}</td>
+            <td class="px-4 py-3 text-center text-gray-600 dark:text-gray-400">{{ formatRatio(metrics?.pe_5yr) }}</td>
+            <td class="px-4 py-3 text-center text-gray-600 dark:text-gray-400">{{ formatRatio(metrics?.pe_10yr) }}</td>
             <td class="px-4 py-3 text-center">
               <div class="flex items-center justify-center">
                 <input type="number" v-model.number="inputs.pe_low" class="w-16 text-center rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-1 py-1 text-sm" step="0.5" />
@@ -129,7 +131,9 @@
           <!-- P/FCF -->
           <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50">
             <td class="px-4 py-3 text-gray-900 dark:text-white font-medium">P/FCF</td>
-            <td class="px-4 py-3 text-center text-gray-600 dark:text-gray-400" colspan="3">{{ metrics?.price_to_fcf ? metrics.price_to_fcf.toFixed(1) : '-' }}</td>
+            <td class="px-4 py-3 text-center text-gray-600 dark:text-gray-400">{{ formatRatio(metrics?.pfcf_1yr) }}</td>
+            <td class="px-4 py-3 text-center text-gray-600 dark:text-gray-400">{{ formatRatio(metrics?.pfcf_5yr) }}</td>
+            <td class="px-4 py-3 text-center text-gray-600 dark:text-gray-400">{{ formatRatio(metrics?.pfcf_10yr) }}</td>
             <td class="px-4 py-3 text-center">
               <div class="flex items-center justify-center">
                 <input type="number" v-model.number="inputs.pfcf_low" class="w-16 text-center rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-1 py-1 text-sm" step="0.5" />
@@ -298,6 +302,11 @@ const saving = ref(false)
 function formatPercent(value) {
   if (value === null || value === undefined) return '-'
   return `${(value * 100).toFixed(1)}%`
+}
+
+function formatRatio(value) {
+  if (value === null || value === undefined) return '-'
+  return `${value.toFixed(1)}x`
 }
 
 function formatCurrency(value) {
