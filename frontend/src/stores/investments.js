@@ -13,6 +13,12 @@ export const useInvestmentsStore = defineStore('investments', () => {
   const analysisLoading = ref(false)
   const holdingsLoading = ref(false)
 
+  // DCF Valuation State
+  const dcfMetrics = ref(null)
+  const dcfResults = ref(null)
+  const savedValuations = ref([])
+  const dcfLoading = ref(false)
+
   // Getters
   const totalPortfolioValue = computed(() => portfolioSummary.value?.totalValue || 0)
   const totalUnrealizedPnL = computed(() => portfolioSummary.value?.unrealizedPnL || 0)
@@ -373,6 +379,91 @@ export const useInvestmentsStore = defineStore('investments', () => {
   }
 
   // ========================================
+  // DCF VALUATION
+  // ========================================
+
+  async function fetchDCFMetrics(symbol) {
+    dcfLoading.value = true
+    error.value = null
+
+    try {
+      const response = await api.get(`/investments/dcf/${symbol}`)
+      dcfMetrics.value = response.data
+      return response.data
+    } catch (err) {
+      error.value = err.response?.data?.error || 'Failed to fetch DCF metrics'
+      throw err
+    } finally {
+      dcfLoading.value = false
+    }
+  }
+
+  async function calculateDCF(symbol, inputs) {
+    dcfLoading.value = true
+    error.value = null
+
+    try {
+      const response = await api.post(`/investments/dcf/${symbol}/calculate`, inputs)
+      dcfResults.value = response.data
+      return response.data
+    } catch (err) {
+      error.value = err.response?.data?.error || 'Failed to calculate DCF'
+      throw err
+    } finally {
+      dcfLoading.value = false
+    }
+  }
+
+  async function saveValuation(data) {
+    loading.value = true
+    error.value = null
+
+    try {
+      const response = await api.post('/investments/valuations', data)
+      savedValuations.value.unshift(response.data)
+      return response.data
+    } catch (err) {
+      error.value = err.response?.data?.error || 'Failed to save valuation'
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function fetchValuations(symbol = null) {
+    try {
+      const params = symbol ? { symbol } : {}
+      const response = await api.get('/investments/valuations', { params })
+      savedValuations.value = response.data
+      return response.data
+    } catch (err) {
+      error.value = err.response?.data?.error || 'Failed to fetch valuations'
+      throw err
+    }
+  }
+
+  async function deleteValuation(id) {
+    loading.value = true
+    error.value = null
+
+    try {
+      await api.delete(`/investments/valuations/${id}`)
+      savedValuations.value = savedValuations.value.filter(v => v.id !== id)
+      return true
+    } catch (err) {
+      error.value = err.response?.data?.error || 'Failed to delete valuation'
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
+  function clearDCFData() {
+    dcfMetrics.value = null
+    dcfResults.value = null
+  }
+
+  // ========================================
   // UTILITIES
   // ========================================
 
@@ -389,6 +480,11 @@ export const useInvestmentsStore = defineStore('investments', () => {
     error.value = null
     analysisLoading.value = false
     holdingsLoading.value = false
+    // DCF reset
+    dcfMetrics.value = null
+    dcfResults.value = null
+    savedValuations.value = []
+    dcfLoading.value = false
   }
 
   return {
@@ -445,6 +541,18 @@ export const useInvestmentsStore = defineStore('investments', () => {
     fetchSearchHistory,
     toggleFavorite,
     compareStocks,
+
+    // DCF Valuation
+    dcfMetrics,
+    dcfResults,
+    savedValuations,
+    dcfLoading,
+    fetchDCFMetrics,
+    calculateDCF,
+    saveValuation,
+    fetchValuations,
+    deleteValuation,
+    clearDCFData,
 
     // Utilities
     clearError,

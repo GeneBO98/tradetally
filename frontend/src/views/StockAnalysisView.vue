@@ -159,6 +159,11 @@
       <div class="mt-6">
         <FinancialStatementTabs :symbol="symbol" />
       </div>
+
+      <!-- DCF Valuation Calculator -->
+      <div class="mt-6">
+        <DCFValuationSection :symbol="symbol" :analysis="analysis" />
+      </div>
     </div>
 
     <!-- Add Holding Modal -->
@@ -180,6 +185,7 @@ import PillarRow from '@/components/investments/PillarRow.vue'
 import AddHoldingModal from '@/components/investments/AddHoldingModal.vue'
 import StockPriceChart from '@/components/investments/StockPriceChart.vue'
 import FinancialStatementTabs from '@/components/investments/financials/FinancialStatementTabs.vue'
+import DCFValuationSection from '@/components/investments/dcf/DCFValuationSection.vue'
 
 const route = useRoute()
 const router = useRouter()
