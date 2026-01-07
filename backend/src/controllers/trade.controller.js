@@ -1245,22 +1245,46 @@ const tradeController = {
           // Supports per-instrument fees with fallback to broker-wide default
           // When broker is 'auto', we need to look up fees per-trade based on each trade's detected broker
           try {
+            // Normalize broker names to handle common misspellings and variations
+            // This ensures backwards compatibility with data saved under old names
+            const normalizeBrokerName = (name) => {
+              const normalized = (name || '').toLowerCase().trim();
+              // Map common variations to canonical names
+              const brokerAliases = {
+                'tradeovate': 'tradovate',  // Common misspelling
+                'trade ovate': 'tradovate',
+                'thinkorswim': 'thinkorswim',
+                'tos': 'thinkorswim',
+                'interactive brokers': 'ibkr',
+                'interactivebrokers': 'ibkr',
+              };
+              return brokerAliases[normalized] || normalized;
+            };
+
             // Get the effective broker - use trade's broker if 'auto' was selected
             const getEffectiveBroker = (trade) => {
               if (broker.toLowerCase() === 'auto' && trade.broker) {
-                return trade.broker.toLowerCase();
+                return normalizeBrokerName(trade.broker);
               }
-              return broker.toLowerCase();
+              return normalizeBrokerName(broker);
             };
 
             // Get unique brokers from trades when using 'auto'
             const brokersToLookup = broker.toLowerCase() === 'auto'
-              ? [...new Set(trades.map(t => t.broker?.toLowerCase()).filter(Boolean))]
-              : [broker.toLowerCase()];
+              ? [...new Set(trades.map(t => normalizeBrokerName(t.broker)).filter(Boolean))]
+              : [normalizeBrokerName(broker)];
 
-            logger.logImport(`[BROKER FEES] Looking up fees for brokers: ${brokersToLookup.join(', ')}`);
+            // Also include common aliases in lookup to find settings saved under old names
+            const expandedBrokersToLookup = [...new Set([
+              ...brokersToLookup,
+              // Add aliases for tradovate
+              ...(brokersToLookup.includes('tradovate') ? ['tradeovate'] : []),
+            ])];
+
+            logger.logImport(`[BROKER FEES] Looking up fees for brokers: ${expandedBrokersToLookup.join(', ')}`);
 
             // Fetch fee settings for all relevant brokers (case-insensitive match)
+            // Use expandedBrokersToLookup to also find settings saved under old/misspelled names
             const brokerFeeQuery = `
               SELECT broker, instrument, commission_per_contract, commission_per_side, exchange_fee_per_contract,
                      nfa_fee_per_contract, clearing_fee_per_contract, platform_fee_per_contract
@@ -1268,15 +1292,16 @@ const tradeController = {
               WHERE user_id = $1 AND LOWER(broker) = ANY($2)
               ORDER BY broker, instrument DESC
             `;
-            const brokerFeeResult = await db.query(brokerFeeQuery, [fileUserId, brokersToLookup]);
+            const brokerFeeResult = await db.query(brokerFeeQuery, [fileUserId, expandedBrokersToLookup]);
 
             if (brokerFeeResult.rows.length > 0) {
               // Build a nested map: broker -> instrument -> fee settings
               // Empty string instrument = broker-wide default
+              // Normalize broker names so settings saved under old names (e.g., 'tradeovate') map to canonical names (e.g., 'tradovate')
               const brokerFeeMap = new Map();
 
               brokerFeeResult.rows.forEach(row => {
-                const brokerName = (row.broker || '').toLowerCase();
+                const brokerName = normalizeBrokerName(row.broker);
                 const instrument = (row.instrument || '').toUpperCase();
                 // Separate broker commission from regulatory/exchange fees
                 const settings = {
