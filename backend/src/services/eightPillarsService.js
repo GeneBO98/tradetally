@@ -45,10 +45,25 @@ class EightPillarsService {
     }
 
     // Get required data (pass forceRefresh to also refresh underlying financial data)
-    const [profile, quote, metrics] = await Promise.all([
-      FundamentalDataService.getProfile(symbolUpper),
-      FundamentalDataService.getQuote(symbolUpper),
-      FundamentalDataService.getMetrics(symbolUpper)
+    // Make quote and metrics optional - if they fail, we can still do the analysis
+    // Profile is also optional but preferred for shares outstanding
+    const [profile, quote, metrics] = await Promise.allSettled([
+      FundamentalDataService.getProfile(symbolUpper).catch(err => {
+        console.warn(`[8PILLARS] Failed to get profile for ${symbolUpper}: ${err.message}`);
+        return null;
+      }),
+      FundamentalDataService.getQuote(symbolUpper).catch(err => {
+        console.warn(`[8PILLARS] Failed to get quote for ${symbolUpper}: ${err.message}`);
+        return null;
+      }),
+      FundamentalDataService.getMetrics(symbolUpper).catch(err => {
+        console.warn(`[8PILLARS] Failed to get metrics for ${symbolUpper}: ${err.message}`);
+        return null;
+      })
+    ]).then(results => [
+      results[0].status === 'fulfilled' ? results[0].value : null,
+      results[1].status === 'fulfilled' ? results[1].value : null,
+      results[2].status === 'fulfilled' ? results[2].value : null
     ]);
     
     // Get profile shares outstanding to use as fallback for financial statements

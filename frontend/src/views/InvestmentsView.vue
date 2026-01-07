@@ -60,6 +60,17 @@
         >
           Stock Scanner
         </button>
+        <button
+          @click="activeTab = 'analyzer'"
+          :class="[
+            'py-4 px-1 border-b-2 font-medium text-sm',
+            activeTab === 'analyzer'
+              ? 'border-primary-500 text-primary-600 dark:text-primary-400'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+          ]"
+        >
+          Stock Analyzer
+        </button>
       </nav>
     </div>
 
@@ -339,6 +350,73 @@
       </div>
     </div>
 
+    <!-- Stock Analyzer Tab (DCF Valuation) -->
+    <div v-if="activeTab === 'analyzer'">
+      <!-- Search Bar -->
+      <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-6 mb-6">
+        <div class="flex items-center space-x-4">
+          <div class="flex-1 relative">
+            <input
+              v-model="analyzerSymbol"
+              @keyup.enter="loadAnalyzerData"
+              type="text"
+              placeholder="Enter stock symbol to analyze (e.g., AAPL, MSFT)"
+              class="w-full pl-10 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
+            />
+            <svg class="absolute left-3 top-3.5 h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+            </svg>
+          </div>
+          <button
+            @click="loadAnalyzerData"
+            :disabled="!analyzerSymbol || analyzerLoading"
+            class="btn-primary px-6 py-3"
+          >
+            <span v-if="analyzerLoading">Loading...</span>
+            <span v-else>Analyze</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Stock Info Header -->
+      <div v-if="analyzerStockInfo" class="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-6 mb-6">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center">
+            <img v-if="analyzerStockInfo.logo" :src="analyzerStockInfo.logo" :alt="analyzerStockInfo.symbol" class="w-12 h-12 rounded-lg mr-4" />
+            <div>
+              <h2 class="text-2xl font-bold text-gray-900 dark:text-white">{{ analyzerStockInfo.symbol }}</h2>
+              <p class="text-gray-600 dark:text-gray-400">{{ analyzerStockInfo.companyName }}</p>
+            </div>
+          </div>
+          <div class="text-right">
+            <p class="text-sm text-gray-500 dark:text-gray-400">Current Price</p>
+            <p class="text-2xl font-bold text-gray-900 dark:text-white">
+              {{ analyzerStockInfo.currentPrice ? formatCurrency(analyzerStockInfo.currentPrice) : 'N/A' }}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- DCF Valuation Section -->
+      <div v-if="analyzerSymbol && analyzerStockInfo">
+        <StockAnalyzerSection
+          :symbol="analyzerSymbol"
+          :current-price="analyzerStockInfo?.currentPrice"
+        />
+      </div>
+
+      <!-- Empty State -->
+      <div v-else-if="!analyzerLoading" class="text-center py-12 bg-white dark:bg-gray-800 rounded-lg shadow-sm">
+        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+        </svg>
+        <h3 class="mt-2 text-sm font-medium text-gray-900 dark:text-white">DCF Valuation Calculator</h3>
+        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+          Enter a stock symbol above to calculate fair value using Discounted Cash Flow analysis.
+        </p>
+      </div>
+    </div>
+
     <!-- Add Holding Modal -->
     <AddHoldingModal
       v-if="showAddHoldingModal"
@@ -431,6 +509,7 @@ import FinancialStatementTabs from '@/components/investments/financials/Financia
 import PillarFilterChips from '@/components/investments/scanner/PillarFilterChips.vue'
 import ScannerResultsTable from '@/components/investments/scanner/ScannerResultsTable.vue'
 import ScanStatusBadge from '@/components/investments/scanner/ScanStatusBadge.vue'
+import StockAnalyzerSection from '@/components/investments/dcf/StockAnalyzerSection.vue'
 import { useScannerStore } from '@/stores/scanner'
 
 const router = useRouter()
@@ -440,7 +519,7 @@ const scannerStore = useScannerStore()
 const { showSuccess, showError } = useNotification()
 
 // Valid tab names
-const validTabs = ['screener', 'holdings', 'scanner']
+const validTabs = ['screener', 'holdings', 'scanner', 'analyzer']
 
 // Initialize tab from URL or default to 'screener'
 const getInitialTab = () => {
@@ -461,6 +540,11 @@ const watchlistsLoading = ref(false)
 const selectedWatchlistId = ref(null)
 const symbolToAddToWatchlist = ref('')
 const addingToWatchlist = ref(false)
+
+// Stock Analyzer state
+const analyzerSymbol = ref('')
+const analyzerStockInfo = ref(null)
+const analyzerLoading = ref(false)
 
 const filteredSearchHistory = computed(() => {
   if (showFavoritesOnly.value) {
@@ -517,6 +601,30 @@ async function onPillarFilterChange() {
   // Filters are already updated in the store via togglePillar
   // Just need to refetch results
   await scannerStore.fetchResults(1)
+}
+
+// Stock Analyzer functions
+async function loadAnalyzerData() {
+  if (!analyzerSymbol.value) return
+
+  analyzerLoading.value = true
+  analyzerStockInfo.value = null
+
+  try {
+    // Get stock info (8 pillars analysis gives us company name, logo, price)
+    const analysis = await investmentsStore.analyzeStock(analyzerSymbol.value.toUpperCase(), false)
+    analyzerStockInfo.value = {
+      symbol: analysis.symbol,
+      companyName: analysis.companyName,
+      logo: analysis.logo,
+      currentPrice: analysis.currentPrice
+    }
+  } catch (error) {
+    console.error('Failed to load analyzer data:', error)
+    showError('Error', 'Failed to load stock data. Please try again.')
+  } finally {
+    analyzerLoading.value = false
+  }
 }
 
 async function analyzeSymbol() {

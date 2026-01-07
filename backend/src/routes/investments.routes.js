@@ -211,4 +211,51 @@ router.post('/compare', investmentsController.compareStocks);
  */
 router.get('/chart/:symbol', investmentsController.getChartData);
 
+// ========================================
+// DCF VALUATION
+// ========================================
+
+/**
+ * @route GET /api/investments/dcf/:symbol
+ * @desc Get historical metrics for DCF valuation
+ * @access Pro
+ */
+router.get('/dcf/:symbol', investmentsController.getDCFMetrics);
+
+/**
+ * @route POST /api/investments/dcf/:symbol/calculate
+ * @desc Calculate DCF fair values with user estimates
+ * @access Pro
+ */
+router.post('/dcf/:symbol/calculate', investmentsController.calculateDCF);
+
+/**
+ * @route POST /api/investments/valuations
+ * @desc Save a valuation
+ * @access Pro
+ */
+router.post('/valuations', investmentsController.saveValuation);
+
+/**
+ * @route GET /api/investments/valuations
+ * @desc Get all valuations for user
+ * @query symbol - Optional symbol filter
+ * @access Pro
+ */
+router.get('/valuations', investmentsController.getValuations);
+
+/**
+ * @route GET /api/investments/valuations/:id
+ * @desc Get a specific valuation
+ * @access Pro
+ */
+router.get('/valuations/:id', investmentsController.getValuation);
+
+/**
+ * @route DELETE /api/investments/valuations/:id
+ * @desc Delete a valuation
+ * @access Pro
+ */
+router.delete('/valuations/:id', investmentsController.deleteValuation);
+
 module.exports = router;

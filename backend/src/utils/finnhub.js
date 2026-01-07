@@ -89,6 +89,17 @@ class FinnhubClient {
           await new Promise(resolve => setTimeout(resolve, 5000));
           throw new Error(`Finnhub API rate limit exceeded: ${error.response.status} - ${error.response.data?.error || 'Rate limit reached'}`);
         }
+        // Handle 502/503/504 server errors - these are temporary, retry once
+        if ([502, 503, 504].includes(error.response.status)) {
+          console.log(`Finnhub API server error ${error.response.status}, retrying once...`);
+          await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
+          try {
+            return await this.makeRequest(endpoint, params);
+          } catch (retryError) {
+            // If retry also fails, throw the original error
+            throw new Error(`Finnhub API error: ${error.response.status} - ${error.response.data?.error || 'Server error (retry failed)'}`);
+          }
+        }
         throw new Error(`Finnhub API error: ${error.response.status} - ${error.response.data?.error || 'Unknown error'}`);
       }
       throw new Error(`Finnhub request failed: ${error.message}`);

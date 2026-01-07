@@ -6,6 +6,7 @@
 const EightPillarsService = require('../services/eightPillarsService');
 const FundamentalDataService = require('../services/fundamentalDataService');
 const HoldingsService = require('../services/holdingsService');
+const DCFValuationService = require('../services/dcfValuationService');
 const db = require('../config/database');
 
 // ========================================
@@ -936,6 +937,191 @@ const getChartData = async (req, res) => {
 };
 
 // ========================================
+// DCF VALUATION
+// ========================================
+
+/**
+ * Get historical metrics for DCF valuation
+ * GET /api/investments/dcf/:symbol
+ */
+const getDCFMetrics = async (req, res) => {
+  try {
+    const { symbol } = req.params;
+
+    if (!symbol) {
+      return res.status(400).json({ error: 'Symbol is required' });
+    }
+
+    console.log(`[INVESTMENTS] Getting DCF metrics for ${symbol}`);
+
+    const metrics = await DCFValuationService.getHistoricalMetrics(symbol);
+
+    res.json(metrics);
+  } catch (error) {
+    console.error('[INVESTMENTS] DCF metrics error:', error);
+    res.status(500).json({ error: error.message || 'Failed to get DCF metrics' });
+  }
+};
+
+/**
+ * Calculate DCF fair values
+ * POST /api/investments/dcf/:symbol/calculate
+ */
+const calculateDCF = async (req, res) => {
+  try {
+    const { symbol } = req.params;
+    const userInputs = req.body;
+
+    if (!symbol) {
+      return res.status(400).json({ error: 'Symbol is required' });
+    }
+
+    console.log(`[INVESTMENTS] Calculating DCF for ${symbol}`);
+
+    // Fetch fresh metrics to get current financial data
+    const metrics = await DCFValuationService.getHistoricalMetrics(symbol);
+
+    // Combine fetched metrics with user inputs
+    // Use calculated discount rate as base, adjust for scenarios
+    const baseDiscountRate = metrics.calculated_discount_rate || 0.10; // Fallback to 10% if not calculated
+    
+    // For Bear/Bull scenarios, adjust the base discount rate
+    // Bear = more conservative = higher discount (base + 3%)
+    // Bull = less conservative = lower discount (base - 2%)
+    // IMPORTANT: userInputs.desired_return_* are already in decimal form (e.g., 0.15 for 15%)
+    // because the frontend divides by 100 before sending
+    let bearDiscountRate = userInputs.desired_return_low !== null && userInputs.desired_return_low !== undefined 
+      ? userInputs.desired_return_low 
+      : (baseDiscountRate + 0.03);
+    let baseDiscountRateAdjusted = userInputs.desired_return_medium !== null && userInputs.desired_return_medium !== undefined
+      ? userInputs.desired_return_medium
+      : baseDiscountRate;
+    let bullDiscountRate = userInputs.desired_return_high !== null && userInputs.desired_return_high !== undefined
+      ? userInputs.desired_return_high
+      : (baseDiscountRate - 0.02);
+    
+    // Log the raw values to debug
+    console.log(`[DCF] Raw user inputs - desired_return_low: ${userInputs.desired_return_low}, desired_return_medium: ${userInputs.desired_return_medium}, desired_return_high: ${userInputs.desired_return_high}`);
+    console.log(`[DCF] Discount rates - Calculated base: ${(baseDiscountRate*100).toFixed(2)}%, Bear: ${(bearDiscountRate*100).toFixed(2)}%, Base: ${(baseDiscountRateAdjusted*100).toFixed(2)}%, Bull: ${(bullDiscountRate*100).toFixed(2)}%`);
+    console.log(`[DCF] Bear discount rate raw value: ${bearDiscountRate}, as percentage: ${(bearDiscountRate*100).toFixed(2)}%`);
+    
+    const results = DCFValuationService.calculateDCF({
+      // From fetched metrics (source of truth for financial data)
+      current_fcf: metrics.current_fcf,
+      current_revenue: metrics.current_revenue,
+      current_net_income: metrics.current_net_income,
+      shares_outstanding: metrics.shares_outstanding,
+      current_price: metrics.current_price,
+      calculated_discount_rate: baseDiscountRate, // Pass calculated rate for reference
+      beta: metrics.beta, // Pass beta for reference
+      // User inputs - growth rates
+      revenue_growth_low: userInputs.revenue_growth_low,
+      revenue_growth_medium: userInputs.revenue_growth_medium,
+      revenue_growth_high: userInputs.revenue_growth_high,
+      // User inputs - margins (optional)
+      profit_margin_low: userInputs.profit_margin_low,
+      profit_margin_medium: userInputs.profit_margin_medium,
+      profit_margin_high: userInputs.profit_margin_high,
+      fcf_margin_low: userInputs.fcf_margin_low,
+      fcf_margin_medium: userInputs.fcf_margin_medium,
+      fcf_margin_high: userInputs.fcf_margin_high,
+      // User inputs - multiples
+      pe_low: userInputs.pe_low,
+      pe_medium: userInputs.pe_medium,
+      pe_high: userInputs.pe_high,
+      pfcf_low: userInputs.pfcf_low,
+      pfcf_medium: userInputs.pfcf_medium,
+      pfcf_high: userInputs.pfcf_high,
+      // Discount rates - use calculated defaults if user doesn't provide
+      desired_return_low: bearDiscountRate,
+      desired_return_medium: baseDiscountRateAdjusted,
+      desired_return_high: bullDiscountRate,
+      // Projection period
+      projection_years: userInputs.projection_years || 10
+    });
+
+    res.json({
+      symbol: symbol.toUpperCase(),
+      ...results
+    });
+  } catch (error) {
+    console.error('[INVESTMENTS] DCF calculation error:', error);
+    res.status(500).json({ error: error.message || 'Failed to calculate DCF' });
+  }
+};
+
+/**
+ * Save a valuation
+ * POST /api/investments/valuations
+ */
+const saveValuation = async (req, res) => {
+  try {
+    const valuation = await DCFValuationService.saveValuation(req.user.id, req.body);
+
+    res.status(201).json(valuation);
+  } catch (error) {
+    console.error('[INVESTMENTS] Save valuation error:', error);
+    res.status(500).json({ error: error.message || 'Failed to save valuation' });
+  }
+};
+
+/**
+ * Get valuations for user
+ * GET /api/investments/valuations
+ * GET /api/investments/valuations?symbol=AAPL
+ */
+const getValuations = async (req, res) => {
+  try {
+    const { symbol } = req.query;
+
+    const valuations = await DCFValuationService.getValuations(req.user.id, symbol);
+
+    res.json(valuations);
+  } catch (error) {
+    console.error('[INVESTMENTS] Get valuations error:', error);
+    res.status(500).json({ error: error.message || 'Failed to get valuations' });
+  }
+};
+
+/**
+ * Get a specific valuation
+ * GET /api/investments/valuations/:id
+ */
+const getValuation = async (req, res) => {
+  try {
+    const valuation = await DCFValuationService.getValuation(req.user.id, req.params.id);
+
+    if (!valuation) {
+      return res.status(404).json({ error: 'Valuation not found' });
+    }
+
+    res.json(valuation);
+  } catch (error) {
+    console.error('[INVESTMENTS] Get valuation error:', error);
+    res.status(500).json({ error: error.message || 'Failed to get valuation' });
+  }
+};
+
+/**
+ * Delete a valuation
+ * DELETE /api/investments/valuations/:id
+ */
+const deleteValuation = async (req, res) => {
+  try {
+    const deleted = await DCFValuationService.deleteValuation(req.user.id, req.params.id);
+
+    if (!deleted) {
+      return res.status(404).json({ error: 'Valuation not found' });
+    }
+
+    res.json({ success: true, message: 'Valuation deleted' });
+  } catch (error) {
+    console.error('[INVESTMENTS] Delete valuation error:', error);
+    res.status(500).json({ error: error.message || 'Failed to delete valuation' });
+  }
+};
+
+// ========================================
 // HELPERS
 // ========================================
 
@@ -994,5 +1180,13 @@ module.exports = {
   compareStocks,
 
   // Chart
-  getChartData
+  getChartData,
+
+  // DCF Valuation
+  getDCFMetrics,
+  calculateDCF,
+  saveValuation,
+  getValuations,
+  getValuation,
+  deleteValuation
 };
