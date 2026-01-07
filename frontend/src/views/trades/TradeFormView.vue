@@ -502,8 +502,41 @@
             </div>
           </div>
 
-          <!-- Empty placeholder to align grid -->
-          <div class="hidden sm:block"></div>
+          <div class="relative">
+            <label for="account_identifier" class="label">Account</label>
+            <div class="relative">
+              <input
+                v-if="showAccountInput"
+                id="account_identifier"
+                v-model="form.account_identifier"
+                type="text"
+                class="input pr-20"
+                placeholder="Enter account identifier"
+                @keydown.enter.prevent="handleAccountInputEnter"
+                @blur="handleAccountInputBlur"
+              />
+              <select
+                v-else
+                id="account_identifier"
+                v-model="form.account_identifier"
+                class="input pr-20"
+                @change="handleAccountSelect"
+              >
+                <option value="">Select account</option>
+                <option v-if="form.account_identifier && !accountsList.includes(form.account_identifier)" :value="form.account_identifier">{{ form.account_identifier }}</option>
+                <option v-for="account in accountsList" :key="account" :value="account">{{ account }}</option>
+                <option value="__custom__">+ Add New Account</option>
+              </select>
+              <button
+                v-if="showAccountInput"
+                type="button"
+                @click="showAccountInput = false"
+                class="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 px-2 py-1"
+              >
+                Select
+              </button>
+            </div>
+          </div>
 
           <!-- Confidence Level -->
           <div class="sm:col-span-2">
@@ -1157,6 +1190,7 @@ const form = ref({
   mae: null,
   mfe: null,
   broker: '',
+  account_identifier: '',
   strategy: '',
   setup: '',
   notes: '',
@@ -1190,8 +1224,10 @@ const trade = ref(null) // Store full trade data including charts
 const strategiesList = ref([])
 const setupsList = ref([])
 const brokersList = ref([])
+const accountsList = ref([])
 const userSettings = ref(null)
 const showBrokerInput = ref(false)
+const showAccountInput = ref(false)
 const showStrategyInput = ref(false)
 const showSetupInput = ref(false)
 
@@ -1310,6 +1346,7 @@ async function loadTrade() {
       stopLoss: (tradeData.stop_loss || tradeData.stopLoss) != null ? Number(tradeData.stop_loss || tradeData.stopLoss) : null,
       takeProfit: (tradeData.take_profit || tradeData.takeProfit) != null ? Number(tradeData.take_profit || tradeData.takeProfit) : null,
       broker: tradeData.broker || '',
+      account_identifier: tradeData.account_identifier || '',
       strategy: tradeData.strategy || '',
       setup: tradeData.setup || '',
       notes: tradeData.notes || '',
@@ -1455,8 +1492,9 @@ async function handleSubmit() {
     let calculatedExitTime = form.value.exitTime
     let calculatedEntryPrice = parseFloat(form.value.entryPrice) || 0
     let calculatedExitPrice = form.value.exitPrice ? parseFloat(form.value.exitPrice) : null
-    let calculatedCommission = Math.abs(parseFloat(form.value.entryCommission) || 0) + Math.abs(parseFloat(form.value.exitCommission) || 0)
-    let calculatedFees = Math.abs(parseFloat(form.value.fees) || 0)
+    // Commission/fees: positive = fee paid, negative = rebate received
+    let calculatedCommission = (parseFloat(form.value.entryCommission) || 0) + (parseFloat(form.value.exitCommission) || 0)
+    let calculatedFees = parseFloat(form.value.fees) || 0
 
     const processedExecutions = form.value.executions && form.value.executions.length > 0
       ? form.value.executions.map(exec => {
@@ -1470,8 +1508,8 @@ async function handleSubmit() {
               exitPrice: exec.exitPrice ? parseFloat(exec.exitPrice) : null,
               entryTime: exec.entryTime,
               exitTime: exec.exitTime || null,
-              commission: Math.abs(parseFloat(exec.commission) || 0),
-              fees: Math.abs(parseFloat(exec.fees) || 0),
+              commission: parseFloat(exec.commission) || 0,  // Can be negative for rebates
+              fees: parseFloat(exec.fees) || 0,  // Can be negative for rebates
               pnl: exec.pnl || 0,
               stopLoss: exec.stopLoss && exec.stopLoss !== '' ? parseFloat(exec.stopLoss) : null,
               takeProfit: exec.takeProfit && exec.takeProfit !== '' ? parseFloat(exec.takeProfit) : null
@@ -1483,8 +1521,8 @@ async function handleSubmit() {
               quantity: parseFloat(exec.quantity),
               price: parseFloat(exec.price),
               datetime: exec.datetime,
-              commission: Math.abs(parseFloat(exec.commission) || 0),
-              fees: Math.abs(parseFloat(exec.fees) || 0),
+              commission: parseFloat(exec.commission) || 0,  // Can be negative for rebates
+              fees: parseFloat(exec.fees) || 0,  // Can be negative for rebates
               stopLoss: exec.stopLoss && exec.stopLoss !== '' ? parseFloat(exec.stopLoss) : null,
               takeProfit: exec.takeProfit && exec.takeProfit !== '' ? parseFloat(exec.takeProfit) : null
             }
@@ -1519,9 +1557,9 @@ async function handleSubmit() {
         // Total quantity is sum of ALL execution quantities
         calculatedQuantity = processedExecutions.reduce((sum, exec) => sum + exec.quantity, 0)
 
-        // Total commission and fees from all executions (always positive)
-        calculatedCommission = processedExecutions.reduce((sum, exec) => sum + Math.abs(exec.commission || 0), 0)
-        calculatedFees = processedExecutions.reduce((sum, exec) => sum + Math.abs(exec.fees || 0), 0)
+        // Total commission and fees from all executions (can be negative for rebates)
+        calculatedCommission = processedExecutions.reduce((sum, exec) => sum + (exec.commission || 0), 0)
+        calculatedFees = processedExecutions.reduce((sum, exec) => sum + (exec.fees || 0), 0)
 
         // For grouped executions, use the first execution's entry time
         calculatedEntryTime = processedExecutions[0].entryTime
@@ -1584,9 +1622,9 @@ async function handleSubmit() {
           calculatedExitPrice = totalExitValue / totalExitQty
         }
 
-        // Total commission and fees from all executions (always positive)
-        calculatedCommission = processedExecutions.reduce((sum, exec) => sum + Math.abs(exec.commission || 0), 0)
-        calculatedFees = processedExecutions.reduce((sum, exec) => sum + Math.abs(exec.fees || 0), 0)
+        // Total commission and fees from all executions (can be negative for rebates)
+        calculatedCommission = processedExecutions.reduce((sum, exec) => sum + (exec.commission || 0), 0)
+        calculatedFees = processedExecutions.reduce((sum, exec) => sum + (exec.fees || 0), 0)
       }
     }
 
@@ -1605,6 +1643,7 @@ async function handleSubmit() {
       mfe: form.value.mfe ? parseFloat(form.value.mfe) : null,
       confidence: parseInt(form.value.confidence) || 5,
       broker: form.value.broker || '',
+      account_identifier: form.value.account_identifier || '',
       strategy: form.value.strategy || '',
       setup: form.value.setup || '',
       notes: form.value.notes || '',
@@ -1863,6 +1902,10 @@ async function fetchLists() {
     // Fetch brokers list
     const brokersResponse = await api.get('/trades/brokers')
     brokersList.value = brokersResponse.data.brokers || []
+
+    // Fetch accounts list
+    const accountsResponse = await api.get('/trades/accounts')
+    accountsList.value = accountsResponse.data.accounts || []
   } catch (error) {
     console.error('Error fetching lists:', error)
   }
@@ -2034,6 +2077,40 @@ function handleBrokerInputBlur() {
     }
   }
   showBrokerInput.value = false
+}
+
+function handleAccountSelect(event) {
+  if (event.target.value === '__custom__') {
+    form.value.account_identifier = ''
+    showAccountInput.value = true
+    // Focus the input after a brief delay to allow DOM update
+    setTimeout(() => {
+      document.getElementById('account_identifier')?.focus()
+    }, 100)
+  }
+}
+
+function handleAccountInputEnter() {
+  const newAccount = form.value.account_identifier.trim()
+  if (newAccount) {
+    // Add to the list if it's not already there
+    if (!accountsList.value.includes(newAccount)) {
+      accountsList.value.push(newAccount)
+      showSuccess('Added', `Account "${newAccount}" added`)
+    }
+    showAccountInput.value = false
+  }
+}
+
+function handleAccountInputBlur() {
+  const newAccount = form.value.account_identifier.trim()
+  if (newAccount) {
+    // Add to the list if it's not already there
+    if (!accountsList.value.includes(newAccount)) {
+      accountsList.value.push(newAccount)
+    }
+  }
+  showAccountInput.value = false
 }
 
 function handleStrategySelect(event) {

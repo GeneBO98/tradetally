@@ -44,15 +44,16 @@ const schemas = {
     quantity: Joi.number().positive().required(),
     side: Joi.string().valid('long', 'short').required(),
     instrumentType: Joi.string().valid('stock', 'option', 'future', 'crypto').default('stock'),
-    commission: Joi.number().min(0).default(0),
-    entryCommission: Joi.number().min(0).default(0),
-    exitCommission: Joi.number().min(0).default(0),
-    fees: Joi.number().min(0).default(0),
+    commission: Joi.number().default(0),  // Can be negative for rebates
+    entryCommission: Joi.number().default(0),  // Can be negative for rebates
+    exitCommission: Joi.number().default(0),  // Can be negative for rebates
+    fees: Joi.number().default(0),  // Can be negative for rebates
     mae: Joi.number().allow(null, ''),
     mfe: Joi.number().allow(null, ''),
     notes: Joi.string().allow(''),
     isPublic: Joi.boolean().default(false),
     broker: Joi.string().max(50).allow(''),
+    account_identifier: Joi.string().max(50).allow(''),
     strategy: Joi.string().max(100).allow(''),
     setup: Joi.string().max(100).allow(''),
     tags: Joi.array().items(Joi.string().max(50)),
@@ -89,8 +90,8 @@ const schemas = {
           quantity: Joi.number().positive().required(),
           price: Joi.number().min(0).required(),
           datetime: Joi.date().iso().required(),
-          commission: Joi.number().min(0).default(0),
-          fees: Joi.number().min(0).default(0),
+          commission: Joi.number().default(0),  // Can be negative for rebates
+          fees: Joi.number().default(0),  // Can be negative for rebates
           stopLoss: Joi.number().positive().allow(null, '').optional(),
           takeProfit: Joi.number().positive().allow(null, '').optional()
         }),
@@ -102,8 +103,8 @@ const schemas = {
           exitPrice: Joi.number().min(0).allow(null).optional(),
           entryTime: Joi.date().iso().required(),
           exitTime: Joi.date().iso().allow(null).optional(),
-          commission: Joi.number().min(0).default(0),
-          fees: Joi.number().min(0).default(0),
+          commission: Joi.number().default(0),  // Can be negative for rebates
+          fees: Joi.number().default(0),  // Can be negative for rebates
           pnl: Joi.number().allow(null).optional(),
           stopLoss: Joi.number().positive().allow(null, '').optional(),
           takeProfit: Joi.number().positive().allow(null, '').optional()
@@ -121,15 +122,16 @@ const schemas = {
     quantity: Joi.number().positive(),
     side: Joi.string().valid('long', 'short'),
     instrumentType: Joi.string().valid('stock', 'option', 'future', 'crypto'),
-    commission: Joi.number().min(0),
-    entryCommission: Joi.number().min(0),
-    exitCommission: Joi.number().min(0),
-    fees: Joi.number().min(0),
+    commission: Joi.number(),  // Can be negative for rebates
+    entryCommission: Joi.number(),  // Can be negative for rebates
+    exitCommission: Joi.number(),  // Can be negative for rebates
+    fees: Joi.number(),  // Can be negative for rebates
     mae: Joi.number().allow(null, ''),
     mfe: Joi.number().allow(null, ''),
     notes: Joi.string().allow(''),
     isPublic: Joi.boolean(),
     broker: Joi.string().max(50).allow(''),
+    account_identifier: Joi.string().max(50).allow(''),
     strategy: Joi.string().max(100).allow(''),
     setup: Joi.string().max(100).allow(''),
     tags: Joi.array().items(Joi.string().max(50)),
@@ -166,8 +168,8 @@ const schemas = {
           quantity: Joi.number().positive().required(),
           price: Joi.number().min(0).required(),
           datetime: Joi.date().iso().required(),
-          commission: Joi.number().min(0).default(0),
-          fees: Joi.number().min(0).default(0),
+          commission: Joi.number().default(0),  // Can be negative for rebates
+          fees: Joi.number().default(0),  // Can be negative for rebates
           stopLoss: Joi.number().positive().allow(null, '').optional(),
           takeProfit: Joi.number().positive().allow(null, '').optional()
         }),
@@ -179,8 +181,8 @@ const schemas = {
           exitPrice: Joi.number().min(0).allow(null).optional(),
           entryTime: Joi.date().iso().required(),
           exitTime: Joi.date().iso().allow(null).optional(),
-          commission: Joi.number().min(0).default(0),
-          fees: Joi.number().min(0).default(0),
+          commission: Joi.number().default(0),  // Can be negative for rebates
+          fees: Joi.number().default(0),  // Can be negative for rebates
           pnl: Joi.number().allow(null).optional(),
           stopLoss: Joi.number().positive().allow(null, '').optional(),
           takeProfit: Joi.number().positive().allow(null, '').optional()

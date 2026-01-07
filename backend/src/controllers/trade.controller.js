@@ -3536,6 +3536,28 @@ const tradeController = {
       const today = new Date().toISOString().split('T')[0];
       const closedAt = new Date();
 
+      // Check if user has auto-close expired options enabled
+      const settingsQuery = `
+        SELECT auto_close_expired_options
+        FROM user_settings
+        WHERE user_id = $1
+      `;
+      const settingsResult = await db.query(settingsQuery, [req.user.id]);
+
+      // Default to true if no settings found (backwards compatibility)
+      const autoCloseEnabled = settingsResult.rows.length === 0 ||
+                               settingsResult.rows[0].auto_close_expired_options !== false;
+
+      if (!autoCloseEnabled) {
+        return res.json({
+          success: true,
+          message: 'Auto-close expired options is disabled in user settings',
+          closedCount: 0,
+          dryRun,
+          settingDisabled: true
+        });
+      }
+
       // First, get all expired options for this user
       const findQuery = `
         SELECT id, symbol, expiration_date, quantity, entry_price, contract_size
