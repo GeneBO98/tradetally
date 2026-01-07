@@ -597,8 +597,34 @@
       <div v-show="showMoreOptions" class="space-y-6">
         <!-- Options-specific fields -->
         <div v-if="form.instrumentType === 'option'" class="grid grid-cols-1 gap-6 sm:grid-cols-2 border border-gray-200 dark:border-gray-600 rounded-lg p-4">
-          <div class="sm:col-span-2">
-            <h3 class="text-md font-medium text-gray-900 dark:text-white mb-4">Option Details</h3>
+          <div class="sm:col-span-2 flex items-center justify-between">
+            <h3 class="text-md font-medium text-gray-900 dark:text-white">Option Details</h3>
+            <div class="flex items-center gap-2">
+              <select
+                v-model="selectedOptionsTemplate"
+                @change="applyOptionsTemplate"
+                :disabled="optionsTemplates.length === 0"
+                class="text-sm rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-2 py-1 disabled:opacity-50"
+              >
+                <option value="">{{ optionsTemplates.length === 0 ? 'No templates saved' : 'Load Template...' }}</option>
+                <option v-for="t in optionsTemplates" :key="t.id" :value="t.id">{{ t.name }}</option>
+              </select>
+              <button
+                type="button"
+                @click="showSaveOptionsTemplateModal = true"
+                class="text-sm text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+              >
+                Save
+              </button>
+              <button
+                v-if="optionsTemplates.length > 0"
+                type="button"
+                @click="showManageOptionsTemplatesModal = true"
+                class="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+              >
+                Manage
+              </button>
+            </div>
           </div>
 
           <div>
@@ -662,8 +688,34 @@
 
         <!-- Futures-specific fields -->
         <div v-if="form.instrumentType === 'future'" class="grid grid-cols-1 gap-6 sm:grid-cols-2 border border-gray-200 dark:border-gray-600 rounded-lg p-4">
-          <div class="sm:col-span-2">
-            <h3 class="text-md font-medium text-gray-900 dark:text-white mb-4">Futures Details</h3>
+          <div class="sm:col-span-2 flex items-center justify-between">
+            <h3 class="text-md font-medium text-gray-900 dark:text-white">Futures Details</h3>
+            <div class="flex items-center gap-2">
+              <select
+                v-model="selectedFuturesTemplate"
+                @change="applyFuturesTemplate"
+                :disabled="futuresTemplates.length === 0"
+                class="text-sm rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-2 py-1 disabled:opacity-50"
+              >
+                <option value="">{{ futuresTemplates.length === 0 ? 'No templates saved' : 'Load Template...' }}</option>
+                <option v-for="t in futuresTemplates" :key="t.id" :value="t.id">{{ t.name }}</option>
+              </select>
+              <button
+                type="button"
+                @click="showSaveFuturesTemplateModal = true"
+                class="text-sm text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+              >
+                Save
+              </button>
+              <button
+                v-if="futuresTemplates.length > 0"
+                type="button"
+                @click="showManageFuturesTemplatesModal = true"
+                class="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+              >
+                Manage
+              </button>
+            </div>
           </div>
 
           <div>
@@ -1047,6 +1099,196 @@
         </div>
       </div>
     </div>
+
+    <!-- Save Futures Template Modal -->
+    <div v-if="showSaveFuturesTemplateModal" class="fixed z-50 inset-0 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+      <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" @click="showSaveFuturesTemplateModal = false"></div>
+        <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+        <div class="relative inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
+          <div>
+            <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white" id="modal-title">
+              Save Futures Template
+            </h3>
+            <div class="mt-4">
+              <label for="futuresTemplateName" class="label">Template Name</label>
+              <input
+                id="futuresTemplateName"
+                v-model="newFuturesTemplateName"
+                type="text"
+                class="input"
+                placeholder="e.g., ES E-mini S&P 500"
+                @keyup.enter="saveFuturesTemplate"
+              />
+              <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                This will save: underlying asset, tick size, and point value.
+              </p>
+            </div>
+          </div>
+          <div class="mt-5 sm:mt-6 sm:flex sm:flex-row-reverse gap-3">
+            <button
+              type="button"
+              :disabled="!newFuturesTemplateName.trim() || savingTemplate"
+              @click="saveFuturesTemplate"
+              class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-primary-600 text-base font-medium text-white hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:w-auto sm:text-sm disabled:opacity-50"
+            >
+              {{ savingTemplate ? 'Saving...' : 'Save Template' }}
+            </button>
+            <button
+              type="button"
+              @click="showSaveFuturesTemplateModal = false"
+              class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 dark:border-gray-600 shadow-sm px-4 py-2 bg-white dark:bg-gray-700 text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none sm:mt-0 sm:w-auto sm:text-sm"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Save Options Template Modal -->
+    <div v-if="showSaveOptionsTemplateModal" class="fixed z-50 inset-0 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+      <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" @click="showSaveOptionsTemplateModal = false"></div>
+        <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+        <div class="relative inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
+          <div>
+            <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white" id="modal-title">
+              Save Options Template
+            </h3>
+            <div class="mt-4">
+              <label for="optionsTemplateName" class="label">Template Name</label>
+              <input
+                id="optionsTemplateName"
+                v-model="newOptionsTemplateName"
+                type="text"
+                class="input"
+                placeholder="e.g., SPY Options"
+                @keyup.enter="saveOptionsTemplate"
+              />
+              <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                This will save: underlying symbol, option type, and contract size.
+              </p>
+            </div>
+          </div>
+          <div class="mt-5 sm:mt-6 sm:flex sm:flex-row-reverse gap-3">
+            <button
+              type="button"
+              :disabled="!newOptionsTemplateName.trim() || savingTemplate"
+              @click="saveOptionsTemplate"
+              class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-primary-600 text-base font-medium text-white hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:w-auto sm:text-sm disabled:opacity-50"
+            >
+              {{ savingTemplate ? 'Saving...' : 'Save Template' }}
+            </button>
+            <button
+              type="button"
+              @click="showSaveOptionsTemplateModal = false"
+              class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 dark:border-gray-600 shadow-sm px-4 py-2 bg-white dark:bg-gray-700 text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none sm:mt-0 sm:w-auto sm:text-sm"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Manage Futures Templates Modal -->
+    <div v-if="showManageFuturesTemplatesModal" class="fixed z-50 inset-0 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+      <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" @click="showManageFuturesTemplatesModal = false"></div>
+        <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+        <div class="relative inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
+          <div>
+            <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white mb-4">
+              Manage Futures Templates
+            </h3>
+            <div class="space-y-2 max-h-64 overflow-y-auto">
+              <div
+                v-for="t in futuresTemplates"
+                :key="t.id"
+                class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg"
+              >
+                <div>
+                  <p class="font-medium text-gray-900 dark:text-white">{{ t.name }}</p>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t.underlying_asset || 'No asset' }} | Tick: {{ t.tick_size || '-' }} | Point: {{ t.point_value || '-' }}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  @click="deleteTemplate(t.id, 'future')"
+                  :disabled="deletingTemplateId === t.id"
+                  class="text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 text-sm"
+                >
+                  {{ deletingTemplateId === t.id ? 'Deleting...' : 'Delete' }}
+                </button>
+              </div>
+              <p v-if="futuresTemplates.length === 0" class="text-gray-500 dark:text-gray-400 text-center py-4">
+                No futures templates saved
+              </p>
+            </div>
+          </div>
+          <div class="mt-5">
+            <button
+              type="button"
+              @click="showManageFuturesTemplatesModal = false"
+              class="w-full inline-flex justify-center rounded-md border border-gray-300 dark:border-gray-600 shadow-sm px-4 py-2 bg-white dark:bg-gray-700 text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none sm:text-sm"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Manage Options Templates Modal -->
+    <div v-if="showManageOptionsTemplatesModal" class="fixed z-50 inset-0 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+      <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" @click="showManageOptionsTemplatesModal = false"></div>
+        <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+        <div class="relative inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
+          <div>
+            <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white mb-4">
+              Manage Options Templates
+            </h3>
+            <div class="space-y-2 max-h-64 overflow-y-auto">
+              <div
+                v-for="t in optionsTemplates"
+                :key="t.id"
+                class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg"
+              >
+                <div>
+                  <p class="font-medium text-gray-900 dark:text-white">{{ t.name }}</p>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t.underlying_symbol || 'No symbol' }} | {{ t.option_type || '-' }} | Size: {{ t.contract_size || 100 }}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  @click="deleteTemplate(t.id, 'option')"
+                  :disabled="deletingTemplateId === t.id"
+                  class="text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 text-sm"
+                >
+                  {{ deletingTemplateId === t.id ? 'Deleting...' : 'Delete' }}
+                </button>
+              </div>
+              <p v-if="optionsTemplates.length === 0" class="text-gray-500 dark:text-gray-400 text-center py-4">
+                No options templates saved
+              </p>
+            </div>
+          </div>
+          <div class="mt-5">
+            <button
+              type="button"
+              @click="showManageOptionsTemplatesModal = false"
+              class="w-full inline-flex justify-center rounded-md border border-gray-300 dark:border-gray-600 shadow-sm px-4 py-2 bg-white dark:bg-gray-700 text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none sm:text-sm"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -1224,6 +1466,20 @@ const trade = ref(null) // Store full trade data including charts
 const strategiesList = ref([])
 const setupsList = ref([])
 const brokersList = ref([])
+
+// Instrument templates
+const futuresTemplates = ref([])
+const optionsTemplates = ref([])
+const selectedFuturesTemplate = ref('')
+const selectedOptionsTemplate = ref('')
+const showSaveFuturesTemplateModal = ref(false)
+const showSaveOptionsTemplateModal = ref(false)
+const showManageFuturesTemplatesModal = ref(false)
+const showManageOptionsTemplatesModal = ref(false)
+const newFuturesTemplateName = ref('')
+const newOptionsTemplateName = ref('')
+const savingTemplate = ref(false)
+const deletingTemplateId = ref(null)
 const accountsList = ref([])
 const userSettings = ref(null)
 const showBrokerInput = ref(false)
@@ -2213,11 +2469,126 @@ function removeExecution(index) {
   form.value.executions.splice(index, 1)
 }
 
+// Instrument Template Functions
+async function fetchInstrumentTemplates() {
+  try {
+    const [futuresRes, optionsRes] = await Promise.all([
+      api.get('/instrument-templates', { params: { instrument_type: 'future' } }),
+      api.get('/instrument-templates', { params: { instrument_type: 'option' } })
+    ])
+    console.log('[Templates] Futures response:', futuresRes.data)
+    console.log('[Templates] Options response:', optionsRes.data)
+    futuresTemplates.value = futuresRes.data.templates || []
+    optionsTemplates.value = optionsRes.data.templates || []
+    console.log('[Templates] Loaded:', { futures: futuresTemplates.value.length, options: optionsTemplates.value.length })
+  } catch (err) {
+    console.error('[Templates] Failed to fetch instrument templates:', err)
+  }
+}
+
+function applyFuturesTemplate() {
+  if (!selectedFuturesTemplate.value) return
+  const template = futuresTemplates.value.find(t => t.id === selectedFuturesTemplate.value)
+  if (template) {
+    form.value.underlyingAsset = template.underlying_asset || ''
+    form.value.tickSize = template.tick_size || null
+    form.value.pointValue = template.point_value || null
+    if (template.symbol) {
+      form.value.symbol = template.symbol
+    }
+  }
+  selectedFuturesTemplate.value = ''
+}
+
+function applyOptionsTemplate() {
+  if (!selectedOptionsTemplate.value) return
+  const template = optionsTemplates.value.find(t => t.id === selectedOptionsTemplate.value)
+  console.log('[Templates] Applying options template:', template)
+  if (template) {
+    form.value.underlyingSymbol = template.underlying_symbol || ''
+    form.value.optionType = template.option_type || ''
+    form.value.contractSize = template.contract_size || 100
+    console.log('[Templates] Set values:', {
+      underlyingSymbol: form.value.underlyingSymbol,
+      optionType: form.value.optionType,
+      contractSize: form.value.contractSize
+    })
+    if (template.symbol) {
+      form.value.symbol = template.symbol
+    }
+  }
+  selectedOptionsTemplate.value = ''
+}
+
+async function saveFuturesTemplate() {
+  if (!newFuturesTemplateName.value.trim()) return
+  savingTemplate.value = true
+  try {
+    const response = await api.post('/instrument-templates', {
+      name: newFuturesTemplateName.value.trim(),
+      instrument_type: 'future',
+      symbol: form.value.symbol || null,
+      underlying_asset: form.value.underlyingAsset || null,
+      tick_size: form.value.tickSize || null,
+      point_value: form.value.pointValue || null
+    })
+    futuresTemplates.value.push(response.data.template)
+    showSaveFuturesTemplateModal.value = false
+    newFuturesTemplateName.value = ''
+    showSuccess('Template Saved', 'Futures template saved successfully')
+  } catch (err) {
+    showError('Save Failed', err.response?.data?.message || 'Failed to save template')
+  } finally {
+    savingTemplate.value = false
+  }
+}
+
+async function saveOptionsTemplate() {
+  if (!newOptionsTemplateName.value.trim()) return
+  savingTemplate.value = true
+  try {
+    const response = await api.post('/instrument-templates', {
+      name: newOptionsTemplateName.value.trim(),
+      instrument_type: 'option',
+      symbol: form.value.symbol || null,
+      underlying_symbol: form.value.underlyingSymbol || null,
+      option_type: form.value.optionType || null,
+      contract_size: form.value.contractSize || 100
+    })
+    optionsTemplates.value.push(response.data.template)
+    showSaveOptionsTemplateModal.value = false
+    newOptionsTemplateName.value = ''
+    showSuccess('Template Saved', 'Options template saved successfully')
+  } catch (err) {
+    showError('Save Failed', err.response?.data?.message || 'Failed to save template')
+  } finally {
+    savingTemplate.value = false
+  }
+}
+
+async function deleteTemplate(id, type) {
+  deletingTemplateId.value = id
+  try {
+    await api.delete(`/instrument-templates/${id}`)
+    if (type === 'future') {
+      futuresTemplates.value = futuresTemplates.value.filter(t => t.id !== id)
+    } else {
+      optionsTemplates.value = optionsTemplates.value.filter(t => t.id !== id)
+    }
+    showSuccess('Template Deleted', 'Template deleted successfully')
+  } catch (err) {
+    showError('Delete Failed', err.response?.data?.message || 'Failed to delete template')
+  } finally {
+    deletingTemplateId.value = null
+  }
+}
+
 onMounted(async () => {
   await checkProAccess()
   await fetchLists()
   await fetchUserSettings()
   await fetchTags()
+  await fetchInstrumentTemplates()
 
   if (isEdit.value) {
     loadTrade()

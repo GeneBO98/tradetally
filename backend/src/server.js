@@ -44,6 +44,7 @@ const yearWrappedRoutes = require('./routes/yearWrapped.routes');
 const investmentsRoutes = require('./routes/investments.routes');
 const stockScannerRoutes = require('./routes/stockScanner.routes');
 const accountRoutes = require('./routes/account.routes');
+const instrumentTemplatesRoutes = require('./routes/instrumentTemplates.routes');
 const BillingService = require('./services/billingService');
 const priceMonitoringService = require('./services/priceMonitoringService');
 const backupScheduler = require('./services/backupScheduler.service');
@@ -196,6 +197,7 @@ app.use('/api/year-wrapped', yearWrappedRoutes);
 app.use('/api/investments', investmentsRoutes);
 app.use('/api/scanner', stockScannerRoutes);
 app.use('/api/accounts', accountRoutes);
+app.use('/api/instrument-templates', instrumentTemplatesRoutes);
 
 // OAuth2 Provider endpoints
 app.use('/oauth', oauth2Routes);
