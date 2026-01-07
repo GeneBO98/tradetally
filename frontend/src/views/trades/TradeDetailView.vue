@@ -249,8 +249,14 @@
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
                     {{ trade.commission < 0 ? 'Commission (Rebate)' : 'Commission' }}
                   </dt>
-                  <dd class="mt-1 text-sm" :class="trade.commission < 0 ? 'text-green-600 dark:text-green-400' : 'text-gray-900 dark:text-white'">
-                    {{ trade.commission < 0 ? '+' : '' }}${{ formatNumber(Math.abs(trade.commission)) }}
+                  <dd class="mt-1 text-sm" :class="[
+                    trade.commission < 0
+                      ? 'text-green-600 dark:text-green-400'
+                      : trade.commission > 0
+                      ? 'text-red-600 dark:text-red-400'
+                      : 'text-gray-900 dark:text-white'
+                  ]">
+                    {{ trade.commission < 0 ? '+' : '-' }}${{ formatNumber(Math.abs(trade.commission)) }}
                   </dd>
                 </div>
                 <div v-if="trade.fees">
@@ -583,8 +589,14 @@
                         {{ execution.pnl !== undefined && execution.pnl !== null ? `$${formatNumber(execution.pnl)}` : '-' }}
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap text-sm font-mono"
-                          :class="execution.commission < 0 ? 'text-green-600 dark:text-green-400' : 'text-gray-600 dark:text-gray-400'">
-                        {{ execution.commission ? (execution.commission < 0 ? '+' : '') + `$${formatNumber(Math.abs(execution.commission))}` : '-' }}
+                          :class="[
+                            execution.commission < 0
+                              ? 'text-green-600 dark:text-green-400'
+                              : execution.commission > 0
+                              ? 'text-red-600 dark:text-red-400'
+                              : 'text-gray-600 dark:text-gray-400'
+                          ]">
+                        {{ execution.commission ? (execution.commission < 0 ? '+' : '-') + `$${formatNumber(Math.abs(execution.commission))}` : '-' }}
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap text-sm font-mono text-gray-600 dark:text-gray-400">
                         {{ execution.fees ? `$${formatNumber(execution.fees)}` : '-' }}
@@ -662,8 +674,14 @@
                       <div class="text-gray-500 dark:text-gray-400 text-xs">
                         {{ execution.commission < 0 ? 'Commission (Rebate)' : 'Commission' }}
                       </div>
-                      <div class="font-mono" :class="execution.commission < 0 ? 'text-green-600 dark:text-green-400' : 'text-gray-600 dark:text-gray-400'">
-                        {{ execution.commission < 0 ? '+' : '' }}${{ formatNumber(Math.abs(execution.commission)) }}
+                      <div class="font-mono" :class="[
+                        execution.commission < 0
+                          ? 'text-green-600 dark:text-green-400'
+                          : execution.commission > 0
+                          ? 'text-red-600 dark:text-red-400'
+                          : 'text-gray-600 dark:text-gray-400'
+                      ]">
+                        {{ execution.commission < 0 ? '+' : '-' }}${{ formatNumber(Math.abs(execution.commission)) }}
                       </div>
                     </div>
                     <div v-if="execution.fees">
@@ -1181,7 +1199,7 @@ const processedExecutions = computed(() => {
 
     // Map trade record fields to execution format
     const quantity = parseFloat(execution.quantity) || 0
-    const price = parseFloat(execution.price) || parseFloat(execution.entry_price) || 0
+    const price = parseFloat(execution.price) || parseFloat(execution.entryPrice) || parseFloat(execution.entry_price) || parseFloat(execution.exitPrice) || parseFloat(execution.exit_price) || 0
     const value = quantity * price * valueMultiplier
     const action = execution.action || execution.side || 'unknown'
     const datetime = execution.datetime || execution.entry_time
@@ -1271,6 +1289,14 @@ const processedExecutions = computed(() => {
     const totalRemainingValue = entryQueue.reduce((sum, e) => sum + (e.remainingQty * e.price), 0)
     const avgCostBasis = totalRemainingQty > 0 ? totalRemainingValue / totalRemainingQty : null
 
+    // Preserve original values if they exist in the execution data
+    const originalEntryPrice = execution.entryPrice ?? execution.entry_price
+    const originalExitPrice = execution.exitPrice ?? execution.exit_price
+    const originalEntryTime = execution.entryTime ?? execution.entry_time
+    const originalExitTime = execution.exitTime ?? execution.exit_time
+    const originalPnl = execution.pnl ?? execution.p_l ?? execution.profit_loss
+    const originalFees = execution.fees ?? execution.fee
+
     return {
       // Keep original execution data
       ...execution,
@@ -1280,19 +1306,19 @@ const processedExecutions = computed(() => {
       price,
       value,
       commission,
-      fees,
+      // Preserve original fees if available, otherwise use computed
+      fees: originalFees ?? fees,
       datetime,
       runningPosition,
       avgCost: isOpening ? (avgCostBasis || price) : matchedEntryPrice,
-      // Set entryPrice/exitPrice based on whether this execution opens or closes the position
-      // Only show entry price on entry executions, exit price on exit executions
-      entryPrice: isOpening ? price : null,
-      exitPrice: isOpening ? null : price,
-      // Set entryTime/exitTime based on whether this execution opens or closes the position
-      entryTime: isOpening ? datetime : null,
-      exitTime: isOpening ? null : datetime,
-      // P&L is only calculated for exit (closing) executions
-      pnl: executionPnl
+      // Set entryPrice/exitPrice: prefer original values, otherwise compute based on position
+      entryPrice: originalEntryPrice ?? (isOpening ? price : null),
+      exitPrice: originalExitPrice ?? (isOpening ? null : price),
+      // Set entryTime/exitTime: prefer original values, otherwise compute based on position
+      entryTime: originalEntryTime ?? (isOpening ? datetime : null),
+      exitTime: originalExitTime ?? (isOpening ? null : datetime),
+      // P&L: prefer original value, otherwise use computed (only for exit executions)
+      pnl: originalPnl ?? executionPnl
     }
   })
 })
@@ -1318,7 +1344,7 @@ const executionSummary = computed(() => {
     if (!execution) return
 
     const quantity = parseFloat(execution.quantity) || 0
-    const price = parseFloat(execution.price) || parseFloat(execution.entry_price) || 0  // Use price from execution, fallback to entry_price from trade record
+    const price = parseFloat(execution.price) || parseFloat(execution.entryPrice) || parseFloat(execution.entry_price) || parseFloat(execution.exitPrice) || parseFloat(execution.exit_price) || 0  // Use price from execution, fallback to entry_price from trade record
     const fees = (parseFloat(execution.commission) || 0) + (parseFloat(execution.fees) || 0)
     const action = execution.action || execution.side || 'unknown'  // Use action from execution, fallback to side from trade record
 

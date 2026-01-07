@@ -1527,9 +1527,17 @@ function checkMarketStatus() {
   }
 }
 
-// Fetch count of expired options
+// Fetch count of expired options and auto-close if setting is enabled
 async function fetchExpiredOptionsCount() {
   try {
+    // Check if user has auto-close enabled (respect user setting)
+    const autoCloseEnabled = userSettings.value?.autoCloseExpiredOptions !== false
+
+    if (!autoCloseEnabled) {
+      console.log('[Dashboard] Auto-close expired options is disabled in user settings, skipping check')
+      return
+    }
+
     console.log('[Dashboard] Checking for expired options...')
     const response = await api.get('/trades/expired-options')
     console.log('[Dashboard] Expired options response:', response.data)
@@ -1588,11 +1596,14 @@ onMounted(async () => {
     // localStorage load failed
   }
 
+  // Fetch user settings first (needed to check autoCloseExpiredOptions)
+  await fetchUserSettings()
+
+  // Then fetch other data in parallel, including expired options check (which uses settings)
   await Promise.all([
     fetchAnalytics(),
     fetchFilterOptions(),
     fetchOpenTrades(),
-    fetchUserSettings(),
     fetchExpiredOptionsCount()
   ])
 

@@ -332,9 +332,9 @@ class Account {
     // This query calculates daily cash movements from trades and transactions
     // NOTE: For options, we multiply by contract_size (typically 100) to get actual cash value
     //
-    // Commission handling:
+    // Commission handling (convention: positive = fee paid, negative = rebate received):
     // - Entry commission: Added to outflow (increases cost basis) for LONG entries
-    //                     Added to inflow (credit/rebate) for SHORT entries
+    //                     Subtracted from inflow (fees reduce proceeds, rebates add to proceeds) for SHORT entries
     // - Exit commission: Subtracted from inflow (reduces sale proceeds) for LONG exits
     //                    Added to outflow (cost) for SHORT exits
     const query = `
@@ -343,7 +343,8 @@ class Account {
           trade_date as date,
           -- Inflow: money coming IN
           -- LONG exit (selling shares/contracts) = (exit_price * quantity * multiplier) - exit_commission - fees
-          -- SHORT entry (short sale) = (entry_price * quantity * multiplier) + entry_commission
+          -- SHORT entry (short sale) = (entry_price * quantity * multiplier) - entry_commission
+          --   (subtract commission: positive fee reduces proceeds, negative rebate increases proceeds)
           COALESCE(SUM(
             CASE
               WHEN side IN ('long', 'buy') AND exit_price IS NOT NULL
@@ -367,7 +368,7 @@ class Account {
                     WHEN instrument_type = 'future' THEN COALESCE(point_value, 1)
                     ELSE 1
                   END
-                )) + (
+                )) - (
                   CASE
                     WHEN COALESCE(entry_commission, 0) != 0 THEN COALESCE(entry_commission, 0)
                     WHEN COALESCE(exit_commission, 0) = 0 AND COALESCE(commission, 0) != 0 THEN COALESCE(commission, 0) / 2

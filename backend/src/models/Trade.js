@@ -48,8 +48,11 @@ class Trade {
       originalExitPriceCurrency, originalPnlCurrency, originalCommissionCurrency,
       originalFeesCurrency,
       stopLoss, takeProfit, chartUrl,
-      brokerConnectionId, accountIdentifier
+      brokerConnectionId, accountIdentifier, account_identifier
     } = tradeData;
+
+    // Use snake_case version if provided, fallback to camelCase for legacy support
+    const finalAccountIdentifier = account_identifier || accountIdentifier;
 
     // Convert empty strings to null for optional fields
     const cleanExitTime = exitTime === '' ? null : exitTime;
@@ -292,7 +295,7 @@ class Trade {
       importId || null,
       originalCurrency || 'USD', exchangeRate || 1.0, originalEntryPriceCurrency || null, originalExitPriceCurrency || null,
       originalPnlCurrency || null, originalCommissionCurrency || null, originalFeesCurrency || null,
-      finalStopLoss || null, takeProfit || null, rValue, chartUrl || null, brokerConnectionId || null, accountIdentifier || null
+      finalStopLoss || null, takeProfit || null, rValue, chartUrl || null, brokerConnectionId || null, finalAccountIdentifier || null
     ];
 
     const result = await db.query(query, values);

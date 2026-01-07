@@ -466,7 +466,9 @@ const brokerParsers = {
     const multiplier = parseFloat(row.Multiplier || 100);
     const buySell = cleanString(row['Buy/Sell']).toUpperCase();
     const price = parseFloat(row.Price);
-    const commission = Math.abs(parseFloat(row.Commission || 0));
+    // IBKR commission: negative = fee paid, positive = rebate received
+    // Convert to our convention: positive = fee paid, negative = rebate (credit)
+    const commission = -(parseFloat(row.Commission || 0));
 
     // Parse date/time - format is YYYYMMDD;HHMMSS
     const dateTimeParts = (row['Date/Time'] || '').split(';');
