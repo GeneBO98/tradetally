@@ -1,80 +1,92 @@
 # Discount Rate Explanation
 
-## How Discount Rate is Currently Determined
+## How Discount Rate is Determined
 
-**The discount rate is NOT calculated - it's a USER INPUT.**
+### 1. Calculated Using CAPM (Default)
 
-### Current Implementation
-
-1. **User enters "Desired Annual Return"** in the frontend (as a percentage)
-2. **This value is passed directly** to the DCF calculation as `desired_return_low`, `desired_return_medium`, `desired_return_high`
-3. **Default values** if user doesn't enter:
-   - Bear (low): 15% (0.15)
-   - Base (medium): 12% (0.12)
-   - Bull (high): 10% (0.10)
-
-### How It's Used in Calculation
-
-The discount rate is used in the discount factor:
+The discount rate is **automatically calculated** using the Capital Asset Pricing Model:
 
 ```
-discountFactor = (1 + discount)^years
+Cost of Equity = Risk-free Rate + Beta × Market Risk Premium
 ```
 
-For example, with 10% discount rate over 10 years:
+**Components:**
+- **Risk-free Rate**: 4% (10-year Treasury rate - hardcoded)
+- **Beta**: Retrieved from Finnhub metrics (defaults to 1.0 if not available)
+- **Market Risk Premium**: 6% (typical long-term average - hardcoded)
+
+**Example:**
+- If Beta = 1.2, Risk-free = 4%, MRP = 6%
+- Discount Rate = 4% + (1.2 × 6%) = 4% + 7.2% = **11.2%**
+
+### 2. User Override (Optional)
+
+Users can enter their own "Desired Annual Return" in the frontend, which **overrides** the calculated rate.
+
+**Important:**
+- User values are used **as entered** - no auto-correction
+- Frontend converts percentage to decimal (e.g., 15% → 0.15)
+- Higher discount rate = lower fair value (more conservative)
+
+### 3. Scenario Defaults (If User Doesn't Enter)
+
+If user doesn't provide discount rates, defaults are calculated:
+- **Bear**: Base rate + 3% (more conservative)
+- **Base**: Calculated CAPM rate
+- **Bull**: Base rate - 2% (less conservative, minimum 5%)
+
+## How It's Used in Calculation
+
+The discount rate is used to discount **all future cash flows** to present value:
+
+### For Each Year's Cash Flow:
 ```
-discountFactor = (1.10)^10 = 2.5937
+Present Value = Cash Flow / (1 + discount_rate)^year
 ```
 
-Then future cash flows are divided by this factor:
+### For Terminal Value:
 ```
-Present Value = Future Value / discountFactor
+Terminal PV = Terminal Value / (1 + discount_rate)^projection_years
 ```
 
-## The Problem
+### Example Impact:
 
-**In proper DCF models, the discount rate should be calculated using:**
+With 10-year projection and $100B terminal value:
+- **10% discount**: Terminal PV = $38.55B
+- **15% discount**: Terminal PV = $24.72B (36% lower)
+- **20% discount**: Terminal PV = $16.15B (58% lower)
+- **50% discount**: Terminal PV = $1.70B (96% lower)
+- **100% discount**: Terminal PV = $0.10B (99.7% lower)
 
-### 1. WACC (Weighted Average Cost of Capital)
-```
-WACC = (E/V × Re) + (D/V × Rd × (1 - Tc))
-```
-Where:
-- E = Market value of equity
-- D = Market value of debt
-- V = E + D (total value)
-- Re = Cost of equity
-- Rd = Cost of debt
-- Tc = Tax rate
+**The discount rate has a MASSIVE impact on fair value**, especially on the terminal value component.
 
-### 2. Cost of Equity (CAPM)
-```
-Re = Rf + β × (Rm - Rf)
-```
-Where:
-- Rf = Risk-free rate (10-year Treasury)
-- β = Beta (stock's volatility vs market)
-- Rm = Expected market return
-- (Rm - Rf) = Market risk premium
+## Why This Matters
 
-### 3. Or at minimum:
-- Risk-free rate + risk premium
-- Or use company's historical returns
-- Or use industry average WACC
+1. **Higher discount rate = Lower fair value**
+   - If you require 15% return vs 10%, you need to pay less today
+   - This is the fundamental principle of DCF
 
-## Current Issue
+2. **Terminal value is most sensitive**
+   - Terminal value is typically 60-70% of total value
+   - Small changes in discount rate cause large changes in terminal PV
 
-**We're using user's "desired return" as the discount rate**, which is:
-- ✅ Simple and user-friendly
-- ❌ Not based on actual cost of capital
-- ❌ May not reflect the true risk of the investment
-- ❌ Can lead to inaccurate valuations
+3. **Early years are less sensitive**
+   - Year 1 cash flow discounted at 10% vs 15%: 9% vs 8.7% (small difference)
+   - Year 10 terminal value: 38.5% vs 24.7% (large difference)
 
-## Recommendation
+## Current Implementation
 
-We should either:
-1. **Calculate WACC automatically** from financial data
-2. **Use risk-free rate + risk premium** as a default
-3. **Allow user to override** but provide calculated defaults
-4. **Explain to user** that "desired return" is their personal hurdle rate, not the company's cost of capital
+✅ **Calculates discount rate using CAPM** (proper financial methodology)
+✅ **Allows user override** (flexibility for different scenarios)
+✅ **No arbitrary limits** (user can enter any discount rate)
+✅ **No auto-correction** (user's values are respected)
+✅ **Properly applied** (discounts all cash flows and terminal value)
 
+## Formula Verification
+
+The discount rate is used in:
+1. **Annual cash flow discounting**: `PV = CF / (1 + r)^t`
+2. **Terminal value discounting**: `Terminal PV = TV / (1 + r)^N`
+3. **Gordon Growth Model** (if used): `TV = FCF × (1 + g) / (r - g)`
+
+All formulas correctly use the discount rate to reduce future values to present value.
