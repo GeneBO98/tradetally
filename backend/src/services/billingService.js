@@ -314,6 +314,33 @@ class BillingService {
       const subscription = await stripe.subscriptions.retrieve(session.subscription);
       console.log('Retrieved subscription:', subscription.id, 'status:', subscription.status);
       await this.handleSubscriptionUpdated(subscription);
+
+      // Check for referral discount and record conversion
+      try {
+        const ReferralService = require('./referralService');
+        const isReferralEnabled = await ReferralService.isEnabled();
+
+        if (isReferralEnabled && session.total_details?.breakdown?.discounts?.length > 0) {
+          // Get the coupon ID from the discount
+          const discount = session.total_details.breakdown.discounts[0];
+          const couponId = discount.discount?.coupon?.id;
+
+          if (couponId) {
+            const referralCode = await ReferralService.getByCouponId(couponId);
+            if (referralCode) {
+              // Get user ID from session metadata
+              const userId = session.metadata?.user_id || subscription.metadata?.user_id;
+              if (userId) {
+                await ReferralService.recordSubscription(userId, referralCode.id);
+                console.log(`[REFERRAL] Recorded subscription conversion for user ${userId} from referral ${referralCode.creator_name}`);
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.warn('[REFERRAL] Error recording subscription conversion:', error.message);
+        // Don't fail the checkout completion if referral tracking fails
+      }
     }
   }
 

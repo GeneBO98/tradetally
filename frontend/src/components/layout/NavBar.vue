@@ -33,7 +33,7 @@
                     v-if="item.badge"
                     class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
                     :class="{
-                      'bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400': item.badge.type === 'pro'
+                      'bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400': item.badge.type === 'pro'
                     }"
                   >
                     {{ item.badge.text }}
@@ -164,7 +164,7 @@
                           v-if="subItem.badge"
                           class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
                           :class="{
-                            'bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400': subItem.badge.type === 'pro'
+                            'bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400': subItem.badge.type === 'pro'
                           }"
                         >
                           {{ subItem.badge.text }}
@@ -192,7 +192,7 @@
                     v-if="item.badge"
                     class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
                     :class="{
-                      'bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400': item.badge.type === 'pro'
+                      'bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400': item.badge.type === 'pro'
                     }"
                   >
                     {{ item.badge.text }}
@@ -391,6 +391,12 @@ const navigation = computed(() => {
           to: '/admin/analytics',
           route: 'admin-analytics',
           description: 'View platform usage analytics'
+        },
+        {
+          name: 'Referral Codes',
+          to: '/admin/referrals',
+          route: 'admin-referrals',
+          description: 'Manage creator referral codes'
         },
         {
           name: 'OAuth Applications',

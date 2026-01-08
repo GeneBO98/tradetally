@@ -5,6 +5,7 @@ const EmailService = require('../services/emailService');
 const bcrypt = require('bcryptjs');
 const TierService = require('../services/tierService');
 const YearWrappedService = require('../services/yearWrappedService');
+const ReferralService = require('../services/referralService');
 
 // Check if email configuration is available
 function isEmailConfigured() {
@@ -32,7 +33,7 @@ const authController = {
   async register(req, res, next) {
     try {
       console.log('Registration request body:', req.body);
-      const { email, username, password, fullName } = req.body;
+      const { email, username, password, fullName, referral_code } = req.body;
 
       // Check registration mode
       const registrationMode = getRegistrationMode();
@@ -64,6 +65,24 @@ const authController = {
       const userCount = await User.getUserCount();
       const isFirstUser = userCount === 0;
 
+      // Validate referral code if provided (only when billing is enabled)
+      let referredByCodeId = null;
+      if (referral_code) {
+        try {
+          const isReferralEnabled = await ReferralService.isEnabled();
+          if (isReferralEnabled) {
+            const referralCode = await ReferralService.getByCode(referral_code);
+            if (referralCode && referralCode.is_active) {
+              referredByCodeId = referralCode.id;
+              console.log(`[REFERRAL] User registering with referral code: ${referral_code} (${referralCode.creator_name})`);
+            }
+          }
+        } catch (error) {
+          console.warn('[REFERRAL] Error validating referral code:', error.message);
+          // Continue with registration even if referral validation fails
+        }
+      }
+
       // Check if email verification is configured
       const emailConfigured = isEmailConfigured();
       
@@ -83,18 +102,28 @@ const authController = {
         verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
       }
 
-      const user = await User.create({ 
-        email, 
-        username, 
-        password, 
+      const user = await User.create({
+        email,
+        username,
+        password,
         fullName,
         verificationToken,
         verificationExpires,
         role: isFirstUser ? 'admin' : 'user',
         isVerified,
-        adminApproved
+        adminApproved,
+        referredByCode: referredByCodeId
       });
       await User.createSettings(user.id);
+
+      // Record referral signup conversion if applicable
+      if (referredByCodeId) {
+        try {
+          await ReferralService.recordSignup(user.id, referredByCodeId);
+        } catch (error) {
+          console.warn('[REFERRAL] Error recording signup conversion:', error.message);
+        }
+      }
 
       // Log if this user was made an admin
       if (isFirstUser) {

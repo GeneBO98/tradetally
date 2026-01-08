@@ -166,7 +166,7 @@ const handleClickOutside = (event) => {
 
 const getBadgeClasses = (type) => {
   const classes = {
-    pro: 'bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400',
+    pro: 'bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400',
     new: 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400',
     beta: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400'
   }

@@ -41,6 +41,12 @@ const router = createRouter({
       meta: { guest: true }
     },
     {
+      path: '/r/:slug',
+      name: 'referral',
+      component: () => import('@/views/ReferralLandingView.vue'),
+      meta: { guest: true }
+    },
+    {
       path: '/dashboard',
       name: 'dashboard',
       component: () => import('@/views/DashboardView.vue'),
@@ -194,6 +200,12 @@ const router = createRouter({
       path: '/admin/analytics',
       name: 'admin-analytics',
       component: () => import('@/views/admin/AdminAnalyticsView.vue'),
+      meta: { requiresAuth: true, requiresAdmin: true }
+    },
+    {
+      path: '/admin/referrals',
+      name: 'admin-referrals',
+      component: () => import('@/views/admin/ReferralManagementView.vue'),
       meta: { requiresAuth: true, requiresAdmin: true }
     },
     {

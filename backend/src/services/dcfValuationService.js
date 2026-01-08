@@ -506,7 +506,7 @@ class DCFValuationService {
     
     // Use traditional DCF method (projects cash flows year-by-year + terminal value)
     // This is more accurate than the simplified target price method
-    const fairValueLow = this.calculateDCFTraditional({
+    let fairValueLow = this.calculateDCFTraditional({
       revenue: baseRevenue,
       netIncome: baseNetIncome,
       fcf: baseFCF,
@@ -542,7 +542,7 @@ class DCFValuationService {
     console.log(`[DCF] ===== BULL SCENARIO =====`);
     console.log(`[DCF] Growth: ${finalGrowthHigh ? (finalGrowthHigh*100).toFixed(2) + '%' : 'N/A'}, PE: ${finalPEHigh || 'N/A'}, P/FCF: ${finalPFCFHigh || 'N/A'}, DISCOUNT RATE: ${(bullRate*100).toFixed(2)}%`);
     console.log(`[DCF] Lower discount rate (${(bullRate*100).toFixed(2)}%) should produce HIGHER fair value`);
-    const fairValueHigh = this.calculateDCFTraditional({
+    let fairValueHigh = this.calculateDCFTraditional({
       revenue: baseRevenue,
       netIncome: baseNetIncome,
       fcf: baseFCF,
