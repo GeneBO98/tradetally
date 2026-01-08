@@ -133,8 +133,8 @@
           </div>
 
           <!-- Info message when fields are hidden -->
-          <div v-if="hasGroupedExecutions" class="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-            <p class="text-sm text-blue-800 dark:text-blue-200">
+          <div v-if="hasGroupedExecutions" class="mt-6 p-4 bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-lg">
+            <p class="text-sm text-primary-800 dark:text-primary-200">
               <span class="font-medium">Note:</span> Side, Stop Loss, and Take Profit are configured per execution below since this trade contains grouped complete trades.
             </p>
           </div>
@@ -160,7 +160,7 @@
               <button
                 type="button"
                 @click="addGroupedExecution"
-                class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium"
+                class="px-4 py-2 bg-primary-600 text-white rounded hover:bg-primary-700 text-sm font-medium"
               >
                 + Add Complete Trade
               </button>

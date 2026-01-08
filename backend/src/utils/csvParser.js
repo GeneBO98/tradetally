@@ -2351,18 +2351,21 @@ async function parseLightspeedTransactions(records, existingPositions = {}, user
         const existsGlobally = isExecutionDuplicate(newExecution, symbol, context);
 
         // Then check if it exists in the current trade being built
+        // For fresh imports, we trust each CSV row is a unique execution
+        // Only deduplicate if we have unique identifiers (tradeNumber/sequenceNumber)
         const executionExists = existsGlobally || currentTrade.executions.some(exec => {
           // If both have trade numbers, use that for comparison (most reliable)
           if (exec.tradeNumber && newExecution.tradeNumber) {
             return exec.tradeNumber === newExecution.tradeNumber;
           }
-          // Fallback to timestamp comparison for older data without trade numbers
-          if (!exec.datetime || !newExecution.datetime) {
-            return false;
+          // If both have sequence numbers, use that
+          if (exec.sequenceNumber && newExecution.sequenceNumber) {
+            return exec.sequenceNumber === newExecution.sequenceNumber;
           }
-          const existingTime = new Date(exec.datetime).toISOString();
-          const newTime = new Date(newExecution.datetime).toISOString();
-          return existingTime === newTime;
+          // Without unique identifiers, don't deduplicate within the current import
+          // This allows multiple identical executions from the same CSV (legitimate fills)
+          // The global check (existsGlobally) still prevents re-importing existing trades
+          return false;
         });
 
         if (existsGlobally) {
@@ -2839,10 +2842,16 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
         const existsGlobally = isExecutionDuplicate(newExecution, symbol, context);
 
         // Then check if it exists in the current trade being built
-        const executionExists = existsGlobally || currentTrade.executions.some(exec =>
-          exec.datetime && newExecution.datetime &&
-          new Date(exec.datetime).toISOString() === new Date(newExecution.datetime).toISOString()
-        );
+        // For fresh imports, we trust each CSV row is a unique execution
+        // Only deduplicate if we have unique identifiers
+        const executionExists = existsGlobally || currentTrade.executions.some(exec => {
+          // If both have order IDs, use that for comparison
+          if (exec.orderId && newExecution.orderId) {
+            return exec.orderId === newExecution.orderId;
+          }
+          // Without unique identifiers, don't deduplicate within the current import
+          return false;
+        });
 
         if (existsGlobally) {
           console.log(`  [SKIP] Execution already exists in a completed or open trade: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
@@ -3232,10 +3241,16 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
         const existsGlobally = isExecutionDuplicate(newExecution, symbol, context);
 
         // Then check if it exists in the current trade being built
-        const executionExists = existsGlobally || currentTrade.executions.some(exec =>
-          exec.datetime && newExecution.datetime &&
-          new Date(exec.datetime).toISOString() === new Date(newExecution.datetime).toISOString()
-        );
+        // For fresh imports, we trust each CSV row is a unique execution
+        // Only deduplicate if we have unique identifiers
+        const executionExists = existsGlobally || currentTrade.executions.some(exec => {
+          // If both have order IDs, use that for comparison
+          if (exec.orderId && newExecution.orderId) {
+            return exec.orderId === newExecution.orderId;
+          }
+          // Without unique identifiers, don't deduplicate within the current import
+          return false;
+        });
 
         if (existsGlobally) {
           console.log(`  [SKIP] Execution already exists in a completed or open trade: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
@@ -3251,7 +3266,7 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
           console.log(`  → Skipping duplicate execution: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
         }
       }
-      
+
       // Update position and values
       if (transaction.action === 'buy') {
         currentPosition += qty;
@@ -3557,10 +3572,16 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
         const existsGlobally = isExecutionDuplicate(newExecution, symbol, context);
 
         // Then check if it exists in the current trade being built
-        const executionExists = existsGlobally || currentTrade.executions.some(exec =>
-          exec.datetime && newExecution.datetime &&
-          new Date(exec.datetime).toISOString() === new Date(newExecution.datetime).toISOString()
-        );
+        // For fresh imports, we trust each CSV row is a unique execution
+        // Only deduplicate if we have unique identifiers
+        const executionExists = existsGlobally || currentTrade.executions.some(exec => {
+          // If both have order IDs, use that for comparison
+          if (exec.orderId && newExecution.orderId) {
+            return exec.orderId === newExecution.orderId;
+          }
+          // Without unique identifiers, don't deduplicate within the current import
+          return false;
+        });
 
         if (existsGlobally) {
           console.log(`  [SKIP] Execution already exists in a completed or open trade: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
@@ -3580,7 +3601,7 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
       // Update position and values
       if (transaction.action === 'buy') {
         currentPosition += qty;
-        
+
         if (currentTrade && currentTrade.side === 'long') {
           currentTrade.entryValue += qty * transaction.price;
           currentTrade.totalQuantity += qty;
@@ -3881,15 +3902,15 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
         const existsGlobally = isExecutionDuplicate(newExecution, symbol, context);
 
         // Then check if it exists in the current trade being built
+        // For fresh imports, we trust each CSV row is a unique execution
+        // Only deduplicate if we have unique identifiers
         const executionExists = existsGlobally || currentTrade.executions.some(exec => {
+          // If both have order IDs, use that for comparison
           if (exec.orderId && newExecution.orderId) {
             return exec.orderId === newExecution.orderId;
           }
-          // Fallback to timestamp comparison
-          if (!exec.datetime || !newExecution.datetime) {
-            return false;
-          }
-          return new Date(exec.datetime).toISOString() === new Date(newExecution.datetime).toISOString();
+          // Without unique identifiers, don't deduplicate within the current import
+          return false;
         });
 
         if (existsGlobally) {
@@ -4420,14 +4441,18 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         const existsGlobally = isExecutionDuplicate(newExecution, symbol, context);
 
         // Then check if it exists in the current trade being built
-        // Include fees in duplicate check to handle multiple partial fills at same time/price
-        const executionExists = existsGlobally || currentTrade.executions.some(exec =>
-          exec.datetime && newExecution.datetime &&
-          new Date(exec.datetime).toISOString() === new Date(newExecution.datetime).toISOString() &&
-          exec.quantity === newExecution.quantity &&
-          exec.price === newExecution.price &&
-          exec.fees === newExecution.fees
-        );
+        // For fresh imports, we trust each CSV row is a unique execution
+        // Only deduplicate if we have unique identifiers (orderId)
+        const executionExists = existsGlobally || currentTrade.executions.some(exec => {
+          // If both have order IDs, use that for comparison (most reliable)
+          if (exec.orderId && newExecution.orderId) {
+            return exec.orderId === newExecution.orderId;
+          }
+          // Without unique identifiers, don't deduplicate within the current import
+          // This allows multiple identical executions from the same CSV (legitimate fills)
+          // The global check (existsGlobally) still prevents re-importing existing trades
+          return false;
+        });
 
         if (existsGlobally) {
           console.log(`  [SKIP] Execution already exists in a completed or open trade: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
@@ -4869,10 +4894,16 @@ async function parseWebullTransactions(records, existingPositions = {}, context 
         const existsGlobally = isExecutionDuplicate(newExecution, symbol, context);
 
         // Then check if it exists in the current trade being built
-        const executionExists = existsGlobally || currentTrade.executions.some(exec =>
-          exec.datetime && newExecution.datetime &&
-          new Date(exec.datetime).toISOString() === new Date(newExecution.datetime).toISOString()
-        );
+        // For fresh imports, we trust each CSV row is a unique execution
+        // Only deduplicate if we have unique identifiers
+        const executionExists = existsGlobally || currentTrade.executions.some(exec => {
+          // If both have order IDs, use that for comparison
+          if (exec.orderId && newExecution.orderId) {
+            return exec.orderId === newExecution.orderId;
+          }
+          // Without unique identifiers, don't deduplicate within the current import
+          return false;
+        });
 
         if (existsGlobally) {
           console.log(`  [SKIP] Execution already exists in a completed or open trade: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
@@ -5219,15 +5250,15 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
         const existsGlobally = isExecutionDuplicate(newExecution, symbol, context);
 
         // Then check for duplicate executions in current trade
+        // For fresh imports, we trust each CSV row is a unique execution
+        // Only deduplicate if we have unique identifiers
         const executionExists = existsGlobally || currentTrade.executions.some(exec => {
-          if (!exec.datetime || !newExecution.datetime) {
-            return false;
+          // If both have order IDs, use that for comparison
+          if (exec.orderId && newExecution.orderId) {
+            return exec.orderId === newExecution.orderId;
           }
-          const existingTime = new Date(exec.datetime).getTime();
-          const newTime = new Date(newExecution.datetime).getTime();
-          return existingTime === newTime &&
-                 exec.quantity === newExecution.quantity &&
-                 exec.price === newExecution.price;
+          // Without unique identifiers, don't deduplicate within the current import
+          return false;
         });
 
         if (existsGlobally) {
@@ -5577,15 +5608,16 @@ async function parseTradovateTransactions(records, existingPositions = {}, conte
         };
 
         // Check for duplicate executions
+        // For fresh imports, we trust each CSV row is a unique execution
+        // Only deduplicate if we have unique identifiers
         const existsGlobally = isExecutionDuplicate(newExecution, symbol, context);
         const executionExists = existsGlobally || currentTrade.executions.some(exec => {
+          // If both have order IDs, use that for comparison
           if (exec.orderId && newExecution.orderId) {
             return exec.orderId === newExecution.orderId;
           }
-          if (!exec.datetime || !newExecution.datetime) {
-            return false;
-          }
-          return new Date(exec.datetime).toISOString() === new Date(newExecution.datetime).toISOString();
+          // Without unique identifiers, don't deduplicate within the current import
+          return false;
         });
 
         if (!executionExists) {
