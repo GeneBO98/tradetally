@@ -92,8 +92,8 @@ services:
       # Timezone Configuration (affects admin metrics "today" calculations)
       TZ: ${TZ:-UTC}
     ports:
-      - "80:80"
-      - "3000:3000"
+      - "8080:80"
+      - "3001:3000"
     volumes:
       - ./backend/src/logs:/app/backend/src/logs
       - ./backend/src/data:/app/backend/src/data
