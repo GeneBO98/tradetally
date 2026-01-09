@@ -93,6 +93,9 @@
                   <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-20">
                     Approved
                   </th>
+                  <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-20">
+                    Marketing
+                  </th>
                   <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-24">
                     Joined
                   </th>
@@ -187,6 +190,17 @@
                       class="inline-flex px-1 py-1 text-xs font-semibold rounded-full"
                     >
                       <MdiIcon :icon="user.admin_approved ? mdiCheckCircle : mdiCloseCircle" :size="16" />
+                    </span>
+                  </td>
+                  <td class="px-3 py-3 whitespace-nowrap">
+                    <span
+                      :class="{
+                        'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400': user.marketing_consent,
+                        'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400': !user.marketing_consent
+                      }"
+                      class="inline-flex px-1 py-1 text-xs font-semibold rounded-full"
+                    >
+                      <MdiIcon :icon="user.marketing_consent ? mdiCheckCircle : mdiCloseCircle" :size="16" />
                     </span>
                   </td>
                   <td class="px-3 py-3 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">
