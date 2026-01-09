@@ -33,7 +33,7 @@ const authController = {
   async register(req, res, next) {
     try {
       console.log('Registration request body:', req.body);
-      const { email, username, password, fullName, referral_code } = req.body;
+      const { email, username, password, fullName, referral_code, marketing_consent } = req.body;
 
       // Check registration mode
       const registrationMode = getRegistrationMode();
@@ -112,7 +112,8 @@ const authController = {
         role: isFirstUser ? 'admin' : 'user',
         isVerified,
         adminApproved,
-        referredByCode: referredByCodeId
+        referredByCode: referredByCodeId,
+        marketingConsent: marketing_consent || false
       });
       await User.createSettings(user.id);
 
