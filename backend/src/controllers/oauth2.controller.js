@@ -58,6 +58,7 @@ const authorize = async (req, res) => {
     if (!req.user) {
       console.log('[OAuth] User not authenticated, redirecting to login');
       console.log('[OAuth] Original URL:', req.originalUrl);
+
       // Redirect to login with return URL
       const returnUrl = encodeURIComponent(req.originalUrl);
       return res.redirect(`/login?return_url=${returnUrl}`);
@@ -69,7 +70,7 @@ const authorize = async (req, res) => {
     const needsConsent = !client.is_trusted && !existingConsent;
 
     if (needsConsent) {
-      // Return data for consent screen
+      // Return data for consent screen (SPA only)
       return res.json({
         needs_consent: true,
         client: {
@@ -104,8 +105,18 @@ const authorize = async (req, res) => {
 
     console.log('[OAuth] Auto-approving trusted client, redirecting to:', redirectUrl.toString());
 
-    // Return redirect URL for frontend to handle (frontend will do window.location.href)
-    res.json({ redirect_url: redirectUrl.toString() });
+    // Check if this is a browser request (from external OAuth client like Discourse)
+    const acceptHeader = req.headers.accept || '';
+    const isHtmlRequest = acceptHeader.includes('text/html') || acceptHeader.includes('*/*');
+
+    if (isHtmlRequest) {
+      // Do actual HTTP redirect for external OAuth clients like Discourse
+      console.log('[OAuth] Detected browser request, performing HTTP redirect');
+      return res.redirect(redirectUrl.toString());
+    } else {
+      // Return redirect URL for frontend to handle (frontend will do window.location.href)
+      res.json({ redirect_url: redirectUrl.toString() });
+    }
   } catch (error) {
     console.error('Authorization error:', error);
     res.status(500).json({ error: 'server_error', error_description: error.message });
@@ -140,7 +151,16 @@ const authorizeApprove = async (req, res) => {
       if (state) {
         redirectUrl.searchParams.append('state', state);
       }
-      return res.json({ redirect_url: redirectUrl.toString() });
+      // Check if this is a browser request (from external OAuth client like Discourse)
+      const acceptHeader = req.headers.accept || '';
+      const isHtmlRequest = acceptHeader.includes('text/html') || acceptHeader.includes('*/*');
+
+      if (isHtmlRequest) {
+        // Do actual HTTP redirect for external OAuth clients like Discourse
+        return res.redirect(redirectUrl.toString());
+      } else {
+        return res.json({ redirect_url: redirectUrl.toString() });
+      }
     }
 
     // Get client
@@ -172,7 +192,16 @@ const authorizeApprove = async (req, res) => {
       redirectUrl.searchParams.append('state', state);
     }
 
-    res.json({ redirect_url: redirectUrl.toString() });
+    // Check if this is a browser request (from external OAuth client like Discourse)
+    const acceptHeader = req.headers.accept || '';
+    const isHtmlRequest = acceptHeader.includes('text/html') || acceptHeader.includes('*/*');
+
+    if (isHtmlRequest) {
+      // Do actual HTTP redirect for external OAuth clients like Discourse
+      return res.redirect(redirectUrl.toString());
+    } else {
+      res.json({ redirect_url: redirectUrl.toString() });
+    }
   } catch (error) {
     console.error('Authorization approval error:', error);
     res.status(500).json({ error: 'server_error', error_description: error.message });
@@ -572,7 +601,8 @@ const openidConfiguration = async (req, res) => {
     let protocol = req.get('x-forwarded-proto') || req.protocol;
 
     // If accessing via a domain name (not localhost), assume https
-    if (host && !host.includes('localhost') && !host.includes('127.0.0.1') && protocol === 'http') {
+    // Allow HTTP for Docker gateway IP (172.27.0.1) used by Discourse container
+    if (host && !host.includes('localhost') && !host.includes('127.0.0.1') && !host.includes('172.27.0.1') && protocol === 'http') {
       protocol = 'https';
     }
 
@@ -643,6 +673,9 @@ const jwks = async (req, res) => {
     res.status(500).json({ error: 'server_error' });
   }
 };
+
+
+
 
 module.exports = {
   authorize,
