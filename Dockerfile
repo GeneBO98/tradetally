@@ -13,6 +13,10 @@ COPY frontend/ ./
 ARG VITE_API_URL=/api
 ENV VITE_API_URL=${VITE_API_URL}
 
+# PromoteKit affiliate tracking (optional)
+ARG VITE_PROMOTEKIT_ID
+ENV VITE_PROMOTEKIT_ID=${VITE_PROMOTEKIT_ID}
+
 RUN npm run build
 
 FROM node:20-alpine AS backend-builder

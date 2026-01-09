@@ -399,7 +399,11 @@ export default {
         if (redirectUrl.value) {
           payload.redirectUrl = redirectUrl.value
         }
-        
+        // Include PromoteKit referral for affiliate tracking if available
+        if (window.promotekit_referral) {
+          payload.referral = window.promotekit_referral
+        }
+
         const response = await api.post('/billing/checkout', payload)
 
         // Redirect to Stripe checkout
