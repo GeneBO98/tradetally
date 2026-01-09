@@ -791,7 +791,7 @@
           <div class="flex justify-center space-x-4 px-4 py-3">
             <button
               @click="showDeleteConfirm = false"
-              class="px-4 py-2 bg-gray-300 text-gray-800 text-base font-medium rounded-md shadow-sm hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-300"
+              class="px-4 py-2 bg-primary-100 text-primary-700 dark:bg-primary-900/20 dark:text-primary-300 text-base font-medium rounded-md shadow-sm hover:bg-primary-200 dark:hover:bg-primary-900/40 focus:outline-none focus:ring-2 focus:ring-primary-500"
             >
               Cancel
             </button>
