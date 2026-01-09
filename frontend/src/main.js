@@ -14,4 +14,14 @@ app.use(router)
 const authStore = useAuthStore()
 authStore.checkAuth()
 
+// Load PromoteKit affiliate tracking if configured
+const promoteKitId = import.meta.env.VITE_PROMOTEKIT_ID
+if (promoteKitId) {
+  const script = document.createElement('script')
+  script.src = 'https://cdn.promotekit.com/promotekit.js'
+  script.async = true
+  script.setAttribute('data-promotekit', promoteKitId)
+  document.head.appendChild(script)
+}
+
 app.mount('#app')
