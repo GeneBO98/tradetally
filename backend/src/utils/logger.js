@@ -22,7 +22,12 @@ class Logger {
     if (this.currentLevel === this.levels.DEBUG) {
       console.log(`Logger initialized with level: DEBUG (${this.currentLevel})`);
     }
-    
+
+    // In DEBUG mode, intercept all console methods to capture everything
+    if (this.currentLevel === this.levels.DEBUG) {
+      this.interceptConsole();
+    }
+
     // Colors for console output
     this.colors = {
       DEBUG: '\x1b[36m',    // Cyan
@@ -37,6 +42,76 @@ class Logger {
     if (!fs.existsSync(this.logDir)) {
       fs.mkdirSync(this.logDir, { recursive: true });
     }
+  }
+
+  // Intercept all console methods to capture everything in DEBUG mode
+  interceptConsole() {
+    const self = this;
+
+    // Store original methods
+    const originalLog = console.log.bind(console);
+    const originalInfo = console.info.bind(console);
+    const originalWarn = console.warn.bind(console);
+    const originalError = console.error.bind(console);
+    const originalDebug = console.debug.bind(console);
+
+    // Helper to format arguments into a string
+    const formatArgs = (args) => {
+      return args.map(arg => {
+        if (typeof arg === 'object') {
+          try {
+            return JSON.stringify(arg, null, 2);
+          } catch {
+            return String(arg);
+          }
+        }
+        return String(arg);
+      }).join(' ');
+    };
+
+    // Helper to write to debug log file
+    const writeToDebugLog = (level, args) => {
+      const timestamp = new Date().toISOString();
+      const message = formatArgs(args);
+      const logMessage = `[${timestamp}] [${level}] ${message}\n`;
+      try {
+        fs.appendFileSync(self.getLogFileName('debug'), logMessage);
+      } catch (error) {
+        // Silently fail to avoid infinite loops
+      }
+    };
+
+    // Override console.log
+    console.log = function(...args) {
+      originalLog(...args);
+      writeToDebugLog('LOG', args);
+    };
+
+    // Override console.info
+    console.info = function(...args) {
+      originalInfo(...args);
+      writeToDebugLog('INFO', args);
+    };
+
+    // Override console.warn
+    console.warn = function(...args) {
+      originalWarn(...args);
+      writeToDebugLog('WARN', args);
+    };
+
+    // Override console.error
+    console.error = function(...args) {
+      originalError(...args);
+      writeToDebugLog('ERROR', args);
+    };
+
+    // Override console.debug
+    console.debug = function(...args) {
+      originalDebug(...args);
+      writeToDebugLog('DEBUG', args);
+    };
+
+    originalLog('Console interception enabled - all logs will be written to debug log file');
   }
 
   getLogFileName(type = 'import') {

@@ -100,13 +100,22 @@ class BillingService {
   }
 
   // Create checkout session
-  static async createCheckoutSession(userId, priceId, successUrl, cancelUrl) {
+  static async createCheckoutSession(userId, priceId, successUrl, cancelUrl, referral) {
     const billingAvailable = await this.isBillingAvailable();
     if (!billingAvailable) {
       throw new Error('Billing not available');
     }
 
     const customerId = await this.createOrGetCustomer(userId);
+
+    const metadata = {
+      user_id: userId
+    };
+
+    // Add PromoteKit referral for affiliate tracking if provided
+    if (referral) {
+      metadata.promotekit_referral = referral;
+    }
 
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
@@ -120,9 +129,7 @@ class BillingService {
       mode: 'subscription',
       success_url: successUrl,
       cancel_url: cancelUrl,
-      metadata: {
-        user_id: userId
-      },
+      metadata: metadata,
       subscription_data: {
         metadata: {
           user_id: userId

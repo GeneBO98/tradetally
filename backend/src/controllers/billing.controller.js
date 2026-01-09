@@ -130,8 +130,8 @@ const billingController = {
   async createCheckoutSession(req, res, next) {
     try {
       const userId = req.user.id;
-      const { priceId, redirectUrl } = req.body;
-      
+      const { priceId, redirectUrl, referral } = req.body;
+
       if (!priceId) {
         return res.status(400).json({
           error: 'missing_price_id',
@@ -141,20 +141,21 @@ const billingController = {
 
       // Get base URL for redirect URLs
       const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-      
+
       // Include redirect URL in success URL if provided
       let successUrl = `${frontendUrl}/billing?session_id={CHECKOUT_SESSION_ID}`;
       if (redirectUrl) {
         successUrl += `&redirect=${encodeURIComponent(redirectUrl)}`;
       }
-      
+
       const cancelUrl = `${frontendUrl}/pricing`;
 
       const session = await BillingService.createCheckoutSession(
         userId,
         priceId,
         successUrl,
-        cancelUrl
+        cancelUrl,
+        referral
       );
 
       res.json({
