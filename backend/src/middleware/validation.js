@@ -27,7 +27,8 @@ const schemas = {
     email: Joi.string().email().required(),
     username: Joi.string().pattern(/^[a-zA-Z0-9_-]+$/).min(3).max(30).required(),
     password: Joi.string().min(6).required(),
-    fullName: Joi.string().max(255).allow('')
+    fullName: Joi.string().max(255).allow(''),
+    referral_code: Joi.string().max(50).allow('', null)
   }),
 
   login: Joi.object({
