@@ -1284,7 +1284,7 @@ class Trade {
       paramCount++;
     }
 
-    query += ` GROUP BY t.id, u.username, u.avatar_url, gp.display_name ORDER BY t.created_at DESC`;
+    query += ` GROUP BY t.id, u.id, u.username, u.avatar_url, gp.display_name ORDER BY t.created_at DESC`;
 
     if (filters.limit) {
       query += ` LIMIT $${paramCount}`;
