@@ -30,12 +30,16 @@ router.get('/trading-profile', authenticate, settingsController.getTradingProfil
 router.put('/trading-profile', authenticate, settingsController.updateTradingProfile);
 router.get('/ai-provider', authenticate, settingsController.getAIProviderSettings);
 router.put('/ai-provider', authenticate, settingsController.updateAIProviderSettings);
+router.get('/cusip-ai-provider', authenticate, settingsController.getCusipAIProviderSettings);
+router.put('/cusip-ai-provider', authenticate, settingsController.updateCusipAIProviderSettings);
 router.get('/export', authenticate, settingsController.exportUserData);
 router.post('/import', authenticate, upload.single('file'), settingsController.importUserData);
 
 // Admin Settings Routes
 router.get('/admin/ai', authenticate, settingsController.getAdminAISettings);
 router.put('/admin/ai', authenticate, settingsController.updateAdminAISettings);
+router.get('/admin/cusip-ai', authenticate, settingsController.getAdminCusipAISettings);
+router.put('/admin/cusip-ai', authenticate, settingsController.updateAdminCusipAISettings);
 router.get('/admin/all', authenticate, settingsController.getAllAdminSettings);
 
 // Broker Fee Settings Routes

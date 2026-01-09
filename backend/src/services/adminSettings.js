@@ -128,7 +128,7 @@ class AdminSettingsService {
    */
   async updateDefaultAISettings(aiSettings) {
     const settings = {};
-    
+
     if (aiSettings.provider !== undefined) {
       settings.default_ai_provider = aiSettings.provider;
     }
@@ -141,7 +141,56 @@ class AdminSettingsService {
     if (aiSettings.model !== undefined) {
       settings.default_ai_model = aiSettings.model;
     }
-    
+
+    return await this.updateSettings(settings);
+  }
+
+  /**
+   * Get default CUSIP AI provider settings
+   * @returns {Promise<Object>} Default CUSIP AI settings
+   */
+  async getDefaultCusipAISettings() {
+    try {
+      const settings = await this.getAllSettings();
+
+      return {
+        provider: settings.default_cusip_ai_provider || '',
+        apiKey: settings.default_cusip_ai_api_key || '',
+        apiUrl: settings.default_cusip_ai_api_url || '',
+        model: settings.default_cusip_ai_model || ''
+      };
+    } catch (error) {
+      console.error('Error getting default CUSIP AI settings:', error);
+      return {
+        provider: '',
+        apiKey: '',
+        apiUrl: '',
+        model: ''
+      };
+    }
+  }
+
+  /**
+   * Update default CUSIP AI provider settings
+   * @param {Object} aiSettings - CUSIP AI provider settings
+   * @returns {Promise<boolean>} Success status
+   */
+  async updateDefaultCusipAISettings(aiSettings) {
+    const settings = {};
+
+    if (aiSettings.provider !== undefined) {
+      settings.default_cusip_ai_provider = aiSettings.provider;
+    }
+    if (aiSettings.apiKey !== undefined) {
+      settings.default_cusip_ai_api_key = aiSettings.apiKey;
+    }
+    if (aiSettings.apiUrl !== undefined) {
+      settings.default_cusip_ai_api_url = aiSettings.apiUrl;
+    }
+    if (aiSettings.model !== undefined) {
+      settings.default_cusip_ai_model = aiSettings.model;
+    }
+
     return await this.updateSettings(settings);
   }
 }

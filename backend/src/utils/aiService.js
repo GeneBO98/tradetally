@@ -59,6 +59,60 @@ class AIService {
     }
   }
 
+  /**
+   * Get CUSIP-specific AI settings for a user
+   * Falls back to main AI settings if no CUSIP-specific settings are configured
+   */
+  async getCusipUserSettings(userId) {
+    try {
+      const db = require('../config/database');
+
+      // Query user_settings table for CUSIP-specific AI settings
+      const userSettingsQuery = `
+        SELECT cusip_ai_provider, cusip_ai_api_key, cusip_ai_api_url, cusip_ai_model,
+               ai_provider, ai_api_key, ai_api_url, ai_model
+        FROM user_settings
+        WHERE user_id = $1
+      `;
+      const userSettingsResult = await db.query(userSettingsQuery, [userId]);
+
+      let userSettings = null;
+      if (userSettingsResult.rows.length > 0) {
+        userSettings = userSettingsResult.rows[0];
+      }
+
+      // Get admin default CUSIP AI settings
+      const adminCusipDefaults = await adminSettingsService.getDefaultCusipAISettings();
+      // Get admin default main AI settings as final fallback
+      const adminDefaults = await adminSettingsService.getDefaultAISettings();
+
+      // Priority: User CUSIP settings > Admin CUSIP defaults > User main settings > Admin main defaults
+      const cusipProvider = userSettings?.cusip_ai_provider || adminCusipDefaults.provider;
+
+      // If CUSIP-specific provider is set, use CUSIP settings
+      if (cusipProvider) {
+        return {
+          provider: cusipProvider,
+          apiKey: userSettings?.cusip_ai_api_key || adminCusipDefaults.apiKey,
+          apiUrl: userSettings?.cusip_ai_api_url || adminCusipDefaults.apiUrl,
+          model: userSettings?.cusip_ai_model || adminCusipDefaults.model
+        };
+      }
+
+      // Fall back to main AI settings
+      return {
+        provider: userSettings?.ai_provider || adminDefaults.provider,
+        apiKey: userSettings?.ai_api_key || adminDefaults.apiKey,
+        apiUrl: userSettings?.ai_api_url || adminDefaults.apiUrl,
+        model: userSettings?.ai_model || adminDefaults.model
+      };
+    } catch (error) {
+      console.error('Failed to get CUSIP user AI settings:', error);
+      // Fallback to main settings
+      return this.getUserSettings(userId);
+    }
+  }
+
   async generateResponse(userId, prompt, options = {}) {
     const settings = await this.getUserSettings(userId);
     console.log('[AI] AI Service - Provider:', settings.provider);
@@ -117,8 +171,10 @@ class AIService {
   }
 
   async lookupCusip(userId, cusip) {
-    const settings = await this.getUserSettings(userId);
-    
+    // Use CUSIP-specific AI settings (falls back to main settings if not configured)
+    const settings = await this.getCusipUserSettings(userId);
+    console.log(`[AI] CUSIP lookup using provider: ${settings.provider}`);
+
     // Check if provider is configured before attempting lookup
     if (!this.isProviderConfigured(settings)) {
       console.log(`[AI] AI CUSIP lookup skipped for ${cusip}: ${settings.provider} provider not properly configured`);

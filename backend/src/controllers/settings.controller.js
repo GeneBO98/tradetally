@@ -220,6 +220,99 @@ const settingsController = {
     }
   },
 
+  async getCusipAIProviderSettings(req, res, next) {
+    try {
+      const settings = await User.getSettings(req.user.id);
+
+      if (!settings) {
+        return res.json({
+          cusipAiProvider: '',
+          cusipAiApiKey: '',
+          cusipAiApiUrl: '',
+          cusipAiModel: '',
+          useMainProvider: true
+        });
+      }
+
+      // If no CUSIP-specific provider is set, indicate to use main provider
+      const useMainProvider = !settings.cusip_ai_provider;
+
+      res.json({
+        cusipAiProvider: settings.cusip_ai_provider || '',
+        cusipAiApiKey: settings.cusip_ai_api_key || '',
+        cusipAiApiUrl: settings.cusip_ai_api_url || '',
+        cusipAiModel: settings.cusip_ai_model || '',
+        useMainProvider
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async updateCusipAIProviderSettings(req, res, next) {
+    try {
+      const { cusipAiProvider, cusipAiApiKey, cusipAiApiUrl, cusipAiModel, useMainProvider } = req.body;
+
+      // If useMainProvider is true, clear CUSIP-specific settings
+      if (useMainProvider) {
+        const cusipAiSettings = {
+          cusip_ai_provider: null,
+          cusip_ai_api_key: null,
+          cusip_ai_api_url: null,
+          cusip_ai_model: null
+        };
+
+        await User.updateSettings(req.user.id, cusipAiSettings);
+
+        return res.json({
+          message: 'CUSIP AI settings cleared - will use main AI provider',
+          useMainProvider: true
+        });
+      }
+
+      // Validate AI provider
+      const validProviders = ['gemini', 'claude', 'openai', 'ollama', 'lmstudio', 'perplexity', 'local'];
+      if (cusipAiProvider && !validProviders.includes(cusipAiProvider)) {
+        return res.status(400).json({
+          error: 'Invalid AI provider. Must be one of: ' + validProviders.join(', ')
+        });
+      }
+
+      // Validate required fields based on provider type
+      if (cusipAiProvider && !['local', 'ollama', 'lmstudio'].includes(cusipAiProvider) && !cusipAiApiKey) {
+        return res.status(400).json({
+          error: 'API key is required for ' + cusipAiProvider
+        });
+      }
+
+      if (['local', 'ollama', 'lmstudio'].includes(cusipAiProvider) && !cusipAiApiUrl) {
+        return res.status(400).json({
+          error: 'API URL is required for ' + cusipAiProvider
+        });
+      }
+
+      const cusipAiSettings = {
+        cusip_ai_provider: cusipAiProvider,
+        cusip_ai_api_key: cusipAiApiKey,
+        cusip_ai_api_url: cusipAiApiUrl,
+        cusip_ai_model: cusipAiModel
+      };
+
+      const settings = await User.updateSettings(req.user.id, cusipAiSettings);
+
+      res.json({
+        message: 'CUSIP AI provider settings updated successfully',
+        cusipAiProvider: settings.cusip_ai_provider,
+        cusipAiApiKey: settings.cusip_ai_api_key ? '***' : '',
+        cusipAiApiUrl: settings.cusip_ai_api_url,
+        cusipAiModel: settings.cusip_ai_model,
+        useMainProvider: false
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
   async resetSettings(req, res, next) {
     try {
       res.json({
@@ -1419,6 +1512,100 @@ const settingsController = {
         aiApiKey: aiApiKey ? '***' : '', // Mask the API key in response
         aiApiUrl: aiApiUrl,
         aiModel: aiModel
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async getAdminCusipAISettings(req, res, next) {
+    try {
+      // Check if user is admin
+      if (req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'Admin access required' });
+      }
+
+      const settings = await adminSettingsService.getDefaultCusipAISettings();
+
+      res.json({
+        cusipAiProvider: settings.provider || '',
+        cusipAiApiKey: settings.apiKey ? '***' : '',
+        cusipAiApiUrl: settings.apiUrl || '',
+        cusipAiModel: settings.model || '',
+        useMainProvider: !settings.provider
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async updateAdminCusipAISettings(req, res, next) {
+    try {
+      // Check if user is admin
+      if (req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'Admin access required' });
+      }
+
+      const { cusipAiProvider, cusipAiApiKey, cusipAiApiUrl, cusipAiModel, useMainProvider } = req.body;
+
+      // If useMainProvider is true, clear CUSIP-specific settings
+      if (useMainProvider) {
+        const success = await adminSettingsService.updateDefaultCusipAISettings({
+          provider: '',
+          apiKey: '',
+          apiUrl: '',
+          model: ''
+        });
+
+        if (!success) {
+          return res.status(500).json({ error: 'Failed to update admin CUSIP AI settings' });
+        }
+
+        return res.json({
+          message: 'Admin CUSIP AI settings cleared - will use main AI provider',
+          useMainProvider: true
+        });
+      }
+
+      // Validate AI provider
+      const validProviders = ['gemini', 'claude', 'openai', 'ollama', 'lmstudio', 'perplexity', 'local'];
+      if (cusipAiProvider && !validProviders.includes(cusipAiProvider)) {
+        return res.status(400).json({
+          error: 'Invalid AI provider. Must be one of: ' + validProviders.join(', ')
+        });
+      }
+
+      // Validate required fields based on provider type
+      if (cusipAiProvider && !['local', 'ollama', 'lmstudio'].includes(cusipAiProvider) && !cusipAiApiKey) {
+        return res.status(400).json({
+          error: 'API key is required for ' + cusipAiProvider
+        });
+      }
+
+      if (['local', 'ollama', 'lmstudio'].includes(cusipAiProvider) && !cusipAiApiUrl) {
+        return res.status(400).json({
+          error: 'API URL is required for ' + cusipAiProvider
+        });
+      }
+
+      const success = await adminSettingsService.updateDefaultCusipAISettings({
+        provider: cusipAiProvider,
+        apiKey: cusipAiApiKey,
+        apiUrl: cusipAiApiUrl,
+        model: cusipAiModel
+      });
+
+      if (!success) {
+        return res.status(500).json({ error: 'Failed to update admin CUSIP AI settings' });
+      }
+
+      res.json({
+        message: 'Admin CUSIP AI provider settings updated successfully',
+        cusipAiProvider: cusipAiProvider,
+        cusipAiApiKey: cusipAiApiKey ? '***' : '',
+        cusipAiApiUrl: cusipAiApiUrl,
+        cusipAiModel: cusipAiModel,
+        useMainProvider: false
       });
     } catch (error) {
       next(error);
