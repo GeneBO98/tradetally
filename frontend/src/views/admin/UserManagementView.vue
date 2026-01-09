@@ -908,30 +908,49 @@ async function exportUsersToCSV() {
       'ID',
       'Username',
       'Email',
-      'Full Name',
+      'First Name',
+      'Last Name',
       'Role',
       'Tier',
       'Status',
       'Verified',
       'Admin Approved',
+      'Marketing Consent',
       'Created At',
       'Last Login'
     ]
 
+    // Helper function to split full name into first and last name
+    const splitName = (fullName) => {
+      if (!fullName) return { firstName: '', lastName: '' }
+      const parts = fullName.trim().split(/\s+/)
+      if (parts.length === 1) {
+        return { firstName: parts[0], lastName: '' }
+      }
+      const firstName = parts[0]
+      const lastName = parts.slice(1).join(' ')
+      return { firstName, lastName }
+    }
+
     // Convert users to CSV rows
-    const rows = allUsers.map(user => [
-      user.id,
-      user.username,
-      user.email,
-      user.full_name || '',
-      user.role,
-      getUserDisplayTier(user),
-      user.is_active ? 'Active' : 'Inactive',
-      user.is_verified ? 'Yes' : 'No',
-      user.admin_approved ? 'Yes' : 'No',
-      user.created_at ? new Date(user.created_at).toISOString() : '',
-      user.last_login ? new Date(user.last_login).toISOString() : ''
-    ])
+    const rows = allUsers.map(user => {
+      const { firstName, lastName } = splitName(user.full_name)
+      return [
+        user.id,
+        user.username,
+        user.email,
+        firstName,
+        lastName,
+        user.role,
+        getUserDisplayTier(user),
+        user.is_active ? 'Active' : 'Inactive',
+        user.is_verified ? 'Yes' : 'No',
+        user.admin_approved ? 'Yes' : 'No',
+        user.marketing_consent ? 'Yes' : 'No',
+        user.created_at ? new Date(user.created_at).toISOString() : '',
+        user.last_login ? new Date(user.last_login).toISOString() : ''
+      ]
+    })
 
     // Build CSV content
     const csvContent = [

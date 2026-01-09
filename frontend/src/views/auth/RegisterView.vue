@@ -111,6 +111,24 @@
           </div>
         </div>
 
+        <!-- Marketing Consent Checkbox (only shown when billing is enabled) -->
+        <div v-if="billingEnabled" class="flex items-start">
+          <div class="flex items-center h-5">
+            <input
+              id="marketing_consent"
+              v-model="form.marketing_consent"
+              name="marketing_consent"
+              type="checkbox"
+              class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700"
+            />
+          </div>
+          <div class="ml-3 text-sm">
+            <label for="marketing_consent" class="text-gray-700 dark:text-gray-300">
+              I agree to receive marketing and promotional emails about TradeTally features, tips, and special offers.
+            </label>
+          </div>
+        </div>
+
         <div v-if="authStore.error" class="rounded-md bg-red-50 dark:bg-red-900/20 p-4">
           <p class="text-sm text-red-800 dark:text-red-400">{{ authStore.error }}</p>
         </div>
@@ -146,17 +164,20 @@ const form = ref({
   username: '',
   email: '',
   password: '',
-  referral_code: ''
+  referral_code: '',
+  marketing_consent: false
 })
 
 const referralCreator = ref(null)
 
 const registrationDisabled = ref(false)
+const billingEnabled = ref(false)
 
 onMounted(async () => {
   try {
     const config = await authStore.getRegistrationConfig()
     registrationDisabled.value = !config.allowRegistration
+    billingEnabled.value = config.billingEnabled === true
 
     // If registration is disabled, redirect to login after 3 seconds
     if (registrationDisabled.value) {
