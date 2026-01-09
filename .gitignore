@@ -14,6 +14,7 @@ docker-compose.yaml
 secrets/
 config/secrets/
 *dev2.yaml
+*dev.yaml
 *.json
 # OS-specific files
 .DS_Store

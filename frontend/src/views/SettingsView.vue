@@ -347,6 +347,103 @@
           </div>
         </div>
 
+        <!-- CUSIP AI Provider Settings -->
+        <div class="card">
+          <div class="card-body">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-6">CUSIP Resolution AI Provider</h3>
+            <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
+              Optionally configure a separate AI provider specifically for CUSIP resolution.
+              If not configured, the main AI provider above will be used.
+            </p>
+
+            <form @submit.prevent="updateCusipAISettings" class="space-y-6">
+              <div class="flex items-center mb-4">
+                <input
+                  id="useMainProviderForCusip"
+                  v-model="cusipAiForm.useMainProvider"
+                  type="checkbox"
+                  class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                  @change="onCusipUseMainProviderChange"
+                />
+                <label for="useMainProviderForCusip" class="ml-2 text-sm text-gray-700 dark:text-gray-300">
+                  Use main AI provider for CUSIP resolution
+                </label>
+              </div>
+
+              <div v-if="!cusipAiForm.useMainProvider" class="space-y-6">
+                <div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                  <div>
+                    <label for="cusipAiProvider" class="label">CUSIP AI Provider</label>
+                    <select
+                      id="cusipAiProvider"
+                      v-model="cusipAiForm.provider"
+                      class="input"
+                      @change="onCusipProviderChange"
+                    >
+                      <option value="gemini">Google Gemini</option>
+                      <option value="claude">Anthropic Claude</option>
+                      <option value="openai">OpenAI</option>
+                      <option value="ollama">Ollama</option>
+                      <option value="lmstudio">LM Studio</option>
+                      <option value="perplexity">Perplexity AI</option>
+                      <option value="local">Local/Custom</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label for="cusipAiModel" class="label">Model (Optional)</label>
+                    <input
+                      id="cusipAiModel"
+                      v-model="cusipAiForm.model"
+                      type="text"
+                      class="input"
+                      :placeholder="getCusipModelPlaceholder()"
+                    />
+                  </div>
+                </div>
+
+                <div v-if="cusipAiForm.provider === 'local' || cusipAiForm.provider === 'ollama' || cusipAiForm.provider === 'lmstudio'">
+                  <label for="cusipAiUrl" class="label">API URL</label>
+                  <input
+                    id="cusipAiUrl"
+                    v-model="cusipAiForm.url"
+                    type="url"
+                    class="input"
+                    :placeholder="cusipAiForm.provider === 'ollama' ? 'http://localhost:11434' : cusipAiForm.provider === 'lmstudio' ? 'http://localhost:1234' : 'http://localhost:8000'"
+                    required
+                  />
+                </div>
+
+                <div v-if="cusipAiForm.provider !== 'local'">
+                  <label for="cusipAiApiKey" class="label">API Key</label>
+                  <input
+                    id="cusipAiApiKey"
+                    v-model="cusipAiForm.apiKey"
+                    type="password"
+                    class="input"
+                    :placeholder="getCusipApiKeyPlaceholder()"
+                    :required="!['ollama', 'lmstudio'].includes(cusipAiForm.provider)"
+                  />
+                </div>
+              </div>
+
+              <div class="flex justify-end">
+                <button
+                  type="submit"
+                  :disabled="cusipAiLoading"
+                  class="btn-primary"
+                >
+                  <span v-if="cusipAiLoading" class="flex items-center">
+                    <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Saving...
+                  </span>
+                  <span v-else>Save CUSIP AI Settings</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+
         <!-- Admin AI Provider Settings -->
         <div v-if="authStore.user?.role === 'admin'" class="card">
           <div class="card-body">
@@ -434,6 +531,102 @@
                     Saving...
                   </span>
                   <span v-else>Save Admin AI Settings</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <!-- Admin CUSIP AI Provider Settings -->
+        <div v-if="authStore.user?.role === 'admin'" class="card">
+          <div class="card-body">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-6">Admin CUSIP AI Provider Settings</h3>
+            <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
+              Configure default CUSIP resolution AI provider for all users. If not set, the main admin AI provider will be used.
+            </p>
+
+            <form @submit.prevent="updateAdminCusipAISettings" class="space-y-6">
+              <div class="flex items-center mb-4">
+                <input
+                  id="adminUseMainProviderForCusip"
+                  v-model="adminCusipAiForm.useMainProvider"
+                  type="checkbox"
+                  class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                  @change="onAdminCusipUseMainProviderChange"
+                />
+                <label for="adminUseMainProviderForCusip" class="ml-2 text-sm text-gray-700 dark:text-gray-300">
+                  Use main admin AI provider for CUSIP resolution
+                </label>
+              </div>
+
+              <div v-if="!adminCusipAiForm.useMainProvider" class="space-y-6">
+                <div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                  <div>
+                    <label for="adminCusipAiProvider" class="label">Default CUSIP AI Provider</label>
+                    <select
+                      id="adminCusipAiProvider"
+                      v-model="adminCusipAiForm.provider"
+                      class="input"
+                      @change="onAdminCusipProviderChange"
+                    >
+                      <option value="gemini">Google Gemini</option>
+                      <option value="claude">Anthropic Claude</option>
+                      <option value="openai">OpenAI</option>
+                      <option value="ollama">Ollama</option>
+                      <option value="lmstudio">LM Studio</option>
+                      <option value="perplexity">Perplexity AI</option>
+                      <option value="local">Local/Custom</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label for="adminCusipAiModel" class="label">Default Model (Optional)</label>
+                    <input
+                      id="adminCusipAiModel"
+                      v-model="adminCusipAiForm.model"
+                      type="text"
+                      class="input"
+                      :placeholder="getAdminCusipModelPlaceholder()"
+                    />
+                  </div>
+                </div>
+
+                <div v-if="adminCusipAiForm.provider === 'local' || adminCusipAiForm.provider === 'ollama' || adminCusipAiForm.provider === 'lmstudio'">
+                  <label for="adminCusipAiUrl" class="label">Default API URL</label>
+                  <input
+                    id="adminCusipAiUrl"
+                    v-model="adminCusipAiForm.url"
+                    type="url"
+                    class="input"
+                    :placeholder="adminCusipAiForm.provider === 'ollama' ? 'http://localhost:11434' : adminCusipAiForm.provider === 'lmstudio' ? 'http://localhost:1234' : 'http://localhost:8000'"
+                    required
+                  />
+                </div>
+
+                <div v-if="adminCusipAiForm.provider !== 'local'">
+                  <label for="adminCusipAiApiKey" class="label">Default API Key</label>
+                  <input
+                    id="adminCusipAiApiKey"
+                    v-model="adminCusipAiForm.apiKey"
+                    type="password"
+                    class="input"
+                    :placeholder="getAdminCusipApiKeyPlaceholder()"
+                    :required="!['ollama', 'lmstudio'].includes(adminCusipAiForm.provider)"
+                  />
+                </div>
+              </div>
+
+              <div class="flex justify-end">
+                <button
+                  type="submit"
+                  :disabled="adminCusipAiLoading"
+                  class="btn-primary"
+                >
+                  <span v-if="adminCusipAiLoading" class="flex items-center">
+                    <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Saving...
+                  </span>
+                  <span v-else>Save Admin CUSIP AI Settings</span>
                 </button>
               </div>
             </form>
@@ -1123,6 +1316,17 @@ const aiForm = ref({
 
 const aiLoading = ref(false)
 
+// CUSIP AI Provider Settings
+const cusipAiForm = ref({
+  provider: 'gemini',
+  apiKey: '',
+  url: '',
+  model: '',
+  useMainProvider: true
+})
+
+const cusipAiLoading = ref(false)
+
 // Analytics Settings
 const analyticsForm = ref({
   statisticsCalculation: 'average',
@@ -1188,6 +1392,16 @@ const adminAiForm = ref({
   model: ''
 })
 const adminAiLoading = ref(false)
+
+// Admin CUSIP AI Settings
+const adminCusipAiForm = ref({
+  provider: 'gemini',
+  apiKey: '',
+  url: '',
+  model: '',
+  useMainProvider: true
+})
+const adminCusipAiLoading = ref(false)
 
 // Export/Import Settings
 const exportLoading = ref(false)
@@ -1317,6 +1531,90 @@ async function updateAISettings() {
     showError('Error', error.response?.data?.error || 'Failed to update AI settings')
   } finally {
     aiLoading.value = false
+  }
+}
+
+// CUSIP AI Provider Functions
+function getCusipModelPlaceholder() {
+  switch (cusipAiForm.value.provider) {
+    case 'gemini':
+      return 'e.g., gemini-1.5-pro'
+    case 'claude':
+      return 'e.g., claude-3-5-sonnet-20241022'
+    case 'openai':
+      return 'e.g., gpt-4o'
+    case 'ollama':
+      return 'e.g., llama3.2'
+    case 'perplexity':
+      return 'e.g., llama-3.1-sonar-large-128k-online'
+    case 'lmstudio':
+      return 'e.g., local-model'
+    default:
+      return 'Model name'
+  }
+}
+
+function getCusipApiKeyPlaceholder() {
+  switch (cusipAiForm.value.provider) {
+    case 'gemini':
+      return 'Your Google AI API key'
+    case 'claude':
+      return 'Your Anthropic API key'
+    case 'openai':
+      return 'Your OpenAI API key'
+    case 'perplexity':
+      return 'Your Perplexity API key'
+    default:
+      return 'API key (if required)'
+  }
+}
+
+function onCusipProviderChange() {
+  cusipAiForm.value.url = ''
+  cusipAiForm.value.apiKey = ''
+  cusipAiForm.value.model = ''
+}
+
+function onCusipUseMainProviderChange() {
+  if (cusipAiForm.value.useMainProvider) {
+    cusipAiForm.value.provider = 'gemini'
+    cusipAiForm.value.url = ''
+    cusipAiForm.value.apiKey = ''
+    cusipAiForm.value.model = ''
+  }
+}
+
+async function loadCusipAISettings() {
+  try {
+    const response = await api.get('/settings/cusip-ai-provider')
+    cusipAiForm.value = {
+      provider: response.data.cusipAiProvider || 'gemini',
+      apiKey: response.data.cusipAiApiKey || '',
+      url: response.data.cusipAiApiUrl || '',
+      model: response.data.cusipAiModel || '',
+      useMainProvider: response.data.useMainProvider !== false
+    }
+  } catch (error) {
+    console.error('Failed to load CUSIP AI settings:', error)
+  }
+}
+
+async function updateCusipAISettings() {
+  cusipAiLoading.value = true
+  try {
+    await api.put('/settings/cusip-ai-provider', {
+      cusipAiProvider: cusipAiForm.value.provider,
+      cusipAiApiKey: cusipAiForm.value.apiKey,
+      cusipAiApiUrl: cusipAiForm.value.url,
+      cusipAiModel: cusipAiForm.value.model,
+      useMainProvider: cusipAiForm.value.useMainProvider
+    })
+    showSuccess('Success', 'CUSIP AI provider settings updated successfully')
+  } catch (error) {
+    console.error('Failed to update CUSIP AI settings:', error)
+    showError('Error', error.response?.data?.error || 'Failed to update CUSIP AI settings')
+  } finally {
+    cusipAiLoading.value = false
   }
 }
 
@@ -1660,6 +1958,92 @@ function getAdminApiKeyHelp() {
   }
 }
 
+// Admin CUSIP AI Settings Functions
+async function fetchAdminCusipAISettings() {
+  try {
+    const response = await api.get('/settings/admin/cusip-ai')
+    adminCusipAiForm.value = {
+      provider: response.data.cusipAiProvider || 'gemini',
+      apiKey: response.data.cusipAiApiKey || '',
+      url: response.data.cusipAiApiUrl || '',
+      model: response.data.cusipAiModel || '',
+      useMainProvider: response.data.useMainProvider !== false
+    }
+  } catch (error) {
+    console.error('Failed to fetch admin CUSIP AI settings:', error)
+  }
+}
+
+async function updateAdminCusipAISettings() {
+  adminCusipAiLoading.value = true
+  try {
+    await api.put('/settings/admin/cusip-ai', {
+      cusipAiProvider: adminCusipAiForm.value.provider,
+      cusipAiApiKey: adminCusipAiForm.value.apiKey,
+      cusipAiApiUrl: adminCusipAiForm.value.url,
+      cusipAiModel: adminCusipAiForm.value.model,
+      useMainProvider: adminCusipAiForm.value.useMainProvider
+    })
+    showSuccess('Success', 'Admin CUSIP AI provider settings updated successfully')
+  } catch (error) {
+    console.error('Failed to update admin CUSIP AI settings:', error)
+    showError('Error', error.response?.data?.error || 'Failed to update admin CUSIP AI settings')
+  } finally {
+    adminCusipAiLoading.value = false
+  }
+}
+
+function onAdminCusipProviderChange() {
+  adminCusipAiForm.value.apiKey = ''
+  adminCusipAiForm.value.url = ''
+  adminCusipAiForm.value.model = ''
+}
+
+function onAdminCusipUseMainProviderChange() {
+  if (adminCusipAiForm.value.useMainProvider) {
+    adminCusipAiForm.value.provider = 'gemini'
+    adminCusipAiForm.value.url = ''
+    adminCusipAiForm.value.apiKey = ''
+    adminCusipAiForm.value.model = ''
+  }
+}
+
+function getAdminCusipModelPlaceholder() {
+  switch (adminCusipAiForm.value.provider) {
+    case 'gemini':
+      return 'gemini-1.5-flash'
+    case 'claude':
+      return 'claude-3-5-sonnet-20241022'
+    case 'openai':
+      return 'gpt-4o'
+    case 'ollama':
+      return 'llama3.1'
+    case 'lmstudio':
+      return 'local-model (auto-detected)'
+    case 'perplexity':
+      return 'sonar'
+    case 'local':
+      return 'custom-model'
+    default:
+      return 'Leave blank for default'
+  }
+}
+
+function getAdminCusipApiKeyPlaceholder() {
+  switch (adminCusipAiForm.value.provider) {
+    case 'gemini':
+      return 'Enter Google Gemini API key'
+    case 'claude':
+      return 'Enter Anthropic Claude API key'
+    case 'openai':
+      return 'Enter OpenAI API key'
+    case 'ollama':
+      return 'Optional: Enter Ollama API key'
+    default:
+      return 'Enter API key'
+  }
+}
+
 // Export/Import Functions
 async function exportUserData() {
   exportLoading.value = true
@@ -1803,6 +2187,7 @@ async function enrichTrades() {
 
 onMounted(() => {
   loadAISettings()
+  loadCusipAISettings()
   loadAnalyticsSettings()
   loadPrivacySettings()
   loadTradeImportSettings()
@@ -1812,6 +2197,7 @@ onMounted(() => {
   // Load admin AI settings if user is admin
   if (authStore.user?.role === 'admin') {
     fetchAdminAISettings()
+    fetchAdminCusipAISettings()
   }
 })
 </script>
