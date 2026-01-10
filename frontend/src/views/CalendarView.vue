@@ -197,11 +197,15 @@ const currentYear = ref(new Date().getFullYear())
 const selectedDay = ref(null)
 const expandedMonthContainer = ref(null)
 
-// Pre-compute a map of date string to trades for O(1) lookup
+// Pre-compute a map of exit date to trades for O(1) lookup
+// P&L is realized on the exit date, not the entry date
 const tradesByDate = computed(() => {
   const map = new Map()
   for (const trade of trades.value) {
-    const dateKey = trade.trade_date.split('T')[0]
+    // Only include closed trades (those with an exit_time)
+    if (!trade.exit_time) continue
+
+    const dateKey = trade.exit_time.split('T')[0]
     if (!map.has(dateKey)) {
       map.set(dateKey, [])
     }
@@ -349,15 +353,17 @@ const expandedMonthTrades = computed(() => {
   if (!expandedMonth.value) return []
   return trades.value
     .filter(trade => {
-      // Parse date as local date to avoid timezone issues
-      const [year, month, day] = trade.trade_date.split('T')[0].split('-')
-      const tradeDate = new Date(year, month - 1, day)
-      return isSameMonth(tradeDate, expandedMonth.value)
+      // Only include closed trades with exit_time
+      if (!trade.exit_time) return false
+      // Parse exit date as local date to avoid timezone issues
+      const [year, month, day] = trade.exit_time.split('T')[0].split('-')
+      const exitDate = new Date(year, month - 1, day)
+      return isSameMonth(exitDate, expandedMonth.value)
     })
     .sort((a, b) => {
-      // Also fix sorting to use proper date parsing
-      const [yearA, monthA, dayA] = a.trade_date.split('T')[0].split('-')
-      const [yearB, monthB, dayB] = b.trade_date.split('T')[0].split('-')
+      // Sort by exit date
+      const [yearA, monthA, dayA] = a.exit_time.split('T')[0].split('-')
+      const [yearB, monthB, dayB] = b.exit_time.split('T')[0].split('-')
       const dateA = new Date(yearA, monthA - 1, dayA)
       const dateB = new Date(yearB, monthB - 1, dayB)
       return dateB - dateA
@@ -371,34 +377,6 @@ const monthlyPnl = computed(() => {
   }, 0)
 })
 
-// Cache max profit/loss for expanded month to avoid recalculating in each color function
-const expandedMonthPnlRange = computed(() => {
-  const days = expandedMonthDays.value
-  let maxProfit = 0
-  let maxLoss = 0
-  for (const d of days) {
-    if (d.pnl !== undefined) {
-      if (d.pnl > 0 && d.pnl > maxProfit) maxProfit = d.pnl
-      if (d.pnl < 0 && Math.abs(d.pnl) > maxLoss) maxLoss = Math.abs(d.pnl)
-    }
-  }
-  return { maxProfit, maxLoss }
-})
-
-// Cache max profit/loss for yearly view
-const yearlyPnlRange = computed(() => {
-  let maxProfit = 0
-  let maxLoss = 0
-  for (const month of yearlyCalendar.value) {
-    for (const d of month.days) {
-      if (d.pnl !== undefined) {
-        if (d.pnl > 0 && d.pnl > maxProfit) maxProfit = d.pnl
-        if (d.pnl < 0 && Math.abs(d.pnl) > maxLoss) maxLoss = Math.abs(d.pnl)
-      }
-    }
-  }
-  return { maxProfit, maxLoss }
-})
 
 function generateMonthDays(monthStart, monthEnd) {
   const days = []
@@ -437,63 +415,30 @@ function getDayClass(day) {
 function getDayStyle(day) {
   if (!day.date || day.pnl === undefined) return {}
 
-  const { maxProfit, maxLoss } = expandedMonthPnlRange.value
-  if (maxProfit === 0 && maxLoss === 0) return {}
-
+  // Flat color scheme - no intensity-based shading
   if (day.pnl >= 0) {
-    const intensity = maxProfit > 0 ? Math.min(day.pnl / maxProfit, 1) : 0.5
-    const saturation = 50 + intensity * 30
-    const lightness = 95 - (intensity * 45)
-    return { backgroundColor: `hsl(142, ${saturation}%, ${lightness}%)` }
+    return { backgroundColor: 'rgb(34, 197, 94)' } // green-500
   } else {
-    const intensity = maxLoss > 0 ? Math.min(Math.abs(day.pnl) / maxLoss, 1) : 0.5
-    const saturation = 50 + intensity * 30
-    const lightness = 95 - (intensity * 45)
-    return { backgroundColor: `hsl(0, ${saturation}%, ${lightness}%)` }
+    return { backgroundColor: 'rgb(239, 68, 68)' } // red-500
   }
 }
 
 function getDayTextColor(day) {
   if (!day.date || day.pnl === undefined) return 'text-gray-900 dark:text-white'
-
-  const { maxProfit, maxLoss } = expandedMonthPnlRange.value
-  if (maxProfit === 0 && maxLoss === 0) return 'text-gray-900 dark:text-white'
-
-  const intensity = day.pnl >= 0
-    ? (maxProfit > 0 ? Math.min(day.pnl / maxProfit, 1) : 0.5)
-    : (maxLoss > 0 ? Math.min(Math.abs(day.pnl) / maxLoss, 1) : 0.5)
-
-  return intensity > 0.4 ? 'text-white' : 'text-gray-900'
+  // White text on colored backgrounds
+  return 'text-white'
 }
 
 function getDayPnlTextColor(day) {
   if (!day.date || day.pnl === undefined) return day.pnl >= 0 ? 'text-green-600' : 'text-red-600'
-
-  const { maxProfit, maxLoss } = expandedMonthPnlRange.value
-  if (maxProfit === 0 && maxLoss === 0) return day.pnl >= 0 ? 'text-green-600' : 'text-red-600'
-
-  const intensity = day.pnl >= 0
-    ? (maxProfit > 0 ? Math.min(day.pnl / maxProfit, 1) : 0.5)
-    : (maxLoss > 0 ? Math.min(Math.abs(day.pnl) / maxLoss, 1) : 0.5)
-
-  if (intensity > 0.4) {
-    return 'text-white font-bold'
-  } else {
-    return day.pnl >= 0 ? 'text-green-700' : 'text-red-700'
-  }
+  // White bold text on colored backgrounds
+  return 'text-white font-bold'
 }
 
 function getDaySubTextColor(day) {
   if (!day.date || day.pnl === undefined) return 'text-gray-500 dark:text-gray-400'
-
-  const { maxProfit, maxLoss } = expandedMonthPnlRange.value
-  if (maxProfit === 0 && maxLoss === 0) return 'text-gray-500 dark:text-gray-400'
-
-  const intensity = day.pnl >= 0
-    ? (maxProfit > 0 ? Math.min(day.pnl / maxProfit, 1) : 0.5)
-    : (maxLoss > 0 ? Math.min(Math.abs(day.pnl) / maxLoss, 1) : 0.5)
-
-  return intensity > 0.4 ? 'text-white/80' : 'text-gray-600'
+  // Slightly transparent white on colored backgrounds
+  return 'text-white/80'
 }
 
 function getMiniDayClass(day) {
@@ -505,22 +450,11 @@ function getMiniDayClass(day) {
 function getMiniDayStyle(day) {
   if (!day.date || day.pnl === undefined) return {}
 
-  const { maxProfit, maxLoss } = yearlyPnlRange.value
-
-  if (maxProfit === 0 && maxLoss === 0) {
-    return { backgroundColor: day.pnl >= 0 ? 'rgb(34, 197, 94)' : 'rgb(239, 68, 68)' }
-  }
-
+  // Flat color scheme - no intensity-based shading
   if (day.pnl >= 0) {
-    const intensity = maxProfit > 0 ? Math.min(day.pnl / maxProfit, 1) : 0.5
-    const saturation = 40 + (intensity * 50)
-    const lightness = 55 - (intensity * 15)
-    return { backgroundColor: `hsl(142, ${saturation}%, ${lightness}%)` }
+    return { backgroundColor: 'rgb(34, 197, 94)' } // green-500
   } else {
-    const intensity = maxLoss > 0 ? Math.min(Math.abs(day.pnl) / maxLoss, 1) : 0.5
-    const saturation = 40 + (intensity * 50)
-    const lightness = 55 - (intensity * 15)
-    return { backgroundColor: `hsl(0, ${saturation}%, ${lightness}%)` }
+    return { backgroundColor: 'rgb(239, 68, 68)' } // red-500
   }
 }
 
