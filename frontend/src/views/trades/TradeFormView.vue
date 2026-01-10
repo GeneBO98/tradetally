@@ -2496,6 +2496,8 @@ function applyFuturesTemplate() {
     form.value.underlyingAsset = template.underlying_asset || ''
     form.value.tickSize = template.tick_size || null
     form.value.pointValue = template.point_value || null
+    form.value.contractMonth = template.contract_month || ''
+    form.value.contractYear = template.contract_year || null
     if (template.symbol) {
       form.value.symbol = template.symbol
     }
@@ -2533,7 +2535,9 @@ async function saveFuturesTemplate() {
       symbol: form.value.symbol || null,
       underlying_asset: form.value.underlyingAsset || null,
       tick_size: form.value.tickSize || null,
-      point_value: form.value.pointValue || null
+      point_value: form.value.pointValue || null,
+      contract_month: form.value.contractMonth || null,
+      contract_year: form.value.contractYear || null
     })
     futuresTemplates.value.push(response.data.template)
     showSaveFuturesTemplateModal.value = false

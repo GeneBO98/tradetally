@@ -12,6 +12,7 @@ const getAllTemplates = async (req, res) => {
       SELECT id, name, instrument_type, symbol,
              underlying_symbol, option_type, contract_size,
              underlying_asset, tick_size, point_value,
+             contract_month, contract_year,
              created_at, updated_at
       FROM instrument_templates
       WHERE user_id = $1
@@ -52,6 +53,7 @@ const getTemplate = async (req, res) => {
       `SELECT id, name, instrument_type, symbol,
               underlying_symbol, option_type, contract_size,
               underlying_asset, tick_size, point_value,
+              contract_month, contract_year,
               created_at, updated_at
        FROM instrument_templates
        WHERE id = $1 AND user_id = $2`,
@@ -95,7 +97,9 @@ const createTemplate = async (req, res) => {
       // Futures fields
       underlying_asset,
       tick_size,
-      point_value
+      point_value,
+      contract_month,
+      contract_year
     } = req.body;
 
     // Validation
@@ -138,12 +142,14 @@ const createTemplate = async (req, res) => {
       `INSERT INTO instrument_templates (
         user_id, name, instrument_type, symbol,
         underlying_symbol, option_type, contract_size,
-        underlying_asset, tick_size, point_value
+        underlying_asset, tick_size, point_value,
+        contract_month, contract_year
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       RETURNING id, name, instrument_type, symbol,
                 underlying_symbol, option_type, contract_size,
                 underlying_asset, tick_size, point_value,
+                contract_month, contract_year,
                 created_at, updated_at`,
       [
         userId,
@@ -155,7 +161,9 @@ const createTemplate = async (req, res) => {
         contract_size || null,
         underlying_asset || null,
         tick_size || null,
-        point_value || null
+        point_value || null,
+        contract_month || null,
+        contract_year || null
       ]
     );
 
@@ -189,7 +197,9 @@ const updateTemplate = async (req, res) => {
       contract_size,
       underlying_asset,
       tick_size,
-      point_value
+      point_value,
+      contract_month,
+      contract_year
     } = req.body;
 
     // Check if template exists and belongs to user
@@ -238,11 +248,14 @@ const updateTemplate = async (req, res) => {
            underlying_asset = $6,
            tick_size = $7,
            point_value = $8,
+           contract_month = $9,
+           contract_year = $10,
            updated_at = CURRENT_TIMESTAMP
-       WHERE id = $9 AND user_id = $10
+       WHERE id = $11 AND user_id = $12
        RETURNING id, name, instrument_type, symbol,
                  underlying_symbol, option_type, contract_size,
                  underlying_asset, tick_size, point_value,
+                 contract_month, contract_year,
                  created_at, updated_at`,
       [
         name ? name.trim() : null,
@@ -253,6 +266,8 @@ const updateTemplate = async (req, res) => {
         underlying_asset || null,
         tick_size || null,
         point_value || null,
+        contract_month || null,
+        contract_year || null,
         id,
         userId
       ]
