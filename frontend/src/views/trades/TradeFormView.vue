@@ -1884,9 +1884,12 @@ async function handleSubmit() {
       }
     }
 
+    // Derive side from first execution if main form side is empty (grouped executions mode)
+    const derivedSide = form.value.side || (form.value.executions.length > 0 ? form.value.executions[0].side : '')
+
     const tradeData = {
       symbol: form.value.symbol,
-      side: form.value.side,
+      side: derivedSide,
       instrumentType: form.value.instrumentType,
       entryTime: calculatedEntryTime,
       exitTime: calculatedExitTime || null,
