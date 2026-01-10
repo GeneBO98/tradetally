@@ -1641,13 +1641,28 @@ async function loadTrade() {
             const execQuantity = parseFloat(exec.quantity) || 0
             const proportion = totalQuantity > 0 ? execQuantity / totalQuantity : 0
 
-            // Use execution-level commission if available, otherwise distribute trade-level proportionally
-            const execCommission = hasExecutionCommissions
-              ? (exec.commission || 0)
-              : (tradeCommission * proportion)
-            const execFees = hasExecutionFees
-              ? (exec.fees || 0)
-              : (tradeFees * proportion)
+            // Use execution-level commission if available, otherwise use execution fees as commission
+            // (CSV imports store commission in the 'fees' field of executions)
+            // This ensures each execution shows its actual commission from the import
+            let execCommission = 0
+            let execFees = 0
+
+            if (hasExecutionCommissions) {
+              // Execution has commission field set - use it directly
+              execCommission = exec.commission || 0
+              // Only include fees if they're separate from commission
+              execFees = exec.fees || 0
+            } else if (hasExecutionFees) {
+              // No commission field, but fees exist - use fees as commission
+              // This handles CSV imports where commission is stored in execution.fees
+              // Set fees to 0 to avoid double-counting in P&L calculation
+              execCommission = exec.fees || 0
+              execFees = 0
+            } else {
+              // Neither commission nor fees at execution level - distribute trade-level proportionally
+              execCommission = tradeCommission * proportion
+              execFees = tradeFees * proportion
+            }
 
             // Check if this is a grouped execution (complete trade with entry/exit)
             if (exec.entryPrice !== undefined || exec.exitPrice !== undefined || exec.entryTime !== undefined) {
