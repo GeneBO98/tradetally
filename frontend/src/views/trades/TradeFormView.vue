@@ -882,7 +882,7 @@
         </div>
 
         <!-- Tags Field (Collapsible) -->
-        <div class="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+        <div class="border border-gray-200 dark:border-gray-700 rounded-lg">
           <button
             type="button"
             @click="showTags = !showTags"
