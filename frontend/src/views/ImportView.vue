@@ -27,6 +27,7 @@
                 <option value="papermoney">PaperMoney</option>
                 <option value="tradingview">TradingView</option>
                 <option value="tradovate">Tradovate</option>
+                <option value="questrade">Questrade</option>
                 <optgroup v-if="customMappings.length > 0" label="Custom Importers">
                   <option
                     v-for="mapping in customMappings"
@@ -988,6 +989,7 @@ function formatBrokerName(broker) {
     etrade: 'E*TRADE',
     tradingview: 'TradingView',
     tradovate: 'Tradovate',
+    questrade: 'Questrade',
     other: 'Other'
   }
   return brokerLabels[broker] || broker

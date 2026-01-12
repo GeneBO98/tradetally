@@ -393,12 +393,6 @@ const navigation = computed(() => {
           description: 'View platform usage analytics'
         },
         {
-          name: 'Referral Codes',
-          to: '/admin/referrals',
-          route: 'admin-referrals',
-          description: 'Manage creator referral codes'
-        },
-        {
           name: 'OAuth Applications',
           to: '/admin/oauth',
           route: 'oauth-clients',

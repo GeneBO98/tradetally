@@ -12,17 +12,21 @@ class GeminiRecommendations {
     return !!(apiKey || process.env.GEMINI_API_KEY);
   }
 
-  async generateTradeRecommendations(tradeMetrics, tradeData, tradingProfile = null, sectorData = null, apiKey = null) {
+  async generateTradeRecommendations(tradeMetrics, tradeData, tradingProfile = null, sectorData = null, apiKey = null, modelName = null) {
     // Use provided API key or fallback to environment variable
     const effectiveApiKey = apiKey || process.env.GEMINI_API_KEY;
-    
+
     if (!effectiveApiKey) {
       throw new Error('Gemini API key not configured');
     }
 
+    // Use provided model name or fallback to default
+    const effectiveModel = modelName || 'gemini-1.5-flash';
+    console.log(`[GEMINI] Using model: ${effectiveModel}`);
+
     // Initialize client with the provided API key
     this.genAI = new GoogleGenerativeAI(effectiveApiKey);
-    this.model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    this.model = this.genAI.getGenerativeModel({ model: effectiveModel });
 
     console.log('[CONFIG] Building analysis prompt...');
     const prompt = this.buildAnalysisPrompt(tradeMetrics, tradeData, tradingProfile, sectorData);
@@ -181,14 +185,18 @@ Keep recommendations highly specific and personalized. Use bullet points for cla
   async generateResponse(prompt, apiKey = null, options = {}) {
     // Use provided API key or fallback to environment variable
     const effectiveApiKey = apiKey || process.env.GEMINI_API_KEY;
-    
+
     if (!effectiveApiKey) {
       throw new Error('Gemini API key not configured');
     }
 
+    // Use provided model name from options or fallback to default
+    const effectiveModel = options.model || 'gemini-1.5-flash';
+    console.log(`[GEMINI] Using model: ${effectiveModel}`);
+
     // Initialize client with the provided API key
     const genAI = new GoogleGenerativeAI(effectiveApiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ model: effectiveModel });
 
     try {
       const result = await model.generateContent(prompt);

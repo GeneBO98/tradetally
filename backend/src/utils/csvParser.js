@@ -333,6 +333,17 @@ function detectBrokerFormat(fileBuffer) {
       return 'tradovate';
     }
 
+    // Questrade detection - look for Fill qty, Fill price, Exec time, Option, Strategy columns
+    // Questrade Edge export has unique column names like "Fill qty" and "Exec time"
+    if (headers.includes('fill qty') &&
+        headers.includes('fill price') &&
+        headers.includes('exec time') &&
+        headers.includes('option') &&
+        headers.includes('strategy')) {
+      console.log('[AUTO-DETECT] Detected: Questrade');
+      return 'questrade';
+    }
+
     // Default to generic if no specific format detected
     console.log('[AUTO-DETECT] No specific format detected, using generic parser');
     return 'generic';
@@ -1391,6 +1402,19 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       // Tradovate parser uses round-trip position tracking to create properly separated trades
       // Trade grouping would incorrectly merge multiple round trips when exit and new entry have same timestamp
       console.log('[INFO] Skipping trade grouping for Tradovate (already grouped by round-trip logic)');
+
+      return result;
+    }
+
+    if (broker === 'questrade') {
+      console.log('Starting Questrade transaction parsing');
+      const result = await parseQuestradeTransactions(records, existingPositions, context);
+      console.log('Finished Questrade transaction parsing');
+
+      // Apply trade grouping if enabled
+      if (tradeGroupingSettings.enabled) {
+        return applyTradeGrouping(result, tradeGroupingSettings);
+      }
 
       return result;
     }
@@ -5758,6 +5782,395 @@ async function parseTradovateTransactions(records, existingPositions = {}, conte
   }
 
   console.log(`\n[SUCCESS] Created ${completedTrades.length} trades from ${transactions.length} Tradovate transactions`);
+  return completedTrades;
+}
+
+/**
+ * Parse Questrade Edge CSV export
+ *
+ * Questrade CSV format:
+ * - Headers: Symbol, Action, Fill qty, Fill price, Currency, Exec time, Total value, Time placed, Option, Strategy, Commission, Account
+ * - Date format: "16 Dec 2025 11:15:58 AM"
+ * - Actions: Buy, Sell (stocks), BTO (Buy to Open), STC (Sell to Close), BTC (Buy to Close), STO (Sell to Open) for options
+ * - Options symbols: SLV20Feb26C55.00 (underlying + day + month + year + C/P + strike)
+ * - Option column: "Call" or "Put" or empty for stocks
+ */
+async function parseQuestradeTransactions(records, existingPositions = {}, context = {}) {
+  console.log(`\n=== QUESTRADE TRANSACTION PARSER ===`);
+  console.log(`Processing ${records.length} Questrade transaction records`);
+  console.log(`Existing open positions passed to parser: ${Object.keys(existingPositions).length}`);
+
+  if (Object.keys(existingPositions).length > 0) {
+    console.log(`Existing positions:`);
+    Object.entries(existingPositions).forEach(([symbol, position]) => {
+      console.log(`  ${symbol}: ${position.side} ${position.quantity} @ $${position.entryPrice} (Trade ID: ${position.id})`);
+    });
+  }
+
+  const transactions = [];
+  const completedTrades = [];
+
+  // Debug: Log first few records to see structure
+  console.log('\nSample Questrade records:');
+  records.slice(0, 5).forEach((record, i) => {
+    console.log(`Record ${i}:`, JSON.stringify(record));
+  });
+
+  // Helper to parse Questrade date format: "16 Dec 2025 11:15:58 AM"
+  function parseQuestradeDate(dateStr) {
+    if (!dateStr) return null;
+
+    // Parse format: "16 Dec 2025 11:15:58 AM"
+    const months = {
+      'jan': 0, 'feb': 1, 'mar': 2, 'apr': 3, 'may': 4, 'jun': 5,
+      'jul': 6, 'aug': 7, 'sep': 8, 'oct': 9, 'nov': 10, 'dec': 11
+    };
+
+    const match = dateStr.match(/^(\d{1,2})\s+(\w{3})\s+(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})\s*(AM|PM)?$/i);
+    if (!match) {
+      console.log(`[QUESTRADE] Failed to parse date: ${dateStr}`);
+      return null;
+    }
+
+    const [, day, monthStr, year, hours, minutes, seconds, ampm] = match;
+    const month = months[monthStr.toLowerCase()];
+
+    if (month === undefined) {
+      console.log(`[QUESTRADE] Unknown month: ${monthStr}`);
+      return null;
+    }
+
+    let hour = parseInt(hours);
+    if (ampm) {
+      if (ampm.toUpperCase() === 'PM' && hour !== 12) hour += 12;
+      if (ampm.toUpperCase() === 'AM' && hour === 12) hour = 0;
+    }
+
+    return new Date(parseInt(year), month, parseInt(day), hour, parseInt(minutes), parseInt(seconds));
+  }
+
+  // Helper to parse Questrade options symbol format: SLV20Feb26C55.00
+  function parseQuestradeOptionsSymbol(symbol, optionColumn) {
+    if (!symbol) return { instrumentType: 'stock' };
+
+    // Check if Option column indicates this is an option
+    const isOption = optionColumn && (optionColumn.toLowerCase() === 'call' || optionColumn.toLowerCase() === 'put');
+
+    // Try to parse options symbol format: SLV20Feb26C55.00 or SLV20Feb26P55.00
+    // Format: UNDERLYING + DAY + MONTH + YEAR + C/P + STRIKE
+    const optionMatch = symbol.match(/^([A-Z]+)(\d{1,2})([A-Za-z]{3})(\d{2})([CP])(\d+(?:\.\d+)?)$/i);
+
+    if (optionMatch || isOption) {
+      if (optionMatch) {
+        const [, underlying, day, monthStr, year, callPut, strike] = optionMatch;
+
+        const months = {
+          'jan': '01', 'feb': '02', 'mar': '03', 'apr': '04', 'may': '05', 'jun': '06',
+          'jul': '07', 'aug': '08', 'sep': '09', 'oct': '10', 'nov': '11', 'dec': '12'
+        };
+
+        const month = months[monthStr.toLowerCase()];
+        const fullYear = parseInt(year) < 50 ? `20${year}` : `19${year}`;
+        const expirationDate = `${fullYear}-${month}-${day.padStart(2, '0')}`;
+        const optionType = callPut.toUpperCase() === 'C' ? 'call' : 'put';
+
+        return {
+          instrumentType: 'option',
+          underlyingSymbol: underlying,
+          strikePrice: parseFloat(strike),
+          expirationDate: expirationDate,
+          optionType: optionType,
+          contractSize: 100
+        };
+      } else if (isOption) {
+        // Option column is set but symbol format doesn't match - use fallback
+        // Try to extract underlying from symbol (remove any suffix)
+        const underlying = symbol.replace(/\.[A-Z]+$/, ''); // Remove exchange suffix like .TO
+        return {
+          instrumentType: 'option',
+          underlyingSymbol: underlying,
+          optionType: optionColumn.toLowerCase(),
+          contractSize: 100
+        };
+      }
+    }
+
+    // Stock - might have exchange suffix like .TO for Toronto
+    return {
+      instrumentType: 'stock',
+      underlyingSymbol: symbol.replace(/\.[A-Z]+$/, '') // Remove exchange suffix for display
+    };
+  }
+
+  // First, parse all transactions
+  for (const record of records) {
+    try {
+      // Get fields from Questrade columns
+      const symbol = cleanString(record.Symbol || record.symbol);
+      const action = cleanString(record.Action || record.action).toUpperCase();
+      const fillQty = parseInteger(record['Fill qty'] || record['fill qty'] || record.Filled || 0);
+      const fillPrice = parseNumeric(record['Fill price'] || record['fill price'] || record.Price || 0);
+      const currency = cleanString(record.Currency || record.currency || 'USD');
+      const execTime = record['Exec time'] || record['exec time'] || '';
+      const optionColumn = cleanString(record.Option || record.option || '');
+      const commission = parseNumeric(record.Commission || record.commission || 0);
+      const accountRaw = cleanString(record.Account || record.account || '');
+
+      // Skip if missing essential data
+      if (!symbol || fillQty === 0 || fillPrice === 0 || !execTime) {
+        console.log(`Skipping Questrade record missing data:`, { symbol, action, fillQty, fillPrice, execTime });
+        continue;
+      }
+
+      // Parse execution time
+      const execDateTime = parseQuestradeDate(execTime);
+      if (!execDateTime) {
+        console.log(`Skipping Questrade record with invalid date: ${execTime}`);
+        continue;
+      }
+
+      // Validate date is reasonable
+      const now = new Date();
+      const maxFutureDate = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+      const minPastDate = new Date('2000-01-01');
+
+      if (execDateTime > maxFutureDate || execDateTime < minPastDate) {
+        console.log(`Skipping Questrade record with invalid date range: ${execTime}`);
+        continue;
+      }
+
+      // Determine trade action from Questrade action codes
+      // Stock: Buy, Sell
+      // Options: BTO (Buy to Open), STC (Sell to Close), BTC (Buy to Close), STO (Sell to Open)
+      let tradeAction;
+      switch (action) {
+        case 'BUY':
+        case 'BTO': // Buy to Open (long options entry)
+        case 'BTC': // Buy to Close (short options exit)
+          tradeAction = 'buy';
+          break;
+        case 'SELL':
+        case 'STC': // Sell to Close (long options exit)
+        case 'STO': // Sell to Open (short options entry)
+          tradeAction = 'sell';
+          break;
+        default:
+          console.log(`Skipping Questrade record with unknown action: ${action}`);
+          continue;
+      }
+
+      // Extract account identifier - format is like "12345678 - Margin +"
+      const accountIdentifier = context.accountColumnName
+        ? extractAccountFromRecord(record, context.accountColumnName)
+        : (accountRaw ? accountRaw.split(' - ')[0].trim() : null) || context.selectedAccountId || null;
+
+      // Parse instrument data
+      const instrumentData = parseQuestradeOptionsSymbol(symbol, optionColumn);
+
+      // Use underlying symbol for grouping if it's an option
+      const groupingSymbol = instrumentData.instrumentType === 'option'
+        ? (instrumentData.underlyingSymbol || symbol)
+        : symbol;
+
+      transactions.push({
+        symbol: groupingSymbol,
+        fullSymbol: symbol, // Keep original for options
+        date: execDateTime.toISOString().split('T')[0],
+        datetime: execDateTime,
+        action: tradeAction,
+        quantity: fillQty,
+        price: fillPrice,
+        commission: Math.abs(commission), // Ensure positive
+        currency: currency.toUpperCase(),
+        description: `Questrade ${action}`,
+        raw: record,
+        accountIdentifier,
+        instrumentData
+      });
+
+      console.log(`Parsed Questrade transaction: ${action} ${fillQty} ${symbol} @ $${fillPrice.toFixed(2)} (${currency})`);
+    } catch (error) {
+      console.error('Error parsing Questrade transaction:', error, record);
+    }
+  }
+
+  // Sort transactions by symbol and datetime
+  transactions.sort((a, b) => {
+    if (a.symbol !== b.symbol) return a.symbol.localeCompare(b.symbol);
+    return new Date(a.datetime) - new Date(b.datetime);
+  });
+
+  console.log(`Parsed ${transactions.length} valid Questrade trade transactions`);
+
+  // Group transactions by symbol
+  const transactionsBySymbol = {};
+  for (const transaction of transactions) {
+    const key = transaction.instrumentData.instrumentType === 'option'
+      ? `${transaction.symbol}_${transaction.instrumentData.strikePrice}_${transaction.instrumentData.expirationDate}_${transaction.instrumentData.optionType}`
+      : transaction.symbol;
+
+    if (!transactionsBySymbol[key]) {
+      transactionsBySymbol[key] = [];
+    }
+    transactionsBySymbol[key].push(transaction);
+  }
+
+  // Process transactions using round-trip trade grouping (FIFO)
+  for (const symbolKey in transactionsBySymbol) {
+    const symbolTransactions = transactionsBySymbol[symbolKey];
+    const firstTx = symbolTransactions[0];
+    const instrumentData = firstTx.instrumentData;
+
+    console.log(`\n=== Processing ${symbolTransactions.length} Questrade transactions for ${symbolKey} ===`);
+    console.log(`Instrument type: ${instrumentData.instrumentType}`);
+
+    // Value multiplier for options
+    const valueMultiplier = instrumentData.instrumentType === 'option' ? 100 : 1;
+
+    // Track position using FIFO
+    let currentPosition = 0;
+    let currentTrade = null;
+
+    // Check for existing position
+    const existingPosition = existingPositions[firstTx.symbol] || existingPositions[symbolKey];
+    if (existingPosition) {
+      currentPosition = existingPosition.side === 'long' ? existingPosition.quantity : -existingPosition.quantity;
+      console.log(`  → Starting with existing ${existingPosition.side} position: ${existingPosition.quantity} @ $${existingPosition.entryPrice}`);
+    }
+
+    for (const transaction of symbolTransactions) {
+      const signedQty = transaction.action === 'buy' ? transaction.quantity : -transaction.quantity;
+      const prevPosition = currentPosition;
+      currentPosition += signedQty;
+
+      console.log(`  ${transaction.action.toUpperCase()} ${transaction.quantity} @ $${transaction.price.toFixed(2)} → Position: ${prevPosition} → ${currentPosition}`);
+
+      // Opening or adding to position
+      if ((prevPosition >= 0 && signedQty > 0) || (prevPosition <= 0 && signedQty < 0)) {
+        if (!currentTrade || (prevPosition === 0)) {
+          // Start new trade
+          const side = signedQty > 0 ? 'long' : 'short';
+          currentTrade = {
+            symbol: transaction.symbol,
+            tradeDate: transaction.date,
+            entryTime: transaction.datetime,
+            entryPrice: transaction.price,
+            quantity: Math.abs(signedQty),
+            side: side,
+            commission: transaction.commission,
+            fees: 0,
+            broker: 'Questrade',
+            currency: transaction.currency,
+            accountIdentifier: transaction.accountIdentifier,
+            executions: [{
+              entryTime: transaction.datetime,
+              entryPrice: transaction.price,
+              quantity: Math.abs(signedQty),
+              side: side,
+              commission: transaction.commission,
+              fees: 0
+            }],
+            ...instrumentData
+          };
+          console.log(`  [NEW] Started ${side} position: ${Math.abs(signedQty)} @ $${transaction.price.toFixed(2)}`);
+        } else {
+          // Adding to existing position - calculate weighted average entry
+          const prevValue = currentTrade.entryPrice * currentTrade.quantity;
+          const newValue = transaction.price * Math.abs(signedQty);
+          const totalQty = currentTrade.quantity + Math.abs(signedQty);
+          currentTrade.entryPrice = (prevValue + newValue) / totalQty;
+          currentTrade.quantity = totalQty;
+          currentTrade.commission += transaction.commission;
+          currentTrade.executions.push({
+            entryTime: transaction.datetime,
+            entryPrice: transaction.price,
+            quantity: Math.abs(signedQty),
+            side: currentTrade.side,
+            commission: transaction.commission,
+            fees: 0
+          });
+          console.log(`  [ADD] Added to position: now ${totalQty} @ avg $${currentTrade.entryPrice.toFixed(2)}`);
+        }
+      }
+      // Closing position (fully or partially)
+      else if ((prevPosition > 0 && signedQty < 0) || (prevPosition < 0 && signedQty > 0)) {
+        if (currentTrade) {
+          const closeQty = Math.min(Math.abs(signedQty), Math.abs(prevPosition));
+
+          // Calculate P&L
+          let pnl;
+          if (currentTrade.side === 'long') {
+            pnl = (transaction.price - currentTrade.entryPrice) * closeQty * valueMultiplier;
+          } else {
+            pnl = (currentTrade.entryPrice - transaction.price) * closeQty * valueMultiplier;
+          }
+          pnl -= (currentTrade.commission + transaction.commission);
+
+          // Complete the trade
+          currentTrade.exitTime = transaction.datetime;
+          currentTrade.exitPrice = transaction.price;
+          currentTrade.quantity = closeQty;
+          currentTrade.pnl = pnl;
+          currentTrade.profitLoss = pnl;
+          currentTrade.commission += transaction.commission;
+          currentTrade.executionData = currentTrade.executions;
+
+          // Update last execution with exit info
+          if (currentTrade.executions.length > 0) {
+            const lastExec = currentTrade.executions[currentTrade.executions.length - 1];
+            lastExec.exitTime = transaction.datetime;
+            lastExec.exitPrice = transaction.price;
+            lastExec.pnl = pnl;
+          }
+
+          console.log(`  [CLOSE] Closed ${closeQty} @ $${transaction.price.toFixed(2)}, P&L: $${pnl.toFixed(2)}`);
+          completedTrades.push(currentTrade);
+
+          // Handle reversal (closing more than position)
+          if (Math.abs(signedQty) > Math.abs(prevPosition)) {
+            const reversalQty = Math.abs(signedQty) - Math.abs(prevPosition);
+            const newSide = signedQty > 0 ? 'long' : 'short';
+            currentTrade = {
+              symbol: transaction.symbol,
+              tradeDate: transaction.date,
+              entryTime: transaction.datetime,
+              entryPrice: transaction.price,
+              quantity: reversalQty,
+              side: newSide,
+              commission: 0,
+              fees: 0,
+              broker: 'Questrade',
+              currency: transaction.currency,
+              accountIdentifier: transaction.accountIdentifier,
+              executions: [{
+                entryTime: transaction.datetime,
+                entryPrice: transaction.price,
+                quantity: reversalQty,
+                side: newSide,
+                commission: 0,
+                fees: 0
+              }],
+              ...instrumentData
+            };
+            console.log(`  [REVERSAL] Started new ${newSide} position: ${reversalQty} @ $${transaction.price.toFixed(2)}`);
+          } else if (currentPosition === 0) {
+            currentTrade = null;
+          }
+        }
+      }
+    }
+
+    // Handle remaining open position
+    if (currentTrade && currentPosition !== 0) {
+      currentTrade.quantity = Math.abs(currentPosition);
+      currentTrade.notes = `Open position: ${currentTrade.executions.length} executions`;
+      currentTrade.executionData = currentTrade.executions;
+      console.log(`  [OPEN] Remaining open ${currentTrade.side} position: ${Math.abs(currentPosition)} @ $${currentTrade.entryPrice.toFixed(2)}`);
+      completedTrades.push(currentTrade);
+    }
+  }
+
+  console.log(`\n[SUCCESS] Created ${completedTrades.length} trades from ${transactions.length} Questrade transactions`);
   return completedTrades;
 }
 
