@@ -1,0 +1,202 @@
+/* AI Report Card Styling */
+@layer components {
+
+/* Main report container */
+.ai-report {
+  @apply space-y-6;
+}
+
+/* Individual section card */
+.ai-report-card {
+  @apply bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden transition-shadow duration-200;
+}
+
+.ai-report-card:hover {
+  @apply shadow-md;
+}
+
+/* Card header */
+.ai-report-card-header {
+  @apply px-6 py-4 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50;
+}
+
+.ai-report-card-header-content {
+  @apply flex items-center gap-3;
+}
+
+.ai-report-icon-wrapper {
+  @apply flex-shrink-0 w-10 h-10 rounded-lg bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center;
+}
+
+.ai-report-icon {
+  @apply w-5 h-5 text-primary-600 dark:text-primary-400;
+}
+
+.ai-report-card-title {
+  @apply text-xl font-semibold text-gray-900 dark:text-white m-0;
+}
+
+/* Card body */
+.ai-report-card-body {
+  @apply px-6 py-5;
+}
+
+/* Subsection Headers (original H2 -> displayed as H3) */
+.ai-subsection-header {
+  @apply text-lg font-semibold text-gray-800 dark:text-gray-100 mt-6 mb-3 pb-2 border-b border-gray-200 dark:border-gray-700;
+}
+
+.ai-subsection-header:first-child {
+  @apply mt-0;
+}
+
+/* Sub-subsection Headers (original H3 -> displayed as H4) */
+.ai-sub-subsection-header {
+  @apply text-base font-medium text-gray-700 dark:text-gray-200 mt-4 mb-2;
+}
+
+/* Paragraphs */
+.ai-paragraph {
+  @apply text-gray-700 dark:text-gray-300 mb-4 leading-relaxed;
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.ai-paragraph:last-child {
+  @apply mb-0;
+}
+
+/* Lists */
+.ai-list {
+  @apply mb-4 space-y-2;
+  list-style: none;
+}
+
+.ai-list:last-child {
+  @apply mb-0;
+}
+
+.ai-list-unordered {
+  @apply pl-0;
+}
+
+.ai-list-ordered {
+  @apply pl-5;
+  list-style: decimal;
+}
+
+.ai-list-ordered .ai-list-item {
+  @apply pl-2;
+}
+
+.ai-list-item {
+  @apply text-gray-700 dark:text-gray-300 leading-relaxed relative;
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+/* Unordered list bullet styling */
+.ai-list-unordered > .ai-list-item {
+  @apply pl-6;
+}
+
+.ai-list-unordered > .ai-list-item::before {
+  content: '';
+  @apply absolute left-0 top-2.5 w-2 h-2 rounded-full bg-primary-500 dark:bg-primary-400;
+}
+
+/* Nested lists */
+.ai-list .ai-list {
+  @apply mt-2 mb-0;
+}
+
+/* Emphasis/Bold text - subtle styling */
+.ai-emphasis {
+  @apply font-semibold text-gray-900 dark:text-white;
+}
+
+/* Section content wrapper */
+.ai-section-content {
+  @apply text-gray-700 dark:text-gray-300;
+  line-height: 1.7;
+}
+
+/* Code blocks if any */
+.ai-section-content code {
+  @apply bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded text-sm font-mono;
+}
+
+.ai-section-content pre {
+  @apply bg-gray-100 dark:bg-gray-700 p-4 rounded-lg overflow-x-auto mb-4;
+}
+
+.ai-section-content pre code {
+  @apply bg-transparent p-0;
+}
+
+/* Blockquotes if any */
+.ai-section-content blockquote {
+  @apply border-l-4 border-primary-300 dark:border-primary-600 pl-4 italic text-gray-600 dark:text-gray-400 my-4;
+}
+
+/* Tables if any */
+.ai-section-content table {
+  @apply w-full border-collapse mb-4;
+}
+
+.ai-section-content th,
+.ai-section-content td {
+  @apply border border-gray-200 dark:border-gray-700 px-3 py-2 text-left;
+}
+
+.ai-section-content th {
+  @apply bg-gray-50 dark:bg-gray-700 font-semibold;
+}
+
+/* Loading state */
+.ai-report-loading {
+  @apply flex items-center justify-center py-12;
+}
+
+.ai-report-loading-spinner {
+  @apply w-8 h-8 text-primary-600 dark:text-primary-400 animate-spin;
+}
+
+/* Empty state */
+.ai-report-empty {
+  @apply text-center py-12 text-gray-500 dark:text-gray-400;
+}
+
+/* Responsive adjustments */
+@media (max-width: 640px) {
+  .ai-report-card-header {
+    @apply px-4 py-3;
+  }
+
+  .ai-report-card-body {
+    @apply px-4 py-4;
+  }
+
+  .ai-report-icon-wrapper {
+    @apply w-8 h-8;
+  }
+
+  .ai-report-icon {
+    @apply w-4 h-4;
+  }
+
+  .ai-report-card-title {
+    @apply text-lg;
+  }
+
+  .ai-subsection-header {
+    @apply text-base;
+  }
+
+  .ai-paragraph,
+  .ai-list-item {
+    font-size: 14px;
+  }
+}
+
+} /* End @layer components */

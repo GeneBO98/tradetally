@@ -1217,17 +1217,12 @@
             </button>
           </div>
           
-          <div v-if="recommendations" class="max-h-[70vh] overflow-y-auto">
-            <div class="ai-recommendations max-w-none">
-              <div v-if="recommendations.recommendations">
-                <div 
-                  class="text-gray-700 dark:text-gray-300"
-                  v-html="parseMarkdown(recommendations.recommendations)"
-                ></div>
-              </div>
-              <div v-else class="text-red-500 p-4">
-                No recommendations content found. Raw data: {{ JSON.stringify(recommendations) }}
-              </div>
+          <div v-if="recommendations" class="max-h-[70vh] overflow-y-auto pr-2">
+            <div v-if="recommendations.recommendations">
+              <AIReportRenderer :content="recommendations.recommendations" />
+            </div>
+            <div v-else class="text-red-500 p-4">
+              No recommendations content found. Raw data: {{ JSON.stringify(recommendations) }}
             </div>
             
             <div class="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
@@ -1289,8 +1284,8 @@ import MdiIcon from '@/components/MdiIcon.vue'
 import NewsCorrelationAnalytics from '@/components/analytics/NewsCorrelationAnalytics.vue'
 import TagManagement from '@/components/trades/TagManagement.vue'
 import TradeFilters from '@/components/trades/TradeFilters.vue'
+import AIReportRenderer from '@/components/ai/AIReportRenderer.vue'
 import Chart from 'chart.js/auto'
-import { marked } from 'marked'
 import draggable from 'vuedraggable'
 import {
   mdiCheckCircle,
@@ -3192,42 +3187,6 @@ function formatDate(dateString) {
   return new Date(dateString).toLocaleString()
 }
 
-function parseMarkdown(text) {
-  if (!text) return ''
-  
-  try {
-    console.log('[STYLE] Parsing markdown, text length:', text.length)
-    
-    // Use basic marked parsing with post-processing for styling
-    let result = marked.parse(text, {
-      breaks: true,
-      gfm: true
-    })
-    
-    // Post-process the HTML to add custom classes with icon styling
-    result = result
-      .replace(/<h1>/g, '<h1 class="ai-section-header level-1"><span class="section-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,17.5A1.5,1.5 0 0,1 10.5,16A1.5,1.5 0 0,1 12,14.5A1.5,1.5 0 0,1 13.5,16A1.5,1.5 0 0,1 12,17.5M12,5A3,3 0 0,1 15,8C15,9.5 13.5,10.5 13,11.5H11C10.5,10.5 9,9.5 9,8A3,3 0 0,1 12,5Z" /></svg></span><span class="section-text">')
-      .replace(/<\/h1>/g, '</span></h1>')
-      .replace(/<h2>/g, '<h2 class="ai-section-header level-2"><span class="section-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M22,21H2V3H4V19H6V10H10V19H12V6H16V19H18V14H22V21Z" /></svg></span><span class="section-text">')
-      .replace(/<\/h2>/g, '</span></h2>')
-      .replace(/<h3>/g, '<h3 class="ai-section-header level-3"><span class="section-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M13,14H11V10H13M13,18H11V16H13M1,21H23L12,2L1,21Z" /></svg></span><span class="section-text">')
-      .replace(/<\/h3>/g, '</span></h3>')
-      .replace(/<p>/g, '<p class="ai-paragraph">')
-      .replace(/<ul>/g, '<ul class="ai-unordered-list">')
-      .replace(/<ol>/g, '<ol class="ai-ordered-list">')
-      .replace(/<li>/g, '<li class="ai-list-item">')
-      .replace(/<strong>/g, '<strong class="ai-emphasis">')
-    
-    console.log('[SUCCESS] Markdown parsed and styled successfully, result length:', result.length)
-    return result
-  
-  } catch (error) {
-    console.error('[ERROR] Error parsing markdown:', error)
-    console.error('Text that failed:', text.substring(0, 200) + '...')
-    return `<div class="text-red-500 p-4">Error parsing markdown: ${error.message}<br><br>Raw text:<br><pre class="whitespace-pre-wrap">${text}</pre></div>`
-  }
-}
-
 async function loadData() {
   loading.value = true
 
@@ -3614,161 +3573,3 @@ watch(() => rValueMode.value, () => {
   })
 })
 </script>
-
-<style scoped>
-/* AI Recommendations Styling */
-.ai-recommendations {
-  line-height: 1.8;
-  font-size: 16px;
-  color: #374151;
-  max-width: none;
-}
-
-.dark .ai-recommendations {
-  color: #d1d5db;
-}
-
-/* Section Headers */
-.ai-section-header {
-  @apply flex items-center gap-3 mb-6 mt-8 pb-3 border-b border-gray-300 dark:border-gray-600;
-  scroll-margin-top: 1rem;
-  letter-spacing: -0.025em;
-}
-
-.ai-section-header.level-1 {
-  @apply text-2xl font-bold text-gray-900 dark:text-white;
-  margin-top: 2rem;
-  margin-bottom: 1.5rem;
-}
-
-.ai-section-header.level-2 {
-  @apply text-xl font-semibold text-gray-800 dark:text-gray-100;
-  margin-top: 1.5rem;
-  margin-bottom: 1rem;
-}
-
-.ai-section-header.level-3 {
-  @apply text-lg font-medium text-gray-700 dark:text-gray-200;
-  margin-top: 1rem;
-  margin-bottom: 0.75rem;
-}
-
-.section-icon {
-  @apply text-xl flex-shrink-0;
-}
-
-.section-text {
-  @apply flex-1;
-}
-
-/* Paragraphs */
-.ai-paragraph {
-  @apply mb-6 text-gray-700 dark:text-gray-300;
-  line-height: 1.75;
-  font-size: 16px;
-  margin-top: 0;
-}
-
-.ai-paragraph + .ai-paragraph {
-  margin-top: 1.5rem;
-}
-
-/* Lists */
-.ai-unordered-list {
-  @apply mb-6 ml-0 space-y-3;
-  padding-left: 1.5rem;
-}
-
-.ai-ordered-list {
-  @apply mb-6 ml-0 space-y-3;
-  padding-left: 1.5rem;
-}
-
-.ai-list-item {
-  @apply text-gray-700 dark:text-gray-300;
-  line-height: 1.7;
-  font-size: 16px;
-  position: relative;
-  padding-left: 0.5rem;
-}
-
-.ai-unordered-list .ai-list-item::before {
-  content: '▸';
-  @apply text-primary-600 dark:text-primary-400 font-bold absolute;
-  left: -1.25rem;
-  top: 0.1rem;
-}
-
-.ai-ordered-list .ai-list-item {
-  @apply list-decimal;
-  margin-left: 0;
-}
-
-/* Emphasis */
-.ai-emphasis {
-  @apply font-semibold text-primary-800 dark:text-primary-200 bg-primary-100 dark:bg-primary-900/40 px-2 py-1 rounded;
-  font-size: 0.95em;
-  letter-spacing: -0.015em;
-}
-
-/* Override default prose styles for better spacing */
-.ai-recommendations h1:first-child,
-.ai-recommendations h2:first-child,
-.ai-recommendations h3:first-child {
-  @apply mt-0;
-}
-
-.ai-recommendations h1:last-child,
-.ai-recommendations h2:last-child,
-.ai-recommendations h3:last-child,
-.ai-recommendations p:last-child,
-.ai-recommendations ul:last-child,
-.ai-recommendations ol:last-child {
-  @apply mb-0;
-}
-
-/* Responsive adjustments */
-@media (max-width: 640px) {
-  .ai-section-header {
-    @apply text-sm gap-2;
-  }
-  
-  .ai-section-header.level-1 {
-    @apply text-lg;
-  }
-  
-  .ai-section-header.level-2 {
-    @apply text-base;
-  }
-  
-  .section-icon {
-    @apply text-lg;
-  }
-}
-
-/* Modal improvements */
-.ai-recommendations {
-  scrollbar-width: thin;
-  scrollbar-color: #cbd5e1 #f1f5f9;
-  padding: 1.5rem;
-  background: #fafafa;
-  border-radius: 0.5rem;
-  margin: -0.5rem;
-}
-
-.dark .ai-recommendations {
-  background: #1f2937;
-}
-
-.ai-recommendations::-webkit-scrollbar {
-  width: 8px;
-}
-
-.ai-recommendations::-webkit-scrollbar-track {
-  @apply bg-gray-100 dark:bg-gray-800 rounded;
-}
-
-.ai-recommendations::-webkit-scrollbar-thumb {
-  @apply bg-gray-400 dark:bg-gray-600 rounded hover:bg-gray-500 dark:hover:bg-gray-500;
-}
-</style>
