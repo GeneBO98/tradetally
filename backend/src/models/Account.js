@@ -332,35 +332,25 @@ class Account {
     // This query calculates daily cash movements from trades and transactions
     // NOTE: For options, we multiply by contract_size (typically 100) to get actual cash value
     //
+    // IMPORTANT: Cashflow must be attributed to the DATE the cash actually moved:
+    // - Entry cash flows (LONG buy outflow, SHORT sell inflow) use entry_time date
+    // - Exit cash flows (LONG sell inflow, SHORT cover outflow) use exit_time date
+    //
     // Commission handling (convention: positive = fee paid, negative = rebate received):
     // - Entry commission: Added to outflow (increases cost basis) for LONG entries
     //                     Subtracted from inflow (fees reduce proceeds, rebates add to proceeds) for SHORT entries
     // - Exit commission: Subtracted from inflow (reduces sale proceeds) for LONG exits
     //                    Added to outflow (cost) for SHORT exits
     const query = `
-      WITH daily_trades AS (
+      WITH entry_cashflows AS (
+        -- Cash flows that happen on ENTRY date (when trade is opened)
+        -- LONG entry: Outflow (buying shares/contracts)
+        -- SHORT entry: Inflow (short sale proceeds)
         SELECT
-          trade_date as date,
-          -- Inflow: money coming IN
-          -- LONG exit (selling shares/contracts) = (exit_price * quantity * multiplier) - exit_commission - fees
-          -- SHORT entry (short sale) = (entry_price * quantity * multiplier) - entry_commission
-          --   (subtract commission: positive fee reduces proceeds, negative rebate increases proceeds)
+          DATE(COALESCE(entry_time, trade_date)) as date,
+          -- SHORT entry inflow: (entry_price * quantity * multiplier) - entry_commission
           COALESCE(SUM(
             CASE
-              WHEN side IN ('long', 'buy') AND exit_price IS NOT NULL
-                THEN (exit_price * quantity * (
-                  CASE
-                    WHEN instrument_type = 'option' THEN COALESCE(contract_size, 100)
-                    WHEN instrument_type = 'future' THEN COALESCE(point_value, 1)
-                    ELSE 1
-                  END
-                )) - (
-                  CASE
-                    WHEN COALESCE(exit_commission, 0) != 0 THEN COALESCE(exit_commission, 0)
-                    WHEN COALESCE(entry_commission, 0) = 0 AND COALESCE(commission, 0) != 0 THEN COALESCE(commission, 0) / 2
-                    ELSE 0
-                  END
-                ) - COALESCE(fees, 0)
               WHEN side IN ('short', 'sell') AND entry_price IS NOT NULL
                 THEN (entry_price * quantity * (
                   CASE
@@ -377,10 +367,8 @@ class Account {
                 )
               ELSE 0
             END
-          ), 0) as trade_inflow,
-          -- Outflow: money going OUT (purchase cost PLUS entry commission)
-          -- LONG entry (buying shares/contracts) = (entry_price * quantity * multiplier) + entry_commission
-          -- SHORT exit (covering) = (exit_price * quantity * multiplier) + exit_commission
+          ), 0) as inflow,
+          -- LONG entry outflow: (entry_price * quantity * multiplier) + entry_commission
           COALESCE(SUM(
             CASE
               WHEN side IN ('long', 'buy') AND entry_price IS NOT NULL
@@ -397,7 +385,57 @@ class Account {
                     ELSE 0
                   END
                 )
-              WHEN side IN ('short', 'sell') AND exit_price IS NOT NULL
+              ELSE 0
+            END
+          ), 0) as outflow,
+          -- Entry fees (entry_commission only)
+          COALESCE(SUM(
+            CASE
+              WHEN COALESCE(entry_commission, 0) != 0 THEN COALESCE(entry_commission, 0)
+              WHEN COALESCE(exit_commission, 0) = 0 AND COALESCE(commission, 0) != 0 THEN COALESCE(commission, 0) / 2
+              ELSE 0
+            END
+          ), 0) as fees
+        FROM trades
+        WHERE user_id = $1
+          AND (
+            ($2::varchar IS NOT NULL AND account_identifier = $2)
+            OR ($2::varchar IS NULL AND (account_identifier IS NULL OR account_identifier = ''))
+          )
+          AND DATE(COALESCE(entry_time, trade_date)) >= $3
+          AND DATE(COALESCE(entry_time, trade_date)) <= $4
+        GROUP BY DATE(COALESCE(entry_time, trade_date))
+      ),
+      exit_cashflows AS (
+        -- Cash flows that happen on EXIT date (when trade is closed)
+        -- LONG exit: Inflow (selling shares/contracts)
+        -- SHORT exit: Outflow (covering short position)
+        SELECT
+          DATE(exit_time) as date,
+          -- LONG exit inflow: (exit_price * quantity * multiplier) - exit_commission - fees
+          COALESCE(SUM(
+            CASE
+              WHEN side IN ('long', 'buy') AND exit_price IS NOT NULL AND exit_time IS NOT NULL
+                THEN (exit_price * quantity * (
+                  CASE
+                    WHEN instrument_type = 'option' THEN COALESCE(contract_size, 100)
+                    WHEN instrument_type = 'future' THEN COALESCE(point_value, 1)
+                    ELSE 1
+                  END
+                )) - (
+                  CASE
+                    WHEN COALESCE(exit_commission, 0) != 0 THEN COALESCE(exit_commission, 0)
+                    WHEN COALESCE(entry_commission, 0) = 0 AND COALESCE(commission, 0) != 0 THEN COALESCE(commission, 0) / 2
+                    ELSE 0
+                  END
+                ) - COALESCE(fees, 0)
+              ELSE 0
+            END
+          ), 0) as inflow,
+          -- SHORT exit outflow: (exit_price * quantity * multiplier) + exit_commission + fees
+          COALESCE(SUM(
+            CASE
+              WHEN side IN ('short', 'sell') AND exit_price IS NOT NULL AND exit_time IS NOT NULL
                 THEN (exit_price * quantity * (
                   CASE
                     WHEN instrument_type = 'option' THEN COALESCE(contract_size, 100)
@@ -413,13 +451,13 @@ class Account {
                 ) + COALESCE(fees, 0)
               ELSE 0
             END
-          ), 0) as trade_outflow,
-          -- Track total fees/commissions for reporting (not used in inflow/outflow calculation)
+          ), 0) as outflow,
+          -- Exit fees (exit_commission + fees)
           COALESCE(SUM(
             CASE
-              WHEN COALESCE(entry_commission, 0) != 0 OR COALESCE(exit_commission, 0) != 0
-                THEN COALESCE(entry_commission, 0) + COALESCE(exit_commission, 0)
-              ELSE COALESCE(commission, 0)
+              WHEN COALESCE(exit_commission, 0) != 0 THEN COALESCE(exit_commission, 0)
+              WHEN COALESCE(entry_commission, 0) = 0 AND COALESCE(commission, 0) != 0 THEN COALESCE(commission, 0) / 2
+              ELSE 0
             END +
             COALESCE(fees, 0)
           ), 0) as fees
@@ -429,9 +467,24 @@ class Account {
             ($2::varchar IS NOT NULL AND account_identifier = $2)
             OR ($2::varchar IS NULL AND (account_identifier IS NULL OR account_identifier = ''))
           )
-          AND trade_date >= $3
-          AND trade_date <= $4
-        GROUP BY trade_date
+          AND exit_time IS NOT NULL
+          AND DATE(exit_time) >= $3
+          AND DATE(exit_time) <= $4
+        GROUP BY DATE(exit_time)
+      ),
+      daily_trades AS (
+        -- Combine entry and exit cashflows by date
+        SELECT
+          date,
+          SUM(inflow) as trade_inflow,
+          SUM(outflow) as trade_outflow,
+          SUM(fees) as fees
+        FROM (
+          SELECT date, inflow, outflow, fees FROM entry_cashflows
+          UNION ALL
+          SELECT date, inflow, outflow, fees FROM exit_cashflows
+        ) combined
+        GROUP BY date
       ),
       daily_transactions AS (
         SELECT
