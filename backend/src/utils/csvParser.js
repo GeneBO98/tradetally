@@ -1412,7 +1412,8 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       console.log('Finished Questrade transaction parsing');
 
       // Apply trade grouping if enabled
-      if (tradeGroupingSettings.enabled) {
+      const tradeGroupingSettings = context.tradeGroupingSettings || { enabled: true, timeGapMinutes: 60 };
+      if (tradeGroupingSettings.enabled && result.length > 0) {
         return applyTradeGrouping(result, tradeGroupingSettings);
       }
 
