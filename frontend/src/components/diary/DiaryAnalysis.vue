@@ -123,12 +123,7 @@
       </div>
 
       <!-- Analysis Content -->
-      <div class="prose dark:prose-invert max-w-none">
-        <div 
-          v-html="formatAnalysisContent(analysis)"
-          class="whitespace-pre-wrap text-gray-800 dark:text-gray-200 leading-relaxed"
-        ></div>
-      </div>
+      <AIReportRenderer :content="analysis" />
 
       <!-- Actions -->
       <div class="flex justify-end space-x-3 pt-4 border-t border-gray-200 dark:border-gray-600">
@@ -177,6 +172,7 @@ import { ref, computed } from 'vue'
 import { format, subDays, subWeeks, subMonths, startOfWeek, startOfMonth } from 'date-fns'
 import { useDiaryStore } from '@/stores/diary'
 import api from '@/services/api'
+import AIReportRenderer from '@/components/ai/AIReportRenderer.vue'
 import {
   SparklesIcon,
   ExclamationTriangleIcon,
@@ -277,19 +273,6 @@ const startNewAnalysis = () => {
 
 const formatDate = (dateString) => {
   return format(new Date(dateString), 'MMM d, yyyy')
-}
-
-const formatAnalysisContent = (content) => {
-  if (!content) return ''
-  
-  // Convert markdown-like formatting to HTML
-  return content
-    .replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-gray-900 dark:text-white">$1</strong>')
-    .replace(/\*(.*?)\*/g, '<em>$1</em>')
-    .replace(/^\d+\.\s+/gm, '<br/><strong>$&</strong>')
-    .replace(/^-\s+/gm, '• ')
-    .replace(/\n\n/g, '<br/><br/>')
-    .replace(/\n/g, '<br/>')
 }
 
 const shareAnalysis = () => {
