@@ -695,21 +695,29 @@ function applyTradeGrouping(trades, settings) {
   console.log(`\n=== APPLYING TRADE GROUPING ===`);
   console.log(`Grouping ${trades.length} trades with ${settings.timeGapMinutes} minute time gap`);
 
-  // Group by symbol
-  const tradesBySymbol = {};
+  // Group by grouping key - for options, include strike/expiry/type to keep different contracts separate
+  const tradesByGroupKey = {};
   trades.forEach(trade => {
-    const symbol = trade.symbol;
-    if (!tradesBySymbol[symbol]) {
-      tradesBySymbol[symbol] = [];
+    let groupKey;
+    if (trade.instrumentType === 'option' && trade.strikePrice && trade.expirationDate && trade.optionType) {
+      // For options: group by underlying + strike + expiration + call/put
+      // This ensures different contracts on the same underlying are kept separate
+      groupKey = `${trade.symbol}_${trade.strikePrice}_${trade.expirationDate}_${trade.optionType}`;
+    } else {
+      // For stocks and other instruments: group by symbol only
+      groupKey = trade.symbol;
     }
-    tradesBySymbol[symbol].push(trade);
+    if (!tradesByGroupKey[groupKey]) {
+      tradesByGroupKey[groupKey] = [];
+    }
+    tradesByGroupKey[groupKey].push(trade);
   });
 
   const groupedTrades = [];
 
-  // Process each symbol separately
-  for (const [symbol, symbolTrades] of Object.entries(tradesBySymbol)) {
-    console.log(`\n[GROUPING] Processing ${symbolTrades.length} trades for ${symbol}`);
+  // Process each group separately
+  for (const [groupKey, symbolTrades] of Object.entries(tradesByGroupKey)) {
+    console.log(`\n[GROUPING] Processing ${symbolTrades.length} trades for ${groupKey}`);
 
     // Sort by entry time
     symbolTrades.sort((a, b) => new Date(a.entryTime) - new Date(b.entryTime));
