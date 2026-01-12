@@ -124,9 +124,17 @@ class BackupController {
         });
       }
 
+      // Validate file_path is within the expected backup directory (prevent path traversal)
+      const backupDir = path.resolve(__dirname, '../data/backups');
+      const resolvedPath = path.resolve(backup.file_path);
+      if (!resolvedPath.startsWith(backupDir + path.sep) && resolvedPath !== backupDir) {
+        console.error('[BACKUP] Path traversal attempt detected:', backup.file_path);
+        return res.status(400).json({ error: 'Invalid backup path' });
+      }
+
       // Check if file exists
       try {
-        await fs.access(backup.file_path);
+        await fs.access(resolvedPath);
       } catch (error) {
         return res.status(404).json({
           error: 'Backup file not found on disk'
@@ -134,7 +142,7 @@ class BackupController {
       }
 
       // Send file
-      res.download(backup.file_path, backup.filename, (err) => {
+      res.download(resolvedPath, backup.filename, (err) => {
         if (err) {
           console.error('[BACKUP] Error downloading file:', err);
           if (!res.headersSent) {
@@ -158,9 +166,17 @@ class BackupController {
 
       const backup = await backupService.getBackupById(id);
 
+      // Validate file_path is within the expected backup directory (prevent path traversal)
+      const backupDir = path.resolve(__dirname, '../data/backups');
+      const resolvedPath = path.resolve(backup.file_path);
+      if (!resolvedPath.startsWith(backupDir + path.sep) && resolvedPath !== backupDir) {
+        console.error('[BACKUP] Path traversal attempt detected:', backup.file_path);
+        return res.status(400).json({ error: 'Invalid backup path' });
+      }
+
       // Delete file if it exists
       try {
-        await fs.unlink(backup.file_path);
+        await fs.unlink(resolvedPath);
       } catch (error) {
         console.warn('[BACKUP] File not found on disk, continuing with database deletion');
       }
