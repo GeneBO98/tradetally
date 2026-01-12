@@ -238,9 +238,12 @@ Your response:`;
 
   async useGemini(prompt, settings, options = {}) {
     try {
+      const model = settings.model || 'gemini-1.5-flash';
       console.log('[GEMINI] Using Gemini provider with API key:', settings.apiKey ? 'PROVIDED' : 'MISSING');
-      // Use existing gemini utility with API key from settings
-      const response = await gemini.generateResponse(prompt, settings.apiKey, options);
+      console.log(`[GEMINI] Using model: ${model}`);
+      // Use existing gemini utility with API key and model from settings
+      const geminiOptions = { ...options, model };
+      const response = await gemini.generateResponse(prompt, settings.apiKey, geminiOptions);
       console.log('[GEMINI] Gemini response received:', response ? 'SUCCESS' : 'EMPTY');
       return response;
     } catch (error) {

@@ -92,25 +92,6 @@
           </div>
         </div>
 
-        <!-- Referral Code Banner -->
-        <div v-if="referralCreator" class="rounded-md bg-primary-50 dark:bg-primary-900/20 p-4">
-          <div class="flex">
-            <div class="flex-shrink-0">
-              <svg class="h-5 w-5 text-primary-400" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M5 2a2 2 0 00-2 2v14l3.5-2 3.5 2 3.5-2 3.5 2V4a2 2 0 00-2-2H5zm2.5 3a1.5 1.5 0 100 3 1.5 1.5 0 000-3zm6.207.293a1 1 0 00-1.414 0l-6 6a1 1 0 101.414 1.414l6-6a1 1 0 000-1.414zM12.5 10a1.5 1.5 0 100 3 1.5 1.5 0 000-3z" clip-rule="evenodd" />
-              </svg>
-            </div>
-            <div class="ml-3">
-              <p class="text-sm font-medium text-primary-800 dark:text-primary-300">
-                Referred by {{ referralCreator }}
-              </p>
-              <p class="text-xs text-primary-600 dark:text-primary-400 mt-1">
-                Use code <span class="font-mono font-bold">{{ form.referral_code }}</span> at checkout for your discount
-              </p>
-            </div>
-          </div>
-        </div>
-
         <!-- Marketing Consent Checkbox (only shown when billing is enabled) -->
         <div v-if="billingEnabled" class="flex items-start">
           <div class="flex items-center h-5">
@@ -164,11 +145,8 @@ const form = ref({
   username: '',
   email: '',
   password: '',
-  referral_code: '',
   marketing_consent: false
 })
-
-const referralCreator = ref(null)
 
 const registrationDisabled = ref(false)
 const billingEnabled = ref(false)
@@ -185,14 +163,6 @@ onMounted(async () => {
         router.push('/login')
       }, 5000)
     }
-
-    // Check for referral code in localStorage (set by /r/slug landing page)
-    const storedReferralCode = localStorage.getItem('referral_code')
-    const storedReferralCreator = localStorage.getItem('referral_creator')
-    if (storedReferralCode) {
-      form.value.referral_code = storedReferralCode
-      referralCreator.value = storedReferralCreator
-    }
   } catch (error) {
     console.error('Failed to fetch registration config:', error)
   }
@@ -201,10 +171,6 @@ onMounted(async () => {
 async function handleRegister() {
   try {
     const response = await authStore.register(form.value)
-
-    // Clear referral code from localStorage after successful registration
-    localStorage.removeItem('referral_code')
-    localStorage.removeItem('referral_creator')
 
     // Show success message
     showSuccess('Registration Successful', response.message)
