@@ -3046,15 +3046,21 @@ const tradeController = {
   async getTradeImage(req, res, next) {
     try {
       const { id: tradeId, filename } = req.params;
-      
+
+      // Sanitize filename to prevent path traversal attacks
+      const sanitizedFilename = path.basename(filename);
+      if (sanitizedFilename !== filename || filename.includes('..')) {
+        return res.status(400).json({ error: 'Invalid filename' });
+      }
+
       console.log('getTradeImage called:', {
         tradeId,
-        filename,
+        filename: sanitizedFilename,
         hasAuthHeader: !!req.header('Authorization'),
         hasQueryToken: !!req.query.token,
         userFromMiddleware: req.user?.id
       });
-      
+
       // Check if token is provided as query parameter
       let user = req.user;
       if (!user && req.query.token) {
@@ -3067,29 +3073,29 @@ const tradeController = {
           // Token is invalid, continue without user context
         }
       }
-      
+
       // Check if the attachment exists and belongs to the specified trade
       const attachmentQuery = `
-        SELECT ta.*, t.is_public, t.user_id 
-        FROM trade_attachments ta 
-        JOIN trades t ON ta.trade_id = t.id 
+        SELECT ta.*, t.is_public, t.user_id
+        FROM trade_attachments ta
+        JOIN trades t ON ta.trade_id = t.id
         WHERE ta.trade_id = $1 AND ta.file_url LIKE $2
       `;
-      
-      const attachmentResult = await db.query(attachmentQuery, [tradeId, `%${filename}`]);
-      
+
+      const attachmentResult = await db.query(attachmentQuery, [tradeId, `%${sanitizedFilename}`]);
+
       if (attachmentResult.rows.length === 0) {
         return res.status(404).json({ error: 'Image not found' });
       }
-      
+
       const attachment = attachmentResult.rows[0];
-      
+
       // Check access permissions - allow if trade is public, or if user owns the trade
       const hasAccess = attachment.is_public || (user && user.id === attachment.user_id);
-      
+
       if (!hasAccess) {
         console.log('Access denied for image:', {
-          filename,
+          filename: sanitizedFilename,
           tradeId,
           userId: user?.id,
           tradeOwnerId: attachment.user_id,
@@ -3099,11 +3105,19 @@ const tradeController = {
         return res.status(403).json({ error: 'Access denied' });
       }
 
-      const imagePath = path.join(__dirname, '../../uploads/trades', filename);
-      
+      // Build and validate file path to prevent path traversal
+      const uploadsDir = path.resolve(__dirname, '../../uploads/trades');
+      const imagePath = path.join(uploadsDir, sanitizedFilename);
+      const resolvedPath = path.resolve(imagePath);
+
+      // Verify the resolved path is within the uploads directory
+      if (!resolvedPath.startsWith(uploadsDir + path.sep) && resolvedPath !== uploadsDir) {
+        return res.status(400).json({ error: 'Invalid file path' });
+      }
+
       // Check if file exists
       try {
-        await fs.access(imagePath);
+        await fs.access(resolvedPath);
       } catch (error) {
         return res.status(404).json({ error: 'Image file not found on disk' });
       }
@@ -3111,9 +3125,9 @@ const tradeController = {
       // Set appropriate headers
       res.setHeader('Content-Type', attachment.file_type || 'image/webp');
       res.setHeader('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
-      
+
       // Send file
-      res.sendFile(path.resolve(imagePath));
+      res.sendFile(resolvedPath);
 
     } catch (error) {
       next(error);
