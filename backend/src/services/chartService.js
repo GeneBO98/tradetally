@@ -34,6 +34,10 @@ class ChartService {
               return chartData;
             } catch (avError) {
               console.error(`Alpha Vantage fallback also failed for ${symbol}: ${avError.message}`);
+              // Check if it's a service availability issue vs symbol issue
+              if (avError.message.includes('503') || avError.message.includes('timeout') || avError.message.includes('unavailable')) {
+                throw new Error(`Chart services are temporarily unavailable. Please try again later.`);
+              }
               throw new Error(`Chart data unavailable for ${symbol}. This symbol may be delisted, inactive, or not supported. Please try a different symbol like AAPL, MSFT, or GOOGL.`);
             }
           }

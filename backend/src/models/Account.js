@@ -336,19 +336,20 @@ class Account {
     // - Entry cash flows (LONG buy outflow, SHORT sell inflow) use entry_time date
     // - Exit cash flows (LONG sell inflow, SHORT cover outflow) use exit_time date
     //
-    // Commission handling (convention: positive = fee paid, negative = rebate received):
-    // - Entry commission: Added to outflow (increases cost basis) for LONG entries
-    //                     Subtracted from inflow (fees reduce proceeds, rebates add to proceeds) for SHORT entries
-    // - Exit commission: Subtracted from inflow (reduces sale proceeds) for LONG exits
-    //                    Added to outflow (cost) for SHORT exits
+    // Commission handling - SEPARATED from trade values to match broker statements:
+    // - Trade values are calculated as RAW values (price * quantity * multiplier)
+    // - Commission charges (positive values) are added to Outflows
+    // - Commission rebates (negative values) are added to Inflows (as positive amounts)
+    // - This matches how broker statements typically show these as separate line items
     const query = `
       WITH entry_cashflows AS (
         -- Cash flows that happen on ENTRY date (when trade is opened)
-        -- LONG entry: Outflow (buying shares/contracts)
-        -- SHORT entry: Inflow (short sale proceeds)
+        -- LONG entry: Outflow = raw trade value (buying shares/contracts)
+        -- SHORT entry: Inflow = raw trade value (short sale proceeds)
+        -- Commission is tracked separately, not embedded in trade values
         SELECT
           DATE(COALESCE(entry_time, trade_date)) as date,
-          -- SHORT entry inflow: (entry_price * quantity * multiplier) - entry_commission
+          -- SHORT entry inflow: raw trade value only
           COALESCE(SUM(
             CASE
               WHEN side IN ('short', 'sell') AND entry_price IS NOT NULL
@@ -358,23 +359,11 @@ class Account {
                     WHEN instrument_type = 'future' THEN COALESCE(point_value, 1)
                     ELSE 1
                   END
-                )) - (
-                  -- Entry commission calculation:
-                  -- 1. If entry_commission is explicitly set and different from total (properly split), use it
-                  -- 2. If entry_commission = 0 or entry_commission = commission (migrated/old trades), split 50/50
-                  -- 3. Otherwise use entry_commission
-                  CASE
-                    WHEN COALESCE(entry_commission, 0) != 0 AND COALESCE(entry_commission, 0) != COALESCE(commission, 0)
-                      THEN COALESCE(entry_commission, 0)
-                    WHEN COALESCE(commission, 0) != 0
-                      THEN COALESCE(commission, 0) / 2.0
-                    ELSE 0
-                  END
-                )
+                ))
               ELSE 0
             END
-          ), 0) as inflow,
-          -- LONG entry outflow: (entry_price * quantity * multiplier) + entry_commission
+          ), 0) as trade_inflow,
+          -- LONG entry outflow: raw trade value only
           COALESCE(SUM(
             CASE
               WHEN side IN ('long', 'buy') AND entry_price IS NOT NULL
@@ -384,28 +373,21 @@ class Account {
                     WHEN instrument_type = 'future' THEN COALESCE(point_value, 1)
                     ELSE 1
                   END
-                )) + (
-                  CASE
-                    WHEN COALESCE(entry_commission, 0) != 0 AND COALESCE(entry_commission, 0) != COALESCE(commission, 0)
-                      THEN COALESCE(entry_commission, 0)
-                    WHEN COALESCE(commission, 0) != 0
-                      THEN COALESCE(commission, 0) / 2.0
-                    ELSE 0
-                  END
-                )
+                ))
               ELSE 0
             END
-          ), 0) as outflow,
-          -- Entry fees (entry_commission only)
+          ), 0) as trade_outflow,
+          -- Entry commission (to be split into inflow/outflow based on sign)
+          -- Use entry_commission if set and different from total, otherwise split total 50/50
           COALESCE(SUM(
             CASE
               WHEN COALESCE(entry_commission, 0) != 0 AND COALESCE(entry_commission, 0) != COALESCE(commission, 0)
-                THEN COALESCE(entry_commission, 0)
+                THEN entry_commission
               WHEN COALESCE(commission, 0) != 0
-                THEN COALESCE(commission, 0) / 2.0
+                THEN commission / 2.0
               ELSE 0
             END
-          ), 0) as fees
+          ), 0) as commission_amount
         FROM trades
         WHERE user_id = $1
           AND (
@@ -418,11 +400,12 @@ class Account {
       ),
       exit_cashflows AS (
         -- Cash flows that happen on EXIT date (when trade is closed)
-        -- LONG exit: Inflow (selling shares/contracts)
-        -- SHORT exit: Outflow (covering short position)
+        -- LONG exit: Inflow = raw trade value (selling shares/contracts)
+        -- SHORT exit: Outflow = raw trade value (covering short position)
+        -- Commission and fees are tracked separately
         SELECT
           DATE(exit_time) as date,
-          -- LONG exit inflow: (exit_price * quantity * multiplier) - exit_commission - fees
+          -- LONG exit inflow: raw trade value only
           COALESCE(SUM(
             CASE
               WHEN side IN ('long', 'buy') AND exit_price IS NOT NULL AND exit_time IS NOT NULL
@@ -432,26 +415,11 @@ class Account {
                     WHEN instrument_type = 'future' THEN COALESCE(point_value, 1)
                     ELSE 1
                   END
-                )) - (
-                  -- Exit commission calculation:
-                  -- 1. If exit_commission is explicitly set, use it
-                  -- 2. If entry_commission = 0 or entry_commission = commission (migrated/old trades), split 50/50
-                  -- 3. Otherwise use remaining (commission - entry_commission)
-                  CASE
-                    WHEN COALESCE(exit_commission, 0) != 0 THEN COALESCE(exit_commission, 0)
-                    WHEN COALESCE(commission, 0) != 0 THEN
-                      CASE
-                        WHEN COALESCE(entry_commission, 0) = 0 OR COALESCE(entry_commission, 0) = COALESCE(commission, 0)
-                          THEN COALESCE(commission, 0) / 2.0
-                        ELSE GREATEST(0, COALESCE(commission, 0) - COALESCE(entry_commission, 0))
-                      END
-                    ELSE 0
-                  END
-                ) - COALESCE(fees, 0)
+                ))
               ELSE 0
             END
-          ), 0) as inflow,
-          -- SHORT exit outflow: (exit_price * quantity * multiplier) + exit_commission + fees
+          ), 0) as trade_inflow,
+          -- SHORT exit outflow: raw trade value only
           COALESCE(SUM(
             CASE
               WHEN side IN ('short', 'sell') AND exit_price IS NOT NULL AND exit_time IS NOT NULL
@@ -461,35 +429,25 @@ class Account {
                     WHEN instrument_type = 'future' THEN COALESCE(point_value, 1)
                     ELSE 1
                   END
-                )) + (
-                  CASE
-                    WHEN COALESCE(exit_commission, 0) != 0 THEN COALESCE(exit_commission, 0)
-                    WHEN COALESCE(commission, 0) != 0 THEN
-                      CASE
-                        WHEN COALESCE(entry_commission, 0) = 0 OR COALESCE(entry_commission, 0) = COALESCE(commission, 0)
-                          THEN COALESCE(commission, 0) / 2.0
-                        ELSE GREATEST(0, COALESCE(commission, 0) - COALESCE(entry_commission, 0))
-                      END
-                    ELSE 0
-                  END
-                ) + COALESCE(fees, 0)
+                ))
               ELSE 0
             END
-          ), 0) as outflow,
-          -- Exit fees (exit_commission + fees)
+          ), 0) as trade_outflow,
+          -- Exit commission + fees (to be split into inflow/outflow based on sign)
           COALESCE(SUM(
             CASE
-              WHEN COALESCE(exit_commission, 0) != 0 THEN COALESCE(exit_commission, 0)
+              WHEN COALESCE(exit_commission, 0) != 0 THEN exit_commission
               WHEN COALESCE(commission, 0) != 0 THEN
                 CASE
                   WHEN COALESCE(entry_commission, 0) = 0 OR COALESCE(entry_commission, 0) = COALESCE(commission, 0)
-                    THEN COALESCE(commission, 0) / 2.0
-                  ELSE GREATEST(0, COALESCE(commission, 0) - COALESCE(entry_commission, 0))
+                    THEN commission / 2.0
+                  ELSE GREATEST(0, commission - COALESCE(entry_commission, 0))
                 END
               ELSE 0
-            END +
-            COALESCE(fees, 0)
-          ), 0) as fees
+            END
+          ), 0) as commission_amount,
+          -- Separate fees field (always positive = outflow)
+          COALESCE(SUM(COALESCE(fees, 0)), 0) as other_fees
         FROM trades
         WHERE user_id = $1
           AND (
@@ -503,15 +461,19 @@ class Account {
       ),
       daily_trades AS (
         -- Combine entry and exit cashflows by date
+        -- Commission handling: positive = outflow (fee), negative = inflow (rebate)
         SELECT
           date,
-          SUM(inflow) as trade_inflow,
-          SUM(outflow) as trade_outflow,
-          SUM(fees) as fees
+          -- Trade inflows + commission rebates (negative commissions become positive inflows)
+          SUM(trade_inflow) + SUM(CASE WHEN commission_amount < 0 THEN ABS(commission_amount) ELSE 0 END) as trade_inflow,
+          -- Trade outflows + commission charges (positive commissions) + other fees
+          SUM(trade_outflow) + SUM(CASE WHEN commission_amount > 0 THEN commission_amount ELSE 0 END) + SUM(COALESCE(other_fees, 0)) as trade_outflow,
+          -- Track total fees (for display purposes, includes both charges and rebates as net)
+          SUM(commission_amount) + SUM(COALESCE(other_fees, 0)) as fees
         FROM (
-          SELECT date, inflow, outflow, fees FROM entry_cashflows
+          SELECT date, trade_inflow, trade_outflow, commission_amount, 0::numeric as other_fees FROM entry_cashflows
           UNION ALL
-          SELECT date, inflow, outflow, fees FROM exit_cashflows
+          SELECT date, trade_inflow, trade_outflow, commission_amount, other_fees FROM exit_cashflows
         ) combined
         GROUP BY date
       ),
