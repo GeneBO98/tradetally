@@ -806,6 +806,8 @@ function applyTradeGrouping(trades, settings) {
           // Combine costs
           currentGroup.commission = (currentGroup.commission || 0) + (trade.commission || 0);
           currentGroup.fees = (currentGroup.fees || 0) + (trade.fees || 0);
+          currentGroup.entryCommission = (currentGroup.entryCommission || 0) + (trade.entryCommission || 0);
+          currentGroup.exitCommission = (currentGroup.exitCommission || 0) + (trade.exitCommission || 0);
           const totalFees = (currentGroup.commission || 0) + (currentGroup.fees || 0);
 
           // Track grouped count
@@ -2466,6 +2468,22 @@ async function parseLightspeedTransactions(records, existingPositions = {}, user
         currentTrade.pnlPercent = (currentTrade.pnl / currentTrade.entryValue) * 100;
         currentTrade.quantity = currentTrade.totalQuantity;
         currentTrade.commission = currentTrade.totalFees;
+
+        // Calculate split commissions based on entry vs exit executions
+        // This ensures fees are attributed to the correct date for cashflow calculations
+        let entryCommission = 0;
+        let exitCommission = 0;
+        currentTrade.executions.forEach(exec => {
+          if ((currentTrade.side === 'long' && exec.action === 'buy') ||
+              (currentTrade.side === 'short' && exec.action === 'sell')) {
+            entryCommission += exec.fees || 0;
+          } else {
+            exitCommission += exec.fees || 0;
+          }
+        });
+        currentTrade.entryCommission = entryCommission;
+        currentTrade.exitCommission = exitCommission;
+
         currentTrade.fees = 0;
         // FIXED: Calculate proper entry and exit times from all executions
         const executionTimes = currentTrade.executions
@@ -2530,10 +2548,26 @@ async function parseLightspeedTransactions(records, existingPositions = {}, user
       currentTrade.entryPrice = currentTrade.entryValue / (currentTrade.totalQuantity * valueMultiplier);
       currentTrade.exitPrice = null;
       currentTrade.quantity = netQuantity; // Use actual net position
-      
+
       // ALSO fix totalQuantity for display consistency
       currentTrade.totalQuantity = netQuantity;
       currentTrade.commission = currentTrade.totalFees;
+
+      // Calculate split commissions based on entry vs exit executions
+      // For open positions, all fees are entry fees (no exit yet)
+      let entryCommission = 0;
+      let exitCommission = 0;
+      currentTrade.executions.forEach(exec => {
+        if ((currentTrade.side === 'long' && exec.action === 'buy') ||
+            (currentTrade.side === 'short' && exec.action === 'sell')) {
+          entryCommission += exec.fees || 0;
+        } else {
+          exitCommission += exec.fees || 0;
+        }
+      });
+      currentTrade.entryCommission = entryCommission;
+      currentTrade.exitCommission = exitCommission;
+
       currentTrade.fees = 0;
       currentTrade.exitTime = null;
       currentTrade.pnl = 0;

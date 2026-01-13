@@ -359,9 +359,15 @@ class Account {
                     ELSE 1
                   END
                 )) - (
+                  -- Entry commission calculation:
+                  -- 1. If entry_commission is explicitly set and different from total (properly split), use it
+                  -- 2. If entry_commission = 0 or entry_commission = commission (migrated/old trades), split 50/50
+                  -- 3. Otherwise use entry_commission
                   CASE
-                    WHEN COALESCE(entry_commission, 0) != 0 THEN COALESCE(entry_commission, 0)
-                    WHEN COALESCE(exit_commission, 0) = 0 AND COALESCE(commission, 0) != 0 THEN COALESCE(commission, 0) / 2
+                    WHEN COALESCE(entry_commission, 0) != 0 AND COALESCE(entry_commission, 0) != COALESCE(commission, 0)
+                      THEN COALESCE(entry_commission, 0)
+                    WHEN COALESCE(commission, 0) != 0
+                      THEN COALESCE(commission, 0) / 2.0
                     ELSE 0
                   END
                 )
@@ -380,8 +386,10 @@ class Account {
                   END
                 )) + (
                   CASE
-                    WHEN COALESCE(entry_commission, 0) != 0 THEN COALESCE(entry_commission, 0)
-                    WHEN COALESCE(exit_commission, 0) = 0 AND COALESCE(commission, 0) != 0 THEN COALESCE(commission, 0) / 2
+                    WHEN COALESCE(entry_commission, 0) != 0 AND COALESCE(entry_commission, 0) != COALESCE(commission, 0)
+                      THEN COALESCE(entry_commission, 0)
+                    WHEN COALESCE(commission, 0) != 0
+                      THEN COALESCE(commission, 0) / 2.0
                     ELSE 0
                   END
                 )
@@ -391,8 +399,10 @@ class Account {
           -- Entry fees (entry_commission only)
           COALESCE(SUM(
             CASE
-              WHEN COALESCE(entry_commission, 0) != 0 THEN COALESCE(entry_commission, 0)
-              WHEN COALESCE(exit_commission, 0) = 0 AND COALESCE(commission, 0) != 0 THEN COALESCE(commission, 0) / 2
+              WHEN COALESCE(entry_commission, 0) != 0 AND COALESCE(entry_commission, 0) != COALESCE(commission, 0)
+                THEN COALESCE(entry_commission, 0)
+              WHEN COALESCE(commission, 0) != 0
+                THEN COALESCE(commission, 0) / 2.0
               ELSE 0
             END
           ), 0) as fees
@@ -423,9 +433,18 @@ class Account {
                     ELSE 1
                   END
                 )) - (
+                  -- Exit commission calculation:
+                  -- 1. If exit_commission is explicitly set, use it
+                  -- 2. If entry_commission = 0 or entry_commission = commission (migrated/old trades), split 50/50
+                  -- 3. Otherwise use remaining (commission - entry_commission)
                   CASE
                     WHEN COALESCE(exit_commission, 0) != 0 THEN COALESCE(exit_commission, 0)
-                    WHEN COALESCE(entry_commission, 0) = 0 AND COALESCE(commission, 0) != 0 THEN COALESCE(commission, 0) / 2
+                    WHEN COALESCE(commission, 0) != 0 THEN
+                      CASE
+                        WHEN COALESCE(entry_commission, 0) = 0 OR COALESCE(entry_commission, 0) = COALESCE(commission, 0)
+                          THEN COALESCE(commission, 0) / 2.0
+                        ELSE GREATEST(0, COALESCE(commission, 0) - COALESCE(entry_commission, 0))
+                      END
                     ELSE 0
                   END
                 ) - COALESCE(fees, 0)
@@ -445,7 +464,12 @@ class Account {
                 )) + (
                   CASE
                     WHEN COALESCE(exit_commission, 0) != 0 THEN COALESCE(exit_commission, 0)
-                    WHEN COALESCE(entry_commission, 0) = 0 AND COALESCE(commission, 0) != 0 THEN COALESCE(commission, 0) / 2
+                    WHEN COALESCE(commission, 0) != 0 THEN
+                      CASE
+                        WHEN COALESCE(entry_commission, 0) = 0 OR COALESCE(entry_commission, 0) = COALESCE(commission, 0)
+                          THEN COALESCE(commission, 0) / 2.0
+                        ELSE GREATEST(0, COALESCE(commission, 0) - COALESCE(entry_commission, 0))
+                      END
                     ELSE 0
                   END
                 ) + COALESCE(fees, 0)
@@ -456,7 +480,12 @@ class Account {
           COALESCE(SUM(
             CASE
               WHEN COALESCE(exit_commission, 0) != 0 THEN COALESCE(exit_commission, 0)
-              WHEN COALESCE(entry_commission, 0) = 0 AND COALESCE(commission, 0) != 0 THEN COALESCE(commission, 0) / 2
+              WHEN COALESCE(commission, 0) != 0 THEN
+                CASE
+                  WHEN COALESCE(entry_commission, 0) = 0 OR COALESCE(entry_commission, 0) = COALESCE(commission, 0)
+                    THEN COALESCE(commission, 0) / 2.0
+                  ELSE GREATEST(0, COALESCE(commission, 0) - COALESCE(entry_commission, 0))
+                END
               ELSE 0
             END +
             COALESCE(fees, 0)
