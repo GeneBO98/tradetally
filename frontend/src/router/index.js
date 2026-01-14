@@ -71,13 +71,13 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
-      path: '/analytics',
-      name: 'analytics',
+      path: '/metrics',
+      name: 'metrics',
       component: () => import('@/views/AnalyticsView.vue'),
       meta: { requiresAuth: true }
     },
     {
-      path: '/analytics/monthly',
+      path: '/metrics/monthly',
       name: 'monthly-performance',
       component: () => import('@/views/MonthlyPerformanceView.vue'),
       meta: { requiresAuth: true }
@@ -89,13 +89,13 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
-      path: '/analytics/behavioral',
+      path: '/metrics/behavioral',
       name: 'behavioral-analytics',
       component: () => import('@/views/BehavioralAnalyticsView.vue'),
       meta: { requiresAuth: true, requiresTier: 'pro' }
     },
     {
-      path: '/analytics/health',
+      path: '/metrics/health',
       name: 'health-analytics',
       component: () => import('@/views/HealthAnalyticsView.vue'),
       meta: { requiresAuth: true, requiresTier: 'pro' }
@@ -289,21 +289,27 @@ const router = createRouter({
       meta: { requiresAuth: true, requiresTier: 'pro' }
     },
     {
-      path: '/investments',
-      name: 'investments',
+      path: '/analysis',
+      name: 'analysis',
       component: () => import('@/views/InvestmentsView.vue'),
       meta: { requiresAuth: true, requiresTier: 'pro' }
     },
     {
-      path: '/investments/analyze/:symbol',
+      path: '/analysis/analyze/:symbol',
       name: 'stock-analysis',
       component: () => import('@/views/StockAnalysisView.vue'),
       meta: { requiresAuth: true, requiresTier: 'pro' }
     },
     {
-      path: '/investments/holdings/:id',
+      path: '/analysis/holdings/:id',
       name: 'holding-detail',
       component: () => import('@/views/HoldingDetailView.vue'),
+      meta: { requiresAuth: true, requiresTier: 'pro' }
+    },
+    {
+      path: '/analysis/trade-management',
+      name: 'trade-management',
+      component: () => import('@/views/TradeManagementView.vue'),
       meta: { requiresAuth: true, requiresTier: 'pro' }
     },
     {
@@ -327,6 +333,35 @@ const router = createRouter({
     {
       path: '/gamification',
       redirect: '/leaderboard'
+    },
+    // Backwards-compatible redirects for renamed routes
+    {
+      path: '/analytics',
+      redirect: '/metrics'
+    },
+    {
+      path: '/analytics/monthly',
+      redirect: '/metrics/monthly'
+    },
+    {
+      path: '/analytics/behavioral',
+      redirect: '/metrics/behavioral'
+    },
+    {
+      path: '/analytics/health',
+      redirect: '/metrics/health'
+    },
+    {
+      path: '/investments',
+      redirect: '/analysis'
+    },
+    {
+      path: '/investments/analyze/:symbol',
+      redirect: to => `/analysis/analyze/${to.params.symbol}`
+    },
+    {
+      path: '/investments/holdings/:id',
+      redirect: to => `/analysis/holdings/${to.params.id}`
     }
   ]
 })

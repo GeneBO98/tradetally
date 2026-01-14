@@ -575,8 +575,9 @@ const settingsController = {
           aiApiKey: settings.ai_api_key,
           aiApiUrl: settings.ai_api_url,
           aiModel: settings.ai_model,
-          // Stop loss setting
+          // Stop loss and take profit settings
           defaultStopLossPercent: settings.default_stop_loss_percent,
+          defaultTakeProfitPercent: settings.default_take_profit_percent,
           // Analytics chart layout
           analyticsChartLayout: settings.analytics_chart_layout,
           // Auto-close expired options
@@ -1033,8 +1034,8 @@ const settingsController = {
                 experience_level, average_position_size, trading_goals, preferred_sectors,
                 enable_trade_grouping, trade_grouping_time_gap_minutes,
                 default_broker, ai_provider, ai_api_key, ai_api_url, ai_model,
-                default_stop_loss_percent, analytics_chart_layout, auto_close_expired_options
-              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)`,
+                default_stop_loss_percent, default_take_profit_percent, analytics_chart_layout, auto_close_expired_options
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)`,
               [
                 userId,
                 s.emailNotifications ?? true,
@@ -1057,6 +1058,7 @@ const settingsController = {
                 s.aiApiUrl || null,
                 s.aiModel || null,
                 s.defaultStopLossPercent || null,
+                s.defaultTakeProfitPercent || null,
                 s.analyticsChartLayout ? JSON.stringify(s.analyticsChartLayout) : null,
                 s.autoCloseExpiredOptions ?? false
               ]
@@ -1108,6 +1110,10 @@ const settingsController = {
             if (s.defaultStopLossPercent !== undefined) {
               updates.push(`default_stop_loss_percent = $${paramCount++}`);
               values.push(s.defaultStopLossPercent);
+            }
+            if (s.defaultTakeProfitPercent !== undefined) {
+              updates.push(`default_take_profit_percent = $${paramCount++}`);
+              values.push(s.defaultTakeProfitPercent);
             }
             if (s.analyticsChartLayout) {
               updates.push(`analytics_chart_layout = $${paramCount++}`);
