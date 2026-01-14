@@ -430,6 +430,24 @@ const analyticsController = {
             : 'COALESCE(AVG(r_value) FILTER (WHERE r_value IS NOT NULL AND stop_loss IS NOT NULL), 0)::numeric as avg_r_value'
           },
           COALESCE(SUM(r_value) FILTER (WHERE r_value IS NOT NULL AND stop_loss IS NOT NULL), 0)::numeric as total_r_value,
+          -- R-value specific stats (only trades with stop_loss set)
+          (SELECT COUNT(*) FROM completed_trades WHERE stop_loss IS NOT NULL)::integer as r_total_trades,
+          (SELECT COUNT(*) FROM completed_trades WHERE pnl > 0 AND stop_loss IS NOT NULL)::integer as r_winning_trades,
+          (SELECT COUNT(*) FROM completed_trades WHERE pnl < 0 AND stop_loss IS NOT NULL)::integer as r_losing_trades,
+          (SELECT COUNT(*) FROM completed_trades WHERE pnl = 0 AND stop_loss IS NOT NULL)::integer as r_breakeven_trades,
+          COALESCE(SUM(pnl) FILTER (WHERE stop_loss IS NOT NULL), 0)::numeric as r_total_pnl,
+          ${useMedian
+            ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE stop_loss IS NOT NULL), 0)::numeric as r_avg_pnl'
+            : 'COALESCE(AVG(pnl) FILTER (WHERE stop_loss IS NOT NULL), 0)::numeric as r_avg_pnl'
+          },
+          ${useMedian
+            ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE pnl > 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_win'
+            : 'COALESCE(AVG(pnl) FILTER (WHERE pnl > 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_win'
+          },
+          ${useMedian
+            ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE pnl < 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_loss'
+            : 'COALESCE(AVG(pnl) FILTER (WHERE pnl < 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_loss'
+          },
           -- Best/worst trades
           (SELECT individual_best_trade FROM individual_trades) as best_trade,
           (SELECT individual_worst_trade FROM individual_trades) as worst_trade,

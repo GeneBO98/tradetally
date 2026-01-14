@@ -146,6 +146,19 @@ const serverController = {
   },
 
   /**
+   * Check for available updates from GitHub releases
+   */
+  async checkForUpdates(req, res, next) {
+    try {
+      const versionService = require('../../services/versionService');
+      const result = await versionService.checkForUpdates();
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
    * Get server capabilities
    */
   async getCapabilities(req, res, next) {

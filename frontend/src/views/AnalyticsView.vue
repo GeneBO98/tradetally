@@ -147,12 +147,12 @@
         <div class="card card-mobile-safe flex-1">
           <div class="card-body">
             <dt class="text-data-secondary truncate">
-              Total P&L
+              Total P&L{{ rValueMode ? ' (R-Trades)' : '' }}
             </dt>
             <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold whitespace-nowrap" :class="[
-              overview.total_pnl >= 0 ? 'text-green-600' : 'text-red-600'
+              displayOverview.total_pnl >= 0 ? 'text-green-600' : 'text-red-600'
             ]">
-              ${{ formatNumber(overview.total_pnl) }}
+              ${{ formatNumber(displayOverview.total_pnl) }}
             </dd>
           </div>
         </div>
@@ -160,10 +160,10 @@
         <div class="card card-mobile-safe flex-1">
           <div class="card-body">
             <dt class="text-data-secondary truncate">
-              Win Rate
+              Win Rate{{ rValueMode ? ' (R-Trades)' : '' }}
             </dt>
             <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-gray-900 dark:text-white whitespace-nowrap">
-              {{ overview.win_rate }}%
+              {{ displayOverview.win_rate }}%
             </dd>
           </div>
         </div>
@@ -171,10 +171,10 @@
         <div class="card card-mobile-safe flex-1">
           <div class="card-body">
             <dt class="text-data-secondary truncate">
-              Total Trades
+              Total Trades{{ rValueMode ? ' (R-Trades)' : '' }}
             </dt>
             <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-gray-900 dark:text-white whitespace-nowrap">
-              {{ overview.total_trades }}
+              {{ displayOverview.total_trades }}
             </dd>
           </div>
         </div>
@@ -182,12 +182,12 @@
         <div class="card card-mobile-safe flex-1">
           <div class="card-body">
             <dt class="text-data-secondary truncate">
-              {{ calculationMethod }} Trade
+              {{ calculationMethod }} Trade{{ rValueMode ? ' (R-Trades)' : '' }}
             </dt>
             <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold whitespace-nowrap" :class="[
-              overview.avg_pnl >= 0 ? 'text-green-600' : 'text-red-600'
+              displayOverview.avg_pnl >= 0 ? 'text-green-600' : 'text-red-600'
             ]">
-              ${{ formatNumber(overview.avg_pnl) }}
+              ${{ formatNumber(displayOverview.avg_pnl) }}
             </dd>
           </div>
         </div>
@@ -195,10 +195,10 @@
         <div class="card card-mobile-safe flex-1">
           <div class="card-body">
             <dt class="text-data-secondary truncate">
-              Profit Factor
+              Profit Factor{{ rValueMode ? ' (R-Trades)' : '' }}
             </dt>
             <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-gray-900 dark:text-white whitespace-nowrap">
-              {{ overview.profit_factor ?? '0.00' }}
+              {{ displayOverview.profit_factor ?? '0.00' }}
             </dd>
           </div>
         </div>
@@ -471,31 +471,31 @@
                 <div class="flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800 rounded p-1 -m-1">
                   <span class="text-sm text-gray-500 dark:text-gray-400">Winning Trades</span>
                   <span class="text-sm font-medium text-green-600">
-                    {{ overview.winning_trades }} ({{ getWinPercentage() }}%)
+                    {{ displayOverview.winning_trades }} ({{ getWinPercentage() }}%)
                   </span>
                 </div>
                 <div class="flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800 rounded p-1 -m-1">
                   <span class="text-sm text-gray-500 dark:text-gray-400">Losing Trades</span>
                   <span class="text-sm font-medium text-red-600">
-                    {{ overview.losing_trades }} ({{ getLossPercentage() }}%)
+                    {{ displayOverview.losing_trades }} ({{ getLossPercentage() }}%)
                   </span>
                 </div>
                 <div class="flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800 rounded p-1 -m-1">
                   <span class="text-sm text-gray-500 dark:text-gray-400">Breakeven Trades</span>
                   <span class="text-sm font-medium text-gray-500">
-                    {{ overview.breakeven_trades }}
+                    {{ displayOverview.breakeven_trades }}
                   </span>
                 </div>
                 <div class="flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800 rounded p-1 -m-1">
                   <span class="text-sm text-gray-500 dark:text-gray-400">{{ calculationMethod }} Win</span>
                   <span class="text-sm font-medium text-green-600">
-                    ${{ formatNumber(overview.avg_win) }}
+                    ${{ formatNumber(displayOverview.avg_win) }}
                   </span>
                 </div>
                 <div class="flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800 rounded p-1 -m-1">
                   <span class="text-sm text-gray-500 dark:text-gray-400">{{ calculationMethod }} Loss</span>
                   <span class="text-sm font-medium text-red-600">
-                    ${{ formatNumber(Math.abs(overview.avg_loss)) }}
+                    ${{ formatNumber(Math.abs(displayOverview.avg_loss)) }}
                   </span>
                 </div>
                 <div class="flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800 rounded p-1 -m-1">
@@ -1524,6 +1524,41 @@ const filteredHourOfDayStats = computed(() => {
   )
 })
 
+// Display overview - switches between regular and R-value filtered stats based on mode
+const displayOverview = computed(() => {
+  if (!rValueMode.value) {
+    return overview.value
+  }
+
+  // In R-value mode, use the R-specific stats from the backend
+  const rTotalTrades = overview.value.r_total_trades || 0
+  const rWinningTrades = overview.value.r_winning_trades || 0
+  const rWinRate = rTotalTrades > 0 ? Math.round((rWinningTrades / rTotalTrades) * 100) : 0
+
+  // Calculate profit factor for R-value trades
+  const rGrossWins = overview.value.r_winning_trades > 0
+    ? Math.abs(parseFloat(overview.value.r_avg_win || 0) * overview.value.r_winning_trades)
+    : 0
+  const rGrossLosses = overview.value.r_losing_trades > 0
+    ? Math.abs(parseFloat(overview.value.r_avg_loss || 0) * overview.value.r_losing_trades)
+    : 0
+  const rProfitFactor = rGrossLosses > 0 ? (rGrossWins / rGrossLosses).toFixed(2) : rGrossWins > 0 ? 'Inf' : '0.00'
+
+  return {
+    ...overview.value,
+    total_trades: rTotalTrades,
+    winning_trades: rWinningTrades,
+    losing_trades: overview.value.r_losing_trades || 0,
+    breakeven_trades: overview.value.r_breakeven_trades || 0,
+    win_rate: rWinRate,
+    total_pnl: parseFloat(overview.value.r_total_pnl || 0),
+    avg_pnl: parseFloat(overview.value.r_avg_pnl || 0),
+    avg_win: parseFloat(overview.value.r_avg_win || 0),
+    avg_loss: parseFloat(overview.value.r_avg_loss || 0),
+    profit_factor: rProfitFactor
+  }
+})
+
 // Computed property for visible charts in order
 const visibleCharts = computed(() => {
   return chartLayout.value.filter(chart => chart.visible)
@@ -1746,13 +1781,13 @@ function formatHour(hour) {
 }
 
 function getWinPercentage() {
-  if (overview.value.total_trades === 0) return 0
-  return ((overview.value.winning_trades / overview.value.total_trades) * 100).toFixed(1)
+  if (displayOverview.value.total_trades === 0) return 0
+  return ((displayOverview.value.winning_trades / displayOverview.value.total_trades) * 100).toFixed(1)
 }
 
 function getLossPercentage() {
-  if (overview.value.total_trades === 0) return 0
-  return ((overview.value.losing_trades / overview.value.total_trades) * 100).toFixed(1)
+  if (displayOverview.value.total_trades === 0) return 0
+  return ((displayOverview.value.losing_trades / displayOverview.value.total_trades) * 100).toFixed(1)
 }
 
 function getSQNInterpretation(sqn) {

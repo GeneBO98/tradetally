@@ -9,6 +9,7 @@ router.get('/features', serverController.getFeatures);
 
 // API version and capabilities
 router.get('/version', serverController.getVersion);
+router.get('/updates', serverController.checkForUpdates);
 router.get('/capabilities', serverController.getCapabilities);
 router.get('/endpoints', serverController.getEndpoints);
 
