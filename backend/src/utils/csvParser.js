@@ -46,12 +46,16 @@ function isExecutionDuplicate(execution, symbol, context) {
     }
 
     // Fallback to timestamp + quantity + price matching
+    // Handle both naming conventions: datetime/price OR entryTime/entryPrice
+    const existingDatetime = existingExec.datetime || existingExec.entryTime;
+    const existingPrice = existingExec.price ?? existingExec.entryPrice;
+
     // Skip if datetime is missing
-    if (!existingExec.datetime) {
+    if (!existingDatetime) {
       return false;
     }
 
-    const existingTime = new Date(existingExec.datetime).getTime();
+    const existingTime = new Date(existingDatetime).getTime();
     const newTime = new Date(execution.datetime).getTime();
 
     // Skip if dates are invalid
@@ -64,7 +68,7 @@ function isExecutionDuplicate(execution, symbol, context) {
     // Allow up to 1 second difference in timestamps (some brokers round differently)
     return timeDiff <= 1000 &&
            existingExec.quantity === execution.quantity &&
-           Math.abs((existingExec.price || 0) - (execution.price || 0)) < 0.01;
+           Math.abs((existingPrice || 0) - (execution.price || 0)) < 0.01;
   });
 }
 
@@ -1415,11 +1419,9 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       const result = await parseQuestradeTransactions(records, existingPositions, context);
       console.log('Finished Questrade transaction parsing');
 
-      // Apply trade grouping if enabled
-      const tradeGroupingSettings = context.tradeGroupingSettings || { enabled: true, timeGapMinutes: 60 };
-      if (tradeGroupingSettings.enabled && result.length > 0) {
-        return applyTradeGrouping(result, tradeGroupingSettings);
-      }
+      // Skip trade grouping for Questrade - the parser already handles position tracking
+      // and trade grouping would incorrectly merge partial close trades back together
+      console.log('[INFO] Skipping trade grouping for Questrade (already grouped by round-trip logic)');
 
       return result;
     }
@@ -6088,9 +6090,54 @@ async function parseQuestradeTransactions(records, existingPositions = {}, conte
     if (existingPosition) {
       currentPosition = existingPosition.side === 'long' ? existingPosition.quantity : -existingPosition.quantity;
       console.log(`  → Starting with existing ${existingPosition.side} position: ${existingPosition.quantity} @ $${existingPosition.entryPrice}`);
+
+      // Initialize currentTrade from the existing position so we don't create duplicate trades
+      currentTrade = {
+        id: existingPosition.id, // Mark that this is an existing trade to update, not create
+        symbol: existingPosition.symbol,
+        tradeDate: existingPosition.tradeDate,
+        entryTime: existingPosition.entryTime,
+        entryPrice: existingPosition.entryPrice,
+        quantity: existingPosition.quantity,
+        side: existingPosition.side,
+        commission: existingPosition.commission || 0,
+        fees: 0,
+        broker: existingPosition.broker || 'Questrade',
+        currency: firstTx.currency,
+        accountIdentifier: firstTx.accountIdentifier,
+        executions: existingPosition.executions || [],
+        instrumentType: existingPosition.instrumentType,
+        strikePrice: existingPosition.strikePrice,
+        expirationDate: existingPosition.expirationDate,
+        optionType: existingPosition.optionType,
+        ...instrumentData
+      };
+      console.log(`  → Initialized trade from existing position with ${currentTrade.executions.length} executions`);
+    }
+
+    // Debug: Log existing executions for this symbol
+    console.log(`  → Existing executions for ${symbolKey}: ${context.existingExecutions?.[symbolKey]?.length || 0}`);
+    if (context.existingExecutions?.[symbolKey]?.length > 0) {
+      context.existingExecutions[symbolKey].forEach((exec, i) => {
+        console.log(`    [${i}] ${exec.action || 'unknown'} ${exec.quantity} @ $${exec.price || exec.entryPrice} at ${exec.datetime || exec.entryTime}`);
+      });
     }
 
     for (const transaction of symbolTransactions) {
+      // Check for duplicate execution before processing
+      const executionToCheck = {
+        datetime: transaction.datetime,
+        quantity: transaction.quantity,
+        price: transaction.price,
+        action: transaction.action
+      };
+      const isDuplicate = isExecutionDuplicate(executionToCheck, symbolKey, context);
+      console.log(`  [DUPLICATE CHECK] ${transaction.action.toUpperCase()} ${transaction.quantity} @ $${transaction.price.toFixed(2)} at ${transaction.datetime} → ${isDuplicate ? 'DUPLICATE' : 'NEW'}`);
+      if (isDuplicate) {
+        console.log(`  [SKIP] Duplicate execution: ${transaction.action.toUpperCase()} ${transaction.quantity} @ $${transaction.price.toFixed(2)}`);
+        continue; // Skip this transaction entirely
+      }
+
       const signedQty = transaction.action === 'buy' ? transaction.quantity : -transaction.quantity;
       const prevPosition = currentPosition;
       currentPosition += signedQty;
@@ -6148,65 +6195,96 @@ async function parseQuestradeTransactions(records, existingPositions = {}, conte
       else if ((prevPosition > 0 && signedQty < 0) || (prevPosition < 0 && signedQty > 0)) {
         if (currentTrade) {
           const closeQty = Math.min(Math.abs(signedQty), Math.abs(prevPosition));
+          const remainingQty = Math.abs(prevPosition) - closeQty;
+          const isPartialClose = remainingQty > 0;
 
-          // Calculate P&L
+          // Calculate P&L for the closed portion
           let pnl;
           if (currentTrade.side === 'long') {
             pnl = (transaction.price - currentTrade.entryPrice) * closeQty * valueMultiplier;
           } else {
             pnl = (currentTrade.entryPrice - transaction.price) * closeQty * valueMultiplier;
           }
-          pnl -= (currentTrade.commission + transaction.commission);
+          // Prorate commission for partial closes
+          const closeCommission = isPartialClose
+            ? (currentTrade.commission * closeQty / currentTrade.quantity) + transaction.commission
+            : currentTrade.commission + transaction.commission;
+          pnl -= closeCommission;
 
-          // Complete the trade
-          currentTrade.exitTime = transaction.datetime;
-          currentTrade.exitPrice = transaction.price;
-          currentTrade.quantity = closeQty;
-          currentTrade.pnl = pnl;
-          currentTrade.profitLoss = pnl;
-          currentTrade.commission += transaction.commission;
-          currentTrade.executionData = currentTrade.executions;
-
-          // Update last execution with exit info
-          if (currentTrade.executions.length > 0) {
-            const lastExec = currentTrade.executions[currentTrade.executions.length - 1];
-            lastExec.exitTime = transaction.datetime;
-            lastExec.exitPrice = transaction.price;
-            lastExec.pnl = pnl;
-          }
-
-          console.log(`  [CLOSE] Closed ${closeQty} @ $${transaction.price.toFixed(2)}, P&L: $${pnl.toFixed(2)}`);
-          completedTrades.push(currentTrade);
-
-          // Handle reversal (closing more than position)
-          if (Math.abs(signedQty) > Math.abs(prevPosition)) {
-            const reversalQty = Math.abs(signedQty) - Math.abs(prevPosition);
-            const newSide = signedQty > 0 ? 'long' : 'short';
-            currentTrade = {
-              symbol: transaction.symbol,
-              tradeDate: transaction.date,
-              entryTime: transaction.datetime,
-              entryPrice: transaction.price,
-              quantity: reversalQty,
-              side: newSide,
-              commission: 0,
+          // Handle partial close - keep as ONE trade with the sell recorded as an execution
+          if (isPartialClose) {
+            // Add the sell execution to the trade
+            currentTrade.executions.push({
+              exitTime: transaction.datetime,
+              exitPrice: transaction.price,
+              quantity: closeQty,
+              side: currentTrade.side === 'long' ? 'sell' : 'buy', // Opposite action to close
+              commission: transaction.commission,
               fees: 0,
-              broker: 'Questrade',
-              currency: transaction.currency,
-              accountIdentifier: transaction.accountIdentifier,
-              executions: [{
+              pnl: pnl
+            });
+
+            // Update trade to reflect remaining position
+            currentTrade.quantity = remainingQty;
+            currentTrade.commission += transaction.commission;
+            // Track realized P&L from partial close (position still open)
+            currentTrade.realizedPnl = (currentTrade.realizedPnl || 0) + pnl;
+
+            console.log(`  [PARTIAL CLOSE] Sold ${closeQty} @ $${transaction.price.toFixed(2)}, realized P&L: $${pnl.toFixed(2)}, remaining: ${remainingQty} shares`);
+          }
+          // Handle full close (and possible reversal)
+          else {
+            // Add the closing execution
+            currentTrade.executions.push({
+              exitTime: transaction.datetime,
+              exitPrice: transaction.price,
+              quantity: closeQty,
+              side: currentTrade.side === 'long' ? 'sell' : 'buy',
+              commission: transaction.commission,
+              fees: 0,
+              pnl: pnl
+            });
+
+            currentTrade.exitTime = transaction.datetime;
+            currentTrade.exitPrice = transaction.price;
+            currentTrade.pnl = pnl;
+            currentTrade.profitLoss = pnl;
+            currentTrade.commission += transaction.commission;
+            currentTrade.executionData = currentTrade.executions;
+
+            console.log(`  [CLOSE] Closed ${closeQty} @ $${transaction.price.toFixed(2)}, P&L: $${pnl.toFixed(2)}`);
+            completedTrades.push(currentTrade);
+
+            // Handle reversal (closing more than position - start new position in opposite direction)
+            if (Math.abs(signedQty) > Math.abs(prevPosition)) {
+              const reversalQty = Math.abs(signedQty) - Math.abs(prevPosition);
+              const newSide = signedQty > 0 ? 'long' : 'short';
+              currentTrade = {
+                symbol: transaction.symbol,
+                tradeDate: transaction.date,
                 entryTime: transaction.datetime,
                 entryPrice: transaction.price,
                 quantity: reversalQty,
                 side: newSide,
                 commission: 0,
-                fees: 0
-              }],
-              ...instrumentData
-            };
-            console.log(`  [REVERSAL] Started new ${newSide} position: ${reversalQty} @ $${transaction.price.toFixed(2)}`);
-          } else if (currentPosition === 0) {
-            currentTrade = null;
+                fees: 0,
+                broker: 'Questrade',
+                currency: transaction.currency,
+                accountIdentifier: transaction.accountIdentifier,
+                executions: [{
+                  entryTime: transaction.datetime,
+                  entryPrice: transaction.price,
+                  quantity: reversalQty,
+                  side: newSide,
+                  commission: 0,
+                  fees: 0
+                }],
+                ...instrumentData
+              };
+              console.log(`  [REVERSAL] Started new ${newSide} position: ${reversalQty} @ $${transaction.price.toFixed(2)}`);
+            } else {
+              currentTrade = null;
+            }
           }
         }
       }
@@ -6214,15 +6292,27 @@ async function parseQuestradeTransactions(records, existingPositions = {}, conte
 
     // Handle remaining open position
     if (currentTrade && currentPosition !== 0) {
-      currentTrade.quantity = Math.abs(currentPosition);
-      currentTrade.notes = `Open position: ${currentTrade.executions.length} executions`;
-      currentTrade.executionData = currentTrade.executions;
-      console.log(`  [OPEN] Remaining open ${currentTrade.side} position: ${Math.abs(currentPosition)} @ $${currentTrade.entryPrice.toFixed(2)}`);
-      completedTrades.push(currentTrade);
+      // Only update if not already set correctly (avoid double-counting)
+      if (!currentTrade.exitTime) {
+        currentTrade.quantity = Math.abs(currentPosition);
+        currentTrade.notes = `Open position: ${currentTrade.executions.length} executions`;
+        currentTrade.executionData = currentTrade.executions;
+        // If this is from an existing position, mark it for update instead of create
+        if (currentTrade.id) {
+          currentTrade.isUpdate = true;
+          currentTrade.existingTradeId = currentTrade.id;
+        }
+        console.log(`  [OPEN] Remaining open ${currentTrade.side} position: ${Math.abs(currentPosition)} @ $${currentTrade.entryPrice.toFixed(2)}${currentTrade.id ? ' (updating existing)' : ''}`);
+        completedTrades.push(currentTrade);
+      }
     }
   }
 
   console.log(`\n[SUCCESS] Created ${completedTrades.length} trades from ${transactions.length} Questrade transactions`);
+  // Debug: Log all created trades
+  completedTrades.forEach((trade, i) => {
+    console.log(`  Trade ${i + 1}: ${trade.symbol} ${trade.side} ${trade.quantity} shares, entry $${trade.entryPrice?.toFixed(2)}, exit $${trade.exitPrice?.toFixed(2) || 'OPEN'}, P&L: $${trade.pnl?.toFixed(2) || 'N/A'}, executions: ${trade.executions?.length || 0}${trade.isUpdate ? ' (UPDATE)' : ''}`);
+  });
   return completedTrades;
 }
 

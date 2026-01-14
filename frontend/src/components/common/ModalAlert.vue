@@ -80,7 +80,7 @@ const iconBgClass = computed(() => {
     case 'warning':
       return 'bg-yellow-100 dark:bg-yellow-900/20'
     case 'confirm':
-      return 'bg-blue-100 dark:bg-blue-900/20'
+      return 'bg-primary-100 dark:bg-primary-900/20'
     case 'success':
       return 'bg-green-100 dark:bg-green-900/20'
     default:
@@ -95,7 +95,7 @@ const iconClass = computed(() => {
     case 'warning':
       return 'text-yellow-600 dark:text-yellow-400'
     case 'confirm':
-      return 'text-blue-600 dark:text-blue-400'
+      return 'text-primary-600 dark:text-primary-400'
     case 'success':
       return 'text-green-600 dark:text-green-400'
     default:
@@ -110,7 +110,7 @@ const confirmButtonClass = computed(() => {
     case 'warning':
       return 'bg-yellow-600 hover:bg-yellow-700 focus:ring-yellow-500'
     case 'confirm':
-      return 'bg-blue-600 hover:bg-blue-700 focus:ring-blue-500'
+      return 'bg-primary-600 hover:bg-primary-700 focus:ring-primary-500'
     case 'success':
       return 'bg-green-600 hover:bg-green-700 focus:ring-green-500'
     default:

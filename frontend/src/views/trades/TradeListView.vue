@@ -130,9 +130,9 @@
       <!-- Show trades when available -->
       <div v-else :key="tradesStore.trades.length">
         <!-- Bulk Actions Bar -->
-        <div v-if="selectedTrades.length > 0" class="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+        <div v-if="selectedTrades.length > 0" class="mb-6 p-4 bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-lg">
           <div class="flex items-center justify-between">
-            <span class="text-sm text-blue-800 dark:text-blue-200">
+            <span class="text-sm text-primary-800 dark:text-primary-200">
               {{ selectedTrades.length }} trade{{ selectedTrades.length === 1 ? '' : 's' }} selected
             </span>
             <div class="flex items-center space-x-2">
@@ -200,9 +200,9 @@
               </div>
             <span class="px-2 py-1 text-xs font-semibold rounded-full"
               :class="[
-                trade.exit_price 
+                trade.exit_price
                   ? 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
-                  : 'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400'
+                  : 'bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400'
               ]">
               {{ trade.exit_price ? 'Closed' : 'Open' }}
             </span>
@@ -475,14 +475,14 @@
                 </td>
                 
                 <!-- Status Column -->
-                <td v-else-if="column.visible && column.key === 'status'" 
-                    :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']" 
+                <td v-else-if="column.visible && column.key === 'status'"
+                    :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
                   <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
                     :class="[
-                      trade.exit_price 
+                      trade.exit_price
                         ? 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
-                        : 'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400'
+                        : 'bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400'
                     ]">
                     {{ trade.exit_price ? 'Closed' : 'Open' }}
                   </span>
