@@ -506,13 +506,6 @@
             </div>
           </div>
 
-          <!-- Trade Chart Visualization -->
-          <TradeChartVisualization
-            v-if="trade.exit_price && trade.exit_time"
-            :trade-id="trade.id"
-          />
-
-
           <!-- Executions -->
           <div v-if="processedExecutions && processedExecutions.length > 0" class="card">
             <div class="card-body">
@@ -740,6 +733,30 @@
             </div>
           </div>
 
+          <!-- Trade Chart Visualization (Collapsible) -->
+          <div v-if="trade.exit_price && trade.exit_time" class="card">
+            <div class="card-body">
+              <button
+                @click="toggleChartSection"
+                class="w-full flex items-center justify-between text-left"
+              >
+                <h3 class="text-lg font-medium text-gray-900 dark:text-white">Chart Visualization</h3>
+                <svg
+                  class="h-5 w-5 text-gray-500 dark:text-gray-400 transition-transform duration-200"
+                  :class="{ 'rotate-180': !chartSectionCollapsed }"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              <div v-show="!chartSectionCollapsed" class="mt-4">
+                <TradeChartVisualization :trade-id="trade.id" />
+              </div>
+            </div>
+          </div>
+
           <!-- Notes -->
           <div v-if="trade.notes" class="card">
             <div class="card-body">
@@ -765,30 +782,43 @@
             @deleted="handleImageDeleted"
           />
 
-          <!-- Comments -->
+          <!-- Comments (Collapsible) -->
           <div class="card">
             <div class="card-body">
-              <div class="flex items-center justify-between mb-4">
-                <h3 class="heading-card">
+              <button
+                @click="toggleCommentsSection"
+                class="w-full flex items-center justify-between text-left"
+              >
+                <h3 class="text-lg font-medium text-gray-900 dark:text-white">
                   Comments ({{ comments.length }})
                 </h3>
-              </div>
+                <svg
+                  class="h-5 w-5 text-gray-500 dark:text-gray-400 transition-transform duration-200"
+                  :class="{ 'rotate-180': !commentsSectionCollapsed }"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
 
-              <div v-if="loadingComments" class="flex justify-center py-8">
-                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
-              </div>
-
-              <div v-else>
-                <div v-if="comments.length === 0" class="text-center py-8">
-                  <ChatBubbleLeftIcon class="mx-auto h-12 w-12 text-gray-400" />
-                  <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
-                    No comments yet. Be the first to comment!
-                  </p>
+              <div v-show="!commentsSectionCollapsed" class="mt-4">
+                <div v-if="loadingComments" class="flex justify-center py-8">
+                  <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
                 </div>
 
-                <div v-else class="space-y-4 mb-6">
-                  <div
-                    v-for="comment in comments"
+                <div v-else>
+                  <div v-if="comments.length === 0" class="text-center py-8">
+                    <ChatBubbleLeftIcon class="mx-auto h-12 w-12 text-gray-400" />
+                    <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                      No comments yet. Be the first to comment!
+                    </p>
+                  </div>
+
+                  <div v-else class="space-y-4 mb-6">
+                    <div
+                      v-for="comment in comments"
                     :key="comment.id"
                     class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4"
                   >
@@ -898,6 +928,7 @@
                     </button>
                   </div>
                 </form>
+              </div>
               </div>
             </div>
           </div>
@@ -1093,6 +1124,20 @@ const newComment = ref('')
 const submittingComment = ref(false)
 const editingCommentId = ref(null)
 const editCommentText = ref('')
+
+// Collapsible section state (persisted to localStorage)
+const chartSectionCollapsed = ref(localStorage.getItem('tradeDetail_chartCollapsed') === 'true')
+const commentsSectionCollapsed = ref(localStorage.getItem('tradeDetail_commentsCollapsed') === 'true')
+
+function toggleChartSection() {
+  chartSectionCollapsed.value = !chartSectionCollapsed.value
+  localStorage.setItem('tradeDetail_chartCollapsed', chartSectionCollapsed.value.toString())
+}
+
+function toggleCommentsSection() {
+  commentsSectionCollapsed.value = !commentsSectionCollapsed.value
+  localStorage.setItem('tradeDetail_commentsCollapsed', commentsSectionCollapsed.value.toString())
+}
 
 // Computed property to check if quality calculation is incomplete
 const hasIncompleteQuality = computed(() => {

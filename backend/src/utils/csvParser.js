@@ -1583,6 +1583,17 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
             }
           }
 
+          // Add account identifier - user selection takes priority over CSV column
+          const accountIdentifier = context.selectedAccountId
+            ? context.selectedAccountId
+            : context.accountColumnName
+              ? extractAccountFromRecord(record, context.accountColumnName)
+              : null;
+
+          if (accountIdentifier) {
+            trade.accountIdentifier = accountIdentifier;
+          }
+
           trades.push(trade);
         }
       } catch (error) {
@@ -2610,7 +2621,7 @@ async function parseSchwabTrades(records, existingPositions = {}, context = {}) 
     // Check for the new transaction format
     if (columns.includes('Date') && columns.includes('Action') && columns.includes('Symbol') && columns.includes('Price')) {
       console.log('Detected new Schwab transaction format - processing buy/sell transactions');
-      return await parseSchwabTransactions(records, existingPositions);
+      return await parseSchwabTransactions(records, existingPositions, context);
     }
   }
   
@@ -2658,6 +2669,13 @@ async function parseSchwabTrades(records, existingPositions = {}, context = {}) 
         gainLossPercent = parseFloat(record['Gain/Loss (%)']?.replace(/[%,]/g, '') || 0);
       }
       
+      // Determine account identifier - user selection takes priority over CSV column
+      const accountIdentifier = context.selectedAccountId
+        ? context.selectedAccountId
+        : context.accountColumnName
+          ? extractAccountFromRecord(record, context.accountColumnName)
+          : null;
+
       const trade = {
         symbol: cleanString(symbol),
         tradeDate: parseDate(openedDate),
@@ -2672,7 +2690,8 @@ async function parseSchwabTrades(records, existingPositions = {}, context = {}) 
         pnl: gainLoss,
         pnlPercent: gainLossPercent,
         broker: 'schwab',
-        notes: `${term} - ${washSale ? 'Wash Sale' : 'Normal'}`
+        notes: `${term} - ${washSale ? 'Wash Sale' : 'Normal'}`,
+        accountIdentifier
       };
       
       if (trade.symbol && trade.entryPrice > 0 && trade.exitPrice > 0 && trade.quantity > 0) {
