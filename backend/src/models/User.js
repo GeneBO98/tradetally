@@ -182,7 +182,8 @@ class User {
       tradeGroupingTimeGapMinutes: 'trade_grouping_time_gap_minutes',
       autoCloseExpiredOptions: 'auto_close_expired_options',
       analyticsChartLayout: 'analytics_chart_layout',
-      defaultStopLossPercent: 'default_stop_loss_percent'
+      defaultStopLossPercent: 'default_stop_loss_percent',
+      defaultTakeProfitPercent: 'default_take_profit_percent'
     };
 
     Object.entries(settings).forEach(([key, value]) => {
@@ -218,6 +219,18 @@ class User {
           });
       }
 
+      // If default take profit percentage was updated, apply it to existing trades without a take profit
+      if (settings.defaultTakeProfitPercent !== undefined && settings.defaultTakeProfitPercent > 0) {
+        const Trade = require('./Trade');
+        Trade.applyDefaultTakeProfitToExistingTrades(userId, settings.defaultTakeProfitPercent)
+          .then(count => {
+            console.log(`[SETTINGS] Applied default take profit to ${count} existing trades`);
+          })
+          .catch(error => {
+            console.error('[SETTINGS] Failed to apply default take profit to existing trades:', error);
+          });
+      }
+
       return result.rows[0];
     } catch (error) {
       // If statistics_calculation column doesn't exist, try update without it
@@ -248,6 +261,18 @@ class User {
               })
               .catch(error => {
                 console.error('[SETTINGS] Failed to apply default stop loss to existing trades:', error);
+              });
+          }
+
+          // If default take profit percentage was updated, apply it to existing trades without a take profit
+          if (settings.defaultTakeProfitPercent !== undefined && settings.defaultTakeProfitPercent > 0) {
+            const Trade = require('./Trade');
+            Trade.applyDefaultTakeProfitToExistingTrades(userId, settings.defaultTakeProfitPercent)
+              .then(count => {
+                console.log(`[SETTINGS] Applied default take profit to ${count} existing trades`);
+              })
+              .catch(error => {
+                console.error('[SETTINGS] Failed to apply default take profit to existing trades:', error);
               });
           }
 

@@ -252,18 +252,18 @@ async function refreshAnalysis() {
 
 function onHoldingCreated() {
   showAddHoldingModal.value = false
-  router.push('/investments')
+  router.push('/analysis')
 }
 
 function goBack() {
   // Check if we came from the scanner tab via query param
   const fromScanner = route.query.from === 'scanner'
   if (fromScanner) {
-    router.push('/investments?tab=scanner')
+    router.push('/analysis?tab=scanner')
   } else if (window.history.length > 1) {
     router.back()
   } else {
-    router.push('/investments')
+    router.push('/analysis')
   }
 }
 
