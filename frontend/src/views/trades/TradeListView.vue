@@ -534,7 +534,7 @@
                 <td v-else-if="column.visible && column.key === 'account'"
                     :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
-                  {{ trade.account_identifier || '-' }}
+                  {{ redactAccountId(trade.account_identifier) || '-' }}
                 </td>
 
                 <td v-else-if="column.visible && column.key === 'tags'" 
@@ -1036,6 +1036,14 @@ function formatNumber(num) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   }).format(num || 0)
+}
+
+// Redact account identifier for privacy (show only last 4 characters)
+function redactAccountId(accountId) {
+  if (!accountId) return null
+  const str = String(accountId).trim()
+  if (str.length <= 4) return str
+  return '****' + str.slice(-4)
 }
 
 function formatQuantity(num) {

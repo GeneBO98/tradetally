@@ -235,7 +235,7 @@
                 </div>
                 <div v-if="trade.account_identifier">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Account</dt>
-                  <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">{{ trade.account_identifier }}</dd>
+                  <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">{{ redactAccountId(trade.account_identifier) }}</dd>
                 </div>
                 <div v-if="trade.strategy">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Strategy</dt>
@@ -1373,6 +1373,14 @@ function formatNumber(num, decimals = 2) {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals
   }).format(num || 0)
+}
+
+// Redact account identifier for privacy (show only last 4 characters)
+function redactAccountId(accountId) {
+  if (!accountId) return null
+  const str = String(accountId).trim()
+  if (str.length <= 4) return str
+  return '****' + str.slice(-4)
 }
 
 function formatQuantity(num) {
