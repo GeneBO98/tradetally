@@ -180,12 +180,14 @@ function detectAccountColumn(records) {
  * Extracts account identifier from a record using the detected column name
  * @param {Object} record - CSV record
  * @param {string} accountColumnName - The detected account column name
- * @returns {string|null} - Redacted account identifier or null
+ * @returns {string|null} - Full account identifier (not redacted - redaction is for display only)
  */
 function extractAccountFromRecord(record, accountColumnName) {
   if (!accountColumnName || !record) return null;
   const value = record[accountColumnName];
-  return redactAccountId(value);
+  if (!value) return null;
+  const str = String(value).trim();
+  return str === '' ? null : str;
 }
 
 /**
@@ -4384,21 +4386,24 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
     }
 
     // Track position and round-trip trades
-    // Start with existing position if we have one for this symbol
-    // For options, try looking up by underlying symbol since that's what gets saved to database
-    let existingPosition = existingPositions[symbol];
-    if (!existingPosition && instrumentData.instrumentType === 'option' && instrumentData.underlyingSymbol) {
-      existingPosition = existingPositions[instrumentData.underlyingSymbol];
-      if (existingPosition) {
-        console.log(`  → Found existing position using underlying symbol: ${instrumentData.underlyingSymbol}`);
-      }
+    // For options, build composite key (underlying_strike_expiration_type) to match specific contracts
+    // This prevents different option contracts (same underlying, different strikes/expirations) from being merged
+    let existingPosition = null;
+    let positionLookupKey = symbol;
+
+    if (instrumentData.instrumentType === 'option' && instrumentData.underlyingSymbol &&
+        instrumentData.strikePrice && instrumentData.expirationDate && instrumentData.optionType) {
+      // Build composite key for options: underlying_strike_expiration_type
+      positionLookupKey = `${instrumentData.underlyingSymbol}_${instrumentData.strikePrice}_${instrumentData.expirationDate}_${instrumentData.optionType}`;
+      console.log(`  → Looking up option position with key: ${positionLookupKey}`);
+      existingPosition = existingPositions[positionLookupKey];
+    } else {
+      // For stocks/futures or options without full metadata, use symbol directly
+      existingPosition = existingPositions[symbol];
     }
 
     if (!existingPosition) {
-      console.log(`  → No existing position found for symbol: ${symbol}`);
-      if (instrumentData.instrumentType === 'option' && instrumentData.underlyingSymbol) {
-        console.log(`  → Also checked underlying symbol: ${instrumentData.underlyingSymbol}`);
-      }
+      console.log(`  → No existing position found for key: ${positionLookupKey}`);
     }
 
     let currentPosition = existingPosition ?
@@ -4505,7 +4510,8 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         };
 
         // First, check if this execution exists in ANY existing trade (complete or open)
-        const existsGlobally = isExecutionDuplicate(newExecution, symbol, context);
+        // Use positionLookupKey for options to match the composite key format in existingExecutions
+        const existsGlobally = isExecutionDuplicate(newExecution, positionLookupKey, context);
 
         // Then check if it exists in the current trade being built
         // For fresh imports, we trust each CSV row is a unique execution
@@ -4672,6 +4678,17 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
       currentTrade.commission = currentTrade.totalFees;
       currentTrade.fees = 0;
       currentTrade.exitTime = null;
+
+      // Calculate entry commission for open positions (all fees are entry fees since no exit yet)
+      let entryCommission = 0;
+      currentTrade.executions.forEach(exec => {
+        if ((currentTrade.side === 'long' && exec.action === 'buy') ||
+            (currentTrade.side === 'short' && exec.action === 'sell')) {
+          entryCommission += exec.fees || 0;
+        }
+      });
+      currentTrade.entryCommission = entryCommission;
+      currentTrade.exitCommission = 0;
 
       // For open positions, P&L should be null (not yet realized)
       // This prevents showing incorrect "loss" for open short positions

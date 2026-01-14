@@ -966,9 +966,11 @@ const tradeController = {
           logger.logImport(`Starting import for user ${fileUserId}, broker: ${broker}, file: ${fileName}`);
           
           // Fetch existing open positions for context-aware parsing
+          // Include option fields to properly distinguish different option contracts
           logger.logImport(`Fetching existing open positions for context-aware import...`);
           const openPositionsQuery = `
-            SELECT id, symbol, side, quantity, entry_price, entry_time, trade_date, commission, broker, executions
+            SELECT id, symbol, side, quantity, entry_price, entry_time, trade_date, commission, broker, executions,
+                   instrument_type, strike_price, expiration_date, option_type
             FROM trades
             WHERE user_id = $1
             AND exit_price IS NULL
@@ -981,7 +983,7 @@ const tradeController = {
           // Also fetch completed trades to check for duplicate executions
           logger.logImport(`Fetching completed trades for duplicate detection...`);
           const completedTradesQuery = `
-            SELECT id, symbol, executions
+            SELECT id, symbol, executions, instrument_type, strike_price, expiration_date, option_type
             FROM trades
             WHERE user_id = $1
             AND exit_price IS NOT NULL
@@ -990,7 +992,21 @@ const tradeController = {
           `;
           const completedTradesResult = await db.query(completedTradesQuery, [fileUserId]);
           logger.logImport(`Found ${completedTradesResult.rows.length} completed trades for duplicate checking`);
-          
+
+          // Helper function to build composite key for options
+          // For options: symbol_strike_expiration_type (e.g., "DG_7.5_2024-02-16_put")
+          // For stocks: just symbol
+          const buildPositionKey = (row) => {
+            if (row.instrument_type === 'option' && row.strike_price && row.expiration_date && row.option_type) {
+              // Format expiration date consistently (YYYY-MM-DD)
+              const expDate = row.expiration_date instanceof Date
+                ? row.expiration_date.toISOString().split('T')[0]
+                : String(row.expiration_date).split('T')[0];
+              return `${row.symbol}_${row.strike_price}_${expDate}_${row.option_type}`;
+            }
+            return row.symbol;
+          };
+
           // Convert to context format
           const existingPositions = {};
           openPositionsResult.rows.forEach(row => {
@@ -998,16 +1014,19 @@ const tradeController = {
             let parsedExecutions = [];
             if (row.executions) {
               try {
-                parsedExecutions = typeof row.executions === 'string' 
-                  ? JSON.parse(row.executions) 
+                parsedExecutions = typeof row.executions === 'string'
+                  ? JSON.parse(row.executions)
                   : row.executions;
               } catch (e) {
                 console.warn(`Failed to parse executions for trade ${row.id}:`, e);
                 parsedExecutions = [];
               }
             }
-            
-            existingPositions[row.symbol] = {
+
+            // Build composite key for options to keep different contracts separate
+            const positionKey = buildPositionKey(row);
+
+            existingPositions[positionKey] = {
               id: row.id,
               symbol: row.symbol,
               side: row.side,
@@ -1017,16 +1036,25 @@ const tradeController = {
               tradeDate: row.trade_date,
               commission: parseFloat(row.commission) || 0,
               broker: row.broker,
-              executions: parsedExecutions  // Use parsed executions
+              executions: parsedExecutions,
+              // Include option metadata for matching
+              instrumentType: row.instrument_type,
+              strikePrice: row.strike_price ? parseFloat(row.strike_price) : null,
+              expirationDate: row.expiration_date,
+              optionType: row.option_type
             };
           });
-          
+
           logger.logImport(`Found ${Object.keys(existingPositions).length} existing open positions`);
-          Object.entries(existingPositions).forEach(([symbol, pos]) => {
-            logger.logImport(`  ${symbol}: ${pos.side} ${pos.quantity} shares @ $${pos.entryPrice}`);
+          Object.entries(existingPositions).forEach(([key, pos]) => {
+            const typeInfo = pos.instrumentType === 'option'
+              ? ` (${pos.optionType} $${pos.strikePrice} exp:${pos.expirationDate})`
+              : '';
+            logger.logImport(`  ${key}: ${pos.side} ${pos.quantity} @ $${pos.entryPrice}${typeInfo}`);
           });
 
           // Build a map of all existing executions for duplicate detection
+          // Use composite keys for options to keep different contracts separate
           const existingExecutions = {};
           completedTradesResult.rows.forEach(row => {
             let parsedExecutions = [];
@@ -1041,21 +1069,23 @@ const tradeController = {
               }
             }
 
-            if (!existingExecutions[row.symbol]) {
-              existingExecutions[row.symbol] = [];
+            // Use composite key for options
+            const executionKey = buildPositionKey(row);
+            if (!existingExecutions[executionKey]) {
+              existingExecutions[executionKey] = [];
             }
-            existingExecutions[row.symbol].push(...parsedExecutions);
+            existingExecutions[executionKey].push(...parsedExecutions);
           });
 
-          // Also add executions from open positions
-          Object.entries(existingPositions).forEach(([symbol, pos]) => {
-            if (!existingExecutions[symbol]) {
-              existingExecutions[symbol] = [];
+          // Also add executions from open positions (already using composite keys)
+          Object.entries(existingPositions).forEach(([key, pos]) => {
+            if (!existingExecutions[key]) {
+              existingExecutions[key] = [];
             }
-            existingExecutions[symbol].push(...pos.executions);
+            existingExecutions[key].push(...pos.executions);
           });
 
-          logger.logImport(`Built execution index for ${Object.keys(existingExecutions).length} symbols`);
+          logger.logImport(`Built execution index for ${Object.keys(existingExecutions).length} symbols/contracts`);
 
           // Fetch user settings for trade grouping configuration
           let userSettings = await User.getSettings(req.user.id);

@@ -337,16 +337,16 @@ class Account {
     // - Exit cash flows (LONG sell inflow, SHORT cover outflow) use exit_time date
     //
     // Commission handling - SEPARATED from trade values to match broker statements:
-    // - Trade values are calculated as RAW values (price * quantity * multiplier)
-    // - Commission charges (positive values) are added to Outflows
-    // - Commission rebates (negative values) are added to Inflows (as positive amounts)
-    // - This matches how broker statements typically show these as separate line items
+    // - Trade values are calculated as NET values (after commission) to match broker statements
+    // - For inflows (SHORT entry, LONG exit): commission REDUCES the inflow
+    // - For outflows (LONG entry, SHORT exit): commission INCREASES the outflow
+    // - Rebates (negative commissions) have the opposite effect
+    // - This matches how broker statements show net cash movements per transaction
     const query = `
       WITH entry_cashflows AS (
         -- Cash flows that happen on ENTRY date (when trade is opened)
-        -- LONG entry: Outflow = raw trade value (buying shares/contracts)
-        -- SHORT entry: Inflow = raw trade value (short sale proceeds)
-        -- Commission is tracked separately, not embedded in trade values
+        -- Track trade values and commissions separately by trade direction
+        -- Commission is separated into fees (positive) and rebates (negative) BY TRADE TYPE
         SELECT
           DATE(COALESCE(entry_time, trade_date)) as date,
           -- SHORT entry inflow: raw trade value only
@@ -377,17 +377,62 @@ class Account {
               ELSE 0
             END
           ), 0) as trade_outflow,
-          -- Entry commission (to be split into inflow/outflow based on sign)
-          -- Use entry_commission if set and different from total, otherwise split total 50/50
+          -- Fees from SHORT entries (reduce inflow) - positive commission values
           COALESCE(SUM(
             CASE
-              WHEN COALESCE(entry_commission, 0) != 0 AND COALESCE(entry_commission, 0) != COALESCE(commission, 0)
-                THEN entry_commission
-              WHEN COALESCE(commission, 0) != 0
-                THEN commission / 2.0
+              WHEN side IN ('short', 'sell') THEN
+                CASE
+                  WHEN COALESCE(entry_commission, 0) != 0
+                    THEN GREATEST(0, entry_commission)
+                  WHEN COALESCE(commission, 0) > 0
+                    THEN commission / 2.0
+                  ELSE 0
+                END
               ELSE 0
             END
-          ), 0) as commission_amount
+          ), 0) as inflow_fees,
+          -- Rebates from SHORT entries (add to inflow) - negative commission values as positive
+          COALESCE(SUM(
+            CASE
+              WHEN side IN ('short', 'sell') THEN
+                CASE
+                  WHEN COALESCE(entry_commission, 0) != 0
+                    THEN ABS(LEAST(0, entry_commission))
+                  WHEN COALESCE(commission, 0) < 0
+                    THEN ABS(commission / 2.0)
+                  ELSE 0
+                END
+              ELSE 0
+            END
+          ), 0) as inflow_rebates,
+          -- Fees from LONG entries (add to outflow) - positive commission values
+          COALESCE(SUM(
+            CASE
+              WHEN side IN ('long', 'buy') THEN
+                CASE
+                  WHEN COALESCE(entry_commission, 0) != 0
+                    THEN GREATEST(0, entry_commission)
+                  WHEN COALESCE(commission, 0) > 0
+                    THEN commission / 2.0
+                  ELSE 0
+                END
+              ELSE 0
+            END
+          ), 0) as outflow_fees,
+          -- Rebates from LONG entries (reduce outflow) - negative commission values as positive
+          COALESCE(SUM(
+            CASE
+              WHEN side IN ('long', 'buy') THEN
+                CASE
+                  WHEN COALESCE(entry_commission, 0) != 0
+                    THEN ABS(LEAST(0, entry_commission))
+                  WHEN COALESCE(commission, 0) < 0
+                    THEN ABS(commission / 2.0)
+                  ELSE 0
+                END
+              ELSE 0
+            END
+          ), 0) as outflow_rebates
         FROM trades
         WHERE user_id = $1
           AND (
@@ -400,9 +445,8 @@ class Account {
       ),
       exit_cashflows AS (
         -- Cash flows that happen on EXIT date (when trade is closed)
-        -- LONG exit: Inflow = raw trade value (selling shares/contracts)
-        -- SHORT exit: Outflow = raw trade value (covering short position)
-        -- Commission and fees are tracked separately
+        -- LONG exit: Inflow (selling shares) - commission reduces inflow
+        -- SHORT exit: Outflow (covering short) - commission increases outflow
         SELECT
           DATE(exit_time) as date,
           -- LONG exit inflow: raw trade value only
@@ -433,19 +477,58 @@ class Account {
               ELSE 0
             END
           ), 0) as trade_outflow,
-          -- Exit commission + fees (to be split into inflow/outflow based on sign)
+          -- Fees from LONG exits (reduce inflow) - positive commission values
           COALESCE(SUM(
             CASE
-              WHEN COALESCE(exit_commission, 0) != 0 THEN exit_commission
-              WHEN COALESCE(commission, 0) != 0 THEN
+              WHEN side IN ('long', 'buy') AND exit_time IS NOT NULL THEN
                 CASE
-                  WHEN COALESCE(entry_commission, 0) = 0 OR COALESCE(entry_commission, 0) = COALESCE(commission, 0)
-                    THEN commission / 2.0
-                  ELSE GREATEST(0, commission - COALESCE(entry_commission, 0))
+                  WHEN COALESCE(exit_commission, 0) != 0 THEN GREATEST(0, exit_commission)
+                  WHEN COALESCE(entry_commission, 0) != 0 THEN GREATEST(0, COALESCE(commission, 0) - entry_commission)
+                  WHEN COALESCE(commission, 0) > 0 THEN commission / 2.0
+                  ELSE 0
                 END
               ELSE 0
             END
-          ), 0) as commission_amount,
+          ), 0) as inflow_fees,
+          -- Rebates from LONG exits (add to inflow)
+          COALESCE(SUM(
+            CASE
+              WHEN side IN ('long', 'buy') AND exit_time IS NOT NULL THEN
+                CASE
+                  WHEN COALESCE(exit_commission, 0) != 0 THEN ABS(LEAST(0, exit_commission))
+                  WHEN COALESCE(entry_commission, 0) != 0 THEN ABS(LEAST(0, COALESCE(commission, 0) - entry_commission))
+                  WHEN COALESCE(commission, 0) < 0 THEN ABS(commission / 2.0)
+                  ELSE 0
+                END
+              ELSE 0
+            END
+          ), 0) as inflow_rebates,
+          -- Fees from SHORT exits (add to outflow) - positive commission values
+          COALESCE(SUM(
+            CASE
+              WHEN side IN ('short', 'sell') AND exit_time IS NOT NULL THEN
+                CASE
+                  WHEN COALESCE(exit_commission, 0) != 0 THEN GREATEST(0, exit_commission)
+                  WHEN COALESCE(entry_commission, 0) != 0 THEN GREATEST(0, COALESCE(commission, 0) - entry_commission)
+                  WHEN COALESCE(commission, 0) > 0 THEN commission / 2.0
+                  ELSE 0
+                END
+              ELSE 0
+            END
+          ), 0) as outflow_fees,
+          -- Rebates from SHORT exits (reduce outflow)
+          COALESCE(SUM(
+            CASE
+              WHEN side IN ('short', 'sell') AND exit_time IS NOT NULL THEN
+                CASE
+                  WHEN COALESCE(exit_commission, 0) != 0 THEN ABS(LEAST(0, exit_commission))
+                  WHEN COALESCE(entry_commission, 0) != 0 THEN ABS(LEAST(0, COALESCE(commission, 0) - entry_commission))
+                  WHEN COALESCE(commission, 0) < 0 THEN ABS(commission / 2.0)
+                  ELSE 0
+                END
+              ELSE 0
+            END
+          ), 0) as outflow_rebates,
           -- Separate fees field (always positive = outflow)
           COALESCE(SUM(COALESCE(fees, 0)), 0) as other_fees
         FROM trades
@@ -461,19 +544,21 @@ class Account {
       ),
       daily_trades AS (
         -- Combine entry and exit cashflows by date
-        -- Commission handling: positive = outflow (fee), negative = inflow (rebate)
+        -- Commission handling: NET approach to match broker statements
+        -- - Fees reduce inflows or increase outflows for the same transaction type
+        -- - Rebates increase inflows or reduce outflows
         SELECT
           date,
-          -- Trade inflows + commission rebates (negative commissions become positive inflows)
-          SUM(trade_inflow) + SUM(CASE WHEN commission_amount < 0 THEN ABS(commission_amount) ELSE 0 END) as trade_inflow,
-          -- Trade outflows + commission charges (positive commissions) + other fees
-          SUM(trade_outflow) + SUM(CASE WHEN commission_amount > 0 THEN commission_amount ELSE 0 END) + SUM(COALESCE(other_fees, 0)) as trade_outflow,
-          -- Track total fees (for display purposes, includes both charges and rebates as net)
-          SUM(commission_amount) + SUM(COALESCE(other_fees, 0)) as fees
+          -- Net inflows: trade value - fees + rebates
+          GREATEST(0, SUM(trade_inflow) - SUM(inflow_fees) + SUM(inflow_rebates)) as trade_inflow,
+          -- Net outflows: trade value + fees - rebates + other fees
+          GREATEST(0, SUM(trade_outflow) + SUM(outflow_fees) - SUM(outflow_rebates) + SUM(COALESCE(other_fees, 0))) as trade_outflow,
+          -- Track total fees for display
+          SUM(inflow_fees) - SUM(inflow_rebates) + SUM(outflow_fees) - SUM(outflow_rebates) + SUM(COALESCE(other_fees, 0)) as fees
         FROM (
-          SELECT date, trade_inflow, trade_outflow, commission_amount, 0::numeric as other_fees FROM entry_cashflows
+          SELECT date, trade_inflow, trade_outflow, inflow_fees, inflow_rebates, outflow_fees, outflow_rebates, 0::numeric as other_fees FROM entry_cashflows
           UNION ALL
-          SELECT date, trade_inflow, trade_outflow, commission_amount, other_fees FROM exit_cashflows
+          SELECT date, trade_inflow, trade_outflow, inflow_fees, inflow_rebates, outflow_fees, outflow_rebates, other_fees FROM exit_cashflows
         ) combined
         GROUP BY date
       ),

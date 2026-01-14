@@ -15,6 +15,7 @@ router.use(authenticate);
 // Account CRUD - specific routes before parameterized routes
 router.get('/primary', accountController.getPrimaryAccount);
 router.get('/unlinked-identifiers', accountController.getUnlinkedIdentifiers);
+router.get('/debug/trade-identifiers', accountController.getTradeIdentifiersSummary);
 
 // Transaction routes (must come before /:id to avoid conflicts)
 router.get('/transactions/:transactionId', accountController.getTransactions);
@@ -34,5 +35,12 @@ router.post('/:accountId/transactions', accountController.addTransaction);
 
 // Cashflow
 router.get('/:accountId/cashflow', accountController.getCashflow);
+router.get('/:accountId/debug-cashflow', accountController.debugCashflow);
+
+// Fix trades with redacted account identifiers
+router.post('/:accountId/fix-trades', accountController.fixRedactedTrades);
+
+// Link trades to an account
+router.post('/:accountId/link-trades', accountController.linkTradesToAccount);
 
 module.exports = router;

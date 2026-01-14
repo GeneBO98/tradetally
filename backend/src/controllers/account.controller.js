@@ -499,6 +499,301 @@ const accountController = {
         message: 'Failed to fetch cashflow'
       });
     }
+  },
+
+  /**
+   * Fix trades with redacted account identifiers
+   * POST /api/accounts/:accountId/fix-trades
+   *
+   * This endpoint fixes trades that were imported with redacted account identifiers
+   * (e.g., "****5678") by updating them to use the account's full identifier.
+   * It matches trades where the last 4 characters of the redacted identifier
+   * match the last 4 characters of the account's identifier.
+   */
+  async fixRedactedTrades(req, res) {
+    try {
+      const { accountId } = req.params;
+      const userId = req.user.id;
+
+      // Get the account
+      const account = await Account.findById(accountId, userId);
+      if (!account) {
+        return res.status(404).json({
+          success: false,
+          message: 'Account not found'
+        });
+      }
+
+      if (!account.account_identifier) {
+        return res.status(400).json({
+          success: false,
+          message: 'Account does not have an identifier set'
+        });
+      }
+
+      const fullIdentifier = account.account_identifier;
+      const last4 = fullIdentifier.slice(-4);
+
+      // Update trades with redacted identifiers that match this account's last 4 digits
+      const db = require('../config/database');
+      const result = await db.query(`
+        UPDATE trades
+        SET account_identifier = $1
+        WHERE user_id = $2
+          AND account_identifier LIKE '****%'
+          AND RIGHT(account_identifier, 4) = $3
+        RETURNING id
+      `, [fullIdentifier, userId, last4]);
+
+      const updatedCount = result.rowCount;
+
+      console.log(`[ACCOUNTS] Fixed ${updatedCount} trades with redacted identifiers for account ${accountId}`);
+
+      res.json({
+        success: true,
+        message: `Updated ${updatedCount} trades to use account identifier`,
+        data: {
+          updatedCount,
+          accountIdentifier: fullIdentifier
+        }
+      });
+    } catch (error) {
+      console.error('[ACCOUNTS] Error fixing redacted trades:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to fix trades'
+      });
+    }
+  },
+
+  /**
+   * Link trades to an account by updating their account identifier
+   * POST /api/accounts/:accountId/link-trades
+   *
+   * Body options:
+   * - sourceIdentifier: Update trades with this specific identifier to use the account's identifier
+   * - linkAll: If true, update ALL user's trades that don't have an identifier to use this account
+   *
+   * This is useful when:
+   * 1. Trades have a different identifier than the account (e.g., from CSV import)
+   * 2. Trades have no identifier and need to be linked to an account
+   */
+  async linkTradesToAccount(req, res) {
+    try {
+      const { accountId } = req.params;
+      const { sourceIdentifier, linkAll } = req.body;
+      const userId = req.user.id;
+
+      // Get the account
+      const account = await Account.findById(accountId, userId);
+      if (!account) {
+        return res.status(404).json({
+          success: false,
+          message: 'Account not found'
+        });
+      }
+
+      const targetIdentifier = account.account_identifier;
+      const db = require('../config/database');
+      let result;
+
+      if (sourceIdentifier) {
+        // Update trades with a specific source identifier
+        result = await db.query(`
+          UPDATE trades
+          SET account_identifier = $1
+          WHERE user_id = $2
+            AND account_identifier = $3
+          RETURNING id
+        `, [targetIdentifier, userId, sourceIdentifier]);
+
+        console.log(`[ACCOUNTS] Linked ${result.rowCount} trades from "${sourceIdentifier}" to account ${accountId}`);
+      } else if (linkAll) {
+        // Update all trades without an identifier
+        result = await db.query(`
+          UPDATE trades
+          SET account_identifier = $1
+          WHERE user_id = $2
+            AND (account_identifier IS NULL OR account_identifier = '')
+          RETURNING id
+        `, [targetIdentifier, userId]);
+
+        console.log(`[ACCOUNTS] Linked ${result.rowCount} unlinked trades to account ${accountId}`);
+      } else {
+        return res.status(400).json({
+          success: false,
+          message: 'Must provide sourceIdentifier or set linkAll to true'
+        });
+      }
+
+      res.json({
+        success: true,
+        message: `Linked ${result.rowCount} trades to account`,
+        data: {
+          updatedCount: result.rowCount,
+          targetIdentifier
+        }
+      });
+    } catch (error) {
+      console.error('[ACCOUNTS] Error linking trades:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to link trades'
+      });
+    }
+  },
+
+  /**
+   * Get trade identifiers summary for debugging
+   * GET /api/accounts/debug/trade-identifiers
+   */
+  async getTradeIdentifiersSummary(req, res) {
+    try {
+      const userId = req.user.id;
+      const db = require('../config/database');
+
+      // Get summary of account identifiers on trades
+      const result = await db.query(`
+        SELECT
+          COALESCE(account_identifier, 'NULL') as identifier,
+          COUNT(*) as trade_count,
+          MIN(trade_date)::date as earliest_trade,
+          MAX(trade_date)::date as latest_trade
+        FROM trades
+        WHERE user_id = $1
+        GROUP BY account_identifier
+        ORDER BY trade_count DESC
+      `, [userId]);
+
+      // Get account identifiers
+      const accounts = await db.query(`
+        SELECT id, account_name, account_identifier, initial_balance_date
+        FROM user_accounts
+        WHERE user_id = $1
+      `, [userId]);
+
+      res.json({
+        success: true,
+        data: {
+          tradeIdentifiers: result.rows,
+          accounts: accounts.rows
+        }
+      });
+    } catch (error) {
+      console.error('[ACCOUNTS] Error getting trade identifiers summary:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to get trade identifiers summary'
+      });
+    }
+  },
+
+  /**
+   * Debug cashflow calculation for an account
+   * GET /api/accounts/:accountId/debug-cashflow
+   */
+  async debugCashflow(req, res) {
+    try {
+      const { accountId } = req.params;
+      const userId = req.user.id;
+      const db = require('../config/database');
+
+      // Get account
+      const account = await Account.findById(accountId, userId);
+      if (!account) {
+        return res.status(404).json({ success: false, message: 'Account not found' });
+      }
+
+      // Get trades that match this account
+      const tradesResult = await db.query(`
+        SELECT
+          id,
+          symbol,
+          trade_date,
+          entry_time,
+          exit_time,
+          entry_price,
+          exit_price,
+          quantity,
+          side,
+          account_identifier,
+          instrument_type,
+          contract_size,
+          commission
+        FROM trades
+        WHERE user_id = $1
+          AND account_identifier = $2
+        ORDER BY trade_date DESC
+        LIMIT 20
+      `, [userId, account.account_identifier]);
+
+      // Get date range info
+      const dateRangeResult = await db.query(`
+        SELECT
+          COUNT(*) as total_trades,
+          MIN(trade_date)::date as earliest_trade_date,
+          MAX(trade_date)::date as latest_trade_date,
+          MIN(DATE(entry_time))::date as earliest_entry_time,
+          MAX(DATE(entry_time))::date as latest_entry_time,
+          COUNT(entry_time) as trades_with_entry_time,
+          COUNT(exit_time) as trades_with_exit_time
+        FROM trades
+        WHERE user_id = $1
+          AND account_identifier = $2
+      `, [userId, account.account_identifier]);
+
+      // Check instrument types distribution
+      const instrumentTypesResult = await db.query(`
+        SELECT
+          COALESCE(instrument_type, 'NULL') as instrument_type,
+          COUNT(*) as count,
+          SUM(entry_price::numeric * quantity::numeric * COALESCE(contract_size, 1)) as total_entry_value
+        FROM trades
+        WHERE user_id = $1
+          AND account_identifier = $2
+        GROUP BY instrument_type
+      `, [userId, account.account_identifier]);
+
+      // Count trades within the cashflow date range
+      const effectiveStartDate = account.initial_balance_date;
+      const effectiveEndDate = new Date().toISOString().split('T')[0];
+
+      const inRangeResult = await db.query(`
+        SELECT
+          COUNT(*) as trades_in_range,
+          COUNT(CASE WHEN DATE(COALESCE(entry_time, trade_date)) >= $3 THEN 1 END) as entries_in_range,
+          COUNT(CASE WHEN exit_time IS NOT NULL AND DATE(exit_time) >= $3 THEN 1 END) as exits_in_range
+        FROM trades
+        WHERE user_id = $1
+          AND account_identifier = $2
+      `, [userId, account.account_identifier, effectiveStartDate]);
+
+      res.json({
+        success: true,
+        data: {
+          account: {
+            id: account.id,
+            name: account.account_name,
+            identifier: account.account_identifier,
+            initialBalanceDate: account.initial_balance_date
+          },
+          dateRange: {
+            effectiveStartDate,
+            effectiveEndDate
+          },
+          tradeStats: dateRangeResult.rows[0],
+          instrumentTypes: instrumentTypesResult.rows,
+          tradesInRange: inRangeResult.rows[0],
+          sampleTrades: tradesResult.rows
+        }
+      });
+    } catch (error) {
+      console.error('[ACCOUNTS] Error debugging cashflow:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to debug cashflow'
+      });
+    }
   }
 };
 
