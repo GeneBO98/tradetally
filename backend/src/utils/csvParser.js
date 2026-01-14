@@ -2241,10 +2241,12 @@ async function parseLightspeedTransactions(records, existingPositions = {}, user
       console.log(`  Resolved Symbol: "${resolvedSymbol}"`);
       console.log(`---`);
       
-      // Determine account identifier - from CSV column or manual selection
-      const accountIdentifier = context.accountColumnName
-        ? extractAccountFromRecord(record, context.accountColumnName)
-        : context.selectedAccountId || null;
+      // Determine account identifier - user selection takes priority over CSV column
+      const accountIdentifier = context.selectedAccountId
+        ? context.selectedAccountId
+        : context.accountColumnName
+          ? extractAccountFromRecord(record, context.accountColumnName)
+          : null;
 
       const transaction = {
         symbol: resolvedSymbol,
@@ -2752,10 +2754,12 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
         continue;
       }
       
-      // Determine account identifier - from CSV column or manual selection
-      const accountIdentifier = context.accountColumnName
-        ? extractAccountFromRecord(record, context.accountColumnName)
-        : context.selectedAccountId || null;
+      // Determine account identifier - user selection takes priority over CSV column
+      const accountIdentifier = context.selectedAccountId
+        ? context.selectedAccountId
+        : context.accountColumnName
+          ? extractAccountFromRecord(record, context.accountColumnName)
+          : null;
 
       transactions.push({
         symbol,
@@ -3138,10 +3142,12 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
       const commissionsFees = parseFloat((record['Commissions & Fees'] || '0').replace(/[$,]/g, '')) || 0;
       const totalFees = miscFees + commissionsFees;
 
-      // Determine account identifier - from CSV column, header extraction, or manual selection
-      const accountIdentifier = context.accountColumnName
-        ? extractAccountFromRecord(record, context.accountColumnName)
-        : (context.tosAccountNumber || context.selectedAccountId || null);
+      // Determine account identifier - user selection takes priority over CSV column
+      const accountIdentifier = context.selectedAccountId
+        ? context.selectedAccountId
+        : context.accountColumnName
+          ? extractAccountFromRecord(record, context.accountColumnName)
+          : (context.tosAccountNumber || null);
 
       transactions.push({
         symbol,
@@ -3530,10 +3536,12 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
         continue;
       }
       
-      // Determine account identifier - from CSV column or manual selection
-      const accountIdentifier = context.accountColumnName
-        ? extractAccountFromRecord(record, context.accountColumnName)
-        : context.selectedAccountId || null;
+      // Determine account identifier - user selection takes priority over CSV column
+      const accountIdentifier = context.selectedAccountId
+        ? context.selectedAccountId
+        : context.accountColumnName
+          ? extractAccountFromRecord(record, context.accountColumnName)
+          : null;
 
       transactions.push({
         symbol,
@@ -3842,10 +3850,12 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
         continue;
       }
 
-      // Determine account identifier - from CSV column or manual selection
-      const accountIdentifier = context.accountColumnName
-        ? extractAccountFromRecord(record, context.accountColumnName)
-        : context.selectedAccountId || null;
+      // Determine account identifier - user selection takes priority over CSV column
+      const accountIdentifier = context.selectedAccountId
+        ? context.selectedAccountId
+        : context.accountColumnName
+          ? extractAccountFromRecord(record, context.accountColumnName)
+          : null;
 
       transactions.push({
         symbol,
@@ -4265,10 +4275,12 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
       // Include EP (expired), EX (exercised), A (assigned), or option close with price=0
       const isExpirationTx = isExpiration || (price === 0 && instrumentData.instrumentType === 'option');
 
-      // Determine account identifier - from CSV column or manual selection
-      const accountIdentifier = context.accountColumnName
-        ? extractAccountFromRecord(record, context.accountColumnName)
-        : context.selectedAccountId || null;
+      // Determine account identifier - user selection takes priority over CSV column
+      const accountIdentifier = context.selectedAccountId
+        ? context.selectedAccountId
+        : context.accountColumnName
+          ? extractAccountFromRecord(record, context.accountColumnName)
+          : null;
 
       transactions.push({
         symbol,
@@ -4826,10 +4838,12 @@ async function parseWebullTransactions(records, existingPositions = {}, context 
       // Determine action from side
       const action = side === 'buy' ? 'buy' : 'sell';
 
-      // Determine account identifier - from CSV column or manual selection
-      const accountIdentifier = context.accountColumnName
-        ? extractAccountFromRecord(record, context.accountColumnName)
-        : context.selectedAccountId || null;
+      // Determine account identifier - user selection takes priority over CSV column
+      const accountIdentifier = context.selectedAccountId
+        ? context.selectedAccountId
+        : context.accountColumnName
+          ? extractAccountFromRecord(record, context.accountColumnName)
+          : null;
 
       transactions.push({
         symbol,
@@ -5226,10 +5240,12 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
         }
       }
 
-      // Determine account identifier - from CSV column or manual selection
-      const accountIdentifier = context.accountColumnName
-        ? extractAccountFromRecord(record, context.accountColumnName)
-        : context.selectedAccountId || null;
+      // Determine account identifier - user selection takes priority over CSV column
+      const accountIdentifier = context.selectedAccountId
+        ? context.selectedAccountId
+        : context.accountColumnName
+          ? extractAccountFromRecord(record, context.accountColumnName)
+          : null;
 
       transactions.push({
         symbol: trade.symbol.toUpperCase(),
@@ -5535,10 +5551,12 @@ async function parseTradovateTransactions(records, existingPositions = {}, conte
       // Determine if this is an entry or exit order
       const isExit = orderText.toLowerCase().includes('exit');
 
-      // Determine account identifier - from CSV column or manual selection
-      const accountIdentifier = context.accountColumnName
-        ? extractAccountFromRecord(record, context.accountColumnName)
-        : context.selectedAccountId || null;
+      // Determine account identifier - user selection takes priority over CSV column
+      const accountIdentifier = context.selectedAccountId
+        ? context.selectedAccountId
+        : context.accountColumnName
+          ? extractAccountFromRecord(record, context.accountColumnName)
+          : null;
 
       transactions.push({
         symbol: contract,        // Full contract symbol (e.g., MESZ5)
@@ -6013,10 +6031,12 @@ async function parseQuestradeTransactions(records, existingPositions = {}, conte
           continue;
       }
 
-      // Extract account identifier - format is like "12345678 - Margin +"
-      const accountIdentifier = context.accountColumnName
-        ? extractAccountFromRecord(record, context.accountColumnName)
-        : (accountRaw ? accountRaw.split(' - ')[0].trim() : null) || context.selectedAccountId || null;
+      // Extract account identifier - user selection takes priority, otherwise extract from account column
+      const accountIdentifier = context.selectedAccountId
+        ? context.selectedAccountId
+        : context.accountColumnName
+          ? extractAccountFromRecord(record, context.accountColumnName)
+          : (accountRaw ? accountRaw.split(' - ')[0].trim() : null);
 
       // Parse instrument data
       const instrumentData = parseQuestradeOptionsSymbol(symbol, optionColumn);
