@@ -2695,8 +2695,8 @@ const goBack = () => {
   if (window.history.length > 1) {
     router.go(-1)
   } else {
-    // If no history, go to analytics page since this is a sub-page of analytics
-    router.push('/analytics')
+    // If no history, go to metrics page since this is a sub-page of metrics
+    router.push('/metrics')
   }
 }
 

@@ -16,7 +16,7 @@
       <!-- Header -->
       <div class="mb-6">
         <button
-          @click="$router.push('/investments')"
+          @click="$router.push('/analysis')"
           class="flex items-center text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 mb-4"
         >
           <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -297,7 +297,7 @@
           <div v-else-if="analysis">
             <EightPillarsCard
               :analysis="analysis"
-              @view-details="$router.push(`/investments/analyze/${holding.symbol}`)"
+              @view-details="$router.push(`/analysis/analyze/${holding.symbol}`)"
             />
           </div>
 
@@ -521,7 +521,7 @@ async function deleteHolding() {
 
   try {
     await investmentsStore.deleteHolding(holding.value.id)
-    router.push('/investments')
+    router.push('/analysis')
   } catch (err) {
     console.error('Failed to delete holding:', err)
   }
