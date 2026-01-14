@@ -16,7 +16,7 @@
           @click="activeTab = tab.id"
           :class="[
             activeTab === tab.id
-              ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+              ? 'border-primary-500 text-primary-600 dark:text-primary-400'
               : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300',
             'whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors'
           ]"
@@ -52,7 +52,7 @@
                 <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
                   Choose whether to use averages or medians for calculations like Average P&L, Average Win, Average Loss, etc.
                   Medians are less affected by outliers and may provide a more representative view of typical performance.
-                  <span class="block mt-2 text-blue-600 dark:text-blue-400 font-medium">
+                  <span class="block mt-2 text-primary-600 dark:text-primary-400 font-medium">
                     Note: Changes take effect immediately and will update labels throughout the application.
                   </span>
                 </p>
@@ -73,8 +73,8 @@
                     type="button"
                     @click="analyticsForm.autoCloseExpiredOptions = !analyticsForm.autoCloseExpiredOptions"
                     :class="[
-                      analyticsForm.autoCloseExpiredOptions ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700',
-                      'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2'
+                      analyticsForm.autoCloseExpiredOptions ? 'bg-primary-600' : 'bg-gray-200 dark:bg-gray-700',
+                      'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-600 focus:ring-offset-2'
                     ]"
                     role="switch"
                     :aria-checked="analyticsForm.autoCloseExpiredOptions"
@@ -109,8 +109,34 @@
                 <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
                   Automatically apply this stop loss percentage to all new and imported trades. Leave empty to not set a default.
                   For long positions, the stop loss will be below entry price. For short positions, it will be above entry price.
-                  <span class="block mt-2 text-blue-600 dark:text-blue-400 font-medium">
+                  <span class="block mt-2 text-primary-600 dark:text-primary-400 font-medium">
                     Example: 2% stop loss on a $100 long entry = $98 stop loss price
+                  </span>
+                </p>
+              </div>
+
+              <div>
+                <label for="defaultTakeProfit" class="label">Default Take Profit Percentage</label>
+                <div class="mt-1 relative rounded-md shadow-sm">
+                  <input
+                    type="number"
+                    id="defaultTakeProfit"
+                    v-model.number="analyticsForm.defaultTakeProfitPercent"
+                    step="0.1"
+                    min="0"
+                    max="1000"
+                    placeholder="0"
+                    class="input pr-12"
+                  />
+                  <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                    <span class="text-gray-500 dark:text-gray-400">%</span>
+                  </div>
+                </div>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  Automatically apply this take profit percentage to all new and imported trades. Leave empty to not set a default.
+                  For long positions, the take profit will be above entry price. For short positions, it will be below entry price.
+                  <span class="block mt-2 text-primary-600 dark:text-primary-400 font-medium">
+                    Example: 6% take profit on a $100 long entry = $106 take profit price
                   </span>
                 </p>
               </div>
@@ -156,8 +182,8 @@
                     type="button"
                     @click="privacyForm.publicProfile = !privacyForm.publicProfile"
                     :class="[
-                      privacyForm.publicProfile ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700',
-                      'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2'
+                      privacyForm.publicProfile ? 'bg-primary-600' : 'bg-gray-200 dark:bg-gray-700',
+                      'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-600 focus:ring-offset-2'
                     ]"
                     role="switch"
                     :aria-checked="privacyForm.publicProfile"
@@ -254,10 +280,10 @@
             <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-6">AI Provider Settings</h3>
             <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
               Configure which AI provider to use for analytics recommendations and CUSIP lookups.
-              <span v-if="authStore.user?.role === 'admin'" class="block mt-2 text-blue-600 dark:text-blue-400 font-medium">
+              <span v-if="authStore.user?.role === 'admin'" class="block mt-2 text-primary-600 dark:text-primary-400 font-medium">
                 Note: As an admin, you can also configure default settings for all users below.
               </span>
-              <span v-else class="block mt-2 text-blue-600 dark:text-blue-400 font-medium">
+              <span v-else class="block mt-2 text-primary-600 dark:text-primary-400 font-medium">
                 Note: If you leave these settings empty, admin-configured defaults will be used.
               </span>
             </p>
@@ -1331,7 +1357,8 @@ const cusipAiLoading = ref(false)
 const analyticsForm = ref({
   statisticsCalculation: 'average',
   autoCloseExpiredOptions: true,
-  defaultStopLossPercent: null
+  defaultStopLossPercent: null,
+  defaultTakeProfitPercent: null
 })
 
 const analyticsLoading = ref(false)
@@ -1627,7 +1654,8 @@ async function loadAnalyticsSettings() {
       autoCloseExpiredOptions: response.data.settings.autoCloseExpiredOptions !== undefined
         ? response.data.settings.autoCloseExpiredOptions
         : true,
-      defaultStopLossPercent: response.data.settings.defaultStopLossPercent || null
+      defaultStopLossPercent: response.data.settings.defaultStopLossPercent || null,
+      defaultTakeProfitPercent: response.data.settings.defaultTakeProfitPercent || null
     }
   } catch (error) {
     console.error('Failed to load analytics settings:', error)
@@ -1635,6 +1663,7 @@ async function loadAnalyticsSettings() {
     analyticsForm.value.statisticsCalculation = 'average'
     analyticsForm.value.autoCloseExpiredOptions = true
     analyticsForm.value.defaultStopLossPercent = null
+    analyticsForm.value.defaultTakeProfitPercent = null
   }
 }
 
@@ -1644,7 +1673,8 @@ async function updateAnalyticsSettings() {
     await api.put('/settings', {
       statisticsCalculation: analyticsForm.value.statisticsCalculation,
       autoCloseExpiredOptions: analyticsForm.value.autoCloseExpiredOptions,
-      defaultStopLossPercent: analyticsForm.value.defaultStopLossPercent || null
+      defaultStopLossPercent: analyticsForm.value.defaultStopLossPercent || null,
+      defaultTakeProfitPercent: analyticsForm.value.defaultTakeProfitPercent || null
     })
     showSuccess('Success', 'Analytics preferences updated successfully')
   } catch (error) {

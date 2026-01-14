@@ -232,12 +232,16 @@ class Trade {
 
     // Apply default stop loss if none provided
     let finalStopLoss = stopLoss;
-    if (!finalStopLoss && entryPrice) {
+    let finalTakeProfit = takeProfit;
+    let userSettings = null;
+
+    if ((!finalStopLoss || !finalTakeProfit) && entryPrice) {
       try {
         const User = require('./User');
-        const userSettings = await User.getSettings(userId);
+        userSettings = await User.getSettings(userId);
 
-        if (userSettings?.default_stop_loss_percent && userSettings.default_stop_loss_percent > 0) {
+        // Apply default stop loss if not provided
+        if (!finalStopLoss && userSettings?.default_stop_loss_percent && userSettings.default_stop_loss_percent > 0) {
           const stopLossPercent = parseFloat(userSettings.default_stop_loss_percent);
 
           // Calculate stop loss price based on entry price and side
@@ -254,9 +258,28 @@ class Trade {
 
           console.log(`[STOP LOSS] Applied default ${stopLossPercent}% stop loss for ${side} position: $${finalStopLoss}`);
         }
+
+        // Apply default take profit if not provided
+        if (!finalTakeProfit && userSettings?.default_take_profit_percent && userSettings.default_take_profit_percent > 0) {
+          const takeProfitPercent = parseFloat(userSettings.default_take_profit_percent);
+
+          // Calculate take profit price based on entry price and side
+          // For long positions: entry price + (entry price * take profit %)
+          // For short positions: entry price - (entry price * take profit %)
+          if (side === 'long' || side === 'buy') {
+            finalTakeProfit = entryPrice * (1 + takeProfitPercent / 100);
+          } else if (side === 'short' || side === 'sell') {
+            finalTakeProfit = entryPrice * (1 - takeProfitPercent / 100);
+          }
+
+          // Round to 2 decimal places for stocks, 4 for precise pricing
+          finalTakeProfit = Math.round(finalTakeProfit * 10000) / 10000;
+
+          console.log(`[TAKE PROFIT] Applied default ${takeProfitPercent}% take profit for ${side} position: $${finalTakeProfit}`);
+        }
       } catch (error) {
-        console.warn('[STOP LOSS] Failed to apply default stop loss:', error.message);
-        // Continue without default stop loss if there's an error
+        console.warn('[DEFAULTS] Failed to apply default stop loss/take profit:', error.message);
+        // Continue without defaults if there's an error
       }
     }
 
@@ -295,7 +318,7 @@ class Trade {
       importId || null,
       originalCurrency || 'USD', exchangeRate || 1.0, originalEntryPriceCurrency || null, originalExitPriceCurrency || null,
       originalPnlCurrency || null, originalCommissionCurrency || null, originalFeesCurrency || null,
-      finalStopLoss || null, takeProfit || null, rValue, chartUrl || null, brokerConnectionId || null, finalAccountIdentifier || null
+      finalStopLoss || null, finalTakeProfit || null, rValue, chartUrl || null, brokerConnectionId || null, finalAccountIdentifier || null
     ];
 
     const result = await db.query(query, values);
@@ -1549,6 +1572,90 @@ class Trade {
     } catch (error) {
       await client.query('ROLLBACK');
       console.error('[STOP LOSS] Error applying default stop loss to existing trades:', error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Apply default take profit to all trades without a take profit
+   * This is called when a user updates their default take profit percentage setting
+   * @param {number} userId - The user ID
+   * @param {number} defaultTakeProfitPercent - The default take profit percentage
+   * @returns {Promise<number>} The number of trades updated
+   */
+  static async applyDefaultTakeProfitToExistingTrades(userId, defaultTakeProfitPercent) {
+    if (!defaultTakeProfitPercent || defaultTakeProfitPercent <= 0) {
+      console.log('[TAKE PROFIT] Invalid default take profit percentage, skipping update');
+      return 0;
+    }
+
+    console.log(`[TAKE PROFIT] Applying ${defaultTakeProfitPercent}% default take profit to existing trades without take profit for user ${userId}`);
+
+    // Use a transaction to update all trades at once
+    const client = await db.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Find all trades without a take profit that have the necessary data
+      const tradesQuery = `
+        SELECT id, entry_price, side
+        FROM trades
+        WHERE user_id = $1
+          AND take_profit IS NULL
+          AND entry_price IS NOT NULL
+          AND side IS NOT NULL
+      `;
+
+      const tradesResult = await client.query(tradesQuery, [userId]);
+      const trades = tradesResult.rows;
+
+      console.log(`[TAKE PROFIT] Found ${trades.length} trades without take profit`);
+
+      if (trades.length === 0) {
+        await client.query('COMMIT');
+        return 0;
+      }
+
+      let updatedCount = 0;
+
+      // Update each trade with the calculated take profit
+      for (const trade of trades) {
+        const { id, entry_price, side } = trade;
+
+        // Calculate take profit based on entry price and side
+        let takeProfit;
+        if (side === 'long' || side === 'buy') {
+          takeProfit = entry_price * (1 + defaultTakeProfitPercent / 100);
+        } else if (side === 'short' || side === 'sell') {
+          takeProfit = entry_price * (1 - defaultTakeProfitPercent / 100);
+        } else {
+          console.warn(`[TAKE PROFIT] Unknown side "${side}" for trade ${id}, skipping`);
+          continue;
+        }
+
+        // Round to 4 decimal places
+        takeProfit = Math.round(takeProfit * 10000) / 10000;
+
+        // Update the trade
+        const updateQuery = `
+          UPDATE trades
+          SET take_profit = $1
+          WHERE id = $2 AND user_id = $3
+        `;
+
+        await client.query(updateQuery, [takeProfit, id, userId]);
+        updatedCount++;
+      }
+
+      await client.query('COMMIT');
+      console.log(`[TAKE PROFIT] Successfully updated ${updatedCount} trades with default take profit`);
+      return updatedCount;
+
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('[TAKE PROFIT] Error applying default take profit to existing trades:', error);
       throw error;
     } finally {
       client.release();

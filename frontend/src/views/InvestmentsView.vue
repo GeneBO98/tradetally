@@ -4,7 +4,7 @@
     <div class="flex items-center justify-between mb-8">
       <div>
         <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Investments</h1>
-        <p class="text-gray-600 dark:text-gray-400 mt-1">Analyze stocks and track your long-term portfolio</p>
+        <p class="text-gray-600 dark:text-gray-400 mt-1">Analyze stocks and track your portfolio</p>
       </div>
       <button
         v-if="activeTab === 'holdings'"

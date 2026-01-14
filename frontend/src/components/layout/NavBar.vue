@@ -306,31 +306,31 @@ const baseNavigation = [
   },
   { name: 'Trades', to: '/trades', route: 'trades' },
   {
-    name: 'Analytics',
+    name: 'Metrics',
     type: 'dropdown',
     items: [
       {
-        name: 'Performance Analytics',
-        to: '/analytics',
-        route: 'analytics',
+        name: 'Performance Metrics',
+        to: '/metrics',
+        route: 'metrics',
         description: 'Trading performance metrics and statistics'
       },
       {
         name: 'Monthly Performance',
-        to: '/analytics/monthly',
+        to: '/metrics/monthly',
         route: 'monthly-performance',
         description: 'Month-by-month performance breakdown and comparison'
       },
       {
         name: 'Behavioral Analytics',
-        to: '/analytics/behavioral',
+        to: '/metrics/behavioral',
         route: 'behavioral-analytics',
         description: 'Detect revenge trading and emotional patterns',
         badge: { type: 'pro', text: 'Pro' }
       },
       {
         name: 'Health Analytics',
-        to: '/analytics/health',
+        to: '/metrics/health',
         route: 'health-analytics',
         description: 'Correlate health metrics with trading performance',
         badge: { type: 'pro', text: 'Pro' }
@@ -338,16 +338,31 @@ const baseNavigation = [
     ]
   },
   {
-    name: 'Markets',
-    to: '/markets',
-    route: 'markets',
-    badge: { type: 'pro', text: 'Pro' }
-  },
-  {
-    name: 'Investments',
-    to: '/investments',
-    route: 'investments',
-    badge: { type: 'pro', text: 'Pro' }
+    name: 'Analysis',
+    type: 'dropdown',
+    items: [
+      {
+        name: 'Investments',
+        to: '/analysis',
+        route: 'analysis',
+        description: 'Stock screening, portfolio tracking, and fundamental analysis',
+        badge: { type: 'pro', text: 'Pro' }
+      },
+      {
+        name: 'Watchlists',
+        to: '/markets',
+        route: 'markets',
+        description: 'Track stocks and market data with custom watchlists',
+        badge: { type: 'pro', text: 'Pro' }
+      },
+      {
+        name: 'Trade Management',
+        to: '/analysis/trade-management',
+        route: 'trade-management',
+        description: 'Analyze trade execution with R-Multiple performance metrics',
+        badge: { type: 'pro', text: 'Pro' }
+      }
+    ]
   },
   { name: 'Calendar', to: '/calendar', route: 'calendar' },
   { name: 'Import', to: '/import', route: 'import' },

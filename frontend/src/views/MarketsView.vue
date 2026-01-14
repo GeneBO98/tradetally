@@ -2,8 +2,8 @@
   <div class="content-wrapper py-8">
     <!-- Header -->
     <div class="mb-8">
-      <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">Markets</h1>
-      <p class="text-gray-600 dark:text-gray-400">Track stocks, set watchlists, and create price alerts</p>
+      <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">Watchlists</h1>
+      <p class="text-gray-600 dark:text-gray-400">Track stocks, monitor market data, and create price alerts</p>
     </div>
 
     <!-- Pro Feature Notice -->

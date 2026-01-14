@@ -365,7 +365,7 @@
                   <p class="text-xs text-gray-500 dark:text-gray-400">Pillars Passed</p>
                 </div>
                 <router-link
-                  :to="`/investments/analyze/${analysis.symbol}`"
+                  :to="`/analysis/analyze/${analysis.symbol}`"
                   class="text-sm text-primary-600 hover:text-primary-800 whitespace-nowrap"
                 >
                   View Details
