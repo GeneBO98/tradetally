@@ -423,11 +423,43 @@ function formatDate(dateStr) {
   })
 }
 
+/**
+ * Smart redaction for account identifiers
+ * Only redacts strings that look like actual account numbers (mostly digits)
+ * Does NOT redact descriptive text like "Margin +", "Trading Account", "Cash", etc.
+ */
 function redactAccountId(accountId) {
   if (!accountId) return null
   const str = String(accountId).trim()
+
+  // Don't redact short strings
   if (str.length <= 4) return str
-  return '****' + str.slice(-4)
+
+  // Check if this looks like an actual account number
+  // Account numbers are typically: mostly digits, may have dashes/dots/spaces as separators
+  // Examples to redact: "12345678", "1234-5678", "U1234567", "DU123456"
+  // Examples to NOT redact: "Margin +", "Trading Account", "Cash", "Individual"
+
+  // Remove common separators to count digits
+  const withoutSeparators = str.replace(/[-.\s]/g, '')
+  const digitCount = (withoutSeparators.match(/\d/g) || []).length
+  const letterCount = (withoutSeparators.match(/[a-zA-Z]/g) || []).length
+  const totalAlphanumeric = digitCount + letterCount
+
+  // Consider it an account number if:
+  // 1. More than 50% digits, OR
+  // 2. Starts with 1-2 letters followed by mostly digits (like "U1234567" or "DU123456")
+  const isAccountNumber = totalAlphanumeric > 0 && (
+    (digitCount / totalAlphanumeric) > 0.5 ||
+    /^[A-Za-z]{1,2}\d{4,}/.test(withoutSeparators)
+  )
+
+  if (isAccountNumber) {
+    return '****' + str.slice(-4)
+  }
+
+  // Not an account number - return as-is (e.g., "Margin +", "Trading Account")
+  return str
 }
 
 function selectAccount(accountId) {
