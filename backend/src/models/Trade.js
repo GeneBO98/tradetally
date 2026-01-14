@@ -2324,8 +2324,8 @@ class Trade {
           COALESCE(AVG(pnl) FILTER (WHERE pnl < 0), 0)::numeric as avg_loss,
           COALESCE(MAX(pnl), 0)::numeric as best_trade,
           COALESCE(MIN(pnl), 0)::numeric as worst_trade,
-          COALESCE(AVG(r_value) FILTER (WHERE r_value IS NOT NULL), 0)::numeric as avg_r_value,
-          COALESCE(SUM(r_value) FILTER (WHERE r_value IS NOT NULL), 0)::numeric as total_r_value,
+          COALESCE(AVG(r_value) FILTER (WHERE r_value IS NOT NULL AND stop_loss IS NOT NULL), 0)::numeric as avg_r_value,
+          COALESCE(SUM(r_value) FILTER (WHERE r_value IS NOT NULL AND stop_loss IS NOT NULL), 0)::numeric as total_r_value,
           COUNT(DISTINCT symbol)::integer as symbols_traded,
           COUNT(DISTINCT trade_date)::integer as trading_days
         FROM trades
