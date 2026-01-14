@@ -24,16 +24,30 @@
         <!-- Body -->
         <div class="p-6">
           <!-- Instructions -->
-          <div class="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-            <h4 class="text-sm font-medium text-blue-800 dark:text-blue-300 mb-2">Setup Instructions</h4>
-            <ol class="text-sm text-blue-700 dark:text-blue-400 space-y-2 list-decimal list-inside">
-              <li>Log in to your IBKR account at <a href="https://www.interactivebrokers.com" target="_blank" class="underline">interactivebrokers.com</a></li>
-              <li>Go to <strong>Settings > Reporting > Flex Queries</strong></li>
-              <li>Create a new Activity Flex Query with Trades/Executions selected</li>
-              <li>Note down your <strong>Query ID</strong></li>
-              <li>Go to <strong>Settings > Reporting > Flex Token</strong></li>
-              <li>Generate a token (set expiration to 1+ year)</li>
+          <div class="mb-6 p-4 bg-primary-50 dark:bg-primary-900/20 rounded-lg">
+            <h4 class="text-sm font-medium text-primary-800 dark:text-primary-300 mb-2">Setup Instructions</h4>
+            <ol class="text-sm text-primary-700 dark:text-primary-400 space-y-2 list-decimal list-inside">
+              <li>Log in to <a href="https://www.interactivebrokers.com/sso/Login" target="_blank" class="underline font-medium">IBKR Client Portal</a></li>
+              <li>Navigate to <strong>Performance & Reports > Flex Queries</strong></li>
+              <li>Under "Activity Flex Query", click the <strong>+</strong> button to create a new query</li>
+              <li>Name your query, select <strong>Trades</strong> in the Sections, then Save</li>
+              <li>Note the <strong>Query ID</strong> shown next to your saved query</li>
+              <li>Click the <strong>gear icon</strong> next to "Configure Flex Web Service"</li>
+              <li>Generate or copy your <strong>Current Token</strong></li>
             </ol>
+            <p class="mt-3 text-xs text-primary-600 dark:text-primary-400">
+              <a href="https://www.interactivebrokers.com/en/software/am/am/reports/activityflexqueries.htm" target="_blank" class="underline">View IBKR's official Flex Query documentation</a>
+            </p>
+          </div>
+
+          <!-- Error Message -->
+          <div v-if="props.error" class="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+            <div class="flex">
+              <svg class="h-5 w-5 text-red-400 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+              </svg>
+              <p class="ml-3 text-sm text-red-700 dark:text-red-300">{{ props.error }}</p>
+            </div>
           </div>
 
           <form @submit.prevent="handleSubmit" class="space-y-4">
@@ -74,8 +88,8 @@
                 type="button"
                 @click="form.autoSyncEnabled = !form.autoSyncEnabled"
                 :class="[
-                  form.autoSyncEnabled ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-600',
-                  'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2'
+                  form.autoSyncEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-gray-600',
+                  'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-600 focus:ring-offset-2'
                 ]"
               >
                 <span
@@ -135,6 +149,10 @@ const props = defineProps({
   loading: {
     type: Boolean,
     default: false
+  },
+  error: {
+    type: String,
+    default: ''
   }
 })
 

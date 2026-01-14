@@ -485,21 +485,24 @@ class IBKRService {
    * Get human-readable error message for IBKR error codes
    */
   getErrorMessage(errorCode, defaultMessage) {
+    // IBKR Flex Web Service error codes
+    // Reference: https://www.interactivebrokers.com/en/software/am/am/reports/flex_web_service_version_3.htm
     const errorMessages = {
-      '1003': 'Invalid Flex Token. Please check your token in IBKR Account Settings.',
-      '1004': 'Invalid Flex Query ID. Please check your query ID in IBKR Flex Queries.',
-      '1005': 'Flex Token has expired. Please generate a new token in IBKR Account Settings.',
-      '1006': 'Account is not authorized for Flex queries.',
-      '1007': 'Flex Query is not valid or has been deleted.',
-      '1010': 'Maximum daily request limit reached. Try again tomorrow.',
-      '1011': 'Query is currently running. Please wait.',
-      '1012': 'Query format error.',
-      '1018': 'Service temporarily unavailable. Please try again later.',
-      '1019': 'Statement is being generated. Please wait.',
-      '1020': 'No data available for the requested period.'
+      '1003': 'Statement not available. This usually means your Flex Query has no data for the configured period, or the query was just created. Try running the query manually in IBKR first, or check that your query includes recent trades.',
+      '1004': 'Invalid Flex Token. Please verify your token in IBKR: Performance & Reports > Flex Queries > gear icon > Flex Web Service.',
+      '1005': 'Invalid Flex Query ID. Please verify the Query ID matches your Activity Flex Query in IBKR.',
+      '1006': 'Too many requests. IBKR limits API calls. Please wait a few minutes and try again.',
+      '1007': 'Flex Token has expired. Please generate a new token in IBKR: Performance & Reports > Flex Queries > gear icon > Flex Web Service.',
+      '1010': 'Maximum daily request limit reached. IBKR limits requests per day. Try again tomorrow.',
+      '1011': 'Query is currently running. Please wait a moment and try again.',
+      '1012': 'Query format error. Your Flex Query may have an invalid configuration.',
+      '1013': 'Account not authorized for Flex queries. Please enable Flex Web Service in your IBKR account settings.',
+      '1018': 'IBKR service temporarily unavailable. Please try again later.',
+      '1019': 'Statement is being generated. Please wait and try again in a few seconds.',
+      '1020': 'No data available for the requested period. Your query returned no trades.'
     };
 
-    return errorMessages[errorCode] || defaultMessage || `IBKR Error ${errorCode}`;
+    return errorMessages[errorCode] || defaultMessage || `IBKR Error ${errorCode}: ${defaultMessage}`;
   }
 
   /**

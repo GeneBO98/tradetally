@@ -28,7 +28,7 @@
 
     <!-- Loading State -->
     <div v-if="store.loading && !store.hasConnections" class="flex items-center justify-center py-12">
-      <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
     </div>
 
     <!-- Main Content -->
@@ -63,7 +63,7 @@
               :class="[
                 store.ibkrConnection
                   ? 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 opacity-50 cursor-not-allowed'
-                  : 'border-dashed border-gray-300 dark:border-gray-600 hover:border-blue-500 dark:hover:border-blue-400'
+                  : 'border-dashed border-gray-300 dark:border-gray-600 hover:border-primary-500 dark:hover:border-primary-400'
               ]"
               @click="!store.ibkrConnection && openIBKRModal()"
             >
@@ -86,13 +86,13 @@
               :class="[
                 store.schwabConnection
                   ? 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 opacity-50 cursor-not-allowed'
-                  : 'border-dashed border-gray-300 dark:border-gray-600 hover:border-blue-500 dark:hover:border-blue-400'
+                  : 'border-dashed border-gray-300 dark:border-gray-600 hover:border-primary-500 dark:hover:border-primary-400'
               ]"
               @click="!store.schwabConnection && handleSchwabConnect()"
             >
               <div class="flex items-center space-x-4">
-                <div class="flex-shrink-0 w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center">
-                  <span class="text-blue-600 dark:text-blue-400 font-bold text-lg">CS</span>
+                <div class="flex-shrink-0 w-12 h-12 bg-primary-100 dark:bg-primary-900/30 rounded-lg flex items-center justify-center">
+                  <span class="text-primary-600 dark:text-primary-400 font-bold text-lg">CS</span>
                 </div>
                 <div>
                   <h4 class="font-medium text-gray-900 dark:text-white">Charles Schwab</h4>
@@ -120,7 +120,7 @@
             <h3 class="text-lg font-medium text-gray-900 dark:text-white">Sync History</h3>
             <button
               @click="refreshLogs"
-              class="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300"
+              class="text-sm text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300"
             >
               Refresh
             </button>
@@ -178,9 +178,10 @@
     <!-- IBKR Connection Modal -->
     <IBKRConnectionModal
       v-if="showIBKRModal"
-      @close="showIBKRModal = false"
+      @close="closeIBKRModal"
       @save="handleIBKRSave"
       :loading="store.loading"
+      :error="store.error"
     />
 
     <!-- Settings Modal -->
@@ -241,6 +242,11 @@ watch(() => route.query, async (newQuery) => {
 function openIBKRModal() {
   store.clearError()
   showIBKRModal.value = true
+}
+
+function closeIBKRModal() {
+  store.clearError()
+  showIBKRModal.value = false
 }
 
 function openSettingsModal(connection) {
