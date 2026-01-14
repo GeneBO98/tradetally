@@ -473,7 +473,7 @@
                         Showing {{ Math.min(logPagination.page * logPagination.limit, logPagination.total) }} of {{ logPagination.total }} lines
                         <span v-if="logSearchQuery">(filtered)</span>
                       </span>
-                      <span v-if="!logPagination.showAll && logPagination.filteredOut > 0" class="text-xs text-blue-600 dark:text-blue-400">
+                      <span v-if="!logPagination.showAll && logPagination.filteredOut > 0" class="text-xs text-primary-600 dark:text-primary-400">
                         (Last 24 hours)
                       </span>
                     </div>
@@ -1044,7 +1044,7 @@ function getStatusClass(status) {
     case 'failed':
       return 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
     case 'processing':
-      return 'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400'
+      return 'bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400'
     default:
       return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
   }
