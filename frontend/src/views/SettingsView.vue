@@ -270,6 +270,91 @@
             </div>
           </div>
         </div>
+
+        <!-- About TradeTally -->
+        <div class="card">
+          <div class="card-body">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-6">About TradeTally</h3>
+
+            <div class="space-y-4">
+              <!-- Current Version -->
+              <div class="flex items-center justify-between py-3 border-b border-gray-200 dark:border-gray-700">
+                <div>
+                  <p class="text-sm font-medium text-gray-900 dark:text-white">Current Version</p>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">Your installed version</p>
+                </div>
+                <span class="text-sm font-mono text-gray-900 dark:text-white">v{{ versionStore.currentVersion }}</span>
+              </div>
+
+              <!-- Latest Version -->
+              <div class="flex items-center justify-between py-3 border-b border-gray-200 dark:border-gray-700">
+                <div>
+                  <p class="text-sm font-medium text-gray-900 dark:text-white">Latest Version</p>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ versionStore.updateAvailable ? 'Update available' : 'You are up to date' }}
+                  </p>
+                </div>
+                <div class="flex items-center space-x-2">
+                  <span class="text-sm font-mono" :class="versionStore.updateAvailable ? 'text-primary-600 dark:text-primary-400' : 'text-gray-900 dark:text-white'">
+                    v{{ versionStore.latestVersion || versionStore.currentVersion }}
+                  </span>
+                  <span v-if="versionStore.updateAvailable" class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400">
+                    New
+                  </span>
+                </div>
+              </div>
+
+              <!-- Update Actions -->
+              <div v-if="versionStore.updateAvailable" class="pt-4">
+                <div class="bg-primary-50 dark:bg-primary-900/20 rounded-lg p-4">
+                  <div class="flex items-start">
+                    <ArrowPathIcon class="h-5 w-5 text-primary-600 dark:text-primary-400 mt-0.5" />
+                    <div class="ml-3 flex-1">
+                      <p class="text-sm font-medium text-primary-800 dark:text-primary-200">
+                        {{ versionStore.releaseName || 'New version available' }}
+                      </p>
+                      <p class="text-sm text-primary-700 dark:text-primary-300 mt-1">
+                        A new version is available. Visit the release page for upgrade instructions.
+                      </p>
+                      <div class="mt-3">
+                        <a
+                          :href="versionStore.releaseUrl"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                        >
+                          View Release Notes
+                          <ArrowTopRightOnSquareIcon class="ml-2 h-4 w-4" />
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Check for Updates Button -->
+              <div class="pt-4">
+                <button
+                  @click="checkForUpdates"
+                  :disabled="versionStore.loading"
+                  class="btn-secondary"
+                >
+                  <span v-if="versionStore.loading" class="flex items-center">
+                    <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></div>
+                    Checking...
+                  </span>
+                  <span v-else class="flex items-center">
+                    <ArrowPathIcon class="h-4 w-4 mr-2" />
+                    Check for Updates
+                  </span>
+                </button>
+                <p v-if="versionStore.lastChecked" class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                  Last checked: {{ versionStore.formatLastChecked() }}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
       </template>
 
       <!-- AI & Integrations Tab -->
@@ -1300,13 +1385,16 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { useVersionStore } from '@/stores/version'
 import { useNotification } from '@/composables/useNotification'
 import api from '@/services/api'
 import MdiIcon from '@/components/MdiIcon.vue'
 import { mdiApi } from '@mdi/js'
+import { ArrowPathIcon, ArrowTopRightOnSquareIcon } from '@heroicons/vue/24/outline'
 import LogsViewer from '@/components/admin/LogsViewer.vue'
 
 const authStore = useAuthStore()
+const versionStore = useVersionStore()
 const { showSuccess, showError } = useNotification()
 
 // Icons
@@ -2213,6 +2301,11 @@ async function enrichTrades() {
   } finally {
     enrichmentLoading.value = false
   }
+}
+
+// Version check
+async function checkForUpdates() {
+  await versionStore.checkForUpdates(true) // Force check
 }
 
 onMounted(() => {

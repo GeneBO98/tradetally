@@ -1,6 +1,6 @@
 {
   "name": "tradetally-frontend",
-  "version": "1.0.0",
+  "version": "2.1.6",
   "private": true,
   "type": "module",
   "scripts": {

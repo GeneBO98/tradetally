@@ -1,5 +1,6 @@
 <template>
   <div id="app" style="width: 100%; min-width: 100%; overflow-x: visible;">
+    <UpdateBanner v-if="!isAuthRoute" />
     <NavBar v-if="!isAuthRoute" />
     <main class="min-h-screen">
       <router-view />
@@ -54,6 +55,8 @@
               <span class="hidden sm:inline">Privacy Policy</span>
               <span class="sm:hidden">Privacy</span>
             </router-link>
+            <span>•</span>
+            <VersionDisplay />
           </div>
         </div>
       </div>
@@ -67,18 +70,22 @@
 </template>
 
 <script setup>
-import { computed, onMounted, watch } from 'vue'
+import { computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useVersionStore } from '@/stores/version'
 import { usePriceAlertNotifications } from '@/composables/usePriceAlertNotifications'
 import NavBar from '@/components/layout/NavBar.vue'
 import Notification from '@/components/common/Notification.vue'
 import ModalAlert from '@/components/common/ModalAlert.vue'
 import CelebrationOverlay from '@/components/gamification/CelebrationOverlay.vue'
+import UpdateBanner from '@/components/common/UpdateBanner.vue'
+import VersionDisplay from '@/components/common/VersionDisplay.vue'
 import api from '@/services/api'
 
 const route = useRoute()
 const authStore = useAuthStore()
+const versionStore = useVersionStore()
 
 // Initialize price alert notifications globally
 const { isConnected, connect, disconnect, celebrationQueue } = usePriceAlertNotifications()
@@ -106,9 +113,28 @@ watch(() => [authStore.user?.tier, authStore.token, authStore.user?.billingEnabl
   }
 }, { immediate: true })
 
+// Version check polling interval (6 hours)
+let versionPollInterval = null
+const VERSION_CHECK_INTERVAL = 6 * 60 * 60 * 1000
+
 onMounted(async () => {
   await authStore.checkAuth()
   // Note: Achievement celebrations are now handled by GamificationView only
   // This prevents conflicts between App.vue and GamificationView celebration logic
+
+  // Initialize version store and check for updates
+  versionStore.initialize()
+  versionStore.checkForUpdates()
+
+  // Poll for updates every 6 hours
+  versionPollInterval = setInterval(() => {
+    versionStore.checkForUpdates()
+  }, VERSION_CHECK_INTERVAL)
+})
+
+onUnmounted(() => {
+  if (versionPollInterval) {
+    clearInterval(versionPollInterval)
+  }
 })
 </script>
