@@ -426,10 +426,10 @@ const analyticsController = {
             : 'COALESCE(AVG(pnl) FILTER (WHERE pnl < 0), 0)::numeric as avg_loss'
           },
           ${useMedian
-            ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY r_value) FILTER (WHERE r_value IS NOT NULL), 0)::numeric as avg_r_value'
-            : 'COALESCE(AVG(r_value) FILTER (WHERE r_value IS NOT NULL), 0)::numeric as avg_r_value'
+            ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY r_value) FILTER (WHERE r_value IS NOT NULL AND stop_loss IS NOT NULL), 0)::numeric as avg_r_value'
+            : 'COALESCE(AVG(r_value) FILTER (WHERE r_value IS NOT NULL AND stop_loss IS NOT NULL), 0)::numeric as avg_r_value'
           },
-          COALESCE(SUM(r_value) FILTER (WHERE r_value IS NOT NULL), 0)::numeric as total_r_value,
+          COALESCE(SUM(r_value) FILTER (WHERE r_value IS NOT NULL AND stop_loss IS NOT NULL), 0)::numeric as total_r_value,
           -- Best/worst trades
           (SELECT individual_best_trade FROM individual_trades) as best_trade,
           (SELECT individual_worst_trade FROM individual_trades) as worst_trade,
@@ -740,8 +740,9 @@ const analyticsController = {
           COUNT(*) as trades,
           COALESCE(SUM(pnl), 0) as pnl,
           COALESCE(SUM(SUM(pnl)) OVER (ORDER BY ${groupBy}), 0) as cumulative_pnl,
-          COALESCE(SUM(r_value), 0) as r_value,
-          COALESCE(SUM(SUM(r_value)) OVER (ORDER BY ${groupBy}), 0) as cumulative_r_value
+          COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as r_value,
+          COALESCE(SUM(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL)) OVER (ORDER BY ${groupBy}), 0) as cumulative_r_value,
+          COUNT(CASE WHEN stop_loss IS NOT NULL THEN 1 END) as trades_with_r
         FROM trades
         WHERE user_id = $1 ${filterConditions}
         GROUP BY ${groupBy}
@@ -806,8 +807,9 @@ const analyticsController = {
           COUNT(CASE WHEN pnl > 0 THEN 1 END) as winning_trades,
           COALESCE(SUM(pnl), 0) as total_pnl,
           COALESCE(AVG(pnl), 0) as avg_pnl,
-          COALESCE(SUM(r_value), 0) as total_r_value,
-          COALESCE(AVG(r_value), 0) as avg_r_value
+          COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value,
+          COALESCE(AVG(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as avg_r_value,
+          COUNT(CASE WHEN stop_loss IS NOT NULL THEN 1 END) as trades_with_r
         FROM trades
         WHERE user_id = $1 ${filterConditions} AND tags IS NOT NULL
         GROUP BY tag
@@ -834,8 +836,9 @@ const analyticsController = {
           COUNT(CASE WHEN pnl > 0 THEN 1 END) as winning_trades,
           COALESCE(SUM(pnl), 0) as total_pnl,
           COALESCE(AVG(pnl), 0) as avg_pnl,
-          COALESCE(SUM(r_value), 0) as total_r_value,
-          COALESCE(AVG(r_value), 0) as avg_r_value
+          COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value,
+          COALESCE(AVG(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as avg_r_value,
+          COUNT(CASE WHEN stop_loss IS NOT NULL THEN 1 END) as trades_with_r
         FROM trades
         WHERE user_id = $1 ${filterConditions} AND strategy IS NOT NULL AND strategy != ''
         GROUP BY strategy
@@ -870,8 +873,9 @@ const analyticsController = {
             COUNT(CASE WHEN pnl > 0 THEN 1 END) as winning_trades,
             COALESCE(SUM(pnl), 0) as total_pnl,
             COALESCE(AVG(pnl), 0) as avg_pnl,
-            COALESCE(SUM(r_value), 0) as total_r_value,
-            COALESCE(AVG(r_value), 0) as avg_r_value
+            COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value,
+            COALESCE(AVG(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as avg_r_value,
+            COUNT(CASE WHEN stop_loss IS NOT NULL THEN 1 END) as trades_with_r
           FROM trades
           WHERE user_id = $1 ${filterConditions}
             AND entry_time IS NOT NULL
@@ -887,8 +891,9 @@ const analyticsController = {
             COUNT(CASE WHEN pnl > 0 THEN 1 END) as winning_trades,
             COALESCE(SUM(pnl), 0) as total_pnl,
             COALESCE(AVG(pnl), 0) as avg_pnl,
-            COALESCE(SUM(r_value), 0) as total_r_value,
-            COALESCE(AVG(r_value), 0) as avg_r_value
+            COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value,
+            COALESCE(AVG(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as avg_r_value,
+            COUNT(CASE WHEN stop_loss IS NOT NULL THEN 1 END) as trades_with_r
           FROM trades
           WHERE user_id = $1 ${filterConditions}
             AND entry_time IS NOT NULL
@@ -1060,14 +1065,15 @@ const analyticsController = {
               ELSE 8
             END as range_order,
             pnl,
-            r_value
+            r_value,
+            stop_loss
           FROM trades
           WHERE user_id = $1 ${filterConditions}
         )
         SELECT
           price_range,
           COALESCE(SUM(pnl), 0) as total_pnl,
-          COALESCE(SUM(r_value), 0) as total_r_value
+          COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value
         FROM price_ranges
         GROUP BY price_range, range_order
         ORDER BY range_order
@@ -1086,7 +1092,8 @@ const analyticsController = {
               ELSE quantity  -- Fallback to trade quantity if no executions data
             END as total_volume,
             pnl,
-            r_value
+            r_value,
+            stop_loss
           FROM trades
           WHERE user_id = $1 ${filterConditions}
         ),
@@ -1125,13 +1132,14 @@ const analyticsController = {
               ELSE 14
             END as range_order,
             pnl,
-            r_value
+            r_value,
+            stop_loss
           FROM trade_volumes
         )
         SELECT
           volume_range,
           COALESCE(SUM(pnl), 0) as total_pnl,
-          COALESCE(SUM(r_value), 0) as total_r_value,
+          COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value,
           COUNT(*) as trade_count
         FROM volume_ranges
         GROUP BY volume_range, range_order
@@ -1144,7 +1152,8 @@ const analyticsController = {
           SELECT
             (entry_price * quantity) as position_size,
             pnl,
-            r_value
+            r_value,
+            stop_loss
           FROM trades
           WHERE user_id = $1 ${filterConditions}
         ),
@@ -1180,7 +1189,8 @@ const analyticsController = {
           SELECT
             rb.range_start,
             ps.pnl,
-            ps.r_value
+            ps.r_value,
+            ps.stop_loss
           FROM position_sizes ps
           CROSS JOIN stats s
           JOIN range_buckets rb ON ps.position_size >= rb.range_start
@@ -1190,7 +1200,7 @@ const analyticsController = {
         SELECT
           range_start,
           COALESCE(SUM(pnl), 0) as total_pnl,
-          COALESCE(SUM(r_value), 0) as total_r_value,
+          COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value,
           COUNT(*) as trade_count
         FROM bucketed_trades
         GROUP BY range_start
@@ -1232,6 +1242,7 @@ const analyticsController = {
             END as range_order,
             pnl,
             r_value,
+            stop_loss,
             CASE WHEN pnl > 0 THEN 1 ELSE 0 END as is_winner
           FROM trades
           WHERE user_id = $1 ${filterConditions} AND pnl IS NOT NULL
@@ -1239,7 +1250,7 @@ const analyticsController = {
         SELECT
           hold_time_range,
           COALESCE(SUM(pnl), 0) as total_pnl,
-          COALESCE(SUM(r_value), 0) as total_r_value,
+          COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value,
           COUNT(*) as trade_count,
           SUM(is_winner) as winning_trades
         FROM hold_time_analysis
@@ -1392,7 +1403,7 @@ const analyticsController = {
             EXTRACT(DOW FROM (entry_time AT TIME ZONE 'UTC' AT TIME ZONE $2)) as day_of_week,
             COUNT(*) as trade_count,
             COALESCE(SUM(pnl), 0) as total_pnl,
-            COALESCE(SUM(r_value), 0) as total_r_value
+            COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value
           FROM trades
           WHERE user_id = $1 ${filterConditions}
             AND EXTRACT(DOW FROM (entry_time AT TIME ZONE 'UTC' AT TIME ZONE $2)) NOT IN (0, 6) -- Exclude weekends
@@ -1406,7 +1417,7 @@ const analyticsController = {
             EXTRACT(DOW FROM entry_time) as day_of_week,
             COUNT(*) as trade_count,
             COALESCE(SUM(pnl), 0) as total_pnl,
-            COALESCE(SUM(r_value), 0) as total_r_value
+            COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value
           FROM trades
           WHERE user_id = $1 ${filterConditions}
             AND EXTRACT(DOW FROM entry_time) NOT IN (0, 6) -- Exclude weekends

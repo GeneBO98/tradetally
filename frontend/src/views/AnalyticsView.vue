@@ -900,7 +900,7 @@
 
             <!-- Tag Performance -->
             <template v-else-if="element.id === 'tag-performance'">
-      <div v-if="tagStats.length > 0" class="card">
+      <div v-if="filteredTagStats.length > 0" class="card">
         <div class="card-body">
           <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Tag Performance</h3>
           <div class="overflow-x-auto">
@@ -925,7 +925,7 @@
                 </tr>
               </thead>
               <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-                <tr v-for="tag in tagStats" :key="tag.tag">
+                <tr v-for="tag in filteredTagStats" :key="tag.tag">
                   <td class="px-6 py-4 whitespace-nowrap">
                     <span class="px-2 py-1 bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400 text-xs rounded-full">
                       {{ tag.tag }}
@@ -959,7 +959,7 @@
 
             <!-- Strategy/Setup Performance -->
             <template v-else-if="element.id === 'strategy-performance'">
-      <div v-if="strategyStats.length > 0" class="card">
+      <div v-if="filteredStrategyStats.length > 0" class="card">
         <div class="card-body">
           <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Strategy/Setup Performance</h3>
           <div class="overflow-x-auto">
@@ -984,7 +984,7 @@
                 </tr>
               </thead>
               <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-                <tr v-for="strategy in strategyStats" :key="strategy.strategy">
+                <tr v-for="strategy in filteredStrategyStats" :key="strategy.strategy">
                   <td class="px-6 py-4 whitespace-nowrap">
                     <span class="px-2 py-1 bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400 text-xs rounded-full">
                       {{ strategy.strategy }}
@@ -1018,7 +1018,7 @@
 
             <!-- Hour of Day Performance -->
             <template v-else-if="element.id === 'hour-of-day-performance'">
-      <div v-if="hourOfDayStats.length > 0" class="card">
+      <div v-if="filteredHourOfDayStats.length > 0" class="card">
         <div class="card-body">
           <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Hour of Day Performance</h3>
           <div class="overflow-x-auto">
@@ -1043,7 +1043,7 @@
                 </tr>
               </thead>
               <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-                <tr v-for="hour in hourOfDayStats" :key="hour.hour">
+                <tr v-for="hour in filteredHourOfDayStats" :key="hour.hour">
                   <td class="px-6 py-4 whitespace-nowrap">
                     <span class="px-2 py-1 bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400 text-xs rounded-full">
                       {{ formatHour(hour.hour) }}
@@ -1493,6 +1493,35 @@ const showLayoutSettings = ref(false)
 // Computed property for calculation method
 const calculationMethod = computed(() => {
   return userSettings.value?.statisticsCalculation === 'median' ? 'Median' : 'Average'
+})
+
+// Filtered stats for R-Value mode - exclude entries with 0 R-value (no stop_loss data)
+// Helper to check if a value is effectively zero (handles strings, nulls, and floats)
+function hasRValue(val) {
+  if (val === null || val === undefined || val === '') return false
+  const num = parseFloat(val)
+  return !isNaN(num) && Math.abs(num) > 0.001
+}
+
+const filteredTagStats = computed(() => {
+  if (!rValueMode.value) return tagStats.value
+  return tagStats.value.filter(tag =>
+    hasRValue(tag.total_r_value) || hasRValue(tag.avg_r_value)
+  )
+})
+
+const filteredStrategyStats = computed(() => {
+  if (!rValueMode.value) return strategyStats.value
+  return strategyStats.value.filter(strategy =>
+    hasRValue(strategy.total_r_value) || hasRValue(strategy.avg_r_value)
+  )
+})
+
+const filteredHourOfDayStats = computed(() => {
+  if (!rValueMode.value) return hourOfDayStats.value
+  return hourOfDayStats.value.filter(hour =>
+    hasRValue(hour.total_r_value) || hasRValue(hour.avg_r_value)
+  )
 })
 
 // Computed property for visible charts in order
