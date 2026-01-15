@@ -65,17 +65,10 @@
             />
           </div>
           
-          <select v-model="filters.symbol" @change="applyFilters" class="input text-sm">
-            <option value="">All Symbols</option>
-            <option v-for="symbol in symbols" :key="symbol" :value="symbol">
-              {{ symbol }}
-            </option>
-          </select>
-          
-          <select v-model="filters.strategy" @change="applyFilters" class="input text-sm">
-            <option value="">All Strategies</option>
-            <option v-for="strategy in strategies" :key="strategy" :value="strategy">
-              {{ strategy }}
+          <select v-model="filters.account" @change="applyFilters" class="input text-sm">
+            <option value="">All Accounts</option>
+            <option v-for="account in accounts" :key="account" :value="account">
+              {{ account }}
             </option>
           </select>
         </div>
@@ -764,13 +757,11 @@ const calculationMethod = computed(() => {
   return userSettings.value?.statisticsCalculation === 'median' ? 'Median' : 'Average'
 })
 const openTrades = ref([])
-const symbols = ref([])
-const strategies = ref([])
+const accounts = ref([])
 
 const filters = ref({
   timeRange: 'all',
-  symbol: '',
-  strategy: '',
+  account: '',
   startDate: '',
   endDate: ''
 })
@@ -902,8 +893,7 @@ async function fetchAnalytics() {
     // Only add parameters if they have values
     if (dateRange.startDate) params.append('startDate', dateRange.startDate)
     if (dateRange.endDate) params.append('endDate', dateRange.endDate)
-    if (filters.value.symbol) params.append('symbol', filters.value.symbol)
-    if (filters.value.strategy) params.append('strategy', filters.value.strategy)
+    if (filters.value.account) params.append('accounts', filters.value.account)
     
     console.log('Dashboard: Fetching analytics with params:', params.toString())
     const response = await api.get(`/trades/analytics?${params}`)
@@ -936,7 +926,11 @@ async function fetchOpenTrades() {
   try {
     // Use the new endpoint that includes real-time quotes
     console.log('Fetching open positions with quotes...')
-    const response = await api.get('/trades/open-positions-quotes')
+    const params = {}
+    if (filters.value.account) {
+      params.accounts = filters.value.account
+    }
+    const response = await api.get('/trades/open-positions-quotes', { params })
     
     console.log('Open positions response:', response.data)
     
@@ -952,8 +946,12 @@ async function fetchOpenTrades() {
     
     // Fallback to original endpoint if the new one fails
     try {
+      const fallbackParams = { status: 'open', limit: 100 }
+      if (filters.value.account) {
+        fallbackParams.accounts = filters.value.account
+      }
       const fallbackResponse = await api.get('/trades', {
-        params: { status: 'open', limit: 100 }
+        params: fallbackParams
       })
       const trades = fallbackResponse.data.trades || fallbackResponse.data
       
@@ -991,13 +989,8 @@ async function fetchOpenTrades() {
 
 async function fetchFilterOptions() {
   try {
-    const [symbolsResponse, strategiesResponse] = await Promise.all([
-      api.get('/trades/symbols'),
-      api.get('/trades/strategies')
-    ])
-    
-    symbols.value = symbolsResponse.data.symbols
-    strategies.value = strategiesResponse.data.strategies
+    const accountsResponse = await api.get('/trades/accounts')
+    accounts.value = accountsResponse.data.accounts || []
   } catch (error) {
     console.error('Failed to fetch filter options:', error)
   }
@@ -1246,6 +1239,7 @@ function saveFiltersToStorage() {
 function applyFilters() {
   saveFiltersToStorage()
   fetchAnalytics()
+  fetchOpenTrades()
 }
 
 function navigateToTradesWithSymbol(symbol) {

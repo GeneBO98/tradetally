@@ -1800,6 +1800,7 @@ const tradeController = {
     try {
       console.log('getOpenPositionsWithQuotes called for user:', req.user.id);
       const finnhub = require('../utils/finnhub');
+      const { accounts } = req.query;
       
       // Check if Finnhub is configured
       if (!finnhub.isConfigured()) {
@@ -1810,7 +1811,8 @@ const tradeController = {
       console.log('Fetching open trades...');
       const openTrades = await Trade.findByUser(req.user.id, {
         status: 'open',
-        limit: 200
+        limit: 200,
+        accounts: accounts ? accounts.split(',') : undefined
       });
 
       console.log(`Found ${openTrades.length} open trades`);
