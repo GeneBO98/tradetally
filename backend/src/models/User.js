@@ -2,7 +2,7 @@ const db = require('../config/database');
 const bcrypt = require('bcryptjs');
 
 class User {
-  static async create({ email, username, password, fullName, verificationToken, verificationExpires, role = 'user', isVerified = false, adminApproved = true, tier = 'free', referredByCode = null, marketingConsent = false }) {
+  static async create({ email, username, password, fullName, verificationToken, verificationExpires, role = 'user', isVerified = false, adminApproved = true, tier = 'free', marketingConsent = false }) {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // Admins get Pro tier by default
@@ -11,12 +11,12 @@ class User {
     }
 
     const query = `
-      INSERT INTO users (email, username, password_hash, full_name, verification_token, verification_expires, role, is_verified, admin_approved, tier, referred_by_code, marketing_consent)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-      RETURNING id, email, username, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone, tier, referred_by_code, marketing_consent, created_at
+      INSERT INTO users (email, username, password_hash, full_name, verification_token, verification_expires, role, is_verified, admin_approved, tier, marketing_consent)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      RETURNING id, email, username, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone, tier, marketing_consent, created_at
     `;
 
-    const values = [email.toLowerCase(), username, hashedPassword, fullName, verificationToken, verificationExpires, role, isVerified, adminApproved, tier, referredByCode, marketingConsent];
+    const values = [email.toLowerCase(), username, hashedPassword, fullName, verificationToken, verificationExpires, role, isVerified, adminApproved, tier, marketingConsent];
     const result = await db.query(query, values);
 
     return result.rows[0];

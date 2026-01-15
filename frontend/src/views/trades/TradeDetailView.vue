@@ -1124,6 +1124,7 @@ const newComment = ref('')
 const submittingComment = ref(false)
 const editingCommentId = ref(null)
 const editCommentText = ref('')
+const apiBaseUrl = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '')
 
 // Collapsible section state (persisted to localStorage)
 const chartSectionCollapsed = ref(localStorage.getItem('tradeDetail_chartCollapsed') === 'true')
@@ -1169,10 +1170,10 @@ const tradingViewImageUrl = computed(() => {
   if (!chartUrl) return null
 
   // TradingView snapshot URLs: https://www.tradingview.com/x/ABCD1234/
-  // The actual image is at: https://s3.tradingview.com/snapshots/x/ABCD1234.png
+  // Proxy image through backend to avoid intermittent cross-origin blocking
   const snapshotMatch = chartUrl.match(/tradingview\.com\/x\/([a-zA-Z0-9]+)/i)
   if (snapshotMatch) {
-    return `https://s3.tradingview.com/snapshots/x/${snapshotMatch[1]}.png`
+    return `${apiBaseUrl}/trades/tradingview/snapshot/${snapshotMatch[1]}`
   }
 
   // If it's already a direct image URL, use it

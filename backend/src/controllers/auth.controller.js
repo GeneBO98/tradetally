@@ -31,7 +31,6 @@ function getBillingEnabled() {
 const authController = {
   async register(req, res, next) {
     try {
-      console.log('Registration request body:', req.body);
       const { email, username, password, fullName, marketing_consent } = req.body;
 
       // Check registration mode

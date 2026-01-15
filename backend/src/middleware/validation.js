@@ -1,8 +1,18 @@
 const Joi = require('joi');
 
+// Sanitize sensitive fields from request body for logging
+const sanitizeForLogging = (body) => {
+  if (!body || typeof body !== 'object') return body;
+  const sanitized = { ...body };
+  const sensitiveFields = ['password', 'currentPassword', 'newPassword', 'confirmPassword', 'token', 'refreshToken', 'secret', 'apiKey', 'api_key'];
+  sensitiveFields.forEach(field => {
+    if (sanitized[field]) sanitized[field] = '[REDACTED]';
+  });
+  return sanitized;
+};
+
 const validate = (schema) => {
   return (req, res, next) => {
-    console.log('[VALIDATION] Request body:', JSON.stringify(req.body, null, 2));
     const { error } = schema.validate(req.body);
     if (error) {
       console.log('[VALIDATION ERROR] Details:', JSON.stringify(error.details, null, 2));
