@@ -3281,12 +3281,53 @@ const tradeController = {
         return res.status(400).json({ error: 'Invalid snapshot id' });
       }
 
-      const snapshotUrl = `https://s3.tradingview.com/snapshots/x/${snapshotId}.png`;
-      const response = await axios.get(snapshotUrl, {
-        responseType: 'stream',
-        timeout: 10000,
-        validateStatus: status => status >= 200 && status < 400
-      });
+      const fetchSnapshotStream = async (url) => {
+        return axios.get(url, {
+          responseType: 'stream',
+          timeout: 10000,
+          validateStatus: status => status >= 200 && status < 400
+        });
+      };
+
+      let response;
+      let snapshotUrl = `https://s3.tradingview.com/snapshots/x/${snapshotId}.png`;
+
+      try {
+        response = await fetchSnapshotStream(snapshotUrl);
+      } catch (error) {
+        const status = error.response?.status || 0;
+        const shouldFallback = status === 403 || status === 404;
+        if (!shouldFallback) {
+          throw error;
+        }
+
+        // Fallback: fetch the TradingView snapshot page and extract og:image
+        const pageResponse = await axios.get(`https://www.tradingview.com/x/${snapshotId}/`, {
+          timeout: 10000,
+          headers: {
+            'User-Agent': 'TradeTallySnapshotProxy/1.0'
+          },
+          validateStatus: status => status >= 200 && status < 400
+        });
+
+        const html = pageResponse.data || '';
+        const ogImageMatch = html.match(/property=["']og:image["']\s+content=["']([^"']+)["']/i) ||
+          html.match(/content=["']([^"']+)["']\s+property=["']og:image["']/i) ||
+          html.match(/name=["']twitter:image["']\s+content=["']([^"']+)["']/i);
+
+        const extractedUrl = ogImageMatch ? ogImageMatch[1] : null;
+        if (!extractedUrl) {
+          return res.status(404).json({ error: 'Snapshot image not found' });
+        }
+
+        const parsedUrl = new URL(extractedUrl);
+        if (parsedUrl.hostname !== 's3.tradingview.com') {
+          return res.status(400).json({ error: 'Invalid snapshot image host' });
+        }
+
+        snapshotUrl = extractedUrl;
+        response = await fetchSnapshotStream(snapshotUrl);
+      }
 
       res.setHeader('Content-Type', response.headers['content-type'] || 'image/png');
       if (response.headers['content-length']) {
