@@ -240,6 +240,11 @@ const { showSuccess, showError } = useNotification()
 
 const selectedChart = ref(null)
 const chartToDelete = ref(null)
+const apiBaseUrl = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '')
+
+function getTradingViewSnapshotProxyUrl(snapshotId) {
+  return `${apiBaseUrl}/trades/tradingview/snapshot/${snapshotId}`
+}
 
 function isTradingViewUrl(chart) {
   const chartUrl = chart.chartUrl || chart.chart_url
@@ -253,7 +258,7 @@ function getDirectImageUrl(chart) {
   // Try S3 image URL for TradingView
   const snapshotMatch = chartUrl.match(/tradingview\.com\/x\/([a-zA-Z0-9]+)/i)
   if (snapshotMatch) {
-    return `https://s3.tradingview.com/snapshots/x/${snapshotMatch[1]}.png`
+    return getTradingViewSnapshotProxyUrl(snapshotMatch[1])
   }
 
   // Check if it's already an image URL

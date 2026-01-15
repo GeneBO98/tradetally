@@ -13,6 +13,7 @@ const currencyConverter = require('../utils/currencyConverter');
 const path = require('path');
 const fs = require('fs').promises;
 const ChartService = require('../services/chartService');
+const axios = require('axios');
 
 // Helper function to invalidate analytics cache for a user
 function invalidateAnalyticsCache(userId) {
@@ -3269,6 +3270,47 @@ const tradeController = {
     } catch (error) {
       console.error('Delete chart error:', error);
       next(error);
+    }
+  },
+
+  async proxyTradingViewSnapshot(req, res, next) {
+    try {
+      const snapshotId = req.params.snapshotId || req.query.snapshotId;
+
+      if (!snapshotId || !/^[a-zA-Z0-9]+$/.test(snapshotId)) {
+        return res.status(400).json({ error: 'Invalid snapshot id' });
+      }
+
+      const snapshotUrl = `https://s3.tradingview.com/snapshots/x/${snapshotId}.png`;
+      const response = await axios.get(snapshotUrl, {
+        responseType: 'stream',
+        timeout: 10000,
+        validateStatus: status => status >= 200 && status < 400
+      });
+
+      res.setHeader('Content-Type', response.headers['content-type'] || 'image/png');
+      if (response.headers['content-length']) {
+        res.setHeader('Content-Length', response.headers['content-length']);
+      }
+      res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=86400');
+
+      response.data.on('error', (streamError) => {
+        console.error('[TradingView] Snapshot stream error:', streamError);
+        if (!res.headersSent) {
+          res.status(502).json({ error: 'Failed to fetch snapshot' });
+        } else {
+          res.end();
+        }
+      });
+
+      response.data.pipe(res);
+    } catch (error) {
+      const status = error.response?.status || 502;
+      console.warn('[TradingView] Snapshot proxy failed:', {
+        status,
+        message: error.message
+      });
+      res.status(status).json({ error: 'Failed to fetch snapshot' });
     }
   },
 

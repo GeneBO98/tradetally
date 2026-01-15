@@ -628,6 +628,7 @@ router.post('/expired-options/auto-close', authenticate, tradeController.autoClo
 router.post('/repair-inconsistent', authenticate, tradeController.repairInconsistentTrades);
 
 // Chart data endpoint - MUST be before /:id route
+router.get('/tradingview/snapshot/:snapshotId', tradeController.proxyTradingViewSnapshot);
 router.get('/:id/chart-data', authenticate, tradeController.getTradeChartData);
 
 /**
