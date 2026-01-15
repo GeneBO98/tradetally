@@ -1621,13 +1621,32 @@ function parseDate(dateStr) {
   // Remove leading and trailing quotes/apostrophes (including Unicode curly quotes), then trim
   const cleanDateStr = dateStr.toString().replace(/^[\x27\x22\u2018\u2019\u201C\u201D]|[\x27\x22\u2018\u2019\u201C\u201D]$/g, '').trim();
 
-  // Try to parse IBKR format MM-DD-YY first
-  const mmddyyMatch = cleanDateStr.match(/^(\d{1,2})-(\d{1,2})-(\d{2})/);
-  if (mmddyyMatch) {
-    const [_, month, day, shortYear] = mmddyyMatch;
-    const monthNum = parseInt(month);
-    const dayNum = parseInt(day);
+  // Try to parse IBKR format XX-XX-YY (could be MM-DD-YY or DD-MM-YY)
+  const xxyyMatch = cleanDateStr.match(/^(\d{1,2})-(\d{1,2})-(\d{2})/);
+  if (xxyyMatch) {
+    const [_, first, second, shortYear] = xxyyMatch;
+    const firstNum = parseInt(first);
+    const secondNum = parseInt(second);
     const yearNum = 2000 + parseInt(shortYear);
+
+    // Determine if this is MM-DD-YY or DD-MM-YY format
+    // If first > 12, it must be DD-MM-YY (day first)
+    // If second > 12, it must be MM-DD-YY (month first)
+    // If both <= 12, assume DD-MM-YY (more common internationally and in IBKR Activity Statements)
+    let monthNum, dayNum;
+    if (firstNum > 12) {
+      // First number is too large to be a month, so it's DD-MM-YY
+      dayNum = firstNum;
+      monthNum = secondNum;
+    } else if (secondNum > 12) {
+      // Second number is too large to be a month, so it's MM-DD-YY
+      monthNum = firstNum;
+      dayNum = secondNum;
+    } else {
+      // Ambiguous - default to DD-MM-YY (IBKR Activity Statement format)
+      dayNum = firstNum;
+      monthNum = secondNum;
+    }
 
     // Validate date components for PostgreSQL 16 compatibility
     if (monthNum < 1 || monthNum > 12) return null;
@@ -1723,13 +1742,33 @@ function parseDateTime(dateTimeStr) {
       return `${year}-${monthPadded}-${dayPadded}T${hourPadded}:${minute}:00`;
     }
 
-    // Check for IBKR format "MM-DD-YY H:MM" or "MM-DD-YY HH:MM"
+    // Check for IBKR format "XX-XX-YY H:MM" or "XX-XX-YY HH:MM" (could be MM-DD-YY or DD-MM-YY)
     const ibkrDateTimeMatch = cleanDateTimeStr.match(/^(\d{1,2})-(\d{1,2})-(\d{2})\s+(\d{1,2}):(\d{2})$/);
     if (ibkrDateTimeMatch) {
-      const [, month, day, shortYear, hour, minute] = ibkrDateTimeMatch;
+      const [, first, second, shortYear, hour, minute] = ibkrDateTimeMatch;
       const year = 2000 + parseInt(shortYear); // Convert YY to YYYY
-      const monthPadded = month.padStart(2, '0');
-      const dayPadded = day.padStart(2, '0');
+      const firstNum = parseInt(first);
+      const secondNum = parseInt(second);
+
+      // Determine if this is MM-DD-YY or DD-MM-YY format
+      // If first > 12, it must be DD-MM-YY (day first)
+      // If second > 12, it must be MM-DD-YY (month first)
+      // If both <= 12, assume DD-MM-YY (IBKR Activity Statement format)
+      let monthNum, dayNum;
+      if (firstNum > 12) {
+        dayNum = firstNum;
+        monthNum = secondNum;
+      } else if (secondNum > 12) {
+        monthNum = firstNum;
+        dayNum = secondNum;
+      } else {
+        // Ambiguous - default to DD-MM-YY
+        dayNum = firstNum;
+        monthNum = secondNum;
+      }
+
+      const monthPadded = monthNum.toString().padStart(2, '0');
+      const dayPadded = dayNum.toString().padStart(2, '0');
       const hourPadded = hour.padStart(2, '0');
       return `${year}-${monthPadded}-${dayPadded}T${hourPadded}:${minute}:00`;
     }
@@ -4301,8 +4340,16 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
           ? extractAccountFromRecord(record, context.accountColumnName)
           : null;
 
+      // Extract Conid (Contract ID) for options grouping - this is the most reliable way to group
+      // options trades for the same contract regardless of symbol parsing issues
+      const conid = cleanString(record.Conid || record.conid || record.ConId || record.ConID || '');
+      if (conid) {
+        console.log(`[IBKR] Contract ID (Conid): ${conid} for symbol ${symbol}`);
+      }
+
       transactions.push({
         symbol,
+        conid, // Contract ID for reliable options grouping
         date: tradeDate,
         datetime: entryTime,
         action: action,
@@ -4327,25 +4374,39 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
     }
   }
 
-  // Sort transactions by symbol and datetime
+  // Sort transactions by grouping key (conid if available, otherwise symbol) and datetime
+  // Using Conid ensures options contracts are grouped correctly even if symbol parsing has issues
   transactions.sort((a, b) => {
-    if (a.symbol !== b.symbol) return a.symbol.localeCompare(b.symbol);
+    const keyA = a.conid || a.symbol;
+    const keyB = b.conid || b.symbol;
+    if (keyA !== keyB) return keyA.localeCompare(keyB);
     return new Date(a.datetime) - new Date(b.datetime);
   });
 
   console.log(`Parsed ${transactions.length} valid IBKR trade transactions`);
 
-  // Track the last trade end time for each symbol (for time-gap-based grouping)
+  // Track the last trade end time for each grouping key (for time-gap-based grouping)
   const lastTradeEndTime = {};
 
-  // Group transactions by symbol
-  const transactionsBySymbol = {};
+  // Group transactions by Conid when available, otherwise by symbol
+  // Conid is the most reliable way to group options trades for the same contract
+  const transactionsByGroupKey = {};
   for (const transaction of transactions) {
-    if (!transactionsBySymbol[transaction.symbol]) {
-      transactionsBySymbol[transaction.symbol] = [];
+    // Use Conid as primary grouping key for options, fall back to symbol
+    const groupKey = transaction.conid || transaction.symbol;
+    if (!transactionsByGroupKey[groupKey]) {
+      transactionsByGroupKey[groupKey] = [];
     }
-    transactionsBySymbol[transaction.symbol].push(transaction);
+    transactionsByGroupKey[groupKey].push(transaction);
   }
+
+  // Log grouping info
+  const conidGroupCount = Object.keys(transactionsByGroupKey).filter(k => /^\d+$/.test(k)).length;
+  const symbolGroupCount = Object.keys(transactionsByGroupKey).length - conidGroupCount;
+  console.log(`[IBKR] Grouped into ${Object.keys(transactionsByGroupKey).length} groups (${conidGroupCount} by Conid, ${symbolGroupCount} by symbol)`);
+
+  // For backwards compatibility, create transactionsBySymbol as an alias
+  const transactionsBySymbol = transactionsByGroupKey;
 
   // Log all available existing positions for debugging
   console.log(`\n[IBKR] Available existing positions:`);
@@ -4358,10 +4419,18 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
   }
 
   // Process transactions using round-trip trade grouping
-  for (const symbol in transactionsBySymbol) {
-    const symbolTransactions = transactionsBySymbol[symbol];
+  for (const groupKey in transactionsBySymbol) {
+    const symbolTransactions = transactionsBySymbol[groupKey];
 
-    console.log(`\n=== Processing ${symbolTransactions.length} IBKR transactions for ${symbol} ===`);
+    // Get the actual symbol from the first transaction (groupKey might be a Conid)
+    const symbol = symbolTransactions[0].symbol;
+    const conid = symbolTransactions[0].conid;
+
+    if (conid) {
+      console.log(`\n=== Processing ${symbolTransactions.length} IBKR transactions for Conid ${conid} (${symbol}) ===`);
+    } else {
+      console.log(`\n=== Processing ${symbolTransactions.length} IBKR transactions for ${symbol} ===`);
+    }
 
     // Parse instrument data to check if this is an option/future
     let instrumentData;
@@ -4421,10 +4490,16 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
     // Track position and round-trip trades
     // For options, build composite key (underlying_strike_expiration_type) to match specific contracts
     // This prevents different option contracts (same underlying, different strikes/expirations) from being merged
+    // Also try Conid lookup if available (most reliable for IBKR)
     let existingPosition = null;
     let positionLookupKey = symbol;
 
-    if (instrumentData.instrumentType === 'option' && instrumentData.underlyingSymbol &&
+    // First try Conid lookup if available (most reliable)
+    if (conid && existingPositions[`conid_${conid}`]) {
+      positionLookupKey = `conid_${conid}`;
+      console.log(`  → Looking up position by Conid: ${conid}`);
+      existingPosition = existingPositions[positionLookupKey];
+    } else if (instrumentData.instrumentType === 'option' && instrumentData.underlyingSymbol &&
         instrumentData.strikePrice && instrumentData.expirationDate && instrumentData.optionType) {
       // Build composite key for options: underlying_strike_expiration_type
       positionLookupKey = `${instrumentData.underlyingSymbol}_${instrumentData.strikePrice}_${instrumentData.expirationDate}_${instrumentData.optionType}`;
@@ -4511,6 +4586,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
 
           currentTrade = {
             symbol: symbol,
+            conid: conid, // IBKR Contract ID for reliable options tracking
             entryTime: transaction.datetime,
             tradeDate: transaction.date,
             side: tradeSide,
@@ -4539,7 +4615,8 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
           quantity: qty,
           price: transaction.price,
           datetime: transaction.datetime,
-          fees: transaction.fees
+          fees: transaction.fees,
+          conid: transaction.conid // Include Conid for duplicate detection
         };
 
         // First, check if this execution exists in ANY existing trade (complete or open)
