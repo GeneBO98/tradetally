@@ -70,11 +70,12 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, watch } from 'vue'
+import { computed, onMounted, onUnmounted, watch, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useVersionStore } from '@/stores/version'
 import { usePriceAlertNotifications } from '@/composables/usePriceAlertNotifications'
+import { useNotification } from '@/composables/useNotification'
 import NavBar from '@/components/layout/NavBar.vue'
 import Notification from '@/components/common/Notification.vue'
 import ModalAlert from '@/components/common/ModalAlert.vue'
@@ -82,6 +83,10 @@ import CelebrationOverlay from '@/components/gamification/CelebrationOverlay.vue
 import UpdateBanner from '@/components/common/UpdateBanner.vue'
 import VersionDisplay from '@/components/common/VersionDisplay.vue'
 import api from '@/services/api'
+
+// Rate limit notification handling
+const { showError } = useNotification()
+const lastRateLimitNotification = ref(0)
 
 const route = useRoute()
 const authStore = useAuthStore()
@@ -117,7 +122,25 @@ watch(() => [authStore.user?.tier, authStore.token, authStore.user?.billingEnabl
 let versionPollInterval = null
 const VERSION_CHECK_INTERVAL = 6 * 60 * 60 * 1000
 
+// Handle rate limit exceeded events globally
+const handleRateLimitExceeded = (event) => {
+  const { retryAfter, message } = event.detail
+  const now = Date.now()
+
+  // Only show notification once every 30 seconds to avoid spamming
+  if (now - lastRateLimitNotification.value > 30000) {
+    lastRateLimitNotification.value = now
+    showError(
+      'Rate Limit Exceeded',
+      `${message} Please wait ${retryAfter} seconds before trying again. If you're self-hosting, you can disable rate limiting by setting RATE_LIMIT_ENABLED=false in your environment.`
+    )
+  }
+}
+
 onMounted(async () => {
+  // Listen for rate limit events from the API interceptor
+  window.addEventListener('rate-limit-exceeded', handleRateLimitExceeded)
+
   await authStore.checkAuth()
   // Note: Achievement celebrations are now handled by GamificationView only
   // This prevents conflicts between App.vue and GamificationView celebration logic
@@ -133,6 +156,9 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  // Clean up rate limit event listener
+  window.removeEventListener('rate-limit-exceeded', handleRateLimitExceeded)
+
   if (versionPollInterval) {
     clearInterval(versionPollInterval)
   }

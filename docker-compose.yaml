@@ -91,6 +91,10 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       # Timezone Configuration (affects admin metrics "today" calculations)
       TZ: ${TZ:-UTC}
+      # Rate Limiting (set RATE_LIMIT_ENABLED=false to disable for self-hosted)
+      RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-true}
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-1000}
+      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-900000}
     ports:
       - "8080:80"
       - "3001:3000"

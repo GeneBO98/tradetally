@@ -67,21 +67,59 @@ const PORT = process.env.PORT || 5001;
 // Trust proxy headers for rate limiting and forwarded headers
 app.set('trust proxy', true);
 
+// Rate limiting configuration - can be disabled or adjusted via environment variables
+// RATE_LIMIT_ENABLED=false disables rate limiting entirely (useful for self-hosted instances)
+// RATE_LIMIT_MAX sets the maximum requests per window (default: 1000)
+// RATE_LIMIT_WINDOW_MS sets the window duration in milliseconds (default: 15 minutes)
+const rateLimitEnabled = process.env.RATE_LIMIT_ENABLED !== 'false';
+const rateLimitMax = parseInt(process.env.RATE_LIMIT_MAX) || 1000;
+const rateLimitWindowMs = parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000;
+
+// Custom key generator to properly identify clients behind proxies
+const getClientIp = (req) => {
+  // Try X-Forwarded-For header first (set by nginx/proxies)
+  const forwarded = req.headers['x-forwarded-for'];
+  if (forwarded) {
+    // X-Forwarded-For can contain multiple IPs; the first one is the client
+    return forwarded.split(',')[0].trim();
+  }
+  // Fall back to X-Real-IP (also set by nginx)
+  if (req.headers['x-real-ip']) {
+    return req.headers['x-real-ip'];
+  }
+  // Finally fall back to connection remote address
+  return req.ip || req.connection?.remoteAddress || 'unknown';
+};
+
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 1000, // limit each IP to 1000 requests per windowMs
-  validate: {
-    trustProxy: false, // Disable trust proxy validation for rate limiting
-    xForwardedForHeader: false // Disable X-Forwarded-For validation
+  windowMs: rateLimitWindowMs,
+  max: rateLimitMax,
+  keyGenerator: getClientIp, // Use our custom IP extractor
+  standardHeaders: true, // Return rate limit info in headers
+  legacyHeaders: false,
+  message: {
+    error: 'Too many requests',
+    message: 'Too many requests, please try again later.',
+    retryAfter: Math.ceil(rateLimitWindowMs / 1000)
+  },
+  skip: (req) => {
+    // Skip rate limiting if disabled via environment variable
+    if (!rateLimitEnabled) return true;
+    // Skip rate limiting for import endpoints
+    if (req.path.includes('/import')) return true;
+    return false;
   }
 });
 
-// Skip rate limiting for certain paths
+// Log rate limit configuration on startup
+if (rateLimitEnabled) {
+  logger.info(`Rate limiting enabled: ${rateLimitMax} requests per ${rateLimitWindowMs / 1000}s window`, 'rate-limit');
+} else {
+  logger.info('Rate limiting is disabled via RATE_LIMIT_ENABLED=false', 'rate-limit');
+}
+
+// Skip rate limiting for certain paths (legacy function kept for compatibility)
 const skipRateLimit = (req, res, next) => {
-  // Skip rate limiting for import endpoints
-  if (req.path.includes('/import')) {
-    return next();
-  }
   return limiter(req, res, next);
 };
 
