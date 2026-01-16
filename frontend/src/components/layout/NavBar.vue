@@ -63,6 +63,7 @@
           <!-- Desktop Navigation -->
           <div class="hidden sm:flex sm:items-center sm:space-x-6">
             <div v-if="authStore.isAuthenticated" class="flex items-center space-x-4">
+              <GlobalAccountSelector />
               <router-link
                 to="/profile"
                 class="p-2 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"
@@ -201,6 +202,13 @@
               </router-link>
             </template>
             <div class="border-t border-gray-200 dark:border-gray-700 pt-4 pb-3">
+              <!-- Mobile Account Selector -->
+              <div class="px-3 mb-3">
+                <div class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
+                  Account Filter
+                </div>
+                <GlobalAccountSelector />
+              </div>
               <div class="px-3 mb-3">
                 <div class="text-base font-medium text-gray-800 dark:text-gray-200">
                   {{ authStore.user?.username }}
@@ -260,6 +268,7 @@ import { SunIcon, MoonIcon, Bars3Icon, XMarkIcon, ChevronDownIcon, ChevronUpIcon
 import config from '@/config'
 import NavDropdown from '@/components/common/NavDropdown.vue'
 import NotificationBell from '@/components/common/NotificationBell.vue'
+import GlobalAccountSelector from '@/components/layout/GlobalAccountSelector.vue'
 
 const authStore = useAuthStore()
 const { showSEOPages } = useRegistrationMode()

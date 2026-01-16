@@ -338,12 +338,15 @@ export const useTradesStore = defineStore('trades', () => {
     }
   }
 
-  async function getMonthlyPerformance(year) {
+  async function getMonthlyPerformance(year, options = {}) {
     try {
-      console.log('[STORE] Fetching monthly performance for year:', year)
-      const response = await api.get('/trades/analytics/monthly', {
-        params: { year }
-      })
+      console.log('[STORE] Fetching monthly performance for year:', year, 'options:', options)
+      const params = { year }
+      // Support account filtering
+      if (options.accounts) {
+        params.accounts = options.accounts
+      }
+      const response = await api.get('/trades/analytics/monthly', { params })
       console.log('[STORE] Monthly performance response:', response.data)
       return response.data
     } catch (err) {

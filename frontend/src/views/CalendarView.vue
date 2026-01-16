@@ -187,6 +187,9 @@ import { useRouter } from 'vue-router'
 import { format, startOfYear, endOfYear, eachMonthOfInterval, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameMonth } from 'date-fns'
 import { ChevronLeftIcon, ChevronRightIcon, XMarkIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
+import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
+
+const { selectedAccount } = useGlobalAccountFilter()
 
 const router = useRouter()
 
@@ -518,13 +521,16 @@ function navigateToTrade(tradeId) {
 async function fetchTrades() {
   loading.value = true
   try {
-    const response = await api.get('/trades', {
-      params: {
-        limit: 1000,
-        startDate: `${currentYear.value}-01-01`,
-        endDate: `${currentYear.value}-12-31`
-      }
-    })
+    const params = {
+      limit: 1000,
+      startDate: `${currentYear.value}-01-01`,
+      endDate: `${currentYear.value}-12-31`
+    }
+    // Apply global account filter
+    if (selectedAccount.value) {
+      params.accounts = selectedAccount.value
+    }
+    const response = await api.get('/trades', { params })
     trades.value = response.data.trades
   } catch (error) {
     console.error('Failed to fetch trades:', error)
@@ -558,6 +564,12 @@ onMounted(() => {
 })
 
 watch(currentYear, () => {
+  fetchTrades()
+})
+
+// Watch for global account filter changes
+watch(selectedAccount, () => {
+  console.log('Calendar: Global account filter changed to:', selectedAccount.value || 'All Accounts')
   fetchTrades()
 })
 </script>

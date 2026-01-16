@@ -206,10 +206,12 @@
 import { ref, onMounted, computed, nextTick, watch } from 'vue';
 import { useTradesStore } from '@/stores/trades';
 import { Chart, registerables } from 'chart.js';
+import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter';
 
 Chart.register(...registerables);
 
 const tradesStore = useTradesStore();
+const { selectedAccount } = useGlobalAccountFilter();
 
 const loading = ref(false);
 const error = ref(null);
@@ -265,6 +267,11 @@ watch(selectedYear, (newYear) => {
   localStorage.setItem('monthlyPerformanceYear', newYear.toString());
 });
 
+// Watch for global account filter changes
+watch(selectedAccount, () => {
+  loadMonthlyData();
+});
+
 const toggleRValue = () => {
   showRValue.value = !showRValue.value;
   createPnLChart();
@@ -275,7 +282,9 @@ const loadMonthlyData = async () => {
   error.value = null;
 
   try {
-    const response = await tradesStore.getMonthlyPerformance(selectedYear.value);
+    const response = await tradesStore.getMonthlyPerformance(selectedYear.value, {
+      accounts: selectedAccount.value
+    });
     console.log('[MONTHLY] Response received:', response);
 
     if (response) {
