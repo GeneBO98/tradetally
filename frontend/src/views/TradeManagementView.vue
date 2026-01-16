@@ -47,10 +47,12 @@
 
     <!-- Analysis Section (shown when trade has required data) -->
     <div v-if="selectedTrade && !needsRiskLevels && analysis" class="space-y-6 mt-6">
-      <!-- Candlestick Chart with Markers -->
+      <!-- Candlestick Chart with Markers (only shown when chart data loads successfully) -->
       <TradeManagementChart
+        v-if="chartAvailable"
         :trade="selectedTrade"
         :loading="chartLoading"
+        @chart-loaded="onChartLoaded"
       />
 
       <!-- R-Multiple Analysis -->
@@ -117,6 +119,7 @@ const selectedTrade = ref(null)
 const analysis = ref(null)
 const analysisLoading = ref(false)
 const chartLoading = ref(false)
+const chartAvailable = ref(false)
 const savingLevels = ref(false)
 const editingLevels = ref(false)
 const error = ref(null)
@@ -245,6 +248,7 @@ async function onTradeSelected(trade) {
   analysis.value = null
   error.value = null
   editingLevels.value = false
+  chartAvailable.value = false
 
   // Update URL with selected trade
   updateUrlParams()
@@ -255,9 +259,14 @@ async function onTradeSelected(trade) {
   }
 }
 
+function onChartLoaded({ success }) {
+  chartAvailable.value = success
+}
+
 async function fetchAnalysis(tradeId) {
   analysisLoading.value = true
   chartLoading.value = true
+  chartAvailable.value = true  // Optimistically show chart, will hide if load fails
   error.value = null
 
   try {
@@ -321,6 +330,7 @@ function clearSelection() {
   analysis.value = null
   error.value = null
   editingLevels.value = false
+  chartAvailable.value = false
   updateUrlParams()
 }
 
