@@ -427,14 +427,14 @@ class Trade {
             'uploaded_at', ta.uploaded_at
           )
         ) FILTER (WHERE ta.id IS NOT NULL) as attachments,
-        json_agg(
-          DISTINCT jsonb_build_object(
+(SELECT json_agg(
+          jsonb_build_object(
             'id', tch.id,
             'chart_url', tch.chart_url,
             'chart_title', tch.chart_title,
             'uploaded_at', tch.uploaded_at
-          )
-        ) FILTER (WHERE tch.id IS NOT NULL) as charts,
+          ) ORDER BY tch.uploaded_at ASC
+        ) FROM trade_charts tch WHERE tch.trade_id = t.id) as charts,
         count(DISTINCT tc.id)::integer as comment_count,
         sc.finnhub_industry as sector,
         sc.company_name as company_name
@@ -442,7 +442,6 @@ class Trade {
       LEFT JOIN users u ON t.user_id = u.id
       LEFT JOIN gamification_profile gp ON u.id = gp.user_id
       LEFT JOIN trade_attachments ta ON t.id = ta.trade_id
-      LEFT JOIN trade_charts tch ON t.id = tch.trade_id
       LEFT JOIN trade_comments tc ON t.id = tc.trade_id
       LEFT JOIN symbol_categories sc ON t.symbol = sc.symbol
       WHERE t.id = $1
