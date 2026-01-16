@@ -236,7 +236,13 @@
                   </div>
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-900 dark:text-gray-100">
-                  {{ formatNumber(holding.totalShares) }}
+                  <div>{{ formatNumber(holding.totalShares) }}</div>
+                  <div
+                    v-if="holding.source === 'trades' && holding.totalSharesTraded && holding.totalSharesTraded !== holding.totalShares"
+                    class="text-xs text-gray-500 dark:text-gray-400"
+                  >
+                    ({{ formatNumber(holding.totalSharesTraded) }} traded)
+                  </div>
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-900 dark:text-gray-100">
                   {{ formatCurrency(holding.averageCostBasis) }}

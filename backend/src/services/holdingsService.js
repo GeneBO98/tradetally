@@ -26,22 +26,57 @@ class HoldingsService {
     const investmentHoldings = holdingsResult.rows.map(row => this.rowToHolding(row));
 
     // Get open trades (no exit price) grouped by symbol
+    // Calculate both net position (shares held) and total shares traded from executions
     const openTradesQuery = `
+      WITH trade_executions AS (
+        SELECT
+          t.id as trade_id,
+          t.symbol,
+          t.side,
+          t.quantity as trade_quantity,
+          t.entry_price,
+          t.entry_time,
+          t.broker,
+          t.executions,
+          -- Calculate net position from executions (buys - sells)
+          COALESCE(
+            (SELECT SUM(
+              CASE
+                WHEN COALESCE(exec->>'action', exec->>'side', '') IN ('buy', 'long') THEN (exec->>'quantity')::numeric
+                WHEN COALESCE(exec->>'action', exec->>'side', '') IN ('sell', 'short') THEN -(exec->>'quantity')::numeric
+                ELSE 0
+              END
+            )
+            FROM jsonb_array_elements(COALESCE(t.executions, '[]'::jsonb)) AS exec
+            WHERE exec->>'quantity' IS NOT NULL),
+            t.quantity  -- Fallback to trade quantity if no executions
+          ) as net_position,
+          -- Calculate total shares traded (sum of all quantities)
+          COALESCE(
+            (SELECT SUM(ABS((exec->>'quantity')::numeric))
+            FROM jsonb_array_elements(COALESCE(t.executions, '[]'::jsonb)) AS exec
+            WHERE exec->>'quantity' IS NOT NULL),
+            t.quantity  -- Fallback to trade quantity if no executions
+          ) as shares_traded
+        FROM trades t
+        WHERE t.user_id = $1
+          AND t.exit_price IS NULL
+          AND t.side = 'long'
+      )
       SELECT
-        t.symbol,
-        SUM(CASE WHEN t.side = 'long' THEN t.quantity ELSE -t.quantity END) as total_shares,
-        SUM(t.quantity * t.entry_price) / NULLIF(SUM(t.quantity), 0) as average_cost_basis,
-        SUM(t.quantity * t.entry_price) as total_cost_basis,
+        symbol,
+        SUM(net_position) as net_shares_held,
+        SUM(shares_traded) as total_shares_traded,
+        SUM(trade_quantity) as total_shares,
+        SUM(trade_quantity * entry_price) / NULLIF(SUM(trade_quantity), 0) as average_cost_basis,
+        SUM(trade_quantity * entry_price) as total_cost_basis,
         COUNT(*) as trade_count,
-        MIN(t.entry_time) as first_entry,
-        MAX(t.entry_time) as last_entry,
-        STRING_AGG(DISTINCT t.broker, ', ') as brokers
-      FROM trades t
-      WHERE t.user_id = $1
-        AND t.exit_price IS NULL
-        AND t.side = 'long'
-      GROUP BY t.symbol
-      HAVING SUM(CASE WHEN t.side = 'long' THEN t.quantity ELSE -t.quantity END) > 0
+        MIN(entry_time) as first_entry,
+        MAX(entry_time) as last_entry,
+        STRING_AGG(DISTINCT broker, ', ') as brokers
+      FROM trade_executions
+      GROUP BY symbol
+      HAVING SUM(net_position) > 0
     `;
     const openTradesResult = await db.query(openTradesQuery, [userId]);
 
@@ -50,7 +85,8 @@ class HoldingsService {
       id: `trade-${row.symbol}`, // Synthetic ID for open trades
       userId: userId,
       symbol: row.symbol,
-      totalShares: parseFloat(row.total_shares) || 0,
+      totalShares: parseFloat(row.net_shares_held) || 0,  // Net position (shares actually held)
+      totalSharesTraded: parseFloat(row.total_shares_traded) || 0,  // Total volume traded
       averageCostBasis: parseFloat(row.average_cost_basis) || null,
       totalCostBasis: parseFloat(row.total_cost_basis) || 0,
       currentPrice: null, // Will be refreshed
