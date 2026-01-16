@@ -3399,13 +3399,16 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
           }
         } else {
           console.log(`  → Skipping duplicate execution: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
+          // Skip position and value updates for duplicate transactions
+          console.log(`  Position: ${currentPosition} (unchanged - duplicate)`);
+          continue;
         }
       }
 
-      // Update position and values
+      // Update position and values (only for non-duplicate transactions)
       if (transaction.action === 'buy') {
         currentPosition += qty;
-        
+
         if (currentTrade && currentTrade.side === 'long') {
           currentTrade.entryValue += qty * transaction.price;
           currentTrade.totalQuantity += qty;
@@ -3414,7 +3417,7 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
         }
       } else if (transaction.action === 'sell') {
         currentPosition -= qty;
-        
+
         if (currentTrade && currentTrade.side === 'short') {
           currentTrade.entryValue += qty * transaction.price;
           currentTrade.totalQuantity += qty;
@@ -3422,7 +3425,7 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
           currentTrade.exitValue += qty * transaction.price;
         }
       }
-      
+
       console.log(`  Position: ${prevPosition} → ${currentPosition}`);
       
       // Close trade if position goes to zero
@@ -3732,10 +3735,13 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
           }
         } else {
           console.log(`  → Skipping duplicate execution: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
+          // Skip position and value updates for duplicate transactions
+          console.log(`  Position: ${currentPosition} (unchanged - duplicate)`);
+          continue;
         }
       }
 
-      // Update position and values
+      // Update position and values (only for non-duplicate transactions)
       if (transaction.action === 'buy') {
         currentPosition += qty;
 
@@ -3747,7 +3753,7 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
         }
       } else if (transaction.action === 'sell') {
         currentPosition -= qty;
-        
+
         if (currentTrade && currentTrade.side === 'short') {
           currentTrade.entryValue += qty * transaction.price;
           currentTrade.totalQuantity += qty;
@@ -3755,9 +3761,9 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
           currentTrade.exitValue += qty * transaction.price;
         }
       }
-      
+
       console.log(`  Position: ${prevPosition} → ${currentPosition}`);
-      
+
       // Close trade if position goes to zero
       if (currentPosition === 0 && currentTrade && currentTrade.totalQuantity > 0) {
         // Calculate weighted average prices
@@ -4064,10 +4070,13 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
           }
         } else {
           console.log(`  → Skipping duplicate execution: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
+          // Skip position and value updates for duplicate transactions
+          console.log(`  Position: ${currentPosition} (unchanged - duplicate)`);
+          continue;
         }
       }
 
-      // Update position and values
+      // Update position and values (only for non-duplicate transactions)
       if (transaction.action === 'buy') {
         currentPosition += qty;
 
@@ -4649,10 +4658,13 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
           }
         } else {
           console.log(`  → Skipping duplicate execution: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
+          // Skip position and value updates for duplicate transactions
+          console.log(`  Position: ${currentPosition} (unchanged - duplicate)`);
+          continue;
         }
       }
 
-      // Update position and values
+      // Update position and values (only for non-duplicate transactions)
       if (transaction.action === 'buy') {
         currentPosition += qty;
 
@@ -5113,10 +5125,13 @@ async function parseWebullTransactions(records, existingPositions = {}, context 
           }
         } else {
           console.log(`  → Skipping duplicate execution: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
+          // Skip position and value updates for duplicate transactions
+          console.log(`  Position: ${currentPosition} (unchanged - duplicate)`);
+          continue;
         }
       }
 
-      // Update position and values
+      // Update position and values (only for non-duplicate transactions)
       if (transaction.action === 'buy') {
         currentPosition += qty;
 
@@ -5828,10 +5843,13 @@ async function parseTradovateTransactions(records, existingPositions = {}, conte
           }
         } else {
           console.log(`  Skipping duplicate execution: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
+          // Skip position and value updates for duplicate transactions
+          console.log(`  Position: ${currentPosition} (unchanged - duplicate)`);
+          continue;
         }
       }
 
-      // Update position and values
+      // Update position and values (only for non-duplicate transactions)
       if (transaction.action === 'buy') {
         currentPosition += qty;
 
