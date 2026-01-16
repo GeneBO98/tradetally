@@ -625,10 +625,12 @@ import api from '@/services/api'
 import TagManagement from './TagManagement.vue'
 import { useTradesStore } from '@/stores/trades'
 import { formatLocalDate } from '@/utils/date'
+import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 
 const emit = defineEmits(['filter'])
 const route = useRoute()
 const tradesStore = useTradesStore()
+const { selectedAccount, isFiltered: globalAccountFilterActive } = useGlobalAccountFilter()
 
 const showAdvanced = ref(false)
 
@@ -1055,7 +1057,17 @@ function applyFilters() {
   }
 
   // Handle multi-select accounts - convert to comma-separated
-  if (filters.value.accounts.length > 0) {
+  // Global account filter takes priority, local accounts can add additional filtering
+  if (selectedAccount.value) {
+    // If global account filter is set, use it
+    // If local accounts also selected, combine them (global + local)
+    if (filters.value.accounts.length > 0) {
+      const allAccounts = [selectedAccount.value, ...filters.value.accounts.filter(a => a !== selectedAccount.value)]
+      cleanFilters.accounts = allAccounts.join(',')
+    } else {
+      cleanFilters.accounts = selectedAccount.value
+    }
+  } else if (filters.value.accounts.length > 0) {
     cleanFilters.accounts = filters.value.accounts.join(',')
   }
 
@@ -1258,6 +1270,12 @@ function handleClickOutside(event) {
     }
   }
 }
+
+// Watch for global account filter changes and re-apply filters
+watch(selectedAccount, () => {
+  console.log('[TradeFilters] Global account filter changed to:', selectedAccount.value || 'All Accounts')
+  applyFilters()
+})
 
 onMounted(() => {
   // Add click outside listener after a small delay to avoid conflicts

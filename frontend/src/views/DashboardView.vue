@@ -47,16 +47,16 @@
           
           <!-- Custom Date Range Inputs -->
           <div v-if="filters.timeRange === 'custom'" class="flex gap-2">
-            <input 
-              type="date" 
+            <input
+              type="date"
               v-model="filters.startDate"
               @change="applyFilters"
               @keydown.enter="applyFilters"
               class="input text-sm"
               placeholder="Start Date"
             />
-            <input 
-              type="date" 
+            <input
+              type="date"
               v-model="filters.endDate"
               @change="applyFilters"
               @keydown.enter="applyFilters"
@@ -64,13 +64,7 @@
               placeholder="End Date"
             />
           </div>
-          
-          <select v-model="filters.account" @change="applyFilters" class="input text-sm">
-            <option value="">All Accounts</option>
-            <option v-for="account in accounts" :key="account" :value="account">
-              {{ account }}
-            </option>
-          </select>
+          <!-- Account filter is now global in the navbar -->
         </div>
       </div>
     </div>
@@ -732,8 +726,10 @@ import { getRefreshInterval, shouldRefreshPrices, getMarketStatus } from '@/util
 import YearWrappedBanner from '@/components/yearWrapped/YearWrappedBanner.vue'
 import YearWrappedModal from '@/components/yearWrapped/YearWrappedModal.vue'
 import { useYearWrappedStore } from '@/stores/yearWrapped'
+import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 
 const authStore = useAuthStore()
+const { selectedAccount } = useGlobalAccountFilter()
 const yearWrappedStore = useYearWrappedStore()
 const router = useRouter()
 
@@ -757,11 +753,9 @@ const calculationMethod = computed(() => {
   return userSettings.value?.statisticsCalculation === 'median' ? 'Median' : 'Average'
 })
 const openTrades = ref([])
-const accounts = ref([])
 
 const filters = ref({
   timeRange: 'all',
-  account: '',
   startDate: '',
   endDate: ''
 })
@@ -893,7 +887,8 @@ async function fetchAnalytics() {
     // Only add parameters if they have values
     if (dateRange.startDate) params.append('startDate', dateRange.startDate)
     if (dateRange.endDate) params.append('endDate', dateRange.endDate)
-    if (filters.value.account) params.append('accounts', filters.value.account)
+    // Use global account filter
+    if (selectedAccount.value) params.append('accounts', selectedAccount.value)
     
     console.log('Dashboard: Fetching analytics with params:', params.toString())
     const response = await api.get(`/trades/analytics?${params}`)
@@ -927,8 +922,9 @@ async function fetchOpenTrades() {
     // Use the new endpoint that includes real-time quotes
     console.log('Fetching open positions with quotes...')
     const params = {}
-    if (filters.value.account) {
-      params.accounts = filters.value.account
+    // Use global account filter
+    if (selectedAccount.value) {
+      params.accounts = selectedAccount.value
     }
     const response = await api.get('/trades/open-positions-quotes', { params })
     
@@ -947,8 +943,9 @@ async function fetchOpenTrades() {
     // Fallback to original endpoint if the new one fails
     try {
       const fallbackParams = { status: 'open', limit: 100 }
-      if (filters.value.account) {
-        fallbackParams.accounts = filters.value.account
+      // Use global account filter
+      if (selectedAccount.value) {
+        fallbackParams.accounts = selectedAccount.value
       }
       const fallbackResponse = await api.get('/trades', {
         params: fallbackParams
@@ -984,15 +981,6 @@ async function fetchOpenTrades() {
       console.error('Fallback fetch also failed:', fallbackError)
       openTrades.value = []
     }
-  }
-}
-
-async function fetchFilterOptions() {
-  try {
-    const accountsResponse = await api.get('/trades/accounts')
-    accounts.value = accountsResponse.data.accounts || []
-  } catch (error) {
-    console.error('Failed to fetch filter options:', error)
   }
 }
 
@@ -1422,6 +1410,13 @@ watch(() => filters.value.endDate, (newDate) => {
   }
 })
 
+// Watch for global account filter changes
+watch(selectedAccount, () => {
+  console.log('Dashboard: Global account filter changed to:', selectedAccount.value || 'All Accounts')
+  fetchAnalytics()
+  fetchOpenTrades()
+})
+
 async function fetchUserSettings() {
   try {
     const response = await api.get('/settings')
@@ -1596,7 +1591,6 @@ onMounted(async () => {
   // Then fetch other data in parallel, including expired options check (which uses settings)
   await Promise.all([
     fetchAnalytics(),
-    fetchFilterOptions(),
     fetchOpenTrades(),
     fetchExpiredOptionsCount()
   ])
