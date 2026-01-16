@@ -751,6 +751,13 @@ class Trade {
       whereClause += this.getHoldTimeFilter(filters.holdTime);
     }
 
+    // hasRValue filter - filter to only trades with valid R-value (stop_loss set)
+    if (filters.hasRValue !== undefined && filters.hasRValue !== '' && filters.hasRValue !== null) {
+      if (filters.hasRValue === 'true' || filters.hasRValue === true || filters.hasRValue === '1') {
+        whereClause += ` AND t.stop_loss IS NOT NULL`;
+      }
+    }
+
     // Strategy filter
     if (filters.strategy) {
       whereClause += this.getStrategyFilter(filters.strategy);
@@ -1998,6 +2005,13 @@ class Trade {
       whereClause += ` AND t.account_identifier IN (${placeholders})`;
       filters.accounts.forEach(account => values.push(account));
       paramCount += filters.accounts.length;
+    }
+
+    // hasRValue filter - filter to only trades with valid R-value (stop_loss set)
+    if (filters.hasRValue !== undefined && filters.hasRValue !== '' && filters.hasRValue !== null) {
+      if (filters.hasRValue === 'true' || filters.hasRValue === true || filters.hasRValue === '1') {
+        whereClause += ` AND t.stop_loss IS NOT NULL`;
+      }
     }
 
     console.log('Analytics query - whereClause:', whereClause);

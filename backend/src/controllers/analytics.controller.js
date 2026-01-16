@@ -125,7 +125,8 @@ function convertQueryToTradeFilters(query) {
     qualityGrades: toArray(query.qualityGrades),
     instrumentTypes: toArray(query.instrumentTypes),
     optionTypes: toArray(query.optionTypes),
-    holdTime: query.holdTime || undefined
+    holdTime: query.holdTime || undefined,
+    hasRValue: query.hasRValue
   };
 }
 
@@ -333,6 +334,13 @@ function buildFilterConditions(query) {
   // Hold time filter
   if (filters.holdTime) {
     filterConditions += getHoldTimeFilter(filters.holdTime);
+  }
+
+  // hasRValue filter - filter to only trades with stop_loss set (valid R-value trades)
+  if (filters.hasRValue !== undefined && filters.hasRValue !== '' && filters.hasRValue !== null) {
+    if (filters.hasRValue === 'true' || filters.hasRValue === true || filters.hasRValue === '1') {
+      filterConditions += ` AND stop_loss IS NOT NULL`;
+    }
   }
 
   console.log('--- Filter Results (normalized) ---');

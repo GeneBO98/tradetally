@@ -2668,14 +2668,20 @@ function buildFilterParams(additionalParams = {}) {
     ...additionalParams,
     ...filters.value
   }
-  
+
+  // Add hasRValue filter when R-value mode is active
+  // This ensures the entire dataset is filtered to only trades with valid R-values (stop_loss set)
+  if (rValueMode.value) {
+    params.hasRValue = 'true'
+  }
+
   // Remove null/undefined/empty string values to keep params clean
   Object.keys(params).forEach(key => {
     if (params[key] === null || params[key] === undefined || params[key] === '') {
       delete params[key]
     }
   })
-  
+
   console.log('[AnalyticsView] buildFilterParams - filters.value:', JSON.stringify(filters.value))
   console.log('[AnalyticsView] buildFilterParams - returning params:', JSON.stringify(params))
   return params
@@ -3628,12 +3634,28 @@ function collapseSectors() {
   console.log(`[DISPLAY] Collapsed to show ${sectorsToShow.value} sectors`)
 }
 
-// Watch for R-value mode changes and recreate all charts
-watch(() => rValueMode.value, () => {
-  nextTick(() => {
-    setTimeout(() => {
-      initializeAllCharts()
-    }, 100)
-  })
+// Watch for R-value mode changes and refetch all data with hasRValue filter
+watch(() => rValueMode.value, async () => {
+  // Refetch all data with the new hasRValue filter applied
+  loading.value = true
+
+  await Promise.all([
+    fetchOverview(),
+    fetchPerformance(),
+    fetchSymbolStats(),
+    fetchTagStats(),
+    fetchStrategyStats(),
+    fetchHourOfDayStats(),
+    fetchChartData(),
+    fetchDrawdownData()
+  ])
+
+  loading.value = false
+
+  // Recreate charts after data is loaded
+  await nextTick()
+  setTimeout(() => {
+    initializeAllCharts()
+  }, 100)
 })
 </script>
