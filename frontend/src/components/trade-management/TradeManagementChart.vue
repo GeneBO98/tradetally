@@ -121,6 +121,8 @@ const props = defineProps({
   }
 })
 
+const emit = defineEmits(['chart-loaded'])
+
 const chartContainer = ref(null)
 const showChart = ref(false)
 const loading = ref(false)
@@ -151,11 +153,13 @@ async function loadChart() {
 
     await nextTick()
     createChart()
+    emit('chart-loaded', { success: true })
   } catch (err) {
     const errorMsg = err.response?.data?.error || err.response?.data?.message || 'Failed to load chart data'
     error.value = errorMsg
     console.error('[CHART] Error loading chart:', err)
     loading.value = false
+    emit('chart-loaded', { success: false, error: errorMsg })
   }
 }
 
