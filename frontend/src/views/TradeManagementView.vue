@@ -64,6 +64,15 @@
         :analysis="analysis"
         @levels-updated="onLevelsUpdated"
       />
+
+      <!-- TradingView Charts (if any) -->
+      <TradeCharts
+        v-if="selectedTrade.charts && selectedTrade.charts.length > 0"
+        :trade-id="selectedTrade.id"
+        :charts="selectedTrade.charts"
+        :can-delete="true"
+        @deleted="onChartDeleted"
+      />
     </div>
 
     <!-- Loading State for Analysis -->
@@ -95,6 +104,7 @@ import TradeManagementChart from '@/components/trade-management/TradeManagementC
 import RMultipleAnalysis from '@/components/trade-management/RMultipleAnalysis.vue'
 import TradeSummaryMetrics from '@/components/trade-management/TradeSummaryMetrics.vue'
 import RPerformanceChart from '@/components/trade-management/RPerformanceChart.vue'
+import TradeCharts from '@/components/trades/TradeCharts.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -299,6 +309,13 @@ async function onLevelsUpdated(updatedTrade) {
   // Re-fetch analysis with new levels
   await fetchAnalysis(updatedTrade.id)
   updateTradeInList(updatedTrade)
+}
+
+function onChartDeleted(chartId) {
+  // Remove the deleted chart from selectedTrade's charts array
+  if (selectedTrade.value && selectedTrade.value.charts) {
+    selectedTrade.value.charts = selectedTrade.value.charts.filter(chart => chart.id !== chartId)
+  }
 }
 
 function updateTradeInList(updatedTrade) {

@@ -4,12 +4,15 @@
       TradingView Charts
     </h3>
 
-    <!-- Charts display -->
-    <div class="space-y-6">
+    <!-- Charts display - responsive grid -->
+    <div :class="[
+      'grid gap-6',
+      charts.length === 1 ? 'grid-cols-1 max-w-4xl mx-auto' : 'grid-cols-1 md:grid-cols-2'
+    ]">
       <div
         v-for="chart in charts"
         :key="chart.id"
-        class="relative group max-w-4xl mx-auto"
+        class="relative group"
       >
         <!-- Chart title if provided -->
         <h4 v-if="chart.chartTitle || chart.chart_title" class="text-md font-medium text-gray-800 dark:text-gray-200 mb-2">
