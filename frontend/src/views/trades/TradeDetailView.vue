@@ -160,13 +160,19 @@
                 </div>
                 <div>
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
-                    {{ trade.instrument_type === 'option' ? 'Contracts' : 'Quantity' }}
+                    {{ trade.instrument_type === 'option' ? 'Contracts' : 'Total Traded' }}
                   </dt>
                   <dd class="mt-1 text-sm text-gray-900 dark:text-white">
                     {{ formatQuantity(trade.quantity) }}
                     <span v-if="trade.instrument_type === 'option' && trade.contract_size" class="text-xs text-gray-500 dark:text-gray-400 ml-1">
                       ({{ formatQuantity(trade.quantity * trade.contract_size) }} shares)
                     </span>
+                    <div
+                      v-if="!trade.exit_time && executionSummary.finalPosition !== trade.quantity && executionSummary.finalPosition > 0"
+                      class="text-xs text-gray-500 dark:text-gray-400 mt-0.5"
+                    >
+                      {{ formatQuantity(executionSummary.finalPosition) }} currently held
+                    </div>
                   </dd>
                 </div>
                 <div>
@@ -707,7 +713,7 @@
                     </div>
                   </div>
                   <div>
-                    <div class="text-gray-500 dark:text-gray-400 text-xs">Final Position</div>
+                    <div class="text-gray-500 dark:text-gray-400 text-xs">Shares Held</div>
                     <div class="font-semibold font-mono text-gray-900 dark:text-white">
                       {{ formatNumber(executionSummary.finalPosition, 0) }}
                     </div>
