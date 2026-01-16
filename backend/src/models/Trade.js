@@ -788,14 +788,13 @@ class Trade {
       SELECT t.*,
         t.strategy, t.setup,
         array_agg(DISTINCT ta.file_url) FILTER (WHERE ta.id IS NOT NULL) as attachment_urls,
-        array_agg(DISTINCT tch.chart_url) FILTER (WHERE tch.id IS NOT NULL) as chart_urls,
+        (SELECT array_agg(tch.chart_url ORDER BY tch.uploaded_at ASC) FROM trade_charts tch WHERE tch.trade_id = t.id) as chart_urls,
         count(DISTINCT tc.id)::integer as comment_count,
         sc.finnhub_industry as sector,
         sc.company_name as company_name
       FROM (${subquery}) AS trade_ids
       INNER JOIN trades t ON t.id = trade_ids.id
       LEFT JOIN trade_attachments ta ON t.id = ta.trade_id
-      LEFT JOIN trade_charts tch ON t.id = tch.trade_id
       LEFT JOIN trade_comments tc ON t.id = tc.trade_id
       LEFT JOIN symbol_categories sc ON t.symbol = sc.symbol
       GROUP BY t.id, sc.finnhub_industry, sc.company_name
