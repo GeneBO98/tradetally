@@ -6,6 +6,8 @@
 const db = require('../config/database');
 const Trade = require('../models/Trade');
 const logger = require('../utils/logger');
+const TargetHitAnalysisService = require('../services/targetHitAnalysisService');
+const { v4: uuidv4 } = require('uuid');
 
 /**
  * Calculate R-Multiple values for a trade
@@ -373,12 +375,13 @@ const tradeManagementController = {
 
   /**
    * Update stop_loss and take_profit for a trade
+   * Supports both single take_profit and multiple take_profit_targets
    */
   async updateTradeLevels(req, res) {
     try {
       const userId = req.user.id;
       const { tradeId } = req.params;
-      const { stop_loss, take_profit } = req.body;
+      const { stop_loss, take_profit, take_profit_targets, adjustment_reason } = req.body;
 
       // Fetch the trade first to validate
       const result = await db.query(
@@ -392,35 +395,114 @@ const tradeManagementController = {
 
       const trade = result.rows[0];
       const entryPrice = parseFloat(trade.entry_price);
+      const isLong = trade.side === 'long';
 
       // Validate stop loss position based on side
       if (stop_loss !== undefined && stop_loss !== null) {
         const stopLossValue = parseFloat(stop_loss);
-        if (trade.side === 'long' && stopLossValue >= entryPrice) {
+        if (isLong && stopLossValue >= entryPrice) {
           return res.status(400).json({
             error: 'Stop loss must be below entry price for long trades'
           });
         }
-        if (trade.side === 'short' && stopLossValue <= entryPrice) {
+        if (!isLong && stopLossValue <= entryPrice) {
           return res.status(400).json({
             error: 'Stop loss must be above entry price for short trades'
           });
         }
       }
 
-      // Validate take profit position based on side
+      // Validate single take profit position based on side
       if (take_profit !== undefined && take_profit !== null) {
         const takeProfitValue = parseFloat(take_profit);
-        if (trade.side === 'long' && takeProfitValue <= entryPrice) {
+        if (isLong && takeProfitValue <= entryPrice) {
           return res.status(400).json({
             error: 'Take profit must be above entry price for long trades'
           });
         }
-        if (trade.side === 'short' && takeProfitValue >= entryPrice) {
+        if (!isLong && takeProfitValue >= entryPrice) {
           return res.status(400).json({
             error: 'Take profit must be below entry price for short trades'
           });
         }
+      }
+
+      // Validate multiple take profit targets
+      let processedTargets = null;
+      if (take_profit_targets && Array.isArray(take_profit_targets) && take_profit_targets.length > 0) {
+        processedTargets = [];
+        let totalQuantity = 0;
+
+        for (let i = 0; i < take_profit_targets.length; i++) {
+          const target = take_profit_targets[i];
+          const tpPrice = parseFloat(target.price);
+
+          // Validate price position
+          if (isLong && tpPrice <= entryPrice) {
+            return res.status(400).json({
+              error: `Take profit target ${i + 1} must be above entry price for long trades`
+            });
+          }
+          if (!isLong && tpPrice >= entryPrice) {
+            return res.status(400).json({
+              error: `Take profit target ${i + 1} must be below entry price for short trades`
+            });
+          }
+
+          const quantity = target.quantity ? parseFloat(target.quantity) : null;
+          if (quantity) totalQuantity += quantity;
+
+          processedTargets.push({
+            id: target.id || uuidv4(),
+            price: tpPrice,
+            quantity: quantity,
+            order: target.order || i + 1,
+            status: target.status || 'pending',
+            hit_at: target.hit_at || null,
+            hit_price: target.hit_price || null,
+            created_at: target.created_at || new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          });
+        }
+
+        // Validate total quantity if quantities are specified
+        if (totalQuantity > 0 && trade.quantity) {
+          const tradeQuantity = parseFloat(trade.quantity);
+          if (Math.abs(totalQuantity - tradeQuantity) > 0.001) {
+            logger.warn(`[TRADE-MANAGEMENT] TP target quantities (${totalQuantity}) differ from trade quantity (${tradeQuantity})`);
+          }
+        }
+
+        // Sort by order
+        processedTargets.sort((a, b) => a.order - b.order);
+      }
+
+      // Build history entries for tracking changes
+      const historyEntries = [];
+      const existingHistory = trade.risk_level_history || [];
+
+      if (stop_loss !== undefined && stop_loss !== trade.stop_loss) {
+        historyEntries.push(
+          TargetHitAnalysisService.createHistoryEntry(
+            trade,
+            'stop_loss',
+            trade.stop_loss ? parseFloat(trade.stop_loss) : null,
+            stop_loss !== null ? parseFloat(stop_loss) : null,
+            adjustment_reason
+          )
+        );
+      }
+
+      if (take_profit !== undefined && take_profit !== trade.take_profit) {
+        historyEntries.push(
+          TargetHitAnalysisService.createHistoryEntry(
+            trade,
+            'take_profit',
+            trade.take_profit ? parseFloat(trade.take_profit) : null,
+            take_profit !== null ? parseFloat(take_profit) : null,
+            adjustment_reason
+          )
+        );
       }
 
       // Build update query
@@ -437,6 +519,20 @@ const tradeManagementController = {
       if (take_profit !== undefined) {
         updates.push(`take_profit = $${paramCount}`);
         values.push(take_profit === null ? null : parseFloat(take_profit));
+        paramCount++;
+      }
+
+      if (processedTargets !== null) {
+        updates.push(`take_profit_targets = $${paramCount}`);
+        values.push(JSON.stringify(processedTargets));
+        paramCount++;
+      }
+
+      // Update history if there are new entries
+      if (historyEntries.length > 0) {
+        const updatedHistory = [...existingHistory, ...historyEntries];
+        updates.push(`risk_level_history = $${paramCount}`);
+        values.push(JSON.stringify(updatedHistory));
         paramCount++;
       }
 
@@ -475,6 +571,16 @@ const tradeManagementController = {
         }
       }
 
+      // Calculate and store management R
+      const managementR = TargetHitAnalysisService.calculateManagementR(updatedTrade);
+      if (managementR !== null) {
+        await db.query(
+          `UPDATE trades SET management_r = $1 WHERE id = $2`,
+          [managementR, tradeId]
+        );
+        updatedTrade.management_r = managementR;
+      }
+
       logger.info(`[TRADE-MANAGEMENT] Updated trade ${tradeId} levels for user ${userId}`);
 
       res.json({
@@ -490,6 +596,7 @@ const tradeManagementController = {
   /**
    * Get R-Multiple performance data for charting
    * Returns cumulative R performance over time
+   * Now includes management_r for the third chart line
    */
   async getRPerformance(req, res) {
     try {
@@ -499,10 +606,12 @@ const tradeManagementController = {
       logger.info('[TRADE-MGMT] getRPerformance called', { userId, symbol, startDate, endDate, limit });
 
       // Get trades with stop_loss set (required for R calculation)
+      // Now also fetch management_r and take_profit_targets
       let query = `
         SELECT
           id, symbol, trade_date, entry_price, exit_price,
-          quantity, side, pnl, stop_loss, take_profit
+          quantity, side, pnl, stop_loss, take_profit,
+          take_profit_targets, management_r, risk_level_history
         FROM trades
         WHERE user_id = $1
           AND exit_price IS NOT NULL
@@ -538,7 +647,9 @@ const tradeManagementController = {
       // Calculate R values and build cumulative data
       let cumulativeActualR = 0;
       let cumulativePotentialR = 0;
+      let cumulativeManagementR = 0;
       let tradesWithTarget = 0;
+      let tradesWithManagementR = 0;
 
       const chartData = [];
       const tradeDetails = [];
@@ -557,6 +668,13 @@ const tradeManagementController = {
             cumulativePotentialR += rValues.actual_r;
           }
 
+          // Track management R
+          const tradeManagementR = trade.management_r ? parseFloat(trade.management_r) : 0;
+          if (trade.management_r !== null) {
+            tradesWithManagementR++;
+          }
+          cumulativeManagementR += tradeManagementR;
+
           chartData.push({
             trade_number: index + 1,
             trade_id: trade.id,
@@ -564,8 +682,12 @@ const tradeManagementController = {
             trade_date: trade.trade_date,
             actual_r: rValues.actual_r,
             target_r: rValues.target_r,
+            management_r: Math.round(tradeManagementR * 100) / 100,
             cumulative_actual_r: Math.round(cumulativeActualR * 100) / 100,
-            cumulative_potential_r: Math.round(cumulativePotentialR * 100) / 100
+            cumulative_potential_r: Math.round(cumulativePotentialR * 100) / 100,
+            cumulative_management_r: Math.round(cumulativeManagementR * 100) / 100,
+            has_multiple_targets: !!(trade.take_profit_targets && trade.take_profit_targets.length > 0),
+            has_adjustments: !!(trade.risk_level_history && trade.risk_level_history.length > 0)
           });
 
           tradeDetails.push({
@@ -575,7 +697,8 @@ const tradeManagementController = {
             side: trade.side,
             pnl: trade.pnl,
             actual_r: rValues.actual_r,
-            target_r: rValues.target_r
+            target_r: rValues.target_r,
+            management_r: tradeManagementR
           });
         }
       });
@@ -584,6 +707,7 @@ const tradeManagementController = {
       const totalTrades = chartData.length;
       const totalActualR = Math.round(cumulativeActualR * 100) / 100;
       const totalPotentialR = Math.round(cumulativePotentialR * 100) / 100;
+      const totalManagementR = Math.round(cumulativeManagementR * 100) / 100;
       const rEfficiency = totalPotentialR > 0
         ? Math.round((totalActualR / totalPotentialR) * 100)
         : (totalActualR >= 0 ? 100 : 0);
@@ -600,25 +724,92 @@ const tradeManagementController = {
         ? Math.round((losingTrades.reduce((sum, t) => sum + t.actual_r, 0) / losingTrades.length) * 100) / 100
         : 0;
 
+      // Calculate average management R
+      const avgManagementR = tradesWithManagementR > 0
+        ? Math.round((totalManagementR / tradesWithManagementR) * 100) / 100
+        : 0;
+
       res.json({
         chart_data: chartData,
         summary: {
           total_trades: totalTrades,
           trades_with_target: tradesWithTarget,
+          trades_with_management_r: tradesWithManagementR,
           total_actual_r: totalActualR,
           total_potential_r: totalPotentialR,
+          total_management_r: totalManagementR,
           r_efficiency: rEfficiency,
           r_left_on_table: rLeftOnTable,
           win_rate: winRate,
           winning_trades: winningTrades.length,
           losing_trades: losingTrades.length,
           avg_win_r: avgWinR,
-          avg_loss_r: avgLossR
+          avg_loss_r: avgLossR,
+          avg_management_r: avgManagementR
         }
       });
     } catch (error) {
       logger.error('Error fetching R performance:', error);
       res.status(500).json({ error: 'Failed to fetch R performance data' });
+    }
+  },
+
+  /**
+   * Analyze which target (stop loss or take profit) was hit first
+   * Uses OHLCV data to determine the order of target crossings
+   */
+  async analyzeTargetHitFirst(req, res) {
+    try {
+      const userId = req.user.id;
+      const { tradeId } = req.params;
+
+      // Fetch the trade
+      const result = await db.query(
+        `SELECT * FROM trades WHERE id = $1 AND user_id = $2`,
+        [tradeId, userId]
+      );
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: 'Trade not found' });
+      }
+
+      const trade = result.rows[0];
+
+      // Check if trade has required data
+      if (!trade.stop_loss) {
+        return res.status(400).json({
+          error: 'Stop loss must be set for target hit analysis',
+          needs_stop_loss: true
+        });
+      }
+
+      if (!trade.entry_time) {
+        return res.status(400).json({
+          error: 'Entry time is required for target hit analysis',
+          missing_entry_time: true
+        });
+      }
+
+      // Perform the analysis
+      const analysisResult = await TargetHitAnalysisService.analyzeTargetHitOrder(trade, userId);
+
+      if (!analysisResult.success) {
+        return res.status(400).json({
+          error: analysisResult.error,
+          data_unavailable: analysisResult.data_unavailable || false
+        });
+      }
+
+      // Store the analysis result in the trade
+      await db.query(
+        `UPDATE trades SET target_hit_analysis = $1 WHERE id = $2`,
+        [JSON.stringify(analysisResult), tradeId]
+      );
+
+      res.json(analysisResult);
+    } catch (error) {
+      logger.error('Error analyzing target hit first:', error);
+      res.status(500).json({ error: 'Failed to analyze target hit order' });
     }
   }
 };

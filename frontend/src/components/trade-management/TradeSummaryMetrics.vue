@@ -198,6 +198,66 @@
           <div class="text-lg font-semibold text-gray-900 dark:text-white">{{ formatDate(trade.trade_date) }}</div>
         </div>
       </div>
+
+      <!-- Multiple Take Profit Targets -->
+      <div v-if="hasMultipleTargets" class="border-t border-gray-200 dark:border-gray-700 mt-6 pt-6">
+        <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+          Take Profit Targets
+        </h4>
+        <div class="space-y-2">
+          <div
+            v-for="(target, index) in trade.take_profit_targets"
+            :key="target.id"
+            class="flex items-center justify-between p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50"
+          >
+            <div class="flex items-center space-x-3">
+              <span class="text-sm font-medium text-gray-900 dark:text-white">
+                TP{{ index + 1 }}
+              </span>
+              <span class="text-sm text-gray-600 dark:text-gray-400">
+                {{ formatCurrency(target.price) }}
+              </span>
+              <span v-if="target.quantity" class="text-xs text-gray-500 dark:text-gray-400">
+                {{ target.quantity }} shares
+              </span>
+            </div>
+            <span :class="getTargetStatusClass(target.status)">
+              {{ target.status || 'pending' }}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Target Hit Analysis -->
+      <div v-if="trade.stop_loss" class="border-t border-gray-200 dark:border-gray-700 mt-6 pt-6">
+        <TargetHitFirstIndicator
+          :trade="trade"
+          :auto-analyze="false"
+        />
+      </div>
+
+      <!-- Management R Summary -->
+      <div v-if="trade.management_r !== null && trade.management_r !== undefined" class="border-t border-gray-200 dark:border-gray-700 mt-6 pt-6">
+        <div class="flex items-center justify-between p-4 rounded-lg" :class="getManagementRBgClass">
+          <div>
+            <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Trade Management Impact</div>
+            <div class="text-lg font-semibold" :class="getManagementRTextClass">
+              {{ trade.management_r >= 0 ? '+' : '' }}{{ trade.management_r }}R
+            </div>
+          </div>
+          <div class="text-sm text-gray-600 dark:text-gray-400 text-right max-w-xs">
+            <span v-if="trade.management_r > 0">
+              Good management - captured more R than original target
+            </span>
+            <span v-else-if="trade.management_r < 0">
+              Left R on table - exited before reaching original target
+            </span>
+            <span v-else>
+              Matched original plan
+            </span>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -206,6 +266,7 @@
 import { ref, computed, nextTick } from 'vue'
 import { format } from 'date-fns'
 import api from '@/services/api'
+import TargetHitFirstIndicator from './TargetHitFirstIndicator.vue'
 
 const props = defineProps({
   trade: {
@@ -216,6 +277,38 @@ const props = defineProps({
     type: Object,
     required: true
   }
+})
+
+// Check if trade has multiple TP targets
+const hasMultipleTargets = computed(() => {
+  return props.trade.take_profit_targets && props.trade.take_profit_targets.length > 0
+})
+
+// Get CSS class for target status badges
+function getTargetStatusClass(status) {
+  switch (status) {
+    case 'hit':
+      return 'px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+    case 'cancelled':
+      return 'px-2 py-0.5 text-xs font-medium rounded-full bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
+    default:
+      return 'px-2 py-0.5 text-xs font-medium rounded-full bg-primary-100 text-primary-800 dark:bg-primary-900/30 dark:text-primary-400'
+  }
+}
+
+// Management R styling
+const getManagementRBgClass = computed(() => {
+  const r = props.trade.management_r
+  if (r > 0) return 'bg-green-50 dark:bg-green-900/20'
+  if (r < 0) return 'bg-amber-50 dark:bg-amber-900/20'
+  return 'bg-gray-50 dark:bg-gray-700/50'
+})
+
+const getManagementRTextClass = computed(() => {
+  const r = props.trade.management_r
+  if (r > 0) return 'text-green-600 dark:text-green-400'
+  if (r < 0) return 'text-amber-600 dark:text-amber-400'
+  return 'text-gray-600 dark:text-gray-400'
 })
 
 const emit = defineEmits(['levels-updated'])

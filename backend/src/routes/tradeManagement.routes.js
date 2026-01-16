@@ -32,6 +32,14 @@ router.get('/trades', tradeManagementController.getTradesForSelection);
 router.get('/analysis/:tradeId', tradeManagementController.getRMultipleAnalysis);
 
 /**
+ * @route GET /api/trade-management/analysis/:tradeId/target-hit-first
+ * @desc Analyze which target (stop loss or take profit) was hit first
+ * @desc Uses OHLCV data to determine the order of target crossings
+ * @access Pro
+ */
+router.get('/analysis/:tradeId/target-hit-first', tradeManagementController.analyzeTargetHitFirst);
+
+/**
  * @route PATCH /api/trade-management/trades/:tradeId/levels
  * @desc Update stop_loss and take_profit for a trade
  * @body stop_loss - Stop loss price

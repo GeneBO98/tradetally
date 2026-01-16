@@ -75,8 +75,37 @@
           </p>
         </div>
 
-        <!-- Take Profit -->
-        <div>
+        <!-- Take Profit Mode Toggle -->
+        <div class="flex items-center space-x-4 mb-2">
+          <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Take Profit Mode:</span>
+          <button
+            type="button"
+            @click="useMultipleTargets = false"
+            :class="[
+              'px-3 py-1 text-sm rounded',
+              !useMultipleTargets
+                ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
+                : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
+            ]"
+          >
+            Single
+          </button>
+          <button
+            type="button"
+            @click="useMultipleTargets = true"
+            :class="[
+              'px-3 py-1 text-sm rounded',
+              useMultipleTargets
+                ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
+                : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
+            ]"
+          >
+            Multiple Targets
+          </button>
+        </div>
+
+        <!-- Single Take Profit -->
+        <div v-if="!useMultipleTargets">
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
             Take Profit Price
             <span class="text-gray-400">(optional)</span>
@@ -98,6 +127,15 @@
             {{ takeProfitError }}
           </p>
         </div>
+
+        <!-- Multiple Take Profit Targets -->
+        <TakeProfitTargetsForm
+          v-else
+          :trade="trade"
+          :stop-loss="stopLoss"
+          :initial-targets="trade.take_profit_targets || []"
+          @update:targets="takeProfitTargets = $event"
+        />
 
         <!-- Quick Set Buttons -->
         <div class="pt-2">
@@ -146,6 +184,7 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import api from '@/services/api'
+import TakeProfitTargetsForm from './TakeProfitTargetsForm.vue'
 
 const props = defineProps({
   trade: {
@@ -162,6 +201,10 @@ const emit = defineEmits(['levels-saved', 'cancel'])
 
 const stopLoss = ref(props.trade.stop_loss || '')
 const takeProfit = ref(props.trade.take_profit || '')
+const takeProfitTargets = ref([])
+const useMultipleTargets = ref(
+  props.trade.take_profit_targets && props.trade.take_profit_targets.length > 0
+)
 const localSaving = ref(false)
 const apiError = ref('')
 
@@ -225,10 +268,22 @@ async function saveLevels() {
   apiError.value = ''
 
   try {
-    const response = await api.patch(`/trade-management/trades/${props.trade.id}/levels`, {
-      stop_loss: parseFloat(stopLoss.value),
-      take_profit: takeProfit.value ? parseFloat(takeProfit.value) : null
-    })
+    const payload = {
+      stop_loss: parseFloat(stopLoss.value)
+    }
+
+    // Add either single take profit or multiple targets
+    if (useMultipleTargets.value && takeProfitTargets.value.length > 0) {
+      payload.take_profit_targets = takeProfitTargets.value
+      // Also set take_profit to first target for backwards compatibility
+      if (takeProfitTargets.value[0]?.price) {
+        payload.take_profit = takeProfitTargets.value[0].price
+      }
+    } else {
+      payload.take_profit = takeProfit.value ? parseFloat(takeProfit.value) : null
+    }
+
+    const response = await api.patch(`/trade-management/trades/${props.trade.id}/levels`, payload)
 
     emit('levels-saved', response.data.trade)
   } catch (err) {

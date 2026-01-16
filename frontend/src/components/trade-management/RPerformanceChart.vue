@@ -28,7 +28,7 @@
       <!-- Chart and Summary -->
       <div v-else>
         <!-- Summary Stats Grid -->
-        <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-6">
+        <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4 mb-6">
           <!-- Total Actual R -->
           <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
             <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Actual R</div>
@@ -42,6 +42,17 @@
             <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Potential R</div>
             <div class="text-2xl font-bold text-primary-600 dark:text-primary-400">
               {{ formatR(summary.total_potential_r) }}
+            </div>
+          </div>
+
+          <!-- Management R -->
+          <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+            <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Management R</div>
+            <div class="text-2xl font-bold" :class="getManagementRColor(summary.total_management_r)">
+              {{ formatR(summary.total_management_r || 0) }}
+            </div>
+            <div v-if="summary.trades_with_management_r > 0" class="text-xs text-gray-500 dark:text-gray-400">
+              {{ summary.trades_with_management_r }} trades
             </div>
           </div>
 
@@ -95,8 +106,12 @@
             <span class="text-gray-600 dark:text-gray-400">Actual Performance</span>
           </div>
           <div class="flex items-center">
-            <span class="w-4 h-0.5 bg-primary-600 dark:bg-primary-500 mr-2 border-dashed"></span>
+            <span class="w-4 h-0.5 bg-primary-600 dark:bg-primary-500 mr-2" style="border-bottom: 2px dashed;"></span>
             <span class="text-gray-600 dark:text-gray-400">Potential Performance</span>
+          </div>
+          <div class="flex items-center">
+            <span class="w-4 h-0.5 bg-amber-500 dark:bg-amber-400 mr-2" style="border-bottom: 2px dotted;"></span>
+            <span class="text-gray-600 dark:text-gray-400">Trade Management Impact</span>
           </div>
         </div>
 
@@ -188,39 +203,61 @@ function createChart() {
   const labels = chartData.value.map(d => d.trade_number)
   const actualData = chartData.value.map(d => d.cumulative_actual_r)
   const potentialData = chartData.value.map(d => d.cumulative_potential_r)
+  const managementData = chartData.value.map(d => d.cumulative_management_r || 0)
+
+  // Check if we have any management R data
+  const hasManagementData = managementData.some(v => v !== 0)
 
   // Get primary color from CSS custom property or use default
   const primaryColor = getComputedStyle(document.documentElement).getPropertyValue('--color-primary-600').trim() || '#6366f1'
+
+  const datasets = [
+    {
+      label: 'Actual R',
+      data: actualData,
+      borderColor: '#059669', // emerald-600 - softer green
+      backgroundColor: 'rgba(5, 150, 105, 0.08)',
+      fill: true,
+      tension: 0.2,
+      pointRadius: actualData.length > 50 ? 0 : 3,
+      pointHoverRadius: 5,
+      borderWidth: 2
+    },
+    {
+      label: 'Potential R',
+      data: potentialData,
+      borderColor: '#6366f1', // indigo-500 - theme-adjacent
+      backgroundColor: 'transparent',
+      fill: false,
+      tension: 0.2,
+      pointRadius: 0,
+      pointHoverRadius: 5,
+      borderWidth: 2,
+      borderDash: [5, 5]
+    }
+  ]
+
+  // Add management R line if there's data
+  if (hasManagementData) {
+    datasets.push({
+      label: 'Management R',
+      data: managementData,
+      borderColor: '#f59e0b', // amber-500
+      backgroundColor: 'rgba(245, 158, 11, 0.08)',
+      fill: false,
+      tension: 0.2,
+      pointRadius: 0,
+      pointHoverRadius: 5,
+      borderWidth: 2,
+      borderDash: [3, 3]
+    })
+  }
 
   chartInstance = new Chart(ctx, {
     type: 'line',
     data: {
       labels,
-      datasets: [
-        {
-          label: 'Actual R',
-          data: actualData,
-          borderColor: '#059669', // emerald-600 - softer green
-          backgroundColor: 'rgba(5, 150, 105, 0.08)',
-          fill: true,
-          tension: 0.2,
-          pointRadius: actualData.length > 50 ? 0 : 3,
-          pointHoverRadius: 5,
-          borderWidth: 2
-        },
-        {
-          label: 'Potential R',
-          data: potentialData,
-          borderColor: '#6366f1', // indigo-500 - theme-adjacent
-          backgroundColor: 'transparent',
-          fill: false,
-          tension: 0.2,
-          pointRadius: 0,
-          pointHoverRadius: 5,
-          borderWidth: 2,
-          borderDash: [5, 5]
-        }
-      ]
+      datasets
     },
     options: {
       responsive: true,
@@ -252,9 +289,13 @@ function createChart() {
               const dataPoint = chartData.value[context.dataIndex]
               if (context.datasetIndex === 0) {
                 return `Actual R: ${dataPoint.cumulative_actual_r}R (this trade: ${dataPoint.actual_r > 0 ? '+' : ''}${dataPoint.actual_r}R)`
-              } else {
+              } else if (context.datasetIndex === 1) {
                 return `Potential R: ${dataPoint.cumulative_potential_r}R`
+              } else if (context.datasetIndex === 2) {
+                const mgmtR = dataPoint.management_r || 0
+                return `Management R: ${dataPoint.cumulative_management_r || 0}R (this trade: ${mgmtR >= 0 ? '+' : ''}${mgmtR}R)`
               }
+              return ''
             }
           }
         }
@@ -303,6 +344,12 @@ function getEfficiencyColor(efficiency) {
   if (efficiency >= 80) return 'text-green-600 dark:text-green-400'
   if (efficiency >= 60) return 'text-yellow-600 dark:text-yellow-400'
   return 'text-red-600 dark:text-red-400'
+}
+
+function getManagementRColor(managementR) {
+  if (!managementR || managementR === 0) return 'text-gray-500 dark:text-gray-400'
+  if (managementR > 0) return 'text-green-600 dark:text-green-400'
+  return 'text-amber-600 dark:text-amber-400'
 }
 
 // Watch for filter changes
