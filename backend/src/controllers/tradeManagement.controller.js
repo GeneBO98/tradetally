@@ -329,6 +329,23 @@ const tradeManagementController = {
         return res.status(400).json({ error: analysis.error });
       }
 
+      // Fetch charts for this trade
+      const chartsResult = await db.query(
+        `SELECT id, chart_url, chart_title, uploaded_at
+         FROM trade_charts
+         WHERE trade_id = $1
+         ORDER BY uploaded_at DESC`,
+        [tradeId]
+      );
+
+      // Convert charts to camelCase for frontend
+      const charts = chartsResult.rows.map(chart => ({
+        id: chart.id,
+        chartUrl: chart.chart_url,
+        chartTitle: chart.chart_title,
+        uploadedAt: chart.uploaded_at
+      }));
+
       res.json({
         trade: {
           id: trade.id,
@@ -343,7 +360,8 @@ const tradeManagementController = {
           pnl: trade.pnl,
           pnl_percent: trade.pnl_percent,
           entry_time: trade.entry_time,
-          exit_time: trade.exit_time
+          exit_time: trade.exit_time,
+          charts: charts
         },
         analysis
       });
