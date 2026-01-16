@@ -329,12 +329,12 @@ const tradeManagementController = {
         return res.status(400).json({ error: analysis.error });
       }
 
-      // Fetch charts for this trade
+      // Fetch charts for this trade (ordered by upload time, oldest first = Chart 1)
       const chartsResult = await db.query(
         `SELECT id, chart_url, chart_title, uploaded_at
          FROM trade_charts
          WHERE trade_id = $1
-         ORDER BY uploaded_at DESC`,
+         ORDER BY uploaded_at ASC`,
         [tradeId]
       );
 
