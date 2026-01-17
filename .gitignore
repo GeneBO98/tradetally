@@ -2,6 +2,7 @@
 docker-test
 docker-compose.yaml
 *bom.json
+*test.js
 # Security - NEVER commit sensitive files
 .env
 .env.*

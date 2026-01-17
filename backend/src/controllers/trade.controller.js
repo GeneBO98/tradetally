@@ -971,7 +971,7 @@ const tradeController = {
           logger.logImport(`Fetching existing open positions for context-aware import...`);
           const openPositionsQuery = `
             SELECT id, symbol, side, quantity, entry_price, entry_time, trade_date, commission, broker, executions,
-                   instrument_type, strike_price, expiration_date, option_type
+                   instrument_type, strike_price, expiration_date, option_type, conid
             FROM trades
             WHERE user_id = $1
             AND exit_price IS NULL
@@ -984,7 +984,7 @@ const tradeController = {
           // Also fetch completed trades to check for duplicate executions
           logger.logImport(`Fetching completed trades for duplicate detection...`);
           const completedTradesQuery = `
-            SELECT id, symbol, executions, instrument_type, strike_price, expiration_date, option_type
+            SELECT id, symbol, executions, instrument_type, strike_price, expiration_date, option_type, conid
             FROM trades
             WHERE user_id = $1
             AND exit_price IS NOT NULL
@@ -1003,7 +1003,10 @@ const tradeController = {
               const expDate = row.expiration_date instanceof Date
                 ? row.expiration_date.toISOString().split('T')[0]
                 : String(row.expiration_date).split('T')[0];
-              return `${row.symbol}_${row.strike_price}_${expDate}_${row.option_type}`;
+              // Normalize strike price to remove trailing zeros (66.0000 -> 66)
+              // This ensures consistent key format between database DECIMAL and parser calculations
+              const normalizedStrike = parseFloat(row.strike_price);
+              return `${row.symbol}_${normalizedStrike}_${expDate}_${row.option_type}`;
             }
             return row.symbol;
           };
@@ -1027,7 +1030,7 @@ const tradeController = {
             // Build composite key for options to keep different contracts separate
             const positionKey = buildPositionKey(row);
 
-            existingPositions[positionKey] = {
+            const positionData = {
               id: row.id,
               symbol: row.symbol,
               side: row.side,
@@ -1042,8 +1045,17 @@ const tradeController = {
               instrumentType: row.instrument_type,
               strikePrice: row.strike_price ? parseFloat(row.strike_price) : null,
               expirationDate: row.expiration_date,
-              optionType: row.option_type
+              optionType: row.option_type,
+              conid: row.conid
             };
+
+            // Store by composite key (primary)
+            existingPositions[positionKey] = positionData;
+
+            // Also store by conid key if available (for IBKR reliable matching)
+            if (row.conid) {
+              existingPositions[`conid_${row.conid}`] = positionData;
+            }
           });
 
           logger.logImport(`Found ${Object.keys(existingPositions).length} existing open positions`);
@@ -1076,6 +1088,15 @@ const tradeController = {
               existingExecutions[executionKey] = [];
             }
             existingExecutions[executionKey].push(...parsedExecutions);
+
+            // Also store by conid key if available (for IBKR reliable matching)
+            if (row.conid) {
+              const conidKey = `conid_${row.conid}`;
+              if (!existingExecutions[conidKey]) {
+                existingExecutions[conidKey] = [];
+              }
+              existingExecutions[conidKey].push(...parsedExecutions);
+            }
           });
 
           // Also add executions from open positions (already using composite keys)
