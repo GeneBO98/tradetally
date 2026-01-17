@@ -351,16 +351,72 @@ class AlphaVantageClient {
   async getUsageStats() {
     const now = Date.now();
     const oneDayAgo = now - 24 * 60 * 60 * 1000;
-    
+
     // Get cache stats from the cache manager
     const cacheStats = await cache.getStats();
-    
+
     return {
       dailyCallsUsed: this.dailyCalls.filter(t => t > oneDayAgo).length,
       dailyCallsRemaining: 25 - this.dailyCalls.filter(t => t > oneDayAgo).length,
       cacheSize: cacheStats.memoryEntries + cacheStats.databaseEntries,
       isConfigured: this.isConfigured()
     };
+  }
+
+  /**
+   * Get dividend history for a stock
+   * Uses the DIVIDENDS function from Alpha Vantage
+   * @param {string} symbol - Stock symbol
+   * @returns {Promise<Array>} Array of dividend objects with ex_dividend_date, amount, etc.
+   */
+  async getDividends(symbol) {
+    const symbolUpper = symbol.toUpperCase();
+    const cacheKey = `dividends_${symbolUpper}`;
+
+    // Check cache first (24 hour TTL)
+    const cached = await cache.get('av_dividends', cacheKey);
+    if (cached) {
+      console.log(`[AV-DIVIDENDS] Using cached dividend data for ${symbolUpper}`);
+      return cached;
+    }
+
+    try {
+      console.log(`[AV-DIVIDENDS] Fetching dividend history for ${symbolUpper}`);
+
+      const data = await this.makeRequest({
+        function: 'DIVIDENDS',
+        symbol: symbolUpper
+      });
+
+      // Alpha Vantage returns: { data: [{ ex_dividend_date, declaration_date, record_date, payment_date, amount }] }
+      const dividendData = data.data || [];
+
+      // Normalize to common format matching Finnhub structure
+      const dividends = dividendData.map(d => ({
+        symbol: symbolUpper,
+        date: d.ex_dividend_date, // ex-dividend date
+        amount: parseFloat(d.amount) || 0,
+        payDate: d.payment_date,
+        recordDate: d.record_date,
+        declarationDate: d.declaration_date,
+        currency: 'USD' // Alpha Vantage doesn't return currency, assume USD
+      }));
+
+      if (dividends.length > 0) {
+        console.log(`[AV-DIVIDENDS] Found ${dividends.length} dividends for ${symbolUpper}`);
+        await cache.set('av_dividends', cacheKey, dividends);
+      } else {
+        console.log(`[AV-DIVIDENDS] No dividends found for ${symbolUpper}`);
+        // Cache empty result for 24 hours
+        await cache.set('av_dividends', cacheKey, []);
+      }
+
+      return dividends;
+    } catch (error) {
+      console.warn(`[AV-DIVIDENDS] Failed to get dividends for ${symbol}: ${error.message}`);
+      // Return empty array instead of throwing to allow fallback logic
+      return [];
+    }
   }
 }
 

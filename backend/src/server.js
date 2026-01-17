@@ -54,6 +54,7 @@ const GamificationScheduler = require('./services/gamificationScheduler');
 const TrialScheduler = require('./services/trialScheduler');
 const OptionsScheduler = require('./services/optionsScheduler');
 const brokerSyncScheduler = require('./services/brokerSync/brokerSyncScheduler');
+const dividendScheduler = require('./services/dividendScheduler');
 const backgroundWorker = require('./workers/backgroundWorker');
 const jobRecoveryService = require('./services/jobRecoveryService');
 const pushNotificationService = require('./services/pushNotificationService');
@@ -451,6 +452,15 @@ async function startServer() {
       console.log('[SUCCESS] Broker sync scheduler started');
     } else {
       console.log('Broker sync scheduler disabled (ENABLE_BROKER_SYNC_SCHEDULER=false)');
+    }
+
+    // Start dividend scheduler (for automatic dividend tracking on open positions)
+    if (process.env.ENABLE_DIVIDEND_SCHEDULER !== 'false') {
+      console.log('Starting dividend scheduler...');
+      dividendScheduler.start();
+      console.log('[SUCCESS] Dividend scheduler started');
+    } else {
+      console.log('Dividend scheduler disabled (ENABLE_DIVIDEND_SCHEDULER=false)');
     }
 
     // Initialize push notification service

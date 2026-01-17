@@ -5,6 +5,7 @@
 
 const db = require('../config/database');
 const finnhub = require('../utils/finnhub');
+const DividendService = require('./dividendService');
 
 class HoldingsService {
   /**
@@ -108,6 +109,25 @@ class HoldingsService {
       source: 'trades', // Mark as coming from trades
       brokers: row.brokers
     }));
+
+    // Fetch dividend totals for trade-based holdings
+    try {
+      const dividendsBySymbol = await DividendService.getUserDividendsBySymbol(userId);
+      for (const holding of openTradeHoldings) {
+        const dividendData = dividendsBySymbol[holding.symbol];
+        if (dividendData) {
+          holding.totalDividendsReceived = dividendData.totalAmount;
+          holding.lastDividendDate = dividendData.lastDividendDate;
+          // Calculate dividend yield on cost if we have cost basis
+          if (holding.totalCostBasis > 0 && dividendData.totalAmount > 0) {
+            holding.dividendYieldOnCost = (dividendData.totalAmount / holding.totalCostBasis) * 100;
+          }
+        }
+      }
+    } catch (error) {
+      console.error('[HOLDINGS] Failed to fetch dividend data:', error.message);
+      // Continue without dividend data - don't fail the whole request
+    }
 
     // Combine and deduplicate (prefer investment_holdings over open trades for same symbol)
     const holdingsMap = new Map();

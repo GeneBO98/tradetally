@@ -2033,6 +2033,72 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
       throw error;
     }
   }
+
+  /**
+   * Get dividend history for a stock
+   * Uses /stock/dividend2 endpoint for historical dividend data
+   * @param {string} symbol - Stock symbol
+   * @param {string} from - Start date (YYYY-MM-DD)
+   * @param {string} to - End date (YYYY-MM-DD)
+   * @returns {Promise<Array>} Array of dividend objects with date, amount, payDate, etc.
+   */
+  async getDividends(symbol, from = null, to = null) {
+    const symbolUpper = symbol.toUpperCase();
+
+    // Default to last 2 years if no dates provided
+    if (!from) {
+      const twoYearsAgo = new Date();
+      twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
+      from = twoYearsAgo.toISOString().split('T')[0];
+    }
+    if (!to) {
+      to = new Date().toISOString().split('T')[0];
+    }
+
+    // Create cache key
+    const cacheKey = `dividends_${symbolUpper}_${from}_${to}`;
+
+    // Check cache first (24 hour TTL)
+    const cached = await cache.get('dividends', cacheKey);
+    if (cached) {
+      console.log(`[DIVIDENDS] Using cached dividend data for ${symbolUpper}`);
+      return cached;
+    }
+
+    try {
+      console.log(`[DIVIDENDS] Fetching dividend history for ${symbolUpper} from ${from} to ${to}`);
+
+      const data = await this.makeRequest('/stock/dividend2', {
+        symbol: symbolUpper,
+        from: from,
+        to: to
+      });
+
+      // Finnhub returns an array of dividend objects:
+      // { symbol, date, amount, adjustedAmount, payDate, recordDate, declarationDate, currency }
+      const dividends = data || [];
+
+      if (dividends.length > 0) {
+        console.log(`[DIVIDENDS] Found ${dividends.length} dividends for ${symbolUpper}`);
+        await cache.set('dividends', cacheKey, dividends);
+      } else {
+        console.log(`[DIVIDENDS] No dividends found for ${symbolUpper}`);
+        // Cache empty result for 24 hours to avoid repeated API calls
+        await cache.set('dividends', cacheKey, []);
+      }
+
+      return dividends;
+    } catch (error) {
+      // Don't throw on 404 or empty results - just return empty array
+      if (error.message.includes('404') || error.message.includes('No data')) {
+        console.log(`[DIVIDENDS] No dividend data available for ${symbolUpper}`);
+        await cache.set('dividends', cacheKey, []);
+        return [];
+      }
+      console.warn(`[DIVIDENDS] Failed to get dividends for ${symbol}: ${error.message}`);
+      throw error;
+    }
+  }
 }
 
 module.exports = new FinnhubClient();
