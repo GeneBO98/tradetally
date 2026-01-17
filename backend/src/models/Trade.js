@@ -40,7 +40,7 @@ class Trade {
       symbol, entryTime, exitTime, entryPrice, exitPrice,
       quantity, side, commission, entryCommission, exitCommission, fees, notes, isPublic, broker,
       strategy, setup, tags, pnl: providedPnL, pnlPercent: providedPnLPercent,
-      executionData, mae, mfe, confidence, tradeDate,
+      executionData, executions, mae, mfe, confidence, tradeDate,
       instrumentType = 'stock', strikePrice, expirationDate, optionType,
       contractSize, underlyingSymbol, contractMonth, contractYear,
       tickSize, pointValue, underlyingAsset, importId,
@@ -310,7 +310,7 @@ class Trade {
     const values = [
       userId, symbol.toUpperCase(), finalTradeDate, finalEntryTime, cleanExitTime, entryPrice, cleanExitPrice,
       quantity, side, commission || 0, entryCommission || 0, exitCommission || 0, fees || 0, pnl, pnlPercent, notes, isPublic || false,
-      broker, finalStrategy, setup, tags || [], JSON.stringify(executionData || []), mae || null, mfe || null, confidence || 5,
+      broker, finalStrategy, setup, tags || [], JSON.stringify(executions || executionData || []), mae || null, mfe || null, confidence || 5,
       strategyConfidence, classificationMethod, JSON.stringify(classificationMetadata), manualOverride,
       JSON.stringify(newsData.newsEvents || []), newsData.hasNews || false, newsData.sentiment, newsData.checkedAt,
       instrumentType || 'stock', strikePrice || null, expirationDate || null, optionType || null,

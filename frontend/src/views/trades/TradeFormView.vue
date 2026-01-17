@@ -1869,28 +1869,41 @@ async function handleSubmit() {
         const entryAction = tradeSide === 'short' ? 'sell' : 'buy'
         const exitAction = tradeSide === 'short' ? 'buy' : 'sell'
 
-        // Exit time is latest execution (if there are exit executions)
-        const hasExitExecution = processedExecutions.some(e => e.action === exitAction)
-        if (hasExitExecution) {
-          calculatedExitTime = sortedByTime[sortedByTime.length - 1].datetime
-        }
-
         // Entry price is weighted average of entry executions
         const entryExecutions = processedExecutions.filter(e => e.action === entryAction)
+        const exitExecutions = processedExecutions.filter(e => e.action === exitAction)
+
+        let totalEntryQty = 0
+        let totalExitQty = 0
+
         if (entryExecutions.length > 0) {
           const totalEntryValue = entryExecutions.reduce((sum, exec) => sum + (exec.price * exec.quantity), 0)
-          const totalEntryQty = entryExecutions.reduce((sum, exec) => sum + exec.quantity, 0)
+          totalEntryQty = entryExecutions.reduce((sum, exec) => sum + exec.quantity, 0)
           calculatedEntryPrice = totalEntryValue / totalEntryQty
-          // Quantity is the sum of ENTRY executions (position size), not all executions
-          calculatedQuantity = totalEntryQty
         }
 
-        // Exit price is weighted average of exit executions
-        const exitExecutions = processedExecutions.filter(e => e.action === exitAction)
         if (exitExecutions.length > 0) {
           const totalExitValue = exitExecutions.reduce((sum, exec) => sum + (exec.price * exec.quantity), 0)
-          const totalExitQty = exitExecutions.reduce((sum, exec) => sum + exec.quantity, 0)
+          totalExitQty = exitExecutions.reduce((sum, exec) => sum + exec.quantity, 0)
           calculatedExitPrice = totalExitValue / totalExitQty
+        }
+
+        // Calculate net position (entry qty - exit qty)
+        const netPosition = totalEntryQty - totalExitQty
+
+        // Only set exit time if position is fully closed (net position is 0)
+        // For partial exits, the trade remains open
+        if (totalExitQty > 0 && netPosition <= 0) {
+          // Fully closed - set exit time to latest execution
+          calculatedExitTime = sortedByTime[sortedByTime.length - 1].datetime
+          // Quantity is the total entry quantity (what was traded)
+          calculatedQuantity = totalEntryQty
+        } else {
+          // Open position (no exits or partial exits)
+          calculatedExitTime = null
+          calculatedExitPrice = null
+          // Quantity is the NET position (what is still held)
+          calculatedQuantity = netPosition > 0 ? netPosition : totalEntryQty
         }
 
         // Total commission and fees from all executions (can be negative for rebates)
