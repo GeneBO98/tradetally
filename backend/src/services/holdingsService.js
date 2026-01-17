@@ -69,7 +69,9 @@ class HoldingsService {
         SUM(shares_traded) as total_shares_traded,
         SUM(trade_quantity) as total_shares,
         SUM(trade_quantity * entry_price) / NULLIF(SUM(trade_quantity), 0) as average_cost_basis,
-        SUM(trade_quantity * entry_price) as total_cost_basis,
+        -- Fix: total_cost_basis should sum each trade's (net_position * entry_price)
+        -- This ensures correct unrealized P&L when trades have different entry prices
+        COALESCE(SUM(net_position * COALESCE(entry_price, 0)), 0) as total_cost_basis,
         COUNT(*) as trade_count,
         MIN(entry_time) as first_entry,
         MAX(entry_time) as last_entry,
@@ -474,10 +476,12 @@ class HoldingsService {
   /**
    * Get portfolio summary for a user
    * @param {string} userId - User ID
+   * @param {Array} [holdingsWithPrices] - Optional pre-fetched holdings with prices already populated
    * @returns {Promise<Object>} Portfolio summary
    */
-  static async getPortfolioSummary(userId) {
-    const holdings = await this.getHoldings(userId);
+  static async getPortfolioSummary(userId, holdingsWithPrices = null) {
+    // Use provided holdings (with prices) or fetch fresh (will have null prices for trade-based)
+    const holdings = holdingsWithPrices || await this.getHoldings(userId);
 
     const totals = holdings.reduce((acc, h) => {
       acc.totalValue += h.currentValue || 0;

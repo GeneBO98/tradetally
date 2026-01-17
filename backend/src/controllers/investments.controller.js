@@ -663,9 +663,10 @@ const recordDividend = async (req, res) => {
 const getPortfolioSummary = async (req, res) => {
   try {
     // Refresh prices first to ensure accurate portfolio values
-    await HoldingsService.refreshPrices(req.user.id);
+    // Use the returned holdings (with prices populated) for the summary calculation
+    const holdingsWithPrices = await HoldingsService.refreshPrices(req.user.id);
 
-    const summary = await HoldingsService.getPortfolioSummary(req.user.id);
+    const summary = await HoldingsService.getPortfolioSummary(req.user.id, holdingsWithPrices);
 
     res.json(summary);
   } catch (error) {
