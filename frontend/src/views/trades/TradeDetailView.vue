@@ -160,18 +160,20 @@
                 </div>
                 <div>
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
-                    {{ trade.instrument_type === 'option' ? 'Contracts' : 'Total Traded' }}
+                    {{ trade.instrument_type === 'option' ? 'Contracts' : (!trade.exit_time ? 'Quantity Held' : 'Total Traded') }}
                   </dt>
                   <dd class="mt-1 text-sm text-gray-900 dark:text-white">
-                    {{ formatQuantity(trade.quantity) }}
+                    <!-- For open positions: show net position (quantity held), for closed: show total traded -->
+                    {{ formatQuantity(!trade.exit_time && executionSummary.finalPosition > 0 ? executionSummary.finalPosition : (executionSummary.totalShareQuantity > 0 ? executionSummary.totalShareQuantity : trade.quantity)) }}
                     <span v-if="trade.instrument_type === 'option' && trade.contract_size" class="text-xs text-gray-500 dark:text-gray-400 ml-1">
-                      ({{ formatQuantity(trade.quantity * trade.contract_size) }} shares)
+                      ({{ formatQuantity((!trade.exit_time && executionSummary.finalPosition > 0 ? executionSummary.finalPosition : trade.quantity) * trade.contract_size) }} shares)
                     </span>
+                    <!-- For open positions with partial sales, show total traded as supplementary info -->
                     <div
-                      v-if="!trade.exit_time && executionSummary.finalPosition !== trade.quantity && executionSummary.finalPosition > 0"
+                      v-if="!trade.exit_time && executionSummary.totalShareQuantity > 0 && executionSummary.totalShareQuantity !== executionSummary.finalPosition"
                       class="text-xs text-gray-500 dark:text-gray-400 mt-0.5"
                     >
-                      {{ formatQuantity(executionSummary.finalPosition) }} currently held
+                      {{ formatQuantity(executionSummary.totalShareQuantity) }} total traded
                     </div>
                   </dd>
                 </div>
