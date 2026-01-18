@@ -1,5 +1,100 @@
 const finnhub = require('./finnhub');
 
+// Simple in-memory cache for Frankfurter rates (24 hour TTL)
+const frankfurterCache = new Map();
+const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+
+/**
+ * Get forex rate from Frankfurter API (free, no API key required)
+ * Uses ECB (European Central Bank) data
+ * @param {string} base - Base currency (e.g., 'EUR')
+ * @param {string} target - Target currency (default: 'USD')
+ * @param {string} date - Date in YYYY-MM-DD format (optional)
+ * @returns {Promise<number>} Exchange rate
+ */
+async function getForexRateFromFrankfurter(base, target = 'USD', date = null) {
+  const baseUpper = base.toUpperCase();
+  const targetUpper = target.toUpperCase();
+
+  // If same currency, return 1.0
+  if (baseUpper === targetUpper) {
+    return 1.0;
+  }
+
+  // Format date - use 'latest' for current rates
+  const dateParam = date || 'latest';
+  const cacheKey = `${baseUpper}_${targetUpper}_${dateParam}`;
+
+  // Check cache
+  const cached = frankfurterCache.get(cacheKey);
+  if (cached && (Date.now() - cached.timestamp) < CACHE_TTL) {
+    console.log(`[CURRENCY] Using cached Frankfurter rate for ${baseUpper}/${targetUpper} on ${dateParam}: ${cached.rate}`);
+    return cached.rate;
+  }
+
+  try {
+    // Frankfurter API: https://api.frankfurter.dev/v1/{date}?base=EUR&symbols=USD
+    const url = `https://api.frankfurter.dev/v1/${dateParam}?base=${baseUpper}&symbols=${targetUpper}`;
+    console.log(`[CURRENCY] Fetching Frankfurter rate: ${url}`);
+
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      throw new Error(`Frankfurter API error: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+
+    // Response format: { amount: 1, base: "EUR", date: "2024-01-15", rates: { USD: 1.0876 } }
+    if (!data || !data.rates || !data.rates[targetUpper]) {
+      throw new Error(`No rate available for ${baseUpper}/${targetUpper} on ${dateParam}`);
+    }
+
+    const rate = parseFloat(data.rates[targetUpper]);
+
+    // Cache the result
+    frankfurterCache.set(cacheKey, { rate, timestamp: Date.now() });
+
+    console.log(`[CURRENCY] Frankfurter rate for ${baseUpper}/${targetUpper} on ${dateParam}: ${rate}`);
+    return rate;
+  } catch (error) {
+    console.error(`[CURRENCY] Frankfurter API failed for ${baseUpper}/${targetUpper}: ${error.message}`);
+    throw error;
+  }
+}
+
+/**
+ * Get forex rate with fallback - tries Finnhub first, then Frankfurter
+ * @param {string} base - Base currency (e.g., 'EUR')
+ * @param {string} target - Target currency (default: 'USD')
+ * @param {string} date - Date in YYYY-MM-DD format (optional)
+ * @returns {Promise<number>} Exchange rate
+ */
+async function getForexRate(base, target = 'USD', date = null) {
+  const baseUpper = base.toUpperCase();
+  const targetUpper = target.toUpperCase();
+
+  // If same currency, return 1.0
+  if (baseUpper === targetUpper) {
+    return 1.0;
+  }
+
+  // Try Finnhub first if API key is configured
+  if (finnhub.apiKey) {
+    try {
+      const rate = await finnhub.getForexRate(baseUpper, targetUpper, date);
+      return rate;
+    } catch (error) {
+      console.warn(`[CURRENCY] Finnhub failed, falling back to Frankfurter: ${error.message}`);
+    }
+  } else {
+    console.log('[CURRENCY] No Finnhub API key configured, using Frankfurter');
+  }
+
+  // Fallback to Frankfurter (free, no API key required)
+  return getForexRateFromFrankfurter(baseUpper, targetUpper, date);
+}
+
 /**
  * Convert monetary value from one currency to USD
  * @param {number} amount - Amount in original currency
@@ -17,8 +112,8 @@ async function convertToUSD(amount, fromCurrency, date) {
   }
 
   try {
-    // Get the exchange rate for the trade date
-    const exchangeRate = await finnhub.getForexRate(fromCurrency, 'USD', date);
+    // Get the exchange rate for the trade date (with Frankfurter fallback)
+    const exchangeRate = await getForexRate(fromCurrency, 'USD', date);
 
     // Convert to USD
     const amountUSD = amount * exchangeRate;
@@ -53,8 +148,8 @@ async function convertTradeToUSD(trade, currency, date) {
   }
 
   try {
-    // Get exchange rate for the trade date
-    const exchangeRate = await finnhub.getForexRate(currency, 'USD', date);
+    // Get exchange rate for the trade date (with Frankfurter fallback)
+    const exchangeRate = await getForexRate(currency, 'USD', date);
 
     // Store original values in currency-specific fields
     const convertedTrade = {
@@ -122,5 +217,7 @@ async function userHasProAccess(userId) {
 module.exports = {
   convertToUSD,
   convertTradeToUSD,
-  userHasProAccess
+  userHasProAccess,
+  getForexRate,
+  getForexRateFromFrankfurter
 };
