@@ -1863,12 +1863,39 @@ const tradeController = {
           let netPosition = 0;
           trade.executions.forEach(execution => {
             const qty = parseFloat(execution.quantity) || 0;
-            const action = execution.action || execution.side || 'unknown';
 
-            if (action === 'buy' || action === 'long') {
-              netPosition += qty;
-            } else if (action === 'sell' || action === 'short') {
-              netPosition -= qty;
+            // Determine if this is a grouped execution (has entryPrice/exitPrice/entryTime) or individual fill
+            const isGroupedExecution = execution.entryPrice !== undefined ||
+                                        execution.exitPrice !== undefined ||
+                                        execution.entryTime !== undefined;
+
+            if (isGroupedExecution) {
+              // Grouped execution: represents a round-trip trade or open position
+              // If no exitPrice, it's an open position - add/subtract based on trade side
+              // If has exitPrice, it's a closed round-trip - net 0 (but shouldn't be in open trades)
+              if (!execution.exitPrice) {
+                // Open position: use trade side to determine direction
+                if (trade.side === 'long') {
+                  netPosition += qty;
+                } else {
+                  netPosition -= qty;
+                }
+              }
+              // Closed round-trips (exitPrice exists) don't affect net position
+            } else {
+              // Individual fill: use action field to determine buy/sell
+              // Normalize action: 'buy'/'long' = entry, 'sell'/'short' = exit
+              const action = (execution.action || execution.side || '').toLowerCase();
+
+              if (action === 'buy' || action === 'long') {
+                netPosition += qty;
+              } else if (action === 'sell' || action === 'short') {
+                netPosition -= qty;
+              } else if (action === '' || action === 'unknown') {
+                // Fallback: if action is missing, we cannot reliably determine buy/sell
+                // Log a warning but don't count this execution to avoid incorrect calculations
+                console.warn(`[POSITION] Execution missing action for trade ${trade.id}, skipping from net position calculation`);
+              }
             }
           });
           return netPosition;
@@ -1876,6 +1903,20 @@ const tradeController = {
 
         // Fallback to trade.quantity if no executions
         return trade.side === 'long' ? trade.quantity : -trade.quantity;
+      };
+
+      // Helper function to calculate total shares traded from executions (all quantities count as positive)
+      const calculateTotalSharesTraded = (trade) => {
+        if (trade.executions && Array.isArray(trade.executions) && trade.executions.length > 0) {
+          let totalTraded = 0;
+          trade.executions.forEach(execution => {
+            const qty = parseFloat(execution.quantity) || 0;
+            totalTraded += Math.abs(qty);  // All shares count as traded
+          });
+          return totalTraded;
+        }
+        // Fallback to trade.quantity if no executions
+        return trade.quantity || 0;
       };
 
       // Group trades by symbol and calculate net position
@@ -1886,7 +1927,8 @@ const tradeController = {
           symbol: trade.symbol,
           side: null, // Will be determined by net position
           trades: [],
-          totalQuantity: 0,
+          totalQuantity: 0,        // Net position (shares still held)
+          totalSharesTraded: 0,    // Total shares traded (all executions count positive)
           totalCost: 0,
           avgPrice: 0,
           instrumentType: trade.instrument_type || 'stock',
@@ -1900,6 +1942,10 @@ const tradeController = {
         // Calculate net position considering executions or trade direction
         const netPosition = calculateNetPosition(trade);
         positionMap[trade.symbol].totalQuantity += netPosition;
+
+        // Calculate total shares traded (all executions count as positive)
+        const sharesTraded = calculateTotalSharesTraded(trade);
+        positionMap[trade.symbol].totalSharesTraded += sharesTraded;
 
         // For cost calculation, account for multipliers (options use contract_size, futures use point_value)
         let costMultiplier;

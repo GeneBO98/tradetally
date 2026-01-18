@@ -1769,8 +1769,9 @@ async function handleSubmit() {
 
     const processedExecutions = form.value.executions && form.value.executions.length > 0
       ? form.value.executions.map(exec => {
-          // Check if this is a grouped execution (has entryPrice/exitPrice) or individual fill
-          if (exec.entryPrice !== undefined || exec.exitPrice !== undefined) {
+          // Check if this is a grouped execution (has entryPrice/exitPrice/entryTime) or individual fill
+          // IMPORTANT: This check must match the check in loadTrade (line 1668) to ensure consistency
+          if (exec.entryPrice !== undefined || exec.exitPrice !== undefined || exec.entryTime !== undefined) {
             // Grouped format - keep entry/exit fields
             return {
               side: exec.side,
@@ -1787,8 +1788,13 @@ async function handleSubmit() {
             }
           } else {
             // Individual fill format - keep action/price/datetime
+            // Normalize action to 'buy' or 'sell' (same logic as loadTrade)
+            let action = exec.action || exec.side || ''
+            if (action === 'long') action = 'buy'
+            if (action === 'short') action = 'sell'
+
             return {
-              action: exec.action,
+              action: action,
               quantity: parseFloat(exec.quantity),
               price: parseFloat(exec.price),
               datetime: exec.datetime,
@@ -1803,8 +1809,9 @@ async function handleSubmit() {
 
     // If we have executions, calculate summary values from them
     if (processedExecutions && processedExecutions.length > 0) {
-      // Check if we have grouped executions (with entryPrice/exitPrice) or individual fills
-      const hasGroupedExecutions = processedExecutions.some(e => e.entryPrice !== undefined || e.exitPrice !== undefined)
+      // Check if we have grouped executions (with entryPrice/exitPrice/entryTime) or individual fills
+      // IMPORTANT: This check must match the check above to ensure consistency
+      const hasGroupedExecutions = processedExecutions.some(e => e.entryPrice !== undefined || e.exitPrice !== undefined || e.entryTime !== undefined)
 
       if (hasGroupedExecutions) {
         // For grouped executions, calculate weighted average stop loss/take profit from executions
@@ -2008,8 +2015,8 @@ async function handleSubmit() {
         strategy: tradeData.strategy,
         notes: !!tradeData.notes
       })
-      // For new trades, go to trades list
-      router.push('/trades')
+      // For new trades, go to trade detail page so user can add attachments
+      router.push(`/trades/${newTrade.id}`)
     }
   } catch (err) {
     error.value = err.response?.data?.error || 'An error occurred'

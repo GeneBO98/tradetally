@@ -40,9 +40,21 @@ class HoldingsService {
           t.broker,
           t.executions,
           -- Calculate net position from executions (buys - sells)
+          -- Handles both grouped executions (entryPrice/exitPrice/entryTime) and individual fills (action)
           COALESCE(
             (SELECT SUM(
               CASE
+                -- Grouped executions: check for entryPrice, exitPrice, or entryTime
+                WHEN exec->>'entryPrice' IS NOT NULL OR exec->>'exitPrice' IS NOT NULL OR exec->>'entryTime' IS NOT NULL THEN
+                  -- For grouped executions with no exitPrice, it's an open position
+                  -- For grouped executions with exitPrice, it's closed (net 0)
+                  CASE
+                    WHEN exec->>'exitPrice' IS NULL THEN
+                      -- Open position: use trade side
+                      CASE WHEN t.side = 'long' THEN (exec->>'quantity')::numeric ELSE -(exec->>'quantity')::numeric END
+                    ELSE 0  -- Closed round-trip
+                  END
+                -- Individual fills: use action field
                 WHEN COALESCE(exec->>'action', exec->>'side', '') IN ('buy', 'long') THEN (exec->>'quantity')::numeric
                 WHEN COALESCE(exec->>'action', exec->>'side', '') IN ('sell', 'short') THEN -(exec->>'quantity')::numeric
                 ELSE 0

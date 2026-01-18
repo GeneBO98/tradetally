@@ -137,7 +137,13 @@
               <!-- Key Metrics Grid -->
               <div class="grid grid-cols-2 gap-3 mb-3">
                 <div class="table-card-row">
-                  <span class="table-card-label">Quantity</span>
+                  <span class="table-card-label">Traded</span>
+                  <span class="table-card-value">
+                    {{ (position.totalSharesTraded || position.totalQuantity || 0).toLocaleString() }}
+                  </span>
+                </div>
+                <div class="table-card-row">
+                  <span class="table-card-label">Shares Held</span>
                   <span class="table-card-value">
                     {{ position.totalQuantity === 0 ? 'Hedged' : (position.totalQuantity || 0).toLocaleString() }}
                   </span>
@@ -222,7 +228,10 @@
                     Side
                   </th>
                   <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Total Quantity
+                    Traded
+                  </th>
+                  <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Shares Held
                   </th>
                   <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                     Avg Entry Price
@@ -257,7 +266,7 @@
                     <td class="px-3 py-2 text-sm">
                       <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
                         :class="[
-                          position.side === 'long' 
+                          position.side === 'long'
                             ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
                             : position.side === 'short'
                             ? 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
@@ -265,6 +274,9 @@
                         ]">
                         {{ position.side === 'neutral' ? 'hedged' : position.side }}
                       </span>
+                    </td>
+                    <td class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300 text-right">
+                      {{ (position.totalSharesTraded || position.totalQuantity || 0).toLocaleString() }}
                     </td>
                     <td class="px-3 py-2 text-sm font-bold text-gray-900 dark:text-white text-right">
                       {{ position.totalQuantity === 0 ? 'Hedged' : (position.totalQuantity || 0).toLocaleString() }}
@@ -961,16 +973,18 @@ async function fetchOpenTrades() {
             side: trade.side,
             trades: [],
             totalQuantity: 0,
+            totalSharesTraded: 0,
             totalCost: 0,
             avgPrice: 0
           }
         }
-        
+
         grouped[trade.symbol].trades.push(trade)
         grouped[trade.symbol].totalQuantity += trade.quantity
+        grouped[trade.symbol].totalSharesTraded += Math.abs(trade.quantity)
         grouped[trade.symbol].totalCost += (trade.entry_price * trade.quantity)
       })
-      
+
       // Calculate average prices and convert to array
       openTrades.value = Object.values(grouped).map(group => {
         group.avgPrice = group.totalCost / group.totalQuantity
