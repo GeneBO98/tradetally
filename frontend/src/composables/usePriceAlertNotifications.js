@@ -24,23 +24,24 @@ export function usePriceAlertNotifications() {
   const { showSuccess, showWarning } = useNotification()
   
   const connect = () => {
-    console.log('Connect called:', { 
-      hasToken: !!authStore.token, 
-      userTier: authStore.user?.tier,
-      user: authStore.user 
-    })
-    
+    // Skip verbose logging - only log important state changes
     if (!authStore.token || (authStore.user?.tier !== 'pro' && authStore.user?.billingEnabled !== false)) {
-      console.log('SSE notifications require Pro tier - not connecting')
       return
     }
-    
+
     // Clear any pending reconnect timeout
     if (reconnectTimeout.value) {
       clearTimeout(reconnectTimeout.value)
       reconnectTimeout.value = null
     }
-    
+
+    // Check if we already have an active connection
+    if (eventSource.value && eventSource.value.readyState === EventSource.OPEN) {
+      console.log('SSE already connected, skipping reconnect')
+      return
+    }
+
+    // Close any existing connection (might be in CONNECTING or CLOSED state)
     if (eventSource.value) {
       disconnect()
     }
@@ -77,20 +78,29 @@ export function usePriceAlertNotifications() {
     }
     
     eventSource.value.onerror = (error) => {
-      console.error('SSE connection error:', error)
-      
-      // Only mark as disconnected if we stay disconnected for more than 10 seconds
-      setTimeout(() => {
-        if (eventSource.value && eventSource.value.readyState === EventSource.CLOSED) {
-          isConnected.value = false
-        }
-      }, 10000)
-      
-      // Reconnect after 3 seconds, but only if we don't already have a reconnect pending
-      if (!reconnectTimeout.value) {
+      // EventSource fires error events for normal disconnects - only log if unexpected
+      // ReadyState: 0=CONNECTING, 1=OPEN, 2=CLOSED
+      const readyState = eventSource.value?.readyState
+
+      if (readyState === EventSource.CLOSED) {
+        // Connection was closed - this is normal for tab close, navigation, server restart
+        console.log('SSE connection closed')
+        isConnected.value = false
+      } else if (readyState === EventSource.CONNECTING) {
+        // EventSource is trying to reconnect automatically - this is normal
+        console.log('SSE reconnecting...')
+      } else {
+        // Unexpected error while connection was open
+        console.error('SSE connection error:', error)
+      }
+
+      // Only manually reconnect if the connection is CLOSED (not CONNECTING)
+      // EventSource automatically tries to reconnect when in CONNECTING state
+      if (readyState === EventSource.CLOSED && !reconnectTimeout.value) {
         reconnectTimeout.value = setTimeout(() => {
           reconnectTimeout.value = null
           if (authStore.token && (authStore.user?.tier === 'pro' || authStore.user?.billingEnabled === false)) {
+            console.log('SSE manual reconnect after close')
             connect()
           }
         }, 3000)
@@ -104,11 +114,16 @@ export function usePriceAlertNotifications() {
       clearTimeout(reconnectTimeout.value)
       reconnectTimeout.value = null
     }
-    
+
     if (eventSource.value) {
+      // Remove event handlers before closing to prevent error events from triggering reconnect
+      eventSource.value.onopen = null
+      eventSource.value.onmessage = null
+      eventSource.value.onerror = null
       eventSource.value.close()
       eventSource.value = null
       isConnected.value = false
+      console.log('SSE disconnected intentionally')
     }
   }
   
