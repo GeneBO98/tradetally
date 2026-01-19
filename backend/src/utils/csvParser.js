@@ -4527,6 +4527,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
       (existingPosition.side === 'long' ? existingPosition.quantity : -existingPosition.quantity) : 0;
     let currentTrade = existingPosition ? {
       symbol: symbol,
+      conid: existingPosition.conid || conid, // Preserve conid from existing position or use current transaction's conid
       entryTime: existingPosition.entryTime,
       tradeDate: existingPosition.tradeDate,
       side: existingPosition.side,
@@ -4557,10 +4558,13 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
 
       // Start new trade if going from flat to position
       if (currentPosition === 0 && !currentTrade) {
-        // Check if this is a close-only transaction (Code contains 'C' but not 'O' or 'P')
+        // Check if this is a close-only transaction (Code contains 'C' but not 'O' or standalone 'P')
+        // IBKR codes: O=Open, C=Close, P=Partial, EP=Expired, EX=Exercised, A=Assigned
+        // We check for ';P' or standalone 'P' to distinguish from 'EP' (Expired)
         // This is just a HINT - we'll still process the transaction even if we can't find the position
+        const hasPartialCode = transactionCode && (transactionCode.includes(';P') || transactionCode === 'P' || transactionCode.startsWith('P;'));
         const isCloseOnly = transactionCode && transactionCode.includes('C') &&
-                           !transactionCode.includes('O') && !transactionCode.includes('P');
+                           !transactionCode.includes('O') && !hasPartialCode;
 
         if (isCloseOnly) {
           // Code='C' indicates this should close an existing position, but we don't have one loaded
@@ -4796,10 +4800,15 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
       // Divide by multiplier to get per-contract/per-share price
       currentTrade.entryPrice = currentTrade.entryValue / (currentTrade.totalQuantity * valueMultiplier);
       currentTrade.exitPrice = null;
-      currentTrade.quantity = currentTrade.totalQuantity;
+      // IMPORTANT: Store the REMAINING position quantity, not total entry quantity
+      // This ensures correct position tracking when importing additional closing transactions later
+      const remainingQuantity = Math.abs(currentPosition);
+      currentTrade.quantity = remainingQuantity;
       currentTrade.commission = currentTrade.totalFees;
       currentTrade.fees = 0;
       currentTrade.exitTime = null;
+
+      console.log(`  [OPEN POSITION] Storing remaining quantity: ${remainingQuantity} (currentPosition: ${currentPosition}, totalEntry: ${currentTrade.totalQuantity})`);
 
       // Calculate entry commission for open positions (all fees are entry fees since no exit yet)
       let entryCommission = 0;
@@ -4821,8 +4830,8 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
       if (currentTrade.side === 'short' && instrumentData.instrumentType === 'option') {
         // For short options, calculate and show the net proceeds received
         const netProceeds = currentTrade.entryValue - currentTrade.totalFees;
-        currentTrade.notes = `Open SHORT option position: ${currentTrade.totalQuantity} contracts sold @ $${currentTrade.entryPrice.toFixed(2)}/share, net proceeds: $${netProceeds.toFixed(2)} (${currentTrade.totalFees < 0 ? 'includes rebate' : 'after commission'})`;
-        console.log(`  [OPEN SHORT OPTION] Entry price: $${currentTrade.entryPrice.toFixed(2)}/share, Net proceeds: $${netProceeds.toFixed(2)}, Position: ${currentPosition} contracts`);
+        currentTrade.notes = `Open SHORT option position: ${remainingQuantity} contracts remaining (sold ${currentTrade.totalQuantity} @ $${currentTrade.entryPrice.toFixed(2)}/share), net proceeds: $${netProceeds.toFixed(2)} (${currentTrade.totalFees < 0 ? 'includes rebate' : 'after commission'})`;
+        console.log(`  [OPEN SHORT OPTION] Entry price: $${currentTrade.entryPrice.toFixed(2)}/share, Net proceeds: $${netProceeds.toFixed(2)}, Remaining: ${remainingQuantity} contracts`);
       } else {
         currentTrade.notes = `Open position: ${currentTrade.executions.length} executions`;
       }

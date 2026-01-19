@@ -1639,7 +1639,7 @@ const tradeController = {
               // Handle updates to existing positions vs creating new trades
               if (tradeData.isUpdate && tradeData.existingTradeId) {
                 logger.logImport(`Updating existing trade ${tradeData.existingTradeId}: ${tradeData.symbol} closed with P/L: $${tradeData.pnl}`);
-                
+
                 // Filter out non-database fields and calculated fields before updating
                 // The Trade.update method will recalculate pnl and pnlPercent automatically
                 // IMPORTANT: Preserve executions when updating existing trades
@@ -1649,7 +1649,7 @@ const tradeController = {
                   pnl, pnlPercent, newExecutionsAdded,
                   ...cleanTradeData
                 } = tradeData;
-                
+
                 // Keep executions for database update (use 'executions' not 'executionData')
                 // Trade.update expects 'executions' which it will merge with existing executions
                 if (tradeData.executions) {
@@ -1657,6 +1657,7 @@ const tradeController = {
                 } else if (executionData) {
                   cleanTradeData.executions = executionData;
                 }
+
                 await Trade.update(tradeData.existingTradeId, req.user.id, cleanTradeData, { skipAchievements: true, skipApiCalls: true });
               } else {
                 // Add import ID to track which import this trade came from
