@@ -160,10 +160,11 @@ class NotificationService {
   static async sendSSENotification(userId, message) {
     try {
       const connections = this.getSSEConnections();
-      const userConnection = connections.get(userId);
-      
-      if (userConnection) {
-        userConnection.write(`data: ${JSON.stringify(message)}\n\n`);
+      const connectionData = connections.get(userId);
+
+      // Connection data now contains { res, heartbeatInterval }
+      if (connectionData && connectionData.res && !connectionData.res.destroyed && !connectionData.res.writableEnded) {
+        connectionData.res.write(`data: ${JSON.stringify(message)}\n\n`);
       }
     } catch (error) {
       console.error('Error sending SSE notification:', error);
