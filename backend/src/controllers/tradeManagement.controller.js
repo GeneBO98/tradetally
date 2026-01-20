@@ -199,7 +199,8 @@ const tradeManagementController = {
           id, symbol, trade_date, entry_price, exit_price,
           quantity, side, pnl, pnl_percent,
           stop_loss, take_profit, r_value,
-          strategy, broker, instrument_type
+          strategy, broker, instrument_type,
+          manual_target_hit_first, target_hit_analysis
         FROM trades
         WHERE user_id = $1
           AND exit_price IS NOT NULL
@@ -238,7 +239,8 @@ const tradeManagementController = {
         ...trade,
         needs_stop_loss: !trade.stop_loss,
         needs_take_profit: !trade.take_profit,
-        can_analyze: !!trade.stop_loss
+        can_analyze: !!trade.stop_loss,
+        has_target_hit_data: !!trade.manual_target_hit_first || !!trade.target_hit_analysis
       }));
 
       // Get total count for pagination
@@ -363,7 +365,9 @@ const tradeManagementController = {
           pnl_percent: trade.pnl_percent,
           entry_time: trade.entry_time,
           exit_time: trade.exit_time,
-          charts: charts
+          charts: charts,
+          manual_target_hit_first: trade.manual_target_hit_first,
+          target_hit_analysis: trade.target_hit_analysis
         },
         analysis
       });
@@ -381,7 +385,7 @@ const tradeManagementController = {
     try {
       const userId = req.user.id;
       const { tradeId } = req.params;
-      const { stop_loss, take_profit, take_profit_targets, adjustment_reason } = req.body;
+      const { stop_loss, take_profit, take_profit_targets, adjustment_reason, manual_target_hit_first } = req.body;
 
       // Fetch the trade first to validate
       const result = await db.query(
@@ -477,6 +481,14 @@ const tradeManagementController = {
         processedTargets.sort((a, b) => a.order - b.order);
       }
 
+      // Validate manual_target_hit_first value
+      const validManualTargetValues = ['take_profit', 'stop_loss', 'neither', null];
+      if (manual_target_hit_first !== undefined && !validManualTargetValues.includes(manual_target_hit_first)) {
+        return res.status(400).json({
+          error: 'Invalid manual_target_hit_first value. Must be: take_profit, stop_loss, neither, or null'
+        });
+      }
+
       // Build history entries for tracking changes
       const historyEntries = [];
       const existingHistory = trade.risk_level_history || [];
@@ -526,6 +538,19 @@ const tradeManagementController = {
         updates.push(`take_profit_targets = $${paramCount}`);
         values.push(JSON.stringify(processedTargets));
         paramCount++;
+      }
+
+      // Handle manual_target_hit_first
+      if (manual_target_hit_first !== undefined) {
+        updates.push(`manual_target_hit_first = $${paramCount}`);
+        values.push(manual_target_hit_first);
+        paramCount++;
+
+        // If setting a manual value, clear the automated analysis to avoid confusion
+        if (manual_target_hit_first !== null) {
+          updates.push(`target_hit_analysis = NULL`);
+          logger.info(`[TRADE-MANAGEMENT] Clearing automated target_hit_analysis due to manual override`);
+        }
       }
 
       // Update history if there are new entries
@@ -810,6 +835,81 @@ const tradeManagementController = {
     } catch (error) {
       logger.error('Error analyzing target hit first:', error);
       res.status(500).json({ error: 'Failed to analyze target hit order' });
+    }
+  },
+
+  /**
+   * Set manual target hit first value for a trade
+   * Allows users without API access to manually specify which target was hit first
+   */
+  async setManualTargetHitFirst(req, res) {
+    try {
+      const userId = req.user.id;
+      const { tradeId } = req.params;
+      const { manual_target_hit_first } = req.body;
+
+      // Validate the value
+      const validValues = ['take_profit', 'stop_loss', 'neither', null];
+      if (!validValues.includes(manual_target_hit_first)) {
+        return res.status(400).json({
+          error: 'Invalid value. Must be: take_profit, stop_loss, neither, or null'
+        });
+      }
+
+      // Verify trade exists and belongs to user
+      const result = await db.query(
+        `SELECT id, stop_loss, take_profit FROM trades WHERE id = $1 AND user_id = $2`,
+        [tradeId, userId]
+      );
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: 'Trade not found' });
+      }
+
+      const trade = result.rows[0];
+
+      // Warn if setting manual value without stop_loss
+      if (!trade.stop_loss && manual_target_hit_first !== null) {
+        logger.warn(`[TRADE-MANAGEMENT] Setting manual_target_hit_first without stop_loss for trade ${tradeId}`);
+      }
+
+      // Update the trade
+      let updateQuery;
+      let updateValues;
+
+      if (manual_target_hit_first !== null) {
+        // Setting a manual value - also clear automated analysis
+        updateQuery = `
+          UPDATE trades
+          SET manual_target_hit_first = $1, target_hit_analysis = NULL, updated_at = NOW()
+          WHERE id = $2 AND user_id = $3
+          RETURNING id, manual_target_hit_first, target_hit_analysis
+        `;
+        updateValues = [manual_target_hit_first, tradeId, userId];
+      } else {
+        // Clearing manual value - keep automated analysis if exists
+        updateQuery = `
+          UPDATE trades
+          SET manual_target_hit_first = NULL, updated_at = NOW()
+          WHERE id = $1 AND user_id = $2
+          RETURNING id, manual_target_hit_first, target_hit_analysis
+        `;
+        updateValues = [tradeId, userId];
+      }
+
+      const updateResult = await db.query(updateQuery, updateValues);
+
+      logger.info(`[TRADE-MANAGEMENT] Set manual_target_hit_first=${manual_target_hit_first} for trade ${tradeId}`);
+
+      res.json({
+        success: true,
+        trade_id: tradeId,
+        manual_target_hit_first: updateResult.rows[0].manual_target_hit_first,
+        target_hit_analysis: updateResult.rows[0].target_hit_analysis
+      });
+    } catch (error) {
+      logger.error('Error setting manual target hit first:', error);
+      res.status(500).json({ error: 'Failed to set manual target hit first' });
     }
   }
 };

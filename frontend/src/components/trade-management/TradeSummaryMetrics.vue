@@ -233,6 +233,7 @@
         <TargetHitFirstIndicator
           :trade="trade"
           :auto-analyze="false"
+          @updated="handleTargetHitUpdated"
         />
       </div>
 
@@ -311,7 +312,7 @@ const getManagementRTextClass = computed(() => {
   return 'text-gray-600 dark:text-gray-400'
 })
 
-const emit = defineEmits(['levels-updated'])
+const emit = defineEmits(['levels-updated', 'target-hit-updated'])
 
 // Editing state
 const editingStopLoss = ref(false)
@@ -452,6 +453,12 @@ async function saveLevels(updates) {
   } finally {
     saving.value = false
   }
+}
+
+// Handle manual target hit update from TargetHitFirstIndicator
+function handleTargetHitUpdated(data) {
+  console.log('[TRADE-MGMT] Target hit updated:', data)
+  emit('target-hit-updated', data)
 }
 
 function formatCurrency(value) {
