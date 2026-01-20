@@ -63,6 +63,7 @@
         :trade="selectedTrade"
         :analysis="analysis"
         @levels-updated="onLevelsUpdated"
+        @target-hit-updated="onTargetHitUpdated"
       />
 
       <!-- TradingView Charts (if any) -->
@@ -309,6 +310,13 @@ async function onLevelsUpdated(updatedTrade) {
   // Re-fetch analysis with new levels
   await fetchAnalysis(updatedTrade.id)
   updateTradeInList(updatedTrade)
+}
+
+async function onTargetHitUpdated(data) {
+  // Re-fetch analysis to get updated trade data including manual_target_hit_first
+  if (selectedTradeId.value) {
+    await fetchAnalysis(selectedTradeId.value)
+  }
 }
 
 function onChartDeleted(chartId) {
