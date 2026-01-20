@@ -46,20 +46,10 @@ export function usePriceAlertNotifications() {
       disconnect()
     }
 
-    // Construct SSE URL - handle both absolute and relative VITE_API_URL
-    let baseURL = import.meta.env.VITE_API_URL || '/api'
-
-    // If baseURL ends with /api, remove it (we'll add it back with the full path)
-    if (baseURL.endsWith('/api')) {
-      baseURL = baseURL.slice(0, -4)
-    }
-
-    // If baseURL is relative (starts with /), use current origin
-    if (baseURL.startsWith('/')) {
-      baseURL = window.location.origin + baseURL
-    }
-
-    const sseUrl = `${baseURL}/api/notifications/stream?token=${authStore.token}`
+    // Construct SSE URL - always use relative URL to go through Vite proxy in development
+    // This avoids CORS issues since EventSource doesn't support credentials for cross-origin
+    // In production (same origin), relative URLs also work correctly
+    const sseUrl = `/api/notifications/stream?token=${authStore.token}`
     console.log('Connecting to SSE:', sseUrl)
     eventSource.value = new EventSource(sseUrl)
     

@@ -4503,11 +4503,28 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
     let existingPosition = null;
     let positionLookupKey = symbol;
 
+    // Debug: Log all available conid keys for this lookup
+    const availableConidKeys = Object.keys(existingPositions).filter(k => k.startsWith('conid_'));
+    if (conid) {
+      console.log(`  → [DEBUG] Looking for conid_${conid}`);
+      console.log(`  → [DEBUG] Available conid keys: ${availableConidKeys.length > 0 ? availableConidKeys.join(', ') : 'NONE'}`);
+    }
+
     // First try Conid lookup if available (most reliable)
     if (conid && existingPositions[`conid_${conid}`]) {
       positionLookupKey = `conid_${conid}`;
       console.log(`  → Looking up position by Conid: ${conid}`);
       existingPosition = existingPositions[positionLookupKey];
+    } else if (conid) {
+      // Conid provided but not found - log detailed info
+      console.log(`  → [WARNING] Conid ${conid} not found in existing positions`);
+      // Fallback to composite key for options
+      if (instrumentData.instrumentType === 'option' && instrumentData.underlyingSymbol &&
+          instrumentData.strikePrice && instrumentData.expirationDate && instrumentData.optionType) {
+        positionLookupKey = `${instrumentData.underlyingSymbol}_${instrumentData.strikePrice}_${instrumentData.expirationDate}_${instrumentData.optionType}`;
+        console.log(`  → Trying composite key fallback: ${positionLookupKey}`);
+        existingPosition = existingPositions[positionLookupKey];
+      }
     } else if (instrumentData.instrumentType === 'option' && instrumentData.underlyingSymbol &&
         instrumentData.strikePrice && instrumentData.expirationDate && instrumentData.optionType) {
       // Build composite key for options: underlying_strike_expiration_type
@@ -4521,6 +4538,11 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
 
     if (!existingPosition) {
       console.log(`  → No existing position found for key: ${positionLookupKey}`);
+      // Log all existing position keys for debugging
+      const allKeys = Object.keys(existingPositions);
+      if (allKeys.length > 0) {
+        console.log(`  → [DEBUG] All existing position keys: ${allKeys.slice(0, 20).join(', ')}${allKeys.length > 20 ? '...' : ''}`);
+      }
     }
 
     let currentPosition = existingPosition ?
@@ -4569,12 +4591,19 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         if (isCloseOnly) {
           // Code='C' indicates this should close an existing position, but we don't have one loaded
           // This could mean:
-          // 1. The opening position wasn't found due to symbol mismatch
+          // 1. The opening position wasn't found due to symbol mismatch or missing conid
           // 2. The position was closed in a previous import
           // 3. The CSV is being imported out of order
-          console.log(`  → [WARNING] Code='${transactionCode}' indicates closing transaction, but no open position found`);
-          console.log(`  → Will treat this as a new opening position (${transaction.action === 'buy' ? 'long' : 'short'})`);
-          console.log(`  → If this should close an existing position, check symbol matching in database`);
+          // 4. The conid was not saved when the original position was created
+          console.log(`  → [ERROR] Code='${transactionCode}' indicates closing transaction, but no open position found!`);
+          console.log(`  → Transaction: ${transaction.action} ${qty} ${symbol} @ $${transaction.price}`);
+          console.log(`  → Conid: ${conid || 'NONE'}`);
+          console.log(`  → This will create an INCORRECT new ${transaction.action === 'buy' ? 'long' : 'short'} position instead of closing existing position`);
+          console.log(`  → POSSIBLE CAUSES:`);
+          console.log(`  →   1. The opening position's conid was not saved to database`);
+          console.log(`  →   2. The position was already closed in a previous import`);
+          console.log(`  →   3. Symbol mismatch between opening and closing transactions`);
+          console.log(`  → TO FIX: Check if the original trade has conid=${conid} stored in the database`);
         }
 
         // Start a new trade regardless of Code
