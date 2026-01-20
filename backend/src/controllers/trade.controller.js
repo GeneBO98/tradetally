@@ -1055,6 +1055,9 @@ const tradeController = {
             // Also store by conid key if available (for IBKR reliable matching)
             if (row.conid) {
               existingPositions[`conid_${row.conid}`] = positionData;
+              logger.logImport(`  [CONID] Added position with key conid_${row.conid} (${row.symbol}, ${row.quantity} @ $${row.entry_price})`);
+            } else if (row.instrument_type === 'option') {
+              logger.logImport(`  [WARNING] Option position ${positionKey} has NO conid stored`);
             }
           });
 

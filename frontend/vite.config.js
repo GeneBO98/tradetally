@@ -49,7 +49,17 @@ export default defineConfig(({ command, mode }) => {
     proxy: {
       '/api': {
         target: 'http://localhost:3000',
-        changeOrigin: true
+        changeOrigin: true,
+        // Configure proxy for SSE (Server-Sent Events) support
+        configure: (proxy) => {
+          proxy.on('proxyRes', (proxyRes, req) => {
+            // Disable buffering for SSE endpoints to allow real-time streaming
+            if (req.url?.includes('/notifications/stream')) {
+              proxyRes.headers['x-accel-buffering'] = 'no';
+              proxyRes.headers['cache-control'] = 'no-cache';
+            }
+          });
+        }
       }
     }
   }

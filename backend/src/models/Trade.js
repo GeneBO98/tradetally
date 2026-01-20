@@ -328,6 +328,11 @@ class Trade {
 
     // Log the strategy and setup assignment for debugging
     console.log(`[TRADE CREATE] Trade ${createdTrade.id}: strategy="${finalStrategy || 'null'}", setup="${setup || 'null'}", confidence=${strategyConfidence}%, method=${classificationMethod}`);
+
+    // Log conid for IBKR options tracking
+    if (conid) {
+      console.log(`[TRADE CREATE] Trade ${createdTrade.id}: conid=${conid} (saved for IBKR position matching)`);
+    }
     
     // Check enrichment cache for existing data
     let appliedCachedData = false;
