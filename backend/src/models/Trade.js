@@ -3,6 +3,21 @@ const AchievementService = require('../services/achievementService');
 const { getUserLocalDate } = require('../utils/timezone');
 const { getFuturesPointValue, extractUnderlyingFromFuturesSymbol } = require('../utils/futuresUtils');
 
+/**
+ * Round a numeric value to fit database precision
+ * DECIMAL(20, 8) allows up to 12 integer digits and 8 decimal places
+ * @param {number} value - The value to round
+ * @param {number} decimals - Number of decimal places (default 8 for max precision)
+ * @returns {number|null} - Rounded value or null if input is null/undefined
+ */
+function roundToDbPrecision(value, decimals = 8) {
+  if (value === null || value === undefined || isNaN(value)) return null;
+  const num = parseFloat(value);
+  if (isNaN(num)) return null;
+  const multiplier = Math.pow(10, decimals);
+  return Math.round(num * multiplier) / multiplier;
+}
+
 class Trade {
   /**
    * Ensure tags exist in the tags table
@@ -47,7 +62,7 @@ class Trade {
       originalCurrency, exchangeRate, originalEntryPriceCurrency,
       originalExitPriceCurrency, originalPnlCurrency, originalCommissionCurrency,
       originalFeesCurrency,
-      stopLoss, takeProfit, chartUrl,
+      stopLoss, takeProfit, takeProfitTargets, chartUrl,
       brokerConnectionId, accountIdentifier, account_identifier,
       conid, manualTargetHitFirst
     } = tradeData;
@@ -290,6 +305,21 @@ class Trade {
       rValue = this.calculateRValue(entryPrice, finalStopLoss, cleanExitPrice, side);
     }
 
+    // Aggregate take profit targets from executions to trade level
+    // Execution-level targets are the source of truth, but also preserve any trade-level targets
+    let aggregatedTakeProfitTargets = takeProfitTargets ? [...takeProfitTargets] : [];
+    const executionList = executions || executionData || [];
+    if (executionList && executionList.length > 0) {
+      executionList.forEach(exec => {
+        if (exec.takeProfitTargets && Array.isArray(exec.takeProfitTargets)) {
+          aggregatedTakeProfitTargets.push(...exec.takeProfitTargets);
+        }
+      });
+      if (aggregatedTakeProfitTargets.length > 0) {
+        console.log(`[TP TARGETS] Aggregated ${aggregatedTakeProfitTargets.length} take profit targets to trade level`);
+      }
+    }
+
     const query = `
       INSERT INTO trades (
         user_id, symbol, trade_date, entry_time, exit_time, entry_price, exit_price,
@@ -301,25 +331,31 @@ class Trade {
         contract_month, contract_year, tick_size, point_value, underlying_asset, import_id,
         original_currency, exchange_rate, original_entry_price_currency, original_exit_price_currency,
         original_pnl_currency, original_commission_currency, original_fees_currency,
-        stop_loss, take_profit, r_value, chart_url, broker_connection_id, account_identifier, conid, manual_target_hit_first
+        stop_loss, take_profit, take_profit_targets, r_value, chart_url, broker_connection_id, account_identifier, conid, manual_target_hit_first
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58, $59, $60)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58, $59, $60, $61)
       RETURNING *
     `;
 
     const values = [
-      userId, symbol.toUpperCase(), finalTradeDate, finalEntryTime, cleanExitTime, entryPrice, cleanExitPrice,
-      quantity, side, commission || 0, entryCommission || 0, exitCommission || 0, fees || 0, pnl, pnlPercent, notes, isPublic || false,
-      broker, finalStrategy, setup, tags || [], JSON.stringify(executions || executionData || []), mae || null, mfe || null, confidence || 5,
+      userId, symbol.toUpperCase(), finalTradeDate, finalEntryTime, cleanExitTime,
+      roundToDbPrecision(entryPrice), roundToDbPrecision(cleanExitPrice),
+      roundToDbPrecision(quantity), side,
+      roundToDbPrecision(commission) || 0, roundToDbPrecision(entryCommission) || 0, roundToDbPrecision(exitCommission) || 0,
+      roundToDbPrecision(fees) || 0, roundToDbPrecision(pnl), roundToDbPrecision(pnlPercent), notes, isPublic || false,
+      broker, finalStrategy, setup, tags || [], JSON.stringify(executions || executionData || []),
+      roundToDbPrecision(mae), roundToDbPrecision(mfe), confidence || 5,
       strategyConfidence, classificationMethod, JSON.stringify(classificationMetadata), manualOverride,
       JSON.stringify(newsData.newsEvents || []), newsData.hasNews || false, newsData.sentiment, newsData.checkedAt,
-      instrumentType || 'stock', strikePrice || null, expirationDate || null, optionType || null,
+      instrumentType || 'stock', roundToDbPrecision(strikePrice), expirationDate || null, optionType || null,
       contractSize || (instrumentType === 'option' ? 100 : null), underlyingSymbol || null,
-      contractMonth || null, contractYear || null, tickSize || null, finalPointValue || null, finalUnderlyingAsset || null,
+      contractMonth || null, contractYear || null, roundToDbPrecision(tickSize), roundToDbPrecision(finalPointValue), finalUnderlyingAsset || null,
       importId || null,
-      originalCurrency || 'USD', exchangeRate || 1.0, originalEntryPriceCurrency || null, originalExitPriceCurrency || null,
-      originalPnlCurrency || null, originalCommissionCurrency || null, originalFeesCurrency || null,
-      finalStopLoss || null, finalTakeProfit || null, rValue, chartUrl || null, brokerConnectionId || null, finalAccountIdentifier || null,
+      originalCurrency || 'USD', roundToDbPrecision(exchangeRate) || 1.0,
+      roundToDbPrecision(originalEntryPriceCurrency), roundToDbPrecision(originalExitPriceCurrency),
+      roundToDbPrecision(originalPnlCurrency), roundToDbPrecision(originalCommissionCurrency), roundToDbPrecision(originalFeesCurrency),
+      roundToDbPrecision(finalStopLoss), roundToDbPrecision(finalTakeProfit), JSON.stringify(aggregatedTakeProfitTargets || []),
+      roundToDbPrecision(rValue), chartUrl || null, brokerConnectionId || null, finalAccountIdentifier || null,
       conid || null,
       manualTargetHitFirst || null
     ];
@@ -818,6 +854,21 @@ class Trade {
   }
 
   static async update(id, userId, updates, options = {}) {
+    // Round all numeric fields to fit database precision (DECIMAL(20,8))
+    const numericFields = [
+      'entryPrice', 'exitPrice', 'quantity', 'commission', 'entryCommission', 'exitCommission',
+      'fees', 'pnl', 'pnlPercent', 'mae', 'mfe', 'strikePrice', 'tickSize', 'pointValue',
+      'stopLoss', 'takeProfit', 'rValue', 'exchangeRate',
+      'originalEntryPriceCurrency', 'originalExitPriceCurrency', 'originalPnlCurrency',
+      'originalCommissionCurrency', 'originalFeesCurrency'
+    ];
+
+    numericFields.forEach(field => {
+      if (updates[field] !== undefined && updates[field] !== null && updates[field] !== '') {
+        updates[field] = roundToDbPrecision(updates[field]);
+      }
+    });
+
     // Log stopLoss updates for debugging
     if (updates.stopLoss !== undefined) {
       console.log(`[STOP LOSS UPDATE] Trade ${id}: stopLoss=${updates.stopLoss}`);
@@ -1010,6 +1061,30 @@ class Trade {
     // Always remove executions from updates since we handle it separately
     delete updates.executions;
 
+    // Aggregate take profit targets from executions to trade level
+    // This REPLACES trade-level targets with execution-level targets (source of truth)
+    if (executionsToSet && executionsToSet.length > 0) {
+      const aggregatedTargets = [];
+
+      executionsToSet.forEach(exec => {
+        if (exec.takeProfitTargets && Array.isArray(exec.takeProfitTargets)) {
+          aggregatedTargets.push(...exec.takeProfitTargets);
+        }
+      });
+
+      // Only update if we found execution-level targets
+      if (aggregatedTargets.length > 0) {
+        updates.takeProfitTargets = aggregatedTargets;
+        console.log(`[TP TARGETS UPDATE] Aggregated ${aggregatedTargets.length} take profit targets from executions`);
+      }
+    }
+
+    // Log all updates for debugging
+    console.log(`[TRADE UPDATE] Processing updates for trade ${id}:`, Object.keys(updates));
+    if (updates.takeProfitTargets) {
+      console.log(`[TRADE UPDATE] takeProfitTargets in updates:`, JSON.stringify(updates.takeProfitTargets));
+    }
+
     // Process all other fields
     Object.entries(updates).forEach(([key, value]) => {
       if (key !== 'id' && key !== 'user_id' && key !== 'created_at') {
@@ -1018,7 +1093,8 @@ class Trade {
         fields.push(`${dbKey} = $${paramCount}`);
 
         // Handle JSON/JSONB fields that need serialization
-        if (key === 'classificationMetadata' || key === 'newsEvents') {
+        if (key === 'classificationMetadata' || key === 'newsEvents' || key === 'takeProfitTargets') {
+          console.log(`[TRADE UPDATE] Saving ${key} as ${dbKey}:`, JSON.stringify(value));
           values.push(JSON.stringify(value));
         } else {
           values.push(value);

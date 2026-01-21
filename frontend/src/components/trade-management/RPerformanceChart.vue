@@ -151,7 +151,7 @@ async function fetchRPerformance() {
   loading.value = true
 
   try {
-    const params = { limit: 200 }
+    const params = { limit: 2000 }
 
     if (props.filters.startDate) {
       params.startDate = props.filters.startDate

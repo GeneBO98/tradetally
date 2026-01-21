@@ -29,6 +29,9 @@
           </p>
         </div>
         <div class="flex space-x-3">
+          <router-link :to="`/analysis/trade-management?tradeId=${trade.id}`" class="btn-primary">
+            Manage
+          </router-link>
           <router-link :to="`/trades/${trade.id}/edit`" class="btn-secondary">
             Edit
           </router-link>
@@ -136,9 +139,17 @@
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Stop Loss</dt>
                   <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">${{ formatNumber(trade.stop_loss || trade.stopLoss) }}</dd>
                 </div>
-                <div v-if="trade.takeProfit || trade.take_profit">
+                <div v-if="trade.takeProfit || trade.take_profit || (trade.take_profit_targets && trade.take_profit_targets.length > 0)">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Take Profit</dt>
-                  <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">${{ formatNumber(trade.take_profit || trade.takeProfit) }}</dd>
+                  <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono flex flex-wrap gap-x-4 gap-y-1">
+                    <span v-if="trade.take_profit || trade.takeProfit">
+                      <span class="text-xs text-gray-400 mr-1">TP1:</span>${{ formatNumber(trade.take_profit || trade.takeProfit) }}
+                    </span>
+                    <span v-for="(target, index) in (trade.take_profit_targets || [])" :key="index">
+                      <span class="text-xs text-gray-400 mr-1">TP{{ index + 2 }}:</span>${{ formatNumber(target.price) }}
+                      <span v-if="target.shares" class="text-xs text-gray-400 ml-0.5">({{ target.shares }})</span>
+                    </span>
+                  </dd>
                 </div>
                 <div v-if="trade.rValue !== null && trade.rValue !== undefined">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">R-Multiple</dt>
