@@ -63,7 +63,7 @@
       </div>
 
       <!-- R-Multiple Analysis -->
-      <RMultipleAnalysis :analysis="analysis" />
+      <RMultipleAnalysis :analysis="analysis" :trade="selectedTrade" />
 
       <!-- Summary Metrics (with inline editing) -->
       <TradeSummaryMetrics

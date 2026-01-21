@@ -306,18 +306,27 @@ class Trade {
     }
 
     // Aggregate take profit targets from executions to trade level
-    // Execution-level targets are the source of truth, but also preserve any trade-level targets
-    let aggregatedTakeProfitTargets = takeProfitTargets ? [...takeProfitTargets] : [];
+    // Execution-level targets REPLACE trade-level targets to avoid duplicates
     const executionList = executions || executionData || [];
+    let aggregatedTakeProfitTargets = [];
+    let hasExecutionTargets = false;
+
     if (executionList && executionList.length > 0) {
       executionList.forEach(exec => {
-        if (exec.takeProfitTargets && Array.isArray(exec.takeProfitTargets)) {
+        if (exec.takeProfitTargets && Array.isArray(exec.takeProfitTargets) && exec.takeProfitTargets.length > 0) {
+          hasExecutionTargets = true;
           aggregatedTakeProfitTargets.push(...exec.takeProfitTargets);
         }
       });
-      if (aggregatedTakeProfitTargets.length > 0) {
-        console.log(`[TP TARGETS] Aggregated ${aggregatedTakeProfitTargets.length} take profit targets to trade level`);
-      }
+    }
+
+    // Only use trade-level targets if NO execution-level targets exist
+    if (!hasExecutionTargets && takeProfitTargets && takeProfitTargets.length > 0) {
+      aggregatedTakeProfitTargets = [...takeProfitTargets];
+    }
+
+    if (aggregatedTakeProfitTargets.length > 0) {
+      console.log(`[TP TARGETS] Using ${aggregatedTakeProfitTargets.length} take profit targets (from ${hasExecutionTargets ? 'executions' : 'trade level'})`);
     }
 
     const query = `
