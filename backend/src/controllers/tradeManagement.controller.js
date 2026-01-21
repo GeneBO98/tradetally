@@ -252,7 +252,7 @@ const tradeManagementController = {
 
       let query = `
         SELECT
-          id, symbol, trade_date, entry_price, exit_price,
+          id, symbol, trade_date, entry_time, entry_price, exit_price,
           quantity, side, pnl, pnl_percent,
           stop_loss, take_profit, r_value,
           strategy, broker, instrument_type,
@@ -284,7 +284,7 @@ const tradeManagementController = {
         logger.info('[TRADE-MGMT] Searching for symbol:', searchSymbol);
       }
 
-      query += ` ORDER BY trade_date DESC LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
+      query += ` ORDER BY trade_date DESC, entry_time DESC LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
       values.push(parseInt(limit), parseInt(offset));
 
       const result = await db.query(query, values);

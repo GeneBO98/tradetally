@@ -107,6 +107,7 @@
             <div v-else>
               <div v-if="trade.take_profit" class="text-lg font-semibold text-primary-600 dark:text-primary-400">
                 {{ formatCurrency(trade.take_profit) }}
+                <span v-if="tp1R" class="text-sm font-medium ml-2">{{ tp1R }}R</span>
                 <span class="text-xs text-gray-500 dark:text-gray-400 font-normal block">
                   {{ formatPercent(takeProfitPercent) }} from entry
                 </span>
@@ -120,14 +121,14 @@
           <!-- Additional TP Targets (TP2, TP3, etc.) -->
           <div v-for="(target, index) in editableTakeProfitTargets" :key="index">
             <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">TP{{ index + 2 }}</div>
-            <div class="flex items-center gap-1">
+            <div class="flex items-center gap-2">
               <div class="relative">
                 <span class="absolute left-2 top-1 text-gray-500 text-sm">$</span>
                 <input
                   v-model.number="target.price"
                   type="number"
                   step="0.01"
-                  class="w-20 pl-5 pr-1 py-0.5 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
+                  class="w-28 pl-5 pr-2 py-0.5 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
                   placeholder="Price"
                   @blur="saveTakeProfitTargets"
                   @keyup.enter="saveTakeProfitTargets"
@@ -138,12 +139,16 @@
                 type="number"
                 step="1"
                 min="1"
-                class="w-14 px-1 py-0.5 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
+                class="w-16 px-2 py-0.5 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
                 placeholder="Qty"
                 title="Number of shares"
                 @blur="saveTakeProfitTargets"
                 @keyup.enter="saveTakeProfitTargets"
               />
+              <!-- Show calculated R for this target -->
+              <span v-if="target.price && calculateTargetR(target.price)" class="text-xs text-primary-600 dark:text-primary-400 font-medium whitespace-nowrap">
+                {{ calculateTargetR(target.price) }}R
+              </span>
               <button
                 @click="removeTakeProfitTarget(index)"
                 class="p-0.5 text-gray-400 hover:text-red-600 dark:hover:text-red-400"
@@ -444,13 +449,85 @@ const takeProfitPercent = computed(() => {
   return ((entry - tp) / entry) * 100
 })
 
+// Calculate R for a given take profit price
+function calculateTargetR(tpPrice) {
+  if (!tpPrice || !props.trade.stop_loss || !props.trade.entry_price) return null
+
+  const entry = parseFloat(props.trade.entry_price)
+  const sl = parseFloat(props.trade.stop_loss)
+  const tp = parseFloat(tpPrice)
+
+  let risk, reward
+  if (props.trade.side === 'long') {
+    risk = entry - sl
+    reward = tp - entry
+  } else {
+    risk = sl - entry
+    reward = entry - tp
+  }
+
+  if (risk <= 0) return null
+  const r = reward / risk
+  return r.toFixed(2)
+}
+
+// Calculate R for primary take profit (TP1)
+const tp1R = computed(() => {
+  return calculateTargetR(props.trade.take_profit)
+})
+
 const riskRewardActual = computed(() => {
   const actualR = props.analysis.actual_r
   if (actualR === null || actualR === undefined) return 'N/A'
   return `1:${Math.abs(actualR).toFixed(1)}`
 })
 
+// Calculate weighted average R for planned risk:reward
+const weightedAverageR = computed(() => {
+  const targets = props.trade.take_profit_targets || []
+  const primaryTp = props.trade.take_profit
+
+  // If no targets and no primary TP, return null
+  if (targets.length === 0 && !primaryTp) return null
+
+  // Collect all targets with their R values and quantities
+  const allTargets = []
+
+  // Add primary TP as TP1 if it exists
+  if (primaryTp) {
+    const r = parseFloat(calculateTargetR(primaryTp))
+    if (r && !isNaN(r)) {
+      // Use remaining quantity for TP1 if additional targets have shares
+      const additionalShares = targets.reduce((sum, t) => sum + (t.shares || 0), 0)
+      const tp1Shares = additionalShares > 0 ? Math.max(0, parseFloat(props.trade.quantity) - additionalShares) : parseFloat(props.trade.quantity)
+      allTargets.push({ r, shares: tp1Shares || 1 })
+    }
+  }
+
+  // Add additional targets
+  targets.forEach(t => {
+    if (t.price) {
+      const r = parseFloat(calculateTargetR(t.price))
+      if (r && !isNaN(r)) {
+        allTargets.push({ r, shares: t.shares || 1 })
+      }
+    }
+  })
+
+  if (allTargets.length === 0) return null
+
+  // Calculate weighted average
+  const totalShares = allTargets.reduce((sum, t) => sum + t.shares, 0)
+  const weightedSum = allTargets.reduce((sum, t) => sum + (t.r * t.shares), 0)
+  return weightedSum / totalShares
+})
+
 const riskRewardPlanned = computed(() => {
+  // Use weighted average if multiple targets exist, otherwise use analysis.target_r
+  const avgR = weightedAverageR.value
+  if (avgR !== null) {
+    return `1:${avgR.toFixed(1)}`
+  }
   const targetR = props.analysis.target_r
   if (targetR === null || targetR === undefined) return null
   return `1:${targetR.toFixed(1)}`
@@ -582,4 +659,5 @@ function formatDate(dateString) {
     return dateString
   }
 }
+
 </script>

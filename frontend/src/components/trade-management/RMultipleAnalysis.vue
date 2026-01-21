@@ -22,13 +22,16 @@
         </div>
 
         <!-- Target R -->
-        <div v-if="analysis.target_r !== null" class="p-4 bg-primary-50 dark:bg-primary-900/20 rounded-lg">
-          <div class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">Target R</div>
+        <div v-if="effectiveTargetR !== null" class="p-4 bg-primary-50 dark:bg-primary-900/20 rounded-lg">
+          <div class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+            Target R
+            <span v-if="weightedAverageR !== null" class="text-xs font-normal">(weighted avg)</span>
+          </div>
           <div class="text-3xl font-bold text-primary-600 dark:text-primary-400">
-            {{ formatR(analysis.target_r) }}
+            {{ formatR(effectiveTargetR) }}
           </div>
           <div class="text-sm text-gray-600 dark:text-gray-400 mt-1">
-            Potential: {{ formatCurrency(analysis.target_pl_amount) }}
+            Potential: {{ formatCurrency(effectivePotentialPL) }}
           </div>
         </div>
         <div v-else class="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
@@ -42,12 +45,12 @@
         </div>
 
         <!-- R Lost/Gained -->
-        <div v-if="analysis.r_lost !== null" class="p-4 rounded-lg" :class="getRLostClass">
+        <div v-if="effectiveRLost !== null" class="p-4 rounded-lg" :class="getRLostClass">
           <div class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
-            {{ analysis.r_lost > 0 ? 'R Left on Table' : 'R Exceeded' }}
+            {{ effectiveRLost > 0 ? 'R Left on Table' : 'R Exceeded' }}
           </div>
-          <div class="text-3xl font-bold" :class="analysis.r_lost > 0 ? 'text-yellow-600 dark:text-yellow-400' : 'text-green-600 dark:text-green-400'">
-            {{ formatR(Math.abs(analysis.r_lost)) }}
+          <div class="text-3xl font-bold" :class="effectiveRLost > 0 ? 'text-yellow-600 dark:text-yellow-400' : 'text-green-600 dark:text-green-400'">
+            {{ formatR(Math.abs(effectiveRLost)) }}
           </div>
           <div class="text-sm text-gray-600 dark:text-gray-400 mt-1">
             {{ getRLostDescription }}
@@ -65,13 +68,13 @@
       </div>
 
       <!-- Visual Bar Comparison -->
-      <div v-if="analysis.target_r !== null" class="mb-6">
+      <div v-if="effectiveTargetR !== null" class="mb-6">
         <div class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Performance vs Target</div>
         <div class="relative h-8 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
           <!-- Target bar (background) -->
           <div
             class="absolute h-full bg-primary-200 dark:bg-primary-800/50 rounded-full"
-            :style="{ width: `${Math.min(100, (analysis.target_r / maxR) * 100)}%` }"
+            :style="{ width: `${Math.min(100, (effectiveTargetR / maxR) * 100)}%` }"
           ></div>
           <!-- Actual bar (foreground) -->
           <div
@@ -85,13 +88,9 @@
               Actual: {{ formatR(analysis.actual_r) }}
             </span>
             <span class="text-xs font-medium text-gray-700 dark:text-gray-200">
-              Target: {{ formatR(analysis.target_r) }}
+              Target: {{ formatR(effectiveTargetR) }}
             </span>
           </div>
-        </div>
-        <div class="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-1">
-          <span>0R</span>
-          <span>{{ formatR(maxR) }}</span>
         </div>
       </div>
 
@@ -130,16 +129,104 @@ const props = defineProps({
   analysis: {
     type: Object,
     required: true
+  },
+  trade: {
+    type: Object,
+    default: null
   }
+})
+
+// Calculate R for a given take profit price
+function calculateTargetR(tpPrice) {
+  if (!tpPrice || !props.trade?.stop_loss || !props.trade?.entry_price) return null
+
+  const entry = parseFloat(props.trade.entry_price)
+  const sl = parseFloat(props.trade.stop_loss)
+  const tp = parseFloat(tpPrice)
+
+  let risk, reward
+  if (props.trade.side === 'long') {
+    risk = entry - sl
+    reward = tp - entry
+  } else {
+    risk = sl - entry
+    reward = entry - tp
+  }
+
+  if (risk <= 0) return null
+  return reward / risk
+}
+
+// Calculate weighted average R from all TP targets
+const weightedAverageR = computed(() => {
+  if (!props.trade) return null
+
+  const targets = props.trade.take_profit_targets || []
+  const primaryTp = props.trade.take_profit
+
+  // If no additional targets, return null (use analysis.target_r)
+  if (targets.length === 0) return null
+
+  // Collect all targets with their R values and quantities
+  const allTargets = []
+
+  // Add primary TP as TP1 if it exists
+  if (primaryTp) {
+    const r = calculateTargetR(primaryTp)
+    if (r && !isNaN(r)) {
+      const additionalShares = targets.reduce((sum, t) => sum + (t.shares || 0), 0)
+      const tp1Shares = additionalShares > 0 ? Math.max(0, parseFloat(props.trade.quantity) - additionalShares) : parseFloat(props.trade.quantity)
+      allTargets.push({ r, shares: tp1Shares || 1 })
+    }
+  }
+
+  // Add additional targets
+  targets.forEach(t => {
+    if (t.price) {
+      const r = calculateTargetR(t.price)
+      if (r && !isNaN(r)) {
+        allTargets.push({ r, shares: t.shares || 1 })
+      }
+    }
+  })
+
+  if (allTargets.length <= 1) return null // Only primary TP, no weighted avg needed
+
+  // Calculate weighted average
+  const totalShares = allTargets.reduce((sum, t) => sum + t.shares, 0)
+  const weightedSum = allTargets.reduce((sum, t) => sum + (t.r * t.shares), 0)
+  return weightedSum / totalShares
+})
+
+// Effective target R (weighted avg if available, otherwise analysis.target_r)
+const effectiveTargetR = computed(() => {
+  if (weightedAverageR.value !== null) {
+    return Math.round(weightedAverageR.value * 100) / 100
+  }
+  return props.analysis.target_r
+})
+
+// Effective potential P&L (recalculated if using weighted avg)
+const effectivePotentialPL = computed(() => {
+  if (weightedAverageR.value !== null && props.analysis.risk_amount) {
+    return Math.round(weightedAverageR.value * props.analysis.risk_amount * 100) / 100
+  }
+  return props.analysis.target_pl_amount
+})
+
+// Effective R lost (recalculated if using weighted avg)
+const effectiveRLost = computed(() => {
+  if (effectiveTargetR.value === null) return null
+  return Math.round((effectiveTargetR.value - props.analysis.actual_r) * 100) / 100
 })
 
 const maxR = computed(() => {
   const values = [
     Math.abs(props.analysis.actual_r || 0),
-    Math.abs(props.analysis.target_r || 0),
+    Math.abs(effectiveTargetR.value || 0),
     3 // Minimum scale of 3R
   ]
-  return Math.max(...values) * 1.2
+  return Math.max(...values) * 1.1 // Slightly beyond max for padding
 })
 
 const getActualRClass = computed(() => {
@@ -150,14 +237,14 @@ const getActualRClass = computed(() => {
 })
 
 const getRLostClass = computed(() => {
-  if (props.analysis.r_lost > 0) {
+  if (effectiveRLost.value > 0) {
     return 'bg-yellow-50 dark:bg-yellow-900/20'
   }
   return 'bg-green-50 dark:bg-green-900/20'
 })
 
 const getRLostDescription = computed(() => {
-  const rLost = props.analysis.r_lost
+  const rLost = effectiveRLost.value
   if (rLost === null) return ''
   if (rLost > 0) {
     return 'Exited before reaching target'
@@ -196,7 +283,7 @@ const getAssessmentTextClass = computed(() => {
 const getAssessmentDescription = computed(() => {
   const score = props.analysis.management_score?.score
   const actualR = props.analysis.actual_r
-  const targetR = props.analysis.target_r
+  const targetR = effectiveTargetR.value
 
   switch (score) {
     case 'exceeded':
