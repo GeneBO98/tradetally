@@ -46,7 +46,7 @@
         <div class="p-6">
           <div class="flex items-center justify-between mb-3">
             <h3 class="heading-card">{{ watchlist.name }}</h3>
-            <span v-if="watchlist.is_default" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary-100 dark:bg-primary-900 text-primary-800 dark:text-primary-200">
+            <span v-if="watchlist.is_default" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200">
               Default
             </span>
           </div>
@@ -58,7 +58,7 @@
           <div class="mt-4 flex space-x-2">
             <button
               @click.stop="editWatchlist(watchlist)"
-              class="btn-secondary"
+              class="text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 text-sm font-medium"
             >
               Edit
             </button>
@@ -141,7 +141,7 @@
               <button
                 type="submit"
                 :disabled="saving"
-                class="px-4 py-2 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-md hover:bg-primary-700 disabled:opacity-50"
+                class="btn-primary"
               >
                 {{ saving ? 'Saving...' : (editingWatchlist ? 'Update' : 'Create') }}
               </button>

@@ -1,4 +1,4 @@
-import { ref, onMounted, onUnmounted, reactive } from 'vue'
+import { ref, reactive } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useNotification } from './useNotification'
 
@@ -247,17 +247,10 @@ export function usePriceAlertNotifications() {
     return Notification.permission === 'granted'
   }
   
-  // Note: Connection is now managed by App.vue globally
-  // onMounted(() => {
-  //   if (authStore.user?.tier === 'pro') {
-  //     connect()
-  //   }
-  // })
-  
-  onUnmounted(() => {
-    disconnect()
-  })
-  
+  // Note: Connection lifecycle is managed by App.vue globally
+  // Individual components should not disconnect on unmount as it would
+  // break the global SSE connection for other components
+
   return {
     isConnected,
     notifications,
