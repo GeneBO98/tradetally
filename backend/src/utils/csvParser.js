@@ -4547,28 +4547,79 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
 
     let currentPosition = existingPosition ?
       (existingPosition.side === 'long' ? existingPosition.quantity : -existingPosition.quantity) : 0;
-    let currentTrade = existingPosition ? {
-      symbol: symbol,
-      conid: existingPosition.conid || conid, // Preserve conid from existing position or use current transaction's conid
-      entryTime: existingPosition.entryTime,
-      tradeDate: existingPosition.tradeDate,
-      side: existingPosition.side,
-      executions: Array.isArray(existingPosition.executions)
+
+    // When loading an existing position, we need to recalculate entry/exit values from executions
+    // This is critical for partial closes - the stored quantity is the REMAINING, not total
+    let currentTrade = null;
+    if (existingPosition) {
+      const existingExecutions = Array.isArray(existingPosition.executions)
         ? existingPosition.executions
-        : (existingPosition.executions ? JSON.parse(existingPosition.executions) : []),
-      totalQuantity: existingPosition.quantity,
-      totalFees: existingPosition.commission || 0,
-      entryValue: existingPosition.quantity * existingPosition.entryPrice * valueMultiplier,
-      exitValue: 0,
-      broker: existingPosition.broker || 'ibkr',
-      isExistingPosition: true,
-      existingTradeId: existingPosition.id,
-      newExecutionsAdded: 0
-    } : null;
+        : (existingPosition.executions ? JSON.parse(existingPosition.executions) : []);
+
+      // Recalculate entry/exit values from executions to handle partial closes correctly
+      let recalcEntryQty = 0;
+      let recalcEntryValue = 0;
+      let recalcExitQty = 0;
+      let recalcExitValue = 0;
+      let recalcFees = 0;
+
+      for (const exec of existingExecutions) {
+        const execQty = Math.abs(parseFloat(exec.quantity) || 0);
+        const execPrice = parseFloat(exec.price) || 0;
+        const execFees = parseFloat(exec.fees) || 0;
+        // Use exec.action to determine entry vs exit - quantity is always stored as absolute value
+        const execAction = exec.action;
+
+        recalcFees += execFees;
+
+        if (existingPosition.side === 'long') {
+          // For long positions: buy = entry, sell = exit
+          if (execAction === 'buy') {
+            recalcEntryQty += execQty;
+            recalcEntryValue += execQty * execPrice * valueMultiplier;
+          } else if (execAction === 'sell') {
+            recalcExitQty += execQty;
+            recalcExitValue += execQty * execPrice * valueMultiplier;
+          }
+        } else {
+          // For short positions: sell = entry, buy = exit
+          if (execAction === 'sell') {
+            recalcEntryQty += execQty;
+            recalcEntryValue += execQty * execPrice * valueMultiplier;
+          } else if (execAction === 'buy') {
+            recalcExitQty += execQty;
+            recalcExitValue += execQty * execPrice * valueMultiplier;
+          }
+        }
+      }
+
+      console.log(`  → [PARTIAL CLOSE FIX] Recalculated from ${existingExecutions.length} executions:`);
+      console.log(`    Entry: ${recalcEntryQty} @ $${(recalcEntryValue / recalcEntryQty / valueMultiplier).toFixed(4)} = $${recalcEntryValue.toFixed(2)}`);
+      console.log(`    Exit so far: ${recalcExitQty} @ $${recalcExitQty > 0 ? (recalcExitValue / recalcExitQty / valueMultiplier).toFixed(4) : '0'} = $${recalcExitValue.toFixed(2)}`);
+      console.log(`    Remaining position: ${existingPosition.quantity} (stored), fees so far: $${recalcFees.toFixed(2)}`);
+
+      currentTrade = {
+        symbol: symbol,
+        conid: existingPosition.conid || conid,
+        entryTime: existingPosition.entryTime,
+        tradeDate: existingPosition.tradeDate,
+        side: existingPosition.side,
+        executions: existingExecutions,
+        // Use recalculated values from executions for accurate P&L
+        totalQuantity: recalcEntryQty,  // Total entry quantity, not remaining
+        totalFees: recalcFees,
+        entryValue: recalcEntryValue,
+        exitValue: recalcExitValue,  // Include partial close exit value!
+        broker: existingPosition.broker || 'ibkr',
+        isExistingPosition: true,
+        existingTradeId: existingPosition.id,
+        newExecutionsAdded: 0
+      };
+    }
 
     if (existingPosition) {
-      console.log(`  → Starting with existing ${existingPosition.side} position: ${existingPosition.quantity} ${instrumentData.instrumentType === 'option' ? 'contracts' : 'shares'} @ $${existingPosition.entryPrice}`);
-      console.log(`  → Initial position: ${currentPosition}, entryValue: $${currentTrade.entryValue.toFixed(2)}`);
+      console.log(`  → Starting with existing ${existingPosition.side} position: ${existingPosition.quantity} ${instrumentData.instrumentType === 'option' ? 'contracts' : 'shares'} remaining`);
+      console.log(`  → Total entry: ${currentTrade.totalQuantity}, entryValue: $${currentTrade.entryValue.toFixed(2)}, exitValue so far: $${currentTrade.exitValue.toFixed(2)}`);
     }
 
     for (const transaction of symbolTransactions) {
