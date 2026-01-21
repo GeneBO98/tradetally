@@ -78,8 +78,16 @@ const schemas = {
       Joi.number().positive(),
       Joi.valid(null, '')
     ),
+    // Additional take profit targets (TP2, TP3, etc.)
+    takeProfitTargets: Joi.array().items(Joi.object({
+      price: Joi.number().positive().required(),
+      shares: Joi.number().integer().positive().allow(null).optional(),
+      percentage: Joi.number().min(1).max(100).allow(null).optional()
+    })).default([]),
     // Chart URL for TradingView links
     chartUrl: Joi.string().uri().max(1000).allow(null, ''),
+    // Manual target hit override (SL/TP hit first)
+    manualTargetHitFirst: Joi.string().valid('take_profit', 'stop_loss', 'neither').allow(null, ''),
     // Options-specific fields
     underlyingSymbol: Joi.string().max(10).allow(null, ''),
     optionType: Joi.string().valid('call', 'put').allow(null, ''),
@@ -104,7 +112,12 @@ const schemas = {
           commission: Joi.number().default(0),  // Can be negative for rebates
           fees: Joi.number().default(0),  // Can be negative for rebates
           stopLoss: Joi.number().positive().allow(null, '').optional(),
-          takeProfit: Joi.number().positive().allow(null, '').optional()
+          takeProfit: Joi.number().positive().allow(null, '').optional(),
+          takeProfitTargets: Joi.array().items(Joi.object({
+            price: Joi.number().positive().required(),
+            shares: Joi.number().integer().positive().allow(null).optional(),
+            percentage: Joi.number().min(1).max(100).allow(null).optional()
+          })).default([]).optional()
         }),
         // Grouped round-trip format
         Joi.object({
@@ -118,7 +131,12 @@ const schemas = {
           fees: Joi.number().default(0),  // Can be negative for rebates
           pnl: Joi.number().allow(null).optional(),
           stopLoss: Joi.number().positive().allow(null, '').optional(),
-          takeProfit: Joi.number().positive().allow(null, '').optional()
+          takeProfit: Joi.number().positive().allow(null, '').optional(),
+          takeProfitTargets: Joi.array().items(Joi.object({
+            price: Joi.number().positive().required(),
+            shares: Joi.number().integer().positive().allow(null).optional(),
+            percentage: Joi.number().min(1).max(100).allow(null).optional()
+          })).default([]).optional()
         })
       )
     ).optional()
@@ -156,8 +174,16 @@ const schemas = {
       Joi.number().positive(),
       Joi.valid(null, '')
     ),
+    // Additional take profit targets (TP2, TP3, etc.)
+    takeProfitTargets: Joi.array().items(Joi.object({
+      price: Joi.number().positive().required(),
+      shares: Joi.number().integer().positive().allow(null).optional(),
+      percentage: Joi.number().min(1).max(100).allow(null).optional()
+    })).default([]),
     // Chart URL for TradingView links
     chartUrl: Joi.string().uri().max(1000).allow(null, ''),
+    // Manual target hit override (SL/TP hit first)
+    manualTargetHitFirst: Joi.string().valid('take_profit', 'stop_loss', 'neither').allow(null, ''),
     // Options-specific fields
     underlyingSymbol: Joi.string().max(10).allow(null, ''),
     optionType: Joi.string().valid('call', 'put').allow(null, ''),
@@ -182,7 +208,12 @@ const schemas = {
           commission: Joi.number().default(0),  // Can be negative for rebates
           fees: Joi.number().default(0),  // Can be negative for rebates
           stopLoss: Joi.number().positive().allow(null, '').optional(),
-          takeProfit: Joi.number().positive().allow(null, '').optional()
+          takeProfit: Joi.number().positive().allow(null, '').optional(),
+          takeProfitTargets: Joi.array().items(Joi.object({
+            price: Joi.number().positive().required(),
+            shares: Joi.number().integer().positive().allow(null).optional(),
+            percentage: Joi.number().min(1).max(100).allow(null).optional()
+          })).default([]).optional()
         }),
         // Grouped round-trip format
         Joi.object({
@@ -196,7 +227,12 @@ const schemas = {
           fees: Joi.number().default(0),  // Can be negative for rebates
           pnl: Joi.number().allow(null).optional(),
           stopLoss: Joi.number().positive().allow(null, '').optional(),
-          takeProfit: Joi.number().positive().allow(null, '').optional()
+          takeProfit: Joi.number().positive().allow(null, '').optional(),
+          takeProfitTargets: Joi.array().items(Joi.object({
+            price: Joi.number().positive().required(),
+            shares: Joi.number().integer().positive().allow(null).optional(),
+            percentage: Joi.number().min(1).max(100).allow(null).optional()
+          })).default([]).optional()
         })
       )
     ).optional()

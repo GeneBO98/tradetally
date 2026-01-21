@@ -72,47 +72,100 @@
           </div>
         </div>
 
-        <!-- Take Profit (Editable) -->
-        <div>
-          <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
-            Take Profit
-            <span v-if="!editingTakeProfit" @click="startEditingTakeProfit" class="ml-1 text-primary-500 hover:text-primary-600 cursor-pointer">(edit)</span>
+        <!-- Take Profit Column (TP1 + Additional Targets stacked vertically) -->
+        <div class="space-y-3">
+          <!-- TP1 -->
+          <div>
+            <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
+              Take Profit (TP1)
+              <span v-if="!editingTakeProfit" @click="startEditingTakeProfit" class="ml-1 text-primary-500 hover:text-primary-600 cursor-pointer">(edit)</span>
+            </div>
+            <div v-if="editingTakeProfit" class="flex items-center space-x-2">
+              <div class="relative flex-1">
+                <span class="absolute left-2 top-1.5 text-gray-500 text-sm">$</span>
+                <input
+                  ref="takeProfitInput"
+                  v-model="editTakeProfit"
+                  type="number"
+                  step="0.01"
+                  class="w-full pl-6 pr-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
+                  @keyup.enter="saveTakeProfit"
+                  @keyup.escape="cancelEditingTakeProfit"
+                />
+              </div>
+              <button @click="saveTakeProfit" :disabled="saving" class="text-green-600 hover:text-green-700">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+              </button>
+              <button @click="cancelEditingTakeProfit" class="text-gray-400 hover:text-gray-600">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+              </button>
+            </div>
+            <div v-else>
+              <div v-if="trade.take_profit" class="text-lg font-semibold text-primary-600 dark:text-primary-400">
+                {{ formatCurrency(trade.take_profit) }}
+                <span class="text-xs text-gray-500 dark:text-gray-400 font-normal block">
+                  {{ formatPercent(takeProfitPercent) }} from entry
+                </span>
+              </div>
+              <div v-else class="text-lg text-gray-400 dark:text-gray-500">
+                Not set
+              </div>
+            </div>
           </div>
-          <div v-if="editingTakeProfit" class="flex items-center space-x-2">
-            <div class="relative flex-1">
-              <span class="absolute left-2 top-1.5 text-gray-500 text-sm">$</span>
+
+          <!-- Additional TP Targets (TP2, TP3, etc.) -->
+          <div v-for="(target, index) in editableTakeProfitTargets" :key="index">
+            <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">TP{{ index + 2 }}</div>
+            <div class="flex items-center gap-1">
+              <div class="relative">
+                <span class="absolute left-2 top-1 text-gray-500 text-sm">$</span>
+                <input
+                  v-model.number="target.price"
+                  type="number"
+                  step="0.01"
+                  class="w-20 pl-5 pr-1 py-0.5 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
+                  placeholder="Price"
+                  @blur="saveTakeProfitTargets"
+                  @keyup.enter="saveTakeProfitTargets"
+                />
+              </div>
               <input
-                ref="takeProfitInput"
-                v-model="editTakeProfit"
+                v-model.number="target.shares"
                 type="number"
-                step="0.01"
-                class="w-full pl-6 pr-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
-                @keyup.enter="saveTakeProfit"
-                @keyup.escape="cancelEditingTakeProfit"
+                step="1"
+                min="1"
+                class="w-14 px-1 py-0.5 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
+                placeholder="Qty"
+                title="Number of shares"
+                @blur="saveTakeProfitTargets"
+                @keyup.enter="saveTakeProfitTargets"
               />
-            </div>
-            <button @click="saveTakeProfit" :disabled="saving" class="text-green-600 hover:text-green-700">
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-              </svg>
-            </button>
-            <button @click="cancelEditingTakeProfit" class="text-gray-400 hover:text-gray-600">
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-              </svg>
-            </button>
-          </div>
-          <div v-else>
-            <div v-if="trade.take_profit" class="text-lg font-semibold text-primary-600 dark:text-primary-400">
-              {{ formatCurrency(trade.take_profit) }}
-              <span class="text-xs text-gray-500 dark:text-gray-400 font-normal block">
-                {{ formatPercent(takeProfitPercent) }} from entry
-              </span>
-            </div>
-            <div v-else class="text-lg text-gray-400 dark:text-gray-500">
-              Not set
+              <button
+                @click="removeTakeProfitTarget(index)"
+                class="p-0.5 text-gray-400 hover:text-red-600 dark:hover:text-red-400"
+                title="Remove target"
+              >
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
             </div>
           </div>
+
+          <!-- Add Target Button -->
+          <button
+            @click="addTakeProfitTarget"
+            class="text-xs text-primary-600 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300 flex items-center gap-1"
+          >
+            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+            </svg>
+            Add Target
+          </button>
         </div>
       </div>
 
@@ -199,35 +252,6 @@
         </div>
       </div>
 
-      <!-- Multiple Take Profit Targets -->
-      <div v-if="hasMultipleTargets" class="border-t border-gray-200 dark:border-gray-700 mt-6 pt-6">
-        <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-          Take Profit Targets
-        </h4>
-        <div class="space-y-2">
-          <div
-            v-for="(target, index) in trade.take_profit_targets"
-            :key="target.id"
-            class="flex items-center justify-between p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50"
-          >
-            <div class="flex items-center space-x-3">
-              <span class="text-sm font-medium text-gray-900 dark:text-white">
-                TP{{ index + 1 }}
-              </span>
-              <span class="text-sm text-gray-600 dark:text-gray-400">
-                {{ formatCurrency(target.price) }}
-              </span>
-              <span v-if="target.quantity" class="text-xs text-gray-500 dark:text-gray-400">
-                {{ target.quantity }} shares
-              </span>
-            </div>
-            <span :class="getTargetStatusClass(target.status)">
-              {{ target.status || 'pending' }}
-            </span>
-          </div>
-        </div>
-      </div>
-
       <!-- Target Hit Analysis -->
       <div v-if="trade.stop_loss" class="border-t border-gray-200 dark:border-gray-700 mt-6 pt-6">
         <TargetHitFirstIndicator
@@ -264,7 +288,7 @@
 </template>
 
 <script setup>
-import { ref, computed, nextTick } from 'vue'
+import { ref, computed, nextTick, watch } from 'vue'
 import { format } from 'date-fns'
 import api from '@/services/api'
 import TargetHitFirstIndicator from './TargetHitFirstIndicator.vue'
@@ -321,6 +345,74 @@ const editStopLoss = ref('')
 const editTakeProfit = ref('')
 const saving = ref(false)
 const error = ref(null)
+
+// Take profit targets editing
+const editableTakeProfitTargets = ref([])
+const savingTargets = ref(false)
+
+// Initialize editable targets from trade data
+function initializeTakeProfitTargets() {
+  const targets = props.trade?.take_profit_targets || []
+  console.log('[TP TARGETS] Initializing from trade data:', targets)
+  editableTakeProfitTargets.value = Array.isArray(targets) ? targets.map(t => ({
+    price: t.price,
+    shares: t.shares || null
+  })) : []
+}
+
+// Watch for trade changes (by ID) and reinitialize targets
+watch(() => props.trade?.id, (newId) => {
+  if (newId) {
+    console.log('[TP TARGETS] Trade changed, reinitializing targets for trade:', newId)
+    initializeTakeProfitTargets()
+  }
+}, { immediate: true })
+
+// Also watch the targets array itself in case it's updated without trade change
+watch(() => props.trade?.take_profit_targets, (newTargets) => {
+  console.log('[TP TARGETS] take_profit_targets changed:', newTargets)
+  initializeTakeProfitTargets()
+})
+
+function addTakeProfitTarget() {
+  editableTakeProfitTargets.value.push({
+    price: null,
+    shares: null
+  })
+}
+
+function removeTakeProfitTarget(index) {
+  editableTakeProfitTargets.value.splice(index, 1)
+  // Auto-save when removing
+  saveTakeProfitTargets()
+}
+
+async function saveTakeProfitTargets() {
+  savingTargets.value = true
+  error.value = null
+
+  try {
+    // Filter out empty targets
+    const validTargets = editableTakeProfitTargets.value
+      .filter(t => t.price != null && t.price !== '')
+      .map(t => ({
+        price: parseFloat(t.price),
+        shares: t.shares ? parseInt(t.shares) : null
+      }))
+
+    console.log('[TP TARGETS] Saving targets:', validTargets)
+    const response = await api.patch(`/trade-management/trades/${props.trade.id}/levels`, {
+      take_profit_targets: validTargets
+    })
+    console.log('[TP TARGETS] Save response:', response.data)
+    emit('levels-updated', response.data.trade)
+  } catch (err) {
+    console.error('[TRADE-MGMT] Save targets error:', err)
+    error.value = err.response?.data?.error || 'Failed to save targets'
+  } finally {
+    savingTargets.value = false
+  }
+}
 
 // Input refs
 const stopLossInput = ref(null)

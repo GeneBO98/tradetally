@@ -11,25 +11,38 @@ const { v4: uuidv4 } = require('uuid');
 
 /**
  * Calculate R-Multiple values for a trade
- * @param {Object} trade - Trade object with entry_price, exit_price, stop_loss, take_profit, side
+ * @param {Object} trade - Trade object with entry_price, exit_price, stop_loss, take_profit, take_profit_targets, side
  * @returns {Object} R-Multiple analysis results
  */
 function calculateRMultiples(trade) {
-  const { entry_price, exit_price, stop_loss, take_profit, side, pnl, quantity } = trade;
+  const { entry_price, exit_price, stop_loss, take_profit, take_profit_targets, side, pnl, quantity } = trade;
 
   // Validate required fields
   if (!entry_price || !exit_price || !stop_loss) {
     return {
       error: 'Missing required fields for R-Multiple calculation',
       has_stop_loss: !!stop_loss,
-      has_take_profit: !!take_profit
+      has_take_profit: !!take_profit || (take_profit_targets && take_profit_targets.length > 0)
     };
   }
 
   const entryPrice = parseFloat(entry_price);
   const exitPrice = parseFloat(exit_price);
   const stopLoss = parseFloat(stop_loss);
-  const takeProfit = take_profit ? parseFloat(take_profit) : null;
+
+  // Determine the take profit price to use
+  // Priority: take_profit_targets (first/primary target) > take_profit
+  let takeProfit = null;
+  const targets = take_profit_targets;
+  if (targets && Array.isArray(targets) && targets.length > 0) {
+    const firstTarget = targets[0];
+    if (firstTarget && firstTarget.price) {
+      takeProfit = parseFloat(firstTarget.price);
+    }
+  }
+  if (!takeProfit && take_profit) {
+    takeProfit = parseFloat(take_profit);
+  }
 
   let risk, actualPL, targetPL, actualR, targetR, rLost;
 
@@ -76,6 +89,18 @@ function calculateRMultiples(trade) {
       targetR = targetPL / risk;
 
       // R lost is how much potential R was left on the table
+      rLost = targetR - actualR;
+    }
+  }
+
+  // Cap target R at 10R to prevent unrealistic values from distorting analysis
+  const MAX_POTENTIAL_R = 10;
+  if (targetR !== undefined && targetR > MAX_POTENTIAL_R) {
+    logger.info(`[R-CALC] Capping target R from ${targetR.toFixed(2)} to ${MAX_POTENTIAL_R}`);
+    // Also recalculate R lost with capped value
+    const originalTargetR = targetR;
+    targetR = MAX_POTENTIAL_R;
+    if (rLost !== undefined) {
       rLost = targetR - actualR;
     }
   }
@@ -146,9 +171,14 @@ function calculateManagementScore(actualR, targetR, rLost) {
 /**
  * Calculate R-Multiple for a single trade (for batch processing)
  * Returns null if required data is missing
+ *
+ * For potential R calculation:
+ * - Uses take_profit_targets if available (weighted average or first target)
+ * - Falls back to single take_profit field
+ * - Caps potential R at 10R to prevent chart scale distortion
  */
 function calculateTradeR(trade) {
-  const { entry_price, exit_price, stop_loss, take_profit, side } = trade;
+  const { entry_price, exit_price, stop_loss, take_profit, take_profit_targets, side } = trade;
 
   if (!entry_price || !exit_price || !stop_loss) {
     return null;
@@ -157,7 +187,25 @@ function calculateTradeR(trade) {
   const entryPrice = parseFloat(entry_price);
   const exitPrice = parseFloat(exit_price);
   const stopLoss = parseFloat(stop_loss);
-  const takeProfit = take_profit ? parseFloat(take_profit) : null;
+
+  // Determine the take profit price to use for potential R
+  // Priority: take_profit_targets (first/primary target) > take_profit
+  let takeProfit = null;
+
+  // Check for take_profit_targets array
+  const targets = take_profit_targets;
+  if (targets && Array.isArray(targets) && targets.length > 0) {
+    // Use the first target (primary) for potential R calculation
+    const firstTarget = targets[0];
+    if (firstTarget && firstTarget.price) {
+      takeProfit = parseFloat(firstTarget.price);
+    }
+  }
+
+  // Fall back to single take_profit if no targets
+  if (!takeProfit && take_profit) {
+    takeProfit = parseFloat(take_profit);
+  }
 
   let risk, actualR, targetR;
 
@@ -175,6 +223,14 @@ function calculateTradeR(trade) {
     if (takeProfit) {
       targetR = (entryPrice - takeProfit) / risk;
     }
+  }
+
+  // Cap potential R at 10R to prevent unrealistic values from distorting charts
+  // A 10R target is already an excellent trade; anything beyond is usually a data entry error
+  const MAX_POTENTIAL_R = 10;
+  if (targetR !== undefined && targetR > MAX_POTENTIAL_R) {
+    logger.info(`[R-CALC] Capping potential R from ${targetR.toFixed(2)} to ${MAX_POTENTIAL_R} for trade ${trade.id}`);
+    targetR = MAX_POTENTIAL_R;
   }
 
   return {
@@ -350,6 +406,9 @@ const tradeManagementController = {
         uploadedAt: chart.uploaded_at
       }));
 
+      // Log what we're returning for debugging
+      logger.info(`[TRADE-MGMT] Returning trade ${trade.id} with take_profit_targets:`, JSON.stringify(trade.take_profit_targets));
+
       res.json({
         trade: {
           id: trade.id,
@@ -361,10 +420,12 @@ const tradeManagementController = {
           exit_price: trade.exit_price,
           stop_loss: trade.stop_loss,
           take_profit: trade.take_profit,
+          take_profit_targets: trade.take_profit_targets,
           pnl: trade.pnl,
           pnl_percent: trade.pnl_percent,
           entry_time: trade.entry_time,
           exit_time: trade.exit_time,
+          instrument_type: trade.instrument_type,
           charts: charts,
           manual_target_hit_first: trade.manual_target_hit_first,
           target_hit_analysis: trade.target_hit_analysis
@@ -431,54 +492,63 @@ const tradeManagementController = {
         }
       }
 
-      // Validate multiple take profit targets
+      // Validate and process multiple take profit targets
       let processedTargets = null;
-      if (take_profit_targets && Array.isArray(take_profit_targets) && take_profit_targets.length > 0) {
-        processedTargets = [];
-        let totalQuantity = 0;
+      if (take_profit_targets !== undefined && Array.isArray(take_profit_targets)) {
+        // Empty array means clear all targets
+        if (take_profit_targets.length === 0) {
+          processedTargets = [];
+        } else {
+          processedTargets = [];
+          let totalQuantity = 0;
 
-        for (let i = 0; i < take_profit_targets.length; i++) {
-          const target = take_profit_targets[i];
-          const tpPrice = parseFloat(target.price);
+          for (let i = 0; i < take_profit_targets.length; i++) {
+            const target = take_profit_targets[i];
+            const tpPrice = parseFloat(target.price);
 
-          // Validate price position
-          if (isLong && tpPrice <= entryPrice) {
-            return res.status(400).json({
-              error: `Take profit target ${i + 1} must be above entry price for long trades`
+            // Validate price position
+            if (isLong && tpPrice <= entryPrice) {
+              return res.status(400).json({
+                error: `Take profit target ${i + 1} must be above entry price for long trades`
+              });
+            }
+            if (!isLong && tpPrice >= entryPrice) {
+              return res.status(400).json({
+                error: `Take profit target ${i + 1} must be below entry price for short trades`
+              });
+            }
+
+            // Accept both 'shares' and 'quantity' for backwards compatibility
+            const shares = target.shares || target.quantity;
+            const quantity = shares ? parseInt(shares) : null;
+            if (quantity) totalQuantity += quantity;
+
+            processedTargets.push({
+              id: target.id || uuidv4(),
+              price: tpPrice,
+              shares: quantity,
+              percentage: target.percentage || null,
+              quantity: quantity,
+              order: target.order || i + 1,
+              status: target.status || 'pending',
+              hit_at: target.hit_at || null,
+              hit_price: target.hit_price || null,
+              created_at: target.created_at || new Date().toISOString(),
+              updated_at: new Date().toISOString()
             });
           }
-          if (!isLong && tpPrice >= entryPrice) {
-            return res.status(400).json({
-              error: `Take profit target ${i + 1} must be below entry price for short trades`
-            });
+
+          // Validate total quantity if quantities are specified
+          if (totalQuantity > 0 && trade.quantity) {
+            const tradeQuantity = parseFloat(trade.quantity);
+            if (Math.abs(totalQuantity - tradeQuantity) > 0.001) {
+              logger.warn(`[TRADE-MANAGEMENT] TP target quantities (${totalQuantity}) differ from trade quantity (${tradeQuantity})`);
+            }
           }
 
-          const quantity = target.quantity ? parseFloat(target.quantity) : null;
-          if (quantity) totalQuantity += quantity;
-
-          processedTargets.push({
-            id: target.id || uuidv4(),
-            price: tpPrice,
-            quantity: quantity,
-            order: target.order || i + 1,
-            status: target.status || 'pending',
-            hit_at: target.hit_at || null,
-            hit_price: target.hit_price || null,
-            created_at: target.created_at || new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          });
+          // Sort by order
+          processedTargets.sort((a, b) => a.order - b.order);
         }
-
-        // Validate total quantity if quantities are specified
-        if (totalQuantity > 0 && trade.quantity) {
-          const tradeQuantity = parseFloat(trade.quantity);
-          if (Math.abs(totalQuantity - tradeQuantity) > 0.001) {
-            logger.warn(`[TRADE-MANAGEMENT] TP target quantities (${totalQuantity}) differ from trade quantity (${tradeQuantity})`);
-          }
-        }
-
-        // Sort by order
-        processedTargets.sort((a, b) => a.order - b.order);
       }
 
       // Validate manual_target_hit_first value
@@ -626,7 +696,7 @@ const tradeManagementController = {
   async getRPerformance(req, res) {
     try {
       const userId = req.user.id;
-      const { startDate, endDate, symbol, limit = 100 } = req.query;
+      const { startDate, endDate, symbol, limit = 2000 } = req.query;
 
       logger.info('[TRADE-MGMT] getRPerformance called', { userId, symbol, startDate, endDate, limit });
 

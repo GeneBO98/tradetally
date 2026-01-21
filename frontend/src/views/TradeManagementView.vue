@@ -47,13 +47,20 @@
 
     <!-- Analysis Section (shown when trade has required data) -->
     <div v-if="selectedTrade && !needsRiskLevels && analysis" class="space-y-6 mt-6">
-      <!-- Candlestick Chart with Markers (only shown when chart data loads successfully) -->
+      <!-- Candlestick Chart with Markers (only shown when chart data loads successfully and instrument is supported) -->
       <TradeManagementChart
-        v-if="chartAvailable"
+        v-if="chartAvailable && isChartSupportedInstrument"
         :trade="selectedTrade"
         :loading="chartLoading"
         @chart-loaded="onChartLoaded"
       />
+
+      <!-- Message for unsupported instruments -->
+      <div v-else-if="!isChartSupportedInstrument" class="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+        <p class="text-gray-600 dark:text-gray-400 text-sm">
+          Chart visualization is not available for {{ selectedTrade?.instrument_type }} trades.
+        </p>
+      </div>
 
       <!-- R-Multiple Analysis -->
       <RMultipleAnalysis :analysis="analysis" />
@@ -139,6 +146,16 @@ const error = ref(null)
 const needsRiskLevels = computed(() => {
   if (!selectedTrade.value) return false
   return !selectedTrade.value.stop_loss
+})
+
+// Check if chart should be available for this instrument type
+// Futures are not supported by Alpha Vantage
+const isChartSupportedInstrument = computed(() => {
+  if (!selectedTrade.value) return true
+  const instrumentType = selectedTrade.value.instrument_type
+  // Futures are not supported
+  if (instrumentType === 'future') return false
+  return true
 })
 
 // URL State Management
@@ -284,6 +301,12 @@ async function fetchAnalysis(tradeId) {
     const response = await api.get(`/trade-management/analysis/${tradeId}`)
     selectedTrade.value = response.data.trade
     analysis.value = response.data.analysis
+
+    // Skip chart visualization for futures (not supported)
+    if (selectedTrade.value?.instrument_type === 'future') {
+      chartAvailable.value = false
+      chartLoading.value = false
+    }
   } catch (err) {
     if (err.response?.data?.needs_stop_loss) {
       // Trade needs stop loss - this is handled by needsRiskLevels computed
