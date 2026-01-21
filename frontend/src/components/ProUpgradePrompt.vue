@@ -4,8 +4,8 @@
     <!-- Centered Card Style (for full page replacements) -->
     <div v-if="variant === 'card'" class="card mb-8">
     <div class="card-body text-center py-12">
-      <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-purple-100 dark:bg-purple-900/20 mb-4">
-        <svg class="h-6 w-6 text-purple-600 dark:text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-orange-100 dark:bg-orange-900/20 mb-4">
+        <svg class="h-6 w-6 text-orange-600 dark:text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
         </svg>
       </div>
@@ -39,7 +39,7 @@
   <!-- Compact Style (for smaller spaces) -->
   <div v-else-if="variant === 'compact'" class="text-center py-8">
     <div class="text-gray-500 dark:text-gray-400 mb-4">
-      <svg class="mx-auto h-8 w-8 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <svg class="mx-auto h-8 w-8 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
       </svg>
     </div>

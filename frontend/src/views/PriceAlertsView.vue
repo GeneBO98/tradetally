@@ -99,7 +99,7 @@
 
     <!-- Loading State -->
     <div v-if="isProUser && loading" class="flex justify-center items-center py-12">
-      <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
     </div>
 
     <!-- Alerts Table -->
@@ -137,7 +137,7 @@
                 <span v-if="alert.is_active && !alert.triggered_at" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
                   Active
                 </span>
-                <span v-else-if="alert.is_active && alert.triggered_at" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                <span v-else-if="alert.is_active && alert.triggered_at" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400">
                   Triggered (Repeat)
                 </span>
                 <span v-else-if="!alert.is_active && alert.triggered_at" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
@@ -149,7 +149,7 @@
               </td>
               <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                 <div class="flex space-x-1">
-                  <span v-if="alert.email_enabled" title="Email enabled" class="text-blue-500">✉</span>
+                  <span v-if="alert.email_enabled" title="Email enabled" class="text-primary-500">✉</span>
                   <MdiIcon v-if="alert.browser_enabled" :icon="mdiBell" :size="16" title="Browser enabled" classes="text-green-500" />
                   <MdiIcon v-if="alert.repeat_enabled" :icon="mdiRepeat" :size="16" title="Repeat enabled" classes="text-purple-500" />
                 </div>
@@ -160,13 +160,13 @@
               <td class="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
                 <button
                   @click="editAlert(alert)"
-                  class="text-indigo-600 hover:text-indigo-900"
+                  class="text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
                 >
                   Edit
                 </button>
                 <button
                   @click="testAlert(alert)"
-                  class="text-blue-600 hover:text-blue-900"
+                  class="text-green-700 hover:text-green-800 dark:text-green-500 dark:hover:text-green-400"
                 >
                   Test
                 </button>

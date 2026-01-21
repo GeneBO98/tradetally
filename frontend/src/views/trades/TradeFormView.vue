@@ -132,6 +132,24 @@
             </div>
           </div>
 
+          <!-- Target Hit First (only shown when stop loss is set) -->
+          <div v-if="!hasGroupedExecutions && form.stopLoss" class="mt-6">
+            <label for="manualTargetHitFirst" class="label">Target Hit First</label>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
+              Manually specify which target was hit first (for R-Multiple analysis)
+            </p>
+            <select
+              id="manualTargetHitFirst"
+              v-model="form.manualTargetHitFirst"
+              class="input"
+            >
+              <option :value="null">-- Auto-detect (requires API) --</option>
+              <option value="take_profit">Take Profit Hit First</option>
+              <option value="stop_loss">Stop Loss Hit First</option>
+              <option value="neither">Neither Target Hit</option>
+            </select>
+          </div>
+
           <!-- Info message when fields are hidden -->
           <div v-if="hasGroupedExecutions" class="mt-6 p-4 bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-lg">
             <p class="text-sm text-primary-800 dark:text-primary-200">
@@ -1441,6 +1459,7 @@ const form = ref({
   // Risk management fields
   stopLoss: null,
   takeProfit: null,
+  manualTargetHitFirst: null,
   // Options-specific fields
   underlyingSymbol: '',
   optionType: '',
@@ -1601,6 +1620,7 @@ async function loadTrade() {
       mfe: tradeData.mfe != null ? Number(tradeData.mfe) : null,
       stopLoss: (tradeData.stop_loss || tradeData.stopLoss) != null ? Number(tradeData.stop_loss || tradeData.stopLoss) : null,
       takeProfit: (tradeData.take_profit || tradeData.takeProfit) != null ? Number(tradeData.take_profit || tradeData.takeProfit) : null,
+      manualTargetHitFirst: tradeData.manual_target_hit_first || null,
       broker: tradeData.broker || '',
       account_identifier: tradeData.account_identifier || '',
       strategy: tradeData.strategy || '',
@@ -1946,6 +1966,7 @@ async function handleSubmit() {
       // Risk management fields
       stopLoss: form.value.stopLoss && form.value.stopLoss !== '' ? parseFloat(form.value.stopLoss) : null,
       takeProfit: form.value.takeProfit && form.value.takeProfit !== '' ? parseFloat(form.value.takeProfit) : null,
+      manualTargetHitFirst: form.value.manualTargetHitFirst || null,
       // Options-specific fields (only send if option type)
       underlyingSymbol: form.value.instrumentType === 'option' ? form.value.underlyingSymbol : null,
       optionType: form.value.instrumentType === 'option' ? form.value.optionType : null,
