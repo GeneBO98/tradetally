@@ -3762,10 +3762,39 @@ class Trade {
         return null;
       }
       
-      // Get the start of the trading day (4:00 AM ET = 9:00 AM UTC)
-      // For simplicity, we'll use the entry date at midnight UTC and adjust
-      const entryDateUTC = new Date(entryDate.toISOString().split('T')[0] + 'T00:00:00.000Z');
-      const dayStart = new Date(entryDateUTC.getTime() + 9 * 60 * 60 * 1000); // 4 AM ET = 9 AM UTC
+      // Get the start of the trading day (4:00 AM ET)
+      // Properly handle EST/EDT transitions by calculating the UTC offset for the entry date
+      // EST = UTC-5 (winter), EDT = UTC-4 (summer)
+      const entryDateStr = entryDate.toISOString().split('T')[0]; // Get YYYY-MM-DD
+      
+      // Calculate UTC offset for Eastern Time on this specific date
+      // Create a test date at noon UTC and compare with ET representation
+      const testUTC = new Date(`${entryDateStr}T12:00:00.000Z`);
+      
+      // Get the ET representation of this UTC time
+      // Format: "MM/DD/YYYY, HH:MM:SS AM/PM" in ET
+      const etParts = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/New_York',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      }).formatToParts(testUTC);
+      
+      const etHour = parseInt(etParts.find(p => p.type === 'hour').value);
+      
+      // Calculate offset: if UTC 12:00 = ET X:00, then offset = 12 - X
+      // EST: UTC 12:00 = ET 7:00, offset = 5 hours
+      // EDT: UTC 12:00 = ET 8:00, offset = 4 hours
+      const offsetHours = 12 - etHour;
+      
+      // Now create 4:00 AM ET in UTC
+      // 4:00 AM ET = (4 + offsetHours) in UTC
+      const utcHour4amET = 4 + offsetHours;
+      const dayStart = new Date(`${entryDateStr}T${String(utcHour4amET).padStart(2, '0')}:00:00.000Z`);
       
       // Entry time in Unix timestamp (seconds)
       const entryTimestamp = Math.floor(entryDate.getTime() / 1000);
