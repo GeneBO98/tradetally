@@ -11,8 +11,43 @@ const sanitizeForLogging = (body) => {
   return sanitized;
 };
 
+// Normalize snake_case fields to camelCase for API compatibility
+const normalizeFieldNames = (body) => {
+  if (!body || typeof body !== 'object') return body;
+  const normalized = { ...body };
+  
+  // Map snake_case to camelCase (only if camelCase doesn't already exist)
+  const fieldMappings = {
+    instrument_type: 'instrumentType',
+    underlying_symbol: 'underlyingSymbol',
+    option_type: 'optionType',
+    strike_price: 'strikePrice',
+    expiration_date: 'expirationDate',
+    contract_size: 'contractSize',
+    underlying_asset: 'underlyingAsset',
+    contract_month: 'contractMonth',
+    contract_year: 'contractYear',
+    tick_size: 'tickSize',
+    point_value: 'pointValue',
+    stop_loss: 'stopLoss',
+    take_profit: 'takeProfit'
+  };
+  
+  Object.keys(fieldMappings).forEach(snakeCase => {
+    const camelCase = fieldMappings[snakeCase];
+    if (normalized[snakeCase] !== undefined && normalized[camelCase] === undefined) {
+      normalized[camelCase] = normalized[snakeCase];
+    }
+  });
+  
+  return normalized;
+};
+
 const validate = (schema) => {
   return (req, res, next) => {
+    // Normalize snake_case to camelCase before validation
+    req.body = normalizeFieldNames(req.body);
+    
     const { error } = schema.validate(req.body);
     if (error) {
       console.log('[VALIDATION ERROR] Details:', JSON.stringify(error.details, null, 2));
@@ -55,6 +90,7 @@ const schemas = {
     quantity: Joi.number().positive().required(),
     side: Joi.string().valid('long', 'short').required(),
     instrumentType: Joi.string().valid('stock', 'option', 'future', 'crypto').default('stock'),
+    instrument_type: Joi.string().valid('stock', 'option', 'future', 'crypto').optional(), // Accept snake_case for API compatibility
     commission: Joi.number().default(0),  // Can be negative for rebates
     entryCommission: Joi.number().default(0),  // Can be negative for rebates
     exitCommission: Joi.number().default(0),  // Can be negative for rebates

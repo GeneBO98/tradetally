@@ -5,6 +5,7 @@ const EmailService = require('../services/emailService');
 const bcrypt = require('bcryptjs');
 const TierService = require('../services/tierService');
 const YearWrappedService = require('../services/yearWrappedService');
+const refreshTokenService = require('../services/refreshToken.service');
 
 // Check if email configuration is available
 function isEmailConfigured() {
@@ -376,9 +377,32 @@ const authController = {
   async refreshToken(req, res, next) {
     try {
       const { refreshToken } = req.body;
-      
-      res.status(501).json({ error: 'Refresh token not implemented' });
+      const deviceId = req.headers['x-device-id'];
+
+      if (!refreshToken) {
+        return res.status(400).json({ error: 'Refresh token is required' });
+      }
+
+      if (!refreshTokenService.isValidRefreshTokenFormat(refreshToken)) {
+        return res.status(400).json({ error: 'Invalid refresh token format' });
+      }
+
+      const result = await refreshTokenService.refreshAccessToken(refreshToken, deviceId);
+
+      res.json({
+        message: 'Token refreshed successfully',
+        tokens: {
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken,
+          expiresIn: result.expiresIn,
+          tokenType: 'Bearer'
+        },
+        user: result.user
+      });
     } catch (error) {
+      if (error.message.includes('Invalid') || error.message.includes('expired')) {
+        return res.status(401).json({ error: error.message });
+      }
       next(error);
     }
   },
