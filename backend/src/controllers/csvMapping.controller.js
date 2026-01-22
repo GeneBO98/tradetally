@@ -23,6 +23,8 @@ const csvMappingController = {
           pnl_column,
           fees_column,
           notes_column,
+          stop_loss_column,
+          take_profit_column,
           date_format,
           delimiter,
           has_header_row,
@@ -140,9 +142,10 @@ const csvMappingController = {
           entry_price_column, exit_price_column,
           entry_date_column, exit_date_column,
           pnl_column, fees_column, notes_column,
+          stop_loss_column, take_profit_column,
           date_format, delimiter, has_header_row, parsing_options
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
         RETURNING *
       `;
 
@@ -161,6 +164,8 @@ const csvMappingController = {
         pnl_column || null,
         fees_column || null,
         notes_column || null,
+        stop_loss_column || null,
+        take_profit_column || null,
         date_format || 'MM/DD/YYYY',
         delimiter || ',',
         has_header_row !== undefined ? has_header_row : true,
@@ -197,6 +202,8 @@ const csvMappingController = {
         pnl_column,
         fees_column,
         notes_column,
+        stop_loss_column,
+        take_profit_column,
         date_format,
         delimiter,
         has_header_row,
@@ -244,12 +251,14 @@ const csvMappingController = {
           pnl_column = COALESCE($10, pnl_column),
           fees_column = COALESCE($11, fees_column),
           notes_column = COALESCE($12, notes_column),
-          date_format = COALESCE($13, date_format),
-          delimiter = COALESCE($14, delimiter),
-          has_header_row = COALESCE($15, has_header_row),
-          parsing_options = COALESCE($16, parsing_options),
+          stop_loss_column = COALESCE($13, stop_loss_column),
+          take_profit_column = COALESCE($14, take_profit_column),
+          date_format = COALESCE($15, date_format),
+          delimiter = COALESCE($16, delimiter),
+          has_header_row = COALESCE($17, has_header_row),
+          parsing_options = COALESCE($18, parsing_options),
           updated_at = CURRENT_TIMESTAMP
-        WHERE id = $17 AND user_id = $18
+        WHERE id = $19 AND user_id = $20
         RETURNING *
       `;
 
@@ -266,6 +275,8 @@ const csvMappingController = {
         pnl_column,
         fees_column,
         notes_column,
+        stop_loss_column,
+        take_profit_column,
         date_format,
         delimiter,
         has_header_row,

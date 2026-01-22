@@ -258,22 +258,82 @@ class Trade {
         userSettings = await User.getSettings(userId);
 
         // Apply default stop loss if not provided
-        if (!finalStopLoss && userSettings?.default_stop_loss_percent && userSettings.default_stop_loss_percent > 0) {
-          const stopLossPercent = parseFloat(userSettings.default_stop_loss_percent);
+        if (!finalStopLoss) {
+          const stopLossType = userSettings?.default_stop_loss_type || 'percent';
+          
+          if (stopLossType === 'lod') {
+            // Use Low of Day (LoD) at entry time
+            try {
+              const lod = await this.getLowOfDayAtEntry(symbol, finalEntryTime, userId);
+              if (lod !== null && lod !== undefined) {
+                // For long positions, LoD is the stop loss
+                // For short positions, we'd use High of Day, but for now we'll use LoD as requested
+                // Note: The issue mentions LoD for swing trades, which are typically long positions
+                if (side === 'long' || side === 'buy') {
+                  finalStopLoss = lod;
+                  // Ensure LoD is below entry price (safety check)
+                  if (finalStopLoss >= entryPrice) {
+                    console.warn(`[STOP LOSS] LoD (${finalStopLoss}) is not below entry price (${entryPrice}), using entry price - 0.01 as fallback`);
+                    finalStopLoss = entryPrice - 0.01;
+                  }
+                  console.log(`[STOP LOSS] Applied Low of Day (LoD) stop loss for ${side} position: $${finalStopLoss}`);
+                } else {
+                  // For short positions, LoD doesn't make sense as stop loss
+                  // Fall back to percentage if available
+                  console.warn(`[STOP LOSS] LoD not applicable for short positions, falling back to percentage`);
+                  if (userSettings?.default_stop_loss_percent && userSettings.default_stop_loss_percent > 0) {
+                    const stopLossPercent = parseFloat(userSettings.default_stop_loss_percent);
+                    finalStopLoss = entryPrice * (1 + stopLossPercent / 100);
+                    finalStopLoss = Math.round(finalStopLoss * 10000) / 10000;
+                    console.log(`[STOP LOSS] Applied default ${stopLossPercent}% stop loss for ${side} position: $${finalStopLoss}`);
+                  }
+                }
+              } else {
+                // LoD fetch failed, fall back to percentage if available
+                console.warn(`[STOP LOSS] Failed to fetch LoD, falling back to percentage`);
+                if (userSettings?.default_stop_loss_percent && userSettings.default_stop_loss_percent > 0) {
+                  const stopLossPercent = parseFloat(userSettings.default_stop_loss_percent);
+                  if (side === 'long' || side === 'buy') {
+                    finalStopLoss = entryPrice * (1 - stopLossPercent / 100);
+                  } else if (side === 'short' || side === 'sell') {
+                    finalStopLoss = entryPrice * (1 + stopLossPercent / 100);
+                  }
+                  finalStopLoss = Math.round(finalStopLoss * 10000) / 10000;
+                  console.log(`[STOP LOSS] Applied default ${stopLossPercent}% stop loss for ${side} position: $${finalStopLoss}`);
+                }
+              }
+            } catch (lodError) {
+              console.warn(`[STOP LOSS] Error fetching LoD: ${lodError.message}, falling back to percentage`);
+              // Fall back to percentage if available
+              if (userSettings?.default_stop_loss_percent && userSettings.default_stop_loss_percent > 0) {
+                const stopLossPercent = parseFloat(userSettings.default_stop_loss_percent);
+                if (side === 'long' || side === 'buy') {
+                  finalStopLoss = entryPrice * (1 - stopLossPercent / 100);
+                } else if (side === 'short' || side === 'sell') {
+                  finalStopLoss = entryPrice * (1 + stopLossPercent / 100);
+                }
+                finalStopLoss = Math.round(finalStopLoss * 10000) / 10000;
+                console.log(`[STOP LOSS] Applied default ${stopLossPercent}% stop loss for ${side} position: $${finalStopLoss}`);
+              }
+            }
+          } else if (userSettings?.default_stop_loss_percent && userSettings.default_stop_loss_percent > 0) {
+            // Default percentage-based stop loss
+            const stopLossPercent = parseFloat(userSettings.default_stop_loss_percent);
 
-          // Calculate stop loss price based on entry price and side
-          // For long positions: entry price - (entry price * stop loss %)
-          // For short positions: entry price + (entry price * stop loss %)
-          if (side === 'long' || side === 'buy') {
-            finalStopLoss = entryPrice * (1 - stopLossPercent / 100);
-          } else if (side === 'short' || side === 'sell') {
-            finalStopLoss = entryPrice * (1 + stopLossPercent / 100);
+            // Calculate stop loss price based on entry price and side
+            // For long positions: entry price - (entry price * stop loss %)
+            // For short positions: entry price + (entry price * stop loss %)
+            if (side === 'long' || side === 'buy') {
+              finalStopLoss = entryPrice * (1 - stopLossPercent / 100);
+            } else if (side === 'short' || side === 'sell') {
+              finalStopLoss = entryPrice * (1 + stopLossPercent / 100);
+            }
+
+            // Round to 2 decimal places for stocks, 4 for precise pricing
+            finalStopLoss = Math.round(finalStopLoss * 10000) / 10000;
+
+            console.log(`[STOP LOSS] Applied default ${stopLossPercent}% stop loss for ${side} position: $${finalStopLoss}`);
           }
-
-          // Round to 2 decimal places for stocks, 4 for precise pricing
-          finalStopLoss = Math.round(finalStopLoss * 10000) / 10000;
-
-          console.log(`[STOP LOSS] Applied default ${stopLossPercent}% stop loss for ${side} position: $${finalStopLoss}`);
         }
 
         // Apply default take profit if not provided
@@ -3673,6 +3733,106 @@ class Trade {
         checkedAt: new Date().toISOString(),
         error: error.message
       };
+    }
+  }
+
+  /**
+   * Get Low of Day (LoD) at entry time for a symbol
+   * This is used for Qullamaggie-style swing trades where stop loss is set to the low of the entry day
+   * The LoD is captured at the time of entry, ensuring it reflects the actual low up to that point
+   * @param {string} symbol - Stock symbol
+   * @param {Date|string} entryTime - Entry time of the trade
+   * @param {string} userId - User ID for API usage tracking
+   * @returns {Promise<number|null>} - Low of Day price up to entry time, or null if unavailable
+   */
+  static async getLowOfDayAtEntry(symbol, entryTime, userId = null) {
+    try {
+      const finnhub = require('../utils/finnhub');
+      
+      if (!finnhub.isConfigured()) {
+        console.warn('[LoD] Finnhub not configured, cannot fetch Low of Day');
+        return null;
+      }
+
+      const entryDate = new Date(entryTime);
+      
+      // Ensure entry time is valid
+      if (isNaN(entryDate.getTime())) {
+        console.warn(`[LoD] Invalid entry time: ${entryTime}`);
+        return null;
+      }
+      
+      // Get the start of the trading day (4:00 AM ET = 9:00 AM UTC)
+      // For simplicity, we'll use the entry date at midnight UTC and adjust
+      const entryDateUTC = new Date(entryDate.toISOString().split('T')[0] + 'T00:00:00.000Z');
+      const dayStart = new Date(entryDateUTC.getTime() + 9 * 60 * 60 * 1000); // 4 AM ET = 9 AM UTC
+      
+      // Entry time in Unix timestamp (seconds)
+      const entryTimestamp = Math.floor(entryDate.getTime() / 1000);
+      const dayStartTimestamp = Math.floor(dayStart.getTime() / 1000);
+      
+      // Ensure entry time is after day start
+      if (entryTimestamp <= dayStartTimestamp) {
+        console.warn(`[LoD] Entry time is before market open, cannot determine LoD`);
+        // Try using daily candle as fallback
+        try {
+          const dailyCandles = await finnhub.getStockCandles(symbol, 'D', dayStartTimestamp - 86400, entryTimestamp, userId);
+          if (dailyCandles && dailyCandles.length > 0) {
+            const lastCandle = dailyCandles[dailyCandles.length - 1];
+            const dailyLow = parseFloat(lastCandle.low);
+            if (!isNaN(dailyLow)) {
+              console.log(`[LoD] Using daily candle low for ${symbol}: $${dailyLow.toFixed(2)}`);
+              return roundToDbPrecision(dailyLow, 4);
+            }
+          }
+        } catch (dailyError) {
+          console.warn(`[LoD] Failed to fetch daily candle as fallback: ${dailyError.message}`);
+        }
+        return null;
+      }
+      
+      // Fetch 1-minute candles from start of day to entry time
+      // This gives us the intraday low up to the entry point (not the full day)
+      let candles = await finnhub.getStockCandles(symbol, '1', dayStartTimestamp, entryTimestamp, userId);
+      
+      // If 1-minute data is not available, try 5-minute candles as fallback
+      if (!candles || candles.length === 0) {
+        console.log(`[LoD] No 1-minute data available, trying 5-minute candles`);
+        candles = await finnhub.getStockCandles(symbol, '5', dayStartTimestamp, entryTimestamp, userId);
+      }
+      
+      // If still no data, try daily candle as last resort
+      if (!candles || candles.length === 0) {
+        console.log(`[LoD] No intraday data available, trying daily candle`);
+        const dailyCandles = await finnhub.getStockCandles(symbol, 'D', dayStartTimestamp - 86400, entryTimestamp, userId);
+        if (dailyCandles && dailyCandles.length > 0) {
+          const lastCandle = dailyCandles[dailyCandles.length - 1];
+          const dailyLow = parseFloat(lastCandle.low);
+          if (!isNaN(dailyLow)) {
+            console.log(`[LoD] Using daily candle low for ${symbol}: $${dailyLow.toFixed(2)}`);
+            return roundToDbPrecision(dailyLow, 4);
+          }
+        }
+        console.warn(`[LoD] No candle data available for ${symbol} on entry day`);
+        return null;
+      }
+      
+      // Find the minimum low price from all candles up to entry time
+      const lows = candles.map(c => parseFloat(c.low)).filter(l => !isNaN(l));
+      
+      if (lows.length === 0) {
+        console.warn(`[LoD] No valid low prices found for ${symbol}`);
+        return null;
+      }
+      
+      const lod = Math.min(...lows);
+      
+      console.log(`[LoD] Low of Day for ${symbol} at entry time: $${lod.toFixed(2)} (from ${candles.length} candles)`);
+      
+      return roundToDbPrecision(lod, 4);
+    } catch (error) {
+      console.warn(`[LoD] Error fetching Low of Day for ${symbol}: ${error.message}`);
+      return null;
     }
   }
 
