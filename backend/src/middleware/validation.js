@@ -87,7 +87,7 @@ const schemas = {
     // Chart URL for TradingView links
     chartUrl: Joi.string().uri().max(1000).allow(null, ''),
     // Manual target hit override (SL/TP hit first)
-    manualTargetHitFirst: Joi.string().valid('take_profit', 'stop_loss', 'neither').allow(null, ''),
+    manualTargetHitFirst: Joi.string().valid('take_profit', 'stop_loss').allow(null, ''),
     // Options-specific fields
     underlyingSymbol: Joi.string().max(10).allow(null, ''),
     optionType: Joi.string().valid('call', 'put').allow(null, ''),
@@ -183,7 +183,7 @@ const schemas = {
     // Chart URL for TradingView links
     chartUrl: Joi.string().uri().max(1000).allow(null, ''),
     // Manual target hit override (SL/TP hit first)
-    manualTargetHitFirst: Joi.string().valid('take_profit', 'stop_loss', 'neither').allow(null, ''),
+    manualTargetHitFirst: Joi.string().valid('take_profit', 'stop_loss').allow(null, ''),
     // Options-specific fields
     underlyingSymbol: Joi.string().max(10).allow(null, ''),
     optionType: Joi.string().valid('call', 'put').allow(null, ''),

@@ -41,28 +41,123 @@ class TargetHitAnalysisService {
       }
 
       // Get chart data for the trade period
+      // For futures contracts, we need to use a futures-specific data provider
+      // Since chart data may not be available for futures, we'll rely on exit price fallback
       let chartData;
-      try {
-        chartData = await ChartService.getTradeChartData(userId, symbol, entry_time, exit_time);
-      } catch (error) {
-        logger.warn(`[TARGET-HIT] Failed to get chart data for ${symbol}: ${error.message}`);
-        return {
-          success: false,
-          error: `Unable to fetch chart data: ${error.message}`,
-          data_unavailable: true
-        };
+      const instrumentType = trade.instrument_type || 'stock';
+      
+      if (instrumentType === 'future') {
+        logger.info(`[TARGET-HIT] Futures contract detected (${symbol}), chart data may not be available. Will use exit price fallback if needed.`);
+        // Try to get chart data, but don't fail if unavailable - we'll use exit price fallback
+        try {
+          chartData = await ChartService.getTradeChartData(userId, symbol, entry_time, exit_time);
+        } catch (error) {
+          logger.warn(`[TARGET-HIT] Chart data unavailable for futures contract ${symbol}: ${error.message}. Will use exit price analysis.`);
+          // For futures, if chart data is unavailable, we'll proceed with exit price analysis
+          chartData = null;
+        }
+      } else {
+        try {
+          chartData = await ChartService.getTradeChartData(userId, symbol, entry_time, exit_time);
+        } catch (error) {
+          logger.warn(`[TARGET-HIT] Failed to get chart data for ${symbol}: ${error.message}`);
+          return {
+            success: false,
+            error: `Unable to fetch chart data: ${error.message}`,
+            data_unavailable: true
+          };
+        }
       }
 
+      // Build list of take profit targets
+      const takeProfitTargets = this.buildTakeProfitTargetsList(take_profit, take_profit_targets);
+
+      // For futures or when chart data is unavailable, use exit price analysis directly
       if (!chartData || !chartData.candles || chartData.candles.length === 0) {
+        if (instrumentType === 'future' || !trade.exit_price) {
+          // For futures without chart data, or if no exit price, use exit price analysis
+          logger.info(`[TARGET-HIT] No candle data available for ${symbol} (${instrumentType}). Using exit price analysis.`);
+          
+          if (!trade.exit_price) {
+            return {
+              success: false,
+              error: 'Exit price is required for futures target hit analysis when chart data is unavailable',
+              data_unavailable: true
+            };
+          }
+
+          // Use exit price to determine which target was hit
+          const exitPrice = parseFloat(trade.exit_price);
+          const entryPrice = trade.entry_price ? parseFloat(trade.entry_price) : null;
+          const exitPriceBasedHit = this.determineHitFromExitPrice(
+            exitPrice,
+            parseFloat(stop_loss),
+            takeProfitTargets,
+            side === 'long',
+            entryPrice
+          );
+
+          if (!exitPriceBasedHit) {
+            return {
+              success: false,
+              error: 'Unable to determine which target was hit from exit price',
+              data_unavailable: true
+            };
+          }
+
+          // Build result based on exit price analysis
+          const crossings = {
+            stop_loss: exitPriceBasedHit.type === 'stop_loss' ? {
+              time: exit_time || new Date().toISOString(),
+              price: exitPrice,
+              candle: null
+            } : null,
+            take_profits: exitPriceBasedHit.type === 'take_profit' ? {
+              [exitPriceBasedHit.targetId]: {
+                time: exit_time || new Date().toISOString(),
+                price: exitPrice,
+                target: exitPriceBasedHit.target,
+                candle: null
+              }
+            } : {}
+          };
+
+          const result = this.determineFirstHit(crossings, parseFloat(stop_loss), takeProfitTargets);
+          
+          // Mark that we used exit price analysis
+          result.used_exit_price_analysis = true;
+          
+          // Update conclusion to reflect that we used exit price analysis
+          result.conclusion = this.generateConclusion(
+            { type: result.first_target_hit, label: result.first_target_label, time: result.first_hit_time },
+            crossings,
+            parseFloat(stop_loss),
+            takeProfitTargets,
+            true
+          );
+          
+          return {
+            success: true,
+            trade_id: trade.id,
+            symbol,
+            analysis_result: result,
+            candle_data_used: {
+              source: 'exit_price_analysis',
+              resolution: 'N/A',
+              candle_count: 0,
+              note: 'Chart data unavailable - analysis based on exit price'
+            },
+            analyzed_at: new Date().toISOString()
+          };
+        }
+
+        // For non-futures, require candle data
         return {
           success: false,
           error: 'No candle data available for analysis',
           data_unavailable: true
         };
       }
-
-      // Build list of take profit targets
-      const takeProfitTargets = this.buildTakeProfitTargetsList(take_profit, take_profit_targets);
 
       // Analyze the candles
       const analysis = this.analyzeCandles({
@@ -71,7 +166,9 @@ class TargetHitAnalysisService {
         exitTime: exit_time ? new Date(exit_time) : null,
         stopLoss: parseFloat(stop_loss),
         takeProfitTargets,
-        isLong: side === 'long'
+        isLong: side === 'long',
+        exitPrice: trade.exit_price ? parseFloat(trade.exit_price) : null,
+        entryPrice: trade.entry_price ? parseFloat(trade.entry_price) : null
       });
 
       return {
@@ -131,7 +228,7 @@ class TargetHitAnalysisService {
   /**
    * Analyze candles to find first target crossing
    */
-  static analyzeCandles({ candles, entryTime, exitTime, stopLoss, takeProfitTargets, isLong }) {
+  static analyzeCandles({ candles, entryTime, exitTime, stopLoss, takeProfitTargets, isLong, exitPrice = null, entryPrice = null }) {
     const crossings = {
       stop_loss: null,
       take_profits: {}
@@ -207,9 +304,148 @@ class TargetHitAnalysisService {
     }
 
     // Determine which was hit first
+    // If no crossings were detected in candle data, check exit price as fallback
+    // This handles cases where candle resolution is too coarse or exit happened exactly at a target
+    if (crossings.stop_loss === null && Object.keys(crossings.take_profits).every(id => !crossings.take_profits[id])) {
+      if (exitPrice !== null) {
+        logger.debug('[TARGET-HIT] No crossings detected in candles, checking exit price as fallback:', { exitPrice, stopLoss, takeProfitTargets, entryPrice });
+        const exitPriceBasedHit = this.determineHitFromExitPrice(exitPrice, stopLoss, takeProfitTargets, isLong, entryPrice);
+        if (exitPriceBasedHit) {
+          logger.info('[TARGET-HIT] Determined target hit from exit price:', exitPriceBasedHit);
+          // Update crossings with exit price-based detection
+          if (exitPriceBasedHit.type === 'stop_loss') {
+            crossings.stop_loss = {
+              time: exitTime ? exitTime.toISOString() : new Date().toISOString(),
+              price: exitPrice,
+              candle: null
+            };
+          } else {
+            crossings.take_profits[exitPriceBasedHit.targetId] = {
+              time: exitTime ? exitTime.toISOString() : new Date().toISOString(),
+              price: exitPrice,
+              target: exitPriceBasedHit.target,
+              candle: null
+            };
+          }
+        }
+      }
+    }
+
     const result = this.determineFirstHit(crossings, stopLoss, takeProfitTargets);
 
     return result;
+  }
+
+  /**
+   * Determine which target was hit based on exit price when candle data doesn't show crossings
+   * This is a fallback for cases where candle resolution is too coarse
+   */
+  static determineHitFromExitPrice(exitPrice, stopLoss, takeProfitTargets, isLong, entryPrice = null) {
+    if (!exitPrice || !stopLoss) return null;
+
+    // Tolerance for considering exit price "at" a target (0.1% of price, minimum $0.01)
+    const tolerance = Math.max(Math.abs(exitPrice) * 0.001, 0.01);
+
+    // Check if exit price is at or very close to stop loss
+    if (Math.abs(exitPrice - stopLoss) <= tolerance) {
+      return {
+        type: 'stop_loss',
+        targetId: 'stop_loss',
+        target: { id: 'stop_loss', label: 'Stop Loss', price: stopLoss }
+      };
+    }
+
+    // Check if exit price is at or very close to any take profit target
+    // For long: exit should be at or above TP (profit)
+    // For short: exit should be at or below TP (profit)
+    for (const target of takeProfitTargets) {
+      const distance = Math.abs(exitPrice - target.price);
+      if (distance <= tolerance) {
+        // Also verify direction makes sense
+        const isAtTarget = isLong 
+          ? exitPrice >= target.price - tolerance  // Long: exit at or above TP
+          : exitPrice <= target.price + tolerance;  // Short: exit at or below TP
+        
+        if (isAtTarget) {
+          return {
+            type: 'take_profit',
+            targetId: target.id,
+            target
+          };
+        }
+      }
+    }
+
+    // If we have entry price, use it to determine if exit is in profit or loss direction
+    // Otherwise, infer from stop loss position
+    let isLoss = false;
+    if (entryPrice !== null) {
+      isLoss = isLong ? exitPrice < entryPrice : exitPrice > entryPrice;
+    } else {
+      // Infer from stop loss: for long, SL is below entry, so if exit is near SL, it's a loss
+      // For short, SL is above entry, so if exit is near SL, it's a loss
+      isLoss = isLong ? exitPrice <= stopLoss : exitPrice >= stopLoss;
+    }
+    
+    // Calculate distances to determine which target is closest
+    const distanceToSL = Math.abs(exitPrice - stopLoss);
+    let closestTP = null;
+    let minTPDistance = Infinity;
+    
+    for (const target of takeProfitTargets) {
+      const distance = Math.abs(exitPrice - target.price);
+      if (distance < minTPDistance) {
+        minTPDistance = distance;
+        closestTP = target;
+      }
+    }
+    
+    // Determine which target was likely hit based on:
+    // 1. If exit is in loss direction and closer to SL than any TP → SL was hit
+    // 2. If exit is in profit direction and closer to a TP than SL → TP was hit
+    // 3. If exit is in loss direction but closer to TP → still likely SL (price moved against us)
+    // 4. If exit is in profit direction but closer to SL → likely TP (price moved in our favor)
+    
+    if (isLoss) {
+      // Exit is in loss direction
+      // If SL is closer than closest TP, assume SL was hit
+      if (!closestTP || distanceToSL <= minTPDistance) {
+        return {
+          type: 'stop_loss',
+          targetId: 'stop_loss',
+          target: { id: 'stop_loss', label: 'Stop Loss', price: stopLoss }
+        };
+      }
+      // Even if TP is closer, if we're in loss territory, SL was likely hit first
+      // (price would have had to cross SL to get to current exit in loss)
+      return {
+        type: 'stop_loss',
+        targetId: 'stop_loss',
+        target: { id: 'stop_loss', label: 'Stop Loss', price: stopLoss }
+      };
+    } else {
+      // Exit is in profit direction
+      // If closest TP is closer than SL, assume TP was hit
+      if (closestTP && minTPDistance < distanceToSL) {
+        return {
+          type: 'take_profit',
+          targetId: closestTP.id,
+          target: closestTP
+        };
+      }
+      // If SL is closer but we're in profit, TP was likely hit first
+      // (price would have had to cross TP to get to current exit in profit)
+      if (closestTP) {
+        return {
+          type: 'take_profit',
+          targetId: closestTP.id,
+          target: closestTP
+        };
+      }
+    }
+
+    // Fallback: if we can't determine, return null (will show as 'none')
+    return null;
   }
 
   /**
@@ -272,7 +508,11 @@ class TargetHitAnalysisService {
         candle: crossings.take_profits[target.id]?.candle || null
       })),
 
-      conclusion: this.generateConclusion(firstHit, crossings, stopLoss, takeProfitTargets)
+      // Track if we used exit price analysis (no candle data available)
+      used_exit_price_analysis: crossings.stop_loss?.candle === null && 
+        Object.values(crossings.take_profits).some(tp => tp && tp.candle === null),
+
+      conclusion: this.generateConclusion(firstHit, crossings, stopLoss, takeProfitTargets, result.used_exit_price_analysis)
     };
 
     return result;
@@ -281,8 +521,13 @@ class TargetHitAnalysisService {
   /**
    * Generate a human-readable conclusion
    */
-  static generateConclusion(firstHit, crossings, stopLoss, takeProfitTargets) {
+  static generateConclusion(firstHit, crossings, stopLoss, takeProfitTargets, usedExitPriceAnalysis = false) {
     if (firstHit.type === 'none') {
+      // If we used exit price analysis but still got 'none', it means we couldn't determine which target was hit
+      // In this case, don't show the "neither" message since price data wasn't available
+      if (usedExitPriceAnalysis) {
+        return 'Unable to determine which target was hit first due to unavailable price data.';
+      }
       return 'Neither stop loss nor take profit levels were reached during this trade.';
     }
 
@@ -386,11 +631,10 @@ class TargetHitAnalysisService {
     let potentialR = null;
     const MAX_POTENTIAL_R = 10;
 
-    if (manual_target_hit_first) {
-      if (manual_target_hit_first === 'stop_loss') {
-        // Original SL was hit first (without management, would have lost 1R)
-        potentialR = -1;
-      } else if (manual_target_hit_first === 'take_profit') {
+    if (manual_target_hit_first === 'stop_loss') {
+      // Original SL was hit first (without management, would have lost 1R)
+      potentialR = -1;
+    } else if (manual_target_hit_first === 'take_profit') {
         // Final TP was hit - use the final TP target's R value
         let finalTpR = null;
         if (take_profit_targets && Array.isArray(take_profit_targets) && take_profit_targets.length > 0) {
@@ -422,58 +666,57 @@ class TargetHitAnalysisService {
             return 0;
           }
         }
-      } else if (manual_target_hit_first === 'neither') {
-        // Manual exit - determine what would have happened without management
-        if (stopLossChanged) {
-          // Stop loss was moved - check if exit was at trailed SL
-          const exitAtTrailedSL = Math.abs(exitPrice - currentStopLoss) < (risk * 0.1);
+    } else {
+      // No manual_target_hit_first set - infer from context (manual exit, stop loss changes, etc.)
+      if (stopLossChanged) {
+        // Stop loss was moved - check if exit was at trailed SL
+        const exitAtTrailedSL = Math.abs(exitPrice - currentStopLoss) < (risk * 0.1);
+        
+        if (exitAtTrailedSL) {
+          const originalSLHit = (isLong && exitPrice <= originalStopLoss) || (!isLong && exitPrice >= originalStopLoss);
           
-          if (exitAtTrailedSL) {
-            const originalSLHit = (isLong && exitPrice <= originalStopLoss) || (!isLong && exitPrice >= originalStopLoss);
+          if (!originalSLHit) {
+            // Case 3: Got taken out at trailed SL, but final TP would have been hit
+            let finalTpR = null;
+            if (take_profit_targets && Array.isArray(take_profit_targets) && take_profit_targets.length > 0) {
+              const sortedTargets = [...take_profit_targets].sort((a, b) => {
+                const priceA = parseFloat(a.price);
+                const priceB = parseFloat(b.price);
+                return isLong ? priceB - priceA : priceA - priceB;
+              });
+              const finalTarget = sortedTargets[0];
+              if (finalTarget && finalTarget.price) {
+                const finalTpPrice = parseFloat(finalTarget.price);
+                const finalTpPL = isLong ? finalTpPrice - entryPrice : entryPrice - finalTpPrice;
+                finalTpR = finalTpPL / risk;
+              }
+            }
             
-            if (!originalSLHit) {
-              // Case 3: Got taken out at trailed SL, but final TP would have been hit
-              let finalTpR = null;
-              if (take_profit_targets && Array.isArray(take_profit_targets) && take_profit_targets.length > 0) {
-                const sortedTargets = [...take_profit_targets].sort((a, b) => {
-                  const priceA = parseFloat(a.price);
-                  const priceB = parseFloat(b.price);
-                  return isLong ? priceB - priceA : priceA - priceB;
-                });
-                const finalTarget = sortedTargets[0];
-                if (finalTarget && finalTarget.price) {
-                  const finalTpPrice = parseFloat(finalTarget.price);
-                  const finalTpPL = isLong ? finalTpPrice - entryPrice : entryPrice - finalTpPrice;
-                  finalTpR = finalTpPL / risk;
-                }
+            if (!finalTpR && take_profit) {
+              const tpPL = isLong ? parseFloat(take_profit) - entryPrice : entryPrice - parseFloat(take_profit);
+              finalTpR = tpPL / risk;
+            }
+            
+            if (finalTpR !== null) {
+              if (finalTpR > MAX_POTENTIAL_R) {
+                finalTpR = MAX_POTENTIAL_R;
               }
-              
-              if (!finalTpR && take_profit) {
-                const tpPL = isLong ? parseFloat(take_profit) - entryPrice : entryPrice - parseFloat(take_profit);
-                finalTpR = tpPL / risk;
-              }
-              
-              if (finalTpR !== null) {
-                if (finalTpR > MAX_POTENTIAL_R) {
-                  finalTpR = MAX_POTENTIAL_R;
-                }
-                potentialR = finalTpR;
-              } else {
-                potentialR = 0;
-              }
+              potentialR = finalTpR;
             } else {
-              // Case 2: Original SL was hit - trailing prevented full loss
-              potentialR = -1;
+              potentialR = 0;
             }
           } else {
-            // Manual exit not at trailed SL
-            const originalSLHit = (isLong && exitPrice <= originalStopLoss) || (!isLong && exitPrice >= originalStopLoss);
-            potentialR = originalSLHit ? -1 : 0;
+            // Case 2: Original SL was hit - trailing prevented full loss
+            potentialR = -1;
           }
         } else {
-          // No stop loss change - just manual exit
-          potentialR = 0;
+          // Manual exit not at trailed SL
+          const originalSLHit = (isLong && exitPrice <= originalStopLoss) || (!isLong && exitPrice >= originalStopLoss);
+          potentialR = originalSLHit ? -1 : 0;
         }
+      } else {
+        // No stop loss change - just manual exit
+        potentialR = 0;
       }
     }
 

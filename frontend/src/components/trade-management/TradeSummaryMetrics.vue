@@ -372,11 +372,48 @@ function initializeTakeProfitTargets() {
   }
 
   const targets = props.trade?.take_profit_targets || []
-  console.log('[TP TARGETS] Initializing from trade data:', targets)
-  editableTakeProfitTargets.value = Array.isArray(targets) ? targets.map(t => ({
-    price: t.price,
-    shares: t.shares || null
-  })) : []
+  const singleTakeProfit = props.trade?.take_profit
+  
+  console.log('[TP TARGETS] Initializing from trade data:', { targets, singleTakeProfit })
+  
+  // Build the complete list of targets
+  // The edit page stores TP1 in take_profit and TP2+ in take_profit_targets
+  // The trade-management page expects all targets in take_profit_targets
+  // So we need to merge take_profit as TP1 if it's not already in the array
+  let allTargets = []
+  
+  if (Array.isArray(targets) && targets.length > 0) {
+    // Check if the first target matches take_profit (to avoid duplication)
+    const firstTargetPrice = targets[0]?.price ? parseFloat(targets[0].price) : null
+    const takeProfitPrice = singleTakeProfit ? parseFloat(singleTakeProfit) : null
+    
+    // If take_profit exists and doesn't match the first target, add it as TP1
+    // This handles the case where edit page saved TP1 in take_profit and TP2+ in take_profit_targets
+    if (takeProfitPrice && (!firstTargetPrice || Math.abs(firstTargetPrice - takeProfitPrice) > 0.01)) {
+      // take_profit exists but doesn't match first target - add it as TP1
+      console.log('[TP TARGETS] take_profit doesn\'t match first target, adding as TP1:', takeProfitPrice)
+      allTargets.push({
+        price: takeProfitPrice,
+        shares: null
+      })
+    }
+    
+    // Add all targets from the array (these are TP2+ from edit page, or all targets if TP1 was included)
+    allTargets.push(...targets.map(t => ({
+      price: t.price ? parseFloat(t.price) : null,
+      shares: t.shares || null
+    })))
+  } else if (singleTakeProfit) {
+    // No targets array, but we have a single take_profit - use it as TP1
+    console.log('[TP TARGETS] No targets array, using take_profit as TP1')
+    allTargets.push({
+      price: parseFloat(singleTakeProfit),
+      shares: null
+    })
+  }
+  
+  editableTakeProfitTargets.value = allTargets
+  console.log('[TP TARGETS] Final initialized targets:', editableTakeProfitTargets.value)
 }
 
 // Watch for trade changes (by ID) and reinitialize targets
