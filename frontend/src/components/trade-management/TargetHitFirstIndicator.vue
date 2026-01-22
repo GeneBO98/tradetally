@@ -205,7 +205,12 @@
         </div>
 
         <!-- Conclusion -->
-        <div v-if="analysis.analysis_result?.conclusion" class="p-3 bg-primary-50 dark:bg-primary-900/20 rounded-lg">
+        <!-- Hide the old "Neither" message - it's not accurate when price data isn't available -->
+        <div 
+          v-if="analysis.analysis_result?.conclusion && 
+                !analysis.analysis_result.conclusion.includes('Neither stop loss nor take profit')" 
+          class="p-3 bg-primary-50 dark:bg-primary-900/20 rounded-lg"
+        >
           <p class="text-sm text-primary-800 dark:text-primary-200">
             {{ analysis.analysis_result.conclusion }}
           </p>
@@ -252,7 +257,14 @@ onMounted(() => {
     mode.value = 'manual'
     manualSelection.value = props.trade.manual_target_hit_first
   } else if (props.trade.target_hit_analysis) {
-    analysis.value = props.trade.target_hit_analysis
+    // Only use cached analysis if it doesn't have the old "Neither" message
+    const cachedAnalysis = props.trade.target_hit_analysis
+    if (!cachedAnalysis?.analysis_result?.conclusion?.includes('Neither stop loss nor take profit')) {
+      analysis.value = cachedAnalysis
+    } else if (props.autoAnalyze && props.trade.stop_loss && props.trade.entry_time) {
+      // If cached analysis has old message, re-run analysis
+      runAnalysis()
+    }
   } else if (props.autoAnalyze && props.trade.stop_loss && props.trade.entry_time) {
     runAnalysis()
   }
@@ -269,7 +281,11 @@ watch(() => props.trade.id, () => {
     manualSelection.value = props.trade.manual_target_hit_first
   } else if (props.trade.target_hit_analysis) {
     mode.value = 'auto'
-    analysis.value = props.trade.target_hit_analysis
+    // Only use cached analysis if it doesn't have the old "Neither" message
+    const cachedAnalysis = props.trade.target_hit_analysis
+    if (!cachedAnalysis?.analysis_result?.conclusion?.includes('Neither stop loss nor take profit')) {
+      analysis.value = cachedAnalysis
+    }
   } else {
     mode.value = 'auto'
   }
@@ -300,6 +316,10 @@ const resultLabel = computed(() => {
   if (!result) return 'Unknown'
 
   if (result.first_target_hit === 'none') {
+    // If exit price analysis was used, show a different message
+    if (result.used_exit_price_analysis || analysis.value?.candle_data_used?.source === 'exit_price_analysis') {
+      return 'Unable to Determine'
+    }
     return 'Neither Target Hit'
   }
 
