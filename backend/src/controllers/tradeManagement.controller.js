@@ -15,10 +15,26 @@ const { v4: uuidv4 } = require('uuid');
  * @returns {Object} R-Multiple analysis results
  */
 function calculateRMultiples(trade) {
-  const { entry_price, exit_price, stop_loss, take_profit, take_profit_targets, side, pnl, quantity } = trade;
+  const { entry_price, exit_price, stop_loss, take_profit, take_profit_targets, side, pnl, quantity, manual_target_hit_first } = trade;
+
+  logger.debug('[R-CALC] ========== calculateRMultiples START ==========');
+  logger.debug('[R-CALC] Input trade data:', {
+    id: trade.id,
+    symbol: trade.symbol,
+    side,
+    entry_price,
+    exit_price,
+    stop_loss,
+    take_profit,
+    take_profit_targets: take_profit_targets ? JSON.stringify(take_profit_targets) : null,
+    quantity,
+    pnl,
+    manual_target_hit_first
+  });
 
   // Validate required fields
   if (!entry_price || !exit_price || !stop_loss) {
+    logger.debug('[R-CALC] Missing required fields - returning error');
     return {
       error: 'Missing required fields for R-Multiple calculation',
       has_stop_loss: !!stop_loss,
@@ -29,28 +45,95 @@ function calculateRMultiples(trade) {
   const entryPrice = parseFloat(entry_price);
   const exitPrice = parseFloat(exit_price);
   const stopLoss = parseFloat(stop_loss);
+  logger.debug('[R-CALC] Parsed prices:', { entryPrice, exitPrice, stopLoss });
 
-  // Determine the take profit price to use
+  // Determine the take profit price to use for single-target analysis
   // Priority: take_profit_targets (first/primary target) > take_profit
   let takeProfit = null;
   const targets = take_profit_targets;
+  logger.debug('[R-CALC] Processing take profit targets:', {
+    hasTargetsArray: !!(targets && Array.isArray(targets)),
+    targetsCount: targets && Array.isArray(targets) ? targets.length : 0,
+    hasSingleTakeProfit: !!take_profit
+  });
+
   if (targets && Array.isArray(targets) && targets.length > 0) {
     const firstTarget = targets[0];
+    logger.debug('[R-CALC] First target from array:', JSON.stringify(firstTarget));
     if (firstTarget && firstTarget.price) {
       takeProfit = parseFloat(firstTarget.price);
+      logger.debug('[R-CALC] Using first target price as takeProfit:', takeProfit);
     }
   }
   if (!takeProfit && take_profit) {
     takeProfit = parseFloat(take_profit);
+    logger.debug('[R-CALC] Using single take_profit field:', takeProfit);
+  }
+
+  // Calculate weighted average target R for multiple targets
+  // IMPORTANT: If take_profit_targets has items, use ONLY the array (don't also add take_profit)
+  // This prevents double-counting when take_profit and take_profit_targets[0] have the same price
+  let weightedTargetR = null;
+  if (targets && Array.isArray(targets) && targets.length > 0) {
+    logger.debug('[R-CALC] Calculating weighted average R for multiple targets (using array only)');
+    const isLong = side === 'long';
+    const risk = isLong ? entryPrice - stopLoss : stopLoss - entryPrice;
+    logger.debug('[R-CALC] Risk calculation:', { isLong, risk });
+
+    if (risk > 0) {
+      let totalShares = 0;
+      let weightedSum = 0;
+
+      // Calculate total shares from targets to determine if we need to add remaining shares for first target
+      const specifiedShares = targets.reduce((sum, t) => sum + (parseFloat(t.shares || t.quantity) || 0), 0);
+      const totalQuantity = parseFloat(quantity) || 1;
+
+      // Process all targets from the array
+      targets.forEach((t, index) => {
+        if (t.price) {
+          const tpPrice = parseFloat(t.price);
+          const tpR = isLong ? (tpPrice - entryPrice) / risk : (entryPrice - tpPrice) / risk;
+
+          let shares;
+          if (t.shares || t.quantity) {
+            // Target has specified shares
+            shares = parseFloat(t.shares || t.quantity);
+          } else if (index === 0 && specifiedShares > 0) {
+            // First target without shares, but other targets have shares - use remaining
+            shares = Math.max(1, totalQuantity - specifiedShares);
+          } else if (specifiedShares === 0) {
+            // No targets have shares specified - distribute equally
+            shares = totalQuantity / targets.length;
+          } else {
+            // Default to 1 share
+            shares = 1;
+          }
+
+          weightedSum += tpR * shares;
+          totalShares += shares;
+          logger.debug(`[R-CALC] Target ${index + 1} (TP${index + 1}) contribution:`, { tpPrice, tpR: tpR.toFixed(2), shares });
+        }
+      });
+
+      if (totalShares > 0) {
+        weightedTargetR = weightedSum / totalShares;
+        logger.debug('[R-CALC] Weighted average calculation:', { weightedSum: weightedSum.toFixed(2), totalShares, weightedTargetR: weightedTargetR.toFixed(2) });
+      }
+    } else {
+      logger.debug('[R-CALC] Risk is not positive, skipping weighted calculation');
+    }
   }
 
   let risk, actualPL, targetPL, actualR, targetR, rLost;
 
+  logger.debug('[R-CALC] ========== R-Value Calculation ==========');
   if (side === 'long') {
     // For long positions: risk is entry - stop loss
     risk = entryPrice - stopLoss;
+    logger.debug('[R-CALC] LONG trade - risk per share:', risk);
 
     if (risk <= 0) {
+      logger.debug('[R-CALC] Invalid risk (<=0) for long trade');
       return { error: 'Invalid stop loss position for long trade (stop loss must be below entry)' };
     }
 
@@ -59,6 +142,7 @@ function calculateRMultiples(trade) {
 
     // Calculate actual R
     actualR = actualPL / risk;
+    logger.debug('[R-CALC] LONG actualPL and actualR:', { actualPL: actualPL.toFixed(2), actualR: actualR.toFixed(2) });
 
     // Calculate target R if take profit exists
     if (takeProfit) {
@@ -68,12 +152,15 @@ function calculateRMultiples(trade) {
       // R lost is how much potential R was left on the table
       // Positive means exited early, negative means exceeded target
       rLost = targetR - actualR;
+      logger.debug('[R-CALC] LONG targetR and rLost:', { targetPL: targetPL.toFixed(2), targetR: targetR.toFixed(2), rLost: rLost.toFixed(2) });
     }
   } else {
     // For short positions: risk is stop loss - entry
     risk = stopLoss - entryPrice;
+    logger.debug('[R-CALC] SHORT trade - risk per share:', risk);
 
     if (risk <= 0) {
+      logger.debug('[R-CALC] Invalid risk (<=0) for short trade');
       return { error: 'Invalid stop loss position for short trade (stop loss must be above entry)' };
     }
 
@@ -82,6 +169,7 @@ function calculateRMultiples(trade) {
 
     // Calculate actual R
     actualR = actualPL / risk;
+    logger.debug('[R-CALC] SHORT actualPL and actualR:', { actualPL: actualPL.toFixed(2), actualR: actualR.toFixed(2) });
 
     // Calculate target R if take profit exists
     if (takeProfit) {
@@ -90,6 +178,7 @@ function calculateRMultiples(trade) {
 
       // R lost is how much potential R was left on the table
       rLost = targetR - actualR;
+      logger.debug('[R-CALC] SHORT targetR and rLost:', { targetPL: targetPL.toFixed(2), targetR: targetR.toFixed(2), rLost: rLost.toFixed(2) });
     }
   }
 
@@ -110,11 +199,69 @@ function calculateRMultiples(trade) {
   const actualPLAmount = actualPL * parseFloat(quantity || 1);
   const targetPLAmount = takeProfit ? targetPL * parseFloat(quantity || 1) : null;
 
+  // Use weighted average target R if available (for multiple targets)
+  const effectiveTargetR = weightedTargetR !== null ? weightedTargetR : targetR;
+  const effectiveRLost = effectiveTargetR !== undefined ? effectiveTargetR - actualR : rLost;
+  logger.debug('[R-CALC] Effective values:', {
+    effectiveTargetR: effectiveTargetR?.toFixed(2) ?? null,
+    effectiveRLost: effectiveRLost?.toFixed(2) ?? null,
+    usingWeightedAverage: weightedTargetR !== null
+  });
+
+  // Calculate Management R based on manual_target_hit_first
+  // This shows the R impact of trade management decisions
+  logger.debug('[R-CALC] ========== Management R Calculation ==========');
+  logger.debug('[R-CALC] manual_target_hit_first value:', manual_target_hit_first);
+
+  let managementR = null;
+  if (manual_target_hit_first) {
+    if (manual_target_hit_first === 'stop_loss') {
+      // SL was hit first (without management, would have lost 1R)
+      // Management R = actualR - (-1R) = actualR + 1R
+      // Positive means management helped (saved R from being lost)
+      managementR = actualR + 1;
+      logger.debug(`[R-CALC] SL hit first: managementR = actualR(${actualR.toFixed(2)}) + 1 = ${managementR.toFixed(2)}`);
+      logger.info(`[R-CALC] SL hit first: managementR = actualR(${actualR.toFixed(2)}) + 1 = ${managementR.toFixed(2)}`);
+    } else if (manual_target_hit_first === 'take_profit') {
+      // TP was hit first (could have achieved full target R)
+      // Management R = actualR - targetR
+      // Negative means left R on table, positive means exceeded target
+      if (effectiveTargetR !== undefined && effectiveTargetR !== null) {
+        managementR = actualR - effectiveTargetR;
+        logger.debug(`[R-CALC] TP hit first: managementR = actualR(${actualR.toFixed(2)}) - targetR(${effectiveTargetR.toFixed(2)}) = ${managementR.toFixed(2)}`);
+        logger.info(`[R-CALC] TP hit first: managementR = actualR(${actualR.toFixed(2)}) - targetR(${effectiveTargetR.toFixed(2)}) = ${managementR.toFixed(2)}`);
+      } else {
+        logger.debug('[R-CALC] TP hit first but no effectiveTargetR available');
+      }
+    } else if (manual_target_hit_first === 'neither') {
+      logger.debug('[R-CALC] Neither SL nor TP was hit first - no management R impact');
+    }
+  } else {
+    logger.debug('[R-CALC] No manual_target_hit_first set - management R will be null');
+  }
+
+  logger.debug('[R-CALC] ========== Final Results ==========');
+  logger.debug('[R-CALC] Final values:', {
+    actual_r: Math.round(actualR * 100) / 100,
+    target_r: targetR !== undefined ? Math.round(targetR * 100) / 100 : null,
+    r_lost: rLost !== undefined ? Math.round(rLost * 100) / 100 : null,
+    weighted_target_r: weightedTargetR !== null ? Math.round(weightedTargetR * 100) / 100 : null,
+    effective_r_lost: effectiveRLost !== undefined ? Math.round(effectiveRLost * 100) / 100 : null,
+    management_r: managementR !== null ? Math.round(managementR * 100) / 100 : null
+  });
+
   return {
     // R-Multiple values
     actual_r: Math.round(actualR * 100) / 100,
     target_r: targetR !== undefined ? Math.round(targetR * 100) / 100 : null,
     r_lost: rLost !== undefined ? Math.round(rLost * 100) / 100 : null,
+
+    // Weighted average values (for multiple TP targets)
+    weighted_target_r: weightedTargetR !== null ? Math.round(weightedTargetR * 100) / 100 : null,
+    effective_r_lost: effectiveRLost !== undefined ? Math.round(effectiveRLost * 100) / 100 : null,
+
+    // Management R (impact of trade management based on which target was hit first)
+    management_r: managementR !== null ? Math.round(managementR * 100) / 100 : null,
 
     // Dollar amounts
     risk_per_share: Math.round(risk * 100) / 100,
@@ -180,7 +327,10 @@ function calculateManagementScore(actualR, targetR, rLost) {
 function calculateTradeR(trade) {
   const { entry_price, exit_price, stop_loss, take_profit, take_profit_targets, side } = trade;
 
+  logger.debug('[R-BATCH] calculateTradeR for trade:', { id: trade.id, symbol: trade.symbol, side });
+
   if (!entry_price || !exit_price || !stop_loss) {
+    logger.debug('[R-BATCH] Missing required fields, returning null');
     return null;
   }
 
@@ -199,44 +349,57 @@ function calculateTradeR(trade) {
     const firstTarget = targets[0];
     if (firstTarget && firstTarget.price) {
       takeProfit = parseFloat(firstTarget.price);
+      logger.debug('[R-BATCH] Using first target price:', takeProfit);
     }
   }
 
   // Fall back to single take_profit if no targets
   if (!takeProfit && take_profit) {
     takeProfit = parseFloat(take_profit);
+    logger.debug('[R-BATCH] Using single take_profit:', takeProfit);
   }
 
   let risk, actualR, targetR;
 
   if (side === 'long') {
     risk = entryPrice - stopLoss;
-    if (risk <= 0) return null;
+    if (risk <= 0) {
+      logger.debug('[R-BATCH] Invalid risk for long trade');
+      return null;
+    }
     actualR = (exitPrice - entryPrice) / risk;
     if (takeProfit) {
       targetR = (takeProfit - entryPrice) / risk;
     }
+    logger.debug('[R-BATCH] LONG calculated:', { risk: risk.toFixed(2), actualR: actualR.toFixed(2), targetR: targetR?.toFixed(2) });
   } else {
     risk = stopLoss - entryPrice;
-    if (risk <= 0) return null;
+    if (risk <= 0) {
+      logger.debug('[R-BATCH] Invalid risk for short trade');
+      return null;
+    }
     actualR = (entryPrice - exitPrice) / risk;
     if (takeProfit) {
       targetR = (entryPrice - takeProfit) / risk;
     }
+    logger.debug('[R-BATCH] SHORT calculated:', { risk: risk.toFixed(2), actualR: actualR.toFixed(2), targetR: targetR?.toFixed(2) });
   }
 
   // Cap potential R at 10R to prevent unrealistic values from distorting charts
   // A 10R target is already an excellent trade; anything beyond is usually a data entry error
   const MAX_POTENTIAL_R = 10;
   if (targetR !== undefined && targetR > MAX_POTENTIAL_R) {
+    logger.debug(`[R-BATCH] Capping potential R from ${targetR.toFixed(2)} to ${MAX_POTENTIAL_R}`);
     logger.info(`[R-CALC] Capping potential R from ${targetR.toFixed(2)} to ${MAX_POTENTIAL_R} for trade ${trade.id}`);
     targetR = MAX_POTENTIAL_R;
   }
 
-  return {
+  const result = {
     actual_r: Math.round(actualR * 100) / 100,
     target_r: targetR !== undefined ? Math.round(targetR * 100) / 100 : null
   };
+  logger.debug('[R-BATCH] Final result:', result);
+  return result;
 }
 
 const tradeManagementController = {
@@ -353,6 +516,9 @@ const tradeManagementController = {
       const userId = req.user.id;
       const { tradeId } = req.params;
 
+      logger.debug('[R-ANALYSIS] ========================================');
+      logger.debug('[R-ANALYSIS] getRMultipleAnalysis called:', { userId, tradeId });
+
       // Fetch the trade
       const result = await db.query(
         `SELECT * FROM trades WHERE id = $1 AND user_id = $2`,
@@ -360,13 +526,27 @@ const tradeManagementController = {
       );
 
       if (result.rows.length === 0) {
+        logger.debug('[R-ANALYSIS] Trade not found');
         return res.status(404).json({ error: 'Trade not found' });
       }
 
       const trade = result.rows[0];
+      logger.debug('[R-ANALYSIS] Trade loaded from DB:', {
+        id: trade.id,
+        symbol: trade.symbol,
+        side: trade.side,
+        entry_price: trade.entry_price,
+        exit_price: trade.exit_price,
+        stop_loss: trade.stop_loss,
+        take_profit: trade.take_profit,
+        take_profit_targets: trade.take_profit_targets ? JSON.stringify(trade.take_profit_targets) : null,
+        manual_target_hit_first: trade.manual_target_hit_first,
+        target_hit_analysis: trade.target_hit_analysis ? 'exists' : null
+      });
 
       // Check if trade is closed
       if (!trade.exit_price) {
+        logger.debug('[R-ANALYSIS] Trade not closed (no exit_price)');
         return res.status(400).json({
           error: 'Trade must be closed for R-Multiple analysis',
           trade_status: 'open'
@@ -375,6 +555,7 @@ const tradeManagementController = {
 
       // Check if stop loss is set
       if (!trade.stop_loss) {
+        logger.debug('[R-ANALYSIS] Stop loss not set');
         return res.status(400).json({
           error: 'Stop loss must be set for R-Multiple analysis',
           needs_stop_loss: true,
@@ -382,8 +563,10 @@ const tradeManagementController = {
         });
       }
 
+      logger.debug('[R-ANALYSIS] Calling calculateRMultiples...');
       // Calculate R-Multiples
       const analysis = calculateRMultiples(trade);
+      logger.debug('[R-ANALYSIS] Analysis result:', JSON.stringify(analysis));
 
       if (analysis.error) {
         return res.status(400).json({ error: analysis.error });
@@ -407,6 +590,20 @@ const tradeManagementController = {
       }));
 
       // Log what we're returning for debugging
+      logger.debug('[R-ANALYSIS] ========== Response Summary ==========');
+      logger.debug('[R-ANALYSIS] Trade data being returned:', {
+        id: trade.id,
+        symbol: trade.symbol,
+        take_profit_targets: trade.take_profit_targets ? JSON.stringify(trade.take_profit_targets) : null,
+        manual_target_hit_first: trade.manual_target_hit_first
+      });
+      logger.debug('[R-ANALYSIS] Analysis data being returned:', {
+        actual_r: analysis.actual_r,
+        target_r: analysis.target_r,
+        weighted_target_r: analysis.weighted_target_r,
+        management_r: analysis.management_r,
+        effective_r_lost: analysis.effective_r_lost
+      });
       logger.info(`[TRADE-MGMT] Returning trade ${trade.id} with take_profit_targets:`, JSON.stringify(trade.take_profit_targets));
 
       res.json({
@@ -918,9 +1115,18 @@ const tradeManagementController = {
       const { tradeId } = req.params;
       const { manual_target_hit_first } = req.body;
 
+      logger.debug('[MANUAL-TARGET] ========================================');
+      logger.debug('[MANUAL-TARGET] setManualTargetHitFirst called:', {
+        userId,
+        tradeId,
+        manual_target_hit_first,
+        body: JSON.stringify(req.body)
+      });
+
       // Validate the value
       const validValues = ['take_profit', 'stop_loss', 'neither', null];
       if (!validValues.includes(manual_target_hit_first)) {
+        logger.debug('[MANUAL-TARGET] Invalid value provided:', manual_target_hit_first);
         return res.status(400).json({
           error: 'Invalid value. Must be: take_profit, stop_loss, neither, or null'
         });
@@ -928,15 +1134,22 @@ const tradeManagementController = {
 
       // Verify trade exists and belongs to user
       const result = await db.query(
-        `SELECT id, stop_loss, take_profit FROM trades WHERE id = $1 AND user_id = $2`,
+        `SELECT id, stop_loss, take_profit, take_profit_targets FROM trades WHERE id = $1 AND user_id = $2`,
         [tradeId, userId]
       );
 
       if (result.rows.length === 0) {
+        logger.debug('[MANUAL-TARGET] Trade not found');
         return res.status(404).json({ error: 'Trade not found' });
       }
 
       const trade = result.rows[0];
+      logger.debug('[MANUAL-TARGET] Current trade state:', {
+        id: trade.id,
+        stop_loss: trade.stop_loss,
+        take_profit: trade.take_profit,
+        take_profit_targets: trade.take_profit_targets ? JSON.stringify(trade.take_profit_targets) : null
+      });
 
       // Warn if setting manual value without stop_loss
       if (!trade.stop_loss && manual_target_hit_first !== null) {
@@ -947,8 +1160,10 @@ const tradeManagementController = {
       let updateQuery;
       let updateValues;
 
+      logger.debug('[MANUAL-TARGET] Preparing update query...');
       if (manual_target_hit_first !== null) {
         // Setting a manual value - also clear automated analysis
+        logger.debug('[MANUAL-TARGET] Setting manual value and clearing automated analysis');
         updateQuery = `
           UPDATE trades
           SET manual_target_hit_first = $1, target_hit_analysis = NULL, updated_at = NOW()
@@ -958,6 +1173,7 @@ const tradeManagementController = {
         updateValues = [manual_target_hit_first, tradeId, userId];
       } else {
         // Clearing manual value - keep automated analysis if exists
+        logger.debug('[MANUAL-TARGET] Clearing manual value (keeping automated analysis if exists)');
         updateQuery = `
           UPDATE trades
           SET manual_target_hit_first = NULL, updated_at = NOW()
@@ -967,18 +1183,30 @@ const tradeManagementController = {
         updateValues = [tradeId, userId];
       }
 
+      logger.debug('[MANUAL-TARGET] Executing update query...');
       const updateResult = await db.query(updateQuery, updateValues);
+
+      const updatedTrade = updateResult.rows[0];
+      logger.debug('[MANUAL-TARGET] Update successful:', {
+        id: updatedTrade.id,
+        manual_target_hit_first: updatedTrade.manual_target_hit_first,
+        target_hit_analysis: updatedTrade.target_hit_analysis ? 'exists' : null
+      });
 
       logger.info(`[TRADE-MANAGEMENT] Set manual_target_hit_first=${manual_target_hit_first} for trade ${tradeId}`);
 
-      res.json({
+      const response = {
         success: true,
         trade_id: tradeId,
-        manual_target_hit_first: updateResult.rows[0].manual_target_hit_first,
-        target_hit_analysis: updateResult.rows[0].target_hit_analysis
-      });
+        manual_target_hit_first: updatedTrade.manual_target_hit_first,
+        target_hit_analysis: updatedTrade.target_hit_analysis
+      };
+      logger.debug('[MANUAL-TARGET] Sending response:', JSON.stringify(response));
+
+      res.json(response);
     } catch (error) {
       logger.error('Error setting manual target hit first:', error);
+      logger.debug('[MANUAL-TARGET] Error details:', error.stack);
       res.status(500).json({ error: 'Failed to set manual target hit first' });
     }
   }

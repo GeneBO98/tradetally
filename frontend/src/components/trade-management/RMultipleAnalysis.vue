@@ -44,8 +44,20 @@
           </div>
         </div>
 
-        <!-- R Lost/Gained -->
-        <div v-if="effectiveRLost !== null" class="p-4 rounded-lg" :class="getRLostClass">
+        <!-- Management R (when target hit analysis is set) -->
+        <div v-if="analysis.management_r !== null && analysis.management_r !== undefined" class="p-4 rounded-lg" :class="getManagementRClass">
+          <div class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+            Management Impact
+          </div>
+          <div class="text-3xl font-bold" :class="analysis.management_r >= 0 ? 'text-green-600 dark:text-green-400' : 'text-yellow-600 dark:text-yellow-400'">
+            {{ formatR(analysis.management_r) }}
+          </div>
+          <div class="text-sm text-gray-600 dark:text-gray-400 mt-1">
+            {{ getManagementRDescription }}
+          </div>
+        </div>
+        <!-- R Lost/Gained (when no target hit analysis) -->
+        <div v-else-if="effectiveRLost !== null" class="p-4 rounded-lg" :class="getRLostClass">
           <div class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
             {{ effectiveRLost > 0 ? 'R Left on Table' : 'R Exceeded' }}
           </div>
@@ -198,11 +210,17 @@ const weightedAverageR = computed(() => {
   return weightedSum / totalShares
 })
 
-// Effective target R (weighted avg if available, otherwise analysis.target_r)
+// Effective target R (prefer backend weighted_target_r, then frontend calculation, then single target_r)
 const effectiveTargetR = computed(() => {
+  // First prefer backend-calculated weighted average
+  if (props.analysis.weighted_target_r !== null && props.analysis.weighted_target_r !== undefined) {
+    return props.analysis.weighted_target_r
+  }
+  // Then try frontend-calculated weighted average
   if (weightedAverageR.value !== null) {
     return Math.round(weightedAverageR.value * 100) / 100
   }
+  // Fall back to single target R
   return props.analysis.target_r
 })
 
@@ -214,8 +232,12 @@ const effectivePotentialPL = computed(() => {
   return props.analysis.target_pl_amount
 })
 
-// Effective R lost (recalculated if using weighted avg)
+// Effective R lost (prefer backend calculation, then frontend)
 const effectiveRLost = computed(() => {
+  // Prefer backend-calculated effective R lost
+  if (props.analysis.effective_r_lost !== null && props.analysis.effective_r_lost !== undefined) {
+    return props.analysis.effective_r_lost
+  }
   if (effectiveTargetR.value === null) return null
   return Math.round((effectiveTargetR.value - props.analysis.actual_r) * 100) / 100
 })
@@ -250,6 +272,39 @@ const getRLostDescription = computed(() => {
     return 'Exited before reaching target'
   }
   return 'Exceeded target - excellent management!'
+})
+
+// Management R styling and description (based on target hit analysis)
+const getManagementRClass = computed(() => {
+  const mgmtR = props.analysis.management_r
+  if (mgmtR >= 0) {
+    return 'bg-green-50 dark:bg-green-900/20'
+  }
+  return 'bg-yellow-50 dark:bg-yellow-900/20'
+})
+
+const getManagementRDescription = computed(() => {
+  const mgmtR = props.analysis.management_r
+  if (mgmtR === null || mgmtR === undefined) return ''
+
+  // Check if SL or TP was hit first based on the trade data
+  const targetHitFirst = props.trade?.manual_target_hit_first
+
+  if (targetHitFirst === 'stop_loss') {
+    // SL hit first means management saved them from -1R
+    if (mgmtR > 0) {
+      return `Management saved ${formatR(mgmtR - props.analysis.actual_r)} by moving SL`
+    }
+    return 'SL was hit first - management reduced losses'
+  } else if (targetHitFirst === 'take_profit') {
+    // TP hit first
+    if (mgmtR >= 0) {
+      return 'Exceeded target despite management'
+    }
+    return `Left ${formatR(Math.abs(mgmtR))} on table by trailing too soon`
+  }
+
+  return mgmtR >= 0 ? 'Positive management impact' : 'Left R on table'
 })
 
 const getAssessmentClass = computed(() => {

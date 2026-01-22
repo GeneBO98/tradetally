@@ -142,11 +142,13 @@
                 <div v-if="trade.takeProfit || trade.take_profit || (trade.take_profit_targets && trade.take_profit_targets.length > 0)">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Take Profit</dt>
                   <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono flex flex-wrap gap-x-4 gap-y-1">
-                    <span v-if="trade.take_profit || trade.takeProfit">
+                    <!-- Show single take_profit as TP1 only when NO take_profit_targets exist -->
+                    <span v-if="(trade.take_profit || trade.takeProfit) && (!trade.take_profit_targets || trade.take_profit_targets.length === 0)">
                       <span class="text-xs text-gray-400 mr-1">TP1:</span>${{ formatNumber(trade.take_profit || trade.takeProfit) }}
                     </span>
+                    <!-- Show all targets from take_profit_targets as TP1, TP2, etc. -->
                     <span v-for="(target, index) in (trade.take_profit_targets || [])" :key="index">
-                      <span class="text-xs text-gray-400 mr-1">TP{{ index + 2 }}:</span>${{ formatNumber(target.price) }}
+                      <span class="text-xs text-gray-400 mr-1">TP{{ index + 1 }}:</span>${{ formatNumber(target.price) }}
                       <span v-if="target.shares" class="text-xs text-gray-400 ml-0.5">({{ target.shares }})</span>
                     </span>
                   </dd>

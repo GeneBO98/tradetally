@@ -2,6 +2,7 @@ const db = require('../config/database');
 const AchievementService = require('../services/achievementService');
 const { getUserLocalDate } = require('../utils/timezone');
 const { getFuturesPointValue, extractUnderlyingFromFuturesSymbol } = require('../utils/futuresUtils');
+const logger = require('../utils/logger');
 
 /**
  * Round a numeric value to fit database precision
@@ -311,22 +312,41 @@ class Trade {
     let aggregatedTakeProfitTargets = [];
     let hasExecutionTargets = false;
 
+    logger.debug('[TP-AGGREGATION] ========== TP Target Aggregation ==========');
+    logger.debug('[TP-AGGREGATION] Input data:', {
+      symbol: symbol,
+      hasExecutionList: !!(executionList && executionList.length > 0),
+      executionCount: executionList?.length || 0,
+      hasTradeLevelTargets: !!(takeProfitTargets && takeProfitTargets.length > 0),
+      tradeLevelTargetCount: takeProfitTargets?.length || 0
+    });
+
     if (executionList && executionList.length > 0) {
-      executionList.forEach(exec => {
+      executionList.forEach((exec, index) => {
         if (exec.takeProfitTargets && Array.isArray(exec.takeProfitTargets) && exec.takeProfitTargets.length > 0) {
           hasExecutionTargets = true;
+          logger.debug(`[TP-AGGREGATION] Execution ${index + 1} has ${exec.takeProfitTargets.length} targets:`, JSON.stringify(exec.takeProfitTargets));
           aggregatedTakeProfitTargets.push(...exec.takeProfitTargets);
+        } else {
+          logger.debug(`[TP-AGGREGATION] Execution ${index + 1} has no TP targets`);
         }
       });
     }
 
     // Only use trade-level targets if NO execution-level targets exist
     if (!hasExecutionTargets && takeProfitTargets && takeProfitTargets.length > 0) {
+      logger.debug('[TP-AGGREGATION] Using trade-level targets (no execution targets):', JSON.stringify(takeProfitTargets));
       aggregatedTakeProfitTargets = [...takeProfitTargets];
     }
 
+    logger.debug('[TP-AGGREGATION] Final aggregated targets:', {
+      count: aggregatedTakeProfitTargets.length,
+      source: hasExecutionTargets ? 'executions' : (aggregatedTakeProfitTargets.length > 0 ? 'trade level' : 'none'),
+      targets: aggregatedTakeProfitTargets.length > 0 ? JSON.stringify(aggregatedTakeProfitTargets) : '[]'
+    });
+
     if (aggregatedTakeProfitTargets.length > 0) {
-      console.log(`[TP TARGETS] Using ${aggregatedTakeProfitTargets.length} take profit targets (from ${hasExecutionTargets ? 'executions' : 'trade level'})`);
+      logger.info(`[TP TARGETS] Using ${aggregatedTakeProfitTargets.length} take profit targets (from ${hasExecutionTargets ? 'executions' : 'trade level'})`);
     }
 
     const query = `
