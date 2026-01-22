@@ -372,6 +372,8 @@ const brokerParsers = {
     side: parseSide(row.Side || row.Direction || row.Type),
     commission: parseNumeric(row.Commission || row.Fees),
     fees: parseNumeric(row.Fees),
+    stopLoss: parseNumeric(row['Stop Loss'] || row['Stop Loss Price'] || row['Stop'] || row['SL'] || row.stopLoss || row.stop_loss),
+    takeProfit: parseNumeric(row['Take Profit'] || row['Take Profit Price'] || row['Target'] || row['TP'] || row.takeProfit || row.take_profit),
     broker: 'generic'
   }),
 
@@ -1530,6 +1532,8 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
           fees: mapping.fees_column ? parseNumeric(row[mapping.fees_column]) : 0,
           pnl: mapping.pnl_column ? parseNumeric(row[mapping.pnl_column]) : null,
           notes: mapping.notes_column ? row[mapping.notes_column] : '',
+          stopLoss: mapping.stop_loss_column ? parseNumeric(row[mapping.stop_loss_column]) : null,
+          takeProfit: mapping.take_profit_column ? parseNumeric(row[mapping.take_profit_column]) : null,
           broker: 'custom'
         };
       };
@@ -5396,6 +5400,8 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
             side: side,
             commission: mapping.fees_column ? Math.abs(parseNumeric(row[mapping.fees_column])) : 0,
             fees: mapping.fees_column ? Math.abs(parseNumeric(row[mapping.fees_column])) : 0,
+            stopLoss: mapping.stop_loss_column ? parseNumeric(row[mapping.stop_loss_column]) : null,
+            takeProfit: mapping.take_profit_column ? parseNumeric(row[mapping.take_profit_column]) : null,
             broker: 'custom'
           };
         };

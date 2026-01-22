@@ -220,6 +220,40 @@
                     </option>
                   </select>
                 </div>
+
+                <div>
+                  <label for="stopLossColumn" class="label">Stop Loss Column</label>
+                  <select
+                    id="stopLossColumn"
+                    v-model="mappingForm.stop_loss_column"
+                    class="input"
+                  >
+                    <option value="">Not used</option>
+                    <option v-for="header in csvHeaders" :key="header" :value="header">
+                      {{ header }}
+                    </option>
+                  </select>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Column containing stop loss price values
+                  </p>
+                </div>
+
+                <div>
+                  <label for="takeProfitColumn" class="label">Take Profit Column</label>
+                  <select
+                    id="takeProfitColumn"
+                    v-model="mappingForm.take_profit_column"
+                    class="input"
+                  >
+                    <option value="">Not used</option>
+                    <option v-for="header in csvHeaders" :key="header" :value="header">
+                      {{ header }}
+                    </option>
+                  </select>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Column containing take profit price values
+                  </p>
+                </div>
               </div>
             </details>
 
@@ -351,6 +385,8 @@ const mappingForm = ref({
   pnl_column: '',
   fees_column: '',
   notes_column: '',
+  stop_loss_column: '',
+  take_profit_column: '',
   date_format: 'MM/DD/YYYY',
   delimiter: ',',
   has_header_row: true,
@@ -442,6 +478,22 @@ function autoDetectMappings(headers) {
     h.lower.includes('gain/loss')
   )
   if (pnlMatch) mappingForm.value.pnl_column = pnlMatch.original
+
+  // Stop Loss column (optional)
+  const stopLossMatch = lowerHeaders.find(h =>
+    h.lower.includes('stop') && h.lower.includes('loss') ||
+    h.lower.includes('stop loss') || h.lower.includes('sl') ||
+    h.lower.includes('stop_loss')
+  )
+  if (stopLossMatch) mappingForm.value.stop_loss_column = stopLossMatch.original
+
+  // Take Profit column (optional)
+  const takeProfitMatch = lowerHeaders.find(h =>
+    h.lower.includes('take') && h.lower.includes('profit') ||
+    h.lower.includes('take profit') || h.lower.includes('tp') ||
+    h.lower.includes('target') || h.lower.includes('take_profit')
+  )
+  if (takeProfitMatch) mappingForm.value.take_profit_column = takeProfitMatch.original
 }
 
 async function saveMapping() {
@@ -478,6 +530,8 @@ async function saveMapping() {
       pnl_column: mappingForm.value.pnl_column || null,
       fees_column: mappingForm.value.fees_column || null,
       notes_column: mappingForm.value.notes_column || null,
+      stop_loss_column: mappingForm.value.stop_loss_column || null,
+      take_profit_column: mappingForm.value.take_profit_column || null,
       date_format: mappingForm.value.date_format || 'MM/DD/YYYY',
       delimiter: mappingForm.value.delimiter || ',',
       has_header_row: mappingForm.value.has_header_row !== undefined ? mappingForm.value.has_header_row : true,

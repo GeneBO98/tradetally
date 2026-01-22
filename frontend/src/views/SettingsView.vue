@@ -90,6 +90,23 @@
               </div>
 
               <div>
+                <label for="defaultStopLossType" class="label">Default Stop Loss Type</label>
+                <select
+                  id="defaultStopLossType"
+                  v-model="analyticsForm.defaultStopLossType"
+                  class="input"
+                >
+                  <option value="percent">Percentage</option>
+                  <option value="lod">Low of Day (LoD)</option>
+                </select>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  <strong>Percentage:</strong> Use a fixed percentage below/above entry price.
+                  <br>
+                  <strong>Low of Day (LoD):</strong> Use the low price of the entry day (Qullamaggie-style swing trades). Only applies to long positions.
+                </p>
+              </div>
+
+              <div v-if="analyticsForm.defaultStopLossType === 'percent'">
                 <label for="defaultStopLoss" class="label">Default Stop Loss Percentage</label>
                 <div class="mt-1 relative rounded-md shadow-sm">
                   <input
@@ -1445,6 +1462,7 @@ const cusipAiLoading = ref(false)
 const analyticsForm = ref({
   statisticsCalculation: 'average',
   autoCloseExpiredOptions: true,
+  defaultStopLossType: 'percent',
   defaultStopLossPercent: null,
   defaultTakeProfitPercent: null
 })
@@ -1742,6 +1760,7 @@ async function loadAnalyticsSettings() {
       autoCloseExpiredOptions: response.data.settings.autoCloseExpiredOptions !== undefined
         ? response.data.settings.autoCloseExpiredOptions
         : true,
+      defaultStopLossType: response.data.settings.defaultStopLossType || 'percent',
       defaultStopLossPercent: response.data.settings.defaultStopLossPercent || null,
       defaultTakeProfitPercent: response.data.settings.defaultTakeProfitPercent || null
     }
@@ -1750,6 +1769,7 @@ async function loadAnalyticsSettings() {
     // Default values if loading fails
     analyticsForm.value.statisticsCalculation = 'average'
     analyticsForm.value.autoCloseExpiredOptions = true
+    analyticsForm.value.defaultStopLossType = 'percent'
     analyticsForm.value.defaultStopLossPercent = null
     analyticsForm.value.defaultTakeProfitPercent = null
   }
@@ -1761,6 +1781,7 @@ async function updateAnalyticsSettings() {
     await api.put('/settings', {
       statisticsCalculation: analyticsForm.value.statisticsCalculation,
       autoCloseExpiredOptions: analyticsForm.value.autoCloseExpiredOptions,
+      defaultStopLossType: analyticsForm.value.defaultStopLossType || 'percent',
       defaultStopLossPercent: analyticsForm.value.defaultStopLossPercent || null,
       defaultTakeProfitPercent: analyticsForm.value.defaultTakeProfitPercent || null
     })
