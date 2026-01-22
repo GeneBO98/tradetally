@@ -72,10 +72,10 @@
           </div>
         </div>
 
-        <!-- Take Profit Column (TP1 + Additional Targets stacked vertically) -->
+        <!-- Take Profit Column -->
         <div class="space-y-3">
-          <!-- TP1 -->
-          <div>
+          <!-- TP1 (from take_profit field only when NO take_profit_targets exist - neither in DB nor locally) -->
+          <div v-if="!hasMultipleTpTargets && editableTakeProfitTargets.length === 0">
             <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
               Take Profit (TP1)
               <span v-if="!editingTakeProfit" @click="startEditingTakeProfit" class="ml-1 text-primary-500 hover:text-primary-600 cursor-pointer">(edit)</span>
@@ -118,9 +118,9 @@
             </div>
           </div>
 
-          <!-- Additional TP Targets (TP2, TP3, etc.) -->
+          <!-- All TP Targets (TP1, TP2, etc. from take_profit_targets array) -->
           <div v-for="(target, index) in editableTakeProfitTargets" :key="index">
-            <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">TP{{ index + 2 }}</div>
+            <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">TP{{ index + 1 }}</div>
             <div class="flex items-center gap-2">
               <div class="relative">
                 <span class="absolute left-2 top-1 text-gray-500 text-sm">$</span>
@@ -130,7 +130,8 @@
                   step="0.01"
                   class="w-28 pl-5 pr-2 py-0.5 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
                   placeholder="Price"
-                  @blur="saveTakeProfitTargets"
+                  @focus="isEditingTargets = true"
+                  @blur="handleTargetBlur"
                   @keyup.enter="saveTakeProfitTargets"
                 />
               </div>
@@ -142,7 +143,8 @@
                 class="w-16 px-2 py-0.5 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
                 placeholder="Qty"
                 title="Number of shares"
-                @blur="saveTakeProfitTargets"
+                @focus="isEditingTargets = true"
+                @blur="handleTargetBlur"
                 @keyup.enter="saveTakeProfitTargets"
               />
               <!-- Show calculated R for this target -->
@@ -314,6 +316,11 @@ const hasMultipleTargets = computed(() => {
   return props.trade.take_profit_targets && props.trade.take_profit_targets.length > 0
 })
 
+// Check if we should use take_profit_targets array (instead of single take_profit)
+const hasMultipleTpTargets = computed(() => {
+  return props.trade.take_profit_targets && props.trade.take_profit_targets.length > 0
+})
+
 // Get CSS class for target status badges
 function getTargetStatusClass(status) {
   switch (status) {
@@ -354,9 +361,16 @@ const error = ref(null)
 // Take profit targets editing
 const editableTakeProfitTargets = ref([])
 const savingTargets = ref(false)
+const isEditingTargets = ref(false) // Flag to prevent watch from overwriting during edits
 
 // Initialize editable targets from trade data
 function initializeTakeProfitTargets() {
+  // Don't reinitialize if we're actively editing or saving
+  if (isEditingTargets.value || savingTargets.value) {
+    console.log('[TP TARGETS] Skipping reinitialization - currently editing/saving')
+    return
+  }
+
   const targets = props.trade?.take_profit_targets || []
   console.log('[TP TARGETS] Initializing from trade data:', targets)
   editableTakeProfitTargets.value = Array.isArray(targets) ? targets.map(t => ({
@@ -366,33 +380,77 @@ function initializeTakeProfitTargets() {
 }
 
 // Watch for trade changes (by ID) and reinitialize targets
-watch(() => props.trade?.id, (newId) => {
-  if (newId) {
+watch(() => props.trade?.id, (newId, oldId) => {
+  if (newId && newId !== oldId) {
     console.log('[TP TARGETS] Trade changed, reinitializing targets for trade:', newId)
+    isEditingTargets.value = false // Reset editing flag when trade changes
     initializeTakeProfitTargets()
   }
 }, { immediate: true })
 
 // Also watch the targets array itself in case it's updated without trade change
-watch(() => props.trade?.take_profit_targets, (newTargets) => {
+// But only when we're not actively editing
+watch(() => props.trade?.take_profit_targets, (newTargets, oldTargets) => {
+  // Skip if actively editing - the user's local state takes precedence
+  if (isEditingTargets.value || savingTargets.value) {
+    console.log('[TP TARGETS] take_profit_targets changed but skipping - editing/saving in progress')
+    return
+  }
   console.log('[TP TARGETS] take_profit_targets changed:', newTargets)
   initializeTakeProfitTargets()
-})
+}, { deep: true })
 
 function addTakeProfitTarget() {
+  isEditingTargets.value = true // Mark as editing to prevent watch interference
+
+  // If we have a single take_profit but no targets yet, migrate TP1 to the array first
+  if (editableTakeProfitTargets.value.length === 0 && props.trade.take_profit) {
+    console.log('[TP TARGETS] Migrating single take_profit to array as TP1')
+    editableTakeProfitTargets.value.push({
+      price: parseFloat(props.trade.take_profit),
+      shares: null // Will use remaining shares calculation
+    })
+  }
+
+  // Now add the new empty target
   editableTakeProfitTargets.value.push({
     price: null,
     shares: null
   })
+  console.log('[TP TARGETS] Added new target, total:', editableTakeProfitTargets.value.length)
 }
 
 function removeTakeProfitTarget(index) {
+  isEditingTargets.value = true
   editableTakeProfitTargets.value.splice(index, 1)
-  // Auto-save when removing
+  // Auto-save when removing (intentional action)
   saveTakeProfitTargets()
 }
 
+// Handle blur - only save if we have valid data to save
+function handleTargetBlur() {
+  // Check if there are any targets with valid prices
+  const hasValidData = editableTakeProfitTargets.value.some(t => t.price != null && t.price !== '')
+
+  // Also check if there are empty targets (user still filling in)
+  const hasEmptyTargets = editableTakeProfitTargets.value.some(t => t.price == null || t.price === '')
+
+  console.log('[TP TARGETS] Blur event - hasValidData:', hasValidData, 'hasEmptyTargets:', hasEmptyTargets)
+
+  // Only save if we have valid data AND no empty targets being edited
+  // This prevents saving while user is still adding a new target
+  if (hasValidData && !hasEmptyTargets) {
+    saveTakeProfitTargets()
+  }
+}
+
 async function saveTakeProfitTargets() {
+  // Don't save if already saving
+  if (savingTargets.value) {
+    console.log('[TP TARGETS] Already saving, skipping')
+    return
+  }
+
   savingTargets.value = true
   error.value = null
 
@@ -405,15 +463,35 @@ async function saveTakeProfitTargets() {
         shares: t.shares ? parseInt(t.shares) : null
       }))
 
-    console.log('[TP TARGETS] Saving targets:', validTargets)
-    const response = await api.patch(`/trade-management/trades/${props.trade.id}/levels`, {
+    // Build the update payload
+    // If we have valid targets, clear the single take_profit field to avoid duplication
+    // The first target in the array becomes the new TP1
+    const payload = {
       take_profit_targets: validTargets
-    })
+    }
+
+    // If using the array, set take_profit to the first target's price (for backwards compatibility)
+    // This ensures TP1 is stored in both places but with the same value
+    if (validTargets.length > 0) {
+      payload.take_profit = validTargets[0].price
+      console.log('[TP TARGETS] Also setting take_profit to TP1 price:', validTargets[0].price)
+    }
+
+    console.log('[TP TARGETS] Saving payload:', payload)
+    const response = await api.patch(`/trade-management/trades/${props.trade.id}/levels`, payload)
     console.log('[TP TARGETS] Save response:', response.data)
+
+    // After successful save, we can allow watch to reinitialize if needed
+    // But give it a small delay to prevent race conditions
+    setTimeout(() => {
+      isEditingTargets.value = false
+    }, 100)
+
     emit('levels-updated', response.data.trade)
   } catch (err) {
     console.error('[TRADE-MGMT] Save targets error:', err)
     error.value = err.response?.data?.error || 'Failed to save targets'
+    isEditingTargets.value = false
   } finally {
     savingTargets.value = false
   }
