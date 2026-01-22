@@ -138,7 +138,7 @@ const options = {
           properties: {
             symbol: {
               type: 'string',
-              description: 'Stock symbol',
+              description: 'Stock/option/future symbol',
               example: 'AAPL',
             },
             side: {
@@ -148,19 +148,19 @@ const options = {
             },
             quantity: {
               type: 'number',
-              description: 'Number of shares',
+              description: 'Number of shares/contracts',
               example: 100,
             },
             entryPrice: {
               type: 'number',
               format: 'float',
-              description: 'Entry price per share',
+              description: 'Entry price per share/contract',
               example: 150.25,
             },
             exitPrice: {
               type: 'number',
               format: 'float',
-              description: 'Exit price per share (optional)',
+              description: 'Exit price per share/contract (optional)',
               example: 155.75,
             },
             entryTime: {
@@ -195,6 +195,105 @@ const options = {
                 type: 'string',
               },
               description: 'Trade tags',
+            },
+            instrumentType: {
+              type: 'string',
+              enum: ['stock', 'option', 'future', 'crypto'],
+              default: 'stock',
+              description: 'Type of instrument (also accepts instrument_type in snake_case)',
+              example: 'option',
+            },
+            // Options-specific fields
+            underlyingSymbol: {
+              type: 'string',
+              description: 'Underlying stock symbol for options (also accepts underlying_symbol)',
+              example: 'AAPL',
+            },
+            optionType: {
+              type: 'string',
+              enum: ['call', 'put'],
+              description: 'Option type (also accepts option_type)',
+              example: 'call',
+            },
+            strikePrice: {
+              type: 'number',
+              format: 'float',
+              description: 'Strike price for options (also accepts strike_price)',
+              example: 150.00,
+            },
+            expirationDate: {
+              type: 'string',
+              format: 'date',
+              description: 'Expiration date for options (also accepts expiration_date)',
+              example: '2024-12-20',
+            },
+            contractSize: {
+              type: 'integer',
+              description: 'Contract size for options (defaults to 100) (also accepts contract_size)',
+              example: 100,
+            },
+            // Futures-specific fields
+            underlyingAsset: {
+              type: 'string',
+              description: 'Underlying asset for futures (also accepts underlying_asset)',
+              example: 'ES',
+            },
+            contractMonth: {
+              type: 'string',
+              enum: ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'],
+              description: 'Contract month for futures (also accepts contract_month)',
+              example: 'DEC',
+            },
+            contractYear: {
+              type: 'integer',
+              description: 'Contract year for futures (also accepts contract_year)',
+              example: 2024,
+            },
+            tickSize: {
+              type: 'number',
+              format: 'float',
+              description: 'Tick size for futures (also accepts tick_size)',
+              example: 0.25,
+            },
+            pointValue: {
+              type: 'number',
+              format: 'float',
+              description: 'Point value for futures (also accepts point_value)',
+              example: 50.00,
+            },
+            // Risk management fields
+            stopLoss: {
+              type: 'number',
+              format: 'float',
+              description: 'Stop loss price (also accepts stop_loss)',
+              example: 145.00,
+            },
+            takeProfit: {
+              type: 'number',
+              format: 'float',
+              description: 'Take profit price (also accepts take_profit)',
+              example: 160.00,
+            },
+            // Additional fields
+            broker: {
+              type: 'string',
+              description: 'Broker name',
+              example: 'Interactive Brokers',
+            },
+            account_identifier: {
+              type: 'string',
+              description: 'Account identifier',
+              example: 'U123456',
+            },
+            strategy: {
+              type: 'string',
+              description: 'Trading strategy',
+              example: 'day_trading',
+            },
+            setup: {
+              type: 'string',
+              description: 'Trade setup',
+              example: 'breakout',
             },
           },
         },

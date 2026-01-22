@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const Trade = require('../models/Trade');
 const TierService = require('../services/tierService');
 const EmailService = require('../services/emailService');
 const ApiUsageService = require('../services/apiUsageService');

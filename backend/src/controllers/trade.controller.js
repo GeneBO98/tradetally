@@ -373,11 +373,53 @@ const tradeController = {
 
   async createTrade(req, res, next) {
     try {
-      // Log incoming trade data for debugging
-      if (req.body.strategy || req.body.setup) {
-        console.log(`[TRADE CONTROLLER] Creating trade with strategy="${req.body.strategy || 'null'}", setup="${req.body.setup || 'null'}"`);
+      // Normalize snake_case field names to camelCase for compatibility
+      const normalizedBody = { ...req.body };
+      if (normalizedBody.instrument_type && !normalizedBody.instrumentType) {
+        normalizedBody.instrumentType = normalizedBody.instrument_type;
       }
-      const trade = await Trade.create(req.user.id, req.body);
+      if (normalizedBody.underlying_symbol && !normalizedBody.underlyingSymbol) {
+        normalizedBody.underlyingSymbol = normalizedBody.underlying_symbol;
+      }
+      if (normalizedBody.option_type && !normalizedBody.optionType) {
+        normalizedBody.optionType = normalizedBody.option_type;
+      }
+      if (normalizedBody.strike_price !== undefined && normalizedBody.strikePrice === undefined) {
+        normalizedBody.strikePrice = normalizedBody.strike_price;
+      }
+      if (normalizedBody.expiration_date && !normalizedBody.expirationDate) {
+        normalizedBody.expirationDate = normalizedBody.expiration_date;
+      }
+      if (normalizedBody.contract_size !== undefined && normalizedBody.contractSize === undefined) {
+        normalizedBody.contractSize = normalizedBody.contract_size;
+      }
+      if (normalizedBody.underlying_asset && !normalizedBody.underlyingAsset) {
+        normalizedBody.underlyingAsset = normalizedBody.underlying_asset;
+      }
+      if (normalizedBody.contract_month && !normalizedBody.contractMonth) {
+        normalizedBody.contractMonth = normalizedBody.contract_month;
+      }
+      if (normalizedBody.contract_year !== undefined && normalizedBody.contractYear === undefined) {
+        normalizedBody.contractYear = normalizedBody.contract_year;
+      }
+      if (normalizedBody.tick_size !== undefined && normalizedBody.tickSize === undefined) {
+        normalizedBody.tickSize = normalizedBody.tick_size;
+      }
+      if (normalizedBody.point_value !== undefined && normalizedBody.pointValue === undefined) {
+        normalizedBody.pointValue = normalizedBody.point_value;
+      }
+      if (normalizedBody.stop_loss !== undefined && normalizedBody.stopLoss === undefined) {
+        normalizedBody.stopLoss = normalizedBody.stop_loss;
+      }
+      if (normalizedBody.take_profit !== undefined && normalizedBody.takeProfit === undefined) {
+        normalizedBody.takeProfit = normalizedBody.take_profit;
+      }
+
+      // Log incoming trade data for debugging
+      if (normalizedBody.strategy || normalizedBody.setup) {
+        console.log(`[TRADE CONTROLLER] Creating trade with strategy="${normalizedBody.strategy || 'null'}", setup="${normalizedBody.setup || 'null'}"`);
+      }
+      const trade = await Trade.create(req.user.id, normalizedBody);
       
       // Invalidate sector performance cache for this user since new trade was added
       try {
@@ -474,11 +516,52 @@ const tradeController = {
 
   async updateTrade(req, res, next) {
     try {
-      // Log incoming update data for debugging
-      if (req.body.strategy !== undefined || req.body.setup !== undefined) {
-        console.log(`[TRADE CONTROLLER] Updating trade ${req.params.id} with strategy="${req.body.strategy || 'null'}", setup="${req.body.setup || 'null'}"`);
+      // Normalize snake_case field names to camelCase for compatibility
+      const normalizedBody = { ...req.body };
+      if (normalizedBody.instrument_type && !normalizedBody.instrumentType) {
+        normalizedBody.instrumentType = normalizedBody.instrument_type;
       }
-      const trade = await Trade.update(req.params.id, req.user.id, req.body);
+      if (normalizedBody.underlying_symbol && !normalizedBody.underlyingSymbol) {
+        normalizedBody.underlyingSymbol = normalizedBody.underlying_symbol;
+      }
+      if (normalizedBody.option_type && !normalizedBody.optionType) {
+        normalizedBody.optionType = normalizedBody.option_type;
+      }
+      if (normalizedBody.strike_price !== undefined && normalizedBody.strikePrice === undefined) {
+        normalizedBody.strikePrice = normalizedBody.strike_price;
+      }
+      if (normalizedBody.expiration_date && !normalizedBody.expirationDate) {
+        normalizedBody.expirationDate = normalizedBody.expiration_date;
+      }
+      if (normalizedBody.contract_size !== undefined && normalizedBody.contractSize === undefined) {
+        normalizedBody.contractSize = normalizedBody.contract_size;
+      }
+      if (normalizedBody.underlying_asset && !normalizedBody.underlyingAsset) {
+        normalizedBody.underlyingAsset = normalizedBody.underlying_asset;
+      }
+      if (normalizedBody.contract_month && !normalizedBody.contractMonth) {
+        normalizedBody.contractMonth = normalizedBody.contract_month;
+      }
+      if (normalizedBody.contract_year !== undefined && normalizedBody.contractYear === undefined) {
+        normalizedBody.contractYear = normalizedBody.contract_year;
+      }
+      if (normalizedBody.tick_size !== undefined && normalizedBody.tickSize === undefined) {
+        normalizedBody.tickSize = normalizedBody.tick_size;
+      }
+      if (normalizedBody.point_value !== undefined && normalizedBody.pointValue === undefined) {
+        normalizedBody.pointValue = normalizedBody.point_value;
+      }
+      if (normalizedBody.stop_loss !== undefined && normalizedBody.stopLoss === undefined) {
+        normalizedBody.stopLoss = normalizedBody.stop_loss;
+      }
+      if (normalizedBody.take_profit !== undefined && normalizedBody.takeProfit === undefined) {
+        normalizedBody.takeProfit = normalizedBody.take_profit;
+      }
+      // Log incoming update data for debugging
+      if (normalizedBody.strategy !== undefined || normalizedBody.setup !== undefined) {
+        console.log(`[TRADE CONTROLLER] Updating trade ${req.params.id} with strategy="${normalizedBody.strategy || 'null'}", setup="${normalizedBody.setup || 'null'}"`);
+      }
+      const trade = await Trade.update(req.params.id, req.user.id, normalizedBody);
       
       if (!trade) {
         return res.status(404).json({ error: 'Trade not found' });

@@ -68,10 +68,11 @@ router.post('/register', validate(schemas.register), authController.register);
  *         application/json:
  *           schema:
  *             type: object
- *             required: [username, password]
+ *             required: [email, password]
  *             properties:
- *               username:
+ *               email:
  *                 type: string
+ *                 format: email
  *               password:
  *                 type: string
  *     responses:
