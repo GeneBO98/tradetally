@@ -1057,7 +1057,7 @@ class Trade {
         updates.commission !== undefined ? updates.commission : currentTrade.commission,
         updates.fees !== undefined ? updates.fees : currentTrade.fees,
         updates.instrumentType || currentTrade.instrument_type || 'stock',
-        updates.contractSize !== undefined ? updates.contractSize : (currentTrade.contract_size || 1),
+        updates.contractSize !== undefined ? updates.contractSize : (currentTrade.contract_size || (currentTrade.instrument_type === 'option' ? 100 : 1)),
         pointValue
       );
 
@@ -1229,7 +1229,7 @@ class Trade {
       const instrumentType = updates.instrumentType || currentTrade.instrument_type || 'stock';
       const quantity = updates.quantity !== undefined ? updates.quantity : currentTrade.quantity;
       const pointValue = updates.pointValue !== undefined ? updates.pointValue : currentTrade.point_value;
-      const contractSize = updates.contractSize !== undefined ? updates.contractSize : (currentTrade.contract_size || 1);
+      const contractSize = updates.contractSize !== undefined ? updates.contractSize : (currentTrade.contract_size || (instrumentType === 'option' ? 100 : 1));
       // Use !== undefined to properly handle 0 values for commission and fees
       const commission = updates.commission !== undefined ? updates.commission : currentTrade.commission;
       const fees = updates.fees !== undefined ? updates.fees : currentTrade.fees;

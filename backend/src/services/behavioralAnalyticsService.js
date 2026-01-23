@@ -575,7 +575,7 @@ class BehavioralAnalyticsService {
     
     // Get instrument type and multipliers (defaults for stocks)
     const instrumentType = trade.instrument_type || trade.instrumentType || 'stock';
-    const contractSize = trade.contract_size || trade.contractSize || 1;
+    const contractSize = trade.contract_size || trade.contractSize || (instrumentType === 'option' ? 100 : 1);
     const pointValue = trade.point_value || trade.pointValue || null;
 
     // Determine the multiplier based on instrument type (same logic as Trade.calculatePnL)

@@ -170,8 +170,8 @@
           <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
             <div class="flex justify-between items-center">
               <span class="font-medium text-gray-900 dark:text-white">Total for day:</span>
-              <span class="font-bold text-lg" :class="selectedDay.pnl >= 0 ? 'text-green-600' : 'text-red-600'">
-                ${{ formatNumber(selectedDay.pnl) }}
+              <span class="font-bold text-lg" :class="(selectedDay.pnl || 0) >= 0 ? 'text-green-600' : 'text-red-600'">
+                ${{ formatNumber(selectedDay.pnl || 0) }}
               </span>
             </div>
           </div>
@@ -200,31 +200,137 @@ const currentYear = ref(new Date().getFullYear())
 const selectedDay = ref(null)
 const expandedMonthContainer = ref(null)
 
-// Pre-compute a map of exit date to trades for O(1) lookup
+// Pre-compute a map of exit date to P&L entries for O(1) lookup
 // P&L is realized on the exit date, not the entry date
+// For trades with partial exits, each exit execution contributes P&L on its own date
 const tradesByDate = computed(() => {
   const map = new Map()
   for (const trade of trades.value) {
     // Only include closed trades (those with an exit_time)
     if (!trade.exit_time) continue
 
-    const dateKey = trade.exit_time.split('T')[0]
-    if (!map.has(dateKey)) {
-      map.set(dateKey, [])
+    // Parse executions if they exist
+    let executions = []
+    if (trade.executions && Array.isArray(trade.executions) && trade.executions.length > 0) {
+      executions = trade.executions
+    } else if (trade.executions && typeof trade.executions === 'string') {
+      try {
+        executions = JSON.parse(trade.executions)
+      } catch (e) {
+        console.warn('Failed to parse executions for trade:', trade.id, e)
+        executions = []
+      }
     }
-    map.get(dateKey).push(trade)
+
+    // Check if trade has exit executions (partial exits)
+    // An execution is an exit if:
+    // 1. It has exitTime/exit_time explicitly set, OR
+    // 2. It has datetime and action indicates an exit (sell for long, buy for short)
+    const exitExecutions = executions.filter(exec => {
+      const exitTime = exec.exitTime || exec.exit_time
+      const datetime = exec.datetime || exec.entry_time || exec.exit_time
+      const action = (exec.action || exec.side || '').toLowerCase()
+      const tradeSide = trade.side
+      
+      // If it has an explicit exit time, it's definitely an exit
+      if (exitTime) return true
+      
+      // If it has datetime and action indicates an exit, it's an exit
+      if (datetime) {
+        if (tradeSide === 'long' && (action === 'sell' || action === 's')) return true
+        if (tradeSide === 'short' && (action === 'buy' || action === 'b')) return true
+      }
+      
+      return false
+    })
+
+    if (exitExecutions.length > 0) {
+      // Trade has partial exits - process each exit execution separately
+      for (const exec of exitExecutions) {
+        // Get exit time - priority: exitTime, exit_time, datetime
+        const exitTime = exec.exitTime || exec.exit_time || exec.datetime
+        if (!exitTime) continue
+
+        const dateKey = exitTime.split('T')[0]
+        if (!map.has(dateKey)) {
+          map.set(dateKey, [])
+        }
+
+        // Get P&L for this specific execution
+        // Priority: 1) execution.pnl, 2) calculate from execution prices, 3) proportional trade P&L
+        let executionPnl = 0
+        if (exec.pnl !== undefined && exec.pnl !== null && !isNaN(parseFloat(exec.pnl))) {
+          executionPnl = parseFloat(exec.pnl)
+        } else {
+          // Try to get exit and entry prices from execution
+          const execExitPrice = parseFloat(exec.exitPrice) || parseFloat(exec.exit_price) || parseFloat(exec.price) || 0
+          const execEntryPrice = parseFloat(exec.entryPrice) || parseFloat(exec.entry_price) || 0
+          const execQuantity = parseFloat(exec.quantity) || 0
+          const execCommission = parseFloat(exec.commission) || 0
+          const execFees = parseFloat(exec.fees) || 0
+          
+          // If we have both entry and exit prices, calculate P&L
+          if (execExitPrice > 0 && execEntryPrice > 0 && execQuantity > 0) {
+            if (trade.side === 'long') {
+              executionPnl = (execExitPrice - execEntryPrice) * execQuantity - execCommission - execFees
+            } else {
+              executionPnl = (execEntryPrice - execExitPrice) * execQuantity - execCommission - execFees
+            }
+          } else {
+            // Fallback: proportional P&L based on quantity
+            const tradeQuantity = parseFloat(trade.quantity) || 1
+            const tradePnl = parseFloat(trade.pnl) || 0
+            executionPnl = tradeQuantity > 0 ? (execQuantity / tradeQuantity) * tradePnl : 0
+          }
+        }
+
+        map.get(dateKey).push({
+          trade,
+          pnl: executionPnl
+        })
+      }
+    } else {
+      // No exit executions - use trade's overall exit_time and P&L
+      const dateKey = trade.exit_time.split('T')[0]
+      if (!map.has(dateKey)) {
+        map.set(dateKey, [])
+      }
+      map.get(dateKey).push({
+        trade,
+        pnl: parseFloat(trade.pnl) || 0
+      })
+    }
   }
   return map
 })
 
-// Helper to get trades for a date using the cached map
+// Helper to get P&L entries for a date using the cached map
 function getTradesForDate(date) {
   if (!date) return []
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const day = String(date.getDate()).padStart(2, '0')
   const dateKey = `${year}-${month}-${day}`
-  return tradesByDate.value.get(dateKey) || []
+  const entries = tradesByDate.value.get(dateKey) || []
+  // Return trades for display (deduplicated by trade ID)
+  const uniqueTrades = new Map()
+  for (const entry of entries) {
+    if (!uniqueTrades.has(entry.trade.id)) {
+      uniqueTrades.set(entry.trade.id, entry.trade)
+    }
+  }
+  return Array.from(uniqueTrades.values())
+}
+
+// Helper to get total P&L for a date
+function getPnlForDate(date) {
+  if (!date) return 0
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const dateKey = `${year}-${month}-${day}`
+  const entries = tradesByDate.value.get(dateKey) || []
+  return entries.reduce((sum, entry) => sum + entry.pnl, 0)
 }
 
 const yearlyCalendar = computed(() => {
@@ -320,10 +426,7 @@ const expandedMonthWeekdays = computed(() => {
 
     // Get trade data using optimized lookup
     const dayTrades = getTradesForDate(date)
-    let dayPnl = 0
-    for (const trade of dayTrades) {
-      dayPnl += parseFloat(trade.pnl) || 0
-    }
+    const dayPnl = getPnlForDate(date)
 
     currentWeek.days.push({
       date,
@@ -394,10 +497,7 @@ function generateMonthDays(monthStart, monthEnd) {
   const monthDays = eachDayOfInterval({ start: monthStart, end: monthEnd })
   for (const date of monthDays) {
     const dayTrades = getTradesForDate(date)
-    let dayPnl = 0
-    for (const trade of dayTrades) {
-      dayPnl += parseFloat(trade.pnl) || 0
-    }
+    const dayPnl = getPnlForDate(date)
 
     days.push({
       date,
