@@ -225,9 +225,17 @@ const effectiveTargetR = computed(() => {
 })
 
 // Effective potential P&L (recalculated if using weighted avg)
+// Formula: effectiveTargetR * risk_amount for consistency with displayed target R
 const effectivePotentialPL = computed(() => {
-  if (weightedAverageR.value !== null && props.analysis.risk_amount) {
-    return Math.round(weightedAverageR.value * props.analysis.risk_amount * 100) / 100
+  // If we're using weighted average (either backend or frontend), recalculate from target R
+  // Check if we're using weighted average by checking if weighted_target_r exists or frontend weightedAverageR
+  const usingWeightedAverage = (props.analysis.weighted_target_r !== null && props.analysis.weighted_target_r !== undefined) || 
+                               weightedAverageR.value !== null
+  
+  if (usingWeightedAverage && effectiveTargetR.value !== null && props.analysis.risk_amount) {
+    // Use effectiveTargetR * risk_amount to ensure consistency
+    // This matches the backend calculation when weighted average exists
+    return Math.round(effectiveTargetR.value * props.analysis.risk_amount * 100) / 100
   }
   return props.analysis.target_pl_amount
 })

@@ -2019,7 +2019,7 @@ const tradeController = {
           totalCost: 0,
           avgPrice: 0,
           instrumentType: trade.instrument_type || 'stock',
-          contractSize: trade.contract_size || 1,
+          contractSize: trade.contract_size || (trade.instrument_type === 'option' ? 100 : 1),
           pointValue: trade.point_value || null
         };
         }

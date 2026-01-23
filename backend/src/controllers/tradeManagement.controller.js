@@ -130,11 +130,17 @@ function calculateRMultiples(trade) {
   }
 
   // Calculate weighted average target R for multiple targets
-  // IMPORTANT: If take_profit_targets has items, use ONLY the array (don't also add take_profit)
-  // This prevents double-counting when take_profit and take_profit_targets[0] have the same price
+  // Include TP1 from take_profit field + all targets from take_profit_targets array
+  // This matches the frontend logic for "planned R"
+  // Frontend requires: targets.length > 0 (at least one target in array), then includes TP1 if exists
   let weightedTargetR = null;
-  if (targets && Array.isArray(targets) && targets.length > 0) {
-    logger.debug('[R-CALC] Calculating weighted average R for multiple targets (using array only)');
+  const hasTargetsArray = targets && Array.isArray(targets) && targets.length > 0;
+  const hasPrimaryTp = !!take_profit;
+  
+  // Calculate weighted average if we have at least one target in array (matches frontend logic)
+  // We'll include TP1 if it exists, and only return weighted average if we have at least 2 targets total
+  if (hasTargetsArray) {
+    logger.debug('[R-CALC] Calculating weighted average R for multiple targets (including TP1 from take_profit field)');
     const isLong = side === 'long';
     const risk = isLong ? entryPrice - stopLoss : stopLoss - entryPrice;
     logger.debug('[R-CALC] Risk calculation:', { isLong, risk });
@@ -143,40 +149,66 @@ function calculateRMultiples(trade) {
       let totalShares = 0;
       let weightedSum = 0;
 
-      // Calculate total shares from targets to determine if we need to add remaining shares for first target
+      // Calculate total shares from targets array to determine remaining shares for TP1
       const specifiedShares = targets.reduce((sum, t) => sum + (parseFloat(t.shares || t.quantity) || 0), 0);
       const totalQuantity = parseFloat(quantity) || 1;
 
-      // Process all targets from the array
-      targets.forEach((t, index) => {
-        if (t.price) {
-          const tpPrice = parseFloat(t.price);
-          const tpR = isLong ? (tpPrice - entryPrice) / risk : (entryPrice - tpPrice) / risk;
-
-          let shares;
-          if (t.shares || t.quantity) {
-            // Target has specified shares
-            shares = parseFloat(t.shares || t.quantity);
-          } else if (index === 0 && specifiedShares > 0) {
-            // First target without shares, but other targets have shares - use remaining
-            shares = Math.max(1, totalQuantity - specifiedShares);
-          } else if (specifiedShares === 0) {
-            // No targets have shares specified - distribute equally
-            shares = totalQuantity / targets.length;
-          } else {
-            // Default to 1 share
-            shares = 1;
-          }
-
-          weightedSum += tpR * shares;
-          totalShares += shares;
-          logger.debug(`[R-CALC] Target ${index + 1} (TP${index + 1}) contribution:`, { tpPrice, tpR: tpR.toFixed(2), shares });
+      // Add TP1 from take_profit field if it exists
+      if (hasPrimaryTp) {
+        const tp1Price = parseFloat(take_profit);
+        const tp1R = isLong ? (tp1Price - entryPrice) / risk : (entryPrice - tp1Price) / risk;
+        
+        // Calculate shares for TP1: remaining shares after accounting for targets array
+        const tp1Shares = specifiedShares > 0 
+          ? Math.max(0, totalQuantity - specifiedShares) 
+          : (hasTargetsArray ? totalQuantity / (targets.length + 1) : totalQuantity);
+        
+        if (tp1Shares > 0) {
+          weightedSum += tp1R * tp1Shares;
+          totalShares += tp1Shares;
+          logger.debug('[R-CALC] TP1 (from take_profit field) contribution:', { tp1Price, tp1R: tp1R.toFixed(2), shares: tp1Shares });
         }
-      });
+      }
 
-      if (totalShares > 0) {
+      // Process all targets from the array
+      if (hasTargetsArray) {
+        targets.forEach((t, index) => {
+          if (t.price) {
+            const tpPrice = parseFloat(t.price);
+            const tpR = isLong ? (tpPrice - entryPrice) / risk : (entryPrice - tpPrice) / risk;
+
+            let shares;
+            if (t.shares || t.quantity) {
+              // Target has specified shares
+              shares = parseFloat(t.shares || t.quantity);
+            } else if (specifiedShares === 0) {
+              // No targets have shares specified - distribute equally (including TP1)
+              shares = totalQuantity / (hasPrimaryTp ? targets.length + 1 : targets.length);
+            } else {
+              // Default to 1 share
+              shares = 1;
+            }
+
+            weightedSum += tpR * shares;
+            totalShares += shares;
+            logger.debug(`[R-CALC] Target ${index + 1} (TP${index + 2}) contribution:`, { tpPrice, tpR: tpR.toFixed(2), shares });
+          }
+        });
+      }
+
+      // Only return weighted average if we have at least 2 targets total (matches frontend: allTargets.length > 1)
+      // Count: TP1 (if exists) + targets in array
+      const totalTargetCount = (hasPrimaryTp ? 1 : 0) + (hasTargetsArray ? targets.length : 0);
+      if (totalShares > 0 && totalTargetCount > 1) {
         weightedTargetR = weightedSum / totalShares;
-        logger.debug('[R-CALC] Weighted average calculation:', { weightedSum: weightedSum.toFixed(2), totalShares, weightedTargetR: weightedTargetR.toFixed(2) });
+        logger.debug('[R-CALC] Weighted average calculation:', { 
+          weightedSum: weightedSum.toFixed(2), 
+          totalShares, 
+          weightedTargetR: weightedTargetR.toFixed(2),
+          totalTargetCount
+        });
+      } else if (totalTargetCount <= 1) {
+        logger.debug('[R-CALC] Only one target total, skipping weighted average (use single target_r instead)');
       }
     } else {
       logger.debug('[R-CALC] Risk is not positive, skipping weighted calculation');
@@ -267,16 +299,16 @@ function calculateRMultiples(trade) {
     }
   }
 
-  // Cap target R at 10R to prevent unrealistic values from distorting analysis
-  const MAX_POTENTIAL_R = 10;
-  if (targetR !== undefined && targetR > MAX_POTENTIAL_R) {
-    logger.info(`[R-CALC] Capping target R from ${targetR.toFixed(2)} to ${MAX_POTENTIAL_R}`);
-    // Also recalculate R lost with capped value
-    const originalTargetR = targetR;
-    targetR = MAX_POTENTIAL_R;
-    if (rLost !== undefined) {
+  // If weighted average exists, use it for target_r to match "planned R" in frontend
+  // This ensures target_r matches the weighted average when multiple targets exist
+  if (weightedTargetR !== null) {
+    // Use weighted average for target_r
+    targetR = weightedTargetR;
+    // Recalculate rLost with weighted average
+    if (targetR !== undefined) {
       rLost = targetR - actualR;
     }
+    logger.debug('[R-CALC] Using weighted average for target_r:', { weightedTargetR: weightedTargetR.toFixed(2), targetR: targetR.toFixed(2) });
   }
 
   // Calculate multiplier based on instrument type (same logic as Trade.calculatePnL)
@@ -342,7 +374,23 @@ function calculateRMultiples(trade) {
   
   const riskAmount = risk * tradeQuantity * multiplier;
   const actualPLAmount = actualPL * tradeQuantity * multiplier;
-  const targetPLAmount = takeProfit ? targetPL * tradeQuantity * multiplier : null;
+  
+  // Calculate target_pl_amount consistently:
+  // - If weighted average exists, use: weighted_target_r * risk_amount (ensures consistency with displayed target R)
+  // - Otherwise, use: targetPL * quantity * multiplier (traditional calculation)
+  let targetPLAmount = null;
+  if (weightedTargetR !== null) {
+    // Use weighted average R * risk amount for consistency
+    targetPLAmount = weightedTargetR * riskAmount;
+    logger.debug('[R-CALC] Using weighted average for target_pl_amount:', { 
+      weightedTargetR: weightedTargetR.toFixed(2), 
+      riskAmount: riskAmount.toFixed(2),
+      targetPLAmount: targetPLAmount.toFixed(2)
+    });
+  } else if (takeProfit) {
+    // Traditional calculation for single TP
+    targetPLAmount = targetPL * tradeQuantity * multiplier;
+  }
   
   // Validate risk amount is reasonable (safeguard against calculation errors)
   // For futures, a very large risk amount might indicate incorrect point_value
