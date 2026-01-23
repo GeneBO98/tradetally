@@ -939,49 +939,142 @@ const analyticsController = {
 
   async getCalendarData(req, res, next) {
     try {
-      const { year, month } = req.query;
+      const { year } = req.query;
       
-      // Add year/month to query params if provided for buildFilterConditions
-      const queryWithDates = { ...req.query };
+      // Require year parameter for performance - fetch only one year at a time
+      if (!year) {
+        return res.status(400).json({ error: 'Year parameter is required' });
+      }
       
-      if (year && month) {
-        // Validate and sanitize year and month to prevent injection
-        const sanitizedYear = parseInt(year);
-        const sanitizedMonth = parseInt(month);
-        
-        // Validate ranges
-        if (isNaN(sanitizedYear) || sanitizedYear < 1900 || sanitizedYear > 2100) {
-          return res.status(400).json({ error: 'Invalid year parameter' });
-        }
-        
-        if (isNaN(sanitizedMonth) || sanitizedMonth < 1 || sanitizedMonth > 12) {
-          return res.status(400).json({ error: 'Invalid month parameter' });
-        }
-        
-        const startDate = `${sanitizedYear}-${sanitizedMonth.toString().padStart(2, '0')}-01`;
-        const endDate = new Date(sanitizedYear, sanitizedMonth, 0).toISOString().split('T')[0];
-        queryWithDates.startDate = startDate;
-        queryWithDates.endDate = endDate;
+      const sanitizedYear = parseInt(year);
+      if (isNaN(sanitizedYear) || sanitizedYear < 1900 || sanitizedYear > 2100) {
+        return res.status(400).json({ error: 'Invalid year parameter' });
       }
 
+      const startDate = `${sanitizedYear}-01-01`;
+      const endDate = `${sanitizedYear}-12-31`;
+
+      // Build filter conditions (excluding date filters since we're setting them explicitly)
+      const queryWithDates = { ...req.query, startDate, endDate };
       const { filterConditions, params: filterParams } = buildFilterConditions(queryWithDates);
       const params = [req.user.id, ...filterParams];
 
+      // Optimized query that handles partial exits by processing executions in SQL
+      // This is much faster than fetching all trades and processing in JavaScript
+      const paramOffset = params.length;
       const calendarQuery = `
+        WITH exit_executions AS (
+          -- Extract exit executions from trades with executions
+          SELECT 
+            t.id as trade_id,
+            t.side,
+            CAST(t.quantity AS NUMERIC) as trade_quantity,
+            CAST(t.pnl AS NUMERIC) as trade_pnl,
+            COALESCE(exec->>'exitTime', exec->>'exit_time', exec->>'datetime') as exit_time,
+            exec->>'pnl' as exec_pnl,
+            COALESCE(exec->>'exitPrice', exec->>'exit_price', exec->>'price') as exec_exit_price,
+            exec->>'entryPrice' as exec_entry_price_1,
+            exec->>'entry_price' as exec_entry_price,
+            exec->>'quantity' as exec_quantity,
+            exec->>'commission' as exec_commission,
+            exec->>'fees' as exec_fees
+          FROM trades t
+          CROSS JOIN LATERAL jsonb_array_elements(t.executions) AS exec
+          WHERE t.user_id = $1 
+            AND t.exit_time IS NOT NULL
+            AND t.executions IS NOT NULL
+            AND jsonb_array_length(t.executions) > 0
+            AND (
+              exec->>'exitTime' IS NOT NULL 
+              OR exec->>'exit_time' IS NOT NULL
+              OR (
+                exec->>'datetime' IS NOT NULL
+                AND (
+                  (t.side = 'long' AND LOWER(COALESCE(exec->>'action', exec->>'side', '')) = 'sell')
+                  OR (t.side = 'short' AND LOWER(COALESCE(exec->>'action', exec->>'side', '')) = 'buy')
+                )
+              )
+            )
+            AND t.trade_date >= $${paramOffset + 1}
+            AND t.trade_date <= $${paramOffset + 2}
+            ${filterConditions ? filterConditions.replace(/\btrade_date\b/g, 't.trade_date').replace(/\bsymbol\b/g, 't.symbol').replace(/\bstrategy\b/g, 't.strategy').replace(/\bside\b/g, 't.side') : ''}
+        ),
+        execution_daily AS (
+          -- Calculate and group execution P&L by date
+          SELECT 
+            (exit_time::timestamp)::date as exit_date,
+            COUNT(DISTINCT trade_id) as trades,
+            COALESCE(SUM(
+              CASE 
+                WHEN exec_pnl IS NOT NULL AND exec_pnl != '' AND exec_pnl != 'null' THEN
+                  CAST(exec_pnl AS NUMERIC)
+                WHEN exec_exit_price IS NOT NULL 
+                  AND COALESCE(exec_entry_price_1, exec_entry_price) IS NOT NULL 
+                  AND exec_quantity IS NOT NULL THEN
+                  CASE 
+                    WHEN side = 'long' THEN
+                      (CAST(exec_exit_price AS NUMERIC) - CAST(COALESCE(exec_entry_price_1, exec_entry_price) AS NUMERIC)) * CAST(exec_quantity AS NUMERIC) -
+                      COALESCE(CAST(exec_commission AS NUMERIC), 0) - COALESCE(CAST(exec_fees AS NUMERIC), 0)
+                    ELSE
+                      (CAST(COALESCE(exec_entry_price_1, exec_entry_price) AS NUMERIC) - CAST(exec_exit_price AS NUMERIC)) * CAST(exec_quantity AS NUMERIC) -
+                      COALESCE(CAST(exec_commission AS NUMERIC), 0) - COALESCE(CAST(exec_fees AS NUMERIC), 0)
+                  END
+                ELSE
+                  (CAST(exec_quantity AS NUMERIC) / NULLIF(trade_quantity, 0)) * COALESCE(trade_pnl, 0)
+              END
+            ), 0) as daily_pnl
+          FROM exit_executions
+          WHERE exit_time IS NOT NULL
+          GROUP BY (exit_time::timestamp)::date
+        ),
+        trade_daily AS (
+          -- Trades without executions or with no exit executions - use trade-level P&L
+          SELECT 
+            t.trade_date,
+            COUNT(*) as trades,
+            COALESCE(SUM(t.pnl), 0) as daily_pnl
+          FROM trades t
+          WHERE t.user_id = $1 
+            AND t.exit_time IS NOT NULL
+            AND t.trade_date >= $${paramOffset + 1}
+            AND t.trade_date <= $${paramOffset + 2}
+            AND (
+              t.executions IS NULL 
+              OR jsonb_array_length(t.executions) = 0
+              OR NOT EXISTS (
+                SELECT 1 
+                FROM jsonb_array_elements(t.executions) AS exec
+                WHERE exec->>'exitTime' IS NOT NULL 
+                  OR exec->>'exit_time' IS NOT NULL
+                  OR (
+                    exec->>'datetime' IS NOT NULL
+                    AND (
+                      (t.side = 'long' AND LOWER(COALESCE(exec->>'action', exec->>'side', '')) = 'sell')
+                      OR (t.side = 'short' AND LOWER(COALESCE(exec->>'action', exec->>'side', '')) = 'buy')
+                    )
+                  )
+              )
+            )
+            ${filterConditions ? filterConditions.replace(/\btrade_date\b/g, 't.trade_date').replace(/\bsymbol\b/g, 't.symbol').replace(/\bstrategy\b/g, 't.strategy').replace(/\bside\b/g, 't.side') : ''}
+          GROUP BY t.trade_date
+        )
+        -- Combine execution-based and trade-based P&L
         SELECT 
-          trade_date,
-          COUNT(*) as trades,
-          COALESCE(SUM(pnl), 0) as daily_pnl
-        FROM trades
-        WHERE user_id = $1 ${filterConditions}
-        GROUP BY trade_date
-        ORDER BY trade_date
+          COALESCE(e.exit_date, t.trade_date)::text as trade_date,
+          COALESCE(e.trades, 0) + COALESCE(t.trades, 0) as trades,
+          COALESCE(e.daily_pnl, 0) + COALESCE(t.daily_pnl, 0) as daily_pnl
+        FROM execution_daily e
+        FULL OUTER JOIN trade_daily t ON e.exit_date = t.trade_date
+        ORDER BY COALESCE(e.exit_date, t.trade_date)
       `;
 
-      const result = await db.query(calendarQuery, params);
+      // Add start and end date to params
+      const finalParams = [...params, startDate, endDate];
+      const result = await db.query(calendarQuery, finalParams);
       
       res.json({ calendar: result.rows });
     } catch (error) {
+      console.error('Calendar data error:', error);
       next(error);
     }
   },
