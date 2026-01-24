@@ -570,11 +570,12 @@ async function fetchTradesForDate(date) {
     return existingTrades
   }
   
-  // Fetch trades for this date
+  // Fetch trades for this date - filter by EXIT date (when trade was closed)
+  // This matches the calendar P&L calculation which groups by exit_time
   try {
     const params = {
-      startDate: dateKey,
-      endDate: dateKey,
+      exitStartDate: dateKey,
+      exitEndDate: dateKey,
       limit: 100
     }
     if (selectedAccount.value) {

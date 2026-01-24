@@ -707,6 +707,19 @@ class Trade {
       paramCount++;
     }
 
+    // Exit date filters - for filtering by when trades were closed (used by calendar)
+    if (filters.exitStartDate) {
+      whereClause += ` AND t.exit_time::date >= $${paramCount}`;
+      values.push(filters.exitStartDate);
+      paramCount++;
+    }
+
+    if (filters.exitEndDate) {
+      whereClause += ` AND t.exit_time::date <= $${paramCount}`;
+      values.push(filters.exitEndDate);
+      paramCount++;
+    }
+
     if (filters.tags && filters.tags.length > 0) {
       console.log('[TAGS] Applying tag filter in Trade.findByUser:', filters.tags);
       whereClause += ` AND t.tags && $${paramCount}`;

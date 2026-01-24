@@ -31,7 +31,7 @@ const tradeController = {
     console.log('[PERF] getUserTrades started');
     try {
       const {
-        symbol, startDate, endDate, tags, strategy, sector,
+        symbol, startDate, endDate, exitStartDate, exitEndDate, tags, strategy, sector,
         strategies, sectors, hasNews, daysOfWeek, instrumentTypes, optionTypes, qualityGrades,
         side, minPrice, maxPrice, minQuantity, maxQuantity,
         status, minPnl, maxPnl, pnlType, broker, brokers, accounts,
@@ -42,6 +42,8 @@ const tradeController = {
         symbol,
         startDate,
         endDate,
+        exitStartDate,
+        exitEndDate,
         tags: tags ? tags.split(',').map(t => t.trim()).filter(Boolean) : undefined,
         strategy,
         sector,
