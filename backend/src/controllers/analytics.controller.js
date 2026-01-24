@@ -372,31 +372,14 @@ const analyticsController = {
       const filterHash = JSON.stringify(normalizedFiltersForCache);
       const cacheKey = `analytics_overview_${req.user.id}_${Buffer.from(filterHash).toString('base64').slice(0, 32)}_${useMedian ? 'median' : 'avg'}`;
       
-      console.log('[CACHE] Cache key for analytics overview:', cacheKey);
-      console.log('[CACHE] Normalized filters for cache:', normalizedFiltersForCache);
-      
       // Check cache first for faster response
-      // TEMPORARILY DISABLED FOR DEBUGGING - filters not applying
-      // const cachedData = cache.get(cacheKey);
-      // if (cachedData) {
-      //   console.log('[CACHE] Returning cached analytics data');
-      //   return res.json(cachedData);
-      // }
-      console.log('[DEBUG] Cache disabled - running fresh query');
-      console.log('[DEBUG] filterData from buildFilterConditions:', JSON.stringify(filterData));
+      const cachedData = cache.get(cacheKey);
+      if (cachedData) {
+        return res.json(cachedData);
+      }
 
       const { filterConditions, params: filterParams } = filterData;
       const params = [req.user.id, ...filterParams];
-      
-      console.log('Filters applied:', req.query);
-      console.log('Filter conditions:', filterConditions);
-      console.log('Query params:', params);
-
-      // Test simple query first to debug
-      const testQuery = `SELECT COUNT(*) as count FROM trades WHERE user_id = $1 ${filterConditions}`;
-      console.log('Test query:', testQuery);
-      const testResult = await db.query(testQuery, params);
-      console.log('Test result:', testResult.rows[0]);
 
       const overviewQuery = `
         WITH completed_trades AS (
@@ -695,7 +678,6 @@ const analyticsController = {
         avg_mfe: overview.avg_mfe
       });
 
-      console.log('Analytics overview calculation completed, sending response');
       // Cache the result for 5 minutes (300000ms)
       cache.set(cacheKey, { overview }, 300000);
       res.json({ overview });

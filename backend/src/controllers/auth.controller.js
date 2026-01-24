@@ -222,10 +222,9 @@ const authController = {
         maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
       });
 
-      // Get user tier and billing status for response
+      // Get user tier and billing status in one optimized call
       const TierService = require('../services/tierService');
-      const userTier = await TierService.getUserTier(user.id);
-      const billingEnabled = await TierService.isBillingEnabled();
+      const { tier: userTier, billingEnabled } = await TierService.getUserTierWithBillingStatus(user.id);
 
       res.json({
         message: 'Login successful',
