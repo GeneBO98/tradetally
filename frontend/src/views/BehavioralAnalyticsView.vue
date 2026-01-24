@@ -2214,11 +2214,12 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed, nextTick } from 'vue'
+import { ref, onMounted, computed, nextTick, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import api from '@/services/api'
 import { useNotification } from '@/composables/useNotification'
 import { useAuthStore } from '@/stores/auth'
+import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 import ProUpgradePrompt from '@/components/ProUpgradePrompt.vue'
 import MdiIcon from '@/components/MdiIcon.vue'
 import TradeFilters from '@/components/trades/TradeFilters.vue'
@@ -2239,6 +2240,7 @@ import {
 
 const { showSuccess, showError } = useNotification()
 const authStore = useAuthStore()
+const { selectedAccount } = useGlobalAccountFilter()
 const router = useRouter()
 const route = useRoute()
 
@@ -2324,6 +2326,7 @@ const loadData = async () => {
     const queryParams = new URLSearchParams()
     if (filters.value.startDate) queryParams.append('startDate', filters.value.startDate)
     if (filters.value.endDate) queryParams.append('endDate', filters.value.endDate)
+    if (filters.value.accounts) queryParams.append('accounts', filters.value.accounts)
     
     // Add pagination parameters for revenge trading
     const revengeQueryParams = new URLSearchParams(queryParams)
@@ -2711,6 +2714,7 @@ const analyzeLossAversion = async () => {
     const queryParams = new URLSearchParams()
     if (filters.value.startDate) queryParams.append('startDate', filters.value.startDate)
     if (filters.value.endDate) queryParams.append('endDate', filters.value.endDate)
+    if (filters.value.accounts) queryParams.append('accounts', filters.value.accounts)
     
     const response = await api.get(`/behavioral-analytics/loss-aversion?${queryParams}`)
     
@@ -2758,6 +2762,7 @@ const analyzeOverconfidence = async () => {
     const queryParams = new URLSearchParams()
     if (filters.value.startDate) queryParams.append('startDate', filters.value.startDate)
     if (filters.value.endDate) queryParams.append('endDate', filters.value.endDate)
+    if (filters.value.accounts) queryParams.append('accounts', filters.value.accounts)
 
     const response = await api.post(`/behavioral-analytics/overconfidence/analyze-historical?${queryParams}`)
 
@@ -2835,6 +2840,7 @@ const loadTopMissedTrades = async (forceRefresh = false) => {
     const queryParams = new URLSearchParams()
     if (filters.value.startDate) queryParams.append('startDate', filters.value.startDate)
     if (filters.value.endDate) queryParams.append('endDate', filters.value.endDate)
+    if (filters.value.accounts) queryParams.append('accounts', filters.value.accounts)
     queryParams.append('limit', '50')
     if (forceRefresh) queryParams.append('forceRefresh', 'true')
 
@@ -2877,6 +2883,7 @@ const analyzePersonality = async () => {
     const queryParams = new URLSearchParams()
     if (filters.value.startDate) queryParams.append('startDate', filters.value.startDate)
     if (filters.value.endDate) queryParams.append('endDate', filters.value.endDate)
+    if (filters.value.accounts) queryParams.append('accounts', filters.value.accounts)
     
     const response = await api.get(`/behavioral-analytics/personality?${queryParams}`)
     
@@ -3017,8 +3024,22 @@ const generateLossAversionMessage = (holdTimeRatio, estimatedMonthlyCost) => {
   }
 }
 
+// Watch for global account filter changes
+watch(selectedAccount, async () => {
+  console.log('[BehavioralAnalytics] Global account filter changed to:', selectedAccount.value || 'All Accounts')
+  // Update filters with new account
+  filters.value.accounts = selectedAccount.value || ''
+  if (hasAccess.value) {
+    await loadData()
+  }
+})
+
 onMounted(async () => {
   loadFilters()
+  // Initialize account filter from global state
+  if (selectedAccount.value) {
+    filters.value.accounts = selectedAccount.value
+  }
   await checkAccess()
   if (hasAccess.value) {
     await loadData()

@@ -18,6 +18,9 @@ const { v4: uuidv4 } = require('uuid');
 function calculateRMultiples(trade) {
   const { entry_price, exit_price, stop_loss, take_profit, take_profit_targets, side, pnl, quantity, manual_target_hit_first, instrument_type, contract_size, point_value, risk_level_history } = trade;
 
+  // Cap potential R at 10R to prevent unrealistic values from distorting charts
+  const MAX_POTENTIAL_R = 10;
+
   logger.debug('[R-CALC] ========== calculateRMultiples START ==========');
   logger.debug('[R-CALC] Input trade data:', {
     id: trade.id,
@@ -830,9 +833,9 @@ const tradeManagementController = {
   async getTradesForSelection(req, res) {
     try {
       const userId = req.user.id;
-      const { startDate, endDate, symbol, limit = 100, offset = 0 } = req.query;
+      const { startDate, endDate, symbol, limit = 100, offset = 0, accounts } = req.query;
 
-      logger.info('[TRADE-MGMT] getTradesForSelection called', { userId, symbol, startDate, endDate, limit, offset });
+      logger.info('[TRADE-MGMT] getTradesForSelection called', { userId, symbol, startDate, endDate, limit, offset, accounts });
 
       let query = `
         SELECT
@@ -866,6 +869,14 @@ const tradeManagementController = {
         values.push(`%${searchSymbol}%`);
         paramCount++;
         logger.info('[TRADE-MGMT] Searching for symbol:', searchSymbol);
+      }
+
+      if (accounts) {
+        const accountsArray = accounts.split(',');
+        const placeholders = accountsArray.map((_, index) => `$${paramCount + index}`).join(',');
+        query += ` AND account_identifier IN (${placeholders})`;
+        accountsArray.forEach(account => values.push(account));
+        paramCount += accountsArray.length;
       }
 
       query += ` ORDER BY trade_date DESC, entry_time DESC LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
@@ -909,6 +920,14 @@ const tradeManagementController = {
         const searchSymbol = symbol.trim();
         countQuery += ` AND UPPER(symbol) LIKE UPPER($${countParamCount})`;
         countValues.push(`%${searchSymbol}%`);
+        countParamCount++;
+      }
+
+      if (accounts) {
+        const accountsArray = accounts.split(',');
+        const placeholders = accountsArray.map((_, index) => `$${countParamCount + index}`).join(',');
+        countQuery += ` AND account_identifier IN (${placeholders})`;
+        accountsArray.forEach(account => countValues.push(account));
       }
 
       const countResult = await db.query(countQuery, countValues);
@@ -1314,9 +1333,9 @@ const tradeManagementController = {
   async getRPerformance(req, res) {
     try {
       const userId = req.user.id;
-      const { startDate, endDate, symbol, limit = 2000 } = req.query;
+      const { startDate, endDate, symbol, limit = 2000, accounts } = req.query;
 
-      logger.info('[TRADE-MGMT] getRPerformance called', { userId, symbol, startDate, endDate, limit });
+      logger.info('[TRADE-MGMT] getRPerformance called', { userId, symbol, startDate, endDate, limit, accounts });
 
       // Get trades with stop_loss set (required for R calculation)
       // Now also fetch management_r and take_profit_targets
@@ -1349,6 +1368,14 @@ const tradeManagementController = {
         query += ` AND UPPER(symbol) LIKE UPPER($${paramCount})`;
         values.push(`%${symbol.trim()}%`);
         paramCount++;
+      }
+
+      if (accounts) {
+        const accountsArray = accounts.split(',');
+        const placeholders = accountsArray.map((_, index) => `$${paramCount + index}`).join(',');
+        query += ` AND account_identifier IN (${placeholders})`;
+        accountsArray.forEach(account => values.push(account));
+        paramCount += accountsArray.length;
       }
 
       query += ` ORDER BY trade_date ASC, id ASC LIMIT $${paramCount}`;

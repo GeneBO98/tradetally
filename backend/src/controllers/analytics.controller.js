@@ -1,4 +1,5 @@
 const db = require('../config/database');
+const crypto = require('crypto');
 const aiService = require('../utils/aiService');
 const User = require('../models/User');
 const Trade = require('../models/Trade');
@@ -6,6 +7,12 @@ const finnhub = require('../utils/finnhub');
 const cache = require('../utils/cache');
 const MAEEstimator = require('../utils/maeEstimator');
 const symbolCategories = require('../utils/symbolCategories');
+
+// Helper function to create a short but collision-resistant hash for cache keys
+function createFilterHash(filters) {
+  const str = JSON.stringify(filters);
+  return crypto.createHash('md5').update(str).digest('hex').slice(0, 16);
+}
 
 // Async MAE/MFE calculation function
 async function calculateMAEMFEAsync(userId, filterConditions, params) {
@@ -126,7 +133,8 @@ function convertQueryToTradeFilters(query) {
     instrumentTypes: toArray(query.instrumentTypes),
     optionTypes: toArray(query.optionTypes),
     holdTime: query.holdTime || undefined,
-    hasRValue: query.hasRValue
+    hasRValue: query.hasRValue,
+    accounts: toArray(query.accounts)
   };
 }
 
@@ -343,6 +351,13 @@ function buildFilterConditions(query) {
     }
   }
 
+  // Account identifier filter - multi-select support
+  if (filters.accounts && filters.accounts.length > 0) {
+    const placeholders = filters.accounts.map(() => `$${paramIndex++}`).join(',');
+    filterConditions += ` AND account_identifier IN (${placeholders})`;
+    params.push(...filters.accounts);
+  }
+
   console.log('--- Filter Results (normalized) ---');
   console.log('Final filter conditions:', filterConditions);
   console.log('Final params:', params);
@@ -369,8 +384,8 @@ const analyticsController = {
       
       // Include filter hash in cache key to handle different filter combinations
       const normalizedFiltersForCache = convertQueryToTradeFilters(req.query);
-      const filterHash = JSON.stringify(normalizedFiltersForCache);
-      const cacheKey = `analytics_overview_${req.user.id}_${Buffer.from(filterHash).toString('base64').slice(0, 32)}_${useMedian ? 'median' : 'avg'}`;
+      const filterHashKey = createFilterHash(normalizedFiltersForCache);
+      const cacheKey = `analytics_overview_${req.user.id}_${filterHashKey}_${useMedian ? 'median' : 'avg'}`;
       
       // Check cache first for faster response
       const cachedData = cache.get(cacheKey);
@@ -1097,8 +1112,8 @@ const analyticsController = {
     try {
       // Include filter hash in cache key to handle different filter combinations
       const normalizedForCache = convertQueryToTradeFilters(req.query);
-      const filterHash = JSON.stringify(normalizedForCache);
-      const cacheKey = `analytics_chart_data_${req.user.id}_${Buffer.from(filterHash).toString('base64').slice(0, 32)}`;
+      const filterHashKey = createFilterHash(normalizedForCache);
+      const cacheKey = `analytics_chart_data_${req.user.id}_${filterHashKey}`;
       const cachedData = cache.get(cacheKey);
 
       if (cachedData) {

@@ -387,7 +387,8 @@ class TierService {
           'Watchlists + alerts (email + iOS push)',
           'Advanced leaderboard filters (compare by strategy, time frame)',
           'API access',
-          'AI Insights'
+          'AI Insights',
+          'AI Conversations (100 credits/month with follow-up questions)'
         ],
         upgradeMessage: 'Upgrade to Pro to understand why you win or lose — not just how often.'
       }

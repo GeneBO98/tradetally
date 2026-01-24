@@ -14,11 +14,12 @@ const behavioralAnalyticsController = {
   async getOverview(req, res, next) {
     try {
       const userId = req.user.id;
-      const { startDate, endDate } = req.query;
-      
+      const { startDate, endDate, accounts } = req.query;
+
       const dateFilter = {};
       if (startDate) dateFilter.startDate = startDate;
       if (endDate) dateFilter.endDate = endDate;
+      if (accounts) dateFilter.accounts = accounts.split(',');
 
       const overview = await BehavioralAnalyticsService.getBehavioralOverview(userId, dateFilter);
       
@@ -42,11 +43,12 @@ const behavioralAnalyticsController = {
   async getRevengeTradeAnalysis(req, res, next) {
     try {
       const userId = req.user.id;
-      const { startDate, endDate, page, limit } = req.query;
-      
+      const { startDate, endDate, page, limit, accounts } = req.query;
+
       const dateFilter = {};
       if (startDate) dateFilter.startDate = startDate;
       if (endDate) dateFilter.endDate = endDate;
+      if (accounts) dateFilter.accounts = accounts.split(',');
 
       const paginationOptions = {
         page: parseInt(page) || 1,
@@ -676,13 +678,14 @@ const behavioralAnalyticsController = {
   async getOverconfidenceAnalysis(req, res, next) {
     try {
       const userId = req.user.id;
-      const { startDate, endDate, page, limit } = req.query;
+      const { startDate, endDate, page, limit, accounts } = req.query;
 
       console.log(`[OVERCONFIDENCE] GET analysis request - userId: ${userId}, startDate: ${startDate}, endDate: ${endDate}, page: ${page}, limit: ${limit}`);
 
       const dateFilter = {};
       if (startDate) dateFilter.startDate = startDate;
       if (endDate) dateFilter.endDate = endDate;
+      if (accounts) dateFilter.accounts = accounts.split(',');
 
       const paginationOptions = {
         page: parseInt(page) || 1,
@@ -724,7 +727,7 @@ const behavioralAnalyticsController = {
   async analyzeOverconfidenceHistoricalTrades(req, res, next) {
     try {
       const userId = req.user.id;
-      const { startDate, endDate } = req.query;
+      const { startDate, endDate, accounts } = req.query;
 
       console.log(`[OVERCONFIDENCE] Analyzing trades for user ${userId}, date range: ${startDate || 'all'} to ${endDate || 'now'}`);
 
@@ -741,6 +744,7 @@ const behavioralAnalyticsController = {
       const dateFilter = {};
       if (startDate) dateFilter.startDate = startDate;
       if (endDate) dateFilter.endDate = endDate;
+      if (accounts) dateFilter.accounts = accounts.split(',');
 
       const analysis = await OverconfidenceAnalyticsService.analyzeHistoricalTrades(userId, dateFilter);
 
@@ -905,11 +909,12 @@ const behavioralAnalyticsController = {
   async getLossAversionAnalysis(req, res, next) {
     try {
       const userId = req.user.id;
-      const { startDate, endDate } = req.query;
-      
+      const { startDate, endDate, accounts } = req.query;
+
       console.log(`Loss aversion analysis requested for user ${userId}, dates: ${startDate} - ${endDate}`);
-      
-      const analysis = await LossAversionAnalyticsService.analyzeLossAversion(userId, startDate, endDate);
+
+      const accountsArray = accounts ? accounts.split(',') : undefined;
+      const analysis = await LossAversionAnalyticsService.analyzeLossAversion(userId, startDate, endDate, accountsArray);
       
       if (analysis.error) {
         console.log(`Loss aversion analysis returned error: ${analysis.error} - ${analysis.message}`);
@@ -1008,9 +1013,10 @@ const behavioralAnalyticsController = {
   async getTopMissedTrades(req, res, next) {
     try {
       const userId = req.user.id;
-      const { limit = 20, startDate, endDate, forceRefresh } = req.query;
+      const { limit = 20, startDate, endDate, forceRefresh, accounts } = req.query;
 
       const shouldForceRefresh = forceRefresh === 'true' || forceRefresh === true;
+      const accountsArray = accounts ? accounts.split(',') : undefined;
 
       console.log(`Top missed trades requested for user ${userId}, limit: ${limit}, dateRange: ${startDate} to ${endDate}, forceRefresh: ${shouldForceRefresh}`);
 
@@ -1019,7 +1025,8 @@ const behavioralAnalyticsController = {
         parseInt(limit),
         startDate,
         endDate,
-        shouldForceRefresh
+        shouldForceRefresh,
+        accountsArray
       );
 
       res.json({
@@ -1046,11 +1053,12 @@ const behavioralAnalyticsController = {
   async getPersonalityAnalysis(req, res, next) {
     try {
       const userId = req.user.id;
-      const { startDate, endDate } = req.query;
-      
+      const { startDate, endDate, accounts } = req.query;
+
       console.log(`Personality analysis requested for user ${userId}, dates: ${startDate} - ${endDate}`);
-      
-      const analysis = await TradingPersonalityService.analyzePersonality(userId, startDate, endDate);
+
+      const accountsArray = accounts ? accounts.split(',') : undefined;
+      const analysis = await TradingPersonalityService.analyzePersonality(userId, startDate, endDate, accountsArray);
       
       if (analysis.error) {
         console.log(`Personality analysis returned error: ${analysis.error} - ${analysis.message}`);

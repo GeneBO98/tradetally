@@ -2383,10 +2383,12 @@ const tradeController = {
   async getMonthlyPerformance(req, res, next) {
     try {
       const year = parseInt(req.query.year) || new Date().getFullYear();
+      const { accounts } = req.query;
+      const accountsArray = accounts ? accounts.split(',') : null;
 
-      console.log('[MONTHLY] Getting monthly performance for user:', req.user.id, 'year:', year);
+      console.log('[MONTHLY] Getting monthly performance for user:', req.user.id, 'year:', year, 'accounts:', accountsArray);
 
-      const data = await Trade.getMonthlyPerformance(req.user.id, year);
+      const data = await Trade.getMonthlyPerformance(req.user.id, year, accountsArray);
 
       res.json({
         year,

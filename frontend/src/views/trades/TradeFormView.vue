@@ -242,6 +242,29 @@
             </div>
           </div>
 
+          <!-- Live P&L Preview -->
+          <div v-if="computedPnlPreview.hasValidData" class="mb-4 p-4 rounded-lg border"
+               :class="computedPnlPreview.value >= 0
+                 ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+                 : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-sm font-medium text-gray-700 dark:text-gray-300">Estimated P&L</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400" v-if="computedPnlPreview.instrumentType === 'future'">
+                  Point Value: ${{ form.pointValue || 1 }}
+                </p>
+              </div>
+              <div class="text-right">
+                <p class="text-2xl font-bold"
+                   :class="computedPnlPreview.value >= 0
+                     ? 'text-green-600 dark:text-green-400'
+                     : 'text-red-600 dark:text-red-400'">
+                  {{ computedPnlPreview.value >= 0 ? '+' : '' }}${{ computedPnlPreview.value.toFixed(2) }}
+                </p>
+              </div>
+            </div>
+          </div>
+
           <div v-if="form.executions && form.executions.length > 0" class="space-y-4">
             <div
               v-for="(execution, index) in form.executions"
@@ -1547,6 +1570,99 @@ const hasGroupedExecutions = computed(() => {
       exec.exitPrice !== undefined ||
       exec.entryTime !== undefined
     )
+})
+
+// Live P&L preview calculation
+const computedPnlPreview = computed(() => {
+  const instrumentType = form.value.instrumentType || 'stock'
+  const side = form.value.side
+  const pointValue = instrumentType === 'future' ? (parseFloat(form.value.pointValue) || 1) : 1
+  const contractSize = instrumentType === 'option' ? (parseFloat(form.value.contractSize) || 100) : 1
+  const multiplier = instrumentType === 'future' ? pointValue : (instrumentType === 'option' ? contractSize : 1)
+
+  let totalPnl = 0
+  let hasValidData = false
+
+  // Check if we have individual fills (action-based executions)
+  const hasIndividualFills = form.value.executions &&
+    form.value.executions.length > 0 &&
+    form.value.executions.some(exec => exec.action !== undefined)
+
+  if (hasIndividualFills) {
+    // Calculate from individual fills
+    const executions = form.value.executions.filter(e => e.action && e.price && e.quantity)
+    if (executions.length >= 2) {
+      // Separate buys and sells
+      let totalBuyQty = 0, totalBuyValue = 0
+      let totalSellQty = 0, totalSellValue = 0
+
+      executions.forEach(exec => {
+        const qty = parseFloat(exec.quantity) || 0
+        const price = parseFloat(exec.price) || 0
+        if (exec.action === 'buy') {
+          totalBuyQty += qty
+          totalBuyValue += qty * price
+        } else if (exec.action === 'sell') {
+          totalSellQty += qty
+          totalSellValue += qty * price
+        }
+      })
+
+      // Calculate P&L based on trade side
+      const matchedQty = Math.min(totalBuyQty, totalSellQty)
+      if (matchedQty > 0) {
+        const avgBuyPrice = totalBuyValue / totalBuyQty
+        const avgSellPrice = totalSellValue / totalSellQty
+        // For short: profit when sell high, buy low (sell - buy)
+        // For long: profit when buy low, sell high (sell - buy)
+        totalPnl = (avgSellPrice - avgBuyPrice) * matchedQty * multiplier
+        hasValidData = true
+      }
+    }
+  } else if (hasGroupedExecutions.value) {
+    // Calculate from grouped executions (entryPrice/exitPrice format)
+    form.value.executions.forEach(exec => {
+      const entryPrice = parseFloat(exec.entryPrice)
+      const exitPrice = parseFloat(exec.exitPrice)
+      const quantity = parseFloat(exec.quantity) || 0
+      const execSide = exec.side || side
+
+      if (!isNaN(entryPrice) && !isNaN(exitPrice) && quantity > 0) {
+        if (execSide === 'long') {
+          totalPnl += (exitPrice - entryPrice) * quantity * multiplier
+        } else if (execSide === 'short') {
+          totalPnl += (entryPrice - exitPrice) * quantity * multiplier
+        }
+        hasValidData = true
+      }
+    })
+  } else {
+    // Simple trade (single entry/exit at form level)
+    const entryPrice = parseFloat(form.value.entryPrice)
+    const exitPrice = parseFloat(form.value.exitPrice)
+    const quantity = parseFloat(form.value.quantity) || 0
+
+    if (!isNaN(entryPrice) && !isNaN(exitPrice) && quantity > 0 && side) {
+      if (side === 'long') {
+        totalPnl = (exitPrice - entryPrice) * quantity * multiplier
+      } else if (side === 'short') {
+        totalPnl = (entryPrice - exitPrice) * quantity * multiplier
+      }
+      hasValidData = true
+    }
+  }
+
+  // Subtract commission and fees
+  const commission = (parseFloat(form.value.entryCommission) || 0) + (parseFloat(form.value.exitCommission) || 0)
+  const fees = parseFloat(form.value.fees) || 0
+  totalPnl -= (commission + fees)
+
+  return {
+    value: totalPnl,
+    hasValidData,
+    multiplier,
+    instrumentType
+  }
 })
 
 const form = ref({

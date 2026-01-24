@@ -75,11 +75,20 @@
     <!-- Year Wrapped Modal -->
     <YearWrappedModal />
 
-    <div v-if="loading" class="flex justify-center py-12">
+    <!-- Full page spinner only on initial load -->
+    <div v-if="initialLoading" class="flex justify-center py-12">
       <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
     </div>
 
-    <div v-else class="space-y-8">
+    <!-- Content with optional refresh indicator -->
+    <div v-else class="space-y-8 relative">
+      <!-- Subtle refresh indicator overlay -->
+      <div v-if="loading" class="absolute top-0 right-0 z-10">
+        <div class="flex items-center space-x-2 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-sm border border-gray-200 dark:border-gray-700">
+          <div class="animate-spin rounded-full h-4 w-4 border-2 border-primary-600 border-t-transparent"></div>
+          <span class="text-xs text-gray-600 dark:text-gray-400">Updating...</span>
+        </div>
+      </div>
       <!-- Today's Journal Entry -->
       <TodaysJournalEntry />
 
@@ -746,6 +755,7 @@ const yearWrappedStore = useYearWrappedStore()
 const router = useRouter()
 
 const loading = ref(true)
+const initialLoading = ref(true) // Track initial load separately to preserve scroll on refresh
 const userSettings = ref(null)
 const analytics = ref({
   summary: {},
@@ -926,6 +936,7 @@ async function fetchAnalytics() {
     console.error('Failed to fetch analytics:', error)
   } finally {
     loading.value = false
+    initialLoading.value = false // Mark initial load complete
   }
 }
 

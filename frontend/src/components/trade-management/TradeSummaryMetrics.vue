@@ -608,8 +608,14 @@ const weightedAverageR = computed(() => {
   // Collect all targets with their R values and quantities
   const allTargets = []
 
-  // Add primary TP as TP1 if it exists
-  if (primaryTp) {
+  // Check if TP1 is already in the targets array (matches primaryTp)
+  // This avoids double-counting TP1 when it's stored in both places
+  const firstTargetPrice = targets[0]?.price ? parseFloat(targets[0].price) : null
+  const takeProfitPrice = primaryTp ? parseFloat(primaryTp) : null
+  const tp1AlreadyInTargets = takeProfitPrice && firstTargetPrice && Math.abs(firstTargetPrice - takeProfitPrice) < 0.01
+
+  // Add primary TP as TP1 if it exists AND is NOT already in targets array
+  if (primaryTp && !tp1AlreadyInTargets) {
     const r = parseFloat(calculateTargetR(primaryTp))
     if (r && !isNaN(r)) {
       // Use remaining quantity for TP1 if additional targets have shares
@@ -619,7 +625,7 @@ const weightedAverageR = computed(() => {
     }
   }
 
-  // Add additional targets
+  // Add targets from the array
   targets.forEach(t => {
     if (t.price) {
       const r = parseFloat(calculateTargetR(t.price))
