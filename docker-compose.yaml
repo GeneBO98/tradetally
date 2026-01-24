@@ -101,6 +101,7 @@ services:
     volumes:
       - ./backend/src/logs:/app/backend/src/logs
       - ./backend/src/data:/app/backend/src/data
+      - ./backend/uploads:/app/backend/uploads
     networks:
       - trader-network
     restart: unless-stopped

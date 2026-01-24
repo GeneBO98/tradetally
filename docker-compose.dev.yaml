@@ -76,6 +76,7 @@ services:
     volumes:
       - ./backend/src/logs:/app/backend/src/logs
       - ./backend/src/data:/app/backend/src/data
+      - ./backend/uploads:/app/backend/uploads
       # Mount source code for development (optional - enables hot reload if supported)
       - ./backend/src:/app/backend/src
       - ./frontend/src:/app/frontend/src
