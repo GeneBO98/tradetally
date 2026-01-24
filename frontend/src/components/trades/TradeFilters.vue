@@ -1056,7 +1056,8 @@ function resetFilters() {
     // localStorage clear failed
   }
 
-  // Emit empty filters to trigger immediate refresh
+  // Emit empty filters to trigger reset
+  // Note: The trades store will automatically preserve the global account filter
   emit('filter', {})
 }
 

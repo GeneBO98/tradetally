@@ -1307,6 +1307,12 @@ const tradeController = {
                   }
                 }
               }
+            } else {
+              // Log warning when no accounts found in any trades
+              const tradesWithoutAccount = trades.filter(t => !t.accountIdentifier).length;
+              if (tradesWithoutAccount > 0) {
+                logger.logImport(`[ACCOUNTS WARNING] ${tradesWithoutAccount}/${trades.length} trades have no account identifier. Consider selecting an account during import or ensure your CSV includes account information.`);
+              }
             }
           } catch (accountError) {
             logger.logImport(`[ACCOUNTS] Error during account auto-creation: ${accountError.message}`);

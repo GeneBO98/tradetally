@@ -357,6 +357,11 @@ export const useTradesStore = defineStore('trades', () => {
   }
 
   function setFilters(newFilters) {
+    // Check for global account filter from localStorage
+    // This ensures the global account filter is ALWAYS respected, even on reset
+    const globalAccountKey = 'tradetally_global_account'
+    const globalAccount = localStorage.getItem(globalAccountKey)
+
     // If newFilters is empty object, reset all filters
     if (Object.keys(newFilters).length === 0) {
       filters.value = {
@@ -373,17 +378,29 @@ export const useTradesStore = defineStore('trades', () => {
         hasNews: '',
         broker: '',
         brokers: [],
-        accounts: [],
+        accounts: globalAccount || '', // Preserve global account filter (string format)
         daysOfWeek: [],
         instrumentTypes: []
       }
     } else {
-      filters.value = { ...filters.value, ...newFilters }
+      // For non-empty filters, merge but ensure global account is respected if present
+      const mergedFilters = { ...filters.value, ...newFilters }
+
+      // If global account is set and accounts filter is empty/not specified, apply global account
+      if (globalAccount && !newFilters.accounts) {
+        mergedFilters.accounts = globalAccount
+      }
+
+      filters.value = mergedFilters
     }
     pagination.value.page = 1 // Reset to first page when filtering
   }
 
   function resetFilters() {
+    // Check for global account filter from localStorage
+    const globalAccountKey = 'tradetally_global_account'
+    const globalAccount = localStorage.getItem(globalAccountKey)
+
     filters.value = {
       symbol: '',
       startDate: '',
@@ -398,7 +415,7 @@ export const useTradesStore = defineStore('trades', () => {
       hasNews: '',
       broker: '',
       brokers: [],
-      accounts: [],
+      accounts: globalAccount || '', // Preserve global account filter (string format)
       daysOfWeek: [],
       instrumentTypes: []
     }
