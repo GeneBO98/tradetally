@@ -106,6 +106,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import api from '@/services/api'
+import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 import TradeSelector from '@/components/trade-management/TradeSelector.vue'
 import StopLossTakeProfitForm from '@/components/trade-management/StopLossTakeProfitForm.vue'
 import TradeManagementChart from '@/components/trade-management/TradeManagementChart.vue'
@@ -116,6 +117,7 @@ import TradeCharts from '@/components/trades/TradeCharts.vue'
 
 const route = useRoute()
 const router = useRouter()
+const { selectedAccount } = useGlobalAccountFilter()
 
 // State
 const trades = ref([])
@@ -214,6 +216,9 @@ async function fetchTrades() {
     if (filters.value.endDate) {
       params.endDate = filters.value.endDate
     }
+    if (selectedAccount.value) {
+      params.accounts = selectedAccount.value
+    }
 
     console.log('[TRADE-MGMT] Fetching trades with params:', params)
     const response = await api.get('/trade-management/trades', { params })
@@ -249,6 +254,9 @@ async function loadMoreTrades() {
     }
     if (filters.value.endDate) {
       params.endDate = filters.value.endDate
+    }
+    if (selectedAccount.value) {
+      params.accounts = selectedAccount.value
     }
 
     const response = await api.get('/trade-management/trades', { params })
@@ -383,6 +391,14 @@ function clearSelection() {
 }
 
 // Lifecycle
+// Watch for global account filter changes
+watch(selectedAccount, () => {
+  console.log('[TRADE-MGMT] Global account filter changed to:', selectedAccount.value || 'All Accounts')
+  pagination.value.offset = 0
+  clearSelection()
+  fetchTrades()
+})
+
 onMounted(async () => {
   // Restore filters from URL
   const savedTradeId = restoreFromUrl()

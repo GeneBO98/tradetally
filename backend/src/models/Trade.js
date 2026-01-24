@@ -1226,6 +1226,17 @@ class Trade {
       return Math.round(parseFloat(num) * Math.pow(10, decimals)) / Math.pow(10, decimals);
     };
 
+    // Debug logging for P&L update detection
+    if (updates.pointValue !== undefined) {
+      console.log('[PNL DEBUG] pointValue update check:', {
+        updateValue: updates.pointValue,
+        currentValue: currentTrade.point_value,
+        roundedUpdate: roundTo(updates.pointValue),
+        roundedCurrent: roundTo(currentTrade.point_value),
+        isDifferent: roundTo(updates.pointValue) !== roundTo(currentTrade.point_value)
+      });
+    }
+
     const hasPnLUpdate = (
       (updates.entryPrice !== undefined && roundTo(updates.entryPrice) !== roundTo(currentTrade.entry_price)) ||
       (updates.exitPrice !== undefined && roundTo(updates.exitPrice) !== roundTo(currentTrade.exit_price)) ||
@@ -1234,8 +1245,12 @@ class Trade {
       (updates.commission !== undefined && roundTo(updates.commission) !== roundTo(currentTrade.commission)) ||
       (updates.fees !== undefined && roundTo(updates.fees) !== roundTo(currentTrade.fees)) ||
       (updates.instrumentType !== undefined && updates.instrumentType !== currentTrade.instrument_type) ||
-      (updates.contractSize !== undefined && roundTo(updates.contractSize) !== roundTo(currentTrade.contract_size))
+      (updates.contractSize !== undefined && roundTo(updates.contractSize) !== roundTo(currentTrade.contract_size)) ||
+      (updates.pointValue !== undefined && roundTo(updates.pointValue) !== roundTo(currentTrade.point_value)) ||
+      (updates.tickSize !== undefined && roundTo(updates.tickSize) !== roundTo(currentTrade.tick_size))
     );
+
+    console.log('[PNL DEBUG] hasPnLUpdate result:', hasPnLUpdate);
 
     if (hasPnLUpdate) {
       console.log('[PNL UPDATE] Values actually changed, recalculating P&L');
@@ -2505,8 +2520,17 @@ class Trade {
     };
   }
 
-  static async getMonthlyPerformance(userId, year) {
-    console.log(`[MONTHLY] Getting monthly performance for user ${userId}, year ${year}`);
+  static async getMonthlyPerformance(userId, year, accounts = null) {
+    console.log(`[MONTHLY] Getting monthly performance for user ${userId}, year ${year}, accounts:`, accounts);
+
+    // Build account filter condition
+    let accountFilter = '';
+    const params = [userId, year];
+    if (accounts && accounts.length > 0) {
+      const placeholders = accounts.map((_, i) => `$${i + 3}`).join(',');
+      accountFilter = ` AND account_identifier IN (${placeholders})`;
+      params.push(...accounts);
+    }
 
     const monthlyQuery = `
       WITH monthly_trades AS (
@@ -2530,7 +2554,7 @@ class Trade {
         WHERE user_id = $1
           AND EXTRACT(YEAR FROM trade_date) = $2
           AND exit_price IS NOT NULL
-          AND pnl IS NOT NULL
+          AND pnl IS NOT NULL${accountFilter}
         GROUP BY EXTRACT(MONTH FROM trade_date)
       ),
       all_months AS (
@@ -2563,7 +2587,7 @@ class Trade {
     `;
 
     try {
-      const result = await db.query(monthlyQuery, [userId, year]);
+      const result = await db.query(monthlyQuery, params);
 
       // Format the data for easier consumption
       const monthlyData = result.rows.map(row => ({

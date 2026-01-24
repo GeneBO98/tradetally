@@ -274,13 +274,15 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useNotification } from '@/composables/useNotification'
+import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 import api from '@/services/api'
 import HealthCorrelationChart from '@/components/health/HealthCorrelationChart.vue'
 
 const authStore = useAuthStore()
+const { selectedAccount } = useGlobalAccountFilter()
 const { showSuccessModal, showCriticalError } = useNotification()
 
 const healthSummary = ref({
@@ -373,12 +375,17 @@ async function loadHealthSummary() {
     const startDate = new Date()
     startDate.setDate(startDate.getDate() - 30)
 
+    const tradeParams = {
+      startDate: startDate.toISOString().split('T')[0],
+      endDate: endDate.toISOString().split('T')[0],
+      limit: 1000
+    }
+    if (selectedAccount.value) {
+      tradeParams.accounts = selectedAccount.value
+    }
+
     const response = await api.get('/trades', {
-      params: {
-        startDate: startDate.toISOString().split('T')[0],
-        endDate: endDate.toISOString().split('T')[0],
-        limit: 1000
-      }
+      params: tradeParams
     })
 
     const trades = response.data.trades
@@ -561,6 +568,12 @@ function getInsightTypeClass(type) {
   }
   return classes[type] || classes.overall
 }
+
+// Watch for global account filter changes
+watch(selectedAccount, () => {
+  console.log('[HEALTH-ANALYTICS] Global account filter changed to:', selectedAccount.value || 'All Accounts')
+  loadHealthSummary()
+})
 
 onMounted(() => {
   loadHealthSummary()

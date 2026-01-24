@@ -20,11 +20,20 @@
       </div>
     </div>
 
-    <div v-if="loading" class="flex justify-center py-12">
+    <!-- Full page spinner only on initial load -->
+    <div v-if="initialLoading" class="flex justify-center py-12">
       <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
     </div>
 
-    <div v-else>
+    <!-- Content with optional refresh indicator -->
+    <div v-else class="relative">
+      <!-- Subtle refresh indicator -->
+      <div v-if="loading" class="absolute top-0 right-0 z-10">
+        <div class="flex items-center space-x-2 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-sm border border-gray-200 dark:border-gray-700">
+          <div class="animate-spin rounded-full h-4 w-4 border-2 border-primary-600 border-t-transparent"></div>
+          <span class="text-xs text-gray-600 dark:text-gray-400">Updating...</span>
+        </div>
+      </div>
       <!-- Expanded Month View -->
       <div v-if="expandedMonth" ref="expandedMonthContainer" class="mb-8">
         <div class="card">
@@ -194,6 +203,7 @@ const { selectedAccount } = useGlobalAccountFilter()
 const router = useRouter()
 
 const loading = ref(true)
+const initialLoading = ref(true) // Track initial load separately to preserve scroll on refresh
 const calendarData = ref(new Map()) // Map of date string -> { trades: number, pnl: number }
 const trades = ref([]) // Only loaded when needed (e.g., for modal)
 const expandedMonth = ref(null)
@@ -547,6 +557,7 @@ async function fetchCalendarData() {
     console.error('Failed to fetch calendar data:', error)
   } finally {
     loading.value = false
+    initialLoading.value = false
   }
 }
 

@@ -39,6 +39,10 @@ const TIER_LIMITS = {
     behavioralAnalytics: false,
     healthAnalytics: false,
 
+    // AI
+    aiCreditsPerMonth: 0, // No AI credits for free tier
+    aiMaxFollowups: 0, // No follow-up questions
+
     // API
     apiAccess: false,
     apiCallsPerDay: 0,
@@ -85,6 +89,10 @@ const TIER_LIMITS = {
     behavioralAnalytics: true,
     healthAnalytics: true,
 
+    // AI
+    aiCreditsPerMonth: 100, // 100 credits per month for AI conversations
+    aiMaxFollowups: 5, // Up to 5 follow-up questions per session
+
     // API
     apiAccess: true,
     apiCallsPerDay: 10000,
@@ -125,6 +133,7 @@ const TIER_LIMITS = {
       webhooks: true,
       aiInsights: true,
       aiTradeAnalysis: true,
+      aiConversations: true, // Multi-turn AI conversations with follow-ups
       advancedFiltering: true,
       customMetrics: true,
       exportReports: true,
