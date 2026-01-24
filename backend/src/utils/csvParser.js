@@ -155,6 +155,9 @@ function detectAccountColumn(records) {
   const firstRecord = records[0];
   const fieldNames = Object.keys(firstRecord);
 
+  // Log all available columns for debugging
+  console.log(`[ACCOUNT] Checking ${fieldNames.length} columns for account field: ${fieldNames.slice(0, 15).join(', ')}${fieldNames.length > 15 ? '...' : ''}`);
+
   // Normalize field names for comparison
   for (const fieldName of fieldNames) {
     const normalizedField = fieldName.toLowerCase().replace(/[\s_-]/g, '');
@@ -171,12 +174,14 @@ function detectAccountColumn(records) {
         if (hasData) {
           console.log(`[ACCOUNT] Detected account column: "${fieldName}"`);
           return fieldName;
+        } else {
+          console.log(`[ACCOUNT] Found potential account column "${fieldName}" but it has no data`);
         }
       }
     }
   }
 
-  console.log('[ACCOUNT] No account column detected');
+  console.log(`[ACCOUNT] No account column found in CSV columns`);
   return null;
 }
 
@@ -1063,12 +1068,65 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
         console.log('Detected tab-separated Schwab file');
         parseOptions.delimiter = delimiter;
       }
-      
+
       // Check if the first line is missing headers (starts with actual data)
       const firstFields = firstLine.split(delimiter);
       if (firstFields.length > 20 && !firstLine.toLowerCase().includes('symbol')) {
         console.log('Schwab file appears to be missing headers, using column indices');
         parseOptions.columns = false; // Parse as arrays instead
+      }
+
+      // Extract account number from Schwab header rows
+      // Schwab CSVs often start with header text like:
+      // "Transactions for account ...1234 as of 01/15/2024"
+      // "Positions for account ...1234 as of 01/15/2024"
+      // "Brokerage ...1234"
+      const lines = csvString.split('\n');
+      let schwabAccountNumber = null;
+
+      for (let i = 0; i < Math.min(lines.length, 15); i++) {
+        const line = lines[i];
+
+        // Pattern 1: "Transactions/Positions for account ...XXXX" or "account ...XXXX"
+        const accountWithDotsMatch = line.match(/(?:account|Account)[^\d]*\.{2,}(\d{4})/i);
+        if (accountWithDotsMatch) {
+          schwabAccountNumber = `****${accountWithDotsMatch[1]}`;
+          console.log(`[ACCOUNT] Extracted Schwab account from header (dots pattern): ${schwabAccountNumber}`);
+          break;
+        }
+
+        // Pattern 2: "Account: XXXX" or "Account Number: XXXX" (full or partial)
+        const accountColonMatch = line.match(/(?:account|Account)\s*(?:Number)?[:\s]+[*\.]*(\d{4,})/i);
+        if (accountColonMatch) {
+          const accountNum = accountColonMatch[1];
+          schwabAccountNumber = accountNum.length <= 4 ? `****${accountNum}` : redactAccountId(accountNum);
+          console.log(`[ACCOUNT] Extracted Schwab account from header (colon pattern): ${schwabAccountNumber}`);
+          break;
+        }
+
+        // Pattern 3: Standalone redacted account like "...1234" or "****1234" or "***1234"
+        const redactedMatch = line.match(/(?:\.{2,}|\*{2,})(\d{4})/);
+        if (redactedMatch) {
+          schwabAccountNumber = `****${redactedMatch[1]}`;
+          console.log(`[ACCOUNT] Found Schwab redacted account in header: ${schwabAccountNumber}`);
+          break;
+        }
+
+        // Pattern 4: "Brokerage XXXX" or "Brokerage ...XXXX"
+        const brokerageMatch = line.match(/Brokerage[^\d]*[\.]*(\d{4,})/i);
+        if (brokerageMatch) {
+          const accountNum = brokerageMatch[1];
+          schwabAccountNumber = accountNum.length <= 4 ? `****${accountNum}` : redactAccountId(accountNum);
+          console.log(`[ACCOUNT] Extracted Schwab account from brokerage header: ${schwabAccountNumber}`);
+          break;
+        }
+      }
+
+      if (schwabAccountNumber) {
+        context.schwabAccountNumber = schwabAccountNumber;
+        console.log(`[ACCOUNT] Will use Schwab account: ${schwabAccountNumber}`);
+      } else {
+        console.log(`[ACCOUNT] No Schwab account number found in header rows`);
       }
     }
     
@@ -2712,12 +2770,12 @@ async function parseSchwabTrades(records, existingPositions = {}, context = {}) 
         gainLossPercent = parseFloat(record['Gain/Loss (%)']?.replace(/[%,]/g, '') || 0);
       }
       
-      // Determine account identifier - user selection takes priority over CSV column
+      // Determine account identifier - user selection takes priority, then CSV column, then header extraction
       const accountIdentifier = context.selectedAccountId
         ? context.selectedAccountId
         : context.accountColumnName
           ? extractAccountFromRecord(record, context.accountColumnName)
-          : null;
+          : (context.schwabAccountNumber || null);
 
       const trade = {
         symbol: cleanString(symbol),
@@ -2816,12 +2874,12 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
         continue;
       }
       
-      // Determine account identifier - user selection takes priority over CSV column
+      // Determine account identifier - user selection takes priority, then CSV column, then header extraction
       const accountIdentifier = context.selectedAccountId
         ? context.selectedAccountId
         : context.accountColumnName
           ? extractAccountFromRecord(record, context.accountColumnName)
-          : null;
+          : (context.schwabAccountNumber || null);
 
       transactions.push({
         symbol,
