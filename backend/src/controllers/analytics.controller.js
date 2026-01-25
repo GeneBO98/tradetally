@@ -1026,22 +1026,23 @@ const analyticsController = {
         ),
         trade_daily AS (
           -- Trades without executions or with no exit executions - use trade-level P&L
-          SELECT 
-            t.trade_date,
+          -- Group by EXIT date (when trade was closed), not trade_date (entry date)
+          SELECT
+            (t.exit_time::timestamp)::date as exit_date,
             COUNT(*) as trades,
             COALESCE(SUM(t.pnl), 0) as daily_pnl
           FROM trades t
-          WHERE t.user_id = $1 
+          WHERE t.user_id = $1
             AND t.exit_time IS NOT NULL
-            AND t.trade_date >= $${paramOffset + 1}
-            AND t.trade_date <= $${paramOffset + 2}
+            AND (t.exit_time::timestamp)::date >= $${paramOffset + 1}::date
+            AND (t.exit_time::timestamp)::date <= $${paramOffset + 2}::date
             AND (
-              t.executions IS NULL 
+              t.executions IS NULL
               OR jsonb_array_length(t.executions) = 0
               OR NOT EXISTS (
-                SELECT 1 
+                SELECT 1
                 FROM jsonb_array_elements(t.executions) AS exec
-                WHERE exec->>'exitTime' IS NOT NULL 
+                WHERE exec->>'exitTime' IS NOT NULL
                   OR exec->>'exit_time' IS NOT NULL
                   OR (
                     exec->>'datetime' IS NOT NULL
@@ -1053,16 +1054,16 @@ const analyticsController = {
               )
             )
             ${filterConditions ? filterConditions.replace(/\btrade_date\b/g, 't.trade_date').replace(/\bsymbol\b/g, 't.symbol').replace(/\bstrategy\b/g, 't.strategy').replace(/\bside\b/g, 't.side') : ''}
-          GROUP BY t.trade_date
+          GROUP BY (t.exit_time::timestamp)::date
         )
         -- Combine execution-based and trade-based P&L
-        SELECT 
-          COALESCE(e.exit_date, t.trade_date)::text as trade_date,
+        SELECT
+          COALESCE(e.exit_date, t.exit_date)::text as trade_date,
           COALESCE(e.trades, 0) + COALESCE(t.trades, 0) as trades,
           COALESCE(e.daily_pnl, 0) + COALESCE(t.daily_pnl, 0) as daily_pnl
         FROM execution_daily e
-        FULL OUTER JOIN trade_daily t ON e.exit_date = t.trade_date
-        ORDER BY COALESCE(e.exit_date, t.trade_date)
+        FULL OUTER JOIN trade_daily t ON e.exit_date = t.exit_date
+        ORDER BY COALESCE(e.exit_date, t.exit_date)
       `;
 
       // Add start and end date to params
