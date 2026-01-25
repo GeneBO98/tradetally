@@ -976,22 +976,14 @@ function getSectionDefinition(id) {
 }
 
 // Handle drag change event (fires when order actually changes)
-function onDragChange(evt) {
-  console.log('%c[DASHBOARD] onDragChange fired!', 'background: green; color: white; font-size: 16px;', evt)
+function onDragChange() {
   saveDashboardLayout()
 }
 
 // Handle drag end event
-function onDragEnd(evt) {
-  console.log('%c[DASHBOARD] onDragEnd fired!', 'background: blue; color: white; font-size: 16px;', {
-    oldIndex: evt?.oldIndex,
-    newIndex: evt?.newIndex,
-    currentOrder: dashboardLayout.value.map(s => s.id)
-  })
+function onDragEnd() {
   // Force save immediately after drag ends to ensure order is saved
-  // Use nextTick to ensure vuedraggable has finished updating the array
   nextTick(() => {
-    console.log('[DASHBOARD LAYOUT] After nextTick, order is:', dashboardLayout.value.map(s => s.id))
     if (saveLayoutTimeout) clearTimeout(saveLayoutTimeout)
     saveDashboardLayout()
   })
@@ -1018,40 +1010,23 @@ async function resetDashboardLayout() {
 
 // Save dashboard layout
 async function saveDashboardLayout() {
-  console.log('%c[DASHBOARD] saveDashboardLayout() called!', 'background: purple; color: white; font-size: 16px;')
   try {
-    // Create a deep copy to ensure we're saving the current state
     const layoutToSave = JSON.parse(JSON.stringify(dashboardLayout.value))
-    console.log('%c[DASHBOARD] Saving order:', 'background: orange; color: black;', layoutToSave.map(s => s.id).join(' -> '))
-
     const response = await api.put('/settings', {
       dashboardLayout: layoutToSave
     })
-
-    console.log('%c[DASHBOARD] Save SUCCESS!', 'background: green; color: white; font-size: 16px;')
-    console.log('[DASHBOARD] Response dashboardLayout:', response.data?.settings?.dashboardLayout)
-
-    // Update local settings to reflect the save
     if (response.data?.settings) {
       userSettings.value = response.data.settings
     }
   } catch (error) {
-    console.error('%c[DASHBOARD] Save FAILED!', 'background: red; color: white; font-size: 16px;')
-    console.error('[DASHBOARD] Error:', error)
-    console.error('[DASHBOARD] Error response:', error.response?.data)
+    console.error('[DASHBOARD] Failed to save layout:', error)
   }
 }
 
 // Load dashboard layout from user settings
 function loadDashboardLayout() {
-  console.log('%c[DASHBOARD] loadDashboardLayout() called', 'background: cyan; color: black; font-size: 14px;')
-  console.log('[DASHBOARD] userSettings.dashboardLayout:', userSettings.value?.dashboardLayout)
-
   if (userSettings.value?.dashboardLayout && Array.isArray(userSettings.value.dashboardLayout)) {
     const savedLayout = userSettings.value.dashboardLayout
-    console.log('%c[DASHBOARD] FOUND saved layout!', 'background: green; color: white;', savedLayout.map(s => s.id).join(' -> '))
-
-    // Preserve the order from saved layout, but merge with defaults for any new sections
     const savedIds = savedLayout.map(s => s.id)
 
     // Start with saved layout in its saved order
@@ -1062,10 +1037,6 @@ function loadDashboardLayout() {
     // Add any new sections that weren't in the saved layout (from defaults)
     const newSections = defaultDashboardLayout.filter(d => !savedIds.includes(d.id))
     dashboardLayout.value = [...dashboardLayout.value, ...newSections]
-
-    console.log('[DASHBOARD] Final loaded order:', dashboardLayout.value.map(s => s.id).join(' -> '))
-  } else {
-    console.log('%c[DASHBOARD] NO saved layout, using defaults', 'background: yellow; color: black;')
   }
 }
 
