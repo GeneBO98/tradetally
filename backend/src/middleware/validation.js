@@ -287,7 +287,15 @@ const schemas = {
     autoCloseExpiredOptions: Joi.boolean(),
     defaultStopLossType: Joi.string().valid('percent', 'lod').default('percent'),
     defaultStopLossPercent: Joi.number().min(0).max(100).allow(null),
-    defaultTakeProfitPercent: Joi.number().min(0).max(1000).allow(null)
+    defaultTakeProfitPercent: Joi.number().min(0).max(1000).allow(null),
+    dashboardLayout: Joi.array().items(Joi.object({
+      id: Joi.string().required(),
+      visible: Joi.boolean().required()
+    })).allow(null),
+    analyticsChartLayout: Joi.array().items(Joi.object({
+      id: Joi.string().required(),
+      visible: Joi.boolean().required()
+    })).allow(null)
   }).min(1),
 
   // Mobile-specific validation schemas

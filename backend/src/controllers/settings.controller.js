@@ -34,11 +34,17 @@ const settingsController = {
 
   async updateSettings(req, res, next) {
     try {
+      console.log('[SETTINGS API] updateSettings called with body:', JSON.stringify(req.body));
+      if (req.body.dashboardLayout) {
+        console.log('[SETTINGS API] dashboardLayout received:', req.body.dashboardLayout.map(s => s.id).join(' -> '));
+      }
       const settings = await User.updateSettings(req.user.id, req.body);
       // Convert snake_case to camelCase for frontend
       const camelCaseSettings = toCamelCase(settings);
+      console.log('[SETTINGS API] Returning dashboardLayout:', camelCaseSettings.dashboardLayout ? 'SET' : 'NULL');
       res.json({ settings: camelCaseSettings });
     } catch (error) {
+      console.error('[SETTINGS API] Error:', error.message);
       next(error);
     }
   },
