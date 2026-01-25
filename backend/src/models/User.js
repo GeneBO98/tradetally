@@ -182,6 +182,7 @@ class User {
       tradeGroupingTimeGapMinutes: 'trade_grouping_time_gap_minutes',
       autoCloseExpiredOptions: 'auto_close_expired_options',
       analyticsChartLayout: 'analytics_chart_layout',
+      dashboardLayout: 'dashboard_layout',
       defaultStopLossPercent: 'default_stop_loss_percent',
       defaultTakeProfitPercent: 'default_take_profit_percent',
       defaultStopLossType: 'default_stop_loss_type'
@@ -190,8 +191,15 @@ class User {
     Object.entries(settings).forEach(([key, value]) => {
       if (key !== 'user_id' && key !== 'id') {
         const dbColumn = columnMapping[key] || key;
-        fields.push(`${dbColumn} = $${paramCount}`);
-        values.push(value);
+        // For JSONB columns, ensure proper casting and JSON serialization
+        if (dbColumn === 'analytics_chart_layout' || dbColumn === 'dashboard_layout') {
+          fields.push(`${dbColumn} = $${paramCount}::jsonb`);
+          // PostgreSQL JSONB requires JSON string, not JavaScript object
+          values.push(value ? JSON.stringify(value) : null);
+        } else {
+          fields.push(`${dbColumn} = $${paramCount}`);
+          values.push(value);
+        }
         paramCount++;
       }
     });
@@ -207,6 +215,11 @@ class User {
 
     try {
       const result = await db.query(query, values);
+      
+      // Log if dashboard_layout was saved
+      if (settings.dashboardLayout) {
+        console.log('[SETTINGS] Dashboard layout saved successfully');
+      }
 
       // If default stop loss percentage was updated, apply it to existing trades without a stop loss
       if (settings.defaultStopLossPercent !== undefined && settings.defaultStopLossPercent > 0) {
@@ -234,6 +247,11 @@ class User {
 
       return result.rows[0];
     } catch (error) {
+      console.error('[SETTINGS] Error updating user settings:', error.message);
+      // Check if error is related to missing column
+      if (error.message && error.message.includes('dashboard_layout')) {
+        console.error('[SETTINGS] ERROR: dashboard_layout column may not exist. Please run migration 140_add_dashboard_layout.sql');
+      }
       // If statistics_calculation column doesn't exist, try update without it
       if (error.message.includes('statistics_calculation') && settings.statisticsCalculation) {
         console.warn('statistics_calculation column not yet migrated, skipping field');
