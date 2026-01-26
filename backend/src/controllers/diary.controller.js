@@ -4,6 +4,9 @@ const upload = require('../middleware/upload');
 const multer = require('multer');
 const aiService = require('../utils/aiService');
 const db = require('../config/database');
+const imageProcessor = require('../utils/imageProcessor');
+const path = require('path');
+const fs = require('fs').promises;
 
 
 // Get diary entries for user with filtering and pagination
@@ -209,7 +212,252 @@ const deleteEntry = async (req, res) => {
   }
 };
 
-// Upload attachment to diary entry
+// Upload images to diary entry (with compression)
+const uploadDiaryImages = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { id } = req.params;
+
+    // Verify diary entry belongs to user
+    const entry = await Diary.findById(id, userId);
+    if (!entry) {
+      return res.status(404).json({ error: 'Diary entry not found' });
+    }
+
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ error: 'No images uploaded' });
+    }
+
+    const uploadsDir = path.join(__dirname, '../../uploads/diary');
+    const processedImages = [];
+
+    // Process each uploaded image
+    for (const file of req.files) {
+      try {
+        // Validate image
+        await imageProcessor.validateImage(file.buffer);
+
+        // Process and compress image - reuse the existing processImage method
+        // but pass diary entry id instead of trade id
+        const processedImage = await processDiaryImage(
+          file.buffer,
+          file.originalname,
+          userId,
+          id
+        );
+
+        // Save to disk
+        const savedImage = await imageProcessor.saveImage(processedImage, uploadsDir);
+
+        // Save to database
+        const attachmentData = {
+          fileUrl: `/api/diary/${id}/images/${savedImage.filename}`,
+          fileType: savedImage.mimeType,
+          fileName: file.originalname,
+          fileSize: savedImage.size
+        };
+
+        const attachment = await Diary.addAttachment(id, attachmentData, userId);
+
+        processedImages.push({
+          ...attachment,
+          originalSize: savedImage.originalSize,
+          compressedSize: savedImage.size,
+          compressionRatio: savedImage.compressionRatio
+        });
+
+      } catch (error) {
+        console.error(`Failed to process image ${file.originalname}:`, error);
+        processedImages.push({
+          filename: file.originalname,
+          error: error.message
+        });
+      }
+    }
+
+    res.json({
+      message: 'Images processed successfully',
+      images: processedImages,
+      totalImages: processedImages.length,
+      successfulUploads: processedImages.filter(img => !img.error).length
+    });
+
+  } catch (error) {
+    console.error('Error uploading diary images:', error);
+    res.status(500).json({ error: 'Failed to upload images' });
+  }
+};
+
+// Helper function to process diary images (similar to trade images)
+const processDiaryImage = async (inputBuffer, originalFilename, userId, diaryEntryId) => {
+  const sharp = require('sharp');
+
+  // Compression settings
+  const webpSettings = {
+    quality: 85,
+    effort: 6,
+    smartSubsample: true
+  };
+
+  // Get image metadata
+  const metadata = await sharp(inputBuffer).metadata();
+
+  console.log(`Processing diary image: ${originalFilename}`);
+  console.log(`Original size: ${(inputBuffer.length / 1024).toFixed(2)}KB`);
+  console.log(`Original dimensions: ${metadata.width}x${metadata.height}`);
+
+  // Convert to WebP for maximum compression
+  const processedBuffer = await sharp(inputBuffer)
+    .webp(webpSettings)
+    .toBuffer();
+
+  const compressionRatio = ((inputBuffer.length - processedBuffer.length) / inputBuffer.length * 100).toFixed(1);
+
+  console.log(`Processed size: ${(processedBuffer.length / 1024).toFixed(2)}KB`);
+  console.log(`Compression ratio: ${compressionRatio}%`);
+
+  // Generate unique filename
+  const timestamp = Date.now();
+  const sanitizedOriginalName = path.parse(originalFilename).name.replace(/[^a-zA-Z0-9-_]/g, '');
+  const filename = `diary_${diaryEntryId}_${timestamp}_${sanitizedOriginalName}.webp`;
+
+  return {
+    buffer: processedBuffer,
+    filename: filename,
+    mimeType: 'image/webp',
+    originalSize: inputBuffer.length,
+    compressedSize: processedBuffer.length,
+    compressionRatio: parseFloat(compressionRatio)
+  };
+};
+
+// Serve diary image
+const getDiaryImage = async (req, res) => {
+  try {
+    const { id: diaryEntryId, filename } = req.params;
+
+    // Sanitize filename to prevent path traversal attacks
+    const sanitizedFilename = path.basename(filename);
+    if (sanitizedFilename !== filename || filename.includes('..')) {
+      return res.status(400).json({ error: 'Invalid filename' });
+    }
+
+    // Check if token is provided as query parameter (for direct image access)
+    let user = req.user;
+    if (!user && req.query.token) {
+      try {
+        const jwt = require('jsonwebtoken');
+        const decoded = jwt.verify(req.query.token, process.env.JWT_SECRET);
+        user = { id: decoded.id };
+      } catch (error) {
+        return res.status(401).json({ error: 'Invalid token' });
+      }
+    }
+
+    if (!user) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    // Check if the attachment exists and belongs to the specified diary entry
+    const attachmentQuery = `
+      SELECT da.*, de.user_id
+      FROM diary_attachments da
+      JOIN diary_entries de ON da.diary_entry_id = de.id
+      WHERE da.diary_entry_id = $1 AND da.file_url LIKE $2
+    `;
+
+    const attachmentResult = await db.query(attachmentQuery, [diaryEntryId, `%${sanitizedFilename}`]);
+
+    if (attachmentResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Image not found' });
+    }
+
+    const attachment = attachmentResult.rows[0];
+
+    // Check access permissions - only owner can view diary images
+    // Use string comparison to handle potential type mismatches
+    if (String(user.id) !== String(attachment.user_id)) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Build and validate file path to prevent path traversal
+    const uploadsDir = path.resolve(__dirname, '../../uploads/diary');
+    const imagePath = path.join(uploadsDir, sanitizedFilename);
+    const resolvedPath = path.resolve(imagePath);
+
+    // Verify the resolved path is within the uploads directory
+    if (!resolvedPath.startsWith(uploadsDir + path.sep) && resolvedPath !== uploadsDir) {
+      return res.status(400).json({ error: 'Invalid file path' });
+    }
+
+    // Check if file exists
+    try {
+      await fs.access(resolvedPath);
+    } catch (error) {
+      return res.status(404).json({ error: 'Image file not found on disk' });
+    }
+
+    // Set appropriate headers
+    res.setHeader('Content-Type', attachment.file_type || 'image/webp');
+    res.setHeader('Cache-Control', 'private, max-age=31536000'); // Cache for 1 year
+
+    // Send file
+    res.sendFile(resolvedPath);
+
+  } catch (error) {
+    console.error('Error serving diary image:', error);
+    res.status(500).json({ error: 'Failed to serve image' });
+  }
+};
+
+// Delete diary image
+const deleteDiaryImage = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { id: diaryEntryId, attachmentId } = req.params;
+
+    // Verify diary entry belongs to user
+    const entry = await Diary.findById(diaryEntryId, userId);
+    if (!entry) {
+      return res.status(404).json({ error: 'Diary entry not found' });
+    }
+
+    // Get attachment details before deletion
+    const attachmentQuery = `
+      SELECT da.* FROM diary_attachments da
+      JOIN diary_entries de ON da.diary_entry_id = de.id
+      WHERE da.id = $1 AND de.user_id = $2
+    `;
+    const attachmentResult = await db.query(attachmentQuery, [attachmentId, userId]);
+
+    if (attachmentResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Image not found' });
+    }
+
+    const attachment = attachmentResult.rows[0];
+
+    // Delete from database
+    await Diary.deleteAttachment(attachmentId, userId);
+
+    // Delete file from disk
+    const filename = path.basename(attachment.file_url);
+    const filePath = path.join(__dirname, '../../uploads/diary', filename);
+    try {
+      await fs.unlink(filePath);
+      console.log(`Deleted diary image: ${filePath}`);
+    } catch (error) {
+      console.error(`Failed to delete diary image file ${filePath}:`, error.message);
+    }
+
+    res.json({ message: 'Image deleted successfully' });
+
+  } catch (error) {
+    console.error('Error deleting diary image:', error);
+    res.status(500).json({ error: 'Failed to delete image' });
+  }
+};
+
+// Upload attachment to diary entry (legacy - kept for backward compatibility)
 const uploadAttachment = [
   upload.single('file'),
   async (req, res) => {
@@ -230,13 +478,13 @@ const uploadAttachment = [
 
       const attachment = await Diary.addAttachment(id, attachmentData, userId);
 
-      res.status(201).json({ 
+      res.status(201).json({
         attachment,
-        message: 'File uploaded successfully' 
+        message: 'File uploaded successfully'
       });
     } catch (error) {
       console.error('Error uploading attachment:', error);
-      
+
       if (error.message === 'Diary entry not found or access denied') {
         return res.status(404).json({ error: error.message });
       }
@@ -558,6 +806,9 @@ module.exports = {
   updateEntry,
   deleteEntry,
   uploadAttachment,
+  uploadDiaryImages,
+  getDiaryImage,
+  deleteDiaryImage,
   deleteAttachment,
   getTags,
   getStats,

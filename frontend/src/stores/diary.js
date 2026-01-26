@@ -228,7 +228,7 @@ export const useDiaryStore = defineStore('diary', () => {
     }
   }
 
-  // Upload attachment to diary entry
+  // Upload attachment to diary entry (legacy single file)
   const uploadAttachment = async (entryId, file) => {
     try {
       const formData = new FormData()
@@ -254,6 +254,71 @@ export const useDiaryStore = defineStore('diary', () => {
     } catch (err) {
       console.error('Error uploading attachment:', err)
       setError(err.response?.data?.error || 'Failed to upload attachment')
+      throw err
+    }
+  }
+
+  // Upload multiple images to diary entry (with compression)
+  const uploadImages = async (entryId, files) => {
+    try {
+      const formData = new FormData()
+      files.forEach(file => {
+        formData.append('images', file)
+      })
+
+      const response = await api.post(`/diary/${entryId}/images`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      })
+
+      // Update entry with new attachments
+      const uploadedImages = response.data.images?.filter(img => !img.error) || []
+      const entryIndex = entries.value.findIndex(e => e.id === entryId)
+      if (entryIndex !== -1) {
+        if (!entries.value[entryIndex].attachments) {
+          entries.value[entryIndex].attachments = []
+        }
+        entries.value[entryIndex].attachments.push(...uploadedImages)
+      }
+
+      // Update current entry if applicable
+      if (currentEntry.value?.id === entryId) {
+        if (!currentEntry.value.attachments) {
+          currentEntry.value.attachments = []
+        }
+        currentEntry.value.attachments.push(...uploadedImages)
+      }
+
+      return response.data
+    } catch (err) {
+      console.error('Error uploading images:', err)
+      setError(err.response?.data?.error || 'Failed to upload images')
+      throw err
+    }
+  }
+
+  // Delete image from diary entry
+  const deleteImage = async (entryId, attachmentId) => {
+    try {
+      await api.delete(`/diary/${entryId}/images/${attachmentId}`)
+
+      // Remove attachment from entries
+      entries.value.forEach(entry => {
+        if (entry.attachments) {
+          entry.attachments = entry.attachments.filter(att => att.id !== attachmentId)
+        }
+      })
+
+      // Update current entry if applicable
+      if (currentEntry.value?.attachments) {
+        currentEntry.value.attachments = currentEntry.value.attachments.filter(att => att.id !== attachmentId)
+      }
+
+      return true
+    } catch (err) {
+      console.error('Error deleting image:', err)
+      setError(err.response?.data?.error || 'Failed to delete image')
       throw err
     }
   }
@@ -411,7 +476,9 @@ export const useDiaryStore = defineStore('diary', () => {
     updateEntry,
     deleteEntry,
     uploadAttachment,
+    uploadImages,
     deleteAttachment,
+    deleteImage,
     fetchTags,
     fetchStats,
     searchEntries,
