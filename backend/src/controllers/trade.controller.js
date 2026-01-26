@@ -1659,7 +1659,11 @@ const tradeController = {
                   }];
                 }
 
-                if (tradeExecutionsToCheck && tradeExecutionsToCheck.length > 0 && existingExecutions.length > 0) {
+                // For execution timestamp matching, require symbol match to avoid false positives
+                // when multiple symbols have trades on the same day with similar timestamps
+                const symbolsMatch = existing.symbol === tradeData.symbol;
+
+                if (symbolsMatch && tradeExecutionsToCheck && tradeExecutionsToCheck.length > 0 && existingExecutions.length > 0) {
                   // Create a set of execution timestamps from the new trade
                   // Handle both datetime (Lightspeed) and entryTime (ProjectX) formats
                   const newExecutionTimestamps = new Set(
@@ -1683,7 +1687,7 @@ const tradeController = {
                     });
 
                     if (hasMatchingExecution) {
-                      logger.logImport(`Found duplicate based on execution timestamp match`);
+                      logger.logImport(`Found duplicate based on execution timestamp match for ${tradeData.symbol}`);
                       return true;
                     }
                   }

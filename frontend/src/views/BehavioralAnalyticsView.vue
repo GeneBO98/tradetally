@@ -1217,13 +1217,13 @@
                 <div>
                   <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Planned Risk/Reward</h4>
                   <p class="text-lg font-semibold text-gray-900 dark:text-white">
-                    1:{{ lossAversionData.analysis.financialImpact.avgPlannedRiskReward.toFixed(1) }}
+                    1:{{ lossAversionData.analysis.financialImpact.avgPlannedRiskReward.toFixed(2) }}
                   </p>
                 </div>
                 <div>
                   <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Actual Risk/Reward</h4>
                   <p class="text-lg font-semibold text-gray-900 dark:text-white">
-                    1:{{ lossAversionData.analysis.financialImpact.avgActualRiskReward.toFixed(1) }}
+                    1:{{ lossAversionData.analysis.financialImpact.avgActualRiskReward.toFixed(2) }}
                   </p>
                 </div>
               </div>

@@ -483,6 +483,11 @@ class TargetHitAnalysisService {
       }
     }
 
+    // Track if we used exit price analysis (no candle data available)
+    // Calculate this before building result object to avoid self-reference
+    const usedExitPriceAnalysis = crossings.stop_loss?.candle === null &&
+      Object.values(crossings.take_profits).some(tp => tp && tp.candle === null);
+
     // Build detailed result
     const result = {
       first_target_hit: firstHit.type,
@@ -508,11 +513,9 @@ class TargetHitAnalysisService {
         candle: crossings.take_profits[target.id]?.candle || null
       })),
 
-      // Track if we used exit price analysis (no candle data available)
-      used_exit_price_analysis: crossings.stop_loss?.candle === null && 
-        Object.values(crossings.take_profits).some(tp => tp && tp.candle === null),
+      used_exit_price_analysis: usedExitPriceAnalysis,
 
-      conclusion: this.generateConclusion(firstHit, crossings, stopLoss, takeProfitTargets, result.used_exit_price_analysis)
+      conclusion: this.generateConclusion(firstHit, crossings, stopLoss, takeProfitTargets, usedExitPriceAnalysis)
     };
 
     return result;
