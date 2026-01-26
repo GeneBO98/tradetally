@@ -580,7 +580,8 @@ class TargetHitAnalysisService {
       take_profit_targets,
       risk_level_history,
       manual_target_hit_first,
-      side
+      side,
+      quantity
     } = trade;
 
     if (!entry_price || !exit_price || !stop_loss) {
@@ -635,24 +636,83 @@ class TargetHitAnalysisService {
     const MAX_POTENTIAL_R = 10;
 
     if (manual_target_hit_first === 'stop_loss') {
-      // Original SL was hit first (without management, would have lost 1R)
-      potentialR = -1;
+      // "SL Hit First" means: First TP target hit, then price reversed and hit original SL
+      // Only the FIRST (nearest) TP target would have been hit before SL, not subsequent targets
+      const totalQty = parseFloat(quantity) || 1;
+
+      // Calculate TP contribution from ONLY the first (nearest) TP target
+      let tpContribution = 0;
+      let tpQty = 0;
+      if (take_profit_targets && Array.isArray(take_profit_targets) && take_profit_targets.length > 0) {
+        // Sort targets by price - nearest to entry first
+        const sortedTargets = [...take_profit_targets].sort((a, b) => {
+          if (a.order !== undefined && b.order !== undefined) {
+            return a.order - b.order;
+          }
+          const priceA = parseFloat(a.price);
+          const priceB = parseFloat(b.price);
+          // For long: lower TP price = nearer to entry
+          // For short: higher TP price = nearer to entry
+          return isLong ? priceA - priceB : priceB - priceA;
+        });
+
+        // Only use the FIRST target - subsequent targets wouldn't be hit since SL was hit first
+        const firstTarget = sortedTargets[0];
+        if (firstTarget && firstTarget.price) {
+          const tpPrice = parseFloat(firstTarget.price);
+          const qty = parseFloat(firstTarget.shares || firstTarget.quantity) || 0;
+          if (tpPrice && qty > 0) {
+            const tpR = isLong
+              ? (tpPrice - entryPrice) / risk
+              : (entryPrice - tpPrice) / risk;
+            tpContribution = tpR * (qty / totalQty);
+            tpQty = qty;
+          }
+        }
+      }
+
+      // Calculate SL loss contribution (remaining contracts would have lost 1R at original SL)
+      const remainingQty = Math.max(totalQty - tpQty, 0);
+      const remainingFraction = totalQty > 0 ? remainingQty / totalQty : 1;
+      const slLossContribution = -1 * remainingFraction;
+
+      // Potential R without management = TP gains + SL losses
+      potentialR = tpContribution + slLossContribution;
     } else if (manual_target_hit_first === 'take_profit') {
-        // TP was hit first - compare actual R to what the FIRST (nearest) TP target would have given
-        // This measures what was left on the table relative to the initial target
+        // TP was hit first - compare actual R to the WEIGHTED AVERAGE target R (full position potential)
+        // For multiple targets with different quantities, this measures performance vs planned outcome
+        const totalQty = parseFloat(quantity) || 1;
+
+        // Calculate weighted average target R
+        let weightedTargetR = null;
+        if (take_profit_targets && Array.isArray(take_profit_targets) && take_profit_targets.length > 0) {
+          let totalShares = 0;
+          let weightedSum = 0;
+
+          take_profit_targets.forEach(t => {
+            if (t.price) {
+              const tpPrice = parseFloat(t.price);
+              const tpR = isLong ? (tpPrice - entryPrice) / risk : (entryPrice - tpPrice) / risk;
+              const shares = parseFloat(t.shares || t.quantity) || (totalQty / take_profit_targets.length);
+              weightedSum += tpR * shares;
+              totalShares += shares;
+            }
+          });
+
+          if (totalShares > 0) {
+            weightedTargetR = weightedSum / totalShares;
+          }
+        }
+
+        // Calculate fallback first TP R value in case weighted average is not available
         let firstTpR = null;
         if (take_profit_targets && Array.isArray(take_profit_targets) && take_profit_targets.length > 0) {
-          // Sort by order (TP1, TP2, etc.) or by price (nearest to entry first)
           const sortedTargets = [...take_profit_targets].sort((a, b) => {
-            // First try to sort by order if available
             if (a.order !== undefined && b.order !== undefined) {
               return a.order - b.order;
             }
-            // Otherwise sort by price (nearest to entry = first target)
             const priceA = parseFloat(a.price);
             const priceB = parseFloat(b.price);
-            // For long: higher price = more profit, so sort ascending (nearest first)
-            // For short: lower price = more profit, so sort descending (nearest first)
             return isLong ? priceA - priceB : priceB - priceA;
           });
           const firstTarget = sortedTargets[0];
@@ -668,11 +728,14 @@ class TargetHitAnalysisService {
           firstTpR = tpPL / risk;
         }
 
-        if (firstTpR !== null) {
-          if (firstTpR > MAX_POTENTIAL_R) {
-            firstTpR = MAX_POTENTIAL_R;
+        // Use weighted average target R if available (for multi-target trades), fall back to first TP
+        let effectivePotentialR = weightedTargetR !== null ? weightedTargetR : firstTpR;
+
+        if (effectivePotentialR !== null) {
+          if (effectivePotentialR > MAX_POTENTIAL_R) {
+            effectivePotentialR = MAX_POTENTIAL_R;
           }
-          potentialR = firstTpR;
+          potentialR = effectivePotentialR;
           // If actual R equals potential R (within rounding), no management impact
           if (Math.abs(actualR - potentialR) < 0.01) {
             return 0;

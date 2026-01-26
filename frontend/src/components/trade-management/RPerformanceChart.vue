@@ -138,6 +138,10 @@ const props = defineProps({
   filters: {
     type: Object,
     default: () => ({})
+  },
+  refreshTrigger: {
+    type: Number,
+    default: 0
   }
 })
 
@@ -356,6 +360,14 @@ function getManagementRColor(managementR) {
 watch(() => props.filters, () => {
   fetchRPerformance()
 }, { deep: true })
+
+// Watch for refresh trigger (e.g., when trade management data is updated)
+watch(() => props.refreshTrigger, () => {
+  if (props.refreshTrigger > 0) {
+    console.log('[R-PERF] Refresh triggered')
+    fetchRPerformance()
+  }
+})
 
 // Initial load
 onMounted(() => {

@@ -11,7 +11,7 @@
     </div>
 
     <!-- R-Multiple Performance Chart -->
-    <RPerformanceChart :filters="filters" class="mb-8" />
+    <RPerformanceChart :filters="filters" :refresh-trigger="rPerfRefreshTrigger" class="mb-8" />
 
     <!-- Divider -->
     <div class="border-t border-gray-200 dark:border-gray-700 my-8"></div>
@@ -143,6 +143,7 @@ const chartAvailable = ref(false)
 const savingLevels = ref(false)
 const editingLevels = ref(false)
 const error = ref(null)
+const rPerfRefreshTrigger = ref(0)
 
 // Computed
 const needsRiskLevels = computed(() => {
@@ -348,6 +349,8 @@ async function onTargetHitUpdated(data) {
   if (selectedTradeId.value) {
     await fetchAnalysis(selectedTradeId.value)
   }
+  // Trigger refresh of the R-Performance chart to reflect updated management R values
+  rPerfRefreshTrigger.value++
 }
 
 function onChartDeleted(chartId) {
