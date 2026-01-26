@@ -130,18 +130,31 @@
 
     <!-- Day Trades Modal -->
     <div v-if="selectedDay" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-      <div class="relative top-20 mx-auto p-5 border w-full max-w-2xl shadow-lg rounded-md bg-white dark:bg-gray-800">
-        <div class="mt-3">
+      <div
+        class="relative mx-auto p-5 border shadow-lg rounded-md bg-white dark:bg-gray-800 transition-all duration-300"
+        :class="isModalExpanded
+          ? 'top-4 w-full max-w-6xl h-[calc(100vh-2rem)]'
+          : 'top-20 w-full max-w-2xl'">
+        <div class="h-full flex flex-col">
           <div class="flex justify-between items-center mb-4">
             <h3 class="heading-card">
               Trades for {{ format(selectedDay.date, 'MMMM d, yyyy') }}
             </h3>
-            <button @click="selectedDay = null" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
-              <XMarkIcon class="h-6 w-6" />
-            </button>
+            <div class="flex items-center space-x-2">
+              <button
+                @click="isModalExpanded = !isModalExpanded"
+                class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                :title="isModalExpanded ? 'Collapse' : 'Expand'">
+                <ArrowsPointingInIcon v-if="isModalExpanded" class="h-5 w-5" />
+                <ArrowsPointingOutIcon v-else class="h-5 w-5" />
+              </button>
+              <button @click="selectedDay = null; isModalExpanded = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                <XMarkIcon class="h-6 w-6" />
+              </button>
+            </div>
           </div>
-          
-          <div class="space-y-3 max-h-96 overflow-y-auto">
+
+          <div class="space-y-3 overflow-y-auto flex-1" :class="isModalExpanded ? '' : 'max-h-96'">
             <div v-for="trade in selectedDayTrades" :key="trade.id"
               class="p-4 border border-gray-200 dark:border-gray-700 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
               @click="navigateToTrade(trade.id)">
@@ -176,7 +189,7 @@
             </div>
           </div>
 
-          <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+          <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 flex-shrink-0">
             <div class="flex justify-between items-center">
               <span class="font-medium text-gray-900 dark:text-white">Total for day:</span>
               <span class="font-bold text-lg" :class="(selectedDay.pnl || 0) >= 0 ? 'text-green-600' : 'text-red-600'">
@@ -192,24 +205,46 @@
 
 <script setup>
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { format, startOfYear, endOfYear, eachMonthOfInterval, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameMonth } from 'date-fns'
-import { ChevronLeftIcon, ChevronRightIcon, XMarkIcon } from '@heroicons/vue/24/outline'
+import { ChevronLeftIcon, ChevronRightIcon, XMarkIcon, ArrowsPointingOutIcon, ArrowsPointingInIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 
 const { selectedAccount } = useGlobalAccountFilter()
 
 const router = useRouter()
+const route = useRoute()
 
 const loading = ref(true)
 const initialLoading = ref(true) // Track initial load separately to preserve scroll on refresh
 const calendarData = ref(new Map()) // Map of date string -> { trades: number, pnl: number }
 const trades = ref([]) // Only loaded when needed (e.g., for modal)
 const expandedMonth = ref(null)
-const currentYear = ref(new Date().getFullYear())
+// Initialize year from route query, localStorage, or current year (in that order)
+const getInitialYear = () => {
+  // First check route query
+  if (route.query.year) {
+    const queryYear = parseInt(route.query.year)
+    if (!isNaN(queryYear) && queryYear >= 1900 && queryYear <= 2100) {
+      return queryYear
+    }
+  }
+  // Then check localStorage
+  const savedYear = localStorage.getItem('calendar_year')
+  if (savedYear) {
+    const parsedYear = parseInt(savedYear)
+    if (!isNaN(parsedYear) && parsedYear >= 1900 && parsedYear <= 2100) {
+      return parsedYear
+    }
+  }
+  // Default to current year
+  return new Date().getFullYear()
+}
+const currentYear = ref(getInitialYear())
 const selectedDay = ref(null)
 const expandedMonthContainer = ref(null)
+const isModalExpanded = ref(false)
 
 // Helper to get calendar data for a date
 function getCalendarDataForDate(date) {
@@ -512,6 +547,11 @@ function changeYear(direction) {
     expandedMonth.value = new Date(currentYear.value, currentMonth, 1)
   }
   selectedDay.value = null
+
+  // Save to localStorage and update URL for back button support
+  localStorage.setItem('calendar_year', currentYear.value.toString())
+  router.replace({ query: { ...route.query, year: currentYear.value } })
+
   fetchCalendarData()
 }
 
@@ -523,6 +563,12 @@ function formatNumber(num, decimals = 2) {
 }
 
 function navigateToTrade(tradeId) {
+  // Save current state to localStorage before navigating
+  localStorage.setItem('calendar_year', currentYear.value.toString())
+  if (expandedMonth.value) {
+    localStorage.setItem('calendar_expanded_month', expandedMonth.value.toISOString())
+    localStorage.setItem('calendar_expanded_year', currentYear.value.toString())
+  }
   router.push(`/trades/${tradeId}`)
 }
 
@@ -606,18 +652,23 @@ async function fetchTradesForDate(date) {
 }
 
 onMounted(() => {
-  // Restore expanded month from localStorage if it exists
+  // Sync URL with current year if it came from localStorage (not from route query)
+  if (!route.query.year || parseInt(route.query.year) !== currentYear.value) {
+    router.replace({ query: { ...route.query, year: currentYear.value } })
+  }
+
+  // Restore expanded month from localStorage if it exists and matches current year
   try {
     const savedMonth = localStorage.getItem('calendar_expanded_month')
     const savedYear = localStorage.getItem('calendar_expanded_year')
 
     if (savedMonth && savedYear) {
       const year = parseInt(savedYear)
-      // Only restore if it's for the current year being viewed
+      // Restore if it matches the current year being viewed
       if (year === currentYear.value) {
         expandedMonth.value = new Date(savedMonth)
       } else {
-        // Clear stale data
+        // Clear stale expanded month data (but keep calendar_year)
         localStorage.removeItem('calendar_expanded_month')
         localStorage.removeItem('calendar_expanded_year')
       }
@@ -631,6 +682,26 @@ onMounted(() => {
 
 watch(currentYear, () => {
   fetchCalendarData()
+})
+
+// Watch for route query changes (handles browser back/forward buttons)
+watch(() => route.query.year, (newYear) => {
+  if (newYear) {
+    const parsedYear = parseInt(newYear)
+    if (!isNaN(parsedYear) && parsedYear !== currentYear.value) {
+      currentYear.value = parsedYear
+      localStorage.setItem('calendar_year', parsedYear.toString())
+      // Restore expanded month if it matches the new year
+      const savedMonth = localStorage.getItem('calendar_expanded_month')
+      const savedYear = localStorage.getItem('calendar_expanded_year')
+      if (savedMonth && savedYear && parseInt(savedYear) === parsedYear) {
+        expandedMonth.value = new Date(savedMonth)
+      } else {
+        expandedMonth.value = null
+      }
+      selectedDay.value = null
+    }
+  }
 })
 
 // Watch for global account filter changes

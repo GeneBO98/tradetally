@@ -224,26 +224,11 @@ const effectiveTargetR = computed(() => {
   return props.analysis.target_r
 })
 
-// Effective potential P&L (calculated from actual PL ratio for consistency)
-// Formula: target_r * (actual_pl / actual_r) to ensure consistent per-R value
+// Effective potential P&L - use backend-calculated target_pl_amount for consistency
+// This ensures the value matches the Trade Summary Potential P&L exactly
 const effectivePotentialPL = computed(() => {
-  // Always calculate from the actual PL ratio to ensure consistency
-  // If 2.42R = $597, then potential PL for 4.03R should be 4.03 * ($597 / 2.42) = $993.76
-  const actualR = props.analysis.actual_r
-  const actualPL = props.analysis.actual_pl_amount
-  const targetR = effectiveTargetR.value
-
-  // If we have all required values and actual R is not zero, use consistent ratio
-  if (targetR !== null && actualR !== null && actualR !== 0 && actualPL !== null) {
-    const perR = actualPL / actualR  // Dollar value per 1R
-    return Math.round(targetR * perR * 100) / 100
-  }
-
-  // Fallback to risk_amount calculation if actual R is not available or zero
-  if (targetR !== null && props.analysis.risk_amount) {
-    return Math.round(targetR * props.analysis.risk_amount * 100) / 100
-  }
-
+  // Use the backend-calculated target_pl_amount which uses: weightedTargetR * riskAmount
+  // This is the same value used in TradeSummaryMetrics for consistency
   return props.analysis.target_pl_amount
 })
 

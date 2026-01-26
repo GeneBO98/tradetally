@@ -4702,24 +4702,71 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
                            !transactionCode.includes('O') && !hasPartialCode;
 
         if (isCloseOnly) {
-          // Code='C' indicates this should close an existing position, but we don't have one loaded
-          // This could mean:
-          // 1. The opening position wasn't found due to symbol mismatch or missing conid
-          // 2. The position was closed in a previous import
-          // 3. The CSV is being imported out of order
-          // 4. The conid was not saved when the original position was created
-          console.log(`  → [ERROR] Code='${transactionCode}' indicates closing transaction, but no open position found!`);
-          console.log(`  → Transaction: ${transaction.action} ${qty} ${symbol} @ $${transaction.price}`);
-          console.log(`  → Conid: ${conid || 'NONE'}`);
-          console.log(`  → This will create an INCORRECT new ${transaction.action === 'buy' ? 'long' : 'short'} position instead of closing existing position`);
-          console.log(`  → POSSIBLE CAUSES:`);
-          console.log(`  →   1. The opening position's conid was not saved to database`);
-          console.log(`  →   2. The position was already closed in a previous import`);
-          console.log(`  →   3. Symbol mismatch between opening and closing transactions`);
-          console.log(`  → TO FIX: Check if the original trade has conid=${conid} stored in the database`);
+          // Code='C' or 'A;C' indicates this should close an existing position, but we don't have one loaded
+          // Instead of creating an incorrect open position, create a completed "close-only" trade
+          // This represents a position that was opened outside this import and is now being closed
+          console.log(`  → [CLOSE-ONLY] Code='${transactionCode}' is a closing transaction without existing position`);
+          console.log(`  → Creating completed close-only trade for: ${transaction.action} ${qty} ${symbol} @ $${transaction.price}`);
+
+          // For close-only transactions, determine the original trade direction:
+          // - If we're BUYING to close (action='buy'), the original was a SHORT position
+          // - If we're SELLING to close (action='sell'), the original was a LONG position
+          const originalSide = transaction.action === 'buy' ? 'short' : 'long';
+
+          // Calculate P&L: For close-only, we only have the exit value and commission
+          // The entry value is unknown, so we use the close price as entry (P&L = -commission only)
+          // This is a best-effort approach when the opening transaction is missing
+          const closeValue = qty * transaction.price * valueMultiplier;
+          const pnl = -(transaction.fees || 0); // Only commission loss since we don't know entry
+
+          const closeOnlyTrade = {
+            symbol: symbol,
+            conid: conid,
+            entryTime: transaction.datetime,
+            exitTime: transaction.datetime,
+            tradeDate: transaction.date,
+            side: originalSide,
+            quantity: qty,
+            entryPrice: transaction.price, // Use close price as entry (unknown actual entry)
+            exitPrice: transaction.price,
+            pnl: pnl,
+            pnlPercent: 0,
+            commission: transaction.fees || 0,
+            fees: 0,
+            broker: 'ibkr',
+            accountIdentifier: transaction.accountIdentifier,
+            executions: [{
+              action: transaction.action,
+              quantity: qty,
+              price: transaction.price,
+              datetime: transaction.datetime,
+              fees: transaction.fees || 0,
+              conid: transaction.conid
+            }],
+            executionData: [{
+              action: transaction.action,
+              quantity: qty,
+              price: transaction.price,
+              datetime: transaction.datetime,
+              fees: transaction.fees || 0,
+              conid: transaction.conid
+            }],
+            notes: `Close-only trade: ${originalSide} position closed via ${transactionCode}. Opening transaction not in import.`,
+            isCloseOnly: true
+          };
+
+          // Add instrument data
+          Object.assign(closeOnlyTrade, instrumentData);
+          if (instrumentData.instrumentType === 'option' && instrumentData.underlyingSymbol) {
+            closeOnlyTrade.symbol = instrumentData.underlyingSymbol;
+          }
+
+          completedTrades.push(closeOnlyTrade);
+          console.log(`  → [SUCCESS] Created close-only ${originalSide} trade: ${qty} ${symbol} @ $${transaction.price}`);
+          continue; // Skip the normal trade creation flow
         }
 
-        // Start a new trade regardless of Code
+        // Start a new trade for non-close-only transactions
         // Check time gap if grouping is enabled
         let shouldStartNewTrade = true;
 
