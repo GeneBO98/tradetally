@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const { authenticate } = require('../middleware/auth');
+const { authenticate, optionalAuth } = require('../middleware/auth');
+const imageUpload = require('../middleware/upload');
 const {
   getEntries,
   getTodaysEntry,
@@ -10,6 +11,9 @@ const {
   updateEntry,
   deleteEntry,
   uploadAttachment,
+  uploadDiaryImages,
+  getDiaryImage,
+  deleteDiaryImage,
   deleteAttachment,
   getTags,
   getStats,
@@ -21,7 +25,11 @@ const {
   deleteGeneralNote
 } = require('../controllers/diary.controller');
 
-// Apply authentication middleware to all routes
+// Image serving route with optional auth (for direct URL access with token query param)
+// This must be declared BEFORE the global authenticate middleware
+router.get('/:id/images/:filename', optionalAuth, getDiaryImage);
+
+// Apply authentication middleware to all other routes
 router.use(authenticate);
 
 // Get diary entries with filtering and pagination
@@ -63,7 +71,11 @@ router.put('/:id', updateEntry);
 // Delete diary entry
 router.delete('/:id', deleteEntry);
 
-// Upload attachment to diary entry
+// Image upload routes (with compression)
+router.post('/:id/images', imageUpload.array('images', 10), uploadDiaryImages);
+router.delete('/:id/images/:attachmentId', deleteDiaryImage);
+
+// Upload attachment to diary entry (legacy)
 router.post('/:id/attachments', uploadAttachment);
 
 // Delete attachment from diary entry

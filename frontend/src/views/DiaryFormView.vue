@@ -471,7 +471,7 @@
             Post-Market Reflection
             <span class="text-sm font-normal text-gray-500 dark:text-gray-400">(Optional)</span>
           </h2>
-          
+
           <!-- Followed Plan -->
           <div class="mb-6">
             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -524,6 +524,17 @@
           </div>
         </div>
 
+        <!-- Attachments -->
+        <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+          <DiaryImageUpload
+            ref="imageUploadRef"
+            :diary-entry-id="entryId"
+            :existing-images="entryAttachments"
+            @uploaded="handleImagesUploaded"
+            @deleted="handleImageDeleted"
+          />
+        </div>
+
         <!-- Form Actions -->
         <div class="flex justify-end space-x-4 pt-6 border-t border-gray-200 dark:border-gray-700">
           <router-link
@@ -551,6 +562,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useDiaryStore } from '@/stores/diary'
 import { useDiaryTemplateStore } from '@/stores/diaryTemplate'
 import TradeSelector from '@/components/diary/TradeSelector.vue'
+import DiaryImageUpload from '@/components/diary/DiaryImageUpload.vue'
 import {
   ArrowLeftIcon,
   PlusIcon,
@@ -583,6 +595,7 @@ const contentEditor = ref(null)
 const lessonsLearnedEditor = ref(null)
 const newWatchlistSymbol = ref('')
 const newTag = ref('')
+const imageUploadRef = ref(null)
 
 // Form data
 const form = ref({
@@ -598,6 +611,10 @@ const form = ref({
   followedPlan: null,
   lessonsLearned: ''
 })
+
+// Entry attachments (for editing existing entries)
+const entryId = ref(null)
+const entryAttachments = ref([])
 
 // Computed properties
 const isEditing = computed(() => !!route.params.id)
@@ -897,14 +914,18 @@ const removeTag = (index) => {
 
 const loadEntry = async () => {
   if (!isEditing.value) return
-  
+
   try {
     loading.value = true
     error.value = null
-    
+
     const entry = await diaryStore.fetchEntry(route.params.id)
-    
+
     if (entry) {
+      // Set the entry ID and attachments for the image upload component
+      entryId.value = entry.id
+      entryAttachments.value = entry.attachments || []
+
       // Ensure entry_date is properly formatted for date input (YYYY-MM-DD)
       let entryDate = entry.entry_date
       if (entryDate && entryDate.includes('T')) {
@@ -917,7 +938,7 @@ const loadEntry = async () => {
           entryDate = date.toISOString().split('T')[0]
         }
       }
-      
+
       form.value = {
         entryDate: entryDate || new Date().toISOString().split('T')[0],
         entryType: entry.entry_type || 'diary',
@@ -937,6 +958,16 @@ const loadEntry = async () => {
   } finally {
     loading.value = false
   }
+}
+
+// Handle images uploaded event - add new images to the attachments list
+const handleImagesUploaded = (images) => {
+  entryAttachments.value = [...entryAttachments.value, ...images.filter(img => !img.error)]
+}
+
+// Handle image deleted event - remove from attachments list
+const handleImageDeleted = (imageId) => {
+  entryAttachments.value = entryAttachments.value.filter(img => img.id !== imageId)
 }
 
 const showDuplicateModal = ref(false)
@@ -965,6 +996,12 @@ const saveEntry = async () => {
 
     if (isEditing.value) {
       await diaryStore.updateEntry(route.params.id, entryData)
+
+      // Upload any pending images for existing entry
+      if (imageUploadRef.value?.hasPendingFiles()) {
+        await imageUploadRef.value.uploadPendingImages(route.params.id)
+      }
+
       router.push('/diary')
     } else {
       // Check for existing entry on the same date
@@ -982,7 +1019,14 @@ const saveEntry = async () => {
         // No existing entry found - continue with save
       }
 
-      await diaryStore.saveEntry(entryData)
+      const savedEntry = await diaryStore.saveEntry(entryData)
+
+      // Upload pending images if any
+      if (savedEntry && savedEntry.id && imageUploadRef.value?.hasPendingFiles()) {
+        entryId.value = savedEntry.id
+        await imageUploadRef.value.uploadPendingImages(savedEntry.id)
+      }
+
       router.push('/diary')
     }
 
@@ -997,6 +1041,8 @@ const handleDuplicateChoice = async (choice) => {
   try {
     saving.value = true
     showDuplicateModal.value = false
+
+    const targetEntryId = existingEntry.value.id
 
     if (choice === 'append') {
       // Append to existing entry
@@ -1015,10 +1061,15 @@ const handleDuplicateChoice = async (choice) => {
         title: pendingEntryData.value.title || existingEntry.value.title
       }
 
-      await diaryStore.updateEntry(existingEntry.value.id, updatedData)
+      await diaryStore.updateEntry(targetEntryId, updatedData)
     } else if (choice === 'overwrite') {
       // Overwrite existing entry
-      await diaryStore.updateEntry(existingEntry.value.id, pendingEntryData.value)
+      await diaryStore.updateEntry(targetEntryId, pendingEntryData.value)
+    }
+
+    // Upload pending images if any
+    if (imageUploadRef.value?.hasPendingFiles()) {
+      await imageUploadRef.value.uploadPendingImages(targetEntryId)
     }
 
     router.push('/diary')
