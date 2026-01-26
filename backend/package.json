@@ -1,6 +1,6 @@
 {
   "name": "tradetally-backend",
-  "version": "2.1.6",
+  "version": "2.1.7",
   "description": "Backend API for TradeTally trade journaling platform",
   "main": "src/server.js",
   "scripts": {
