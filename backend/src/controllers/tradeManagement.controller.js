@@ -1286,11 +1286,12 @@ const tradeManagementController = {
       const updateResult = await db.query(updateQuery, values);
       const updatedTrade = updateResult.rows[0];
 
-      // Recalculate R-value if we have take profit and exit price
-      if (updatedTrade.take_profit && updatedTrade.exit_price) {
+      // Recalculate R-value if we have stop loss and exit price
+      // R-Multiple = Profit / Risk (where Risk = distance from entry to stop loss)
+      if (updatedTrade.stop_loss && updatedTrade.exit_price) {
         const rValue = Trade.calculateRValue(
           parseFloat(updatedTrade.entry_price),
-          parseFloat(updatedTrade.take_profit),
+          parseFloat(updatedTrade.stop_loss),
           parseFloat(updatedTrade.exit_price),
           updatedTrade.side
         );
