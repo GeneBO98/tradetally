@@ -60,7 +60,6 @@
           <option value="">-- Select --</option>
           <option value="take_profit">Take Profit Hit First</option>
           <option value="stop_loss">Stop Loss Hit First</option>
-          <option value="neither">Neither Target Hit</option>
         </select>
       </div>
 
@@ -338,7 +337,7 @@ const resultDescription = computed(() => {
 const manualResultBadgeClass = computed(() => {
   const value = props.trade.manual_target_hit_first
 
-  if (!value || value === 'neither') {
+  if (!value) {
     return 'px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
   }
 
@@ -353,7 +352,7 @@ const manualResultBadgeClass = computed(() => {
 const manualResultBorderClass = computed(() => {
   const value = props.trade.manual_target_hit_first
 
-  if (!value || value === 'neither') {
+  if (!value) {
     return 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50'
   }
 
@@ -373,10 +372,8 @@ const manualResultLabel = computed(() => {
       return 'TP Hit First'
     case 'stop_loss':
       return 'SL Hit First'
-    case 'neither':
-      return 'Neither Hit'
     default:
-      return 'Unknown'
+      return 'Not Set'
   }
 })
 

@@ -632,14 +632,15 @@ function calculateRMultiples(trade) {
         }
       }
     } else {
-      // No stop loss change - just manual exit without management
-      // Potential R = 0 (would have achieved 0R without management)
-      potentialR = 0;
-      managementR = actualR - potentialR;
-      logger.debug(`[R-CALC] Inferred: Manual exit (no SL change), potentialR = ${potentialR.toFixed(2)}R, managementR = actualR(${actualR.toFixed(2)}) - potentialR(${potentialR.toFixed(2)}) = ${managementR.toFixed(2)}`);
+      // No stop loss change and no manual_target_hit_first set
+      // We cannot determine what would have happened without management
+      // Don't calculate Management R - leave it as null
+      potentialR = null;
+      managementR = null;
+      logger.debug('[R-CALC] Inferred: No SL change and no target hit info - cannot calculate management R');
     }
-    
-    if (potentialR !== null) {
+
+    if (potentialR !== null && managementR !== null) {
       logger.info(`[R-CALC] Inferred management R: potentialR = ${potentialR.toFixed(2)}R, managementR = ${managementR.toFixed(2)}R`);
     }
   }
@@ -1285,11 +1286,11 @@ const tradeManagementController = {
       const updateResult = await db.query(updateQuery, values);
       const updatedTrade = updateResult.rows[0];
 
-      // Recalculate R-value if we have stop loss and exit price
-      if (updatedTrade.stop_loss && updatedTrade.exit_price) {
+      // Recalculate R-value if we have take profit and exit price
+      if (updatedTrade.take_profit && updatedTrade.exit_price) {
         const rValue = Trade.calculateRValue(
           parseFloat(updatedTrade.entry_price),
-          parseFloat(updatedTrade.stop_loss),
+          parseFloat(updatedTrade.take_profit),
           parseFloat(updatedTrade.exit_price),
           updatedTrade.side
         );

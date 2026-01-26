@@ -594,7 +594,7 @@ const tp1R = computed(() => {
 const riskRewardActual = computed(() => {
   const actualR = props.analysis.actual_r
   if (actualR === null || actualR === undefined) return 'N/A'
-  return `1:${Math.abs(actualR).toFixed(1)}`
+  return `1:${Math.abs(actualR).toFixed(2)}`
 })
 
 // Calculate weighted average R for planned risk:reward
@@ -647,11 +647,11 @@ const riskRewardPlanned = computed(() => {
   // Use weighted average if multiple targets exist, otherwise use analysis.target_r
   const avgR = weightedAverageR.value
   if (avgR !== null) {
-    return `1:${avgR.toFixed(1)}`
+    return `1:${avgR.toFixed(2)}`
   }
   const targetR = props.analysis.target_r
   if (targetR === null || targetR === undefined) return null
-  return `1:${targetR.toFixed(1)}`
+  return `1:${targetR.toFixed(2)}`
 })
 
 // Stop Loss editing

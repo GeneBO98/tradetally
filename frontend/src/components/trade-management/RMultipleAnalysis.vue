@@ -224,19 +224,26 @@ const effectiveTargetR = computed(() => {
   return props.analysis.target_r
 })
 
-// Effective potential P&L (recalculated if using weighted avg)
-// Formula: effectiveTargetR * risk_amount for consistency with displayed target R
+// Effective potential P&L (calculated from actual PL ratio for consistency)
+// Formula: target_r * (actual_pl / actual_r) to ensure consistent per-R value
 const effectivePotentialPL = computed(() => {
-  // If we're using weighted average (either backend or frontend), recalculate from target R
-  // Check if we're using weighted average by checking if weighted_target_r exists or frontend weightedAverageR
-  const usingWeightedAverage = (props.analysis.weighted_target_r !== null && props.analysis.weighted_target_r !== undefined) || 
-                               weightedAverageR.value !== null
-  
-  if (usingWeightedAverage && effectiveTargetR.value !== null && props.analysis.risk_amount) {
-    // Use effectiveTargetR * risk_amount to ensure consistency
-    // This matches the backend calculation when weighted average exists
-    return Math.round(effectiveTargetR.value * props.analysis.risk_amount * 100) / 100
+  // Always calculate from the actual PL ratio to ensure consistency
+  // If 2.42R = $597, then potential PL for 4.03R should be 4.03 * ($597 / 2.42) = $993.76
+  const actualR = props.analysis.actual_r
+  const actualPL = props.analysis.actual_pl_amount
+  const targetR = effectiveTargetR.value
+
+  // If we have all required values and actual R is not zero, use consistent ratio
+  if (targetR !== null && actualR !== null && actualR !== 0 && actualPL !== null) {
+    const perR = actualPL / actualR  // Dollar value per 1R
+    return Math.round(targetR * perR * 100) / 100
   }
+
+  // Fallback to risk_amount calculation if actual R is not available or zero
+  if (targetR !== null && props.analysis.risk_amount) {
+    return Math.round(targetR * props.analysis.risk_amount * 100) / 100
+  }
+
   return props.analysis.target_pl_amount
 })
 
