@@ -471,57 +471,56 @@ function calculateRMultiples(trade) {
     logger.debug(`[R-CALC] Original SL hit first: potentialR = ${potentialR.toFixed(2)}R, managementR = actualR(${actualR.toFixed(2)}) - potentialR(${potentialR.toFixed(2)}) = ${managementR.toFixed(2)}`);
     logger.info(`[R-CALC] Original SL hit first: potentialR = ${potentialR.toFixed(2)}R, managementR = ${managementR.toFixed(2)}R`);
     } else if (manual_target_hit_first === 'take_profit') {
-      // Final TP was hit - need to determine if original SL was hit or not
-      // If original SL was NOT hit and TP was hit → No management impact (case 1)
-      // If original SL was hit but TP was also hit → Positive management impact (trailing saved the trade)
-      
-      // Calculate the final TP R value (use the highest/last TP target if multiple)
-      let finalTpR = null;
+      // TP was hit first - compare actual R to what the FIRST (nearest) TP target would have given
+      // This measures what was left on the table relative to the initial target
+
+      // Calculate the first TP R value (use the first/nearest TP target if multiple)
+      let firstTpR = null;
       if (targets && Array.isArray(targets) && targets.length > 0) {
-        // For multiple targets, use the last/highest target as the final TP
-        // Sort targets by price (highest for long, lowest for short)
+        // Sort by order (TP1, TP2, etc.) or by price (nearest to entry first)
         const sortedTargets = [...targets].sort((a, b) => {
+          // First try to sort by order if available
+          if (a.order !== undefined && b.order !== undefined) {
+            return a.order - b.order;
+          }
+          // Otherwise sort by price (nearest to entry = first target)
           const priceA = parseFloat(a.price);
           const priceB = parseFloat(b.price);
-          return side === 'long' ? priceB - priceA : priceA - priceB;
+          // For long: lower price = closer to entry, so sort ascending
+          // For short: higher price = closer to entry, so sort descending
+          return side === 'long' ? priceA - priceB : priceB - priceA;
         });
-        const finalTarget = sortedTargets[0];
-        if (finalTarget && finalTarget.price) {
-          const finalTpPrice = parseFloat(finalTarget.price);
-          const finalTpPL = side === 'long' ? finalTpPrice - entryPrice : entryPrice - finalTpPrice;
-          finalTpR = finalTpPL / risk;
-          logger.debug(`[R-CALC] TP hit: Using final TP target R = ${finalTpR.toFixed(2)}R`);
+        const firstTarget = sortedTargets[0];
+        if (firstTarget && firstTarget.price) {
+          const firstTpPrice = parseFloat(firstTarget.price);
+          const firstTpPL = side === 'long' ? firstTpPrice - entryPrice : entryPrice - firstTpPrice;
+          firstTpR = firstTpPL / risk;
+          logger.debug(`[R-CALC] TP hit: Using first TP target R = ${firstTpR.toFixed(2)}R`);
         }
-      }
-      
-      if (!finalTpR && takeProfit) {
-        const tpPL = side === 'long' ? takeProfit - entryPrice : entryPrice - takeProfit;
-        finalTpR = tpPL / risk;
-        logger.debug(`[R-CALC] TP hit: Using single take_profit R = ${finalTpR.toFixed(2)}R`);
       }
 
-      if (finalTpR !== null) {
+      if (!firstTpR && takeProfit) {
+        const tpPL = side === 'long' ? takeProfit - entryPrice : entryPrice - takeProfit;
+        firstTpR = tpPL / risk;
+        logger.debug(`[R-CALC] TP hit: Using single take_profit R = ${firstTpR.toFixed(2)}R`);
+      }
+
+      if (firstTpR !== null) {
         // Cap potential R at 10R to match target R capping
-        if (finalTpR > MAX_POTENTIAL_R) {
-          logger.debug(`[R-CALC] Capping final TP R from ${finalTpR.toFixed(2)} to ${MAX_POTENTIAL_R}`);
-          finalTpR = MAX_POTENTIAL_R;
+        if (firstTpR > MAX_POTENTIAL_R) {
+          logger.debug(`[R-CALC] Capping first TP R from ${firstTpR.toFixed(2)} to ${MAX_POTENTIAL_R}`);
+          firstTpR = MAX_POTENTIAL_R;
         }
-        
-        // If stop loss was moved and original SL was not hit, then managed and unmanaged have same result
-        // (TP was hit in both cases) → No management impact
-        // If original SL was hit but we still hit TP (trailing saved the trade) → Positive management impact
-        // For now, we'll use the final TP R as potential R
-        // The actual management impact depends on whether original SL was hit, which is indicated by manual_target_hit_first
-        // Since TP was hit, we assume original SL was NOT hit (otherwise it would be 'stop_loss')
-        potentialR = finalTpR;
+
+        potentialR = firstTpR;
         managementR = actualR - potentialR;
-        
+
         // If actual R equals potential R (within rounding), no management impact
         if (Math.abs(actualR - potentialR) < 0.01) {
           managementR = 0;
           logger.debug(`[R-CALC] TP hit: Actual R (${actualR.toFixed(2)}) equals potential R (${potentialR.toFixed(2)}) - no management impact`);
         }
-        
+
         logger.debug(`[R-CALC] TP hit first: potentialR = ${potentialR.toFixed(2)}R, managementR = actualR(${actualR.toFixed(2)}) - potentialR(${potentialR.toFixed(2)}) = ${managementR.toFixed(2)}`);
         logger.info(`[R-CALC] TP hit first: potentialR = ${potentialR.toFixed(2)}R, managementR = ${managementR.toFixed(2)}R`);
       } else {

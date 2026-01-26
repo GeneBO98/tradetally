@@ -638,32 +638,41 @@ class TargetHitAnalysisService {
       // Original SL was hit first (without management, would have lost 1R)
       potentialR = -1;
     } else if (manual_target_hit_first === 'take_profit') {
-        // Final TP was hit - use the final TP target's R value
-        let finalTpR = null;
+        // TP was hit first - compare actual R to what the FIRST (nearest) TP target would have given
+        // This measures what was left on the table relative to the initial target
+        let firstTpR = null;
         if (take_profit_targets && Array.isArray(take_profit_targets) && take_profit_targets.length > 0) {
+          // Sort by order (TP1, TP2, etc.) or by price (nearest to entry first)
           const sortedTargets = [...take_profit_targets].sort((a, b) => {
+            // First try to sort by order if available
+            if (a.order !== undefined && b.order !== undefined) {
+              return a.order - b.order;
+            }
+            // Otherwise sort by price (nearest to entry = first target)
             const priceA = parseFloat(a.price);
             const priceB = parseFloat(b.price);
-            return isLong ? priceB - priceA : priceA - priceB;
+            // For long: higher price = more profit, so sort ascending (nearest first)
+            // For short: lower price = more profit, so sort descending (nearest first)
+            return isLong ? priceA - priceB : priceB - priceA;
           });
-          const finalTarget = sortedTargets[0];
-          if (finalTarget && finalTarget.price) {
-            const finalTpPrice = parseFloat(finalTarget.price);
-            const finalTpPL = isLong ? finalTpPrice - entryPrice : entryPrice - finalTpPrice;
-            finalTpR = finalTpPL / risk;
+          const firstTarget = sortedTargets[0];
+          if (firstTarget && firstTarget.price) {
+            const firstTpPrice = parseFloat(firstTarget.price);
+            const firstTpPL = isLong ? firstTpPrice - entryPrice : entryPrice - firstTpPrice;
+            firstTpR = firstTpPL / risk;
           }
         }
-        
-        if (!finalTpR && take_profit) {
+
+        if (!firstTpR && take_profit) {
           const tpPL = isLong ? parseFloat(take_profit) - entryPrice : entryPrice - parseFloat(take_profit);
-          finalTpR = tpPL / risk;
+          firstTpR = tpPL / risk;
         }
-        
-        if (finalTpR !== null) {
-          if (finalTpR > MAX_POTENTIAL_R) {
-            finalTpR = MAX_POTENTIAL_R;
+
+        if (firstTpR !== null) {
+          if (firstTpR > MAX_POTENTIAL_R) {
+            firstTpR = MAX_POTENTIAL_R;
           }
-          potentialR = finalTpR;
+          potentialR = firstTpR;
           // If actual R equals potential R (within rounding), no management impact
           if (Math.abs(actualR - potentialR) < 0.01) {
             return 0;
