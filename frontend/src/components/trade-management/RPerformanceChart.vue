@@ -102,15 +102,15 @@
         <!-- Legend -->
         <div class="mt-4 flex flex-wrap justify-center gap-6 text-sm">
           <div class="flex items-center">
-            <span class="w-4 h-0.5 bg-emerald-600 dark:bg-emerald-500 mr-2"></span>
+            <span class="w-6 h-1 rounded-full bg-emerald-600 dark:bg-emerald-500 mr-2"></span>
             <span class="text-gray-600 dark:text-gray-400">Actual Performance</span>
           </div>
           <div class="flex items-center">
-            <span class="w-4 h-0.5 bg-primary-600 dark:bg-primary-500 mr-2" style="border-bottom: 2px dashed;"></span>
+            <span class="w-6 h-1 rounded-full mr-2" style="background-color: #6366f1;"></span>
             <span class="text-gray-600 dark:text-gray-400">Potential Performance</span>
           </div>
           <div class="flex items-center">
-            <span class="w-4 h-0.5 bg-amber-500 dark:bg-amber-400 mr-2" style="border-bottom: 2px dotted;"></span>
+            <span class="w-6 h-1 rounded-full bg-amber-500 dark:bg-amber-400 mr-2"></span>
             <span class="text-gray-600 dark:text-gray-400">Trade Management Impact</span>
           </div>
         </div>
