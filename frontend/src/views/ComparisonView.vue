@@ -354,8 +354,8 @@
           </h3>
           <p class="text-gray-600 dark:text-gray-400">
             TradeTally is completely free forever for core features including unlimited trade storage, basic analytics,
-            trade journal, and CSV import/export. Our Pro tier ($8/month) unlocks advanced features like AI insights,
-            behavioral analytics, watchlists, and advanced metrics - but the free tier has no time limit or hidden fees.
+            trade journal, and CSV import/export. Free tier imports are limited to 100 executions per batch, but you can import as many batches as you need. Our Pro tier ($8/month) unlocks advanced features like AI insights,
+            behavioral analytics, unlimited batch imports, and advanced metrics - no time limits or hidden fees.
           </p>
         </div>
 
@@ -366,7 +366,7 @@
           <p class="text-gray-600 dark:text-gray-400">
             TradeTally offers unlimited free trade storage (vs TraderVue's 100/month limit), lower Pro pricing ($8/mo vs $29-79/mo),
             open source code, self-hosting options, and modern features like AI insights and behavioral analytics.
-            TradeTally is built for the next generation of traders who want transparency and value.
+            Free tier imports 100 executions per batch with unlimited total trades. TradeTally is built for the next generation of traders who want transparency and value.
           </p>
         </div>
       </div>
@@ -663,7 +663,7 @@ onMounted(() => {
         "name": "What is the best trading journal software in 2025?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "TradeTally is rated as one of the best trading journals in 2025 due to its unlimited free trades, auto-sync with Schwab and Interactive Brokers, AI-powered insights, and unique self-hosting option. Unlike TraderVue (100 trades/month limit) or TraderSync (20 trades/month), TradeTally has no trade limits on the free tier."
+          "text": "TradeTally is rated as one of the best trading journals in 2025 due to its unlimited trade storage, auto-sync with Schwab and Interactive Brokers, AI-powered insights, and unique self-hosting option. Unlike TraderVue (100 trades/month limit) or TraderSync (20 trades/month), TradeTally offers unlimited storage with batch imports of 100 executions on the free tier."
         }
       },
       {
@@ -671,7 +671,7 @@ onMounted(() => {
         "name": "Is TradeTally better than TraderVue?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "TradeTally offers several advantages over TraderVue: unlimited free trades (vs 100/month), lower Pro pricing ($8/mo vs $29-79/mo), auto-sync with Schwab and IBKR, AI insights, behavioral analytics, open-source code, and self-hosting. TraderVue has more pre-built broker integrations, but TradeTally's custom CSV mapper works with any broker."
+          "text": "TradeTally offers several advantages over TraderVue: unlimited trade storage (vs 100/month), lower Pro pricing ($8/mo vs $29-79/mo), auto-sync with Schwab and IBKR, AI insights, behavioral analytics, open-source code, and self-hosting. Free tier imports 100 executions per batch with no limit on total trades. TraderVue has more pre-built broker integrations, but TradeTally's custom CSV mapper works with any broker."
         }
       },
       {
@@ -679,7 +679,7 @@ onMounted(() => {
         "name": "What is the cheapest trading journal with good features?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "TradeTally offers the best value with a completely free tier that includes unlimited trades, and a Pro tier at only $8/month. This compares favorably to TraderVue ($29-79/month), TraderSync ($49-99/month), and TradesViz ($29-69/month). Edgewonk offers a one-time purchase option at $39-79."
+          "text": "TradeTally offers the best value with a completely free tier that includes unlimited trade storage (import 100 per batch), and a Pro tier at only $8/month for unlimited batch imports. This compares favorably to TraderVue ($29-79/month), TraderSync ($49-99/month), and TradesViz ($29-69/month). Edgewonk offers a one-time purchase option at $39-79."
         }
       }
     ]

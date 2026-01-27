@@ -772,21 +772,35 @@
             </div>
           </div>
         </div>
-        <div class="mt-5 sm:mt-6 sm:grid sm:grid-cols-2 sm:gap-3 sm:grid-flow-row-dense">
-          <router-link
-            to="/pricing"
-            class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-primary-600 text-base font-medium text-white hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:col-start-2 sm:text-sm"
-            @click="showCurrencyProModal = false"
-          >
-            Upgrade to Pro
-          </router-link>
+        <div class="mt-5 sm:mt-6 space-y-3">
+          <!-- Trial Button - show if user hasn't used trial yet -->
           <button
+            v-if="!hasUsedTrial && (!trialInfo || !trialInfo.active)"
             type="button"
-            class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 dark:border-gray-600 shadow-sm px-4 py-2 bg-white dark:bg-gray-700 text-base font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:mt-0 sm:col-start-1 sm:text-sm"
-            @click="showCurrencyProModal = false"
+            :disabled="startingTrial"
+            class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-green-600 text-base font-medium text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            @click="startTrial"
           >
-            Cancel
+            <span v-if="startingTrial" class="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></span>
+            Start 14-Day Free Trial
           </button>
+
+          <div class="sm:grid sm:grid-cols-2 sm:gap-3">
+            <router-link
+              to="/pricing"
+              class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-primary-600 text-base font-medium text-white hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:text-sm"
+              @click="showCurrencyProModal = false"
+            >
+              View Pricing
+            </router-link>
+            <button
+              type="button"
+              class="mt-3 sm:mt-0 w-full inline-flex justify-center rounded-md border border-gray-300 dark:border-gray-600 shadow-sm px-4 py-2 bg-white dark:bg-gray-700 text-base font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:text-sm"
+              @click="showCurrencyProModal = false"
+            >
+              Cancel
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -845,7 +859,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, nextTick } from 'vue'
 import { useTradesStore } from '@/stores/trades'
 import { useAuthStore } from '@/stores/auth'
 import { useNotification } from '@/composables/useNotification'
@@ -860,7 +874,7 @@ import { usePriceAlertNotifications } from '@/composables/usePriceAlertNotificat
 
 const tradesStore = useTradesStore()
 const authStore = useAuthStore()
-const { showSuccess, showError } = useNotification()
+const { showSuccess, showError, showSuccessModal, clearModalAlert } = useNotification()
 const { celebrationQueue } = usePriceAlertNotifications()
 
 const loading = ref(false)
@@ -868,6 +882,11 @@ const error = ref(null)
 const selectedBroker = ref('auto')
 const selectedFile = ref(null)
 const showCurrencyProModal = ref(false)
+
+// Trial info for import limit modal
+const trialInfo = ref(null)
+const hasUsedTrial = ref(false)
+const startingTrial = ref(false)
 
 // Account selection for imports
 const accounts = ref([])
@@ -1259,7 +1278,7 @@ async function handleImport() {
       console.log(`[IMPORT] Free tier user attempting to import ${tradeCount} trades (limit: ${FREE_TIER_IMPORT_LIMIT})`)
       loading.value = false
       showCurrencyProModal.value = true
-      currencyProMessage.value = `Free tier is limited to ${FREE_TIER_IMPORT_LIMIT} trades per import. You are attempting to import ${tradeCount} trades. Please upgrade to Pro for unlimited batch imports, or split your import into smaller batches.`
+      currencyProMessage.value = `Free tier imports are limited to ${FREE_TIER_IMPORT_LIMIT} executions per batch. Your file contains ${tradeCount} executions. You can still import all your trades - just split the file into smaller batches of ${FREE_TIER_IMPORT_LIMIT} or fewer. Upgrade to Pro for unlimited batch sizes.`
       return
     }
 
@@ -1991,6 +2010,77 @@ async function handleMappingSaved(mapping) {
   }
 }
 
+// Fetch trial info for the import limit modal
+async function fetchTrialInfo() {
+  try {
+    const response = await api.get('/billing/subscription')
+    trialInfo.value = response.data.data?.trial || null
+    hasUsedTrial.value = response.data.data?.has_used_trial || false
+  } catch (err) {
+    // Billing might not be available (self-hosted), that's ok
+    console.log('[IMPORT] Could not fetch trial info:', err.message)
+  }
+}
+
+// Start 14-day trial from the import limit modal
+async function startTrial() {
+  try {
+    startingTrial.value = true
+    console.log('[IMPORT] Starting 14-day trial...')
+    console.log('[IMPORT] Current user tier before trial:', authStore.user?.tier)
+
+    const response = await api.post('/billing/trial')
+    console.log('[IMPORT] Trial API response:', response.data)
+
+    if (response.data.success) {
+      console.log('[IMPORT] Trial started successfully, refreshing user data...')
+
+      // Refresh user data to get new tier - await the full refresh
+      const updatedUser = await authStore.fetchUser()
+      console.log('[IMPORT] Updated user from fetchUser:', updatedUser)
+      console.log('[IMPORT] authStore.user after fetchUser:', authStore.user)
+      console.log('[IMPORT] User tier after fetchUser:', authStore.user?.tier)
+
+      // Double-check by fetching subscription info directly
+      try {
+        const subResponse = await api.get('/billing/subscription')
+        console.log('[IMPORT] Subscription check response:', subResponse.data)
+        const trialActive = subResponse.data.data?.trial?.active
+        console.log('[IMPORT] Trial active from subscription check:', trialActive)
+      } catch (subErr) {
+        console.log('[IMPORT] Could not verify subscription:', subErr.message)
+      }
+
+      // Also refresh trial info for the modal
+      await fetchTrialInfo()
+
+      showCurrencyProModal.value = false
+
+      // Show success modal and continue import when user clicks OK
+      const fileToImport = selectedFile.value
+      showSuccessModal('Trial Activated', '14-day Pro trial started! You now have unlimited batch imports.', {
+        confirmText: 'Continue Import',
+        onConfirm: () => {
+          clearModalAlert()
+          if (fileToImport) {
+            console.log('[IMPORT] Re-triggering import with file:', fileToImport.name)
+            nextTick().then(() => handleImport())
+          }
+        }
+      })
+    } else {
+      console.error('[IMPORT] Trial API returned success: false')
+      showError('Trial Failed', 'Failed to start trial. Please try again or contact support.')
+    }
+  } catch (err) {
+    console.error('[IMPORT] Error starting trial:', err)
+    const errorMessage = err.response?.data?.message || err.response?.data?.error || 'Failed to start trial. Please try again.'
+    showError('Trial Failed', errorMessage)
+  } finally {
+    startingTrial.value = false
+  }
+}
+
 onMounted(() => {
   // Load saved broker preference
   const savedBroker = localStorage.getItem('lastSelectedBroker')
@@ -2002,6 +2092,7 @@ onMounted(() => {
   fetchUnmappedCusipsCount()
   fetchCustomMappings()
   fetchImportRequirements()
+  fetchTrialInfo()
   setInterval(fetchImportHistory, 5000)
 })
 </script>

@@ -18,7 +18,7 @@
           <div class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm">
             <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">Is TradeTally really free?</h3>
             <p class="text-gray-600 dark:text-gray-400">
-              Yes! TradeTally offers a generous free tier with no trade limits. You can track unlimited trades, access all analytics features, and use the platform indefinitely without paying. We believe every trader should have access to professional tools regardless of their budget.
+              Yes! TradeTally offers a generous free tier with unlimited trade storage. You can track as many trades as you want and use the platform indefinitely without paying. The only limitation is that free tier imports are limited to 100 executions per batch - but you can import as many batches as you need. Pro users get unlimited batch sizes for convenience.
             </p>
           </div>
           
@@ -39,7 +39,7 @@
           <div class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm">
             <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">How does TradeTally compare to TraderVue?</h3>
             <p class="text-gray-600 dark:text-gray-400">
-              TradeTally offers all the core features of TraderVue with several advantages: a completely free tier with no trade limits, modern interface built with Vue 3, self-hosting option for data privacy, and open-source transparency. We focus on providing professional tools without artificial limitations.
+              TradeTally offers all the core features of TraderVue with several advantages: a completely free tier with unlimited trade storage, modern interface built with Vue 3, self-hosting option for data privacy, and open-source transparency. Free tier imports are limited to 100 executions per batch, but you can import unlimited batches.
             </p>
           </div>
           
@@ -158,7 +158,7 @@
           <div class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm">
             <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">What is the best free trading journal?</h3>
             <p class="text-gray-600 dark:text-gray-400">
-              TradeTally is widely considered one of the best free trading journals available in 2025. Unlike TraderVue (100 trades/month limit) or TraderSync (20 trades/month limit), TradeTally offers unlimited trade storage completely free. It includes automated import from major brokers like Schwab, Interactive Brokers, E*TRADE, and Lightspeed, plus advanced analytics, public trade sharing, and a mobile app. The free tier has no time limits or hidden fees.
+              TradeTally is widely considered one of the best free trading journals available in 2025. Unlike TraderVue (100 trades/month limit) or TraderSync (20 trades/month limit), TradeTally offers unlimited trade storage completely free. Import in batches of 100 executions on the free tier, with no limit on how many batches you can import. It includes automated import from major brokers like Schwab, Interactive Brokers, E*TRADE, and Lightspeed, plus advanced analytics, public trade sharing, and a mobile app.
             </p>
           </div>
 
@@ -200,14 +200,14 @@
           <div class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm">
             <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">Is TradeTally better than TraderVue?</h3>
             <p class="text-gray-600 dark:text-gray-400">
-              TradeTally offers several advantages over TraderVue: unlimited free trades (vs 100/month limit), lower Pro pricing ($8/month vs $29-79/month), auto-sync with Schwab and IBKR, AI-powered insights, behavioral analytics, open-source code, and self-hosting option. TraderVue has more broker integrations (60+ vs TradeTally's focused set), but TradeTally's custom CSV mapper works with any broker. For most traders, TradeTally provides better value.
+              TradeTally offers several advantages over TraderVue: unlimited trade storage (vs 100/month limit), lower Pro pricing ($8/month vs $29-79/month), auto-sync with Schwab and IBKR, AI-powered insights, behavioral analytics, open-source code, and self-hosting option. Free tier imports 100 executions per batch with no limit on total trades. TraderVue has more broker integrations (60+), but TradeTally's custom CSV mapper works with any broker. For most traders, TradeTally provides better value.
             </p>
           </div>
 
           <div class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm">
             <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">Is TradeTally better than TraderSync?</h3>
             <p class="text-gray-600 dark:text-gray-400">
-              TradeTally offers significant cost savings over TraderSync: unlimited free trades (vs 20/month), $8/month Pro tier (vs $49-99/month). TradeTally includes AI insights, open-source code, and self-hosting that TraderSync lacks. TraderSync has Android app support and more pre-built broker integrations, but TradeTally's value proposition is stronger for most traders seeking professional features without premium pricing.
+              TradeTally offers significant cost savings over TraderSync: unlimited trade storage (vs 20/month), $8/month Pro tier (vs $49-99/month). Free tier imports 100 executions per batch with unlimited total trades. TradeTally includes AI insights, open-source code, and self-hosting that TraderSync lacks. TraderSync has Android app support and more pre-built broker integrations, but TradeTally's value proposition is stronger for most traders.
             </p>
           </div>
 
@@ -256,7 +256,7 @@
           <div class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm">
             <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">How much does TradeTally cost?</h3>
             <p class="text-gray-600 dark:text-gray-400">
-              TradeTally offers a completely free tier with unlimited trade storage, basic analytics, and all import features. The Pro tier costs $8/month (or $80/year with 17% discount) and includes AI insights, behavioral analytics, stock scanner, and advanced metrics. This is significantly cheaper than TraderVue ($29-79/month) or TraderSync ($49-99/month).
+              TradeTally offers a completely free tier with unlimited trade storage, basic analytics, and all import features (100 executions per batch, unlimited batches). The Pro tier costs $8/month (or $80/year with 17% discount) and includes AI insights, behavioral analytics, unlimited batch imports, stock scanner, and advanced metrics. This is significantly cheaper than TraderVue ($29-79/month) or TraderSync ($49-99/month).
             </p>
           </div>
 
@@ -311,7 +311,7 @@ onMounted(() => {
         "name": "What is the best free trading journal?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "TradeTally is widely considered one of the best free trading journals available in 2025. Unlike TraderVue (100 trades/month limit) or TraderSync (20 trades/month limit), TradeTally offers unlimited trade storage completely free. It includes automated import from major brokers like Schwab, Interactive Brokers, E*TRADE, and Lightspeed, plus advanced analytics, public trade sharing, and a mobile app."
+          "text": "TradeTally is widely considered one of the best free trading journals available in 2025. Unlike TraderVue (100 trades/month limit) or TraderSync (20 trades/month limit), TradeTally offers unlimited trade storage completely free. Import in batches of 100 executions on the free tier, with no limit on total trades. It includes automated import from major brokers like Schwab, Interactive Brokers, E*TRADE, and Lightspeed, plus advanced analytics, public trade sharing, and a mobile app."
         }
       },
       {
@@ -327,7 +327,7 @@ onMounted(() => {
         "name": "How does TradeTally compare to TraderVue?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "TradeTally offers several advantages over TraderVue: unlimited free trades (vs 100/month limit), lower Pro pricing ($8/month vs $29-79/month), auto-sync with Schwab and IBKR, AI-powered insights, behavioral analytics, open-source code, and self-hosting option. For most traders, TradeTally provides better value."
+          "text": "TradeTally offers several advantages over TraderVue: unlimited trade storage (vs 100/month limit), lower Pro pricing ($8/month vs $29-79/month), auto-sync with Schwab and IBKR, AI-powered insights, behavioral analytics, open-source code, and self-hosting option. Free tier allows 100 executions per batch import, with unlimited batches. For most traders, TradeTally provides better value."
         }
       },
       {
@@ -335,7 +335,7 @@ onMounted(() => {
         "name": "Is TradeTally better than TraderSync?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "TradeTally offers significant cost savings over TraderSync: unlimited free trades (vs 20/month), $8/month Pro tier (vs $49-99/month). TradeTally includes AI insights, open-source code, and self-hosting that TraderSync lacks."
+          "text": "TradeTally offers significant cost savings over TraderSync: unlimited trade storage (vs 20/month), $8/month Pro tier (vs $49-99/month). Free tier imports 100 executions per batch with no limit on total trades. TradeTally includes AI insights, open-source code, and self-hosting that TraderSync lacks."
         }
       },
       {
@@ -383,7 +383,7 @@ onMounted(() => {
         "name": "How much does TradeTally cost?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "TradeTally offers a completely free tier with unlimited trade storage, basic analytics, and all import features. The Pro tier costs $8/month (or $80/year with 17% discount) and includes AI insights, behavioral analytics, stock scanner, and advanced metrics. This is significantly cheaper than TraderVue ($29-79/month) or TraderSync ($49-99/month)."
+          "text": "TradeTally offers a completely free tier with unlimited trade storage, basic analytics, and all import features (100 executions per batch, unlimited batches). The Pro tier costs $8/month (or $80/year with 17% discount) and includes AI insights, behavioral analytics, unlimited batch imports, stock scanner, and advanced metrics. This is significantly cheaper than TraderVue ($29-79/month) or TraderSync ($49-99/month)."
         }
       },
       {

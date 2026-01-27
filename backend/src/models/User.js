@@ -401,16 +401,27 @@ class User {
       let whereClause = '';
       let params = [];
       if (search && search.trim() !== '') {
-        whereClause = `WHERE (email ILIKE $1 OR username ILIKE $1 OR full_name ILIKE $1)`;
+        whereClause = `WHERE (u.email ILIKE $1 OR u.username ILIKE $1 OR u.full_name ILIKE $1)`;
         params.push(`%${search.trim()}%`);
       }
 
-      // Get users with pagination
+      // Get users with pagination, including trial status from tier_overrides
       const userQuery = `
-        SELECT id, email, username, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone, tier, marketing_consent, created_at, updated_at
-        FROM users
+        SELECT
+          u.id, u.email, u.username, u.full_name, u.avatar_url, u.role,
+          u.is_verified, u.admin_approved, u.is_active, u.timezone, u.tier,
+          u.marketing_consent, u.created_at, u.updated_at,
+          CASE
+            WHEN tov.id IS NOT NULL AND tov.reason ILIKE '%trial%' AND (tov.expires_at IS NULL OR tov.expires_at > NOW())
+            THEN true
+            ELSE false
+          END as is_trial
+        FROM users u
+        LEFT JOIN tier_overrides tov ON u.id = tov.user_id
+          AND tov.tier = 'pro'
+          AND (tov.expires_at IS NULL OR tov.expires_at > NOW())
         ${whereClause}
-        ORDER BY created_at DESC
+        ORDER BY u.created_at DESC
         LIMIT $${params.length + 1} OFFSET $${params.length + 2}
       `;
       params.push(limit, offset);
