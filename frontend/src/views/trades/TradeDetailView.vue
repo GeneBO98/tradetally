@@ -530,9 +530,23 @@
           <!-- Executions -->
           <div v-if="processedExecutions && processedExecutions.length > 0" class="card">
             <div class="card-body">
-              <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
-                Executions ({{ processedExecutions.length }})
-              </h3>
+              <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-medium text-gray-900 dark:text-white">
+                  Executions ({{ processedExecutions.length }})
+                </h3>
+                <button
+                  v-if="processedExecutions.length >= 2 && trade.exit_price && trade.exit_time"
+                  @click="splitTrade"
+                  :disabled="splittingTrade"
+                  class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
+                >
+                  <svg v-if="splittingTrade" class="animate-spin -ml-0.5 mr-1.5 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  {{ splittingTrade ? 'Splitting...' : 'Split Trade' }}
+                </button>
+              </div>
               
               <!-- Desktop Table View -->
               <div class="hidden md:block overflow-x-auto">
@@ -1123,6 +1137,7 @@ const { showSuccess, showError, showConfirmation } = useNotification()
 const loading = ref(true)
 const trade = ref(null)
 const calculatingQuality = ref(false)
+const splittingTrade = ref(false)
 
 // Helper function to safely get numeric score value
 const getScore = (value) => {
@@ -1737,6 +1752,28 @@ async function deleteTrade() {
         router.push('/trades')
       } catch (error) {
         showError('Error', 'Failed to delete trade')
+      }
+    }
+  )
+}
+
+async function splitTrade() {
+  showConfirmation(
+    'Split Trade',
+    `This will split the grouped trade into ${processedExecutions.value.length} individual trades and delete the original. This cannot be undone.`,
+    async () => {
+      try {
+        splittingTrade.value = true
+        await api.post(`/trades/${trade.value.id}/split`)
+        showSuccess('Success', `Trade split into ${processedExecutions.value.length} individual trades`)
+        await tradesStore.fetchTrades()
+        await tradesStore.fetchAnalytics()
+        router.push('/trades')
+      } catch (error) {
+        console.error('Failed to split trade:', error)
+        showError('Error', error.response?.data?.error || 'Failed to split trade')
+      } finally {
+        splittingTrade.value = false
       }
     }
   )

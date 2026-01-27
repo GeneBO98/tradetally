@@ -619,6 +619,114 @@ const tradeController = {
     }
   },
 
+  async splitTrade(req, res, next) {
+    try {
+      const trade = await Trade.findById(req.params.id, req.user.id);
+
+      if (!trade) {
+        return res.status(404).json({ error: 'Trade not found or access denied' });
+      }
+
+      // Parse executions if stored as string
+      let executions = trade.executions;
+      if (typeof executions === 'string') {
+        executions = JSON.parse(executions);
+      }
+
+      if (!Array.isArray(executions) || executions.length < 2) {
+        return res.status(400).json({ error: 'Trade must have 2 or more executions to split' });
+      }
+
+      // Only allow splitting closed trades
+      if (!trade.exit_price || !trade.exit_time) {
+        return res.status(400).json({ error: 'Only closed trades with an exit price and time can be split' });
+      }
+
+      // Determine which action is entry vs exit based on trade side
+      const side = trade.side;
+      const entryAction = side === 'long' ? 'buy' : 'sell';
+      const exitAction = side === 'long' ? 'sell' : 'buy';
+
+      // Separate executions into entry and exit fills
+      const entryFills = executions.filter(e => e.action === entryAction);
+      const exitFills = executions.filter(e => e.action === exitAction);
+
+      if (entryFills.length === 0 || exitFills.length === 0) {
+        return res.status(400).json({ error: 'Trade must have both entry and exit executions to split' });
+      }
+
+      // Compute a single weighted-average exit price/time from exit fills
+      const totalExitQty = exitFills.reduce((s, e) => s + e.quantity, 0);
+      const avgExitPrice = exitFills.reduce((s, e) => s + e.price * e.quantity, 0) / totalExitQty;
+      const totalExitFees = exitFills.reduce((s, e) => s + (e.fees || 0), 0);
+      // Use the latest exit fill datetime
+      const exitTime = exitFills.reduce((latest, e) => {
+        const dt = e.datetime || '';
+        return dt > latest ? dt : latest;
+      }, '');
+
+      const newTradeIds = [];
+
+      // Create one trade per entry fill, each using the shared exit data
+      for (let i = 0; i < entryFills.length; i++) {
+        const exec = entryFills[i];
+        // Distribute exit fees proportionally across entry fills
+        const feeShare = entryFills.length > 1
+          ? totalExitFees * (exec.quantity / entryFills.reduce((s, e) => s + e.quantity, 0))
+          : totalExitFees;
+
+        const tradeData = {
+          symbol: trade.symbol,
+          side: trade.side,
+          broker: trade.broker,
+          strategy: trade.strategy,
+          setup: trade.setup,
+          tags: trade.tags,
+          instrumentType: trade.instrument_type || trade.instrumentType || 'stock',
+          strikePrice: trade.strike_price || trade.strikePrice,
+          expirationDate: trade.expiration_date || trade.expirationDate,
+          optionType: trade.option_type || trade.optionType,
+          contractSize: trade.contract_size || trade.contractSize,
+          underlyingSymbol: trade.underlying_symbol || trade.underlyingSymbol,
+          contractMonth: trade.contract_month || trade.contractMonth,
+          contractYear: trade.contract_year || trade.contractYear,
+          tickSize: trade.tick_size || trade.tickSize,
+          pointValue: trade.point_value || trade.pointValue,
+          underlyingAsset: trade.underlying_asset || trade.underlyingAsset,
+          accountIdentifier: trade.account_identifier || trade.accountIdentifier,
+          brokerConnectionId: trade.broker_connection_id || trade.brokerConnectionId,
+          entryTime: String(exec.datetime),
+          exitTime: String(exitTime || trade.exit_time),
+          entryPrice: exec.price,
+          exitPrice: avgExitPrice,
+          quantity: exec.quantity,
+          commission: 0,
+          fees: (exec.fees || 0) + feeShare,
+        };
+
+        const newTrade = await Trade.create(req.user.id, tradeData, { skipAchievements: true, skipApiCalls: true });
+        newTradeIds.push(newTrade.id);
+      }
+
+      // Delete the original grouped trade
+      await Trade.delete(req.params.id, req.user.id);
+
+      // Invalidate caches
+      invalidateAnalyticsCache(req.user.id);
+
+      res.json({
+        message: `Trade split into ${newTradeIds.length} individual trades`,
+        original_trade_id: req.params.id,
+        new_trade_ids: newTradeIds,
+        trades_created: newTradeIds.length
+      });
+    } catch (error) {
+      console.error('[SPLIT] Error splitting trade:', error.message);
+      console.error('[SPLIT] Stack:', error.stack);
+      next(error);
+    }
+  },
+
   async bulkDeleteTrades(req, res, next) {
     try {
       const { tradeIds } = req.body;

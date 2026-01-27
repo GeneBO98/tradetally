@@ -691,6 +691,7 @@ router.get('/:id/chart-data', authenticate, tradeController.getTradeChartData);
 router.get('/:id', optionalAuth, tradeController.getTrade);
 router.put('/:id', authenticate, validate(schemas.updateTrade), tradeController.updateTrade);
 router.delete('/:id', authenticate, tradeController.deleteTrade);
+router.post('/:id/split', authenticate, tradeController.splitTrade);
 router.post('/:id/attachments', authenticate, upload.single('file'), tradeController.uploadAttachment);
 router.delete('/:id/attachments/:attachmentId', authenticate, tradeController.deleteAttachment);
 // Image-specific routes
