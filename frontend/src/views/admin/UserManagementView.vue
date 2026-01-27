@@ -152,7 +152,8 @@
                     <span
                       :class="{
                         'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400': getUserDisplayTier(user) === 'free',
-                        'bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400': getUserDisplayTier(user) === 'pro'
+                        'bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400': getUserDisplayTier(user) === 'pro',
+                        'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400': getUserDisplayTier(user) === 'trial'
                       }"
                       class="inline-flex px-2 py-1 text-xs font-semibold rounded-full"
                     >
@@ -642,6 +643,10 @@ function getUserDisplayTier(user) {
   // Admins get Pro tier by default
   if (user.role === 'admin' || user.role === 'owner') {
     return 'pro';
+  }
+  // Check if user is on a trial
+  if (user.is_trial) {
+    return 'trial';
   }
   return user.tier || 'free';
 }

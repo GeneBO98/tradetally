@@ -23,8 +23,8 @@
           <tr>
             <td class="px-6 py-4 text-gray-700 dark:text-gray-300">Free Plan Trade Limit</td>
             <td class="px-6 py-4 text-center">
-              <span class="text-green-600 dark:text-green-400 font-semibold">Unlimited</span>
-              <div class="text-xs text-gray-500">(100 per batch import)</div>
+              <span class="text-green-600 dark:text-green-400 font-semibold">Unlimited storage</span>
+              <div class="text-xs text-gray-500">(import in batches of 100)</div>
             </td>
             <td class="px-6 py-4 text-center text-gray-600 dark:text-gray-400">100 trades/month</td>
           </tr>

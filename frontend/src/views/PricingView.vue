@@ -73,13 +73,13 @@
                   <svg class="w-5 h-5 text-green-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
                   </svg>
-                  <span class="text-gray-600 dark:text-gray-400">Basic P&L tracking</span>
+                  <span class="text-gray-600 dark:text-gray-400">Unlimited trade storage</span>
                 </li>
                 <li class="flex items-center">
                   <svg class="w-5 h-5 text-green-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
                   </svg>
-                  <span class="text-gray-600 dark:text-gray-400">Trade history</span>
+                  <span class="text-gray-600 dark:text-gray-400">Basic P&L tracking</span>
                 </li>
                 <li class="flex items-center">
                   <svg class="w-5 h-5 text-green-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -91,7 +91,7 @@
                   <svg class="w-5 h-5 text-green-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
                   </svg>
-                  <span class="text-gray-600 dark:text-gray-400">CSV import/export</span>
+                  <span class="text-gray-600 dark:text-gray-400">CSV import (100 per batch)</span>
                 </li>
               </ul>
 
@@ -205,6 +205,12 @@
                   <svg class="w-5 h-5 text-green-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
                   </svg>
+                  <span class="text-gray-600 dark:text-gray-400">Unlimited batch imports</span>
+                </li>
+                <li class="flex items-center">
+                  <svg class="w-5 h-5 text-green-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                  </svg>
                   <span class="text-gray-600 dark:text-gray-400">Behavioral analytics</span>
                 </li>
                 <li class="flex items-center">
@@ -218,12 +224,6 @@
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
                   </svg>
                   <span class="text-gray-600 dark:text-gray-400">Advanced risk metrics</span>
-                </li>
-                <li class="flex items-center">
-                  <svg class="w-5 h-5 text-green-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                  </svg>
-                  <span class="text-gray-600 dark:text-gray-400">Real-time alerts</span>
                 </li>
                 <li class="flex items-center">
                   <svg class="w-5 h-5 text-green-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">

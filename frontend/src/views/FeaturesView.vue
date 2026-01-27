@@ -265,7 +265,7 @@ onMounted(() => {
         "name": "Free Tier",
         "price": "0",
         "priceCurrency": "USD",
-        "description": "Unlimited trade storage, basic analytics, CSV import from all brokers"
+        "description": "Unlimited trade storage, basic analytics, CSV import from all brokers (100 executions per batch)"
       },
       {
         "@type": "Offer",
