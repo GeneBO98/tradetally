@@ -207,10 +207,10 @@
         </div>
 
         <!-- Potential P&L -->
-        <div v-if="analysis.target_pl_amount !== null">
+        <div v-if="potentialPL !== null">
           <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Potential P&L</div>
           <div class="text-lg font-semibold text-primary-600 dark:text-primary-400">
-            {{ formatCurrency(analysis.target_pl_amount) }}
+            {{ formatCurrency(potentialPL) }}
           </div>
           <div class="text-xs text-gray-500 dark:text-gray-400">
             If held to target
@@ -314,6 +314,21 @@ const props = defineProps({
 // Check if trade has multiple TP targets
 const hasMultipleTargets = computed(() => {
   return props.trade.take_profit_targets && props.trade.take_profit_targets.length > 0
+})
+
+// Potential P&L using ratio method for accuracy
+// Formula: targetR * (actualPL / actualR) preserves the actual dollar-per-R value
+const potentialPL = computed(() => {
+  const actualR = props.analysis.actual_r
+  const actualPL = props.analysis.actual_pl_amount
+  const targetR = props.analysis.weighted_target_r ?? props.analysis.target_r
+
+  if (targetR !== null && actualR !== null && actualR !== 0 && actualPL !== null) {
+    const perR = actualPL / actualR
+    return Math.round(perR * targetR * 100) / 100
+  }
+
+  return props.analysis.target_pl_amount
 })
 
 // Check if we should use take_profit_targets array (instead of single take_profit)
