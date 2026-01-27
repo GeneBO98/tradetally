@@ -534,18 +534,35 @@
                 <h3 class="text-lg font-medium text-gray-900 dark:text-white">
                   Executions ({{ processedExecutions.length }})
                 </h3>
-                <button
-                  v-if="processedExecutions.length >= 2 && trade.exit_price && trade.exit_time"
-                  @click="splitTrade"
-                  :disabled="splittingTrade"
-                  class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
-                >
-                  <svg v-if="splittingTrade" class="animate-spin -ml-0.5 mr-1.5 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  {{ splittingTrade ? 'Splitting...' : 'Split Trade' }}
-                </button>
+                <div v-if="processedExecutions.length >= 2 && trade.exit_price && trade.exit_time" class="flex items-center space-x-2">
+                  <template v-if="splitMode">
+                    <span class="text-sm text-gray-600 dark:text-gray-400">{{ selectedExecutions.size }} selected</span>
+                    <button
+                      @click="splitSelectedTrades"
+                      :disabled="splittingTrade || selectedExecutions.size === 0 || selectedExecutions.size === entryExecutionIndices.length"
+                      class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-primary-600 text-white hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
+                    >
+                      <svg v-if="splittingTrade" class="animate-spin -ml-0.5 mr-1.5 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      {{ splittingTrade ? 'Splitting...' : 'Split Selected' }}
+                    </button>
+                    <button
+                      @click="splitMode = false; selectedExecutions = new Set()"
+                      class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none"
+                    >
+                      Cancel
+                    </button>
+                  </template>
+                  <button
+                    v-else
+                    @click="splitMode = true"
+                    class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  >
+                    Select to Split
+                  </button>
+                </div>
               </div>
               
               <!-- Desktop Table View -->
@@ -553,6 +570,7 @@
                 <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                   <thead class="bg-gray-50 dark:bg-gray-800">
                     <tr>
+                      <th v-if="splitMode" class="px-3 py-3 w-10"></th>
                       <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                         Action
                       </th>
@@ -585,6 +603,16 @@
                   <tbody class="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
                     <tr v-for="(execution, index) in processedExecutions" :key="index"
                         class="hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                      <td v-if="splitMode" class="px-3 py-4 whitespace-nowrap">
+                        <input
+                          v-if="isEntryExecution(execution)"
+                          type="checkbox"
+                          :checked="selectedExecutions.has(index)"
+                          @change="toggleExecution(index)"
+                          class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                        />
+                        <span v-else class="block h-4 w-4"></span>
+                      </td>
                       <td class="px-3 py-4 whitespace-nowrap">
                         <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
                               :class="[
@@ -645,6 +673,14 @@
                 <div v-for="(execution, index) in processedExecutions" :key="index"
                      class="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
                   <div class="flex items-center justify-between mb-3">
+                    <div class="flex items-center space-x-2">
+                      <input
+                        v-if="splitMode && isEntryExecution(execution)"
+                        type="checkbox"
+                        :checked="selectedExecutions.has(index)"
+                        @change="toggleExecution(index)"
+                        class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                      />
                     <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
                           :class="[
                             (execution.action || execution.side || '').toLowerCase() === 'buy' || (execution.action || execution.side || '').toLowerCase() === 'long'
@@ -655,6 +691,7 @@
                           ]">
                       {{ ((execution.action || execution.side) || 'N/A').toUpperCase() }}
                     </span>
+                    </div>
                     <div class="text-xs text-gray-500 dark:text-gray-400">
                       {{ execution.entryTime ? formatDateTime(execution.entryTime) : (execution.exitTime ? formatDateTime(execution.exitTime) : '-') }}
                     </div>
@@ -1138,6 +1175,8 @@ const loading = ref(true)
 const trade = ref(null)
 const calculatingQuality = ref(false)
 const splittingTrade = ref(false)
+const splitMode = ref(false)
+const selectedExecutions = ref(new Set())
 
 // Helper function to safely get numeric score value
 const getScore = (value) => {
@@ -1757,15 +1796,50 @@ async function deleteTrade() {
   )
 }
 
-async function splitTrade() {
+const entryAction = computed(() => {
+  if (!trade.value) return 'buy'
+  return trade.value.side === 'long' ? 'buy' : 'sell'
+})
+
+const entryExecutionIndices = computed(() => {
+  if (!trade.value?.executions || !Array.isArray(trade.value.executions)) return []
+  return trade.value.executions
+    .map((e, i) => ({ index: i, action: e.action }))
+    .filter(e => e.action === entryAction.value)
+    .map(e => e.index)
+})
+
+function isEntryExecution(execution) {
+  const action = (execution.action || execution.side || '').toLowerCase()
+  return action === entryAction.value
+}
+
+function toggleExecution(index) {
+  const next = new Set(selectedExecutions.value)
+  if (next.has(index)) {
+    next.delete(index)
+  } else {
+    next.add(index)
+  }
+  selectedExecutions.value = next
+}
+
+async function splitSelectedTrades() {
+  const count = selectedExecutions.value.size
+  const allSelected = count === entryExecutionIndices.value.length
+  const msg = allSelected
+    ? `This will split all ${count} entry fills into individual trades and delete the original. This cannot be undone.`
+    : `This will split ${count} selected entry fill(s) into new trade(s) and update the original with the remaining entries. This cannot be undone.`
+
   showConfirmation(
     'Split Trade',
-    `This will split the grouped trade into ${processedExecutions.value.length} individual trades and delete the original. This cannot be undone.`,
+    msg,
     async () => {
       try {
         splittingTrade.value = true
-        await api.post(`/trades/${trade.value.id}/split`)
-        showSuccess('Success', `Trade split into ${processedExecutions.value.length} individual trades`)
+        const indices = Array.from(selectedExecutions.value)
+        await api.post(`/trades/${trade.value.id}/split`, { execution_indices: indices })
+        showSuccess('Success', `Trade split successfully`)
         await tradesStore.fetchTrades()
         await tradesStore.fetchAnalytics()
         router.push('/trades')
@@ -1774,6 +1848,8 @@ async function splitTrade() {
         showError('Error', error.response?.data?.error || 'Failed to split trade')
       } finally {
         splittingTrade.value = false
+        splitMode.value = false
+        selectedExecutions.value = new Set()
       }
     }
   )

@@ -665,14 +665,54 @@ const tradeController = {
         return dt > latest ? dt : latest;
       }, '');
 
-      const newTradeIds = [];
+      // Determine which entry fills to split out
+      const { execution_indices } = req.body || {};
+      let fillsToSplit;
+      let fillsToKeep;
+      let isPartialSplit = false;
 
-      // Create one trade per entry fill, each using the shared exit data
-      for (let i = 0; i < entryFills.length; i++) {
-        const exec = entryFills[i];
-        // Distribute exit fees proportionally across entry fills
-        const feeShare = entryFills.length > 1
-          ? totalExitFees * (exec.quantity / entryFills.reduce((s, e) => s + e.quantity, 0))
+      if (Array.isArray(execution_indices) && execution_indices.length > 0) {
+        // Validate indices
+        for (const idx of execution_indices) {
+          if (typeof idx !== 'number' || idx < 0 || idx >= executions.length) {
+            return res.status(400).json({ error: `Invalid execution index: ${idx}` });
+          }
+          if (executions[idx].action !== entryAction) {
+            return res.status(400).json({ error: `Execution at index ${idx} is not an entry fill` });
+          }
+        }
+
+        const selectedSet = new Set(execution_indices);
+        fillsToSplit = entryFills.filter((_, i) => {
+          const originalIdx = executions.indexOf(entryFills[i]);
+          return selectedSet.has(originalIdx);
+        });
+        fillsToKeep = entryFills.filter((_, i) => {
+          const originalIdx = executions.indexOf(entryFills[i]);
+          return !selectedSet.has(originalIdx);
+        });
+
+        if (fillsToSplit.length === 0) {
+          return res.status(400).json({ error: 'No valid entry fills selected' });
+        }
+        if (fillsToKeep.length > 0) {
+          isPartialSplit = true;
+        }
+      } else {
+        // Default: split all entry fills
+        fillsToSplit = entryFills;
+        fillsToKeep = [];
+      }
+
+      const newTradeIds = [];
+      const totalSplitQty = fillsToSplit.reduce((s, e) => s + e.quantity, 0);
+
+      // Create one trade per split-out entry fill, each using the shared exit data
+      for (let i = 0; i < fillsToSplit.length; i++) {
+        const exec = fillsToSplit[i];
+        // Distribute exit fees proportionally across split fills
+        const feeShare = fillsToSplit.length > 1
+          ? totalExitFees * (exec.quantity / totalSplitQty)
           : totalExitFees;
 
         const tradeData = {
@@ -708,15 +748,53 @@ const tradeController = {
         newTradeIds.push(newTrade.id);
       }
 
-      // Delete the original grouped trade
-      await Trade.delete(req.params.id, req.user.id);
+      if (isPartialSplit) {
+        // Update original trade: remove split-out entries, recalculate fields
+        const selectedSet = new Set(execution_indices);
+        const remainingExecutions = executions.filter((_, i) => !selectedSet.has(i));
+
+        const remainingEntryQty = fillsToKeep.reduce((s, e) => s + e.quantity, 0);
+        const newEntryPrice = fillsToKeep.reduce((s, e) => s + e.price * e.quantity, 0) / remainingEntryQty;
+
+        // Determine instrument multiplier
+        const isOption = (trade.instrument_type || trade.instrumentType) === 'option';
+        const isFuture = (trade.instrument_type || trade.instrumentType) === 'future';
+        const contractSize = isOption ? (trade.contract_size || trade.contractSize || 100) : 1;
+        const pointValue = isFuture ? (trade.point_value || trade.pointValue || 1) : 1;
+        const multiplier = isFuture ? pointValue : contractSize;
+
+        // Recalculate PnL
+        let newPnl;
+        if (side === 'long') {
+          newPnl = (avgExitPrice - newEntryPrice) * remainingEntryQty * multiplier;
+        } else {
+          newPnl = (newEntryPrice - avgExitPrice) * remainingEntryQty * multiplier;
+        }
+
+        // Recalculate remaining fees
+        const remainingEntryFees = fillsToKeep.reduce((s, e) => s + (e.fees || 0), 0);
+        const remainingExitFeeShare = totalExitFees * (remainingEntryQty / (totalSplitQty + remainingEntryQty));
+        const totalRemainingFees = remainingEntryFees + remainingExitFeeShare;
+        newPnl -= totalRemainingFees;
+
+        await db.query(
+          `UPDATE trades SET executions = $1, entry_price = $2, quantity = $3, pnl = $4 WHERE id = $5 AND user_id = $6`,
+          [JSON.stringify(remainingExecutions), newEntryPrice, remainingEntryQty, newPnl, req.params.id, req.user.id]
+        );
+      } else {
+        // Delete the original grouped trade (all entries were split)
+        await Trade.delete(req.params.id, req.user.id);
+      }
 
       // Invalidate caches
       invalidateAnalyticsCache(req.user.id);
 
       res.json({
-        message: `Trade split into ${newTradeIds.length} individual trades`,
+        message: isPartialSplit
+          ? `Split ${newTradeIds.length} entry fill(s) into new trades, original trade updated`
+          : `Trade split into ${newTradeIds.length} individual trades`,
         original_trade_id: req.params.id,
+        original_trade_updated: isPartialSplit,
         new_trade_ids: newTradeIds,
         trades_created: newTradeIds.length
       });
