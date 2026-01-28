@@ -1863,18 +1863,36 @@ const tradeController = {
                     // No valid timestamps found, skip timestamp matching
                     logger.logImport(`[DEBUG] No valid timestamps in new trade's executions, falling back to price/PnL matching`);
                   } else {
-                    // Check if any existing execution has the same timestamp
-                    // If we find even one matching timestamp, it's likely a duplicate
-                    const hasMatchingExecution = existingExecutions.some(exec => {
+                    // Count how many existing executions have matching timestamps
+                    const matchingExecutionCount = existingExecutions.filter(exec => {
                       const timestamp = exec.datetime || exec.entryTime;
                       if (!timestamp) return false;
                       const execTime = new Date(timestamp).getTime();
                       return !isNaN(execTime) && newExecutionTimestamps.has(execTime);
-                    });
+                    }).length;
 
-                    if (hasMatchingExecution) {
-                      logger.logImport(`Found duplicate based on execution timestamp match for ${tradeData.symbol}`);
-                      return true;
+                    // Only mark as duplicate if the new trade doesn't have MORE executions
+                    // If the new trade has more executions, it may contain partial closes or
+                    // additional data that should update the existing trade
+                    if (matchingExecutionCount > 0) {
+                      const newTradeExecCount = tradeExecutionsToCheck.length;
+                      const existingExecCount = existingExecutions.length;
+
+                      if (newTradeExecCount <= existingExecCount) {
+                        // New trade has same or fewer executions - it's a duplicate
+                        logger.logImport(`Found duplicate based on execution timestamp match for ${tradeData.symbol} (${matchingExecutionCount} matching, new: ${newTradeExecCount}, existing: ${existingExecCount})`);
+                        return true;
+                      } else {
+                        // New trade has MORE executions - this is an UPDATE, not a duplicate
+                        // The new trade likely contains additional partial closes that weren't in the original import
+                        logger.logImport(`[PARTIAL CLOSE] Trade ${tradeData.symbol} has ${newTradeExecCount} executions vs ${existingExecCount} existing - NOT marking as duplicate (has additional data)`);
+                        // Don't return true - let the trade be imported (it will need to be handled as an update)
+                        // Mark the trade as needing to update the existing one
+                        tradeData.isUpdate = true;
+                        tradeData.existingTradeId = existing.id;
+                        tradeData.existingExecutions = existingExecutions;
+                        return false; // Not a duplicate - it's an update
+                      }
                     }
                   }
                 }
