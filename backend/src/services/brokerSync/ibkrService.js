@@ -243,6 +243,7 @@ class IBKRService {
    */
   async importTrades(userId, trades, existingContext) {
     let imported = 0;
+    let updated = 0;
     let skipped = 0;
     let failed = 0;
     let duplicates = 0;
@@ -251,7 +252,7 @@ class IBKRService {
 
     for (const tradeData of trades) {
       try {
-        // Check for duplicates
+        // Check for duplicates (may set isUpdate flag if trade has more executions)
         const isDuplicate = this.isDuplicateTrade(tradeData, existingTrades, existingContext);
 
         if (isDuplicate) {
@@ -262,20 +263,42 @@ class IBKRService {
         // Prepare trade data
         const preparedTrade = this.prepareTrade(tradeData);
 
-        // Create trade
-        await Trade.create(userId, preparedTrade, {
-          skipAchievements: true,
-          skipApiCalls: true
-        });
+        // Handle updates vs new trades
+        if (tradeData.isUpdate && tradeData.existingTradeId) {
+          // This trade has more executions than existing - update it
+          console.log(`[IBKR] Updating existing trade ${tradeData.existingTradeId} with additional executions for ${tradeData.symbol}`);
 
-        imported++;
+          // Update the existing trade with all executions
+          await Trade.update(tradeData.existingTradeId, userId, {
+            executions: preparedTrade.executions || preparedTrade.executionData,
+            exitTime: preparedTrade.exitTime,
+            exitPrice: preparedTrade.exitPrice,
+            pnl: preparedTrade.pnl,
+            pnlPercent: preparedTrade.pnlPercent,
+            quantity: preparedTrade.quantity,
+            commission: preparedTrade.commission
+          }, {
+            skipAchievements: true,
+            skipApiCalls: true
+          });
+
+          updated++;
+        } else {
+          // Create new trade
+          await Trade.create(userId, preparedTrade, {
+            skipAchievements: true,
+            skipApiCalls: true
+          });
+
+          imported++;
+        }
       } catch (error) {
         console.error(`[IBKR] Failed to import trade:`, error.message);
         failed++;
       }
     }
 
-    return { imported, skipped, failed, duplicates };
+    return { imported, updated, skipped, failed, duplicates };
   }
 
   /**
@@ -465,12 +488,30 @@ class IBKRService {
             .filter(t => !isNaN(t))
         );
 
-        const hasMatch = existingExecs.some(exec => {
+        // Count matching executions instead of just checking for any match
+        const matchingCount = existingExecs.filter(exec => {
           const execTime = new Date(exec.entryTime || exec.datetime).getTime();
           return !isNaN(execTime) && newExecTimes.has(execTime);
-        });
+        }).length;
 
-        if (hasMatch) return true;
+        if (matchingCount > 0) {
+          // Only mark as duplicate if the new trade doesn't have MORE executions
+          // If new trade has more executions, it contains additional data (like partial closes)
+          const newExecCount = newTrade.executionData.length;
+          const existingExecCount = existingExecs.length;
+
+          if (newExecCount <= existingExecCount) {
+            console.log(`[IBKR] Duplicate detected: ${symbol} (${matchingCount} matching executions, new: ${newExecCount}, existing: ${existingExecCount})`);
+            return true;
+          } else {
+            // New trade has MORE executions - this might be an update with partial closes
+            console.log(`[IBKR] Trade ${symbol} has ${newExecCount} executions vs ${existingExecCount} existing - NOT duplicate (has additional data)`);
+            // Mark for update handling
+            newTrade.isUpdate = true;
+            newTrade.existingTradeId = existing.id;
+            return false;
+          }
+        }
       }
 
       // Fallback: compare entry time, price, and quantity
