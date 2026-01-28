@@ -432,13 +432,18 @@ function calculateRMultiples(trade) {
     usingWeightedAverage: weightedTargetR !== null
   });
 
-  // Calculate Management R based on manual_target_hit_first and stop loss adjustments
+  // Calculate Management R based on whether SL/TP levels were MOVED after entry
   // Management R = Actual R - Potential R
-  // Potential R = R that would have been achieved without management (based on original SL/TP)
+  // Potential R = R that would have been achieved with ORIGINAL levels (before any management)
+  //
+  // IMPORTANT: Management only occurs when SL/TP is MOVED after entry.
+  // Setting multiple TPs at entry is NOT management - it's just the initial plan.
+  // Management R should be 0 if no levels were changed.
   logger.debug('[R-CALC] ========== Management R Calculation ==========');
   logger.debug('[R-CALC] manual_target_hit_first value:', manual_target_hit_first);
-  logger.debug('[R-CALC] Stop loss history:', { 
+  logger.debug('[R-CALC] Risk level history:', {
     hasHistory: !!(risk_level_history && Array.isArray(risk_level_history) && risk_level_history.length > 0),
+    historyLength: risk_level_history?.length || 0,
     originalStopLoss: stopLoss,
     currentStopLoss: stop_loss
   });
@@ -446,24 +451,33 @@ function calculateRMultiples(trade) {
   let potentialR = null;
   let managementR = null;
 
-  // Check if stop loss was moved (trailed) or trade was closed manually
-  const stopLossWasMoved = risk_level_history && Array.isArray(risk_level_history) && 
+  // Check if ANY management occurred (SL or TP was moved after entry)
+  const hasRiskLevelHistory = risk_level_history && Array.isArray(risk_level_history) && risk_level_history.length > 0;
+  const stopLossWasMoved = hasRiskLevelHistory &&
     risk_level_history.some(entry => entry.type === 'stop_loss' && entry.old_value !== null);
-  const currentStopLoss = parseFloat(stop_loss);
-  const stopLossChanged = stopLossWasMoved && Math.abs(currentStopLoss - stopLoss) > 0.0001;
+  const takeProfitWasMoved = hasRiskLevelHistory &&
+    risk_level_history.some(entry => entry.type === 'take_profit' && entry.old_value !== null);
+  const managementOccurred = stopLossWasMoved || takeProfitWasMoved;
 
-  logger.debug('[R-CALC] Stop loss analysis:', {
+  const currentStopLoss = parseFloat(stop_loss);
+
+  logger.debug('[R-CALC] Management analysis:', {
+    hasRiskLevelHistory,
     stopLossWasMoved,
-    stopLossChanged,
+    takeProfitWasMoved,
+    managementOccurred,
     originalStopLoss: stopLoss,
     currentStopLoss: currentStopLoss
   });
 
-  // If manual_target_hit_first is not set, infer from context (stop loss changes, exit price, etc.)
-  // We only need to know if SL or TP was hit - if neither, we infer it was a manual exit
-  const targetHit = manual_target_hit_first || (stopLossChanged ? null : null); // Will be inferred if not set
-  
-    if (manual_target_hit_first === 'stop_loss') {
+  // If no management occurred (no SL/TP was moved), Management R = 0
+  // Actual R = Potential R because the original plan was executed as-is
+  if (!managementOccurred) {
+    potentialR = actualR;
+    managementR = 0;
+    logger.debug('[R-CALC] No management occurred - SL/TP levels were not moved after entry');
+    logger.info('[R-CALC] Management R = 0 (no SL/TP changes after entry)');
+  } else if (manual_target_hit_first === 'stop_loss') {
     // "SL Hit First" means: First TP target hit, then price reversed and hit original SL
     // Only the FIRST (nearest) TP target would have been hit before SL, not subsequent targets
     const totalQty = parseFloat(quantity) || 1;
@@ -575,11 +589,11 @@ function calculateRMultiples(trade) {
       }
   } else {
     // No manual_target_hit_first set - infer from context (manual exit, stop loss changes, etc.)
-    // This handles cases where neither SL nor TP was explicitly hit
-    logger.debug('[R-CALC] No manual_target_hit_first set - inferring from context');
-    
-    // Check if stop loss was moved (trailed) or manually closed
-    if (stopLossChanged) {
+    // This handles cases where management occurred but user hasn't specified what would have happened
+    logger.debug('[R-CALC] Management occurred but no manual_target_hit_first set - inferring from context');
+
+    // Check if stop loss was moved (trailed)
+    if (stopLossWasMoved) {
       // Stop loss was moved (trailed) - determine what would have happened without management
       // Case 3: SL was trailed, got taken out at trailed SL, but final TP would have been hit
       // Check if exit was at or near the current (trailed) stop loss
@@ -678,12 +692,12 @@ function calculateRMultiples(trade) {
         }
       }
     } else {
-      // No stop loss change and no manual_target_hit_first set
+      // TP was moved (but not SL) and manual_target_hit_first not set
       // We cannot determine what would have happened without management
       // Don't calculate Management R - leave it as null
       potentialR = null;
       managementR = null;
-      logger.debug('[R-CALC] Inferred: No SL change and no target hit info - cannot calculate management R');
+      logger.debug('[R-CALC] Inferred: TP was moved but no SL change and no target hit info - cannot calculate management R');
     }
 
     if (potentialR !== null && managementR !== null) {
