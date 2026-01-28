@@ -77,6 +77,22 @@
         ]"
       >
         <div class="flex items-center space-x-4">
+          <!-- Trade Number (matches R-Performance chart) -->
+          <div
+            v-if="trade.trade_number"
+            class="flex-shrink-0 w-8 h-8 flex items-center justify-center bg-gray-100 dark:bg-gray-700 rounded-full text-sm font-medium text-gray-600 dark:text-gray-300"
+            :title="`Trade #${trade.trade_number} on R-Performance chart`"
+          >
+            {{ trade.trade_number }}
+          </div>
+          <div
+            v-else
+            class="flex-shrink-0 w-8 h-8 flex items-center justify-center bg-gray-50 dark:bg-gray-800 rounded-full text-sm text-gray-400 dark:text-gray-500"
+            title="No trade number - stop loss not set"
+          >
+            -
+          </div>
+
           <!-- Symbol & Date -->
           <div>
             <div class="flex items-center space-x-2">
