@@ -300,7 +300,7 @@ const getManagementRDescription = computed(() => {
   if (targetHitFirst === 'stop_loss') {
     // SL hit first means management saved them from -1R
     if (mgmtR > 0) {
-      return `Management saved ${formatR(mgmtR - props.analysis.actual_r)} by moving SL`
+      return `Management saved ${formatR(mgmtR)} by moving SL`
     }
     return 'SL was hit first - management reduced losses'
   } else if (targetHitFirst === 'take_profit') {

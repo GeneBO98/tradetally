@@ -383,15 +383,34 @@ export const useTradesStore = defineStore('trades', () => {
         instrumentTypes: []
       }
     } else {
-      // For non-empty filters, merge but ensure global account is respected if present
-      const mergedFilters = { ...filters.value, ...newFilters }
+      // Replace filters entirely with newFilters to ensure cleared fields are actually cleared
+      // Start from default empty state, then apply newFilters on top
+      const replacedFilters = {
+        symbol: '',
+        startDate: '',
+        endDate: '',
+        tags: [],
+        strategy: '',
+        strategies: [],
+        sectors: [],
+        holdTime: '',
+        minHoldTime: null,
+        maxHoldTime: null,
+        hasNews: '',
+        broker: '',
+        brokers: [],
+        accounts: '',
+        daysOfWeek: [],
+        instrumentTypes: [],
+        ...newFilters
+      }
 
       // If global account is set and accounts filter is empty/not specified, apply global account
       if (globalAccount && !newFilters.accounts) {
-        mergedFilters.accounts = globalAccount
+        replacedFilters.accounts = globalAccount
       }
 
-      filters.value = mergedFilters
+      filters.value = replacedFilters
     }
     pagination.value.page = 1 // Reset to first page when filtering
   }

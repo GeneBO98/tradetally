@@ -885,35 +885,48 @@ const tradeManagementController = {
 
       logger.info('[TRADE-MGMT] getTradesForSelection called', { userId, symbol, startDate, endDate, limit, offset, accounts });
 
+      // Use a CTE to calculate trade_number for trades with stop_loss
+      // This matches the R-Performance chart numbering (chronological order for trades with SL)
       let query = `
+        WITH numbered_trades AS (
+          SELECT
+            id,
+            ROW_NUMBER() OVER (ORDER BY trade_date ASC, id ASC) as trade_number
+          FROM trades
+          WHERE user_id = $1
+            AND exit_price IS NOT NULL
+            AND stop_loss IS NOT NULL
+        )
         SELECT
-          id, symbol, trade_date, entry_time, entry_price, exit_price,
-          quantity, side, pnl, pnl_percent,
-          stop_loss, take_profit, r_value,
-          strategy, broker, instrument_type,
-          manual_target_hit_first, target_hit_analysis
-        FROM trades
-        WHERE user_id = $1
-          AND exit_price IS NOT NULL
+          t.id, t.symbol, t.trade_date, t.entry_time, t.entry_price, t.exit_price,
+          t.quantity, t.side, t.pnl, t.pnl_percent,
+          t.stop_loss, t.take_profit, t.r_value,
+          t.strategy, t.broker, t.instrument_type,
+          t.manual_target_hit_first, t.target_hit_analysis,
+          nt.trade_number
+        FROM trades t
+        LEFT JOIN numbered_trades nt ON t.id = nt.id
+        WHERE t.user_id = $1
+          AND t.exit_price IS NOT NULL
       `;
       const values = [userId];
       let paramCount = 2;
 
       if (startDate) {
-        query += ` AND trade_date >= $${paramCount}`;
+        query += ` AND t.trade_date >= $${paramCount}`;
         values.push(startDate);
         paramCount++;
       }
 
       if (endDate) {
-        query += ` AND trade_date <= $${paramCount}`;
+        query += ` AND t.trade_date <= $${paramCount}`;
         values.push(endDate);
         paramCount++;
       }
 
       if (symbol && symbol.trim()) {
         const searchSymbol = symbol.trim();
-        query += ` AND UPPER(symbol) LIKE UPPER($${paramCount})`;
+        query += ` AND UPPER(t.symbol) LIKE UPPER($${paramCount})`;
         values.push(`%${searchSymbol}%`);
         paramCount++;
         logger.info('[TRADE-MGMT] Searching for symbol:', searchSymbol);
@@ -922,12 +935,12 @@ const tradeManagementController = {
       if (accounts) {
         const accountsArray = accounts.split(',');
         const placeholders = accountsArray.map((_, index) => `$${paramCount + index}`).join(',');
-        query += ` AND account_identifier IN (${placeholders})`;
+        query += ` AND t.account_identifier IN (${placeholders})`;
         accountsArray.forEach(account => values.push(account));
         paramCount += accountsArray.length;
       }
 
-      query += ` ORDER BY trade_date DESC, entry_time DESC LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
+      query += ` ORDER BY t.trade_date DESC, t.entry_time DESC LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
       values.push(parseInt(limit), parseInt(offset));
 
       const result = await db.query(query, values);
