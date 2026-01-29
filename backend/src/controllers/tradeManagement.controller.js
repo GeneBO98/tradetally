@@ -432,284 +432,37 @@ function calculateRMultiples(trade) {
     usingWeightedAverage: weightedTargetR !== null
   });
 
-  // Calculate Management R based on whether SL/TP levels were MOVED after entry
-  // Management R = Actual R - Potential R
-  // Potential R = R that would have been achieved with ORIGINAL levels (before any management)
+  // Calculate Management R using simplified formula:
+  // Management R = Actual R - Target R
   //
-  // IMPORTANT: Management only occurs when SL/TP is MOVED after entry.
-  // Setting multiple TPs at entry is NOT management - it's just the initial plan.
-  // Management R should be 0 if no levels were changed.
+  // - If Actual R = Target R, Management R = 0 (executed plan perfectly)
+  // - If Actual R > Target R, Management R > 0 (captured more than planned)
+  // - If Actual R < Target R, Management R < 0 (captured less than planned)
   logger.debug('[R-CALC] ========== Management R Calculation ==========');
-  logger.debug('[R-CALC] manual_target_hit_first value:', manual_target_hit_first);
-  logger.debug('[R-CALC] Risk level history:', {
-    hasHistory: !!(risk_level_history && Array.isArray(risk_level_history) && risk_level_history.length > 0),
-    historyLength: risk_level_history?.length || 0,
-    originalStopLoss: stopLoss,
-    currentStopLoss: stop_loss
-  });
 
-  let potentialR = null;
   let managementR = null;
 
-  // Check if ANY management occurred (SL or TP was moved after entry)
-  const hasRiskLevelHistory = risk_level_history && Array.isArray(risk_level_history) && risk_level_history.length > 0;
-  const stopLossWasMoved = hasRiskLevelHistory &&
-    risk_level_history.some(entry => entry.type === 'stop_loss' && entry.old_value !== null);
-  const takeProfitWasMoved = hasRiskLevelHistory &&
-    risk_level_history.some(entry => entry.type === 'take_profit' && entry.old_value !== null);
-  const managementOccurred = stopLossWasMoved || takeProfitWasMoved;
+  // Calculate target R for management comparison
+  // Use weighted average if multiple targets, otherwise use single target R
+  const managementTargetR = weightedTargetR !== null ? weightedTargetR : targetR;
 
-  const currentStopLoss = parseFloat(stop_loss);
-
-  logger.debug('[R-CALC] Management analysis:', {
-    hasRiskLevelHistory,
-    stopLossWasMoved,
-    takeProfitWasMoved,
-    managementOccurred,
-    originalStopLoss: stopLoss,
-    currentStopLoss: currentStopLoss
-  });
-
-  // If no management occurred (no SL/TP was moved), Management R = 0
-  // Actual R = Potential R because the original plan was executed as-is
-  if (!managementOccurred) {
-    potentialR = actualR;
-    managementR = 0;
-    logger.debug('[R-CALC] No management occurred - SL/TP levels were not moved after entry');
-    logger.info('[R-CALC] Management R = 0 (no SL/TP changes after entry)');
-  } else if (manual_target_hit_first === 'stop_loss') {
-    // "SL Hit First" means: First TP target hit, then price reversed and hit original SL
-    // Only the FIRST (nearest) TP target would have been hit before SL, not subsequent targets
-    const totalQty = parseFloat(quantity) || 1;
-    const isLong = side === 'long';
-
-    // Calculate TP contribution from ONLY the first (nearest) TP target
-    let tpContribution = 0;
-    let tpQty = 0;
-    if (targets && Array.isArray(targets) && targets.length > 0) {
-      // Sort targets by price - nearest to entry first
-      const sortedTargets = [...targets].sort((a, b) => {
-        if (a.order !== undefined && b.order !== undefined) {
-          return a.order - b.order;
-        }
-        const priceA = parseFloat(a.price);
-        const priceB = parseFloat(b.price);
-        // For long: lower TP price = nearer to entry
-        // For short: higher TP price = nearer to entry
-        return isLong ? priceA - priceB : priceB - priceA;
-      });
-
-      // Only use the FIRST target - subsequent targets wouldn't be hit since SL was hit first
-      const firstTarget = sortedTargets[0];
-      if (firstTarget && firstTarget.price) {
-        const tpPrice = parseFloat(firstTarget.price);
-        const qty = parseFloat(firstTarget.shares || firstTarget.quantity) || 0;
-        if (tpPrice && qty > 0) {
-          const tpR = isLong
-            ? (tpPrice - entryPrice) / risk
-            : (entryPrice - tpPrice) / risk;
-          tpContribution = tpR * (qty / totalQty);
-          tpQty = qty;
-          logger.debug(`[R-CALC] SL hit first - First TP target contribution:`, { tpPrice, tpR: tpR.toFixed(2), qty, fraction: (qty / totalQty).toFixed(3) });
-        }
-      }
-    }
-
-    // Calculate SL loss contribution (remaining contracts would have lost 1R at original SL)
-    const remainingQty = Math.max(totalQty - tpQty, 0);
-    const remainingFraction = totalQty > 0 ? remainingQty / totalQty : 1;
-    const slLossContribution = -1 * remainingFraction;
-
-    // Potential R without management = TP gains + SL losses
-    potentialR = tpContribution + slLossContribution;
-
-    // Management R = actual - potential (positive = management helped)
-    managementR = actualR - potentialR;
-    logger.debug(`[R-CALC] SL hit first calculation:`, {
-      totalQty, tpQty, remainingQty, remainingFraction: remainingFraction.toFixed(3),
-      tpContribution: tpContribution.toFixed(2), slLossContribution: slLossContribution.toFixed(2)
+  if (managementTargetR !== null && managementTargetR !== undefined) {
+    // Management R = Actual R - Target R
+    managementR = actualR - managementTargetR;
+    logger.debug('[R-CALC] Management R calculation:', {
+      actualR: actualR.toFixed(2),
+      targetR: managementTargetR.toFixed(2),
+      managementR: managementR.toFixed(2)
     });
-    logger.debug(`[R-CALC] Original SL hit first: potentialR = ${potentialR.toFixed(2)}R, managementR = actualR(${actualR.toFixed(2)}) - potentialR(${potentialR.toFixed(2)}) = ${managementR.toFixed(2)}`);
-    logger.info(`[R-CALC] Original SL hit first: potentialR = ${potentialR.toFixed(2)}R, managementR = ${managementR.toFixed(2)}R`);
-    } else if (manual_target_hit_first === 'take_profit') {
-      // TP was hit first - compare actual R to the WEIGHTED AVERAGE target R (full position potential)
-      // For multiple targets with different quantities, this measures performance vs planned outcome
-
-      // Calculate fallback first TP R value in case weighted average is not available
-      let firstTpR = null;
-      if (targets && Array.isArray(targets) && targets.length > 0) {
-        // Sort by order (TP1, TP2, etc.) or by price (nearest to entry first)
-        const sortedTargets = [...targets].sort((a, b) => {
-          if (a.order !== undefined && b.order !== undefined) {
-            return a.order - b.order;
-          }
-          const priceA = parseFloat(a.price);
-          const priceB = parseFloat(b.price);
-          return side === 'long' ? priceA - priceB : priceB - priceA;
-        });
-        const firstTarget = sortedTargets[0];
-        if (firstTarget && firstTarget.price) {
-          const firstTpPrice = parseFloat(firstTarget.price);
-          const firstTpPL = side === 'long' ? firstTpPrice - entryPrice : entryPrice - firstTpPrice;
-          firstTpR = firstTpPL / risk;
-          logger.debug(`[R-CALC] TP hit: First TP target R (fallback) = ${firstTpR.toFixed(2)}R`);
-        }
-      }
-
-      if (!firstTpR && takeProfit) {
-        const tpPL = side === 'long' ? takeProfit - entryPrice : entryPrice - takeProfit;
-        firstTpR = tpPL / risk;
-        logger.debug(`[R-CALC] TP hit: Using single take_profit R = ${firstTpR.toFixed(2)}R`);
-      }
-
-      // Use weighted average target R if available (for multi-target trades), fall back to first TP
-      let effectivePotentialR = weightedTargetR !== null ? weightedTargetR : firstTpR;
-
-      if (effectivePotentialR !== null) {
-        // Cap potential R at 10R to match target R capping
-        if (effectivePotentialR > MAX_POTENTIAL_R) {
-          logger.debug(`[R-CALC] Capping potential R from ${effectivePotentialR.toFixed(2)} to ${MAX_POTENTIAL_R}`);
-          effectivePotentialR = MAX_POTENTIAL_R;
-        }
-
-        potentialR = effectivePotentialR;
-        managementR = actualR - potentialR;
-
-        // If actual R equals potential R (within rounding), no management impact
-        if (Math.abs(actualR - potentialR) < 0.01) {
-          managementR = 0;
-          logger.debug(`[R-CALC] TP hit: Actual R (${actualR.toFixed(2)}) equals potential R (${potentialR.toFixed(2)}) - no management impact`);
-        }
-
-        logger.debug(`[R-CALC] TP hit first: using ${weightedTargetR !== null ? 'weighted average' : 'first TP'} for potentialR`);
-        logger.debug(`[R-CALC] TP hit first: potentialR = ${potentialR.toFixed(2)}R, managementR = actualR(${actualR.toFixed(2)}) - potentialR(${potentialR.toFixed(2)}) = ${managementR.toFixed(2)}`);
-        logger.info(`[R-CALC] TP hit first: potentialR = ${potentialR.toFixed(2)}R, managementR = ${managementR.toFixed(2)}R`);
-      } else {
-        logger.debug('[R-CALC] TP hit first but no TP target available to calculate potential R');
-      }
+    logger.info(`[R-CALC] Management R = ${actualR.toFixed(2)} - ${managementTargetR.toFixed(2)} = ${managementR.toFixed(2)}R`);
   } else {
-    // No manual_target_hit_first set - infer from context (manual exit, stop loss changes, etc.)
-    // This handles cases where management occurred but user hasn't specified what would have happened
-    logger.debug('[R-CALC] Management occurred but no manual_target_hit_first set - inferring from context');
-
-    // Check if stop loss was moved (trailed)
-    if (stopLossWasMoved) {
-      // Stop loss was moved (trailed) - determine what would have happened without management
-      // Case 3: SL was trailed, got taken out at trailed SL, but final TP would have been hit
-      // Check if exit was at or near the current (trailed) stop loss
-      const exitAtTrailedSL = Math.abs(exitPrice - currentStopLoss) < (risk * 0.1); // Within 10% of risk
-      
-      if (exitAtTrailedSL) {
-        // Exited at trailed SL - check if original SL was hit
-        const originalSLHit = (side === 'long' && exitPrice <= stopLoss) || (side === 'short' && exitPrice >= stopLoss);
-        
-        if (!originalSLHit) {
-          // Original SL was NOT hit, but we exited at trailed SL
-          // If final TP would have been hit → Negative management impact (case 3)
-          let finalTpR = null;
-          if (targets && Array.isArray(targets) && targets.length > 0) {
-            const sortedTargets = [...targets].sort((a, b) => {
-              const priceA = parseFloat(a.price);
-              const priceB = parseFloat(b.price);
-              return side === 'long' ? priceB - priceA : priceA - priceB;
-            });
-            const finalTarget = sortedTargets[0];
-            if (finalTarget && finalTarget.price) {
-              const finalTpPrice = parseFloat(finalTarget.price);
-              const finalTpPL = side === 'long' ? finalTpPrice - entryPrice : entryPrice - finalTpPrice;
-              finalTpR = finalTpPL / risk;
-            }
-          }
-          
-          if (!finalTpR && takeProfit) {
-            const tpPL = side === 'long' ? takeProfit - entryPrice : entryPrice - takeProfit;
-            finalTpR = tpPL / risk;
-          }
-          
-          if (finalTpR !== null) {
-            if (finalTpR > MAX_POTENTIAL_R) {
-              finalTpR = MAX_POTENTIAL_R;
-            }
-            // Case 3: Got taken out at trailed SL, but final TP would have been hit
-            potentialR = finalTpR;
-            managementR = actualR - potentialR;
-            logger.debug(`[R-CALC] Inferred: Manual exit at trailed SL, original SL not hit, final TP would have been hit, potentialR = ${potentialR.toFixed(2)}R, managementR = ${managementR.toFixed(2)}R`);
-  } else {
-            // No TP target - can't determine potential R
-            potentialR = 0;
-            managementR = actualR - potentialR;
-            logger.debug(`[R-CALC] Inferred: Manual exit at trailed SL, no TP target, potentialR = ${potentialR.toFixed(2)}R, managementR = ${managementR.toFixed(2)}R`);
-          }
-        } else {
-          // Original SL was hit - trailing prevented full loss (case 2)
-          // This is positive management impact: would have lost 1R, but lost less
-          potentialR = -1;
-          managementR = actualR - potentialR;
-          logger.debug(`[R-CALC] Inferred: Manual exit after SL was trailed, original SL was hit, potentialR = ${potentialR.toFixed(2)}R, managementR = ${managementR.toFixed(2)}R`);
-        }
-      } else {
-        // Manual exit not at trailed SL - check if original SL was hit
-        const originalSLHit = (side === 'long' && exitPrice <= stopLoss) || (side === 'short' && exitPrice >= stopLoss);
-        
-        if (originalSLHit) {
-          potentialR = -1;
-          managementR = actualR - potentialR;
-          logger.debug(`[R-CALC] Inferred: Manual exit, original SL was hit, potentialR = ${potentialR.toFixed(2)}R, managementR = ${managementR.toFixed(2)}R`);
-        } else {
-          // Check if final TP would have been hit
-          let finalTpR = null;
-          if (targets && Array.isArray(targets) && targets.length > 0) {
-            const sortedTargets = [...targets].sort((a, b) => {
-              const priceA = parseFloat(a.price);
-              const priceB = parseFloat(b.price);
-              return side === 'long' ? priceB - priceA : priceA - priceB;
-            });
-            const finalTarget = sortedTargets[0];
-            if (finalTarget && finalTarget.price) {
-              const finalTpPrice = parseFloat(finalTarget.price);
-              const finalTpPL = side === 'long' ? finalTpPrice - entryPrice : entryPrice - finalTpPrice;
-              finalTpR = finalTpPL / risk;
-            }
-          }
-          
-          if (!finalTpR && takeProfit) {
-            const tpPL = side === 'long' ? takeProfit - entryPrice : entryPrice - takeProfit;
-            finalTpR = tpPL / risk;
-          }
-          
-          if (finalTpR !== null) {
-            if (finalTpR > MAX_POTENTIAL_R) {
-              finalTpR = MAX_POTENTIAL_R;
-            }
-            potentialR = finalTpR;
-            managementR = actualR - potentialR;
-            logger.debug(`[R-CALC] Inferred: Manual exit, original SL not hit, final TP would have been hit, potentialR = ${potentialR.toFixed(2)}R, managementR = ${managementR.toFixed(2)}R`);
-          } else {
-            potentialR = 0;
-            managementR = actualR - potentialR;
-            logger.debug(`[R-CALC] Inferred: Manual exit, no TP target, potentialR = ${potentialR.toFixed(2)}R, managementR = ${managementR.toFixed(2)}R`);
-          }
-        }
-      }
-    } else {
-      // TP was moved (but not SL) and manual_target_hit_first not set
-      // We cannot determine what would have happened without management
-      // Don't calculate Management R - leave it as null
-      potentialR = null;
-      managementR = null;
-      logger.debug('[R-CALC] Inferred: TP was moved but no SL change and no target hit info - cannot calculate management R');
-    }
-
-    if (potentialR !== null && managementR !== null) {
-      logger.info(`[R-CALC] Inferred management R: potentialR = ${potentialR.toFixed(2)}R, managementR = ${managementR.toFixed(2)}R`);
-    }
+    logger.debug('[R-CALC] No target R available - cannot calculate management R');
   }
 
   logger.debug('[R-CALC] ========== Final Results ==========');
   logger.debug('[R-CALC] Final values:', {
     actual_r: Math.round(actualR * 100) / 100,
     target_r: targetR !== undefined ? Math.round(targetR * 100) / 100 : null,
-    potential_r: potentialR !== null ? Math.round(potentialR * 100) / 100 : null,
     r_lost: rLost !== undefined ? Math.round(rLost * 100) / 100 : null,
     weighted_target_r: weightedTargetR !== null ? Math.round(weightedTargetR * 100) / 100 : null,
     effective_r_lost: effectiveRLost !== undefined ? Math.round(effectiveRLost * 100) / 100 : null,
@@ -723,14 +476,13 @@ function calculateRMultiples(trade) {
     // R-Multiple values
     actual_r: Math.round(actualR * 100) / 100,
     target_r: targetR !== undefined ? Math.round(targetR * 100) / 100 : null,
-    potential_r: potentialR !== null ? Math.round(potentialR * 100) / 100 : null,
     r_lost: rLost !== undefined ? Math.round(rLost * 100) / 100 : null,
 
     // Weighted average values (for multiple TP targets)
     weighted_target_r: weightedTargetR !== null ? Math.round(weightedTargetR * 100) / 100 : null,
     effective_r_lost: effectiveRLost !== undefined ? Math.round(effectiveRLost * 100) / 100 : null,
 
-    // Management R (Actual R - Potential R, where Potential R is what would have been achieved without management)
+    // Management R = Actual R - Target R (simplified formula)
     management_r: managementR !== null ? Math.round(managementR * 100) / 100 : null,
 
     // Dollar amounts
@@ -740,7 +492,6 @@ function calculateRMultiples(trade) {
     actual_pl_amount: pnl ? parseFloat(pnl) : Math.round(actualPLAmount * 100) / 100,
     target_pl_per_share: targetPL !== undefined ? Math.round(targetPL * 100) / 100 : null,
     target_pl_amount: targetPLAmount !== null ? Math.round(targetPLAmount * 100) / 100 : null,
-    potential_pl_amount: potentialR !== null ? Math.round(potentialR * riskAmount * 100) / 100 : null,
 
     // Trade management assessment
     management_score: calculateManagementScore(actualR, targetR, rLost),
@@ -764,7 +515,8 @@ function calculateManagementScore(actualR, targetR, rLost) {
     if (actualR >= 2) return { score: 'excellent', label: 'Excellent Exit', color: 'green' };
     if (actualR >= 1) return { score: 'good', label: 'Good Exit', color: 'green' };
     if (actualR >= 0) return { score: 'breakeven', label: 'Breakeven', color: 'yellow' };
-    if (actualR >= -1) return { score: 'stopped_out', label: 'Stopped Out', color: 'red' };
+    // Use -1.01 tolerance for floating-point precision (e.g., -1.001R from exact stop loss exit)
+    if (actualR >= -1.01) return { score: 'stopped_out', label: 'Stopped Out', color: 'red' };
     return { score: 'loss', label: 'Loss Beyond Stop', color: 'red' };
   }
 
