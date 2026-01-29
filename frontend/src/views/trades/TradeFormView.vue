@@ -121,7 +121,7 @@
             <!-- All Take Profit targets in one column using CSS grid for alignment -->
             <div class="space-y-2">
               <!-- TP1 -->
-              <div class="grid gap-2" style="grid-template-columns: 1fr 5rem 1.5rem;">
+              <div class="grid gap-2 items-end" style="grid-template-columns: 1fr 5rem 1.5rem;">
                 <div>
                   <label for="takeProfit" class="label">Take Profit (TP1)</label>
                   <input
@@ -134,7 +134,18 @@
                     placeholder="0"
                   />
                 </div>
-                <div></div>
+                <div>
+                  <label for="takeProfitQty" class="label text-xs">Qty</label>
+                  <input
+                    id="takeProfitQty"
+                    v-model.number="form.takeProfitQty"
+                    type="number"
+                    step="1"
+                    min="1"
+                    class="input"
+                    placeholder="Qty"
+                  />
+                </div>
                 <div></div>
               </div>
 
@@ -203,7 +214,6 @@
               <option :value="null">-- Auto-detect (requires API) --</option>
               <option value="take_profit">Take Profit Hit First</option>
               <option value="stop_loss">Stop Loss Hit First</option>
-              <option value="neither">Neither Target Hit</option>
             </select>
           </div>
 
@@ -432,7 +442,18 @@
                           placeholder="0"
                         />
                       </div>
-                      <div></div>
+                      <div>
+                        <label :for="`exec-take-profit-qty-${index}`" class="label text-xs">Qty</label>
+                        <input
+                          :id="`exec-take-profit-qty-${index}`"
+                          v-model.number="execution.takeProfitQty"
+                          type="number"
+                          step="1"
+                          min="1"
+                          class="input"
+                          placeholder="Qty"
+                        />
+                      </div>
                       <div></div>
                     </div>
 
@@ -1692,6 +1713,7 @@ const form = ref({
   // Risk management fields
   stopLoss: null,
   takeProfit: null,
+  takeProfitQty: null,
   takeProfitTargets: [],
   manualTargetHitFirst: null,
   // Options-specific fields
@@ -1856,6 +1878,13 @@ async function loadTrade() {
       mfe: tradeData.mfe != null ? Number(tradeData.mfe) : null,
       stopLoss: (tradeData.stop_loss || tradeData.stopLoss) != null ? Number(tradeData.stop_loss || tradeData.stopLoss) : null,
       takeProfit: (tradeData.take_profit || tradeData.takeProfit) != null ? Number(tradeData.take_profit || tradeData.takeProfit) : null,
+      takeProfitQty: (() => {
+        // Get TP1 quantity from first take_profit_targets entry if it exists
+        const targets = tradeData.take_profit_targets || tradeData.takeProfitTargets || [];
+        const firstTarget = targets[0];
+        const qty = firstTarget?.shares || firstTarget?.quantity;
+        return qty != null ? Number(qty) : null;
+      })(),
       takeProfitTargets: (() => {
         const raw = tradeData.take_profit_targets || tradeData.takeProfitTargets || [];
         console.log('[TRADE FORM LOAD] Raw take_profit_targets from API:', raw);
@@ -1944,6 +1973,12 @@ async function loadTrade() {
                 // Fall back to trade-level stop loss if not in execution
                 stopLoss: (() => { const v = exec.stopLoss || exec.stop_loss || tradeData.stop_loss || tradeData.stopLoss; return v != null ? Number(v) : null; })(),
                 takeProfit: (() => { const v = exec.takeProfit || exec.take_profit || tradeData.take_profit || tradeData.takeProfit; return v != null ? Number(v) : null; })(),
+                takeProfitQty: (() => {
+                  const targets = exec.takeProfitTargets || exec.take_profit_targets || [];
+                  const firstTarget = targets[0];
+                  const qty = firstTarget?.shares || firstTarget?.quantity;
+                  return qty != null ? Number(qty) : null;
+                })(),
                 takeProfitTargets: (exec.takeProfitTargets || exec.take_profit_targets || []).map(t => ({
                   price: t.price != null ? Number(t.price) : null,
                   shares: t.shares != null ? Number(t.shares) : null
@@ -1968,6 +2003,12 @@ async function loadTrade() {
                 // Fall back to trade-level stop loss if not in execution
                 stopLoss: (() => { const v = exec.stopLoss || exec.stop_loss || tradeData.stop_loss || tradeData.stopLoss; return v != null ? Number(v) : null; })(),
                 takeProfit: (() => { const v = exec.takeProfit || exec.take_profit || tradeData.take_profit || tradeData.takeProfit; return v != null ? Number(v) : null; })(),
+                takeProfitQty: (() => {
+                  const targets = exec.takeProfitTargets || exec.take_profit_targets || [];
+                  const firstTarget = targets[0];
+                  const qty = firstTarget?.shares || firstTarget?.quantity;
+                  return qty != null ? Number(qty) : null;
+                })(),
                 takeProfitTargets: (exec.takeProfitTargets || exec.take_profit_targets || []).map(t => ({
                   price: t.price != null ? Number(t.price) : null,
                   shares: t.shares != null ? Number(t.shares) : null
@@ -1994,6 +2035,12 @@ async function loadTrade() {
             pnl: tradeData.pnl != null ? Number(tradeData.pnl) : 0,
             stopLoss: (tradeData.stop_loss || tradeData.stopLoss) != null ? Number(tradeData.stop_loss || tradeData.stopLoss) : null,
             takeProfit: (tradeData.take_profit || tradeData.takeProfit) != null ? Number(tradeData.take_profit || tradeData.takeProfit) : null,
+            takeProfitQty: (() => {
+              const targets = tradeData.take_profit_targets || tradeData.takeProfitTargets || [];
+              const firstTarget = targets[0];
+              const qty = firstTarget?.shares || firstTarget?.quantity;
+              return qty != null ? Number(qty) : null;
+            })(),
             takeProfitTargets: (tradeData.take_profit_targets || tradeData.takeProfitTargets || []).map(t => ({
               price: t.price != null ? Number(t.price) : null,
               shares: t.shares != null ? Number(t.shares) : null
@@ -2061,10 +2108,23 @@ async function handleSubmit() {
               pnl: exec.pnl || 0,
               stopLoss: exec.stopLoss && exec.stopLoss !== '' ? parseFloat(exec.stopLoss) : null,
               takeProfit: exec.takeProfit && exec.takeProfit !== '' ? parseFloat(exec.takeProfit) : null,
-              takeProfitTargets: (exec.takeProfitTargets || []).filter(t => t.price != null && t.price !== '').map(t => ({
-                price: parseFloat(t.price),
-                shares: t.shares ? parseInt(t.shares) : null
-              }))
+              takeProfitTargets: (() => {
+                const targets = [];
+                // Include TP1 with quantity if both price and quantity are set
+                if (exec.takeProfit && exec.takeProfit !== '') {
+                  targets.push({
+                    price: parseFloat(exec.takeProfit),
+                    shares: exec.takeProfitQty ? parseInt(exec.takeProfitQty) : null
+                  });
+                }
+                // Add TP2+ from takeProfitTargets array
+                const additionalTargets = (exec.takeProfitTargets || []).filter(t => t.price != null && t.price !== '').map(t => ({
+                  price: parseFloat(t.price),
+                  shares: t.shares ? parseInt(t.shares) : null
+                }));
+                targets.push(...additionalTargets);
+                return targets;
+              })()
             }
           } else {
             // Individual fill format - keep action/price/datetime
@@ -2082,10 +2142,23 @@ async function handleSubmit() {
               fees: parseFloat(exec.fees) || 0,  // Can be negative for rebates
               stopLoss: exec.stopLoss && exec.stopLoss !== '' ? parseFloat(exec.stopLoss) : null,
               takeProfit: exec.takeProfit && exec.takeProfit !== '' ? parseFloat(exec.takeProfit) : null,
-              takeProfitTargets: (exec.takeProfitTargets || []).filter(t => t.price != null && t.price !== '').map(t => ({
-                price: parseFloat(t.price),
-                shares: t.shares ? parseInt(t.shares) : null
-              }))
+              takeProfitTargets: (() => {
+                const targets = [];
+                // Include TP1 with quantity if both price and quantity are set
+                if (exec.takeProfit && exec.takeProfit !== '') {
+                  targets.push({
+                    price: parseFloat(exec.takeProfit),
+                    shares: exec.takeProfitQty ? parseInt(exec.takeProfitQty) : null
+                  });
+                }
+                // Add TP2+ from takeProfitTargets array
+                const additionalTargets = (exec.takeProfitTargets || []).filter(t => t.price != null && t.price !== '').map(t => ({
+                  price: parseFloat(t.price),
+                  shares: t.shares ? parseInt(t.shares) : null
+                }));
+                targets.push(...additionalTargets);
+                return targets;
+              })()
             }
           }
         })
@@ -2231,10 +2304,20 @@ async function handleSubmit() {
       stopLoss: form.value.stopLoss && form.value.stopLoss !== '' ? parseFloat(form.value.stopLoss) : null,
       takeProfit: form.value.takeProfit && form.value.takeProfit !== '' ? parseFloat(form.value.takeProfit) : null,
       takeProfitTargets: (() => {
-        const targets = (form.value.takeProfitTargets || []).filter(t => t.price != null && t.price !== '').map(t => ({
+        const targets = [];
+        // Include TP1 with quantity if both price and quantity are set
+        if (form.value.takeProfit && form.value.takeProfit !== '') {
+          targets.push({
+            price: parseFloat(form.value.takeProfit),
+            shares: form.value.takeProfitQty ? parseInt(form.value.takeProfitQty) : null
+          });
+        }
+        // Add TP2+ from takeProfitTargets array
+        const additionalTargets = (form.value.takeProfitTargets || []).filter(t => t.price != null && t.price !== '').map(t => ({
           price: parseFloat(t.price),
           shares: t.shares ? parseInt(t.shares) : null
         }));
+        targets.push(...additionalTargets);
         console.log('[TRADE FORM] Submitting takeProfitTargets:', targets);
         return targets;
       })(),
@@ -2807,6 +2890,7 @@ function addExecution() {
     fees: 0,
     stopLoss: null,
     takeProfit: null,
+    takeProfitQty: null,
     takeProfitTargets: []
   })
 }
@@ -2824,6 +2908,7 @@ function addGroupedExecution() {
     fees: 0,
     stopLoss: null,
     takeProfit: null,
+    takeProfitQty: null,
     takeProfitTargets: []
   })
 }

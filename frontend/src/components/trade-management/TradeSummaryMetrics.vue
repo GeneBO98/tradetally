@@ -81,18 +81,30 @@
               <span v-if="!editingTakeProfit" @click="startEditingTakeProfit" class="ml-1 text-primary-500 hover:text-primary-600 cursor-pointer">(edit)</span>
             </div>
             <div v-if="editingTakeProfit" class="flex items-center space-x-2">
-              <div class="relative flex-1">
+              <div class="relative">
                 <span class="absolute left-2 top-1.5 text-gray-500 text-sm">$</span>
                 <input
                   ref="takeProfitInput"
                   v-model="editTakeProfit"
                   type="number"
                   step="0.01"
-                  class="w-full pl-6 pr-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
+                  class="w-28 pl-6 pr-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
+                  placeholder="Price"
                   @keyup.enter="saveTakeProfit"
                   @keyup.escape="cancelEditingTakeProfit"
                 />
               </div>
+              <input
+                v-model.number="editTakeProfitQty"
+                type="number"
+                step="1"
+                min="1"
+                class="w-16 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
+                placeholder="Qty"
+                title="Number of shares"
+                @keyup.enter="saveTakeProfit"
+                @keyup.escape="cancelEditingTakeProfit"
+              />
               <button @click="saveTakeProfit" :disabled="saving" class="text-green-600 hover:text-green-700">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
@@ -107,6 +119,7 @@
             <div v-else>
               <div v-if="trade.take_profit" class="text-lg font-semibold text-primary-600 dark:text-primary-400">
                 {{ formatCurrency(trade.take_profit) }}
+                <span v-if="tp1Qty" class="text-sm font-normal text-gray-600 dark:text-gray-400 ml-1">({{ tp1Qty }} shares)</span>
                 <span v-if="tp1R" class="text-sm font-medium ml-2">{{ tp1R }}R</span>
                 <span class="text-xs text-gray-500 dark:text-gray-400 font-normal block">
                   {{ formatPercent(takeProfitPercent) }} from entry
@@ -370,6 +383,7 @@ const editingStopLoss = ref(false)
 const editingTakeProfit = ref(false)
 const editStopLoss = ref('')
 const editTakeProfit = ref('')
+const editTakeProfitQty = ref('')
 const saving = ref(false)
 const error = ref(null)
 
@@ -606,10 +620,16 @@ const tp1R = computed(() => {
   return calculateTargetR(props.trade.take_profit)
 })
 
+// Get quantity for TP1 from take_profit_targets if it exists
+const tp1Qty = computed(() => {
+  const tp1Target = props.trade.take_profit_targets?.[0]
+  return tp1Target?.shares || tp1Target?.quantity || null
+})
+
 const riskRewardActual = computed(() => {
   const actualR = props.analysis.actual_r
   if (actualR === null || actualR === undefined) return 'N/A'
-  return `1:${Math.abs(actualR).toFixed(2)}`
+  return `1:${actualR.toFixed(2)}`
 })
 
 // Calculate weighted average R for planned risk:reward
@@ -710,6 +730,9 @@ async function saveStopLoss() {
 // Take Profit editing
 async function startEditingTakeProfit() {
   editTakeProfit.value = props.trade.take_profit || ''
+  // Get quantity from take_profit_targets if it exists (TP1 is first target)
+  const tp1Target = props.trade.take_profit_targets?.[0]
+  editTakeProfitQty.value = tp1Target?.shares || tp1Target?.quantity || ''
   editingTakeProfit.value = true
   error.value = null
   await nextTick()
@@ -719,11 +742,13 @@ async function startEditingTakeProfit() {
 function cancelEditingTakeProfit() {
   editingTakeProfit.value = false
   editTakeProfit.value = ''
+  editTakeProfitQty.value = ''
   error.value = null
 }
 
 async function saveTakeProfit() {
   const tp = editTakeProfit.value ? parseFloat(editTakeProfit.value) : null
+  const qty = editTakeProfitQty.value ? parseInt(editTakeProfitQty.value) : null
   const entry = parseFloat(props.trade.entry_price)
 
   // Validate if value provided
@@ -738,7 +763,16 @@ async function saveTakeProfit() {
     }
   }
 
-  await saveLevels({ take_profit: tp })
+  // If quantity is provided, save as a target in take_profit_targets array
+  const payload = { take_profit: tp }
+  if (tp !== null && qty !== null && qty > 0) {
+    payload.take_profit_targets = [{
+      price: tp,
+      shares: qty
+    }]
+  }
+
+  await saveLevels(payload)
   editingTakeProfit.value = false
 }
 
