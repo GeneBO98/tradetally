@@ -356,6 +356,7 @@
                       :id="`exec-entry-time-${index}`"
                       v-model="execution.entryTime"
                       type="datetime-local"
+                      step="1"
                       required
                       class="input"
                     />
@@ -367,6 +368,7 @@
                       :id="`exec-exit-time-${index}`"
                       v-model="execution.exitTime"
                       type="datetime-local"
+                      step="1"
                       class="input"
                     />
                   </div>
@@ -494,6 +496,7 @@
                     :id="`exec-datetime-${index}`"
                     v-model="execution.datetime"
                     type="datetime-local"
+                    step="1"
                     required
                     class="input"
                   />
@@ -1743,11 +1746,12 @@ function formatDateTimeLocal(date) {
   // Parse datetime string manually to avoid timezone issues
   const dateStr = date.toString()
 
-  // If it's an ISO datetime string, parse components directly
-  const isoMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/)
+  // If it's an ISO datetime string, parse components directly (with optional seconds)
+  const isoMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/)
   if (isoMatch) {
-    const [, year, month, day, hour, minute] = isoMatch
-    return `${year}-${month}-${day}T${hour}:${minute}`
+    const [, year, month, day, hour, minute, second] = isoMatch
+    const sec = second || '00'
+    return `${year}-${month}-${day}T${hour}:${minute}:${sec}`
   }
 
   // Fallback to Date object
@@ -1757,7 +1761,8 @@ function formatDateTimeLocal(date) {
   const day = String(d.getDate()).padStart(2, '0')
   const hours = String(d.getHours()).padStart(2, '0')
   const minutes = String(d.getMinutes()).padStart(2, '0')
-  return `${year}-${month}-${day}T${hours}:${minutes}`
+  const seconds = String(d.getSeconds()).padStart(2, '0')
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`
 }
 
 function formatDateOnly(date) {

@@ -252,14 +252,24 @@ class Trade {
     let finalTakeProfit = takeProfit;
     let userSettings = null;
 
+    // Debug logging for default stop loss/take profit application
+    console.log(`[DEFAULTS] Checking defaults for ${symbol}: stopLoss=${stopLoss}, takeProfit=${takeProfit}, entryPrice=${entryPrice}`);
+
     if ((!finalStopLoss || !finalTakeProfit) && entryPrice) {
       try {
         const User = require('./User');
         userSettings = await User.getSettings(userId);
 
+        if (!userSettings) {
+          console.log(`[DEFAULTS] No user settings found for user ${userId}`);
+        } else {
+          console.log(`[DEFAULTS] User settings: stopLossType=${userSettings.default_stop_loss_type || 'not set'}, stopLossPercent=${userSettings.default_stop_loss_percent || 'not set'}, takeProfitPercent=${userSettings.default_take_profit_percent || 'not set'}`);
+        }
+
         // Apply default stop loss if not provided
         if (!finalStopLoss) {
           const stopLossType = userSettings?.default_stop_loss_type || 'percent';
+          console.log(`[DEFAULTS] Applying default stop loss, type=${stopLossType}`);
           
           if (stopLossType === 'lod') {
             // Use Low of Day (LoD) at entry time
@@ -333,6 +343,8 @@ class Trade {
             finalStopLoss = Math.round(finalStopLoss * 10000) / 10000;
 
             console.log(`[STOP LOSS] Applied default ${stopLossPercent}% stop loss for ${side} position: $${finalStopLoss}`);
+          } else {
+            console.log(`[DEFAULTS] No default stop loss applied: stopLossType=${stopLossType}, default_stop_loss_percent=${userSettings?.default_stop_loss_percent}`);
           }
         }
 
@@ -358,7 +370,11 @@ class Trade {
         console.warn('[DEFAULTS] Failed to apply default stop loss/take profit:', error.message);
         // Continue without defaults if there's an error
       }
+    } else {
+      console.log(`[DEFAULTS] Skipping defaults: stopLoss=${finalStopLoss ? 'provided' : 'missing'}, takeProfit=${finalTakeProfit ? 'provided' : 'missing'}, entryPrice=${entryPrice ? 'provided' : 'missing'}`);
     }
+
+    console.log(`[DEFAULTS] Final values for ${symbol}: stopLoss=${finalStopLoss}, takeProfit=${finalTakeProfit}`);
 
     // Calculate R-Multiple if stop loss and exit price are provided
     // R-Multiple = Profit / Risk (where Risk = distance from entry to stop loss)
@@ -1010,7 +1026,110 @@ class Trade {
     if (updates.exitPrice === '') updates.exitPrice = null;
     if (updates.stopLoss === '') updates.stopLoss = null;
     if (updates.takeProfit === '') updates.takeProfit = null;
-    
+
+    // Apply default stop loss/take profit if not provided and user has defaults configured
+    // This ensures defaults are applied on updates as well as creates
+    const entryPrice = updates.entryPrice || currentTrade.entry_price;
+    const side = updates.side || currentTrade.side;
+    const symbol = updates.symbol || currentTrade.symbol;
+    const entryTime = updates.entryTime || currentTrade.entry_time;
+
+    // Check if stop loss or take profit needs defaults applied
+    const needsStopLossDefault = (updates.stopLoss === null || updates.stopLoss === undefined) && !currentTrade.stop_loss;
+    const needsTakeProfitDefault = (updates.takeProfit === null || updates.takeProfit === undefined) && !currentTrade.take_profit;
+
+    if ((needsStopLossDefault || needsTakeProfitDefault) && entryPrice) {
+      try {
+        const User = require('./User');
+        const userSettings = await User.getSettings(userId);
+
+        console.log(`[DEFAULTS UPDATE] Checking defaults for ${symbol}: needsStopLoss=${needsStopLossDefault}, needsTakeProfit=${needsTakeProfitDefault}`);
+        console.log(`[DEFAULTS UPDATE] User settings: stopLossType=${userSettings?.default_stop_loss_type || 'not set'}, stopLossPercent=${userSettings?.default_stop_loss_percent || 'not set'}, takeProfitPercent=${userSettings?.default_take_profit_percent || 'not set'}`);
+
+        // Apply default stop loss if not provided
+        if (needsStopLossDefault) {
+          const stopLossType = userSettings?.default_stop_loss_type || 'percent';
+          console.log(`[DEFAULTS UPDATE] Applying default stop loss, type=${stopLossType}`);
+
+          if (stopLossType === 'lod') {
+            // Use Low of Day (LoD) at entry time
+            try {
+              const lod = await this.getLowOfDayAtEntry(symbol, entryTime, userId);
+              if (lod !== null && lod !== undefined) {
+                if (side === 'long' || side === 'buy') {
+                  updates.stopLoss = lod;
+                  if (updates.stopLoss >= entryPrice) {
+                    console.warn(`[STOP LOSS UPDATE] LoD (${updates.stopLoss}) is not below entry price (${entryPrice}), using entry price - 0.01`);
+                    updates.stopLoss = entryPrice - 0.01;
+                  }
+                  console.log(`[STOP LOSS UPDATE] Applied Low of Day stop loss for ${side} position: $${updates.stopLoss}`);
+                } else {
+                  // For short positions, fall back to percentage
+                  if (userSettings?.default_stop_loss_percent && userSettings.default_stop_loss_percent > 0) {
+                    const stopLossPercent = parseFloat(userSettings.default_stop_loss_percent);
+                    updates.stopLoss = entryPrice * (1 + stopLossPercent / 100);
+                    updates.stopLoss = Math.round(updates.stopLoss * 10000) / 10000;
+                    console.log(`[STOP LOSS UPDATE] Applied ${stopLossPercent}% stop loss for short position: $${updates.stopLoss}`);
+                  }
+                }
+              } else {
+                // LoD fetch failed, fall back to percentage
+                if (userSettings?.default_stop_loss_percent && userSettings.default_stop_loss_percent > 0) {
+                  const stopLossPercent = parseFloat(userSettings.default_stop_loss_percent);
+                  if (side === 'long' || side === 'buy') {
+                    updates.stopLoss = entryPrice * (1 - stopLossPercent / 100);
+                  } else {
+                    updates.stopLoss = entryPrice * (1 + stopLossPercent / 100);
+                  }
+                  updates.stopLoss = Math.round(updates.stopLoss * 10000) / 10000;
+                  console.log(`[STOP LOSS UPDATE] LoD unavailable, applied ${stopLossPercent}% stop loss: $${updates.stopLoss}`);
+                }
+              }
+            } catch (lodError) {
+              console.warn(`[STOP LOSS UPDATE] Error fetching LoD: ${lodError.message}`);
+              // Fall back to percentage
+              if (userSettings?.default_stop_loss_percent && userSettings.default_stop_loss_percent > 0) {
+                const stopLossPercent = parseFloat(userSettings.default_stop_loss_percent);
+                if (side === 'long' || side === 'buy') {
+                  updates.stopLoss = entryPrice * (1 - stopLossPercent / 100);
+                } else {
+                  updates.stopLoss = entryPrice * (1 + stopLossPercent / 100);
+                }
+                updates.stopLoss = Math.round(updates.stopLoss * 10000) / 10000;
+                console.log(`[STOP LOSS UPDATE] Applied fallback ${stopLossPercent}% stop loss: $${updates.stopLoss}`);
+              }
+            }
+          } else if (userSettings?.default_stop_loss_percent && userSettings.default_stop_loss_percent > 0) {
+            // Percentage-based stop loss
+            const stopLossPercent = parseFloat(userSettings.default_stop_loss_percent);
+            if (side === 'long' || side === 'buy') {
+              updates.stopLoss = entryPrice * (1 - stopLossPercent / 100);
+            } else {
+              updates.stopLoss = entryPrice * (1 + stopLossPercent / 100);
+            }
+            updates.stopLoss = Math.round(updates.stopLoss * 10000) / 10000;
+            console.log(`[STOP LOSS UPDATE] Applied ${stopLossPercent}% stop loss for ${side} position: $${updates.stopLoss}`);
+          } else {
+            console.log(`[DEFAULTS UPDATE] No default stop loss configured`);
+          }
+        }
+
+        // Apply default take profit if not provided
+        if (needsTakeProfitDefault && userSettings?.default_take_profit_percent && userSettings.default_take_profit_percent > 0) {
+          const takeProfitPercent = parseFloat(userSettings.default_take_profit_percent);
+          if (side === 'long' || side === 'buy') {
+            updates.takeProfit = entryPrice * (1 + takeProfitPercent / 100);
+          } else {
+            updates.takeProfit = entryPrice * (1 - takeProfitPercent / 100);
+          }
+          updates.takeProfit = Math.round(updates.takeProfit * 10000) / 10000;
+          console.log(`[TAKE PROFIT UPDATE] Applied ${takeProfitPercent}% take profit for ${side} position: $${updates.takeProfit}`);
+        }
+      } catch (error) {
+        console.warn('[DEFAULTS UPDATE] Failed to apply defaults:', error.message);
+      }
+    }
+
     const fields = [];
     const values = [];
     let paramCount = 1;
