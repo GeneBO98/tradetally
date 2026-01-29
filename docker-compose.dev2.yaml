@@ -21,11 +21,8 @@ services:
       timeout: 5s
       retries: 5
 
-  # Application (Frontend + Backend) - Built from local Dockerfile
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
+  tradetally:
+    image: potentialmidas/tradetally:nightly
     container_name: tradetally-app-dev-new
     depends_on:
       postgres:

@@ -2552,6 +2552,26 @@ async function parseLightspeedTransactions(records, existingPositions = {}, user
         } else if (currentTrade && currentTrade.side === 'short') {
           currentTrade.exitValue += qty * transaction.entryPrice * valueMultiplier;
           // Don't add to totalQuantity for covering short position
+
+          // Check if this is a partial close (position will still be negative after this buy)
+          if (currentPosition < 0 && currentTrade.totalQuantity > 0) {
+            // Calculate P&L for this partial close using weighted average entry price
+            const avgEntryPrice = currentTrade.entryValue / (currentTrade.totalQuantity * valueMultiplier);
+            const partialPnl = (avgEntryPrice - transaction.entryPrice) * qty * valueMultiplier;
+            // Prorate commission for partial close
+            const partialCommission = (currentTrade.totalFees / currentTrade.totalQuantity) * qty;
+            const netPartialPnl = partialPnl - partialCommission;
+
+            // Update the last execution with exit info and P&L
+            const lastExec = currentTrade.executions[currentTrade.executions.length - 1];
+            if (lastExec && lastExec.action === 'buy') {
+              lastExec.exitTime = transaction.entryTime;
+              lastExec.exitPrice = transaction.entryPrice;
+              lastExec.entryPrice = avgEntryPrice;
+              lastExec.pnl = netPartialPnl;
+              console.log(`  → [PARTIAL COVER] Covered ${qty} @ $${transaction.entryPrice.toFixed(2)}, Entry avg: $${avgEntryPrice.toFixed(2)}, P&L: $${netPartialPnl.toFixed(2)}, Remaining: ${Math.abs(currentPosition)} shares short`);
+            }
+          }
         }
 
       } else if (transaction.side === 'sell') {
@@ -2564,9 +2584,29 @@ async function parseLightspeedTransactions(records, existingPositions = {}, user
         } else if (currentTrade && currentTrade.side === 'long') {
           currentTrade.exitValue += qty * transaction.entryPrice * valueMultiplier;
           // Don't modify totalQuantity when selling from long position
+
+          // Check if this is a partial close (position will still be positive after this sell)
+          if (currentPosition > 0 && currentTrade.totalQuantity > 0) {
+            // Calculate P&L for this partial close using weighted average entry price
+            const avgEntryPrice = currentTrade.entryValue / (currentTrade.totalQuantity * valueMultiplier);
+            const partialPnl = (transaction.entryPrice - avgEntryPrice) * qty * valueMultiplier;
+            // Prorate commission for partial close
+            const partialCommission = (currentTrade.totalFees / currentTrade.totalQuantity) * qty;
+            const netPartialPnl = partialPnl - partialCommission;
+
+            // Update the last execution with exit info and P&L
+            const lastExec = currentTrade.executions[currentTrade.executions.length - 1];
+            if (lastExec && lastExec.action === 'sell') {
+              lastExec.exitTime = transaction.entryTime;
+              lastExec.exitPrice = transaction.entryPrice;
+              lastExec.entryPrice = avgEntryPrice;
+              lastExec.pnl = netPartialPnl;
+              console.log(`  → [PARTIAL CLOSE] Sold ${qty} @ $${transaction.entryPrice.toFixed(2)}, Entry avg: $${avgEntryPrice.toFixed(2)}, P&L: $${netPartialPnl.toFixed(2)}, Remaining: ${currentPosition} shares`);
+            }
+          }
         }
       }
-      
+
       console.log(`  Position: ${prevPosition} → ${currentPosition}`);
 
       // Close trade if position goes to zero
@@ -3078,8 +3118,28 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
         } else if (currentTrade && currentTrade.side === 'short') {
           currentTrade.exitValue += qty * transaction.price;
           console.log(`  → [SHORT BUY] Added to exit: ${currentTrade.exitValue}`);
+
+          // Check if this is a partial close (position will still be negative after this buy)
+          if (currentPosition < 0 && currentTrade.totalQuantity > 0) {
+            // Calculate P&L for this partial close using weighted average entry price
+            const avgEntryPrice = currentTrade.entryValue / (currentTrade.totalQuantity * valueMultiplier);
+            const partialPnl = (avgEntryPrice - transaction.price) * qty * valueMultiplier;
+            // Prorate commission for partial close
+            const partialCommission = (currentTrade.totalFees / currentTrade.totalQuantity) * qty;
+            const netPartialPnl = partialPnl - partialCommission;
+
+            // Update the last execution with exit info and P&L
+            const lastExec = currentTrade.executions[currentTrade.executions.length - 1];
+            if (lastExec && lastExec.action === 'buy') {
+              lastExec.exitTime = transaction.datetime;
+              lastExec.exitPrice = transaction.price;
+              lastExec.entryPrice = avgEntryPrice;
+              lastExec.pnl = netPartialPnl;
+              console.log(`  → [PARTIAL COVER] Covered ${qty} @ $${transaction.price.toFixed(2)}, Entry avg: $${avgEntryPrice.toFixed(2)}, P&L: $${netPartialPnl.toFixed(2)}, Remaining: ${Math.abs(currentPosition)} shares short`);
+            }
+          }
         }
-        
+
         openLots.push({
           type: 'long',
           quantity: qty,
@@ -3100,8 +3160,28 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
           const beforeExit = currentTrade.exitValue;
           currentTrade.exitValue += qty * transaction.price;
           console.log(`  → [LONG SELL] Added to exit: ${beforeExit} + ${qty * transaction.price} = ${currentTrade.exitValue}`);
+
+          // Check if this is a partial close (position will still be positive after this sell)
+          if (currentPosition > 0 && currentTrade.totalQuantity > 0) {
+            // Calculate P&L for this partial close using weighted average entry price
+            const avgEntryPrice = currentTrade.entryValue / (currentTrade.totalQuantity * valueMultiplier);
+            const partialPnl = (transaction.price - avgEntryPrice) * qty * valueMultiplier;
+            // Prorate commission for partial close
+            const partialCommission = (currentTrade.totalFees / currentTrade.totalQuantity) * qty;
+            const netPartialPnl = partialPnl - partialCommission;
+
+            // Update the last execution with exit info and P&L
+            const lastExec = currentTrade.executions[currentTrade.executions.length - 1];
+            if (lastExec && lastExec.action === 'sell') {
+              lastExec.exitTime = transaction.datetime;
+              lastExec.exitPrice = transaction.price;
+              lastExec.entryPrice = avgEntryPrice;
+              lastExec.pnl = netPartialPnl;
+              console.log(`  → [PARTIAL CLOSE] Sold ${qty} @ $${transaction.price.toFixed(2)}, Entry avg: $${avgEntryPrice.toFixed(2)}, P&L: $${netPartialPnl.toFixed(2)}, Remaining: ${currentPosition} shares`);
+            }
+          }
         }
-        
+
         if (transaction.action === 'short') {
           openLots.push({
             type: 'short',
@@ -4866,6 +4946,26 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
           currentTrade.totalQuantity += qty;
         } else if (currentTrade && currentTrade.side === 'short') {
           currentTrade.exitValue += qty * transaction.price * valueMultiplier;
+
+          // Check if this is a partial close (position will still be negative after this buy)
+          if (currentPosition < 0 && currentTrade.totalQuantity > 0) {
+            // Calculate P&L for this partial close using weighted average entry price
+            const avgEntryPrice = currentTrade.entryValue / (currentTrade.totalQuantity * valueMultiplier);
+            const partialPnl = (avgEntryPrice - transaction.price) * qty * valueMultiplier;
+            // Prorate commission for partial close
+            const partialCommission = (currentTrade.totalFees / currentTrade.totalQuantity) * qty;
+            const netPartialPnl = partialPnl - partialCommission;
+
+            // Update the last execution with exit info and P&L
+            const lastExec = currentTrade.executions[currentTrade.executions.length - 1];
+            if (lastExec && lastExec.action === 'buy') {
+              lastExec.exitTime = transaction.datetime;
+              lastExec.exitPrice = transaction.price;
+              lastExec.entryPrice = avgEntryPrice;
+              lastExec.pnl = netPartialPnl;
+              console.log(`  → [PARTIAL COVER] Covered ${qty} @ $${transaction.price.toFixed(2)}, Entry avg: $${avgEntryPrice.toFixed(2)}, P&L: $${netPartialPnl.toFixed(2)}, Remaining: ${Math.abs(currentPosition)} shares short`);
+            }
+          }
         }
       } else if (transaction.action === 'sell') {
         currentPosition -= qty;
@@ -4887,6 +4987,26 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
           }
         } else if (currentTrade && currentTrade.side === 'long') {
           currentTrade.exitValue += qty * transaction.price * valueMultiplier;
+
+          // Check if this is a partial close (position will still be positive after this sell)
+          if (currentPosition > 0 && currentTrade.totalQuantity > 0) {
+            // Calculate P&L for this partial close using weighted average entry price
+            const avgEntryPrice = currentTrade.entryValue / (currentTrade.totalQuantity * valueMultiplier);
+            const partialPnl = (transaction.price - avgEntryPrice) * qty * valueMultiplier;
+            // Prorate commission for partial close
+            const partialCommission = (currentTrade.totalFees / currentTrade.totalQuantity) * qty;
+            const netPartialPnl = partialPnl - partialCommission;
+
+            // Update the last execution with exit info and P&L
+            const lastExec = currentTrade.executions[currentTrade.executions.length - 1];
+            if (lastExec && lastExec.action === 'sell') {
+              lastExec.exitTime = transaction.datetime;
+              lastExec.exitPrice = transaction.price;
+              lastExec.entryPrice = avgEntryPrice;
+              lastExec.pnl = netPartialPnl;
+              console.log(`  → [PARTIAL CLOSE] Sold ${qty} @ $${transaction.price.toFixed(2)}, Entry avg: $${avgEntryPrice.toFixed(2)}, P&L: $${netPartialPnl.toFixed(2)}, Remaining: ${currentPosition} shares`);
+            }
+          }
         }
       }
 
@@ -5700,6 +5820,26 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
           } else if (currentTrade.side === 'short') {
             // Covering short position
             currentTrade.exitValue += qty * transaction.price;
+
+            // Check if this is a partial close (position will still be negative after this buy)
+            if (currentPosition < 0 && currentTrade.totalQuantity > 0) {
+              // Calculate P&L for this partial close using weighted average entry price
+              const avgEntryPrice = currentTrade.entryValue / currentTrade.totalQuantity;
+              const partialPnl = (avgEntryPrice - transaction.price) * qty;
+              // Prorate commission for partial close
+              const partialCommission = (currentTrade.totalFees / currentTrade.totalQuantity) * qty;
+              const netPartialPnl = partialPnl - partialCommission;
+
+              // Update the last execution with exit info and P&L
+              const lastExec = currentTrade.executions[currentTrade.executions.length - 1];
+              if (lastExec && lastExec.action === 'buy') {
+                lastExec.exitTime = transaction.datetime;
+                lastExec.exitPrice = transaction.price;
+                lastExec.entryPrice = avgEntryPrice;
+                lastExec.pnl = netPartialPnl;
+                console.log(`  → [PARTIAL COVER] Covered ${qty} @ $${transaction.price.toFixed(2)}, Entry avg: $${avgEntryPrice.toFixed(2)}, P&L: $${netPartialPnl.toFixed(2)}, Remaining: ${Math.abs(currentPosition)} shares short`);
+              }
+            }
           }
         }
       } else if (transaction.side === 'sell') {
@@ -5713,6 +5853,26 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
           } else if (currentTrade.side === 'long') {
             // Selling long position
             currentTrade.exitValue += qty * transaction.price;
+
+            // Check if this is a partial close (position will still be positive after this sell)
+            if (currentPosition > 0 && currentTrade.totalQuantity > 0) {
+              // Calculate P&L for this partial close using weighted average entry price
+              const avgEntryPrice = currentTrade.entryValue / currentTrade.totalQuantity;
+              const partialPnl = (transaction.price - avgEntryPrice) * qty;
+              // Prorate commission for partial close
+              const partialCommission = (currentTrade.totalFees / currentTrade.totalQuantity) * qty;
+              const netPartialPnl = partialPnl - partialCommission;
+
+              // Update the last execution with exit info and P&L
+              const lastExec = currentTrade.executions[currentTrade.executions.length - 1];
+              if (lastExec && lastExec.action === 'sell') {
+                lastExec.exitTime = transaction.datetime;
+                lastExec.exitPrice = transaction.price;
+                lastExec.entryPrice = avgEntryPrice;
+                lastExec.pnl = netPartialPnl;
+                console.log(`  → [PARTIAL CLOSE] Sold ${qty} @ $${transaction.price.toFixed(2)}, Entry avg: $${avgEntryPrice.toFixed(2)}, P&L: $${netPartialPnl.toFixed(2)}, Remaining: ${currentPosition} shares`);
+              }
+            }
           }
         }
       }
