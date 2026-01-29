@@ -982,8 +982,7 @@ const analyticsController = {
             exec->>'fees' as exec_fees
           FROM trades t
           CROSS JOIN LATERAL jsonb_array_elements(t.executions) AS exec
-          WHERE t.user_id = $1 
-            AND t.exit_time IS NOT NULL
+          WHERE t.user_id = $1
             AND t.executions IS NOT NULL
             AND jsonb_array_length(t.executions) > 0
             AND (
