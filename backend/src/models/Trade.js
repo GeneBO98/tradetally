@@ -691,20 +691,23 @@ class Trade {
     let needsSectorJoin = false;
 
     if (filters.symbol) {
-      // Enhanced symbol filtering to handle both ticker symbols and CUSIPs
+      // Optimized symbol filtering with better CUSIP resolution
+      // Using a single subquery with OR conditions is more efficient than multiple EXISTS
       whereClause += ` AND (
         t.symbol ILIKE $${paramCount} || '%' OR
-        EXISTS (
-          SELECT 1 FROM cusip_mappings cm
-          WHERE cm.cusip = t.symbol
-          AND cm.ticker ILIKE $${paramCount} || '%'
-          AND (cm.user_id = $1 OR cm.user_id IS NULL)
-        ) OR
-        EXISTS (
-          SELECT 1 FROM cusip_mappings cm
-          WHERE cm.ticker ILIKE $${paramCount} || '%'
-          AND cm.cusip = t.symbol
-          AND (cm.user_id = $1 OR cm.user_id IS NULL)
+        t.symbol IN (
+          SELECT DISTINCT
+            CASE
+              WHEN cm.ticker ILIKE $${paramCount} || '%' THEN cm.cusip
+              WHEN cm.cusip = t.symbol AND cm.ticker ILIKE $${paramCount} || '%' THEN cm.cusip
+              ELSE NULL
+            END
+          FROM cusip_mappings cm
+          WHERE (cm.user_id = $1 OR cm.user_id IS NULL)
+            AND (
+              (cm.cusip = t.symbol AND cm.ticker ILIKE $${paramCount} || '%') OR
+              (cm.ticker ILIKE $${paramCount} || '%')
+            )
         )
       )`;
       values.push(filters.symbol.toUpperCase());
