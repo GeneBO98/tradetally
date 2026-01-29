@@ -202,6 +202,7 @@
                   min="0"
                   class="input text-sm flex-1"
                   placeholder="Min"
+                  @keydown.enter="applyFilters"
                 />
                 <span class="text-xs text-gray-400">-</span>
                 <input
@@ -211,6 +212,7 @@
                   min="0"
                   class="input text-sm flex-1"
                   placeholder="Max"
+                  @keydown.enter="applyFilters"
                 />
               </div>
             </div>
@@ -225,6 +227,7 @@
                   min="0"
                   class="input text-sm flex-1"
                   placeholder="Min"
+                  @keydown.enter="applyFilters"
                 />
                 <span class="text-xs text-gray-400">-</span>
                 <input
@@ -233,6 +236,7 @@
                   min="0"
                   class="input text-sm flex-1"
                   placeholder="Max"
+                  @keydown.enter="applyFilters"
                 />
               </div>
             </div>
@@ -247,6 +251,7 @@
                   step="0.01"
                   class="input text-sm flex-1"
                   placeholder="Min"
+                  @keydown.enter="applyFilters"
                 />
                 <span class="text-xs text-gray-400">-</span>
                 <input
@@ -255,6 +260,7 @@
                   step="0.01"
                   class="input text-sm flex-1"
                   placeholder="Max"
+                  @keydown.enter="applyFilters"
                 />
               </div>
             </div>

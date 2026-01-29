@@ -390,8 +390,10 @@ const analyticsController = {
       // Check cache first for faster response
       const cachedData = cache.get(cacheKey);
       if (cachedData) {
+        console.log(`[CACHE HIT] Analytics overview returned from cache for user ${req.user.id}`);
         return res.json(cachedData);
       }
+      console.log(`[CACHE MISS] Computing analytics overview for user ${req.user.id}`);
 
       const { filterConditions, params: filterParams } = filterData;
       const params = [req.user.id, ...filterParams];
@@ -694,7 +696,10 @@ const analyticsController = {
       });
 
       // Cache the result for 5 minutes (300000ms)
-      cache.set(cacheKey, { overview }, 300000);
+      // Cache analytics overview for 5 minutes for better performance
+      const cacheTTL = 5 * 60 * 1000; // 5 minutes
+      cache.set(cacheKey, { overview }, cacheTTL);
+      console.log(`[CACHE SET] Analytics overview cached for ${cacheTTL/1000}s for user ${req.user.id}`);
       res.json({ overview });
     } catch (error) {
       console.error('Analytics overview error:', error);
@@ -1610,7 +1615,10 @@ const analyticsController = {
         }
       };
 
-      cache.set(cacheKey, responseData);
+      // Cache performance data for 5 minutes
+      const cacheTTL = 5 * 60 * 1000; // 5 minutes
+      cache.set(cacheKey, responseData, cacheTTL);
+      console.log(`[CACHE SET] Performance analytics cached for ${cacheTTL/1000}s`);
 
       res.json(responseData);
     } catch (error) {

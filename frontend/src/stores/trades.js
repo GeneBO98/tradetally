@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import api from '@/services/api'
+import requestManager from '@/utils/requestManager'
 
 export const useTradesStore = defineStore('trades', () => {
   const trades = ref([])
@@ -70,23 +71,33 @@ export const useTradesStore = defineStore('trades', () => {
       const offset = (pagination.value.page - 1) * pagination.value.limit
       const skipCount = params.skipCount !== false // Default to true for faster initial load
 
-      // Fetch trades first (with skipCount for faster response)
-      // This allows the UI to render immediately while count/analytics load in background
-      const tradesResponse = await api.get('/trades', {
-        params: {
-          ...filters.value,
-          ...params,
-          limit: pagination.value.limit,
-          offset: offset,
-          skipCount: skipCount ? 'true' : 'false'
-        }
-      })
+      // Fetch trades with request cancellation support
+      const tradesResponse = await requestManager.request('fetchTrades', (cancelToken) =>
+        api.get('/trades', {
+          params: {
+            ...filters.value,
+            ...params,
+            limit: pagination.value.limit,
+            offset: offset,
+            skipCount: skipCount ? 'true' : 'false'
+          },
+          cancelToken
+        })
+      )
+
+      // If request was cancelled, return early
+      if (!tradesResponse) {
+        loading.value = false
+        return
+      }
 
       // Always use the trades data from the trades API
-      if (tradesResponse.data.hasOwnProperty('trades')) {
-        trades.value = tradesResponse.data.trades
-      } else {
-        trades.value = tradesResponse.data
+      if (tradesResponse && tradesResponse.data) {
+        if (tradesResponse.data.hasOwnProperty('trades')) {
+          trades.value = tradesResponse.data.trades
+        } else {
+          trades.value = tradesResponse.data
+        }
       }
 
       // If count was included in response, use it
@@ -167,10 +178,12 @@ export const useTradesStore = defineStore('trades', () => {
       analytics.value = analyticsResponse.data
 
       // Always use the trades data from the trades API
-      if (tradesResponse.data.hasOwnProperty('trades')) {
-        trades.value = tradesResponse.data.trades
-      } else {
-        trades.value = tradesResponse.data
+      if (tradesResponse && tradesResponse.data) {
+        if (tradesResponse.data.hasOwnProperty('trades')) {
+          trades.value = tradesResponse.data.trades
+        } else {
+          trades.value = tradesResponse.data
+        }
       }
 
       // If the response includes pagination metadata, update it

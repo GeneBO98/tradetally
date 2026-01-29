@@ -1202,10 +1202,8 @@ async function fetchAnalytics() {
     })
     
     await nextTick()
-    // Use setTimeout to ensure DOM is fully rendered
-    setTimeout(() => {
-      createCharts()
-    }, 100)
+    // Create charts immediately without artificial delay
+    createCharts()
   } catch (error) {
     console.error('Failed to fetch analytics:', error)
   } finally {

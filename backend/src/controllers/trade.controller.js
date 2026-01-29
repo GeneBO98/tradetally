@@ -19,7 +19,9 @@ const axios = require('axios');
 function invalidateAnalyticsCache(userId) {
   // Clear all analytics cache entries for this user
   const cacheKeys = Object.keys(cache.data).filter(key =>
-    key.startsWith(`analytics:user_${userId}:`)
+    key.startsWith(`analytics:user_${userId}:`) ||
+    key.startsWith(`analytics_overview_${userId}_`) ||
+    key.startsWith(`performance_${userId}_`)
   );
   cacheKeys.forEach(key => cache.del(key));
   console.log(`[CACHE] Invalidated ${cacheKeys.length} analytics cache entries for user ${userId}`);
