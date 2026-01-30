@@ -432,42 +432,20 @@ function calculateRMultiples(trade) {
     usingWeightedAverage: weightedTargetR !== null
   });
 
-  // Calculate Management R based on which target was hit first
-  // Management R = Actual R - Planned R
+  // Calculate Management R using the TargetHitAnalysisService
+  // This properly handles partial exits and SL move impacts
   //
-  // The "Planned R" depends on which target was hit first:
-  // - If SL Hit First: Planned R = -1 (the trade was supposed to stop out)
-  // - If TP Hit First: Planned R = Target R (the trade was supposed to hit take profit)
-  //
-  // Examples:
-  // - SL Hit First, Actual R = -2: Management R = -2 - (-1) = -1 (bad: lost more than planned)
-  // - SL Hit First, Actual R = -0.5: Management R = -0.5 - (-1) = +0.5 (good: lost less than planned)
-  // - TP Hit First, Actual R = 1.5, Target R = 2: Management R = 1.5 - 2 = -0.5 (bad: made less than planned)
-  // - TP Hit First, Actual R = 3, Target R = 2: Management R = 3 - 2 = +1 (good: made more than planned)
+  // For SL Hit First: Management R = Saved R from SL moves (accounts for partial exits)
+  // For TP Hit First: Management R = Actual R - Weighted Target R
   logger.debug('[R-CALC] ========== Management R Calculation ==========');
   logger.debug('[R-CALC] manual_target_hit_first:', manual_target_hit_first);
 
   let managementR = null;
-  let plannedR = null;
 
-  if (manual_target_hit_first === 'stop_loss') {
-    // SL Hit First: The plan was to stop out at -1R
-    plannedR = -1;
-    managementR = actualR - plannedR;
-    logger.debug('[R-CALC] SL Hit First - Planned R = -1 (stop loss)');
-    logger.info(`[R-CALC] Management R = ${actualR.toFixed(2)} - (${plannedR}) = ${managementR.toFixed(2)}R`);
-  } else if (manual_target_hit_first === 'take_profit') {
-    // TP Hit First: The plan was to hit take profit at Target R
-    const managementTargetR = weightedTargetR !== null ? weightedTargetR : targetR;
-
-    if (managementTargetR !== null && managementTargetR !== undefined) {
-      plannedR = managementTargetR;
-      managementR = actualR - plannedR;
-      logger.debug('[R-CALC] TP Hit First - Planned R = Target R:', plannedR.toFixed(2));
-      logger.info(`[R-CALC] Management R = ${actualR.toFixed(2)} - ${plannedR.toFixed(2)} = ${managementR.toFixed(2)}R`);
-    } else {
-      logger.debug('[R-CALC] TP Hit First but no target R available - cannot calculate management R');
-    }
+  if (manual_target_hit_first) {
+    // Use TargetHitAnalysisService for proper partial exit handling
+    managementR = TargetHitAnalysisService.calculateManagementR(trade);
+    logger.debug('[R-CALC] Management R from TargetHitAnalysisService:', managementR);
   } else {
     logger.debug('[R-CALC] No target hit selection - cannot calculate management R');
   }
@@ -561,7 +539,7 @@ function calculateManagementScore(actualR, targetR, rLost) {
  * - Caps potential R at 10R to prevent chart scale distortion
  */
 function calculateTradeR(trade) {
-  const { entry_price, exit_price, stop_loss, take_profit, take_profit_targets, side, risk_level_history } = trade;
+  const { entry_price, exit_price, stop_loss, take_profit, take_profit_targets, side, risk_level_history, quantity } = trade;
 
   logger.debug('[R-BATCH] calculateTradeR for trade:', { id: trade.id, symbol: trade.symbol, side });
 
@@ -572,7 +550,7 @@ function calculateTradeR(trade) {
 
   const entryPrice = parseFloat(entry_price);
   const exitPrice = parseFloat(exit_price);
-  
+
   // Get the original stop loss from risk_level_history if available
   // R value should be calculated based on the original risk, not the current (moved) stop loss
   let originalStopLoss = parseFloat(stop_loss);
@@ -580,23 +558,41 @@ function calculateTradeR(trade) {
     const stopLossEntries = risk_level_history
       .filter(entry => entry.type === 'stop_loss' && entry.old_value !== null && entry.old_value !== undefined)
       .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-    
+
     if (stopLossEntries.length > 0) {
       originalStopLoss = parseFloat(stopLossEntries[0].old_value);
       logger.debug('[R-BATCH] Using original stop loss from history:', { originalStopLoss, currentStopLoss: stop_loss });
     }
   }
-  
+
   const stopLoss = originalStopLoss;
+  const isLong = side === 'long';
+
+  // Calculate risk
+  let risk;
+  if (isLong) {
+    risk = entryPrice - stopLoss;
+    if (risk <= 0) {
+      logger.debug('[R-BATCH] Invalid risk for long trade');
+      return null;
+    }
+  } else {
+    risk = stopLoss - entryPrice;
+    if (risk <= 0) {
+      logger.debug('[R-BATCH] Invalid risk for short trade');
+      return null;
+    }
+  }
+
+  // Calculate actual R
+  const actualR = isLong ? (exitPrice - entryPrice) / risk : (entryPrice - exitPrice) / risk;
 
   // Determine the take profit price to use for potential R
   // Priority: take_profit_targets (first/primary target) > take_profit
   let takeProfit = null;
-
-  // Check for take_profit_targets array
   const targets = take_profit_targets;
+
   if (targets && Array.isArray(targets) && targets.length > 0) {
-    // Use the first target (primary) for potential R calculation
     const firstTarget = targets[0];
     if (firstTarget && firstTarget.price) {
       takeProfit = parseFloat(firstTarget.price);
@@ -604,50 +600,80 @@ function calculateTradeR(trade) {
     }
   }
 
-  // Fall back to single take_profit if no targets
   if (!takeProfit && take_profit) {
     takeProfit = parseFloat(take_profit);
     logger.debug('[R-BATCH] Using single take_profit:', takeProfit);
   }
 
-  let risk, actualR, targetR;
-
-  if (side === 'long') {
-    risk = entryPrice - stopLoss;
-    if (risk <= 0) {
-      logger.debug('[R-BATCH] Invalid risk for long trade');
-      return null;
-    }
-    actualR = (exitPrice - entryPrice) / risk;
-    if (takeProfit) {
-      targetR = (takeProfit - entryPrice) / risk;
-    }
-    logger.debug('[R-BATCH] LONG calculated:', { risk: risk.toFixed(2), actualR: actualR.toFixed(2), targetR: targetR?.toFixed(2) });
-  } else {
-    risk = stopLoss - entryPrice;
-    if (risk <= 0) {
-      logger.debug('[R-BATCH] Invalid risk for short trade');
-      return null;
-    }
-    actualR = (entryPrice - exitPrice) / risk;
-    if (takeProfit) {
-      targetR = (entryPrice - takeProfit) / risk;
-    }
-    logger.debug('[R-BATCH] SHORT calculated:', { risk: risk.toFixed(2), actualR: actualR.toFixed(2), targetR: targetR?.toFixed(2) });
+  // Calculate single target R
+  let targetR;
+  if (takeProfit) {
+    targetR = isLong ? (takeProfit - entryPrice) / risk : (entryPrice - takeProfit) / risk;
   }
+
+  // Calculate weighted average target R for multiple targets (matches calculateRMultiples)
+  let weightedTargetR = null;
+  const hasTargetsArray = targets && Array.isArray(targets) && targets.length > 0;
+  const hasPrimaryTp = !!take_profit;
+  const totalTargetCount = (hasPrimaryTp ? 1 : 0) + (hasTargetsArray ? targets.length : 0);
+
+  if (hasTargetsArray && totalTargetCount > 1 && risk > 0) {
+    let totalShares = 0;
+    let weightedSum = 0;
+
+    const specifiedShares = targets.reduce((sum, t) => sum + (parseFloat(t.shares || t.quantity) || 0), 0);
+    const totalQuantity = parseFloat(quantity) || 1;
+
+    // Add TP1 from take_profit field if it exists
+    if (hasPrimaryTp) {
+      const tp1Price = parseFloat(take_profit);
+      const tp1R = isLong ? (tp1Price - entryPrice) / risk : (entryPrice - tp1Price) / risk;
+      const tp1Shares = specifiedShares > 0
+        ? Math.max(0, totalQuantity - specifiedShares)
+        : totalQuantity / (targets.length + 1);
+
+      if (tp1Shares > 0 && isFinite(tp1R)) {
+        totalShares += tp1Shares;
+        weightedSum += tp1R * tp1Shares;
+      }
+    }
+
+    // Add additional targets
+    for (const target of targets) {
+      if (target.price) {
+        const tpPrice = parseFloat(target.price);
+        const tpR = isLong ? (tpPrice - entryPrice) / risk : (entryPrice - tpPrice) / risk;
+        const tpShares = parseFloat(target.shares || target.quantity) || 1;
+
+        if (isFinite(tpR)) {
+          totalShares += tpShares;
+          weightedSum += tpR * tpShares;
+        }
+      }
+    }
+
+    if (totalShares > 0) {
+      weightedTargetR = weightedSum / totalShares;
+      logger.debug('[R-BATCH] Calculated weighted target R:', { weightedTargetR, totalShares });
+    }
+  }
+
+  // Use weighted average if available, otherwise single target
+  const effectiveTargetR = weightedTargetR !== null ? weightedTargetR : targetR;
 
   // Cap potential R at 10R to prevent unrealistic values from distorting charts
-  // A 10R target is already an excellent trade; anything beyond is usually a data entry error
   const MAX_POTENTIAL_R = 10;
-  if (targetR !== undefined && targetR > MAX_POTENTIAL_R) {
-    logger.debug(`[R-BATCH] Capping potential R from ${targetR.toFixed(2)} to ${MAX_POTENTIAL_R}`);
-    logger.info(`[R-CALC] Capping potential R from ${targetR.toFixed(2)} to ${MAX_POTENTIAL_R} for trade ${trade.id}`);
-    targetR = MAX_POTENTIAL_R;
+  let finalTargetR = effectiveTargetR;
+  if (finalTargetR !== undefined && finalTargetR > MAX_POTENTIAL_R) {
+    logger.debug(`[R-BATCH] Capping potential R from ${finalTargetR.toFixed(2)} to ${MAX_POTENTIAL_R}`);
+    finalTargetR = MAX_POTENTIAL_R;
   }
+
+  logger.debug('[R-BATCH] Calculated:', { actualR: actualR.toFixed(2), targetR: finalTargetR?.toFixed(2) });
 
   const result = {
     actual_r: Math.round(actualR * 100) / 100,
-    target_r: targetR !== undefined ? Math.round(targetR * 100) / 100 : null
+    target_r: finalTargetR !== undefined ? Math.round(finalTargetR * 100) / 100 : null
   };
   logger.debug('[R-BATCH] Final result:', result);
   return result;
@@ -1040,14 +1066,47 @@ const tradeManagementController = {
       const historyEntries = [];
       const existingHistory = trade.risk_level_history || [];
 
+      // Calculate remaining shares for SL move tracking
+      // Remaining shares = total quantity - shares already exited at hit targets
+      const calculateRemainingShares = () => {
+        const totalQty = parseFloat(trade.quantity) || 1;
+        let exitedShares = 0;
+
+        // Check take_profit_targets for hit targets
+        if (trade.take_profit_targets && Array.isArray(trade.take_profit_targets)) {
+          for (const target of trade.take_profit_targets) {
+            if (target.status === 'hit' && (target.shares || target.quantity)) {
+              exitedShares += parseFloat(target.shares || target.quantity) || 0;
+            }
+          }
+        }
+
+        // Also check TP1 (take_profit field) - if it has been hit, subtract its shares
+        // TP1 shares = total - sum of target array shares
+        if (trade.take_profit_targets && Array.isArray(trade.take_profit_targets)) {
+          const specifiedShares = trade.take_profit_targets.reduce(
+            (sum, t) => sum + (parseFloat(t.shares || t.quantity) || 0), 0
+          );
+          // If we have a take_profit and some targets have been hit, check if TP1 was likely hit first
+          // For now, assume TP1 shares are the remaining after target array shares
+          // This is tracked via remaining_shares in the frontend/history
+        }
+
+        const remaining = Math.max(0, totalQty - exitedShares);
+        logger.debug('[REMAINING-SHARES] Calculated:', { totalQty, exitedShares, remaining });
+        return remaining;
+      };
+
       if (stop_loss !== undefined && stop_loss !== trade.stop_loss) {
+        const remainingShares = calculateRemainingShares();
         historyEntries.push(
           TargetHitAnalysisService.createHistoryEntry(
             trade,
             'stop_loss',
             trade.stop_loss ? parseFloat(trade.stop_loss) : null,
             stop_loss !== null ? parseFloat(stop_loss) : null,
-            adjustment_reason
+            adjustment_reason,
+            { remaining_shares: remainingShares }
           )
         );
       }
@@ -1241,13 +1300,14 @@ const tradeManagementController = {
         if (rValues) {
           cumulativeActualR += rValues.actual_r;
 
-          // For potential R, use target_r if available, otherwise use actual_r
+          // For potential R, only use target_r if available
+          // If no target is set, don't add to potential R (use 0)
+          // This ensures the chart matches the R-Multiple Analysis where "Not Set" means no target
           if (rValues.target_r !== null) {
             cumulativePotentialR += rValues.target_r;
             tradesWithTarget++;
-          } else {
-            cumulativePotentialR += rValues.actual_r;
           }
+          // else: no target set, don't add to potential R
 
           // Calculate management R fresh (same as individual trade analysis)
           // This ensures the chart matches the sum of individual R-Multiple Analysis values

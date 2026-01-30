@@ -10,9 +10,14 @@ const TargetHitAnalysisService = require('./src/services/targetHitAnalysisServic
  * For Long: (exitPrice - entryPrice) / (entryPrice - stopLoss)
  * For Short: (entryPrice - exitPrice) / (stopLoss - entryPrice)
  *
- * Management R = Actual R - Planned R
+ * Management R = Actual R - Planned R + SL Move Impact
  * - If SL Hit First: Planned R = -1 (stop out)
- * - If TP Hit First: Planned R = Target R
+ * - If TP Hit First: Planned R = Target R (weighted average for multiple targets)
+ * - SL Move Impact: R saved from moving SL on remaining position after partial exits
+ *
+ * Weighted Target R:
+ * - Includes TP1 from take_profit field + all targets from take_profit_targets array
+ * - Uses TargetHitAnalysisService.calculateWeightedTargetR() for consistency
  */
 
 // R-Value calculation function (matches calculateTradeR in tradeManagement.controller.js)
@@ -153,6 +158,9 @@ function calculateRValue(trade) {
 async function recalculateRValues() {
   try {
     console.log('[START] Recalculating R-Values and Management R...\n');
+    console.log('[INFO] Changes include:');
+    console.log('  - Weighted Target R now includes TP1 from take_profit field');
+    console.log('  - Management R includes SL move impact for partial exits\n');
 
     // Find all closed trades
     const query = `
@@ -170,6 +178,7 @@ async function recalculateRValues() {
 
     let rValueUpdatedCount = 0;
     let managementRUpdatedCount = 0;
+    let slMoveImpactCount = 0;
     let skippedCount = 0;
     let clearedCount = 0;
 
@@ -192,11 +201,18 @@ async function recalculateRValues() {
       }
 
       // Calculate management R using the service (matches individual trade analysis)
+      // This now includes SL move impact for partial exits
       // Only recalculate if manual_target_hit_first is set; preserve existing values otherwise
       let newManagementR = null;
+      let hasSLMoveImpact = false;
       if (trade.manual_target_hit_first) {
         const managementR = TargetHitAnalysisService.calculateManagementR(trade);
         newManagementR = managementR !== null ? Math.round(managementR * 100) / 100 : null;
+
+        // Check if this trade has SL moves in history (for reporting)
+        if (trade.risk_level_history && Array.isArray(trade.risk_level_history)) {
+          hasSLMoveImpact = trade.risk_level_history.some(e => e.type === 'stop_loss');
+        }
       } else {
         // Preserve existing management_r for legacy data without manual_target_hit_first
         newManagementR = trade.management_r !== null ? parseFloat(trade.management_r) : null;
@@ -236,6 +252,10 @@ async function recalculateRValues() {
           console.log(`[UPDATE] Trade ${trade.id} (${trade.symbol})`);
           console.log(`         management_r: ${currentManagementR} -> ${newManagementR}`);
           console.log(`         (manual_target_hit_first: ${trade.manual_target_hit_first || 'not set'})`);
+          if (hasSLMoveImpact) {
+            console.log(`         (includes SL move impact from history)`);
+            slMoveImpactCount++;
+          }
           managementRUpdatedCount++;
         }
       } else {
@@ -246,6 +266,7 @@ async function recalculateRValues() {
     console.log(`\n[COMPLETE] R-Value recalculation finished`);
     console.log(`  - r_value updated: ${rValueUpdatedCount} trades`);
     console.log(`  - management_r updated: ${managementRUpdatedCount} trades`);
+    console.log(`  - Trades with SL move impact: ${slMoveImpactCount}`);
     console.log(`  - Cleared: ${clearedCount} trades (no valid stop loss)`);
     console.log(`  - Skipped (no change): ${skippedCount} trades`);
     console.log(`  - Total processed: ${trades.length} trades`);
