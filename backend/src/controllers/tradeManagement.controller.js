@@ -1097,7 +1097,13 @@ const tradeManagementController = {
         return remaining;
       };
 
-      if (stop_loss !== undefined && stop_loss !== trade.stop_loss) {
+      // Compare as floats to avoid type coercion issues (string "6909" vs number 6909.000000)
+      const stopLossChanged = stop_loss !== undefined &&
+        (stop_loss === null) !== (trade.stop_loss === null) ||
+        (stop_loss !== null && trade.stop_loss !== null &&
+         Math.abs(parseFloat(stop_loss) - parseFloat(trade.stop_loss)) > 0.0001);
+
+      if (stopLossChanged) {
         const remainingShares = calculateRemainingShares();
         historyEntries.push(
           TargetHitAnalysisService.createHistoryEntry(
@@ -1111,7 +1117,13 @@ const tradeManagementController = {
         );
       }
 
-      if (take_profit !== undefined && take_profit !== trade.take_profit) {
+      // Compare as floats to avoid type coercion issues
+      const takeProfitChanged = take_profit !== undefined &&
+        (take_profit === null) !== (trade.take_profit === null) ||
+        (take_profit !== null && trade.take_profit !== null &&
+         Math.abs(parseFloat(take_profit) - parseFloat(trade.take_profit)) > 0.0001);
+
+      if (takeProfitChanged) {
         historyEntries.push(
           TargetHitAnalysisService.createHistoryEntry(
             trade,
