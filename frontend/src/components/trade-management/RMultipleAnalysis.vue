@@ -49,22 +49,22 @@
           <div class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
             Management Impact
           </div>
-          <div class="text-3xl font-bold" :class="analysis.management_r >= 0 ? 'text-green-600 dark:text-green-400' : 'text-yellow-600 dark:text-yellow-400'">
+          <div class="text-3xl font-bold" :class="getManagementRTextClass">
             {{ formatR(analysis.management_r) }}
           </div>
-          <div class="text-sm text-gray-600 dark:text-gray-400 mt-1">
+          <div v-if="analysis.management_r !== 0" class="text-sm text-gray-600 dark:text-gray-400 mt-1">
             {{ getManagementRDescription }}
           </div>
         </div>
         <!-- R Lost/Gained (when no target hit analysis) -->
         <div v-else-if="effectiveRLost !== null" class="p-4 rounded-lg" :class="getRLostClass">
           <div class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
-            {{ effectiveRLost > 0 ? 'R Left on Table' : 'R Exceeded' }}
+            {{ effectiveRLost > 0 ? 'R Left on Table' : (effectiveRLost === 0 ? 'Target Hit' : 'R Exceeded') }}
           </div>
-          <div class="text-3xl font-bold" :class="effectiveRLost > 0 ? 'text-yellow-600 dark:text-yellow-400' : 'text-green-600 dark:text-green-400'">
+          <div class="text-3xl font-bold" :class="getRLostTextClass">
             {{ formatR(Math.abs(effectiveRLost)) }}
           </div>
-          <div class="text-sm text-gray-600 dark:text-gray-400 mt-1">
+          <div class="text-sm" :class="effectiveRLost === 0 ? 'text-yellow-600 dark:text-yellow-400' : 'text-gray-600 dark:text-gray-400'" v-if="getRLostDescription">
             {{ getRLostDescription }}
           </div>
         </div>
@@ -269,7 +269,20 @@ const getRLostClass = computed(() => {
   if (effectiveRLost.value > 0) {
     return 'bg-yellow-50 dark:bg-yellow-900/20'
   }
+  if (effectiveRLost.value === 0) {
+    return 'bg-yellow-50 dark:bg-yellow-900/20'
+  }
   return 'bg-green-50 dark:bg-green-900/20'
+})
+
+const getRLostTextClass = computed(() => {
+  if (effectiveRLost.value > 0) {
+    return 'text-yellow-600 dark:text-yellow-400'
+  }
+  if (effectiveRLost.value === 0) {
+    return 'text-yellow-600 dark:text-yellow-400'
+  }
+  return 'text-green-600 dark:text-green-400'
 })
 
 const getRLostDescription = computed(() => {
@@ -278,16 +291,29 @@ const getRLostDescription = computed(() => {
   if (rLost > 0) {
     return 'Exited before reaching target'
   }
+  if (rLost === 0) {
+    return 'You stuck to your plans'
+  }
   return 'Exceeded target - excellent management!'
 })
 
 // Management R styling and description (based on target hit analysis)
 const getManagementRClass = computed(() => {
   const mgmtR = props.analysis.management_r
-  if (mgmtR >= 0) {
+  if (mgmtR > 0) {
     return 'bg-green-50 dark:bg-green-900/20'
   }
+  // 0 or negative gets yellow/orange background
   return 'bg-yellow-50 dark:bg-yellow-900/20'
+})
+
+const getManagementRTextClass = computed(() => {
+  const mgmtR = props.analysis.management_r
+  if (mgmtR > 0) {
+    return 'text-green-600 dark:text-green-400'
+  }
+  // 0 or negative gets yellow/orange text
+  return 'text-yellow-600 dark:text-yellow-400'
 })
 
 const getManagementRDescription = computed(() => {
@@ -347,10 +373,23 @@ const getAssessmentDescription = computed(() => {
   const actualR = props.analysis.actual_r
   const targetR = effectiveTargetR.value
 
+  // Check if they hit exactly their target (within small tolerance for floating point)
+  const hitExactTarget = targetR !== null && Math.abs(actualR - targetR) < 0.01
+  // Check if they hit exactly their stop loss (-1R)
+  const hitExactStopLoss = Math.abs(actualR - (-1)) < 0.01
+  // Check if they took a loss but less than planned risk (between -1R and 0)
+  const reducedLoss = actualR < 0 && actualR > -1
+
   switch (score) {
     case 'exceeded':
+      if (hitExactTarget) {
+        return `You hit your ${formatR(targetR)} target exactly - you stuck to your plans.`
+      }
       return `You captured ${formatR(actualR)} vs your ${formatR(targetR)} target - you let your winner run!`
     case 'near_target':
+      if (hitExactTarget) {
+        return `You hit your ${formatR(targetR)} target exactly - you stuck to your plans.`
+      }
       return `You captured most of your target R - solid trade management.`
     case 'partial':
       return `You captured about half of your target R - consider letting winners run longer.`
@@ -363,8 +402,20 @@ const getAssessmentDescription = computed(() => {
     case 'breakeven':
       return `Trade closed at breakeven - no damage, no gain.`
     case 'stopped_out':
+      if (hitExactStopLoss) {
+        return `You hit your stop loss exactly at -1R - you stuck to your plans.`
+      }
+      if (reducedLoss) {
+        return `You reduced your planned loss by exiting at ${formatR(actualR)} instead of -1R.`
+      }
       return `Stopped out at planned risk level - this is proper risk management.`
     case 'loss':
+      if (hitExactStopLoss) {
+        return `You hit your stop loss exactly at -1R - you stuck to your plans.`
+      }
+      if (reducedLoss) {
+        return `You reduced your planned loss by exiting at ${formatR(actualR)} instead of -1R.`
+      }
       return `Loss exceeded planned risk - review your stop loss placement.`
     default:
       return `Trade management analysis complete.`
