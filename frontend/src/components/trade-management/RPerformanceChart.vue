@@ -39,7 +39,7 @@
 
           <!-- Total Potential R -->
           <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
-            <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Potential R</div>
+            <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Target R</div>
             <div class="text-2xl font-bold text-primary-600 dark:text-primary-400">
               {{ formatR(summary.total_potential_r) }}
             </div>
@@ -107,7 +107,7 @@
           </div>
           <div class="flex items-center">
             <span class="w-6 h-1 rounded-full mr-2" style="background-color: #6366f1;"></span>
-            <span class="text-gray-600 dark:text-gray-400">Potential Performance</span>
+            <span class="text-gray-600 dark:text-gray-400">Target Performance</span>
           </div>
           <div class="flex items-center">
             <span class="w-6 h-1 rounded-full bg-amber-500 dark:bg-amber-400 mr-2"></span>
@@ -228,7 +228,7 @@ function createChart() {
       borderWidth: 2
     },
     {
-      label: 'Potential R',
+      label: 'Target R',
       data: potentialData,
       borderColor: '#6366f1', // indigo-500 - theme-adjacent
       backgroundColor: 'transparent',
@@ -294,7 +294,7 @@ function createChart() {
               if (context.datasetIndex === 0) {
                 return `Actual R: ${dataPoint.cumulative_actual_r}R (this trade: ${dataPoint.actual_r > 0 ? '+' : ''}${dataPoint.actual_r}R)`
               } else if (context.datasetIndex === 1) {
-                return `Potential R: ${dataPoint.cumulative_potential_r}R`
+                return `Target R: ${dataPoint.cumulative_potential_r}R`
               } else if (context.datasetIndex === 2) {
                 const mgmtR = dataPoint.management_r || 0
                 return `Management R: ${dataPoint.cumulative_management_r || 0}R (this trade: ${mgmtR >= 0 ? '+' : ''}${mgmtR}R)`

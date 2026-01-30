@@ -219,9 +219,9 @@
           </div>
         </div>
 
-        <!-- Potential P&L -->
+        <!-- Target P&L -->
         <div v-if="potentialPL !== null">
-          <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Potential P&L</div>
+          <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Target P&L</div>
           <div class="text-lg font-semibold text-primary-600 dark:text-primary-400">
             {{ formatCurrency(potentialPL) }}
           </div>
@@ -230,7 +230,7 @@
           </div>
         </div>
         <div v-else>
-          <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Potential P&L</div>
+          <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Target P&L</div>
           <div class="text-lg text-gray-400 dark:text-gray-500">
             N/A
           </div>
