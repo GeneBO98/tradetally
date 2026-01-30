@@ -1143,7 +1143,11 @@ class SchwabService {
     for (const existing of existingTrades) {
       if (existing.symbol?.toUpperCase() !== symbol) continue;
 
-      // 1. Check execution data match (by order ID) - most reliable
+      // 1. Check execution data match (by EXIT order ID + datetime) - most reliable
+      // IMPORTANT: Only match on EXIT executions, not entry executions.
+      // For partial exits (buy 15, sell 5, sell 10 later), all partial trades share
+      // the same entry order ID but have different exit order IDs.
+      // Matching on ANY execution would incorrectly flag partial exits as duplicates.
       if (newTrade.executionData?.length > 0 && existing.executions) {
         let existingExecs = existing.executions;
         if (typeof existingExecs === 'string') {
@@ -1154,16 +1158,21 @@ class SchwabService {
           }
         }
 
-        const newOrderIds = new Set(
-          newTrade.executionData.map(e => e.orderId).filter(Boolean)
+        // Build a set of EXIT "orderId|datetime" combinations for the new trade
+        // Only use exit executions since entry orders are shared across partial exits
+        const newExitExecKeys = new Set(
+          newTrade.executionData
+            .filter(e => e.orderId && e.type === 'exit')
+            .map(e => `${e.orderId}|${e.datetime}`)
         );
 
-        const hasMatch = existingExecs.some(exec =>
-          exec.orderId && newOrderIds.has(exec.orderId)
+        // Check if any existing EXIT execution matches both orderId AND datetime
+        const hasExitMatch = existingExecs.some(exec =>
+          exec.orderId && exec.datetime && exec.type === 'exit' && newExitExecKeys.has(`${exec.orderId}|${exec.datetime}`)
         );
 
-        if (hasMatch) {
-          console.log(`[SCHWAB] Duplicate found by order ID: ${symbol}`);
+        if (hasExitMatch) {
+          console.log(`[SCHWAB] Duplicate found by exit order ID + datetime: ${symbol}`);
           return true;
         }
       }

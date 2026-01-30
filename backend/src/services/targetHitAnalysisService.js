@@ -558,18 +558,82 @@ class TargetHitAnalysisService {
   }
 
   /**
+   * Calculate the total R saved from all SL moves in history
+   * This accounts for partial position exits - remaining contracts benefit from moved SL
+   *
+   * @param {Array} risk_level_history - Array of history entries
+   * @param {number} originalRisk - Original risk per share
+   * @param {number} totalQty - Total trade quantity
+   * @param {boolean} isLong - Whether trade is long
+   * @param {number} inferredRemainingRatio - Fallback remaining ratio if not in history (from partial exits)
+   * @returns {number} Total R saved from SL moves
+   */
+  static calculateSLMoveImpact(risk_level_history, originalRisk, totalQty, isLong, inferredRemainingRatio = 1.0) {
+    if (!risk_level_history || !Array.isArray(risk_level_history) || risk_level_history.length === 0) {
+      return 0;
+    }
+
+    let totalRSaved = 0;
+
+    const slMoves = risk_level_history.filter(entry => entry.type === 'stop_loss');
+
+    for (const move of slMoves) {
+      // If history entry has pre-calculated total_r_saved, use it
+      if (move.total_r_saved !== undefined && move.total_r_saved !== null) {
+        totalRSaved += parseFloat(move.total_r_saved);
+        continue;
+      }
+
+      // Otherwise, calculate from old/new values
+      if (move.old_value && move.new_value && originalRisk > 0) {
+        const oldSL = parseFloat(move.old_value);
+        const newSL = parseFloat(move.new_value);
+
+        // Distance saved: positive = reduced risk
+        // For long: moving SL UP reduces risk
+        // For short: moving SL DOWN reduces risk
+        const distanceSaved = isLong ? newSL - oldSL : oldSL - newSL;
+        const rSavedPerContract = distanceSaved / originalRisk;
+
+        // Use remaining_shares_ratio from history if available,
+        // otherwise use inferred ratio from partial exits
+        const remainingRatio = move.remaining_shares_ratio !== undefined
+          ? parseFloat(move.remaining_shares_ratio)
+          : inferredRemainingRatio;
+
+        totalRSaved += rSavedPerContract * remainingRatio;
+
+        logger.debug('[SL-MOVE-IMPACT] Move calculation:', {
+          oldSL,
+          newSL,
+          distanceSaved: distanceSaved.toFixed(4),
+          rSavedPerContract: rSavedPerContract.toFixed(4),
+          remainingRatio: remainingRatio.toFixed(4),
+          rSavedThisMove: (rSavedPerContract * remainingRatio).toFixed(4)
+        });
+      }
+    }
+
+    logger.debug('[SL-MOVE-IMPACT] Total R saved from SL moves:', { totalRSaved: totalRSaved.toFixed(4), slMoveCount: slMoves.length });
+    return totalRSaved;
+  }
+
+  /**
    * Calculate management R for a trade
-   * Management R = Actual R - Planned R
+   * Management R = Actual R - Planned R + SL Move Impact
    *
    * The "Planned R" depends on which target was hit first (manual_target_hit_first):
    * - If SL Hit First: Planned R = -1 (the trade was supposed to stop out)
    * - If TP Hit First: Planned R = Target R (the trade was supposed to hit take profit)
+   *
+   * SL Move Impact accounts for R saved by moving stop loss while remaining contracts are open.
    *
    * Examples:
    * - SL Hit First, Actual R = -2: Management R = -2 - (-1) = -1 (bad: lost more than planned)
    * - SL Hit First, Actual R = -0.5: Management R = -0.5 - (-1) = +0.5 (good: lost less than planned)
    * - TP Hit First, Actual R = 1.5, Target R = 2: Management R = 1.5 - 2 = -0.5 (bad: made less than planned)
    * - TP Hit First, Actual R = 3, Target R = 2: Management R = 3 - 2 = +1 (good: made more than planned)
+   * - SL moved after partial exit: Adds R saved on remaining position to management R
    *
    * @param {Object} trade - Trade with entry, exit, stop loss, take profit, and manual_target_hit_first
    * @returns {number|null} Management R value
@@ -599,6 +663,7 @@ class TargetHitAnalysisService {
     const entryPrice = parseFloat(entry_price);
     const exitPrice = parseFloat(exit_price);
     const isLong = side === 'long';
+    const totalQty = parseFloat(quantity) || 1;
 
     // Get the original stop loss from risk_level_history if available
     // R value should be calculated based on the original risk
@@ -617,29 +682,155 @@ class TargetHitAnalysisService {
     const risk = isLong ? entryPrice - originalStopLoss : originalStopLoss - entryPrice;
     if (risk <= 0) return null;
 
+    // Check if we have partial exits (multiple targets with shares)
+    const hasTargetsArray = take_profit_targets && Array.isArray(take_profit_targets) && take_profit_targets.length > 0;
+
+    // Calculate partial exit data
+    // Two possible data structures:
+    // 1. take_profit_targets contains ALL targets (including TP1) with explicit shares
+    // 2. take_profit contains TP1 price, take_profit_targets contains additional targets
+    //
+    // Detect structure: if first target price matches take_profit, use structure #1
+    let tp1R = 0;
+    let tp1Ratio = 0;
+    let remainingRatio = 1;
+    let hasPartialExits = false;
+
+    if (hasTargetsArray) {
+      const totalTargetShares = take_profit_targets.reduce(
+        (sum, t) => sum + (parseFloat(t.shares || t.quantity) || 0), 0
+      );
+
+      // Check if targets array contains all shares (structure #1)
+      // or if we need to add TP1 separately (structure #2)
+      const firstTargetMatchesTakeProfit = take_profit &&
+        Math.abs(parseFloat(take_profit_targets[0].price) - parseFloat(take_profit)) < 0.01;
+
+      if (firstTargetMatchesTakeProfit || totalTargetShares >= totalQty) {
+        // Structure #1: take_profit_targets contains ALL targets with shares
+        // Find TP1 (first target) for partial exit calculation
+        const tp1Target = take_profit_targets[0];
+        const tp1Price = parseFloat(tp1Target.price);
+        const tp1Shares = parseFloat(tp1Target.shares || tp1Target.quantity) || 0;
+
+        tp1R = isLong ? (tp1Price - entryPrice) / risk : (entryPrice - tp1Price) / risk;
+        tp1Ratio = tp1Shares / totalQty;
+
+        // Remaining = everything after TP1
+        const remainingShares = totalQty - tp1Shares;
+        remainingRatio = remainingShares / totalQty;
+        hasPartialExits = tp1Shares > 0 && tp1Shares < totalQty;
+
+        logger.debug('[MANAGEMENT-R] Using targets array structure (all targets in array):', {
+          tp1Price,
+          tp1Shares,
+          tp1R: tp1R.toFixed(4),
+          tp1Ratio: tp1Ratio.toFixed(4),
+          remainingRatio: remainingRatio.toFixed(4)
+        });
+      } else {
+        // Structure #2: take_profit is TP1, take_profit_targets are additional
+        const tp1Price = parseFloat(take_profit);
+        tp1R = isLong ? (tp1Price - entryPrice) / risk : (entryPrice - tp1Price) / risk;
+
+        const tp1Shares = Math.max(0, totalQty - totalTargetShares);
+        tp1Ratio = tp1Shares / totalQty;
+        remainingRatio = totalTargetShares / totalQty;
+        hasPartialExits = tp1Shares > 0 && tp1Shares < totalQty;
+
+        logger.debug('[MANAGEMENT-R] Using separate TP1 structure:', {
+          tp1Price,
+          tp1Shares,
+          tp1R: tp1R.toFixed(4),
+          tp1Ratio: tp1Ratio.toFixed(4),
+          remainingRatio: remainingRatio.toFixed(4)
+        });
+      }
+    }
+
     // Calculate actual R
-    const actualPL = isLong ? exitPrice - entryPrice : entryPrice - exitPrice;
-    const actualR = actualPL / risk;
+    // For partial exits, we need weighted actual R:
+    //   = TP1 contribution + remaining exit contribution
+    // Since exit_price is only the final exit (for remaining position),
+    // we must add TP1 contribution separately
+    const remainingExitR = isLong
+      ? (exitPrice - entryPrice) / risk
+      : (entryPrice - exitPrice) / risk;
+
+    let actualR;
+    if (hasPartialExits) {
+      // Weighted actual R = TP1 exit + remaining exit (at exit_price)
+      actualR = (tp1R * tp1Ratio) + (remainingExitR * remainingRatio);
+      logger.debug('[MANAGEMENT-R] Weighted Actual R for partial exits:', {
+        tp1R: tp1R.toFixed(4),
+        tp1Ratio: tp1Ratio.toFixed(4),
+        tp1Contribution: (tp1R * tp1Ratio).toFixed(4),
+        remainingExitR: remainingExitR.toFixed(4),
+        remainingRatio: remainingRatio.toFixed(4),
+        remainingContribution: (remainingExitR * remainingRatio).toFixed(4),
+        actualR: actualR.toFixed(4)
+      });
+    } else {
+      // No partial exits - use exit_price for entire position
+      actualR = remainingExitR;
+    }
 
     let plannedR = null;
 
+    let managementR = null;
+
     if (manual_target_hit_first === 'stop_loss') {
-      // SL Hit First: The plan was to stop out at -1R
-      plannedR = -1;
+      // SL Hit First: Management R = Saved R from SL moves
+      // This represents the R saved by moving your stop loss while contracts remain open
+      // The better you managed the SL (moved it to reduce risk), the higher the saved R
+      //
+      // Pass the inferred remaining ratio for partial exits - SL moves typically happen
+      // AFTER TP1 is hit, so we use the remainingRatio calculated above
+      const inferredRemainingRatio = hasPartialExits ? remainingRatio : 1.0;
+      const slMoveImpact = this.calculateSLMoveImpact(risk_level_history, risk, totalQty, isLong, inferredRemainingRatio);
+
+      managementR = slMoveImpact;
+
+      logger.debug('[MANAGEMENT-R] SL Hit First - using SL Move Impact:', {
+        slMoveImpact: slMoveImpact.toFixed(4),
+        inferredRemainingRatio: inferredRemainingRatio.toFixed(4),
+        managementR: managementR.toFixed(4)
+      });
+
     } else if (manual_target_hit_first === 'take_profit') {
-      // TP Hit First: The plan was to hit take profit at Target R
-      const targetR = this.calculateWeightedTargetR(trade, risk);
-      if (targetR === null) return null;
-      plannedR = targetR;
+      // TP Hit First: Management R = Actual R - Weighted Target R
+      // This measures how much better/worse you did vs your potential (all targets hit perfectly)
+      const weightedTargetR = this.calculateWeightedTargetR(trade, risk);
+      if (weightedTargetR === null) return null;
+
+      plannedR = weightedTargetR;
+
+      // Calculate actual R (exit_price is weighted average, so use it directly)
+      const actualRDirect = isLong
+        ? (exitPrice - entryPrice) / risk
+        : (entryPrice - exitPrice) / risk;
+
+      managementR = actualRDirect - plannedR;
+
+      logger.debug('[MANAGEMENT-R] TP Hit First:', {
+        actualR: actualRDirect.toFixed(4),
+        weightedTargetR: weightedTargetR.toFixed(4),
+        managementR: managementR.toFixed(4)
+      });
     }
 
-    // Management R = Actual R - Planned R
-    const managementR = actualR - plannedR;
-    return Math.round(managementR * 100) / 100;
+    logger.debug('[MANAGEMENT-R] Final calculation:', {
+      managementR: managementR !== null ? managementR.toFixed(4) : 'null'
+    });
+
+    return managementR !== null ? Math.round(managementR * 100) / 100 : null;
   }
 
   /**
    * Calculate weighted average target R for a trade
+   * Includes TP1 from take_profit field + all targets from take_profit_targets array
+   * This matches the logic in calculateRMultiples() controller for consistency
+   *
    * @param {Object} trade - Trade with take profit data
    * @param {number} risk - Risk per share (entry - stop loss for long, or stop loss - entry for short)
    * @returns {number|null} Weighted average target R, or null if no targets set
@@ -657,27 +848,68 @@ class TargetHitAnalysisService {
     const isLong = side === 'long';
     const totalQty = parseFloat(quantity) || 1;
 
-    // If we have multiple take profit targets, calculate weighted average
-    if (take_profit_targets && Array.isArray(take_profit_targets) && take_profit_targets.length > 0) {
+    const hasTargetsArray = take_profit_targets && Array.isArray(take_profit_targets) && take_profit_targets.length > 0;
+    const hasPrimaryTp = !!take_profit;
+
+    // If we have take_profit_targets array, include TP1 from take_profit field in weighted calculation
+    if (hasTargetsArray) {
       let totalShares = 0;
       let weightedSum = 0;
 
-      take_profit_targets.forEach(t => {
+      // Calculate total shares specified in targets array to determine remaining for TP1
+      const specifiedShares = take_profit_targets.reduce(
+        (sum, t) => sum + (parseFloat(t.shares || t.quantity) || 0), 0
+      );
+
+      // Add TP1 from take_profit field if it exists
+      if (hasPrimaryTp) {
+        const tp1Price = parseFloat(take_profit);
+        const tp1R = isLong ? (tp1Price - entryPrice) / risk : (entryPrice - tp1Price) / risk;
+
+        // Calculate shares for TP1: remaining shares after accounting for targets array
+        const tp1Shares = specifiedShares > 0
+          ? Math.max(0, totalQty - specifiedShares)
+          : totalQty / (take_profit_targets.length + 1);
+
+        if (tp1Shares > 0 && isFinite(tp1R)) {
+          weightedSum += tp1R * tp1Shares;
+          totalShares += tp1Shares;
+          logger.debug('[WEIGHTED-TARGET-R] TP1 contribution:', { tp1Price, tp1R: tp1R.toFixed(2), shares: tp1Shares });
+        }
+      }
+
+      // Process all targets from the array
+      take_profit_targets.forEach((t, index) => {
         if (t.price) {
           const tpPrice = parseFloat(t.price);
           const tpR = isLong ? (tpPrice - entryPrice) / risk : (entryPrice - tpPrice) / risk;
-          const shares = parseFloat(t.shares || t.quantity) || (totalQty / take_profit_targets.length);
-          weightedSum += tpR * shares;
-          totalShares += shares;
+
+          let shares;
+          if (t.shares || t.quantity) {
+            shares = parseFloat(t.shares || t.quantity);
+          } else if (specifiedShares === 0) {
+            // No targets have shares specified - distribute equally (including TP1 if exists)
+            shares = totalQty / (hasPrimaryTp ? take_profit_targets.length + 1 : take_profit_targets.length);
+          } else {
+            shares = 1;
+          }
+
+          if (isFinite(tpR)) {
+            weightedSum += tpR * shares;
+            totalShares += shares;
+            logger.debug(`[WEIGHTED-TARGET-R] Target ${index + 1} contribution:`, { tpPrice, tpR: tpR.toFixed(2), shares });
+          }
         }
       });
 
       if (totalShares > 0) {
-        return weightedSum / totalShares;
+        const weightedR = weightedSum / totalShares;
+        logger.debug('[WEIGHTED-TARGET-R] Final weighted average:', { weightedR: weightedR.toFixed(2), totalShares });
+        return weightedR;
       }
     }
 
-    // Fall back to single take_profit field
+    // Fall back to single take_profit field (no targets array)
     if (take_profit) {
       const tpPrice = parseFloat(take_profit);
       return isLong ? (tpPrice - entryPrice) / risk : (entryPrice - tpPrice) / risk;
@@ -693,33 +925,81 @@ class TargetHitAnalysisService {
    * @param {number} oldValue - Previous value
    * @param {number} newValue - New value
    * @param {string} reason - Reason for the change
+   * @param {Object} options - Additional options for tracking
+   * @param {number} options.remaining_shares - Remaining contracts when SL moved (for partial exits)
    * @returns {Object} History entry to add
    */
-  static createHistoryEntry(trade, type, oldValue, newValue, reason = null) {
+  static createHistoryEntry(trade, type, oldValue, newValue, reason = null, options = {}) {
     const entryPrice = parseFloat(trade.entry_price);
-    const stopLoss = parseFloat(trade.stop_loss);
     const isLong = trade.side === 'long';
+    const totalQty = parseFloat(trade.quantity) || 1;
 
-    // Calculate R impact of this change
-    let rImpact = 0;
-
-    if (stopLoss && entryPrice) {
-      const risk = isLong ? entryPrice - stopLoss : stopLoss - entryPrice;
-
-      if (risk > 0) {
-        if (type === 'take_profit') {
-          const oldR = oldValue ? (isLong ? oldValue - entryPrice : entryPrice - oldValue) / risk : 0;
-          const newR = newValue ? (isLong ? newValue - entryPrice : entryPrice - newValue) / risk : 0;
-          rImpact = newR - oldR;
-        } else if (type === 'stop_loss') {
-          // SL changes affect the risk basis, which is complex
-          // For simplicity, we track it but don't calculate R impact for SL changes
-          rImpact = 0;
-        }
+    // Get original stop loss to calculate risk basis
+    // Use risk_level_history to find original SL, or use old_value for SL moves
+    let originalStopLoss = null;
+    if (trade.risk_level_history && Array.isArray(trade.risk_level_history) && trade.risk_level_history.length > 0) {
+      const stopLossEntries = trade.risk_level_history
+        .filter(entry => entry.type === 'stop_loss' && entry.old_value !== null)
+        .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+      if (stopLossEntries.length > 0) {
+        originalStopLoss = parseFloat(stopLossEntries[0].old_value);
+      }
+    }
+    // If no history, use current stop_loss as original (or old_value if this is a SL move)
+    if (!originalStopLoss) {
+      if (type === 'stop_loss' && oldValue) {
+        originalStopLoss = parseFloat(oldValue);
+      } else {
+        originalStopLoss = parseFloat(trade.stop_loss);
       }
     }
 
-    return {
+    // Calculate original risk for R calculations
+    const originalRisk = isLong
+      ? entryPrice - originalStopLoss
+      : originalStopLoss - entryPrice;
+
+    // Calculate R impact of this change
+    let rImpact = 0;
+    let rSavedPerContract = 0;
+    let totalRSaved = 0;
+
+    if (originalRisk > 0) {
+      if (type === 'take_profit') {
+        const oldR = oldValue ? (isLong ? oldValue - entryPrice : entryPrice - oldValue) / originalRisk : 0;
+        const newR = newValue ? (isLong ? newValue - entryPrice : entryPrice - newValue) / originalRisk : 0;
+        rImpact = newR - oldR;
+      } else if (type === 'stop_loss' && oldValue && newValue) {
+        // For SL moves, calculate R saved based on remaining position
+        // Moving SL toward entry REDUCES risk (positive R saved for remaining contracts)
+        // For long: moving SL UP (toward entry) = reducing risk
+        // For short: moving SL DOWN (toward entry) = reducing risk
+        const distanceSaved = isLong
+          ? parseFloat(newValue) - parseFloat(oldValue)  // Long: SL up = positive
+          : parseFloat(oldValue) - parseFloat(newValue); // Short: SL down = positive
+
+        rSavedPerContract = distanceSaved / originalRisk;
+
+        // Calculate total R saved based on remaining shares
+        const remainingShares = options.remaining_shares !== undefined
+          ? parseFloat(options.remaining_shares)
+          : totalQty; // Default to total if not specified
+        const remainingRatio = remainingShares / totalQty;
+        totalRSaved = rSavedPerContract * remainingRatio;
+
+        logger.debug('[HISTORY-ENTRY] SL move R impact:', {
+          distanceSaved,
+          originalRisk,
+          rSavedPerContract: rSavedPerContract.toFixed(4),
+          remainingShares,
+          totalQty,
+          remainingRatio: remainingRatio.toFixed(4),
+          totalRSaved: totalRSaved.toFixed(4)
+        });
+      }
+    }
+
+    const entry = {
       timestamp: new Date().toISOString(),
       type,
       old_value: oldValue,
@@ -727,6 +1007,16 @@ class TargetHitAnalysisService {
       r_impact: Math.round(rImpact * 100) / 100,
       reason: reason || null
     };
+
+    // Add remaining shares tracking for SL moves
+    if (type === 'stop_loss' && options.remaining_shares !== undefined) {
+      entry.remaining_shares = options.remaining_shares;
+      entry.remaining_shares_ratio = Math.round((options.remaining_shares / totalQty) * 10000) / 10000;
+      entry.r_saved_per_contract = Math.round(rSavedPerContract * 10000) / 10000;
+      entry.total_r_saved = Math.round(totalRSaved * 10000) / 10000;
+    }
+
+    return entry;
   }
 }
 
