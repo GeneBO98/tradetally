@@ -1368,12 +1368,14 @@ const processedExecutions = computed(() => {
 
     if (isOpening) {
       // Add to entry queue for FIFO matching
-      entryQueue.push({ quantity, price, remainingQty: quantity })
+      // Track commission to prorate it when calculating exit P&L
+      entryQueue.push({ quantity, price, commission: totalCost, remainingQty: quantity })
     } else {
       // Exit execution - match against entries using FIFO
       let remainingExitQty = quantity
       let totalMatchedValue = 0
       let totalMatchedQty = 0
+      let totalMatchedEntryCommission = 0
 
       // Consume entries from the front of the queue (FIFO)
       while (remainingExitQty > 0 && entryQueue.length > 0) {
@@ -1382,6 +1384,10 @@ const processedExecutions = computed(() => {
 
         totalMatchedValue += matchQty * entry.price
         totalMatchedQty += matchQty
+        // Prorate entry commission based on matched quantity
+        if (entry.commission && entry.quantity > 0) {
+          totalMatchedEntryCommission += (entry.commission * matchQty / entry.quantity)
+        }
         remainingExitQty -= matchQty
         entry.remainingQty -= matchQty
 
@@ -1392,15 +1398,16 @@ const processedExecutions = computed(() => {
       }
 
       // Calculate P&L based on matched entry price
+      // Deduct both exit commission (totalCost) and prorated entry commission
       if (totalMatchedQty > 0) {
         matchedEntryPrice = totalMatchedValue / totalMatchedQty
 
         if (tradeSide === 'long') {
           // Long: profit when exit price > entry price
-          executionPnl = (price - matchedEntryPrice) * totalMatchedQty * valueMultiplier - totalCost
+          executionPnl = (price - matchedEntryPrice) * totalMatchedQty * valueMultiplier - totalCost - totalMatchedEntryCommission
         } else {
           // Short: profit when exit price < entry price
-          executionPnl = (matchedEntryPrice - price) * totalMatchedQty * valueMultiplier - totalCost
+          executionPnl = (matchedEntryPrice - price) * totalMatchedQty * valueMultiplier - totalCost - totalMatchedEntryCommission
         }
       }
     }
