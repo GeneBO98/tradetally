@@ -432,31 +432,44 @@ function calculateRMultiples(trade) {
     usingWeightedAverage: weightedTargetR !== null
   });
 
-  // Calculate Management R using simplified formula:
-  // Management R = Actual R - Target R
+  // Calculate Management R based on which target was hit first
+  // Management R = Actual R - Planned R
   //
-  // - If Actual R = Target R, Management R = 0 (executed plan perfectly)
-  // - If Actual R > Target R, Management R > 0 (captured more than planned)
-  // - If Actual R < Target R, Management R < 0 (captured less than planned)
+  // The "Planned R" depends on which target was hit first:
+  // - If SL Hit First: Planned R = -1 (the trade was supposed to stop out)
+  // - If TP Hit First: Planned R = Target R (the trade was supposed to hit take profit)
+  //
+  // Examples:
+  // - SL Hit First, Actual R = -2: Management R = -2 - (-1) = -1 (bad: lost more than planned)
+  // - SL Hit First, Actual R = -0.5: Management R = -0.5 - (-1) = +0.5 (good: lost less than planned)
+  // - TP Hit First, Actual R = 1.5, Target R = 2: Management R = 1.5 - 2 = -0.5 (bad: made less than planned)
+  // - TP Hit First, Actual R = 3, Target R = 2: Management R = 3 - 2 = +1 (good: made more than planned)
   logger.debug('[R-CALC] ========== Management R Calculation ==========');
+  logger.debug('[R-CALC] manual_target_hit_first:', manual_target_hit_first);
 
   let managementR = null;
+  let plannedR = null;
 
-  // Calculate target R for management comparison
-  // Use weighted average if multiple targets, otherwise use single target R
-  const managementTargetR = weightedTargetR !== null ? weightedTargetR : targetR;
+  if (manual_target_hit_first === 'stop_loss') {
+    // SL Hit First: The plan was to stop out at -1R
+    plannedR = -1;
+    managementR = actualR - plannedR;
+    logger.debug('[R-CALC] SL Hit First - Planned R = -1 (stop loss)');
+    logger.info(`[R-CALC] Management R = ${actualR.toFixed(2)} - (${plannedR}) = ${managementR.toFixed(2)}R`);
+  } else if (manual_target_hit_first === 'take_profit') {
+    // TP Hit First: The plan was to hit take profit at Target R
+    const managementTargetR = weightedTargetR !== null ? weightedTargetR : targetR;
 
-  if (managementTargetR !== null && managementTargetR !== undefined) {
-    // Management R = Actual R - Target R
-    managementR = actualR - managementTargetR;
-    logger.debug('[R-CALC] Management R calculation:', {
-      actualR: actualR.toFixed(2),
-      targetR: managementTargetR.toFixed(2),
-      managementR: managementR.toFixed(2)
-    });
-    logger.info(`[R-CALC] Management R = ${actualR.toFixed(2)} - ${managementTargetR.toFixed(2)} = ${managementR.toFixed(2)}R`);
+    if (managementTargetR !== null && managementTargetR !== undefined) {
+      plannedR = managementTargetR;
+      managementR = actualR - plannedR;
+      logger.debug('[R-CALC] TP Hit First - Planned R = Target R:', plannedR.toFixed(2));
+      logger.info(`[R-CALC] Management R = ${actualR.toFixed(2)} - ${plannedR.toFixed(2)} = ${managementR.toFixed(2)}R`);
+    } else {
+      logger.debug('[R-CALC] TP Hit First but no target R available - cannot calculate management R');
+    }
   } else {
-    logger.debug('[R-CALC] No target R available - cannot calculate management R');
+    logger.debug('[R-CALC] No target hit selection - cannot calculate management R');
   }
 
   logger.debug('[R-CALC] ========== Final Results ==========');
