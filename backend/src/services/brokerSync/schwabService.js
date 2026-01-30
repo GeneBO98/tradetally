@@ -42,6 +42,42 @@ class SchwabService {
     if (str.length <= 4) return str;
     return '****' + str.slice(-4);
   }
+
+  /**
+   * Extract date string (YYYY-MM-DD) from various date formats
+   * Handles Date objects, ISO strings, date-only strings, and edge cases
+   * @param {Date|string|any} dateValue - The date value to extract from
+   * @returns {string|null} - Date string in YYYY-MM-DD format, or null if invalid
+   */
+  _extractDateString(dateValue) {
+    if (!dateValue) return null;
+
+    // Handle Date objects
+    if (dateValue instanceof Date) {
+      return dateValue.toISOString().split('T')[0];
+    }
+
+    // Convert to string and handle various formats
+    const str = String(dateValue);
+
+    // ISO format: 2025-01-30T10:00:00Z
+    if (str.includes('T')) {
+      return str.split('T')[0];
+    }
+
+    // Date-only format: 2025-01-30
+    if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
+      return str.slice(0, 10);
+    }
+
+    // Try to parse as date
+    const parsed = new Date(str);
+    if (!isNaN(parsed.getTime())) {
+      return parsed.toISOString().split('T')[0];
+    }
+
+    return null;
+  }
   /**
    * Check if tokens need refresh and refresh if necessary
    * @param {object} connection - BrokerConnection with credentials
@@ -797,7 +833,7 @@ class SchwabService {
 
     // Only accept real tradeable securities
     // Added FUTURE to support Think Or Swim futures trades
-    const validAssetTypes = ['EQUITY', 'OPTION', 'MUTUAL_FUND', 'ETF', 'INDEX', 'FUTURE'];
+    const validAssetTypes = ['EQUITY', 'OPTION', 'MUTUAL_FUND', 'ETF', 'INDEX', 'FUTURE', 'COLLECTIVE_INVESTMENT'];
     if (!validAssetTypes.includes(assetType)) {
       // Log what we're skipping to help debug TOS import issues
       console.log(`[SCHWAB] Skipping asset type: ${assetType} for symbol: ${instrument.symbol}`);
@@ -1133,15 +1169,7 @@ class SchwabService {
       }
 
       // 2. Match by date + quantity + prices (for CSV imports)
-      // Handle trade_date as either string or Date object
-      let existingDate;
-      if (existing.trade_date instanceof Date) {
-        existingDate = existing.trade_date.toISOString().split('T')[0];
-      } else if (typeof existing.trade_date === 'string') {
-        existingDate = existing.trade_date.split('T')[0];
-      } else {
-        existingDate = null;
-      }
+      const existingDate = this._extractDateString(existing.trade_date);
 
       if (existingDate === newTradeDate) {
         const existingQty = parseFloat(existing.quantity);
@@ -1167,19 +1195,11 @@ class SchwabService {
 
       // 3. Match by P&L if available (strong indicator for closed trades)
       if (newPnL && existing.pnl) {
-        // Handle trade_date as either string or Date object
-        let existingDate;
-        if (existing.trade_date instanceof Date) {
-          existingDate = existing.trade_date.toISOString().split('T')[0];
-        } else if (typeof existing.trade_date === 'string') {
-          existingDate = existing.trade_date.split('T')[0];
-        } else {
-          existingDate = null;
-        }
+        const existingDateForPnL = this._extractDateString(existing.trade_date);
         const existingPnL = parseFloat(existing.pnl);
 
         // Same date, same symbol, same P&L (within $0.01)
-        if (existingDate === newTradeDate && Math.abs(existingPnL - newPnL) < 0.02) {
+        if (existingDateForPnL === newTradeDate && Math.abs(existingPnL - newPnL) < 0.02) {
           console.log(`[SCHWAB] Duplicate found by P&L: ${symbol} on ${newTradeDate} ($${newPnL})`);
           return true;
         }
