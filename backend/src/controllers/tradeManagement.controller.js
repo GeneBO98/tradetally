@@ -1249,9 +1249,20 @@ const tradeManagementController = {
             cumulativePotentialR += rValues.actual_r;
           }
 
-          // Track management R
-          const tradeManagementR = trade.management_r ? parseFloat(trade.management_r) : 0;
-          if (trade.management_r !== null) {
+          // Calculate management R fresh (same as individual trade analysis)
+          // This ensures the chart matches the sum of individual R-Multiple Analysis values
+          // Fall back to stored value if manual_target_hit_first is not set (legacy data)
+          let tradeManagementR = 0;
+          if (trade.manual_target_hit_first) {
+            // Calculate fresh when manual_target_hit_first is set
+            const calculatedManagementR = TargetHitAnalysisService.calculateManagementR(trade);
+            tradeManagementR = calculatedManagementR !== null ? Math.round(calculatedManagementR * 100) / 100 : 0;
+            if (calculatedManagementR !== null) {
+              tradesWithManagementR++;
+            }
+          } else if (trade.management_r !== null) {
+            // Fall back to stored value for legacy data without manual_target_hit_first
+            tradeManagementR = parseFloat(trade.management_r);
             tradesWithManagementR++;
           }
           cumulativeManagementR += tradeManagementR;
@@ -1279,7 +1290,7 @@ const tradeManagementController = {
             pnl: trade.pnl,
             actual_r: rValues.actual_r,
             target_r: rValues.target_r,
-            management_r: tradeManagementR
+            management_r: tradeManagementR !== 0 ? tradeManagementR : null
           });
         }
       });
