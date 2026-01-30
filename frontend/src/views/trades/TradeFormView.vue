@@ -1887,8 +1887,20 @@ async function loadTrade() {
       })(),
       takeProfitTargets: (() => {
         const raw = tradeData.take_profit_targets || tradeData.takeProfitTargets || [];
+        const tp1Price = tradeData.take_profit || tradeData.takeProfit;
         console.log('[TRADE FORM LOAD] Raw take_profit_targets from API:', raw);
-        return raw.map(t => ({
+        // Skip the first entry if it matches TP1 price (TP1 is shown separately from takeProfit field)
+        const filteredTargets = raw.filter((t, index) => {
+          if (index === 0 && tp1Price && t.price != null) {
+            const priceMatch = Math.abs(Number(t.price) - Number(tp1Price)) < 0.01;
+            if (priceMatch) {
+              console.log('[TRADE FORM LOAD] Skipping first target as it matches TP1:', t.price);
+              return false;
+            }
+          }
+          return true;
+        });
+        return filteredTargets.map(t => ({
           price: t.price != null ? Number(t.price) : null,
           shares: t.shares != null ? Number(t.shares) : null
         }));
@@ -1979,10 +1991,18 @@ async function loadTrade() {
                   const qty = firstTarget?.shares || firstTarget?.quantity;
                   return qty != null ? Number(qty) : null;
                 })(),
-                takeProfitTargets: (exec.takeProfitTargets || exec.take_profit_targets || []).map(t => ({
-                  price: t.price != null ? Number(t.price) : null,
-                  shares: t.shares != null ? Number(t.shares) : null
-                }))
+                takeProfitTargets: (() => {
+                  const targets = exec.takeProfitTargets || exec.take_profit_targets || [];
+                  const tp1Price = exec.takeProfit || exec.take_profit || tradeData.take_profit || tradeData.takeProfit;
+                  // Skip first entry if it matches TP1 price
+                  return targets.filter((t, i) => {
+                    if (i === 0 && tp1Price && t.price != null && Math.abs(Number(t.price) - Number(tp1Price)) < 0.01) return false;
+                    return true;
+                  }).map(t => ({
+                    price: t.price != null ? Number(t.price) : null,
+                    shares: t.shares != null ? Number(t.shares) : null
+                  }));
+                })()
               }
               console.log('[TRADE FORM] Mapped grouped execution:', result)
               return result
@@ -2009,10 +2029,18 @@ async function loadTrade() {
                   const qty = firstTarget?.shares || firstTarget?.quantity;
                   return qty != null ? Number(qty) : null;
                 })(),
-                takeProfitTargets: (exec.takeProfitTargets || exec.take_profit_targets || []).map(t => ({
-                  price: t.price != null ? Number(t.price) : null,
-                  shares: t.shares != null ? Number(t.shares) : null
-                }))
+                takeProfitTargets: (() => {
+                  const targets = exec.takeProfitTargets || exec.take_profit_targets || [];
+                  const tp1Price = exec.takeProfit || exec.take_profit || tradeData.take_profit || tradeData.takeProfit;
+                  // Skip first entry if it matches TP1 price
+                  return targets.filter((t, i) => {
+                    if (i === 0 && tp1Price && t.price != null && Math.abs(Number(t.price) - Number(tp1Price)) < 0.01) return false;
+                    return true;
+                  }).map(t => ({
+                    price: t.price != null ? Number(t.price) : null,
+                    shares: t.shares != null ? Number(t.shares) : null
+                  }));
+                })()
               }
               console.log('[TRADE FORM] Mapped individual fill:', result)
               return result
@@ -2041,10 +2069,18 @@ async function loadTrade() {
               const qty = firstTarget?.shares || firstTarget?.quantity;
               return qty != null ? Number(qty) : null;
             })(),
-            takeProfitTargets: (tradeData.take_profit_targets || tradeData.takeProfitTargets || []).map(t => ({
-              price: t.price != null ? Number(t.price) : null,
-              shares: t.shares != null ? Number(t.shares) : null
-            }))
+            takeProfitTargets: (() => {
+              const targets = tradeData.take_profit_targets || tradeData.takeProfitTargets || [];
+              const tp1Price = tradeData.take_profit || tradeData.takeProfit;
+              // Skip first entry if it matches TP1 price
+              return targets.filter((t, i) => {
+                if (i === 0 && tp1Price && t.price != null && Math.abs(Number(t.price) - Number(tp1Price)) < 0.01) return false;
+                return true;
+              }).map(t => ({
+                price: t.price != null ? Number(t.price) : null,
+                shares: t.shares != null ? Number(t.shares) : null
+              }));
+            })()
           }]
         }
       })()

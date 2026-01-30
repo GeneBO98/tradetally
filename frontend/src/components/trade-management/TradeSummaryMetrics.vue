@@ -281,24 +281,24 @@
         />
       </div>
 
-      <!-- Management R Summary -->
-      <div v-if="trade.management_r !== null && trade.management_r !== undefined" class="border-t border-gray-200 dark:border-gray-700 mt-6 pt-6">
+      <!-- Management R Summary (use analysis.management_r which is recalculated fresh) -->
+      <div v-if="analysis?.management_r !== null && analysis?.management_r !== undefined" class="border-t border-gray-200 dark:border-gray-700 mt-6 pt-6">
         <div class="flex items-center justify-between p-4 rounded-lg" :class="getManagementRBgClass">
           <div>
             <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Trade Management Impact</div>
             <div class="text-lg font-semibold" :class="getManagementRTextClass">
-              {{ trade.management_r >= 0 ? '+' : '' }}{{ trade.management_r }}R
+              {{ analysis.management_r >= 0 ? '+' : '' }}{{ analysis.management_r }}R
             </div>
           </div>
           <div class="text-sm text-gray-600 dark:text-gray-400 text-right max-w-xs">
-            <span v-if="trade.management_r > 0">
-              Good management - captured more R than original target
+            <span v-if="analysis.management_r > 0">
+              Good management - captured more R than planned
             </span>
-            <span v-else-if="trade.management_r < 0">
-              Left R on table - exited before reaching original target
+            <span v-else-if="analysis.management_r < 0">
+              Poor management - missed planned R target
             </span>
             <span v-else>
-              Matched original plan
+              Matched plan exactly
             </span>
           </div>
         </div>
@@ -363,14 +363,14 @@ function getTargetStatusClass(status) {
 
 // Management R styling
 const getManagementRBgClass = computed(() => {
-  const r = props.trade.management_r
+  const r = props.analysis?.management_r
   if (r > 0) return 'bg-green-50 dark:bg-green-900/20'
   if (r < 0) return 'bg-amber-50 dark:bg-amber-900/20'
   return 'bg-gray-50 dark:bg-gray-700/50'
 })
 
 const getManagementRTextClass = computed(() => {
-  const r = props.trade.management_r
+  const r = props.analysis?.management_r
   if (r > 0) return 'text-green-600 dark:text-green-400'
   if (r < 0) return 'text-amber-600 dark:text-amber-400'
   return 'text-gray-600 dark:text-gray-400'

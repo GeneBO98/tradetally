@@ -559,14 +559,19 @@ class TargetHitAnalysisService {
 
   /**
    * Calculate management R for a trade
-   * Management R = Actual R - Target R
+   * Management R = Actual R - Planned R
    *
-   * Simple formula:
-   * - If Actual R = Target R, Management R = 0 (user executed their plan)
-   * - If Actual R > Target R, Management R > 0 (captured more than planned)
-   * - If Actual R < Target R, Management R < 0 (captured less than planned)
+   * The "Planned R" depends on which target was hit first (manual_target_hit_first):
+   * - If SL Hit First: Planned R = -1 (the trade was supposed to stop out)
+   * - If TP Hit First: Planned R = Target R (the trade was supposed to hit take profit)
    *
-   * @param {Object} trade - Trade with entry, exit, stop loss, and take profit data
+   * Examples:
+   * - SL Hit First, Actual R = -2: Management R = -2 - (-1) = -1 (bad: lost more than planned)
+   * - SL Hit First, Actual R = -0.5: Management R = -0.5 - (-1) = +0.5 (good: lost less than planned)
+   * - TP Hit First, Actual R = 1.5, Target R = 2: Management R = 1.5 - 2 = -0.5 (bad: made less than planned)
+   * - TP Hit First, Actual R = 3, Target R = 2: Management R = 3 - 2 = +1 (good: made more than planned)
+   *
+   * @param {Object} trade - Trade with entry, exit, stop loss, take profit, and manual_target_hit_first
    * @returns {number|null} Management R value
    */
   static calculateManagementR(trade) {
@@ -577,11 +582,17 @@ class TargetHitAnalysisService {
       take_profit,
       take_profit_targets,
       risk_level_history,
+      manual_target_hit_first,
       side,
       quantity
     } = trade;
 
     if (!entry_price || !exit_price || !stop_loss) {
+      return null;
+    }
+
+    // Must have target hit selection to calculate management R
+    if (!manual_target_hit_first || (manual_target_hit_first !== 'stop_loss' && manual_target_hit_first !== 'take_profit')) {
       return null;
     }
 
@@ -610,12 +621,20 @@ class TargetHitAnalysisService {
     const actualPL = isLong ? exitPrice - entryPrice : entryPrice - exitPrice;
     const actualR = actualPL / risk;
 
-    // Calculate target R (weighted average if multiple targets)
-    const targetR = this.calculateWeightedTargetR(trade, risk);
-    if (targetR === null) return null;
+    let plannedR = null;
 
-    // Management R = Actual R - Target R
-    const managementR = actualR - targetR;
+    if (manual_target_hit_first === 'stop_loss') {
+      // SL Hit First: The plan was to stop out at -1R
+      plannedR = -1;
+    } else if (manual_target_hit_first === 'take_profit') {
+      // TP Hit First: The plan was to hit take profit at Target R
+      const targetR = this.calculateWeightedTargetR(trade, risk);
+      if (targetR === null) return null;
+      plannedR = targetR;
+    }
+
+    // Management R = Actual R - Planned R
+    const managementR = actualR - plannedR;
     return Math.round(managementR * 100) / 100;
   }
 
