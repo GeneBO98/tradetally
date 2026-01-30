@@ -490,7 +490,12 @@ export default {
     onMounted(async () => {
       await loadBillingStatus()
       await loadPricingPlans()
-      await loadCurrentSubscription()
+      // Only load subscription data if user is authenticated
+      if (authStore.isAuthenticated) {
+        await loadCurrentSubscription()
+      } else {
+        loading.value = false
+      }
     })
 
     return {
