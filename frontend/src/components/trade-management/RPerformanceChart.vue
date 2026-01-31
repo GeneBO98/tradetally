@@ -166,6 +166,9 @@ async function fetchRPerformance() {
     if (props.filters.symbol && props.filters.symbol.trim()) {
       params.symbol = props.filters.symbol.trim()
     }
+    if (props.filters.accounts) {
+      params.accounts = props.filters.accounts
+    }
 
     console.log('[R-PERF] Fetching R performance with params:', params)
     const response = await api.get('/trade-management/r-performance', { params })

@@ -55,6 +55,17 @@
             <CheckIcon v-if="!isFiltered" class="h-4 w-4" />
           </button>
 
+          <!-- Unsorted Option (trades without account) -->
+          <button
+            @click="handleSelectUnsorted"
+            class="w-full text-left px-4 py-2 text-sm flex items-center justify-between hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            :class="selectedAccount === UNSORTED_ACCOUNT ? 'text-primary-600 dark:text-primary-400 font-medium' : 'text-gray-700 dark:text-gray-300'"
+            role="menuitem"
+          >
+            <span>Unsorted</span>
+            <CheckIcon v-if="selectedAccount === UNSORTED_ACCOUNT" class="h-4 w-4" />
+          </button>
+
           <!-- Divider -->
           <div class="border-t border-gray-100 dark:border-gray-700 my-1"></div>
 
@@ -101,7 +112,8 @@ const {
   isFiltered,
   fetchAccounts,
   setAccount,
-  clearAccount
+  clearAccount,
+  UNSORTED_ACCOUNT
 } = useGlobalAccountFilter()
 
 const isOpen = ref(false)
@@ -121,6 +133,11 @@ function handleSelectAccount(account) {
 
 function handleClearAccount() {
   clearAccount()
+  isOpen.value = false
+}
+
+function handleSelectUnsorted() {
+  setAccount(UNSORTED_ACCOUNT)
   isOpen.value = false
 }
 
