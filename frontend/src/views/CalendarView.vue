@@ -192,8 +192,8 @@
           <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 flex-shrink-0">
             <div class="flex justify-between items-center">
               <span class="font-medium text-gray-900 dark:text-white">Total for day:</span>
-              <span class="font-bold text-lg" :class="(selectedDay.pnl || 0) >= 0 ? 'text-green-600' : 'text-red-600'">
-                ${{ formatNumber(selectedDay.pnl || 0) }}
+              <span class="font-bold text-lg" :class="selectedDayTotalPnl >= 0 ? 'text-green-600' : 'text-red-600'">
+                ${{ formatNumber(selectedDayTotalPnl) }}
               </span>
             </div>
           </div>
@@ -395,6 +395,11 @@ const expandedMonthWeekdays = computed(() => {
 const selectedDayTrades = computed(() => {
   if (!selectedDay.value || !selectedDay.value.date) return []
   return getTradesForDate(selectedDay.value.date)
+})
+
+// Calculate the total P&L from the actual displayed trades (more accurate than calendar aggregation)
+const selectedDayTotalPnl = computed(() => {
+  return selectedDayTrades.value.reduce((sum, trade) => sum + (parseFloat(trade.pnl) || 0), 0)
 })
 
 const expandedMonthTrades = computed(() => {

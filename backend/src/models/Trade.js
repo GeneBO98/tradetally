@@ -894,10 +894,16 @@ class Trade {
     // Account identifier filter - multi-select support
     if (filters.accounts && filters.accounts.length > 0) {
       console.log('[ACCOUNTS] Applying account filter:', filters.accounts);
-      const placeholders = filters.accounts.map((_, index) => `$${paramCount + index}`).join(',');
-      whereClause += ` AND t.account_identifier IN (${placeholders})`;
-      filters.accounts.forEach(account => values.push(account));
-      paramCount += filters.accounts.length;
+      // Special handling for "__unsorted__" - filter for null/empty accounts
+      if (filters.accounts.includes('__unsorted__')) {
+        console.log('[ACCOUNTS] Filtering for unsorted trades (no account)');
+        whereClause += ` AND (t.account_identifier IS NULL OR t.account_identifier = '')`;
+      } else {
+        const placeholders = filters.accounts.map((_, index) => `$${paramCount + index}`).join(',');
+        whereClause += ` AND t.account_identifier IN (${placeholders})`;
+        filters.accounts.forEach(account => values.push(account));
+        paramCount += filters.accounts.length;
+      }
     }
 
     // Quality grade filter - multi-select support (A, B, C, D, F)
@@ -2318,10 +2324,16 @@ class Trade {
     // Account identifier filter - multi-select support for broker accounts
     if (filters.accounts && filters.accounts.length > 0) {
       console.log('[ACCOUNTS] ANALYTICS: Applying account filter:', filters.accounts);
-      const placeholders = filters.accounts.map((_, index) => `$${paramCount + index}`).join(',');
-      whereClause += ` AND t.account_identifier IN (${placeholders})`;
-      filters.accounts.forEach(account => values.push(account));
-      paramCount += filters.accounts.length;
+      // Special handling for "__unsorted__" - filter for null/empty accounts
+      if (filters.accounts.includes('__unsorted__')) {
+        console.log('[ACCOUNTS] ANALYTICS: Filtering for unsorted trades (no account)');
+        whereClause += ` AND (t.account_identifier IS NULL OR t.account_identifier = '')`;
+      } else {
+        const placeholders = filters.accounts.map((_, index) => `$${paramCount + index}`).join(',');
+        whereClause += ` AND t.account_identifier IN (${placeholders})`;
+        filters.accounts.forEach(account => values.push(account));
+        paramCount += filters.accounts.length;
+      }
     }
 
     // hasRValue filter - filter to only trades with valid R-value (stop_loss set)

@@ -131,7 +131,8 @@ const pagination = ref({
 const filters = ref({
   startDate: '',
   endDate: '',
-  symbol: ''
+  symbol: '',
+  accounts: ''
 })
 
 const selectedTradeId = ref(null)
@@ -397,6 +398,8 @@ function clearSelection() {
 // Watch for global account filter changes
 watch(selectedAccount, () => {
   console.log('[TRADE-MGMT] Global account filter changed to:', selectedAccount.value || 'All Accounts')
+  // Update filters with the new account so RPerformanceChart also refreshes
+  filters.value = { ...filters.value, accounts: selectedAccount.value || '' }
   pagination.value.offset = 0
   clearSelection()
   fetchTrades()
@@ -405,6 +408,11 @@ watch(selectedAccount, () => {
 onMounted(async () => {
   // Restore filters from URL
   const savedTradeId = restoreFromUrl()
+
+  // Initialize account filter from global state
+  if (selectedAccount.value) {
+    filters.value.accounts = selectedAccount.value
+  }
 
   // Fetch trades with restored filters
   await fetchTrades()

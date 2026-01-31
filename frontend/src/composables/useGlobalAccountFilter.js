@@ -3,6 +3,9 @@ import api from '@/services/api'
 
 const STORAGE_KEY = 'tradetally_global_account'
 
+// Special filter value for trades without an account
+export const UNSORTED_ACCOUNT = '__unsorted__'
+
 // Shared state (singleton pattern - state persists across all component instances)
 const selectedAccount = ref(null)
 const accounts = ref([])
@@ -20,6 +23,9 @@ export function useGlobalAccountFilter() {
   }
 
   const selectedAccountLabel = computed(() => {
+    if (selectedAccount.value === UNSORTED_ACCOUNT) {
+      return 'Unsorted'
+    }
     return selectedAccount.value || 'All Accounts'
   })
 
@@ -34,8 +40,8 @@ export function useGlobalAccountFilter() {
       const response = await api.get('/trades/accounts')
       accounts.value = response.data.accounts || []
 
-      // Validate stored selection still exists
-      if (selectedAccount.value && !accounts.value.includes(selectedAccount.value)) {
+      // Validate stored selection still exists (allow special UNSORTED_ACCOUNT value)
+      if (selectedAccount.value && selectedAccount.value !== UNSORTED_ACCOUNT && !accounts.value.includes(selectedAccount.value)) {
         console.log('[GLOBAL ACCOUNT] Stored account no longer exists, clearing filter')
         clearAccount()
       }
@@ -71,6 +77,7 @@ export function useGlobalAccountFilter() {
     isFiltered,
     fetchAccounts,
     setAccount,
-    clearAccount
+    clearAccount,
+    UNSORTED_ACCOUNT
   }
 }
