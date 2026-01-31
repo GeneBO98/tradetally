@@ -298,6 +298,104 @@ class SchwabMarketData {
   }
 
   /**
+   * Get intraday candles for a symbol (for LoD calculation)
+   * @param {string} symbol - Stock/ETF symbol
+   * @param {string} resolution - Resolution: '1' (1-min), '5' (5-min), '15', '30', 'D' (daily)
+   * @param {number} fromTimestamp - Start timestamp (Unix seconds)
+   * @param {number} toTimestamp - End timestamp (Unix seconds)
+   * @returns {Promise<object[]|null>} Array of OHLCV candles or null
+   */
+  async getCandles(symbol, resolution, fromTimestamp, toTimestamp) {
+    const connection = await this.getActiveConnection();
+    if (!connection) {
+      return null;
+    }
+
+    const { accessToken, needsReauth } = await this.ensureValidToken(connection);
+    if (needsReauth || !accessToken) {
+      return null;
+    }
+
+    try {
+      // Map Finnhub-style resolution to Schwab parameters
+      let frequencyType, frequency, periodType;
+
+      switch (resolution) {
+        case '1':
+          frequencyType = 'minute';
+          frequency = 1;
+          periodType = 'day';
+          break;
+        case '5':
+          frequencyType = 'minute';
+          frequency = 5;
+          periodType = 'day';
+          break;
+        case '15':
+          frequencyType = 'minute';
+          frequency = 15;
+          periodType = 'day';
+          break;
+        case '30':
+          frequencyType = 'minute';
+          frequency = 30;
+          periodType = 'day';
+          break;
+        case 'D':
+        default:
+          frequencyType = 'daily';
+          frequency = 1;
+          periodType = 'year';
+          break;
+      }
+
+      // Schwab expects milliseconds for start/end dates
+      const startDate = fromTimestamp * 1000;
+      const endDate = toTimestamp * 1000;
+
+      const response = await axios.get(
+        `${SCHWAB_MARKET_DATA_BASE}/pricehistory`,
+        {
+          params: {
+            symbol: symbol.toUpperCase(),
+            periodType: periodType,
+            frequencyType: frequencyType,
+            frequency: frequency,
+            startDate: startDate,
+            endDate: endDate,
+            needExtendedHoursData: false
+          },
+          headers: {
+            Authorization: `Bearer ${accessToken}`
+          }
+        }
+      );
+
+      const candles = response.data.candles || [];
+
+      if (candles.length === 0) {
+        return null;
+      }
+
+      // Map to Finnhub-compatible format
+      const result = candles.map(c => ({
+        time: Math.floor(c.datetime / 1000), // Convert ms to seconds
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close,
+        volume: c.volume
+      }));
+
+      console.log(`[SCHWAB-MARKET] Got ${result.length} candles for ${symbol} (${resolution} resolution)`);
+      return result;
+    } catch (error) {
+      console.error(`[SCHWAB-MARKET] Error fetching candles for ${symbol}:`, error.message);
+      return null;
+    }
+  }
+
+  /**
    * Get daily price history for a symbol
    * @param {string} symbol - Stock/ETF symbol
    * @param {number} days - Number of days of history (default 30)
