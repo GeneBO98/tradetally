@@ -1,7 +1,7 @@
 const db = require('../config/database');
 const logger = require('../utils/logger');
 const finnhub = require('../utils/finnhub');
-const alphaVantage = require('../utils/alphaVantage');
+const schwabMarketData = require('../utils/schwabMarketData');
 const nodemailer = require('nodemailer');
 const { v4: uuidv4 } = require('uuid');
 const TierService = require('./tierService');
@@ -147,6 +147,9 @@ class PriceMonitoringService {
 
       let dataSource = 'finnhub';
 
+      // Check if this is a self-hosted instance (billing not enabled)
+      const billingEnabled = await TierService.isBillingEnabled();
+
       // Try Finnhub first
       try {
         priceData = await finnhub.getQuote(symbol);
@@ -161,36 +164,69 @@ class PriceMonitoringService {
         }
       } catch (finnhubError) {
         const errorMsg = finnhubError?.message || 'Unknown Finnhub error';
+        const is403Error = errorMsg.includes('403') || finnhubError?.response?.status === 403;
 
-        // Track failed attempts to reduce log spam
-        const failureData = this.failedSymbols.get(symbol) || { count: 0, firstSeen: Date.now() };
-        failureData.count++;
-        failureData.lastSeen = Date.now();
-        this.failedSymbols.set(symbol, failureData);
+        // For self-hosted instances with Finnhub 403 (no API key), try Schwab fallback
+        if (!billingEnabled && is403Error) {
+          try {
+            priceData = await schwabMarketData.getQuote(symbol);
+            if (priceData && priceData.c) {
+              dataSource = 'schwab';
+              // Only log once per symbol to reduce noise
+              if (!this.failedSymbols.has(symbol)) {
+                logger.info(`[PRICE] Using Schwab for ${symbol} (Finnhub API key not configured)`);
+              }
 
-        // Only log on first failure, then every 10th failure, or once per hour, up to max failures
-        const minutesSinceFirst = (Date.now() - failureData.firstSeen) / (1000 * 60);
-        const shouldLog = failureData.count === 1 ||
-                         (failureData.count % 10 === 0 && failureData.count < MAX_FAILURES) ||
-                         minutesSinceFirst > 60;
+              // Success with Schwab - remove from failed symbols
+              if (this.failedSymbols.has(symbol)) {
+                this.failedSymbols.delete(symbol);
+              }
+            } else {
+              throw new Error('Invalid price data from Schwab');
+            }
+          } catch (schwabError) {
+            // Schwab also failed - track failure
+            const failureData = this.failedSymbols.get(symbol) || { count: 0, firstSeen: Date.now() };
+            failureData.count++;
+            failureData.lastSeen = Date.now();
+            this.failedSymbols.set(symbol, failureData);
 
-        if (shouldLog) {
-          if (errorMsg.includes('502')) {
-            logger.debug(`Finnhub temporarily unavailable for ${symbol} (502 error)`);
-          } else if (errorMsg.includes('No quote data available')) {
-            logger.warn(`${symbol} is not supported by Finnhub (${failureData.count} failures). Consider removing from watchlist/alerts.`);
-          } else {
-            logger.warn(`Finnhub failed for ${symbol}: ${errorMsg} (${failureData.count} failures)`);
+            if (failureData.count === 1) {
+              logger.warn(`[PRICE] No price source available for ${symbol}. Configure FINNHUB_API_KEY or connect Schwab for broker sync.`);
+            }
+
+            return false;
           }
-        }
+        } else {
+          // Not a 403 or billing is enabled - track as normal failure
+          const failureData = this.failedSymbols.get(symbol) || { count: 0, firstSeen: Date.now() };
+          failureData.count++;
+          failureData.lastSeen = Date.now();
+          this.failedSymbols.set(symbol, failureData);
 
-        // Log final warning when reaching max failures
-        if (failureData.count === MAX_FAILURES) {
-          logger.error(`${symbol} has failed ${MAX_FAILURES} times. Stopping further attempts. Please remove from watchlist/alerts or verify the symbol is correct.`);
-        }
+          // Only log on first failure, then every 10th failure, or once per hour, up to max failures
+          const minutesSinceFirst = (Date.now() - failureData.firstSeen) / (1000 * 60);
+          const shouldLog = failureData.count === 1 ||
+                           (failureData.count % 10 === 0 && failureData.count < MAX_FAILURES) ||
+                           minutesSinceFirst > 60;
 
-        // Return false to indicate failure
-        return false;
+          if (shouldLog) {
+            if (errorMsg.includes('502')) {
+              logger.debug(`Finnhub temporarily unavailable for ${symbol} (502 error)`);
+            } else if (errorMsg.includes('No quote data available')) {
+              logger.warn(`${symbol} is not supported by Finnhub (${failureData.count} failures). Consider removing from watchlist/alerts.`);
+            } else {
+              logger.warn(`Price fetch failed for ${symbol}: ${errorMsg} (${failureData.count} failures)`);
+            }
+          }
+
+          // Log final warning when reaching max failures
+          if (failureData.count === MAX_FAILURES) {
+            logger.error(`${symbol} has failed ${MAX_FAILURES} times. Stopping further attempts.`);
+          }
+
+          return false;
+        }
       }
 
       const currentPrice = priceData.c;
@@ -198,18 +234,26 @@ class PriceMonitoringService {
       const priceChange = priceData.d || (currentPrice - previousClose);
       const percentChange = priceData.dp || (previousClose > 0 ? ((currentPrice - previousClose) / previousClose) * 100 : 0);
 
-      // Update price monitoring table
+      // Extract LOD/HOD data if available
+      const highOfDay = priceData.h || null;
+      const lowOfDay = priceData.l || null;
+      const openPrice = priceData.o || null;
+
+      // Update price monitoring table with LOD/HOD data
       await db.query(`
-        INSERT INTO price_monitoring (symbol, current_price, previous_price, price_change, percent_change, data_source)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        INSERT INTO price_monitoring (symbol, current_price, previous_price, price_change, percent_change, high_of_day, low_of_day, open_price, data_source)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         ON CONFLICT (symbol) DO UPDATE SET
           previous_price = price_monitoring.current_price,
           current_price = $2,
           price_change = $4,
           percent_change = $5,
+          high_of_day = COALESCE($6, price_monitoring.high_of_day),
+          low_of_day = COALESCE($7, price_monitoring.low_of_day),
+          open_price = COALESCE($8, price_monitoring.open_price),
           last_updated = CURRENT_TIMESTAMP,
-          data_source = $6
-      `, [symbol, currentPrice, previousClose, priceChange, percentChange, dataSource]);
+          data_source = $9
+      `, [symbol, currentPrice, previousClose, priceChange, percentChange, highOfDay, lowOfDay, openPrice, dataSource]);
 
       logger.debug(`Updated price for ${symbol}: ${currentPrice} (${percentChange >= 0 ? '+' : ''}${percentChange.toFixed(2)}%)`);
 
