@@ -1,7 +1,7 @@
 const db = require('../config/database');
 const logger = require('../utils/logger');
 const finnhub = require('../utils/finnhub');
-const schwabMarketData = require('../utils/schwabMarketData');
+const priceFallbackManager = require('../utils/priceFallbackManager');
 const nodemailer = require('nodemailer');
 const { v4: uuidv4 } = require('uuid');
 const TierService = require('./tierService');
@@ -136,7 +136,6 @@ class PriceMonitoringService {
 
   async updateSymbolPrice(symbol) {
     try {
-      let priceData = null;
       // Check if symbol has exceeded failure limit
       const MAX_FAILURES = 15; // Stop attempting after 15 failures
       const existingFailure = this.failedSymbols.get(symbol);
@@ -145,88 +144,44 @@ class PriceMonitoringService {
         return false;
       }
 
-      let dataSource = 'finnhub';
+      // Use fallback manager to get quote (handles Finnhub 403 -> Schwab fallback)
+      const { data: priceData, source: dataSource, error } = await priceFallbackManager.getQuoteWithFallback(
+        symbol,
+        (sym) => finnhub.getQuote(sym)
+      );
 
-      // Check if this is a self-hosted instance (billing not enabled)
-      const billingEnabled = await TierService.isBillingEnabled();
+      if (!priceData) {
+        // Both sources failed - track failure
+        const failureData = this.failedSymbols.get(symbol) || { count: 0, firstSeen: Date.now() };
+        failureData.count++;
+        failureData.lastSeen = Date.now();
+        this.failedSymbols.set(symbol, failureData);
 
-      // Try Finnhub first
-      try {
-        priceData = await finnhub.getQuote(symbol);
-        if (!priceData || !priceData.c) {
-          throw new Error('Invalid price data from Finnhub');
+        const errorMsg = error?.message || 'Unknown error';
+
+        // Only log on first failure, then every 10th failure, up to max
+        const shouldLog = failureData.count === 1 ||
+                         (failureData.count % 10 === 0 && failureData.count < MAX_FAILURES);
+
+        if (shouldLog) {
+          if (errorMsg.includes('No quote data available')) {
+            logger.warn(`${symbol} is not supported by price APIs (${failureData.count} failures). Consider removing from watchlist/alerts.`);
+          } else {
+            logger.warn(`Price fetch failed for ${symbol}: ${errorMsg} (${failureData.count} failures)`);
+          }
         }
 
-        // Success - remove from failed symbols if it was there
-        if (this.failedSymbols.has(symbol)) {
-          logger.info(`${symbol} is now working again after previous failures`);
-          this.failedSymbols.delete(symbol);
+        if (failureData.count === MAX_FAILURES) {
+          logger.error(`${symbol} has failed ${MAX_FAILURES} times. Stopping further attempts.`);
         }
-      } catch (finnhubError) {
-        const errorMsg = finnhubError?.message || 'Unknown Finnhub error';
-        const is403Error = errorMsg.includes('403') || finnhubError?.response?.status === 403;
 
-        // For self-hosted instances with Finnhub 403 (no API key), try Schwab fallback
-        if (!billingEnabled && is403Error) {
-          try {
-            priceData = await schwabMarketData.getQuote(symbol);
-            if (priceData && priceData.c) {
-              dataSource = 'schwab';
-              // Only log once per symbol to reduce noise
-              if (!this.failedSymbols.has(symbol)) {
-                logger.info(`[PRICE] Using Schwab for ${symbol} (Finnhub API key not configured)`);
-              }
+        return false;
+      }
 
-              // Success with Schwab - remove from failed symbols
-              if (this.failedSymbols.has(symbol)) {
-                this.failedSymbols.delete(symbol);
-              }
-            } else {
-              throw new Error('Invalid price data from Schwab');
-            }
-          } catch (schwabError) {
-            // Schwab also failed - track failure
-            const failureData = this.failedSymbols.get(symbol) || { count: 0, firstSeen: Date.now() };
-            failureData.count++;
-            failureData.lastSeen = Date.now();
-            this.failedSymbols.set(symbol, failureData);
-
-            if (failureData.count === 1) {
-              logger.warn(`[PRICE] No price source available for ${symbol}. Configure FINNHUB_API_KEY or connect Schwab for broker sync.`);
-            }
-
-            return false;
-          }
-        } else {
-          // Not a 403 or billing is enabled - track as normal failure
-          const failureData = this.failedSymbols.get(symbol) || { count: 0, firstSeen: Date.now() };
-          failureData.count++;
-          failureData.lastSeen = Date.now();
-          this.failedSymbols.set(symbol, failureData);
-
-          // Only log on first failure, then every 10th failure, or once per hour, up to max failures
-          const minutesSinceFirst = (Date.now() - failureData.firstSeen) / (1000 * 60);
-          const shouldLog = failureData.count === 1 ||
-                           (failureData.count % 10 === 0 && failureData.count < MAX_FAILURES) ||
-                           minutesSinceFirst > 60;
-
-          if (shouldLog) {
-            if (errorMsg.includes('502')) {
-              logger.debug(`Finnhub temporarily unavailable for ${symbol} (502 error)`);
-            } else if (errorMsg.includes('No quote data available')) {
-              logger.warn(`${symbol} is not supported by Finnhub (${failureData.count} failures). Consider removing from watchlist/alerts.`);
-            } else {
-              logger.warn(`Price fetch failed for ${symbol}: ${errorMsg} (${failureData.count} failures)`);
-            }
-          }
-
-          // Log final warning when reaching max failures
-          if (failureData.count === MAX_FAILURES) {
-            logger.error(`${symbol} has failed ${MAX_FAILURES} times. Stopping further attempts.`);
-          }
-
-          return false;
-        }
+      // Success - clear any previous failures
+      if (this.failedSymbols.has(symbol)) {
+        logger.info(`${symbol} is now working again via ${dataSource}`);
+        this.failedSymbols.delete(symbol);
       }
 
       const currentPrice = priceData.c;
