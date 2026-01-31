@@ -3903,31 +3903,21 @@ class Trade {
   static async getLowOfDayAtEntry(symbol, entryTime, userId = null) {
     try {
       const finnhub = require('../utils/finnhub');
-      
-      if (!finnhub.isConfigured()) {
-        console.warn('[LoD] Finnhub not configured, cannot fetch Low of Day');
-        return null;
-      }
+      const priceFallbackManager = require('../utils/priceFallbackManager');
 
       const entryDate = new Date(entryTime);
-      
+
       // Ensure entry time is valid
       if (isNaN(entryDate.getTime())) {
         console.warn(`[LoD] Invalid entry time: ${entryTime}`);
         return null;
       }
-      
+
       // Get the start of the trading day (4:00 AM ET)
-      // Properly handle EST/EDT transitions by calculating the UTC offset for the entry date
-      // EST = UTC-5 (winter), EDT = UTC-4 (summer)
-      const entryDateStr = entryDate.toISOString().split('T')[0]; // Get YYYY-MM-DD
-      
-      // Calculate UTC offset for Eastern Time on this specific date
-      // Create a test date at noon UTC and compare with ET representation
+      const entryDateStr = entryDate.toISOString().split('T')[0];
+
+      // Calculate UTC offset for Eastern Time
       const testUTC = new Date(`${entryDateStr}T12:00:00.000Z`);
-      
-      // Get the ET representation of this UTC time
-      // Format: "MM/DD/YYYY, HH:MM:SS AM/PM" in ET
       const etParts = new Intl.DateTimeFormat('en-US', {
         timeZone: 'America/New_York',
         year: 'numeric',
@@ -3938,29 +3928,39 @@ class Trade {
         second: '2-digit',
         hour12: false
       }).formatToParts(testUTC);
-      
+
       const etHour = parseInt(etParts.find(p => p.type === 'hour').value);
-      
-      // Calculate offset: if UTC 12:00 = ET X:00, then offset = 12 - X
-      // EST: UTC 12:00 = ET 7:00, offset = 5 hours
-      // EDT: UTC 12:00 = ET 8:00, offset = 4 hours
       const offsetHours = 12 - etHour;
-      
-      // Now create 4:00 AM ET in UTC
-      // 4:00 AM ET = (4 + offsetHours) in UTC
       const utcHour4amET = 4 + offsetHours;
       const dayStart = new Date(`${entryDateStr}T${String(utcHour4amET).padStart(2, '0')}:00:00.000Z`);
-      
-      // Entry time in Unix timestamp (seconds)
+
       const entryTimestamp = Math.floor(entryDate.getTime() / 1000);
       const dayStartTimestamp = Math.floor(dayStart.getTime() / 1000);
-      
+
+      // Helper function to fetch candles with Finnhub->Schwab fallback
+      const fetchCandlesWithFallback = async (res, from, to) => {
+        // Use the fallback manager which handles 403 errors and routes to Schwab
+        const { data, source } = await priceFallbackManager.getCandlesWithFallback(
+          symbol,
+          res,
+          from,
+          to,
+          async (sym, resolution, fromTs, toTs) => {
+            return await finnhub.getStockCandles(sym, resolution, fromTs, toTs, userId);
+          }
+        );
+
+        if (data && data.length > 0) {
+          console.log(`[LoD] Got ${data.length} candles for ${symbol} from ${source}`);
+        }
+        return data;
+      };
+
       // Ensure entry time is after day start
       if (entryTimestamp <= dayStartTimestamp) {
-        console.warn(`[LoD] Entry time is before market open, cannot determine LoD`);
-        // Try using daily candle as fallback
+        console.warn(`[LoD] Entry time is before market open, trying daily candle`);
         try {
-          const dailyCandles = await finnhub.getStockCandles(symbol, 'D', dayStartTimestamp - 86400, entryTimestamp, userId);
+          const dailyCandles = await fetchCandlesWithFallback('D', dayStartTimestamp - 86400, entryTimestamp);
           if (dailyCandles && dailyCandles.length > 0) {
             const lastCandle = dailyCandles[dailyCandles.length - 1];
             const dailyLow = parseFloat(lastCandle.low);
@@ -3970,25 +3970,24 @@ class Trade {
             }
           }
         } catch (dailyError) {
-          console.warn(`[LoD] Failed to fetch daily candle as fallback: ${dailyError.message}`);
+          console.warn(`[LoD] Failed to fetch daily candle: ${dailyError.message}`);
         }
         return null;
       }
-      
+
       // Fetch 1-minute candles from start of day to entry time
-      // This gives us the intraday low up to the entry point (not the full day)
-      let candles = await finnhub.getStockCandles(symbol, '1', dayStartTimestamp, entryTimestamp, userId);
-      
-      // If 1-minute data is not available, try 5-minute candles as fallback
+      let candles = await fetchCandlesWithFallback('1', dayStartTimestamp, entryTimestamp);
+
+      // If 1-minute data is not available, try 5-minute candles
       if (!candles || candles.length === 0) {
         console.log(`[LoD] No 1-minute data available, trying 5-minute candles`);
-        candles = await finnhub.getStockCandles(symbol, '5', dayStartTimestamp, entryTimestamp, userId);
+        candles = await fetchCandlesWithFallback('5', dayStartTimestamp, entryTimestamp);
       }
-      
+
       // If still no data, try daily candle as last resort
       if (!candles || candles.length === 0) {
         console.log(`[LoD] No intraday data available, trying daily candle`);
-        const dailyCandles = await finnhub.getStockCandles(symbol, 'D', dayStartTimestamp - 86400, entryTimestamp, userId);
+        const dailyCandles = await fetchCandlesWithFallback('D', dayStartTimestamp - 86400, entryTimestamp);
         if (dailyCandles && dailyCandles.length > 0) {
           const lastCandle = dailyCandles[dailyCandles.length - 1];
           const dailyLow = parseFloat(lastCandle.low);
@@ -4000,19 +3999,19 @@ class Trade {
         console.warn(`[LoD] No candle data available for ${symbol} on entry day`);
         return null;
       }
-      
+
       // Find the minimum low price from all candles up to entry time
       const lows = candles.map(c => parseFloat(c.low)).filter(l => !isNaN(l));
-      
+
       if (lows.length === 0) {
         console.warn(`[LoD] No valid low prices found for ${symbol}`);
         return null;
       }
-      
+
       const lod = Math.min(...lows);
-      
+
       console.log(`[LoD] Low of Day for ${symbol} at entry time: $${lod.toFixed(2)} (from ${candles.length} candles)`);
-      
+
       return roundToDbPrecision(lod, 4);
     } catch (error) {
       console.warn(`[LoD] Error fetching Low of Day for ${symbol}: ${error.message}`);

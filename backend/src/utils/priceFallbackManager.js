@@ -163,6 +163,74 @@ class PriceFallbackManager {
   }
 
   /**
+   * Get candles with automatic fallback
+   * @param {string} symbol - Stock symbol
+   * @param {string} resolution - Resolution ('1', '5', '15', '30', 'D')
+   * @param {number} from - Start timestamp (Unix seconds)
+   * @param {number} to - End timestamp (Unix seconds)
+   * @param {Function} finnhubFn - Finnhub candles function
+   * @returns {Promise<{data: object[]|null, source: string}>}
+   */
+  async getCandlesWithFallback(symbol, resolution, from, to, finnhubFn) {
+    const endpoint = 'candles';
+
+    // If endpoint is blocked and we shouldn't retry yet, go straight to Schwab
+    if (this.isBlocked(endpoint) && !this.shouldRetryBlocked(endpoint)) {
+      const schwabData = await this.trySchwabCandles(symbol, resolution, from, to);
+      if (schwabData && schwabData.length > 0) {
+        return { data: schwabData, source: 'schwab' };
+      }
+      return { data: null, source: 'none' };
+    }
+
+    // Try Finnhub
+    try {
+      const data = await finnhubFn(symbol, resolution, from, to);
+      if (data && data.length > 0) {
+        // Success - mark as unblocked if it was blocked
+        this.markUnblocked(endpoint);
+        return { data, source: 'finnhub' };
+      }
+      throw new Error('No candle data from Finnhub');
+    } catch (finnhubError) {
+      // Check if it's a 403 error
+      if (this.is403Error(finnhubError)) {
+        this.markBlocked(endpoint);
+
+        // Try Schwab fallback
+        const schwabData = await this.trySchwabCandles(symbol, resolution, from, to);
+        if (schwabData && schwabData.length > 0) {
+          return { data: schwabData, source: 'schwab' };
+        }
+      }
+
+      // Return the error for the caller to handle
+      return { data: null, source: 'none', error: finnhubError };
+    }
+  }
+
+  /**
+   * Try to get candle data from Schwab
+   * @param {string} symbol - Stock symbol
+   * @param {string} resolution - Resolution
+   * @param {number} from - Start timestamp
+   * @param {number} to - End timestamp
+   * @returns {Promise<object[]|null>}
+   */
+  async trySchwabCandles(symbol, resolution, from, to) {
+    try {
+      const data = await schwabMarketData.getCandles(symbol, resolution, from, to);
+      if (data && data.length > 0) {
+        return data;
+      }
+      return null;
+    } catch (error) {
+      logger.debug(`[FALLBACK] Schwab candles fallback failed for ${symbol}: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
    * Get status of all tracked endpoints
    * @returns {object}
    */
