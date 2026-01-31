@@ -3904,13 +3904,13 @@ class Trade {
   }
 
   /**
-   * Get Low of Day (LoD) at entry time for a symbol
-   * This is used for Qullamaggie-style swing trades where stop loss is set to the low of the entry day
-   * The LoD is captured at the time of entry, ensuring it reflects the actual low up to that point
+   * Get Low of Day "to the left" (LoD) at entry time for a symbol
+   * This is used for Qullamaggie-style swing trades where stop loss is set to the lowest price BEFORE entry
+   * The LoD is the minimum low from all candles STRICTLY BEFORE the entry candle
    * @param {string} symbol - Stock symbol
    * @param {Date|string} entryTime - Entry time of the trade
    * @param {string} userId - User ID for API usage tracking
-   * @returns {Promise<number|null>} - Low of Day price up to entry time, or null if unavailable
+   * @returns {Promise<number|null>} - Low of Day price before entry time, or null if unavailable
    */
   static async getLowOfDayAtEntry(symbol, entryTime, userId = null) {
     try {
@@ -3925,7 +3925,7 @@ class Trade {
         return null;
       }
 
-      // Get the start of the trading day (4:00 AM ET)
+      // Get the start of the trading day (4:00 AM ET for premarket)
       const entryDateStr = entryDate.toISOString().split('T')[0];
 
       // Calculate UTC offset for Eastern Time
@@ -3949,6 +3949,18 @@ class Trade {
       const entryTimestamp = Math.floor(entryDate.getTime() / 1000);
       const dayStartTimestamp = Math.floor(dayStart.getTime() / 1000);
 
+      // Calculate time available before entry (in minutes)
+      const minutesBeforeEntry = (entryTimestamp - dayStartTimestamp) / 60;
+
+      console.log(`[LoD] Entry time: ${entryDate.toISOString()}, Day start: ${dayStart.toISOString()}`);
+      console.log(`[LoD] Minutes of trading before entry: ${minutesBeforeEntry.toFixed(1)}`);
+
+      // If entry is within 1 minute of day start, we can't determine LoD "to the left"
+      if (minutesBeforeEntry < 1) {
+        console.warn(`[LoD] Entry time is less than 1 minute after day start, cannot determine LoD to the left`);
+        return null;
+      }
+
       // Helper function to fetch candles with Finnhub->Schwab fallback
       const fetchCandlesWithFallback = async (res, from, to) => {
         // Use the fallback manager which handles 403 errors and routes to Schwab
@@ -3970,50 +3982,44 @@ class Trade {
 
       // Ensure entry time is after day start
       if (entryTimestamp <= dayStartTimestamp) {
-        console.warn(`[LoD] Entry time is before market open, trying daily candle`);
-        try {
-          const dailyCandles = await fetchCandlesWithFallback('D', dayStartTimestamp - 86400, entryTimestamp);
-          if (dailyCandles && dailyCandles.length > 0) {
-            const lastCandle = dailyCandles[dailyCandles.length - 1];
-            const dailyLow = parseFloat(lastCandle.low);
-            if (!isNaN(dailyLow)) {
-              console.log(`[LoD] Using daily candle low for ${symbol}: $${dailyLow.toFixed(2)}`);
-              return roundToDbPrecision(dailyLow, 4);
-            }
-          }
-        } catch (dailyError) {
-          console.warn(`[LoD] Failed to fetch daily candle: ${dailyError.message}`);
-        }
+        console.warn(`[LoD] Entry time is before market open, cannot determine LoD to the left`);
         return null;
       }
 
-      // Fetch 1-minute candles from start of day to entry time
-      let candles = await fetchCandlesWithFallback('1', dayStartTimestamp, entryTimestamp);
+      // Choose resolution based on time available before entry
+      // Use 1-minute candles if we have less than 30 minutes, otherwise 5-minute is sufficient
+      let resolution = minutesBeforeEntry < 30 ? '1' : '5';
+      console.log(`[LoD] Using ${resolution}-minute resolution based on ${minutesBeforeEntry.toFixed(1)} minutes before entry`);
 
-      // If 1-minute data is not available, try 5-minute candles
+      // Fetch candles from start of day to entry time
+      let candles = await fetchCandlesWithFallback(resolution, dayStartTimestamp, entryTimestamp);
+
+      // If chosen resolution data is not available, try the other resolution
       if (!candles || candles.length === 0) {
-        console.log(`[LoD] No 1-minute data available, trying 5-minute candles`);
-        candles = await fetchCandlesWithFallback('5', dayStartTimestamp, entryTimestamp);
+        const fallbackResolution = resolution === '1' ? '5' : '1';
+        console.log(`[LoD] No ${resolution}-minute data available, trying ${fallbackResolution}-minute candles`);
+        candles = await fetchCandlesWithFallback(fallbackResolution, dayStartTimestamp, entryTimestamp);
       }
 
-      // If still no data, try daily candle as last resort
+      // If still no data, cannot determine LoD to the left
       if (!candles || candles.length === 0) {
-        console.log(`[LoD] No intraday data available, trying daily candle`);
-        const dailyCandles = await fetchCandlesWithFallback('D', dayStartTimestamp - 86400, entryTimestamp);
-        if (dailyCandles && dailyCandles.length > 0) {
-          const lastCandle = dailyCandles[dailyCandles.length - 1];
-          const dailyLow = parseFloat(lastCandle.low);
-          if (!isNaN(dailyLow)) {
-            console.log(`[LoD] Using daily candle low for ${symbol}: $${dailyLow.toFixed(2)}`);
-            return roundToDbPrecision(dailyLow, 4);
-          }
-        }
-        console.warn(`[LoD] No candle data available for ${symbol} on entry day`);
+        console.warn(`[LoD] No intraday candle data available for ${symbol}`);
         return null;
       }
 
-      // Find the minimum low price from all candles up to entry time
-      const lows = candles.map(c => parseFloat(c.low)).filter(l => !isNaN(l));
+      // CRITICAL: Filter candles to only include those STRICTLY BEFORE entry time
+      // This gives us "LoD to the left" - the lowest price before we entered the trade
+      const candlesBeforeEntry = candles.filter(c => c.time < entryTimestamp);
+
+      console.log(`[LoD] Filtering candles: ${candles.length} total, ${candlesBeforeEntry.length} strictly before entry`);
+
+      if (candlesBeforeEntry.length === 0) {
+        console.warn(`[LoD] No candles found before entry time for ${symbol}`);
+        return null;
+      }
+
+      // Find the minimum low price from candles BEFORE entry
+      const lows = candlesBeforeEntry.map(c => parseFloat(c.low)).filter(l => !isNaN(l));
 
       if (lows.length === 0) {
         console.warn(`[LoD] No valid low prices found for ${symbol}`);
@@ -4022,7 +4028,11 @@ class Trade {
 
       const lod = Math.min(...lows);
 
-      console.log(`[LoD] Low of Day for ${symbol} at entry time: $${lod.toFixed(2)} (from ${candles.length} candles)`);
+      // Log detailed info for debugging
+      const firstCandle = candlesBeforeEntry[0];
+      const lastCandle = candlesBeforeEntry[candlesBeforeEntry.length - 1];
+      console.log(`[LoD] Candle range: ${new Date(firstCandle.time * 1000).toISOString()} to ${new Date(lastCandle.time * 1000).toISOString()}`);
+      console.log(`[LoD] Low of Day "to the left" for ${symbol}: $${lod.toFixed(2)} (from ${candlesBeforeEntry.length} candles before entry)`);
 
       return roundToDbPrecision(lod, 4);
     } catch (error) {
