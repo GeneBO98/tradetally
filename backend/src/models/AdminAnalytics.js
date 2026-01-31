@@ -115,7 +115,10 @@ class AdminAnalytics {
         (SELECT COALESCE(SUM(trades_imported), 0) FROM import_logs WHERE created_at >= $1 AND status = 'completed') as trades_imported,
         (SELECT COUNT(*) FROM import_logs WHERE created_at >= $1 AND status = 'completed') as import_count,
         (SELECT COALESCE(SUM(call_count), 0) FROM api_usage_tracking WHERE created_at >= $1) as api_calls,
-        (SELECT COUNT(*) FROM trades WHERE created_at >= $1) as trades_created
+        (SELECT COUNT(*) FROM trades WHERE created_at >= $1) as trades_created,
+        (SELECT COUNT(*) FROM account_deletions WHERE deleted_at >= $1) as account_deletions,
+        (SELECT COUNT(*) FROM account_deletions WHERE deleted_at >= $1 AND deletion_type = 'self') as self_deletions,
+        (SELECT COUNT(*) FROM account_deletions WHERE deleted_at >= $1 AND deletion_type = 'admin') as admin_deletions
     `;
 
     const result = await db.query(query, [startDate, todayStart, sevenDaysAgoStart, thirtyDaysAgoStart]);
@@ -130,7 +133,10 @@ class AdminAnalytics {
       tradesImported: parseInt(row.trades_imported) || 0,
       importCount: parseInt(row.import_count) || 0,
       apiCalls: parseInt(row.api_calls) || 0,
-      tradesCreated: parseInt(row.trades_created) || 0
+      tradesCreated: parseInt(row.trades_created) || 0,
+      accountDeletions: parseInt(row.account_deletions) || 0,
+      selfDeletions: parseInt(row.self_deletions) || 0,
+      adminDeletions: parseInt(row.admin_deletions) || 0
     };
   }
 
@@ -240,6 +246,33 @@ class AdminAnalytics {
   }
 
   /**
+   * Get daily account deletion trend data
+   * @param {string} startDate - ISO date string for period start
+   * @returns {Array} Daily deletion counts
+   */
+  static async getDeletionTrend(startDate) {
+    const query = `
+      SELECT
+        DATE_TRUNC('day', deleted_at)::date as date,
+        COUNT(*) as count,
+        COUNT(*) FILTER (WHERE deletion_type = 'self') as self_deletions,
+        COUNT(*) FILTER (WHERE deletion_type = 'admin') as admin_deletions
+      FROM account_deletions
+      WHERE deleted_at >= $1
+      GROUP BY DATE_TRUNC('day', deleted_at)
+      ORDER BY date ASC
+    `;
+
+    const result = await db.query(query, [startDate]);
+    return result.rows.map(row => ({
+      date: row.date,
+      count: parseInt(row.count) || 0,
+      selfDeletions: parseInt(row.self_deletions) || 0,
+      adminDeletions: parseInt(row.admin_deletions) || 0
+    }));
+  }
+
+  /**
    * Get broker sync statistics
    * @param {string} startDate - ISO date string for period start
    * @returns {Object} Broker sync statistics
@@ -290,12 +323,13 @@ class AdminAnalytics {
   static async getAnalytics(period = '30d', timezone = 'America/Chicago') {
     const startDate = this.getStartDate(period, timezone);
 
-    const [summary, signupTrend, loginTrend, importTrend, apiUsageTrend, brokerSyncStats] = await Promise.all([
+    const [summary, signupTrend, loginTrend, importTrend, apiUsageTrend, deletionTrend, brokerSyncStats] = await Promise.all([
       this.getSummary(startDate, timezone),
       this.getSignupTrend(startDate),
       this.getLoginTrend(startDate),
       this.getImportTrend(startDate),
       this.getApiUsageTrend(startDate),
+      this.getDeletionTrend(startDate),
       this.getBrokerSyncStats(startDate)
     ]);
 
@@ -307,7 +341,8 @@ class AdminAnalytics {
         signups: signupTrend,
         logins: loginTrend,
         imports: importTrend,
-        apiUsage: apiUsageTrend
+        apiUsage: apiUsageTrend,
+        deletions: deletionTrend
       },
       brokerSync: brokerSyncStats
     };

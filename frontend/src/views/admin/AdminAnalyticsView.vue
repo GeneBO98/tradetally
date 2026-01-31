@@ -45,7 +45,7 @@
 
       <template v-else-if="analytics">
         <!-- Summary Cards -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
           <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
             <div class="flex items-center">
               <div class="flex-shrink-0 p-3 rounded-lg bg-blue-100 dark:bg-blue-900/30">
@@ -98,6 +98,23 @@
               <div class="ml-4">
                 <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Trades Imported</p>
                 <p class="text-2xl font-semibold text-gray-900 dark:text-white">{{ formatNumber(analytics.summary.tradesImported) }}</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+            <div class="flex items-center">
+              <div class="flex-shrink-0 p-3 rounded-lg bg-red-100 dark:bg-red-900/30">
+                <svg class="h-6 w-6 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7a4 4 0 11-8 0 4 4 0 018 0zM9 14a6 6 0 00-6 6v1h12v-1a6 6 0 00-6-6zM21 12h-6" />
+                </svg>
+              </div>
+              <div class="ml-4">
+                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Account Deletions</p>
+                <p class="text-2xl font-semibold text-gray-900 dark:text-white">{{ formatNumber(analytics.summary.accountDeletions || 0) }}</p>
+                <p class="text-xs text-gray-400 dark:text-gray-500">
+                  {{ formatNumber(analytics.summary.selfDeletions || 0) }} self, {{ formatNumber(analytics.summary.adminDeletions || 0) }} admin
+                </p>
               </div>
             </div>
           </div>
@@ -208,6 +225,23 @@
               />
               <div v-else class="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">
                 No API usage data for this period
+              </div>
+            </div>
+          </div>
+
+          <!-- Account Deletions Chart -->
+          <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Account Deletions</h3>
+            <div class="h-64">
+              <AdminLineChart
+                v-if="analytics.trends.deletions && analytics.trends.deletions.length > 0"
+                :data="analytics.trends.deletions"
+                label="Deletions"
+                color="#EF4444"
+                data-key="count"
+              />
+              <div v-else class="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">
+                No account deletions for this period
               </div>
             </div>
           </div>

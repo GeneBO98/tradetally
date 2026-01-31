@@ -276,7 +276,7 @@ const userController = {
         }
       }
 
-      await User.deleteUser(userId);
+      await User.deleteUser(userId, { deletionType: 'admin', deletedByAdminId: req.user.id });
       res.json({ message: `User ${targetUser.username} has been permanently deleted` });
     } catch (error) {
       next(error);
@@ -649,8 +649,8 @@ const userController = {
         }
       }
 
-      // Delete the user account
-      await User.deleteUser(userId);
+      // Delete the user account (self-deletion)
+      await User.deleteUser(userId, { deletionType: 'self', deletedByAdminId: null });
 
       console.log(`[INFO] User ${user.username} (ID: ${userId}) deleted their own account`);
 
