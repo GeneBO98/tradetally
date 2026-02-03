@@ -16,6 +16,7 @@ export const useTradesStore = defineStore('trades', () => {
   })
   const filters = ref({
     symbol: '',
+    symbolExact: false,
     startDate: '',
     endDate: '',
     tags: [],
@@ -379,6 +380,7 @@ export const useTradesStore = defineStore('trades', () => {
     if (Object.keys(newFilters).length === 0) {
       filters.value = {
         symbol: '',
+        symbolExact: false,
         startDate: '',
         endDate: '',
         tags: [],
@@ -400,6 +402,7 @@ export const useTradesStore = defineStore('trades', () => {
       // Start from default empty state, then apply newFilters on top
       const replacedFilters = {
         symbol: '',
+        symbolExact: false,
         startDate: '',
         endDate: '',
         tags: [],
@@ -435,6 +438,7 @@ export const useTradesStore = defineStore('trades', () => {
 
     filters.value = {
       symbol: '',
+      symbolExact: false,
       startDate: '',
       endDate: '',
       tags: [],

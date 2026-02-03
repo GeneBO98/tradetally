@@ -294,7 +294,8 @@ const schemas = {
     })).allow(null),
     analyticsChartLayout: Joi.array().items(Joi.object({
       id: Joi.string().required(),
-      visible: Joi.boolean().required()
+      visible: Joi.boolean().required(),
+      size: Joi.string().valid('full', 'half').optional()
     })).allow(null)
   }).min(1),
 

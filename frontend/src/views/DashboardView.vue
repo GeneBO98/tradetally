@@ -103,8 +103,142 @@
     <!-- Year Wrapped Banner -->
     <YearWrappedBanner />
 
+    <!-- Guided onboarding: contextual card for this page (first-time only; hide once they have imported) -->
+    <OnboardingCard
+      v-if="authStore.showOnboardingModal && !onboardingStatus?.has_activated"
+      title="Welcome to TradeTally"
+      description="Import your first trades to see your performance, win rate, and analytics here."
+      cta-label="Go to Import"
+      cta-route="import"
+    />
+
+    <!-- First-value onboarding banner: new users who have not imported yet (hidden while guided onboarding card is shown) -->
+    <div
+      v-if="!initialLoading && !authStore.showOnboardingModal && onboardingStatus?.is_new && !onboardingStatus?.has_activated && !onboardingBannerDismissed"
+      class="card bg-primary-50 dark:bg-primary-900/20 border-primary-200 dark:border-primary-800 mb-6"
+    >
+      <div class="card-body">
+        <div class="flex items-start gap-3">
+          <div class="flex-shrink-0 p-2 rounded-lg bg-primary-100 dark:bg-primary-900/40">
+            <svg class="w-5 h-5 text-primary-600 dark:text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+            </svg>
+          </div>
+          <div class="flex-1 min-w-0">
+            <h3 class="text-sm font-medium text-primary-900 dark:text-primary-100">Get started with TradeTally</h3>
+            <p class="mt-1 text-sm text-primary-700 dark:text-primary-300">
+              Import your first trades to see your P&L, win rate, and analytics here.
+            </p>
+            <div class="mt-3 flex flex-wrap gap-2">
+              <RouterLink
+                :to="{ name: 'import' }"
+                class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-primary-600 text-white hover:bg-primary-700 dark:bg-primary-500 dark:hover:bg-primary-600"
+              >
+                Import your first trades
+              </RouterLink>
+              <RouterLink
+                :to="{ name: 'broker-sync' }"
+                class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md border border-primary-600 text-primary-700 dark:text-primary-300 dark:border-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/30"
+              >
+                Connect a broker
+              </RouterLink>
+              <button
+                type="button"
+                class="inline-flex items-center px-3 py-1.5 text-sm text-primary-600 dark:text-primary-400 hover:underline"
+                @click="onboardingBannerDismissed = true"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+          <button
+            type="button"
+            class="flex-shrink-0 p-1 rounded text-primary-500 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-200"
+            aria-label="Dismiss"
+            @click="onboardingBannerDismissed = true"
+          >
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Year Wrapped Modal -->
     <YearWrappedModal />
+
+    <!-- Trial countdown: show when on active trial -->
+    <div
+      v-if="!initialLoading && billingAvailable && subscription?.trial?.active && !trialBannerDismissed"
+      class="card bg-primary-50 dark:bg-primary-900/20 border-primary-200 dark:border-primary-800 mb-6"
+    >
+      <div class="card-body">
+        <div class="flex items-center justify-between gap-3">
+          <div class="flex items-center gap-3">
+            <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-primary-100 text-primary-800 dark:bg-primary-800 dark:text-primary-200">
+              Pro Trial
+            </span>
+            <span class="text-sm text-primary-800 dark:text-primary-200">
+              {{ subscription.trial.days_remaining }} day{{ subscription.trial.days_remaining === 1 ? '' : 's' }} left. Upgrade before your trial ends to keep Pro features.
+            </span>
+          </div>
+          <div class="flex items-center gap-2">
+            <RouterLink
+              :to="{ name: 'pricing' }"
+              class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-primary-600 text-white hover:bg-primary-700 dark:bg-primary-500 dark:hover:bg-primary-600"
+            >
+              Upgrade before trial ends
+            </RouterLink>
+            <button
+              type="button"
+              class="p-1 rounded text-primary-500 hover:text-primary-700 dark:text-primary-400"
+              aria-label="Dismiss"
+              @click="trialBannerDismissed = true"
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Post-trial expiry: show when trial ended and user is on free tier -->
+    <div
+      v-if="!initialLoading && billingAvailable && showPostTrialBanner && !postTrialBannerDismissed"
+      class="card bg-gray-50 dark:bg-gray-800/80 border-gray-200 dark:border-gray-700 mb-6"
+    >
+      <div class="card-body">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <p class="text-sm font-medium text-gray-900 dark:text-white">Your trial ended</p>
+            <p class="text-sm text-gray-600 dark:text-gray-400 mt-0.5">
+              Upgrade to Pro to keep advanced analytics, AI insights, and more.
+            </p>
+          </div>
+          <div class="flex items-center gap-2">
+            <RouterLink
+              :to="{ name: 'pricing' }"
+              class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-primary-600 text-white hover:bg-primary-700"
+            >
+              View Pro plans
+            </RouterLink>
+            <button
+              type="button"
+              class="p-1 rounded text-gray-500 hover:text-gray-700 dark:text-gray-400"
+              aria-label="Dismiss"
+              @click="postTrialBannerDismissed = true"
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- Full page spinner only on initial load -->
     <div v-if="initialLoading" class="flex justify-center py-12">
@@ -901,6 +1035,7 @@ import { mdiCheckCircle } from '@mdi/js'
 import { getRefreshInterval, shouldRefreshPrices, getMarketStatus } from '@/utils/marketHours'
 import YearWrappedBanner from '@/components/yearWrapped/YearWrappedBanner.vue'
 import YearWrappedModal from '@/components/yearWrapped/YearWrappedModal.vue'
+import OnboardingCard from '@/components/onboarding/OnboardingCard.vue'
 import { useYearWrappedStore } from '@/stores/yearWrapped'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 import draggable from 'vuedraggable'
@@ -969,6 +1104,19 @@ const defaultDashboardLayout = sectionDefinitions.map(section => ({
 const dashboardLayout = ref(JSON.parse(JSON.stringify(defaultDashboardLayout)))
 const isCustomizing = ref(false)
 const showLayoutSettings = ref(false)
+const onboardingStatus = ref(null)
+const onboardingBannerDismissed = ref(false)
+const billingAvailable = ref(false)
+const subscription = ref(null)
+const trialBannerDismissed = ref(false)
+const postTrialBannerDismissed = ref(false)
+
+const showPostTrialBanner = computed(() => {
+  if (!subscription.value) return false
+  return subscription.value.tier === 'free' &&
+    subscription.value.has_used_trial === true &&
+    !subscription.value.subscription
+})
 
 // Get section definition by ID
 function getSectionDefinition(id) {
@@ -1209,6 +1357,29 @@ async function fetchAnalytics() {
   } finally {
     loading.value = false
     initialLoading.value = false // Mark initial load complete
+  }
+}
+
+async function fetchOnboardingStatus() {
+  try {
+    const response = await api.get('/users/onboarding-status')
+    onboardingStatus.value = response.data
+  } catch (err) {
+    console.warn('[Dashboard] Could not fetch onboarding status:', err?.message)
+  }
+}
+
+async function fetchBillingAndSubscription() {
+  try {
+    const statusRes = await api.get('/billing/status')
+    billingAvailable.value = statusRes.data?.data?.billing_available === true
+    if (!billingAvailable.value) return
+    const subRes = await api.get('/billing/subscription')
+    subscription.value = subRes.data?.data ?? null
+  } catch (err) {
+    if (err.response?.status !== 400 && err.response?.data?.error !== 'billing_unavailable') {
+      console.warn('[Dashboard] Could not fetch billing/subscription:', err?.message)
+    }
   }
 }
 
@@ -1489,15 +1660,24 @@ function createCharts() {
   console.log('Dashboard: winRateChart.value exists:', !!winRateChart.value)
   console.log('Dashboard: analytics.value exists:', !!analytics.value)
   console.log('Dashboard: Chart.js imported:', typeof Chart)
-  
-  if (pnlChart.value && distributionChart.value && winRateChart.value) {
+
+  // Create each chart independently based on whether its canvas ref exists
+  // This allows charts to render even if some layout sections are hidden
+  if (pnlChart.value) {
     createPnLChart()
+  }
+  if (distributionChart.value) {
     createDistributionChart()
+  }
+  if (winRateChart.value) {
     createWinRateChart()
-  } else {
-    console.log('Dashboard: Charts not created - missing canvas refs:', {
+  }
+
+  // Log if any charts couldn't be created due to missing refs
+  if (!pnlChart.value || !distributionChart.value || !winRateChart.value) {
+    console.log('Dashboard: Some charts not created - canvas refs:', {
       pnlChart: !!pnlChart.value,
-      distributionChart: !!distributionChart.value, 
+      distributionChart: !!distributionChart.value,
       winRateChart: !!winRateChart.value
     })
   }
@@ -1904,6 +2084,12 @@ onMounted(async () => {
 
   // Check Year Wrapped banner status (non-blocking)
   yearWrappedStore.checkBannerStatus()
+
+  // Onboarding status for first-value banner (non-blocking)
+  fetchOnboardingStatus()
+
+  // Billing/subscription for trial countdown and post-trial banner (non-blocking)
+  fetchBillingAndSubscription()
 
   // Set initial refresh timestamp
   lastRefresh.value = new Date()

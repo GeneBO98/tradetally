@@ -361,7 +361,9 @@
                 <!-- Row 3: Entry Time and Exit Time -->
                 <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
-                    <label :for="`exec-entry-time-${index}`" class="label">Entry Time *</label>
+                    <label :for="`exec-entry-time-${index}`" class="label">
+                      Entry Time * <span class="text-xs font-normal text-gray-500">({{ timezoneLabel }})</span>
+                    </label>
                     <input
                       :id="`exec-entry-time-${index}`"
                       v-model="execution.entryTime"
@@ -373,7 +375,9 @@
                   </div>
 
                   <div>
-                    <label :for="`exec-exit-time-${index}`" class="label">Exit Time</label>
+                    <label :for="`exec-exit-time-${index}`" class="label">
+                      Exit Time <span class="text-xs font-normal text-gray-500">({{ timezoneLabel }})</span>
+                    </label>
                     <input
                       :id="`exec-exit-time-${index}`"
                       v-model="execution.exitTime"
@@ -512,7 +516,9 @@
               <!-- Individual fill format -->
               <div v-else class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <div>
-                  <label :for="`exec-datetime-${index}`" class="label">Date/Time *</label>
+                  <label :for="`exec-datetime-${index}`" class="label">
+                    Date/Time * <span class="text-xs font-normal text-gray-500">({{ timezoneLabel }})</span>
+                  </label>
                   <input
                     :id="`exec-datetime-${index}`"
                     v-model="execution.datetime"
@@ -1478,6 +1484,7 @@ import { useTradesStore } from '@/stores/trades'
 import { useAuthStore } from '@/stores/auth'
 import { useNotification } from '@/composables/useNotification'
 import { useAnalytics } from '@/composables/useAnalytics'
+import { useUserTimezone } from '@/composables/useUserTimezone'
 import ImageUpload from '@/components/trades/ImageUpload.vue'
 import TradeImages from '@/components/trades/TradeImages.vue'
 import ChartUpload from '@/components/trades/ChartUpload.vue'
@@ -1573,6 +1580,7 @@ const tradesStore = useTradesStore()
 const authStore = useAuthStore()
 const { showSuccess, showError } = useNotification()
 const { trackTradeAction } = useAnalytics()
+const { toLocalInput, toUTC, getCurrentTimeLocal, timezoneLabel } = useUserTimezone()
 
 const loading = ref(false)
 const error = ref(null)
@@ -1764,27 +1772,8 @@ const showSetupInput = ref(false)
 
 function formatDateTimeLocal(date) {
   if (!date) return ''
-
-  // Parse datetime string manually to avoid timezone issues
-  const dateStr = date.toString()
-
-  // If it's an ISO datetime string, parse components directly (with optional seconds)
-  const isoMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/)
-  if (isoMatch) {
-    const [, year, month, day, hour, minute, second] = isoMatch
-    const sec = second || '00'
-    return `${year}-${month}-${day}T${hour}:${minute}:${sec}`
-  }
-
-  // Fallback to Date object
-  const d = new Date(date)
-  const year = d.getFullYear()
-  const month = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  const hours = String(d.getHours()).padStart(2, '0')
-  const minutes = String(d.getMinutes()).padStart(2, '0')
-  const seconds = String(d.getSeconds()).padStart(2, '0')
-  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`
+  // Convert UTC datetime to user's local timezone for form input
+  return toLocalInput(date)
 }
 
 function formatDateOnly(date) {
@@ -2132,13 +2121,14 @@ async function handleSubmit() {
           // IMPORTANT: This check must match the check in loadTrade (line 1668) to ensure consistency
           if (exec.entryPrice !== undefined || exec.exitPrice !== undefined || exec.entryTime !== undefined) {
             // Grouped format - keep entry/exit fields
+            // Convert times from user's local timezone to UTC
             return {
               side: exec.side,
               quantity: parseFloat(exec.quantity),
               entryPrice: parseFloat(exec.entryPrice),
               exitPrice: exec.exitPrice ? parseFloat(exec.exitPrice) : null,
-              entryTime: exec.entryTime,
-              exitTime: exec.exitTime || null,
+              entryTime: toUTC(exec.entryTime),
+              exitTime: exec.exitTime ? toUTC(exec.exitTime) : null,
               commission: parseFloat(exec.commission) || 0,  // Can be negative for rebates
               fees: parseFloat(exec.fees) || 0,  // Can be negative for rebates
               pnl: exec.pnl || 0,
@@ -2169,11 +2159,12 @@ async function handleSubmit() {
             if (action === 'long') action = 'buy'
             if (action === 'short') action = 'sell'
 
+            // Convert datetime from user's local timezone to UTC
             return {
               action: action,
               quantity: parseFloat(exec.quantity),
               price: parseFloat(exec.price),
-              datetime: exec.datetime,
+              datetime: toUTC(exec.datetime),
               commission: parseFloat(exec.commission) || 0,  // Can be negative for rebates
               fees: parseFloat(exec.fees) || 0,  // Can be negative for rebates
               stopLoss: exec.stopLoss && exec.stopLoss !== '' ? parseFloat(exec.stopLoss) : null,
@@ -2315,12 +2306,19 @@ async function handleSubmit() {
     // Derive side from first execution if main form side is empty (grouped executions mode)
     const derivedSide = form.value.side || (form.value.executions.length > 0 ? form.value.executions[0].side : '')
 
+    // Convert times from user's local timezone to UTC
+    // (execution times are already converted above in processedExecutions)
+    // For simple trades without executions, times come from form values which need conversion
+    const hasExecutions = processedExecutions && processedExecutions.length > 0
+    const finalEntryTime = hasExecutions ? calculatedEntryTime : toUTC(calculatedEntryTime)
+    const finalExitTime = hasExecutions ? calculatedExitTime : (calculatedExitTime ? toUTC(calculatedExitTime) : null)
+
     const tradeData = {
       symbol: form.value.symbol,
       side: derivedSide,
       instrumentType: form.value.instrumentType,
-      entryTime: calculatedEntryTime,
-      exitTime: calculatedExitTime || null,
+      entryTime: finalEntryTime,
+      exitTime: finalExitTime || null,
       entryPrice: calculatedEntryPrice,
       exitPrice: calculatedExitPrice,
       quantity: calculatedQuantity,
@@ -2916,12 +2914,11 @@ function removeExecutionTakeProfitTarget(executionIndex, targetIndex) {
 }
 
 function addExecution() {
-  const now = new Date()
   form.value.executions.push({
     action: '',
     quantity: '',
     price: '',
-    datetime: formatDateTimeLocal(now),
+    datetime: getCurrentTimeLocal(),
     commission: 0,
     fees: 0,
     stopLoss: null,
@@ -2932,13 +2929,12 @@ function addExecution() {
 }
 
 function addGroupedExecution() {
-  const now = new Date()
   form.value.executions.push({
     side: form.value.side || '',
     quantity: '',
     entryPrice: '',
     exitPrice: null,
-    entryTime: formatDateTimeLocal(now),
+    entryTime: getCurrentTimeLocal(),
     exitTime: null,
     commission: 0,
     fees: 0,
@@ -3081,9 +3077,8 @@ onMounted(async () => {
   if (isEdit.value) {
     loadTrade()
   } else {
-    // Set default entry time
-    const now = new Date()
-    form.value.entryTime = formatDateTimeLocal(now)
+    // Set default entry time in user's timezone
+    form.value.entryTime = getCurrentTimeLocal()
 
     // Check for trade blocking on new trades
     if (hasProAccess.value) {

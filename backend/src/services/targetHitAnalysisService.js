@@ -648,7 +648,13 @@ class TargetHitAnalysisService {
       risk_level_history,
       manual_target_hit_first,
       side,
-      quantity
+      quantity,
+      executions,
+      commission,
+      fees,
+      instrument_type,
+      point_value,
+      contract_size
     } = trade;
 
     if (!entry_price || !exit_price || !stop_loss) {
@@ -684,95 +690,202 @@ class TargetHitAnalysisService {
 
     // Check if we have partial exits (multiple targets with shares)
     const hasTargetsArray = take_profit_targets && Array.isArray(take_profit_targets) && take_profit_targets.length > 0;
+    const hasExecutions = executions && Array.isArray(executions) && executions.length > 0;
 
-    // Calculate partial exit data
-    // Two possible data structures:
-    // 1. take_profit_targets contains ALL targets (including TP1) with explicit shares
-    // 2. take_profit contains TP1 price, take_profit_targets contains additional targets
-    //
-    // Detect structure: if first target price matches take_profit, use structure #1
-    let tp1R = 0;
-    let tp1Ratio = 0;
+    // Determine which targets were ACTUALLY hit by checking executions
+    // A target is "hit" if there's an exit execution at or near that price
+    let hitTargetsContribution = 0;
+    let hitTargetsShares = 0;
+    let remainingExitContribution = 0; // R contribution from non-target exits
+    let remainingExitShares = 0;
     let remainingRatio = 1;
     let hasPartialExits = false;
 
-    if (hasTargetsArray) {
-      const totalTargetShares = take_profit_targets.reduce(
-        (sum, t) => sum + (parseFloat(t.shares || t.quantity) || 0), 0
+    if (hasTargetsArray && hasExecutions) {
+      // Get exit executions (opposite action from trade side)
+      const exitAction = isLong ? 'sell' : 'buy';
+      const exitExecs = executions.filter(e =>
+        (e.action === exitAction || e.type === exitAction) &&
+        parseFloat(e.price) > 0
       );
 
-      // Check if targets array contains all shares (structure #1)
-      // or if we need to add TP1 separately (structure #2)
-      const firstTargetMatchesTakeProfit = take_profit &&
-        Math.abs(parseFloat(take_profit_targets[0].price) - parseFloat(take_profit)) < 0.01;
+      logger.debug('[MANAGEMENT-R] Checking executions against targets:', {
+        exitAction,
+        exitExecCount: exitExecs.length,
+        targetCount: take_profit_targets.length
+      });
 
-      if (firstTargetMatchesTakeProfit || totalTargetShares >= totalQty) {
-        // Structure #1: take_profit_targets contains ALL targets with shares
-        // Find TP1 (first target) for partial exit calculation
-        const tp1Target = take_profit_targets[0];
-        const tp1Price = parseFloat(tp1Target.price);
-        const tp1Shares = parseFloat(tp1Target.shares || tp1Target.quantity) || 0;
+      // Track which executions matched targets
+      const matchedExecIndices = new Set();
 
-        tp1R = isLong ? (tp1Price - entryPrice) / risk : (entryPrice - tp1Price) / risk;
-        tp1Ratio = tp1Shares / totalQty;
+      // Check each target to see if it was hit
+      for (const target of take_profit_targets) {
+        const tPrice = parseFloat(target.price);
+        const tShares = parseFloat(target.shares || target.quantity) || 0;
 
-        // Remaining = everything after TP1
-        const remainingShares = totalQty - tp1Shares;
-        remainingRatio = remainingShares / totalQty;
-        hasPartialExits = tp1Shares > 0 && tp1Shares < totalQty;
+        // Find execution that matches this target price (within $1 tolerance)
+        const matchingExecIdx = exitExecs.findIndex(e => Math.abs(parseFloat(e.price) - tPrice) < 1);
 
-        logger.debug('[MANAGEMENT-R] Using targets array structure (all targets in array):', {
-          tp1Price,
-          tp1Shares,
-          tp1R: tp1R.toFixed(4),
-          tp1Ratio: tp1Ratio.toFixed(4),
-          remainingRatio: remainingRatio.toFixed(4)
-        });
-      } else {
-        // Structure #2: take_profit is TP1, take_profit_targets are additional
-        const tp1Price = parseFloat(take_profit);
-        tp1R = isLong ? (tp1Price - entryPrice) / risk : (entryPrice - tp1Price) / risk;
+        if (matchingExecIdx !== -1) {
+          matchedExecIndices.add(matchingExecIdx);
+          const tR = isLong ? (tPrice - entryPrice) / risk : (entryPrice - tPrice) / risk;
+          const contrib = tR * (tShares / totalQty);
+          hitTargetsContribution += contrib;
+          hitTargetsShares += tShares;
 
-        const tp1Shares = Math.max(0, totalQty - totalTargetShares);
-        tp1Ratio = tp1Shares / totalQty;
-        remainingRatio = totalTargetShares / totalQty;
-        hasPartialExits = tp1Shares > 0 && tp1Shares < totalQty;
-
-        logger.debug('[MANAGEMENT-R] Using separate TP1 structure:', {
-          tp1Price,
-          tp1Shares,
-          tp1R: tp1R.toFixed(4),
-          tp1Ratio: tp1Ratio.toFixed(4),
-          remainingRatio: remainingRatio.toFixed(4)
-        });
+          logger.debug('[MANAGEMENT-R] Target HIT:', {
+            price: tPrice,
+            shares: tShares,
+            R: tR.toFixed(4),
+            contribution: contrib.toFixed(4),
+            matchedExecPrice: exitExecs[matchingExecIdx].price
+          });
+        } else {
+          logger.debug('[MANAGEMENT-R] Target NOT HIT:', { price: tPrice, shares: tShares });
+        }
       }
+
+      // Calculate R contribution from non-target exits (remaining position exits)
+      exitExecs.forEach((exec, idx) => {
+        if (!matchedExecIndices.has(idx)) {
+          const execPrice = parseFloat(exec.price);
+          const execQty = parseFloat(exec.quantity) || 0;
+          const execR = isLong ? (execPrice - entryPrice) / risk : (entryPrice - execPrice) / risk;
+          const contrib = execR * (execQty / totalQty);
+          remainingExitContribution += contrib;
+          remainingExitShares += execQty;
+
+          logger.debug('[MANAGEMENT-R] Non-target exit:', {
+            price: execPrice,
+            quantity: execQty,
+            R: execR.toFixed(4),
+            contribution: contrib.toFixed(4)
+          });
+        }
+      });
+
+      // Calculate remaining based on what wasn't hit
+      const remainingShares = totalQty - hitTargetsShares;
+      remainingRatio = remainingShares / totalQty;
+      hasPartialExits = hitTargetsShares > 0 && hitTargetsShares < totalQty;
+
+      logger.debug('[MANAGEMENT-R] Hit targets summary:', {
+        hitTargetsContribution: hitTargetsContribution.toFixed(4),
+        hitTargetsShares,
+        remainingExitContribution: remainingExitContribution.toFixed(4),
+        remainingExitShares,
+        remainingShares,
+        remainingRatio: remainingRatio.toFixed(4),
+        hasPartialExits
+      });
+    } else if (hasTargetsArray) {
+      // No executions - fall back to checking exit price against targets
+      // This is less accurate but better than nothing
+      for (const target of take_profit_targets) {
+        const tPrice = parseFloat(target.price);
+        const tShares = parseFloat(target.shares || target.quantity) || 0;
+
+        // Check if exit price passed this target
+        const wasHit = isLong ? exitPrice >= tPrice : exitPrice <= tPrice;
+
+        if (wasHit) {
+          const tR = isLong ? (tPrice - entryPrice) / risk : (entryPrice - tPrice) / risk;
+          const contrib = tR * (tShares / totalQty);
+          hitTargetsContribution += contrib;
+          hitTargetsShares += tShares;
+
+          logger.debug('[MANAGEMENT-R] Target HIT (by exit price):', {
+            price: tPrice,
+            shares: tShares,
+            R: tR.toFixed(4),
+            contribution: contrib.toFixed(4)
+          });
+        }
+      }
+
+      const remainingShares = totalQty - hitTargetsShares;
+      remainingRatio = remainingShares / totalQty;
+      hasPartialExits = hitTargetsShares > 0 && hitTargetsShares < totalQty;
+
+      logger.debug('[MANAGEMENT-R] Hit targets summary (from exit price):', {
+        hitTargetsContribution: hitTargetsContribution.toFixed(4),
+        hitTargetsShares,
+        remainingRatio: remainingRatio.toFixed(4),
+        hasPartialExits
+      });
     }
 
     // Calculate actual R
-    // For partial exits, we need weighted actual R:
-    //   = TP1 contribution + remaining exit contribution
-    // Since exit_price is only the final exit (for remaining position),
-    // we must add TP1 contribution separately
-    const remainingExitR = isLong
-      ? (exitPrice - entryPrice) / risk
-      : (entryPrice - exitPrice) / risk;
-
+    // For partial exits, actual R = hit targets contribution + non-target exits contribution
+    // We use the actual execution prices, not the weighted average exit_price
     let actualR;
-    if (hasPartialExits) {
-      // Weighted actual R = TP1 exit + remaining exit (at exit_price)
-      actualR = (tp1R * tp1Ratio) + (remainingExitR * remainingRatio);
+    if (hasPartialExits && remainingExitShares > 0) {
+      // Weighted actual R = all hit targets + actual non-target exit contributions
+      actualR = hitTargetsContribution + remainingExitContribution;
       logger.debug('[MANAGEMENT-R] Weighted Actual R for partial exits:', {
-        tp1R: tp1R.toFixed(4),
-        tp1Ratio: tp1Ratio.toFixed(4),
-        tp1Contribution: (tp1R * tp1Ratio).toFixed(4),
+        hitTargetsContribution: hitTargetsContribution.toFixed(4),
+        remainingExitContribution: remainingExitContribution.toFixed(4),
+        actualR: actualR.toFixed(4)
+      });
+    } else if (hasPartialExits) {
+      // Partial exits but no remaining exit data - fall back to exit_price
+      const remainingExitR = isLong
+        ? (exitPrice - entryPrice) / risk
+        : (entryPrice - exitPrice) / risk;
+      actualR = hitTargetsContribution + (remainingExitR * remainingRatio);
+      logger.debug('[MANAGEMENT-R] Weighted Actual R (fallback to exit_price):', {
+        hitTargetsContribution: hitTargetsContribution.toFixed(4),
         remainingExitR: remainingExitR.toFixed(4),
         remainingRatio: remainingRatio.toFixed(4),
-        remainingContribution: (remainingExitR * remainingRatio).toFixed(4),
         actualR: actualR.toFixed(4)
       });
     } else {
       // No partial exits - use exit_price for entire position
+      const remainingExitR = isLong
+        ? (exitPrice - entryPrice) / risk
+        : (entryPrice - exitPrice) / risk;
       actualR = remainingExitR;
+    }
+
+    // Adjust actual R for commission and fees
+    // Commission reduces your actual profit, so it reduces actual R
+    const totalCommission = Math.abs(parseFloat(commission || 0)) + Math.abs(parseFloat(fees || 0));
+    if (totalCommission > 0 && risk > 0 && totalQty > 0) {
+      // Calculate multiplier based on instrument type
+      // Also detect futures from symbol pattern if instrument_type is incorrect
+      const { symbol } = trade;
+      const isFutures = instrument_type === 'future' ||
+        (symbol && /^(MES|ES|MNQ|NQ|MYM|YM|M2K|RTY|MGC|GC|MCL|CL|SI|HG)/i.test(symbol));
+
+      let multiplier = 1; // default for stocks
+      if (isFutures) {
+        // Use point_value if set, otherwise detect from symbol
+        if (point_value) {
+          multiplier = parseFloat(point_value);
+        } else if (symbol && /^(MES|MNQ|MYM|M2K)/i.test(symbol)) {
+          multiplier = 5; // Micro futures = $5 per point
+        } else if (symbol && /^(ES|NQ|YM|RTY)/i.test(symbol)) {
+          multiplier = 50; // E-mini futures = $50 per point
+        } else {
+          multiplier = 5; // Default to micro
+        }
+      } else if (instrument_type === 'option') {
+        multiplier = parseFloat(contract_size) || 100;
+      }
+
+      const riskAmount = risk * totalQty * multiplier;
+      const commissionR = totalCommission / riskAmount;
+      actualR = actualR - commissionR;
+
+      logger.debug('[MANAGEMENT-R] Commission adjustment:', {
+        symbol,
+        isFutures,
+        totalCommission,
+        multiplier,
+        riskAmount,
+        commissionR: commissionR.toFixed(4),
+        actualRAfterCommission: actualR.toFixed(4)
+      });
     }
 
     let plannedR = null;
@@ -780,20 +893,41 @@ class TargetHitAnalysisService {
     let managementR = null;
 
     if (manual_target_hit_first === 'stop_loss') {
-      // SL Hit First: Management R = Saved R from SL moves
-      // This represents the R saved by moving your stop loss while contracts remain open
-      // The better you managed the SL (moved it to reduce risk), the higher the saved R
+      // SL Hit First: Management R = Actual R - Planned R
       //
-      // Pass the inferred remaining ratio for partial exits - SL moves typically happen
-      // AFTER TP1 is hit, so we use the remainingRatio calculated above
-      const inferredRemainingRatio = hasPartialExits ? remainingRatio : 1.0;
-      const slMoveImpact = this.calculateSLMoveImpact(risk_level_history, risk, totalQty, isLong, inferredRemainingRatio);
+      // Planned R depends on whether there were partial exits:
+      // - No partial exits: Planned R = -1R (full position would have stopped out)
+      // - With partial exits: Planned R = hit targets contribution + (remaining × -1R)
+      //
+      // This measures how much better/worse you did compared to the planned stop out.
+      // Examples:
+      // - Entry 100, SL 90, Exit 102 (no partials): Actual R = +0.2, Planned R = -1, Management R = +1.2R
+      // - Entry 100, SL 90, Exit 90 (stopped exactly): Actual R = -1, Planned R = -1, Management R = 0R
+      // - Entry 100, SL 90, Exit 85 (slipped): Actual R = -1.5, Planned R = -1, Management R = -0.5R
 
-      managementR = slMoveImpact;
+      if (hasPartialExits) {
+        // With partial exits: hit targets were captured, remaining would have stopped at -1R
+        plannedR = hitTargetsContribution + (remainingRatio * -1);
 
-      logger.debug('[MANAGEMENT-R] SL Hit First - using SL Move Impact:', {
-        slMoveImpact: slMoveImpact.toFixed(4),
-        inferredRemainingRatio: inferredRemainingRatio.toFixed(4),
+        logger.debug('[MANAGEMENT-R] SL Hit First with partial exits:', {
+          hitTargetsContribution: hitTargetsContribution.toFixed(4),
+          remainingRatio: remainingRatio.toFixed(4),
+          plannedR: plannedR.toFixed(4)
+        });
+      } else {
+        // No partial exits: full position would have stopped at -1R
+        plannedR = -1;
+
+        logger.debug('[MANAGEMENT-R] SL Hit First without partial exits:', {
+          plannedR: plannedR.toFixed(4)
+        });
+      }
+
+      managementR = actualR - plannedR;
+
+      logger.debug('[MANAGEMENT-R] SL Hit First result:', {
+        actualR: actualR.toFixed(4),
+        plannedR: plannedR.toFixed(4),
         managementR: managementR.toFixed(4)
       });
 

@@ -1050,13 +1050,17 @@
               <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Timeline</h3>
               <dl class="space-y-3">
                 <div v-if="trade.entry_time">
-                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Entry</dt>
+                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
+                    Entry <span class="text-xs font-normal">({{ timezoneLabel }})</span>
+                  </dt>
                   <dd class="mt-1 text-sm text-gray-900 dark:text-white">
                     {{ formatDateTime(trade.entry_time) }}
                   </dd>
                 </div>
                 <div v-if="trade.exit_time">
-                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Exit</dt>
+                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
+                    Exit <span class="text-xs font-normal">({{ timezoneLabel }})</span>
+                  </dt>
                   <dd class="mt-1 text-sm text-gray-900 dark:text-white">
                     {{ formatDateTime(trade.exit_time) }}
                   </dd>
@@ -1157,6 +1161,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTradesStore } from '@/stores/trades'
 import { useNotification } from '@/composables/useNotification'
+import { useUserTimezone } from '@/composables/useUserTimezone'
 import { format, formatDistanceToNow, formatDistance } from 'date-fns'
 import { DocumentIcon, ChatBubbleLeftIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
@@ -1170,6 +1175,7 @@ const router = useRouter()
 const tradesStore = useTradesStore()
 const authStore = useAuthStore()
 const { showSuccess, showError, showConfirmation } = useNotification()
+const { formatDateTime: formatDateTimeTz, timezoneLabel } = useUserTimezone()
 
 const loading = ref(true)
 const trade = ref(null)
@@ -1552,28 +1558,8 @@ function formatDate(date) {
 
 function formatDateTime(date) {
   if (!date) return 'N/A'
-  try {
-    // Parse datetime string manually to avoid timezone issues
-    const dateStr = date.toString()
-
-    // If it's an ISO datetime string, parse components directly
-    // Updated regex to handle milliseconds and timezone (but we ignore them to parse as local time)
-    const isoMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?/)
-    if (isoMatch) {
-      const [, year, month, day, hour, minute, second] = isoMatch.map(Number)
-      // Create date in local timezone (ignoring any timezone info from the string)
-      const dateObj = new Date(year, month - 1, day, hour, minute, second)
-      return format(dateObj, 'MMM dd, yyyy HH:mm')
-    }
-
-    // Fallback to standard parsing
-    const dateObj = new Date(date)
-    if (isNaN(dateObj.getTime())) return 'Invalid Date'
-    return format(dateObj, 'MMM dd, yyyy HH:mm')
-  } catch (error) {
-    console.error('Date formatting error:', error, 'for date:', date)
-    return 'Invalid Date'
-  }
+  // Use timezone-aware formatting from composable
+  return formatDateTimeTz(date)
 }
 
 function formatFileSize(bytes) {

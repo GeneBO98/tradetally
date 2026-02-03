@@ -423,6 +423,41 @@ function calculateRMultiples(trade) {
     contract_size: contract_size || 'not set'
   });
 
+  // Adjust actual R for commission and fees (net R)
+  // Commission reduces your actual profit, so it reduces actual R
+  const { commission, fees, symbol } = trade;
+  const totalCommission = Math.abs(parseFloat(commission || 0)) + Math.abs(parseFloat(fees || 0));
+  if (totalCommission > 0 && riskAmount > 0) {
+    // Detect futures from symbol if instrument_type is incorrect
+    const isFutures = instrumentType === 'future' ||
+      (symbol && /^(MES|ES|MNQ|NQ|MYM|YM|M2K|RTY|MGC|GC|MCL|CL|SI|HG)/i.test(symbol));
+
+    // For futures detected by symbol but with wrong instrument_type, recalculate riskAmount
+    let effectiveRiskAmount = riskAmount;
+    if (isFutures && instrumentType !== 'future') {
+      // Recalculate with correct futures multiplier
+      let futuresMultiplier = 5; // Default to micro
+      if (symbol && /^(MES|MNQ|MYM|M2K)/i.test(symbol)) {
+        futuresMultiplier = 5; // Micro futures = $5 per point
+      } else if (symbol && /^(ES|NQ|YM|RTY)/i.test(symbol)) {
+        futuresMultiplier = 50; // E-mini futures = $50 per point
+      }
+      effectiveRiskAmount = risk * tradeQuantity * futuresMultiplier;
+    }
+
+    const commissionR = totalCommission / effectiveRiskAmount;
+    const grossActualR = actualR;
+    actualR = actualR - commissionR;
+
+    logger.debug('[R-CALC] Commission adjustment:', {
+      totalCommission,
+      effectiveRiskAmount: effectiveRiskAmount.toFixed(2),
+      commissionR: commissionR.toFixed(4),
+      grossActualR: grossActualR.toFixed(4),
+      netActualR: actualR.toFixed(4)
+    });
+  }
+
   // Use weighted average target R if available (for multiple targets)
   const effectiveTargetR = weightedTargetR !== null ? weightedTargetR : targetR;
   const effectiveRLost = effectiveTargetR !== undefined ? effectiveTargetR - actualR : rLost;
@@ -1250,12 +1285,13 @@ const tradeManagementController = {
       logger.info('[TRADE-MGMT] getRPerformance called', { userId, symbol, startDate, endDate, limit, accounts });
 
       // Get trades with stop_loss set (required for R calculation)
-      // Now also fetch management_r and take_profit_targets
+      // Now also fetch management_r, take_profit_targets, and manual_target_hit_first
       let query = `
         SELECT
           id, symbol, trade_date, entry_price, exit_price,
           quantity, side, pnl, stop_loss, take_profit,
-          take_profit_targets, management_r, risk_level_history
+          take_profit_targets, management_r, risk_level_history,
+          manual_target_hit_first
         FROM trades
         WHERE user_id = $1
           AND exit_price IS NOT NULL
@@ -1312,14 +1348,24 @@ const tradeManagementController = {
         if (rValues) {
           cumulativeActualR += rValues.actual_r;
 
-          // For potential R, only use target_r if available
-          // If no target is set, don't add to potential R (use 0)
-          // This ensures the chart matches the R-Multiple Analysis where "Not Set" means no target
-          if (rValues.target_r !== null) {
-            cumulativePotentialR += rValues.target_r;
+          // Target R depends ONLY on manual_target_hit_first selection:
+          // - SL hit first: Target R = -1R (expected outcome was to stop out)
+          // - TP hit first: Target R = weighted Target R (expected outcome was to hit all targets)
+          // - Not set: Don't add to Target R (trade not yet analyzed)
+          // The curve cannot stay flat - it either goes down -1R or up by the calculated target R
+          let tradeTargetR = null;
+          if (trade.manual_target_hit_first === 'stop_loss') {
+            tradeTargetR = -1; // Expected -1R when SL hits first
+            tradesWithTarget++;
+          } else if (trade.manual_target_hit_first === 'take_profit' && rValues.target_r !== null) {
+            tradeTargetR = rValues.target_r; // Use weighted Target R when TP hits first
             tradesWithTarget++;
           }
-          // else: no target set, don't add to potential R
+          // else: not set, don't add to potential R
+
+          if (tradeTargetR !== null) {
+            cumulativePotentialR += tradeTargetR;
+          }
 
           // Calculate management R fresh (same as individual trade analysis)
           // This ensures the chart matches the sum of individual R-Multiple Analysis values
@@ -1345,13 +1391,15 @@ const tradeManagementController = {
             symbol: trade.symbol,
             trade_date: trade.trade_date,
             actual_r: rValues.actual_r,
-            target_r: rValues.target_r,
+            target_r: tradeTargetR, // -1R for SL hit first, weighted Target R for TP hit first, null if not set
+            weighted_target_r: rValues.target_r, // Original weighted target R (for reference)
             management_r: Math.round(tradeManagementR * 100) / 100,
             cumulative_actual_r: Math.round(cumulativeActualR * 100) / 100,
             cumulative_potential_r: Math.round(cumulativePotentialR * 100) / 100,
             cumulative_management_r: Math.round(cumulativeManagementR * 100) / 100,
             has_multiple_targets: !!(trade.take_profit_targets && trade.take_profit_targets.length > 0),
-            has_adjustments: !!(trade.risk_level_history && trade.risk_level_history.length > 0)
+            has_adjustments: !!(trade.risk_level_history && trade.risk_level_history.length > 0),
+            target_hit_first: trade.manual_target_hit_first || null
           });
 
           tradeDetails.push({
@@ -1361,7 +1409,7 @@ const tradeManagementController = {
             side: trade.side,
             pnl: trade.pnl,
             actual_r: rValues.actual_r,
-            target_r: rValues.target_r,
+            target_r: tradeTargetR, // -1R for SL hit first, weighted Target R for TP hit first, null if not set
             management_r: tradeManagementR !== 0 ? tradeManagementR : null
           });
         }

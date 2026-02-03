@@ -155,34 +155,35 @@
           </div>
 
           <div class="space-y-3 overflow-y-auto flex-1" :class="isModalExpanded ? '' : 'max-h-96'">
-            <div v-for="trade in selectedDayTrades" :key="trade.id"
+            <div v-for="(contrib, index) in selectedDayContributions" :key="contrib.trade_id + '-' + index"
               class="p-4 border border-gray-200 dark:border-gray-700 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-              @click="navigateToTrade(trade.id)">
+              @click="navigateToTrade(contrib.trade_id)">
               <div class="flex justify-between items-start">
                 <div>
-                  <div class="flex items-center space-x-2">
-                    <h4 class="font-medium text-gray-900 dark:text-white">{{ trade.symbol }}</h4>
+                  <div class="flex items-center space-x-2 flex-wrap gap-y-1">
+                    <h4 class="font-medium text-gray-900 dark:text-white">{{ contrib.symbol }}</h4>
                     <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
                       :class="[
-                        trade.side === 'long' 
+                        contrib.side === 'long'
                           ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
                           : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
                       ]">
-                      {{ trade.side }}
+                      {{ contrib.side }}
+                    </span>
+                    <span v-if="contrib.is_partial" class="px-2 inline-flex text-xs leading-5 font-medium rounded-full bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300">
+                      {{ (contrib.exit_count || 1) > 1 ? `Partial exits (${contrib.exit_count})` : 'Partial exit' }}
+                    </span>
+                    <span v-else class="px-2 inline-flex text-xs leading-5 font-medium rounded-full bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300">
+                      Trade
                     </span>
                   </div>
-                  <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                    <p>Entry: ${{ formatNumber(trade.entry_price, 4) }} | Exit: {{ trade.exit_price ? `$${formatNumber(trade.exit_price, 4)}` : 'Open' }}</p>
-                    <p>Quantity: {{ formatNumber(trade.quantity, 0) }}</p>
-                    <p v-if="trade.notes" class="mt-1">{{ trade.notes }}</p>
-                  </div>
+                  <p v-if="contrib.is_partial && (contrib.exit_count || 1) > 1" class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    {{ contrib.exit_count }} exits from same trade
+                  </p>
                 </div>
                 <div class="text-right">
-                  <p class="font-semibold" :class="trade.pnl >= 0 ? 'text-green-600' : 'text-red-600'">
-                    ${{ formatNumber(trade.pnl) }}
-                  </p>
-                  <p v-if="trade.pnl_percent" class="text-sm text-gray-500 dark:text-gray-400">
-                    {{ trade.pnl_percent > 0 ? '+' : '' }}{{ formatNumber(trade.pnl_percent) }}%
+                  <p class="font-semibold" :class="(contrib.pnl || 0) >= 0 ? 'text-green-600' : 'text-red-600'">
+                    ${{ formatNumber(contrib.pnl) }}
                   </p>
                 </div>
               </div>
@@ -219,7 +220,7 @@ const route = useRoute()
 const loading = ref(true)
 const initialLoading = ref(true) // Track initial load separately to preserve scroll on refresh
 const calendarData = ref(new Map()) // Map of date string -> { trades: number, pnl: number }
-const trades = ref([]) // Only loaded when needed (e.g., for modal)
+const dayContributions = ref([]) // Execution-level contributions for selected day (from /analytics/calendar/day)
 const expandedMonth = ref(null)
 // Initialize year from route query, localStorage, or current year (in that order)
 const getInitialYear = () => {
@@ -256,20 +257,7 @@ function getCalendarDataForDate(date) {
   return calendarData.value.get(dateKey) || { trades: 0, pnl: 0 }
 }
 
-// Helper to get trades for a date (for modal display)
-function getTradesForDate(date) {
-  if (!date) return []
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  const dateKey = `${year}-${month}-${day}`
-  // Filter trades that exited on this date
-  return trades.value.filter(trade => {
-    if (!trade.exit_time) return false
-    const tradeDateKey = trade.exit_time.split('T')[0]
-    return tradeDateKey === dateKey
-  })
-}
+// Day detail shows execution-level contributions (from API), not getTradesForDate
 
 // Helper to get total P&L for a date
 function getPnlForDate(date) {
@@ -392,14 +380,11 @@ const expandedMonthWeekdays = computed(() => {
   return weeks
 })
 
-const selectedDayTrades = computed(() => {
-  if (!selectedDay.value || !selectedDay.value.date) return []
-  return getTradesForDate(selectedDay.value.date)
-})
+const selectedDayContributions = computed(() => dayContributions.value)
 
-// Calculate the total P&L from the actual displayed trades (more accurate than calendar aggregation)
+// Total P&L for selected day = sum of execution contributions (matches calendar)
 const selectedDayTotalPnl = computed(() => {
-  return selectedDayTrades.value.reduce((sum, trade) => sum + (parseFloat(trade.pnl) || 0), 0)
+  return selectedDayContributions.value.reduce((sum, c) => sum + (parseFloat(c.pnl) || 0), 0)
 })
 
 const expandedMonthTrades = computed(() => {
@@ -538,7 +523,6 @@ function closeExpandedMonth() {
 
 async function selectDay(day) {
   selectedDay.value = day
-  // Lazy load trades for this day if not already loaded
   if (day.date) {
     await fetchTradesForDate(day.date)
   }
@@ -600,10 +584,6 @@ async function fetchCalendarData() {
       }
     }
     calendarData.value = dataMap
-    
-    // Only fetch full trades if we need them (e.g., for modal)
-    // For now, we'll fetch them lazily when a day is selected
-    trades.value = []
   } catch (error) {
     console.error('Failed to fetch calendar data:', error)
   } finally {
@@ -621,40 +601,23 @@ async function fetchTradesForDate(date) {
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const day = String(date.getDate()).padStart(2, '0')
   const dateKey = `${year}-${month}-${day}`
-  
-  // Filter existing trades or fetch if needed
-  const existingTrades = trades.value.filter(t => {
-    if (!t.exit_time) return false
-    return t.exit_time.split('T')[0] === dateKey
-  })
-  
-  if (existingTrades.length > 0) {
-    return existingTrades
-  }
-  
-  // Fetch trades for this date - filter by EXIT date (when trade was closed)
-  // This matches the calendar P&L calculation which groups by exit_time
+
+  // Fetch execution-level contributions for this date (matches calendar P&L)
   try {
-    const params = {
-      exitStartDate: dateKey,
-      exitEndDate: dateKey,
-      limit: 100
-    }
+    const params = { date: dateKey }
     if (selectedAccount.value) {
       params.accounts = selectedAccount.value
     }
-    const response = await api.get('/trades', { params })
-    // Merge with existing trades (avoid duplicates)
-    const newTrades = response.data.trades || []
-    const existingIds = new Set(trades.value.map(t => t.id))
-    const uniqueNewTrades = newTrades.filter(t => !existingIds.has(t.id))
-    trades.value = [...trades.value, ...uniqueNewTrades]
-    return newTrades
+    const response = await api.get('/analytics/calendar/day', { params })
+    dayContributions.value = response.data.contributions || []
+    return dayContributions.value
   } catch (error) {
-    console.error('Failed to fetch trades for date:', error)
+    console.error('Failed to fetch day contributions:', error)
+    dayContributions.value = []
     return []
   }
 }
+
 
 onMounted(() => {
   // Sync URL with current year if it came from localStorage (not from route query)

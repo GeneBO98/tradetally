@@ -61,12 +61,15 @@
               <div>
                 <label for="timezone" class="label">Timezone</label>
                 <select id="timezone" v-model="profileForm.timezone" class="input">
-                  <option value="UTC">UTC</option>
-                  <option value="America/New_York">Eastern Time</option>
-                  <option value="America/Chicago">Central Time</option>
-                  <option value="America/Denver">Mountain Time</option>
-                  <option value="America/Los_Angeles">Pacific Time</option>
+                  <optgroup v-for="group in timezoneGroups" :key="group.name" :label="group.name">
+                    <option v-for="tz in group.options" :key="tz.value" :value="tz.value">
+                      {{ tz.label }}
+                    </option>
+                  </optgroup>
                 </select>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  Trade times will be displayed in this timezone.
+                </p>
               </div>
             </div>
 
@@ -893,6 +896,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useNotification } from '@/composables/useNotification'
 import NotificationPreferences from '@/components/profile/NotificationPreferences.vue'
 import api from '@/services/api'
+import { TIMEZONE_OPTIONS } from '@/utils/timezone'
 
 const router = useRouter()
 
@@ -1001,6 +1005,21 @@ const sectorOptions = [
   'Consumer Staples', 'Energy', 'Industrials', 'Materials',
   'Utilities', 'Real Estate', 'Communication Services'
 ]
+
+// Group timezone options by region for the selector
+const timezoneGroups = computed(() => {
+  const groups = {}
+  for (const tz of TIMEZONE_OPTIONS) {
+    if (!groups[tz.group]) {
+      groups[tz.group] = []
+    }
+    groups[tz.group].push(tz)
+  }
+  return Object.keys(groups).map(name => ({
+    name,
+    options: groups[name]
+  }))
+})
 
 // Computed property to determine if upgrade button should be shown
 const shouldShowUpgradeButton = computed(() => {

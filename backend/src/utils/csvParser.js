@@ -365,6 +365,32 @@ function detectBrokerFormat(fileBuffer) {
   }
 }
 
+/**
+ * Extract the CSV header line from a file buffer (first non-empty line with comma in first 10 lines, BOM stripped).
+ * Used for recording unknown CSV headers when no parser matches or parse fails.
+ * @param {Buffer} fileBuffer - The CSV file buffer
+ * @returns {string|null} - The header line or null if not found
+ */
+function getCsvHeaderLine(fileBuffer) {
+  try {
+    let csvString = fileBuffer.toString('utf-8');
+    if (csvString.charCodeAt(0) === 0xFEFF) {
+      csvString = csvString.slice(1);
+    }
+    const lines = csvString.split('\n');
+    for (let i = 0; i < Math.min(10, lines.length); i++) {
+      const line = lines[i].trim();
+      if (line && line.includes(',')) {
+        return line;
+      }
+    }
+    return null;
+  } catch (error) {
+    console.error('[CSV] Error extracting header line:', error);
+    return null;
+  }
+}
+
 const brokerParsers = {
   generic: (row) => ({
     symbol: row.Symbol || row.symbol,
@@ -6821,6 +6847,7 @@ function isValidTrade(trade) {
 module.exports = {
   parseCSV,
   detectBrokerFormat,
+  getCsvHeaderLine,
   brokerParsers,
   parseDate,
   parseDateTime,

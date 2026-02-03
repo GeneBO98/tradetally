@@ -44,118 +44,151 @@
       </div>
 
       <template v-else-if="analytics">
-        <!-- Summary Cards -->
+        <!-- Summary Cards: stacked layout so they align at any viewport size -->
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
-          <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-            <div class="flex items-center">
-              <div class="flex-shrink-0 p-3 rounded-lg bg-blue-100 dark:bg-blue-900/30">
-                <svg class="h-6 w-6 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                </svg>
-              </div>
-              <div class="ml-4">
-                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Total Users</p>
-                <p class="text-2xl font-semibold text-gray-900 dark:text-white">{{ formatNumber(analytics.summary.totalUsers) }}</p>
-              </div>
+          <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-5 min-h-[7.5rem] flex flex-col">
+            <div class="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-lg bg-primary-100 dark:bg-primary-900/30">
+              <svg class="h-5 w-5 text-primary-600 dark:text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+            </div>
+            <div class="mt-3 min-w-0 flex-1">
+              <p class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Total Users</p>
+              <p class="text-xl sm:text-2xl font-semibold text-gray-900 dark:text-white truncate" :title="formatNumber(analytics.summary.totalUsers)">{{ formatNumber(analytics.summary.totalUsers) }}</p>
             </div>
           </div>
 
-          <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-            <div class="flex items-center">
-              <div class="flex-shrink-0 p-3 rounded-lg bg-green-100 dark:bg-green-900/30">
-                <svg class="h-6 w-6 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-                </svg>
-              </div>
-              <div class="ml-4">
-                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">New Signups</p>
-                <p class="text-2xl font-semibold text-gray-900 dark:text-white">{{ formatNumber(analytics.summary.newSignups) }}</p>
-              </div>
+          <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-5 min-h-[7.5rem] flex flex-col">
+            <div class="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-lg bg-green-100 dark:bg-green-900/30">
+              <svg class="h-5 w-5 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+              </svg>
+            </div>
+            <div class="mt-3 min-w-0 flex-1">
+              <p class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">New Signups</p>
+              <p class="text-xl sm:text-2xl font-semibold text-gray-900 dark:text-white truncate" :title="formatNumber(analytics.summary.newSignups)">{{ formatNumber(analytics.summary.newSignups) }}</p>
             </div>
           </div>
 
-          <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-            <div class="flex items-center">
-              <div class="flex-shrink-0 p-3 rounded-lg bg-purple-100 dark:bg-purple-900/30">
-                <svg class="h-6 w-6 text-purple-600 dark:text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <div class="ml-4">
-                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Active Today</p>
-                <p class="text-2xl font-semibold text-gray-900 dark:text-white">{{ formatNumber(analytics.summary.activeToday) }}</p>
-              </div>
+          <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-5 min-h-[7.5rem] flex flex-col">
+            <div class="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-lg bg-purple-100 dark:bg-purple-900/30">
+              <svg class="h-5 w-5 text-purple-600 dark:text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div class="mt-3 min-w-0 flex-1">
+              <p class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Active Today</p>
+              <p class="text-xl sm:text-2xl font-semibold text-gray-900 dark:text-white truncate" :title="formatNumber(analytics.summary.activeToday)">{{ formatNumber(analytics.summary.activeToday) }}</p>
             </div>
           </div>
 
-          <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-            <div class="flex items-center">
-              <div class="flex-shrink-0 p-3 rounded-lg bg-orange-100 dark:bg-orange-900/30">
-                <svg class="h-6 w-6 text-orange-600 dark:text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
-              </div>
-              <div class="ml-4">
-                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Trades Imported</p>
-                <p class="text-2xl font-semibold text-gray-900 dark:text-white">{{ formatNumber(analytics.summary.tradesImported) }}</p>
-              </div>
+          <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-5 min-h-[7.5rem] flex flex-col">
+            <div class="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-lg bg-orange-100 dark:bg-orange-900/30">
+              <svg class="h-5 w-5 text-orange-600 dark:text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+            </div>
+            <div class="mt-3 min-w-0 flex-1">
+              <p class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Trades Imported</p>
+              <p class="text-xl sm:text-2xl font-semibold text-gray-900 dark:text-white truncate" :title="formatNumber(analytics.summary.tradesImported)">{{ formatNumber(analytics.summary.tradesImported) }}</p>
             </div>
           </div>
 
-          <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-            <div class="flex items-center">
-              <div class="flex-shrink-0 p-3 rounded-lg bg-red-100 dark:bg-red-900/30">
-                <svg class="h-6 w-6 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7a4 4 0 11-8 0 4 4 0 018 0zM9 14a6 6 0 00-6 6v1h12v-1a6 6 0 00-6-6zM21 12h-6" />
-                </svg>
-              </div>
-              <div class="ml-4">
-                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Account Deletions</p>
-                <p class="text-2xl font-semibold text-gray-900 dark:text-white">{{ formatNumber(analytics.summary.accountDeletions || 0) }}</p>
-                <p class="text-xs text-gray-400 dark:text-gray-500">
-                  {{ formatNumber(analytics.summary.selfDeletions || 0) }} self, {{ formatNumber(analytics.summary.adminDeletions || 0) }} admin
-                </p>
-              </div>
+          <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-5 min-h-[7.5rem] flex flex-col">
+            <div class="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-lg bg-red-100 dark:bg-red-900/30">
+              <svg class="h-5 w-5 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            </div>
+            <div class="mt-3 min-w-0 flex-1">
+              <p class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Account Deletions</p>
+              <p class="text-xl sm:text-2xl font-semibold text-gray-900 dark:text-white truncate" :title="formatNumber(analytics.summary.accountDeletions || 0)">{{ formatNumber(analytics.summary.accountDeletions || 0) }}</p>
+              <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5 truncate">
+                {{ formatNumber(analytics.summary.selfDeletions || 0) }} self, {{ formatNumber(analytics.summary.adminDeletions || 0) }} admin
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Revenue / Subscriptions Section -->
+        <div v-if="analytics.subscriptionMetrics" class="mb-8">
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Revenue & Subscriptions</h2>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-5 min-h-[7.5rem] flex flex-col justify-center min-w-0">
+              <p class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Paying Users</p>
+              <p class="text-xl sm:text-2xl font-semibold text-gray-900 dark:text-white truncate mt-1" :title="formatNumber(analytics.subscriptionMetrics.payingUsers)">{{ formatNumber(analytics.subscriptionMetrics.payingUsers) }}</p>
+            </div>
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-5 min-h-[7.5rem] flex flex-col justify-center min-w-0">
+              <p class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">MRR</p>
+              <p class="text-xl sm:text-2xl font-semibold text-gray-900 dark:text-white truncate mt-1" :title="'$' + formatCurrency(analytics.subscriptionMetrics.mrr)">${{ formatCurrency(analytics.subscriptionMetrics.mrr) }}</p>
+            </div>
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-5 min-h-[7.5rem] flex flex-col justify-center min-w-0">
+              <p class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Trial Start Rate</p>
+              <p class="text-xl sm:text-2xl font-semibold text-gray-900 dark:text-white mt-1">{{ analytics.subscriptionMetrics.trialStartRate }}%</p>
+              <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5 truncate">{{ analytics.subscriptionMetrics.trialsStartedInPeriod }} trials / {{ analytics.subscriptionMetrics.signupsInPeriod }} signups</p>
+            </div>
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-5 min-h-[7.5rem] flex flex-col justify-center min-w-0">
+              <p class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Trial to Paid</p>
+              <p class="text-xl sm:text-2xl font-semibold text-gray-900 dark:text-white mt-1">{{ analytics.subscriptionMetrics.trialConversionRate }}%</p>
+              <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5 truncate">{{ analytics.subscriptionMetrics.trialConvertedCount }} / {{ analytics.subscriptionMetrics.totalTrialUsers }} trial users</p>
+            </div>
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-5 min-h-[7.5rem] flex flex-col justify-center min-w-0">
+              <p class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">At-Risk (Canceling)</p>
+              <p class="text-xl sm:text-2xl font-semibold text-gray-900 dark:text-white truncate mt-1" :title="formatNumber(analytics.subscriptionMetrics.atRiskCancellations)">{{ formatNumber(analytics.subscriptionMetrics.atRiskCancellations) }}</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Activation Section -->
+        <div v-if="analytics.activation" class="mb-8">
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Activation</h2>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-5 min-h-[7.5rem] flex flex-col justify-center min-w-0">
+              <p class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Activation Rate</p>
+              <p class="text-xl sm:text-2xl font-semibold text-gray-900 dark:text-white mt-1">{{ analytics.activation.activationRatePercent }}%</p>
+              <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5 truncate">Import within 7 days of signup</p>
+            </div>
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-5 min-h-[7.5rem] flex flex-col justify-center min-w-0">
+              <p class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Activated</p>
+              <p class="text-xl sm:text-2xl font-semibold text-gray-900 dark:text-white truncate mt-1" :title="formatNumber(analytics.activation.activatedCount)">{{ formatNumber(analytics.activation.activatedCount) }}</p>
+            </div>
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-5 min-h-[7.5rem] flex flex-col justify-center min-w-0">
+              <p class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Signups (period)</p>
+              <p class="text-xl sm:text-2xl font-semibold text-gray-900 dark:text-white truncate mt-1" :title="formatNumber(analytics.activation.signupsCount)">{{ formatNumber(analytics.activation.signupsCount) }}</p>
             </div>
           </div>
         </div>
 
         <!-- Secondary Stats Row -->
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-          <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Active (7 Days)</p>
-                <p class="text-xl font-semibold text-gray-900 dark:text-white">{{ formatNumber(analytics.summary.active7Days) }}</p>
-              </div>
-              <div class="text-sm text-gray-500 dark:text-gray-400">
-                {{ calculatePercentage(analytics.summary.active7Days, analytics.summary.totalUsers) }}% of users
-              </div>
+          <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-5 min-h-[7.5rem] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 min-w-0">
+            <div class="min-w-0">
+              <p class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Active (7 Days)</p>
+              <p class="text-xl font-semibold text-gray-900 dark:text-white truncate mt-1" :title="formatNumber(analytics.summary.active7Days)">{{ formatNumber(analytics.summary.active7Days) }}</p>
             </div>
+            <p class="text-sm text-gray-500 dark:text-gray-400 flex-shrink-0 sm:text-right">
+              {{ calculatePercentage(analytics.summary.active7Days, analytics.summary.totalUsers) }}% of users
+            </p>
           </div>
 
-          <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Active (30 Days)</p>
-                <p class="text-xl font-semibold text-gray-900 dark:text-white">{{ formatNumber(analytics.summary.active30Days) }}</p>
-              </div>
-              <div class="text-sm text-gray-500 dark:text-gray-400">
-                {{ calculatePercentage(analytics.summary.active30Days, analytics.summary.totalUsers) }}% of users
-              </div>
+          <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-5 min-h-[7.5rem] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 min-w-0">
+            <div class="min-w-0">
+              <p class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Active (30 Days)</p>
+              <p class="text-xl font-semibold text-gray-900 dark:text-white truncate mt-1" :title="formatNumber(analytics.summary.active30Days)">{{ formatNumber(analytics.summary.active30Days) }}</p>
             </div>
+            <p class="text-sm text-gray-500 dark:text-gray-400 flex-shrink-0 sm:text-right">
+              {{ calculatePercentage(analytics.summary.active30Days, analytics.summary.totalUsers) }}% of users
+            </p>
           </div>
 
-          <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">API Calls</p>
-                <p class="text-xl font-semibold text-gray-900 dark:text-white">{{ formatNumber(analytics.summary.apiCalls) }}</p>
-              </div>
-              <div class="text-sm text-gray-500 dark:text-gray-400">
-                {{ formatNumber(analytics.summary.importCount) }} imports
-              </div>
+          <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-5 min-h-[7.5rem] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 min-w-0">
+            <div class="min-w-0">
+              <p class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">API Calls</p>
+              <p class="text-xl font-semibold text-gray-900 dark:text-white truncate mt-1" :title="formatNumber(analytics.summary.apiCalls)">{{ formatNumber(analytics.summary.apiCalls) }}</p>
             </div>
+            <p class="text-sm text-gray-500 dark:text-gray-400 flex-shrink-0 sm:text-right">
+              {{ formatNumber(analytics.summary.importCount) }} imports
+            </p>
           </div>
         </div>
 
@@ -273,6 +306,42 @@
             </div>
           </div>
         </div>
+
+        <!-- Unknown CSV Headers (no parser match or parse failed) -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Unknown CSV Headers</h3>
+          <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
+            Imports that did not match a known broker or failed to parse. Use these to add or improve parsers.
+          </p>
+          <div v-if="unknownCsvHeadersLoading" class="flex justify-center py-4">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+          </div>
+          <div v-else-if="unknownCsvHeaders.length === 0" class="text-sm text-gray-500 dark:text-gray-400">
+            No unknown CSV headers recorded yet.
+          </div>
+          <div v-else class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+              <thead>
+                <tr>
+                  <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Outcome</th>
+                  <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Broker attempted</th>
+                  <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Headers</th>
+                  <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">File</th>
+                  <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Date</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                <tr v-for="row in unknownCsvHeaders" :key="row.id" class="text-sm">
+                  <td class="px-3 py-2 text-gray-900 dark:text-white">{{ row.outcome }}</td>
+                  <td class="px-3 py-2 text-gray-600 dark:text-gray-300">{{ row.broker_attempted }}</td>
+                  <td class="px-3 py-2 max-w-xs truncate text-gray-600 dark:text-gray-300" :title="row.header_line">{{ row.header_line }}</td>
+                  <td class="px-3 py-2 text-gray-600 dark:text-gray-300">{{ row.file_name || '-' }}</td>
+                  <td class="px-3 py-2 text-gray-500 dark:text-gray-400">{{ formatUnknownCsvDate(row.created_at) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
       </template>
     </div>
   </div>
@@ -298,10 +367,39 @@ const selectedPeriod = ref(savedPeriod || '30d')
 const analytics = ref(null)
 const loading = ref(true)
 const error = ref(null)
+const unknownCsvHeaders = ref([])
+const unknownCsvHeadersLoading = ref(false)
 
 function formatNumber(num) {
   if (num === null || num === undefined) return '0'
   return num.toLocaleString()
+}
+
+function formatCurrency(num) {
+  if (num === null || num === undefined) return '0.00'
+  return Number(num).toFixed(2)
+}
+
+function formatUnknownCsvDate(iso) {
+  if (!iso) return '-'
+  try {
+    return new Date(iso).toLocaleString()
+  } catch {
+    return iso
+  }
+}
+
+async function fetchUnknownCsvHeaders() {
+  unknownCsvHeadersLoading.value = true
+  try {
+    const response = await api.get('/admin/unknown-csv-headers', { params: { limit: 100 } })
+    unknownCsvHeaders.value = response.data.data || []
+  } catch (err) {
+    console.warn('Failed to fetch unknown CSV headers:', err)
+    unknownCsvHeaders.value = []
+  } finally {
+    unknownCsvHeadersLoading.value = false
+  }
 }
 
 function calculatePercentage(part, total) {
@@ -332,6 +430,7 @@ watch(selectedPeriod, (newPeriod) => {
 
 onMounted(() => {
   fetchAnalytics()
+  fetchUnknownCsvHeaders()
 })
 </script>
 

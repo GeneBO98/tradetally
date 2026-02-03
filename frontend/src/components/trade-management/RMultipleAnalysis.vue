@@ -372,6 +372,7 @@ const getAssessmentDescription = computed(() => {
   const score = props.analysis.management_score?.score
   const actualR = props.analysis.actual_r
   const targetR = effectiveTargetR.value
+  const targetHitFirst = props.trade?.manual_target_hit_first
 
   // Check if they hit exactly their target (within small tolerance for floating point)
   const hitExactTarget = targetR !== null && Math.abs(actualR - targetR) < 0.01
@@ -380,6 +381,39 @@ const getAssessmentDescription = computed(() => {
   // Check if they took a loss but less than planned risk (between -1R and 0)
   const reducedLoss = actualR < 0 && actualR > -1
 
+  // When TP hit first is selected, use TP-specific messages
+  if (targetHitFirst === 'take_profit') {
+    if (actualR >= targetR && targetR !== null) {
+      return `You captured ${formatR(actualR)} vs your ${formatR(targetR)} target - excellent execution!`
+    }
+    if (actualR > 0 && targetR !== null) {
+      return `You exited at ${formatR(actualR)} before reaching your ${formatR(targetR)} target.`
+    }
+    if (actualR === 0) {
+      return `Trade closed at breakeven despite TP being hit first.`
+    }
+    // Loss with TP hit first - they trailed too tight or exited early after TP1
+    if (targetR !== null) {
+      return `Trade reversed to ${formatR(actualR)} after TP was hit - consider locking in profits.`
+    }
+    return `Trade ended at ${formatR(actualR)} after initial target area was reached.`
+  }
+
+  // When SL hit first is selected, use SL-specific messages
+  if (targetHitFirst === 'stop_loss') {
+    if (hitExactStopLoss) {
+      return `You hit your stop loss exactly at -1R - you stuck to your plans.`
+    }
+    if (reducedLoss) {
+      return `You reduced your planned loss by exiting at ${formatR(actualR)} instead of -1R.`
+    }
+    if (actualR > 0) {
+      return `You managed to exit with ${formatR(actualR)} profit despite SL being hit first.`
+    }
+    return `SL was hit first - loss of ${formatR(actualR)}.`
+  }
+
+  // Default behavior when no target hit analysis is set
   switch (score) {
     case 'exceeded':
       if (hitExactTarget) {
