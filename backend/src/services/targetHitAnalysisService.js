@@ -780,20 +780,44 @@ class TargetHitAnalysisService {
     let managementR = null;
 
     if (manual_target_hit_first === 'stop_loss') {
-      // SL Hit First: Management R = Saved R from SL moves
-      // This represents the R saved by moving your stop loss while contracts remain open
-      // The better you managed the SL (moved it to reduce risk), the higher the saved R
+      // SL Hit First: Management R = Actual R - Planned R
       //
-      // Pass the inferred remaining ratio for partial exits - SL moves typically happen
-      // AFTER TP1 is hit, so we use the remainingRatio calculated above
-      const inferredRemainingRatio = hasPartialExits ? remainingRatio : 1.0;
-      const slMoveImpact = this.calculateSLMoveImpact(risk_level_history, risk, totalQty, isLong, inferredRemainingRatio);
+      // Planned R depends on whether there were partial exits:
+      // - No partial exits: Planned R = -1R (full position would have stopped out)
+      // - With partial exits: Planned R = TP1 contribution + (remaining × -1R)
+      //
+      // This measures how much better/worse you did compared to the planned stop out.
+      // Examples:
+      // - Entry 100, SL 90, Exit 102 (no partials): Actual R = +0.2, Planned R = -1, Management R = +1.2R
+      // - Entry 100, SL 90, Exit 90 (stopped exactly): Actual R = -1, Planned R = -1, Management R = 0R
+      // - Entry 100, SL 90, Exit 85 (slipped): Actual R = -1.5, Planned R = -1, Management R = -0.5R
 
-      managementR = slMoveImpact;
+      if (hasPartialExits) {
+        // With partial exits: TP1 was captured, remaining would have stopped at -1R
+        const tp1Contribution = tp1R * tp1Ratio;
+        plannedR = tp1Contribution + (remainingRatio * -1);
 
-      logger.debug('[MANAGEMENT-R] SL Hit First - using SL Move Impact:', {
-        slMoveImpact: slMoveImpact.toFixed(4),
-        inferredRemainingRatio: inferredRemainingRatio.toFixed(4),
+        logger.debug('[MANAGEMENT-R] SL Hit First with partial exits:', {
+          tp1R: tp1R.toFixed(4),
+          tp1Ratio: tp1Ratio.toFixed(4),
+          tp1Contribution: tp1Contribution.toFixed(4),
+          remainingRatio: remainingRatio.toFixed(4),
+          plannedR: plannedR.toFixed(4)
+        });
+      } else {
+        // No partial exits: full position would have stopped at -1R
+        plannedR = -1;
+
+        logger.debug('[MANAGEMENT-R] SL Hit First without partial exits:', {
+          plannedR: plannedR.toFixed(4)
+        });
+      }
+
+      managementR = actualR - plannedR;
+
+      logger.debug('[MANAGEMENT-R] SL Hit First result:', {
+        actualR: actualR.toFixed(4),
+        plannedR: plannedR.toFixed(4),
         managementR: managementR.toFixed(4)
       });
 

@@ -852,6 +852,7 @@
 import { onMounted, computed, watch, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTradesStore } from '@/stores/trades'
+import { useUserTimezone } from '@/composables/useUserTimezone'
 import { format } from 'date-fns'
 import { DocumentTextIcon, ChatBubbleLeftIcon } from '@heroicons/vue/24/outline'
 import TradeFilters from '@/components/trades/TradeFilters.vue'
@@ -864,6 +865,7 @@ import { mdiNewspaper } from '@mdi/js'
 import api from '@/services/api'
 
 const tradesStore = useTradesStore()
+const { formatTime: formatTimeTz } = useUserTimezone()
 const route = useRoute()
 const router = useRouter()
 
@@ -1149,22 +1151,8 @@ function formatHoldTime(trade) {
 
 function formatTime(datetime) {
   if (!datetime) return '-'
-  try {
-    const dateStr = datetime.toString()
-    // Parse datetime string manually to avoid timezone issues (same as TradeDetailView)
-    const isoMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?/)
-    if (isoMatch) {
-      const [, , , , hour, minute, second] = isoMatch.map(Number)
-      // Format time directly from parsed components, ignoring timezone
-      return `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}:${second.toString().padStart(2, '0')}`
-    }
-    // Fallback
-    const date = new Date(datetime)
-    return format(date, 'HH:mm:ss')
-  } catch (error) {
-    console.error('Time formatting error:', error, 'for datetime:', datetime)
-    return '-'
-  }
+  // Use timezone-aware formatting from composable
+  return formatTimeTz(datetime)
 }
 
 function handleFilter(filters) {

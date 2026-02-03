@@ -217,7 +217,9 @@ import api from '@/services/api'
 import TradeCommentsDialog from '@/components/trades/TradeCommentsDialog.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useNotification } from '@/composables/useNotification'
+import { useUserTimezone } from '@/composables/useUserTimezone'
 
+const { formatDateTime: formatDateTimeTz } = useUserTimezone()
 const loading = ref(true)
 const trades = ref([])
 const hasMore = ref(true)
@@ -244,7 +246,7 @@ function formatDate(date) {
 }
 
 function formatDateTime(date) {
-  return format(new Date(date), 'MMM dd, yyyy HH:mm')
+  return formatDateTimeTz(date)
 }
 
 async function fetchTrades(offset = 0) {
