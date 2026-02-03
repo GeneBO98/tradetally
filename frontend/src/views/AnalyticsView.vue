@@ -7,6 +7,15 @@
       </p>
     </div>
 
+    <!-- Guided onboarding: contextual card for this page (first-time only) -->
+    <OnboardingCard
+      v-if="authStore.showOnboardingModal"
+      title="Explore Analytics"
+      description="Dive into advanced metrics, behavioral insights, and performance over time. Use the filters and charts below to analyze your trading."
+      cta-label="Next: Try the Journal"
+      cta-route="diary"
+    />
+
     <div class="space-y-8">
       <!-- Filters -->
       <div class="card">
@@ -1214,6 +1223,7 @@ import MdiIcon from '@/components/MdiIcon.vue'
 import NewsCorrelationAnalytics from '@/components/analytics/NewsCorrelationAnalytics.vue'
 import TagManagement from '@/components/trades/TagManagement.vue'
 import TradeFilters from '@/components/trades/TradeFilters.vue'
+import OnboardingCard from '@/components/onboarding/OnboardingCard.vue'
 import AIReportRenderer from '@/components/ai/AIReportRenderer.vue'
 import AIConversationPanel from '@/components/ai/AIConversationPanel.vue'
 import { useAIStore } from '@/stores/ai'

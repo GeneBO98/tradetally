@@ -1,6 +1,6 @@
 const Trade = require('../models/Trade');
 const User = require('../models/User');
-const { parseCSV } = require('../utils/csvParser');
+const { parseCSV, detectBrokerFormat, getCsvHeaderLine } = require('../utils/csvParser');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../config/database');
 const logger = require('../utils/logger');
@@ -1431,6 +1431,24 @@ const tradeController = {
             customMapping,
             selectedAccountId
           };
+
+          if (broker === 'auto') {
+            const detectedBroker = detectBrokerFormat(fileBuffer);
+            if (detectedBroker === 'generic') {
+              const headerLine = getCsvHeaderLine(fileBuffer);
+              if (headerLine) {
+                try {
+                  await db.query(`
+                    INSERT INTO unknown_csv_headers (user_id, header_line, broker_attempted, outcome, file_name)
+                    VALUES ($1, $2, 'auto', 'no_parser_match', $3)
+                  `, [fileUserId, headerLine.substring(0, 10000), fileName]);
+                } catch (recordErr) {
+                  logger.logWarn(`[CSV] Failed to record unknown headers: ${recordErr.message}`);
+                }
+              }
+            }
+          }
+
           const parseResult = await parseCSV(fileBuffer, broker, context);
 
           // Handle both old format (array) and new format (object with trades and unresolvedCusips)
@@ -2056,7 +2074,19 @@ const tradeController = {
         } catch (error) {
           // Clear timeout on error
           clearTimeout(importTimeout);
-          
+
+          const headerLine = getCsvHeaderLine(fileBuffer);
+          if (headerLine) {
+            try {
+              await db.query(`
+                INSERT INTO unknown_csv_headers (user_id, header_line, broker_attempted, outcome, file_name)
+                VALUES ($1, $2, $3, 'parse_failed', $4)
+              `, [fileUserId, headerLine.substring(0, 10000), broker, fileName]);
+            } catch (recordErr) {
+              logger.logWarn(`[CSV] Failed to record unknown headers on parse error: ${recordErr.message}`);
+            }
+          }
+
           logger.logError(`Import process failed: ${error.message}`);
           await db.query(`
             UPDATE import_logs

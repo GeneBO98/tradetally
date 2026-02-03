@@ -7,6 +7,15 @@
       </p>
     </div>
 
+    <!-- Guided onboarding: contextual card for this page (first-time only) -->
+    <OnboardingCard
+      v-if="authStore.showOnboardingModal"
+      title="Import your trades"
+      description="Upload a CSV file or connect a broker to sync your trades. Choose your broker format below or use Auto-Detect."
+      cta-label="Next: View Dashboard"
+      cta-route="dashboard"
+    />
+
     <div class="space-y-8">
       <!-- Import Form -->
       <div class="card">
@@ -870,6 +879,7 @@ import api from '@/services/api'
 import UnmappedCusipsModal from '@/components/cusip/UnmappedCusipsModal.vue'
 import AllCusipMappingsModal from '@/components/cusip/AllCusipMappingsModal.vue'
 import CSVColumnMappingModal from '@/components/import/CSVColumnMappingModal.vue'
+import OnboardingCard from '@/components/onboarding/OnboardingCard.vue'
 import { usePriceAlertNotifications } from '@/composables/usePriceAlertNotifications'
 
 const tradesStore = useTradesStore()

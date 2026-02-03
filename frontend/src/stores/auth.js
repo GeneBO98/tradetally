@@ -9,8 +9,13 @@ export const useAuthStore = defineStore('auth', () => {
   const loading = ref(false)
   const error = ref(null)
   const registrationConfig = ref(null)
+  const pendingOnboarding = ref(false)
 
   const isAuthenticated = computed(() => !!token.value)
+  const showOnboardingModal = computed(() => {
+    if (!user.value) return false
+    return pendingOnboarding.value || !user.value.onboarding_completed
+  })
 
   async function login(credentials, returnUrl = null) {
     loading.value = true
@@ -53,6 +58,10 @@ export const useAuthStore = defineStore('auth', () => {
 
       // Set authorization header for subsequent requests
       api.defaults.headers.common['Authorization'] = `Bearer ${authToken}`
+
+      if (response.data.is_first_login === true) {
+        pendingOnboarding.value = true
+      }
 
       // Fetch complete user data with settings
       await fetchUser()
@@ -129,8 +138,10 @@ export const useAuthStore = defineStore('auth', () => {
       const response = await api.get('/auth/me')
       // Merge settings into user object (convert snake_case to camelCase)
       const settings = response.data.settings || {}
+      const u = response.data.user || {}
       user.value = {
-        ...response.data.user,
+        ...u,
+        onboarding_completed: u.onboarding_completed ?? false,
         settings: {
           publicProfile: settings.public_profile ?? false,
           emailNotifications: settings.email_notifications ?? true,
@@ -213,11 +224,17 @@ export const useAuthStore = defineStore('auth', () => {
       })
       
       const { user: userData, token: authToken } = response.data
-      
-      user.value = userData
+
+      if (response.data.is_first_login === true) {
+        pendingOnboarding.value = true
+      }
+
       token.value = authToken
       localStorage.setItem('token', authToken)
-      
+      api.defaults.headers.common['Authorization'] = `Bearer ${authToken}`
+
+      await fetchUser()
+
       router.push({ name: 'dashboard' })
       return response.data
     } catch (err) {
@@ -225,6 +242,19 @@ export const useAuthStore = defineStore('auth', () => {
       throw err
     } finally {
       loading.value = false
+    }
+  }
+
+  async function completeOnboarding() {
+    try {
+      await api.post('/users/onboarding-completed')
+      pendingOnboarding.value = false
+      if (user.value) {
+        user.value = { ...user.value, onboarding_completed: true }
+      }
+    } catch (err) {
+      console.error('Failed to mark onboarding completed:', err)
+      pendingOnboarding.value = false
     }
   }
 
@@ -250,6 +280,8 @@ export const useAuthStore = defineStore('auth', () => {
     loading,
     error,
     registrationConfig,
+    pendingOnboarding,
+    showOnboardingModal,
     isAuthenticated,
     login,
     register,
@@ -260,6 +292,7 @@ export const useAuthStore = defineStore('auth', () => {
     forgotPassword,
     resetPassword,
     verify2FA,
+    completeOnboarding,
     getRegistrationConfig
   }
 })
