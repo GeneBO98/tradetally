@@ -63,6 +63,8 @@ const upload = multer({
  */
 router.get('/profile', authenticate, userController.getProfile);
 router.put('/profile', authenticate, userController.updateProfile);
+router.post('/onboarding-completed', authenticate, userController.markOnboardingCompleted);
+router.get('/onboarding-status', authenticate, userController.getOnboardingStatus);
 
 /**
  * @swagger

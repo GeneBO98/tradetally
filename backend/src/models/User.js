@@ -48,8 +48,8 @@ class User {
 
   static async findByEmail(email) {
     const query = `
-      SELECT id, email, username, password_hash, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone, 
-             two_factor_enabled, two_factor_secret, tier, created_at
+      SELECT id, email, username, password_hash, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone,
+             two_factor_enabled, two_factor_secret, tier, created_at, last_login_at
       FROM users
       WHERE email = $1
     `;
@@ -380,6 +380,17 @@ class User {
       RETURNING last_login_at
     `;
 
+    const result = await db.query(query, [userId]);
+    return result.rows[0];
+  }
+
+  static async markOnboardingCompleted(userId) {
+    const query = `
+      UPDATE user_settings
+      SET onboarding_completed_at = NOW()
+      WHERE user_id = $1
+      RETURNING onboarding_completed_at
+    `;
     const result = await db.query(query, [userId]);
     return result.rows[0];
   }

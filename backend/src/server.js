@@ -53,6 +53,7 @@ const backupScheduler = require('./services/backupScheduler.service');
 const stockScannerScheduler = require('./services/stockScannerScheduler');
 const GamificationScheduler = require('./services/gamificationScheduler');
 const TrialScheduler = require('./services/trialScheduler');
+const RetentionEmailScheduler = require('./services/retentionEmailScheduler');
 const OptionsScheduler = require('./services/optionsScheduler');
 const brokerSyncScheduler = require('./services/brokerSync/brokerSyncScheduler');
 const dividendScheduler = require('./services/dividendScheduler');
@@ -439,6 +440,14 @@ async function startServer() {
       console.log('Trial emails disabled (ENABLE_TRIAL_EMAILS=false)');
     }
 
+    // Start retention email scheduler (weekly digest, inactive re-engagement)
+    if (process.env.ENABLE_RETENTION_EMAILS !== 'false') {
+      console.log('Starting retention email scheduler...');
+      RetentionEmailScheduler.startScheduler();
+    } else {
+      console.log('Retention emails disabled (ENABLE_RETENTION_EMAILS=false)');
+    }
+
     // Start options scheduler (for automatic expired options closure)
     if (process.env.ENABLE_OPTIONS_SCHEDULER !== 'false') {
       console.log('Starting options scheduler...');
@@ -575,6 +584,7 @@ process.on('SIGTERM', async () => {
   brokerSyncScheduler.stop();
   GamificationScheduler.stopScheduler();
   TrialScheduler.stopScheduler();
+  if (RetentionEmailScheduler.stopScheduler) RetentionEmailScheduler.stopScheduler();
   jobRecoveryService.stop();
   globalEnrichmentCacheCleanupService.stop();
   backupScheduler.stopAll();
@@ -590,6 +600,7 @@ process.on('SIGINT', async () => {
   brokerSyncScheduler.stop();
   GamificationScheduler.stopScheduler();
   TrialScheduler.stopScheduler();
+  if (RetentionEmailScheduler.stopScheduler) RetentionEmailScheduler.stopScheduler();
   jobRecoveryService.stop();
   globalEnrichmentCacheCleanupService.stop();
   backupScheduler.stopAll();

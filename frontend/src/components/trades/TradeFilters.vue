@@ -12,6 +12,14 @@
           placeholder="e.g., AAPL"
           @keydown.enter="applyFilters"
         />
+        <label class="flex items-center mt-1.5 cursor-pointer">
+          <input
+            type="checkbox"
+            v-model="filters.symbolExact"
+            class="h-3.5 w-3.5 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+          />
+          <span class="ml-1.5 text-xs text-gray-500 dark:text-gray-400">Exact match</span>
+        </label>
       </div>
 
       <div>
@@ -720,6 +728,7 @@ const strategyOptions = [
 const defaultFilters = {
   // Basic filters
   symbol: '',
+  symbolExact: false, // When true, use exact symbol matching instead of prefix
   startDate: '',
   endDate: '',
   strategy: '', // Keep for backward compatibility
@@ -954,6 +963,7 @@ function applyFilters() {
 
   // Basic filters
   if (filters.value.symbol) cleanFilters.symbol = filters.value.symbol
+  if (filters.value.symbolExact) cleanFilters.symbolExact = 'true'
   if (filters.value.startDate) cleanFilters.startDate = filters.value.startDate
   if (filters.value.endDate) cleanFilters.endDate = filters.value.endDate
   

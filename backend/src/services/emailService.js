@@ -431,6 +431,111 @@ class EmailService {
       throw error;
     }
   }
+
+  /**
+   * Send weekly digest: "Your week in trades" (trade count, P&L summary, link to dashboard)
+   */
+  static async sendWeeklyDigestEmail(email, username, { tradeCount, totalPnL, dashboardUrl }) {
+    if (!this.isConfigured()) {
+      console.log('Email not configured, skipping weekly digest');
+      return;
+    }
+    const url = dashboardUrl || `${process.env.FRONTEND_URL || 'http://localhost:5173'}/dashboard`;
+    const pnlFormatted = totalPnL != null ? `$${Number(totalPnL).toFixed(2)}` : '$0.00';
+    const content = `
+      <div style="text-align: center; margin-bottom: 30px;">
+        <h1 style="color: #1e293b; font-size: 28px; margin: 0 0 16px 0; font-weight: 700;">Your Week in Trades</h1>
+        <p style="color: #64748b; font-size: 16px; line-height: 1.6; margin: 0;">A quick summary of your trading activity</p>
+      </div>
+      <div style="background-color: #f8fafc; padding: 30px; border-radius: 12px; border-left: 4px solid #F0812A; margin: 30px 0;">
+        <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">Hi ${username},</p>
+        <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
+          Here's your trading summary for the past 7 days:
+        </p>
+        <ul style="color: #374151; font-size: 16px; line-height: 1.8; margin: 0; padding-left: 20px;">
+          <li><strong>Trades closed:</strong> ${tradeCount}</li>
+          <li><strong>Total P&L:</strong> ${pnlFormatted}</li>
+        </ul>
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${url}" style="${this.getButtonStyle()}">View Dashboard</a>
+        </div>
+        <p style="color: #64748b; font-size: 14px; margin: 20px 0 0 0; text-align: center;">
+          Keep tracking to improve your edge.
+        </p>
+      </div>
+    `;
+    const mailOptions = {
+      from: { name: 'TradeTally', address: process.env.EMAIL_FROM || 'noreply@tradetally.io' },
+      to: email,
+      subject: 'Your Week in Trades - TradeTally',
+      html: this.getBaseTemplate('Your Week in Trades', content),
+      text: `Your week: ${tradeCount} trades, P&L ${pnlFormatted}. View dashboard: ${url}`,
+      headers: {
+        'List-Unsubscribe': `<${process.env.FRONTEND_URL || 'https://tradetally.io'}/unsubscribe>`,
+        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+        'X-Entity-Ref-ID': `weekly-digest-${Date.now()}`,
+        'Message-ID': `<weekly-digest-${Date.now()}@tradetally.io>`
+      }
+    };
+    try {
+      const transporter = this.createTransporter();
+      await transporter.sendMail(mailOptions);
+      console.log('Weekly digest sent to', email);
+    } catch (error) {
+      console.error('Error sending weekly digest to', email, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Send re-engagement email to inactive users (no login in N days)
+   */
+  static async sendInactiveReengagementEmail(email, username, daysInactive) {
+    if (!this.isConfigured()) {
+      console.log('Email not configured, skipping re-engagement email');
+      return;
+    }
+    const loginUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login`;
+    const content = `
+      <div style="text-align: center; margin-bottom: 30px;">
+        <h1 style="color: #1e293b; font-size: 28px; margin: 0 0 16px 0; font-weight: 700;">We Miss You</h1>
+        <p style="color: #64748b; font-size: 16px; line-height: 1.6; margin: 0;">You haven't logged in for a while</p>
+      </div>
+      <div style="background-color: #f8fafc; padding: 30px; border-radius: 12px; border-left: 4px solid #F0812A; margin: 30px 0;">
+        <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">Hi ${username},</p>
+        <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
+          You haven't logged in to TradeTally for ${daysInactive} days. Your journal and analytics are waiting for you.
+        </p>
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${loginUrl}" style="${this.getButtonStyle()}">Log in to TradeTally</a>
+        </div>
+        <p style="color: #64748b; font-size: 14px; margin: 20px 0 0 0; text-align: center;">
+          If you no longer wish to receive these emails, you can unsubscribe from your account settings.
+        </p>
+      </div>
+    `;
+    const mailOptions = {
+      from: { name: 'TradeTally', address: process.env.EMAIL_FROM || 'noreply@tradetally.io' },
+      to: email,
+      subject: `We miss you – log in to TradeTally`,
+      html: this.getBaseTemplate('We miss you', content),
+      text: `You haven't logged in for ${daysInactive} days. Log in: ${loginUrl}`,
+      headers: {
+        'List-Unsubscribe': `<${process.env.FRONTEND_URL || 'https://tradetally.io'}/unsubscribe>`,
+        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+        'X-Entity-Ref-ID': `reengagement-${Date.now()}`,
+        'Message-ID': `<reengagement-${Date.now()}@tradetally.io>`
+      }
+    };
+    try {
+      const transporter = this.createTransporter();
+      await transporter.sendMail(mailOptions);
+      console.log('Re-engagement email sent to', email);
+    } catch (error) {
+      console.error('Error sending re-engagement email to', email, error);
+      throw error;
+    }
+  }
 }
 
 module.exports = EmailService;
