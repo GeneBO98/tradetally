@@ -2,7 +2,7 @@
 
 **IMPORTANT:** These calculations are critical to the trade management feature. Do not modify without careful consideration and testing.
 
-**Last Updated:** 2026-01-30
+**Last Updated:** 2026-02-03
 
 ---
 
@@ -133,6 +133,35 @@ This measures how much better or worse you did compared to your potential.
 - Actual R (weighted exit): 2.42R
 - Weighted Target R: 4.025R
 - **Management R = 2.42 - 4.025 = -1.61R** (missed potential)
+
+---
+
+## Target R Curve (R-Performance Chart)
+
+The cumulative Target R curve in the R-Performance chart shows what you **expected** to achieve based on your target hit analysis.
+
+### Logic
+
+The curve CANNOT stay flat - it either goes **down by -1R** or **up by the weighted Target R**:
+
+| Target Hit Analysis | Target R Added |
+|---------------------|----------------|
+| **SL Hit First** | **-1R** (expected to lose 1R) |
+| **TP Hit First** | **Weighted Target R** (expected to hit all targets) |
+| **Not Set** | Nothing (trade not yet analyzed) |
+
+### Example
+
+Three trades with these settings:
+1. Trade 1: SL hit first → Target R = -1R → Cumulative = -1R
+2. Trade 2: TP hit first (weighted target R = +4.03R) → Cumulative = +3.03R
+3. Trade 3: SL hit first → Target R = -1R → Cumulative = +2.03R
+
+### Why -1R for SL Hit First?
+
+When you enter a trade with a stop loss, your **expected outcome if stopped out** is -1R (losing your defined risk). If the stop loss was hit first, the "target" (expected) performance for that trade was -1R, regardless of where your take profit targets were set.
+
+This is different from Weighted Target R (which assumes all targets hit) - it reflects the **actual expected outcome** based on what happened.
 
 ---
 
