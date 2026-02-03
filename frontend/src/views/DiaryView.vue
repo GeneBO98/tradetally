@@ -77,6 +77,14 @@
       </div>
     </div>
 
+    <!-- Guided onboarding: contextual card for this page (first-time only) -->
+    <OnboardingCard
+      v-if="authStore.showOnboardingModal"
+      title="Trading Journal"
+      description="Keep a diary and link notes to trades for better reflection. Create entries to track your daily market thoughts and plans."
+      cta-label="Done"
+    />
+
     <!-- Filters -->
     <div class="mb-6 bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
       <div class="flex flex-col sm:flex-row gap-4">
@@ -565,6 +573,7 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 import { useDiaryStore } from '@/stores/diary'
 import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isToday, addMonths, subMonths, startOfWeek, endOfWeek } from 'date-fns'
 import { parseMarkdown, truncateHtml as truncateHtmlUtil } from '@/utils/markdown'
@@ -573,6 +582,7 @@ import GeneralNotes from '@/components/diary/GeneralNotes.vue'
 import TemplateManager from '@/components/diary/TemplateManager.vue'
 import LinkedTradesList from '@/components/diary/LinkedTradesList.vue'
 import WatchlistSymbol from '@/components/diary/WatchlistSymbol.vue'
+import OnboardingCard from '@/components/onboarding/OnboardingCard.vue'
 import {
   PlusIcon,
   PencilIcon,
@@ -588,6 +598,7 @@ import {
   DocumentTextIcon
 } from '@heroicons/vue/24/outline'
 
+const authStore = useAuthStore()
 const diaryStore = useDiaryStore()
 const router = useRouter()
 

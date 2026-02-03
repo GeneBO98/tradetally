@@ -196,4 +196,27 @@ router.get('/logs/recent', requireAdmin, async (req, res, next) => {
   }
 });
 
+// Get unknown CSV headers (imports that didn't match a parser or failed to parse)
+router.get('/unknown-csv-headers', requireAdmin, async (req, res, next) => {
+  try {
+    const { limit = 100, outcome } = req.query;
+    const db = require('../config/database');
+    let query = `
+      SELECT id, user_id, header_line, broker_attempted, outcome, file_name, created_at
+      FROM unknown_csv_headers
+    `;
+    const values = [];
+    if (outcome) {
+      values.push(outcome);
+      query += ` WHERE outcome = $${values.length}`;
+    }
+    query += ` ORDER BY created_at DESC LIMIT $${values.length + 1}`;
+    values.push(Math.min(parseInt(limit, 10) || 100, 500));
+    const result = await db.query(query, values);
+    res.json({ data: result.rows });
+  } catch (error) {
+    next(error);
+  }
+});
+
 module.exports = router;

@@ -204,6 +204,7 @@ const authController = {
         });
       }
 
+      const isFirstLogin = user.last_login_at == null;
       // Update last_login_at for analytics tracking
       await User.updateLastLogin(user.id);
 
@@ -241,6 +242,7 @@ const authController = {
           adminApproved: user.admin_approved,
           twoFactorEnabled: user.two_factor_enabled || false
         },
+        is_first_login: isFirstLogin,
         token
       });
     } catch (error) {
@@ -292,6 +294,7 @@ const authController = {
         }
       }
 
+      const isFirstLogin = user.last_login_at == null;
       // Update last_login_at for analytics tracking (2FA login)
       await User.updateLastLogin(user.id);
 
@@ -324,6 +327,7 @@ const authController = {
           adminApproved: user.admin_approved,
           twoFactorEnabled: user.two_factor_enabled
         },
+        is_first_login: isFirstLogin,
         token
       });
     } catch (error) {
@@ -350,6 +354,7 @@ const authController = {
     try {
       const user = await User.findById(req.user.id);
       const settings = await User.getSettings(req.user.id);
+      const onboardingCompleted = !!(settings && settings.onboarding_completed_at);
 
       res.json({
         user: {
@@ -364,7 +369,8 @@ const authController = {
           adminApproved: user.admin_approved,
           timezone: user.timezone,
           createdAt: user.created_at,
-          billingEnabled: req.user.billingEnabled
+          billingEnabled: req.user.billingEnabled,
+          onboarding_completed: onboardingCompleted
         },
         settings
       });

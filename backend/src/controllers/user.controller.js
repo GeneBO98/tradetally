@@ -3,8 +3,57 @@ const Trade = require('../models/Trade');
 const TierService = require('../services/tierService');
 const EmailService = require('../services/emailService');
 const ApiUsageService = require('../services/apiUsageService');
+const db = require('../config/database');
 
 const userController = {
+  /**
+   * Mark guided onboarding as completed (so modal is not shown again)
+   * POST /api/users/onboarding-completed
+   */
+  async markOnboardingCompleted(req, res, next) {
+    try {
+      await User.markOnboardingCompleted(req.user.id);
+      res.json({ success: true, message: 'Onboarding completed' });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
+   * Get onboarding status for first-value banner (is user new and not yet activated?)
+   * GET /api/users/onboarding-status
+   */
+  async getOnboardingStatus(req, res, next) {
+    try {
+      const user = await User.findById(req.user.id);
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      const created = user.created_at ? new Date(user.created_at) : new Date();
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      const isNew = created >= sevenDaysAgo;
+
+      const query = `
+        SELECT
+          (SELECT COUNT(*) FROM trades WHERE user_id = $1) as trade_count,
+          (SELECT COUNT(*) FROM import_logs WHERE user_id = $1 AND status = 'completed') as import_count
+      `;
+      const result = await db.query(query, [req.user.id]);
+      const tradeCount = parseInt(result.rows[0].trade_count) || 0;
+      const importCount = parseInt(result.rows[0].import_count) || 0;
+      const hasActivated = tradeCount > 0 || importCount > 0;
+
+      res.json({
+        is_new: isNew,
+        has_activated: hasActivated,
+        created_at: user.created_at
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
   async getProfile(req, res, next) {
     try {
       const user = await User.findById(req.user.id);
