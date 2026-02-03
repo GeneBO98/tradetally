@@ -27,69 +27,69 @@
 
       <!-- Chart and Summary -->
       <div v-else>
-        <!-- Summary Stats Grid -->
-        <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4 mb-6">
+        <!-- Summary Stats Grid: equal-height cards with consistent alignment -->
+        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7 gap-3 sm:gap-4 mb-6">
           <!-- Total Actual R -->
-          <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
-            <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Actual R</div>
-            <div class="text-2xl font-bold" :class="summary.total_actual_r >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+          <div class="r-perf-card flex flex-col min-h-[4.5rem] sm:min-h-[5.25rem] bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 sm:p-4">
+            <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider truncate shrink-0">Actual R</div>
+            <div class="text-lg sm:text-xl xl:text-2xl font-bold mt-0.5 truncate" :class="summary.total_actual_r >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
               {{ formatR(summary.total_actual_r) }}
             </div>
           </div>
 
           <!-- Total Potential R -->
-          <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
-            <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Target R</div>
-            <div class="text-2xl font-bold text-primary-600 dark:text-primary-400">
+          <div class="r-perf-card flex flex-col min-h-[4.5rem] sm:min-h-[5.25rem] bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 sm:p-4">
+            <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider truncate shrink-0">Target R</div>
+            <div class="text-lg sm:text-xl xl:text-2xl font-bold mt-0.5 truncate text-primary-600 dark:text-primary-400">
               {{ formatR(summary.total_potential_r) }}
             </div>
           </div>
 
           <!-- Management R -->
-          <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
-            <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Management R</div>
-            <div class="text-2xl font-bold" :class="getManagementRColor(summary.total_management_r)">
+          <div class="r-perf-card flex flex-col min-h-[4.5rem] sm:min-h-[5.25rem] bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 sm:p-4">
+            <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider truncate shrink-0">Management R</div>
+            <div class="text-lg sm:text-xl xl:text-2xl font-bold mt-0.5 truncate" :class="getManagementRColor(summary.total_management_r)">
               {{ formatR(summary.total_management_r || 0) }}
             </div>
-            <div v-if="summary.trades_with_management_r > 0" class="text-xs text-gray-500 dark:text-gray-400">
+            <div v-if="summary.trades_with_management_r > 0" class="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate shrink-0">
               {{ summary.trades_with_management_r }} trades
             </div>
           </div>
 
           <!-- R Efficiency -->
-          <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
-            <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">R Efficiency</div>
-            <div class="text-2xl font-bold" :class="getEfficiencyColor(summary.r_efficiency)">
+          <div class="r-perf-card flex flex-col min-h-[4.5rem] sm:min-h-[5.25rem] bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 sm:p-4">
+            <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider truncate shrink-0">R Efficiency</div>
+            <div class="text-lg sm:text-xl xl:text-2xl font-bold mt-0.5 truncate" :class="getEfficiencyColor(summary.r_efficiency)">
               {{ summary.r_efficiency }}%
             </div>
           </div>
 
           <!-- R Left on Table -->
-          <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
-            <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">R Left on Table</div>
-            <div class="text-2xl font-bold text-orange-600 dark:text-orange-400">
+          <div class="r-perf-card flex flex-col min-h-[4.5rem] sm:min-h-[5.25rem] bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 sm:p-4">
+            <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider truncate shrink-0">R Left on Table</div>
+            <div class="text-lg sm:text-xl xl:text-2xl font-bold mt-0.5 truncate text-orange-600 dark:text-orange-400">
               {{ formatR(summary.r_left_on_table) }}
             </div>
           </div>
 
           <!-- Win Rate -->
-          <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
-            <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Win Rate</div>
-            <div class="text-2xl font-bold text-gray-900 dark:text-white">
+          <div class="r-perf-card flex flex-col min-h-[4.5rem] sm:min-h-[5.25rem] bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 sm:p-4">
+            <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider truncate shrink-0">Win Rate</div>
+            <div class="text-lg sm:text-xl xl:text-2xl font-bold mt-0.5 truncate text-gray-900 dark:text-white">
               {{ summary.win_rate }}%
             </div>
-            <div class="text-xs text-gray-500 dark:text-gray-400">
+            <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate shrink-0">
               {{ summary.winning_trades }}W / {{ summary.losing_trades }}L
             </div>
           </div>
 
           <!-- Avg Win/Loss R -->
-          <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
-            <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Avg R</div>
-            <div class="flex items-center space-x-2">
-              <span class="text-lg font-bold text-green-600 dark:text-green-400">+{{ summary.avg_win_r }}</span>
-              <span class="text-gray-400">/</span>
-              <span class="text-lg font-bold text-red-600 dark:text-red-400">{{ summary.avg_loss_r }}</span>
+          <div class="r-perf-card flex flex-col min-h-[4.5rem] sm:min-h-[5.25rem] bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 sm:p-4">
+            <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider truncate shrink-0">Avg R</div>
+            <div class="flex items-center gap-1 sm:gap-2 mt-0.5 flex-wrap min-h-[1.75rem]">
+              <span class="text-base sm:text-lg font-bold text-green-600 dark:text-green-400">+{{ summary.avg_win_r }}</span>
+              <span class="text-gray-400 shrink-0">/</span>
+              <span class="text-base sm:text-lg font-bold text-red-600 dark:text-red-400">{{ summary.avg_loss_r }}</span>
             </div>
           </div>
         </div>

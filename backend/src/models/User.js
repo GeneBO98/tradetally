@@ -185,7 +185,8 @@ class User {
       dashboardLayout: 'dashboard_layout',
       defaultStopLossPercent: 'default_stop_loss_percent',
       defaultTakeProfitPercent: 'default_take_profit_percent',
-      defaultStopLossType: 'default_stop_loss_type'
+      defaultStopLossType: 'default_stop_loss_type',
+      defaultStopLossDollars: 'default_stop_loss_dollars'
     };
 
     Object.entries(settings).forEach(([key, value]) => {
@@ -221,8 +222,18 @@ class User {
         console.log('[SETTINGS] Dashboard layout saved successfully');
       }
 
-      // If default stop loss percentage was updated, apply it to existing trades without a stop loss
-      if (settings.defaultStopLossPercent !== undefined && settings.defaultStopLossPercent > 0) {
+      // If default stop loss was updated, apply it to existing trades without a stop loss
+      const stopLossType = settings.defaultStopLossType || 'percent';
+      if (stopLossType === 'dollar' && settings.defaultStopLossDollars !== undefined && settings.defaultStopLossDollars > 0) {
+        const Trade = require('./Trade');
+        Trade.applyDefaultStopLossToExistingTradesByDollars(userId, settings.defaultStopLossDollars)
+          .then(count => {
+            console.log(`[SETTINGS] Applied default dollar stop loss to ${count} existing trades`);
+          })
+          .catch(error => {
+            console.error('[SETTINGS] Failed to apply default dollar stop loss to existing trades:', error);
+          });
+      } else if (settings.defaultStopLossPercent !== undefined && settings.defaultStopLossPercent > 0) {
         const Trade = require('./Trade');
         Trade.applyDefaultStopLossToExistingTrades(userId, settings.defaultStopLossPercent)
           .then(count => {
@@ -271,8 +282,18 @@ class User {
           filteredValues.push(userId);
           const result = await db.query(fallbackQuery, filteredValues);
 
-          // If default stop loss percentage was updated, apply it to existing trades without a stop loss
-          if (settings.defaultStopLossPercent !== undefined && settings.defaultStopLossPercent > 0) {
+          // If default stop loss was updated, apply it to existing trades without a stop loss
+          const stopLossTypeFallback = settings.defaultStopLossType || 'percent';
+          if (stopLossTypeFallback === 'dollar' && settings.defaultStopLossDollars !== undefined && settings.defaultStopLossDollars > 0) {
+            const Trade = require('./Trade');
+            Trade.applyDefaultStopLossToExistingTradesByDollars(userId, settings.defaultStopLossDollars)
+              .then(count => {
+                console.log(`[SETTINGS] Applied default dollar stop loss to ${count} existing trades`);
+              })
+              .catch(error => {
+                console.error('[SETTINGS] Failed to apply default dollar stop loss to existing trades:', error);
+              });
+          } else if (settings.defaultStopLossPercent !== undefined && settings.defaultStopLossPercent > 0) {
             const Trade = require('./Trade');
             Trade.applyDefaultStopLossToExistingTrades(userId, settings.defaultStopLossPercent)
               .then(count => {
