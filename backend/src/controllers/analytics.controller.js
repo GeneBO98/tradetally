@@ -962,7 +962,9 @@ const analyticsController = {
                               ELSE 1 END)
                   ELSE NULL END
               )
-              - CASE WHEN (${tableAlias}.quantity IS NOT NULL AND ${tableAlias}.quantity > 0) THEN ((exec->>'quantity')::numeric / ${tableAlias}.quantity) * (COALESCE(${tableAlias}.commission, 0) + COALESCE(${tableAlias}.fees, 0)) ELSE 0 END
+              - CASE WHEN (${tableAlias}.quantity IS NOT NULL AND ${tableAlias}.quantity > 0) THEN ((exec->>'quantity')::numeric / ${tableAlias}.quantity) * (
+                (CASE WHEN COALESCE(${tableAlias}.commission, 0) != 0 THEN COALESCE(${tableAlias}.commission, 0) ELSE COALESCE(${tableAlias}.entry_commission, 0) + COALESCE(${tableAlias}.exit_commission, 0) END) + COALESCE(${tableAlias}.fees, 0)
+              ) ELSE 0 END
             ) AS exec_pnl,
             (exec->>'quantity')::numeric AS exec_qty,
             (exec->>'price')::numeric AS exec_price
@@ -1070,7 +1072,9 @@ const analyticsController = {
                             ELSE 1 END)
                   ELSE NULL END
               )
-              - CASE WHEN (t.quantity IS NOT NULL AND t.quantity > 0) THEN ((exec->>'quantity')::numeric / t.quantity) * (COALESCE(t.commission, 0) + COALESCE(t.fees, 0)) ELSE 0 END
+              - CASE WHEN (t.quantity IS NOT NULL AND t.quantity > 0) THEN ((exec->>'quantity')::numeric / t.quantity) * (
+                (CASE WHEN COALESCE(t.commission, 0) != 0 THEN COALESCE(t.commission, 0) ELSE COALESCE(t.entry_commission, 0) + COALESCE(t.exit_commission, 0) END) + COALESCE(t.fees, 0)
+              ) ELSE 0 END
             ) AS exec_pnl,
             (exec->>'quantity')::numeric AS exec_quantity,
             (exec->>'price')::numeric AS exec_price

@@ -97,10 +97,13 @@
                   class="input"
                 >
                   <option value="percent">Percentage</option>
+                  <option value="dollar">Dollar amount</option>
                   <option value="lod">Low of Day (LoD)</option>
                 </select>
                 <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
                   <strong>Percentage:</strong> Use a fixed percentage below/above entry price.
+                  <br>
+                  <strong>Dollar amount:</strong> Use a fixed risk per trade in dollars (e.g., $100 or $150 per trade).
                   <br>
                   <strong>Low of Day (LoD):</strong> Use the low price of the entry day (Qullamaggie-style swing trades). Only applies to long positions.
                 </p>
@@ -128,6 +131,31 @@
                   For long positions, the stop loss will be below entry price. For short positions, it will be above entry price.
                   <span class="block mt-2 text-primary-600 dark:text-primary-400 font-medium">
                     Example: 2% stop loss on a $100 long entry = $98 stop loss price
+                  </span>
+                </p>
+              </div>
+
+              <div v-if="analyticsForm.defaultStopLossType === 'dollar'">
+                <label for="defaultStopLossDollars" class="label">Default Stop Loss (Dollars per Trade)</label>
+                <div class="mt-1 relative rounded-md shadow-sm">
+                  <input
+                    type="number"
+                    id="defaultStopLossDollars"
+                    v-model.number="analyticsForm.defaultStopLossDollars"
+                    step="1"
+                    min="0"
+                    placeholder="0"
+                    class="input pr-12"
+                  />
+                  <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                    <span class="text-gray-500 dark:text-gray-400">$</span>
+                  </div>
+                </div>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  Automatically apply this dollar risk per trade to all new and imported trades. Leave empty to not set a default.
+                  The stop loss price is calculated from entry and quantity: for a long, stop = entry - (dollars / quantity); for a short, stop = entry + (dollars / quantity).
+                  <span class="block mt-2 text-primary-600 dark:text-primary-400 font-medium">
+                    Example: $100 stop loss on 50 shares = $2 per share risk, so a $100 long entry becomes $98 stop loss
                   </span>
                 </p>
               </div>
@@ -1464,6 +1492,7 @@ const analyticsForm = ref({
   autoCloseExpiredOptions: true,
   defaultStopLossType: 'percent',
   defaultStopLossPercent: null,
+  defaultStopLossDollars: null,
   defaultTakeProfitPercent: null
 })
 
@@ -1762,6 +1791,7 @@ async function loadAnalyticsSettings() {
         : true,
       defaultStopLossType: response.data.settings.defaultStopLossType || 'percent',
       defaultStopLossPercent: response.data.settings.defaultStopLossPercent || null,
+      defaultStopLossDollars: response.data.settings.defaultStopLossDollars ?? null,
       defaultTakeProfitPercent: response.data.settings.defaultTakeProfitPercent || null
     }
   } catch (error) {
@@ -1771,6 +1801,7 @@ async function loadAnalyticsSettings() {
     analyticsForm.value.autoCloseExpiredOptions = true
     analyticsForm.value.defaultStopLossType = 'percent'
     analyticsForm.value.defaultStopLossPercent = null
+    analyticsForm.value.defaultStopLossDollars = null
     analyticsForm.value.defaultTakeProfitPercent = null
   }
 }
@@ -1783,6 +1814,7 @@ async function updateAnalyticsSettings() {
       autoCloseExpiredOptions: analyticsForm.value.autoCloseExpiredOptions,
       defaultStopLossType: analyticsForm.value.defaultStopLossType || 'percent',
       defaultStopLossPercent: analyticsForm.value.defaultStopLossPercent || null,
+      defaultStopLossDollars: analyticsForm.value.defaultStopLossDollars ?? null,
       defaultTakeProfitPercent: analyticsForm.value.defaultTakeProfitPercent || null
     })
     showSuccess('Success', 'Analytics preferences updated successfully')
