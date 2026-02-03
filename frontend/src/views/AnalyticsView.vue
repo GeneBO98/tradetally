@@ -2506,15 +2506,17 @@ async function fetchUserSettings() {
 
     // Load chart layout if saved
     if (userSettings.value.analyticsChartLayout && Array.isArray(userSettings.value.analyticsChartLayout)) {
-      // Merge saved layout with defaults (in case new charts were added)
       const savedLayout = userSettings.value.analyticsChartLayout
-      chartLayout.value = defaultChartLayout.map(defaultChart => {
-        const savedChart = savedLayout.find(s => s.id === defaultChart.id)
-        return savedChart || defaultChart
+      const savedIds = savedLayout.map(s => s.id)
+
+      // Start with saved layout in its saved order (preserves user's custom ordering)
+      // Merge with defaults to pick up any new properties that may have been added
+      chartLayout.value = savedLayout.map(savedChart => {
+        const defaultChart = defaultChartLayout.find(d => d.id === savedChart.id)
+        return defaultChart ? { ...defaultChart, ...savedChart } : savedChart
       })
 
-      // Add any new charts that weren't in the saved layout
-      const savedIds = savedLayout.map(s => s.id)
+      // Add any new charts that weren't in the saved layout (appended at the end)
       const newCharts = defaultChartLayout.filter(d => !savedIds.includes(d.id))
       chartLayout.value = [...chartLayout.value, ...newCharts]
     }

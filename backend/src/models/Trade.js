@@ -691,25 +691,36 @@ class Trade {
     let needsSectorJoin = false;
 
     if (filters.symbol) {
-      // Optimized symbol filtering with better CUSIP resolution
-      // Using a single subquery with OR conditions is more efficient than multiple EXISTS
-      whereClause += ` AND (
-        t.symbol ILIKE $${paramCount} || '%' OR
-        t.symbol IN (
-          SELECT DISTINCT
-            CASE
-              WHEN cm.ticker ILIKE $${paramCount} || '%' THEN cm.cusip
-              WHEN cm.cusip = t.symbol AND cm.ticker ILIKE $${paramCount} || '%' THEN cm.cusip
-              ELSE NULL
-            END
-          FROM cusip_mappings cm
-          WHERE (cm.user_id = $1 OR cm.user_id IS NULL)
-            AND (
-              (cm.cusip = t.symbol AND cm.ticker ILIKE $${paramCount} || '%') OR
-              (cm.ticker ILIKE $${paramCount} || '%')
-            )
-        )
-      )`;
+      if (filters.symbolExact) {
+        // Exact symbol matching - case insensitive but no prefix matching
+        whereClause += ` AND (
+          UPPER(t.symbol) = $${paramCount} OR
+          t.symbol IN (
+            SELECT cm.cusip FROM cusip_mappings cm
+            WHERE (cm.user_id = $1 OR cm.user_id IS NULL)
+              AND UPPER(cm.ticker) = $${paramCount}
+          )
+        )`;
+      } else {
+        // Prefix symbol filtering with CUSIP resolution (default behavior)
+        whereClause += ` AND (
+          t.symbol ILIKE $${paramCount} || '%' OR
+          t.symbol IN (
+            SELECT DISTINCT
+              CASE
+                WHEN cm.ticker ILIKE $${paramCount} || '%' THEN cm.cusip
+                WHEN cm.cusip = t.symbol AND cm.ticker ILIKE $${paramCount} || '%' THEN cm.cusip
+                ELSE NULL
+              END
+            FROM cusip_mappings cm
+            WHERE (cm.user_id = $1 OR cm.user_id IS NULL)
+              AND (
+                (cm.cusip = t.symbol AND cm.ticker ILIKE $${paramCount} || '%') OR
+                (cm.ticker ILIKE $${paramCount} || '%')
+              )
+          )
+        )`;
+      }
       values.push(filters.symbol.toUpperCase());
       paramCount++;
     }
@@ -842,21 +853,15 @@ class Trade {
     if (filters.daysOfWeek && filters.daysOfWeek.length > 0) {
       // Get user's timezone for accurate day calculation
       const userTimezone = await getUserTimezone(userId);
-      console.log(`🕒 Using timezone ${userTimezone} for day-of-week filtering`);
-      
+      console.log(`[TIMEZONE] Using timezone ${userTimezone} for day-of-week filtering`);
+
       // Use entry_time converted to user's timezone for day calculation
+      // "AT TIME ZONE tz" converts timestamptz from UTC to that timezone
       const placeholders = filters.daysOfWeek.map((_, index) => `$${paramCount + index}`).join(',');
-      if (userTimezone !== 'UTC') {
-        whereClause += ` AND extract(dow from (t.entry_time AT TIME ZONE 'UTC' AT TIME ZONE $${paramCount + filters.daysOfWeek.length})) IN (${placeholders})`;
-        filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
-        values.push(userTimezone);
-        paramCount += filters.daysOfWeek.length + 1;
-      } else {
-        // UTC case - can use simpler extraction
-        whereClause += ` AND extract(dow from t.entry_time) IN (${placeholders})`;
-        filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
-        paramCount += filters.daysOfWeek.length;
-      }
+      whereClause += ` AND extract(dow from (t.entry_time AT TIME ZONE $${paramCount + filters.daysOfWeek.length})) IN (${placeholders})`;
+      filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
+      values.push(userTimezone);
+      paramCount += filters.daysOfWeek.length + 1;
     }
 
     // Instrument types filter (stock, option, future)
@@ -1256,21 +1261,21 @@ class Trade {
         // For frontend updates (non-imports), preserve original timestamps from current executions
         // to prevent timestamp truncation from breaking duplicate detection
         if (!options.skipApiCalls && currentTrade.executions && currentTrade.executions.length === updates.executions.length) {
-          // Merge: keep original timestamps but update other fields (commission, fees, etc.)
+          // Merge: use incoming timestamps when explicitly provided, else keep existing (avoids truncation when frontend omits)
+          const hasValue = (v) => v !== undefined && v !== null && String(v).trim() !== '';
           executionsToSet = updates.executions.map((newExec, index) => {
             const currentExec = currentTrade.executions[index];
             if (currentExec) {
               return {
                 ...newExec,
-                // Preserve original timestamps from the database
-                datetime: currentExec.datetime || newExec.datetime,
-                entryTime: currentExec.entryTime || newExec.entryTime,
-                exitTime: currentExec.exitTime || newExec.exitTime
+                datetime: hasValue(newExec.datetime) ? newExec.datetime : (currentExec.datetime ?? newExec.datetime),
+                entryTime: hasValue(newExec.entryTime) ? newExec.entryTime : (currentExec.entryTime ?? newExec.entryTime),
+                exitTime: hasValue(newExec.exitTime) ? newExec.exitTime : (currentExec.exitTime ?? newExec.exitTime)
               };
             }
             return newExec;
           });
-          console.log(`[EXECUTION UPDATE] Merging execution updates for trade ${id} (preserving timestamps)`);
+          console.log(`[EXECUTION UPDATE] Merging execution updates for trade ${id} (user date changes will be saved)`);
         } else {
           // Full replacement for imports or when execution count changes
           executionsToSet = updates.executions;
@@ -1630,7 +1635,11 @@ class Trade {
     let paramCount = 1;
 
     if (filters.symbol) {
-      query += ` AND t.symbol ILIKE $${paramCount} || '%'`;
+      if (filters.symbolExact) {
+        query += ` AND UPPER(t.symbol) = $${paramCount}`;
+      } else {
+        query += ` AND t.symbol ILIKE $${paramCount} || '%'`;
+      }
       values.push(filters.symbol.toUpperCase());
       paramCount++;
     }
@@ -2010,7 +2019,11 @@ class Trade {
     const tablePrefix = needsJoin ? 't.' : '';
     
     if (filters.symbol && filters.symbol.trim()) {
-      query += ` AND ${tablePrefix}symbol ILIKE $${paramCount} || '%'`;
+      if (filters.symbolExact) {
+        query += ` AND UPPER(${tablePrefix}symbol) = $${paramCount}`;
+      } else {
+        query += ` AND ${tablePrefix}symbol ILIKE $${paramCount} || '%'`;
+      }
       values.push(filters.symbol.toUpperCase().trim());
       paramCount++;
     }
@@ -2081,20 +2094,14 @@ class Trade {
     }
 
     // Days of week filter for count (timezone-aware)
+    // "AT TIME ZONE tz" converts timestamptz from UTC to that timezone
     if (filters.daysOfWeek && filters.daysOfWeek.length > 0) {
       const userTimezone = await getUserTimezone(userId);
       const placeholders = filters.daysOfWeek.map((_, index) => `$${paramCount + index}`).join(',');
-      
-      if (userTimezone !== 'UTC') {
-        query += ` AND extract(dow from (${tablePrefix}entry_time AT TIME ZONE 'UTC' AT TIME ZONE $${paramCount + filters.daysOfWeek.length})) IN (${placeholders})`;
-        filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
-        values.push(userTimezone);
-        paramCount += filters.daysOfWeek.length + 1;
-      } else {
-        query += ` AND extract(dow from ${tablePrefix}entry_time) IN (${placeholders})`;
-        filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
-        paramCount += filters.daysOfWeek.length;
-      }
+      query += ` AND extract(dow from (${tablePrefix}entry_time AT TIME ZONE $${paramCount + filters.daysOfWeek.length})) IN (${placeholders})`;
+      filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
+      values.push(userTimezone);
+      paramCount += filters.daysOfWeek.length + 1;
     }
 
     console.log('[COUNT] Count query:', query);
@@ -2141,7 +2148,11 @@ class Trade {
     }
 
     if (filters.symbol) {
-      whereClause += ` AND t.symbol ILIKE $${paramCount} || '%'`;
+      if (filters.symbolExact) {
+        whereClause += ` AND UPPER(t.symbol) = $${paramCount}`;
+      } else {
+        whereClause += ` AND t.symbol ILIKE $${paramCount} || '%'`;
+      }
       values.push(filters.symbol.toUpperCase());
       paramCount++;
     }
@@ -2287,20 +2298,14 @@ class Trade {
     }
 
     // Days of week filter for analytics (timezone-aware)
+    // "AT TIME ZONE tz" converts timestamptz from UTC to that timezone
     if (filters.daysOfWeek && filters.daysOfWeek.length > 0) {
       const userTimezone = await getUserTimezone(userId);
       const placeholders = filters.daysOfWeek.map((_, index) => `$${paramCount + index}`).join(',');
-
-      if (userTimezone !== 'UTC') {
-        whereClause += ` AND extract(dow from (t.entry_time AT TIME ZONE 'UTC' AT TIME ZONE $${paramCount + filters.daysOfWeek.length})) IN (${placeholders})`;
-        filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
-        values.push(userTimezone);
-        paramCount += filters.daysOfWeek.length + 1;
-      } else {
-        whereClause += ` AND extract(dow from t.entry_time) IN (${placeholders})`;
-        filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
-        paramCount += filters.daysOfWeek.length;
-      }
+      whereClause += ` AND extract(dow from (t.entry_time AT TIME ZONE $${paramCount + filters.daysOfWeek.length})) IN (${placeholders})`;
+      filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
+      values.push(userTimezone);
+      paramCount += filters.daysOfWeek.length + 1;
     }
 
     // Instrument types filter (stock, option, future)
@@ -2995,7 +3000,11 @@ class Trade {
     let paramCount = 2;
 
     if (filters.symbol) {
-      whereClause += ` AND symbol ILIKE $${paramCount} || '%'`;
+      if (filters.symbolExact) {
+        whereClause += ` AND UPPER(symbol) = $${paramCount}`;
+      } else {
+        whereClause += ` AND symbol ILIKE $${paramCount} || '%'`;
+      }
       values.push(filters.symbol.toUpperCase());
       paramCount++;
     }
@@ -3025,20 +3034,14 @@ class Trade {
     }
 
     // Days of week filter for round-trip trade count (timezone-aware)
+    // "AT TIME ZONE tz" converts timestamptz from UTC to that timezone
     if (filters.daysOfWeek && filters.daysOfWeek.length > 0) {
       const userTimezone = await getUserTimezone(userId);
       const placeholders = filters.daysOfWeek.map((_, index) => `$${paramCount + index}`).join(',');
-      
-      if (userTimezone !== 'UTC') {
-        whereClause += ` AND extract(dow from (entry_time AT TIME ZONE 'UTC' AT TIME ZONE $${paramCount + filters.daysOfWeek.length})) IN (${placeholders})`;
-        filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
-        values.push(userTimezone);
-        paramCount += filters.daysOfWeek.length + 1;
-      } else {
-        whereClause += ` AND extract(dow from entry_time) IN (${placeholders})`;
-        filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
-        paramCount += filters.daysOfWeek.length;
-      }
+      whereClause += ` AND extract(dow from (entry_time AT TIME ZONE $${paramCount + filters.daysOfWeek.length})) IN (${placeholders})`;
+      filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
+      values.push(userTimezone);
+      paramCount += filters.daysOfWeek.length + 1;
     }
 
     const query = `
@@ -3059,7 +3062,11 @@ class Trade {
     let paramCount = 2;
 
     if (filters.symbol) {
-      whereClause += ` AND rt.symbol ILIKE $${paramCount} || '%'`;
+      if (filters.symbolExact) {
+        whereClause += ` AND UPPER(rt.symbol) = $${paramCount}`;
+      } else {
+        whereClause += ` AND rt.symbol ILIKE $${paramCount} || '%'`;
+      }
       values.push(filters.symbol.toUpperCase());
       paramCount++;
     }
@@ -3097,20 +3104,14 @@ class Trade {
     }
 
     // Days of week filter for round-trip trades (timezone-aware)
+    // "AT TIME ZONE tz" converts timestamptz from UTC to that timezone
     if (filters.daysOfWeek && filters.daysOfWeek.length > 0) {
       const userTimezone = await getUserTimezone(userId);
       const placeholders = filters.daysOfWeek.map((_, index) => `$${paramCount + index}`).join(',');
-      
-      if (userTimezone !== 'UTC') {
-        whereClause += ` AND extract(dow from (rt.entry_time AT TIME ZONE 'UTC' AT TIME ZONE $${paramCount + filters.daysOfWeek.length})) IN (${placeholders})`;
-        filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
-        values.push(userTimezone);
-        paramCount += filters.daysOfWeek.length + 1;
-      } else {
-        whereClause += ` AND extract(dow from rt.entry_time) IN (${placeholders})`;
-        filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
-        paramCount += filters.daysOfWeek.length;
-      }
+      whereClause += ` AND extract(dow from (rt.entry_time AT TIME ZONE $${paramCount + filters.daysOfWeek.length})) IN (${placeholders})`;
+      filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
+      values.push(userTimezone);
+      paramCount += filters.daysOfWeek.length + 1;
     }
 
     // Add pagination

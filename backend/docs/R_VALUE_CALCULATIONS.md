@@ -83,34 +83,41 @@ Weighted Target R = sum of all contributions
 
 Management R measures how well the trade was managed relative to what was planned.
 
+**Core Formula:** `Management R = Actual R - Planned R`
+
+| Scenario | Planned R | Description |
+|----------|-----------|-------------|
+| **SL Hit First** (no partial exits) | -1R | Full position would have stopped out |
+| **SL Hit First** (with partial exits) | TP1 contribution + (remaining × -1R) | TP1 captured, remaining would have stopped |
+| **TP Hit First** | Weighted Target R | All targets hit perfectly |
+
 ### SL Hit First
 
 When the stop loss was hit before the final take profit target:
 
 ```
-Management R = Saved R from SL moves
+Management R = Actual R - Planned R
 ```
 
-**Saved R Calculation:**
-```
-For each SL move in risk_level_history:
-  distance_saved = old_SL - new_SL  [short: SL moved down = risk reduced]
-  distance_saved = new_SL - old_SL  [long: SL moved up = risk reduced]
+**No Partial Exits:**
+- Planned R = -1R (full stop out)
+- Example: Entry 100, SL 90, Exit 102 (long)
+  - Risk = 10 points
+  - Actual R = (102 - 100) / 10 = +0.2R
+  - Planned R = -1R
+  - **Management R = 0.2 - (-1) = +1.2R** (exited 1.2R better than planned)
 
-  r_saved_per_contract = distance_saved / original_R
+**With Partial Exits:**
+- Planned R = (TP1_R × TP1_ratio) + (remaining_ratio × -1R)
+- Example (Short Trade):
+  - Entry: 6902.75, Original SL: 6909, Quantity: 8 contracts
+  - TP1 hit: 7 contracts at 2.76R → contribution = 2.76 × (7/8) = 2.415R
+  - Remaining: 1 contract (1/8 = 0.125)
+  - Planned R = 2.415 + (0.125 × -1) = 2.29R
+  - Actual R = 2.42R (weighted exit)
+  - **Management R = 2.42 - 2.29 = +0.13R**
 
-  remaining_ratio = remaining_shares / total_shares
-  (remaining_shares = contracts still open after partial exits)
-
-  total_r_saved = r_saved_per_contract × remaining_ratio
-```
-
-**Example (Short Trade):**
-- Original SL: 6909, New SL: 6902.5
-- Distance saved = 6909 - 6902.5 = 6.5 points
-- R saved per contract = 6.5 / 6.25 = 1.04R
-- After TP1 (7/8 closed), remaining = 1/8 = 0.125
-- **Management R = 1.04 × 0.125 = 0.13R**
+**Key Insight:** SL Move Impact (R saved from moving stops) is already captured in the Actual R vs Planned R difference. A moved stop loss changes the exit price, which changes Actual R, which is compared against the Planned R (based on original stop).
 
 ### TP Hit First
 
@@ -145,7 +152,7 @@ This measures how much better or worse you did compared to your potential.
 
 1. **Always use original stop loss** for R calculations, not current (moved) stop loss
 2. **Detect data structure** before calculating weighted target R
-3. **SL Hit First** = Saved R only (not Actual R - Planned R)
+3. **SL Hit First** = Actual R - Planned R (where Planned R = -1R for no partials, or TP1 contribution + remaining × -1R)
 4. **TP Hit First** = Actual R - Weighted Target R
 5. **Infer remaining ratio** from partial exits when not stored in history
 

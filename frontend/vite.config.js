@@ -48,7 +48,8 @@ export default defineConfig(({ command, mode }) => {
     allowedHosts: process.env.NODE_ENV === 'development' ? ['dev.tradetally.io'] : 'auto',
     proxy: {
       '/api': {
-        target: 'http://localhost:3000',
+        // Extract base URL from VITE_API_URL (remove /api suffix if present)
+        target: (env.VITE_API_URL || 'http://localhost:3000').replace(/\/api\/?$/, ''),
         changeOrigin: true,
         // Configure proxy for SSE (Server-Sent Events) support
         configure: (proxy) => {

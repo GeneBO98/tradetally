@@ -1489,15 +1489,24 @@ function createCharts() {
   console.log('Dashboard: winRateChart.value exists:', !!winRateChart.value)
   console.log('Dashboard: analytics.value exists:', !!analytics.value)
   console.log('Dashboard: Chart.js imported:', typeof Chart)
-  
-  if (pnlChart.value && distributionChart.value && winRateChart.value) {
+
+  // Create each chart independently based on whether its canvas ref exists
+  // This allows charts to render even if some layout sections are hidden
+  if (pnlChart.value) {
     createPnLChart()
+  }
+  if (distributionChart.value) {
     createDistributionChart()
+  }
+  if (winRateChart.value) {
     createWinRateChart()
-  } else {
-    console.log('Dashboard: Charts not created - missing canvas refs:', {
+  }
+
+  // Log if any charts couldn't be created due to missing refs
+  if (!pnlChart.value || !distributionChart.value || !winRateChart.value) {
+    console.log('Dashboard: Some charts not created - canvas refs:', {
       pnlChart: !!pnlChart.value,
-      distributionChart: !!distributionChart.value, 
+      distributionChart: !!distributionChart.value,
       winRateChart: !!winRateChart.value
     })
   }

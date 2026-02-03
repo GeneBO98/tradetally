@@ -33,7 +33,7 @@ const tradeController = {
     console.log('[PERF] getUserTrades started');
     try {
       const {
-        symbol, startDate, endDate, exitStartDate, exitEndDate, tags, strategy, sector,
+        symbol, symbolExact, startDate, endDate, exitStartDate, exitEndDate, tags, strategy, sector,
         strategies, sectors, hasNews, daysOfWeek, instrumentTypes, optionTypes, qualityGrades,
         side, minPrice, maxPrice, minQuantity, maxQuantity,
         status, minPnl, maxPnl, pnlType, broker, brokers, accounts,
@@ -42,6 +42,7 @@ const tradeController = {
 
       const filters = {
         symbol,
+        symbolExact: symbolExact === 'true',
         startDate,
         endDate,
         exitStartDate,
@@ -2513,7 +2514,7 @@ const tradeController = {
       console.log('Side filter specifically:', req.query.side);
 
       const {
-        startDate, endDate, symbol, sector, strategy, tags,
+        startDate, endDate, symbol, symbolExact, sector, strategy, tags,
         strategies, sectors, // Add multi-select parameters
         side, minPrice, maxPrice, minQuantity, maxQuantity,
         status, minPnl, maxPnl, pnlType, broker, brokers, accounts, hasNews,
@@ -2524,6 +2525,7 @@ const tradeController = {
         startDate,
         endDate,
         symbol,
+        symbolExact: symbolExact === 'true',
         sector,
         strategy,
         // Multi-select filters
