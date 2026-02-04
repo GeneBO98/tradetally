@@ -1038,9 +1038,11 @@ import YearWrappedModal from '@/components/yearWrapped/YearWrappedModal.vue'
 import OnboardingCard from '@/components/onboarding/OnboardingCard.vue'
 import { useYearWrappedStore } from '@/stores/yearWrapped'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
+import { useUserTimezone } from '@/composables/useUserTimezone'
 import draggable from 'vuedraggable'
 
 const authStore = useAuthStore()
+const { formatTime: formatTimeTz } = useUserTimezone()
 const { selectedAccount } = useGlobalAccountFilter()
 const yearWrappedStore = useYearWrappedStore()
 const router = useRouter()
@@ -1265,7 +1267,7 @@ function formatLastRefresh(timestamp) {
   } else if (diff < 3600) {
     return `${Math.floor(diff / 60)}m ago`
   } else {
-    return format(timestamp, 'h:mm a')
+    return formatTimeTz(timestamp)
   }
 }
 

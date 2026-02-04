@@ -874,8 +874,11 @@ import { useAuthStore } from '@/stores/auth'
 import { useNotification } from '@/composables/useNotification'
 import { format } from 'date-fns'
 import { formatTradeDate } from '@/utils/date'
+import { useUserTimezone } from '@/composables/useUserTimezone'
 import { ArrowUpTrayIcon, XMarkIcon, ExclamationTriangleIcon, Cog6ToothIcon, MagnifyingGlassIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
+
+const { formatDateTime: formatDateTimeTz } = useUserTimezone()
 import UnmappedCusipsModal from '@/components/cusip/UnmappedCusipsModal.vue'
 import AllCusipMappingsModal from '@/components/cusip/AllCusipMappingsModal.vue'
 import CSVColumnMappingModal from '@/components/import/CSVColumnMappingModal.vue'
@@ -1004,8 +1007,8 @@ function formatFileSize(bytes) {
 }
 
 function formatDate(date) {
-  // Import history dates are stored without timezone context; use safe trade formatter
-  return formatTradeDate(date, 'MMM dd, yyyy HH:mm')
+  if (!date) return ''
+  return formatDateTimeTz(date)
 }
 
 function formatBrokerName(broker) {

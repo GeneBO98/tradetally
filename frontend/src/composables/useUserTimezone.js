@@ -24,6 +24,13 @@ export function useUserTimezone() {
   })
 
   /**
+   * Whether to use 12-hour (American) format; false = 24-hour (military)
+   */
+  const use12Hour = computed(() => {
+    return authStore.user?.settings?.time_display_format === '12h'
+  })
+
+  /**
    * Human-readable timezone abbreviation (e.g., "ET", "PT", "UTC")
    */
   const timezoneLabel = computed(() => {
@@ -37,16 +44,16 @@ export function useUserTimezone() {
    * @returns {string} Formatted datetime string
    */
   function formatDateTime(utcDateTime, options = {}) {
-    return formatDateTimeInTimezone(utcDateTime, userTimezone.value, options)
+    return formatDateTimeInTimezone(utcDateTime, userTimezone.value, { hour12: use12Hour.value, ...options })
   }
 
   /**
    * Format only the time portion for display in user's timezone
    * @param {string|Date} utcDateTime - UTC datetime string or Date
-   * @returns {string} Formatted time string (e.g., "14:30")
+   * @returns {string} Formatted time string (e.g., "14:30" or "2:30 PM")
    */
   function formatTime(utcDateTime) {
-    return formatTimeInTimezone(utcDateTime, userTimezone.value)
+    return formatTimeInTimezone(utcDateTime, userTimezone.value, { hour12: use12Hour.value })
   }
 
   /**
@@ -80,6 +87,7 @@ export function useUserTimezone() {
   return {
     userTimezone,
     timezoneLabel,
+    use12Hour,
     formatDateTime,
     formatTime,
     toUTC,
