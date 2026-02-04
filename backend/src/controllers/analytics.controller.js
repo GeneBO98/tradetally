@@ -949,22 +949,28 @@ const analyticsController = {
           SELECT ${tableAlias}.user_id, ${tableAlias}.id AS trade_id, ${tableAlias}.symbol, ${tableAlias}.side,
             (COALESCE(exec->>'datetime', exec->>'exitTime', exec->>'exit_time'))::timestamp::date AS exec_date,
             (
-              COALESCE(
-                (exec->>'pnl')::numeric,
-                (exec->>'profitLoss')::numeric,
-                CASE WHEN (exec->>'price') IS NOT NULL AND (exec->>'quantity') IS NOT NULL AND ${tableAlias}.entry_price IS NOT NULL
+              CASE
+                -- If execution has pre-calculated pnl, use it and subtract execution fees (fees not included in pnl)
+                WHEN (exec->>'pnl') IS NOT NULL THEN (exec->>'pnl')::numeric - COALESCE((exec->>'fees')::numeric, 0)
+                WHEN (exec->>'profitLoss') IS NOT NULL THEN (exec->>'profitLoss')::numeric - COALESCE((exec->>'fees')::numeric, 0)
+                -- Otherwise calculate from price/quantity and subtract proportional entry commission
+                WHEN (exec->>'price') IS NOT NULL AND (exec->>'quantity') IS NOT NULL AND ${tableAlias}.entry_price IS NOT NULL
                   THEN (
                     CASE WHEN ${tableAlias}.side IN ('long','buy') THEN ((exec->>'price')::numeric - ${tableAlias}.entry_price) * (exec->>'quantity')::numeric
                          WHEN ${tableAlias}.side IN ('short','sell') THEN (${tableAlias}.entry_price - (exec->>'price')::numeric) * (exec->>'quantity')::numeric
                          ELSE NULL END
-                    ) * (CASE WHEN COALESCE(${tableAlias}.instrument_type, 'stock') = 'future' THEN COALESCE(${tableAlias}.point_value, 1)
+                    ) * (CASE WHEN COALESCE(${tableAlias}.instrument_type, 'stock') = 'future'
+                              THEN CASE WHEN ${tableAlias}.point_value IS NOT NULL AND ${tableAlias}.point_value > 1
+                                        THEN ${tableAlias}.point_value
+                                        ELSE NULL END  -- Skip execution calc for futures without valid point_value
                               WHEN COALESCE(${tableAlias}.instrument_type, 'stock') = 'option' THEN COALESCE(${tableAlias}.contract_size, 100)
                               ELSE 1 END)
-                  ELSE NULL END
-              )
-              - CASE WHEN (${tableAlias}.quantity IS NOT NULL AND ${tableAlias}.quantity > 0) THEN ((exec->>'quantity')::numeric / ${tableAlias}.quantity) * (
-                (CASE WHEN COALESCE(${tableAlias}.commission, 0) != 0 THEN COALESCE(${tableAlias}.commission, 0) ELSE COALESCE(${tableAlias}.entry_commission, 0) + COALESCE(${tableAlias}.exit_commission, 0) END) + COALESCE(${tableAlias}.fees, 0)
-              ) ELSE 0 END
+                    -- Subtract proportional entry commission only (not exit commission, as that's per-execution)
+                    - CASE WHEN (${tableAlias}.quantity IS NOT NULL AND ${tableAlias}.quantity > 0) THEN ((exec->>'quantity')::numeric / ${tableAlias}.quantity) * (
+                      COALESCE(${tableAlias}.entry_commission, 0)
+                    ) ELSE 0 END
+                ELSE NULL
+              END
             ) AS exec_pnl,
             (exec->>'quantity')::numeric AS exec_qty,
             (exec->>'price')::numeric AS exec_price
@@ -998,6 +1004,7 @@ const analyticsController = {
             AND ${tableAlias}.exit_time IS NOT NULL
             AND ${tableAlias}.pnl IS NOT NULL
             AND (${tableAlias}.executions IS NULL OR jsonb_array_length(${tableAlias}.executions) = 0
+                 OR (COALESCE(${tableAlias}.instrument_type, 'stock') = 'future' AND (${tableAlias}.point_value IS NULL OR ${tableAlias}.point_value <= 1))
                  OR NOT EXISTS (
                    SELECT 1 FROM jsonb_array_elements(COALESCE(${tableAlias}.executions, '[]'::jsonb)) AS e(exec)
                    WHERE (
@@ -1059,22 +1066,28 @@ const analyticsController = {
           SELECT t.id AS trade_id, t.symbol, t.side,
             COALESCE(exec->>'datetime', exec->>'exitTime', exec->>'exit_time') AS exec_datetime,
             (
-              COALESCE(
-                (exec->>'pnl')::numeric,
-                (exec->>'profitLoss')::numeric,
-                CASE WHEN (exec->>'price') IS NOT NULL AND (exec->>'quantity') IS NOT NULL AND t.entry_price IS NOT NULL
+              CASE
+                -- If execution has pre-calculated pnl, use it and subtract execution fees (fees not included in pnl)
+                WHEN (exec->>'pnl') IS NOT NULL THEN (exec->>'pnl')::numeric - COALESCE((exec->>'fees')::numeric, 0)
+                WHEN (exec->>'profitLoss') IS NOT NULL THEN (exec->>'profitLoss')::numeric - COALESCE((exec->>'fees')::numeric, 0)
+                -- Otherwise calculate from price/quantity and subtract proportional entry commission
+                WHEN (exec->>'price') IS NOT NULL AND (exec->>'quantity') IS NOT NULL AND t.entry_price IS NOT NULL
                   THEN (
                     CASE WHEN t.side IN ('long','buy') THEN ((exec->>'price')::numeric - t.entry_price) * (exec->>'quantity')::numeric
                          WHEN t.side IN ('short','sell') THEN (t.entry_price - (exec->>'price')::numeric) * (exec->>'quantity')::numeric
                          ELSE NULL END
-                  ) * (CASE WHEN COALESCE(t.instrument_type, 'stock') = 'future' THEN COALESCE(t.point_value, 1)
+                  ) * (CASE WHEN COALESCE(t.instrument_type, 'stock') = 'future'
+                            THEN CASE WHEN t.point_value IS NOT NULL AND t.point_value > 1
+                                      THEN t.point_value
+                                      ELSE NULL END  -- Skip execution calc for futures without valid point_value
                             WHEN COALESCE(t.instrument_type, 'stock') = 'option' THEN COALESCE(t.contract_size, 100)
                             ELSE 1 END)
-                  ELSE NULL END
-              )
-              - CASE WHEN (t.quantity IS NOT NULL AND t.quantity > 0) THEN ((exec->>'quantity')::numeric / t.quantity) * (
-                (CASE WHEN COALESCE(t.commission, 0) != 0 THEN COALESCE(t.commission, 0) ELSE COALESCE(t.entry_commission, 0) + COALESCE(t.exit_commission, 0) END) + COALESCE(t.fees, 0)
-              ) ELSE 0 END
+                  -- Subtract proportional entry commission only (not exit commission, as that's per-execution)
+                  - CASE WHEN (t.quantity IS NOT NULL AND t.quantity > 0) THEN ((exec->>'quantity')::numeric / t.quantity) * (
+                    COALESCE(t.entry_commission, 0)
+                  ) ELSE 0 END
+                ELSE NULL
+              END
             ) AS exec_pnl,
             (exec->>'quantity')::numeric AS exec_quantity,
             (exec->>'price')::numeric AS exec_price

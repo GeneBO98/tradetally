@@ -181,7 +181,10 @@ import { ref, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useInvestmentsStore } from '@/stores/investments'
 import { format } from 'date-fns'
+import { useUserTimezone } from '@/composables/useUserTimezone'
 import PillarRow from '@/components/investments/PillarRow.vue'
+
+const { formatDateTime: formatDateTimeTz } = useUserTimezone()
 import AddHoldingModal from '@/components/investments/AddHoldingModal.vue'
 import StockPriceChart from '@/components/investments/StockPriceChart.vue'
 import FinancialStatementTabs from '@/components/investments/financials/FinancialStatementTabs.vue'
@@ -291,6 +294,6 @@ function formatMarketCap(value) {
 
 function formatDate(date) {
   if (!date) return ''
-  return format(new Date(date), 'MMM d, yyyy h:mm a')
+  return formatDateTimeTz(date)
 }
 </script>

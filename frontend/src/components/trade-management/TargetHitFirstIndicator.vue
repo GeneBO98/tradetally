@@ -228,6 +228,9 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import api from '@/services/api'
+import { useUserTimezone } from '@/composables/useUserTimezone'
+
+const { formatTime: formatTimeTz } = useUserTimezone()
 
 const props = defineProps({
   trade: {
@@ -329,8 +332,7 @@ const resultDescription = computed(() => {
   const result = analysis.value?.analysis_result
   if (!result || !result.first_hit_time) return ''
 
-  const time = new Date(result.first_hit_time)
-  return `at ${time.toLocaleTimeString()}`
+  return `at ${formatTimeTz(result.first_hit_time)}`
 })
 
 // Manual result computed properties

@@ -414,8 +414,10 @@
 
 <script setup>
 import { ref, onMounted } from 'vue';
-import { format } from 'date-fns';
 import api from '@/services/api';
+import { useUserTimezone } from '@/composables/useUserTimezone';
+
+const { formatDateTime: formatDateTimeTz } = useUserTimezone();
 
 const loading = ref(true);
 const creatingBackup = ref(false);
@@ -687,7 +689,7 @@ function cancelRestore() {
 // Format date
 function formatDate(dateString) {
   if (!dateString) return 'Never';
-  return format(new Date(dateString), 'MMM d, yyyy h:mm a');
+  return formatDateTimeTz(dateString);
 }
 
 // Format file size

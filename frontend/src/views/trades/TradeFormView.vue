@@ -1866,9 +1866,19 @@ async function loadTrade() {
       mae: tradeData.mae != null ? Number(tradeData.mae) : null,
       mfe: tradeData.mfe != null ? Number(tradeData.mfe) : null,
       stopLoss: (tradeData.stop_loss || tradeData.stopLoss) != null ? Number(tradeData.stop_loss || tradeData.stopLoss) : null,
-      takeProfit: (tradeData.take_profit || tradeData.takeProfit) != null ? Number(tradeData.take_profit || tradeData.takeProfit) : null,
+      // Take profit values: use take_profit_targets array as source of truth
+      // This prevents stale data issues when editing from multiple tabs
+      takeProfit: (() => {
+        const targets = tradeData.take_profit_targets || tradeData.takeProfitTargets || [];
+        const firstTarget = targets[0];
+        // Prefer first target's price, fall back to take_profit field
+        if (firstTarget?.price != null) {
+          return Number(firstTarget.price);
+        }
+        return (tradeData.take_profit || tradeData.takeProfit) != null ? Number(tradeData.take_profit || tradeData.takeProfit) : null;
+      })(),
       takeProfitQty: (() => {
-        // Get TP1 quantity from first take_profit_targets entry if it exists
+        // Get TP1 quantity from first take_profit_targets entry
         const targets = tradeData.take_profit_targets || tradeData.takeProfitTargets || [];
         const firstTarget = targets[0];
         const qty = firstTarget?.shares || firstTarget?.quantity;
@@ -1876,20 +1886,12 @@ async function loadTrade() {
       })(),
       takeProfitTargets: (() => {
         const raw = tradeData.take_profit_targets || tradeData.takeProfitTargets || [];
-        const tp1Price = tradeData.take_profit || tradeData.takeProfit;
         console.log('[TRADE FORM LOAD] Raw take_profit_targets from API:', raw);
-        // Skip the first entry if it matches TP1 price (TP1 is shown separately from takeProfit field)
-        const filteredTargets = raw.filter((t, index) => {
-          if (index === 0 && tp1Price && t.price != null) {
-            const priceMatch = Math.abs(Number(t.price) - Number(tp1Price)) < 0.01;
-            if (priceMatch) {
-              console.log('[TRADE FORM LOAD] Skipping first target as it matches TP1:', t.price);
-              return false;
-            }
-          }
-          return true;
-        });
-        return filteredTargets.map(t => ({
+        // ALWAYS skip the first entry - it's TP1 which is stored in takeProfit/takeProfitQty fields
+        // This prevents duplicate entries when take_profit and take_profit_targets[0] have different values
+        const additionalTargets = raw.slice(1);
+        console.log('[TRADE FORM LOAD] Additional targets (TP2+):', additionalTargets);
+        return additionalTargets.map(t => ({
           price: t.price != null ? Number(t.price) : null,
           shares: t.shares != null ? Number(t.shares) : null
         }));
@@ -1918,9 +1920,15 @@ async function loadTrade() {
       executions: (() => {
         console.log('[TRADE FORM] Raw tradeData.executions:', JSON.stringify(tradeData.executions, null, 2))
         if (tradeData.executions && Array.isArray(tradeData.executions) && tradeData.executions.length > 0) {
-          // Check if any executions have commission values
-          const hasExecutionCommissions = tradeData.executions.some(exec => exec.commission > 0)
-          const hasExecutionFees = tradeData.executions.some(exec => exec.fees > 0)
+          // Check if any executions have explicit commission/fee values (including 0 or negative rebates)
+          const hasExecutionCommissions = tradeData.executions.some(exec => {
+            const value = exec.commission;
+            return value !== undefined && value !== null && !Number.isNaN(parseFloat(value));
+          });
+          const hasExecutionFees = tradeData.executions.some(exec => {
+            const value = exec.fees;
+            return value !== undefined && value !== null && !Number.isNaN(parseFloat(value));
+          });
 
           // Calculate total quantity for proportional distribution
           const totalQuantity = tradeData.executions.reduce((sum, exec) => sum + (parseFloat(exec.quantity) || 0), 0)
@@ -1973,21 +1981,31 @@ async function loadTrade() {
                 pnl: exec.pnl != null ? Number(exec.pnl) : null,
                 // Fall back to trade-level stop loss if not in execution
                 stopLoss: (() => { const v = exec.stopLoss || exec.stop_loss || tradeData.stop_loss || tradeData.stopLoss; return v != null ? Number(v) : null; })(),
-                takeProfit: (() => { const v = exec.takeProfit || exec.take_profit || tradeData.take_profit || tradeData.takeProfit; return v != null ? Number(v) : null; })(),
+                // Use targets array as source of truth for take profit
+                takeProfit: (() => {
+                  const targets = exec.takeProfitTargets || exec.take_profit_targets || [];
+                  if (targets[0]?.price != null) return Number(targets[0].price);
+                  const v = exec.takeProfit || exec.take_profit || tradeData.take_profit || tradeData.takeProfit;
+                  return v != null ? Number(v) : null;
+                })(),
                 takeProfitQty: (() => {
                   const targets = exec.takeProfitTargets || exec.take_profit_targets || [];
                   const firstTarget = targets[0];
-                  const qty = firstTarget?.shares || firstTarget?.quantity;
+                  let qty = firstTarget?.shares ?? firstTarget?.quantity;
+                  if (qty != null) return Number(qty);
+                  // Fall back to trade-level TP1 quantity when execution has no targets
+                  const tradeTargets = tradeData.take_profit_targets || tradeData.takeProfitTargets || [];
+                  const tradeFirst = tradeTargets[0];
+                  qty = tradeFirst?.shares ?? tradeFirst?.quantity;
                   return qty != null ? Number(qty) : null;
                 })(),
                 takeProfitTargets: (() => {
                   const targets = exec.takeProfitTargets || exec.take_profit_targets || [];
-                  const tp1Price = exec.takeProfit || exec.take_profit || tradeData.take_profit || tradeData.takeProfit;
-                  // Skip first entry if it matches TP1 price
-                  return targets.filter((t, i) => {
-                    if (i === 0 && tp1Price && t.price != null && Math.abs(Number(t.price) - Number(tp1Price)) < 0.01) return false;
-                    return true;
-                  }).map(t => ({
+                  // ALWAYS skip first entry - it's TP1 stored in takeProfit/takeProfitQty
+                  const additional = targets.length > 0
+                    ? targets.slice(1)
+                    : (tradeData.take_profit_targets || tradeData.takeProfitTargets || []).slice(1);
+                  return additional.map(t => ({
                     price: t.price != null ? Number(t.price) : null,
                     shares: t.shares != null ? Number(t.shares) : null
                   }));
@@ -2011,21 +2029,31 @@ async function loadTrade() {
                 fees: execFees,
                 // Fall back to trade-level stop loss if not in execution
                 stopLoss: (() => { const v = exec.stopLoss || exec.stop_loss || tradeData.stop_loss || tradeData.stopLoss; return v != null ? Number(v) : null; })(),
-                takeProfit: (() => { const v = exec.takeProfit || exec.take_profit || tradeData.take_profit || tradeData.takeProfit; return v != null ? Number(v) : null; })(),
+                // Use targets array as source of truth for take profit
+                takeProfit: (() => {
+                  const targets = exec.takeProfitTargets || exec.take_profit_targets || [];
+                  if (targets[0]?.price != null) return Number(targets[0].price);
+                  const v = exec.takeProfit || exec.take_profit || tradeData.take_profit || tradeData.takeProfit;
+                  return v != null ? Number(v) : null;
+                })(),
                 takeProfitQty: (() => {
                   const targets = exec.takeProfitTargets || exec.take_profit_targets || [];
                   const firstTarget = targets[0];
-                  const qty = firstTarget?.shares || firstTarget?.quantity;
+                  let qty = firstTarget?.shares ?? firstTarget?.quantity;
+                  if (qty != null) return Number(qty);
+                  // Fall back to trade-level TP1 quantity when execution has no targets
+                  const tradeTargets = tradeData.take_profit_targets || tradeData.takeProfitTargets || [];
+                  const tradeFirst = tradeTargets[0];
+                  qty = tradeFirst?.shares ?? tradeFirst?.quantity;
                   return qty != null ? Number(qty) : null;
                 })(),
                 takeProfitTargets: (() => {
                   const targets = exec.takeProfitTargets || exec.take_profit_targets || [];
-                  const tp1Price = exec.takeProfit || exec.take_profit || tradeData.take_profit || tradeData.takeProfit;
-                  // Skip first entry if it matches TP1 price
-                  return targets.filter((t, i) => {
-                    if (i === 0 && tp1Price && t.price != null && Math.abs(Number(t.price) - Number(tp1Price)) < 0.01) return false;
-                    return true;
-                  }).map(t => ({
+                  // ALWAYS skip first entry - it's TP1 stored in takeProfit/takeProfitQty
+                  const additional = targets.length > 0
+                    ? targets.slice(1)
+                    : (tradeData.take_profit_targets || tradeData.takeProfitTargets || []).slice(1);
+                  return additional.map(t => ({
                     price: t.price != null ? Number(t.price) : null,
                     shares: t.shares != null ? Number(t.shares) : null
                   }));
@@ -2051,7 +2079,12 @@ async function loadTrade() {
             fees: tradeData.fees != null ? Number(tradeData.fees) : 0,
             pnl: tradeData.pnl != null ? Number(tradeData.pnl) : 0,
             stopLoss: (tradeData.stop_loss || tradeData.stopLoss) != null ? Number(tradeData.stop_loss || tradeData.stopLoss) : null,
-            takeProfit: (tradeData.take_profit || tradeData.takeProfit) != null ? Number(tradeData.take_profit || tradeData.takeProfit) : null,
+            // Use targets array as source of truth for take profit
+            takeProfit: (() => {
+              const targets = tradeData.take_profit_targets || tradeData.takeProfitTargets || [];
+              if (targets[0]?.price != null) return Number(targets[0].price);
+              return (tradeData.take_profit || tradeData.takeProfit) != null ? Number(tradeData.take_profit || tradeData.takeProfit) : null;
+            })(),
             takeProfitQty: (() => {
               const targets = tradeData.take_profit_targets || tradeData.takeProfitTargets || [];
               const firstTarget = targets[0];
@@ -2060,12 +2093,8 @@ async function loadTrade() {
             })(),
             takeProfitTargets: (() => {
               const targets = tradeData.take_profit_targets || tradeData.takeProfitTargets || [];
-              const tp1Price = tradeData.take_profit || tradeData.takeProfit;
-              // Skip first entry if it matches TP1 price
-              return targets.filter((t, i) => {
-                if (i === 0 && tp1Price && t.price != null && Math.abs(Number(t.price) - Number(tp1Price)) < 0.01) return false;
-                return true;
-              }).map(t => ({
+              // ALWAYS skip first entry - it's TP1 stored in takeProfit/takeProfitQty
+              return targets.slice(1).map(t => ({
                 price: t.price != null ? Number(t.price) : null,
                 shares: t.shares != null ? Number(t.shares) : null
               }));
@@ -2338,15 +2367,33 @@ async function handleSubmit() {
       stopLoss: form.value.stopLoss && form.value.stopLoss !== '' ? parseFloat(form.value.stopLoss) : null,
       takeProfit: form.value.takeProfit && form.value.takeProfit !== '' ? parseFloat(form.value.takeProfit) : null,
       takeProfitTargets: (() => {
+        const execs = form.value.executions || [];
+        // When there's exactly one grouped execution, use its TP data for trade-level so payload has full set (user edits execution card)
+        if (execs.length === 1 && (execs[0].entryPrice !== undefined || execs[0].entryTime !== undefined)) {
+          const e = execs[0];
+          const targets = [];
+          if (e.takeProfit != null && e.takeProfit !== '') {
+            targets.push({
+              price: parseFloat(e.takeProfit),
+              shares: e.takeProfitQty ? parseInt(e.takeProfitQty) : null
+            });
+          }
+          const additional = (e.takeProfitTargets || []).filter(t => t.price != null && t.price !== '').map(t => ({
+            price: parseFloat(t.price),
+            shares: t.shares ? parseInt(t.shares) : null
+          }));
+          targets.push(...additional);
+          console.log('[TRADE FORM] Submitting takeProfitTargets from single execution:', targets);
+          return targets;
+        }
+        // Default: form-level (no executions or multiple executions)
         const targets = [];
-        // Include TP1 with quantity if both price and quantity are set
         if (form.value.takeProfit && form.value.takeProfit !== '') {
           targets.push({
             price: parseFloat(form.value.takeProfit),
             shares: form.value.takeProfitQty ? parseInt(form.value.takeProfitQty) : null
           });
         }
-        // Add TP2+ from takeProfitTargets array
         const additionalTargets = (form.value.takeProfitTargets || []).filter(t => t.price != null && t.price !== '').map(t => ({
           price: parseFloat(t.price),
           shares: t.shares ? parseInt(t.shares) : null

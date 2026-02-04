@@ -281,6 +281,7 @@ const schemas = {
     importSettings: Joi.object(),
     theme: Joi.string().valid('light', 'dark'),
     timezone: Joi.string().max(50),
+    timeDisplayFormat: Joi.string().valid('12h', '24h'),
     statisticsCalculation: Joi.string().valid('average', 'median'),
     enableTradeGrouping: Joi.boolean(),
     tradeGroupingTimeGapMinutes: Joi.number().integer().min(1).max(1440),

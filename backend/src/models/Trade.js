@@ -1330,6 +1330,8 @@ class Trade {
 
     // Aggregate take profit targets from executions to trade level
     // This REPLACES trade-level targets with execution-level targets (source of truth)
+    // Keep payload's trade-level targets when they have more (e.g. user edited main form or single-execution sync)
+    const payloadTakeProfitTargets = updates.takeProfitTargets;
     if (executionsToSet && executionsToSet.length > 0) {
       const aggregatedTargets = [];
 
@@ -1339,10 +1341,28 @@ class Trade {
         }
       });
 
+      // Deduplicate by (price, shares) so the same target is not stored once per execution.
+      // When every execution had the same targets, we preserve a single set and keep the first occurrence (first non-null shares).
+      const seen = new Set();
+      const deduplicatedTargets = aggregatedTargets.filter(t => {
+        const price = t.price != null ? parseFloat(t.price) : null;
+        const shares = t.shares != null ? t.shares : (t.quantity != null ? t.quantity : null);
+        const key = `${price}-${shares}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
       // Only update if we found execution-level targets
-      if (aggregatedTargets.length > 0) {
-        updates.takeProfitTargets = aggregatedTargets;
-        console.log(`[TP TARGETS UPDATE] Aggregated ${aggregatedTargets.length} take profit targets from executions`);
+      if (deduplicatedTargets.length > 0) {
+        // Prefer payload's trade-level targets when it has more (user may have edited form; execution aggregation may have missed some)
+        if (Array.isArray(payloadTakeProfitTargets) && payloadTakeProfitTargets.length >= deduplicatedTargets.length) {
+          updates.takeProfitTargets = payloadTakeProfitTargets;
+          console.log(`[TP TARGETS UPDATE] Using payload takeProfitTargets (${payloadTakeProfitTargets.length}) over aggregation (${deduplicatedTargets.length})`);
+        } else {
+          updates.takeProfitTargets = deduplicatedTargets;
+          console.log(`[TP TARGETS UPDATE] Aggregated ${aggregatedTargets.length} take profit targets from executions, deduplicated to ${deduplicatedTargets.length}`);
+        }
       }
     }
 

@@ -186,7 +186,8 @@ class User {
       defaultStopLossPercent: 'default_stop_loss_percent',
       defaultTakeProfitPercent: 'default_take_profit_percent',
       defaultStopLossType: 'default_stop_loss_type',
-      defaultStopLossDollars: 'default_stop_loss_dollars'
+      defaultStopLossDollars: 'default_stop_loss_dollars',
+      timeDisplayFormat: 'time_display_format'
     };
 
     Object.entries(settings).forEach(([key, value]) => {

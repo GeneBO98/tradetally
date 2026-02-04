@@ -671,18 +671,8 @@ class TargetHitAnalysisService {
     const isLong = side === 'long';
     const totalQty = parseFloat(quantity) || 1;
 
-    // Get the original stop loss from risk_level_history if available
-    // R value should be calculated based on the original risk
-    let originalStopLoss = parseFloat(stop_loss);
-    if (risk_level_history && Array.isArray(risk_level_history) && risk_level_history.length > 0) {
-      const stopLossEntries = risk_level_history
-        .filter(entry => entry.type === 'stop_loss' && entry.old_value !== null && entry.old_value !== undefined)
-        .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-
-      if (stopLossEntries.length > 0) {
-        originalStopLoss = parseFloat(stopLossEntries[0].old_value);
-      }
-    }
+    // Use current stop loss for R calculations
+    const originalStopLoss = parseFloat(stop_loss);
 
     // Calculate risk (R = 1)
     const risk = isLong ? entryPrice - originalStopLoss : originalStopLoss - entryPrice;
@@ -892,12 +882,42 @@ class TargetHitAnalysisService {
 
     let managementR = null;
 
+    // Calculate commissionR for applying to both actual and planned scenarios
+    // This ensures apples-to-apples comparison (both net of commissions)
+    let commissionR = 0;
+    if (totalCommission > 0 && risk > 0 && totalQty > 0) {
+      const { symbol } = trade;
+      const isFutures = instrument_type === 'future' ||
+        (symbol && /^(MES|ES|MNQ|NQ|MYM|YM|M2K|RTY|MGC|GC|MCL|CL|SI|HG)/i.test(symbol));
+
+      let multiplier = 1;
+      if (isFutures) {
+        if (point_value) {
+          multiplier = parseFloat(point_value);
+        } else if (symbol && /^(MES|MNQ|MYM|M2K)/i.test(symbol)) {
+          multiplier = 5;
+        } else if (symbol && /^(ES|NQ|YM|RTY)/i.test(symbol)) {
+          multiplier = 50;
+        } else {
+          multiplier = 5;
+        }
+      } else if (instrument_type === 'option') {
+        multiplier = parseFloat(contract_size) || 100;
+      }
+
+      const riskAmount = risk * totalQty * multiplier;
+      commissionR = totalCommission / riskAmount;
+    }
+
     if (manual_target_hit_first === 'stop_loss') {
-      // SL Hit First: Management R = Actual R - Planned R
+      // SL Hit First: Management R = Actual R (net) - Planned R (net)
+      //
+      // Both sides include commissions for apples-to-apples comparison.
+      // The ghost scenario (hitting SL) would also incur the same commissions.
       //
       // Planned R depends on whether there were partial exits:
-      // - No partial exits: Planned R = -1R (full position would have stopped out)
-      // - With partial exits: Planned R = hit targets contribution + (remaining × -1R)
+      // - No partial exits: Planned R = -1R - commissionR (full position would have stopped out)
+      // - With partial exits: Planned R = hit targets contribution + (remaining × -1R) - commissionR
       //
       // This measures how much better/worse you did compared to the planned stop out.
       // Examples:
@@ -907,18 +927,21 @@ class TargetHitAnalysisService {
 
       if (hasPartialExits) {
         // With partial exits: hit targets were captured, remaining would have stopped at -1R
-        plannedR = hitTargetsContribution + (remainingRatio * -1);
+        // Apply commission to the planned scenario as well
+        plannedR = hitTargetsContribution + (remainingRatio * -1) - commissionR;
 
         logger.debug('[MANAGEMENT-R] SL Hit First with partial exits:', {
           hitTargetsContribution: hitTargetsContribution.toFixed(4),
           remainingRatio: remainingRatio.toFixed(4),
+          commissionR: commissionR.toFixed(4),
           plannedR: plannedR.toFixed(4)
         });
       } else {
-        // No partial exits: full position would have stopped at -1R
-        plannedR = -1;
+        // No partial exits: full position would have stopped at -1R, minus commissions
+        plannedR = -1 - commissionR;
 
         logger.debug('[MANAGEMENT-R] SL Hit First without partial exits:', {
+          commissionR: commissionR.toFixed(4),
           plannedR: plannedR.toFixed(4)
         });
       }
@@ -932,23 +955,23 @@ class TargetHitAnalysisService {
       });
 
     } else if (manual_target_hit_first === 'take_profit') {
-      // TP Hit First: Management R = Actual R - Weighted Target R
+      // TP Hit First: Management R = Actual R (net) - Weighted Target R (net)
+      // Both sides include commissions for apples-to-apples comparison.
       // This measures how much better/worse you did vs your potential (all targets hit perfectly)
       const weightedTargetR = this.calculateWeightedTargetR(trade, risk);
       if (weightedTargetR === null) return null;
 
-      plannedR = weightedTargetR;
+      // Apply commission to target R as well - hitting targets also incurs commissions
+      plannedR = weightedTargetR - commissionR;
 
-      // Calculate actual R (exit_price is weighted average, so use it directly)
-      const actualRDirect = isLong
-        ? (exitPrice - entryPrice) / risk
-        : (entryPrice - exitPrice) / risk;
-
-      managementR = actualRDirect - plannedR;
+      // Use the already commission-adjusted actualR calculated earlier
+      managementR = actualR - plannedR;
 
       logger.debug('[MANAGEMENT-R] TP Hit First:', {
-        actualR: actualRDirect.toFixed(4),
+        actualR: actualR.toFixed(4),
         weightedTargetR: weightedTargetR.toFixed(4),
+        weightedTargetRNet: plannedR.toFixed(4),
+        commissionR: commissionR.toFixed(4),
         managementR: managementR.toFixed(4)
       });
     }

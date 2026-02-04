@@ -1228,7 +1228,10 @@ import AIReportRenderer from '@/components/ai/AIReportRenderer.vue'
 import AIConversationPanel from '@/components/ai/AIConversationPanel.vue'
 import { useAIStore } from '@/stores/ai'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
+import { useUserTimezone } from '@/composables/useUserTimezone'
 import Chart from 'chart.js/auto'
+
+const { use12Hour } = useUserTimezone()
 import draggable from 'vuedraggable'
 import {
   mdiCheckCircle,
@@ -1721,10 +1724,13 @@ function formatNumber(num) {
 
 function formatHour(hour) {
   const h = parseInt(hour)
-  if (h === 0) return '12:00 AM'
-  if (h < 12) return `${h}:00 AM`
-  if (h === 12) return '12:00 PM'
-  return `${h - 12}:00 PM`
+  if (use12Hour.value) {
+    if (h === 0) return '12:00 AM'
+    if (h < 12) return `${h}:00 AM`
+    if (h === 12) return '12:00 PM'
+    return `${h - 12}:00 PM`
+  }
+  return `${String(h).padStart(2, '0')}:00`
 }
 
 function getWinPercentage() {
