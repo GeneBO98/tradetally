@@ -1,5 +1,5 @@
 <template>
-  <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden">
+  <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg">
     <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
       <h3 class="text-lg font-medium text-gray-900 dark:text-white">R-Multiple Analysis</h3>
       <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
@@ -12,7 +12,7 @@
       <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4 mb-6">
         <!-- Actual R -->
         <div class="r-multiple-card flex flex-col min-h-[5rem] p-3 sm:p-4 rounded-lg" :class="getActualRClass">
-          <div class="text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-400 mb-0.5 shrink-0 truncate">Actual R</div>
+          <div class="text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-400 mb-0.5 shrink-0 truncate">Actual R (Net)</div>
           <div class="text-xl sm:text-2xl md:text-3xl font-bold truncate" :class="analysis.actual_r >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
             {{ formatR(analysis.actual_r) }}
           </div>
@@ -24,7 +24,7 @@
         <!-- Target R -->
         <div v-if="effectiveTargetR !== null" class="r-multiple-card flex flex-col min-h-[5rem] p-3 sm:p-4 bg-primary-50 dark:bg-primary-900/20 rounded-lg">
           <div class="text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-400 mb-0.5 shrink-0 truncate">
-            Target R
+            Target R (Net)
             <span v-if="weightedAverageR !== null" class="text-xs font-normal">(weighted avg)</span>
           </div>
           <div class="text-xl sm:text-2xl md:text-3xl font-bold truncate text-primary-600 dark:text-primary-400">
@@ -35,7 +35,7 @@
           </div>
         </div>
         <div v-else class="r-multiple-card flex flex-col min-h-[5rem] p-3 sm:p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-          <div class="text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-400 mb-0.5 shrink-0">Target R</div>
+          <div class="text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-400 mb-0.5 shrink-0">Target R (Net)</div>
           <div class="text-xl sm:text-2xl font-medium text-gray-400 dark:text-gray-500 truncate">
             Not Set
           </div>
@@ -224,9 +224,15 @@ const effectiveTargetR = computed(() => {
   return props.analysis.target_r
 })
 
-// Effective potential P&L using ratio method for accuracy
-// Formula: targetR * (actualPL / actualR) preserves the actual dollar-per-R value
+// Effective potential P&L - prefer backend's direct calculation
+// Backend now calculates target_pl_amount as sum of net profits at each TP level
 const effectivePotentialPL = computed(() => {
+  // Prefer target_pl_amount from backend (direct calculation is more accurate for multiple targets)
+  if (props.analysis.target_pl_amount !== null && props.analysis.target_pl_amount !== undefined) {
+    return props.analysis.target_pl_amount
+  }
+
+  // Fallback to ratio-based formula if target_pl_amount not available
   const actualR = props.analysis.actual_r
   const actualPL = props.analysis.actual_pl_amount
   const targetR = effectiveTargetR.value
@@ -236,7 +242,7 @@ const effectivePotentialPL = computed(() => {
     return Math.round(perR * targetR * 100) / 100
   }
 
-  return props.analysis.target_pl_amount
+  return null
 })
 
 // Effective R lost (prefer backend calculation, then frontend)

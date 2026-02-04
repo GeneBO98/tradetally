@@ -62,39 +62,9 @@ function calculateRMultiples(trade) {
     };
   }
   
-  // Get the original stop loss from risk_level_history if available
-  // R value should be calculated based on the original risk, not the current (moved) stop loss
-  // This ensures R value reflects performance relative to the initial risk taken
-  let originalStopLoss = parseFloat(stop_loss);
-  if (risk_level_history && Array.isArray(risk_level_history) && risk_level_history.length > 0) {
-    // Find all stop_loss entries and get the one with the earliest timestamp
-    // The first stop_loss change will have old_value = original stop loss
-    const stopLossEntries = risk_level_history
-      .filter(entry => entry.type === 'stop_loss' && entry.old_value !== null && entry.old_value !== undefined)
-      .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-    
-    if (stopLossEntries.length > 0) {
-      const firstStopLossEntry = stopLossEntries[0];
-      const parsedOldValue = parseFloat(firstStopLossEntry.old_value);
-      if (!isNaN(parsedOldValue)) {
-        originalStopLoss = parsedOldValue;
-        logger.debug('[R-CALC] Found original stop loss in history:', { 
-          originalStopLoss, 
-          currentStopLoss: stop_loss,
-          historyEntry: firstStopLossEntry,
-          totalStopLossChanges: stopLossEntries.length
-        });
-      } else {
-        logger.warn('[R-CALC] Invalid old_value in stop loss history entry, using current stop loss');
-      }
-    } else {
-      logger.debug('[R-CALC] No stop loss history entries found, using current stop loss as original');
-    }
-  } else {
-    logger.debug('[R-CALC] No risk level history, using current stop loss as original');
-  }
-  
-  const stopLoss = originalStopLoss;
+  // Use current stop loss for R calculations
+  // R value reflects performance relative to the CURRENT risk level
+  const stopLoss = parseFloat(stop_loss);
   
   // Validate parsed values
   if (isNaN(entryPrice) || isNaN(exitPrice) || isNaN(stopLoss)) {
@@ -107,7 +77,7 @@ function calculateRMultiples(trade) {
     };
   }
   
-  logger.debug('[R-CALC] Parsed prices:', { entryPrice, exitPrice, stopLoss: stopLoss, originalStopLoss, currentStopLoss: stop_loss, instrument_type: instrument_type || 'stock' });
+  logger.debug('[R-CALC] Parsed prices:', { entryPrice, exitPrice, stopLoss, instrument_type: instrument_type || 'stock' });
 
   // Determine the take profit price to use for single-target analysis
   // Priority: take_profit_targets (first/primary target) > take_profit
@@ -136,40 +106,55 @@ function calculateRMultiples(trade) {
   // Include TP1 from take_profit field + all targets from take_profit_targets array
   // This matches the frontend logic for "planned R"
   // Frontend requires: targets.length > 0 (at least one target in array), then includes TP1 if exists
+  // Also track direct target P&L calculation (sum of net profits at each TP level)
   let weightedTargetR = null;
+  let directTargetPLAmount = null; // Direct calculation: sum of (profit - commission) at each TP
   const hasTargetsArray = targets && Array.isArray(targets) && targets.length > 0;
   const hasPrimaryTp = !!take_profit;
-  
+
   // Calculate weighted average if we have at least one target in array (matches frontend logic)
   // We'll include TP1 if it exists, and only return weighted average if we have at least 2 targets total
   if (hasTargetsArray) {
     logger.debug('[R-CALC] Calculating weighted average R for multiple targets (including TP1 from take_profit field)');
     const isLong = side === 'long';
-    const risk = isLong ? entryPrice - stopLoss : stopLoss - entryPrice;
-    logger.debug('[R-CALC] Risk calculation:', { isLong, risk });
+    const riskCalc = isLong ? entryPrice - stopLoss : stopLoss - entryPrice;
+    logger.debug('[R-CALC] Risk calculation:', { isLong, risk: riskCalc });
 
-    if (risk > 0) {
+    if (riskCalc > 0) {
       let totalShares = 0;
       let weightedSum = 0;
+      let directPLSum = 0; // Sum of gross profits at each TP level
 
       // Calculate total shares from targets array to determine remaining shares for TP1
       const specifiedShares = targets.reduce((sum, t) => sum + (parseFloat(t.shares || t.quantity) || 0), 0);
       const totalQuantity = parseFloat(quantity) || 1;
 
+      // Determine multiplier early for direct P&L calculation
+      let calcMultiplier = 1;
+      const calcInstrumentType = instrument_type || 'stock';
+      if (calcInstrumentType === 'future') {
+        calcMultiplier = point_value ? parseFloat(point_value) : 5; // Default to micro futures
+      } else if (calcInstrumentType === 'option') {
+        calcMultiplier = contract_size ? parseFloat(contract_size) : 100;
+      }
+
       // Add TP1 from take_profit field if it exists
       if (hasPrimaryTp) {
         const tp1Price = parseFloat(take_profit);
-        const tp1R = isLong ? (tp1Price - entryPrice) / risk : (entryPrice - tp1Price) / risk;
-        
+        const tp1R = isLong ? (tp1Price - entryPrice) / riskCalc : (entryPrice - tp1Price) / riskCalc;
+
         // Calculate shares for TP1: remaining shares after accounting for targets array
-        const tp1Shares = specifiedShares > 0 
-          ? Math.max(0, totalQuantity - specifiedShares) 
+        const tp1Shares = specifiedShares > 0
+          ? Math.max(0, totalQuantity - specifiedShares)
           : (hasTargetsArray ? totalQuantity / (targets.length + 1) : totalQuantity);
-        
+
         if (tp1Shares > 0) {
           weightedSum += tp1R * tp1Shares;
           totalShares += tp1Shares;
-          logger.debug('[R-CALC] TP1 (from take_profit field) contribution:', { tp1Price, tp1R: tp1R.toFixed(2), shares: tp1Shares });
+          // Direct P&L: profit per share × shares × multiplier
+          const tp1ProfitPerShare = isLong ? (tp1Price - entryPrice) : (entryPrice - tp1Price);
+          directPLSum += tp1ProfitPerShare * tp1Shares * calcMultiplier;
+          logger.debug('[R-CALC] TP1 (from take_profit field) contribution:', { tp1Price, tp1R: tp1R.toFixed(2), shares: tp1Shares, directPL: (tp1ProfitPerShare * tp1Shares * calcMultiplier).toFixed(2) });
         }
       }
 
@@ -178,7 +163,7 @@ function calculateRMultiples(trade) {
         targets.forEach((t, index) => {
           if (t.price) {
             const tpPrice = parseFloat(t.price);
-            const tpR = isLong ? (tpPrice - entryPrice) / risk : (entryPrice - tpPrice) / risk;
+            const tpR = isLong ? (tpPrice - entryPrice) / riskCalc : (entryPrice - tpPrice) / riskCalc;
 
             let shares;
             if (t.shares || t.quantity) {
@@ -194,7 +179,10 @@ function calculateRMultiples(trade) {
 
             weightedSum += tpR * shares;
             totalShares += shares;
-            logger.debug(`[R-CALC] Target ${index + 1} (TP${index + 2}) contribution:`, { tpPrice, tpR: tpR.toFixed(2), shares });
+            // Direct P&L: profit per share × shares × multiplier
+            const tpProfitPerShare = isLong ? (tpPrice - entryPrice) : (entryPrice - tpPrice);
+            directPLSum += tpProfitPerShare * shares * calcMultiplier;
+            logger.debug(`[R-CALC] Target ${index + 1} (TP${index + 2}) contribution:`, { tpPrice, tpR: tpR.toFixed(2), shares, directPL: (tpProfitPerShare * shares * calcMultiplier).toFixed(2) });
           }
         });
       }
@@ -204,11 +192,26 @@ function calculateRMultiples(trade) {
       const totalTargetCount = (hasPrimaryTp ? 1 : 0) + (hasTargetsArray ? targets.length : 0);
       if (totalShares > 0 && totalTargetCount > 1) {
         weightedTargetR = weightedSum / totalShares;
-        logger.debug('[R-CALC] Weighted average calculation:', { 
-          weightedSum: weightedSum.toFixed(2), 
-          totalShares, 
+
+        // Calculate commission to subtract from direct P&L
+        // Estimate commission per contract based on actual trade commission
+        const { commission: tradeCommission, fees: tradeFees } = trade;
+        const totalTradeCommission = Math.abs(parseFloat(tradeCommission || 0)) + Math.abs(parseFloat(tradeFees || 0));
+        // Commission per contract = total commission / total contracts
+        // For target P&L, we need commission for exiting all contracts
+        const commissionPerContract = totalQuantity > 0 ? totalTradeCommission / totalQuantity : 0;
+        const targetExitCommission = commissionPerContract * totalShares;
+
+        directTargetPLAmount = directPLSum - targetExitCommission;
+
+        logger.debug('[R-CALC] Weighted average calculation:', {
+          weightedSum: weightedSum.toFixed(2),
+          totalShares,
           weightedTargetR: weightedTargetR.toFixed(2),
-          totalTargetCount
+          totalTargetCount,
+          directPLSum: directPLSum.toFixed(2),
+          targetExitCommission: targetExitCommission.toFixed(2),
+          directTargetPLAmount: directTargetPLAmount.toFixed(2)
         });
       } else if (totalTargetCount <= 1) {
         logger.debug('[R-CALC] Only one target total, skipping weighted average (use single target_r instead)');
@@ -378,21 +381,27 @@ function calculateRMultiples(trade) {
   const riskAmount = risk * tradeQuantity * multiplier;
   const actualPLAmount = actualPL * tradeQuantity * multiplier;
   
-  // Calculate target_pl_amount consistently:
-  // - If weighted average exists, use: weighted_target_r * risk_amount (ensures consistency with displayed target R)
-  // - Otherwise, use: targetPL * quantity * multiplier (traditional calculation)
+  // Calculate target_pl_amount:
+  // - For multiple targets: use directTargetPLAmount (sum of net profits at each TP level)
+  // - For single TP: use targetPL * quantity * multiplier
+  // The direct calculation is more accurate as it accounts for share allocation at each level
   let targetPLAmount = null;
-  if (weightedTargetR !== null) {
-    // Use weighted average R * risk amount for consistency
-    targetPLAmount = weightedTargetR * riskAmount;
-    logger.debug('[R-CALC] Using weighted average for target_pl_amount:', { 
-      weightedTargetR: weightedTargetR.toFixed(2), 
-      riskAmount: riskAmount.toFixed(2),
-      targetPLAmount: targetPLAmount.toFixed(2)
+  if (directTargetPLAmount !== null) {
+    // Use direct calculation for multiple targets (sum of profits at each TP minus estimated commission)
+    targetPLAmount = directTargetPLAmount;
+    logger.debug('[R-CALC] Using direct calculation for target_pl_amount (multiple targets):', {
+      directTargetPLAmount: directTargetPLAmount.toFixed(2),
+      note: 'Sum of (profit × shares × multiplier) at each TP level, minus estimated exit commission'
     });
   } else if (takeProfit) {
     // Traditional calculation for single TP
     targetPLAmount = targetPL * tradeQuantity * multiplier;
+    logger.debug('[R-CALC] Using traditional calculation for target_pl_amount (single TP):', {
+      targetPL: targetPL?.toFixed(2),
+      tradeQuantity,
+      multiplier,
+      targetPLAmount: targetPLAmount?.toFixed(2)
+    });
   }
   
   // Validate risk amount is reasonable (safeguard against calculation errors)
@@ -423,8 +432,9 @@ function calculateRMultiples(trade) {
     contract_size: contract_size || 'not set'
   });
 
-  // Adjust actual R for commission and fees (net R)
+  // Adjust actual R AND target R for commission and fees (net R)
   // Commission reduces your actual profit, so it reduces actual R
+  // Target R also needs commission adjustment for apples-to-apples comparison
   const { commission, fees, symbol } = trade;
   const totalCommission = Math.abs(parseFloat(commission || 0)) + Math.abs(parseFloat(fees || 0));
   if (totalCommission > 0 && riskAmount > 0) {
@@ -449,6 +459,24 @@ function calculateRMultiples(trade) {
     const grossActualR = actualR;
     actualR = actualR - commissionR;
 
+    // Also adjust target R for commission (hitting targets also incurs commissions)
+    if (targetR !== undefined) {
+      const grossTargetR = targetR;
+      targetR = targetR - commissionR;
+      logger.debug('[R-CALC] Target R commission adjustment:', {
+        grossTargetR: grossTargetR.toFixed(4),
+        netTargetR: targetR.toFixed(4)
+      });
+    }
+    if (weightedTargetR !== null) {
+      const grossWeightedTargetR = weightedTargetR;
+      weightedTargetR = weightedTargetR - commissionR;
+      logger.debug('[R-CALC] Weighted Target R commission adjustment:', {
+        grossWeightedTargetR: grossWeightedTargetR.toFixed(4),
+        netWeightedTargetR: weightedTargetR.toFixed(4)
+      });
+    }
+
     logger.debug('[R-CALC] Commission adjustment:', {
       totalCommission,
       effectiveRiskAmount: effectiveRiskAmount.toFixed(2),
@@ -459,6 +487,7 @@ function calculateRMultiples(trade) {
   }
 
   // Use weighted average target R if available (for multiple targets)
+  // Both are now net of commissions
   const effectiveTargetR = weightedTargetR !== null ? weightedTargetR : targetR;
   const effectiveRLost = effectiveTargetR !== undefined ? effectiveTargetR - actualR : rLost;
   logger.debug('[R-CALC] Effective values:', {
@@ -586,21 +615,8 @@ function calculateTradeR(trade) {
   const entryPrice = parseFloat(entry_price);
   const exitPrice = parseFloat(exit_price);
 
-  // Get the original stop loss from risk_level_history if available
-  // R value should be calculated based on the original risk, not the current (moved) stop loss
-  let originalStopLoss = parseFloat(stop_loss);
-  if (risk_level_history && Array.isArray(risk_level_history) && risk_level_history.length > 0) {
-    const stopLossEntries = risk_level_history
-      .filter(entry => entry.type === 'stop_loss' && entry.old_value !== null && entry.old_value !== undefined)
-      .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-
-    if (stopLossEntries.length > 0) {
-      originalStopLoss = parseFloat(stopLossEntries[0].old_value);
-      logger.debug('[R-BATCH] Using original stop loss from history:', { originalStopLoss, currentStopLoss: stop_loss });
-    }
-  }
-
-  const stopLoss = originalStopLoss;
+  // Use current stop loss for R calculations
+  const stopLoss = parseFloat(stop_loss);
   const isLong = side === 'long';
 
   // Calculate risk
@@ -1285,13 +1301,15 @@ const tradeManagementController = {
       logger.info('[TRADE-MGMT] getRPerformance called', { userId, symbol, startDate, endDate, limit, accounts });
 
       // Get trades with stop_loss set (required for R calculation)
-      // Now also fetch management_r, take_profit_targets, and manual_target_hit_first
+      // Fetch executions so Management R and execution-based logic match getRMultipleAnalysis
+      // Include commission, fees, and instrument fields for commission-adjusted R calculations
       let query = `
         SELECT
           id, symbol, trade_date, entry_price, exit_price,
           quantity, side, pnl, stop_loss, take_profit,
           take_profit_targets, management_r, risk_level_history,
-          manual_target_hit_first
+          manual_target_hit_first, executions,
+          commission, fees, instrument_type, contract_size, point_value
         FROM trades
         WHERE user_id = $1
           AND exit_price IS NOT NULL
@@ -1332,7 +1350,34 @@ const tradeManagementController = {
       const result = await db.query(query, values);
       logger.info('[TRADE-MGMT] Found', result.rows.length, 'trades with stop_loss for R analysis');
 
-      // Calculate R values and build cumulative data
+      // Helper to parse JSON fields from DB (pg may return strings for JSONB in some setups)
+      const parseTradeRow = (row) => {
+        const trade = { ...row };
+        if (typeof trade.executions === 'string') {
+          try {
+            trade.executions = JSON.parse(trade.executions);
+          } catch (_) {
+            trade.executions = null;
+          }
+        }
+        if (typeof trade.risk_level_history === 'string') {
+          try {
+            trade.risk_level_history = JSON.parse(trade.risk_level_history);
+          } catch (_) {
+            trade.risk_level_history = null;
+          }
+        }
+        if (typeof trade.take_profit_targets === 'string') {
+          try {
+            trade.take_profit_targets = JSON.parse(trade.take_profit_targets);
+          } catch (_) {
+            trade.take_profit_targets = null;
+          }
+        }
+        return trade;
+      };
+
+      // Use same calculation as R-Multiple Analysis (calculateRMultiples) so chart matches panel
       let cumulativeActualR = 0;
       let cumulativePotentialR = 0;
       let cumulativeManagementR = 0;
@@ -1342,77 +1387,66 @@ const tradeManagementController = {
       const chartData = [];
       const tradeDetails = [];
 
-      result.rows.forEach((trade, index) => {
-        const rValues = calculateTradeR(trade);
+      result.rows.forEach((row, index) => {
+        const trade = parseTradeRow(row);
+        const analysis = calculateRMultiples(trade);
 
-        if (rValues) {
-          cumulativeActualR += rValues.actual_r;
-
-          // Target R depends ONLY on manual_target_hit_first selection:
-          // - SL hit first: Target R = -1R (expected outcome was to stop out)
-          // - TP hit first: Target R = weighted Target R (expected outcome was to hit all targets)
-          // - Not set: Don't add to Target R (trade not yet analyzed)
-          // The curve cannot stay flat - it either goes down -1R or up by the calculated target R
-          let tradeTargetR = null;
-          if (trade.manual_target_hit_first === 'stop_loss') {
-            tradeTargetR = -1; // Expected -1R when SL hits first
-            tradesWithTarget++;
-          } else if (trade.manual_target_hit_first === 'take_profit' && rValues.target_r !== null) {
-            tradeTargetR = rValues.target_r; // Use weighted Target R when TP hits first
-            tradesWithTarget++;
-          }
-          // else: not set, don't add to potential R
-
-          if (tradeTargetR !== null) {
-            cumulativePotentialR += tradeTargetR;
-          }
-
-          // Calculate management R fresh (same as individual trade analysis)
-          // This ensures the chart matches the sum of individual R-Multiple Analysis values
-          // Fall back to stored value if manual_target_hit_first is not set (legacy data)
-          let tradeManagementR = 0;
-          if (trade.manual_target_hit_first) {
-            // Calculate fresh when manual_target_hit_first is set
-            const calculatedManagementR = TargetHitAnalysisService.calculateManagementR(trade);
-            tradeManagementR = calculatedManagementR !== null ? Math.round(calculatedManagementR * 100) / 100 : 0;
-            if (calculatedManagementR !== null) {
-              tradesWithManagementR++;
-            }
-          } else if (trade.management_r !== null) {
-            // Fall back to stored value for legacy data without manual_target_hit_first
-            tradeManagementR = parseFloat(trade.management_r);
-            tradesWithManagementR++;
-          }
-          cumulativeManagementR += tradeManagementR;
-
-          chartData.push({
-            trade_number: index + 1,
-            trade_id: trade.id,
-            symbol: trade.symbol,
-            trade_date: trade.trade_date,
-            actual_r: rValues.actual_r,
-            target_r: tradeTargetR, // -1R for SL hit first, weighted Target R for TP hit first, null if not set
-            weighted_target_r: rValues.target_r, // Original weighted target R (for reference)
-            management_r: Math.round(tradeManagementR * 100) / 100,
-            cumulative_actual_r: Math.round(cumulativeActualR * 100) / 100,
-            cumulative_potential_r: Math.round(cumulativePotentialR * 100) / 100,
-            cumulative_management_r: Math.round(cumulativeManagementR * 100) / 100,
-            has_multiple_targets: !!(trade.take_profit_targets && trade.take_profit_targets.length > 0),
-            has_adjustments: !!(trade.risk_level_history && trade.risk_level_history.length > 0),
-            target_hit_first: trade.manual_target_hit_first || null
-          });
-
-          tradeDetails.push({
-            id: trade.id,
-            symbol: trade.symbol,
-            trade_date: trade.trade_date,
-            side: trade.side,
-            pnl: trade.pnl,
-            actual_r: rValues.actual_r,
-            target_r: tradeTargetR, // -1R for SL hit first, weighted Target R for TP hit first, null if not set
-            management_r: tradeManagementR !== 0 ? tradeManagementR : null
-          });
+        if (analysis.error) {
+          logger.debug('[TRADE-MGMT] Skipping trade for R performance (calculation error):', trade.id, analysis.error);
+          return;
         }
+
+        const actualR = analysis.actual_r;
+        if (actualR == null) return;
+
+        cumulativeActualR += actualR;
+
+        // Target R: same logic as before — SL hit first = -1R, TP hit first = weighted/target R
+        const effectiveTargetR = analysis.weighted_target_r ?? analysis.target_r;
+        let tradeTargetR = null;
+        if (trade.manual_target_hit_first === 'stop_loss') {
+          tradeTargetR = -1;
+          tradesWithTarget++;
+        } else if (trade.manual_target_hit_first === 'take_profit' && effectiveTargetR != null) {
+          tradeTargetR = effectiveTargetR;
+          tradesWithTarget++;
+        }
+
+        if (tradeTargetR !== null) {
+          cumulativePotentialR += tradeTargetR;
+        }
+
+        const tradeManagementR = analysis.management_r != null ? Math.round(analysis.management_r * 100) / 100 : 0;
+        if (analysis.management_r != null) tradesWithManagementR++;
+        cumulativeManagementR += tradeManagementR;
+
+        chartData.push({
+          trade_number: index + 1,
+          trade_id: trade.id,
+          symbol: trade.symbol,
+          trade_date: trade.trade_date,
+          actual_r: actualR,
+          target_r: tradeTargetR,
+          weighted_target_r: effectiveTargetR,
+          management_r: tradeManagementR,
+          cumulative_actual_r: Math.round(cumulativeActualR * 100) / 100,
+          cumulative_potential_r: Math.round(cumulativePotentialR * 100) / 100,
+          cumulative_management_r: Math.round(cumulativeManagementR * 100) / 100,
+          has_multiple_targets: !!(trade.take_profit_targets && trade.take_profit_targets.length > 0),
+          has_adjustments: !!(trade.risk_level_history && trade.risk_level_history.length > 0),
+          target_hit_first: trade.manual_target_hit_first || null
+        });
+
+        tradeDetails.push({
+          id: trade.id,
+          symbol: trade.symbol,
+          trade_date: trade.trade_date,
+          side: trade.side,
+          pnl: trade.pnl,
+          actual_r: actualR,
+          target_r: tradeTargetR,
+          management_r: tradeManagementR !== 0 ? tradeManagementR : null
+        });
       });
 
       // Calculate summary statistics
