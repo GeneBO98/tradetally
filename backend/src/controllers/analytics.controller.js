@@ -950,10 +950,30 @@ const analyticsController = {
             (COALESCE(exec->>'datetime', exec->>'exitTime', exec->>'exit_time'))::timestamp::date AS exec_date,
             (
               CASE
-                -- If execution has pre-calculated pnl, use it and subtract execution fees (fees not included in pnl)
-                WHEN (exec->>'pnl') IS NOT NULL THEN (exec->>'pnl')::numeric - COALESCE((exec->>'fees')::numeric, 0)
-                WHEN (exec->>'profitLoss') IS NOT NULL THEN (exec->>'profitLoss')::numeric - COALESCE((exec->>'fees')::numeric, 0)
-                -- Otherwise calculate from price/quantity and subtract proportional entry commission
+                -- Priority 1: If execution has entryPrice AND exitPrice (partial close), calculate fresh
+                -- This avoids using stored pnl which may have incorrect fee proration from import
+                WHEN (exec->>'entryPrice') IS NOT NULL AND (exec->>'exitPrice') IS NOT NULL AND (exec->>'quantity') IS NOT NULL
+                  THEN (
+                    CASE WHEN ${tableAlias}.side IN ('long','buy')
+                         THEN ((exec->>'exitPrice')::numeric - (exec->>'entryPrice')::numeric) * (exec->>'quantity')::numeric
+                         WHEN ${tableAlias}.side IN ('short','sell')
+                         THEN ((exec->>'entryPrice')::numeric - (exec->>'exitPrice')::numeric) * (exec->>'quantity')::numeric
+                         ELSE NULL END
+                    ) * (CASE WHEN COALESCE(${tableAlias}.instrument_type, 'stock') = 'future'
+                              THEN CASE WHEN ${tableAlias}.point_value IS NOT NULL AND ${tableAlias}.point_value > 1
+                                        THEN ${tableAlias}.point_value
+                                        ELSE NULL END
+                              WHEN COALESCE(${tableAlias}.instrument_type, 'stock') = 'option' THEN COALESCE(${tableAlias}.contract_size, 100)
+                              ELSE 1 END)
+                    -- Subtract execution's own fees + prorated entry commission
+                    - COALESCE((exec->>'fees')::numeric, 0)
+                    - CASE WHEN (${tableAlias}.quantity IS NOT NULL AND ${tableAlias}.quantity > 0) THEN ((exec->>'quantity')::numeric / ${tableAlias}.quantity) * (
+                      COALESCE(${tableAlias}.entry_commission, 0)
+                    ) ELSE 0 END
+                -- Priority 2: For broker-synced data with pre-calculated pnl (like Schwab netAmount), use as-is
+                WHEN (exec->>'pnl') IS NOT NULL AND (exec->>'entryPrice') IS NULL THEN (exec->>'pnl')::numeric
+                WHEN (exec->>'profitLoss') IS NOT NULL AND (exec->>'entryPrice') IS NULL THEN (exec->>'profitLoss')::numeric
+                -- Priority 3: Calculate from trade-level entry_price and exec exit price (e.g., expirations)
                 WHEN (exec->>'price') IS NOT NULL AND (exec->>'quantity') IS NOT NULL AND ${tableAlias}.entry_price IS NOT NULL
                   THEN (
                     CASE WHEN ${tableAlias}.side IN ('long','buy') THEN ((exec->>'price')::numeric - ${tableAlias}.entry_price) * (exec->>'quantity')::numeric
@@ -1067,10 +1087,30 @@ const analyticsController = {
             COALESCE(exec->>'datetime', exec->>'exitTime', exec->>'exit_time') AS exec_datetime,
             (
               CASE
-                -- If execution has pre-calculated pnl, use it and subtract execution fees (fees not included in pnl)
-                WHEN (exec->>'pnl') IS NOT NULL THEN (exec->>'pnl')::numeric - COALESCE((exec->>'fees')::numeric, 0)
-                WHEN (exec->>'profitLoss') IS NOT NULL THEN (exec->>'profitLoss')::numeric - COALESCE((exec->>'fees')::numeric, 0)
-                -- Otherwise calculate from price/quantity and subtract proportional entry commission
+                -- Priority 1: If execution has entryPrice AND exitPrice (partial close), calculate fresh
+                -- This avoids using stored pnl which may have incorrect fee proration from import
+                WHEN (exec->>'entryPrice') IS NOT NULL AND (exec->>'exitPrice') IS NOT NULL AND (exec->>'quantity') IS NOT NULL
+                  THEN (
+                    CASE WHEN t.side IN ('long','buy')
+                         THEN ((exec->>'exitPrice')::numeric - (exec->>'entryPrice')::numeric) * (exec->>'quantity')::numeric
+                         WHEN t.side IN ('short','sell')
+                         THEN ((exec->>'entryPrice')::numeric - (exec->>'exitPrice')::numeric) * (exec->>'quantity')::numeric
+                         ELSE NULL END
+                    ) * (CASE WHEN COALESCE(t.instrument_type, 'stock') = 'future'
+                              THEN CASE WHEN t.point_value IS NOT NULL AND t.point_value > 1
+                                        THEN t.point_value
+                                        ELSE NULL END
+                              WHEN COALESCE(t.instrument_type, 'stock') = 'option' THEN COALESCE(t.contract_size, 100)
+                              ELSE 1 END)
+                    -- Subtract execution's own fees + prorated entry commission
+                    - COALESCE((exec->>'fees')::numeric, 0)
+                    - CASE WHEN (t.quantity IS NOT NULL AND t.quantity > 0) THEN ((exec->>'quantity')::numeric / t.quantity) * (
+                      COALESCE(t.entry_commission, 0)
+                    ) ELSE 0 END
+                -- Priority 2: For broker-synced data with pre-calculated pnl (like Schwab netAmount), use as-is
+                WHEN (exec->>'pnl') IS NOT NULL AND (exec->>'entryPrice') IS NULL THEN (exec->>'pnl')::numeric
+                WHEN (exec->>'profitLoss') IS NOT NULL AND (exec->>'entryPrice') IS NULL THEN (exec->>'profitLoss')::numeric
+                -- Priority 3: Calculate from trade-level entry_price and exec exit price (e.g., expirations)
                 WHEN (exec->>'price') IS NOT NULL AND (exec->>'quantity') IS NOT NULL AND t.entry_price IS NOT NULL
                   THEN (
                     CASE WHEN t.side IN ('long','buy') THEN ((exec->>'price')::numeric - t.entry_price) * (exec->>'quantity')::numeric
