@@ -864,6 +864,29 @@
         </div>
       </div>
     </div>
+
+    <!-- Broker Mismatch Modal -->
+    <BrokerMismatchModal
+      :is-open="showBrokerMismatchModal"
+      :selected-broker="brokerMismatchData.selectedBroker"
+      :detected-broker="brokerMismatchData.detectedBroker"
+      :detected-headers="brokerMismatchData.detectedHeaders"
+      :row-count="brokerMismatchData.rowCount"
+      :file-name="brokerMismatchData.fileName"
+      @close="handleBrokerMismatchClose"
+      @use-detected="handleUseBrokerDetected"
+      @keep-selected="handleKeepBrokerSelected"
+    />
+
+    <!-- Import Results Modal -->
+    <ImportResultsModal
+      :is-open="showImportResultsModal"
+      :trades-imported="importResultsData.tradesImported"
+      :duplicates-skipped="importResultsData.duplicatesSkipped"
+      :diagnostics="importResultsData.diagnostics"
+      :failed-trades="importResultsData.failedTrades"
+      @close="handleImportResultsClose"
+    />
   </Teleport>
 </template>
 
@@ -882,6 +905,8 @@ const { formatDateTime: formatDateTimeTz } = useUserTimezone()
 import UnmappedCusipsModal from '@/components/cusip/UnmappedCusipsModal.vue'
 import AllCusipMappingsModal from '@/components/cusip/AllCusipMappingsModal.vue'
 import CSVColumnMappingModal from '@/components/import/CSVColumnMappingModal.vue'
+import BrokerMismatchModal from '@/components/import/BrokerMismatchModal.vue'
+import ImportResultsModal from '@/components/import/ImportResultsModal.vue'
 import OnboardingCard from '@/components/onboarding/OnboardingCard.vue'
 import { usePriceAlertNotifications } from '@/composables/usePriceAlertNotifications'
 
@@ -977,6 +1002,25 @@ const showDeleteModal = ref(false)
 const showDeleteMappingModal = ref(false)
 const deleteImportId = ref(null)
 const deleteImportData = ref(null)
+
+// Broker mismatch modal
+const showBrokerMismatchModal = ref(false)
+const brokerMismatchData = ref({
+  selectedBroker: '',
+  detectedBroker: '',
+  detectedHeaders: [],
+  rowCount: 0,
+  fileName: ''
+})
+
+// Import results modal
+const showImportResultsModal = ref(false)
+const importResultsData = ref({
+  tradesImported: 0,
+  duplicatesSkipped: 0,
+  diagnostics: null,
+  failedTrades: []
+})
 
 function handleFileSelect(event) {
   const file = event.target.files[0]
@@ -1307,6 +1351,40 @@ async function handleImport() {
       console.log(`[IMPORT] Using custom mapping ID: ${mappingId}`)
     }
 
+    // Pre-validate: Check for broker format mismatch (only if user selected a specific broker)
+    if (broker !== 'auto' && broker !== 'generic' && !mappingId) {
+      console.log(`[IMPORT] Validating broker format...`)
+      try {
+        const validationFormData = new FormData()
+        validationFormData.append('file', selectedFile.value)
+        validationFormData.append('broker', broker)
+
+        const validationResult = await api.post('/trades/import/validate', validationFormData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        })
+
+        const validation = validationResult.data
+        console.log(`[IMPORT] Validation result:`, validation)
+
+        if (validation.mismatch) {
+          console.log(`[IMPORT] Broker mismatch detected: selected=${validation.selectedBroker}, detected=${validation.detectedBroker}`)
+          loading.value = false
+          brokerMismatchData.value = {
+            selectedBroker: validation.selectedBroker,
+            detectedBroker: validation.detectedBroker,
+            detectedHeaders: validation.detectedHeaders,
+            rowCount: validation.rowCount,
+            fileName: validation.fileName
+          }
+          showBrokerMismatchModal.value = true
+          return
+        }
+      } catch (validationErr) {
+        console.warn('[IMPORT] Validation check failed, proceeding with import:', validationErr.message)
+        // Continue with import even if validation fails
+      }
+    }
+
     // Pre-check: Try to detect format if using auto-detect or generic (and no custom mapping)
     if ((selectedBroker.value === 'auto' || selectedBroker.value === 'generic') && !mappingId) {
       const headers = await parseCSVHeaders(selectedFile.value)
@@ -1402,6 +1480,93 @@ async function handleImport() {
     }
   } finally {
     loading.value = false
+  }
+}
+
+// Broker mismatch modal handlers
+function handleBrokerMismatchClose() {
+  showBrokerMismatchModal.value = false
+  brokerMismatchData.value = {
+    selectedBroker: '',
+    detectedBroker: '',
+    detectedHeaders: [],
+    rowCount: 0,
+    fileName: ''
+  }
+}
+
+async function handleUseBrokerDetected(detectedBroker) {
+  console.log(`[IMPORT] User chose to use detected broker: ${detectedBroker}`)
+  showBrokerMismatchModal.value = false
+
+  // Update selected broker to the detected one and re-run import
+  selectedBroker.value = detectedBroker
+
+  // Re-run import with the detected broker
+  await handleImport()
+}
+
+async function handleKeepBrokerSelected(selectedBrokerValue) {
+  console.log(`[IMPORT] User chose to keep selected broker: ${selectedBrokerValue}`)
+  showBrokerMismatchModal.value = false
+
+  // Continue with original import - re-run handleImport but skip validation this time
+  // by temporarily setting a flag
+  loading.value = true
+  error.value = null
+
+  try {
+    // Extract mapping ID if custom mapping is selected
+    let mappingId = null
+    let broker = selectedBroker.value
+
+    if (selectedBroker.value.startsWith('custom:')) {
+      mappingId = selectedBroker.value.substring(7)
+      broker = 'generic'
+    }
+
+    // Get account to send
+    let accountIdToSend = null
+    if (requiresAccountSelection.value && selectedAccountId.value !== null && selectedAccountId.value !== 'none') {
+      accountIdToSend = selectedAccountId.value
+    }
+
+    const result = await tradesStore.importTrades(selectedFile.value, broker, mappingId, accountIdToSend)
+    console.log('Import result:', result)
+    showSuccess('Import Started', `Import has been queued. Import ID: ${result.importId}`)
+
+    // Save broker preference to localStorage
+    localStorage.setItem('lastSelectedBroker', selectedBroker.value)
+
+    // Reset form (but keep broker selection)
+    selectedFile.value = null
+    if (fileInput.value) {
+      fileInput.value.value = ''
+    }
+
+    // Refresh import history
+    fetchImportHistory()
+
+    // Poll import status for achievements and results
+    pollImportStatus(result.importId)
+  } catch (err) {
+    console.error('Import error:', err)
+    const errorMessage = err.response?.data?.error || err.message || 'Import failed'
+    error.value = errorMessage
+    showError('Import Failed', error.value)
+  } finally {
+    loading.value = false
+  }
+}
+
+// Import results modal handler
+function handleImportResultsClose() {
+  showImportResultsModal.value = false
+  importResultsData.value = {
+    tradesImported: 0,
+    duplicatesSkipped: 0,
+    diagnostics: null,
+    failedTrades: []
   }
 }
 
@@ -1826,6 +1991,24 @@ function pollImportStatus(importId) {
       const status = importLog?.status
 
       if (status === 'completed' || status === 'failed') {
+        // Show import results modal with diagnostics
+        const errorDetails = importLog?.error_details || {}
+        const diagnostics = errorDetails.diagnostics || null
+        const tradesImported = importLog?.trades_imported || 0
+        const duplicatesSkipped = errorDetails.duplicates || 0
+        const failedTrades = errorDetails.failedTrades || []
+
+        // Show results modal if we have diagnostics or notable stats
+        if (diagnostics || tradesImported > 0 || duplicatesSkipped > 0 || failedTrades.length > 0) {
+          importResultsData.value = {
+            tradesImported,
+            duplicatesSkipped,
+            diagnostics,
+            failedTrades
+          }
+          showImportResultsModal.value = true
+        }
+
         if (status === 'completed') {
           // Fallback achievement check + local celebration for non-SSE users
           try {
