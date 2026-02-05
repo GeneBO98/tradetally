@@ -990,15 +990,69 @@ function applyTradeGrouping(trades, settings) {
   return groupedTrades;
 }
 
+/**
+ * Helper to wrap parsing results with diagnostics
+ * @param {Array} trades - Parsed trades array
+ * @param {Object} diagnostics - Diagnostics object
+ * @param {Array} unresolvedCusips - Optional unresolved CUSIPs
+ * @returns {Object} - { trades, diagnostics, unresolvedCusips }
+ */
+function wrapResultWithDiagnostics(trades, diagnostics, unresolvedCusips = []) {
+  // Update diagnostics with final counts
+  diagnostics.parsedRows = trades.length;
+
+  // Calculate skip rate
+  if (diagnostics.totalRows > 0) {
+    const skipRate = ((diagnostics.skippedRows + diagnostics.invalidRows) / diagnostics.totalRows) * 100;
+    if (skipRate > 50) {
+      diagnostics.warnings.push(`High skip rate: ${skipRate.toFixed(1)}% of rows were skipped or invalid`);
+    }
+  }
+
+  // Log diagnostics summary
+  console.log(`[DIAGNOSTICS] Total: ${diagnostics.totalRows}, Parsed: ${diagnostics.parsedRows}, Skipped: ${diagnostics.skippedRows}, Invalid: ${diagnostics.invalidRows}`);
+  if (diagnostics.skippedReasons.length > 0) {
+    console.log(`[DIAGNOSTICS] Skip reasons (first 5): ${JSON.stringify(diagnostics.skippedReasons.slice(0, 5))}`);
+  }
+
+  return {
+    trades,
+    diagnostics,
+    unresolvedCusips
+  };
+}
+
 async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
+  // Initialize diagnostics object to track parsing details
+  const diagnostics = {
+    totalRows: 0,           // Total CSV rows (excluding header)
+    parsedRows: 0,          // Rows successfully parsed
+    skippedRows: 0,         // Rows intentionally skipped (wrong type, etc.)
+    invalidRows: 0,         // Rows with validation errors
+    skippedReasons: [],     // Array of { row: number, reason: string }
+    warnings: [],           // Non-fatal issues
+    detectedBroker: null,   // What auto-detect found (or selected broker)
+    selectedBroker: broker, // What user originally selected
+    headerAnalysis: {
+      foundHeaders: [],
+      recognizedAs: null    // Which broker pattern matched
+    }
+  };
+
   try {
     console.log(`[CURRENCY DEBUG] parseCSV called with broker: ${broker}, userId: ${context.userId}`);
 
     // Handle auto-detection
+    const originalBroker = broker;
     if (broker === 'auto') {
       const detectedBroker = detectBrokerFormat(fileBuffer);
       console.log(`[AUTO-DETECT] Using detected broker format: ${detectedBroker}`);
+      diagnostics.detectedBroker = detectedBroker;
+      diagnostics.headerAnalysis.recognizedAs = detectedBroker;
       broker = detectedBroker;
+    } else {
+      diagnostics.detectedBroker = broker;
+      diagnostics.headerAnalysis.recognizedAs = broker;
     }
 
     const existingPositions = context.existingPositions || {};
@@ -1361,6 +1415,15 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
     
     console.log(`Parsing ${records.length} records with ${broker} parser`);
 
+    // Update diagnostics with row count and headers
+    diagnostics.totalRows = records.length;
+    if (records.length > 0) {
+      diagnostics.headerAnalysis.foundHeaders = Object.keys(records[0]);
+    }
+
+    // Store diagnostics in context for broker parsers to use
+    context.diagnostics = diagnostics;
+
     // Check if CSV contains a currency column BEFORE broker-specific parsing
     const hasCurrencyColumn = detectCurrencyColumn(records);
 
@@ -1403,11 +1466,12 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
 
       // Apply trade grouping if enabled
       const tradeGroupingSettings = context.tradeGroupingSettings || { enabled: true, timeGapMinutes: 60 };
+      let finalTrades = result;
       if (tradeGroupingSettings.enabled && result.length > 0) {
-        return applyTradeGrouping(result, tradeGroupingSettings);
+        finalTrades = applyTradeGrouping(result, tradeGroupingSettings);
       }
 
-      return result;
+      return wrapResultWithDiagnostics(finalTrades, diagnostics);
     }
 
     if (broker === 'schwab') {
@@ -1420,7 +1484,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       // Trade grouping would incorrectly merge multiple round trips on the same day
       console.log('[INFO] Skipping trade grouping for Schwab (already grouped by round-trip logic)');
 
-      return result;
+      return wrapResultWithDiagnostics(result, diagnostics);
     }
 
     if (broker === 'thinkorswim') {
@@ -1430,11 +1494,12 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
 
       // Apply trade grouping if enabled
       const tradeGroupingSettings = context.tradeGroupingSettings || { enabled: true, timeGapMinutes: 60 };
+      let finalTrades = result;
       if (tradeGroupingSettings.enabled && result.length > 0) {
-        return applyTradeGrouping(result, tradeGroupingSettings);
+        finalTrades = applyTradeGrouping(result, tradeGroupingSettings);
       }
 
-      return result;
+      return wrapResultWithDiagnostics(finalTrades, diagnostics);
     }
 
     if (broker === 'papermoney') {
@@ -1444,11 +1509,12 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
 
       // Apply trade grouping if enabled
       const tradeGroupingSettings = context.tradeGroupingSettings || { enabled: true, timeGapMinutes: 60 };
+      let finalTrades = result;
       if (tradeGroupingSettings.enabled && result.length > 0) {
-        return applyTradeGrouping(result, tradeGroupingSettings);
+        finalTrades = applyTradeGrouping(result, tradeGroupingSettings);
       }
 
-      return result;
+      return wrapResultWithDiagnostics(finalTrades, diagnostics);
     }
 
     if (broker === 'tradingview') {
@@ -1458,11 +1524,12 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
 
       // Apply trade grouping if enabled
       const tradeGroupingSettings = context.tradeGroupingSettings || { enabled: true, timeGapMinutes: 60 };
+      let finalTrades = result;
       if (tradeGroupingSettings.enabled && result.length > 0) {
-        return applyTradeGrouping(result, tradeGroupingSettings);
+        finalTrades = applyTradeGrouping(result, tradeGroupingSettings);
       }
 
-      return result;
+      return wrapResultWithDiagnostics(finalTrades, diagnostics);
     }
 
     if (broker === 'ibkr' || broker === 'ibkr_trade_confirmation') {
@@ -1470,7 +1537,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       const tradeGroupingSettings = context.tradeGroupingSettings || { enabled: true, timeGapMinutes: 60 };
       const result = await parseIBKRTransactions(records, existingPositions, tradeGroupingSettings, context);
       console.log('Finished IBKR transaction parsing');
-      return result;
+      return wrapResultWithDiagnostics(result, diagnostics);
     }
 
     if (broker === 'webull') {
@@ -1480,11 +1547,12 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
 
       // Apply trade grouping if enabled
       const tradeGroupingSettings = context.tradeGroupingSettings || { enabled: true, timeGapMinutes: 60 };
+      let finalTrades = result;
       if (tradeGroupingSettings.enabled && result.length > 0) {
-        return applyTradeGrouping(result, tradeGroupingSettings);
+        finalTrades = applyTradeGrouping(result, tradeGroupingSettings);
       }
 
-      return result;
+      return wrapResultWithDiagnostics(finalTrades, diagnostics);
     }
 
     if (broker === 'tradovate') {
@@ -1497,7 +1565,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       // Trade grouping would incorrectly merge multiple round trips when exit and new entry have same timestamp
       console.log('[INFO] Skipping trade grouping for Tradovate (already grouped by round-trip logic)');
 
-      return result;
+      return wrapResultWithDiagnostics(result, diagnostics);
     }
 
     if (broker === 'questrade') {
@@ -1509,7 +1577,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       // and trade grouping would incorrectly merge partial close trades back together
       console.log('[INFO] Skipping trade grouping for Questrade (already grouped by round-trip logic)');
 
-      return result;
+      return wrapResultWithDiagnostics(result, diagnostics);
     }
 
     // ProjectX provides completed trades (not transactions), use simple parsing
@@ -1517,8 +1585,10 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       console.log('Starting ProjectX completed trade parsing');
       const parser = brokerParsers.projectx;
       const trades = [];
+      let rowIndex = 0;
 
       for (const record of records) {
+        rowIndex++;
         try {
           let trade = parser(record);
           if (isValidTrade(trade)) {
@@ -1538,9 +1608,14 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
             }
 
             trades.push(trade);
+          } else {
+            diagnostics.invalidRows++;
+            diagnostics.skippedReasons.push({ row: rowIndex, reason: 'Invalid trade: missing required fields' });
           }
         } catch (error) {
           console.error(`Error parsing ProjectX record:`, error.message);
+          diagnostics.invalidRows++;
+          diagnostics.skippedReasons.push({ row: rowIndex, reason: `Parse error: ${error.message}` });
         }
       }
 
@@ -1548,11 +1623,12 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
 
       // Apply trade grouping if enabled
       const tradeGroupingSettings = context.tradeGroupingSettings || { enabled: true, timeGapMinutes: 60 };
+      let finalTrades = trades;
       if (tradeGroupingSettings.enabled && trades.length > 0) {
-        return applyTradeGrouping(trades, tradeGroupingSettings);
+        finalTrades = applyTradeGrouping(trades, tradeGroupingSettings);
       }
 
-      return trades;
+      return wrapResultWithDiagnostics(finalTrades, diagnostics);
     }
 
     // Generic parser - Use transaction-based processing for better position tracking
@@ -1567,11 +1643,12 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
 
       // Apply trade grouping if enabled
       const tradeGroupingSettings = context.tradeGroupingSettings || { enabled: true, timeGapMinutes: 60 };
+      let finalTrades = result;
       if (tradeGroupingSettings.enabled && result.length > 0) {
-        return applyTradeGrouping(result, tradeGroupingSettings);
+        finalTrades = applyTradeGrouping(result, tradeGroupingSettings);
       }
 
-      return result;
+      return wrapResultWithDiagnostics(finalTrades, diagnostics);
     }
 
     // Fallback to simple row-by-row parsing (legacy mode)
@@ -1626,8 +1703,10 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
     }
 
     const trades = [];
+    let rowIndex = 0;
 
     for (const record of records) {
+      rowIndex++;
       try {
         let trade = parser(record);
         if (isValidTrade(trade)) {
@@ -1683,9 +1762,14 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
           }
 
           trades.push(trade);
+        } else {
+          diagnostics.invalidRows++;
+          diagnostics.skippedReasons.push({ row: rowIndex, reason: 'Invalid trade: missing required fields (symbol, date, price, or quantity)' });
         }
       } catch (error) {
         console.error('Error parsing row:', error, record);
+        diagnostics.invalidRows++;
+        diagnostics.skippedReasons.push({ row: rowIndex, reason: `Parse error: ${error.message}` });
       }
     }
 
@@ -1693,11 +1777,12 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
 
     // Apply trade grouping if enabled
     const tradeGroupingSettings = context.tradeGroupingSettings || { enabled: true, timeGapMinutes: 60 };
+    let finalTrades = trades;
     if (tradeGroupingSettings.enabled && trades.length > 0) {
-      return applyTradeGrouping(trades, tradeGroupingSettings);
+      finalTrades = applyTradeGrouping(trades, tradeGroupingSettings);
     }
 
-    return trades;
+    return wrapResultWithDiagnostics(finalTrades, diagnostics);
   } catch (error) {
     throw new Error(`CSV parsing failed: ${error.message}`);
   }
@@ -3337,16 +3422,40 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
   });
   console.log('Record type counts:', typeCounts);
   
+  // Get diagnostics from context if available
+  const diagnostics = context.diagnostics;
+
   // First, parse all trade transactions
+  let rowIndex = 0;
   for (const record of records) {
+    rowIndex++;
     try {
       const type = record.TYPE || record.Type || '';
-      
+
       // Only process TRD (trade) rows
       if (type !== 'TRD') {
+        if (diagnostics) {
+          diagnostics.skippedRows++;
+          // Provide clear, user-friendly skip reasons
+          let reason;
+          if (!type) {
+            reason = 'Missing TYPE column - file may not be in ThinkorSwim format';
+          } else if (type === 'DIV') {
+            reason = 'Dividend row (not a trade)';
+          } else if (type === 'RAD') {
+            reason = 'Receive/Deliver row (not a trade)';
+          } else if (type === 'JNL') {
+            reason = 'Journal entry (not a trade)';
+          } else if (type === 'INT') {
+            reason = 'Interest row (not a trade)';
+          } else {
+            reason = `Non-trade row type: ${type}`;
+          }
+          diagnostics.skippedReasons.push({ row: rowIndex, reason });
+        }
         continue;
       }
-      
+
       const description = record.DESCRIPTION || record.Description || '';
       const date = record.DATE || record.Date || '';
       const time = record.TIME || record.Time || '';
@@ -3356,6 +3465,15 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
       const tradeMatch = description.match(/(BOT|SOLD)\s+([\+\-]?[\d,]+)\s+(\S+)\s+@([\d.]+)/);
       if (!tradeMatch) {
         console.log(`Skipping unparseable trade description: ${description}`);
+        if (diagnostics) {
+          diagnostics.skippedRows++;
+          // Provide helpful message about what format is expected
+          const truncatedDesc = description ? description.substring(0, 40) : '(empty)';
+          const reason = description
+            ? `Unexpected description format: "${truncatedDesc}..." - ThinkorSwim expects "BOT/SOLD +qty SYMBOL @price"`
+            : 'Empty DESCRIPTION field - file may not be in ThinkorSwim format';
+          diagnostics.skippedReasons.push({ row: rowIndex, reason });
+        }
         continue;
       }
 
@@ -4046,8 +4164,13 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
     console.log(`Record ${i}:`, JSON.stringify(record));
   });
 
+  // Get diagnostics from context if available
+  const diagnostics = context.diagnostics;
+
   // First, parse all filled orders
+  let rowIndex = 0;
   for (const record of records) {
+    rowIndex++;
     try {
       const symbol = cleanString(record.Symbol);
       const side = record.Side ? record.Side.toLowerCase() : '';
@@ -4064,12 +4187,33 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
       // Only process filled orders
       if (status !== 'Filled') {
         console.log(`Skipping non-filled order: ${status}`);
+        if (diagnostics) {
+          diagnostics.skippedRows++;
+          // Provide clear, user-friendly skip reasons
+          let reason;
+          if (!status) {
+            reason = 'Missing Status column - file may not be in TradingView format';
+          } else if (status === 'Cancelled' || status === 'Canceled') {
+            reason = 'Cancelled order (not executed)';
+          } else if (status === 'Pending') {
+            reason = 'Pending order (not yet filled)';
+          } else if (status === 'Rejected') {
+            reason = 'Rejected order';
+          } else {
+            reason = `Order not filled (status: ${status})`;
+          }
+          diagnostics.skippedReasons.push({ row: rowIndex, reason });
+        }
         continue;
       }
 
       // Skip if missing essential data
       if (!symbol || !side || quantity === 0 || fillPrice === 0 || !closingTime) {
         console.log(`Skipping TradingView record missing data:`, { symbol, side, quantity, fillPrice, closingTime });
+        if (diagnostics) {
+          diagnostics.invalidRows++;
+          diagnostics.skippedReasons.push({ row: rowIndex, reason: 'Missing required fields (symbol, side, quantity, fill price, or closing time)' });
+        }
         continue;
       }
 
@@ -4079,6 +4223,10 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
 
       if (!tradeDate || !entryTime) {
         console.log(`Skipping TradingView record with invalid date: ${closingTime}`);
+        if (diagnostics) {
+          diagnostics.invalidRows++;
+          diagnostics.skippedReasons.push({ row: rowIndex, reason: `Invalid date format: ${closingTime}` });
+        }
         continue;
       }
 
@@ -6848,6 +6996,7 @@ module.exports = {
   parseCSV,
   detectBrokerFormat,
   getCsvHeaderLine,
+  wrapResultWithDiagnostics,
   brokerParsers,
   parseDate,
   parseDateTime,
