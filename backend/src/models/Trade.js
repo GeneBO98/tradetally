@@ -326,6 +326,21 @@ class Trade {
                 console.log(`[STOP LOSS] Applied default ${stopLossPercent}% stop loss for ${side} position: $${finalStopLoss}`);
               }
             }
+          } else if (stopLossType === 'dollar' && userSettings?.default_stop_loss_dollars > 0 && quantity > 0) {
+            // Dollar-based stop loss: fixed risk per trade (e.g., $100 per trade)
+            // Uses same multipliers as calculatePnL: stocks 1, options contractSize (100), futures pointValue
+            const stopLossDollars = parseFloat(userSettings.default_stop_loss_dollars);
+            const pointValueForSl = instrumentType === 'future' ? (finalPointValue || pointValue) : null;
+            const priceMove = this.getDollarStopLossPriceMove(stopLossDollars, quantity, instrumentType, contractSize || null, pointValueForSl);
+            if (priceMove != null) {
+              if (side === 'long' || side === 'buy') {
+                finalStopLoss = entryPrice - priceMove;
+              } else if (side === 'short' || side === 'sell') {
+                finalStopLoss = entryPrice + priceMove;
+              }
+              finalStopLoss = Math.round(finalStopLoss * 10000) / 10000;
+              console.log(`[STOP LOSS] Applied default $${stopLossDollars} stop loss for ${side} ${instrumentType} (qty ${quantity}): $${finalStopLoss}`);
+            }
           } else if (userSettings?.default_stop_loss_percent && userSettings.default_stop_loss_percent > 0) {
             // Default percentage-based stop loss
             const stopLossPercent = parseFloat(userSettings.default_stop_loss_percent);
@@ -1051,6 +1066,7 @@ class Trade {
     // Check if stop loss or take profit needs defaults applied
     const needsStopLossDefault = (updates.stopLoss === null || updates.stopLoss === undefined) && !currentTrade.stop_loss;
     const needsTakeProfitDefault = (updates.takeProfit === null || updates.takeProfit === undefined) && !currentTrade.take_profit;
+    const quantityForDefaults = updates.quantity ?? currentTrade.quantity;
 
     if ((needsStopLossDefault || needsTakeProfitDefault) && entryPrice) {
       try {
@@ -1112,6 +1128,22 @@ class Trade {
                 updates.stopLoss = Math.round(updates.stopLoss * 10000) / 10000;
                 console.log(`[STOP LOSS UPDATE] Applied fallback ${stopLossPercent}% stop loss: $${updates.stopLoss}`);
               }
+            }
+          } else if (stopLossType === 'dollar' && userSettings?.default_stop_loss_dollars > 0 && quantityForDefaults > 0) {
+            // Dollar-based stop loss (same multipliers as calculatePnL for options/futures)
+            const stopLossDollars = parseFloat(userSettings.default_stop_loss_dollars);
+            const instrumentTypeUpdate = updates.instrumentType ?? currentTrade.instrument_type ?? 'stock';
+            const contractSizeUpdate = updates.contractSize !== undefined ? updates.contractSize : currentTrade.contract_size;
+            const pointValueUpdate = updates.pointValue !== undefined ? updates.pointValue : currentTrade.point_value;
+            const priceMove = this.getDollarStopLossPriceMove(stopLossDollars, quantityForDefaults, instrumentTypeUpdate, contractSizeUpdate, pointValueUpdate);
+            if (priceMove != null) {
+              if (side === 'long' || side === 'buy') {
+                updates.stopLoss = entryPrice - priceMove;
+              } else {
+                updates.stopLoss = entryPrice + priceMove;
+              }
+              updates.stopLoss = Math.round(updates.stopLoss * 10000) / 10000;
+              console.log(`[STOP LOSS UPDATE] Applied $${stopLossDollars} stop loss for ${side} ${instrumentTypeUpdate}: $${updates.stopLoss}`);
             }
           } else if (userSettings?.default_stop_loss_percent && userSettings.default_stop_loss_percent > 0) {
             // Percentage-based stop loss
@@ -1298,6 +1330,8 @@ class Trade {
 
     // Aggregate take profit targets from executions to trade level
     // This REPLACES trade-level targets with execution-level targets (source of truth)
+    // Keep payload's trade-level targets when they have more (e.g. user edited main form or single-execution sync)
+    const payloadTakeProfitTargets = updates.takeProfitTargets;
     if (executionsToSet && executionsToSet.length > 0) {
       const aggregatedTargets = [];
 
@@ -1307,10 +1341,28 @@ class Trade {
         }
       });
 
+      // Deduplicate by (price, shares) so the same target is not stored once per execution.
+      // When every execution had the same targets, we preserve a single set and keep the first occurrence (first non-null shares).
+      const seen = new Set();
+      const deduplicatedTargets = aggregatedTargets.filter(t => {
+        const price = t.price != null ? parseFloat(t.price) : null;
+        const shares = t.shares != null ? t.shares : (t.quantity != null ? t.quantity : null);
+        const key = `${price}-${shares}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
       // Only update if we found execution-level targets
-      if (aggregatedTargets.length > 0) {
-        updates.takeProfitTargets = aggregatedTargets;
-        console.log(`[TP TARGETS UPDATE] Aggregated ${aggregatedTargets.length} take profit targets from executions`);
+      if (deduplicatedTargets.length > 0) {
+        // Prefer payload's trade-level targets when it has more (user may have edited form; execution aggregation may have missed some)
+        if (Array.isArray(payloadTakeProfitTargets) && payloadTakeProfitTargets.length >= deduplicatedTargets.length) {
+          updates.takeProfitTargets = payloadTakeProfitTargets;
+          console.log(`[TP TARGETS UPDATE] Using payload takeProfitTargets (${payloadTakeProfitTargets.length}) over aggregation (${deduplicatedTargets.length})`);
+        } else {
+          updates.takeProfitTargets = deduplicatedTargets;
+          console.log(`[TP TARGETS UPDATE] Aggregated ${aggregatedTargets.length} take profit targets from executions, deduplicated to ${deduplicatedTargets.length}`);
+        }
       }
     }
 
@@ -1742,6 +1794,33 @@ class Trade {
   }
 
   /**
+   * Get the price move (in price units) that equals a given dollar risk per trade.
+   * Used for dollar-based default stop loss. Uses the same multipliers as calculatePnL:
+   * - Stock: 1 share = 1 unit → priceMove = dollars / quantity
+   * - Option: 1 contract = contractSize (e.g. 100) → dollar move = priceMove * quantity * contractSize → priceMove = dollars / (quantity * contractSize)
+   * - Future: 1 point = pointValue dollars per contract → priceMove = dollars / (quantity * pointValue)
+   *
+   * @param {number} defaultStopLossDollars - Total dollar risk per trade
+   * @param {number} quantity - Number of contracts/shares
+   * @param {string} instrumentType - 'stock', 'option', or 'future'
+   * @param {number|null} contractSize - Options: shares per contract (default 100)
+   * @param {number|null} pointValue - Futures: dollars per point per contract
+   * @returns {number|null} Price move to apply (subtract for long, add for short), or null if invalid
+   */
+  static getDollarStopLossPriceMove(defaultStopLossDollars, quantity, instrumentType = 'stock', contractSize = null, pointValue = null) {
+    if (!defaultStopLossDollars || defaultStopLossDollars <= 0 || !quantity || quantity <= 0) return null;
+    let multiplier;
+    if (instrumentType === 'future') {
+      multiplier = pointValue || 1;
+    } else if (instrumentType === 'option') {
+      multiplier = contractSize || 100;
+    } else {
+      multiplier = 1;
+    }
+    return defaultStopLossDollars / (quantity * multiplier);
+  }
+
+  /**
    * Calculate R-Multiple (Risk-Adjusted Return)
    *
    * R = Risk = Initial Stop (the distance from entry to stop loss)
@@ -1911,6 +1990,97 @@ class Trade {
     } catch (error) {
       await client.query('ROLLBACK');
       console.error('[STOP LOSS] Error applying default stop loss to existing trades:', error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Apply default dollar stop loss to all trades without a stop loss
+   * @param {number} userId - The user ID
+   * @param {number} defaultStopLossDollars - The default stop loss in dollars per trade
+   * @returns {Promise<number>} The number of trades updated
+   */
+  static async applyDefaultStopLossToExistingTradesByDollars(userId, defaultStopLossDollars) {
+    if (!defaultStopLossDollars || defaultStopLossDollars <= 0) {
+      console.log('[STOP LOSS] Invalid default stop loss dollars, skipping update');
+      return 0;
+    }
+
+    console.log(`[STOP LOSS] Applying $${defaultStopLossDollars} default stop loss to existing trades without stop loss for user ${userId}`);
+
+    const client = await db.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const tradesQuery = `
+        SELECT id, entry_price, exit_price, side, quantity, instrument_type, contract_size, point_value
+        FROM trades
+        WHERE user_id = $1
+          AND stop_loss IS NULL
+          AND entry_price IS NOT NULL
+          AND side IS NOT NULL
+          AND quantity IS NOT NULL
+          AND quantity > 0
+      `;
+
+      const tradesResult = await client.query(tradesQuery, [userId]);
+      const trades = tradesResult.rows;
+
+      console.log(`[STOP LOSS] Found ${trades.length} trades without stop loss (with quantity for dollar SL)`);
+
+      if (trades.length === 0) {
+        await client.query('COMMIT');
+        return 0;
+      }
+
+      let updatedCount = 0;
+
+      for (const trade of trades) {
+        const { id, entry_price, exit_price, side, quantity, instrument_type, contract_size, point_value } = trade;
+
+        const instrumentType = instrument_type || 'stock';
+        const priceMove = this.getDollarStopLossPriceMove(defaultStopLossDollars, quantity, instrumentType, contract_size, point_value);
+        if (priceMove == null) {
+          console.warn(`[STOP LOSS] Could not compute dollar stop for trade ${id}, skipping`);
+          continue;
+        }
+
+        let stopLoss;
+        if (side === 'long' || side === 'buy') {
+          stopLoss = entry_price - priceMove;
+        } else if (side === 'short' || side === 'sell') {
+          stopLoss = entry_price + priceMove;
+        } else {
+          console.warn(`[STOP LOSS] Unknown side "${side}" for trade ${id}, skipping`);
+          continue;
+        }
+
+        stopLoss = Math.round(stopLoss * 10000) / 10000;
+
+        let rValue = null;
+        if (exit_price) {
+          rValue = this.calculateRValue(entry_price, stopLoss, exit_price, side);
+        }
+
+        const updateQuery = `
+          UPDATE trades
+          SET stop_loss = $1, r_value = $2
+          WHERE id = $3 AND user_id = $4
+        `;
+
+        await client.query(updateQuery, [stopLoss, rValue, id, userId]);
+        updatedCount++;
+      }
+
+      await client.query('COMMIT');
+      console.log(`[STOP LOSS] Successfully updated ${updatedCount} trades with default dollar stop loss`);
+      return updatedCount;
+
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('[STOP LOSS] Error applying default dollar stop loss to existing trades:', error);
       throw error;
     } finally {
       client.release();

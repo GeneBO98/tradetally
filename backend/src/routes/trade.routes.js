@@ -424,6 +424,52 @@ router.get('/accounts', authenticate, tradeController.getAccountList);
  */
 router.get('/import/requirements', authenticate, tradeController.checkImportRequirements);
 
+/**
+ * @swagger
+ * /api/trades/import/validate:
+ *   post:
+ *     summary: Validate import file before importing
+ *     description: Pre-validates a CSV file to detect broker format mismatch and provide file analysis
+ *     tags: [Trades]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *                 description: CSV file to validate
+ *               broker:
+ *                 type: string
+ *                 description: User-selected broker format
+ *     responses:
+ *       200:
+ *         description: Validation result
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 detectedBroker:
+ *                   type: string
+ *                 selectedBroker:
+ *                   type: string
+ *                 mismatch:
+ *                   type: boolean
+ *                 detectedHeaders:
+ *                   type: array
+ *                   items:
+ *                     type: string
+ *                 rowCount:
+ *                   type: integer
+ */
+router.post('/import/validate', authenticate, upload.single('file'), tradeController.validateImportFile);
+
 router.post('/import', authenticate, upload.single('file'), tradeController.importTrades);
 
 /**

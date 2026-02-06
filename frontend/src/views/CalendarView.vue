@@ -39,9 +39,17 @@
         <div class="card">
           <div class="card-body">
             <div class="flex justify-between items-center mb-6">
-              <h2 class="heading-section">
-                {{ format(expandedMonth, 'MMMM yyyy') }}
-              </h2>
+              <div class="flex items-center space-x-2">
+                <button @click="changeMonth(-1)" class="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200" title="Previous month">
+                  <ChevronLeftIcon class="h-5 w-5" />
+                </button>
+                <h2 class="heading-section min-w-[180px] text-center">
+                  {{ format(expandedMonth, 'MMMM yyyy') }}
+                </h2>
+                <button @click="changeMonth(1)" class="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200" title="Next month">
+                  <ChevronRightIcon class="h-5 w-5" />
+                </button>
+              </div>
               <div class="flex items-center space-x-4">
                 <div class="text-right">
                   <p class="text-sm text-gray-500 dark:text-gray-400">Total P/L</p>
@@ -207,7 +215,7 @@
 <script setup>
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { format, startOfYear, endOfYear, eachMonthOfInterval, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameMonth } from 'date-fns'
+import { format, startOfYear, endOfYear, eachMonthOfInterval, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameMonth, addMonths } from 'date-fns'
 import { ChevronLeftIcon, ChevronRightIcon, XMarkIcon, ArrowsPointingOutIcon, ArrowsPointingInIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
@@ -500,14 +508,9 @@ async function expandMonth(monthDate) {
     console.warn('Failed to save expanded month to localStorage:', e)
   }
 
-  // Scroll to the expanded month view after DOM updates
+  // Scroll to the top of the page after DOM updates
   await nextTick()
-  if (expandedMonthContainer.value) {
-    expandedMonthContainer.value.scrollIntoView({
-      behavior: 'smooth',
-      block: 'start'
-    })
-  }
+  window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
 function closeExpandedMonth() {
@@ -542,6 +545,25 @@ function changeYear(direction) {
   router.replace({ query: { ...route.query, year: currentYear.value } })
 
   fetchCalendarData()
+}
+
+function changeMonth(direction) {
+  if (!expandedMonth.value) return
+  const newDate = addMonths(expandedMonth.value, direction)
+  const newYear = newDate.getFullYear()
+
+  expandedMonth.value = startOfMonth(newDate)
+  selectedDay.value = null
+
+  if (newYear !== currentYear.value) {
+    currentYear.value = newYear
+    localStorage.setItem('calendar_year', currentYear.value.toString())
+    router.replace({ query: { ...route.query, year: currentYear.value } })
+    fetchCalendarData()
+  } else {
+    localStorage.setItem('calendar_expanded_month', expandedMonth.value.toISOString())
+    localStorage.setItem('calendar_expanded_year', currentYear.value.toString())
+  }
 }
 
 function formatNumber(num, decimals = 2) {

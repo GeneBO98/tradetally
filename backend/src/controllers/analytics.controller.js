@@ -949,20 +949,50 @@ const analyticsController = {
           SELECT ${tableAlias}.user_id, ${tableAlias}.id AS trade_id, ${tableAlias}.symbol, ${tableAlias}.side,
             (COALESCE(exec->>'datetime', exec->>'exitTime', exec->>'exit_time'))::timestamp::date AS exec_date,
             (
-              COALESCE(
-                (exec->>'pnl')::numeric,
-                (exec->>'profitLoss')::numeric,
-                CASE WHEN (exec->>'price') IS NOT NULL AND (exec->>'quantity') IS NOT NULL AND ${tableAlias}.entry_price IS NOT NULL
+              CASE
+                -- Priority 1: If execution has entryPrice AND exitPrice (partial close), calculate fresh
+                -- This avoids using stored pnl which may have incorrect fee proration from import
+                WHEN (exec->>'entryPrice') IS NOT NULL AND (exec->>'exitPrice') IS NOT NULL AND (exec->>'quantity') IS NOT NULL
+                  THEN (
+                    CASE WHEN ${tableAlias}.side IN ('long','buy')
+                         THEN ((exec->>'exitPrice')::numeric - (exec->>'entryPrice')::numeric) * (exec->>'quantity')::numeric
+                         WHEN ${tableAlias}.side IN ('short','sell')
+                         THEN ((exec->>'entryPrice')::numeric - (exec->>'exitPrice')::numeric) * (exec->>'quantity')::numeric
+                         ELSE NULL END
+                    ) * (CASE WHEN COALESCE(${tableAlias}.instrument_type, 'stock') = 'future'
+                              THEN CASE WHEN ${tableAlias}.point_value IS NOT NULL AND ${tableAlias}.point_value > 1
+                                        THEN ${tableAlias}.point_value
+                                        ELSE NULL END
+                              WHEN COALESCE(${tableAlias}.instrument_type, 'stock') = 'option' THEN COALESCE(${tableAlias}.contract_size, 100)
+                              ELSE 1 END)
+                    -- Subtract execution's own fees + prorated entry commission
+                    - COALESCE((exec->>'fees')::numeric, 0)
+                    - CASE WHEN (${tableAlias}.quantity IS NOT NULL AND ${tableAlias}.quantity > 0) THEN ((exec->>'quantity')::numeric / ${tableAlias}.quantity) * (
+                      COALESCE(${tableAlias}.entry_commission, 0)
+                    ) ELSE 0 END
+                -- Priority 2: For broker-synced data with pre-calculated pnl (like Schwab netAmount), use as-is
+                WHEN (exec->>'pnl') IS NOT NULL AND (exec->>'entryPrice') IS NULL THEN (exec->>'pnl')::numeric
+                WHEN (exec->>'profitLoss') IS NOT NULL AND (exec->>'entryPrice') IS NULL THEN (exec->>'profitLoss')::numeric
+                -- Priority 3: Calculate from trade-level entry_price and exec exit price (e.g., expirations, CSV imports)
+                WHEN (exec->>'price') IS NOT NULL AND (exec->>'quantity') IS NOT NULL AND ${tableAlias}.entry_price IS NOT NULL
                   THEN (
                     CASE WHEN ${tableAlias}.side IN ('long','buy') THEN ((exec->>'price')::numeric - ${tableAlias}.entry_price) * (exec->>'quantity')::numeric
                          WHEN ${tableAlias}.side IN ('short','sell') THEN (${tableAlias}.entry_price - (exec->>'price')::numeric) * (exec->>'quantity')::numeric
                          ELSE NULL END
-                    ) * (CASE WHEN COALESCE(${tableAlias}.instrument_type, 'stock') = 'future' THEN COALESCE(${tableAlias}.point_value, 1)
+                    ) * (CASE WHEN COALESCE(${tableAlias}.instrument_type, 'stock') = 'future'
+                              THEN CASE WHEN ${tableAlias}.point_value IS NOT NULL AND ${tableAlias}.point_value > 1
+                                        THEN ${tableAlias}.point_value
+                                        ELSE NULL END  -- Skip execution calc for futures without valid point_value
                               WHEN COALESCE(${tableAlias}.instrument_type, 'stock') = 'option' THEN COALESCE(${tableAlias}.contract_size, 100)
                               ELSE 1 END)
-                  ELSE NULL END
-              )
-              - CASE WHEN (${tableAlias}.quantity IS NOT NULL AND ${tableAlias}.quantity > 0) THEN ((exec->>'quantity')::numeric / ${tableAlias}.quantity) * (COALESCE(${tableAlias}.commission, 0) + COALESCE(${tableAlias}.fees, 0)) ELSE 0 END
+                    -- Subtract this execution's fees
+                    - COALESCE((exec->>'fees')::numeric, 0)
+                    -- Subtract prorated entry commission
+                    - CASE WHEN (${tableAlias}.quantity IS NOT NULL AND ${tableAlias}.quantity > 0) THEN ((exec->>'quantity')::numeric / ${tableAlias}.quantity) * (
+                      COALESCE(${tableAlias}.entry_commission, 0)
+                    ) ELSE 0 END
+                ELSE NULL
+              END
             ) AS exec_pnl,
             (exec->>'quantity')::numeric AS exec_qty,
             (exec->>'price')::numeric AS exec_price
@@ -996,6 +1026,7 @@ const analyticsController = {
             AND ${tableAlias}.exit_time IS NOT NULL
             AND ${tableAlias}.pnl IS NOT NULL
             AND (${tableAlias}.executions IS NULL OR jsonb_array_length(${tableAlias}.executions) = 0
+                 OR (COALESCE(${tableAlias}.instrument_type, 'stock') = 'future' AND (${tableAlias}.point_value IS NULL OR ${tableAlias}.point_value <= 1))
                  OR NOT EXISTS (
                    SELECT 1 FROM jsonb_array_elements(COALESCE(${tableAlias}.executions, '[]'::jsonb)) AS e(exec)
                    WHERE (
@@ -1057,20 +1088,50 @@ const analyticsController = {
           SELECT t.id AS trade_id, t.symbol, t.side,
             COALESCE(exec->>'datetime', exec->>'exitTime', exec->>'exit_time') AS exec_datetime,
             (
-              COALESCE(
-                (exec->>'pnl')::numeric,
-                (exec->>'profitLoss')::numeric,
-                CASE WHEN (exec->>'price') IS NOT NULL AND (exec->>'quantity') IS NOT NULL AND t.entry_price IS NOT NULL
+              CASE
+                -- Priority 1: If execution has entryPrice AND exitPrice (partial close), calculate fresh
+                -- This avoids using stored pnl which may have incorrect fee proration from import
+                WHEN (exec->>'entryPrice') IS NOT NULL AND (exec->>'exitPrice') IS NOT NULL AND (exec->>'quantity') IS NOT NULL
+                  THEN (
+                    CASE WHEN t.side IN ('long','buy')
+                         THEN ((exec->>'exitPrice')::numeric - (exec->>'entryPrice')::numeric) * (exec->>'quantity')::numeric
+                         WHEN t.side IN ('short','sell')
+                         THEN ((exec->>'entryPrice')::numeric - (exec->>'exitPrice')::numeric) * (exec->>'quantity')::numeric
+                         ELSE NULL END
+                    ) * (CASE WHEN COALESCE(t.instrument_type, 'stock') = 'future'
+                              THEN CASE WHEN t.point_value IS NOT NULL AND t.point_value > 1
+                                        THEN t.point_value
+                                        ELSE NULL END
+                              WHEN COALESCE(t.instrument_type, 'stock') = 'option' THEN COALESCE(t.contract_size, 100)
+                              ELSE 1 END)
+                    -- Subtract execution's own fees + prorated entry commission
+                    - COALESCE((exec->>'fees')::numeric, 0)
+                    - CASE WHEN (t.quantity IS NOT NULL AND t.quantity > 0) THEN ((exec->>'quantity')::numeric / t.quantity) * (
+                      COALESCE(t.entry_commission, 0)
+                    ) ELSE 0 END
+                -- Priority 2: For broker-synced data with pre-calculated pnl (like Schwab netAmount), use as-is
+                WHEN (exec->>'pnl') IS NOT NULL AND (exec->>'entryPrice') IS NULL THEN (exec->>'pnl')::numeric
+                WHEN (exec->>'profitLoss') IS NOT NULL AND (exec->>'entryPrice') IS NULL THEN (exec->>'profitLoss')::numeric
+                -- Priority 3: Calculate from trade-level entry_price and exec exit price (e.g., expirations, CSV imports)
+                WHEN (exec->>'price') IS NOT NULL AND (exec->>'quantity') IS NOT NULL AND t.entry_price IS NOT NULL
                   THEN (
                     CASE WHEN t.side IN ('long','buy') THEN ((exec->>'price')::numeric - t.entry_price) * (exec->>'quantity')::numeric
                          WHEN t.side IN ('short','sell') THEN (t.entry_price - (exec->>'price')::numeric) * (exec->>'quantity')::numeric
                          ELSE NULL END
-                  ) * (CASE WHEN COALESCE(t.instrument_type, 'stock') = 'future' THEN COALESCE(t.point_value, 1)
+                  ) * (CASE WHEN COALESCE(t.instrument_type, 'stock') = 'future'
+                            THEN CASE WHEN t.point_value IS NOT NULL AND t.point_value > 1
+                                      THEN t.point_value
+                                      ELSE NULL END  -- Skip execution calc for futures without valid point_value
                             WHEN COALESCE(t.instrument_type, 'stock') = 'option' THEN COALESCE(t.contract_size, 100)
                             ELSE 1 END)
-                  ELSE NULL END
-              )
-              - CASE WHEN (t.quantity IS NOT NULL AND t.quantity > 0) THEN ((exec->>'quantity')::numeric / t.quantity) * (COALESCE(t.commission, 0) + COALESCE(t.fees, 0)) ELSE 0 END
+                  -- Subtract this execution's fees
+                  - COALESCE((exec->>'fees')::numeric, 0)
+                  -- Subtract prorated entry commission
+                  - CASE WHEN (t.quantity IS NOT NULL AND t.quantity > 0) THEN ((exec->>'quantity')::numeric / t.quantity) * (
+                    COALESCE(t.entry_commission, 0)
+                  ) ELSE 0 END
+                ELSE NULL
+              END
             ) AS exec_pnl,
             (exec->>'quantity')::numeric AS exec_quantity,
             (exec->>'price')::numeric AS exec_price
@@ -1120,14 +1181,19 @@ const analyticsController = {
       `;
       const execResult = await db.query(dayQuery, params);
 
-      const rows = execResult.rows.map(r => ({
-        trade_id: r.trade_id,
-        symbol: r.symbol,
-        side: r.side,
-        pnl: r.exec_pnl != null ? parseFloat(r.exec_pnl) : null,
-        exit_count: r.exit_count != null ? parseInt(r.exit_count, 10) : 1,
-        is_partial: (r.total_exit_count != null ? parseInt(r.total_exit_count, 10) : 1) > 1
-      }));
+      const rows = execResult.rows.map(r => {
+        const exitCountOnDay = r.exit_count != null ? parseInt(r.exit_count, 10) : 1;
+        const totalExitCount = r.total_exit_count != null ? parseInt(r.total_exit_count, 10) : 1;
+        return {
+          trade_id: r.trade_id,
+          symbol: r.symbol,
+          side: r.side,
+          pnl: r.exec_pnl != null ? parseFloat(r.exec_pnl) : null,
+          exit_count: exitCountOnDay,
+          // Only mark as partial if exits span multiple days (not all exits are on this day)
+          is_partial: exitCountOnDay < totalExitCount
+        };
+      });
 
       const tradeLevelFallbackQuery = `
         SELECT t.id AS trade_id, t.symbol, t.side, t.exit_time AS exec_datetime, t.pnl, t.quantity, t.exit_price AS price

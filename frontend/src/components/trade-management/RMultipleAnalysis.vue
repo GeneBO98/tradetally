@@ -1,5 +1,5 @@
 <template>
-  <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden">
+  <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg">
     <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
       <h3 class="text-lg font-medium text-gray-900 dark:text-white">R-Multiple Analysis</h3>
       <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
@@ -8,72 +8,72 @@
     </div>
 
     <div class="p-6">
-      <!-- R-Multiple Cards -->
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      <!-- R-Multiple Cards: equal height, aligned content -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4 mb-6">
         <!-- Actual R -->
-        <div class="p-4 rounded-lg" :class="getActualRClass">
-          <div class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">Actual R</div>
-          <div class="text-3xl font-bold" :class="analysis.actual_r >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+        <div class="r-multiple-card flex flex-col min-h-[5rem] p-3 sm:p-4 rounded-lg" :class="getActualRClass">
+          <div class="text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-400 mb-0.5 shrink-0 truncate">Actual R (Net)</div>
+          <div class="text-xl sm:text-2xl md:text-3xl font-bold truncate" :class="analysis.actual_r >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
             {{ formatR(analysis.actual_r) }}
           </div>
-          <div class="text-sm text-gray-600 dark:text-gray-400 mt-1">
+          <div class="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mt-1 truncate shrink-0">
             {{ analysis.actual_r >= 0 ? 'Profit' : 'Loss' }} of {{ formatCurrency(analysis.actual_pl_amount) }}
           </div>
         </div>
 
         <!-- Target R -->
-        <div v-if="effectiveTargetR !== null" class="p-4 bg-primary-50 dark:bg-primary-900/20 rounded-lg">
-          <div class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
-            Target R
+        <div v-if="effectiveTargetR !== null" class="r-multiple-card flex flex-col min-h-[5rem] p-3 sm:p-4 bg-primary-50 dark:bg-primary-900/20 rounded-lg">
+          <div class="text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-400 mb-0.5 shrink-0 truncate">
+            Target R (Net)
             <span v-if="weightedAverageR !== null" class="text-xs font-normal">(weighted avg)</span>
           </div>
-          <div class="text-3xl font-bold text-primary-600 dark:text-primary-400">
+          <div class="text-xl sm:text-2xl md:text-3xl font-bold truncate text-primary-600 dark:text-primary-400">
             {{ formatR(effectiveTargetR) }}
           </div>
-          <div class="text-sm text-gray-600 dark:text-gray-400 mt-1">
+          <div class="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mt-1 truncate shrink-0">
             Potential: {{ formatCurrency(effectivePotentialPL) }}
           </div>
         </div>
-        <div v-else class="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-          <div class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">Target R</div>
-          <div class="text-2xl font-medium text-gray-400 dark:text-gray-500">
+        <div v-else class="r-multiple-card flex flex-col min-h-[5rem] p-3 sm:p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+          <div class="text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-400 mb-0.5 shrink-0">Target R (Net)</div>
+          <div class="text-xl sm:text-2xl font-medium text-gray-400 dark:text-gray-500 truncate">
             Not Set
           </div>
-          <div class="text-sm text-gray-500 dark:text-gray-500 mt-1">
+          <div class="text-xs sm:text-sm text-gray-500 dark:text-gray-500 mt-1 shrink-0">
             Set take profit to see target R
           </div>
         </div>
 
         <!-- Management R (when target hit analysis is set) -->
-        <div v-if="analysis.management_r !== null && analysis.management_r !== undefined" class="p-4 rounded-lg" :class="getManagementRClass">
-          <div class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+        <div v-if="analysis.management_r !== null && analysis.management_r !== undefined" class="r-multiple-card flex flex-col min-h-[5rem] p-3 sm:p-4 rounded-lg" :class="getManagementRClass">
+          <div class="text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-400 mb-0.5 shrink-0 truncate">
             Management Impact
           </div>
-          <div class="text-3xl font-bold" :class="getManagementRTextClass">
+          <div class="text-xl sm:text-2xl md:text-3xl font-bold truncate" :class="getManagementRTextClass">
             {{ formatR(analysis.management_r) }}
           </div>
-          <div v-if="analysis.management_r !== 0" class="text-sm text-gray-600 dark:text-gray-400 mt-1">
+          <div v-if="analysis.management_r !== 0" class="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mt-1 truncate shrink-0">
             {{ getManagementRDescription }}
           </div>
         </div>
         <!-- R Lost/Gained (when no target hit analysis) -->
-        <div v-else-if="effectiveRLost !== null" class="p-4 rounded-lg" :class="getRLostClass">
-          <div class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+        <div v-else-if="effectiveRLost !== null" class="r-multiple-card flex flex-col min-h-[5rem] p-3 sm:p-4 rounded-lg" :class="getRLostClass">
+          <div class="text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-400 mb-0.5 shrink-0 truncate">
             {{ effectiveRLost > 0 ? 'R Left on Table' : (effectiveRLost === 0 ? 'Target Hit' : 'R Exceeded') }}
           </div>
-          <div class="text-3xl font-bold" :class="getRLostTextClass">
+          <div class="text-xl sm:text-2xl md:text-3xl font-bold truncate" :class="getRLostTextClass">
             {{ formatR(Math.abs(effectiveRLost)) }}
           </div>
-          <div class="text-sm" :class="effectiveRLost === 0 ? 'text-yellow-600 dark:text-yellow-400' : 'text-gray-600 dark:text-gray-400'" v-if="getRLostDescription">
+          <div class="text-xs sm:text-sm truncate shrink-0" :class="effectiveRLost === 0 ? 'text-yellow-600 dark:text-yellow-400' : 'text-gray-600 dark:text-gray-400'" v-if="getRLostDescription">
             {{ getRLostDescription }}
           </div>
         </div>
-        <div v-else class="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-          <div class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">R Comparison</div>
-          <div class="text-2xl font-medium text-gray-400 dark:text-gray-500">
+        <div v-else class="r-multiple-card flex flex-col min-h-[5rem] p-3 sm:p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+          <div class="text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-400 mb-0.5 shrink-0">R Comparison</div>
+          <div class="text-xl sm:text-2xl font-medium text-gray-400 dark:text-gray-500 truncate">
             N/A
           </div>
-          <div class="text-sm text-gray-500 dark:text-gray-500 mt-1">
+          <div class="text-xs sm:text-sm text-gray-500 dark:text-gray-500 mt-1 shrink-0">
             Requires take profit target
           </div>
         </div>
@@ -224,9 +224,15 @@ const effectiveTargetR = computed(() => {
   return props.analysis.target_r
 })
 
-// Effective potential P&L using ratio method for accuracy
-// Formula: targetR * (actualPL / actualR) preserves the actual dollar-per-R value
+// Effective potential P&L - prefer backend's direct calculation
+// Backend now calculates target_pl_amount as sum of net profits at each TP level
 const effectivePotentialPL = computed(() => {
+  // Prefer target_pl_amount from backend (direct calculation is more accurate for multiple targets)
+  if (props.analysis.target_pl_amount !== null && props.analysis.target_pl_amount !== undefined) {
+    return props.analysis.target_pl_amount
+  }
+
+  // Fallback to ratio-based formula if target_pl_amount not available
   const actualR = props.analysis.actual_r
   const actualPL = props.analysis.actual_pl_amount
   const targetR = effectiveTargetR.value
@@ -236,7 +242,7 @@ const effectivePotentialPL = computed(() => {
     return Math.round(perR * targetR * 100) / 100
   }
 
-  return props.analysis.target_pl_amount
+  return null
 })
 
 // Effective R lost (prefer backend calculation, then frontend)

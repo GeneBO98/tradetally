@@ -151,9 +151,11 @@ import {
   ChatBubbleLeftRightIcon 
 } from '@heroicons/vue/24/outline'
 import { useAuthStore } from '@/stores/auth'
+import { useUserTimezone } from '@/composables/useUserTimezone'
 
 const router = useRouter()
 const authStore = useAuthStore()
+const { formatDateTime: formatDateTimeTz } = useUserTimezone()
 
 // Component state
 const isOpen = ref(false)
@@ -304,7 +306,7 @@ const formatTime = (timestamp) => {
   if (diffMins < 60) return `${diffMins}m ago`
   if (diffHours < 24) return `${diffHours}h ago`
   if (diffDays < 7) return `${diffDays}d ago`
-  return date.toLocaleDateString()
+  return formatDateTimeTz(timestamp)
 }
 
 // Lifecycle

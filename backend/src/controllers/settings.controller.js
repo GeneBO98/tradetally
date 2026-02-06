@@ -1034,8 +1034,8 @@ const settingsController = {
                 experience_level, average_position_size, trading_goals, preferred_sectors,
                 enable_trade_grouping, trade_grouping_time_gap_minutes,
                 default_broker, ai_provider, ai_api_key, ai_api_url, ai_model,
-                default_stop_loss_percent, default_take_profit_percent, analytics_chart_layout, auto_close_expired_options
-              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)`,
+                default_stop_loss_percent, default_stop_loss_type, default_stop_loss_dollars, default_take_profit_percent, analytics_chart_layout, auto_close_expired_options
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)`,
               [
                 userId,
                 s.emailNotifications ?? true,
@@ -1058,6 +1058,8 @@ const settingsController = {
                 s.aiApiUrl || null,
                 s.aiModel || null,
                 s.defaultStopLossPercent || null,
+                s.defaultStopLossType || 'percent',
+                s.defaultStopLossDollars ?? null,
                 s.defaultTakeProfitPercent || null,
                 s.analyticsChartLayout ? JSON.stringify(s.analyticsChartLayout) : null,
                 s.autoCloseExpiredOptions ?? false
@@ -1110,6 +1112,14 @@ const settingsController = {
             if (s.defaultStopLossPercent !== undefined) {
               updates.push(`default_stop_loss_percent = $${paramCount++}`);
               values.push(s.defaultStopLossPercent);
+            }
+            if (s.defaultStopLossType !== undefined) {
+              updates.push(`default_stop_loss_type = $${paramCount++}`);
+              values.push(s.defaultStopLossType);
+            }
+            if (s.defaultStopLossDollars !== undefined) {
+              updates.push(`default_stop_loss_dollars = $${paramCount++}`);
+              values.push(s.defaultStopLossDollars);
             }
             if (s.defaultTakeProfitPercent !== undefined) {
               updates.push(`default_take_profit_percent = $${paramCount++}`);

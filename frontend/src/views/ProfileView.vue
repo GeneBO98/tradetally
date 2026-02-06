@@ -71,6 +71,17 @@
                   Trade times will be displayed in this timezone.
                 </p>
               </div>
+
+              <div>
+                <label for="timeDisplayFormat" class="label">Time format</label>
+                <select id="timeDisplayFormat" v-model="profileForm.timeDisplayFormat" class="input">
+                  <option value="24h">24-hour (14:00)</option>
+                  <option value="12h">12-hour (2:00 PM)</option>
+                </select>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  How times are displayed across the app.
+                </p>
+              </div>
             </div>
 
             <div class="flex justify-end">
@@ -909,7 +920,8 @@ const profileForm = ref({
   fullName: '',
   username: '',
   email: '',
-  timezone: 'UTC'
+  timezone: 'UTC',
+  timeDisplayFormat: '24h'
 })
 
 // 2FA data
@@ -1065,6 +1077,10 @@ async function updateProfile() {
     }
     
     await api.put('/users/profile', payload)
+    
+    if (profileForm.value.timeDisplayFormat) {
+      await api.put('/settings', { timeDisplayFormat: profileForm.value.timeDisplayFormat })
+    }
     
     showSuccess('Success', 'Profile updated successfully')
     
@@ -1421,7 +1437,8 @@ onMounted(async () => {
       fullName: authStore.user.fullName || '',
       username: authStore.user.username || '',
       email: authStore.user.email || '',
-      timezone: authStore.user.timezone || 'UTC'
+      timezone: authStore.user.timezone || 'UTC',
+      timeDisplayFormat: authStore.user?.settings?.time_display_format ?? '24h'
     }
   }
   

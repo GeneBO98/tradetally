@@ -92,12 +92,13 @@ export function getTimezoneLabel(timezone) {
  * @param {boolean} options.includeDate - Include date in output (default: true)
  * @param {boolean} options.includeTime - Include time in output (default: true)
  * @param {boolean} options.includeSeconds - Include seconds in time (default: false)
+ * @param {boolean} options.hour12 - Use 12-hour format with AM/PM (default: false, i.e. 24-hour military)
  * @returns {string} Formatted datetime string
  */
 export function formatDateTimeInTimezone(utcDateTime, timezone = 'UTC', options = {}) {
   if (!utcDateTime) return 'N/A'
 
-  const { includeDate = true, includeTime = true, includeSeconds = false } = options
+  const { includeDate = true, includeTime = true, includeSeconds = false, hour12 = false } = options
 
   try {
     // Parse the datetime
@@ -118,7 +119,7 @@ export function formatDateTimeInTimezone(utcDateTime, timezone = 'UTC', options 
     if (includeTime) {
       formatOptions.hour = '2-digit'
       formatOptions.minute = '2-digit'
-      formatOptions.hour12 = false
+      formatOptions.hour12 = hour12
 
       if (includeSeconds) {
         formatOptions.second = '2-digit'
@@ -137,10 +138,11 @@ export function formatDateTimeInTimezone(utcDateTime, timezone = 'UTC', options 
  * Format only the time portion for display in user's timezone
  * @param {string|Date} utcDateTime - ISO datetime string or Date object (assumed UTC)
  * @param {string} timezone - IANA timezone identifier
- * @returns {string} Formatted time string (e.g., "14:30")
+ * @param {object} options - Formatting options (e.g. hour12 for 12-hour display)
+ * @returns {string} Formatted time string (e.g., "14:30" or "2:30 PM")
  */
-export function formatTimeInTimezone(utcDateTime, timezone = 'UTC') {
-  return formatDateTimeInTimezone(utcDateTime, timezone, { includeDate: false, includeTime: true })
+export function formatTimeInTimezone(utcDateTime, timezone = 'UTC', options = {}) {
+  return formatDateTimeInTimezone(utcDateTime, timezone, { includeDate: false, includeTime: true, ...options })
 }
 
 /**

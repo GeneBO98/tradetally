@@ -1179,6 +1179,67 @@ const tradeController = {
     }
   },
 
+  /**
+   * Pre-validate import file to detect broker format mismatch
+   * Lightweight validation - does NOT import, just analyzes the file
+   */
+  async validateImportFile(req, res, next) {
+    try {
+      console.log('=== VALIDATE IMPORT FILE ===');
+
+      if (!req.file) {
+        return res.status(400).json({ error: 'No file uploaded' });
+      }
+
+      const { broker = 'auto' } = req.body;
+      const fileBuffer = req.file.buffer;
+
+      console.log('Selected broker:', broker);
+      console.log('File name:', req.file.originalname);
+      console.log('File size:', req.file.size);
+
+      // Detect broker format
+      const detectedBroker = detectBrokerFormat(fileBuffer);
+      console.log('Detected broker:', detectedBroker);
+
+      // Extract headers from CSV
+      const headerLine = getCsvHeaderLine(fileBuffer);
+      const detectedHeaders = headerLine ? headerLine.split(',').map(h => h.trim().replace(/^"|"$/g, '')) : [];
+
+      // Count rows (excluding header)
+      let csvString = fileBuffer.toString('utf-8');
+      if (csvString.charCodeAt(0) === 0xFEFF) {
+        csvString = csvString.slice(1);
+      }
+      const lines = csvString.split('\n').filter(line => line.trim() !== '');
+      const rowCount = Math.max(0, lines.length - 1); // Exclude header
+
+      // Determine if there's a mismatch
+      // Mismatch only applies if user selected a specific broker (not 'auto' or 'generic')
+      const isMismatch = broker !== 'auto' &&
+                         broker !== 'generic' &&
+                         detectedBroker !== 'generic' &&
+                         broker !== detectedBroker;
+
+      const result = {
+        detectedBroker,
+        selectedBroker: broker,
+        mismatch: isMismatch,
+        detectedHeaders: detectedHeaders.slice(0, 30), // Limit headers to first 30
+        rowCount,
+        fileName: req.file.originalname,
+        fileSize: req.file.size
+      };
+
+      console.log('Validation result:', result);
+
+      res.json(result);
+    } catch (error) {
+      console.error('Validation error:', error);
+      next(error);
+    }
+  },
+
   async importTrades(req, res, next) {
     try {
       console.log('=== IMPORT TRADES STARTED ===');
@@ -1432,16 +1493,18 @@ const tradeController = {
             selectedAccountId
           };
 
+          // Track auto-detection if broker is 'auto'
+          let detectedBrokerForTracking = null;
           if (broker === 'auto') {
-            const detectedBroker = detectBrokerFormat(fileBuffer);
-            if (detectedBroker === 'generic') {
+            detectedBrokerForTracking = detectBrokerFormat(fileBuffer);
+            if (detectedBrokerForTracking === 'generic') {
               const headerLine = getCsvHeaderLine(fileBuffer);
               if (headerLine) {
                 try {
                   await db.query(`
-                    INSERT INTO unknown_csv_headers (user_id, header_line, broker_attempted, outcome, file_name)
-                    VALUES ($1, $2, 'auto', 'no_parser_match', $3)
-                  `, [fileUserId, headerLine.substring(0, 10000), fileName]);
+                    INSERT INTO unknown_csv_headers (user_id, header_line, broker_attempted, outcome, file_name, detected_broker, selected_broker)
+                    VALUES ($1, $2, 'auto', 'no_parser_match', $3, $4, 'auto')
+                  `, [fileUserId, headerLine.substring(0, 10000), fileName, 'generic']);
                 } catch (recordErr) {
                   logger.logWarn(`[CSV] Failed to record unknown headers: ${recordErr.message}`);
                 }
@@ -1451,11 +1514,69 @@ const tradeController = {
 
           const parseResult = await parseCSV(fileBuffer, broker, context);
 
-          // Handle both old format (array) and new format (object with trades and unresolvedCusips)
+          // Handle both old format (array) and new format (object with trades, unresolvedCusips, diagnostics)
           let trades = Array.isArray(parseResult) ? parseResult : parseResult.trades;
           const unresolvedCusips = parseResult.unresolvedCusips || [];
+          const parseDiagnostics = parseResult.diagnostics || null;
+
+          // Track additional scenarios for unknown_csv_headers
+          if (parseDiagnostics) {
+            const headerLine = getCsvHeaderLine(fileBuffer);
+
+            // Track zero trades scenario
+            if (trades.length === 0 && parseDiagnostics.totalRows > 0) {
+              try {
+                await db.query(`
+                  INSERT INTO unknown_csv_headers (user_id, header_line, broker_attempted, outcome, file_name, detected_broker, selected_broker, row_count, trades_parsed, diagnostics_json)
+                  VALUES ($1, $2, $3, 'zero_trades', $4, $5, $6, $7, $8, $9)
+                `, [
+                  fileUserId,
+                  headerLine?.substring(0, 10000),
+                  broker,
+                  fileName,
+                  parseDiagnostics.detectedBroker,
+                  parseDiagnostics.selectedBroker,
+                  parseDiagnostics.totalRows,
+                  0,
+                  JSON.stringify(parseDiagnostics)
+                ]);
+                logger.logWarn(`[CSV] Recorded zero_trades scenario: ${parseDiagnostics.totalRows} rows but 0 trades parsed`);
+              } catch (recordErr) {
+                logger.logWarn(`[CSV] Failed to record zero_trades: ${recordErr.message}`);
+              }
+            }
+
+            // Track high skip rate scenario (>50% rows skipped)
+            const skipRate = parseDiagnostics.totalRows > 0
+              ? ((parseDiagnostics.skippedRows + parseDiagnostics.invalidRows) / parseDiagnostics.totalRows) * 100
+              : 0;
+            if (skipRate > 50 && trades.length > 0) {
+              try {
+                await db.query(`
+                  INSERT INTO unknown_csv_headers (user_id, header_line, broker_attempted, outcome, file_name, detected_broker, selected_broker, row_count, trades_parsed, diagnostics_json)
+                  VALUES ($1, $2, $3, 'high_skip_rate', $4, $5, $6, $7, $8, $9)
+                `, [
+                  fileUserId,
+                  headerLine?.substring(0, 10000),
+                  broker,
+                  fileName,
+                  parseDiagnostics.detectedBroker,
+                  parseDiagnostics.selectedBroker,
+                  parseDiagnostics.totalRows,
+                  trades.length,
+                  JSON.stringify(parseDiagnostics)
+                ]);
+                logger.logWarn(`[CSV] Recorded high_skip_rate scenario: ${skipRate.toFixed(1)}% of rows skipped`);
+              } catch (recordErr) {
+                logger.logWarn(`[CSV] Failed to record high_skip_rate: ${recordErr.message}`);
+              }
+            }
+          }
 
           logger.logImport(`Parsed ${trades.length} trades from CSV`);
+          if (parseDiagnostics) {
+            logger.logImport(`[DIAGNOSTICS] Total rows: ${parseDiagnostics.totalRows}, Skipped: ${parseDiagnostics.skippedRows}, Invalid: ${parseDiagnostics.invalidRows}`);
+          }
 
           // Auto-create accounts for new account identifiers found in the import
           try {
@@ -2010,13 +2131,66 @@ const tradeController = {
 
           // Clear timeout on successful completion
           clearTimeout(importTimeout);
-          
+
+          // Build error_details with diagnostics information
+          const errorDetails = {
+            duplicates,
+            diagnostics: parseDiagnostics ? {
+              totalRows: parseDiagnostics.totalRows,
+              parsedRows: parseDiagnostics.parsedRows,
+              skippedRows: parseDiagnostics.skippedRows,
+              invalidRows: parseDiagnostics.invalidRows,
+              skippedReasons: parseDiagnostics.skippedReasons?.slice(0, 50) || [], // Limit to first 50 skip reasons
+              warnings: parseDiagnostics.warnings || [],
+              detectedBroker: parseDiagnostics.detectedBroker,
+              selectedBroker: parseDiagnostics.selectedBroker,
+              headerAnalysis: parseDiagnostics.headerAnalysis
+            } : null
+          };
+
+          // Add failed trades if any
+          if (failedTrades.length > 0) {
+            errorDetails.failedTrades = failedTrades;
+          }
+
+          // Track zero_imported scenario: parser produced trades but none were actually imported
+          // Excludes: empty CSV (trades.length === 0), all duplicates (duplicates === trades.length)
+          if (imported === 0 && trades.length > 0 && duplicates < trades.length) {
+            try {
+              const headerLine = getCsvHeaderLine(fileBuffer);
+              const detectedBroker = detectBrokerFormat(fileBuffer);
+              await db.query(`
+                INSERT INTO unknown_csv_headers (user_id, header_line, broker_attempted, outcome, file_name, detected_broker, selected_broker, row_count, trades_parsed, diagnostics_json)
+                VALUES ($1, $2, $3, 'zero_imported', $4, $5, $6, $7, $8, $9)
+              `, [
+                fileUserId,
+                headerLine?.substring(0, 10000),
+                broker,
+                fileName,
+                detectedBroker,
+                broker,
+                parseDiagnostics?.totalRows || trades.length,
+                trades.length,
+                JSON.stringify({
+                  ...(parseDiagnostics || {}),
+                  imported,
+                  failed,
+                  duplicates,
+                  failedTrades: failedTrades.slice(0, 20)
+                })
+              ]);
+              logger.logWarn(`[CSV] Recorded zero_imported scenario: ${trades.length} trades parsed, 0 imported (${duplicates} duplicates, ${failed} failed)`);
+            } catch (recordErr) {
+              logger.logWarn(`[CSV] Failed to record zero_imported: ${recordErr.message}`);
+            }
+          }
+
           await db.query(`
             UPDATE import_logs
             SET status = 'completed', trades_imported = $1, trades_failed = $2, completed_at = CURRENT_TIMESTAMP, error_details = $4
             WHERE id = $3
-          `, [imported, failed, importId, failedTrades.length > 0 ? { failedTrades, duplicates } : { duplicates }]);
-          
+          `, [imported, failed, importId, errorDetails]);
+
           // Invalidate analytics cache after successful import so counts/P&L update immediately
           try {
             invalidateAnalyticsCache(fileUserId);
@@ -2078,10 +2252,20 @@ const tradeController = {
           const headerLine = getCsvHeaderLine(fileBuffer);
           if (headerLine) {
             try {
+              // Attempt to detect broker even though parsing failed
+              const detectedBroker = detectBrokerFormat(fileBuffer);
               await db.query(`
-                INSERT INTO unknown_csv_headers (user_id, header_line, broker_attempted, outcome, file_name)
-                VALUES ($1, $2, $3, 'parse_failed', $4)
-              `, [fileUserId, headerLine.substring(0, 10000), broker, fileName]);
+                INSERT INTO unknown_csv_headers (user_id, header_line, broker_attempted, outcome, file_name, detected_broker, selected_broker, diagnostics_json)
+                VALUES ($1, $2, $3, 'parse_failed', $4, $5, $6, $7)
+              `, [
+                fileUserId,
+                headerLine.substring(0, 10000),
+                broker,
+                fileName,
+                detectedBroker,
+                broker,
+                JSON.stringify({ error: error.message })
+              ]);
             } catch (recordErr) {
               logger.logWarn(`[CSV] Failed to record unknown headers on parse error: ${recordErr.message}`);
             }
