@@ -2153,12 +2153,44 @@ const tradeController = {
             errorDetails.failedTrades = failedTrades;
           }
 
+          // Track zero_imported scenario: parser produced trades but none were actually imported
+          // Excludes: empty CSV (trades.length === 0), all duplicates (duplicates === trades.length)
+          if (imported === 0 && trades.length > 0 && duplicates < trades.length) {
+            try {
+              const headerLine = getCsvHeaderLine(fileBuffer);
+              const detectedBroker = detectBrokerFormat(fileBuffer);
+              await db.query(`
+                INSERT INTO unknown_csv_headers (user_id, header_line, broker_attempted, outcome, file_name, detected_broker, selected_broker, row_count, trades_parsed, diagnostics_json)
+                VALUES ($1, $2, $3, 'zero_imported', $4, $5, $6, $7, $8, $9)
+              `, [
+                fileUserId,
+                headerLine?.substring(0, 10000),
+                broker,
+                fileName,
+                detectedBroker,
+                broker,
+                parseDiagnostics?.totalRows || trades.length,
+                trades.length,
+                JSON.stringify({
+                  ...(parseDiagnostics || {}),
+                  imported,
+                  failed,
+                  duplicates,
+                  failedTrades: failedTrades.slice(0, 20)
+                })
+              ]);
+              logger.logWarn(`[CSV] Recorded zero_imported scenario: ${trades.length} trades parsed, 0 imported (${duplicates} duplicates, ${failed} failed)`);
+            } catch (recordErr) {
+              logger.logWarn(`[CSV] Failed to record zero_imported: ${recordErr.message}`);
+            }
+          }
+
           await db.query(`
             UPDATE import_logs
             SET status = 'completed', trades_imported = $1, trades_failed = $2, completed_at = CURRENT_TIMESTAMP, error_details = $4
             WHERE id = $3
           `, [imported, failed, importId, errorDetails]);
-          
+
           // Invalidate analytics cache after successful import so counts/P&L update immediately
           try {
             invalidateAnalyticsCache(fileUserId);
