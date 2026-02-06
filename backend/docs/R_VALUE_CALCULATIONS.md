@@ -9,9 +9,9 @@
 ## Core Concepts
 
 ### R (Risk Unit)
-- **R = 1** represents the initial risk of the trade
-- For **Long**: `R = entry_price - original_stop_loss`
-- For **Short**: `R = original_stop_loss - entry_price`
+- **R = 1** represents the current risk of the trade
+- For **Long**: `R = entry_price - stop_loss`
+- For **Short**: `R = stop_loss - entry_price`
 
 ### R-Multiple (Actual R)
 The actual performance of the trade measured in risk units.
@@ -19,8 +19,20 @@ The actual performance of the trade measured in risk units.
 - For **Long**: `Actual R = (exit_price - entry_price) / R`
 - For **Short**: `Actual R = (entry_price - exit_price) / R`
 
-### Original Stop Loss
-When calculating R values, always use the **original** stop loss (before any moves), not the current stop loss. The original stop loss is found by looking at the first entry in `risk_level_history` with `type: 'stop_loss'`.
+### Commission Adjustment (Net R Values)
+
+**All displayed R values are NET of commissions and fees.** This ensures apples-to-apples comparison between Actual R and Target R.
+
+```
+Commission R = total_commission / risk_amount
+Actual R (Net) = Actual R (Gross) - Commission R
+Target R (Net) = Target R (Gross) - Commission R
+```
+
+For Management R calculations, both the actual outcome and the ghost scenario (what would have happened) include commissions, so they cancel out when comparing. This means Management R reflects pure trade management skill independent of commission costs.
+
+### Stop Loss for R Calculations
+R values use the **current** stop loss, not the original. The `risk_level_history` field tracks historical stop loss moves for display purposes (showing "Saved R" from SL moves), but R calculations always use the current stop loss value.
 
 ---
 
@@ -70,7 +82,7 @@ Weighted Target R = sum of all contributions
 
 ### Example (Short Trade)
 
-- Entry: 6902.75, Original SL: 6909, Quantity: 8 contracts
+- Entry: 6902.75, Current SL: 6909, Quantity: 8 contracts
 - R = 6909 - 6902.75 = 6.25 points
 - TP1: 6885.5 (7 contracts) → R = (6902.75 - 6885.5) / 6.25 = 2.76R
 - TP2: 6822.25 (1 contract) → R = (6902.75 - 6822.25) / 6.25 = 12.88R
@@ -110,7 +122,7 @@ Management R = Actual R - Planned R
 **With Partial Exits:**
 - Planned R = (TP1_R × TP1_ratio) + (remaining_ratio × -1R)
 - Example (Short Trade):
-  - Entry: 6902.75, Original SL: 6909, Quantity: 8 contracts
+  - Entry: 6902.75, Current SL: 6909, Quantity: 8 contracts
   - TP1 hit: 7 contracts at 2.76R → contribution = 2.76 × (7/8) = 2.415R
   - Remaining: 1 contract (1/8 = 0.125)
   - Planned R = 2.415 + (0.125 × -1) = 2.29R
@@ -179,11 +191,12 @@ This is different from Weighted Target R (which assumes all targets hit) - it re
 
 ## Key Rules
 
-1. **Always use original stop loss** for R calculations, not current (moved) stop loss
-2. **Detect data structure** before calculating weighted target R
-3. **SL Hit First** = Actual R - Planned R (where Planned R = -1R for no partials, or TP1 contribution + remaining × -1R)
-4. **TP Hit First** = Actual R - Weighted Target R
-5. **Infer remaining ratio** from partial exits when not stored in history
+1. **Use current stop loss** for R calculations (risk_level_history is only for tracking move history)
+2. **All R values are NET of commissions** - both Actual R and Target R include commission adjustment
+3. **Detect data structure** before calculating weighted target R
+4. **SL Hit First** = Actual R (net) - Planned R (net), where Planned R = -1R - commissionR
+5. **TP Hit First** = Actual R (net) - Weighted Target R (net)
+6. **Infer remaining ratio** from partial exits when not stored in history
 
 ---
 

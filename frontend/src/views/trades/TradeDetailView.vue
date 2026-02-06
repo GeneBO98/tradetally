@@ -1175,7 +1175,7 @@ const router = useRouter()
 const tradesStore = useTradesStore()
 const authStore = useAuthStore()
 const { showSuccess, showError, showConfirmation } = useNotification()
-const { formatDateTime: formatDateTimeTz, timezoneLabel } = useUserTimezone()
+const { formatDateTime: formatDateTimeTz, formatTime: formatTimeTz, timezoneLabel } = useUserTimezone()
 
 const loading = ref(true)
 const trade = ref(null)
@@ -1622,7 +1622,7 @@ function formatCommentDate(date) {
     const diffInHours = (now - dateObj) / (1000 * 60 * 60)
     
     if (diffInHours < 24) {
-      return format(dateObj, 'HH:mm')
+      return formatTimeTz(date)
     } else if (diffInHours < 48) {
       return 'Yesterday'
     } else if (diffInHours < 168) { // 7 days
@@ -1653,7 +1653,7 @@ function formatNewsDate(date) {
     } else if (diffInHours < 48) {
       return 'Yesterday'
     } else {
-      return format(dateObj, 'MMM dd, HH:mm')
+      return formatDateTimeTz(date)
     }
   } catch (error) {
     console.error('News date formatting error:', error, 'for date:', date)

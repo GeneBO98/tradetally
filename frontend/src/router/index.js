@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useRegistrationMode } from '@/composables/useRegistrationMode'
+import { useAnalytics } from '@/composables/useAnalytics'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -461,6 +462,24 @@ router.beforeEach(async (to, from, next) => {
     }
   } else {
     next()
+  }
+})
+
+// PostHog: identify user and track feature adoption on navigation (authenticated routes only)
+router.afterEach((to) => {
+  const authStore = useAuthStore()
+  const { identifyUser, trackPageView, trackFeatureUsage } = useAnalytics()
+
+  if (authStore.isAuthenticated && authStore.user?.id) {
+    identifyUser(authStore.user.id, {
+      email: authStore.user.email,
+      tier: authStore.user.tier || 'free'
+    })
+  }
+
+  if (to.name && to.meta.requiresAuth) {
+    trackPageView(to.name, { path: to.path })
+    trackFeatureUsage(to.name, { path: to.path })
   }
 })
 

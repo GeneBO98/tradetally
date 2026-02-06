@@ -335,7 +335,9 @@
 import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import api from '@/services/api'
-import { format, parseISO } from 'date-fns'
+import { useUserTimezone } from '@/composables/useUserTimezone'
+
+const { formatDateTime: formatDateTimeTz } = useUserTimezone()
 import {
   PlusIcon,
   TrashIcon,
@@ -372,7 +374,7 @@ const baseUrl = computed(() => window.location.origin)
 
 const formatDate = (dateString) => {
   try {
-    return format(parseISO(dateString), 'MMM d, yyyy h:mm a')
+    return formatDateTimeTz(dateString)
   } catch {
     return dateString
   }
