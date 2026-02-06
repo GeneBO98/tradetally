@@ -37,6 +37,8 @@
                 <option value="tradingview">TradingView</option>
                 <option value="tradovate">Tradovate</option>
                 <option value="questrade">Questrade</option>
+                <option value="tradestation">TradeStation</option>
+                <option value="tradingview_performance">TradingView Performance</option>
                 <optgroup v-if="customMappings.length > 0" label="Custom Importers">
                   <option
                     v-for="mapping in customMappings"
@@ -336,6 +338,36 @@
               </div>
               <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
                 <strong>Required columns:</strong> Exec Time, Side, Qty, Symbol, Price. Filled orders are processed as real trades and grouped into round-trip positions with P&L calculations.
+              </p>
+            </div>
+
+            <div>
+              <h4 class="font-medium text-gray-900 dark:text-white">TradeStation</h4>
+              <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
+                Export transaction history from TradeStation. Supports both equity and options trades with detailed fee breakdown.
+              </p>
+              <div class="bg-gray-50 dark:bg-gray-800 rounded-md p-3 text-xs font-mono overflow-x-auto">
+                Account,T/D,S/D,Currency,Type,Side,Symbol,Qty,Price,Exec Time,Comm,SEC,TAF,NSCC,Nasdaq<br>
+                ABC123,01/15/25,01/17/25,USD,E,B,AAPL,100,150.50,09:30:15,4.95,0.01,0.01,0.01,0.00<br>
+                ABC123,01/15/25,01/17/25,USD,E,S,AAPL,100,152.25,14:20:30,4.95,0.01,0.01,0.01,0.00
+              </div>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                <strong>Required columns:</strong> T/D, S/D, Side, Symbol, Qty, Price, Exec Time. All fee columns are automatically summed.
+              </p>
+            </div>
+
+            <div>
+              <h4 class="font-medium text-gray-900 dark:text-white">TradingView Performance</h4>
+              <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
+                Export performance data from TradingView. Contains completed trades with calculated P&L.
+              </p>
+              <div class="bg-gray-50 dark:bg-gray-800 rounded-md p-3 text-xs font-mono overflow-x-auto">
+                symbol,buyFillId,sellFillId,qty,buyPrice,sellPrice,pnl,boughtTimestamp,soldTimestamp,duration<br>
+                AAPL,fill_001,fill_002,100,150.50,152.25,175.00,1736950800000,1736961600000,3h<br>
+                TSLA,fill_003,fill_004,50,225.75,220.50,-262.50,1736954400000,1736965200000,2h 40m
+              </div>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                <strong>Required columns:</strong> symbol, qty, buyPrice, sellPrice, boughtTimestamp, soldTimestamp. Timestamps are Unix milliseconds.
               </p>
             </div>
           </div>
@@ -1066,6 +1098,8 @@ function formatBrokerName(broker) {
     tradingview: 'TradingView',
     tradovate: 'Tradovate',
     questrade: 'Questrade',
+    tradestation: 'TradeStation',
+    tradingview_performance: 'TradingView Performance',
     other: 'Other'
   }
   return brokerLabels[broker] || broker
@@ -1279,6 +1313,27 @@ function detectKnownFormat(headers) {
       headersStr.includes('product') && headersStr.includes('fill time') &&
       (headersStr.includes('avgprice') || headersStr.includes('avg fill price')) &&
       (headersStr.includes('filledqty') || headersStr.includes('filled qty'))) {
+    return true
+  }
+
+  // Questrade detection
+  if (headersStr.includes('fill qty') && headersStr.includes('fill price') &&
+      headersStr.includes('exec time') && headersStr.includes('option') &&
+      headersStr.includes('strategy')) {
+    return true
+  }
+
+  // TradeStation detection
+  if (headersStr.includes('account') && headersStr.includes('t/d') &&
+      headersStr.includes('s/d') && headersStr.includes('exec time') &&
+      (headersStr.includes('gross proceeds') || headersStr.includes('net proceeds'))) {
+    return true
+  }
+
+  // TradingView Performance detection
+  if (headersStr.includes('buyfillid') && headersStr.includes('sellfillid') &&
+      headersStr.includes('boughttimestamp') && headersStr.includes('soldtimestamp') &&
+      headersStr.includes('pnl')) {
     return true
   }
 

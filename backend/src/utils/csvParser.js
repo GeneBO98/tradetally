@@ -355,6 +355,26 @@ function detectBrokerFormat(fileBuffer) {
       return 'questrade';
     }
 
+    // TradeStation/TradeNote detection - look for Account, T/D, S/D, Exec Time, Gross Proceeds columns
+    if (headers.includes('account') &&
+        headers.includes('t/d') &&
+        headers.includes('s/d') &&
+        headers.includes('exec time') &&
+        (headers.includes('gross proceeds') || headers.includes('net proceeds'))) {
+      console.log('[AUTO-DETECT] Detected: TradeStation/TradeNote');
+      return 'tradestation';
+    }
+
+    // TradingView Performance export detection - look for buyFillId, sellFillId, boughtTimestamp, soldTimestamp
+    if (headers.includes('buyfillid') &&
+        headers.includes('sellfillid') &&
+        headers.includes('boughttimestamp') &&
+        headers.includes('soldtimestamp') &&
+        headers.includes('pnl')) {
+      console.log('[AUTO-DETECT] Detected: TradingView Performance Export');
+      return 'tradingview_performance';
+    }
+
     // Default to generic if no specific format detected
     console.log('[AUTO-DETECT] No specific format detected, using generic parser');
     return 'generic';
@@ -392,21 +412,113 @@ function getCsvHeaderLine(fileBuffer) {
 }
 
 const brokerParsers = {
-  generic: (row) => ({
-    symbol: row.Symbol || row.symbol,
-    tradeDate: parseDate(row['Trade Date'] || row.Date || row.date),
-    entryTime: parseDateTime(row['Entry Time'] || row['Trade Date'] || row.Date),
-    exitTime: parseDateTime(row['Exit Time'] || row['Close Time']),
-    entryPrice: parseNumeric(row['Entry Price'] || row['Buy Price'] || row.Price),
-    exitPrice: parseNumeric(row['Exit Price'] || row['Sell Price']),
-    quantity: parseInteger(row.Quantity || row.Shares || row.Size),
-    side: parseSide(row.Side || row.Direction || row.Type),
-    commission: parseNumeric(row.Commission || row.Fees),
-    fees: parseNumeric(row.Fees),
-    stopLoss: parseNumeric(row['Stop Loss'] || row['Stop Loss Price'] || row['Stop'] || row['SL'] || row.stopLoss || row.stop_loss),
-    takeProfit: parseNumeric(row['Take Profit'] || row['Take Profit Price'] || row['Target'] || row['TP'] || row.takeProfit || row.take_profit),
-    broker: 'generic'
-  }),
+  generic: (row) => {
+    // Enhanced generic parser with flexible column mapping
+    // Support various column naming conventions
+
+    // Symbol mapping
+    const symbol = row.Symbol || row.symbol || row.Ticker || row.ticker || row.Stock || row.stock;
+
+    // Date/Time mapping - support more formats
+    const tradeDate = parseDate(
+      row['Trade Date'] || row['T/D'] || row.Date || row.date ||
+      row['Transaction Date'] || row['Exec Date'] || row['Execution Date']
+    );
+
+    const entryTime = parseDateTime(
+      row['Entry Time'] || row['Exec Time'] || row['Execution Time'] ||
+      row['Fill Time'] || row['Trade Time'] || row.Timestamp ||
+      row['Trade Date'] || row.Date
+    );
+
+    const exitTime = parseDateTime(
+      row['Exit Time'] || row['Close Time'] || row['Exit Date'] ||
+      row['Closed Date'] || row['Sell Time']
+    );
+
+    // Price mapping - support more variations
+    const entryPrice = parseNumeric(
+      row['Entry Price'] || row['Buy Price'] || row.Price || row.price ||
+      row['Fill Price'] || row['Avg Price'] || row['Average Price'] ||
+      row['Open Price'] || row['Purchase Price']
+    );
+
+    const exitPrice = parseNumeric(
+      row['Exit Price'] || row['Sell Price'] || row['Close Price'] ||
+      row['Sale Price'] || row['Closing Price']
+    );
+
+    // Quantity mapping
+    const quantity = Math.abs(parseInteger(
+      row.Quantity || row.quantity || row.Qty || row.qty ||
+      row.Shares || row.shares || row.Size || row.size ||
+      row.Volume || row.volume || row.Amount || row.amount ||
+      row['Fill Qty'] || row['Filled Qty']
+    ));
+
+    // Side mapping - handle more variations
+    const side = parseSide(
+      row.Side || row.side || row.Direction || row.direction ||
+      row.Type || row.type || row.Action || row.action ||
+      row['B/S'] || row['Buy/Sell'] || row.BS
+    );
+
+    // Commission and fees mapping
+    const commission = parseNumeric(
+      row.Commission || row.commission || row.Comm || row.comm ||
+      row.Commissions || row.commissions || row['Commission Amount']
+    ) || 0;
+
+    const fees = parseNumeric(
+      row.Fees || row.fees || row.Fee || row.fee ||
+      row['Total Fees'] || row['Fee Amount'] ||
+      row.SEC || row.TAF || row.NSCC
+    ) || 0;
+
+    // Total fees if commission and fees are separate
+    const totalFees = commission + fees;
+
+    // Currency mapping
+    const currency = (
+      row.Currency || row.currency || row.Curr || row.curr ||
+      row.CCY || row.ccy || 'USD'
+    ).toUpperCase();
+
+    // Stop loss and take profit
+    const stopLoss = parseNumeric(
+      row['Stop Loss'] || row['Stop Loss Price'] || row.Stop || row.stop ||
+      row.SL || row.sl || row.stopLoss || row.stop_loss
+    );
+
+    const takeProfit = parseNumeric(
+      row['Take Profit'] || row['Take Profit Price'] || row.Target || row.target ||
+      row.TP || row.tp || row.takeProfit || row.take_profit
+    );
+
+    // Notes/description
+    const notes = cleanString(
+      row.Notes || row.notes || row.Note || row.note ||
+      row.Description || row.description || row.Comment || row.comment
+    );
+
+    return {
+      symbol: symbol,
+      tradeDate: tradeDate,
+      entryTime: entryTime,
+      exitTime: exitTime,
+      entryPrice: entryPrice,
+      exitPrice: exitPrice,
+      quantity: quantity,
+      side: side,
+      commission: totalFees,
+      fees: totalFees,
+      currency: currency,
+      stopLoss: stopLoss,
+      takeProfit: takeProfit,
+      notes: notes,
+      broker: 'generic'
+    };
+  },
 
   lightspeed: (row) => ({
     symbol: cleanString(row.Symbol),
@@ -728,6 +840,102 @@ const brokerParsers = {
       broker: 'projectx',
       notes: `Trade #${tradeId} - Duration: ${tradeDuration}`,
       ...instrumentData  // Add futures/options metadata
+    };
+  },
+
+  tradestation: (row) => {
+    // TradeStation/TradeNote format
+    // Headers: Account,T/D,S/D,Currency,Type,Side,Symbol,Qty,Price,Exec Time,Comm,SEC,TAF,NSCC,Nasdaq,ECN Remove,ECN Add,Gross Proceeds,Net Proceeds,Clr Broker,Liq,Note
+
+    const symbol = cleanString(row.Symbol);
+    const tradeDate = parseDate(row['T/D']); // Trade date
+    const execTime = row['Exec Time'] || '';
+    const entryTime = parseDateTime(`${row['T/D']} ${execTime}`);
+    const side = parseSide(row.Side);
+    const quantity = Math.abs(parseInteger(row.Qty));
+    const price = parseNumeric(row.Price);
+
+    // Calculate total fees from all fee columns
+    const commission = parseNumeric(row.Comm) || 0;
+    const sec = parseNumeric(row.SEC) || 0;
+    const taf = parseNumeric(row.TAF) || 0;
+    const nscc = parseNumeric(row.NSCC) || 0;
+    const nasdaq = parseNumeric(row.Nasdaq) || 0;
+    const ecnRemove = parseNumeric(row['ECN Remove']) || 0;
+    const ecnAdd = parseNumeric(row['ECN Add']) || 0;
+    const totalFees = commission + sec + taf + nscc + nasdaq + ecnRemove + ecnAdd;
+
+    const currency = (row.Currency || 'USD').toUpperCase();
+    const type = cleanString(row.Type); // E, O for equity/option
+    const note = cleanString(row.Note);
+
+    // Check if this is an option based on Type field
+    let instrumentData = {};
+    if (type === 'O' || type === 'Option') {
+      instrumentData = parseInstrumentData(symbol);
+    }
+
+    return {
+      symbol: symbol,
+      tradeDate: tradeDate,
+      entryTime: entryTime,
+      exitTime: null, // TradeStation exports are transactions, not completed trades
+      entryPrice: price,
+      exitPrice: null,
+      quantity: quantity,
+      side: side,
+      commission: totalFees,
+      fees: totalFees,
+      currency: currency,
+      broker: 'tradestation',
+      notes: note || `TradeStation ${type} trade`,
+      ...instrumentData
+    };
+  },
+
+  tradingview_performance: (row) => {
+    // TradingView Performance export - contains completed trades with entry/exit
+    // Headers: symbol,_priceFormat,_priceFormatType,_tickSize,buyFillId,sellFillId,qty,buyPrice,sellPrice,pnl,boughtTimestamp,soldTimestamp,duration
+
+    const symbol = cleanString(row.symbol);
+    const quantity = Math.abs(parseInteger(row.qty));
+    const buyPrice = parseNumeric(row.buyPrice);
+    const sellPrice = parseNumeric(row.sellPrice);
+    const pnl = parseNumeric(row.pnl);
+
+    // Parse timestamps (Unix timestamps in milliseconds)
+    const boughtTimestamp = parseInt(row.boughtTimestamp);
+    const soldTimestamp = parseInt(row.soldTimestamp);
+
+    const entryTime = !isNaN(boughtTimestamp) ? new Date(boughtTimestamp) : null;
+    const exitTime = !isNaN(soldTimestamp) ? new Date(soldTimestamp) : null;
+    const tradeDate = entryTime ? new Date(entryTime.toISOString().split('T')[0]) : null;
+
+    // Determine side based on P&L and prices
+    // If sellPrice > buyPrice and PnL > 0, it was a long trade
+    // If sellPrice < buyPrice and PnL > 0, it was a short trade
+    const side = pnl >= 0
+      ? (sellPrice >= buyPrice ? 'long' : 'short')
+      : (sellPrice >= buyPrice ? 'short' : 'long');
+
+    // Parse instrument data for futures/options
+    const instrumentData = parseInstrumentData(symbol);
+
+    return {
+      symbol: symbol,
+      tradeDate: tradeDate,
+      entryTime: entryTime,
+      exitTime: exitTime,
+      entryPrice: side === 'long' ? buyPrice : sellPrice,
+      exitPrice: side === 'long' ? sellPrice : buyPrice,
+      quantity: quantity,
+      side: side,
+      commission: 0, // No commission data in this format
+      fees: 0,
+      broker: 'tradingview_performance',
+      profitLoss: pnl,
+      notes: `Duration: ${row.duration || 'N/A'}`,
+      ...instrumentData
     };
   }
 };
@@ -1580,6 +1788,98 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       return wrapResultWithDiagnostics(result, diagnostics);
     }
 
+    // TradeStation exports transactions, needs position tracking
+    if (broker === 'tradestation') {
+      console.log('Starting TradeStation transaction parsing');
+      // Use generic transaction parser with TradeStation-specific parser
+      const parser = brokerParsers.tradestation;
+      const trades = [];
+      let rowIndex = 0;
+
+      // Convert TradeStation records to transactions then process with position tracking
+      const transactions = [];
+      for (const record of records) {
+        rowIndex++;
+        try {
+          const trade = parser(record);
+          if (trade && trade.symbol && trade.quantity && trade.entryPrice) {
+            // Convert to transaction format for position tracking
+            transactions.push({
+              symbol: trade.symbol,
+              date: trade.tradeDate,
+              datetime: trade.entryTime,
+              action: trade.side === 'buy' || trade.side === 'long' ? 'buy' : 'sell',
+              quantity: trade.quantity,
+              price: trade.entryPrice,
+              commission: trade.commission,
+              currency: trade.currency,
+              notes: trade.notes,
+              raw: record
+            });
+          }
+        } catch (error) {
+          console.error(`Error parsing TradeStation record:`, error.message);
+          diagnostics.invalidRows++;
+          diagnostics.skippedReasons.push({ row: rowIndex, reason: `Parse error: ${error.message}` });
+        }
+      }
+
+      // Process transactions with position tracking
+      const completedTrades = [];
+      const transactionsBySymbol = {};
+
+      for (const transaction of transactions) {
+        if (!transactionsBySymbol[transaction.symbol]) {
+          transactionsBySymbol[transaction.symbol] = [];
+        }
+        transactionsBySymbol[transaction.symbol].push(transaction);
+      }
+
+      // Process each symbol's transactions
+      for (const [symbol, symbolTransactions] of Object.entries(transactionsBySymbol)) {
+        const position = existingPositions[symbol] || { quantity: 0, trades: [] };
+        let currentPosition = position.quantity;
+
+        for (const transaction of symbolTransactions) {
+          const isBuy = transaction.action === 'buy';
+          const prevPosition = currentPosition;
+          currentPosition = isBuy
+            ? currentPosition + transaction.quantity
+            : currentPosition - transaction.quantity;
+
+          // Determine if this completes a trade
+          if (prevPosition === 0) {
+            // Starting new trade
+            completedTrades.push({
+              symbol: transaction.symbol,
+              tradeDate: transaction.date,
+              entryTime: transaction.datetime,
+              entryPrice: transaction.price,
+              quantity: transaction.quantity,
+              side: isBuy ? 'long' : 'short',
+              commission: transaction.commission,
+              fees: transaction.commission,
+              currency: transaction.currency,
+              broker: 'tradestation',
+              notes: transaction.notes
+            });
+          } else if ((prevPosition > 0 && currentPosition <= 0) || (prevPosition < 0 && currentPosition >= 0)) {
+            // Closing or reversing position
+            const lastTrade = completedTrades[completedTrades.length - 1];
+            if (lastTrade && lastTrade.symbol === symbol && !lastTrade.exitTime) {
+              lastTrade.exitTime = transaction.datetime;
+              lastTrade.exitPrice = transaction.price;
+              lastTrade.commission += transaction.commission || 0;
+              lastTrade.fees = lastTrade.commission;
+            }
+          }
+        }
+      }
+
+      console.log(`[SUCCESS] Parsed ${completedTrades.length} TradeStation trades`);
+      return wrapResultWithDiagnostics(completedTrades, diagnostics);
+    }
+
     // ProjectX provides completed trades (not transactions), use simple parsing
     if (broker === 'projectx') {
       console.log('Starting ProjectX completed trade parsing');
@@ -1620,6 +1920,42 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       }
 
       console.log(`[SUCCESS] Parsed ${trades.length} ProjectX completed trades`);
+
+      // Apply trade grouping if enabled
+      const tradeGroupingSettings = context.tradeGroupingSettings || { enabled: true, timeGapMinutes: 60 };
+      let finalTrades = trades;
+      if (tradeGroupingSettings.enabled && trades.length > 0) {
+        finalTrades = applyTradeGrouping(trades, tradeGroupingSettings);
+      }
+
+      return wrapResultWithDiagnostics(finalTrades, diagnostics);
+    }
+
+    // TradingView Performance also provides completed trades (not transactions), use simple parsing
+    if (broker === 'tradingview_performance') {
+      console.log('Starting TradingView Performance completed trade parsing');
+      const parser = brokerParsers.tradingview_performance;
+      const trades = [];
+      let rowIndex = 0;
+
+      for (const record of records) {
+        rowIndex++;
+        try {
+          let trade = parser(record);
+          if (isValidTrade(trade)) {
+            trades.push(trade);
+          } else {
+            diagnostics.invalidRows++;
+            diagnostics.skippedReasons.push({ row: rowIndex, reason: 'Invalid trade: missing required fields' });
+          }
+        } catch (error) {
+          console.error(`Error parsing TradingView Performance record:`, error.message);
+          diagnostics.invalidRows++;
+          diagnostics.skippedReasons.push({ row: rowIndex, reason: `Parse error: ${error.message}` });
+        }
+      }
+
+      console.log(`[SUCCESS] Parsed ${trades.length} TradingView Performance completed trades`);
 
       // Apply trade grouping if enabled
       const tradeGroupingSettings = context.tradeGroupingSettings || { enabled: true, timeGapMinutes: 60 };
