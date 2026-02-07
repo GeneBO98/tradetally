@@ -6,6 +6,7 @@ const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 
 const { migrate } = require('./utils/migrate');
+const { initializePostHogTelemetry, shutdown: shutdownPostHogTelemetry } = require('./posthog-telemetry');
 const { securityMiddleware } = require('./middleware/security');
 const logger = require('./utils/logger');
 const authRoutes = require('./routes/auth.routes');
@@ -404,7 +405,10 @@ app.use((req, res) => {
 async function startServer() {
   try {
     logger.info('Starting TradeTally server...');
-    
+
+    // Initialize PostHog telemetry (optional)
+    await initializePostHogTelemetry();
+
     // Run database migrations first
     if (process.env.RUN_MIGRATIONS !== 'false') {
       logger.info('Running database migrations...');
@@ -590,6 +594,7 @@ process.on('SIGTERM', async () => {
   backupScheduler.stopAll();
   stockScannerScheduler.stop();
   await backgroundWorker.stop();
+  await shutdownPostHogTelemetry();
   process.exit(0);
 });
 
@@ -606,6 +611,7 @@ process.on('SIGINT', async () => {
   backupScheduler.stopAll();
   stockScannerScheduler.stop();
   await backgroundWorker.stop();
+  await shutdownPostHogTelemetry();
   process.exit(0);
 });
 

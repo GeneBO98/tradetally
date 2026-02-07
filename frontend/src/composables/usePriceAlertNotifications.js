@@ -16,6 +16,7 @@ const isConnected = ref(false)
 const eventSource = ref(null)
 const notifications = ref([])
 const reconnectTimeout = ref(null)
+const reconnectDelay = ref(3000) // Start at 3s, exponential backoff up to 60s
 // Ephemeral queue for achievement celebrations and xp updates
 const celebrationQueue = ref([])
 
@@ -56,6 +57,7 @@ export function usePriceAlertNotifications() {
     eventSource.value.onopen = () => {
       console.log('Connected to notification stream')
       isConnected.value = true
+      reconnectDelay.value = 3000 // Reset backoff on successful connection
     }
     
     eventSource.value.onmessage = (event) => {
@@ -87,13 +89,15 @@ export function usePriceAlertNotifications() {
       // Only manually reconnect if the connection is CLOSED (not CONNECTING)
       // EventSource automatically tries to reconnect when in CONNECTING state
       if (readyState === EventSource.CLOSED && !reconnectTimeout.value) {
+        const delay = reconnectDelay.value
+        reconnectDelay.value = Math.min(reconnectDelay.value * 2, 60000) // Exponential backoff, cap at 60s
         reconnectTimeout.value = setTimeout(() => {
           reconnectTimeout.value = null
           if (authStore.token && (authStore.user?.tier === 'pro' || authStore.user?.billingEnabled === false)) {
-            console.log('SSE manual reconnect after close')
+            console.log(`SSE manual reconnect after ${delay / 1000}s`)
             connect()
           }
-        }, 3000)
+        }, delay)
       }
     }
   }
