@@ -1632,6 +1632,12 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
     // Store diagnostics in context for broker parsers to use
     context.diagnostics = diagnostics;
 
+    // Normalize records for case-insensitive column access
+    // This handles CSVs where headers differ in casing from what parsers expect
+    if (records.length > 0 && !Array.isArray(records[0])) {
+      records = records.map(normalizeRecord);
+    }
+
     // Check if CSV contains a currency column BEFORE broker-specific parsing
     const hasCurrencyColumn = detectCurrencyColumn(records);
 
@@ -2478,6 +2484,61 @@ function parseLightspeedSide(sideCode, buySell, principalAmount, netAmount, quan
 function cleanString(str) {
   if (!str) return '';
   return str.toString().trim();
+}
+
+/**
+ * Creates a case-insensitive proxy around a CSV record object.
+ * Exact key matches are tried first (preserving existing behavior),
+ * then a case-insensitive + trimmed fallback is used.
+ * This handles CSVs where header casing differs from what parsers expect
+ * (e.g. "symbol" vs "Symbol", "DATE" vs "Date").
+ */
+function normalizeRecord(record) {
+  if (!record || typeof record !== 'object' || Array.isArray(record)) return record;
+  const lowerMap = new Map();
+  for (const key of Object.keys(record)) {
+    const normalized = key.toLowerCase().trim();
+    // First key wins for a given normalized form, preserving original casing priority
+    if (!lowerMap.has(normalized)) {
+      lowerMap.set(normalized, key);
+    }
+  }
+  return new Proxy(record, {
+    get(target, prop, receiver) {
+      if (typeof prop === 'string') {
+        // Exact match first (fast path, preserves existing behavior)
+        if (prop in target) return target[prop];
+        // Case-insensitive fallback
+        const originalKey = lowerMap.get(prop.toLowerCase().trim());
+        if (originalKey) return target[originalKey];
+      }
+      return Reflect.get(target, prop, receiver);
+    },
+    // Support `prop in record` checks
+    has(target, prop) {
+      if (prop in target) return true;
+      if (typeof prop === 'string') {
+        return lowerMap.has(prop.toLowerCase().trim());
+      }
+      return false;
+    },
+    // Preserve Object.keys() behavior (returns original keys)
+    ownKeys(target) {
+      return Reflect.ownKeys(target);
+    },
+    getOwnPropertyDescriptor(target, prop) {
+      // For original keys, return real descriptor
+      if (prop in target) return Object.getOwnPropertyDescriptor(target, prop);
+      // For case-insensitive matches, synthesize a descriptor
+      if (typeof prop === 'string') {
+        const originalKey = lowerMap.get(prop.toLowerCase().trim());
+        if (originalKey) {
+          return { value: target[originalKey], writable: true, enumerable: true, configurable: true };
+        }
+      }
+      return undefined;
+    }
+  });
 }
 
 // Parse options/futures instrument data from symbol

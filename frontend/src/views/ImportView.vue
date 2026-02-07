@@ -944,7 +944,7 @@ import { usePriceAlertNotifications } from '@/composables/usePriceAlertNotificat
 
 const tradesStore = useTradesStore()
 const authStore = useAuthStore()
-const { showSuccess, showError, showSuccessModal, clearModalAlert } = useNotification()
+const { showSuccess, showError, showImportantWarning, showSuccessModal, clearModalAlert } = useNotification()
 const { celebrationQueue } = usePriceAlertNotifications()
 
 const loading = ref(false)
@@ -2062,6 +2062,24 @@ function pollImportStatus(importId) {
             failedTrades
           }
           showImportResultsModal.value = true
+        }
+
+        // Show documentation popup when 0 trades imported with a known broker
+        const knownBrokers = [
+          'lightspeed', 'schwab', 'thinkorswim', 'ibkr', 'webull', 'etrade',
+          'papermoney', 'tradingview', 'tradovate', 'questrade', 'tradestation',
+          'tradingview_performance'
+        ]
+        if (tradesImported === 0 && knownBrokers.includes(selectedBroker.value)) {
+          showImportantWarning(
+            'No Trades Imported',
+            `The import completed but no trades were found. This usually means the file format doesn't match what the ${selectedBroker.value} parser expects. Please check the documentation for the correct export format.`,
+            {
+              confirmText: 'OK',
+              linkUrl: 'https://docs.tradetally.io/usage/importing-trades/#supported-brokers',
+              linkText: 'View Documentation'
+            }
+          )
         }
 
         if (status === 'completed') {
