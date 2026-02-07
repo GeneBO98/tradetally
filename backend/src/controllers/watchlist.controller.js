@@ -11,7 +11,7 @@ const watchlistController = {
       const userId = req.user.id;
       
       const query = `
-        SELECT 
+        SELECT
           w.id,
           w.name,
           w.description,
@@ -22,22 +22,15 @@ const watchlistController = {
           COUNT(DISTINCT pa.id) as alert_count
         FROM watchlists w
         LEFT JOIN watchlist_items wi ON w.id = wi.watchlist_id
-        LEFT JOIN price_alerts pa ON w.user_id = pa.user_id 
-          AND pa.symbol IN (SELECT symbol FROM watchlist_items WHERE watchlist_id = w.id)
+        LEFT JOIN price_alerts pa ON pa.user_id = w.user_id
+          AND pa.symbol = wi.symbol
           AND pa.is_active = TRUE
         WHERE w.user_id = $1
         GROUP BY w.id, w.name, w.description, w.is_default, w.created_at, w.updated_at
         ORDER BY w.is_default DESC, w.name ASC
       `;
-      
+
       const result = await db.query(query, [userId]);
-      
-      // Debug logging to check counts
-      console.log('Watchlist counts:', result.rows.map(w => ({
-        name: w.name,
-        item_count: w.item_count,
-        alert_count: w.alert_count
-      })));
       
       res.json({
         success: true,
@@ -91,9 +84,6 @@ const watchlistController = {
       `;
       
       const itemsResult = await db.query(itemsQuery, [id]);
-      
-      // Debug logging to check actual items
-      console.log(`Watchlist ${id} actual items:`, itemsResult.rows.length);
       
       const watchlist = watchlistResult.rows[0];
       watchlist.items = itemsResult.rows;

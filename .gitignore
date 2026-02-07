@@ -272,3 +272,4 @@ certificates/
 *CLAUDE.md*
 .claude/*
 performance-test.js
+backend/TELEMETRY.md
