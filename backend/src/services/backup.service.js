@@ -312,25 +312,6 @@ class BackupService {
     // Track results per table for detailed reporting
     const tableResults = {};
 
-    // Helper function to safely insert a record using SAVEPOINT
-    // This allows individual records to fail without aborting the entire transaction
-    // NOTE: Only used for users/trades/diary_entries (small record counts).
-    // For generic tables, restoreTable uses ON CONFLICT instead to avoid shared memory exhaustion.
-    const safeInsert = async (queryFn, errorPrefix) => {
-      const savepointName = `sp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      try {
-        await client.query(`SAVEPOINT ${savepointName}`);
-        await queryFn();
-        await client.query(`RELEASE SAVEPOINT ${savepointName}`);
-        return { success: true };
-      } catch (error) {
-        await client.query(`ROLLBACK TO SAVEPOINT ${savepointName}`);
-        await client.query(`RELEASE SAVEPOINT ${savepointName}`);
-        console.error(`${errorPrefix}:`, error.message);
-        return { success: false, error: error.message };
-      }
-    };
-
     try {
       await client.query('BEGIN');
 
@@ -379,114 +360,120 @@ class BackupService {
       const userIdMapping = new Map();
 
       // Restore users first (if not skipping)
+      // Uses a single savepoint to avoid subtransaction accumulation
       if (!skipUsers && tables.users && tables.users.length > 0) {
         console.log(`[RESTORE] Processing ${tables.users.length} users...`);
-        for (const user of tables.users) {
-          // Check if user already exists by ID or email
-          const existingUser = await client.query(
-            'SELECT id, email, username FROM users WHERE id = $1 OR email = $2',
-            [user.id, user.email]
-          );
+        const validCols = await getValidColumns('users');
 
-          if (existingUser.rows.length === 0) {
-            // User doesn't exist - insert new user using dynamic columns
-            const validCols = await getValidColumns('users');
-            const userColumns = Object.keys(user).filter(col => user[col] !== undefined && (!validCols || validCols.has(col)));
-            const userValues = [];
-            const userPlaceholders = [];
-            let userParamIndex = 1;
+        const usersSavepoint = 'sp_users_restore';
+        await client.query(`SAVEPOINT ${usersSavepoint}`);
 
-            for (const col of userColumns) {
-              const value = user[col];
-              if (Array.isArray(value)) {
-                userValues.push(value);
-              } else if (value && typeof value === 'object' && !(value instanceof Date)) {
-                userValues.push(JSON.stringify(value));
-              } else {
-                userValues.push(value);
-              }
-              userPlaceholders.push(`$${userParamIndex}`);
-              userParamIndex++;
-            }
+        try {
+          for (const user of tables.users) {
+            // Check if user already exists by ID or email
+            const existingUser = await client.query(
+              'SELECT id, email, username FROM users WHERE id = $1 OR email = $2',
+              [user.id, user.email]
+            );
 
-            const result = await safeInsert(async () => {
-              await client.query(
-                `INSERT INTO users (${userColumns.join(', ')}) VALUES (${userPlaceholders.join(', ')})`,
-                userValues
-              );
-            }, `[RESTORE] Error restoring user ${user.email}`);
+            if (existingUser.rows.length === 0) {
+              // User doesn't exist - insert new user using dynamic columns
+              const userColumns = Object.keys(user).filter(col => user[col] !== undefined && (!validCols || validCols.has(col)));
+              const userValues = [];
+              const userPlaceholders = [];
+              let userParamIndex = 1;
 
-            if (result.success) {
-              results.users.added++;
-              // Map backup user ID to itself (successfully inserted)
-              userIdMapping.set(user.id, user.id);
-            } else {
-              // User failed to insert - try to find existing user by email or username
-              const findExisting = await client.query(
-                'SELECT id FROM users WHERE email = $1 OR username = $2 LIMIT 1',
-                [user.email, user.username]
-              );
-
-              if (findExisting.rows.length > 0) {
-                // Map backup user ID to existing user ID
-                userIdMapping.set(user.id, findExisting.rows[0].id);
-                console.log(`[RESTORE] Mapping user ${user.email} (${user.id}) to existing user (${findExisting.rows[0].id})`);
-              }
-
-              results.users.errors++;
-            }
-          } else {
-            // User already exists
-            const existingUserId = existingUser.rows[0].id;
-            userIdMapping.set(user.id, existingUserId);
-
-            if (overwriteUsers) {
-              // Overwrite existing user with backup data using dynamic columns
-              const validColsUpdate = await getValidColumns('users');
-              const updateColumns = Object.keys(user).filter(col =>
-                col !== 'id' && col !== 'created_at' && user[col] !== undefined && (!validColsUpdate || validColsUpdate.has(col))
-              );
-              const updateValues = [];
-              const updateSet = [];
-              let updateParamIndex = 1;
-
-              for (const col of updateColumns) {
+              for (const col of userColumns) {
                 const value = user[col];
                 if (Array.isArray(value)) {
-                  updateValues.push(value);
+                  userValues.push(value);
                 } else if (value && typeof value === 'object' && !(value instanceof Date)) {
-                  updateValues.push(JSON.stringify(value));
+                  userValues.push(JSON.stringify(value));
                 } else {
-                  updateValues.push(value);
+                  userValues.push(value);
                 }
-                updateSet.push(`${col} = $${updateParamIndex}`);
-                updateParamIndex++;
+                userPlaceholders.push(`$${userParamIndex}`);
+                userParamIndex++;
               }
-              
-              // Always update updated_at
-              updateSet.push(`updated_at = NOW()`);
-              updateValues.push(existingUserId);
 
-              const result = await safeInsert(async () => {
+              // ON CONFLICT DO NOTHING handles unique constraint collisions (email, username)
+              const insertResult = await client.query(
+                `INSERT INTO users (${userColumns.join(', ')}) VALUES (${userPlaceholders.join(', ')})
+                 ON CONFLICT DO NOTHING
+                 RETURNING id`,
+                userValues
+              );
+
+              if (insertResult.rows.length > 0) {
+                results.users.added++;
+                userIdMapping.set(user.id, user.id);
+              } else {
+                // Insert was silently skipped by ON CONFLICT - find existing user to map
+                const findExisting = await client.query(
+                  'SELECT id FROM users WHERE email = $1 OR username = $2 LIMIT 1',
+                  [user.email, user.username]
+                );
+
+                if (findExisting.rows.length > 0) {
+                  userIdMapping.set(user.id, findExisting.rows[0].id);
+                  console.log(`[RESTORE] Mapping user ${user.email} (${user.id}) to existing user (${findExisting.rows[0].id})`);
+                }
+
+                results.users.skipped++;
+              }
+            } else {
+              // User already exists
+              const existingUserId = existingUser.rows[0].id;
+              userIdMapping.set(user.id, existingUserId);
+
+              if (overwriteUsers) {
+                // Overwrite existing user with backup data using dynamic columns
+                const updateColumns = Object.keys(user).filter(col =>
+                  col !== 'id' && col !== 'created_at' && user[col] !== undefined && (!validCols || validCols.has(col))
+                );
+                const updateValues = [];
+                const updateSet = [];
+                let updateParamIndex = 1;
+
+                for (const col of updateColumns) {
+                  const value = user[col];
+                  if (Array.isArray(value)) {
+                    updateValues.push(value);
+                  } else if (value && typeof value === 'object' && !(value instanceof Date)) {
+                    updateValues.push(JSON.stringify(value));
+                  } else {
+                    updateValues.push(value);
+                  }
+                  updateSet.push(`${col} = $${updateParamIndex}`);
+                  updateParamIndex++;
+                }
+
+                // Always update updated_at
+                updateSet.push(`updated_at = NOW()`);
+                updateValues.push(existingUserId);
+
                 await client.query(
                   `UPDATE users SET ${updateSet.join(', ')} WHERE id = $${updateParamIndex}`,
                   updateValues
                 );
-              }, `[RESTORE] Error updating user ${user.email}`);
 
-              if (result.success) {
                 console.log(`[RESTORE] Updated user ${user.email} (${existingUserId})`);
                 results.users.updated++;
               } else {
-                results.users.errors++;
+                console.log(`[RESTORE] User ${user.email} already exists (${existingUserId})`);
+                results.users.skipped++;
               }
-            } else {
-              // Just skip and map
-              console.log(`[RESTORE] User ${user.email} already exists (${existingUserId})`);
-              results.users.skipped++;
             }
           }
+
+          await client.query(`RELEASE SAVEPOINT ${usersSavepoint}`);
+        } catch (error) {
+          console.error(`[RESTORE] Error restoring users: ${error.message}`);
+          await client.query(`ROLLBACK TO SAVEPOINT ${usersSavepoint}`);
+          await client.query(`RELEASE SAVEPOINT ${usersSavepoint}`);
+          results.users.errors += tables.users.length - results.users.added - results.users.skipped - results.users.updated;
         }
+
         console.log(`[RESTORE] Users: ${results.users.added} added, ${results.users.updated} updated, ${results.users.skipped} skipped, ${results.users.errors} errors, ${userIdMapping.size} mapped`);
       }
 
@@ -499,61 +486,45 @@ class BackupService {
       }
       console.log(`[RESTORE] Valid user IDs for FK validation: ${validUserIds.size}`);
 
-      // Restore trades using dynamic column insertion
+      // Restore trades using ON CONFLICT DO NOTHING (single savepoint, no per-record subtransactions)
+      // This avoids exhausting PostgreSQL shared memory for subtransaction tracking
       if (tables.trades && tables.trades.length > 0) {
         console.log(`[RESTORE] Processing ${tables.trades.length} trades...`);
 
-        // Columns to exclude from dynamic insert (handled specially or should be null)
         const excludeColumns = ['import_id', 'round_trip_id'];
+        const validTradeCols = await getValidColumns('trades');
 
-        for (const trade of tables.trades) {
-          // Check if trade already exists
-          const existingTrade = await client.query(
-            'SELECT id FROM trades WHERE id = $1',
-            [trade.id]
-          );
+        const tradesSavepoint = 'sp_trades_restore';
+        await client.query(`SAVEPOINT ${tradesSavepoint}`);
 
-          if (existingTrade.rows.length === 0) {
-            // Map the user_id if a mapping exists
-            let mappedUserId = trade.user_id;
-            if (userIdMapping.has(trade.user_id)) {
-              mappedUserId = userIdMapping.get(trade.user_id);
+        try {
+          for (const trade of tables.trades) {
+            // Map the user_id if a mapping exists (in-memory, no DB query)
+            const tradeData = { ...trade };
+            if (userIdMapping.has(tradeData.user_id)) {
+              tradeData.user_id = userIdMapping.get(tradeData.user_id);
             }
 
-            // Check if mapped user exists
-            const userExists = await client.query(
-              'SELECT id FROM users WHERE id = $1',
-              [mappedUserId]
-            );
-
-            if (userExists.rows.length === 0) {
-              console.log(`[RESTORE] Skipping trade - user not found: ${trade.user_id} (mapped: ${mappedUserId})`);
+            // Skip trades whose user doesn't exist (in-memory check, no DB query)
+            if (tradeData.user_id && !validUserIds.has(tradeData.user_id)) {
+              console.log(`[RESTORE] Skipping trade - user not found: ${trade.user_id} (mapped: ${tradeData.user_id})`);
               results.trades.skipped++;
               continue;
             }
 
-            // Update user_id if it was mapped
-            const tradeData = { ...trade };
-            if (mappedUserId !== trade.user_id) {
-              tradeData.user_id = mappedUserId;
-            }
-
-            // Build dynamic insert with all columns from backup (using mapped tradeData)
-            const validTradeCols = await getValidColumns('trades');
+            // Build dynamic insert with all columns from backup
             const columns = [];
             const values = [];
             const placeholders = [];
             let paramIndex = 1;
 
             for (const [key, value] of Object.entries(tradeData)) {
-              // Skip excluded columns or columns not in target schema
               if (excludeColumns.includes(key)) continue;
               if (validTradeCols && !validTradeCols.has(key)) continue;
 
               columns.push(key);
 
               // Generic JSONB handling - stringify any object that isn't an array or Date
-              // This covers all JSONB columns (executions, quality_metrics, classification_metadata, etc.)
               if (value && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
                 values.push(JSON.stringify(value));
               } else if (Array.isArray(value)) {
@@ -566,48 +537,67 @@ class BackupService {
               paramIndex++;
             }
 
-            const result = await safeInsert(async () => {
-              await client.query(
-                `INSERT INTO trades (${columns.join(', ')}) VALUES (${placeholders.join(', ')})`,
-                values
-              );
-            }, `[RESTORE] Error restoring trade ${trade.id}`);
+            // ON CONFLICT DO NOTHING handles duplicates without savepoints
+            const insertResult = await client.query(
+              `INSERT INTO trades (${columns.join(', ')}) VALUES (${placeholders.join(', ')})
+               ON CONFLICT DO NOTHING
+               RETURNING id`,
+              values
+            );
 
-            if (result.success) {
+            if (insertResult.rows.length > 0) {
               results.trades.added++;
             } else {
-              results.trades.errors++;
+              results.trades.skipped++;
             }
-          } else {
-            results.trades.skipped++;
           }
+
+          await client.query(`RELEASE SAVEPOINT ${tradesSavepoint}`);
+        } catch (error) {
+          console.error(`[RESTORE] Error restoring trades: ${error.message}`);
+          await client.query(`ROLLBACK TO SAVEPOINT ${tradesSavepoint}`);
+          await client.query(`RELEASE SAVEPOINT ${tradesSavepoint}`);
+          results.trades.errors += tables.trades.length - results.trades.added - results.trades.skipped;
         }
+
         console.log(`[RESTORE] Trades: ${results.trades.added} added, ${results.trades.skipped} skipped, ${results.trades.errors} errors`);
       }
 
-      // Restore diary entries
+      // Restore diary entries using ON CONFLICT DO NOTHING (single savepoint)
       const diaryEntriesData = getTableData('diaryEntries', 'diary_entries');
       if (diaryEntriesData && diaryEntriesData.length > 0) {
         console.log(`[RESTORE] Processing ${diaryEntriesData.length} diary entries...`);
-        for (const entry of diaryEntriesData) {
-          const existingEntry = await client.query(
-            'SELECT id FROM diary_entries WHERE id = $1',
-            [entry.id]
-          );
+        const validDiaryCols = await getValidColumns('diary_entries');
 
-          if (existingEntry.rows.length === 0) {
-            // Build dynamic insert for diary entries too
-            const validDiaryCols = await getValidColumns('diary_entries');
+        const diarySavepoint = 'sp_diary_entries_restore';
+        await client.query(`SAVEPOINT ${diarySavepoint}`);
+
+        try {
+          for (const entry of diaryEntriesData) {
+            // Map user_id if needed
+            const entryData = { ...entry };
+            if (entryData.user_id && userIdMapping.has(entryData.user_id)) {
+              entryData.user_id = userIdMapping.get(entryData.user_id);
+            }
+
+            // Skip entries whose user doesn't exist
+            if (entryData.user_id && !validUserIds.has(entryData.user_id)) {
+              results.diaryEntries.skipped++;
+              continue;
+            }
+
             const columns = [];
             const values = [];
             const placeholders = [];
             let paramIndex = 1;
 
-            for (const [key, value] of Object.entries(entry)) {
+            for (const [key, value] of Object.entries(entryData)) {
               if (validDiaryCols && !validDiaryCols.has(key)) continue;
               columns.push(key);
 
-              if (Array.isArray(value)) {
+              if (value && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
+                values.push(JSON.stringify(value));
+              } else if (Array.isArray(value)) {
                 values.push(value);
               } else {
                 values.push(value);
@@ -617,22 +607,28 @@ class BackupService {
               paramIndex++;
             }
 
-            const result = await safeInsert(async () => {
-              await client.query(
-                `INSERT INTO diary_entries (${columns.join(', ')}) VALUES (${placeholders.join(', ')})`,
-                values
-              );
-            }, `[RESTORE] Error restoring diary entry ${entry.id}`);
+            const insertResult = await client.query(
+              `INSERT INTO diary_entries (${columns.join(', ')}) VALUES (${placeholders.join(', ')})
+               ON CONFLICT DO NOTHING
+               RETURNING id`,
+              values
+            );
 
-            if (result.success) {
+            if (insertResult.rows.length > 0) {
               results.diaryEntries.added++;
             } else {
-              results.diaryEntries.errors++;
+              results.diaryEntries.skipped++;
             }
-          } else {
-            results.diaryEntries.skipped++;
           }
+
+          await client.query(`RELEASE SAVEPOINT ${diarySavepoint}`);
+        } catch (error) {
+          console.error(`[RESTORE] Error restoring diary entries: ${error.message}`);
+          await client.query(`ROLLBACK TO SAVEPOINT ${diarySavepoint}`);
+          await client.query(`RELEASE SAVEPOINT ${diarySavepoint}`);
+          results.diaryEntries.errors += diaryEntriesData.length - results.diaryEntries.added - results.diaryEntries.skipped;
         }
+
         console.log(`[RESTORE] Diary entries: ${results.diaryEntries.added} added, ${results.diaryEntries.skipped} skipped, ${results.diaryEntries.errors} errors`);
       }
 
