@@ -5,13 +5,57 @@ const adminSettingsService = require('../services/adminSettings');
 // Helper function to convert snake_case to camelCase
 function toCamelCase(obj) {
   if (!obj) return obj;
-  
+
   const result = {};
   for (const [key, value] of Object.entries(obj)) {
     const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
     result[camelKey] = value;
   }
   return result;
+}
+
+// Helper function to convert camelCase to snake_case
+function toSnakeCase(str) {
+  return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+}
+
+// Helper to convert all keys of an object from camelCase to snake_case
+function keysToSnakeCase(obj) {
+  if (!obj) return obj;
+  const result = {};
+  for (const [key, value] of Object.entries(obj)) {
+    result[toSnakeCase(key)] = value;
+  }
+  return result;
+}
+
+// Cache for table columns (populated per import session)
+const _tableColumnsCache = {};
+async function getTableColumns(dbClient, tableName) {
+  if (_tableColumnsCache[tableName]) return _tableColumnsCache[tableName];
+  try {
+    const result = await dbClient.query(`
+      SELECT column_name, data_type, udt_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = $1
+      ORDER BY ordinal_position
+    `, [tableName]);
+    const columns = {};
+    for (const row of result.rows) {
+      columns[row.column_name] = { dataType: row.data_type, udtName: row.udt_name };
+    }
+    _tableColumnsCache[tableName] = columns;
+    return columns;
+  } catch (error) {
+    return {};
+  }
+}
+
+// Clear column cache (call at start of import)
+function clearTableColumnsCache() {
+  for (const key of Object.keys(_tableColumnsCache)) {
+    delete _tableColumnsCache[key];
+  }
 }
 
 const settingsController = {
@@ -549,9 +593,105 @@ const settingsController = {
         }
       }
 
-      // Create export data with ALL fields - Version 2.0 with complete data
+      // Helper to auto-convert rows, excluding internal fields
+      const convertRows = (rows, opts = {}) => {
+        const { exclude = [], addOriginalId = false } = opts;
+        const excludeSet = new Set(['user_id', ...exclude]);
+        return rows.map(row => {
+          const converted = {};
+          if (addOriginalId) converted.originalId = row.id;
+          for (const [key, value] of Object.entries(row)) {
+            if (excludeSet.has(key)) continue;
+            if (addOriginalId && key === 'id') continue;
+            const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+            converted[camelKey] = value;
+          }
+          return converted;
+        });
+      };
+
+      // Fetch additional user-owned tables dynamically
+      const fetchUserTable = async (tableName, orderBy = 'created_at') => {
+        try {
+          const result = await db.query(
+            `SELECT * FROM ${tableName} WHERE user_id = $1 ORDER BY ${orderBy}`,
+            [userId]
+          );
+          return result.rows;
+        } catch (error) {
+          console.warn(`[EXPORT] Unable to fetch ${tableName}:`, error.message);
+          return [];
+        }
+      };
+
+      // Fetch additional user-owned tables
+      const [watchlists, watchlistItems, priceAlerts, instrumentTemplates,
+             generalNotes, customCsvMappings, behavioralSettings, healthData] = await Promise.all([
+        fetchUserTable('watchlists'),
+        // watchlist_items needs a join to get items for the user's watchlists
+        (async () => {
+          try {
+            const result = await db.query(
+              `SELECT wi.* FROM watchlist_items wi
+               INNER JOIN watchlists w ON wi.watchlist_id = w.id
+               WHERE w.user_id = $1
+               ORDER BY wi.created_at`,
+              [userId]
+            );
+            return result.rows;
+          } catch (error) {
+            console.warn('[EXPORT] Unable to fetch watchlist_items:', error.message);
+            return [];
+          }
+        })(),
+        fetchUserTable('price_alerts'),
+        fetchUserTable('instrument_templates'),
+        fetchUserTable('general_notes'),
+        fetchUserTable('custom_csv_mappings'),
+        fetchUserTable('behavioral_settings', 'user_id'),
+        fetchUserTable('health_data', 'date')
+      ]);
+
+      // Settings: exclude internal fields, convert all remaining dynamically
+      const SETTINGS_EXCLUDE = ['id', 'user_id', 'created_at', 'updated_at'];
+
+      // Trading profile fields to extract from settings into a separate section
+      const TRADING_PROFILE_FIELDS = new Set([
+        'trading_strategies', 'trading_styles', 'risk_tolerance',
+        'primary_markets', 'experience_level', 'average_position_size',
+        'trading_goals', 'preferred_sectors'
+      ]);
+
+      let settingsExport = null;
+      let tradingProfileExport = null;
+      if (settings) {
+        const settingsConverted = {};
+        const profileConverted = {};
+        for (const [key, value] of Object.entries(settings)) {
+          if (SETTINGS_EXCLUDE.includes(key)) continue;
+          const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+          if (TRADING_PROFILE_FIELDS.has(key)) {
+            profileConverted[camelKey] = value;
+          } else {
+            settingsConverted[camelKey] = value;
+          }
+        }
+        settingsExport = settingsConverted;
+        tradingProfileExport = profileConverted;
+      }
+
+      // Build trade charts with trade_id remapped to originalTradeId
+      const tradeChartsExport = tradeCharts.map(chart => {
+        const converted = toCamelCase(chart);
+        converted.originalTradeId = chart.trade_id;
+        delete converted.tradeId;
+        delete converted.id;
+        return converted;
+      });
+
+      // Create export data - Version 3.0 with dynamic field mapping
       const exportData = {
-        exportVersion: '2.0',
+        exportVersion: '3.0',
         exportDate: new Date().toISOString(),
         user: {
           username: user.username,
@@ -559,197 +699,34 @@ const settingsController = {
           email: user.email,
           timezone: user.timezone
         },
-        // Complete settings export including trade grouping, AI settings, etc.
-        settings: settings ? {
-          emailNotifications: settings.email_notifications,
-          publicProfile: settings.public_profile,
-          defaultTags: settings.default_tags,
-          accountEquity: settings.account_equity,
-          // Trade grouping settings
-          enableTradeGrouping: settings.enable_trade_grouping,
-          tradeGroupingTimeGapMinutes: settings.trade_grouping_time_gap_minutes,
-          // Default broker
-          defaultBroker: settings.default_broker,
-          // AI provider settings
-          aiProvider: settings.ai_provider,
-          aiApiKey: settings.ai_api_key,
-          aiApiUrl: settings.ai_api_url,
-          aiModel: settings.ai_model,
-          // Stop loss and take profit settings
-          defaultStopLossPercent: settings.default_stop_loss_percent,
-          defaultTakeProfitPercent: settings.default_take_profit_percent,
-          // Analytics chart layout
-          analyticsChartLayout: settings.analytics_chart_layout,
-          // Auto-close expired options
-          autoCloseExpiredOptions: settings.auto_close_expired_options
-        } : null,
-        tradingProfile: settings ? {
-          tradingStrategies: settings.trading_strategies || [],
-          tradingStyles: settings.trading_styles || [],
-          riskTolerance: settings.risk_tolerance || 'moderate',
-          primaryMarkets: settings.primary_markets || [],
-          experienceLevel: settings.experience_level || 'intermediate',
-          averagePositionSize: settings.average_position_size || 'medium',
-          tradingGoals: settings.trading_goals || [],
-          preferredSectors: settings.preferred_sectors || []
-        } : null,
-        // Complete trade export with ALL fields
-        trades: trades.map(trade => ({
-          // Original trade ID for linking diary entries
-          originalId: trade.id,
-          // Basic trade info
-          symbol: trade.symbol,
-          side: trade.side,
-          quantity: trade.quantity,
-          entryPrice: trade.entry_price,
-          exitPrice: trade.exit_price,
-          entryTime: trade.entry_time,
-          exitTime: trade.exit_time,
-          tradeDate: trade.trade_date,
-          // P&L fields - preserve exactly as stored
-          pnl: trade.pnl,
-          pnlPercent: trade.pnl_percent,
-          // Commission fields
-          commission: trade.commission,
-          entryCommission: trade.entry_commission,
-          exitCommission: trade.exit_commission,
-          fees: trade.fees,
-          // Broker
-          broker: trade.broker,
-          // Strategy and setup
-          strategy: trade.strategy,
-          setup: trade.setup,
-          strategyConfidence: trade.strategy_confidence,
-          classificationMethod: trade.classification_method,
-          classificationMetadata: trade.classification_metadata,
-          manualOverride: trade.manual_override,
-          // Risk management
-          stopLoss: trade.stop_loss,
-          takeProfit: trade.take_profit,
-          rValue: trade.r_value,
-          // Quality metrics
-          qualityGrade: trade.quality_grade,
-          qualityScore: trade.quality_score,
-          qualityMetrics: trade.quality_metrics,
-          // Execution data
-          executions: trade.executions,
-          // MAE/MFE
-          mae: trade.mae,
-          mfe: trade.mfe,
-          // Confidence
-          confidence: trade.confidence,
-          // Chart URL
-          chartUrl: trade.chart_url,
-          // Notes and tags
-          notes: trade.notes,
-          tags: trade.tags,
-          isPublic: trade.is_public,
-          // Instrument type fields
-          instrumentType: trade.instrument_type,
-          strikePrice: trade.strike_price,
-          expirationDate: trade.expiration_date,
-          optionType: trade.option_type,
-          contractSize: trade.contract_size,
-          underlyingSymbol: trade.underlying_symbol,
-          contractMonth: trade.contract_month,
-          contractYear: trade.contract_year,
-          tickSize: trade.tick_size,
-          pointValue: trade.point_value,
-          underlyingAsset: trade.underlying_asset,
-          // News data
-          newsEvents: trade.news_events,
-          hasNews: trade.has_news,
-          newsSentiment: trade.news_sentiment,
-          newsCheckedAt: trade.news_checked_at,
-          // Health data
-          heartRate: trade.heart_rate,
-          sleepScore: trade.sleep_score,
-          sleepHours: trade.sleep_hours,
-          stressLevel: trade.stress_level,
-          // Auto-close tracking
-          autoClosed: trade.auto_closed,
-          autoCloseReason: trade.auto_close_reason,
-          // Currency fields
-          originalCurrency: trade.original_currency,
-          exchangeRate: trade.exchange_rate,
-          originalEntryPriceCurrency: trade.original_entry_price_currency,
-          originalExitPriceCurrency: trade.original_exit_price_currency,
-          originalPnlCurrency: trade.original_pnl_currency,
-          originalCommissionCurrency: trade.original_commission_currency,
-          originalFeesCurrency: trade.original_fees_currency,
-          // Import tracking
-          importId: trade.import_id,
-          // Enrichment status
-          enrichmentStatus: trade.enrichment_status,
-          enrichmentCompletedAt: trade.enrichment_completed_at,
-          // Timestamps
-          createdAt: trade.created_at,
-          updatedAt: trade.updated_at
-        })),
-        tags: tags.map(tag => ({
-          name: tag.name,
-          color: tag.color
-        })),
+        settings: settingsExport,
+        tradingProfile: tradingProfileExport,
+        // Trades: auto-convert all fields, add originalId, exclude user_id
+        trades: convertRows(trades, { addOriginalId: true }),
+        tags: tags.map(tag => ({ name: tag.name, color: tag.color })),
         equityHistory: equityHistory.map(equity => ({
           date: equity.date,
           equity: equity.equity,
           pnl: equity.pnl
         })),
-        // Diary entries with original trade IDs preserved
-        diaryEntries: diaryEntries.map(entry => ({
-          originalId: entry.id,
-          entryDate: entry.entry_date,
-          title: entry.title,
-          content: entry.content,
-          entryType: entry.entry_type,
-          marketBias: entry.market_bias,
-          keyLevels: entry.key_levels,
-          watchlist: entry.watchlist,
-          followedPlan: entry.followed_plan,
-          lessonsLearned: entry.lessons_learned,
-          linkedTrades: entry.linked_trades,
-          tags: entry.tags,
-          createdAt: entry.created_at,
-          updatedAt: entry.updated_at
-        })),
-        // Diary templates (NEW in v2.0)
-        diaryTemplates: diaryTemplates.map(template => ({
-          name: template.name,
-          description: template.description,
-          entryType: template.entry_type,
-          title: template.title,
-          content: template.content,
-          marketBias: template.market_bias,
-          keyLevels: template.key_levels,
-          watchlist: template.watchlist,
-          tags: template.tags,
-          isDefault: template.is_default,
-          useCount: template.use_count,
-          createdAt: template.created_at,
-          updatedAt: template.updated_at
-        })),
-        // Broker fee settings (NEW in v2.0)
-        brokerFeeSettings: brokerFeeSettings.map(setting => ({
-          broker: setting.broker,
-          instrument: setting.instrument,
-          commissionPerContract: setting.commission_per_contract,
-          commissionPerSide: setting.commission_per_side,
-          exchangeFeePerContract: setting.exchange_fee_per_contract,
-          nfaFeePerContract: setting.nfa_fee_per_contract,
-          clearingFeePerContract: setting.clearing_fee_per_contract,
-          platformFeePerContract: setting.platform_fee_per_contract,
-          notes: setting.notes,
-          createdAt: setting.created_at,
-          updatedAt: setting.updated_at
-        })),
-        // Trade charts (TradingView links) - NEW in v2.1
-        tradeCharts: tradeCharts.map(chart => ({
-          originalTradeId: chart.trade_id,  // Will be remapped during import
-          chartUrl: chart.chart_url,
-          chartTitle: chart.chart_title,
-          uploadedAt: chart.uploaded_at
-        })),
-        // Admin settings (only included for admin exports) - NEW in v2.1
+        // Diary entries: auto-convert all fields
+        diaryEntries: convertRows(diaryEntries, { addOriginalId: true }),
+        // Diary templates: auto-convert
+        diaryTemplates: convertRows(diaryTemplates),
+        // Broker fee settings: auto-convert
+        brokerFeeSettings: convertRows(brokerFeeSettings),
+        // Trade charts with originalTradeId for remapping
+        tradeCharts: tradeChartsExport,
+        // Additional user-owned tables (NEW in v3.0)
+        watchlists: convertRows(watchlists, { addOriginalId: true }),
+        watchlistItems: convertRows(watchlistItems, { addOriginalId: true }),
+        priceAlerts: convertRows(priceAlerts),
+        instrumentTemplates: convertRows(instrumentTemplates),
+        generalNotes: convertRows(generalNotes),
+        customCsvMappings: convertRows(customCsvMappings),
+        behavioralSettings: convertRows(behavioralSettings),
+        healthData: convertRows(healthData),
+        // Admin settings (only included for admin exports)
         adminSettings: adminSettings
       };
 
@@ -758,6 +735,7 @@ const settingsController = {
                   'Templates:', diaryTemplates.length,
                   'Broker fees:', brokerFeeSettings.length,
                   'Trade charts:', tradeCharts.length,
+                  'Watchlists:', watchlists.length,
                   'Admin settings:', adminSettings ? Object.keys(adminSettings).length : 0);
 
       res.setHeader('Content-Type', 'application/json');
@@ -841,6 +819,10 @@ const settingsController = {
       console.log('[IMPORT] Starting database connection...');
       const client = await db.connect();
       console.log('[IMPORT] Database connection established');
+      clearTableColumnsCache();
+
+      // Determine if this is a v3.0+ dynamic import or legacy
+      const isV3 = importData.exportVersion >= '3.0';
 
       // Counters for import results
       let tradesAdded = 0;
@@ -853,9 +835,70 @@ const settingsController = {
       let templatesSkipped = 0;
       let brokerFeesAdded = 0;
       let brokerFeesSkipped = 0;
+      let additionalTablesImported = {};
 
       // Map old trade IDs to new trade IDs for diary entry linked_trades
       const tradeIdMap = new Map();
+      // Map old watchlist IDs to new IDs for watchlist_items
+      const watchlistIdMap = new Map();
+
+      // ============================================
+      // Dynamic insert helper for v3.0+
+      // Converts camelCase keys to snake_case, filters against actual DB columns,
+      // handles JSONB serialization, and builds INSERT dynamically
+      // ============================================
+      const dynamicInsert = async (dbClient, tableName, record, overrides = {}) => {
+        const tableColumns = await getTableColumns(dbClient, tableName);
+        if (Object.keys(tableColumns).length === 0) {
+          console.warn(`[IMPORT] Table ${tableName} not found in schema, skipping`);
+          return null;
+        }
+
+        // Convert camelCase keys to snake_case
+        const snakeRecord = keysToSnakeCase(record);
+
+        // Apply overrides (e.g., user_id)
+        for (const [key, value] of Object.entries(overrides)) {
+          snakeRecord[key] = value;
+        }
+
+        // Filter to only columns that exist in the DB, skip 'id' (auto-generated)
+        const columns = [];
+        const values = [];
+        const placeholders = [];
+        let paramIndex = 1;
+
+        for (const [col, value] of Object.entries(snakeRecord)) {
+          if (col === 'id') continue; // Skip primary key, let DB auto-generate
+          if (col === 'original_id') continue; // Export-only field
+          if (!tableColumns[col]) continue; // Column doesn't exist in DB
+
+          columns.push(col);
+
+          // Handle JSONB serialization
+          const colInfo = tableColumns[col];
+          if (colInfo.udtName === 'jsonb' || colInfo.udtName === 'json') {
+            if (value && typeof value === 'object' && !Array.isArray(value)) {
+              values.push(JSON.stringify(value));
+            } else {
+              values.push(value);
+            }
+          } else {
+            values.push(value);
+          }
+
+          placeholders.push(`$${paramIndex}`);
+          paramIndex++;
+        }
+
+        if (columns.length === 0) return null;
+
+        const result = await dbClient.query(
+          `INSERT INTO ${tableName} (${columns.join(', ')}) VALUES (${placeholders.join(', ')}) RETURNING id`,
+          values
+        );
+        return result.rows[0];
+      };
 
       try {
         console.log('[IMPORT] Starting database transaction...');
@@ -889,17 +932,21 @@ const settingsController = {
         }
 
         // ============================================
-        // 2. Import trades with ALL fields
+        // 2. Import trades
         // ============================================
         if (importData.trades && importData.trades.length > 0) {
-          console.log(`[IMPORT] Processing ${importData.trades.length} trades with complete data...`);
+          console.log(`[IMPORT] Processing ${importData.trades.length} trades (v3: ${isV3})...`);
 
           for (let i = 0; i < importData.trades.length; i++) {
             const trade = importData.trades[i];
             try {
-              // Check if trade already exists - use entry_time as the unique identifier
-              // (more reliable than created_at for cross-user imports)
-              // Handle NULL entry_time properly using IS NOT DISTINCT FROM
+              // Duplicate detection: same for both v2 and v3
+              const symbol = trade.symbol ?? trade[toSnakeCase('symbol')];
+              const side = trade.side ?? trade[toSnakeCase('side')];
+              const quantity = trade.quantity ?? trade[toSnakeCase('quantity')];
+              const entryPrice = trade.entryPrice ?? trade.entry_price;
+              const entryTime = trade.entryTime ?? trade.entry_time ?? null;
+
               const existingTrade = await client.query(
                 `SELECT id FROM trades
                  WHERE user_id = $1
@@ -908,93 +955,104 @@ const settingsController = {
                  AND quantity = $4
                  AND entry_price = $5
                  AND (entry_time IS NOT DISTINCT FROM $6)`,
-                [userId, trade.symbol, trade.side, trade.quantity, trade.entryPrice, trade.entryTime || null]
+                [userId, symbol, side, quantity, entryPrice, entryTime]
               );
 
               if (existingTrade.rows.length === 0) {
-                // Insert trade with ALL fields - preserving P&L exactly as exported
-                const result = await client.query(
-                  `INSERT INTO trades (
-                    user_id, symbol, side, quantity, entry_price, exit_price,
-                    entry_time, exit_time, trade_date,
-                    pnl, pnl_percent,
-                    commission, entry_commission, exit_commission, fees,
-                    broker, strategy, setup,
-                    strategy_confidence, classification_method, classification_metadata, manual_override,
-                    stop_loss, take_profit, r_value,
-                    quality_grade, quality_score, quality_metrics,
-                    executions, mae, mfe, confidence, chart_url,
-                    notes, tags, is_public,
-                    instrument_type, strike_price, expiration_date, option_type,
-                    contract_size, underlying_symbol, contract_month, contract_year,
-                    tick_size, point_value, underlying_asset,
-                    news_events, has_news, news_sentiment, news_checked_at,
-                    heart_rate, sleep_score, sleep_hours, stress_level,
-                    auto_closed, auto_close_reason,
-                    original_currency, exchange_rate,
-                    original_entry_price_currency, original_exit_price_currency,
-                    original_pnl_currency, original_commission_currency, original_fees_currency,
-                    import_id, enrichment_status, enrichment_completed_at,
-                    created_at, updated_at
-                  ) VALUES (
-                    $1, $2, $3, $4, $5, $6,
-                    $7, $8, $9,
-                    $10, $11,
-                    $12, $13, $14, $15,
-                    $16, $17, $18,
-                    $19, $20, $21, $22,
-                    $23, $24, $25,
-                    $26, $27, $28,
-                    $29, $30, $31, $32, $33,
-                    $34, $35, $36,
-                    $37, $38, $39, $40,
-                    $41, $42, $43, $44,
-                    $45, $46, $47,
-                    $48, $49, $50, $51,
-                    $52, $53, $54, $55,
-                    $56, $57,
-                    $58, $59,
-                    $60, $61,
-                    $62, $63, $64,
-                    $65, $66, $67,
-                    $68, $69
-                  ) RETURNING id`,
-                  [
-                    userId, trade.symbol, trade.side, trade.quantity, trade.entryPrice, trade.exitPrice,
-                    trade.entryTime, trade.exitTime, trade.tradeDate || (trade.entryTime ? trade.entryTime.split('T')[0] : null),
-                    trade.pnl, trade.pnlPercent,
-                    trade.commission || 0, trade.entryCommission || 0, trade.exitCommission || 0, trade.fees || 0,
-                    trade.broker, trade.strategy, trade.setup,
-                    trade.strategyConfidence, trade.classificationMethod,
-                    trade.classificationMetadata ? JSON.stringify(trade.classificationMetadata) : null,
-                    trade.manualOverride || false,
-                    trade.stopLoss, trade.takeProfit, trade.rValue,
-                    trade.qualityGrade, trade.qualityScore,
-                    trade.qualityMetrics ? JSON.stringify(trade.qualityMetrics) : null,
-                    trade.executions ? JSON.stringify(trade.executions) : null,
-                    trade.mae, trade.mfe, trade.confidence || 5, trade.chartUrl,
-                    trade.notes, trade.tags || [], trade.isPublic || false,
-                    trade.instrumentType || 'stock', trade.strikePrice, trade.expirationDate, trade.optionType,
-                    trade.contractSize, trade.underlyingSymbol, trade.contractMonth, trade.contractYear,
-                    trade.tickSize, trade.pointValue, trade.underlyingAsset,
-                    trade.newsEvents ? JSON.stringify(trade.newsEvents) : '[]',
-                    trade.hasNews || false, trade.newsSentiment, trade.newsCheckedAt,
-                    trade.heartRate, trade.sleepScore, trade.sleepHours, trade.stressLevel,
-                    trade.autoClosed || false, trade.autoCloseReason,
-                    trade.originalCurrency || 'USD', trade.exchangeRate || 1.0,
-                    trade.originalEntryPriceCurrency, trade.originalExitPriceCurrency,
-                    trade.originalPnlCurrency, trade.originalCommissionCurrency, trade.originalFeesCurrency,
-                    null, // import_id set to null - original import_id won't exist in target database
-                    trade.enrichmentStatus || 'completed', trade.enrichmentCompletedAt,
-                    trade.createdAt || new Date(), trade.updatedAt || new Date()
-                  ]
-                );
+                let newId;
 
-                // Map old ID to new ID for diary entry linking
-                if (trade.originalId && result.rows[0]) {
-                  tradeIdMap.set(trade.originalId, result.rows[0].id);
+                if (isV3) {
+                  // v3.0 dynamic insert
+                  const result = await dynamicInsert(client, 'trades', trade, {
+                    user_id: userId,
+                    import_id: null // Original import_id won't exist in target DB
+                  });
+                  newId = result ? result.id : null;
+                } else {
+                  // Legacy v1.0/2.0/2.1 hardcoded insert
+                  const result = await client.query(
+                    `INSERT INTO trades (
+                      user_id, symbol, side, quantity, entry_price, exit_price,
+                      entry_time, exit_time, trade_date,
+                      pnl, pnl_percent,
+                      commission, entry_commission, exit_commission, fees,
+                      broker, strategy, setup,
+                      strategy_confidence, classification_method, classification_metadata, manual_override,
+                      stop_loss, take_profit, r_value,
+                      quality_grade, quality_score, quality_metrics,
+                      executions, mae, mfe, confidence, chart_url,
+                      notes, tags, is_public,
+                      instrument_type, strike_price, expiration_date, option_type,
+                      contract_size, underlying_symbol, contract_month, contract_year,
+                      tick_size, point_value, underlying_asset,
+                      news_events, has_news, news_sentiment, news_checked_at,
+                      heart_rate, sleep_score, sleep_hours, stress_level,
+                      auto_closed, auto_close_reason,
+                      original_currency, exchange_rate,
+                      original_entry_price_currency, original_exit_price_currency,
+                      original_pnl_currency, original_commission_currency, original_fees_currency,
+                      import_id, enrichment_status, enrichment_completed_at,
+                      created_at, updated_at
+                    ) VALUES (
+                      $1, $2, $3, $4, $5, $6,
+                      $7, $8, $9,
+                      $10, $11,
+                      $12, $13, $14, $15,
+                      $16, $17, $18,
+                      $19, $20, $21, $22,
+                      $23, $24, $25,
+                      $26, $27, $28,
+                      $29, $30, $31, $32, $33,
+                      $34, $35, $36,
+                      $37, $38, $39, $40,
+                      $41, $42, $43, $44,
+                      $45, $46, $47,
+                      $48, $49, $50, $51,
+                      $52, $53, $54, $55,
+                      $56, $57,
+                      $58, $59,
+                      $60, $61,
+                      $62, $63, $64,
+                      $65, $66, $67,
+                      $68, $69
+                    ) RETURNING id`,
+                    [
+                      userId, trade.symbol, trade.side, trade.quantity, trade.entryPrice, trade.exitPrice,
+                      trade.entryTime, trade.exitTime, trade.tradeDate || (trade.entryTime ? trade.entryTime.split('T')[0] : null),
+                      trade.pnl, trade.pnlPercent,
+                      trade.commission || 0, trade.entryCommission || 0, trade.exitCommission || 0, trade.fees || 0,
+                      trade.broker, trade.strategy, trade.setup,
+                      trade.strategyConfidence, trade.classificationMethod,
+                      trade.classificationMetadata ? JSON.stringify(trade.classificationMetadata) : null,
+                      trade.manualOverride || false,
+                      trade.stopLoss, trade.takeProfit, trade.rValue,
+                      trade.qualityGrade, trade.qualityScore,
+                      trade.qualityMetrics ? JSON.stringify(trade.qualityMetrics) : null,
+                      trade.executions ? JSON.stringify(trade.executions) : null,
+                      trade.mae, trade.mfe, trade.confidence || 5, trade.chartUrl,
+                      trade.notes, trade.tags || [], trade.isPublic || false,
+                      trade.instrumentType || 'stock', trade.strikePrice, trade.expirationDate, trade.optionType,
+                      trade.contractSize, trade.underlyingSymbol, trade.contractMonth, trade.contractYear,
+                      trade.tickSize, trade.pointValue, trade.underlyingAsset,
+                      trade.newsEvents ? JSON.stringify(trade.newsEvents) : '[]',
+                      trade.hasNews || false, trade.newsSentiment, trade.newsCheckedAt,
+                      trade.heartRate, trade.sleepScore, trade.sleepHours, trade.stressLevel,
+                      trade.autoClosed || false, trade.autoCloseReason,
+                      trade.originalCurrency || 'USD', trade.exchangeRate || 1.0,
+                      trade.originalEntryPriceCurrency, trade.originalExitPriceCurrency,
+                      trade.originalPnlCurrency, trade.originalCommissionCurrency, trade.originalFeesCurrency,
+                      null,
+                      trade.enrichmentStatus || 'completed', trade.enrichmentCompletedAt,
+                      trade.createdAt || new Date(), trade.updatedAt || new Date()
+                    ]
+                  );
+                  newId = result.rows[0] ? result.rows[0].id : null;
                 }
 
+                // Map old ID to new ID for diary entry linking
+                if (trade.originalId && newId) {
+                  tradeIdMap.set(trade.originalId, newId);
+                }
                 tradesAdded++;
               } else {
                 // Map existing trade ID for diary entry linking
@@ -1004,7 +1062,7 @@ const settingsController = {
                 tradesSkipped++;
               }
             } catch (tradeError) {
-              console.error('[IMPORT] Error processing trade:', trade.symbol, tradeError.message);
+              console.error('[IMPORT] Error processing trade:', trade.symbol || trade.originalId, tradeError.message);
               throw tradeError;
             }
           }
@@ -1013,7 +1071,7 @@ const settingsController = {
         }
 
         // ============================================
-        // 3. Import/Update user settings with ALL fields
+        // 3. Import/Update user settings
         // ============================================
         if (importData.settings || importData.tradingProfile) {
           console.log('[IMPORT] Processing user settings...');
@@ -1025,156 +1083,154 @@ const settingsController = {
           const s = importData.settings || {};
           const tp = importData.tradingProfile || {};
 
-          if (existingSettings.rows.length === 0) {
-            // Create new settings with ALL imported data
-            await client.query(
-              `INSERT INTO user_settings (
-                user_id, email_notifications, public_profile, default_tags, account_equity,
-                trading_strategies, trading_styles, risk_tolerance, primary_markets,
-                experience_level, average_position_size, trading_goals, preferred_sectors,
-                enable_trade_grouping, trade_grouping_time_gap_minutes,
-                default_broker, ai_provider, ai_api_key, ai_api_url, ai_model,
-                default_stop_loss_percent, default_stop_loss_type, default_stop_loss_dollars, default_take_profit_percent, analytics_chart_layout, auto_close_expired_options
-              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)`,
-              [
-                userId,
-                s.emailNotifications ?? true,
-                s.publicProfile ?? false,
-                s.defaultTags || [],
-                s.accountEquity || null,
-                tp.tradingStrategies || [],
-                tp.tradingStyles || [],
-                tp.riskTolerance || 'moderate',
-                tp.primaryMarkets || [],
-                tp.experienceLevel || 'intermediate',
-                tp.averagePositionSize || 'medium',
-                tp.tradingGoals || [],
-                tp.preferredSectors || [],
-                s.enableTradeGrouping ?? true,
-                s.tradeGroupingTimeGapMinutes || 60,
-                s.defaultBroker || null,
-                s.aiProvider || null,
-                s.aiApiKey || null,
-                s.aiApiUrl || null,
-                s.aiModel || null,
-                s.defaultStopLossPercent || null,
-                s.defaultStopLossType || 'percent',
-                s.defaultStopLossDollars ?? null,
-                s.defaultTakeProfitPercent || null,
-                s.analyticsChartLayout ? JSON.stringify(s.analyticsChartLayout) : null,
-                s.autoCloseExpiredOptions ?? false
-              ]
-            );
-            console.log('[IMPORT] Created new user settings');
-          } else {
-            // Update existing settings with imported values
-            const updates = [];
-            const values = [];
-            let paramCount = 1;
+          if (isV3) {
+            // v3.0 dynamic settings import
+            const tableColumns = await getTableColumns(client, 'user_settings');
+            const mergedSettings = { ...keysToSnakeCase(s), ...keysToSnakeCase(tp) };
 
-            // Settings fields
-            if (s.defaultTags) {
-              const mergedTags = [...new Set([
-                ...(existingSettings.rows[0].default_tags || []),
-                ...(s.defaultTags || [])
-              ])];
-              updates.push(`default_tags = $${paramCount++}`);
-              values.push(mergedTags);
-            }
-            if (s.enableTradeGrouping !== undefined) {
-              updates.push(`enable_trade_grouping = $${paramCount++}`);
-              values.push(s.enableTradeGrouping);
-            }
-            if (s.tradeGroupingTimeGapMinutes !== undefined) {
-              updates.push(`trade_grouping_time_gap_minutes = $${paramCount++}`);
-              values.push(s.tradeGroupingTimeGapMinutes);
-            }
-            if (s.defaultBroker) {
-              updates.push(`default_broker = $${paramCount++}`);
-              values.push(s.defaultBroker);
-            }
-            if (s.aiProvider) {
-              updates.push(`ai_provider = $${paramCount++}`);
-              values.push(s.aiProvider);
-            }
-            if (s.aiApiKey) {
-              updates.push(`ai_api_key = $${paramCount++}`);
-              values.push(s.aiApiKey);
-            }
-            if (s.aiApiUrl) {
-              updates.push(`ai_api_url = $${paramCount++}`);
-              values.push(s.aiApiUrl);
-            }
-            if (s.aiModel) {
-              updates.push(`ai_model = $${paramCount++}`);
-              values.push(s.aiModel);
-            }
-            if (s.defaultStopLossPercent !== undefined) {
-              updates.push(`default_stop_loss_percent = $${paramCount++}`);
-              values.push(s.defaultStopLossPercent);
-            }
-            if (s.defaultStopLossType !== undefined) {
-              updates.push(`default_stop_loss_type = $${paramCount++}`);
-              values.push(s.defaultStopLossType);
-            }
-            if (s.defaultStopLossDollars !== undefined) {
-              updates.push(`default_stop_loss_dollars = $${paramCount++}`);
-              values.push(s.defaultStopLossDollars);
-            }
-            if (s.defaultTakeProfitPercent !== undefined) {
-              updates.push(`default_take_profit_percent = $${paramCount++}`);
-              values.push(s.defaultTakeProfitPercent);
-            }
-            if (s.analyticsChartLayout) {
-              updates.push(`analytics_chart_layout = $${paramCount++}`);
-              values.push(JSON.stringify(s.analyticsChartLayout));
-            }
-            if (s.autoCloseExpiredOptions !== undefined) {
-              updates.push(`auto_close_expired_options = $${paramCount++}`);
-              values.push(s.autoCloseExpiredOptions);
+            // Filter to valid columns only
+            const validSettings = {};
+            for (const [col, value] of Object.entries(mergedSettings)) {
+              if (col === 'id' || col === 'user_id' || col === 'created_at' || col === 'updated_at') continue;
+              if (!tableColumns[col]) continue;
+              validSettings[col] = value;
             }
 
-            // Trading profile fields
-            if (tp.tradingStrategies) {
-              updates.push(`trading_strategies = $${paramCount++}`);
-              values.push(tp.tradingStrategies);
-            }
-            if (tp.tradingStyles) {
-              updates.push(`trading_styles = $${paramCount++}`);
-              values.push(tp.tradingStyles);
-            }
-            if (tp.riskTolerance) {
-              updates.push(`risk_tolerance = $${paramCount++}`);
-              values.push(tp.riskTolerance);
-            }
-            if (tp.primaryMarkets) {
-              updates.push(`primary_markets = $${paramCount++}`);
-              values.push(tp.primaryMarkets);
-            }
-            if (tp.experienceLevel) {
-              updates.push(`experience_level = $${paramCount++}`);
-              values.push(tp.experienceLevel);
-            }
-            if (tp.averagePositionSize) {
-              updates.push(`average_position_size = $${paramCount++}`);
-              values.push(tp.averagePositionSize);
-            }
-            if (tp.tradingGoals) {
-              updates.push(`trading_goals = $${paramCount++}`);
-              values.push(tp.tradingGoals);
-            }
-            if (tp.preferredSectors) {
-              updates.push(`preferred_sectors = $${paramCount++}`);
-              values.push(tp.preferredSectors);
-            }
+            if (existingSettings.rows.length === 0) {
+              // Build INSERT dynamically
+              const columns = ['user_id', ...Object.keys(validSettings)];
+              const values = [userId];
+              const placeholders = ['$1'];
+              let paramIndex = 2;
 
-            if (updates.length > 0) {
-              values.push(userId);
+              for (const [col, value] of Object.entries(validSettings)) {
+                const colInfo = tableColumns[col];
+                if (colInfo && (colInfo.udtName === 'jsonb' || colInfo.udtName === 'json') && value && typeof value === 'object' && !Array.isArray(value)) {
+                  values.push(JSON.stringify(value));
+                } else {
+                  values.push(value);
+                }
+                placeholders.push(`$${paramIndex}`);
+                paramIndex++;
+              }
+
               await client.query(
-                `UPDATE user_settings SET ${updates.join(', ')} WHERE user_id = $${paramCount}`,
+                `INSERT INTO user_settings (${columns.join(', ')}) VALUES (${placeholders.join(', ')})`,
                 values
               );
-              console.log(`[IMPORT] Updated ${updates.length} user settings fields`);
+              console.log('[IMPORT] Created new user settings (dynamic)');
+            } else {
+              // Build UPDATE dynamically
+              const updates = [];
+              const values = [];
+              let paramCount = 1;
+
+              for (const [col, value] of Object.entries(validSettings)) {
+                if (value === undefined || value === null) continue;
+                const colInfo = tableColumns[col];
+                updates.push(`${col} = $${paramCount}`);
+                if (colInfo && (colInfo.udtName === 'jsonb' || colInfo.udtName === 'json') && value && typeof value === 'object' && !Array.isArray(value)) {
+                  values.push(JSON.stringify(value));
+                } else {
+                  values.push(value);
+                }
+                paramCount++;
+              }
+
+              if (updates.length > 0) {
+                values.push(userId);
+                await client.query(
+                  `UPDATE user_settings SET ${updates.join(', ')} WHERE user_id = $${paramCount}`,
+                  values
+                );
+                console.log(`[IMPORT] Updated ${updates.length} user settings fields (dynamic)`);
+              }
+            }
+          } else {
+            // Legacy v1.0/2.0 hardcoded settings import
+            if (existingSettings.rows.length === 0) {
+              await client.query(
+                `INSERT INTO user_settings (
+                  user_id, email_notifications, public_profile, default_tags, account_equity,
+                  trading_strategies, trading_styles, risk_tolerance, primary_markets,
+                  experience_level, average_position_size, trading_goals, preferred_sectors,
+                  enable_trade_grouping, trade_grouping_time_gap_minutes,
+                  default_broker, ai_provider, ai_api_key, ai_api_url, ai_model,
+                  default_stop_loss_percent, default_stop_loss_type, default_stop_loss_dollars, default_take_profit_percent, analytics_chart_layout, auto_close_expired_options
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)`,
+                [
+                  userId,
+                  s.emailNotifications ?? true,
+                  s.publicProfile ?? false,
+                  s.defaultTags || [],
+                  s.accountEquity || null,
+                  tp.tradingStrategies || [],
+                  tp.tradingStyles || [],
+                  tp.riskTolerance || 'moderate',
+                  tp.primaryMarkets || [],
+                  tp.experienceLevel || 'intermediate',
+                  tp.averagePositionSize || 'medium',
+                  tp.tradingGoals || [],
+                  tp.preferredSectors || [],
+                  s.enableTradeGrouping ?? true,
+                  s.tradeGroupingTimeGapMinutes || 60,
+                  s.defaultBroker || null,
+                  s.aiProvider || null,
+                  s.aiApiKey || null,
+                  s.aiApiUrl || null,
+                  s.aiModel || null,
+                  s.defaultStopLossPercent || null,
+                  s.defaultStopLossType || 'percent',
+                  s.defaultStopLossDollars ?? null,
+                  s.defaultTakeProfitPercent || null,
+                  s.analyticsChartLayout ? JSON.stringify(s.analyticsChartLayout) : null,
+                  s.autoCloseExpiredOptions ?? false
+                ]
+              );
+              console.log('[IMPORT] Created new user settings');
+            } else {
+              const updates = [];
+              const values = [];
+              let paramCount = 1;
+
+              if (s.defaultTags) {
+                const mergedTags = [...new Set([
+                  ...(existingSettings.rows[0].default_tags || []),
+                  ...(s.defaultTags || [])
+                ])];
+                updates.push(`default_tags = $${paramCount++}`);
+                values.push(mergedTags);
+              }
+              if (s.enableTradeGrouping !== undefined) { updates.push(`enable_trade_grouping = $${paramCount++}`); values.push(s.enableTradeGrouping); }
+              if (s.tradeGroupingTimeGapMinutes !== undefined) { updates.push(`trade_grouping_time_gap_minutes = $${paramCount++}`); values.push(s.tradeGroupingTimeGapMinutes); }
+              if (s.defaultBroker) { updates.push(`default_broker = $${paramCount++}`); values.push(s.defaultBroker); }
+              if (s.aiProvider) { updates.push(`ai_provider = $${paramCount++}`); values.push(s.aiProvider); }
+              if (s.aiApiKey) { updates.push(`ai_api_key = $${paramCount++}`); values.push(s.aiApiKey); }
+              if (s.aiApiUrl) { updates.push(`ai_api_url = $${paramCount++}`); values.push(s.aiApiUrl); }
+              if (s.aiModel) { updates.push(`ai_model = $${paramCount++}`); values.push(s.aiModel); }
+              if (s.defaultStopLossPercent !== undefined) { updates.push(`default_stop_loss_percent = $${paramCount++}`); values.push(s.defaultStopLossPercent); }
+              if (s.defaultStopLossType !== undefined) { updates.push(`default_stop_loss_type = $${paramCount++}`); values.push(s.defaultStopLossType); }
+              if (s.defaultStopLossDollars !== undefined) { updates.push(`default_stop_loss_dollars = $${paramCount++}`); values.push(s.defaultStopLossDollars); }
+              if (s.defaultTakeProfitPercent !== undefined) { updates.push(`default_take_profit_percent = $${paramCount++}`); values.push(s.defaultTakeProfitPercent); }
+              if (s.analyticsChartLayout) { updates.push(`analytics_chart_layout = $${paramCount++}`); values.push(JSON.stringify(s.analyticsChartLayout)); }
+              if (s.autoCloseExpiredOptions !== undefined) { updates.push(`auto_close_expired_options = $${paramCount++}`); values.push(s.autoCloseExpiredOptions); }
+              if (tp.tradingStrategies) { updates.push(`trading_strategies = $${paramCount++}`); values.push(tp.tradingStrategies); }
+              if (tp.tradingStyles) { updates.push(`trading_styles = $${paramCount++}`); values.push(tp.tradingStyles); }
+              if (tp.riskTolerance) { updates.push(`risk_tolerance = $${paramCount++}`); values.push(tp.riskTolerance); }
+              if (tp.primaryMarkets) { updates.push(`primary_markets = $${paramCount++}`); values.push(tp.primaryMarkets); }
+              if (tp.experienceLevel) { updates.push(`experience_level = $${paramCount++}`); values.push(tp.experienceLevel); }
+              if (tp.averagePositionSize) { updates.push(`average_position_size = $${paramCount++}`); values.push(tp.averagePositionSize); }
+              if (tp.tradingGoals) { updates.push(`trading_goals = $${paramCount++}`); values.push(tp.tradingGoals); }
+              if (tp.preferredSectors) { updates.push(`preferred_sectors = $${paramCount++}`); values.push(tp.preferredSectors); }
+
+              if (updates.length > 0) {
+                values.push(userId);
+                await client.query(
+                  `UPDATE user_settings SET ${updates.join(', ')} WHERE user_id = $${paramCount}`,
+                  values
+                );
+                console.log(`[IMPORT] Updated ${updates.length} user settings fields`);
+              }
             }
           }
         }
@@ -1186,42 +1242,71 @@ const settingsController = {
           console.log(`[IMPORT] Processing ${importData.brokerFeeSettings.length} broker fee settings...`);
           for (const setting of importData.brokerFeeSettings) {
             try {
-              // Use upsert to handle both new and existing settings
-              const result = await client.query(
-                `INSERT INTO broker_fee_settings (
-                  user_id, broker, instrument,
-                  commission_per_contract, commission_per_side,
-                  exchange_fee_per_contract, nfa_fee_per_contract,
-                  clearing_fee_per_contract, platform_fee_per_contract,
-                  notes, created_at, updated_at
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-                ON CONFLICT (user_id, broker, instrument) DO UPDATE SET
-                  commission_per_contract = EXCLUDED.commission_per_contract,
-                  commission_per_side = EXCLUDED.commission_per_side,
-                  exchange_fee_per_contract = EXCLUDED.exchange_fee_per_contract,
-                  nfa_fee_per_contract = EXCLUDED.nfa_fee_per_contract,
-                  clearing_fee_per_contract = EXCLUDED.clearing_fee_per_contract,
-                  platform_fee_per_contract = EXCLUDED.platform_fee_per_contract,
-                  notes = EXCLUDED.notes,
-                  updated_at = EXCLUDED.updated_at
-                RETURNING (xmax = 0) as inserted`,
-                [
-                  userId, setting.broker, setting.instrument || '',
-                  setting.commissionPerContract || 0, setting.commissionPerSide || 0,
-                  setting.exchangeFeePerContract || 0, setting.nfaFeePerContract || 0,
-                  setting.clearingFeePerContract || 0, setting.platformFeePerContract || 0,
-                  setting.notes || '',
-                  setting.createdAt || new Date(), setting.updatedAt || new Date()
-                ]
-              );
-              if (result.rows[0].inserted) {
-                brokerFeesAdded++;
+              const broker = setting.broker ?? setting[toSnakeCase('broker')];
+              const instrument = setting.instrument ?? setting[toSnakeCase('instrument')] ?? '';
+
+              if (isV3) {
+                // v3.0 dynamic insert with upsert
+                const snakeRecord = keysToSnakeCase(setting);
+                const tableColumns = await getTableColumns(client, 'broker_fee_settings');
+                const columns = ['user_id'];
+                const values = [userId];
+                const placeholders = ['$1'];
+                const updateClauses = [];
+                let paramIndex = 2;
+
+                for (const [col, value] of Object.entries(snakeRecord)) {
+                  if (col === 'id' || col === 'original_id' || col === 'user_id') continue;
+                  if (!tableColumns[col]) continue;
+                  columns.push(col);
+                  values.push(value);
+                  placeholders.push(`$${paramIndex}`);
+                  if (col !== 'broker' && col !== 'instrument' && col !== 'created_at') {
+                    updateClauses.push(`${col} = EXCLUDED.${col}`);
+                  }
+                  paramIndex++;
+                }
+
+                const result = await client.query(
+                  `INSERT INTO broker_fee_settings (${columns.join(', ')}) VALUES (${placeholders.join(', ')})
+                   ON CONFLICT (user_id, broker, instrument) DO UPDATE SET ${updateClauses.join(', ')}
+                   RETURNING (xmax = 0) as inserted`,
+                  values
+                );
+                if (result.rows[0].inserted) { brokerFeesAdded++; } else { brokerFeesSkipped++; }
               } else {
-                brokerFeesSkipped++;
+                // Legacy hardcoded insert
+                const result = await client.query(
+                  `INSERT INTO broker_fee_settings (
+                    user_id, broker, instrument,
+                    commission_per_contract, commission_per_side,
+                    exchange_fee_per_contract, nfa_fee_per_contract,
+                    clearing_fee_per_contract, platform_fee_per_contract,
+                    notes, created_at, updated_at
+                  ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                  ON CONFLICT (user_id, broker, instrument) DO UPDATE SET
+                    commission_per_contract = EXCLUDED.commission_per_contract,
+                    commission_per_side = EXCLUDED.commission_per_side,
+                    exchange_fee_per_contract = EXCLUDED.exchange_fee_per_contract,
+                    nfa_fee_per_contract = EXCLUDED.nfa_fee_per_contract,
+                    clearing_fee_per_contract = EXCLUDED.clearing_fee_per_contract,
+                    platform_fee_per_contract = EXCLUDED.platform_fee_per_contract,
+                    notes = EXCLUDED.notes,
+                    updated_at = EXCLUDED.updated_at
+                  RETURNING (xmax = 0) as inserted`,
+                  [
+                    userId, broker, instrument,
+                    setting.commissionPerContract || 0, setting.commissionPerSide || 0,
+                    setting.exchangeFeePerContract || 0, setting.nfaFeePerContract || 0,
+                    setting.clearingFeePerContract || 0, setting.platformFeePerContract || 0,
+                    setting.notes || '',
+                    setting.createdAt || new Date(), setting.updatedAt || new Date()
+                  ]
+                );
+                if (result.rows[0].inserted) { brokerFeesAdded++; } else { brokerFeesSkipped++; }
               }
             } catch (feeError) {
-              console.error('[IMPORT] Error processing broker fee:', setting, feeError);
-              // Continue with other settings
+              console.error('[IMPORT] Error processing broker fee:', feeError.message);
             }
           }
           console.log(`[IMPORT] Broker fees: ${brokerFeesAdded} added, ${brokerFeesSkipped} updated`);
@@ -1234,34 +1319,37 @@ const settingsController = {
           console.log(`[IMPORT] Processing ${importData.diaryTemplates.length} diary templates...`);
           for (const template of importData.diaryTemplates) {
             try {
-              // Check if template with same name exists
+              const templateName = template.name ?? template[toSnakeCase('name')];
               const existingTemplate = await client.query(
                 `SELECT id FROM diary_templates WHERE user_id = $1 AND name = $2`,
-                [userId, template.name]
+                [userId, templateName]
               );
 
               if (existingTemplate.rows.length === 0) {
-                await client.query(
-                  `INSERT INTO diary_templates (
-                    user_id, name, description, entry_type, title, content,
-                    market_bias, key_levels, watchlist, tags,
-                    is_default, use_count, created_at, updated_at
-                  ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
-                  [
-                    userId, template.name, template.description, template.entryType || 'diary',
-                    template.title, template.content,
-                    template.marketBias, template.keyLevels, template.watchlist || [], template.tags || [],
-                    template.isDefault || false, template.useCount || 0,
-                    template.createdAt || new Date(), template.updatedAt || new Date()
-                  ]
-                );
+                if (isV3) {
+                  await dynamicInsert(client, 'diary_templates', template, { user_id: userId });
+                } else {
+                  await client.query(
+                    `INSERT INTO diary_templates (
+                      user_id, name, description, entry_type, title, content,
+                      market_bias, key_levels, watchlist, tags,
+                      is_default, use_count, created_at, updated_at
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+                    [
+                      userId, template.name, template.description, template.entryType || 'diary',
+                      template.title, template.content,
+                      template.marketBias, template.keyLevels, template.watchlist || [], template.tags || [],
+                      template.isDefault || false, template.useCount || 0,
+                      template.createdAt || new Date(), template.updatedAt || new Date()
+                    ]
+                  );
+                }
                 templatesAdded++;
               } else {
                 templatesSkipped++;
               }
             } catch (templateError) {
-              console.error('[IMPORT] Error processing diary template:', template.name, templateError);
-              // Continue with other templates
+              console.error('[IMPORT] Error processing diary template:', templateError.message);
             }
           }
           console.log(`[IMPORT] Templates: ${templatesAdded} added, ${templatesSkipped} skipped`);
@@ -1282,7 +1370,6 @@ const settingsController = {
               );
               equityAdded++;
             } catch (error) {
-              // Try equity_snapshots as fallback
               try {
                 await client.query(
                   `INSERT INTO equity_snapshots (user_id, snapshot_date, equity_amount)
@@ -1306,90 +1393,86 @@ const settingsController = {
           console.log(`[IMPORT] Processing ${importData.diaryEntries.length} diary entries...`);
           for (const entry of importData.diaryEntries) {
             try {
-              // Check if entry already exists
+              const entryDate = entry.entryDate ?? entry.entry_date;
+              const createdAt = entry.createdAt ?? entry.created_at;
               const existingEntry = await client.query(
                 `SELECT id FROM diary_entries
                  WHERE user_id = $1
                  AND entry_date = $2
                  AND created_at = $3`,
-                [userId, entry.entryDate, entry.createdAt]
+                [userId, entryDate, createdAt]
               );
 
               if (existingEntry.rows.length === 0) {
-                // Remap linked trade IDs to new IDs
+                // Remap linked trade IDs
+                const linkedTrades = entry.linkedTrades ?? entry.linked_trades ?? [];
                 let remappedLinkedTrades = [];
-                if (entry.linkedTrades && entry.linkedTrades.length > 0) {
-                  for (const oldTradeId of entry.linkedTrades) {
+                if (linkedTrades.length > 0) {
+                  for (const oldTradeId of linkedTrades) {
                     const newTradeId = tradeIdMap.get(oldTradeId);
-                    if (newTradeId) {
-                      remappedLinkedTrades.push(newTradeId);
-                    }
+                    if (newTradeId) remappedLinkedTrades.push(newTradeId);
                   }
-                  console.log(`[IMPORT] Remapped ${remappedLinkedTrades.length}/${entry.linkedTrades.length} linked trades for diary entry`);
                 }
 
-                await client.query(
-                  `INSERT INTO diary_entries (
-                    user_id, entry_date, title, content, entry_type,
-                    market_bias, key_levels, watchlist, followed_plan,
-                    lessons_learned, linked_trades, tags, created_at, updated_at
-                  ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
-                  [
-                    userId,
-                    entry.entryDate,
-                    entry.title,
-                    entry.content,
-                    entry.entryType || 'diary',
-                    entry.marketBias,
-                    entry.keyLevels,
-                    entry.watchlist || [],
-                    entry.followedPlan,
-                    entry.lessonsLearned,
-                    remappedLinkedTrades,
-                    entry.tags || [],
-                    entry.createdAt || new Date(),
-                    entry.updatedAt || new Date()
-                  ]
-                );
+                if (isV3) {
+                  await dynamicInsert(client, 'diary_entries', {
+                    ...entry,
+                    linkedTrades: remappedLinkedTrades
+                  }, { user_id: userId });
+                } else {
+                  await client.query(
+                    `INSERT INTO diary_entries (
+                      user_id, entry_date, title, content, entry_type,
+                      market_bias, key_levels, watchlist, followed_plan,
+                      lessons_learned, linked_trades, tags, created_at, updated_at
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+                    [
+                      userId, entry.entryDate, entry.title, entry.content,
+                      entry.entryType || 'diary', entry.marketBias, entry.keyLevels,
+                      entry.watchlist || [], entry.followedPlan, entry.lessonsLearned,
+                      remappedLinkedTrades, entry.tags || [],
+                      entry.createdAt || new Date(), entry.updatedAt || new Date()
+                    ]
+                  );
+                }
                 diaryAdded++;
               } else {
                 diarySkipped++;
               }
             } catch (diaryError) {
-              console.error('[IMPORT] Error processing diary entry:', entry.title, diaryError);
-              // Continue with other entries
+              console.error('[IMPORT] Error processing diary entry:', diaryError.message);
             }
           }
           console.log(`[IMPORT] Diary entries: ${diaryAdded} added, ${diarySkipped} skipped`);
         }
 
-        // Import trade charts (TradingView links) - NEW in v2.1
+        // Import trade charts (TradingView links)
         let chartsAdded = 0;
         let chartsSkipped = 0;
         if (importData.tradeCharts && importData.tradeCharts.length > 0) {
           console.log(`[IMPORT] Processing ${importData.tradeCharts.length} trade charts`);
           for (const chart of importData.tradeCharts) {
             try {
-              // Remap the trade ID
-              const newTradeId = tradeIdMap.get(chart.originalTradeId);
-              if (!newTradeId) {
-                console.log(`[IMPORT] Skipping chart - trade not found: ${chart.originalTradeId}`);
-                chartsSkipped++;
-                continue;
-              }
+              const originalTradeId = chart.originalTradeId ?? chart.original_trade_id;
+              const chartUrl = chart.chartUrl ?? chart.chart_url;
+              const newTradeId = tradeIdMap.get(originalTradeId);
+              if (!newTradeId) { chartsSkipped++; continue; }
 
-              // Check if chart already exists
               const existingChart = await client.query(
                 `SELECT id FROM trade_charts WHERE trade_id = $1 AND chart_url = $2`,
-                [newTradeId, chart.chartUrl]
+                [newTradeId, chartUrl]
               );
 
               if (existingChart.rows.length === 0) {
-                await client.query(
-                  `INSERT INTO trade_charts (trade_id, chart_url, chart_title, uploaded_at)
-                   VALUES ($1, $2, $3, $4)`,
-                  [newTradeId, chart.chartUrl, chart.chartTitle, chart.uploadedAt || new Date()]
-                );
+                if (isV3) {
+                  await dynamicInsert(client, 'trade_charts', chart, { trade_id: newTradeId });
+                } else {
+                  await client.query(
+                    `INSERT INTO trade_charts (trade_id, chart_url, chart_title, uploaded_at)
+                     VALUES ($1, $2, $3, $4)`,
+                    [newTradeId, chartUrl, chart.chartTitle, chart.uploadedAt || new Date()]
+                  );
+                }
                 chartsAdded++;
               } else {
                 chartsSkipped++;
@@ -1402,7 +1485,7 @@ const settingsController = {
           console.log(`[IMPORT] Trade charts: ${chartsAdded} added, ${chartsSkipped} skipped`);
         }
 
-        // Import admin settings (only for admin users) - NEW in v2.1
+        // Import admin settings (only for admin users)
         let adminSettingsUpdated = 0;
         if (importData.adminSettings && req.user.role === 'admin') {
           console.log('[IMPORT] Processing admin settings');
@@ -1424,8 +1507,92 @@ const settingsController = {
           console.log(`[IMPORT] Admin settings: ${adminSettingsUpdated} updated`);
         }
 
+        // ============================================
+        // v3.0: Import additional user-owned tables
+        // ============================================
+        if (isV3) {
+          // Watchlists (need ID remapping for watchlist_items)
+          if (importData.watchlists && importData.watchlists.length > 0) {
+            let added = 0;
+            console.log(`[IMPORT] Processing ${importData.watchlists.length} watchlists...`);
+            for (const watchlist of importData.watchlists) {
+              try {
+                const name = watchlist.name ?? watchlist[toSnakeCase('name')];
+                const existing = await client.query(
+                  `SELECT id FROM watchlists WHERE user_id = $1 AND name = $2`,
+                  [userId, name]
+                );
+                if (existing.rows.length === 0) {
+                  const result = await dynamicInsert(client, 'watchlists', watchlist, { user_id: userId });
+                  if (result && watchlist.originalId) {
+                    watchlistIdMap.set(watchlist.originalId, result.id);
+                  }
+                  added++;
+                } else if (watchlist.originalId) {
+                  watchlistIdMap.set(watchlist.originalId, existing.rows[0].id);
+                }
+              } catch (error) {
+                console.error('[IMPORT] Error processing watchlist:', error.message);
+              }
+            }
+            additionalTablesImported.watchlists = added;
+            console.log(`[IMPORT] Watchlists: ${added} added`);
+          }
+
+          // Watchlist items (need watchlist_id remapping)
+          if (importData.watchlistItems && importData.watchlistItems.length > 0) {
+            let added = 0;
+            console.log(`[IMPORT] Processing ${importData.watchlistItems.length} watchlist items...`);
+            for (const item of importData.watchlistItems) {
+              try {
+                const oldWatchlistId = item.watchlistId ?? item.watchlist_id;
+                const newWatchlistId = watchlistIdMap.get(oldWatchlistId);
+                if (!newWatchlistId) continue;
+                await dynamicInsert(client, 'watchlist_items', item, { watchlist_id: newWatchlistId });
+                added++;
+              } catch (error) {
+                // Likely duplicate, skip
+              }
+            }
+            additionalTablesImported.watchlistItems = added;
+            console.log(`[IMPORT] Watchlist items: ${added} added`);
+          }
+
+          // Simple user-owned tables (no FK remapping needed beyond user_id)
+          const simpleTables = [
+            { key: 'priceAlerts', table: 'price_alerts' },
+            { key: 'instrumentTemplates', table: 'instrument_templates' },
+            { key: 'generalNotes', table: 'general_notes' },
+            { key: 'customCsvMappings', table: 'custom_csv_mappings' },
+            { key: 'behavioralSettings', table: 'behavioral_settings' },
+            { key: 'healthData', table: 'health_data' }
+          ];
+
+          for (const { key, table } of simpleTables) {
+            if (importData[key] && importData[key].length > 0) {
+              let added = 0;
+              console.log(`[IMPORT] Processing ${importData[key].length} ${table} records...`);
+              for (const record of importData[key]) {
+                try {
+                  await dynamicInsert(client, table, record, { user_id: userId });
+                  added++;
+                } catch (error) {
+                  // Likely duplicate or constraint violation, skip
+                }
+              }
+              additionalTablesImported[key] = added;
+              console.log(`[IMPORT] ${table}: ${added} added`);
+            }
+          }
+        }
+
         await client.query('COMMIT');
         console.log('[IMPORT] Transaction committed successfully');
+
+        const additionalMsg = Object.entries(additionalTablesImported)
+          .filter(([, count]) => count > 0)
+          .map(([table, count]) => `${count} ${table}`)
+          .join(', ');
 
         res.json({
           success: true,
@@ -1442,7 +1609,8 @@ const settingsController = {
           chartsAdded,
           chartsSkipped,
           adminSettingsUpdated,
-          message: `Successfully imported: ${tradesAdded} trades, ${tagsAdded} tags, ${equityAdded} equity records, ${diaryAdded} diary entries, ${templatesAdded} templates, ${brokerFeesAdded} broker fee settings, ${chartsAdded} trade charts, ${adminSettingsUpdated} admin settings. Skipped: ${tradesSkipped} trades, ${diarySkipped} diary entries, ${templatesSkipped} templates, ${brokerFeesSkipped} broker fees, ${chartsSkipped} charts.`
+          additionalTablesImported,
+          message: `Successfully imported: ${tradesAdded} trades, ${tagsAdded} tags, ${equityAdded} equity records, ${diaryAdded} diary entries, ${templatesAdded} templates, ${brokerFeesAdded} broker fee settings, ${chartsAdded} trade charts, ${adminSettingsUpdated} admin settings${additionalMsg ? ', ' + additionalMsg : ''}. Skipped: ${tradesSkipped} trades, ${diarySkipped} diary entries, ${templatesSkipped} templates, ${brokerFeesSkipped} broker fees, ${chartsSkipped} charts.`
         });
       } catch (error) {
         await client.query('ROLLBACK');

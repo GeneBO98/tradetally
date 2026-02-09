@@ -389,14 +389,12 @@
           <form @submit.prevent="addSymbol">
             <div class="mb-4">
               <label for="symbol" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Symbol</label>
-              <input
+              <SymbolAutocomplete
                 id="symbol"
                 v-model="symbolForm.symbol"
-                type="text"
-                required
-                class="input uppercase dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                :required="true"
                 placeholder="Enter symbol (e.g., AAPL)"
-              >
+              />
             </div>
             <div class="mb-6">
               <label for="notes" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Notes (optional)</label>
@@ -474,9 +472,13 @@ import { useRoute, useRouter } from 'vue-router'
 import { useNotification } from '@/composables/useNotification'
 import { useInvestmentsStore } from '@/stores/investments'
 import api from '@/services/api'
+import SymbolAutocomplete from '@/components/common/SymbolAutocomplete.vue'
 
 export default {
   name: 'WatchlistDetailView',
+  components: {
+    SymbolAutocomplete
+  },
   setup() {
     const route = useRoute()
     const router = useRouter()

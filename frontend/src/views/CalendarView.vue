@@ -8,8 +8,19 @@
         </p>
       </div>
       
-      <!-- Year Navigation -->
       <div class="flex items-center space-x-4">
+        <!-- R-Value Toggle -->
+        <button
+          @click="toggleRValue"
+          class="px-3 py-1.5 text-xs font-medium rounded-md transition-colors"
+          :class="showRValue
+            ? 'bg-primary-600 text-white hover:bg-primary-700'
+            : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'"
+        >
+          {{ showRValue ? 'Show P&L ($)' : 'Show R-Value' }}
+        </button>
+
+        <!-- Year Navigation -->
         <button @click="changeYear(-1)" class="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
           <ChevronLeftIcon class="h-5 w-5" />
         </button>
@@ -52,9 +63,9 @@
               </div>
               <div class="flex items-center space-x-4">
                 <div class="text-right">
-                  <p class="text-sm text-gray-500 dark:text-gray-400">Total P/L</p>
-                  <p class="text-2xl font-bold" :class="monthlyPnl >= 0 ? 'text-green-600' : 'text-red-600'">
-                    ${{ formatNumber(monthlyPnl) }}
+                  <p class="text-sm text-gray-500 dark:text-gray-400">{{ showRValue ? 'Total R' : 'Total P/L' }}</p>
+                  <p class="text-2xl font-bold" :class="monthlyTotal >= 0 ? 'text-green-600' : 'text-red-600'">
+                    {{ showRValue ? formatRValue(monthlyTotal) : '$' + formatNumber(monthlyTotal) }}
                   </p>
                 </div>
                 <button @click="closeExpandedMonth" class="btn-secondary">
@@ -70,7 +81,7 @@
                 {{ day }}
               </div>
               <div class="text-center text-xs font-medium text-gray-500 dark:text-gray-400 py-2">
-                Week P/L
+                {{ showRValue ? 'Week R' : 'Week P/L' }}
               </div>
             </div>
             <div v-for="(week, weekIndex) in expandedMonthWeekdays" :key="weekIndex" class="grid grid-cols-6 gap-1 mb-1">
@@ -85,7 +96,7 @@
                   </div>
                   <div v-if="day.pnl !== undefined && day.trades > 0" class="mt-1">
                     <p class="text-xs sm:text-sm font-semibold truncate" :class="getDayPnlTextColor(day)">
-                      ${{ formatNumber(day.pnl, 0) }}
+                      {{ showRValue ? formatRValue(day.rValue || 0, 1) : '$' + formatNumber(day.pnl, 0) }}
                     </p>
                     <p class="text-xs" :class="getDaySubTextColor(day)">
                       {{ day.trades }} {{ day.trades === 1 ? 'trade' : 'trades' }}
@@ -93,10 +104,10 @@
                   </div>
                 </div>
               </div>
-              <!-- Week P/L Column -->
+              <!-- Week P/L or R-Value Column -->
               <div class="flex items-center justify-center border border-gray-200 dark:border-gray-700 rounded-lg p-2 sm:p-3 bg-gray-50 dark:bg-gray-800">
-                <p class="text-xs sm:text-sm font-semibold" :class="week.weekPnl >= 0 ? 'text-green-600' : 'text-red-600'">
-                  ${{ formatNumber(week.weekPnl, 0) }}
+                <p class="text-xs sm:text-sm font-semibold" :class="getWeekTotal(week) >= 0 ? 'text-green-600' : 'text-red-600'">
+                  {{ showRValue ? formatRValue(week.weekRValue || 0, 1) : '$' + formatNumber(week.weekPnl, 0) }}
                 </p>
               </div>
             </div>
@@ -191,7 +202,13 @@
                 </div>
                 <div class="text-right">
                   <p class="font-semibold" :class="(contrib.pnl || 0) >= 0 ? 'text-green-600' : 'text-red-600'">
-                    ${{ formatNumber(contrib.pnl) }}
+                    {{ showRValue && contrib.r_value != null ? formatRValue(contrib.r_value) : '$' + formatNumber(contrib.pnl) }}
+                  </p>
+                  <p v-if="showRValue && contrib.r_value == null && !contrib.is_partial" class="text-xs text-gray-400">
+                    No R data
+                  </p>
+                  <p v-else-if="showRValue && contrib.is_partial" class="text-xs text-gray-400">
+                    Partial
                   </p>
                 </div>
               </div>
@@ -200,9 +217,9 @@
 
           <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 flex-shrink-0">
             <div class="flex justify-between items-center">
-              <span class="font-medium text-gray-900 dark:text-white">Total for day:</span>
-              <span class="font-bold text-lg" :class="selectedDayTotalPnl >= 0 ? 'text-green-600' : 'text-red-600'">
-                ${{ formatNumber(selectedDayTotalPnl) }}
+              <span class="font-medium text-gray-900 dark:text-white">{{ showRValue ? 'Total R for day:' : 'Total for day:' }}</span>
+              <span class="font-bold text-lg" :class="selectedDayTotal >= 0 ? 'text-green-600' : 'text-red-600'">
+                {{ showRValue ? formatRValue(selectedDayTotalRValue) : '$' + formatNumber(selectedDayTotalPnl) }}
               </span>
             </div>
           </div>
@@ -254,15 +271,20 @@ const currentYear = ref(getInitialYear())
 const selectedDay = ref(null)
 const expandedMonthContainer = ref(null)
 const isModalExpanded = ref(false)
+const showRValue = ref(false)
+
+function toggleRValue() {
+  showRValue.value = !showRValue.value
+}
 
 // Helper to get calendar data for a date
 function getCalendarDataForDate(date) {
-  if (!date) return { trades: 0, pnl: 0 }
+  if (!date) return { trades: 0, pnl: 0, rValue: 0 }
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const day = String(date.getDate()).padStart(2, '0')
   const dateKey = `${year}-${month}-${day}`
-  return calendarData.value.get(dateKey) || { trades: 0, pnl: 0 }
+  return calendarData.value.get(dateKey) || { trades: 0, pnl: 0, rValue: 0 }
 }
 
 // Day detail shows execution-level contributions (from API), not getTradesForDate
@@ -327,7 +349,7 @@ const expandedMonthWeekdays = computed(() => {
   const allDays = eachDayOfInterval({ start: monthStart, end: monthEnd })
 
   const weeks = []
-  let currentWeek = { days: [], weekPnl: 0 }
+  let currentWeek = { days: [], weekPnl: 0, weekRValue: 0 }
 
   for (const date of allDays) {
     const dayOfWeek = getDay(date) // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
@@ -341,7 +363,7 @@ const expandedMonthWeekdays = computed(() => {
           currentWeek.days.push({ date: null })
         }
         weeks.push(currentWeek)
-        currentWeek = { days: [], weekPnl: 0 }
+        currentWeek = { days: [], weekPnl: 0, weekRValue: 0 }
       }
       continue
     }
@@ -353,7 +375,7 @@ const expandedMonthWeekdays = computed(() => {
         currentWeek.days.push({ date: null })
       }
       weeks.push(currentWeek)
-      currentWeek = { days: [], weekPnl: 0 }
+      currentWeek = { days: [], weekPnl: 0, weekRValue: 0 }
     }
 
     // Add padding for the first week if it doesn't start on Monday
@@ -369,11 +391,13 @@ const expandedMonthWeekdays = computed(() => {
     currentWeek.days.push({
       date,
       trades: dayData.trades,
-      pnl: dayData.trades > 0 ? dayData.pnl : undefined
+      pnl: dayData.trades > 0 ? dayData.pnl : undefined,
+      rValue: dayData.trades > 0 ? dayData.rValue : undefined
     })
 
     if (dayData.trades > 0) {
       currentWeek.weekPnl += dayData.pnl
+      currentWeek.weekRValue += dayData.rValue || 0
     }
   }
 
@@ -421,6 +445,31 @@ const monthlyPnl = computed(() => {
   }, 0)
 })
 
+const monthlyRValue = computed(() => {
+  if (!expandedMonth.value) return 0
+  const monthStart = startOfMonth(expandedMonth.value)
+  const monthEnd = endOfMonth(expandedMonth.value)
+  const monthDays = eachDayOfInterval({ start: monthStart, end: monthEnd })
+  return monthDays.reduce((sum, date) => {
+    return sum + (getCalendarDataForDate(date).rValue || 0)
+  }, 0)
+})
+
+// Returns P&L or R-value based on toggle
+const monthlyTotal = computed(() => {
+  return showRValue.value ? monthlyRValue.value : monthlyPnl.value
+})
+
+// Total R-value for selected day
+const selectedDayTotalRValue = computed(() => {
+  return selectedDayContributions.value.reduce((sum, c) => sum + (parseFloat(c.r_value) || 0), 0)
+})
+
+// Returns P&L or R-value total for selected day based on toggle
+const selectedDayTotal = computed(() => {
+  return showRValue.value ? selectedDayTotalRValue.value : selectedDayTotalPnl.value
+})
+
 
 function generateMonthDays(monthStart, monthEnd) {
   const days = []
@@ -439,7 +488,8 @@ function generateMonthDays(monthStart, monthEnd) {
     days.push({
       date,
       trades: dayData.trades,
-      pnl: dayData.trades > 0 ? dayData.pnl : undefined
+      pnl: dayData.trades > 0 ? dayData.pnl : undefined,
+      rValue: dayData.trades > 0 ? dayData.rValue : undefined
     })
   }
 
@@ -573,6 +623,16 @@ function formatNumber(num, decimals = 2) {
   }).format(num || 0)
 }
 
+function formatRValue(num, decimals = 2) {
+  const value = parseFloat(num) || 0
+  const sign = value >= 0 ? '+' : ''
+  return `${sign}${value.toFixed(decimals)}R`
+}
+
+function getWeekTotal(week) {
+  return showRValue.value ? (week.weekRValue || 0) : (week.weekPnl || 0)
+}
+
 function navigateToTrade(tradeId) {
   // Save current state to localStorage before navigating
   localStorage.setItem('calendar_year', currentYear.value.toString())
@@ -601,7 +661,8 @@ async function fetchCalendarData() {
       for (const day of response.data.calendar) {
         dataMap.set(day.trade_date, {
           trades: parseInt(day.trades) || 0,
-          pnl: parseFloat(day.daily_pnl) || 0
+          pnl: parseFloat(day.daily_pnl) || 0,
+          rValue: parseFloat(day.daily_r_value) || 0
         })
       }
     }

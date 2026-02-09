@@ -183,13 +183,11 @@
         <div class="mb-6 flex flex-wrap items-center gap-4">
           <div class="flex items-center space-x-2">
             <label for="symbolFilter" class="text-sm font-medium text-gray-700 dark:text-gray-300">Symbol:</label>
-            <input
+            <SymbolAutocomplete
               id="symbolFilter"
               v-model="filters.symbol"
-              type="text"
               placeholder="Filter by symbol"
-              class="input"
-            >
+            />
           </div>
           <div class="flex items-center space-x-2">
             <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Status:</label>
@@ -385,14 +383,12 @@
             <div class="grid grid-cols-2 gap-4 mb-4">
               <div>
                 <label for="symbol" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Symbol</label>
-                <input
+                <SymbolAutocomplete
                   id="symbol"
                   v-model="alertForm.symbol"
-                  type="text"
-                  required
-                  class="input"
+                  :required="true"
                   placeholder="e.g., AAPL"
-                >
+                />
               </div>
               <div>
                 <label for="alertType" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Alert Type</label>
@@ -500,6 +496,7 @@ import ProUpgradePrompt from '@/components/ProUpgradePrompt.vue'
 import MdiIcon from '@/components/MdiIcon.vue'
 import { mdiBell, mdiRepeat } from '@mdi/js'
 import { getMarketStatus } from '@/utils/marketStatus'
+import SymbolAutocomplete from '@/components/common/SymbolAutocomplete.vue'
 
 const route = useRoute()
 const router = useRouter()
