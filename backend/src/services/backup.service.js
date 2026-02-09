@@ -85,159 +85,55 @@ class BackupService {
   async fetchAllData() {
     console.log('[BACKUP] Fetching all site data...');
 
-    // Define all tables to backup (excluding system tables like backups, backup_settings)
-    // Tables are organized by category for better organization
-    const tableQueries = {
-      // Core user data
-      users: 'SELECT * FROM users',
-      user_settings: 'SELECT * FROM user_settings',
-      
-      // Trade data
-      trades: 'SELECT * FROM trades',
-      trade_attachments: 'SELECT * FROM trade_attachments',
-      trade_comments: 'SELECT * FROM trade_comments',
-      trade_charts: 'SELECT * FROM trade_charts',
-      round_trip_trades: 'SELECT * FROM round_trip_trades',
-      trade_split_adjustments: 'SELECT * FROM trade_split_adjustments',
-      
-      // Tags and categories
-      tags: 'SELECT * FROM tags',
-      symbol_categories: 'SELECT * FROM symbol_categories',
-      
-      // Diary system
-      diary_entries: 'SELECT * FROM diary_entries',
-      diary_attachments: 'SELECT * FROM diary_attachments',
-      diary_templates: 'SELECT * FROM diary_templates',
-      
-      // Watchlists and alerts
-      watchlists: 'SELECT * FROM watchlists',
-      watchlist_items: 'SELECT * FROM watchlist_items',
-      price_alerts: 'SELECT * FROM price_alerts',
-      price_monitoring: 'SELECT * FROM price_monitoring',
-      
-      // Gamification
-      achievements: 'SELECT * FROM achievements',
-      user_achievements: 'SELECT * FROM user_achievements',
-      gamification_profile: 'SELECT * FROM gamification_profile',
-      
-      // Health data
-      health_data: 'SELECT * FROM health_data',
-      health_trading_correlations: 'SELECT * FROM health_trading_correlations',
-      health_insights: 'SELECT * FROM health_insights',
-      
-      // Mobile and devices
-      devices: 'SELECT * FROM devices',
-      refresh_tokens: 'SELECT * FROM refresh_tokens',
-      sync_metadata: 'SELECT * FROM sync_metadata',
-      device_tokens: 'SELECT * FROM device_tokens',
-      
-      // API and authentication
-      api_keys: 'SELECT * FROM api_keys',
-      api_usage_tracking: 'SELECT * FROM api_usage_tracking',
-      oauth_clients: 'SELECT * FROM oauth_clients',
-      oauth_authorization_codes: 'SELECT * FROM oauth_authorization_codes',
-      oauth_access_tokens: 'SELECT * FROM oauth_access_tokens',
-      oauth_refresh_tokens: 'SELECT * FROM oauth_refresh_tokens',
-      oauth_user_consents: 'SELECT * FROM oauth_user_consents',
-      
-      // Subscriptions and billing
-      subscriptions: 'SELECT * FROM subscriptions',
-      tier_overrides: 'SELECT * FROM tier_overrides',
-      features: 'SELECT * FROM features',
-      subscription_features: 'SELECT * FROM subscription_features',
-      user_subscription_features: 'SELECT * FROM user_subscription_features',
-      apple_transactions: 'SELECT * FROM apple_transactions',
-      
-      // Analytics and behavioral data
-      behavioral_patterns: 'SELECT * FROM behavioral_patterns',
-      behavioral_alerts: 'SELECT * FROM behavioral_alerts',
-      behavioral_settings: 'SELECT * FROM behavioral_settings',
-      revenge_trading_events: 'SELECT * FROM revenge_trading_events',
-      loss_aversion_events: 'SELECT * FROM loss_aversion_events',
-      trade_hold_patterns: 'SELECT * FROM trade_hold_patterns',
-      overconfidence_events: 'SELECT * FROM overconfidence_events',
-      overconfidence_settings: 'SELECT * FROM overconfidence_settings',
-      win_loss_streaks: 'SELECT * FROM win_loss_streaks',
-      
-      // Trading personality
-      trading_personality_profiles: 'SELECT * FROM trading_personality_profiles',
-      personality_drift_tracking: 'SELECT * FROM personality_drift_tracking',
-      personality_peer_comparison: 'SELECT * FROM personality_peer_comparison',
-      personality_trade_analysis: 'SELECT * FROM personality_trade_analysis',
-      
-      // Tick data
-      tick_data: 'SELECT * FROM tick_data',
-      tick_data_cache: 'SELECT * FROM tick_data_cache',
-      revenge_trade_tick_analysis: 'SELECT * FROM revenge_trade_tick_analysis',
-      
-      // Strategy classification
-      strategy_classification_history: 'SELECT * FROM strategy_classification_history',
-      
-      // Stock splits
-      stock_splits: 'SELECT * FROM stock_splits',
-      stock_split_check_log: 'SELECT * FROM stock_split_check_log',
-      
-      // Equity tracking
-      equity_history: 'SELECT * FROM equity_history',
-      equity_snapshots: 'SELECT * FROM equity_snapshots',
-      
-      // Notifications
-      notification_preferences: 'SELECT * FROM notification_preferences',
-      notification_read_status: 'SELECT * FROM notification_read_status',
-      alert_notifications: 'SELECT * FROM alert_notifications',
-      
-      // Import and CSV
-      import_logs: 'SELECT * FROM import_logs',
-      custom_csv_mappings: 'SELECT * FROM custom_csv_mappings',
-      broker_fee_settings: 'SELECT * FROM broker_fee_settings',
-      
-      // CUSIP mappings
-      cusip_mappings: 'SELECT * FROM cusip_mappings',
-      cusip_lookup_queue: 'SELECT * FROM cusip_lookup_queue',
-      
-      // General notes
-      general_notes: 'SELECT * FROM general_notes',
-      
-      // Admin and instance config
-      admin_settings: 'SELECT * FROM admin_settings',
-      instance_config: 'SELECT * FROM instance_config',
-      
-      // Job queue (may contain important pending jobs)
-      job_queue: 'SELECT * FROM job_queue',
-      
-      // Cache tables (optional but included for completeness)
-      enrichment_cache: 'SELECT * FROM enrichment_cache',
-      global_enrichment_cache: 'SELECT * FROM global_enrichment_cache',
-      news_cache: 'SELECT * FROM news_cache'
-    };
+    // Dynamically discover all tables from the database schema
+    // This ensures new tables from migrations are automatically included
+    const EXCLUDED_TABLES = new Set([
+      'backups',
+      'backup_settings',
+      'schema_migrations'
+    ]);
+
+    const tablesResult = await db.query(`
+      SELECT table_name FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+      ORDER BY table_name
+    `);
+
+    const tableNames = tablesResult.rows
+      .map(row => row.table_name)
+      .filter(name => !EXCLUDED_TABLES.has(name));
+
+    console.log(`[BACKUP] Discovered ${tableNames.length} tables to backup`);
 
     // Execute all queries in parallel
-    const tableNames = Object.keys(tableQueries);
-    const queries = tableNames.map(tableName => 
-      db.query(tableQueries[tableName]).catch(error => {
-        // If table doesn't exist, return empty result
-        console.warn(`[BACKUP] Table ${tableName} not found or error: ${error.message}`);
+    const queries = tableNames.map(tableName =>
+      db.query(`SELECT * FROM "${tableName}"`).catch(error => {
+        console.warn(`[BACKUP] Table ${tableName} error: ${error.message}`);
         return { rows: [] };
       })
     );
 
     const results = await Promise.all(queries);
 
-    // Build tables object
+    // Build tables object with camelCase keys for backward compatibility
+    // Also build a mapping so restore can convert back precisely
     const tables = {};
     const statistics = {};
-    
+    const tableNameMapping = {}; // camelCase -> snake_case
+
     tableNames.forEach((tableName, index) => {
       const camelCaseName = tableName.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
       tables[camelCaseName] = results[index].rows;
       statistics[tableName] = results[index].rows.length;
+      tableNameMapping[camelCaseName] = tableName;
     });
 
     // Calculate summary statistics
     const data = {
-      version: '2.0', // Updated version to indicate comprehensive backup
+      version: '3.0',
       exportDate: new Date().toISOString(),
       tables,
+      tableNameMapping,
       statistics: {
         ...statistics,
         totalTables: tableNames.length,
@@ -697,15 +593,30 @@ class BackupService {
         return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
       };
 
-      // Helper function to get primary key field for a table
-      const getPrimaryKeyField = (tableName) => {
-        // Most tables use 'id' as primary key
-        // Some tables might have different primary keys, handle special cases
-        const specialCases = {
-          'user_settings': 'user_id',
-          'sync_metadata': 'user_id'
-        };
-        return specialCases[tableName] || 'id';
+      // Dynamic primary key detection via information_schema (cached per restore session)
+      const pkCache = {};
+      const getPrimaryKeyField = async (tableName) => {
+        if (pkCache[tableName]) return pkCache[tableName];
+        try {
+          const pkResult = await client.query(`
+            SELECT kcu.column_name
+            FROM information_schema.table_constraints tc
+            JOIN information_schema.key_column_usage kcu
+              ON tc.constraint_name = kcu.constraint_name
+              AND tc.table_schema = kcu.table_schema
+            WHERE tc.constraint_type = 'PRIMARY KEY'
+              AND tc.table_schema = 'public'
+              AND tc.table_name = $1
+            ORDER BY kcu.ordinal_position
+            LIMIT 1
+          `, [tableName]);
+          const pk = pkResult.rows.length > 0 ? pkResult.rows[0].column_name : 'id';
+          pkCache[tableName] = pk;
+          return pk;
+        } catch (error) {
+          pkCache[tableName] = 'id';
+          return 'id';
+        }
       };
 
       // Helper function to restore a generic table
@@ -720,7 +631,7 @@ class BackupService {
         }
 
         console.log(`[RESTORE] Processing ${tableData.length} ${tableName}...`);
-        const idField = getPrimaryKeyField(tableName);
+        const idField = await getPrimaryKeyField(tableName);
         
         // Initialize table results if not exists
         if (!tableResults[tableName]) {
@@ -794,92 +705,72 @@ class BackupService {
         console.log(`[RESTORE] ${tableName}: ${tableResults[tableName].added} added, ${tableResults[tableName].skipped} skipped, ${tableResults[tableName].errors} errors`);
       };
 
-      // Define table restore order and categorization
-      // Tables that depend on users should be restored after users
-      // Tables that depend on trades should be restored after trades
-      
-      // User-related tables (restore after users)
-      await restoreTable('user_settings', 'userSettings', 'other');
-      await restoreTable('devices', 'devices', 'other');
-      await restoreTable('refresh_tokens', 'refreshTokens', 'other');
-      await restoreTable('sync_metadata', 'syncMetadata', 'other');
-      await restoreTable('device_tokens', 'deviceTokens', 'other');
-      await restoreTable('api_keys', 'apiKeys', 'other');
-      await restoreTable('api_usage_tracking', 'apiUsageTracking', 'other');
-      await restoreTable('subscriptions', 'subscriptions', 'other');
-      await restoreTable('tier_overrides', 'tierOverrides', 'other');
-      await restoreTable('user_subscription_features', 'userSubscriptionFeatures', 'other');
-      await restoreTable('apple_transactions', 'appleTransactions', 'other');
-      await restoreTable('notification_preferences', 'notificationPreferences', 'other');
-      await restoreTable('notification_read_status', 'notificationReadStatus', 'other');
-      await restoreTable('custom_csv_mappings', 'customCsvMappings', 'other');
-      await restoreTable('broker_fee_settings', 'brokerFeeSettings', 'other');
-      await restoreTable('general_notes', 'generalNotes', 'other');
-      await restoreTable('trading_personality_profiles', 'tradingPersonalityProfiles', 'other');
-      await restoreTable('personality_drift_tracking', 'personalityDriftTracking', 'other');
-      await restoreTable('personality_peer_comparison', 'personalityPeerComparison', 'other');
-      await restoreTable('personality_trade_analysis', 'personalityTradeAnalysis', 'other');
-      await restoreTable('behavioral_patterns', 'behavioralPatterns', 'other');
-      await restoreTable('behavioral_alerts', 'behavioralAlerts', 'other');
-      await restoreTable('behavioral_settings', 'behavioralSettings', 'other');
-      await restoreTable('revenge_trading_events', 'revengeTradingEvents', 'other');
-      await restoreTable('loss_aversion_events', 'lossAversionEvents', 'other');
-      await restoreTable('trade_hold_patterns', 'tradeHoldPatterns', 'other');
-      await restoreTable('overconfidence_events', 'overconfidenceEvents', 'other');
-      await restoreTable('overconfidence_settings', 'overconfidenceSettings', 'other');
-      await restoreTable('win_loss_streaks', 'winLossStreaks', 'other');
-      await restoreTable('health_data', 'healthData', 'other');
-      await restoreTable('health_trading_correlations', 'healthTradingCorrelations', 'other');
-      await restoreTable('health_insights', 'healthInsights', 'other');
-      await restoreTable('watchlists', 'watchlists', 'other');
-      await restoreTable('watchlist_items', 'watchlistItems', 'other');
-      await restoreTable('price_alerts', 'priceAlerts', 'other');
-      await restoreTable('price_monitoring', 'priceMonitoring', 'other');
-      await restoreTable('alert_notifications', 'alertNotifications', 'other');
-      await restoreTable('achievements', 'achievements', 'other');
-      await restoreTable('user_achievements', 'userAchievements', 'other');
-      await restoreTable('gamification_profile', 'gamificationProfile', 'other');
+      // Dynamically restore all remaining tables from the backup
+      // Tables already handled: users, trades, diary_entries
+      const ALREADY_RESTORED = new Set(['users', 'trades', 'diaryEntries', 'diary_entries']);
+      // Tables that should never be restored (system/meta tables)
+      const SKIP_RESTORE = new Set(['backups', 'backupSettings', 'backup_settings', 'schemaMigrations', 'schema_migrations']);
 
-      // Trade-related tables (restore after trades)
-      await restoreTable('trade_attachments', 'tradeAttachments', 'other');
-      await restoreTable('trade_comments', 'tradeComments', 'other');
-      await restoreTable('trade_charts', 'tradeCharts', 'other');
-      await restoreTable('round_trip_trades', 'roundTripTrades', 'other');
-      await restoreTable('trade_split_adjustments', 'tradeSplitAdjustments', 'other');
-      await restoreTable('tick_data', 'tickData', 'other');
-      await restoreTable('tick_data_cache', 'tickDataCache', 'other');
-      await restoreTable('revenge_trade_tick_analysis', 'revengeTradeTickAnalysis', 'other');
-      await restoreTable('strategy_classification_history', 'strategyClassificationHistory', 'other');
+      // Priority order for tables with foreign key dependencies
+      // These are restored first (in order) before all remaining tables
+      const PRIORITY_ORDER = [
+        'user_settings', 'tags', 'symbol_categories', 'features',
+        'achievements', 'watchlists', 'subscriptions',
+        'devices', 'oauth_clients', 'broker_connections',
+        // Tables that depend on priority tables above
+        'subscription_features', 'user_subscription_features',
+        'watchlist_items', 'user_achievements',
+        'trade_attachments', 'trade_comments', 'trade_charts',
+        'round_trip_trades', 'diary_attachments', 'diary_templates',
+      ];
 
-      // Diary-related tables
-      await restoreTable('diary_attachments', 'diaryAttachments', 'other');
-      await restoreTable('diary_templates', 'diaryTemplates', 'other');
+      // Build the list of all camelCase keys in the backup (excluding already-handled tables)
+      const allBackupKeys = Object.keys(tables).filter(key =>
+        !ALREADY_RESTORED.has(key) && !SKIP_RESTORE.has(key)
+      );
 
-      // Other independent tables
-      await restoreTable('tags', 'tags', 'other');
-      await restoreTable('symbol_categories', 'symbolCategories', 'other');
-      await restoreTable('stock_splits', 'stockSplits', 'other');
-      await restoreTable('stock_split_check_log', 'stockSplitCheckLog', 'other');
-      await restoreTable('equity_history', 'equityHistory', 'other');
-      await restoreTable('equity_snapshots', 'equitySnapshots', 'other');
-      await restoreTable('import_logs', 'importLogs', 'other');
-      await restoreTable('cusip_mappings', 'cusipMappings', 'other');
-      await restoreTable('cusip_lookup_queue', 'cusipLookupQueue', 'other');
-      await restoreTable('features', 'features', 'other');
-      await restoreTable('subscription_features', 'subscriptionFeatures', 'other');
-      await restoreTable('oauth_clients', 'oauthClients', 'other');
-      await restoreTable('oauth_authorization_codes', 'oauthAuthorizationCodes', 'other');
-      await restoreTable('oauth_access_tokens', 'oauthAccessTokens', 'other');
-      await restoreTable('oauth_refresh_tokens', 'oauthRefreshTokens', 'other');
-      await restoreTable('oauth_user_consents', 'oauthUserConsents', 'other');
-      await restoreTable('admin_settings', 'adminSettings', 'other');
-      await restoreTable('instance_config', 'instanceConfig', 'other');
-      await restoreTable('job_queue', 'jobQueue', 'other');
-      
-      // Cache tables (optional, but included for completeness)
-      await restoreTable('enrichment_cache', 'enrichmentCache', 'other');
-      await restoreTable('global_enrichment_cache', 'globalEnrichmentCache', 'other');
-      await restoreTable('news_cache', 'newsCache', 'other');
+      // v3.0 backups include tableNameMapping for precise camelCase -> snake_case conversion
+      const tableNameMapping = backupData.tableNameMapping || {};
+
+      // Resolve snake_case table name from a camelCase key
+      const resolveSnakeName = (camelKey) => {
+        if (tableNameMapping[camelKey]) return tableNameMapping[camelKey];
+        // Fallback: convert camelCase to snake_case
+        return camelKey.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+      };
+
+      // Build ordered list: priority tables first, then remaining in backup order
+      const prioritySet = new Set(PRIORITY_ORDER);
+      const orderedKeys = [];
+      const remainingKeys = [];
+
+      for (const key of allBackupKeys) {
+        const snakeName = resolveSnakeName(key);
+        if (prioritySet.has(snakeName)) {
+          // Will be added in priority order below
+        } else {
+          remainingKeys.push(key);
+        }
+      }
+
+      // Add priority tables in defined order (if they exist in backup)
+      for (const snakeName of PRIORITY_ORDER) {
+        // Find the matching camelCase key in backup
+        const matchingKey = allBackupKeys.find(key => resolveSnakeName(key) === snakeName);
+        if (matchingKey) {
+          orderedKeys.push(matchingKey);
+        }
+      }
+
+      // Append all remaining tables
+      orderedKeys.push(...remainingKeys);
+
+      console.log(`[RESTORE] Restoring ${orderedKeys.length} additional tables dynamically...`);
+
+      for (const camelKey of orderedKeys) {
+        const snakeName = resolveSnakeName(camelKey);
+        await restoreTable(snakeName, camelKey, 'other');
+      }
 
       await client.query('COMMIT');
       console.log('[RESTORE] Restore completed successfully');

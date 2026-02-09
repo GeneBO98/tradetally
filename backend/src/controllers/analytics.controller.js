@@ -1015,12 +1015,12 @@ const analyticsController = {
             ${fc}
         ),
         daily_from_exec AS (
-          SELECT exec_date AS trade_date, exec_pnl AS pnl
+          SELECT trade_id, exec_date AS trade_date, exec_pnl AS pnl
           FROM exit_executions
           WHERE exec_pnl IS NOT NULL
         ),
         daily_from_trade AS (
-          SELECT (${tableAlias}.exit_time::timestamp)::date AS trade_date, ${tableAlias}.pnl
+          SELECT ${tableAlias}.id AS trade_id, (${tableAlias}.exit_time::timestamp)::date AS trade_date, ${tableAlias}.pnl
           FROM trades ${tableAlias}
           WHERE ${tableAlias}.user_id = $1
             AND ${tableAlias}.exit_time IS NOT NULL
@@ -1041,14 +1041,36 @@ const analyticsController = {
             ${fc}
         ),
         combined AS (
-          SELECT trade_date, pnl FROM daily_from_exec
+          SELECT trade_id, trade_date, pnl FROM daily_from_exec
           UNION ALL
-          SELECT trade_date, pnl FROM daily_from_trade
+          SELECT trade_id, trade_date, pnl FROM daily_from_trade
+        ),
+        pnl_by_date AS (
+          SELECT trade_date, COUNT(DISTINCT trade_id)::int AS trades, COALESCE(SUM(pnl), 0)::numeric AS daily_pnl
+          FROM combined
+          GROUP BY trade_date
+        ),
+        -- R-value by date: attribute trade's r_value to its final exit date
+        r_value_by_date AS (
+          SELECT
+            (${tableAlias}.exit_time::timestamp)::date AS trade_date,
+            COALESCE(SUM(${tableAlias}.r_value) FILTER (WHERE ${tableAlias}.r_value IS NOT NULL AND ${tableAlias}.stop_loss IS NOT NULL), 0)::numeric AS daily_r_value
+          FROM trades ${tableAlias}
+          WHERE ${tableAlias}.user_id = $1
+            AND ${tableAlias}.exit_time IS NOT NULL
+            AND (${tableAlias}.exit_time::timestamp)::date >= $${paramOffset + 1}::date
+            AND (${tableAlias}.exit_time::timestamp)::date <= $${paramOffset + 2}::date
+            ${fc}
+          GROUP BY (${tableAlias}.exit_time::timestamp)::date
         )
-        SELECT trade_date::text, COUNT(*)::int AS trades, COALESCE(SUM(pnl), 0)::numeric AS daily_pnl
-        FROM combined
-        GROUP BY trade_date
-        ORDER BY trade_date
+        SELECT
+          p.trade_date::text,
+          p.trades,
+          p.daily_pnl,
+          COALESCE(r.daily_r_value, 0)::numeric AS daily_r_value
+        FROM pnl_by_date p
+        LEFT JOIN r_value_by_date r ON p.trade_date = r.trade_date
+        ORDER BY p.trade_date
       `;
 
       // Add start and end date to params
@@ -1174,9 +1196,11 @@ const analyticsController = {
           GROUP BY t.id
         )
         SELECT g.trade_id, g.symbol, g.side, g.total_pnl AS exec_pnl, g.exit_count,
-               COALESCE(tt.total_exit_count, 1) AS total_exit_count
+               COALESCE(tt.total_exit_count, 1) AS total_exit_count,
+               tr.r_value, tr.stop_loss
         FROM grouped_by_trade g
         LEFT JOIN trade_total_exits tt ON g.trade_id = tt.trade_id
+        LEFT JOIN trades tr ON g.trade_id = tr.id
         ORDER BY g.trade_id
       `;
       const execResult = await db.query(dayQuery, params);
@@ -1184,19 +1208,22 @@ const analyticsController = {
       const rows = execResult.rows.map(r => {
         const exitCountOnDay = r.exit_count != null ? parseInt(r.exit_count, 10) : 1;
         const totalExitCount = r.total_exit_count != null ? parseInt(r.total_exit_count, 10) : 1;
+        const isPartial = exitCountOnDay < totalExitCount;
         return {
           trade_id: r.trade_id,
           symbol: r.symbol,
           side: r.side,
           pnl: r.exec_pnl != null ? parseFloat(r.exec_pnl) : null,
+          // Only show r_value for fully closed trades (not partial exits)
+          r_value: (!isPartial && r.r_value != null && r.stop_loss != null) ? parseFloat(r.r_value) : null,
           exit_count: exitCountOnDay,
           // Only mark as partial if exits span multiple days (not all exits are on this day)
-          is_partial: exitCountOnDay < totalExitCount
+          is_partial: isPartial
         };
       });
 
       const tradeLevelFallbackQuery = `
-        SELECT t.id AS trade_id, t.symbol, t.side, t.exit_time AS exec_datetime, t.pnl, t.quantity, t.exit_price AS price
+        SELECT t.id AS trade_id, t.symbol, t.side, t.exit_time AS exec_datetime, t.pnl, t.quantity, t.exit_price AS price, t.r_value, t.stop_loss
         FROM trades t
         WHERE t.user_id = $1
           AND t.exit_time IS NOT NULL
@@ -1221,6 +1248,7 @@ const analyticsController = {
         symbol: r.symbol,
         side: r.side,
         pnl: r.pnl != null ? parseFloat(r.pnl) : null,
+        r_value: (r.r_value != null && r.stop_loss != null) ? parseFloat(r.r_value) : null,
         exit_count: 1,
         is_partial: false
       }));

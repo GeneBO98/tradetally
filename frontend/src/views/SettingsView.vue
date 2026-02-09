@@ -105,7 +105,7 @@
                   <br>
                   <strong>Dollar amount:</strong> Use a fixed risk per trade in dollars (e.g., $100 or $150 per trade).
                   <br>
-                  <strong>Low of Day (LoD):</strong> Use the low price of the entry day (Qullamaggie-style swing trades). Only applies to long positions.
+                  <strong>Low of Day (LoD):</strong> Use the low price of the entry day (Qullamaggie-style swing trades). Uses Low of Day for long positions and High of Day for short positions.
                 </p>
               </div>
 

@@ -347,27 +347,58 @@
       <div v-if="importHistory.length > 0" class="card">
         <div class="card-body">
           <div class="flex items-center justify-between mb-4">
-            <h3 class="heading-card">
-              Import History
-              <span v-if="pagination.total > 0" class="text-sm font-normal text-gray-500 dark:text-gray-400">
-                ({{ importHistory.length }} of {{ pagination.total }})
-              </span>
-            </h3>
-            <button @click="fetchLogs" class="btn-secondary text-sm">
-              View Logs
-            </button>
+            <div class="flex items-center space-x-3">
+              <h3 class="heading-card">
+                Import History
+                <span v-if="pagination.total > 0" class="text-sm font-normal text-gray-500 dark:text-gray-400">
+                  ({{ importHistory.length }} of {{ pagination.total }})
+                </span>
+              </h3>
+              <button
+                v-if="selectedImportIds.size > 0"
+                @click="bulkDeleteImports"
+                class="px-3 py-1 bg-red-600 text-white text-sm rounded-md hover:bg-red-700 disabled:opacity-50"
+                :disabled="bulkDeleting"
+              >
+                Delete Selected ({{ selectedImportIds.size }})
+              </button>
+            </div>
+            <div class="flex items-center space-x-3">
+              <label class="flex items-center space-x-2 text-sm text-gray-500 dark:text-gray-400 cursor-pointer select-none">
+                <input
+                  ref="selectAllCheckbox"
+                  type="checkbox"
+                  :checked="importHistory.length > 0 && selectedImportIds.size === importHistory.length"
+                  @change="toggleSelectAll"
+                  class="rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500"
+                />
+                <span>Select All</span>
+              </label>
+              <button @click="fetchLogs" class="btn-secondary text-sm">
+                View Logs
+              </button>
+            </div>
           </div>
           <div class="space-y-3">
             <div
               v-for="importLog in importHistory"
               :key="importLog.id"
-              class="flex items-center justify-between p-3 border border-gray-200 dark:border-gray-700 rounded-lg"
+              class="flex items-center justify-between p-3 border rounded-lg"
+              :class="selectedImportIds.has(importLog.id) ? 'border-primary-300 dark:border-primary-600 bg-primary-50 dark:bg-primary-900/20' : 'border-gray-200 dark:border-gray-700'"
             >
-              <div>
-                <p class="font-medium text-gray-900 dark:text-white">{{ importLog.file_name }}</p>
-                <p class="text-sm text-gray-500 dark:text-gray-400">
-                  {{ formatDate(importLog.created_at) }} • {{ importLog.broker }}
-                </p>
+              <div class="flex items-center space-x-3">
+                <input
+                  type="checkbox"
+                  :checked="selectedImportIds.has(importLog.id)"
+                  @change="toggleImportSelection(importLog.id)"
+                  class="rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500"
+                />
+                <div>
+                  <p class="font-medium text-gray-900 dark:text-white">{{ importLog.file_name }}</p>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ formatDate(importLog.created_at) }} • {{ importLog.broker }}
+                  </p>
+                </div>
               </div>
               <div class="flex items-center space-x-3">
                 <div class="text-right">
@@ -393,7 +424,7 @@
               </div>
             </div>
           </div>
-          
+
           <!-- Load More Button -->
           <div v-if="pagination.hasMore" class="mt-4 text-center">
             <button
@@ -706,13 +737,16 @@
             <ExclamationTriangleIcon class="h-6 w-6 text-red-600 dark:text-red-400" />
           </div>
           <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white mt-4">
-            Delete Import
+            {{ bulkDeleteIds ? `Delete ${bulkDeleteIds.length} Imports` : 'Delete Import' }}
           </h3>
           <div class="mt-2 px-7 py-3">
             <p class="text-sm text-gray-500 dark:text-gray-400">
-              Are you sure you want to delete this import and all associated trades?
+              {{ bulkDeleteIds
+                ? `Are you sure you want to delete ${bulkDeleteIds.length} imports and all associated trades?`
+                : 'Are you sure you want to delete this import and all associated trades?' }}
             </p>
-            <div v-if="deleteImportData" class="mt-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-md text-left">
+            <!-- Single delete details -->
+            <div v-if="deleteImportData && !bulkDeleteIds" class="mt-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-md text-left">
               <p class="text-sm font-medium text-gray-900 dark:text-white">{{ deleteImportData.file_name }}</p>
               <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
                 {{ formatDate(deleteImportData.created_at) }}
@@ -721,24 +755,36 @@
                 {{ deleteImportData.trades_imported }} trades will be deleted
               </p>
             </div>
+            <!-- Bulk delete details -->
+            <div v-if="bulkDeleteIds" class="mt-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-md text-left max-h-48 overflow-y-auto">
+              <div v-for="imp in bulkDeleteDetails" :key="imp.id" class="text-sm py-1 border-b border-gray-200 dark:border-gray-600 last:border-0">
+                <p class="font-medium text-gray-900 dark:text-white">{{ imp.file_name }}</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400">
+                  {{ formatDate(imp.created_at) }} - {{ imp.trades_imported }} trades
+                </p>
+              </div>
+              <p class="text-sm font-medium text-gray-900 dark:text-white mt-2 pt-2 border-t border-gray-300 dark:border-gray-500">
+                Total: {{ bulkDeleteTotalTrades }} trades will be deleted
+              </p>
+            </div>
             <p class="text-xs text-red-600 dark:text-red-400 mt-2 font-medium">
               This action cannot be undone.
             </p>
           </div>
           <div class="flex gap-3 justify-center mt-4">
             <button
-              @click="showDeleteModal = false"
+              @click="cancelDelete"
               class="px-4 py-2 bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-300 text-base font-medium rounded-md shadow-sm hover:bg-gray-400 dark:hover:bg-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-300"
-              :disabled="deleting"
+              :disabled="deleting || bulkDeleting"
             >
               Cancel
             </button>
             <button
               @click="confirmDelete"
               class="px-4 py-2 bg-red-600 text-white text-base font-medium rounded-md shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50"
-              :disabled="deleting"
+              :disabled="deleting || bulkDeleting"
             >
-              <span v-if="deleting">Deleting...</span>
+              <span v-if="deleting || bulkDeleting">Deleting...</span>
               <span v-else>Delete</span>
             </button>
           </div>
@@ -891,7 +937,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed, nextTick } from 'vue'
+import { ref, onMounted, computed, nextTick, watch } from 'vue'
 import { useTradesStore } from '@/stores/trades'
 import { useAuthStore } from '@/stores/auth'
 import { useNotification } from '@/composables/useNotification'
@@ -932,6 +978,7 @@ const requiresAccountSelection = ref(false)
 const selectedAccountId = ref(null)
 const currencyProMessage = ref('')
 const fileInput = ref(null)
+const selectAllCheckbox = ref(null)
 const dragOver = ref(false)
 const importHistory = ref([])
 const pagination = ref({
@@ -1002,6 +1049,13 @@ const showDeleteModal = ref(false)
 const showDeleteMappingModal = ref(false)
 const deleteImportId = ref(null)
 const deleteImportData = ref(null)
+
+// Multi-select for bulk delete
+const selectedImportIds = ref(new Set())
+const bulkDeleting = ref(false)
+const bulkDeleteIds = ref(null)
+const bulkDeleteDetails = ref([])
+const bulkDeleteTotalTrades = ref(0)
 
 // Broker mismatch modal
 const showBrokerMismatchModal = ref(false)
@@ -1614,13 +1668,37 @@ function deleteImport(importId) {
 }
 
 async function confirmDelete() {
+  // Bulk delete path
+  if (bulkDeleteIds.value) {
+    bulkDeleting.value = true
+    try {
+      const response = await api.delete('/trades/import/bulk', {
+        data: { importIds: bulkDeleteIds.value }
+      })
+      showSuccess('Imports Deleted', `${response.data.deletedImports} imports and ${response.data.deletedTrades} trades deleted`)
+      selectedImportIds.value = new Set()
+      await fetchImportHistory()
+      showDeleteModal.value = false
+    } catch (error) {
+      showError('Delete Failed', error.response?.data?.error || 'Failed to delete imports')
+    } finally {
+      bulkDeleting.value = false
+      bulkDeleteIds.value = null
+      bulkDeleteDetails.value = []
+      bulkDeleteTotalTrades.value = 0
+    }
+    return
+  }
+
+  // Single delete path
   if (!deleteImportId.value) return
 
   deleting.value = true
-  
+
   try {
     await api.delete(`/trades/import/${deleteImportId.value}`)
     showSuccess('Import Deleted', 'Import and associated trades have been deleted')
+    selectedImportIds.value.delete(deleteImportId.value)
     await fetchImportHistory()
     showDeleteModal.value = false
   } catch (error) {
@@ -1630,6 +1708,46 @@ async function confirmDelete() {
     deleteImportId.value = null
     deleteImportData.value = null
   }
+}
+
+function cancelDelete() {
+  showDeleteModal.value = false
+  deleteImportId.value = null
+  deleteImportData.value = null
+  bulkDeleteIds.value = null
+  bulkDeleteDetails.value = []
+  bulkDeleteTotalTrades.value = 0
+}
+
+function toggleImportSelection(importId) {
+  const newSet = new Set(selectedImportIds.value)
+  if (newSet.has(importId)) {
+    newSet.delete(importId)
+  } else {
+    newSet.add(importId)
+  }
+  selectedImportIds.value = newSet
+}
+
+function toggleSelectAll() {
+  if (selectedImportIds.value.size === importHistory.value.length) {
+    selectedImportIds.value = new Set()
+  } else {
+    selectedImportIds.value = new Set(importHistory.value.map(imp => imp.id))
+  }
+}
+
+function bulkDeleteImports() {
+  const ids = Array.from(selectedImportIds.value)
+  const details = importHistory.value.filter(imp => selectedImportIds.value.has(imp.id))
+  const totalTrades = details.reduce((sum, imp) => sum + (imp.trades_imported || 0), 0)
+
+  bulkDeleteIds.value = ids
+  bulkDeleteDetails.value = details
+  bulkDeleteTotalTrades.value = totalTrades
+  deleteImportId.value = null
+  deleteImportData.value = null
+  showDeleteModal.value = true
 }
 
 async function fetchLogs(showAll = null, page = 1) {
@@ -2276,6 +2394,14 @@ async function startTrial() {
     startingTrial.value = false
   }
 }
+
+// Keep select-all checkbox indeterminate state in sync
+watch(selectedImportIds, (ids) => {
+  if (selectAllCheckbox.value) {
+    const isIndeterminate = ids.size > 0 && ids.size < importHistory.value.length
+    selectAllCheckbox.value.indeterminate = isIndeterminate
+  }
+}, { deep: true })
 
 onMounted(() => {
   // Load saved broker preference

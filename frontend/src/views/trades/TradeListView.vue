@@ -210,8 +210,12 @@
           
           <div class="grid grid-cols-2 gap-4 text-sm">
             <div>
-              <div class="text-gray-500 dark:text-gray-400">Date</div>
-              <div class="text-gray-900 dark:text-white">{{ formatDate(trade.trade_date) }}</div>
+              <div class="text-gray-500 dark:text-gray-400">Entry Date</div>
+              <div class="text-gray-900 dark:text-white">{{ trade.entry_time ? formatDate(trade.entry_time) : '-' }}</div>
+            </div>
+            <div>
+              <div class="text-gray-500 dark:text-gray-400">Exit Date</div>
+              <div class="text-gray-900 dark:text-white">{{ trade.exit_time ? formatDate(trade.exit_time) : '-' }}</div>
             </div>
             <div>
               <div class="text-gray-500 dark:text-gray-400">Entry</div>
@@ -371,14 +375,26 @@
                   </div>
                 </td>
 
-                <!-- Date Column -->
-                <td v-else-if="column.visible && column.key === 'date'"
+                <!-- Entry Date Column -->
+                <td v-else-if="column.visible && column.key === 'entryDate'"
                     :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
-                  <div class="text-sm text-gray-900 dark:text-white leading-tight">
-                    <div>{{ formatDateMonthDay(trade.trade_date) }}</div>
-                    <div class="text-xs text-gray-500 dark:text-gray-400">{{ formatDateYear(trade.trade_date) }}</div>
+                  <div v-if="trade.entry_time" class="text-sm text-gray-900 dark:text-white leading-tight">
+                    <div>{{ formatDateMonthDay(trade.entry_time) }}</div>
+                    <div class="text-xs text-gray-500 dark:text-gray-400">{{ formatDateYear(trade.entry_time) }}</div>
                   </div>
+                  <div v-else class="text-sm text-gray-500 dark:text-gray-400">-</div>
+                </td>
+
+                <!-- Exit Date Column -->
+                <td v-else-if="column.visible && column.key === 'exitDate'"
+                    :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']"
+                    @click="$router.push(`/trades/${trade.id}`)">
+                  <div v-if="trade.exit_time" class="text-sm text-gray-900 dark:text-white leading-tight">
+                    <div>{{ formatDateMonthDay(trade.exit_time) }}</div>
+                    <div class="text-xs text-gray-500 dark:text-gray-400">{{ formatDateYear(trade.exit_time) }}</div>
+                  </div>
+                  <div v-else class="text-sm text-gray-500 dark:text-gray-400">-</div>
                 </td>
 
                 <!-- Entry Time Column -->

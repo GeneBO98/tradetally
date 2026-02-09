@@ -1454,11 +1454,7 @@ const tradeManagementController = {
       const totalActualR = Math.round(cumulativeActualR * 100) / 100;
       const totalPotentialR = Math.round(cumulativePotentialR * 100) / 100;
       const totalManagementR = Math.round(cumulativeManagementR * 100) / 100;
-      const rEfficiency = totalPotentialR > 0
-        ? Math.round((totalActualR / totalPotentialR) * 100)
-        : (totalActualR >= 0 ? 100 : 0);
       const rLeftOnTable = Math.round((totalPotentialR - totalActualR) * 100) / 100;
-
       // Calculate win rate and average R
       const winningTrades = tradeDetails.filter(t => t.actual_r > 0);
       const losingTrades = tradeDetails.filter(t => t.actual_r < 0);
@@ -1484,7 +1480,6 @@ const tradeManagementController = {
           total_actual_r: totalActualR,
           total_potential_r: totalPotentialR,
           total_management_r: totalManagementR,
-          r_efficiency: rEfficiency,
           r_left_on_table: rLeftOnTable,
           win_rate: winRate,
           winning_trades: winningTrades.length,
