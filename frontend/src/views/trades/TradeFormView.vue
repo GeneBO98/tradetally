@@ -74,12 +74,10 @@
           <div class="grid grid-cols-1 gap-6 sm:grid-cols-3">
             <div>
               <label for="symbol" class="label">Symbol *</label>
-              <input
+              <SymbolAutocomplete
                 id="symbol"
                 v-model="form.symbol"
-                type="text"
-                required
-                class="input uppercase"
+                :required="true"
                 placeholder="AAPL"
               />
             </div>
@@ -1490,6 +1488,7 @@ import TradeImages from '@/components/trades/TradeImages.vue'
 import ChartUpload from '@/components/trades/ChartUpload.vue'
 import TradeCharts from '@/components/trades/TradeCharts.vue'
 import api from '@/services/api'
+import SymbolAutocomplete from '@/components/common/SymbolAutocomplete.vue'
 
 // Load section preferences from localStorage
 const defaultSectionPrefs = {

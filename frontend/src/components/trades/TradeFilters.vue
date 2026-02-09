@@ -4,13 +4,11 @@
     <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
       <div>
         <label for="symbol" class="label">Symbol</label>
-        <input
+        <SymbolAutocomplete
           id="symbol"
           v-model="filters.symbol"
-          type="text"
-          class="input"
           placeholder="e.g., AAPL"
-          @keydown.enter="applyFilters"
+          @select="applyFilters"
         />
         <label class="flex items-center mt-1.5 cursor-pointer">
           <input
@@ -590,6 +588,7 @@ import TagManagement from './TagManagement.vue'
 import { useTradesStore } from '@/stores/trades'
 import { formatLocalDate } from '@/utils/date'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
+import SymbolAutocomplete from '@/components/common/SymbolAutocomplete.vue'
 
 const emit = defineEmits(['filter'])
 const route = useRoute()

@@ -1,6 +1,6 @@
 const Trade = require('../models/Trade');
 const User = require('../models/User');
-const { parseCSV, detectBrokerFormat, getCsvHeaderLine } = require('../utils/csvParser');
+const { parseCSV, detectBrokerFormat, getCsvHeaderLine, getCsvSampleRows } = require('../utils/csvParser');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../config/database');
 const logger = require('../utils/logger');
@@ -1501,10 +1501,11 @@ const tradeController = {
               const headerLine = getCsvHeaderLine(fileBuffer);
               if (headerLine) {
                 try {
+                  const sampleData = getCsvSampleRows(fileBuffer);
                   await db.query(`
-                    INSERT INTO unknown_csv_headers (user_id, header_line, broker_attempted, outcome, file_name, detected_broker, selected_broker)
-                    VALUES ($1, $2, 'auto', 'no_parser_match', $3, $4, 'auto')
-                  `, [fileUserId, headerLine.substring(0, 10000), fileName, 'generic']);
+                    INSERT INTO unknown_csv_headers (user_id, header_line, broker_attempted, outcome, file_name, detected_broker, selected_broker, sample_data)
+                    VALUES ($1, $2, 'auto', 'no_parser_match', $3, $4, 'auto', $5)
+                  `, [fileUserId, headerLine.substring(0, 10000), fileName, 'generic', sampleData?.substring(0, 10000) || null]);
                 } catch (recordErr) {
                   logger.logWarn(`[CSV] Failed to record unknown headers: ${recordErr.message}`);
                 }
@@ -1526,9 +1527,10 @@ const tradeController = {
             // Track zero trades scenario
             if (trades.length === 0 && parseDiagnostics.totalRows > 0) {
               try {
+                const sampleData = getCsvSampleRows(fileBuffer);
                 await db.query(`
-                  INSERT INTO unknown_csv_headers (user_id, header_line, broker_attempted, outcome, file_name, detected_broker, selected_broker, row_count, trades_parsed, diagnostics_json)
-                  VALUES ($1, $2, $3, 'zero_trades', $4, $5, $6, $7, $8, $9)
+                  INSERT INTO unknown_csv_headers (user_id, header_line, broker_attempted, outcome, file_name, detected_broker, selected_broker, row_count, trades_parsed, diagnostics_json, sample_data)
+                  VALUES ($1, $2, $3, 'zero_trades', $4, $5, $6, $7, $8, $9, $10)
                 `, [
                   fileUserId,
                   headerLine?.substring(0, 10000),
@@ -1538,7 +1540,8 @@ const tradeController = {
                   parseDiagnostics.selectedBroker,
                   parseDiagnostics.totalRows,
                   0,
-                  JSON.stringify(parseDiagnostics)
+                  JSON.stringify(parseDiagnostics),
+                  sampleData?.substring(0, 10000) || null
                 ]);
                 logger.logWarn(`[CSV] Recorded zero_trades scenario: ${parseDiagnostics.totalRows} rows but 0 trades parsed`);
               } catch (recordErr) {
@@ -1552,9 +1555,10 @@ const tradeController = {
               : 0;
             if (skipRate > 50 && trades.length > 0) {
               try {
+                const sampleData = getCsvSampleRows(fileBuffer);
                 await db.query(`
-                  INSERT INTO unknown_csv_headers (user_id, header_line, broker_attempted, outcome, file_name, detected_broker, selected_broker, row_count, trades_parsed, diagnostics_json)
-                  VALUES ($1, $2, $3, 'high_skip_rate', $4, $5, $6, $7, $8, $9)
+                  INSERT INTO unknown_csv_headers (user_id, header_line, broker_attempted, outcome, file_name, detected_broker, selected_broker, row_count, trades_parsed, diagnostics_json, sample_data)
+                  VALUES ($1, $2, $3, 'high_skip_rate', $4, $5, $6, $7, $8, $9, $10)
                 `, [
                   fileUserId,
                   headerLine?.substring(0, 10000),
@@ -1564,7 +1568,8 @@ const tradeController = {
                   parseDiagnostics.selectedBroker,
                   parseDiagnostics.totalRows,
                   trades.length,
-                  JSON.stringify(parseDiagnostics)
+                  JSON.stringify(parseDiagnostics),
+                  sampleData?.substring(0, 10000) || null
                 ]);
                 logger.logWarn(`[CSV] Recorded high_skip_rate scenario: ${skipRate.toFixed(1)}% of rows skipped`);
               } catch (recordErr) {
@@ -2185,9 +2190,10 @@ const tradeController = {
             try {
               const headerLine = getCsvHeaderLine(fileBuffer);
               const detectedBroker = detectBrokerFormat(fileBuffer);
+              const sampleData = getCsvSampleRows(fileBuffer);
               await db.query(`
-                INSERT INTO unknown_csv_headers (user_id, header_line, broker_attempted, outcome, file_name, detected_broker, selected_broker, row_count, trades_parsed, diagnostics_json)
-                VALUES ($1, $2, $3, 'zero_imported', $4, $5, $6, $7, $8, $9)
+                INSERT INTO unknown_csv_headers (user_id, header_line, broker_attempted, outcome, file_name, detected_broker, selected_broker, row_count, trades_parsed, diagnostics_json, sample_data)
+                VALUES ($1, $2, $3, 'zero_imported', $4, $5, $6, $7, $8, $9, $10)
               `, [
                 fileUserId,
                 headerLine?.substring(0, 10000),
@@ -2203,7 +2209,8 @@ const tradeController = {
                   failed,
                   duplicates,
                   failedTrades: failedTrades.slice(0, 20)
-                })
+                }),
+                sampleData?.substring(0, 10000) || null
               ]);
               logger.logWarn(`[CSV] Recorded zero_imported scenario: ${trades.length} trades parsed, 0 imported (${duplicates} duplicates, ${failed} failed)`);
             } catch (recordErr) {
@@ -2280,9 +2287,10 @@ const tradeController = {
             try {
               // Attempt to detect broker even though parsing failed
               const detectedBroker = detectBrokerFormat(fileBuffer);
+              const sampleData = getCsvSampleRows(fileBuffer);
               await db.query(`
-                INSERT INTO unknown_csv_headers (user_id, header_line, broker_attempted, outcome, file_name, detected_broker, selected_broker, diagnostics_json)
-                VALUES ($1, $2, $3, 'parse_failed', $4, $5, $6, $7)
+                INSERT INTO unknown_csv_headers (user_id, header_line, broker_attempted, outcome, file_name, detected_broker, selected_broker, diagnostics_json, sample_data)
+                VALUES ($1, $2, $3, 'parse_failed', $4, $5, $6, $7, $8)
               `, [
                 fileUserId,
                 headerLine.substring(0, 10000),
@@ -2290,7 +2298,8 @@ const tradeController = {
                 fileName,
                 detectedBroker,
                 broker,
-                JSON.stringify({ error: error.message })
+                JSON.stringify({ error: error.message }),
+                sampleData?.substring(0, 10000) || null
               ]);
             } catch (recordErr) {
               logger.logWarn(`[CSV] Failed to record unknown headers on parse error: ${recordErr.message}`);

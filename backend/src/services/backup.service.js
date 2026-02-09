@@ -314,6 +314,8 @@ class BackupService {
 
     // Helper function to safely insert a record using SAVEPOINT
     // This allows individual records to fail without aborting the entire transaction
+    // NOTE: Only used for users/trades/diary_entries (small record counts).
+    // For generic tables, restoreTable uses ON CONFLICT instead to avoid shared memory exhaustion.
     const safeInsert = async (queryFn, errorPrefix) => {
       const savepointName = `sp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       try {
@@ -323,6 +325,7 @@ class BackupService {
         return { success: true };
       } catch (error) {
         await client.query(`ROLLBACK TO SAVEPOINT ${savepointName}`);
+        await client.query(`RELEASE SAVEPOINT ${savepointName}`);
         console.error(`${errorPrefix}:`, error.message);
         return { success: false, error: error.message };
       }
@@ -339,6 +342,39 @@ class BackupService {
         return tables[camelCaseName] || tables[snakeCaseName] || [];
       };
 
+      // Column schema cache - validates backup columns against target DB
+      const schemaCache = {};
+      const getValidColumns = async (tableName) => {
+        if (schemaCache[tableName]) return schemaCache[tableName];
+        try {
+          const result = await client.query(`
+            SELECT column_name FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = $1
+          `, [tableName]);
+          const cols = new Set(result.rows.map(r => r.column_name));
+          schemaCache[tableName] = cols;
+          return cols;
+        } catch (error) {
+          return null; // Table doesn't exist
+        }
+      };
+
+      // Clear existing data if requested (true snapshot restore)
+      if (clearExisting) {
+        console.log('[RESTORE] Clearing existing data for snapshot restore...');
+        const SKIP_CLEAR = new Set(['backups', 'backup_settings', 'schema_migrations']);
+        const allTablesResult = await client.query(`
+          SELECT table_name FROM information_schema.tables
+          WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+          ORDER BY table_name
+        `);
+        for (const row of allTablesResult.rows) {
+          if (SKIP_CLEAR.has(row.table_name)) continue;
+          await client.query(`TRUNCATE TABLE "${row.table_name}" CASCADE`);
+        }
+        console.log(`[RESTORE] Cleared ${allTablesResult.rows.length - SKIP_CLEAR.size} tables`);
+      }
+
       // Create a mapping of backup user IDs to current database user IDs
       const userIdMapping = new Map();
 
@@ -354,7 +390,8 @@ class BackupService {
 
           if (existingUser.rows.length === 0) {
             // User doesn't exist - insert new user using dynamic columns
-            const userColumns = Object.keys(user).filter(col => user[col] !== undefined);
+            const validCols = await getValidColumns('users');
+            const userColumns = Object.keys(user).filter(col => user[col] !== undefined && (!validCols || validCols.has(col)));
             const userValues = [];
             const userPlaceholders = [];
             let userParamIndex = 1;
@@ -405,8 +442,9 @@ class BackupService {
 
             if (overwriteUsers) {
               // Overwrite existing user with backup data using dynamic columns
-              const updateColumns = Object.keys(user).filter(col => 
-                col !== 'id' && col !== 'created_at' && user[col] !== undefined
+              const validColsUpdate = await getValidColumns('users');
+              const updateColumns = Object.keys(user).filter(col =>
+                col !== 'id' && col !== 'created_at' && user[col] !== undefined && (!validColsUpdate || validColsUpdate.has(col))
               );
               const updateValues = [];
               const updateSet = [];
@@ -452,6 +490,15 @@ class BackupService {
         console.log(`[RESTORE] Users: ${results.users.added} added, ${results.users.updated} updated, ${results.users.skipped} skipped, ${results.users.errors} errors, ${userIdMapping.size} mapped`);
       }
 
+      // Build set of valid user IDs for FK pre-validation
+      // Includes all mapped users + all existing users in DB
+      const validUserIds = new Set(userIdMapping.values());
+      const existingUsersResult = await client.query('SELECT id FROM users');
+      for (const row of existingUsersResult.rows) {
+        validUserIds.add(row.id);
+      }
+      console.log(`[RESTORE] Valid user IDs for FK validation: ${validUserIds.size}`);
+
       // Restore trades using dynamic column insertion
       if (tables.trades && tables.trades.length > 0) {
         console.log(`[RESTORE] Processing ${tables.trades.length} trades...`);
@@ -492,14 +539,16 @@ class BackupService {
             }
 
             // Build dynamic insert with all columns from backup (using mapped tradeData)
+            const validTradeCols = await getValidColumns('trades');
             const columns = [];
             const values = [];
             const placeholders = [];
             let paramIndex = 1;
 
             for (const [key, value] of Object.entries(tradeData)) {
-              // Skip excluded columns
+              // Skip excluded columns or columns not in target schema
               if (excludeColumns.includes(key)) continue;
+              if (validTradeCols && !validTradeCols.has(key)) continue;
 
               columns.push(key);
 
@@ -551,12 +600,14 @@ class BackupService {
 
           if (existingEntry.rows.length === 0) {
             // Build dynamic insert for diary entries too
+            const validDiaryCols = await getValidColumns('diary_entries');
             const columns = [];
             const values = [];
             const placeholders = [];
             let paramIndex = 1;
 
             for (const [key, value] of Object.entries(entry)) {
+              if (validDiaryCols && !validDiaryCols.has(key)) continue;
               columns.push(key);
 
               if (Array.isArray(value)) {
@@ -620,39 +671,44 @@ class BackupService {
       };
 
       // Helper function to restore a generic table
-      // tableName: database table name (snake_case)
-      // tableDataKey: key in backupData.tables (can be camelCase or snake_case)
+      // Uses ON CONFLICT DO NOTHING instead of per-record SAVEPOINTs to avoid
+      // PostgreSQL shared memory exhaustion on tables with many records.
+      // One savepoint wraps the entire table - if a non-conflict error occurs,
+      // the whole table is rolled back and reported.
       const restoreTable = async (tableName, tableDataKey, resultKey) => {
         // Get table data, handling both camelCase and snake_case formats
         const tableData = getTableData(tableDataKey, tableName);
-        
+
         if (!tableData || tableData.length === 0) {
           return;
         }
 
         console.log(`[RESTORE] Processing ${tableData.length} ${tableName}...`);
         const idField = await getPrimaryKeyField(tableName);
-        
+        const validTableCols = await getValidColumns(tableName);
+
+        // If table doesn't exist in target DB, skip entirely
+        if (!validTableCols) {
+          console.warn(`[RESTORE] Table ${tableName} does not exist in target DB, skipping`);
+          return;
+        }
+
         // Initialize table results if not exists
         if (!tableResults[tableName]) {
           tableResults[tableName] = { added: 0, skipped: 0, errors: 0 };
         }
-        
-        for (const row of tableData) {
-          // Check if record already exists
-            const existing = await client.query(
-            `SELECT ${idField} FROM ${tableName} WHERE ${idField} = $1`,
-            [row[idField]]
-          ).catch(() => ({ rows: [] })); // If table doesn't exist, skip
 
-            if (existing.rows.length === 0) {
+        // Single savepoint per table (not per record) to avoid shared memory exhaustion
+        const tableSavepoint = `sp_${tableName.replace(/[^a-z0-9_]/g, '')}`;
+        await client.query(`SAVEPOINT ${tableSavepoint}`);
+
+        try {
+          for (const row of tableData) {
             // Map user_id if it exists and we have a mapping
             const rowData = { ...row };
             if (rowData.user_id && userIdMapping.has(rowData.user_id)) {
               rowData.user_id = userIdMapping.get(rowData.user_id);
             }
-            
-            // Also check for other foreign key fields that might reference users
             if (rowData.created_by && userIdMapping.has(rowData.created_by)) {
               rowData.created_by = userIdMapping.get(rowData.created_by);
             }
@@ -660,16 +716,21 @@ class BackupService {
               rowData.updated_by = userIdMapping.get(rowData.updated_by);
             }
 
-              // Build dynamic insert query
-            const columns = Object.keys(rowData).filter(col => rowData[col] !== undefined);
+            // Skip records with user_id that doesn't exist (prevents FK violations)
+            if (rowData.user_id && !validUserIds.has(rowData.user_id)) {
+              results[resultKey].skipped++;
+              tableResults[tableName].skipped++;
+              continue;
+            }
+
+            // Build dynamic insert query - filter columns against target DB schema
+            const columns = Object.keys(rowData).filter(col => rowData[col] !== undefined && validTableCols.has(col));
             const values = [];
             const placeholders = [];
             let paramIndex = 1;
 
             for (const col of columns) {
               const value = rowData[col];
-              
-              // Handle JSON/JSONB fields
               if (value && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
                 values.push(JSON.stringify(value));
               } else if (Array.isArray(value)) {
@@ -677,31 +738,39 @@ class BackupService {
               } else {
                 values.push(value);
               }
-              
               placeholders.push(`$${paramIndex}`);
               paramIndex++;
             }
 
-              const result = await safeInsert(async () => {
-                await client.query(
-                `INSERT INTO ${tableName} (${columns.join(', ')}) VALUES (${placeholders.join(', ')})`,
-                  values
-                );
-            }, `[RESTORE] Error restoring ${tableName} record`);
+            // ON CONFLICT DO NOTHING (no column target) handles ALL unique constraint violations
+            const insertResult = await client.query(
+              `INSERT INTO ${tableName} (${columns.join(', ')}) VALUES (${placeholders.join(', ')})
+               ON CONFLICT DO NOTHING
+               RETURNING ${idField}`,
+              values
+            );
 
-              if (result.success) {
+            if (insertResult.rows.length > 0) {
               results[resultKey].added++;
               tableResults[tableName].added++;
-              } else {
-              results[resultKey].errors++;
-              tableResults[tableName].errors++;
-              }
             } else {
-            results[resultKey].skipped++;
-            tableResults[tableName].skipped++;
+              results[resultKey].skipped++;
+              tableResults[tableName].skipped++;
+            }
           }
+
+          await client.query(`RELEASE SAVEPOINT ${tableSavepoint}`);
+        } catch (error) {
+          // Non-conflict error (schema mismatch, FK violation, etc.) - roll back entire table
+          console.error(`[RESTORE] Error restoring ${tableName}: ${error.message}`);
+          await client.query(`ROLLBACK TO SAVEPOINT ${tableSavepoint}`);
+          await client.query(`RELEASE SAVEPOINT ${tableSavepoint}`);
+          const processed = tableResults[tableName].added + tableResults[tableName].skipped;
+          const remaining = tableData.length - processed;
+          tableResults[tableName].errors += remaining;
+          results[resultKey].errors += remaining;
         }
-        
+
         console.log(`[RESTORE] ${tableName}: ${tableResults[tableName].added} added, ${tableResults[tableName].skipped} skipped, ${tableResults[tableName].errors} errors`);
       };
 

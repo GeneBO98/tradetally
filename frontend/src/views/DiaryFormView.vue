@@ -378,12 +378,11 @@
               Watchlist
             </label>
             <div class="flex items-center space-x-2 mb-2">
-              <input
-                type="text"
+              <SymbolAutocomplete
                 v-model="newWatchlistSymbol"
-                @keydown.enter.prevent="addWatchlistSymbol"
+                @select="addWatchlistSymbol"
                 placeholder="Enter symbol (e.g., AAPL)"
-                class="input flex-1"
+                input-class="flex-1"
               />
               <button
                 type="button"
@@ -563,6 +562,7 @@ import { useDiaryStore } from '@/stores/diary'
 import { useDiaryTemplateStore } from '@/stores/diaryTemplate'
 import TradeSelector from '@/components/diary/TradeSelector.vue'
 import DiaryImageUpload from '@/components/diary/DiaryImageUpload.vue'
+import SymbolAutocomplete from '@/components/common/SymbolAutocomplete.vue'
 import {
   ArrowLeftIcon,
   PlusIcon,
