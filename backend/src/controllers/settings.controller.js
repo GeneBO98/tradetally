@@ -875,14 +875,11 @@ const settingsController = {
 
           columns.push(col);
 
-          // Handle JSONB serialization
+          // Handle JSONB serialization - must stringify BOTH objects AND arrays for JSONB columns
+          // The pg driver serializes JS arrays as PostgreSQL array format {..} which is invalid for JSONB
           const colInfo = tableColumns[col];
-          if (colInfo.udtName === 'jsonb' || colInfo.udtName === 'json') {
-            if (value && typeof value === 'object' && !Array.isArray(value)) {
-              values.push(JSON.stringify(value));
-            } else {
-              values.push(value);
-            }
+          if ((colInfo.dataType === 'jsonb' || colInfo.dataType === 'json' || colInfo.udtName === 'jsonb' || colInfo.udtName === 'json') && value != null) {
+            values.push(typeof value === 'string' ? value : JSON.stringify(value));
           } else {
             values.push(value);
           }
@@ -1105,8 +1102,8 @@ const settingsController = {
 
               for (const [col, value] of Object.entries(validSettings)) {
                 const colInfo = tableColumns[col];
-                if (colInfo && (colInfo.udtName === 'jsonb' || colInfo.udtName === 'json') && value && typeof value === 'object' && !Array.isArray(value)) {
-                  values.push(JSON.stringify(value));
+                if (colInfo && (colInfo.dataType === 'jsonb' || colInfo.dataType === 'json' || colInfo.udtName === 'jsonb' || colInfo.udtName === 'json') && value != null) {
+                  values.push(typeof value === 'string' ? value : JSON.stringify(value));
                 } else {
                   values.push(value);
                 }
@@ -1129,8 +1126,8 @@ const settingsController = {
                 if (value === undefined || value === null) continue;
                 const colInfo = tableColumns[col];
                 updates.push(`${col} = $${paramCount}`);
-                if (colInfo && (colInfo.udtName === 'jsonb' || colInfo.udtName === 'json') && value && typeof value === 'object' && !Array.isArray(value)) {
-                  values.push(JSON.stringify(value));
+                if (colInfo && (colInfo.dataType === 'jsonb' || colInfo.dataType === 'json' || colInfo.udtName === 'jsonb' || colInfo.udtName === 'json') && value != null) {
+                  values.push(typeof value === 'string' ? value : JSON.stringify(value));
                 } else {
                   values.push(value);
                 }
