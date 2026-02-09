@@ -552,15 +552,12 @@ class BackupService {
 
               columns.push(key);
 
-              // Handle special cases
-              if (key === 'executions' && value && typeof value === 'object') {
+              // Generic JSONB handling - stringify any object that isn't an array or Date
+              // This covers all JSONB columns (executions, quality_metrics, classification_metadata, etc.)
+              if (value && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
                 values.push(JSON.stringify(value));
-              } else if (key === 'tags' && Array.isArray(value)) {
+              } else if (Array.isArray(value)) {
                 values.push(value);
-              } else if (key === 'news_events' && value && typeof value === 'object') {
-                values.push(JSON.stringify(value));
-              } else if (key === 'classification_metadata' && value && typeof value === 'object') {
-                values.push(JSON.stringify(value));
               } else {
                 values.push(value);
               }
