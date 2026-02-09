@@ -272,25 +272,37 @@ class Trade {
           console.log(`[DEFAULTS] Applying default stop loss, type=${stopLossType}`);
           
           if (stopLossType === 'lod') {
-            // Use Low of Day (LoD) at entry time
+            // Use Low of Day for long positions, High of Day for short positions
             try {
-              const lod = await this.getLowOfDayAtEntry(symbol, finalEntryTime, userId);
-              if (lod !== null && lod !== undefined) {
-                // For long positions, LoD is the stop loss
-                // For short positions, we'd use High of Day, but for now we'll use LoD as requested
-                // Note: The issue mentions LoD for swing trades, which are typically long positions
-                if (side === 'long' || side === 'buy') {
+              if (side === 'long' || side === 'buy') {
+                const lod = await this.getLowOfDayAtEntry(symbol, finalEntryTime, userId);
+                if (lod !== null && lod !== undefined) {
                   finalStopLoss = lod;
-                  // Ensure LoD is below entry price (safety check)
                   if (finalStopLoss >= entryPrice) {
                     console.warn(`[STOP LOSS] LoD (${finalStopLoss}) is not below entry price (${entryPrice}), using entry price - 0.01 as fallback`);
                     finalStopLoss = entryPrice - 0.01;
                   }
                   console.log(`[STOP LOSS] Applied Low of Day (LoD) stop loss for ${side} position: $${finalStopLoss}`);
                 } else {
-                  // For short positions, LoD doesn't make sense as stop loss
-                  // Fall back to percentage if available
-                  console.warn(`[STOP LOSS] LoD not applicable for short positions, falling back to percentage`);
+                  console.warn(`[STOP LOSS] Failed to fetch LoD, falling back to percentage`);
+                  if (userSettings?.default_stop_loss_percent && userSettings.default_stop_loss_percent > 0) {
+                    const stopLossPercent = parseFloat(userSettings.default_stop_loss_percent);
+                    finalStopLoss = entryPrice * (1 - stopLossPercent / 100);
+                    finalStopLoss = Math.round(finalStopLoss * 10000) / 10000;
+                    console.log(`[STOP LOSS] Applied default ${stopLossPercent}% stop loss for ${side} position: $${finalStopLoss}`);
+                  }
+                }
+              } else {
+                const hod = await this.getHighOfDayAtEntry(symbol, finalEntryTime, userId);
+                if (hod !== null && hod !== undefined) {
+                  finalStopLoss = hod;
+                  if (finalStopLoss <= entryPrice) {
+                    console.warn(`[STOP LOSS] HoD (${finalStopLoss}) is not above entry price (${entryPrice}), using entry price + 0.01 as fallback`);
+                    finalStopLoss = entryPrice + 0.01;
+                  }
+                  console.log(`[STOP LOSS] Applied High of Day (HoD) stop loss for ${side} position: $${finalStopLoss}`);
+                } else {
+                  console.warn(`[STOP LOSS] Failed to fetch HoD, falling back to percentage`);
                   if (userSettings?.default_stop_loss_percent && userSettings.default_stop_loss_percent > 0) {
                     const stopLossPercent = parseFloat(userSettings.default_stop_loss_percent);
                     finalStopLoss = entryPrice * (1 + stopLossPercent / 100);
@@ -298,23 +310,9 @@ class Trade {
                     console.log(`[STOP LOSS] Applied default ${stopLossPercent}% stop loss for ${side} position: $${finalStopLoss}`);
                   }
                 }
-              } else {
-                // LoD fetch failed, fall back to percentage if available
-                console.warn(`[STOP LOSS] Failed to fetch LoD, falling back to percentage`);
-                if (userSettings?.default_stop_loss_percent && userSettings.default_stop_loss_percent > 0) {
-                  const stopLossPercent = parseFloat(userSettings.default_stop_loss_percent);
-                  if (side === 'long' || side === 'buy') {
-                    finalStopLoss = entryPrice * (1 - stopLossPercent / 100);
-                  } else if (side === 'short' || side === 'sell') {
-                    finalStopLoss = entryPrice * (1 + stopLossPercent / 100);
-                  }
-                  finalStopLoss = Math.round(finalStopLoss * 10000) / 10000;
-                  console.log(`[STOP LOSS] Applied default ${stopLossPercent}% stop loss for ${side} position: $${finalStopLoss}`);
-                }
               }
             } catch (lodError) {
-              console.warn(`[STOP LOSS] Error fetching LoD: ${lodError.message}, falling back to percentage`);
-              // Fall back to percentage if available
+              console.warn(`[STOP LOSS] Error fetching LoD/HoD: ${lodError.message}, falling back to percentage`);
               if (userSettings?.default_stop_loss_percent && userSettings.default_stop_loss_percent > 0) {
                 const stopLossPercent = parseFloat(userSettings.default_stop_loss_percent);
                 if (side === 'long' || side === 'buy') {
@@ -1082,11 +1080,11 @@ class Trade {
           console.log(`[DEFAULTS UPDATE] Applying default stop loss, type=${stopLossType}`);
 
           if (stopLossType === 'lod') {
-            // Use Low of Day (LoD) at entry time
+            // Use Low of Day for long positions, High of Day for short positions
             try {
-              const lod = await this.getLowOfDayAtEntry(symbol, entryTime, userId);
-              if (lod !== null && lod !== undefined) {
-                if (side === 'long' || side === 'buy') {
+              if (side === 'long' || side === 'buy') {
+                const lod = await this.getLowOfDayAtEntry(symbol, entryTime, userId);
+                if (lod !== null && lod !== undefined) {
                   updates.stopLoss = lod;
                   if (updates.stopLoss >= entryPrice) {
                     console.warn(`[STOP LOSS UPDATE] LoD (${updates.stopLoss}) is not below entry price (${entryPrice}), using entry price - 0.01`);
@@ -1094,30 +1092,35 @@ class Trade {
                   }
                   console.log(`[STOP LOSS UPDATE] Applied Low of Day stop loss for ${side} position: $${updates.stopLoss}`);
                 } else {
-                  // For short positions, fall back to percentage
+                  console.warn(`[STOP LOSS UPDATE] LoD unavailable, falling back to percentage`);
+                  if (userSettings?.default_stop_loss_percent && userSettings.default_stop_loss_percent > 0) {
+                    const stopLossPercent = parseFloat(userSettings.default_stop_loss_percent);
+                    updates.stopLoss = entryPrice * (1 - stopLossPercent / 100);
+                    updates.stopLoss = Math.round(updates.stopLoss * 10000) / 10000;
+                    console.log(`[STOP LOSS UPDATE] Applied ${stopLossPercent}% stop loss for ${side} position: $${updates.stopLoss}`);
+                  }
+                }
+              } else {
+                const hod = await this.getHighOfDayAtEntry(symbol, entryTime, userId);
+                if (hod !== null && hod !== undefined) {
+                  updates.stopLoss = hod;
+                  if (updates.stopLoss <= entryPrice) {
+                    console.warn(`[STOP LOSS UPDATE] HoD (${updates.stopLoss}) is not above entry price (${entryPrice}), using entry price + 0.01`);
+                    updates.stopLoss = entryPrice + 0.01;
+                  }
+                  console.log(`[STOP LOSS UPDATE] Applied High of Day stop loss for ${side} position: $${updates.stopLoss}`);
+                } else {
+                  console.warn(`[STOP LOSS UPDATE] HoD unavailable, falling back to percentage`);
                   if (userSettings?.default_stop_loss_percent && userSettings.default_stop_loss_percent > 0) {
                     const stopLossPercent = parseFloat(userSettings.default_stop_loss_percent);
                     updates.stopLoss = entryPrice * (1 + stopLossPercent / 100);
                     updates.stopLoss = Math.round(updates.stopLoss * 10000) / 10000;
-                    console.log(`[STOP LOSS UPDATE] Applied ${stopLossPercent}% stop loss for short position: $${updates.stopLoss}`);
+                    console.log(`[STOP LOSS UPDATE] Applied ${stopLossPercent}% stop loss for ${side} position: $${updates.stopLoss}`);
                   }
-                }
-              } else {
-                // LoD fetch failed, fall back to percentage
-                if (userSettings?.default_stop_loss_percent && userSettings.default_stop_loss_percent > 0) {
-                  const stopLossPercent = parseFloat(userSettings.default_stop_loss_percent);
-                  if (side === 'long' || side === 'buy') {
-                    updates.stopLoss = entryPrice * (1 - stopLossPercent / 100);
-                  } else {
-                    updates.stopLoss = entryPrice * (1 + stopLossPercent / 100);
-                  }
-                  updates.stopLoss = Math.round(updates.stopLoss * 10000) / 10000;
-                  console.log(`[STOP LOSS UPDATE] LoD unavailable, applied ${stopLossPercent}% stop loss: $${updates.stopLoss}`);
                 }
               }
             } catch (lodError) {
-              console.warn(`[STOP LOSS UPDATE] Error fetching LoD: ${lodError.message}`);
-              // Fall back to percentage
+              console.warn(`[STOP LOSS UPDATE] Error fetching LoD/HoD: ${lodError.message}`);
               if (userSettings?.default_stop_loss_percent && userSettings.default_stop_loss_percent > 0) {
                 const stopLossPercent = parseFloat(userSettings.default_stop_loss_percent);
                 if (side === 'long' || side === 'buy') {
@@ -4208,6 +4211,131 @@ class Trade {
       return roundToDbPrecision(lod, 4);
     } catch (error) {
       console.warn(`[LoD] Error fetching Low of Day for ${symbol}: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Get the High of Day (HoD) price "to the left" of entry time.
+   * Mirror of getLowOfDayAtEntry() but for short positions.
+   * The HoD is the maximum high from all candles STRICTLY BEFORE the entry candle
+   * @param {string} symbol - Stock symbol
+   * @param {Date|string} entryTime - Entry time of the trade
+   * @param {string} userId - User ID for API usage tracking
+   * @returns {Promise<number|null>} - High of Day price before entry time, or null if unavailable
+   */
+  static async getHighOfDayAtEntry(symbol, entryTime, userId = null) {
+    try {
+      const finnhub = require('../utils/finnhub');
+      const priceFallbackManager = require('../utils/priceFallbackManager');
+
+      const entryDate = new Date(entryTime);
+
+      if (isNaN(entryDate.getTime())) {
+        console.warn(`[HoD] Invalid entry time: ${entryTime}`);
+        return null;
+      }
+
+      const entryDateStr = entryDate.toISOString().split('T')[0];
+
+      // Calculate UTC offset for Eastern Time
+      const testUTC = new Date(`${entryDateStr}T12:00:00.000Z`);
+      const etParts = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/New_York',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      }).formatToParts(testUTC);
+
+      const etHour = parseInt(etParts.find(p => p.type === 'hour').value);
+      const offsetHours = 12 - etHour;
+      const utcHour4amET = 4 + offsetHours;
+      const dayStart = new Date(`${entryDateStr}T${String(utcHour4amET).padStart(2, '0')}:00:00.000Z`);
+
+      const entryTimestamp = Math.floor(entryDate.getTime() / 1000);
+      const dayStartTimestamp = Math.floor(dayStart.getTime() / 1000);
+
+      const minutesBeforeEntry = (entryTimestamp - dayStartTimestamp) / 60;
+
+      console.log(`[HoD] Entry time: ${entryDate.toISOString()}, Day start: ${dayStart.toISOString()}`);
+      console.log(`[HoD] Minutes of trading before entry: ${minutesBeforeEntry.toFixed(1)}`);
+
+      if (minutesBeforeEntry < 1) {
+        console.warn(`[HoD] Entry time is less than 1 minute after day start, cannot determine HoD to the left`);
+        return null;
+      }
+
+      const fetchCandlesWithFallback = async (res, from, to) => {
+        const { data, source } = await priceFallbackManager.getCandlesWithFallback(
+          symbol,
+          res,
+          from,
+          to,
+          async (sym, resolution, fromTs, toTs) => {
+            return await finnhub.getStockCandles(sym, resolution, fromTs, toTs, userId);
+          }
+        );
+
+        if (data && data.length > 0) {
+          console.log(`[HoD] Got ${data.length} candles for ${symbol} from ${source}`);
+        }
+        return data;
+      };
+
+      if (entryTimestamp <= dayStartTimestamp) {
+        console.warn(`[HoD] Entry time is before market open, cannot determine HoD to the left`);
+        return null;
+      }
+
+      let resolution = minutesBeforeEntry < 30 ? '1' : '5';
+      console.log(`[HoD] Using ${resolution}-minute resolution based on ${minutesBeforeEntry.toFixed(1)} minutes before entry`);
+
+      let candles = await fetchCandlesWithFallback(resolution, dayStartTimestamp, entryTimestamp);
+
+      if (!candles || candles.length === 0) {
+        const fallbackResolution = resolution === '1' ? '5' : '1';
+        console.log(`[HoD] No ${resolution}-minute data available, trying ${fallbackResolution}-minute candles`);
+        candles = await fetchCandlesWithFallback(fallbackResolution, dayStartTimestamp, entryTimestamp);
+      }
+
+      if (!candles || candles.length === 0) {
+        console.warn(`[HoD] No intraday candle data available for ${symbol}`);
+        return null;
+      }
+
+      // CRITICAL: Filter candles to only include those STRICTLY BEFORE entry time
+      // This gives us "HoD to the left" - the highest price before we entered the trade
+      const candlesBeforeEntry = candles.filter(c => c.time < entryTimestamp);
+
+      console.log(`[HoD] Filtering candles: ${candles.length} total, ${candlesBeforeEntry.length} strictly before entry`);
+
+      if (candlesBeforeEntry.length === 0) {
+        console.warn(`[HoD] No candles found before entry time for ${symbol}`);
+        return null;
+      }
+
+      // Find the maximum high price from candles BEFORE entry
+      const highs = candlesBeforeEntry.map(c => parseFloat(c.high)).filter(h => !isNaN(h));
+
+      if (highs.length === 0) {
+        console.warn(`[HoD] No valid high prices found for ${symbol}`);
+        return null;
+      }
+
+      const hod = Math.max(...highs);
+
+      const firstCandle = candlesBeforeEntry[0];
+      const lastCandle = candlesBeforeEntry[candlesBeforeEntry.length - 1];
+      console.log(`[HoD] Candle range: ${new Date(firstCandle.time * 1000).toISOString()} to ${new Date(lastCandle.time * 1000).toISOString()}`);
+      console.log(`[HoD] High of Day "to the left" for ${symbol}: $${hod.toFixed(2)} (from ${candlesBeforeEntry.length} candles before entry)`);
+
+      return roundToDbPrecision(hod, 4);
+    } catch (error) {
+      console.warn(`[HoD] Error fetching High of Day for ${symbol}: ${error.message}`);
       return null;
     }
   }

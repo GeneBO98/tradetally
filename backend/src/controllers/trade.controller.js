@@ -1922,10 +1922,12 @@ const tradeController = {
           // Check for existing trades to avoid duplicates
           // Note: We don't filter by broker as the same trade could be imported from different broker files
           // Include executions data to check for exact execution timestamp matches
+          // Include instrument_type and conid to distinguish stock trades from options on same underlying
           const existingTradesQuery = `
-            SELECT symbol, entry_time, entry_price, exit_price, pnl, quantity, side, executions
-            FROM trades 
-            WHERE user_id = $1 
+            SELECT id, symbol, entry_time, entry_price, exit_price, pnl, quantity, side, executions,
+                   instrument_type, conid
+            FROM trades
+            WHERE user_id = $1
             AND trade_date >= $2
             AND trade_date <= $3
           `;
@@ -1991,7 +1993,24 @@ const tradeController = {
                 // when multiple symbols have trades on the same day with similar timestamps
                 const symbolsMatch = existing.symbol === tradeData.symbol;
 
-                if (symbolsMatch && tradeExecutionsToCheck && tradeExecutionsToCheck.length > 0 && existingExecutions.length > 0) {
+                // CRITICAL: Also check instrument_type to distinguish stock trades from options
+                // on the same underlying symbol (e.g., INTC stock vs INTC 240726P00036000 option)
+                // Both may have the same timestamp if they're from an assignment (A;O/A;C codes)
+                const newInstrumentType = tradeData.instrumentType || tradeData.instrument_type || 'stock';
+                const existingInstrumentType = existing.instrument_type || 'stock';
+                const instrumentTypesMatch = newInstrumentType === existingInstrumentType;
+
+                // For IBKR trades, also check conid if available for precise matching
+                const newConid = tradeData.conid;
+                const existingConid = existing.conid;
+                const conidMatch = newConid && existingConid && newConid === existingConid;
+
+                // Only consider as potential duplicate if:
+                // 1. Symbols match AND instrument types match, OR
+                // 2. Conids match (most precise for IBKR)
+                const tradeTypesMatch = (symbolsMatch && instrumentTypesMatch) || conidMatch;
+
+                if (tradeTypesMatch && tradeExecutionsToCheck && tradeExecutionsToCheck.length > 0 && existingExecutions.length > 0) {
                   // Create a set of execution timestamps from the new trade
                   // Handle both datetime (Lightspeed) and entryTime (ProjectX) formats
                   const newExecutionTimestamps = new Set(
@@ -2022,7 +2041,7 @@ const tradeController = {
 
                       if (newTradeExecCount <= existingExecCount) {
                         // New trade has same or fewer executions - it's a duplicate
-                        logger.logImport(`Found duplicate based on execution timestamp match for ${tradeData.symbol} (${matchingExecutionCount} matching, new: ${newTradeExecCount}, existing: ${existingExecCount})`);
+                        logger.logImport(`Found duplicate based on execution timestamp match for ${tradeData.symbol} ${newInstrumentType} (${matchingExecutionCount} matching, new: ${newTradeExecCount}, existing: ${existingExecCount})`);
                         return true;
                       } else {
                         // New trade has MORE executions - this is an UPDATE, not a duplicate
@@ -2040,15 +2059,21 @@ const tradeController = {
                 }
                 
                 // Fallback to the original logic for trades without execution data
+                // CRITICAL: Also require instrument types to match to avoid false positives
+                // between stock trades and options on the same underlying
+                if (!tradeTypesMatch) {
+                  return false; // Different instrument types (stock vs option) - not a duplicate
+                }
+
                 // For closed trades, check entry, exit, and P/L
                 if (tradeData.exitPrice && existing.exit_price) {
                   const entryMatch = Math.abs(parseFloat(existing.entry_price) - parseFloat(tradeData.entryPrice)) < 0.01;
                   const exitMatch = Math.abs(parseFloat(existing.exit_price) - parseFloat(tradeData.exitPrice)) < 0.01;
                   const pnlMatch = Math.abs(parseFloat(existing.pnl || 0) - parseFloat(tradeData.pnl || 0)) < 0.01; // $0.01 tolerance for P/L consistency
-                  
+
                   // Also check if entry times are very close (within 1 second)
                   const entryTimeMatch = Math.abs(new Date(existing.entry_time) - new Date(tradeData.entryTime)) < 1000;
-                  
+
                   return entryMatch && exitMatch && pnlMatch && entryTimeMatch;
                 }
                 // For open trades, check entry price, quantity, side, and exact entry time
@@ -2064,7 +2089,8 @@ const tradeController = {
               });
 
                 if (isDuplicate) {
-                  logger.logImport(`Skipping duplicate trade: ${tradeData.symbol} ${tradeData.side} ${tradeData.quantity} at $${tradeData.entryPrice} (${new Date(tradeData.entryTime).toISOString()})`);
+                  const instrumentType = tradeData.instrumentType || tradeData.instrument_type || 'stock';
+                  logger.logImport(`Skipping duplicate trade: ${tradeData.symbol} ${instrumentType} ${tradeData.side} ${tradeData.quantity} at $${tradeData.entryPrice} (${new Date(tradeData.entryTime).toISOString()})`);
                   duplicates++;
                   continue;
                 }
@@ -2674,6 +2700,68 @@ const tradeController = {
       });
     } catch (error) {
       logger.logError(`Failed to delete import: ${error.message}`);
+      next(error);
+    }
+  },
+
+  async bulkDeleteImports(req, res, next) {
+    try {
+      const { importIds } = req.body;
+
+      if (!Array.isArray(importIds) || importIds.length === 0) {
+        return res.status(400).json({ error: 'importIds must be a non-empty array' });
+      }
+
+      if (importIds.length > 50) {
+        return res.status(400).json({ error: 'Cannot delete more than 50 imports at once' });
+      }
+
+      // Verify all imports belong to the user
+      const placeholders = importIds.map((_, i) => `$${i + 2}`).join(',');
+      const verifyQuery = `
+        SELECT id FROM import_logs
+        WHERE user_id = $1 AND id IN (${placeholders})
+      `;
+      const verifyResult = await db.query(verifyQuery, [req.user.id, ...importIds]);
+
+      const validIds = verifyResult.rows.map(r => r.id);
+      if (validIds.length === 0) {
+        return res.status(404).json({ error: 'No valid imports found' });
+      }
+
+      logger.logImport(`Bulk deleting ${validIds.length} imports for user ${req.user.id}`);
+
+      // Delete trades for all valid imports
+      const tradePlaceholders = validIds.map((_, i) => `$${i + 2}`).join(',');
+      const deleteTradesQuery = `
+        DELETE FROM trades
+        WHERE user_id = $1 AND import_id IN (${tradePlaceholders})
+        RETURNING id
+      `;
+      const deletedTrades = await db.query(deleteTradesQuery, [req.user.id, ...validIds]);
+
+      // Delete the import logs
+      const importPlaceholders = validIds.map((_, i) => `$${i + 1}`).join(',');
+      await db.query(`DELETE FROM import_logs WHERE id IN (${importPlaceholders})`, validIds);
+
+      // Invalidate caches
+      invalidateAnalyticsCache(req.user.id);
+      try {
+        await cache.invalidate('sector_performance');
+        console.log('[SUCCESS] Sector performance cache invalidated after bulk import deletion');
+      } catch (cacheError) {
+        console.warn('[WARNING] Failed to invalidate sector performance cache:', cacheError.message);
+      }
+
+      logger.logImport(`Bulk deleted ${deletedTrades.rows.length} trades from ${validIds.length} imports`);
+
+      res.json({
+        message: `${validIds.length} imports and associated trades deleted successfully`,
+        deletedImports: validIds.length,
+        deletedTrades: deletedTrades.rows.length
+      });
+    } catch (error) {
+      logger.logError(`Failed to bulk delete imports: ${error.message}`);
       next(error);
     }
   },

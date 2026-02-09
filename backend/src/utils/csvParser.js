@@ -5036,7 +5036,13 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
           }
         }
 
-        if (shouldStartNewTrade) {
+        if (shouldStartNewTrade || !currentTrade) {
+          // Always create a new trade if currentTrade is null (previous trade already completed)
+          // Time gap grouping only applies when there's an active trade to continue
+          if (!shouldStartNewTrade && !currentTrade) {
+            console.log(`  → [GROUPING] No active trade to continue - starting new trade despite time gap`);
+          }
+
           // Determine trade side - for sell-to-open, this is a short position
           const tradeSide = transaction.action === 'buy' ? 'long' : 'short';
 
