@@ -524,6 +524,7 @@ router.get('/import/history', authenticate, tradeController.getImportHistory);
  *       200:
  *         description: Import deleted successfully
  */
+router.delete('/import/bulk', authenticate, tradeController.bulkDeleteImports);
 router.delete('/import/:importId', authenticate, tradeController.deleteImport);
 router.get('/import/logs', authenticate, tradeController.getImportLogs);
 router.get('/import/logs/:filename', authenticate, tradeController.getLogFile);

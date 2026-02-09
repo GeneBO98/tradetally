@@ -45,7 +45,7 @@
       <!-- Chart and Summary -->
       <div v-else>
         <!-- Summary Stats Grid: equal-height cards with consistent alignment -->
-        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7 gap-3 sm:gap-4 mb-6">
+        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4 mb-6">
           <!-- Total Actual R -->
           <div class="r-perf-card flex flex-col min-h-[4.5rem] sm:min-h-[5.25rem] bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 sm:p-4">
             <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider truncate shrink-0">Actual R (Net)</div>
@@ -73,18 +73,10 @@
             </div>
           </div>
 
-          <!-- R Efficiency -->
-          <div class="r-perf-card flex flex-col min-h-[4.5rem] sm:min-h-[5.25rem] bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 sm:p-4">
-            <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider truncate shrink-0">R Efficiency</div>
-            <div class="text-lg sm:text-xl xl:text-2xl font-bold mt-0.5 truncate" :class="getEfficiencyColor(summary.r_efficiency)">
-              {{ summary.r_efficiency }}%
-            </div>
-          </div>
-
           <!-- R Left on Table -->
           <div class="r-perf-card flex flex-col min-h-[4.5rem] sm:min-h-[5.25rem] bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 sm:p-4">
             <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider truncate shrink-0">R Left on Table</div>
-            <div class="text-lg sm:text-xl xl:text-2xl font-bold mt-0.5 truncate text-orange-600 dark:text-orange-400">
+            <div class="text-lg sm:text-xl xl:text-2xl font-bold mt-0.5 truncate" :class="summary.r_left_on_table > 0 ? 'text-red-600 dark:text-red-400' : summary.r_left_on_table < 0 ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'">
               {{ formatR(summary.r_left_on_table) }}
             </div>
           </div>
@@ -362,12 +354,6 @@ function formatR(value) {
   if (value === null || value === undefined) return '-'
   const prefix = value > 0 ? '+' : ''
   return `${prefix}${value}R`
-}
-
-function getEfficiencyColor(efficiency) {
-  if (efficiency >= 80) return 'text-green-600 dark:text-green-400'
-  if (efficiency >= 60) return 'text-yellow-600 dark:text-yellow-400'
-  return 'text-red-600 dark:text-red-400'
 }
 
 function getManagementRColor(managementR) {

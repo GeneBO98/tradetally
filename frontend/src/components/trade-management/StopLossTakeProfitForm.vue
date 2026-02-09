@@ -137,6 +137,43 @@
           @update:targets="takeProfitTargets = $event"
         />
 
+        <!-- Target Hit First Selection (optional) -->
+        <div class="pt-4 border-t border-gray-200 dark:border-gray-700">
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Which target was hit first?
+            <span class="text-gray-400 font-normal">(optional)</span>
+          </label>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
+            Setting this enables Management R calculation to measure trade execution quality.
+          </p>
+          <div class="flex space-x-3">
+            <button
+              type="button"
+              @click="targetHitFirst = targetHitFirst === 'take_profit' ? '' : 'take_profit'"
+              :class="[
+                'flex-1 px-4 py-2 text-sm font-medium rounded-lg border-2 transition-colors',
+                targetHitFirst === 'take_profit'
+                  ? 'border-green-500 bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400 dark:border-green-600'
+                  : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-gray-400 dark:hover:border-gray-500'
+              ]"
+            >
+              TP Hit First
+            </button>
+            <button
+              type="button"
+              @click="targetHitFirst = targetHitFirst === 'stop_loss' ? '' : 'stop_loss'"
+              :class="[
+                'flex-1 px-4 py-2 text-sm font-medium rounded-lg border-2 transition-colors',
+                targetHitFirst === 'stop_loss'
+                  ? 'border-red-500 bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400 dark:border-red-600'
+                  : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-gray-400 dark:hover:border-gray-500'
+              ]"
+            >
+              SL Hit First
+            </button>
+          </div>
+        </div>
+
         <!-- Quick Set Buttons -->
         <div class="pt-2">
           <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">Quick set stop loss:</p>
@@ -205,6 +242,7 @@ const takeProfitTargets = ref([])
 const useMultipleTargets = ref(
   props.trade.take_profit_targets && props.trade.take_profit_targets.length > 0
 )
+const targetHitFirst = ref(props.trade.manual_target_hit_first || '')
 const localSaving = ref(false)
 const apiError = ref('')
 
@@ -283,6 +321,11 @@ async function saveLevels() {
       payload.take_profit = takeProfit.value ? parseFloat(takeProfit.value) : null
     }
 
+    // Add target hit first selection if set
+    if (targetHitFirst.value) {
+      payload.manual_target_hit_first = targetHitFirst.value
+    }
+
     const response = await api.patch(`/trade-management/trades/${props.trade.id}/levels`, payload)
 
     emit('levels-saved', response.data.trade)
@@ -313,6 +356,7 @@ function formatCurrency(value) {
 watch(() => props.trade.id, () => {
   stopLoss.value = props.trade.stop_loss || ''
   takeProfit.value = props.trade.take_profit || ''
+  targetHitFirst.value = props.trade.manual_target_hit_first || ''
   apiError.value = ''
 })
 </script>
