@@ -90,7 +90,8 @@ class BackupService {
     const EXCLUDED_TABLES = new Set([
       'backups',
       'backup_settings',
-      'schema_migrations'
+      'schema_migrations',
+      'api_cache'
     ]);
 
     const tablesResult = await db.query(`
@@ -324,15 +325,16 @@ class BackupService {
       };
 
       // Column schema cache - validates backup columns against target DB
+      // Returns a Map<column_name, data_type> so we can distinguish JSONB from ARRAY columns
       const schemaCache = {};
       const getValidColumns = async (tableName) => {
         if (schemaCache[tableName]) return schemaCache[tableName];
         try {
           const result = await client.query(`
-            SELECT column_name FROM information_schema.columns
+            SELECT column_name, data_type FROM information_schema.columns
             WHERE table_schema = 'public' AND table_name = $1
           `, [tableName]);
-          const cols = new Set(result.rows.map(r => r.column_name));
+          const cols = new Map(result.rows.map(r => [r.column_name, r.data_type]));
           schemaCache[tableName] = cols;
           return cols;
         } catch (error) {
@@ -340,10 +342,28 @@ class BackupService {
         }
       };
 
+      // Serialize a value for INSERT based on its column data type
+      const serializeValue = (value, colType) => {
+        if (value == null) return null;
+        if (colType === 'jsonb') {
+          // JSONB columns: always JSON.stringify (handles both objects AND arrays)
+          return typeof value === 'string' ? value : JSON.stringify(value);
+        }
+        if (Array.isArray(value)) {
+          // PostgreSQL array columns (text[], integer[], etc.): pass through for pg driver
+          return value;
+        }
+        if (value && typeof value === 'object' && !(value instanceof Date)) {
+          // Unknown object type - stringify as safety measure
+          return JSON.stringify(value);
+        }
+        return value;
+      };
+
       // Clear existing data if requested (true snapshot restore)
       if (clearExisting) {
         console.log('[RESTORE] Clearing existing data for snapshot restore...');
-        const SKIP_CLEAR = new Set(['backups', 'backup_settings', 'schema_migrations']);
+        const SKIP_CLEAR = new Set(['backups', 'backup_settings', 'schema_migrations', 'api_cache']);
         const allTablesResult = await client.query(`
           SELECT table_name FROM information_schema.tables
           WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
@@ -384,14 +404,7 @@ class BackupService {
               let userParamIndex = 1;
 
               for (const col of userColumns) {
-                const value = user[col];
-                if (Array.isArray(value)) {
-                  userValues.push(value);
-                } else if (value && typeof value === 'object' && !(value instanceof Date)) {
-                  userValues.push(JSON.stringify(value));
-                } else {
-                  userValues.push(value);
-                }
+                userValues.push(serializeValue(user[col], validCols && validCols.get(col)));
                 userPlaceholders.push(`$${userParamIndex}`);
                 userParamIndex++;
               }
@@ -436,14 +449,7 @@ class BackupService {
                 let updateParamIndex = 1;
 
                 for (const col of updateColumns) {
-                  const value = user[col];
-                  if (Array.isArray(value)) {
-                    updateValues.push(value);
-                  } else if (value && typeof value === 'object' && !(value instanceof Date)) {
-                    updateValues.push(JSON.stringify(value));
-                  } else {
-                    updateValues.push(value);
-                  }
+                  updateValues.push(serializeValue(user[col], validCols && validCols.get(col)));
                   updateSet.push(`${col} = $${updateParamIndex}`);
                   updateParamIndex++;
                 }
@@ -469,6 +475,7 @@ class BackupService {
           await client.query(`RELEASE SAVEPOINT ${usersSavepoint}`);
         } catch (error) {
           console.error(`[RESTORE] Error restoring users: ${error.message}`);
+          console.error(`[RESTORE] Users error stack:`, error.stack);
           await client.query(`ROLLBACK TO SAVEPOINT ${usersSavepoint}`);
           await client.query(`RELEASE SAVEPOINT ${usersSavepoint}`);
           results.users.errors += tables.users.length - results.users.added - results.users.skipped - results.users.updated;
@@ -486,147 +493,124 @@ class BackupService {
       }
       console.log(`[RESTORE] Valid user IDs for FK validation: ${validUserIds.size}`);
 
-      // Restore trades using ON CONFLICT DO NOTHING (single savepoint, no per-record subtransactions)
-      // This avoids exhausting PostgreSQL shared memory for subtransaction tracking
+      // Restore trades with per-record fault tolerance
+      // Uses per-record savepoints so one bad trade doesn't roll back all trades
+      // ~3000 savepoints is well within PostgreSQL shared memory limits
       if (tables.trades && tables.trades.length > 0) {
         console.log(`[RESTORE] Processing ${tables.trades.length} trades...`);
 
         const excludeColumns = ['import_id', 'round_trip_id'];
         const validTradeCols = await getValidColumns('trades');
 
-        const tradesSavepoint = 'sp_trades_restore';
-        await client.query(`SAVEPOINT ${tradesSavepoint}`);
+        for (const trade of tables.trades) {
+          const tradeData = { ...trade };
+          if (userIdMapping.has(tradeData.user_id)) {
+            tradeData.user_id = userIdMapping.get(tradeData.user_id);
+          }
 
-        try {
-          for (const trade of tables.trades) {
-            // Map the user_id if a mapping exists (in-memory, no DB query)
-            const tradeData = { ...trade };
-            if (userIdMapping.has(tradeData.user_id)) {
-              tradeData.user_id = userIdMapping.get(tradeData.user_id);
-            }
+          if (tradeData.user_id && !validUserIds.has(tradeData.user_id)) {
+            results.trades.skipped++;
+            continue;
+          }
 
-            // Skip trades whose user doesn't exist (in-memory check, no DB query)
-            if (tradeData.user_id && !validUserIds.has(tradeData.user_id)) {
-              console.log(`[RESTORE] Skipping trade - user not found: ${trade.user_id} (mapped: ${tradeData.user_id})`);
-              results.trades.skipped++;
-              continue;
-            }
+          const columns = [];
+          const values = [];
+          const placeholders = [];
+          let paramIndex = 1;
 
-            // Build dynamic insert with all columns from backup
-            const columns = [];
-            const values = [];
-            const placeholders = [];
-            let paramIndex = 1;
+          for (const [key, value] of Object.entries(tradeData)) {
+            if (excludeColumns.includes(key)) continue;
+            if (validTradeCols && !validTradeCols.has(key)) continue;
 
-            for (const [key, value] of Object.entries(tradeData)) {
-              if (excludeColumns.includes(key)) continue;
-              if (validTradeCols && !validTradeCols.has(key)) continue;
+            columns.push(key);
+            values.push(serializeValue(value, validTradeCols && validTradeCols.get(key)));
+            placeholders.push(`$${paramIndex}`);
+            paramIndex++;
+          }
 
-              columns.push(key);
-
-              // Generic JSONB handling - stringify any object that isn't an array or Date
-              if (value && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
-                values.push(JSON.stringify(value));
-              } else if (Array.isArray(value)) {
-                values.push(value);
-              } else {
-                values.push(value);
-              }
-
-              placeholders.push(`$${paramIndex}`);
-              paramIndex++;
-            }
-
-            // ON CONFLICT DO NOTHING handles duplicates without savepoints
+          const sp = `sp_t_${Date.now().toString(36)}`;
+          try {
+            await client.query(`SAVEPOINT ${sp}`);
             const insertResult = await client.query(
               `INSERT INTO trades (${columns.join(', ')}) VALUES (${placeholders.join(', ')})
                ON CONFLICT DO NOTHING
                RETURNING id`,
               values
             );
+            await client.query(`RELEASE SAVEPOINT ${sp}`);
 
             if (insertResult.rows.length > 0) {
               results.trades.added++;
             } else {
               results.trades.skipped++;
             }
+          } catch (error) {
+            await client.query(`ROLLBACK TO SAVEPOINT ${sp}`);
+            await client.query(`RELEASE SAVEPOINT ${sp}`);
+            if (results.trades.errors < 3) {
+              console.error(`[RESTORE] Trade error (${trade.id}): ${error.message}`);
+            }
+            results.trades.errors++;
           }
-
-          await client.query(`RELEASE SAVEPOINT ${tradesSavepoint}`);
-        } catch (error) {
-          console.error(`[RESTORE] Error restoring trades: ${error.message}`);
-          await client.query(`ROLLBACK TO SAVEPOINT ${tradesSavepoint}`);
-          await client.query(`RELEASE SAVEPOINT ${tradesSavepoint}`);
-          results.trades.errors += tables.trades.length - results.trades.added - results.trades.skipped;
         }
 
         console.log(`[RESTORE] Trades: ${results.trades.added} added, ${results.trades.skipped} skipped, ${results.trades.errors} errors`);
       }
 
-      // Restore diary entries using ON CONFLICT DO NOTHING (single savepoint)
+      // Restore diary entries with per-record fault tolerance
       const diaryEntriesData = getTableData('diaryEntries', 'diary_entries');
       if (diaryEntriesData && diaryEntriesData.length > 0) {
         console.log(`[RESTORE] Processing ${diaryEntriesData.length} diary entries...`);
         const validDiaryCols = await getValidColumns('diary_entries');
 
-        const diarySavepoint = 'sp_diary_entries_restore';
-        await client.query(`SAVEPOINT ${diarySavepoint}`);
+        for (const entry of diaryEntriesData) {
+          const entryData = { ...entry };
+          if (entryData.user_id && userIdMapping.has(entryData.user_id)) {
+            entryData.user_id = userIdMapping.get(entryData.user_id);
+          }
 
-        try {
-          for (const entry of diaryEntriesData) {
-            // Map user_id if needed
-            const entryData = { ...entry };
-            if (entryData.user_id && userIdMapping.has(entryData.user_id)) {
-              entryData.user_id = userIdMapping.get(entryData.user_id);
-            }
+          if (entryData.user_id && !validUserIds.has(entryData.user_id)) {
+            results.diaryEntries.skipped++;
+            continue;
+          }
 
-            // Skip entries whose user doesn't exist
-            if (entryData.user_id && !validUserIds.has(entryData.user_id)) {
-              results.diaryEntries.skipped++;
-              continue;
-            }
+          const columns = [];
+          const values = [];
+          const placeholders = [];
+          let paramIndex = 1;
 
-            const columns = [];
-            const values = [];
-            const placeholders = [];
-            let paramIndex = 1;
+          for (const [key, value] of Object.entries(entryData)) {
+            if (validDiaryCols && !validDiaryCols.has(key)) continue;
+            columns.push(key);
+            values.push(serializeValue(value, validDiaryCols && validDiaryCols.get(key)));
+            placeholders.push(`$${paramIndex}`);
+            paramIndex++;
+          }
 
-            for (const [key, value] of Object.entries(entryData)) {
-              if (validDiaryCols && !validDiaryCols.has(key)) continue;
-              columns.push(key);
-
-              if (value && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
-                values.push(JSON.stringify(value));
-              } else if (Array.isArray(value)) {
-                values.push(value);
-              } else {
-                values.push(value);
-              }
-
-              placeholders.push(`$${paramIndex}`);
-              paramIndex++;
-            }
-
+          const sp = `sp_d_${Date.now().toString(36)}`;
+          try {
+            await client.query(`SAVEPOINT ${sp}`);
             const insertResult = await client.query(
               `INSERT INTO diary_entries (${columns.join(', ')}) VALUES (${placeholders.join(', ')})
                ON CONFLICT DO NOTHING
                RETURNING id`,
               values
             );
+            await client.query(`RELEASE SAVEPOINT ${sp}`);
 
             if (insertResult.rows.length > 0) {
               results.diaryEntries.added++;
             } else {
               results.diaryEntries.skipped++;
             }
+          } catch (error) {
+            await client.query(`ROLLBACK TO SAVEPOINT ${sp}`);
+            await client.query(`RELEASE SAVEPOINT ${sp}`);
+            if (results.diaryEntries.errors < 3) {
+              console.error(`[RESTORE] Diary entry error (${entry.id}): ${error.message}`);
+            }
+            results.diaryEntries.errors++;
           }
-
-          await client.query(`RELEASE SAVEPOINT ${diarySavepoint}`);
-        } catch (error) {
-          console.error(`[RESTORE] Error restoring diary entries: ${error.message}`);
-          await client.query(`ROLLBACK TO SAVEPOINT ${diarySavepoint}`);
-          await client.query(`RELEASE SAVEPOINT ${diarySavepoint}`);
-          results.diaryEntries.errors += diaryEntriesData.length - results.diaryEntries.added - results.diaryEntries.skipped;
         }
 
         console.log(`[RESTORE] Diary entries: ${results.diaryEntries.added} added, ${results.diaryEntries.skipped} skipped, ${results.diaryEntries.errors} errors`);
@@ -723,14 +707,7 @@ class BackupService {
             let paramIndex = 1;
 
             for (const col of columns) {
-              const value = rowData[col];
-              if (value && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
-                values.push(JSON.stringify(value));
-              } else if (Array.isArray(value)) {
-                values.push(value);
-              } else {
-                values.push(value);
-              }
+              values.push(serializeValue(rowData[col], validTableCols.get(col)));
               placeholders.push(`$${paramIndex}`);
               paramIndex++;
             }
@@ -771,7 +748,7 @@ class BackupService {
       // Tables already handled: users, trades, diary_entries
       const ALREADY_RESTORED = new Set(['users', 'trades', 'diaryEntries', 'diary_entries']);
       // Tables that should never be restored (system/meta tables)
-      const SKIP_RESTORE = new Set(['backups', 'backupSettings', 'backup_settings', 'schemaMigrations', 'schema_migrations']);
+      const SKIP_RESTORE = new Set(['backups', 'backupSettings', 'backup_settings', 'schemaMigrations', 'schema_migrations', 'apiCache', 'api_cache']);
 
       // Priority order for tables with foreign key dependencies
       // These are restored first (in order) before all remaining tables
@@ -829,9 +806,30 @@ class BackupService {
 
       console.log(`[RESTORE] Restoring ${orderedKeys.length} additional tables dynamically...`);
 
+      // First pass: restore all tables
+      const failedTables = [];
       for (const camelKey of orderedKeys) {
         const snakeName = resolveSnakeName(camelKey);
+        const beforeErrors = results.other.errors;
         await restoreTable(snakeName, camelKey, 'other');
+        if (results.other.errors > beforeErrors) {
+          failedTables.push(camelKey);
+        }
+      }
+
+      // Second pass: retry failed tables (dependencies from first pass may now be satisfied)
+      if (failedTables.length > 0) {
+        console.log(`[RESTORE] Retrying ${failedTables.length} failed tables...`);
+        for (const camelKey of failedTables) {
+          const snakeName = resolveSnakeName(camelKey);
+          // Reset error count for this table - re-count from scratch
+          const prevErrors = tableResults[snakeName] ? tableResults[snakeName].errors : 0;
+          results.other.errors -= prevErrors;
+          if (tableResults[snakeName]) {
+            tableResults[snakeName] = { added: 0, skipped: 0, errors: 0 };
+          }
+          await restoreTable(snakeName, camelKey, 'other');
+        }
       }
 
       await client.query('COMMIT');
@@ -869,13 +867,19 @@ class BackupService {
       }
 
       if (totalErrors > 0) {
-        message += ` [${totalErrors} non-critical errors occurred]`;
+        // Build per-table error breakdown for visibility
+        const errorTables = Object.entries(tableResults)
+          .filter(([, r]) => r.errors > 0)
+          .sort((a, b) => b[1].errors - a[1].errors)
+          .map(([name, r]) => `${name}: ${r.errors}`)
+          .join(', ');
+        message += ` [${totalErrors} errors in: ${errorTables}]`;
       }
 
       return {
         success: true,
         results,
-        tableResults, // Include detailed per-table results
+        tableResults,
         message
       };
     } catch (error) {
