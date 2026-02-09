@@ -391,6 +391,45 @@ function getCsvHeaderLine(fileBuffer) {
   }
 }
 
+/**
+ * Extract the first N data rows after the CSV header line.
+ * Used to capture sample data for building new parsers.
+ * @param {Buffer} fileBuffer - The CSV file buffer
+ * @param {number} maxRows - Maximum number of data rows to return (default 5)
+ * @returns {string|null} - The sample rows joined by newlines, or null if none found
+ */
+function getCsvSampleRows(fileBuffer, maxRows = 5) {
+  try {
+    let csvString = fileBuffer.toString('utf-8');
+    if (csvString.charCodeAt(0) === 0xFEFF) {
+      csvString = csvString.slice(1);
+    }
+    const lines = csvString.split('\n');
+    // Find the header line first (first non-empty line with comma in first 10 lines)
+    let headerIndex = -1;
+    for (let i = 0; i < Math.min(10, lines.length); i++) {
+      const line = lines[i].trim();
+      if (line && line.includes(',')) {
+        headerIndex = i;
+        break;
+      }
+    }
+    if (headerIndex === -1) return null;
+    // Collect up to maxRows non-empty lines after the header
+    const sampleRows = [];
+    for (let i = headerIndex + 1; i < lines.length && sampleRows.length < maxRows; i++) {
+      const line = lines[i].trim();
+      if (line) {
+        sampleRows.push(line);
+      }
+    }
+    return sampleRows.length > 0 ? sampleRows.join('\n') : null;
+  } catch (error) {
+    console.error('[CSV] Error extracting sample rows:', error);
+    return null;
+  }
+}
+
 const brokerParsers = {
   generic: (row) => ({
     symbol: row.Symbol || row.symbol,
@@ -7002,6 +7041,7 @@ module.exports = {
   parseCSV,
   detectBrokerFormat,
   getCsvHeaderLine,
+  getCsvSampleRows,
   wrapResultWithDiagnostics,
   brokerParsers,
   parseDate,

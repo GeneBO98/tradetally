@@ -7,12 +7,10 @@
         <!-- Symbol Search -->
         <div class="flex-1 min-w-[200px]">
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Symbol</label>
-          <input
+          <SymbolAutocomplete
             v-model="localFilters.symbol"
-            type="text"
             placeholder="Search by symbol..."
-            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
-            @input="debouncedFilterChange"
+            @select="debouncedFilterChange"
           />
         </div>
 
@@ -207,6 +205,7 @@
 import { ref, watch, onMounted } from 'vue'
 import { format } from 'date-fns'
 import { useUserTimezone } from '@/composables/useUserTimezone'
+import SymbolAutocomplete from '@/components/common/SymbolAutocomplete.vue'
 
 const { formatDateTime: formatDateTimeTz } = useUserTimezone()
 
@@ -254,6 +253,11 @@ watch(() => props.initialFilters, (newFilters) => {
     localFilters.value = { ...newFilters }
   }
 }, { deep: true })
+
+// Watch symbol changes from autocomplete v-model to trigger filtering on typing
+watch(() => localFilters.value.symbol, () => {
+  debouncedFilterChange()
+})
 
 let debounceTimer = null
 

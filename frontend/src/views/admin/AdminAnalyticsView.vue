@@ -308,7 +308,7 @@
         </div>
 
         <!-- Unknown CSV Headers (no parser match or parse failed) -->
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mt-8">
           <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Unknown CSV Headers</h3>
           <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
             Imports that did not match a known broker or failed to parse. Use these to add or improve parsers.
@@ -319,27 +319,133 @@
           <div v-else-if="unknownCsvHeaders.length === 0" class="text-sm text-gray-500 dark:text-gray-400">
             No unknown CSV headers recorded yet.
           </div>
-          <div v-else class="overflow-x-auto">
-            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-              <thead>
-                <tr>
-                  <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Outcome</th>
-                  <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Broker attempted</th>
-                  <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Headers</th>
-                  <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">File</th>
-                  <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Date</th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-                <tr v-for="row in unknownCsvHeaders" :key="row.id" class="text-sm">
-                  <td class="px-3 py-2 text-gray-900 dark:text-white">{{ row.outcome }}</td>
-                  <td class="px-3 py-2 text-gray-600 dark:text-gray-300">{{ row.broker_attempted }}</td>
-                  <td class="px-3 py-2 max-w-xs truncate text-gray-600 dark:text-gray-300" :title="row.header_line">{{ row.header_line }}</td>
-                  <td class="px-3 py-2 text-gray-600 dark:text-gray-300">{{ row.file_name || '-' }}</td>
-                  <td class="px-3 py-2 text-gray-500 dark:text-gray-400">{{ formatUnknownCsvDate(row.created_at) }}</td>
-                </tr>
-              </tbody>
-            </table>
+          <div v-else>
+            <div class="overflow-x-auto">
+              <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <thead>
+                  <tr>
+                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Outcome</th>
+                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Broker</th>
+                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Headers</th>
+                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">File</th>
+                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Date</th>
+                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Copy</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                  <template v-for="row in unknownCsvHeaders" :key="row.id">
+                    <tr
+                      class="text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                      @click="toggleExpandedRow(row.id)"
+                    >
+                      <td class="px-3 py-2 text-gray-900 dark:text-white">
+                        <span :class="outcomeClass(row.outcome)">{{ row.outcome }}</span>
+                      </td>
+                      <td class="px-3 py-2 text-gray-600 dark:text-gray-300">{{ row.broker_attempted }}</td>
+                      <td class="px-3 py-2 max-w-xs truncate text-gray-600 dark:text-gray-300" :title="row.header_line">{{ row.header_line }}</td>
+                      <td class="px-3 py-2 text-gray-600 dark:text-gray-300">{{ row.file_name || '-' }}</td>
+                      <td class="px-3 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">{{ formatUnknownCsvDate(row.created_at) }}</td>
+                      <td class="px-3 py-2">
+                        <button
+                          @click.stop="copyHeaderLine(row)"
+                          class="text-xs px-2 py-1 rounded bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                          :title="'Copy header line'"
+                        >
+                          {{ copiedRowId === row.id ? 'Copied!' : 'Copy' }}
+                        </button>
+                      </td>
+                    </tr>
+                    <!-- Expanded detail row -->
+                    <tr v-if="expandedRowId === row.id">
+                      <td colspan="6" class="px-3 py-4 bg-gray-50 dark:bg-gray-900/50">
+                        <div class="space-y-3 text-sm">
+                          <div>
+                            <div class="flex items-center justify-between mb-1">
+                              <span class="font-medium text-gray-700 dark:text-gray-300">Header Line</span>
+                              <button
+                                @click="copyToClipboard(row.header_line, 'header-' + row.id)"
+                                class="text-xs px-2 py-0.5 rounded bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+                              >
+                                {{ clipboardFeedback === 'header-' + row.id ? 'Copied!' : 'Copy' }}
+                              </button>
+                            </div>
+                            <pre class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded p-2 text-xs text-gray-800 dark:text-gray-200 overflow-x-auto whitespace-pre-wrap break-all">{{ row.header_line }}</pre>
+                          </div>
+                          <div v-if="row.sample_data">
+                            <div class="flex items-center justify-between mb-1">
+                              <span class="font-medium text-gray-700 dark:text-gray-300">Sample Data (first rows)</span>
+                              <button
+                                @click="copyToClipboard(row.header_line + '\n' + row.sample_data, 'sample-' + row.id)"
+                                class="text-xs px-2 py-0.5 rounded bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+                              >
+                                {{ clipboardFeedback === 'sample-' + row.id ? 'Copied!' : 'Copy Header + Data' }}
+                              </button>
+                            </div>
+                            <pre class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded p-2 text-xs text-gray-800 dark:text-gray-200 overflow-x-auto whitespace-pre-wrap break-all">{{ row.sample_data }}</pre>
+                          </div>
+                          <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                            <div v-if="row.detected_broker">
+                              <span class="text-gray-500 dark:text-gray-400">Detected Broker:</span>
+                              <span class="ml-1 text-gray-900 dark:text-white">{{ row.detected_broker }}</span>
+                            </div>
+                            <div v-if="row.selected_broker">
+                              <span class="text-gray-500 dark:text-gray-400">Selected Broker:</span>
+                              <span class="ml-1 text-gray-900 dark:text-white">{{ row.selected_broker }}</span>
+                            </div>
+                            <div v-if="row.row_count != null">
+                              <span class="text-gray-500 dark:text-gray-400">CSV Rows:</span>
+                              <span class="ml-1 text-gray-900 dark:text-white">{{ row.row_count }}</span>
+                            </div>
+                            <div v-if="row.trades_parsed != null">
+                              <span class="text-gray-500 dark:text-gray-400">Trades Parsed:</span>
+                              <span class="ml-1 text-gray-900 dark:text-white">{{ row.trades_parsed }}</span>
+                            </div>
+                          </div>
+                          <div v-if="row.diagnostics_json">
+                            <div class="flex items-center justify-between mb-1">
+                              <span class="font-medium text-gray-700 dark:text-gray-300">Diagnostics</span>
+                              <button
+                                @click="copyToClipboard(JSON.stringify(row.diagnostics_json, null, 2), 'diag-' + row.id)"
+                                class="text-xs px-2 py-0.5 rounded bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+                              >
+                                {{ clipboardFeedback === 'diag-' + row.id ? 'Copied!' : 'Copy' }}
+                              </button>
+                            </div>
+                            <pre class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded p-2 text-xs text-gray-800 dark:text-gray-200 overflow-x-auto max-h-48 overflow-y-auto">{{ JSON.stringify(row.diagnostics_json, null, 2) }}</pre>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Pagination -->
+            <div v-if="csvPagination.totalPages > 1" class="flex items-center justify-between mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+              <p class="text-sm text-gray-500 dark:text-gray-400">
+                Showing {{ ((csvPagination.page - 1) * csvPagination.limit) + 1 }}-{{ Math.min(csvPagination.page * csvPagination.limit, csvPagination.total) }} of {{ csvPagination.total }}
+              </p>
+              <div class="flex items-center space-x-2">
+                <button
+                  @click="changeCsvPage(csvPagination.page - 1)"
+                  :disabled="csvPagination.page <= 1"
+                  class="px-3 py-1 text-sm rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Previous
+                </button>
+                <span class="text-sm text-gray-600 dark:text-gray-400">
+                  Page {{ csvPagination.page }} of {{ csvPagination.totalPages }}
+                </span>
+                <button
+                  @click="changeCsvPage(csvPagination.page + 1)"
+                  :disabled="csvPagination.page >= csvPagination.totalPages"
+                  class="px-3 py-1 text-sm rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </template>
@@ -369,6 +475,10 @@ const loading = ref(true)
 const error = ref(null)
 const unknownCsvHeaders = ref([])
 const unknownCsvHeadersLoading = ref(false)
+const csvPagination = ref({ page: 1, limit: 25, total: 0, totalPages: 0 })
+const expandedRowId = ref(null)
+const copiedRowId = ref(null)
+const clipboardFeedback = ref(null)
 
 function formatNumber(num) {
   if (num === null || num === undefined) return '0'
@@ -392,13 +502,60 @@ function formatUnknownCsvDate(iso) {
 async function fetchUnknownCsvHeaders() {
   unknownCsvHeadersLoading.value = true
   try {
-    const response = await api.get('/admin/unknown-csv-headers', { params: { limit: 100 } })
+    const response = await api.get('/admin/unknown-csv-headers', {
+      params: { page: csvPagination.value.page, limit: csvPagination.value.limit }
+    })
     unknownCsvHeaders.value = response.data.data || []
+    if (response.data.pagination) {
+      csvPagination.value = response.data.pagination
+    }
   } catch (err) {
     console.warn('Failed to fetch unknown CSV headers:', err)
     unknownCsvHeaders.value = []
   } finally {
     unknownCsvHeadersLoading.value = false
+  }
+}
+
+function changeCsvPage(newPage) {
+  csvPagination.value.page = newPage
+  expandedRowId.value = null
+  fetchUnknownCsvHeaders()
+}
+
+function toggleExpandedRow(rowId) {
+  expandedRowId.value = expandedRowId.value === rowId ? null : rowId
+}
+
+function outcomeClass(outcome) {
+  const classes = {
+    no_parser_match: 'text-red-600 dark:text-red-400',
+    parse_failed: 'text-red-600 dark:text-red-400',
+    zero_trades: 'text-orange-600 dark:text-orange-400',
+    zero_imported: 'text-orange-600 dark:text-orange-400',
+    high_skip_rate: 'text-yellow-600 dark:text-yellow-400',
+    mismatch_override: 'text-blue-600 dark:text-blue-400'
+  }
+  return classes[outcome] || 'text-gray-900 dark:text-white'
+}
+
+async function copyHeaderLine(row) {
+  try {
+    await navigator.clipboard.writeText(row.header_line)
+    copiedRowId.value = row.id
+    setTimeout(() => { copiedRowId.value = null }, 2000)
+  } catch {
+    console.warn('[WARNING] Failed to copy to clipboard')
+  }
+}
+
+async function copyToClipboard(text, feedbackKey) {
+  try {
+    await navigator.clipboard.writeText(text)
+    clipboardFeedback.value = feedbackKey
+    setTimeout(() => { clipboardFeedback.value = null }, 2000)
+  } catch {
+    console.warn('[WARNING] Failed to copy to clipboard')
   }
 }
 
