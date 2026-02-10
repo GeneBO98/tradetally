@@ -1872,6 +1872,23 @@ function parseDate(dateStr) {
     return `${yearNum}-${monthPadded}-${dayPadded}`;
   }
 
+  // Try to parse IBKR Flex Query format: YYYYMMDD or YYYYMMDD;HHMMSS
+  // This format is used in IBKR Japan and other regional Flex Query exports
+  const ibkrFlexMatch = cleanDateStr.match(/^(\d{4})(\d{2})(\d{2})(;(\d{2})(\d{2})(\d{2}))?$/);
+  if (ibkrFlexMatch) {
+    const [, year, month, day] = ibkrFlexMatch;
+    const yearNum = parseInt(year);
+    const monthNum = parseInt(month);
+    const dayNum = parseInt(day);
+
+    // Validate date components for PostgreSQL 16 compatibility
+    if (monthNum < 1 || monthNum > 12) return null;
+    if (dayNum < 1 || dayNum > 31) return null;
+    if (yearNum < 1900 || yearNum > 2100) return null;
+
+    return `${year}-${month}-${day}`;
+  }
+
   // Try to parse MM/DD/YYYY format
   const mmddyyyyMatch = cleanDateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
   if (mmddyyyyMatch) {
@@ -1952,6 +1969,22 @@ function parseDateTime(dateTimeStr) {
       const dayPadded = day.padStart(2, '0');
       const hourPadded = hour.padStart(2, '0');
       return `${year}-${monthPadded}-${dayPadded}T${hourPadded}:${minute}:00`;
+    }
+
+    // Check for IBKR Flex Query format: YYYYMMDD;HHMMSS (used in IBKR Japan and other regional exports)
+    const ibkrFlexDateTimeMatch = cleanDateTimeStr.match(/^(\d{4})(\d{2})(\d{2});(\d{2})(\d{2})(\d{2})$/);
+    if (ibkrFlexDateTimeMatch) {
+      const [, year, month, day, hour, minute, second] = ibkrFlexDateTimeMatch;
+      const yearNum = parseInt(year);
+      const monthNum = parseInt(month);
+      const dayNum = parseInt(day);
+
+      // Validate date components
+      if (monthNum < 1 || monthNum > 12) return null;
+      if (dayNum < 1 || dayNum > 31) return null;
+      if (yearNum < 1900 || yearNum > 2100) return null;
+
+      return `${year}-${month}-${day}T${hour}:${minute}:${second}`;
     }
 
     // Check for IBKR format "XX-XX-YY H:MM" or "XX-XX-YY HH:MM" (could be MM-DD-YY or DD-MM-YY)
@@ -4606,9 +4639,10 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
       let symbol, quantity, absQuantity, price, commission, dateTime, action, multiplierFromCSV;
 
       // Capture Code column if present (O = Open, P = Partial, C = Close)
+      // Handle both "Code" and "Notes/Codes" column names (Flex Query exports use Notes/Codes)
       let code = null;
-      if (record.Code || record.code) {
-        code = cleanString(record.Code || record.code).toUpperCase();
+      if (record.Code || record.code || record['Notes/Codes']) {
+        code = cleanString(record.Code || record.code || record['Notes/Codes']).toUpperCase();
         console.log(`[IBKR] Transaction code: ${code}`);
       }
 
@@ -4617,13 +4651,16 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         symbol = cleanString(record.Symbol);
         quantity = parseFloat(record.Quantity);
         absQuantity = Math.abs(quantity);
-        price = parseFloat(record.Price);
+        // Handle both "Price" and "TradePrice" column names (Flex Query exports use TradePrice)
+        price = parseFloat(record.Price || record.TradePrice);
         // IBKR commission: negative = fee paid, positive = rebate received
         // Convert to our convention: positive = fee paid, negative = rebate (credit)
-        commission = -(parseFloat(record.Commission || 0));
+        // Handle both "Commission" and "IBCommission" column names
+        commission = -(parseFloat(record.Commission || record.IBCommission || 0));
 
         // Parse date/time - format is YYYYMMDD;HHMMSS
-        const dateTimeParts = (record['Date/Time'] || '').split(';');
+        // Handle both "Date/Time" and "DateTime" column names (Flex Query exports use DateTime)
+        const dateTimeParts = (record['Date/Time'] || record.DateTime || '').split(';');
         const dateStr = dateTimeParts[0]; // YYYYMMDD
         const timeStr = dateTimeParts[1] || '093000'; // HHMMSS
 
@@ -4657,6 +4694,19 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         multiplierFromCSV = record.Multiplier ? parseFloat(record.Multiplier) : null;
       }
 
+
+      // Skip header rows and non-execution records in multi-section Flex Query exports
+      // Flex Query exports have LevelOfDetail = "EXECUTION" for actual trades
+      const levelOfDetail = record.LevelOfDetail || '';
+      if (levelOfDetail === 'LevelOfDetail' || levelOfDetail === 'Header') {
+        // This is a header row from a different section, skip it
+        continue;
+      }
+
+      // Skip if symbol is literally "Symbol" (a header row being parsed as data)
+      if (symbol === 'SYMBOL' || symbol === 'Symbol') {
+        continue;
+      }
 
       // Skip if missing essential data
       // Note: price === 0 is valid for expired options (Code contains "Ep" or "Ex" or "A" or "C")
