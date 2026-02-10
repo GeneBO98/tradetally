@@ -1183,15 +1183,9 @@ class Trade {
     const values = [];
     let paramCount = 1;
 
-    // Calculate trade_date based on exitTime or entryTime
-    if (updates.exitTime) {
-      updates.tradeDate = new Date(updates.exitTime).toISOString().split('T')[0];
-    } else if (updates.entryTime) {
-      // If we're updating entry time and there's no exit time, use entry time for trade date
-      const exitTime = updates.exitTime || currentTrade.exit_time;
-      if (!exitTime) {
-        updates.tradeDate = new Date(updates.entryTime).toISOString().split('T')[0];
-      }
+    // Only update trade_date when entryTime changes (trade_date should always reflect entry date)
+    if (updates.entryTime) {
+      updates.tradeDate = new Date(updates.entryTime).toISOString().split('T')[0];
     }
 
     // Check if user is manually setting strategy - do this first to prevent re-classification from overwriting it

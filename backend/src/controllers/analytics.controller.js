@@ -935,9 +935,10 @@ const analyticsController = {
       const startDate = `${sanitizedYear}-01-01`;
       const endDate = `${sanitizedYear}-12-31`;
 
-      // Build filter conditions (excluding date filters since we're setting them explicitly)
-      const queryWithDates = { ...req.query, startDate, endDate };
-      const { filterConditions, params: filterParams } = buildFilterConditions(queryWithDates);
+      // Build filter conditions without date range - dates are handled explicitly in each CTE
+      // Using req.query directly avoids adding trade_date filters that exclude trades whose
+      // trade_date moved to a different year (e.g. partial exits spanning calendar years)
+      const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
       const params = [req.user.id, ...filterParams];
 
       // Execution-level calendar: each exit execution contributes P&L on the date it occurred
@@ -1033,6 +1034,7 @@ const analyticsController = {
                      ( (e.exec->>'pnl') IS NOT NULL AND (e.exec->>'pnl') ~ '^-?[0-9]+(\\.[0-9]*)?$' )
                      OR ( (e.exec->>'profitLoss') IS NOT NULL AND (e.exec->>'profitLoss') ~ '^-?[0-9]+(\\.[0-9]*)?$' )
                      OR ( (e.exec->>'price') IS NOT NULL AND (e.exec->>'quantity') IS NOT NULL AND ${tableAlias}.entry_price IS NOT NULL )
+                     OR ( (e.exec->>'entryPrice') IS NOT NULL AND (e.exec->>'exitPrice') IS NOT NULL AND (e.exec->>'quantity') IS NOT NULL )
                    )
                    AND ( (${tableAlias}.side IN ('long','buy') AND ((e.exec->>'action') IN ('sell','short') OR (e.exec->>'type') IN ('sell','short') OR e.exec->>'exitTime' IS NOT NULL OR e.exec->>'exit_time' IS NOT NULL)) OR (${tableAlias}.side IN ('short','sell') AND ((e.exec->>'action') IN ('buy','long') OR (e.exec->>'type') IN ('buy','long') OR e.exec->>'exitTime' IS NOT NULL OR e.exec->>'exit_time' IS NOT NULL)) )
                  ))
@@ -1235,6 +1237,7 @@ const analyticsController = {
                    ( (e.exec->>'pnl') IS NOT NULL AND (e.exec->>'pnl') ~ '^-?[0-9]+(\\.[0-9]*)?$' )
                    OR ( (e.exec->>'profitLoss') IS NOT NULL AND (e.exec->>'profitLoss') ~ '^-?[0-9]+(\\.[0-9]*)?$' )
                    OR ( (e.exec->>'price') IS NOT NULL AND (e.exec->>'quantity') IS NOT NULL AND t.entry_price IS NOT NULL )
+                   OR ( (e.exec->>'entryPrice') IS NOT NULL AND (e.exec->>'exitPrice') IS NOT NULL AND (e.exec->>'quantity') IS NOT NULL )
                  )
                  AND ( (t.side IN ('long','buy') AND ((e.exec->>'action') IN ('sell','short') OR (e.exec->>'type') IN ('sell','short') OR e.exec->>'exitTime' IS NOT NULL OR e.exec->>'exit_time' IS NOT NULL)) OR (t.side IN ('short','sell') AND ((e.exec->>'action') IN ('buy','long') OR (e.exec->>'type') IN ('buy','long') OR e.exec->>'exitTime' IS NOT NULL OR e.exec->>'exit_time' IS NOT NULL)) )
                ))

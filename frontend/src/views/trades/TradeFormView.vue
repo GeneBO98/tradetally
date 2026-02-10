@@ -1162,7 +1162,7 @@
         </div>
 
         <!-- Chart Management Section (Collapsible) -->
-        <div v-if="isEdit && route.params.id" class="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+        <div class="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
           <button
             type="button"
             @click="showCharts = !showCharts"
@@ -1180,9 +1180,9 @@
             </svg>
           </button>
           <div v-show="showCharts" class="p-4 space-y-6">
-            <!-- Display existing charts -->
+            <!-- Display existing charts (edit mode only) -->
             <TradeCharts
-              v-if="trade && trade.charts && trade.charts.length > 0"
+              v-if="isEdit && trade && trade.charts && trade.charts.length > 0"
               :trade-id="route.params.id"
               :charts="trade.charts"
               :can-delete="true"
@@ -1191,13 +1191,15 @@
 
             <!-- Add new charts -->
             <ChartUpload
-              :trade-id="route.params.id"
+              ref="chartUploadRef"
+              :trade-id="isEdit ? route.params.id : null"
               @added="handleChartAdded"
             />
 
             <!-- Image Upload Section -->
             <ImageUpload
-              :trade-id="route.params.id"
+              ref="imageUploadRef"
+              :trade-id="isEdit ? route.params.id : null"
               @uploaded="handleImageUploaded"
             />
           </div>
@@ -1745,6 +1747,8 @@ const tagsInputFocused = ref(false)
 const activeTagSuggestionIndex = ref(0)
 const currentImages = ref([])
 const trade = ref(null) // Store full trade data including charts
+const chartUploadRef = ref(null)
+const imageUploadRef = ref(null)
 const strategiesList = ref([])
 const setupsList = ref([])
 const brokersList = ref([])
@@ -2458,14 +2462,43 @@ async function handleSubmit() {
         brokersList.value.push(tradeData.broker)
       }
 
-      showSuccess('Success', 'Trade created successfully')
+      // Flush pending charts and images (non-blocking)
+      const uploadErrors = []
+      if (chartUploadRef.value && chartUploadRef.value.pendingCharts.length > 0) {
+        try {
+          const chartResults = await chartUploadRef.value.flushPendingCharts(newTrade.id)
+          const failedCharts = chartResults.filter(r => !r.success).length
+          if (failedCharts > 0) {
+            uploadErrors.push(`${failedCharts} chart${failedCharts > 1 ? 's' : ''} failed to upload`)
+          }
+        } catch (err) {
+          console.error('[TRADE FORM] Chart flush error:', err)
+          uploadErrors.push('Charts failed to upload')
+        }
+      }
+      if (imageUploadRef.value && imageUploadRef.value.selectedFiles.length > 0) {
+        try {
+          const imageResult = await imageUploadRef.value.flushPendingImages(newTrade.id)
+          if (!imageResult.success) {
+            uploadErrors.push('Images failed to upload')
+          }
+        } catch (err) {
+          console.error('[TRADE FORM] Image flush error:', err)
+          uploadErrors.push('Images failed to upload')
+        }
+      }
+
+      if (uploadErrors.length > 0) {
+        showSuccess('Trade Created', 'Trade saved, but ' + uploadErrors.join(' and ') + '. You can add them by editing the trade.')
+      } else {
+        showSuccess('Success', 'Trade created successfully')
+      }
       trackTradeAction('create', {
         side: tradeData.side,
         broker: tradeData.broker,
         strategy: tradeData.strategy,
         notes: !!tradeData.notes
       })
-      // For new trades, go to trade detail page so user can add attachments
       router.push(`/trades/${newTrade.id}`)
     }
   } catch (err) {
@@ -2476,9 +2509,11 @@ async function handleSubmit() {
   }
 }
 
-function handleImageUploaded() {
-  // Refresh trade data to show new images
-  loadTrade()
+function handleImageUploaded(newImages) {
+  // Add new images to the local array without reloading the trade
+  if (newImages && newImages.length > 0) {
+    currentImages.value = [...currentImages.value, ...newImages]
+  }
   showSuccess('Images Uploaded', 'Trade images uploaded successfully')
 }
 
@@ -2487,15 +2522,22 @@ function handleImageDeleted(imageId) {
   currentImages.value = currentImages.value.filter(img => img.id !== imageId)
 }
 
-async function handleChartAdded() {
-  // Refresh trade data to show new charts
-  await loadTrade()
+async function handleChartAdded(chart) {
+  // Add the new chart to the local charts array without reloading the trade
+  if (trade.value) {
+    if (!trade.value.charts) {
+      trade.value.charts = []
+    }
+    trade.value.charts.push(chart)
+  }
   showSuccess('Chart Added', 'TradingView chart added successfully')
 }
 
 async function handleChartDeleted(chartId) {
-  // Reload trade to update charts list
-  await loadTrade()
+  // Remove the deleted chart from the local charts array without reloading the trade
+  if (trade.value && trade.value.charts) {
+    trade.value.charts = trade.value.charts.filter(c => c.id !== chartId)
+  }
 }
 
 // Watch for changes to isPublic checkbox
