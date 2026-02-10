@@ -1733,6 +1733,8 @@ async function confirmDelete() {
       showSuccess('Imports Deleted', `${response.data.deletedImports} imports and ${response.data.deletedTrades} trades deleted`)
       selectedImportIds.value = new Set()
       await fetchImportHistory()
+      await tradesStore.fetchTrades()
+      await tradesStore.fetchAnalytics()
       showDeleteModal.value = false
     } catch (error) {
       showError('Delete Failed', error.response?.data?.error || 'Failed to delete imports')
@@ -1755,6 +1757,8 @@ async function confirmDelete() {
     showSuccess('Import Deleted', 'Import and associated trades have been deleted')
     selectedImportIds.value.delete(deleteImportId.value)
     await fetchImportHistory()
+    await tradesStore.fetchTrades()
+    await tradesStore.fetchAnalytics()
     showDeleteModal.value = false
   } catch (error) {
     showError('Delete Failed', error.response?.data?.error || 'Failed to delete import')

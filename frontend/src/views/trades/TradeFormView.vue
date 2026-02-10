@@ -1919,17 +1919,7 @@ async function loadTrade() {
       executions: (() => {
         console.log('[TRADE FORM] Raw tradeData.executions:', JSON.stringify(tradeData.executions, null, 2))
         if (tradeData.executions && Array.isArray(tradeData.executions) && tradeData.executions.length > 0) {
-          // Check if any executions have explicit commission/fee values (including 0 or negative rebates)
-          const hasExecutionCommissions = tradeData.executions.some(exec => {
-            const value = exec.commission;
-            return value !== undefined && value !== null && !Number.isNaN(parseFloat(value));
-          });
-          const hasExecutionFees = tradeData.executions.some(exec => {
-            const value = exec.fees;
-            return value !== undefined && value !== null && !Number.isNaN(parseFloat(value));
-          });
-
-          // Calculate total quantity for proportional distribution
+          // Calculate total quantity for proportional distribution (used when distributing trade-level commission)
           const totalQuantity = tradeData.executions.reduce((sum, exec) => sum + (parseFloat(exec.quantity) || 0), 0)
           const tradeCommission = parseFloat(tradeData.commission) || 0
           const tradeFees = parseFloat(tradeData.fees) || 0
@@ -1942,25 +1932,29 @@ async function loadTrade() {
             const execQuantity = parseFloat(exec.quantity) || 0
             const proportion = totalQuantity > 0 ? execQuantity / totalQuantity : 0
 
-            // Use execution-level commission if available, otherwise use execution fees as commission
-            // (CSV imports store commission in the 'fees' field of executions)
-            // This ensures each execution shows its actual commission from the import
+            // Determine commission/fees for this specific execution:
+            // 1. If this execution has a commission field (even if 0) - use it (previously processed)
+            // 2. If no commission field but has non-zero fees - use fees as commission (fresh CSV import)
+            // 3. Otherwise - distribute trade-level commission proportionally
             let execCommission = 0
             let execFees = 0
 
-            if (hasExecutionCommissions) {
-              // Execution has commission field set - use it directly
-              execCommission = exec.commission || 0
+            const thisExecHasCommission = exec.commission !== undefined && exec.commission !== null
+            const thisExecHasNonZeroFees = exec.fees !== undefined && exec.fees !== null && parseFloat(exec.fees) !== 0
+
+            if (thisExecHasCommission) {
+              // Execution has commission field set (from previous save) - use it directly
+              execCommission = parseFloat(exec.commission) || 0
               // Only include fees if they're separate from commission
-              execFees = exec.fees || 0
-            } else if (hasExecutionFees) {
-              // No commission field, but fees exist - use fees as commission
+              execFees = parseFloat(exec.fees) || 0
+            } else if (thisExecHasNonZeroFees) {
+              // No commission field, but has non-zero fees - use fees as commission
               // This handles CSV imports where commission is stored in execution.fees
               // Set fees to 0 to avoid double-counting in P&L calculation
-              execCommission = exec.fees || 0
+              execCommission = parseFloat(exec.fees) || 0
               execFees = 0
             } else {
-              // Neither commission nor fees at execution level - distribute trade-level proportionally
+              // Neither commission field nor non-zero fees - distribute trade-level proportionally
               execCommission = tradeCommission * proportion
               execFees = tradeFees * proportion
             }
