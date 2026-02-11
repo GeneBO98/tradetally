@@ -194,15 +194,18 @@
                     </span>
                   </td>
                   <td class="px-3 py-3 whitespace-nowrap">
-                    <span
+                    <button
+                      @click="toggleMarketingConsent(user)"
+                      :disabled="isUpdating"
                       :class="{
-                        'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400': user.marketing_consent,
-                        'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400': !user.marketing_consent
+                        'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-800/30': user.marketing_consent,
+                        'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800/30': !user.marketing_consent
                       }"
-                      class="inline-flex px-1 py-1 text-xs font-semibold rounded-full"
+                      class="inline-flex px-1 py-1 text-xs font-semibold rounded-full cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      :title="user.marketing_consent ? 'Click to opt out of marketing' : 'Click to opt into marketing'"
                     >
                       <MdiIcon :icon="user.marketing_consent ? mdiCheckCircle : mdiCloseCircle" :size="16" />
-                    </span>
+                    </button>
                   </td>
                   <td class="px-3 py-3 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">
                     {{ formatDate(user.created_at) }}
@@ -803,23 +806,47 @@ async function updateUserRole(user, newRole) {
 
 async function toggleUserStatus(user) {
   const newStatus = !user.is_active
-  
+
   try {
     isUpdating.value = true
-    
+
     const response = await api.put(`/users/admin/users/${user.id}/status`, {
       isActive: newStatus
     })
-    
+
     // Update the user in the local array
     const userIndex = users.value.findIndex(u => u.id === user.id)
     if (userIndex !== -1) {
       users.value[userIndex] = response.data.user
     }
-    
+
     showSuccess('Success', response.data.message)
   } catch (err) {
     showError('Error', err.response?.data?.error || 'Failed to update user status')
+  } finally {
+    isUpdating.value = false
+  }
+}
+
+async function toggleMarketingConsent(user) {
+  const newConsent = !user.marketing_consent
+
+  try {
+    isUpdating.value = true
+
+    const response = await api.put(`/users/admin/users/${user.id}/marketing-consent`, {
+      marketingConsent: newConsent
+    })
+
+    // Update the user in the local array
+    const userIndex = users.value.findIndex(u => u.id === user.id)
+    if (userIndex !== -1) {
+      users.value[userIndex] = response.data.user
+    }
+
+    showSuccess('Success', response.data.message)
+  } catch (err) {
+    showError('Error', err.response?.data?.error || 'Failed to update marketing consent')
   } finally {
     isUpdating.value = false
   }
