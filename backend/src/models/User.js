@@ -464,7 +464,7 @@ class User {
       // Get filtered count if search was provided
       let total = parseInt(countResult.rows[0].total);
       if (search && search.trim() !== '') {
-        const filteredCountQuery = `SELECT COUNT(*) as total FROM users ${whereClause}`;
+        const filteredCountQuery = `SELECT COUNT(*) as total FROM users u ${whereClause}`;
         const filteredCountResult = await db.query(filteredCountQuery, [params[0]]);
         total = parseInt(filteredCountResult.rows[0].total);
       }
