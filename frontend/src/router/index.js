@@ -42,6 +42,12 @@ const router = createRouter({
       meta: { guest: true }
     },
     {
+      path: '/unsubscribe',
+      name: 'unsubscribe',
+      component: () => import('@/views/auth/UnsubscribeView.vue'),
+      meta: { guest: true }
+    },
+    {
       path: '/dashboard',
       name: 'dashboard',
       component: () => import('@/views/DashboardView.vue'),
