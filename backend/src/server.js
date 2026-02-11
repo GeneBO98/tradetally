@@ -48,6 +48,7 @@ const instrumentTemplatesRoutes = require('./routes/instrumentTemplates.routes')
 const tradeManagementRoutes = require('./routes/tradeManagement.routes');
 const aiRoutes = require('./routes/ai.routes');
 const symbolsRoutes = require('./routes/symbols.routes');
+const unsubscribeRoutes = require('./routes/unsubscribe.routes');
 const BillingService = require('./services/billingService');
 const priceMonitoringService = require('./services/priceMonitoringService');
 const backupScheduler = require('./services/backupScheduler.service');
@@ -244,6 +245,7 @@ app.use('/api/instrument-templates', instrumentTemplatesRoutes);
 app.use('/api/trade-management', tradeManagementRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/symbols', symbolsRoutes);
+app.use('/api/unsubscribe', unsubscribeRoutes);
 
 // OAuth2 Provider endpoints
 app.use('/oauth', oauth2Routes);

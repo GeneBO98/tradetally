@@ -35,6 +35,7 @@ class RetentionEmailScheduler {
       const startStr = startDate.toISOString().split('T')[0];
       const endStr = endDate.toISOString().split('T')[0];
 
+      // Only send to users with marketing_consent = true
       const query = `
         SELECT
           t.user_id,
@@ -44,7 +45,7 @@ class RetentionEmailScheduler {
           COUNT(*)::int AS trade_count,
           COALESCE(SUM(t.pnl), 0)::double precision AS total_pnl
         FROM trades t
-        INNER JOIN users u ON u.id = t.user_id AND u.is_active = true
+        INNER JOIN users u ON u.id = t.user_id AND u.is_active = true AND u.marketing_consent = true
         WHERE t.trade_date >= $1::date AND t.trade_date <= $2::date
         GROUP BY t.user_id, u.email, u.username, u.full_name
         HAVING COUNT(*) > 0
@@ -64,7 +65,8 @@ class RetentionEmailScheduler {
               tradeCount: row.trade_count,
               totalPnL: parseFloat(row.total_pnl) || 0,
               dashboardUrl
-            }
+            },
+            row.user_id // Pass userId for personalized unsubscribe link
           );
         } catch (err) {
           console.error(`Failed to send weekly digest to ${row.email}:`, err.message);
@@ -104,7 +106,8 @@ class RetentionEmailScheduler {
           await EmailService.sendInactiveReengagementEmail(
             row.email,
             row.username || row.full_name || 'there',
-            14
+            14,
+            row.id // Pass userId for personalized unsubscribe link
           );
           await db.query(
             'UPDATE users SET reengagement_email_sent_at = NOW() WHERE id = $1',

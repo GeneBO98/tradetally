@@ -845,7 +845,7 @@ class User {
     const query = `
       INSERT INTO tier_overrides (user_id, tier, reason, expires_at, created_by)
       VALUES ($1, $2, $3, $4, $5)
-      ON CONFLICT (user_id) 
+      ON CONFLICT (user_id)
       DO UPDATE SET
         tier = EXCLUDED.tier,
         reason = EXCLUDED.reason,
@@ -854,9 +854,46 @@ class User {
         updated_at = CURRENT_TIMESTAMP
       RETURNING *
     `;
-    
+
     const result = await db.query(query, [userId, tier, reason, expiresAt, createdBy]);
     return result.rows[0];
+  }
+
+  /**
+   * Get a user's marketing consent status by ID
+   * @param {number} userId - The user's ID
+   * @returns {boolean|null} marketing_consent value, or null if user not found
+   */
+  static async getMarketingConsentById(userId) {
+    const query = `
+      SELECT marketing_consent
+      FROM users
+      WHERE id = $1
+    `;
+
+    const result = await db.query(query, [userId]);
+    if (result.rows.length === 0) {
+      return null;
+    }
+    return result.rows[0].marketing_consent;
+  }
+
+  /**
+   * Update a user's marketing consent status
+   * @param {number} userId - The user's ID
+   * @param {boolean} consent - The new consent value
+   * @returns {boolean} true if updated, false if user not found
+   */
+  static async updateMarketingConsent(userId, consent) {
+    const query = `
+      UPDATE users
+      SET marketing_consent = $1, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $2
+      RETURNING id
+    `;
+
+    const result = await db.query(query, [consent, userId]);
+    return result.rows.length > 0;
   }
 }
 
