@@ -196,7 +196,6 @@ coverage/
 local.json
 
 # Docker files (if using Docker)
-.dockerignore
 docker-compose.override.yml
 
 # Package lock files (choose one based on your package manager)
