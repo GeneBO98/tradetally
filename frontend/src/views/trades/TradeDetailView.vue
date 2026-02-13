@@ -29,6 +29,9 @@
           </p>
         </div>
         <div class="flex space-x-3">
+          <router-link :to="`/analysis/trade-management?tradeId=${trade.id}`" class="btn-primary">
+            Manage
+          </router-link>
           <router-link :to="`/trades/${trade.id}/edit`" class="btn-secondary">
             Edit
           </router-link>
@@ -136,9 +139,19 @@
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Stop Loss</dt>
                   <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">${{ formatNumber(trade.stop_loss || trade.stopLoss) }}</dd>
                 </div>
-                <div v-if="trade.takeProfit || trade.take_profit">
+                <div v-if="trade.takeProfit || trade.take_profit || (trade.take_profit_targets && trade.take_profit_targets.length > 0)">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Take Profit</dt>
-                  <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">${{ formatNumber(trade.take_profit || trade.takeProfit) }}</dd>
+                  <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono flex flex-wrap gap-x-4 gap-y-1">
+                    <!-- Show single take_profit as TP1 only when NO take_profit_targets exist -->
+                    <span v-if="(trade.take_profit || trade.takeProfit) && (!trade.take_profit_targets || trade.take_profit_targets.length === 0)">
+                      <span class="text-xs text-gray-400 mr-1">TP1:</span>${{ formatNumber(trade.take_profit || trade.takeProfit) }}
+                    </span>
+                    <!-- Show all targets from take_profit_targets as TP1, TP2, etc. -->
+                    <span v-for="(target, index) in (trade.take_profit_targets || [])" :key="index">
+                      <span class="text-xs text-gray-400 mr-1">TP{{ index + 1 }}:</span>${{ formatNumber(target.price) }}
+                      <span v-if="target.shares" class="text-xs text-gray-400 ml-0.5">({{ target.shares }})</span>
+                    </span>
+                  </dd>
                 </div>
                 <div v-if="trade.rValue !== null && trade.rValue !== undefined">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">R-Multiple</dt>
@@ -517,15 +530,47 @@
           <!-- Executions -->
           <div v-if="processedExecutions && processedExecutions.length > 0" class="card">
             <div class="card-body">
-              <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
-                Executions ({{ processedExecutions.length }})
-              </h3>
+              <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-medium text-gray-900 dark:text-white">
+                  Executions ({{ processedExecutions.length }})
+                </h3>
+                <div v-if="processedExecutions.length >= 2 && trade.exit_price && trade.exit_time" class="flex items-center space-x-2">
+                  <template v-if="splitMode">
+                    <span class="text-sm text-gray-600 dark:text-gray-400">{{ selectedExecutions.size }} selected</span>
+                    <button
+                      @click="splitSelectedTrades"
+                      :disabled="splittingTrade || selectedExecutions.size === 0 || selectedExecutions.size === entryExecutionIndices.length"
+                      class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-primary-600 text-white hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
+                    >
+                      <svg v-if="splittingTrade" class="animate-spin -ml-0.5 mr-1.5 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      {{ splittingTrade ? 'Splitting...' : 'Split Selected' }}
+                    </button>
+                    <button
+                      @click="splitMode = false; selectedExecutions = new Set()"
+                      class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none"
+                    >
+                      Cancel
+                    </button>
+                  </template>
+                  <button
+                    v-else
+                    @click="splitMode = true"
+                    class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  >
+                    Select to Split
+                  </button>
+                </div>
+              </div>
               
               <!-- Desktop Table View -->
               <div class="hidden md:block overflow-x-auto">
                 <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                   <thead class="bg-gray-50 dark:bg-gray-800">
                     <tr>
+                      <th v-if="splitMode" class="px-3 py-3 w-10"></th>
                       <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                         Action
                       </th>
@@ -558,6 +603,16 @@
                   <tbody class="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
                     <tr v-for="(execution, index) in processedExecutions" :key="index"
                         class="hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                      <td v-if="splitMode" class="px-3 py-4 whitespace-nowrap">
+                        <input
+                          v-if="isEntryExecution(execution)"
+                          type="checkbox"
+                          :checked="selectedExecutions.has(index)"
+                          @change="toggleExecution(index)"
+                          class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                        />
+                        <span v-else class="block h-4 w-4"></span>
+                      </td>
                       <td class="px-3 py-4 whitespace-nowrap">
                         <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
                               :class="[
@@ -618,6 +673,14 @@
                 <div v-for="(execution, index) in processedExecutions" :key="index"
                      class="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
                   <div class="flex items-center justify-between mb-3">
+                    <div class="flex items-center space-x-2">
+                      <input
+                        v-if="splitMode && isEntryExecution(execution)"
+                        type="checkbox"
+                        :checked="selectedExecutions.has(index)"
+                        @change="toggleExecution(index)"
+                        class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                      />
                     <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
                           :class="[
                             (execution.action || execution.side || '').toLowerCase() === 'buy' || (execution.action || execution.side || '').toLowerCase() === 'long'
@@ -628,6 +691,7 @@
                           ]">
                       {{ ((execution.action || execution.side) || 'N/A').toUpperCase() }}
                     </span>
+                    </div>
                     <div class="text-xs text-gray-500 dark:text-gray-400">
                       {{ execution.entryTime ? formatDateTime(execution.entryTime) : (execution.exitTime ? formatDateTime(execution.exitTime) : '-') }}
                     </div>
@@ -986,13 +1050,17 @@
               <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Timeline</h3>
               <dl class="space-y-3">
                 <div v-if="trade.entry_time">
-                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Entry</dt>
+                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
+                    Entry <span class="text-xs font-normal">({{ timezoneLabel }})</span>
+                  </dt>
                   <dd class="mt-1 text-sm text-gray-900 dark:text-white">
                     {{ formatDateTime(trade.entry_time) }}
                   </dd>
                 </div>
                 <div v-if="trade.exit_time">
-                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Exit</dt>
+                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
+                    Exit <span class="text-xs font-normal">({{ timezoneLabel }})</span>
+                  </dt>
                   <dd class="mt-1 text-sm text-gray-900 dark:text-white">
                     {{ formatDateTime(trade.exit_time) }}
                   </dd>
@@ -1093,6 +1161,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTradesStore } from '@/stores/trades'
 import { useNotification } from '@/composables/useNotification'
+import { useUserTimezone } from '@/composables/useUserTimezone'
 import { format, formatDistanceToNow, formatDistance } from 'date-fns'
 import { DocumentIcon, ChatBubbleLeftIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
@@ -1106,10 +1175,14 @@ const router = useRouter()
 const tradesStore = useTradesStore()
 const authStore = useAuthStore()
 const { showSuccess, showError, showConfirmation } = useNotification()
+const { formatDateTime: formatDateTimeTz, formatTime: formatTimeTz, timezoneLabel } = useUserTimezone()
 
 const loading = ref(true)
 const trade = ref(null)
 const calculatingQuality = ref(false)
+const splittingTrade = ref(false)
+const splitMode = ref(false)
+const selectedExecutions = ref(new Set())
 
 // Helper function to safely get numeric score value
 const getScore = (value) => {
@@ -1301,12 +1374,14 @@ const processedExecutions = computed(() => {
 
     if (isOpening) {
       // Add to entry queue for FIFO matching
-      entryQueue.push({ quantity, price, remainingQty: quantity })
+      // Track commission to prorate it when calculating exit P&L
+      entryQueue.push({ quantity, price, commission: totalCost, remainingQty: quantity })
     } else {
       // Exit execution - match against entries using FIFO
       let remainingExitQty = quantity
       let totalMatchedValue = 0
       let totalMatchedQty = 0
+      let totalMatchedEntryCommission = 0
 
       // Consume entries from the front of the queue (FIFO)
       while (remainingExitQty > 0 && entryQueue.length > 0) {
@@ -1315,6 +1390,10 @@ const processedExecutions = computed(() => {
 
         totalMatchedValue += matchQty * entry.price
         totalMatchedQty += matchQty
+        // Prorate entry commission based on matched quantity
+        if (entry.commission && entry.quantity > 0) {
+          totalMatchedEntryCommission += (entry.commission * matchQty / entry.quantity)
+        }
         remainingExitQty -= matchQty
         entry.remainingQty -= matchQty
 
@@ -1325,15 +1404,16 @@ const processedExecutions = computed(() => {
       }
 
       // Calculate P&L based on matched entry price
+      // Deduct both exit commission (totalCost) and prorated entry commission
       if (totalMatchedQty > 0) {
         matchedEntryPrice = totalMatchedValue / totalMatchedQty
 
         if (tradeSide === 'long') {
           // Long: profit when exit price > entry price
-          executionPnl = (price - matchedEntryPrice) * totalMatchedQty * valueMultiplier - totalCost
+          executionPnl = (price - matchedEntryPrice) * totalMatchedQty * valueMultiplier - totalCost - totalMatchedEntryCommission
         } else {
           // Short: profit when exit price < entry price
-          executionPnl = (matchedEntryPrice - price) * totalMatchedQty * valueMultiplier - totalCost
+          executionPnl = (matchedEntryPrice - price) * totalMatchedQty * valueMultiplier - totalCost - totalMatchedEntryCommission
         }
       }
     }
@@ -1478,28 +1558,8 @@ function formatDate(date) {
 
 function formatDateTime(date) {
   if (!date) return 'N/A'
-  try {
-    // Parse datetime string manually to avoid timezone issues
-    const dateStr = date.toString()
-
-    // If it's an ISO datetime string, parse components directly
-    // Updated regex to handle milliseconds and timezone (but we ignore them to parse as local time)
-    const isoMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?/)
-    if (isoMatch) {
-      const [, year, month, day, hour, minute, second] = isoMatch.map(Number)
-      // Create date in local timezone (ignoring any timezone info from the string)
-      const dateObj = new Date(year, month - 1, day, hour, minute, second)
-      return format(dateObj, 'MMM dd, yyyy HH:mm')
-    }
-
-    // Fallback to standard parsing
-    const dateObj = new Date(date)
-    if (isNaN(dateObj.getTime())) return 'Invalid Date'
-    return format(dateObj, 'MMM dd, yyyy HH:mm')
-  } catch (error) {
-    console.error('Date formatting error:', error, 'for date:', date)
-    return 'Invalid Date'
-  }
+  // Use timezone-aware formatting from composable
+  return formatDateTimeTz(date)
 }
 
 function formatFileSize(bytes) {
@@ -1562,7 +1622,7 @@ function formatCommentDate(date) {
     const diffInHours = (now - dateObj) / (1000 * 60 * 60)
     
     if (diffInHours < 24) {
-      return format(dateObj, 'HH:mm')
+      return formatTimeTz(date)
     } else if (diffInHours < 48) {
       return 'Yesterday'
     } else if (diffInHours < 168) { // 7 days
@@ -1593,7 +1653,7 @@ function formatNewsDate(date) {
     } else if (diffInHours < 48) {
       return 'Yesterday'
     } else {
-      return format(dateObj, 'MMM dd, HH:mm')
+      return formatDateTimeTz(date)
     }
   } catch (error) {
     console.error('News date formatting error:', error, 'for date:', date)
@@ -1724,6 +1784,65 @@ async function deleteTrade() {
         router.push('/trades')
       } catch (error) {
         showError('Error', 'Failed to delete trade')
+      }
+    }
+  )
+}
+
+const entryAction = computed(() => {
+  if (!trade.value) return 'buy'
+  return trade.value.side === 'long' ? 'buy' : 'sell'
+})
+
+const entryExecutionIndices = computed(() => {
+  if (!trade.value?.executions || !Array.isArray(trade.value.executions)) return []
+  return trade.value.executions
+    .map((e, i) => ({ index: i, action: e.action }))
+    .filter(e => e.action === entryAction.value)
+    .map(e => e.index)
+})
+
+function isEntryExecution(execution) {
+  const action = (execution.action || execution.side || '').toLowerCase()
+  return action === entryAction.value
+}
+
+function toggleExecution(index) {
+  const next = new Set(selectedExecutions.value)
+  if (next.has(index)) {
+    next.delete(index)
+  } else {
+    next.add(index)
+  }
+  selectedExecutions.value = next
+}
+
+async function splitSelectedTrades() {
+  const count = selectedExecutions.value.size
+  const allSelected = count === entryExecutionIndices.value.length
+  const msg = allSelected
+    ? `This will split all ${count} entry fills into individual trades and delete the original. This cannot be undone.`
+    : `This will split ${count} selected entry fill(s) into new trade(s) and update the original with the remaining entries. This cannot be undone.`
+
+  showConfirmation(
+    'Split Trade',
+    msg,
+    async () => {
+      try {
+        splittingTrade.value = true
+        const indices = Array.from(selectedExecutions.value)
+        await api.post(`/trades/${trade.value.id}/split`, { execution_indices: indices })
+        showSuccess('Success', `Trade split successfully`)
+        await tradesStore.fetchTrades()
+        await tradesStore.fetchAnalytics()
+        router.push('/trades')
+      } catch (error) {
+        console.error('Failed to split trade:', error)
+        showError('Error', error.response?.data?.error || 'Failed to split trade')
+      } finally {
+        splittingTrade.value = false
+        splitMode.value = false
+        selectedExecutions.value = new Set()
       }
     }
   )

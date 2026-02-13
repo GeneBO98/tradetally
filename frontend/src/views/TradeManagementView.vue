@@ -11,7 +11,7 @@
     </div>
 
     <!-- R-Multiple Performance Chart -->
-    <RPerformanceChart :filters="filters" class="mb-8" />
+    <RPerformanceChart :filters="filters" :refresh-trigger="rPerfRefreshTrigger" class="mb-8" />
 
     <!-- Divider -->
     <div class="border-t border-gray-200 dark:border-gray-700 my-8"></div>
@@ -47,22 +47,30 @@
 
     <!-- Analysis Section (shown when trade has required data) -->
     <div v-if="selectedTrade && !needsRiskLevels && analysis" class="space-y-6 mt-6">
-      <!-- Candlestick Chart with Markers (only shown when chart data loads successfully) -->
+      <!-- Candlestick Chart with Markers (only shown when chart data loads successfully and instrument is supported) -->
       <TradeManagementChart
-        v-if="chartAvailable"
+        v-if="chartAvailable && isChartSupportedInstrument"
         :trade="selectedTrade"
         :loading="chartLoading"
         @chart-loaded="onChartLoaded"
       />
 
+      <!-- Message for unsupported instruments -->
+      <div v-else-if="!isChartSupportedInstrument" class="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+        <p class="text-gray-600 dark:text-gray-400 text-sm">
+          Chart visualization is not available for {{ selectedTrade?.instrument_type }} trades.
+        </p>
+      </div>
+
       <!-- R-Multiple Analysis -->
-      <RMultipleAnalysis :analysis="analysis" />
+      <RMultipleAnalysis :analysis="analysis" :trade="selectedTrade" />
 
       <!-- Summary Metrics (with inline editing) -->
       <TradeSummaryMetrics
         :trade="selectedTrade"
         :analysis="analysis"
         @levels-updated="onLevelsUpdated"
+        @target-hit-updated="onTargetHitUpdated"
       />
 
       <!-- TradingView Charts (if any) -->
@@ -98,6 +106,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import api from '@/services/api'
+import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 import TradeSelector from '@/components/trade-management/TradeSelector.vue'
 import StopLossTakeProfitForm from '@/components/trade-management/StopLossTakeProfitForm.vue'
 import TradeManagementChart from '@/components/trade-management/TradeManagementChart.vue'
@@ -108,6 +117,7 @@ import TradeCharts from '@/components/trades/TradeCharts.vue'
 
 const route = useRoute()
 const router = useRouter()
+const { selectedAccount } = useGlobalAccountFilter()
 
 // State
 const trades = ref([])
@@ -121,7 +131,8 @@ const pagination = ref({
 const filters = ref({
   startDate: '',
   endDate: '',
-  symbol: ''
+  symbol: '',
+  accounts: ''
 })
 
 const selectedTradeId = ref(null)
@@ -133,11 +144,22 @@ const chartAvailable = ref(false)
 const savingLevels = ref(false)
 const editingLevels = ref(false)
 const error = ref(null)
+const rPerfRefreshTrigger = ref(0)
 
 // Computed
 const needsRiskLevels = computed(() => {
   if (!selectedTrade.value) return false
   return !selectedTrade.value.stop_loss
+})
+
+// Check if chart should be available for this instrument type
+// Futures are not supported by Alpha Vantage
+const isChartSupportedInstrument = computed(() => {
+  if (!selectedTrade.value) return true
+  const instrumentType = selectedTrade.value.instrument_type
+  // Futures are not supported
+  if (instrumentType === 'future') return false
+  return true
 })
 
 // URL State Management
@@ -196,6 +218,9 @@ async function fetchTrades() {
     if (filters.value.endDate) {
       params.endDate = filters.value.endDate
     }
+    if (selectedAccount.value) {
+      params.accounts = selectedAccount.value
+    }
 
     console.log('[TRADE-MGMT] Fetching trades with params:', params)
     const response = await api.get('/trade-management/trades', { params })
@@ -231,6 +256,9 @@ async function loadMoreTrades() {
     }
     if (filters.value.endDate) {
       params.endDate = filters.value.endDate
+    }
+    if (selectedAccount.value) {
+      params.accounts = selectedAccount.value
     }
 
     const response = await api.get('/trade-management/trades', { params })
@@ -283,6 +311,12 @@ async function fetchAnalysis(tradeId) {
     const response = await api.get(`/trade-management/analysis/${tradeId}`)
     selectedTrade.value = response.data.trade
     analysis.value = response.data.analysis
+
+    // Skip chart visualization for futures (not supported)
+    if (selectedTrade.value?.instrument_type === 'future') {
+      chartAvailable.value = false
+      chartLoading.value = false
+    }
   } catch (err) {
     if (err.response?.data?.needs_stop_loss) {
       // Trade needs stop loss - this is handled by needsRiskLevels computed
@@ -309,6 +343,15 @@ async function onLevelsUpdated(updatedTrade) {
   // Re-fetch analysis with new levels
   await fetchAnalysis(updatedTrade.id)
   updateTradeInList(updatedTrade)
+}
+
+async function onTargetHitUpdated(data) {
+  // Re-fetch analysis to get updated trade data including manual_target_hit_first
+  if (selectedTradeId.value) {
+    await fetchAnalysis(selectedTradeId.value)
+  }
+  // Trigger refresh of the R-Performance chart to reflect updated management R values
+  rPerfRefreshTrigger.value++
 }
 
 function onChartDeleted(chartId) {
@@ -352,9 +395,24 @@ function clearSelection() {
 }
 
 // Lifecycle
+// Watch for global account filter changes
+watch(selectedAccount, () => {
+  console.log('[TRADE-MGMT] Global account filter changed to:', selectedAccount.value || 'All Accounts')
+  // Update filters with the new account so RPerformanceChart also refreshes
+  filters.value = { ...filters.value, accounts: selectedAccount.value || '' }
+  pagination.value.offset = 0
+  clearSelection()
+  fetchTrades()
+})
+
 onMounted(async () => {
   // Restore filters from URL
   const savedTradeId = restoreFromUrl()
+
+  // Initialize account filter from global state
+  if (selectedAccount.value) {
+    filters.value.accounts = selectedAccount.value
+  }
 
   // Fetch trades with restored filters
   await fetchTrades()

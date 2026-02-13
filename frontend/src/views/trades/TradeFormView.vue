@@ -74,12 +74,10 @@
           <div class="grid grid-cols-1 gap-6 sm:grid-cols-3">
             <div>
               <label for="symbol" class="label">Symbol *</label>
-              <input
+              <SymbolAutocomplete
                 id="symbol"
                 v-model="form.symbol"
-                type="text"
-                required
-                class="input uppercase"
+                :required="true"
                 placeholder="AAPL"
               />
             </div>
@@ -111,25 +109,110 @@
                 id="stopLoss"
                 v-model="form.stopLoss"
                 type="number"
-                step="0.000001"
+                step="any"
                 min="0"
                 class="input"
                 placeholder="0"
               />
             </div>
 
-            <div>
-              <label for="takeProfit" class="label">Take Profit</label>
-              <input
-                id="takeProfit"
-                v-model="form.takeProfit"
-                type="number"
-                step="0.000001"
-                min="0"
-                class="input"
-                placeholder="0"
-              />
+            <!-- All Take Profit targets in one column using CSS grid for alignment -->
+            <div class="space-y-2">
+              <!-- TP1 -->
+              <div class="grid gap-2 items-end" style="grid-template-columns: 1fr 5rem 1.5rem;">
+                <div>
+                  <label for="takeProfit" class="label">Take Profit (TP1)</label>
+                  <input
+                    id="takeProfit"
+                    v-model="form.takeProfit"
+                    type="number"
+                    step="any"
+                    min="0"
+                    class="input"
+                    placeholder="0"
+                  />
+                </div>
+                <div>
+                  <label for="takeProfitQty" class="label text-xs">Qty</label>
+                  <input
+                    id="takeProfitQty"
+                    v-model.number="form.takeProfitQty"
+                    type="number"
+                    step="1"
+                    min="1"
+                    class="input"
+                    placeholder="Qty"
+                  />
+                </div>
+                <div></div>
+              </div>
+
+              <!-- TP2+ -->
+              <div v-for="(target, tpIndex) in form.takeProfitTargets" :key="tpIndex" class="grid gap-2 items-end" style="grid-template-columns: 1fr 5rem 1.5rem;">
+                <div>
+                  <label :for="`tp-target-${tpIndex}`" class="label text-xs">TP{{ tpIndex + 2 }}</label>
+                  <input
+                    :id="`tp-target-${tpIndex}`"
+                    v-model.number="form.takeProfitTargets[tpIndex].price"
+                    type="number"
+                    step="any"
+                    min="0"
+                    class="input"
+                    placeholder="Price"
+                  />
+                </div>
+                <div>
+                  <label :for="`tp-shares-${tpIndex}`" class="label text-xs">Shares</label>
+                  <input
+                    :id="`tp-shares-${tpIndex}`"
+                    v-model.number="form.takeProfitTargets[tpIndex].shares"
+                    type="number"
+                    step="1"
+                    min="1"
+                    class="input"
+                    placeholder="Qty"
+                  />
+                </div>
+                <button
+                  type="button"
+                  @click="removeTakeProfitTarget(tpIndex)"
+                  class="p-1 h-10 flex items-center justify-center text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
+                  title="Remove target"
+                >
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <button
+                type="button"
+                @click="addTakeProfitTarget"
+                class="inline-flex items-center text-xs text-primary-600 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300"
+              >
+                <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                </svg>
+                Add TP Target
+              </button>
             </div>
+          </div>
+
+          <!-- Target Hit First (only shown when stop loss is set) -->
+          <div v-if="!hasGroupedExecutions && form.stopLoss" class="mt-6">
+            <label for="manualTargetHitFirst" class="label">Target Hit First</label>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
+              Manually specify which target was hit first (for R-Multiple analysis)
+            </p>
+            <select
+              id="manualTargetHitFirst"
+              v-model="form.manualTargetHitFirst"
+              class="input"
+            >
+              <option :value="null">-- Auto-detect (requires API) --</option>
+              <option value="take_profit">Take Profit Hit First</option>
+              <option value="stop_loss">Stop Loss Hit First</option>
+            </select>
           </div>
 
           <!-- Info message when fields are hidden -->
@@ -164,6 +247,29 @@
               >
                 + Add Complete Trade
               </button>
+            </div>
+          </div>
+
+          <!-- Live P&L Preview -->
+          <div v-if="computedPnlPreview.hasValidData" class="mb-4 p-4 rounded-lg border"
+               :class="computedPnlPreview.value >= 0
+                 ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+                 : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-sm font-medium text-gray-700 dark:text-gray-300">Estimated P&L</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400" v-if="computedPnlPreview.instrumentType === 'future'">
+                  Point Value: ${{ form.pointValue || 1 }}
+                </p>
+              </div>
+              <div class="text-right">
+                <p class="text-2xl font-bold"
+                   :class="computedPnlPreview.value >= 0
+                     ? 'text-green-600 dark:text-green-400'
+                     : 'text-red-600 dark:text-red-400'">
+                  {{ computedPnlPreview.value >= 0 ? '+' : '' }}${{ computedPnlPreview.value.toFixed(2) }}
+                </p>
+              </div>
             </div>
           </div>
 
@@ -212,7 +318,7 @@
                       v-model="execution.quantity"
                       type="number"
                       min="0.0001"
-                      step="0.0001"
+                      step="any"
                       required
                       class="input"
                       placeholder="100"
@@ -228,7 +334,7 @@
                       :id="`exec-entry-price-${index}`"
                       v-model="execution.entryPrice"
                       type="number"
-                      step="0.000001"
+                      step="any"
                       min="0"
                       required
                       class="input"
@@ -242,7 +348,7 @@
                       :id="`exec-exit-price-${index}`"
                       v-model="execution.exitPrice"
                       type="number"
-                      step="0.000001"
+                      step="any"
                       min="0"
                       class="input"
                       placeholder="0"
@@ -253,22 +359,28 @@
                 <!-- Row 3: Entry Time and Exit Time -->
                 <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
-                    <label :for="`exec-entry-time-${index}`" class="label">Entry Time *</label>
+                    <label :for="`exec-entry-time-${index}`" class="label">
+                      Entry Time * <span class="text-xs font-normal text-gray-500">({{ timezoneLabel }})</span>
+                    </label>
                     <input
                       :id="`exec-entry-time-${index}`"
                       v-model="execution.entryTime"
                       type="datetime-local"
+                      step="1"
                       required
                       class="input"
                     />
                   </div>
 
                   <div>
-                    <label :for="`exec-exit-time-${index}`" class="label">Exit Time</label>
+                    <label :for="`exec-exit-time-${index}`" class="label">
+                      Exit Time <span class="text-xs font-normal text-gray-500">({{ timezoneLabel }})</span>
+                    </label>
                     <input
                       :id="`exec-exit-time-${index}`"
                       v-model="execution.exitTime"
                       type="datetime-local"
+                      step="1"
                       class="input"
                     />
                   </div>
@@ -282,7 +394,7 @@
                       :id="`exec-commission-${index}`"
                       v-model="execution.commission"
                       type="number"
-                      step="0.00000001"
+                      step="any"
                       class="input"
                       placeholder="0"
                     />
@@ -294,7 +406,7 @@
                       :id="`exec-fees-${index}`"
                       v-model="execution.fees"
                       type="number"
-                      step="0.00000001"
+                      step="any"
                       class="input"
                       placeholder="0"
                     />
@@ -309,24 +421,92 @@
                       :id="`exec-stop-loss-${index}`"
                       v-model="execution.stopLoss"
                       type="number"
-                      step="0.000001"
+                      step="any"
                       min="0"
                       class="input"
                       placeholder="0"
                     />
                   </div>
 
-                  <div>
-                    <label :for="`exec-take-profit-${index}`" class="label">Take Profit</label>
-                    <input
-                      :id="`exec-take-profit-${index}`"
-                      v-model="execution.takeProfit"
-                      type="number"
-                      step="0.000001"
-                      min="0"
-                      class="input"
-                      placeholder="0"
-                    />
+                  <!-- All Take Profit targets using CSS grid for alignment -->
+                  <div class="space-y-2">
+                    <!-- TP1 -->
+                    <div class="grid gap-2 items-end" style="grid-template-columns: 1fr 5rem 1.5rem;">
+                      <div>
+                        <label :for="`exec-take-profit-${index}`" class="label">Take Profit (TP1)</label>
+                        <input
+                          :id="`exec-take-profit-${index}`"
+                          v-model="execution.takeProfit"
+                          type="number"
+                          step="any"
+                          min="0"
+                          class="input"
+                          placeholder="0"
+                        />
+                      </div>
+                      <div>
+                        <label :for="`exec-take-profit-qty-${index}`" class="label text-xs">Qty</label>
+                        <input
+                          :id="`exec-take-profit-qty-${index}`"
+                          v-model.number="execution.takeProfitQty"
+                          type="number"
+                          step="1"
+                          min="1"
+                          class="input"
+                          placeholder="Qty"
+                        />
+                      </div>
+                      <div></div>
+                    </div>
+
+                    <!-- TP2+ -->
+                    <div v-for="(target, tpIndex) in execution.takeProfitTargets" :key="tpIndex" class="grid gap-2 items-end" style="grid-template-columns: 1fr 5rem 1.5rem;">
+                      <div>
+                        <label :for="`exec-tp-target-${index}-${tpIndex}`" class="label text-xs">TP{{ tpIndex + 2 }}</label>
+                        <input
+                          :id="`exec-tp-target-${index}-${tpIndex}`"
+                          v-model.number="execution.takeProfitTargets[tpIndex].price"
+                          type="number"
+                          step="any"
+                          min="0"
+                          class="input"
+                          placeholder="Price"
+                        />
+                      </div>
+                      <div>
+                        <label :for="`exec-tp-shares-${index}-${tpIndex}`" class="label text-xs">Shares</label>
+                        <input
+                          :id="`exec-tp-shares-${index}-${tpIndex}`"
+                          v-model.number="execution.takeProfitTargets[tpIndex].shares"
+                          type="number"
+                          step="1"
+                          min="1"
+                          class="input"
+                          placeholder="Qty"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        @click="removeExecutionTakeProfitTarget(index, tpIndex)"
+                        class="p-1 h-10 flex items-center justify-center text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
+                        title="Remove target"
+                      >
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+
+                    <button
+                      type="button"
+                      @click="addExecutionTakeProfitTarget(index)"
+                      class="inline-flex items-center text-xs text-primary-600 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300"
+                    >
+                      <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                      </svg>
+                      Add TP Target
+                    </button>
                   </div>
                 </div>
               </div>
@@ -334,11 +514,14 @@
               <!-- Individual fill format -->
               <div v-else class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <div>
-                  <label :for="`exec-datetime-${index}`" class="label">Date/Time *</label>
+                  <label :for="`exec-datetime-${index}`" class="label">
+                    Date/Time * <span class="text-xs font-normal text-gray-500">({{ timezoneLabel }})</span>
+                  </label>
                   <input
                     :id="`exec-datetime-${index}`"
                     v-model="execution.datetime"
                     type="datetime-local"
+                    step="1"
                     required
                     class="input"
                   />
@@ -365,7 +548,7 @@
                     v-model="execution.quantity"
                     type="number"
                     min="0.0001"
-                    step="0.0001"
+                    step="any"
                     required
                     class="input"
                     placeholder="100"
@@ -378,7 +561,7 @@
                     :id="`exec-price-${index}`"
                     v-model="execution.price"
                     type="number"
-                    step="0.000001"
+                    step="any"
                     min="0"
                     required
                     class="input"
@@ -392,7 +575,7 @@
                     :id="`exec-commission-${index}`"
                     v-model="execution.commission"
                     type="number"
-                    step="0.00000001"
+                    step="any"
                     class="input"
                     placeholder="0"
                   />
@@ -404,7 +587,7 @@
                     :id="`exec-fees-${index}`"
                     v-model="execution.fees"
                     type="number"
-                    step="0.00000001"
+                    step="any"
                     class="input"
                     placeholder="0"
                   />
@@ -446,7 +629,7 @@
               id="mae"
               v-model="form.mae"
               type="number"
-              step="0.000001"
+              step="any"
               class="input"
               placeholder="0"
               title="Maximum loss during trade"
@@ -459,7 +642,7 @@
               id="mfe"
               v-model="form.mfe"
               type="number"
-              step="0.000001"
+              step="any"
               class="input"
               placeholder="0"
               title="Maximum profit during trade"
@@ -654,7 +837,7 @@
               id="strikePrice"
               v-model="form.strikePrice"
               type="number"
-              step="0.01"
+              step="any"
               min="0"
               :required="form.instrumentType === 'option'"
               class="input"
@@ -768,7 +951,7 @@
               id="tickSize"
               v-model="form.tickSize"
               type="number"
-              step="0.000001"
+              step="any"
               min="0"
               class="input"
               placeholder="0.25"
@@ -781,7 +964,7 @@
               id="pointValue"
               v-model="form.pointValue"
               type="number"
-              step="0.01"
+              step="any"
               min="0"
               class="input"
               placeholder="50.00"
@@ -979,7 +1162,7 @@
         </div>
 
         <!-- Chart Management Section (Collapsible) -->
-        <div v-if="isEdit && route.params.id" class="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+        <div class="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
           <button
             type="button"
             @click="showCharts = !showCharts"
@@ -997,9 +1180,9 @@
             </svg>
           </button>
           <div v-show="showCharts" class="p-4 space-y-6">
-            <!-- Display existing charts -->
+            <!-- Display existing charts (edit mode only) -->
             <TradeCharts
-              v-if="trade && trade.charts && trade.charts.length > 0"
+              v-if="isEdit && trade && trade.charts && trade.charts.length > 0"
               :trade-id="route.params.id"
               :charts="trade.charts"
               :can-delete="true"
@@ -1008,13 +1191,15 @@
 
             <!-- Add new charts -->
             <ChartUpload
-              :trade-id="route.params.id"
+              ref="chartUploadRef"
+              :trade-id="isEdit ? route.params.id : null"
               @added="handleChartAdded"
             />
 
             <!-- Image Upload Section -->
             <ImageUpload
-              :trade-id="route.params.id"
+              ref="imageUploadRef"
+              :trade-id="isEdit ? route.params.id : null"
               @uploaded="handleImageUploaded"
             />
           </div>
@@ -1299,11 +1484,13 @@ import { useTradesStore } from '@/stores/trades'
 import { useAuthStore } from '@/stores/auth'
 import { useNotification } from '@/composables/useNotification'
 import { useAnalytics } from '@/composables/useAnalytics'
+import { useUserTimezone } from '@/composables/useUserTimezone'
 import ImageUpload from '@/components/trades/ImageUpload.vue'
 import TradeImages from '@/components/trades/TradeImages.vue'
 import ChartUpload from '@/components/trades/ChartUpload.vue'
 import TradeCharts from '@/components/trades/TradeCharts.vue'
 import api from '@/services/api'
+import SymbolAutocomplete from '@/components/common/SymbolAutocomplete.vue'
 
 // Load section preferences from localStorage
 const defaultSectionPrefs = {
@@ -1394,6 +1581,7 @@ const tradesStore = useTradesStore()
 const authStore = useAuthStore()
 const { showSuccess, showError } = useNotification()
 const { trackTradeAction } = useAnalytics()
+const { toLocalInput, toUTC, getCurrentTimeLocal, timezoneLabel } = useUserTimezone()
 
 const loading = ref(false)
 const error = ref(null)
@@ -1415,6 +1603,99 @@ const hasGroupedExecutions = computed(() => {
       exec.exitPrice !== undefined ||
       exec.entryTime !== undefined
     )
+})
+
+// Live P&L preview calculation
+const computedPnlPreview = computed(() => {
+  const instrumentType = form.value.instrumentType || 'stock'
+  const side = form.value.side
+  const pointValue = instrumentType === 'future' ? (parseFloat(form.value.pointValue) || 1) : 1
+  const contractSize = instrumentType === 'option' ? (parseFloat(form.value.contractSize) || 100) : 1
+  const multiplier = instrumentType === 'future' ? pointValue : (instrumentType === 'option' ? contractSize : 1)
+
+  let totalPnl = 0
+  let hasValidData = false
+
+  // Check if we have individual fills (action-based executions)
+  const hasIndividualFills = form.value.executions &&
+    form.value.executions.length > 0 &&
+    form.value.executions.some(exec => exec.action !== undefined)
+
+  if (hasIndividualFills) {
+    // Calculate from individual fills
+    const executions = form.value.executions.filter(e => e.action && e.price && e.quantity)
+    if (executions.length >= 2) {
+      // Separate buys and sells
+      let totalBuyQty = 0, totalBuyValue = 0
+      let totalSellQty = 0, totalSellValue = 0
+
+      executions.forEach(exec => {
+        const qty = parseFloat(exec.quantity) || 0
+        const price = parseFloat(exec.price) || 0
+        if (exec.action === 'buy') {
+          totalBuyQty += qty
+          totalBuyValue += qty * price
+        } else if (exec.action === 'sell') {
+          totalSellQty += qty
+          totalSellValue += qty * price
+        }
+      })
+
+      // Calculate P&L based on trade side
+      const matchedQty = Math.min(totalBuyQty, totalSellQty)
+      if (matchedQty > 0) {
+        const avgBuyPrice = totalBuyValue / totalBuyQty
+        const avgSellPrice = totalSellValue / totalSellQty
+        // For short: profit when sell high, buy low (sell - buy)
+        // For long: profit when buy low, sell high (sell - buy)
+        totalPnl = (avgSellPrice - avgBuyPrice) * matchedQty * multiplier
+        hasValidData = true
+      }
+    }
+  } else if (hasGroupedExecutions.value) {
+    // Calculate from grouped executions (entryPrice/exitPrice format)
+    form.value.executions.forEach(exec => {
+      const entryPrice = parseFloat(exec.entryPrice)
+      const exitPrice = parseFloat(exec.exitPrice)
+      const quantity = parseFloat(exec.quantity) || 0
+      const execSide = exec.side || side
+
+      if (!isNaN(entryPrice) && !isNaN(exitPrice) && quantity > 0) {
+        if (execSide === 'long') {
+          totalPnl += (exitPrice - entryPrice) * quantity * multiplier
+        } else if (execSide === 'short') {
+          totalPnl += (entryPrice - exitPrice) * quantity * multiplier
+        }
+        hasValidData = true
+      }
+    })
+  } else {
+    // Simple trade (single entry/exit at form level)
+    const entryPrice = parseFloat(form.value.entryPrice)
+    const exitPrice = parseFloat(form.value.exitPrice)
+    const quantity = parseFloat(form.value.quantity) || 0
+
+    if (!isNaN(entryPrice) && !isNaN(exitPrice) && quantity > 0 && side) {
+      if (side === 'long') {
+        totalPnl = (exitPrice - entryPrice) * quantity * multiplier
+      } else if (side === 'short') {
+        totalPnl = (entryPrice - exitPrice) * quantity * multiplier
+      }
+      hasValidData = true
+    }
+  }
+
+  // Subtract commission and fees
+  const commission = (parseFloat(form.value.entryCommission) || 0) + (parseFloat(form.value.exitCommission) || 0)
+  const fees = parseFloat(form.value.fees) || 0
+  totalPnl -= (commission + fees)
+
+  return {
+    value: totalPnl,
+    hasValidData,
+    multiplier,
+    instrumentType
+  }
 })
 
 const form = ref({
@@ -1441,6 +1722,9 @@ const form = ref({
   // Risk management fields
   stopLoss: null,
   takeProfit: null,
+  takeProfitQty: null,
+  takeProfitTargets: [],
+  manualTargetHitFirst: null,
   // Options-specific fields
   underlyingSymbol: '',
   optionType: '',
@@ -1463,6 +1747,8 @@ const tagsInputFocused = ref(false)
 const activeTagSuggestionIndex = ref(0)
 const currentImages = ref([])
 const trade = ref(null) // Store full trade data including charts
+const chartUploadRef = ref(null)
+const imageUploadRef = ref(null)
 const strategiesList = ref([])
 const setupsList = ref([])
 const brokersList = ref([])
@@ -1489,25 +1775,8 @@ const showSetupInput = ref(false)
 
 function formatDateTimeLocal(date) {
   if (!date) return ''
-
-  // Parse datetime string manually to avoid timezone issues
-  const dateStr = date.toString()
-
-  // If it's an ISO datetime string, parse components directly
-  const isoMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/)
-  if (isoMatch) {
-    const [, year, month, day, hour, minute] = isoMatch
-    return `${year}-${month}-${day}T${hour}:${minute}`
-  }
-
-  // Fallback to Date object
-  const d = new Date(date)
-  const year = d.getFullYear()
-  const month = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  const hours = String(d.getHours()).padStart(2, '0')
-  const minutes = String(d.getMinutes()).padStart(2, '0')
-  return `${year}-${month}-${day}T${hours}:${minutes}`
+  // Convert UTC datetime to user's local timezone for form input
+  return toLocalInput(date)
 }
 
 function formatDateOnly(date) {
@@ -1600,7 +1869,37 @@ async function loadTrade() {
       mae: tradeData.mae != null ? Number(tradeData.mae) : null,
       mfe: tradeData.mfe != null ? Number(tradeData.mfe) : null,
       stopLoss: (tradeData.stop_loss || tradeData.stopLoss) != null ? Number(tradeData.stop_loss || tradeData.stopLoss) : null,
-      takeProfit: (tradeData.take_profit || tradeData.takeProfit) != null ? Number(tradeData.take_profit || tradeData.takeProfit) : null,
+      // Take profit values: use take_profit_targets array as source of truth
+      // This prevents stale data issues when editing from multiple tabs
+      takeProfit: (() => {
+        const targets = tradeData.take_profit_targets || tradeData.takeProfitTargets || [];
+        const firstTarget = targets[0];
+        // Prefer first target's price, fall back to take_profit field
+        if (firstTarget?.price != null) {
+          return Number(firstTarget.price);
+        }
+        return (tradeData.take_profit || tradeData.takeProfit) != null ? Number(tradeData.take_profit || tradeData.takeProfit) : null;
+      })(),
+      takeProfitQty: (() => {
+        // Get TP1 quantity from first take_profit_targets entry
+        const targets = tradeData.take_profit_targets || tradeData.takeProfitTargets || [];
+        const firstTarget = targets[0];
+        const qty = firstTarget?.shares || firstTarget?.quantity;
+        return qty != null ? Number(qty) : null;
+      })(),
+      takeProfitTargets: (() => {
+        const raw = tradeData.take_profit_targets || tradeData.takeProfitTargets || [];
+        console.log('[TRADE FORM LOAD] Raw take_profit_targets from API:', raw);
+        // ALWAYS skip the first entry - it's TP1 which is stored in takeProfit/takeProfitQty fields
+        // This prevents duplicate entries when take_profit and take_profit_targets[0] have different values
+        const additionalTargets = raw.slice(1);
+        console.log('[TRADE FORM LOAD] Additional targets (TP2+):', additionalTargets);
+        return additionalTargets.map(t => ({
+          price: t.price != null ? Number(t.price) : null,
+          shares: t.shares != null ? Number(t.shares) : null
+        }));
+      })(),
+      manualTargetHitFirst: tradeData.manual_target_hit_first || null,
       broker: tradeData.broker || '',
       account_identifier: tradeData.account_identifier || '',
       strategy: tradeData.strategy || '',
@@ -1624,11 +1923,7 @@ async function loadTrade() {
       executions: (() => {
         console.log('[TRADE FORM] Raw tradeData.executions:', JSON.stringify(tradeData.executions, null, 2))
         if (tradeData.executions && Array.isArray(tradeData.executions) && tradeData.executions.length > 0) {
-          // Check if any executions have commission values
-          const hasExecutionCommissions = tradeData.executions.some(exec => exec.commission > 0)
-          const hasExecutionFees = tradeData.executions.some(exec => exec.fees > 0)
-
-          // Calculate total quantity for proportional distribution
+          // Calculate total quantity for proportional distribution (used when distributing trade-level commission)
           const totalQuantity = tradeData.executions.reduce((sum, exec) => sum + (parseFloat(exec.quantity) || 0), 0)
           const tradeCommission = parseFloat(tradeData.commission) || 0
           const tradeFees = parseFloat(tradeData.fees) || 0
@@ -1641,25 +1936,29 @@ async function loadTrade() {
             const execQuantity = parseFloat(exec.quantity) || 0
             const proportion = totalQuantity > 0 ? execQuantity / totalQuantity : 0
 
-            // Use execution-level commission if available, otherwise use execution fees as commission
-            // (CSV imports store commission in the 'fees' field of executions)
-            // This ensures each execution shows its actual commission from the import
+            // Determine commission/fees for this specific execution:
+            // 1. If this execution has a commission field (even if 0) - use it (previously processed)
+            // 2. If no commission field but has non-zero fees - use fees as commission (fresh CSV import)
+            // 3. Otherwise - distribute trade-level commission proportionally
             let execCommission = 0
             let execFees = 0
 
-            if (hasExecutionCommissions) {
-              // Execution has commission field set - use it directly
-              execCommission = exec.commission || 0
+            const thisExecHasCommission = exec.commission !== undefined && exec.commission !== null
+            const thisExecHasNonZeroFees = exec.fees !== undefined && exec.fees !== null && parseFloat(exec.fees) !== 0
+
+            if (thisExecHasCommission) {
+              // Execution has commission field set (from previous save) - use it directly
+              execCommission = parseFloat(exec.commission) || 0
               // Only include fees if they're separate from commission
-              execFees = exec.fees || 0
-            } else if (hasExecutionFees) {
-              // No commission field, but fees exist - use fees as commission
+              execFees = parseFloat(exec.fees) || 0
+            } else if (thisExecHasNonZeroFees) {
+              // No commission field, but has non-zero fees - use fees as commission
               // This handles CSV imports where commission is stored in execution.fees
               // Set fees to 0 to avoid double-counting in P&L calculation
-              execCommission = exec.fees || 0
+              execCommission = parseFloat(exec.fees) || 0
               execFees = 0
             } else {
-              // Neither commission nor fees at execution level - distribute trade-level proportionally
+              // Neither commission field nor non-zero fees - distribute trade-level proportionally
               execCommission = tradeCommission * proportion
               execFees = tradeFees * proportion
             }
@@ -1679,7 +1978,35 @@ async function loadTrade() {
                 pnl: exec.pnl != null ? Number(exec.pnl) : null,
                 // Fall back to trade-level stop loss if not in execution
                 stopLoss: (() => { const v = exec.stopLoss || exec.stop_loss || tradeData.stop_loss || tradeData.stopLoss; return v != null ? Number(v) : null; })(),
-                takeProfit: (() => { const v = exec.takeProfit || exec.take_profit || tradeData.take_profit || tradeData.takeProfit; return v != null ? Number(v) : null; })()
+                // Use targets array as source of truth for take profit
+                takeProfit: (() => {
+                  const targets = exec.takeProfitTargets || exec.take_profit_targets || [];
+                  if (targets[0]?.price != null) return Number(targets[0].price);
+                  const v = exec.takeProfit || exec.take_profit || tradeData.take_profit || tradeData.takeProfit;
+                  return v != null ? Number(v) : null;
+                })(),
+                takeProfitQty: (() => {
+                  const targets = exec.takeProfitTargets || exec.take_profit_targets || [];
+                  const firstTarget = targets[0];
+                  let qty = firstTarget?.shares ?? firstTarget?.quantity;
+                  if (qty != null) return Number(qty);
+                  // Fall back to trade-level TP1 quantity when execution has no targets
+                  const tradeTargets = tradeData.take_profit_targets || tradeData.takeProfitTargets || [];
+                  const tradeFirst = tradeTargets[0];
+                  qty = tradeFirst?.shares ?? tradeFirst?.quantity;
+                  return qty != null ? Number(qty) : null;
+                })(),
+                takeProfitTargets: (() => {
+                  const targets = exec.takeProfitTargets || exec.take_profit_targets || [];
+                  // ALWAYS skip first entry - it's TP1 stored in takeProfit/takeProfitQty
+                  const additional = targets.length > 0
+                    ? targets.slice(1)
+                    : (tradeData.take_profit_targets || tradeData.takeProfitTargets || []).slice(1);
+                  return additional.map(t => ({
+                    price: t.price != null ? Number(t.price) : null,
+                    shares: t.shares != null ? Number(t.shares) : null
+                  }));
+                })()
               }
               console.log('[TRADE FORM] Mapped grouped execution:', result)
               return result
@@ -1699,7 +2026,35 @@ async function loadTrade() {
                 fees: execFees,
                 // Fall back to trade-level stop loss if not in execution
                 stopLoss: (() => { const v = exec.stopLoss || exec.stop_loss || tradeData.stop_loss || tradeData.stopLoss; return v != null ? Number(v) : null; })(),
-                takeProfit: (() => { const v = exec.takeProfit || exec.take_profit || tradeData.take_profit || tradeData.takeProfit; return v != null ? Number(v) : null; })()
+                // Use targets array as source of truth for take profit
+                takeProfit: (() => {
+                  const targets = exec.takeProfitTargets || exec.take_profit_targets || [];
+                  if (targets[0]?.price != null) return Number(targets[0].price);
+                  const v = exec.takeProfit || exec.take_profit || tradeData.take_profit || tradeData.takeProfit;
+                  return v != null ? Number(v) : null;
+                })(),
+                takeProfitQty: (() => {
+                  const targets = exec.takeProfitTargets || exec.take_profit_targets || [];
+                  const firstTarget = targets[0];
+                  let qty = firstTarget?.shares ?? firstTarget?.quantity;
+                  if (qty != null) return Number(qty);
+                  // Fall back to trade-level TP1 quantity when execution has no targets
+                  const tradeTargets = tradeData.take_profit_targets || tradeData.takeProfitTargets || [];
+                  const tradeFirst = tradeTargets[0];
+                  qty = tradeFirst?.shares ?? tradeFirst?.quantity;
+                  return qty != null ? Number(qty) : null;
+                })(),
+                takeProfitTargets: (() => {
+                  const targets = exec.takeProfitTargets || exec.take_profit_targets || [];
+                  // ALWAYS skip first entry - it's TP1 stored in takeProfit/takeProfitQty
+                  const additional = targets.length > 0
+                    ? targets.slice(1)
+                    : (tradeData.take_profit_targets || tradeData.takeProfitTargets || []).slice(1);
+                  return additional.map(t => ({
+                    price: t.price != null ? Number(t.price) : null,
+                    shares: t.shares != null ? Number(t.shares) : null
+                  }));
+                })()
               }
               console.log('[TRADE FORM] Mapped individual fill:', result)
               return result
@@ -1721,7 +2076,26 @@ async function loadTrade() {
             fees: tradeData.fees != null ? Number(tradeData.fees) : 0,
             pnl: tradeData.pnl != null ? Number(tradeData.pnl) : 0,
             stopLoss: (tradeData.stop_loss || tradeData.stopLoss) != null ? Number(tradeData.stop_loss || tradeData.stopLoss) : null,
-            takeProfit: (tradeData.take_profit || tradeData.takeProfit) != null ? Number(tradeData.take_profit || tradeData.takeProfit) : null
+            // Use targets array as source of truth for take profit
+            takeProfit: (() => {
+              const targets = tradeData.take_profit_targets || tradeData.takeProfitTargets || [];
+              if (targets[0]?.price != null) return Number(targets[0].price);
+              return (tradeData.take_profit || tradeData.takeProfit) != null ? Number(tradeData.take_profit || tradeData.takeProfit) : null;
+            })(),
+            takeProfitQty: (() => {
+              const targets = tradeData.take_profit_targets || tradeData.takeProfitTargets || [];
+              const firstTarget = targets[0];
+              const qty = firstTarget?.shares || firstTarget?.quantity;
+              return qty != null ? Number(qty) : null;
+            })(),
+            takeProfitTargets: (() => {
+              const targets = tradeData.take_profit_targets || tradeData.takeProfitTargets || [];
+              // ALWAYS skip first entry - it's TP1 stored in takeProfit/takeProfitQty
+              return targets.slice(1).map(t => ({
+                price: t.price != null ? Number(t.price) : null,
+                shares: t.shares != null ? Number(t.shares) : null
+              }));
+            })()
           }]
         }
       })()
@@ -1773,18 +2147,36 @@ async function handleSubmit() {
           // IMPORTANT: This check must match the check in loadTrade (line 1668) to ensure consistency
           if (exec.entryPrice !== undefined || exec.exitPrice !== undefined || exec.entryTime !== undefined) {
             // Grouped format - keep entry/exit fields
+            // Convert times from user's local timezone to UTC
             return {
               side: exec.side,
               quantity: parseFloat(exec.quantity),
               entryPrice: parseFloat(exec.entryPrice),
               exitPrice: exec.exitPrice ? parseFloat(exec.exitPrice) : null,
-              entryTime: exec.entryTime,
-              exitTime: exec.exitTime || null,
+              entryTime: toUTC(exec.entryTime),
+              exitTime: exec.exitTime ? toUTC(exec.exitTime) : null,
               commission: parseFloat(exec.commission) || 0,  // Can be negative for rebates
               fees: parseFloat(exec.fees) || 0,  // Can be negative for rebates
               pnl: exec.pnl || 0,
               stopLoss: exec.stopLoss && exec.stopLoss !== '' ? parseFloat(exec.stopLoss) : null,
-              takeProfit: exec.takeProfit && exec.takeProfit !== '' ? parseFloat(exec.takeProfit) : null
+              takeProfit: exec.takeProfit && exec.takeProfit !== '' ? parseFloat(exec.takeProfit) : null,
+              takeProfitTargets: (() => {
+                const targets = [];
+                // Include TP1 with quantity if both price and quantity are set
+                if (exec.takeProfit && exec.takeProfit !== '') {
+                  targets.push({
+                    price: parseFloat(exec.takeProfit),
+                    shares: exec.takeProfitQty ? parseInt(exec.takeProfitQty) : null
+                  });
+                }
+                // Add TP2+ from takeProfitTargets array
+                const additionalTargets = (exec.takeProfitTargets || []).filter(t => t.price != null && t.price !== '').map(t => ({
+                  price: parseFloat(t.price),
+                  shares: t.shares ? parseInt(t.shares) : null
+                }));
+                targets.push(...additionalTargets);
+                return targets;
+              })()
             }
           } else {
             // Individual fill format - keep action/price/datetime
@@ -1793,15 +2185,33 @@ async function handleSubmit() {
             if (action === 'long') action = 'buy'
             if (action === 'short') action = 'sell'
 
+            // Convert datetime from user's local timezone to UTC
             return {
               action: action,
               quantity: parseFloat(exec.quantity),
               price: parseFloat(exec.price),
-              datetime: exec.datetime,
+              datetime: toUTC(exec.datetime),
               commission: parseFloat(exec.commission) || 0,  // Can be negative for rebates
               fees: parseFloat(exec.fees) || 0,  // Can be negative for rebates
               stopLoss: exec.stopLoss && exec.stopLoss !== '' ? parseFloat(exec.stopLoss) : null,
-              takeProfit: exec.takeProfit && exec.takeProfit !== '' ? parseFloat(exec.takeProfit) : null
+              takeProfit: exec.takeProfit && exec.takeProfit !== '' ? parseFloat(exec.takeProfit) : null,
+              takeProfitTargets: (() => {
+                const targets = [];
+                // Include TP1 with quantity if both price and quantity are set
+                if (exec.takeProfit && exec.takeProfit !== '') {
+                  targets.push({
+                    price: parseFloat(exec.takeProfit),
+                    shares: exec.takeProfitQty ? parseInt(exec.takeProfitQty) : null
+                  });
+                }
+                // Add TP2+ from takeProfitTargets array
+                const additionalTargets = (exec.takeProfitTargets || []).filter(t => t.price != null && t.price !== '').map(t => ({
+                  price: parseFloat(t.price),
+                  shares: t.shares ? parseInt(t.shares) : null
+                }));
+                targets.push(...additionalTargets);
+                return targets;
+              })()
             }
           }
         })
@@ -1922,12 +2332,19 @@ async function handleSubmit() {
     // Derive side from first execution if main form side is empty (grouped executions mode)
     const derivedSide = form.value.side || (form.value.executions.length > 0 ? form.value.executions[0].side : '')
 
+    // Convert times from user's local timezone to UTC
+    // (execution times are already converted above in processedExecutions)
+    // For simple trades without executions, times come from form values which need conversion
+    const hasExecutions = processedExecutions && processedExecutions.length > 0
+    const finalEntryTime = hasExecutions ? calculatedEntryTime : toUTC(calculatedEntryTime)
+    const finalExitTime = hasExecutions ? calculatedExitTime : (calculatedExitTime ? toUTC(calculatedExitTime) : null)
+
     const tradeData = {
       symbol: form.value.symbol,
       side: derivedSide,
       instrumentType: form.value.instrumentType,
-      entryTime: calculatedEntryTime,
-      exitTime: calculatedExitTime || null,
+      entryTime: finalEntryTime,
+      exitTime: finalExitTime || null,
       entryPrice: calculatedEntryPrice,
       exitPrice: calculatedExitPrice,
       quantity: calculatedQuantity,
@@ -1946,6 +2363,43 @@ async function handleSubmit() {
       // Risk management fields
       stopLoss: form.value.stopLoss && form.value.stopLoss !== '' ? parseFloat(form.value.stopLoss) : null,
       takeProfit: form.value.takeProfit && form.value.takeProfit !== '' ? parseFloat(form.value.takeProfit) : null,
+      takeProfitTargets: (() => {
+        const execs = form.value.executions || [];
+        // When there's exactly one grouped execution, use its TP data for trade-level so payload has full set (user edits execution card)
+        if (execs.length === 1 && (execs[0].entryPrice !== undefined || execs[0].entryTime !== undefined)) {
+          const e = execs[0];
+          const targets = [];
+          if (e.takeProfit != null && e.takeProfit !== '') {
+            targets.push({
+              price: parseFloat(e.takeProfit),
+              shares: e.takeProfitQty ? parseInt(e.takeProfitQty) : null
+            });
+          }
+          const additional = (e.takeProfitTargets || []).filter(t => t.price != null && t.price !== '').map(t => ({
+            price: parseFloat(t.price),
+            shares: t.shares ? parseInt(t.shares) : null
+          }));
+          targets.push(...additional);
+          console.log('[TRADE FORM] Submitting takeProfitTargets from single execution:', targets);
+          return targets;
+        }
+        // Default: form-level (no executions or multiple executions)
+        const targets = [];
+        if (form.value.takeProfit && form.value.takeProfit !== '') {
+          targets.push({
+            price: parseFloat(form.value.takeProfit),
+            shares: form.value.takeProfitQty ? parseInt(form.value.takeProfitQty) : null
+          });
+        }
+        const additionalTargets = (form.value.takeProfitTargets || []).filter(t => t.price != null && t.price !== '').map(t => ({
+          price: parseFloat(t.price),
+          shares: t.shares ? parseInt(t.shares) : null
+        }));
+        targets.push(...additionalTargets);
+        console.log('[TRADE FORM] Submitting takeProfitTargets:', targets);
+        return targets;
+      })(),
+      manualTargetHitFirst: form.value.manualTargetHitFirst || null,
       // Options-specific fields (only send if option type)
       underlyingSymbol: form.value.instrumentType === 'option' ? form.value.underlyingSymbol : null,
       optionType: form.value.instrumentType === 'option' ? form.value.optionType : null,
@@ -2008,14 +2462,43 @@ async function handleSubmit() {
         brokersList.value.push(tradeData.broker)
       }
 
-      showSuccess('Success', 'Trade created successfully')
+      // Flush pending charts and images (non-blocking)
+      const uploadErrors = []
+      if (chartUploadRef.value && chartUploadRef.value.pendingCharts.length > 0) {
+        try {
+          const chartResults = await chartUploadRef.value.flushPendingCharts(newTrade.id)
+          const failedCharts = chartResults.filter(r => !r.success).length
+          if (failedCharts > 0) {
+            uploadErrors.push(`${failedCharts} chart${failedCharts > 1 ? 's' : ''} failed to upload`)
+          }
+        } catch (err) {
+          console.error('[TRADE FORM] Chart flush error:', err)
+          uploadErrors.push('Charts failed to upload')
+        }
+      }
+      if (imageUploadRef.value && imageUploadRef.value.selectedFiles.length > 0) {
+        try {
+          const imageResult = await imageUploadRef.value.flushPendingImages(newTrade.id)
+          if (!imageResult.success) {
+            uploadErrors.push('Images failed to upload')
+          }
+        } catch (err) {
+          console.error('[TRADE FORM] Image flush error:', err)
+          uploadErrors.push('Images failed to upload')
+        }
+      }
+
+      if (uploadErrors.length > 0) {
+        showSuccess('Trade Created', 'Trade saved, but ' + uploadErrors.join(' and ') + '. You can add them by editing the trade.')
+      } else {
+        showSuccess('Success', 'Trade created successfully')
+      }
       trackTradeAction('create', {
         side: tradeData.side,
         broker: tradeData.broker,
         strategy: tradeData.strategy,
         notes: !!tradeData.notes
       })
-      // For new trades, go to trade detail page so user can add attachments
       router.push(`/trades/${newTrade.id}`)
     }
   } catch (err) {
@@ -2026,9 +2509,11 @@ async function handleSubmit() {
   }
 }
 
-function handleImageUploaded() {
-  // Refresh trade data to show new images
-  loadTrade()
+function handleImageUploaded(newImages) {
+  // Add new images to the local array without reloading the trade
+  if (newImages && newImages.length > 0) {
+    currentImages.value = [...currentImages.value, ...newImages]
+  }
   showSuccess('Images Uploaded', 'Trade images uploaded successfully')
 }
 
@@ -2037,15 +2522,22 @@ function handleImageDeleted(imageId) {
   currentImages.value = currentImages.value.filter(img => img.id !== imageId)
 }
 
-async function handleChartAdded() {
-  // Refresh trade data to show new charts
-  await loadTrade()
+async function handleChartAdded(chart) {
+  // Add the new chart to the local charts array without reloading the trade
+  if (trade.value) {
+    if (!trade.value.charts) {
+      trade.value.charts = []
+    }
+    trade.value.charts.push(chart)
+  }
   showSuccess('Chart Added', 'TradingView chart added successfully')
 }
 
 async function handleChartDeleted(chartId) {
-  // Reload trade to update charts list
-  await loadTrade()
+  // Remove the deleted chart from the local charts array without reloading the trade
+  if (trade.value && trade.value.charts) {
+    trade.value.charts = trade.value.charts.filter(c => c.id !== chartId)
+  }
 }
 
 // Watch for changes to isPublic checkbox
@@ -2473,33 +2965,65 @@ function handleSetupInputBlur() {
   showSetupInput.value = false
 }
 
+// Take Profit Targets management for main form (non-grouped trades)
+function addTakeProfitTarget() {
+  if (!form.value.takeProfitTargets) {
+    form.value.takeProfitTargets = []
+  }
+  form.value.takeProfitTargets.push({
+    price: null,
+    shares: null
+  })
+}
+
+function removeTakeProfitTarget(targetIndex) {
+  form.value.takeProfitTargets.splice(targetIndex, 1)
+}
+
+// Take Profit Targets management for executions
+function addExecutionTakeProfitTarget(executionIndex) {
+  if (!form.value.executions[executionIndex].takeProfitTargets) {
+    form.value.executions[executionIndex].takeProfitTargets = []
+  }
+  form.value.executions[executionIndex].takeProfitTargets.push({
+    price: null,
+    shares: null
+  })
+}
+
+function removeExecutionTakeProfitTarget(executionIndex, targetIndex) {
+  form.value.executions[executionIndex].takeProfitTargets.splice(targetIndex, 1)
+}
+
 function addExecution() {
-  const now = new Date()
   form.value.executions.push({
     action: '',
     quantity: '',
     price: '',
-    datetime: formatDateTimeLocal(now),
+    datetime: getCurrentTimeLocal(),
     commission: 0,
     fees: 0,
     stopLoss: null,
-    takeProfit: null
+    takeProfit: null,
+    takeProfitQty: null,
+    takeProfitTargets: []
   })
 }
 
 function addGroupedExecution() {
-  const now = new Date()
   form.value.executions.push({
     side: form.value.side || '',
     quantity: '',
     entryPrice: '',
     exitPrice: null,
-    entryTime: formatDateTimeLocal(now),
+    entryTime: getCurrentTimeLocal(),
     exitTime: null,
     commission: 0,
     fees: 0,
     stopLoss: null,
-    takeProfit: null
+    takeProfit: null,
+    takeProfitQty: null,
+    takeProfitTargets: []
   })
 }
 
@@ -2635,9 +3159,8 @@ onMounted(async () => {
   if (isEdit.value) {
     loadTrade()
   } else {
-    // Set default entry time
-    const now = new Date()
-    form.value.entryTime = formatDateTimeLocal(now)
+    // Set default entry time in user's timezone
+    form.value.entryTime = getCurrentTimeLocal()
 
     // Check for trade blocking on new trades
     if (hasProAccess.value) {

@@ -1,6 +1,6 @@
 const Trade = require('../models/Trade');
 const User = require('../models/User');
-const { parseCSV } = require('../utils/csvParser');
+const { parseCSV, detectBrokerFormat, getCsvHeaderLine, getCsvSampleRows } = require('../utils/csvParser');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../config/database');
 const logger = require('../utils/logger');
@@ -19,7 +19,9 @@ const axios = require('axios');
 function invalidateAnalyticsCache(userId) {
   // Clear all analytics cache entries for this user
   const cacheKeys = Object.keys(cache.data).filter(key =>
-    key.startsWith(`analytics:user_${userId}:`)
+    key.startsWith(`analytics:user_${userId}:`) ||
+    key.startsWith(`analytics_overview_${userId}_`) ||
+    key.startsWith(`performance_${userId}_`)
   );
   cacheKeys.forEach(key => cache.del(key));
   console.log(`[CACHE] Invalidated ${cacheKeys.length} analytics cache entries for user ${userId}`);
@@ -31,7 +33,7 @@ const tradeController = {
     console.log('[PERF] getUserTrades started');
     try {
       const {
-        symbol, startDate, endDate, tags, strategy, sector,
+        symbol, symbolExact, startDate, endDate, exitStartDate, exitEndDate, tags, strategy, sector,
         strategies, sectors, hasNews, daysOfWeek, instrumentTypes, optionTypes, qualityGrades,
         side, minPrice, maxPrice, minQuantity, maxQuantity,
         status, minPnl, maxPnl, pnlType, broker, brokers, accounts,
@@ -40,8 +42,11 @@ const tradeController = {
 
       const filters = {
         symbol,
+        symbolExact: symbolExact === 'true',
         startDate,
         endDate,
+        exitStartDate,
+        exitEndDate,
         tags: tags ? tags.split(',').map(t => t.trim()).filter(Boolean) : undefined,
         strategy,
         sector,
@@ -373,11 +378,53 @@ const tradeController = {
 
   async createTrade(req, res, next) {
     try {
-      // Log incoming trade data for debugging
-      if (req.body.strategy || req.body.setup) {
-        console.log(`[TRADE CONTROLLER] Creating trade with strategy="${req.body.strategy || 'null'}", setup="${req.body.setup || 'null'}"`);
+      // Normalize snake_case field names to camelCase for compatibility
+      const normalizedBody = { ...req.body };
+      if (normalizedBody.instrument_type && !normalizedBody.instrumentType) {
+        normalizedBody.instrumentType = normalizedBody.instrument_type;
       }
-      const trade = await Trade.create(req.user.id, req.body);
+      if (normalizedBody.underlying_symbol && !normalizedBody.underlyingSymbol) {
+        normalizedBody.underlyingSymbol = normalizedBody.underlying_symbol;
+      }
+      if (normalizedBody.option_type && !normalizedBody.optionType) {
+        normalizedBody.optionType = normalizedBody.option_type;
+      }
+      if (normalizedBody.strike_price !== undefined && normalizedBody.strikePrice === undefined) {
+        normalizedBody.strikePrice = normalizedBody.strike_price;
+      }
+      if (normalizedBody.expiration_date && !normalizedBody.expirationDate) {
+        normalizedBody.expirationDate = normalizedBody.expiration_date;
+      }
+      if (normalizedBody.contract_size !== undefined && normalizedBody.contractSize === undefined) {
+        normalizedBody.contractSize = normalizedBody.contract_size;
+      }
+      if (normalizedBody.underlying_asset && !normalizedBody.underlyingAsset) {
+        normalizedBody.underlyingAsset = normalizedBody.underlying_asset;
+      }
+      if (normalizedBody.contract_month && !normalizedBody.contractMonth) {
+        normalizedBody.contractMonth = normalizedBody.contract_month;
+      }
+      if (normalizedBody.contract_year !== undefined && normalizedBody.contractYear === undefined) {
+        normalizedBody.contractYear = normalizedBody.contract_year;
+      }
+      if (normalizedBody.tick_size !== undefined && normalizedBody.tickSize === undefined) {
+        normalizedBody.tickSize = normalizedBody.tick_size;
+      }
+      if (normalizedBody.point_value !== undefined && normalizedBody.pointValue === undefined) {
+        normalizedBody.pointValue = normalizedBody.point_value;
+      }
+      if (normalizedBody.stop_loss !== undefined && normalizedBody.stopLoss === undefined) {
+        normalizedBody.stopLoss = normalizedBody.stop_loss;
+      }
+      if (normalizedBody.take_profit !== undefined && normalizedBody.takeProfit === undefined) {
+        normalizedBody.takeProfit = normalizedBody.take_profit;
+      }
+
+      // Log incoming trade data for debugging
+      if (normalizedBody.strategy || normalizedBody.setup) {
+        console.log(`[TRADE CONTROLLER] Creating trade with strategy="${normalizedBody.strategy || 'null'}", setup="${normalizedBody.setup || 'null'}"`);
+      }
+      const trade = await Trade.create(req.user.id, normalizedBody);
       
       // Invalidate sector performance cache for this user since new trade was added
       try {
@@ -474,11 +521,52 @@ const tradeController = {
 
   async updateTrade(req, res, next) {
     try {
-      // Log incoming update data for debugging
-      if (req.body.strategy !== undefined || req.body.setup !== undefined) {
-        console.log(`[TRADE CONTROLLER] Updating trade ${req.params.id} with strategy="${req.body.strategy || 'null'}", setup="${req.body.setup || 'null'}"`);
+      // Normalize snake_case field names to camelCase for compatibility
+      const normalizedBody = { ...req.body };
+      if (normalizedBody.instrument_type && !normalizedBody.instrumentType) {
+        normalizedBody.instrumentType = normalizedBody.instrument_type;
       }
-      const trade = await Trade.update(req.params.id, req.user.id, req.body);
+      if (normalizedBody.underlying_symbol && !normalizedBody.underlyingSymbol) {
+        normalizedBody.underlyingSymbol = normalizedBody.underlying_symbol;
+      }
+      if (normalizedBody.option_type && !normalizedBody.optionType) {
+        normalizedBody.optionType = normalizedBody.option_type;
+      }
+      if (normalizedBody.strike_price !== undefined && normalizedBody.strikePrice === undefined) {
+        normalizedBody.strikePrice = normalizedBody.strike_price;
+      }
+      if (normalizedBody.expiration_date && !normalizedBody.expirationDate) {
+        normalizedBody.expirationDate = normalizedBody.expiration_date;
+      }
+      if (normalizedBody.contract_size !== undefined && normalizedBody.contractSize === undefined) {
+        normalizedBody.contractSize = normalizedBody.contract_size;
+      }
+      if (normalizedBody.underlying_asset && !normalizedBody.underlyingAsset) {
+        normalizedBody.underlyingAsset = normalizedBody.underlying_asset;
+      }
+      if (normalizedBody.contract_month && !normalizedBody.contractMonth) {
+        normalizedBody.contractMonth = normalizedBody.contract_month;
+      }
+      if (normalizedBody.contract_year !== undefined && normalizedBody.contractYear === undefined) {
+        normalizedBody.contractYear = normalizedBody.contract_year;
+      }
+      if (normalizedBody.tick_size !== undefined && normalizedBody.tickSize === undefined) {
+        normalizedBody.tickSize = normalizedBody.tick_size;
+      }
+      if (normalizedBody.point_value !== undefined && normalizedBody.pointValue === undefined) {
+        normalizedBody.pointValue = normalizedBody.point_value;
+      }
+      if (normalizedBody.stop_loss !== undefined && normalizedBody.stopLoss === undefined) {
+        normalizedBody.stopLoss = normalizedBody.stop_loss;
+      }
+      if (normalizedBody.take_profit !== undefined && normalizedBody.takeProfit === undefined) {
+        normalizedBody.takeProfit = normalizedBody.take_profit;
+      }
+      // Log incoming update data for debugging
+      if (normalizedBody.strategy !== undefined || normalizedBody.setup !== undefined) {
+        console.log(`[TRADE CONTROLLER] Updating trade ${req.params.id} with strategy="${normalizedBody.strategy || 'null'}", setup="${normalizedBody.setup || 'null'}"`);
+      }
+      const trade = await Trade.update(req.params.id, req.user.id, normalizedBody);
       
       if (!trade) {
         return res.status(404).json({ error: 'Trade not found' });
@@ -530,6 +618,192 @@ const tradeController = {
 
       res.json({ message: 'Trade deleted successfully' });
     } catch (error) {
+      next(error);
+    }
+  },
+
+  async splitTrade(req, res, next) {
+    try {
+      const trade = await Trade.findById(req.params.id, req.user.id);
+
+      if (!trade) {
+        return res.status(404).json({ error: 'Trade not found or access denied' });
+      }
+
+      // Parse executions if stored as string
+      let executions = trade.executions;
+      if (typeof executions === 'string') {
+        executions = JSON.parse(executions);
+      }
+
+      if (!Array.isArray(executions) || executions.length < 2) {
+        return res.status(400).json({ error: 'Trade must have 2 or more executions to split' });
+      }
+
+      // Only allow splitting closed trades
+      if (!trade.exit_price || !trade.exit_time) {
+        return res.status(400).json({ error: 'Only closed trades with an exit price and time can be split' });
+      }
+
+      // Determine which action is entry vs exit based on trade side
+      const side = trade.side;
+      const entryAction = side === 'long' ? 'buy' : 'sell';
+      const exitAction = side === 'long' ? 'sell' : 'buy';
+
+      // Separate executions into entry and exit fills
+      const entryFills = executions.filter(e => e.action === entryAction);
+      const exitFills = executions.filter(e => e.action === exitAction);
+
+      if (entryFills.length === 0 || exitFills.length === 0) {
+        return res.status(400).json({ error: 'Trade must have both entry and exit executions to split' });
+      }
+
+      // Compute a single weighted-average exit price/time from exit fills
+      const totalExitQty = exitFills.reduce((s, e) => s + e.quantity, 0);
+      const avgExitPrice = exitFills.reduce((s, e) => s + e.price * e.quantity, 0) / totalExitQty;
+      const totalExitFees = exitFills.reduce((s, e) => s + (e.fees || 0), 0);
+      // Use the latest exit fill datetime
+      const exitTime = exitFills.reduce((latest, e) => {
+        const dt = e.datetime || '';
+        return dt > latest ? dt : latest;
+      }, '');
+
+      // Determine which entry fills to split out
+      const { execution_indices } = req.body || {};
+      let fillsToSplit;
+      let fillsToKeep;
+      let isPartialSplit = false;
+
+      if (Array.isArray(execution_indices) && execution_indices.length > 0) {
+        // Validate indices
+        for (const idx of execution_indices) {
+          if (typeof idx !== 'number' || idx < 0 || idx >= executions.length) {
+            return res.status(400).json({ error: `Invalid execution index: ${idx}` });
+          }
+          if (executions[idx].action !== entryAction) {
+            return res.status(400).json({ error: `Execution at index ${idx} is not an entry fill` });
+          }
+        }
+
+        const selectedSet = new Set(execution_indices);
+        fillsToSplit = entryFills.filter((_, i) => {
+          const originalIdx = executions.indexOf(entryFills[i]);
+          return selectedSet.has(originalIdx);
+        });
+        fillsToKeep = entryFills.filter((_, i) => {
+          const originalIdx = executions.indexOf(entryFills[i]);
+          return !selectedSet.has(originalIdx);
+        });
+
+        if (fillsToSplit.length === 0) {
+          return res.status(400).json({ error: 'No valid entry fills selected' });
+        }
+        if (fillsToKeep.length > 0) {
+          isPartialSplit = true;
+        }
+      } else {
+        // Default: split all entry fills
+        fillsToSplit = entryFills;
+        fillsToKeep = [];
+      }
+
+      const newTradeIds = [];
+      const totalSplitQty = fillsToSplit.reduce((s, e) => s + e.quantity, 0);
+
+      // Create one trade per split-out entry fill, each using the shared exit data
+      for (let i = 0; i < fillsToSplit.length; i++) {
+        const exec = fillsToSplit[i];
+        // Distribute exit fees proportionally across split fills
+        const feeShare = fillsToSplit.length > 1
+          ? totalExitFees * (exec.quantity / totalSplitQty)
+          : totalExitFees;
+
+        const tradeData = {
+          symbol: trade.symbol,
+          side: trade.side,
+          broker: trade.broker,
+          strategy: trade.strategy,
+          setup: trade.setup,
+          tags: trade.tags,
+          instrumentType: trade.instrument_type || trade.instrumentType || 'stock',
+          strikePrice: trade.strike_price || trade.strikePrice,
+          expirationDate: trade.expiration_date || trade.expirationDate,
+          optionType: trade.option_type || trade.optionType,
+          contractSize: trade.contract_size || trade.contractSize,
+          underlyingSymbol: trade.underlying_symbol || trade.underlyingSymbol,
+          contractMonth: trade.contract_month || trade.contractMonth,
+          contractYear: trade.contract_year || trade.contractYear,
+          tickSize: trade.tick_size || trade.tickSize,
+          pointValue: trade.point_value || trade.pointValue,
+          underlyingAsset: trade.underlying_asset || trade.underlyingAsset,
+          accountIdentifier: trade.account_identifier || trade.accountIdentifier,
+          brokerConnectionId: trade.broker_connection_id || trade.brokerConnectionId,
+          entryTime: String(exec.datetime),
+          exitTime: String(exitTime || trade.exit_time),
+          entryPrice: exec.price,
+          exitPrice: avgExitPrice,
+          quantity: exec.quantity,
+          commission: 0,
+          fees: (exec.fees || 0) + feeShare,
+        };
+
+        const newTrade = await Trade.create(req.user.id, tradeData, { skipAchievements: true, skipApiCalls: true });
+        newTradeIds.push(newTrade.id);
+      }
+
+      if (isPartialSplit) {
+        // Update original trade: remove split-out entries, recalculate fields
+        const selectedSet = new Set(execution_indices);
+        const remainingExecutions = executions.filter((_, i) => !selectedSet.has(i));
+
+        const remainingEntryQty = fillsToKeep.reduce((s, e) => s + e.quantity, 0);
+        const newEntryPrice = fillsToKeep.reduce((s, e) => s + e.price * e.quantity, 0) / remainingEntryQty;
+
+        // Determine instrument multiplier
+        const isOption = (trade.instrument_type || trade.instrumentType) === 'option';
+        const isFuture = (trade.instrument_type || trade.instrumentType) === 'future';
+        const contractSize = isOption ? (trade.contract_size || trade.contractSize || 100) : 1;
+        const pointValue = isFuture ? (trade.point_value || trade.pointValue || 1) : 1;
+        const multiplier = isFuture ? pointValue : contractSize;
+
+        // Recalculate PnL
+        let newPnl;
+        if (side === 'long') {
+          newPnl = (avgExitPrice - newEntryPrice) * remainingEntryQty * multiplier;
+        } else {
+          newPnl = (newEntryPrice - avgExitPrice) * remainingEntryQty * multiplier;
+        }
+
+        // Recalculate remaining fees
+        const remainingEntryFees = fillsToKeep.reduce((s, e) => s + (e.fees || 0), 0);
+        const remainingExitFeeShare = totalExitFees * (remainingEntryQty / (totalSplitQty + remainingEntryQty));
+        const totalRemainingFees = remainingEntryFees + remainingExitFeeShare;
+        newPnl -= totalRemainingFees;
+
+        await db.query(
+          `UPDATE trades SET executions = $1, entry_price = $2, quantity = $3, pnl = $4 WHERE id = $5 AND user_id = $6`,
+          [JSON.stringify(remainingExecutions), newEntryPrice, remainingEntryQty, newPnl, req.params.id, req.user.id]
+        );
+      } else {
+        // Delete the original grouped trade (all entries were split)
+        await Trade.delete(req.params.id, req.user.id);
+      }
+
+      // Invalidate caches
+      invalidateAnalyticsCache(req.user.id);
+
+      res.json({
+        message: isPartialSplit
+          ? `Split ${newTradeIds.length} entry fill(s) into new trades, original trade updated`
+          : `Trade split into ${newTradeIds.length} individual trades`,
+        original_trade_id: req.params.id,
+        original_trade_updated: isPartialSplit,
+        new_trade_ids: newTradeIds,
+        trades_created: newTradeIds.length
+      });
+    } catch (error) {
+      console.error('[SPLIT] Error splitting trade:', error.message);
+      console.error('[SPLIT] Stack:', error.stack);
       next(error);
     }
   },
@@ -905,6 +1179,67 @@ const tradeController = {
     }
   },
 
+  /**
+   * Pre-validate import file to detect broker format mismatch
+   * Lightweight validation - does NOT import, just analyzes the file
+   */
+  async validateImportFile(req, res, next) {
+    try {
+      console.log('=== VALIDATE IMPORT FILE ===');
+
+      if (!req.file) {
+        return res.status(400).json({ error: 'No file uploaded' });
+      }
+
+      const { broker = 'auto' } = req.body;
+      const fileBuffer = req.file.buffer;
+
+      console.log('Selected broker:', broker);
+      console.log('File name:', req.file.originalname);
+      console.log('File size:', req.file.size);
+
+      // Detect broker format
+      const detectedBroker = detectBrokerFormat(fileBuffer);
+      console.log('Detected broker:', detectedBroker);
+
+      // Extract headers from CSV
+      const headerLine = getCsvHeaderLine(fileBuffer);
+      const detectedHeaders = headerLine ? headerLine.split(',').map(h => h.trim().replace(/^"|"$/g, '')) : [];
+
+      // Count rows (excluding header)
+      let csvString = fileBuffer.toString('utf-8');
+      if (csvString.charCodeAt(0) === 0xFEFF) {
+        csvString = csvString.slice(1);
+      }
+      const lines = csvString.split('\n').filter(line => line.trim() !== '');
+      const rowCount = Math.max(0, lines.length - 1); // Exclude header
+
+      // Determine if there's a mismatch
+      // Mismatch only applies if user selected a specific broker (not 'auto' or 'generic')
+      const isMismatch = broker !== 'auto' &&
+                         broker !== 'generic' &&
+                         detectedBroker !== 'generic' &&
+                         broker !== detectedBroker;
+
+      const result = {
+        detectedBroker,
+        selectedBroker: broker,
+        mismatch: isMismatch,
+        detectedHeaders: detectedHeaders.slice(0, 30), // Limit headers to first 30
+        rowCount,
+        fileName: req.file.originalname,
+        fileSize: req.file.size
+      };
+
+      console.log('Validation result:', result);
+
+      res.json(result);
+    } catch (error) {
+      console.error('Validation error:', error);
+      next(error);
+    }
+  },
+
   async importTrades(req, res, next) {
     try {
       console.log('=== IMPORT TRADES STARTED ===');
@@ -1055,6 +1390,9 @@ const tradeController = {
             // Also store by conid key if available (for IBKR reliable matching)
             if (row.conid) {
               existingPositions[`conid_${row.conid}`] = positionData;
+              logger.logImport(`  [CONID] Added position with key conid_${row.conid} (${row.symbol}, ${row.quantity} @ $${row.entry_price})`);
+            } else if (row.instrument_type === 'option') {
+              logger.logImport(`  [WARNING] Option position ${positionKey} has NO conid stored`);
             }
           });
 
@@ -1154,13 +1492,96 @@ const tradeController = {
             customMapping,
             selectedAccountId
           };
+
+          // Track auto-detection if broker is 'auto'
+          let detectedBrokerForTracking = null;
+          if (broker === 'auto') {
+            detectedBrokerForTracking = detectBrokerFormat(fileBuffer);
+            if (detectedBrokerForTracking === 'generic') {
+              const headerLine = getCsvHeaderLine(fileBuffer);
+              if (headerLine) {
+                try {
+                  const sampleData = getCsvSampleRows(fileBuffer);
+                  await db.query(`
+                    INSERT INTO unknown_csv_headers (user_id, header_line, broker_attempted, outcome, file_name, detected_broker, selected_broker, sample_data)
+                    VALUES ($1, $2, 'auto', 'no_parser_match', $3, $4, 'auto', $5)
+                  `, [fileUserId, headerLine.substring(0, 10000), fileName, 'generic', sampleData?.substring(0, 10000) || null]);
+                } catch (recordErr) {
+                  logger.logWarn(`[CSV] Failed to record unknown headers: ${recordErr.message}`);
+                }
+              }
+            }
+          }
+
           const parseResult = await parseCSV(fileBuffer, broker, context);
 
-          // Handle both old format (array) and new format (object with trades and unresolvedCusips)
+          // Handle both old format (array) and new format (object with trades, unresolvedCusips, diagnostics)
           let trades = Array.isArray(parseResult) ? parseResult : parseResult.trades;
           const unresolvedCusips = parseResult.unresolvedCusips || [];
+          const parseDiagnostics = parseResult.diagnostics || null;
+
+          // Track additional scenarios for unknown_csv_headers
+          if (parseDiagnostics) {
+            const headerLine = getCsvHeaderLine(fileBuffer);
+
+            // Track zero trades scenario
+            if (trades.length === 0 && parseDiagnostics.totalRows > 0) {
+              try {
+                const sampleData = getCsvSampleRows(fileBuffer);
+                await db.query(`
+                  INSERT INTO unknown_csv_headers (user_id, header_line, broker_attempted, outcome, file_name, detected_broker, selected_broker, row_count, trades_parsed, diagnostics_json, sample_data)
+                  VALUES ($1, $2, $3, 'zero_trades', $4, $5, $6, $7, $8, $9, $10)
+                `, [
+                  fileUserId,
+                  headerLine?.substring(0, 10000),
+                  broker,
+                  fileName,
+                  parseDiagnostics.detectedBroker,
+                  parseDiagnostics.selectedBroker,
+                  parseDiagnostics.totalRows,
+                  0,
+                  JSON.stringify(parseDiagnostics),
+                  sampleData?.substring(0, 10000) || null
+                ]);
+                logger.logWarn(`[CSV] Recorded zero_trades scenario: ${parseDiagnostics.totalRows} rows but 0 trades parsed`);
+              } catch (recordErr) {
+                logger.logWarn(`[CSV] Failed to record zero_trades: ${recordErr.message}`);
+              }
+            }
+
+            // Track high skip rate scenario (>50% rows skipped)
+            const skipRate = parseDiagnostics.totalRows > 0
+              ? ((parseDiagnostics.skippedRows + parseDiagnostics.invalidRows) / parseDiagnostics.totalRows) * 100
+              : 0;
+            if (skipRate > 50 && trades.length > 0) {
+              try {
+                const sampleData = getCsvSampleRows(fileBuffer);
+                await db.query(`
+                  INSERT INTO unknown_csv_headers (user_id, header_line, broker_attempted, outcome, file_name, detected_broker, selected_broker, row_count, trades_parsed, diagnostics_json, sample_data)
+                  VALUES ($1, $2, $3, 'high_skip_rate', $4, $5, $6, $7, $8, $9, $10)
+                `, [
+                  fileUserId,
+                  headerLine?.substring(0, 10000),
+                  broker,
+                  fileName,
+                  parseDiagnostics.detectedBroker,
+                  parseDiagnostics.selectedBroker,
+                  parseDiagnostics.totalRows,
+                  trades.length,
+                  JSON.stringify(parseDiagnostics),
+                  sampleData?.substring(0, 10000) || null
+                ]);
+                logger.logWarn(`[CSV] Recorded high_skip_rate scenario: ${skipRate.toFixed(1)}% of rows skipped`);
+              } catch (recordErr) {
+                logger.logWarn(`[CSV] Failed to record high_skip_rate: ${recordErr.message}`);
+              }
+            }
+          }
 
           logger.logImport(`Parsed ${trades.length} trades from CSV`);
+          if (parseDiagnostics) {
+            logger.logImport(`[DIAGNOSTICS] Total rows: ${parseDiagnostics.totalRows}, Skipped: ${parseDiagnostics.skippedRows}, Invalid: ${parseDiagnostics.invalidRows}`);
+          }
 
           // Auto-create accounts for new account identifiers found in the import
           try {
@@ -1218,6 +1639,12 @@ const tradeController = {
                     logger.logImport(`[ACCOUNTS] Failed to auto-create account for ${identifier}: ${createError.message}`);
                   }
                 }
+              }
+            } else {
+              // Log warning when no accounts found in any trades
+              const tradesWithoutAccount = trades.filter(t => !t.accountIdentifier).length;
+              if (tradesWithoutAccount > 0) {
+                logger.logImport(`[ACCOUNTS WARNING] ${tradesWithoutAccount}/${trades.length} trades have no account identifier. Consider selecting an account during import or ensure your CSV includes account information.`);
               }
             }
           } catch (accountError) {
@@ -1500,10 +1927,12 @@ const tradeController = {
           // Check for existing trades to avoid duplicates
           // Note: We don't filter by broker as the same trade could be imported from different broker files
           // Include executions data to check for exact execution timestamp matches
+          // Include instrument_type and conid to distinguish stock trades from options on same underlying
           const existingTradesQuery = `
-            SELECT symbol, entry_time, entry_price, exit_price, pnl, quantity, side, executions
-            FROM trades 
-            WHERE user_id = $1 
+            SELECT id, symbol, entry_time, entry_price, exit_price, pnl, quantity, side, executions,
+                   instrument_type, conid
+            FROM trades
+            WHERE user_id = $1
             AND trade_date >= $2
             AND trade_date <= $3
           `;
@@ -1565,7 +1994,28 @@ const tradeController = {
                   }];
                 }
 
-                if (tradeExecutionsToCheck && tradeExecutionsToCheck.length > 0 && existingExecutions.length > 0) {
+                // For execution timestamp matching, require symbol match to avoid false positives
+                // when multiple symbols have trades on the same day with similar timestamps
+                const symbolsMatch = existing.symbol === tradeData.symbol;
+
+                // CRITICAL: Also check instrument_type to distinguish stock trades from options
+                // on the same underlying symbol (e.g., INTC stock vs INTC 240726P00036000 option)
+                // Both may have the same timestamp if they're from an assignment (A;O/A;C codes)
+                const newInstrumentType = tradeData.instrumentType || tradeData.instrument_type || 'stock';
+                const existingInstrumentType = existing.instrument_type || 'stock';
+                const instrumentTypesMatch = newInstrumentType === existingInstrumentType;
+
+                // For IBKR trades, also check conid if available for precise matching
+                const newConid = tradeData.conid;
+                const existingConid = existing.conid;
+                const conidMatch = newConid && existingConid && newConid === existingConid;
+
+                // Only consider as potential duplicate if:
+                // 1. Symbols match AND instrument types match, OR
+                // 2. Conids match (most precise for IBKR)
+                const tradeTypesMatch = (symbolsMatch && instrumentTypesMatch) || conidMatch;
+
+                if (tradeTypesMatch && tradeExecutionsToCheck && tradeExecutionsToCheck.length > 0 && existingExecutions.length > 0) {
                   // Create a set of execution timestamps from the new trade
                   // Handle both datetime (Lightspeed) and entryTime (ProjectX) formats
                   const newExecutionTimestamps = new Set(
@@ -1579,32 +2029,56 @@ const tradeController = {
                     // No valid timestamps found, skip timestamp matching
                     logger.logImport(`[DEBUG] No valid timestamps in new trade's executions, falling back to price/PnL matching`);
                   } else {
-                    // Check if any existing execution has the same timestamp
-                    // If we find even one matching timestamp, it's likely a duplicate
-                    const hasMatchingExecution = existingExecutions.some(exec => {
+                    // Count how many existing executions have matching timestamps
+                    const matchingExecutionCount = existingExecutions.filter(exec => {
                       const timestamp = exec.datetime || exec.entryTime;
                       if (!timestamp) return false;
                       const execTime = new Date(timestamp).getTime();
                       return !isNaN(execTime) && newExecutionTimestamps.has(execTime);
-                    });
+                    }).length;
 
-                    if (hasMatchingExecution) {
-                      logger.logImport(`Found duplicate based on execution timestamp match`);
-                      return true;
+                    // Only mark as duplicate if the new trade doesn't have MORE executions
+                    // If the new trade has more executions, it may contain partial closes or
+                    // additional data that should update the existing trade
+                    if (matchingExecutionCount > 0) {
+                      const newTradeExecCount = tradeExecutionsToCheck.length;
+                      const existingExecCount = existingExecutions.length;
+
+                      if (newTradeExecCount <= existingExecCount) {
+                        // New trade has same or fewer executions - it's a duplicate
+                        logger.logImport(`Found duplicate based on execution timestamp match for ${tradeData.symbol} ${newInstrumentType} (${matchingExecutionCount} matching, new: ${newTradeExecCount}, existing: ${existingExecCount})`);
+                        return true;
+                      } else {
+                        // New trade has MORE executions - this is an UPDATE, not a duplicate
+                        // The new trade likely contains additional partial closes that weren't in the original import
+                        logger.logImport(`[PARTIAL CLOSE] Trade ${tradeData.symbol} has ${newTradeExecCount} executions vs ${existingExecCount} existing - NOT marking as duplicate (has additional data)`);
+                        // Don't return true - let the trade be imported (it will need to be handled as an update)
+                        // Mark the trade as needing to update the existing one
+                        tradeData.isUpdate = true;
+                        tradeData.existingTradeId = existing.id;
+                        tradeData.existingExecutions = existingExecutions;
+                        return false; // Not a duplicate - it's an update
+                      }
                     }
                   }
                 }
                 
                 // Fallback to the original logic for trades without execution data
+                // CRITICAL: Also require instrument types to match to avoid false positives
+                // between stock trades and options on the same underlying
+                if (!tradeTypesMatch) {
+                  return false; // Different instrument types (stock vs option) - not a duplicate
+                }
+
                 // For closed trades, check entry, exit, and P/L
                 if (tradeData.exitPrice && existing.exit_price) {
                   const entryMatch = Math.abs(parseFloat(existing.entry_price) - parseFloat(tradeData.entryPrice)) < 0.01;
                   const exitMatch = Math.abs(parseFloat(existing.exit_price) - parseFloat(tradeData.exitPrice)) < 0.01;
                   const pnlMatch = Math.abs(parseFloat(existing.pnl || 0) - parseFloat(tradeData.pnl || 0)) < 0.01; // $0.01 tolerance for P/L consistency
-                  
+
                   // Also check if entry times are very close (within 1 second)
                   const entryTimeMatch = Math.abs(new Date(existing.entry_time) - new Date(tradeData.entryTime)) < 1000;
-                  
+
                   return entryMatch && exitMatch && pnlMatch && entryTimeMatch;
                 }
                 // For open trades, check entry price, quantity, side, and exact entry time
@@ -1620,7 +2094,8 @@ const tradeController = {
               });
 
                 if (isDuplicate) {
-                  logger.logImport(`Skipping duplicate trade: ${tradeData.symbol} ${tradeData.side} ${tradeData.quantity} at $${tradeData.entryPrice} (${new Date(tradeData.entryTime).toISOString()})`);
+                  const instrumentType = tradeData.instrumentType || tradeData.instrument_type || 'stock';
+                  logger.logImport(`Skipping duplicate trade: ${tradeData.symbol} ${instrumentType} ${tradeData.side} ${tradeData.quantity} at $${tradeData.entryPrice} (${new Date(tradeData.entryTime).toISOString()})`);
                   duplicates++;
                   continue;
                 }
@@ -1687,13 +2162,68 @@ const tradeController = {
 
           // Clear timeout on successful completion
           clearTimeout(importTimeout);
-          
+
+          // Build error_details with diagnostics information
+          const errorDetails = {
+            duplicates,
+            diagnostics: parseDiagnostics ? {
+              totalRows: parseDiagnostics.totalRows,
+              parsedRows: parseDiagnostics.parsedRows,
+              skippedRows: parseDiagnostics.skippedRows,
+              invalidRows: parseDiagnostics.invalidRows,
+              skippedReasons: parseDiagnostics.skippedReasons?.slice(0, 50) || [], // Limit to first 50 skip reasons
+              warnings: parseDiagnostics.warnings || [],
+              detectedBroker: parseDiagnostics.detectedBroker,
+              selectedBroker: parseDiagnostics.selectedBroker,
+              headerAnalysis: parseDiagnostics.headerAnalysis
+            } : null
+          };
+
+          // Add failed trades if any
+          if (failedTrades.length > 0) {
+            errorDetails.failedTrades = failedTrades;
+          }
+
+          // Track zero_imported scenario: parser produced trades but none were actually imported
+          // Excludes: empty CSV (trades.length === 0), all duplicates (duplicates === trades.length)
+          if (imported === 0 && trades.length > 0 && duplicates < trades.length) {
+            try {
+              const headerLine = getCsvHeaderLine(fileBuffer);
+              const detectedBroker = detectBrokerFormat(fileBuffer);
+              const sampleData = getCsvSampleRows(fileBuffer);
+              await db.query(`
+                INSERT INTO unknown_csv_headers (user_id, header_line, broker_attempted, outcome, file_name, detected_broker, selected_broker, row_count, trades_parsed, diagnostics_json, sample_data)
+                VALUES ($1, $2, $3, 'zero_imported', $4, $5, $6, $7, $8, $9, $10)
+              `, [
+                fileUserId,
+                headerLine?.substring(0, 10000),
+                broker,
+                fileName,
+                detectedBroker,
+                broker,
+                parseDiagnostics?.totalRows || trades.length,
+                trades.length,
+                JSON.stringify({
+                  ...(parseDiagnostics || {}),
+                  imported,
+                  failed,
+                  duplicates,
+                  failedTrades: failedTrades.slice(0, 20)
+                }),
+                sampleData?.substring(0, 10000) || null
+              ]);
+              logger.logWarn(`[CSV] Recorded zero_imported scenario: ${trades.length} trades parsed, 0 imported (${duplicates} duplicates, ${failed} failed)`);
+            } catch (recordErr) {
+              logger.logWarn(`[CSV] Failed to record zero_imported: ${recordErr.message}`);
+            }
+          }
+
           await db.query(`
             UPDATE import_logs
             SET status = 'completed', trades_imported = $1, trades_failed = $2, completed_at = CURRENT_TIMESTAMP, error_details = $4
             WHERE id = $3
-          `, [imported, failed, importId, failedTrades.length > 0 ? { failedTrades, duplicates } : { duplicates }]);
-          
+          `, [imported, failed, importId, errorDetails]);
+
           // Invalidate analytics cache after successful import so counts/P&L update immediately
           try {
             invalidateAnalyticsCache(fileUserId);
@@ -1751,7 +2281,31 @@ const tradeController = {
         } catch (error) {
           // Clear timeout on error
           clearTimeout(importTimeout);
-          
+
+          const headerLine = getCsvHeaderLine(fileBuffer);
+          if (headerLine) {
+            try {
+              // Attempt to detect broker even though parsing failed
+              const detectedBroker = detectBrokerFormat(fileBuffer);
+              const sampleData = getCsvSampleRows(fileBuffer);
+              await db.query(`
+                INSERT INTO unknown_csv_headers (user_id, header_line, broker_attempted, outcome, file_name, detected_broker, selected_broker, diagnostics_json, sample_data)
+                VALUES ($1, $2, $3, 'parse_failed', $4, $5, $6, $7, $8)
+              `, [
+                fileUserId,
+                headerLine.substring(0, 10000),
+                broker,
+                fileName,
+                detectedBroker,
+                broker,
+                JSON.stringify({ error: error.message }),
+                sampleData?.substring(0, 10000) || null
+              ]);
+            } catch (recordErr) {
+              logger.logWarn(`[CSV] Failed to record unknown headers on parse error: ${recordErr.message}`);
+            }
+          }
+
           logger.logError(`Import process failed: ${error.message}`);
           await db.query(`
             UPDATE import_logs
@@ -1933,7 +2487,7 @@ const tradeController = {
           totalCost: 0,
           avgPrice: 0,
           instrumentType: trade.instrument_type || 'stock',
-          contractSize: trade.contract_size || 1,
+          contractSize: trade.contract_size || (trade.instrument_type === 'option' ? 100 : 1),
           pointValue: trade.point_value || null
         };
         }
@@ -2159,6 +2713,68 @@ const tradeController = {
     }
   },
 
+  async bulkDeleteImports(req, res, next) {
+    try {
+      const { importIds } = req.body;
+
+      if (!Array.isArray(importIds) || importIds.length === 0) {
+        return res.status(400).json({ error: 'importIds must be a non-empty array' });
+      }
+
+      if (importIds.length > 50) {
+        return res.status(400).json({ error: 'Cannot delete more than 50 imports at once' });
+      }
+
+      // Verify all imports belong to the user
+      const placeholders = importIds.map((_, i) => `$${i + 2}`).join(',');
+      const verifyQuery = `
+        SELECT id FROM import_logs
+        WHERE user_id = $1 AND id IN (${placeholders})
+      `;
+      const verifyResult = await db.query(verifyQuery, [req.user.id, ...importIds]);
+
+      const validIds = verifyResult.rows.map(r => r.id);
+      if (validIds.length === 0) {
+        return res.status(404).json({ error: 'No valid imports found' });
+      }
+
+      logger.logImport(`Bulk deleting ${validIds.length} imports for user ${req.user.id}`);
+
+      // Delete trades for all valid imports
+      const tradePlaceholders = validIds.map((_, i) => `$${i + 2}`).join(',');
+      const deleteTradesQuery = `
+        DELETE FROM trades
+        WHERE user_id = $1 AND import_id IN (${tradePlaceholders})
+        RETURNING id
+      `;
+      const deletedTrades = await db.query(deleteTradesQuery, [req.user.id, ...validIds]);
+
+      // Delete the import logs
+      const importPlaceholders = validIds.map((_, i) => `$${i + 1}`).join(',');
+      await db.query(`DELETE FROM import_logs WHERE id IN (${importPlaceholders})`, validIds);
+
+      // Invalidate caches
+      invalidateAnalyticsCache(req.user.id);
+      try {
+        await cache.invalidate('sector_performance');
+        console.log('[SUCCESS] Sector performance cache invalidated after bulk import deletion');
+      } catch (cacheError) {
+        console.warn('[WARNING] Failed to invalidate sector performance cache:', cacheError.message);
+      }
+
+      logger.logImport(`Bulk deleted ${deletedTrades.rows.length} trades from ${validIds.length} imports`);
+
+      res.json({
+        message: `${validIds.length} imports and associated trades deleted successfully`,
+        deletedImports: validIds.length,
+        deletedTrades: deletedTrades.rows.length
+      });
+    } catch (error) {
+      logger.logError(`Failed to bulk delete imports: ${error.message}`);
+      next(error);
+    }
+  },
+
   async getImportLogs(req, res, next) {
     try {
       const { showAll = 'false', page = 1, limit = 10 } = req.query;
@@ -2209,7 +2825,7 @@ const tradeController = {
       console.log('Side filter specifically:', req.query.side);
 
       const {
-        startDate, endDate, symbol, sector, strategy, tags,
+        startDate, endDate, symbol, symbolExact, sector, strategy, tags,
         strategies, sectors, // Add multi-select parameters
         side, minPrice, maxPrice, minQuantity, maxQuantity,
         status, minPnl, maxPnl, pnlType, broker, brokers, accounts, hasNews,
@@ -2220,6 +2836,7 @@ const tradeController = {
         startDate,
         endDate,
         symbol,
+        symbolExact: symbolExact === 'true',
         sector,
         strategy,
         // Multi-select filters
@@ -2289,10 +2906,12 @@ const tradeController = {
   async getMonthlyPerformance(req, res, next) {
     try {
       const year = parseInt(req.query.year) || new Date().getFullYear();
+      const { accounts } = req.query;
+      const accountsArray = accounts ? accounts.split(',') : null;
 
-      console.log('[MONTHLY] Getting monthly performance for user:', req.user.id, 'year:', year);
+      console.log('[MONTHLY] Getting monthly performance for user:', req.user.id, 'year:', year, 'accounts:', accountsArray);
 
-      const data = await Trade.getMonthlyPerformance(req.user.id, year);
+      const data = await Trade.getMonthlyPerformance(req.user.id, year, accountsArray);
 
       res.json({
         year,

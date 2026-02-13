@@ -28,13 +28,20 @@
         description="Behavioral Analytics is a Pro feature that helps identify emotional trading patterns like revenge trading, overtrading, and FOMO."
       />
 
-      <!-- Loading State -->
-      <div v-else-if="loading" class="flex justify-center py-12">
+      <!-- Initial Loading State - only shows on first load -->
+      <div v-else-if="initialLoading" class="flex justify-center py-12">
         <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
       </div>
 
-      <!-- Main Content -->
-      <div v-else class="space-y-8">
+      <!-- Main Content - stays mounted after initial load to prevent infinite loop -->
+      <div v-else class="space-y-8 relative">
+        <!-- Subtle refresh indicator -->
+        <div v-if="loading" class="absolute top-0 right-0 z-10">
+          <div class="flex items-center space-x-2 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-sm border border-gray-200 dark:border-gray-700">
+            <div class="animate-spin rounded-full h-4 w-4 border-2 border-primary-600 border-t-transparent"></div>
+            <span class="text-xs text-gray-600 dark:text-gray-400">Updating...</span>
+          </div>
+        </div>
         <!-- Filters -->
         <div class="card">
           <div class="card-body">
@@ -1217,13 +1224,13 @@
                 <div>
                   <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Planned Risk/Reward</h4>
                   <p class="text-lg font-semibold text-gray-900 dark:text-white">
-                    1:{{ lossAversionData.analysis.financialImpact.avgPlannedRiskReward.toFixed(1) }}
+                    1:{{ lossAversionData.analysis.financialImpact.avgPlannedRiskReward.toFixed(2) }}
                   </p>
                 </div>
                 <div>
                   <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Actual Risk/Reward</h4>
                   <p class="text-lg font-semibold text-gray-900 dark:text-white">
-                    1:{{ lossAversionData.analysis.financialImpact.avgActualRiskReward.toFixed(1) }}
+                    1:{{ lossAversionData.analysis.financialImpact.avgActualRiskReward.toFixed(2) }}
                   </p>
                 </div>
               </div>
@@ -2219,6 +2226,8 @@ import { useRouter, useRoute } from 'vue-router'
 import api from '@/services/api'
 import { useNotification } from '@/composables/useNotification'
 import { useAuthStore } from '@/stores/auth'
+import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
+import { useUserTimezone } from '@/composables/useUserTimezone'
 import ProUpgradePrompt from '@/components/ProUpgradePrompt.vue'
 import MdiIcon from '@/components/MdiIcon.vue'
 import TradeFilters from '@/components/trades/TradeFilters.vue'
@@ -2239,10 +2248,14 @@ import {
 
 const { showSuccess, showError } = useNotification()
 const authStore = useAuthStore()
+const { selectedAccount } = useGlobalAccountFilter()
+const { formatTime: formatTimeTz } = useUserTimezone()
 const router = useRouter()
 const route = useRoute()
 
 const loading = ref(true)
+const initialLoading = ref(true) // Track initial load separately to preserve scroll position and prevent TradeFilters remount
+const initialLoadComplete = ref(false) // Prevents duplicate load from TradeFilters emit on mount
 const loadingHistorical = ref(false)
 const loadingLossAversion = ref(false)
 const loadingOverconfidence = ref(false)
@@ -2324,6 +2337,7 @@ const loadData = async () => {
     const queryParams = new URLSearchParams()
     if (filters.value.startDate) queryParams.append('startDate', filters.value.startDate)
     if (filters.value.endDate) queryParams.append('endDate', filters.value.endDate)
+    if (filters.value.accounts) queryParams.append('accounts', filters.value.accounts)
     
     // Add pagination parameters for revenge trading
     const revengeQueryParams = new URLSearchParams(queryParams)
@@ -2356,6 +2370,7 @@ const loadData = async () => {
     }
   } finally {
     loading.value = false
+    initialLoading.value = false
   }
 }
 
@@ -2389,6 +2404,13 @@ const handleFilter = (newFilters) => {
 
   // Save filters and reload data
   saveFilters()
+
+  // Skip if this is the initial emit from TradeFilters on mount (we already loaded in onMounted)
+  if (!initialLoadComplete.value) {
+    console.log('[BehavioralAnalytics] Skipping handleFilter - initial load not complete yet')
+    return
+  }
+
   applyFilters()
 }
 
@@ -2568,12 +2590,9 @@ const formatDate = (dateString) => {
   })
 }
 
-// Format time only
+// Format time only (timezone-aware)
 const formatTime = (dateString) => {
-  return new Date(dateString).toLocaleTimeString('en-US', {
-    hour: '2-digit',
-    minute: '2-digit'
-  })
+  return formatTimeTz(dateString)
 }
 
 // Calculate time between trades
@@ -2711,6 +2730,7 @@ const analyzeLossAversion = async () => {
     const queryParams = new URLSearchParams()
     if (filters.value.startDate) queryParams.append('startDate', filters.value.startDate)
     if (filters.value.endDate) queryParams.append('endDate', filters.value.endDate)
+    if (filters.value.accounts) queryParams.append('accounts', filters.value.accounts)
     
     const response = await api.get(`/behavioral-analytics/loss-aversion?${queryParams}`)
     
@@ -2758,6 +2778,7 @@ const analyzeOverconfidence = async () => {
     const queryParams = new URLSearchParams()
     if (filters.value.startDate) queryParams.append('startDate', filters.value.startDate)
     if (filters.value.endDate) queryParams.append('endDate', filters.value.endDate)
+    if (filters.value.accounts) queryParams.append('accounts', filters.value.accounts)
 
     const response = await api.post(`/behavioral-analytics/overconfidence/analyze-historical?${queryParams}`)
 
@@ -2835,6 +2856,7 @@ const loadTopMissedTrades = async (forceRefresh = false) => {
     const queryParams = new URLSearchParams()
     if (filters.value.startDate) queryParams.append('startDate', filters.value.startDate)
     if (filters.value.endDate) queryParams.append('endDate', filters.value.endDate)
+    if (filters.value.accounts) queryParams.append('accounts', filters.value.accounts)
     queryParams.append('limit', '50')
     if (forceRefresh) queryParams.append('forceRefresh', 'true')
 
@@ -2877,6 +2899,7 @@ const analyzePersonality = async () => {
     const queryParams = new URLSearchParams()
     if (filters.value.startDate) queryParams.append('startDate', filters.value.startDate)
     if (filters.value.endDate) queryParams.append('endDate', filters.value.endDate)
+    if (filters.value.accounts) queryParams.append('accounts', filters.value.accounts)
     
     const response = await api.get(`/behavioral-analytics/personality?${queryParams}`)
     
@@ -3017,8 +3040,15 @@ const generateLossAversionMessage = (holdTimeRatio, estimatedMonthlyCost) => {
   }
 }
 
+// Note: Global account filter is handled by TradeFilters component which emits 'filter' event
+// No need for a separate watcher here - handleFilter() receives the account in the filter payload
+
 onMounted(async () => {
   loadFilters()
+  // Initialize account filter from global state
+  if (selectedAccount.value) {
+    filters.value.accounts = selectedAccount.value
+  }
   await checkAccess()
   if (hasAccess.value) {
     await loadData()
@@ -3046,8 +3076,13 @@ onMounted(async () => {
     if (lossAversionData.value?.analysis) {
       await loadTopMissedTrades()
     }
+
+    // Mark initial load as complete - future handleFilter calls will reload data
+    initialLoadComplete.value = true
   } else {
     loading.value = false
+    initialLoading.value = false
+    initialLoadComplete.value = true
   }
 })
 

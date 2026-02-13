@@ -7,39 +7,100 @@
     <link rel="apple-touch-icon" href="/favicon-32x32.png">
     <link rel="shortcut icon" href="/favicon.svg">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TradeTally - Free Trading Journal & Analytics Platform | TraderVue Alternative</title>
-    <meta name="description" content="Professional trading journal and analytics platform. Track unlimited trades, analyze performance, and improve your trading with comprehensive charts, multi-broker support, and real-time insights. Free TraderVue alternative with self-hosting option.">
-    <meta name="keywords" content="trading journal, trade tracking, trading analytics, stock trading, day trading, trade analysis, portfolio tracking, TraderVue alternative, free trading journal, self-hosted trading journal">
+    <title>TradeTally - Free Trading Journal and Investment Tracker</title>
+    <meta name="description" content="Free open-source trading journal and investment tracker. Auto-sync Schwab and IBKR, stock analyzer, real-time holdings P&L, AI insights. Self-host with Docker.">
+    <meta name="keywords" content="trading journal, investment tracker, stock analyzer, portfolio tracker, free trading journal, open source trading journal, self-hosted trading journal, TraderVue alternative, day trading, Schwab trading journal, IBKR trading journal">
     <meta name="robots" content="index, follow">
     <meta name="author" content="TradeTally">
     <link rel="canonical" href="https://tradetally.io">
-    
+
     <!-- Open Graph Meta Tags -->
-    <meta property="og:title" content="TradeTally - Free Trading Journal & Analytics Platform | TraderVue Alternative">
-    <meta property="og:description" content="Track unlimited trades, analyze performance, and improve your trading with our professional trade journaling platform. Free TraderVue alternative with advanced analytics.">
+    <meta property="og:title" content="TradeTally - Free Trading Journal and Investment Tracker">
+    <meta property="og:description" content="Free open-source trading journal and investment tracker. Auto-sync Schwab and IBKR, stock analyzer, real-time holdings P&L, AI insights.">
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://tradetally.io">
-    <meta property="og:image" content="/tradetally-banner.svg">
+    <meta property="og:image" content="https://tradetally.io/tradetally-banner.svg">
     <meta property="og:image:alt" content="TradeTally Trading Journal Platform">
     <meta property="og:site_name" content="TradeTally">
     <meta property="og:locale" content="en_US">
-    
+
     <!-- Twitter Card Meta Tags -->
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="TradeTally - Free Trading Journal & Analytics Platform">
-    <meta name="twitter:description" content="Professional trading journal and analytics platform to help you become a better trader. Free TraderVue alternative with unlimited trades.">
-    <meta name="twitter:image" content="/tradetally-banner.svg">
-    
+    <meta name="twitter:title" content="TradeTally - Free Trading Journal and Investment Tracker">
+    <meta name="twitter:description" content="Free open-source trading journal and investment tracker. Auto-sync Schwab and IBKR, stock analyzer, real-time holdings P&L, AI insights.">
+    <meta name="twitter:image" content="https://tradetally.io/tradetally-banner.svg">
+
     <!-- Additional SEO Meta Tags -->
     <meta name="application-name" content="TradeTally">
     <meta name="theme-color" content="#3B82F6">
     <meta name="format-detection" content="telephone=no">
-    
-    <!-- TradingView Widget -->
-    <script type="text/javascript" src="https://s3.tradingview.com/tv.js" integrity="sha384-uo5ViWsaG+8CW5k5QTvfolKuoi7WPePbBtYmE1lHx+KFfmeBeoWukTos6jV2su3C" crossorigin="anonymous"></script>
+
+    <!-- Static fallback is shown instantly for fast LCP, then Vue replaces it on mount -->
+    <style>
+      #app-fallback{max-width:72rem;margin:0 auto;padding:4rem 1rem;text-align:center;font-family:system-ui,-apple-system,sans-serif}
+      #app-fallback h1{font-size:2.25rem;font-weight:800;color:#111827;line-height:1.2;margin:0 0 1.25rem}
+      #app-fallback .hero-sub{font-size:1.25rem;color:#6b7280;line-height:1.75;max-width:48rem;margin:0 auto}
+      #app-fallback .hero-cta{margin-top:2rem;display:flex;justify-content:center;gap:1rem}
+      #app-fallback .hero-cta a{display:inline-block;padding:0.75rem 2rem;border-radius:0.5rem;font-weight:600;font-size:1.125rem;text-decoration:none}
+      #app-fallback .hero-cta a:first-child{background:#2563eb;color:#fff}
+      #app-fallback .hero-cta a:last-child{background:#f3f4f6;color:#374151}
+      #app-fallback .seo-sections{display:none}
+    </style>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app">
+      <!-- Static fallback content for search engine crawlers. Vue replaces this on mount. -->
+      <div id="app-fallback">
+      <main>
+        <section>
+          <h1>Best Free Trading Journal Software for Day Traders</h1>
+          <p class="hero-sub">Professional trade tracking platform with automated trade import, advanced analytics, and broker integration. The best TraderVue alternative with unlimited free trade storage for stocks and options trading.</p>
+          <div class="hero-cta">
+            <a href="/register">Get Started Free</a>
+            <a href="/public">View Public Trades</a>
+          </div>
+        </section>
+
+        <div class="seo-sections">
+        <section>
+          <h2>Auto-Sync Your Broker</h2>
+          <p>Connect your Schwab or Interactive Brokers account to automatically import trades. No manual data entry required. TradeTally also supports CSV import from Lightspeed, Webull, TradingView, TradeStation, Tradovate, Questrade, and more.</p>
+        </section>
+
+        <section>
+          <h2>Advanced Analytics and AI Insights</h2>
+          <p>Visualize your performance with detailed P&amp;L charts, win rate tracking, and risk analysis. AI-powered insights highlight patterns in your trading and suggest areas for improvement.</p>
+        </section>
+
+        <section>
+          <h2>Investment Analysis and Portfolio Tracking</h2>
+          <p>Go beyond trade journaling with the 8 Pillars stock analyzer, DCF valuation calculator, and real-time holdings tracking. Monitor unrealized P&amp;L, track dividends, scan the Russell 2000 for undervalued stocks, and set price alerts -- all for $8/mo with Pro.</p>
+        </section>
+
+        <section>
+          <h2>Open Source and Self-Hosted</h2>
+          <p>TradeTally is fully open source and can be self-hosted with Docker. Your trading data stays on your own server, giving you complete privacy and control. No vendor lock-in, ever.</p>
+        </section>
+
+        <section>
+          <h2>Compare TradeTally</h2>
+          <p>See how TradeTally compares to paid trading journals like TraderVue and TraderSync. Get unlimited trades, broker auto-sync, and AI analytics without the monthly subscription.</p>
+          <nav>
+            <a href="/features">Features</a>
+            <a href="/compare">Compare</a>
+            <a href="/faq">FAQ</a>
+            <a href="/pricing">Pricing</a>
+            <a href="/public">Public Trades</a>
+          </nav>
+        </section>
+        </div>
+
+        <noscript>
+          <p>TradeTally requires JavaScript to run. Please enable JavaScript in your browser to use the full application.</p>
+        </noscript>
+      </main>
+      </div>
+    </div>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

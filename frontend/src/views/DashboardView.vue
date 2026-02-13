@@ -31,8 +31,8 @@
           </div>
         </div>
         
-        <!-- Filters -->
-        <div class="mt-4 sm:mt-0 flex flex-wrap gap-3">
+        <!-- Filters and Customization Controls -->
+        <div class="mt-4 sm:mt-0 flex flex-wrap gap-3 items-center justify-end">
           <select v-model="filters.timeRange" @change="applyFilters" class="input text-sm">
             <option value="all">All Time</option>
             <option value="custom">Custom Range</option>
@@ -44,7 +44,7 @@
             <option value="1y">Last Year</option>
             <option value="ytd">Year to Date</option>
           </select>
-          
+
           <!-- Custom Date Range Inputs -->
           <div v-if="filters.timeRange === 'custom'" class="flex gap-2">
             <input
@@ -64,6 +64,37 @@
               placeholder="End Date"
             />
           </div>
+
+          <!-- Customization Controls -->
+          <div class="flex gap-2 ml-auto">
+            <button
+              @click="toggleCustomization"
+              class="px-3 py-2 text-sm font-medium border rounded-md transition-colors"
+              :class="isCustomizing ? 'bg-primary-100 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300 border-primary-300 dark:border-primary-700' : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700'"
+            >
+              <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+              {{ isCustomizing ? 'Done' : 'Reorder Sections' }}
+            </button>
+            <button
+              @click="showLayoutSettings = true"
+              class="px-3 py-2 text-sm font-medium border rounded-md transition-colors bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
+            >
+              <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              </svg>
+              Show/Hide Sections
+            </button>
+            <button
+              v-if="isCustomizing"
+              @click="resetDashboardLayout"
+              class="px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+            >
+              Reset to Default
+            </button>
+          </div>
           <!-- Account filter is now global in the navbar -->
         </div>
       </div>
@@ -72,36 +103,226 @@
     <!-- Year Wrapped Banner -->
     <YearWrappedBanner />
 
+    <!-- Guided onboarding: contextual card for this page (first-time only; hide once they have imported) -->
+    <OnboardingCard
+      v-if="authStore.showOnboardingModal && !onboardingStatus?.has_activated"
+      title="Welcome to TradeTally"
+      description="Import your first trades to see your performance, win rate, and analytics here."
+      cta-label="Go to Import"
+      cta-route="import"
+    />
+
+    <!-- First-value onboarding banner: new users who have not imported yet (hidden while guided onboarding card is shown) -->
+    <div
+      v-if="!initialLoading && !authStore.showOnboardingModal && onboardingStatus?.is_new && !onboardingStatus?.has_activated && !onboardingBannerDismissed"
+      class="card bg-primary-50 dark:bg-primary-900/20 border-primary-200 dark:border-primary-800 mb-6"
+    >
+      <div class="card-body">
+        <div class="flex items-start gap-3">
+          <div class="flex-shrink-0 p-2 rounded-lg bg-primary-100 dark:bg-primary-900/40">
+            <svg class="w-5 h-5 text-primary-600 dark:text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+            </svg>
+          </div>
+          <div class="flex-1 min-w-0">
+            <h3 class="text-sm font-medium text-primary-900 dark:text-primary-100">Get started with TradeTally</h3>
+            <p class="mt-1 text-sm text-primary-700 dark:text-primary-300">
+              Import your first trades to see your P&L, win rate, and analytics here.
+            </p>
+            <div class="mt-3 flex flex-wrap gap-2">
+              <RouterLink
+                :to="{ name: 'import' }"
+                class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-primary-600 text-white hover:bg-primary-700 dark:bg-primary-500 dark:hover:bg-primary-600"
+              >
+                Import your first trades
+              </RouterLink>
+              <RouterLink
+                :to="{ name: 'broker-sync' }"
+                class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md border border-primary-600 text-primary-700 dark:text-primary-300 dark:border-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/30"
+              >
+                Connect a broker
+              </RouterLink>
+              <button
+                type="button"
+                class="inline-flex items-center px-3 py-1.5 text-sm text-primary-600 dark:text-primary-400 hover:underline"
+                @click="onboardingBannerDismissed = true"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+          <button
+            type="button"
+            class="flex-shrink-0 p-1 rounded text-primary-500 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-200"
+            aria-label="Dismiss"
+            @click="onboardingBannerDismissed = true"
+          >
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Year Wrapped Modal -->
     <YearWrappedModal />
 
-    <div v-if="loading" class="flex justify-center py-12">
+    <!-- Trial countdown: show when on active trial -->
+    <div
+      v-if="!initialLoading && billingAvailable && subscription?.trial?.active && !trialBannerDismissed"
+      class="card bg-primary-50 dark:bg-primary-900/20 border-primary-200 dark:border-primary-800 mb-6"
+    >
+      <div class="card-body">
+        <div class="flex items-center justify-between gap-3">
+          <div class="flex items-center gap-3">
+            <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-primary-100 text-primary-800 dark:bg-primary-800 dark:text-primary-200">
+              Pro Trial
+            </span>
+            <span class="text-sm text-primary-800 dark:text-primary-200">
+              {{ subscription.trial.days_remaining }} day{{ subscription.trial.days_remaining === 1 ? '' : 's' }} left. Upgrade before your trial ends to keep Pro features.
+            </span>
+          </div>
+          <div class="flex items-center gap-2">
+            <RouterLink
+              :to="{ name: 'pricing' }"
+              class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-primary-600 text-white hover:bg-primary-700 dark:bg-primary-500 dark:hover:bg-primary-600"
+            >
+              Upgrade before trial ends
+            </RouterLink>
+            <button
+              type="button"
+              class="p-1 rounded text-primary-500 hover:text-primary-700 dark:text-primary-400"
+              aria-label="Dismiss"
+              @click="trialBannerDismissed = true"
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Post-trial expiry: show when trial ended and user is on free tier -->
+    <div
+      v-if="!initialLoading && billingAvailable && showPostTrialBanner && !postTrialBannerDismissed"
+      class="card bg-gray-50 dark:bg-gray-800/80 border-gray-200 dark:border-gray-700 mb-6"
+    >
+      <div class="card-body">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <p class="text-sm font-medium text-gray-900 dark:text-white">Your trial ended</p>
+            <p class="text-sm text-gray-600 dark:text-gray-400 mt-0.5">
+              Upgrade to Pro to keep advanced analytics, AI insights, and more.
+            </p>
+          </div>
+          <div class="flex items-center gap-2">
+            <RouterLink
+              :to="{ name: 'pricing' }"
+              class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-primary-600 text-white hover:bg-primary-700"
+            >
+              View Pro plans
+            </RouterLink>
+            <button
+              type="button"
+              class="p-1 rounded text-gray-500 hover:text-gray-700 dark:text-gray-400"
+              aria-label="Dismiss"
+              @click="postTrialBannerDismissed = true"
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Full page spinner only on initial load -->
+    <div v-if="initialLoading" class="flex justify-center py-12">
       <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
     </div>
 
-    <div v-else class="space-y-8">
-      <!-- Today's Journal Entry -->
-      <TodaysJournalEntry />
-
-      <!-- Open Trades Section -->
-      <div v-if="openTrades.length > 0" class="card">
+    <!-- Content with optional refresh indicator -->
+    <div v-else class="space-y-8 relative">
+      <!-- Subtle refresh indicator overlay -->
+      <div v-if="loading" class="absolute top-0 right-0 z-10">
+        <div class="flex items-center space-x-2 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-sm border border-gray-200 dark:border-gray-700">
+          <div class="animate-spin rounded-full h-4 w-4 border-2 border-primary-600 border-t-transparent"></div>
+          <span class="text-xs text-gray-600 dark:text-gray-400">Updating...</span>
+        </div>
+      </div>
+      
+      <!-- Customization Mode Message -->
+      <div v-if="isCustomizing" class="card bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
         <div class="card-body">
-          <div class="flex items-center justify-between mb-4">
-            <div class="flex items-center">
-              <h3 class="heading-card">Open Positions</h3>
-              <button 
-                @click="navigateToOpenTrades"
-                class="ml-3 text-sm text-primary-600 hover:text-primary-900 dark:text-primary-400 dark:hover:text-primary-300"
-              >
-                View all →
-              </button>
+          <div class="flex items-center gap-3">
+            <svg class="w-5 h-5 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div>
+              <p class="text-sm font-medium text-blue-900 dark:text-blue-100">Customization Mode Active</p>
+              <p class="text-xs text-blue-700 dark:text-blue-300 mt-1">Drag and drop sections to reorder them. Use "Show/Hide Sections" to control visibility.</p>
             </div>
-            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400">
-              {{ openTrades.length }} {{ openTrades.length === 1 ? 'position' : 'positions' }}
-            </span>
           </div>
-          <!-- Mobile Card View -->
-          <div class="block lg:hidden space-y-3">
+        </div>
+      </div>
+      
+      <!-- Draggable Dashboard Sections -->
+      <draggable
+        v-model="dashboardLayout"
+        :disabled="!isCustomizing"
+        item-key="id"
+        class="space-y-8"
+        handle=".drag-handle"
+        @end="onDragEnd"
+        @change="onDragChange"
+      >
+        <template #item="{ element }">
+          <div
+            v-if="element.visible"
+            :class="[
+              isCustomizing ? 'ring-2 ring-primary-300 dark:ring-primary-700 rounded-lg transition-all' : '',
+              'relative'
+            ]"
+          >
+            <!-- Drag Handle (only visible in customize mode) -->
+            <div v-if="isCustomizing" class="drag-handle flex items-center justify-center py-2 bg-gray-100 dark:bg-gray-800 rounded-t-lg cursor-move hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors mb-0">
+              <div class="flex items-center gap-2">
+                <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16" />
+                </svg>
+                <span class="text-xs text-gray-500 dark:text-gray-400">{{ getSectionDefinition(element.id)?.title }}</span>
+              </div>
+            </div>
+            
+            <!-- Today's Journal Entry -->
+            <template v-if="element.id === 'journal-entry'">
+              <TodaysJournalEntry />
+            </template>
+
+            <!-- Open Trades Section -->
+            <template v-if="element.id === 'open-positions'">
+              <div v-if="openTrades.length > 0" class="card">
+                <div class="card-body">
+                  <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center">
+                      <h3 class="heading-card">Open Positions</h3>
+                      <button 
+                        @click="navigateToOpenTrades"
+                        class="ml-3 text-sm text-primary-600 hover:text-primary-900 dark:text-primary-400 dark:hover:text-primary-300"
+                      >
+                        View all →
+                      </button>
+                    </div>
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400">
+                      {{ openTrades.length }} {{ openTrades.length === 1 ? 'position' : 'positions' }}
+                    </span>
+                  </div>
+                  <!-- Mobile Card View -->
+                  <div class="block lg:hidden space-y-3">
             <div v-for="position in openTrades" :key="position.symbol" class="table-card-item">
               <!-- Position Header -->
               <div class="flex justify-between items-start mb-3 pb-3 border-b border-gray-200 dark:border-gray-700">
@@ -214,10 +435,10 @@
                 </div>
               </div>
             </div>
-          </div>
+                  </div>
 
-          <!-- Desktop Table View -->
-          <div class="hidden lg:block overflow-x-auto">
+                  <!-- Desktop Table View -->
+                  <div class="hidden lg:block overflow-x-auto">
             <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
               <thead>
                 <tr>
@@ -403,317 +624,394 @@
                 </tr>
               </tfoot>
             </table>
-          </div>
-        </div>
-      </div>
-
-      <!-- Upcoming Earnings Section (Pro Only) -->
-      <UpcomingEarningsSection
-        v-if="openTradeSymbols.length > 0 && authStore.user?.tier === 'pro'"
-        :symbols="openTradeSymbols"
-      />
-
-      <!-- Trade News Section (Pro Only) -->
-      <TradeNewsSection
-        v-if="openTradeSymbols.length > 0 && authStore.user?.tier === 'pro'"
-        :symbols="openTradeSymbols"
-      />
-
-      <!-- Key Metrics Cards -->
-      <div class="flex-card-container">
-        <div class="card card-mobile-safe flex-1">
-          <div class="card-body">
-            <dt class="text-data-secondary truncate">
-              Total P&L
-            </dt>
-            <dd class="mt-1 text-xl sm:text-2xl lg:text-3xl font-semibold whitespace-nowrap" :class="[
-              analytics.summary.totalPnL >= 0 ? 'text-green-600' : 'text-red-600'
-            ]">
-              ${{ formatCurrency(analytics.summary.totalPnL) }}
-            </dd>
-            <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-              {{ calculationMethod }}: ${{ formatCurrency(analytics.summary.avgPnL) }}
-            </div>
-          </div>
-        </div>
-
-        <div class="card card-mobile-safe flex-1">
-          <div class="card-body">
-            <dt class="text-data-secondary truncate">
-              Win Rate
-            </dt>
-            <dd class="mt-1 text-xl sm:text-2xl lg:text-3xl font-semibold whitespace-nowrap" :class="[
-              analytics.summary.winRate >= 50 ? 'text-green-600' : 'text-red-600'
-            ]">
-              {{ formatPercent(analytics.summary.winRate) }}%
-            </dd>
-            <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-              {{ analytics.summary.winningTrades }}/{{ analytics.summary.totalTrades }} trades
-            </div>
-          </div>
-        </div>
-
-        <div class="card card-mobile-safe flex-1">
-          <div class="card-body">
-            <dt class="text-data-secondary truncate">
-              Profit Factor
-            </dt>
-            <dd class="mt-1 text-xl sm:text-2xl lg:text-3xl font-semibold whitespace-nowrap" :class="[
-              analytics.summary.profitFactor >= 1 ? 'text-green-600' : 'text-red-600'
-            ]">
-              {{ formatNumber(analytics.summary.profitFactor) }}
-            </dd>
-            <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-              {{ analytics.summary.profitFactor >= 1 ? 'Profitable' : 'Unprofitable' }}
-            </div>
-          </div>
-        </div>
-
-        <div class="card card-mobile-safe flex-1 cursor-pointer hover:shadow-lg transition-shadow" @click="navigateToAnalytics('drawdown')">
-          <div class="card-body">
-            <dt class="text-data-secondary truncate">
-              Max Drawdown
-            </dt>
-            <dd class="mt-1 text-xl sm:text-2xl lg:text-3xl font-semibold text-red-600 whitespace-nowrap">
-              ${{ formatCurrency(Math.abs(analytics.summary.maxDrawdown)) }}
-            </dd>
-            <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-              Peak decline
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Additional Metrics Row -->
-      <div class="flex-card-container">
-        <div class="card card-mobile-safe flex-1 cursor-pointer hover:shadow-lg transition-shadow" @click="navigateToTradesFiltered('avgWin')">
-          <div class="card-body">
-            <dt class="text-data-secondary truncate">
-              {{ calculationMethod }} Win
-            </dt>
-            <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-green-600 whitespace-nowrap">
-              ${{ formatCurrency(analytics.summary.avgWin) }}
-            </dd>
-          </div>
-        </div>
-
-        <div class="card card-mobile-safe flex-1 cursor-pointer hover:shadow-lg transition-shadow" @click="navigateToTradesFiltered('avgLoss')">
-          <div class="card-body">
-            <dt class="text-data-secondary truncate">
-              {{ calculationMethod }} Loss
-            </dt>
-            <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-red-600 whitespace-nowrap">
-              ${{ formatCurrency(Math.abs(analytics.summary.avgLoss)) }}
-            </dd>
-          </div>
-        </div>
-
-        <div class="card card-mobile-safe flex-1 cursor-pointer hover:shadow-lg transition-shadow" @click="navigateToTradesFiltered('best')">
-          <div class="card-body">
-            <dt class="text-data-secondary truncate">
-              Best Trade
-            </dt>
-            <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-green-600 whitespace-nowrap">
-              ${{ formatCurrency(analytics.summary.bestTrade) }}
-            </dd>
-          </div>
-        </div>
-
-        <div class="card card-mobile-safe flex-1 cursor-pointer hover:shadow-lg transition-shadow" @click="navigateToTradesFiltered('worst')">
-          <div class="card-body">
-            <dt class="text-data-secondary truncate">
-              Worst Trade
-            </dt>
-            <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-red-600 whitespace-nowrap">
-              ${{ formatCurrency(analytics.summary.worstTrade) }}
-            </dd>
-          </div>
-        </div>
-      </div>
-
-      <!-- Charts Row -->
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <!-- P&L Over Time Chart (2/3 width) -->
-        <div class="lg:col-span-2 card">
-          <div class="card-body">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
-              Cumulative P&L Over Time
-            </h3>
-            <div class="h-80">
-              <canvas ref="pnlChart"></canvas>
-            </div>
-          </div>
-        </div>
-
-        <!-- Win/Loss Distribution (1/3 width) -->
-        <div class="lg:col-span-1 card">
-          <div class="card-body">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
-              Win/Loss Distribution
-            </h3>
-            <div class="h-80">
-              <canvas ref="distributionChart"></canvas>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Daily Win Rate Chart Row -->
-      <div class="grid grid-cols-1 gap-8">
-        <div class="card">
-          <div class="card-body">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
-              Daily Win Rate
-            </h3>
-            <div class="h-80">
-              <canvas ref="winRateChart"></canvas>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Performance Tables Row -->
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <!-- Performance by Symbol -->
-        <div class="card">
-          <div class="card-body">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
-              Performance by Symbol
-            </h3>
-            <div class="overflow-x-auto">
-              <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                <thead>
-                  <tr>
-                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                      Symbol
-                    </th>
-                    <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                      Trades
-                    </th>
-                    <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                      P&L
-                    </th>
-                    <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                      Avg
-                    </th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-                  <tr v-for="symbol in analytics.performanceBySymbol.slice(0, 10)" :key="symbol.symbol" 
-                      @click="navigateToTradesWithSymbol(symbol.symbol)"
-                      class="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-                    <td class="px-3 py-2 text-sm font-medium text-gray-900 dark:text-white">
-                      {{ symbol.symbol }}
-                    </td>
-                    <td class="px-3 py-2 text-sm text-gray-500 dark:text-gray-400 text-right">
-                      {{ symbol.trades }}
-                    </td>
-                    <td class="px-3 py-2 text-sm text-right" :class="[
-                      symbol.total_pnl >= 0 ? 'text-green-600' : 'text-red-600'
-                    ]">
-                      ${{ formatCurrency(symbol.total_pnl) }}
-                    </td>
-                    <td class="px-3 py-2 text-sm text-gray-500 dark:text-gray-400 text-right">
-                      ${{ formatCurrency(symbol.avg_pnl) }}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-
-        <!-- Best and Worst Trades -->
-        <div class="card">
-          <div class="card-body">
-            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
-              Top Trades
-            </h3>
-            
-            <div class="space-y-4">
-              <div>
-                <h4 class="text-sm font-medium text-green-600 mb-2">Best Trades</h4>
-                <div class="space-y-1">
-                  <div v-for="trade in analytics.topTrades.best" :key="`best-${trade.symbol}-${trade.trade_date}`" 
-                       @click="navigateToTradesBySymbolAndDate(trade.symbol, trade.trade_date)"
-                       class="flex justify-between items-center text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 rounded p-2 transition-colors">
-                    <span class="text-gray-900 dark:text-white">
-                      {{ trade.symbol }} {{ formatDate(trade.trade_date) }}
-                    </span>
-                    <span class="text-green-600 font-medium">
-                      ${{ formatCurrency(trade.pnl) }}
-                    </span>
                   </div>
                 </div>
               </div>
+            </template>
 
-              <div>
-                <h4 class="text-sm font-medium text-red-600 mb-2">Worst Trades</h4>
-                <div class="space-y-1">
-                  <div v-if="analytics.topTrades.worst && analytics.topTrades.worst.length > 0"
-                       v-for="trade in analytics.topTrades.worst" :key="`worst-${trade.symbol}-${trade.trade_date}`" 
-                       @click="navigateToTradesBySymbolAndDate(trade.symbol, trade.trade_date)"
-                       class="flex justify-between items-center text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 rounded p-2 transition-colors">
-                    <span class="text-gray-900 dark:text-white">
-                      {{ trade.symbol }} {{ formatDate(trade.trade_date) }}
-                    </span>
-                    <span :class="[
-                      trade.pnl >= 0 ? 'text-green-600' : 'text-red-600',
-                      'font-medium'
+            <!-- Upcoming Earnings Section (Pro Only) -->
+            <template v-if="element.id === 'upcoming-earnings'">
+              <UpcomingEarningsSection
+                v-if="openTradeSymbols.length > 0 && authStore.user?.tier === 'pro'"
+                :symbols="openTradeSymbols"
+              />
+            </template>
+
+            <!-- Trade News Section (Pro Only) -->
+            <template v-if="element.id === 'trade-news'">
+              <TradeNewsSection
+                v-if="openTradeSymbols.length > 0 && authStore.user?.tier === 'pro'"
+                :symbols="openTradeSymbols"
+              />
+            </template>
+
+            <!-- Key Metrics Cards -->
+            <template v-if="element.id === 'key-metrics'">
+              <div class="flex-card-container">
+                <div class="card card-mobile-safe flex-1">
+                  <div class="card-body">
+                    <dt class="text-data-secondary truncate">
+                      Total P&L
+                    </dt>
+                    <dd class="mt-1 text-xl sm:text-2xl lg:text-3xl font-semibold whitespace-nowrap" :class="[
+                      analytics.summary.totalPnL >= 0 ? 'text-green-600' : 'text-red-600'
                     ]">
-                      ${{ formatCurrency(trade.pnl) }}
-                    </span>
+                      ${{ formatCurrency(analytics.summary.totalPnL) }}
+                    </dd>
+                    <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                      {{ calculationMethod }}: ${{ formatCurrency(analytics.summary.avgPnL) }}
+                    </div>
                   </div>
-                  <div v-else class="text-sm text-gray-500 dark:text-gray-400 italic py-2 flex items-center">
-                    <MdiIcon :icon="mdiCheckCircle" :size="16" class="mr-1 text-green-500" />
-                    No losing trades found
+                </div>
+
+                <div class="card card-mobile-safe flex-1">
+                  <div class="card-body">
+                    <dt class="text-data-secondary truncate">
+                      Win Rate
+                    </dt>
+                    <dd class="mt-1 text-xl sm:text-2xl lg:text-3xl font-semibold whitespace-nowrap" :class="[
+                      analytics.summary.winRate >= 50 ? 'text-green-600' : 'text-red-600'
+                    ]">
+                      {{ formatPercent(analytics.summary.winRate) }}%
+                    </dd>
+                    <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                      {{ analytics.summary.winningTrades }}/{{ analytics.summary.totalTrades }} trades
+                    </div>
+                  </div>
+                </div>
+
+                <div class="card card-mobile-safe flex-1">
+                  <div class="card-body">
+                    <dt class="text-data-secondary truncate">
+                      Profit Factor
+                    </dt>
+                    <dd class="mt-1 text-xl sm:text-2xl lg:text-3xl font-semibold whitespace-nowrap" :class="[
+                      analytics.summary.profitFactor >= 1 ? 'text-green-600' : 'text-red-600'
+                    ]">
+                      {{ formatNumber(analytics.summary.profitFactor) }}
+                    </dd>
+                    <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                      {{ analytics.summary.profitFactor >= 1 ? 'Profitable' : 'Unprofitable' }}
+                    </div>
+                  </div>
+                </div>
+
+                <div class="card card-mobile-safe flex-1 cursor-pointer hover:shadow-lg transition-shadow" @click="navigateToAnalytics('drawdown')">
+                  <div class="card-body">
+                    <dt class="text-data-secondary truncate">
+                      Max Drawdown
+                    </dt>
+                    <dd class="mt-1 text-xl sm:text-2xl lg:text-3xl font-semibold text-red-600 whitespace-nowrap">
+                      ${{ formatCurrency(Math.abs(analytics.summary.maxDrawdown)) }}
+                    </dd>
+                    <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                      Peak decline
+                    </div>
                   </div>
                 </div>
               </div>
+            </template>
+
+            <!-- Additional Metrics Row -->
+            <template v-if="element.id === 'additional-metrics'">
+              <div class="flex-card-container">
+                <div class="card card-mobile-safe flex-1 cursor-pointer hover:shadow-lg transition-shadow" @click="navigateToTradesFiltered('avgWin')">
+                  <div class="card-body">
+                    <dt class="text-data-secondary truncate">
+                      {{ calculationMethod }} Win
+                    </dt>
+                    <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-green-600 whitespace-nowrap">
+                      ${{ formatCurrency(analytics.summary.avgWin) }}
+                    </dd>
+                  </div>
+                </div>
+
+                <div class="card card-mobile-safe flex-1 cursor-pointer hover:shadow-lg transition-shadow" @click="navigateToTradesFiltered('avgLoss')">
+                  <div class="card-body">
+                    <dt class="text-data-secondary truncate">
+                      {{ calculationMethod }} Loss
+                    </dt>
+                    <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-red-600 whitespace-nowrap">
+                      ${{ formatCurrency(Math.abs(analytics.summary.avgLoss)) }}
+                    </dd>
+                  </div>
+                </div>
+
+                <div class="card card-mobile-safe flex-1 cursor-pointer hover:shadow-lg transition-shadow" @click="navigateToTradesFiltered('best')">
+                  <div class="card-body">
+                    <dt class="text-data-secondary truncate">
+                      Best Trade
+                    </dt>
+                    <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-green-600 whitespace-nowrap">
+                      ${{ formatCurrency(analytics.summary.bestTrade) }}
+                    </dd>
+                  </div>
+                </div>
+
+                <div class="card card-mobile-safe flex-1 cursor-pointer hover:shadow-lg transition-shadow" @click="navigateToTradesFiltered('worst')">
+                  <div class="card-body">
+                    <dt class="text-data-secondary truncate">
+                      Worst Trade
+                    </dt>
+                    <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-red-600 whitespace-nowrap">
+                      ${{ formatCurrency(analytics.summary.worstTrade) }}
+                    </dd>
+                  </div>
+                </div>
+              </div>
+            </template>
+
+            <!-- Charts Row -->
+            <template v-if="element.id === 'charts'">
+              <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <!-- P&L Over Time Chart (2/3 width) -->
+                <div class="lg:col-span-2 card">
+                  <div class="card-body">
+                    <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
+                      Cumulative P&L Over Time
+                    </h3>
+                    <div class="h-80">
+                      <canvas ref="pnlChart"></canvas>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Win/Loss Distribution (1/3 width) -->
+                <div class="lg:col-span-1 card">
+                  <div class="card-body">
+                    <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
+                      Win/Loss Distribution
+                    </h3>
+                    <div class="h-80">
+                      <canvas ref="distributionChart"></canvas>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </template>
+
+            <!-- Daily Win Rate Chart Row -->
+            <template v-if="element.id === 'win-rate-chart'">
+              <div class="grid grid-cols-1 gap-8">
+                <div class="card">
+                  <div class="card-body">
+                    <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
+                      Daily Win Rate
+                    </h3>
+                    <div class="h-80">
+                      <canvas ref="winRateChart"></canvas>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </template>
+
+            <!-- Performance Tables Row -->
+            <template v-if="element.id === 'performance-tables'">
+              <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <!-- Performance by Symbol -->
+                <div class="card">
+                  <div class="card-body">
+                    <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
+                      Performance by Symbol
+                    </h3>
+                    <div class="overflow-x-auto">
+                      <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                        <thead>
+                          <tr>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                              Symbol
+                            </th>
+                            <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                              Trades
+                            </th>
+                            <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                              P&L
+                            </th>
+                            <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                              Avg
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                          <tr v-for="symbol in analytics.performanceBySymbol.slice(0, 10)" :key="symbol.symbol" 
+                              @click="navigateToTradesWithSymbol(symbol.symbol)"
+                              class="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                            <td class="px-3 py-2 text-sm font-medium text-gray-900 dark:text-white">
+                              {{ symbol.symbol }}
+                            </td>
+                            <td class="px-3 py-2 text-sm text-gray-500 dark:text-gray-400 text-right">
+                              {{ symbol.trades }}
+                            </td>
+                            <td class="px-3 py-2 text-sm text-right" :class="[
+                              symbol.total_pnl >= 0 ? 'text-green-600' : 'text-red-600'
+                            ]">
+                              ${{ formatCurrency(symbol.total_pnl) }}
+                            </td>
+                            <td class="px-3 py-2 text-sm text-gray-500 dark:text-gray-400 text-right">
+                              ${{ formatCurrency(symbol.avg_pnl) }}
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Best and Worst Trades -->
+                <div class="card">
+                  <div class="card-body">
+                    <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
+                      Top Trades
+                    </h3>
+                    
+                    <div class="space-y-4">
+                      <div>
+                        <h4 class="text-sm font-medium text-green-600 mb-2">Best Trades</h4>
+                        <div class="space-y-1">
+                          <div v-for="trade in analytics.topTrades.best" :key="`best-${trade.symbol}-${trade.trade_date}`" 
+                               @click="navigateToTradesBySymbolAndDate(trade.symbol, trade.trade_date)"
+                               class="flex justify-between items-center text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 rounded p-2 transition-colors">
+                            <span class="text-gray-900 dark:text-white">
+                              {{ trade.symbol }} {{ formatDate(trade.trade_date) }}
+                            </span>
+                            <span class="text-green-600 font-medium">
+                              ${{ formatCurrency(trade.pnl) }}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <h4 class="text-sm font-medium text-red-600 mb-2">Worst Trades</h4>
+                        <div class="space-y-1">
+                          <div v-if="analytics.topTrades.worst && analytics.topTrades.worst.length > 0"
+                               v-for="trade in analytics.topTrades.worst" :key="`worst-${trade.symbol}-${trade.trade_date}`" 
+                               @click="navigateToTradesBySymbolAndDate(trade.symbol, trade.trade_date)"
+                               class="flex justify-between items-center text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 rounded p-2 transition-colors">
+                            <span class="text-gray-900 dark:text-white">
+                              {{ trade.symbol }} {{ formatDate(trade.trade_date) }}
+                            </span>
+                            <span :class="[
+                              trade.pnl >= 0 ? 'text-green-600' : 'text-red-600',
+                              'font-medium'
+                            ]">
+                              ${{ formatCurrency(trade.pnl) }}
+                            </span>
+                          </div>
+                          <div v-else class="text-sm text-gray-500 dark:text-gray-400 italic py-2 flex items-center">
+                            <MdiIcon :icon="mdiCheckCircle" :size="16" class="mr-1 text-green-500" />
+                            No losing trades found
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </template>
+
+            <!-- Additional Stats -->
+            <template v-if="element.id === 'additional-stats'">
+              <div class="card">
+                <div class="card-body">
+                  <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
+                    Additional Statistics
+                  </h3>
+                  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <div>
+                      <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
+                        Sharpe Ratio
+                      </dt>
+                      <dd class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
+                        {{ formatNumber(analytics.summary.sharpeRatio) }}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
+                        Total Commissions
+                      </dt>
+                      <dd class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
+                        ${{ formatCurrency(analytics.summary.totalCosts) }}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
+                        Symbols Traded
+                      </dt>
+                      <dd class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
+                        {{ analytics.summary.symbolsTraded }}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
+                        Trading Days
+                      </dt>
+                      <dd class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
+                        {{ analytics.summary.tradingDays }}
+                      </dd>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </template>
+          </div>
+        </template>
+      </draggable>
+    </div>
+    
+    <!-- Layout Settings Modal -->
+    <div v-if="showLayoutSettings" class="fixed inset-0 z-50 overflow-y-auto" @click="showLayoutSettings = false">
+      <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+        <div class="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" @click="showLayoutSettings = false"></div>
+        <span class="hidden sm:inline-block sm:align-middle sm:h-screen"></span>
+        <div
+          class="inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full sm:p-6"
+          @click.stop
+        >
+          <div class="flex items-center justify-between mb-6">
+            <h3 class="heading-card">
+              Section Visibility
+            </h3>
+            <button
+              @click="showLayoutSettings = false"
+              class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+            >
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          <div class="space-y-6">
+            <div v-for="section in sectionDefinitions" :key="section.id" class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+              <div class="flex items-center gap-3">
+                <label class="flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    :checked="dashboardLayout.find(s => s.id === section.id)?.visible"
+                    @change="toggleSectionVisibility(section.id)"
+                    class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                  />
+                  <span class="ml-2 text-sm text-gray-900 dark:text-white">{{ section.title }}</span>
+                </label>
+              </div>
             </div>
           </div>
-        </div>
-      </div>
 
-      <!-- Additional Stats -->
-      <div class="card">
-        <div class="card-body">
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
-            Additional Statistics
-          </h3>
-          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            <div>
-              <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
-                Sharpe Ratio
-              </dt>
-              <dd class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
-                {{ formatNumber(analytics.summary.sharpeRatio) }}
-              </dd>
-            </div>
-            <div>
-              <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
-                Total Commissions
-              </dt>
-              <dd class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
-                ${{ formatCurrency(analytics.summary.totalCosts) }}
-              </dd>
-            </div>
-            <div>
-              <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
-                Symbols Traded
-              </dt>
-              <dd class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
-                {{ analytics.summary.symbolsTraded }}
-              </dd>
-            </div>
-            <div>
-              <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
-                Trading Days
-              </dt>
-              <dd class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
-                {{ analytics.summary.tradingDays }}
-              </dd>
-            </div>
+          <div class="mt-6 flex justify-between">
+            <button
+              @click="resetDashboardLayout"
+              class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600"
+            >
+              Reset to Defaults
+            </button>
+            <button
+              @click="showLayoutSettings = false"
+              class="px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-md hover:bg-primary-700"
+            >
+              Done
+            </button>
           </div>
         </div>
       </div>
@@ -737,15 +1035,20 @@ import { mdiCheckCircle } from '@mdi/js'
 import { getRefreshInterval, shouldRefreshPrices, getMarketStatus } from '@/utils/marketHours'
 import YearWrappedBanner from '@/components/yearWrapped/YearWrappedBanner.vue'
 import YearWrappedModal from '@/components/yearWrapped/YearWrappedModal.vue'
+import OnboardingCard from '@/components/onboarding/OnboardingCard.vue'
 import { useYearWrappedStore } from '@/stores/yearWrapped'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
+import { useUserTimezone } from '@/composables/useUserTimezone'
+import draggable from 'vuedraggable'
 
 const authStore = useAuthStore()
+const { formatTime: formatTimeTz } = useUserTimezone()
 const { selectedAccount } = useGlobalAccountFilter()
 const yearWrappedStore = useYearWrappedStore()
 const router = useRouter()
 
 const loading = ref(true)
+const initialLoading = ref(true) // Track initial load separately to preserve scroll on refresh
 const userSettings = ref(null)
 const analytics = ref({
   summary: {},
@@ -781,8 +1084,139 @@ let winRateChartInstance = null
 let updateInterval = null
 let countdownInterval = null
 
+// Dashboard layout customization
+const sectionDefinitions = [
+  { id: 'journal-entry', title: "Today's Journal Entry", category: 'content' },
+  { id: 'open-positions', title: 'Open Positions', category: 'content' },
+  { id: 'upcoming-earnings', title: 'Upcoming Earnings', category: 'content' },
+  { id: 'trade-news', title: 'Trade News', category: 'content' },
+  { id: 'key-metrics', title: 'Key Metrics', category: 'stats' },
+  { id: 'additional-metrics', title: 'Additional Metrics', category: 'stats' },
+  { id: 'charts', title: 'P&L & Distribution Charts', category: 'charts' },
+  { id: 'win-rate-chart', title: 'Daily Win Rate Chart', category: 'charts' },
+  { id: 'performance-tables', title: 'Performance Tables', category: 'tables' },
+  { id: 'additional-stats', title: 'Additional Statistics', category: 'stats' }
+]
+
+const defaultDashboardLayout = sectionDefinitions.map(section => ({
+  id: section.id,
+  visible: true
+}))
+
+const dashboardLayout = ref(JSON.parse(JSON.stringify(defaultDashboardLayout)))
+const isCustomizing = ref(false)
+const showLayoutSettings = ref(false)
+const onboardingStatus = ref(null)
+const onboardingBannerDismissed = ref(false)
+const billingAvailable = ref(false)
+const subscription = ref(null)
+const trialBannerDismissed = ref(false)
+const postTrialBannerDismissed = ref(false)
+
+const showPostTrialBanner = computed(() => {
+  if (!subscription.value) return false
+  return subscription.value.tier === 'free' &&
+    subscription.value.has_used_trial === true &&
+    !subscription.value.subscription
+})
+
+// Get section definition by ID
+function getSectionDefinition(id) {
+  return sectionDefinitions.find(section => section.id === id)
+}
+
+// Handle drag change event (fires when order actually changes)
+function onDragChange() {
+  saveDashboardLayout()
+}
+
+// Handle drag end event
+function onDragEnd() {
+  // Force save immediately after drag ends to ensure order is saved
+  nextTick(() => {
+    if (saveLayoutTimeout) clearTimeout(saveLayoutTimeout)
+    saveDashboardLayout()
+  })
+}
+
+// Toggle customization mode
+function toggleCustomization() {
+  isCustomizing.value = !isCustomizing.value
+}
+
+// Toggle section visibility
+function toggleSectionVisibility(sectionId) {
+  const section = dashboardLayout.value.find(s => s.id === sectionId)
+  if (section) {
+    section.visible = !section.visible
+  }
+}
+
+// Reset dashboard layout to defaults
+async function resetDashboardLayout() {
+  dashboardLayout.value = JSON.parse(JSON.stringify(defaultDashboardLayout))
+  await saveDashboardLayout()
+}
+
+// Save dashboard layout
+async function saveDashboardLayout() {
+  try {
+    const layoutToSave = JSON.parse(JSON.stringify(dashboardLayout.value))
+    const response = await api.put('/settings', {
+      dashboardLayout: layoutToSave
+    })
+    if (response.data?.settings) {
+      userSettings.value = response.data.settings
+    }
+  } catch (error) {
+    console.error('[DASHBOARD] Failed to save layout:', error)
+  }
+}
+
+// Load dashboard layout from user settings
+function loadDashboardLayout() {
+  if (userSettings.value?.dashboardLayout && Array.isArray(userSettings.value.dashboardLayout)) {
+    const savedLayout = userSettings.value.dashboardLayout
+    const savedIds = savedLayout.map(s => s.id)
+
+    // Start with saved layout in its saved order
+    dashboardLayout.value = savedLayout.map(savedSection => ({
+      ...savedSection
+    }))
+
+    // Add any new sections that weren't in the saved layout (from defaults)
+    const newSections = defaultDashboardLayout.filter(d => !savedIds.includes(d.id))
+    dashboardLayout.value = [...dashboardLayout.value, ...newSections]
+  }
+}
+
+// Save layout when dashboard layout changes (with debounce)
+let saveLayoutTimeout = null
+let isInitialLoad = true
+watch(dashboardLayout, () => {
+  // Don't save during initial load
+  if (isInitialLoad) {
+    return
+  }
+  
+  if (saveLayoutTimeout) clearTimeout(saveLayoutTimeout)
+  saveLayoutTimeout = setTimeout(() => {
+    saveDashboardLayout()
+  }, 1000) // Save 1 second after user stops making changes
+}, { deep: true })
+
 const openTradeSymbols = computed(() => {
-  return [...new Set(openTrades.value.map(position => position.symbol))]
+  // Filter positions to only include those matching the selected account
+  const filteredPositions = selectedAccount.value
+    ? openTrades.value.filter(position => {
+        // Check if any trade in this position matches the selected account
+        return position.trades && position.trades.some(trade => 
+          trade.account_identifier === selectedAccount.value
+        )
+      })
+    : openTrades.value
+  
+  return [...new Set(filteredPositions.map(position => position.symbol))]
 })
 
 const totalOpenCost = computed(() => {
@@ -833,7 +1267,7 @@ function formatLastRefresh(timestamp) {
   } else if (diff < 3600) {
     return `${Math.floor(diff / 60)}m ago`
   } else {
-    return format(timestamp, 'h:mm a')
+    return formatTimeTz(timestamp)
   }
 }
 
@@ -918,14 +1352,36 @@ async function fetchAnalytics() {
     })
     
     await nextTick()
-    // Use setTimeout to ensure DOM is fully rendered
-    setTimeout(() => {
-      createCharts()
-    }, 100)
+    // Create charts immediately without artificial delay
+    createCharts()
   } catch (error) {
     console.error('Failed to fetch analytics:', error)
   } finally {
     loading.value = false
+    initialLoading.value = false // Mark initial load complete
+  }
+}
+
+async function fetchOnboardingStatus() {
+  try {
+    const response = await api.get('/users/onboarding-status')
+    onboardingStatus.value = response.data
+  } catch (err) {
+    console.warn('[Dashboard] Could not fetch onboarding status:', err?.message)
+  }
+}
+
+async function fetchBillingAndSubscription() {
+  try {
+    const statusRes = await api.get('/billing/status')
+    billingAvailable.value = statusRes.data?.data?.billing_available === true
+    if (!billingAvailable.value) return
+    const subRes = await api.get('/billing/subscription')
+    subscription.value = subRes.data?.data ?? null
+  } catch (err) {
+    if (err.response?.status !== 400 && err.response?.data?.error !== 'billing_unavailable') {
+      console.warn('[Dashboard] Could not fetch billing/subscription:', err?.message)
+    }
   }
 }
 
@@ -1206,15 +1662,24 @@ function createCharts() {
   console.log('Dashboard: winRateChart.value exists:', !!winRateChart.value)
   console.log('Dashboard: analytics.value exists:', !!analytics.value)
   console.log('Dashboard: Chart.js imported:', typeof Chart)
-  
-  if (pnlChart.value && distributionChart.value && winRateChart.value) {
+
+  // Create each chart independently based on whether its canvas ref exists
+  // This allows charts to render even if some layout sections are hidden
+  if (pnlChart.value) {
     createPnLChart()
+  }
+  if (distributionChart.value) {
     createDistributionChart()
+  }
+  if (winRateChart.value) {
     createWinRateChart()
-  } else {
-    console.log('Dashboard: Charts not created - missing canvas refs:', {
+  }
+
+  // Log if any charts couldn't be created due to missing refs
+  if (!pnlChart.value || !distributionChart.value || !winRateChart.value) {
+    console.log('Dashboard: Some charts not created - canvas refs:', {
       pnlChart: !!pnlChart.value,
-      distributionChart: !!distributionChart.value, 
+      distributionChart: !!distributionChart.value,
       winRateChart: !!winRateChart.value
     })
   }
@@ -1435,10 +1900,20 @@ async function fetchUserSettings() {
   try {
     const response = await api.get('/settings')
     userSettings.value = response.data.settings
+    
+    // Load dashboard layout if saved (disable watch during load)
+    isInitialLoad = true
+    loadDashboardLayout()
+    // Re-enable watch after a brief delay to ensure load is complete
+    await nextTick()
+    setTimeout(() => {
+      isInitialLoad = false
+    }, 100)
   } catch (error) {
     console.error('Failed to load user settings:', error)
     // Default to average if loading fails
     userSettings.value = { statisticsCalculation: 'average' }
+    isInitialLoad = false
   }
 }
 
@@ -1611,6 +2086,12 @@ onMounted(async () => {
 
   // Check Year Wrapped banner status (non-blocking)
   yearWrappedStore.checkBannerStatus()
+
+  // Onboarding status for first-value banner (non-blocking)
+  fetchOnboardingStatus()
+
+  // Billing/subscription for trial countdown and post-trial banner (non-blocking)
+  fetchBillingAndSubscription()
 
   // Set initial refresh timestamp
   lastRefresh.value = new Date()

@@ -205,128 +205,31 @@ class AlphaVantageClient {
     }
   }
 
-  // Get appropriate data based on trade duration - with focused date range filtering
+  // Get chart data using daily data only (free tier compatible)
+  // Note: Intraday data (TIME_SERIES_INTRADAY) requires Alpha Vantage premium subscription
   async getTradeChartData(symbol, entryDate, exitDate = null) {
     const entryTime = new Date(entryDate);
     const exitTime = exitDate ? new Date(exitDate) : new Date();
     const tradeDuration = exitTime - entryTime;
     const oneDayMs = 24 * 60 * 60 * 1000;
 
-    console.log(`Alpha Vantage chart request - Symbol: ${symbol}, Entry: ${entryTime.toISOString()}, Exit: ${exitTime.toISOString()}, Duration: ${Math.ceil(tradeDuration / oneDayMs)} days, Has exit date: ${!!exitDate}`);
-
-    // Calculate focused chart window like Finnhub does
-    const entryDateUTC = new Date(entryTime.toISOString().split('T')[0] + 'T00:00:00.000Z');
-    
-    // For same-day trades, focus on the specific trading day
-    // Extended trading hours: 4:00 AM ET to 8:00 PM ET (9:00 AM UTC to 1:00 AM UTC next day)
-    const chartFromTime = new Date(entryDateUTC.getTime() + 9 * 60 * 60 * 1000); // 4:00 AM ET
-    const chartToTime = new Date(entryDateUTC.getTime() + 25 * 60 * 60 * 1000); // 8:00 PM ET
-    
-    // Convert to Unix timestamps for filtering
-    const fromTimestamp = Math.floor(chartFromTime.getTime() / 1000);
-    const toTimestamp = Math.floor(chartToTime.getTime() / 1000);
-    
-    console.log('Alpha Vantage focusing chart on trading day:', {
-      tradeDate: entryDateUTC.toISOString().split('T')[0],
-      entryTime: entryTime.toISOString(),
-      chartFrom: chartFromTime.toISOString(),
-      chartTo: chartToTime.toISOString(),
-      windowHours: ((chartToTime - chartFromTime) / (1000 * 60 * 60)).toFixed(1)
-    });
+    console.log(`Alpha Vantage chart request - Symbol: ${symbol}, Entry: ${entryTime.toISOString()}, Exit: ${exitTime.toISOString()}, Duration: ${Math.ceil(tradeDuration / oneDayMs)} days`);
 
     try {
-      let rawCandles, dataType, interval;
-      let filteredCandles;
+      // Use daily data only - intraday endpoints require premium subscription
+      // Free tier: TIME_SERIES_DAILY with 'compact' (last 100 days), 25 requests/day limit
+      console.log(`Fetching daily data for ${symbol} (free tier - daily resolution only)`);
+      const rawCandles = await this.getDailyData(symbol, 'compact');
 
-      const now = new Date();
-      const tradeAge = now - entryTime;
-      const tradeAgeDays = Math.ceil(tradeAge / oneDayMs);
+      // Filter to include a reasonable window around the trade dates
+      const windowStart = Math.floor((entryTime.getTime() - 7 * oneDayMs) / 1000); // 7 days before entry
+      const windowEnd = Math.floor((exitTime.getTime() + 7 * oneDayMs) / 1000); // 7 days after exit
 
-      // Alpha Vantage free tier keeps intraday data for ~1-2 months
-      // Only try intraday for trades within 90 days to avoid wasting API calls
-      const maxIntradayAgeDays = 90;
-      const canTryIntraday = tradeAgeDays <= maxIntradayAgeDays;
+      let filteredCandles = rawCandles.filter(candle => {
+        return candle.time >= windowStart && candle.time <= windowEnd;
+      });
 
-      // For same-day trades or short trades, try intraday data first (if recent enough)
-      if ((!exitDate || tradeDuration <= oneDayMs) && canTryIntraday) {
-        console.log(`Attempting intraday 5min data for ${symbol} (same-day trade, ${tradeAgeDays} days old)`);
-
-        try {
-          rawCandles = await this.getIntradayData(symbol, '5min');
-
-          // Filter to the specific trading day window
-          filteredCandles = rawCandles.filter(candle => {
-            return candle.time >= fromTimestamp && candle.time <= toTimestamp;
-          });
-
-          console.log(`Filtered intraday candles: ${filteredCandles.length} of ${rawCandles.length} candles within trade day window`);
-
-          // If we got intraday data for the trade date, use it
-          if (filteredCandles.length > 0) {
-            dataType = 'intraday';
-            interval = '5min';
-          } else {
-            // Intraday data doesn't cover the trade date - fall back to daily
-            console.log(`No intraday data for trade date, falling back to daily data`);
-            rawCandles = null; // Clear to trigger daily fetch below
-          }
-        } catch (intradayError) {
-          console.warn(`Intraday data failed for ${symbol}: ${intradayError.message}, falling back to daily`);
-          rawCandles = null; // Clear to trigger daily fetch below
-        }
-      }
-      // For trades up to 7 days, use 15-minute data (if recent enough)
-      else if (tradeDuration <= 7 * oneDayMs && canTryIntraday) {
-        console.log(`Attempting 15-minute data for ${symbol} (${Math.ceil(tradeDuration / oneDayMs)} day trade, ${tradeAgeDays} days old)`);
-
-        try {
-          rawCandles = await this.getIntradayData(symbol, '15min');
-
-          // For multi-day trades, filter to include the full trade period
-          const windowStart = Math.floor((entryTime.getTime() - oneDayMs) / 1000); // 1 day before entry
-          const windowEnd = Math.floor((exitTime.getTime() + oneDayMs) / 1000); // 1 day after exit
-
-          filteredCandles = rawCandles.filter(candle => {
-            return candle.time >= windowStart && candle.time <= windowEnd;
-          });
-
-          console.log(`Filtered 15min candles: ${filteredCandles.length} of ${rawCandles.length} candles within trade window`);
-
-          if (filteredCandles.length > 0) {
-            dataType = 'intraday';
-            interval = '15min';
-          } else {
-            console.log(`No 15min data for trade dates, falling back to daily data`);
-            rawCandles = null;
-          }
-        } catch (intradayError) {
-          console.warn(`15-minute data failed for ${symbol}: ${intradayError.message}, falling back to daily`);
-          rawCandles = null;
-        }
-      }
-
-      // Fall back to daily data if intraday wasn't available or didn't cover the trade dates
-      if (!rawCandles || !filteredCandles || filteredCandles.length === 0) {
-        const reason = !canTryIntraday
-          ? `trade too old for intraday (${tradeAgeDays} days > ${maxIntradayAgeDays} day limit)`
-          : 'intraday data not available for trade dates';
-        console.log(`Fetching daily data for ${symbol} (${reason})`);
-        // Use 'compact' (last 100 days) - 'full' requires premium subscription
-        rawCandles = await this.getDailyData(symbol, 'compact');
-        dataType = 'daily';
-        interval = 'daily';
-
-        // For daily data, include a reasonable window around the trade dates
-        const tradeDays = Math.max(14, Math.ceil(tradeDuration / oneDayMs) + 10); // At least 14 days, or trade duration + buffer
-        const windowStart = Math.floor((entryTime.getTime() - 7 * oneDayMs) / 1000); // 7 days before entry
-        const windowEnd = Math.floor((exitTime.getTime() + 7 * oneDayMs) / 1000); // 7 days after exit
-
-        filteredCandles = rawCandles.filter(candle => {
-          return candle.time >= windowStart && candle.time <= windowEnd;
-        });
-
-        console.log(`Filtered daily candles: ${filteredCandles.length} of ${rawCandles.length} candles within ${tradeDays}-day trade window`);
-      }
+      console.log(`Filtered daily candles: ${filteredCandles.length} of ${rawCandles.length} candles within trade window`);
 
       // Ensure we have some data to show
       if (filteredCandles.length === 0) {
@@ -336,8 +239,8 @@ class AlphaVantageClient {
       }
 
       return {
-        type: dataType,
-        interval: interval,
+        type: 'daily',
+        interval: 'daily',
         candles: filteredCandles,
         source: 'alphavantage'
       };

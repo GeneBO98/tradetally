@@ -26,7 +26,9 @@ config/secrets/
 ehthumbs.db
 Desktop.ini
 Thumbs.db
-
+.cursor/
+.agents/
+.claude/
 # Node.js dependencies
 node_modules/
 npm-debug.log*
@@ -194,7 +196,6 @@ coverage/
 local.json
 
 # Docker files (if using Docker)
-.dockerignore
 docker-compose.override.yml
 
 # Package lock files (choose one based on your package manager)
@@ -272,3 +273,4 @@ certificates/
 *CLAUDE.md*
 .claude/*
 performance-test.js
+backend/TELEMETRY.md

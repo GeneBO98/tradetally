@@ -7,12 +7,10 @@ services:
     container_name: tradetally-db
     environment:
       POSTGRES_USER: ${DB_USER:-trader}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-trader_password}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set}
       POSTGRES_DB: ${DB_NAME:-tradetally}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
     networks:
       - trader-network
     healthcheck:
@@ -36,9 +34,9 @@ services:
       DB_HOST: postgres
       DB_PORT: 5432
       DB_USER: ${DB_USER:-trader}
-      DB_PASSWORD: ${DB_PASSWORD:-trader_password}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set}
       DB_NAME: ${DB_NAME:-tradetally}
-      JWT_SECRET: ${JWT_SECRET:-your_jwt_secret_here}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
       # Email configuration (optional)
       EMAIL_HOST: ${EMAIL_HOST:-smtp.gmail.com}
@@ -65,6 +63,9 @@ services:
       ENABLE_SWAGGER: ${ENABLE_SWAGGER:-true}
       # External API Keys
       FINNHUB_API_KEY: ${FINNHUB_API_KEY:-}
+      # Finnhub rate limits (Free: 60/min, 1/sec | Basic: 150/min, 30/sec | Pro: 300/min, 60/sec)
+      FINNHUB_RATE_LIMIT_PER_MINUTE: ${FINNHUB_RATE_LIMIT_PER_MINUTE:-60}
+      FINNHUB_RATE_LIMIT_PER_SECOND: ${FINNHUB_RATE_LIMIT_PER_SECOND:-1}
       ALPHA_VANTAGE_API_KEY: ${ALPHA_VANTAGE_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       ENABLE_AI_CUSIP_RESOLUTION: ${ENABLE_AI_CUSIP_RESOLUTION:-false}
@@ -97,26 +98,12 @@ services:
       RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-900000}
     ports:
       - "8080:80"
-      - "3001:3000"
     volumes:
       - ./backend/src/logs:/app/backend/src/logs
       - ./backend/src/data:/app/backend/src/data
+      - ./backend/uploads:/app/backend/uploads
     networks:
       - trader-network
-    restart: unless-stopped
-
-  # Optional: Adminer for database management
-  adminer:
-    image: adminer:latest
-    container_name: tradetally-adminer
-    depends_on:
-      - postgres
-    ports:
-      - "8080:8080"
-    networks:
-      - trader-network
-    environment:
-      ADMINER_DEFAULT_SERVER: postgres
     restart: unless-stopped
 
 networks:

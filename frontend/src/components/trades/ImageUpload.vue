@@ -87,7 +87,7 @@
       </div>
     </div>
 
-    <!-- Upload button -->
+    <!-- Upload button (only in edit mode with a tradeId) -->
     <div v-if="selectedFiles.length > 0 && tradeId" class="flex justify-end">
       <button
         type="button"
@@ -98,6 +98,11 @@
         <span v-if="uploading">Uploading...</span>
         <span v-else>Upload {{ selectedFiles.length }} Image{{ selectedFiles.length > 1 ? 's' : '' }}</span>
       </button>
+    </div>
+
+    <!-- Info text for create mode -->
+    <div v-if="selectedFiles.length > 0 && !tradeId" class="text-sm text-gray-600 dark:text-gray-400">
+      {{ selectedFiles.length }} image{{ selectedFiles.length > 1 ? 's' : '' }} selected. They will be uploaded when the trade is created.
     </div>
 
     <!-- Upload progress -->
@@ -257,4 +262,28 @@ async function uploadImages() {
     uploading.value = false
   }
 }
+
+async function flushPendingImages(tradeId) {
+  if (selectedFiles.value.length === 0) return { success: true, count: 0 }
+
+  try {
+    const formData = new FormData()
+    selectedFiles.value.forEach((fileObj) => {
+      formData.append('images', fileObj.file)
+    })
+
+    const response = await api.post(`/trades/${tradeId}/images`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+
+    const successCount = response.data.successfulUploads || 0
+    selectedFiles.value = []
+    return { success: true, count: successCount, images: response.data.images || [] }
+  } catch (err) {
+    console.error('[ImageUpload] Failed to flush images:', err)
+    return { success: false, error: err }
+  }
+}
+
+defineExpose({ selectedFiles, flushPendingImages })
 </script>

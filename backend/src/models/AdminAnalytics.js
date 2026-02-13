@@ -115,7 +115,10 @@ class AdminAnalytics {
         (SELECT COALESCE(SUM(trades_imported), 0) FROM import_logs WHERE created_at >= $1 AND status = 'completed') as trades_imported,
         (SELECT COUNT(*) FROM import_logs WHERE created_at >= $1 AND status = 'completed') as import_count,
         (SELECT COALESCE(SUM(call_count), 0) FROM api_usage_tracking WHERE created_at >= $1) as api_calls,
-        (SELECT COUNT(*) FROM trades WHERE created_at >= $1) as trades_created
+        (SELECT COUNT(*) FROM trades WHERE created_at >= $1) as trades_created,
+        (SELECT COUNT(*) FROM account_deletions WHERE deleted_at >= $1) as account_deletions,
+        (SELECT COUNT(*) FROM account_deletions WHERE deleted_at >= $1 AND deletion_type = 'self') as self_deletions,
+        (SELECT COUNT(*) FROM account_deletions WHERE deleted_at >= $1 AND deletion_type = 'admin') as admin_deletions
     `;
 
     const result = await db.query(query, [startDate, todayStart, sevenDaysAgoStart, thirtyDaysAgoStart]);
@@ -130,7 +133,10 @@ class AdminAnalytics {
       tradesImported: parseInt(row.trades_imported) || 0,
       importCount: parseInt(row.import_count) || 0,
       apiCalls: parseInt(row.api_calls) || 0,
-      tradesCreated: parseInt(row.trades_created) || 0
+      tradesCreated: parseInt(row.trades_created) || 0,
+      accountDeletions: parseInt(row.account_deletions) || 0,
+      selfDeletions: parseInt(row.self_deletions) || 0,
+      adminDeletions: parseInt(row.admin_deletions) || 0
     };
   }
 
@@ -240,6 +246,33 @@ class AdminAnalytics {
   }
 
   /**
+   * Get daily account deletion trend data
+   * @param {string} startDate - ISO date string for period start
+   * @returns {Array} Daily deletion counts
+   */
+  static async getDeletionTrend(startDate) {
+    const query = `
+      SELECT
+        DATE_TRUNC('day', deleted_at)::date as date,
+        COUNT(*) as count,
+        COUNT(*) FILTER (WHERE deletion_type = 'self') as self_deletions,
+        COUNT(*) FILTER (WHERE deletion_type = 'admin') as admin_deletions
+      FROM account_deletions
+      WHERE deleted_at >= $1
+      GROUP BY DATE_TRUNC('day', deleted_at)
+      ORDER BY date ASC
+    `;
+
+    const result = await db.query(query, [startDate]);
+    return result.rows.map(row => ({
+      date: row.date,
+      count: parseInt(row.count) || 0,
+      selfDeletions: parseInt(row.self_deletions) || 0,
+      adminDeletions: parseInt(row.admin_deletions) || 0
+    }));
+  }
+
+  /**
    * Get broker sync statistics
    * @param {string} startDate - ISO date string for period start
    * @returns {Object} Broker sync statistics
@@ -282,6 +315,131 @@ class AdminAnalytics {
   }
 
   /**
+   * Get subscription/revenue metrics (paying users, MRR, trial conversion, trial start rate)
+   * @param {string} startDate - ISO date string for period start (used for trial start rate only; paying/MRR are current)
+   * @returns {Object} Subscription metrics
+   */
+  static async getSubscriptionMetrics(startDate) {
+    const { PRICING } = require('../config/tierLimits');
+    const MONTHLY_MRR = PRICING.pro.monthly.price;
+    const YEARLY_MRR = PRICING.pro.yearly.price / 12;
+
+    // Get admin price IDs to distinguish monthly vs yearly (optional; fallback to all monthly if not set)
+    let priceIdYearly = null;
+    try {
+      const priceResult = await db.query(`
+        SELECT setting_key, setting_value FROM admin_settings
+        WHERE setting_key IN ('stripe_price_id_monthly', 'stripe_price_id_yearly')
+      `);
+      priceResult.rows.forEach(row => {
+        if (row.setting_key === 'stripe_price_id_yearly' && row.setting_value) {
+          priceIdYearly = row.setting_value;
+        }
+      });
+    } catch (e) {
+      console.warn('[ADMIN-ANALYTICS] Could not load Stripe price IDs for MRR:', e.message);
+    }
+
+    // Paying users: active subscription, not from trial-only override
+    const payingQuery = `
+      SELECT s.user_id, s.stripe_price_id
+      FROM subscriptions s
+      WHERE s.status = 'active'
+    `;
+    const payingResult = await db.query(payingQuery);
+    const payingUsers = payingResult.rows.length;
+
+    let mrr = 0;
+    for (const row of payingResult.rows) {
+      const isYearly = priceIdYearly && row.stripe_price_id === priceIdYearly;
+      mrr += isYearly ? YEARLY_MRR : MONTHLY_MRR;
+    }
+
+    // Trial start rate: signups in period vs tier_overrides (trial) created in period
+    const trialStartQuery = `
+      SELECT
+        (SELECT COUNT(*) FROM users WHERE created_at >= $1 AND is_active = true) as signups,
+        (SELECT COUNT(*) FROM tier_overrides WHERE reason ILIKE '%trial%' AND created_at >= $1) as trials_started
+    `;
+    const trialStartResult = await db.query(trialStartQuery, [startDate]);
+    const signupsInPeriod = parseInt(trialStartResult.rows[0].signups) || 0;
+    const trialsStartedInPeriod = parseInt(trialStartResult.rows[0].trials_started) || 0;
+    const trialStartRate = signupsInPeriod > 0
+      ? Math.round((trialsStartedInPeriod / signupsInPeriod) * 100)
+      : 0;
+
+    // Trial → paid conversion: users who ever had a trial and now have active subscription
+    const conversionQuery = `
+      WITH trial_users AS (
+        SELECT DISTINCT user_id FROM tier_overrides WHERE reason ILIKE '%trial%'
+      ),
+      converted AS (
+        SELECT DISTINCT t.user_id
+        FROM trial_users t
+        INNER JOIN subscriptions s ON s.user_id = t.user_id AND s.status = 'active'
+      )
+      SELECT
+        (SELECT COUNT(*) FROM trial_users) as total_trial_users,
+        (SELECT COUNT(*) FROM converted) as converted_count
+    `;
+    const conversionResult = await db.query(conversionQuery);
+    const totalTrialUsers = parseInt(conversionResult.rows[0].total_trial_users) || 0;
+    const trialConvertedCount = parseInt(conversionResult.rows[0].converted_count) || 0;
+    const trialConversionRate = totalTrialUsers > 0
+      ? Math.round((trialConvertedCount / totalTrialUsers) * 100)
+      : 0;
+
+    // At-risk: cancel_at_period_end = true
+    const atRiskResult = await db.query(`
+      SELECT COUNT(*) as count FROM subscriptions WHERE status = 'active' AND cancel_at_period_end = true
+    `);
+    const atRiskCancellations = parseInt(atRiskResult.rows[0].count) || 0;
+
+    return {
+      payingUsers,
+      mrr,
+      trialStartRate,
+      trialConversionRate,
+      totalTrialUsers,
+      trialConvertedCount,
+      atRiskCancellations,
+      signupsInPeriod,
+      trialsStartedInPeriod
+    };
+  }
+
+  /**
+   * Get activation rate: % of signups (in period) who had at least one completed import within 7 days
+   * @param {string} startDate - ISO date string for period start
+   * @returns {Object} Activation metrics
+   */
+  static async getActivationRate(startDate) {
+    const activatedQuery = `
+      SELECT COUNT(DISTINCT u.id) as activated_count
+      FROM users u
+      INNER JOIN import_logs il ON il.user_id = u.id AND il.status = 'completed'
+        AND il.created_at >= u.created_at
+        AND il.created_at <= u.created_at + INTERVAL '7 days'
+      WHERE u.created_at >= $1 AND u.is_active = true
+    `;
+    const signupsQuery = `
+      SELECT COUNT(*) as signups_count FROM users WHERE created_at >= $1 AND is_active = true
+    `;
+    const [activatedResult, signupsResult] = await Promise.all([
+      db.query(activatedQuery, [startDate]),
+      db.query(signupsQuery, [startDate])
+    ]);
+    const activatedCount = parseInt(activatedResult.rows[0].activated_count) || 0;
+    const signupsCount = parseInt(signupsResult.rows[0].signups_count) || 0;
+    const activationRatePercent = signupsCount > 0 ? Math.round((activatedCount / signupsCount) * 100) : 0;
+    return {
+      activatedCount,
+      signupsCount,
+      activationRatePercent
+    };
+  }
+
+  /**
    * Get all analytics data for a given period
    * @param {string} period - Period identifier (today, 7d, 30d, 90d, all)
    * @param {string} timezone - Timezone to use for "today" calculation (defaults to 'America/Chicago' for admin analytics)
@@ -290,24 +448,40 @@ class AdminAnalytics {
   static async getAnalytics(period = '30d', timezone = 'America/Chicago') {
     const startDate = this.getStartDate(period, timezone);
 
-    const [summary, signupTrend, loginTrend, importTrend, apiUsageTrend, brokerSyncStats] = await Promise.all([
+    const [
+      summary,
+      signupTrend,
+      loginTrend,
+      importTrend,
+      apiUsageTrend,
+      deletionTrend,
+      brokerSyncStats,
+      subscriptionMetrics,
+      activation
+    ] = await Promise.all([
       this.getSummary(startDate, timezone),
       this.getSignupTrend(startDate),
       this.getLoginTrend(startDate),
       this.getImportTrend(startDate),
       this.getApiUsageTrend(startDate),
-      this.getBrokerSyncStats(startDate)
+      this.getDeletionTrend(startDate),
+      this.getBrokerSyncStats(startDate),
+      this.getSubscriptionMetrics(startDate),
+      this.getActivationRate(startDate)
     ]);
 
     return {
       period,
       startDate,
       summary,
+      subscriptionMetrics,
+      activation,
       trends: {
         signups: signupTrend,
         logins: loginTrend,
         imports: importTrend,
-        apiUsage: apiUsageTrend
+        apiUsage: apiUsageTrend,
+        deletions: deletionTrend
       },
       brokerSync: brokerSyncStats
     };

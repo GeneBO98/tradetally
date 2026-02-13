@@ -33,12 +33,14 @@ export function useNotification() {
 
   // New method for important warnings that need user acknowledgment
   function showImportantWarning(title, message, options = {}) {
-    modalAlert.value = { 
-      type: 'warning', 
-      title, 
+    modalAlert.value = {
+      type: 'warning',
+      title,
       message,
       confirmText: options.confirmText || 'OK',
       cancelText: options.cancelText,
+      linkUrl: options.linkUrl,
+      linkText: options.linkText,
       onConfirm: options.onConfirm || clearModalAlert,
       onCancel: options.onCancel || clearModalAlert
     }

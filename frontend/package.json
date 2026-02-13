@@ -1,6 +1,6 @@
 {
   "name": "tradetally-frontend",
-  "version": "2.1.6",
+  "version": "2.1.8",
   "private": true,
   "type": "module",
   "scripts": {
@@ -12,7 +12,7 @@
     "@heroicons/vue": "^2.0.18",
     "@mdi/js": "^7.4.47",
     "@stripe/stripe-js": "^2.4.0",
-    "axios": "^1.13.2",
+    "axios": "^1.13.5",
     "chart.js": "^4.5.1",
     "date-fns": "^2.30.0",
     "lightweight-charts": "^4.2.1",

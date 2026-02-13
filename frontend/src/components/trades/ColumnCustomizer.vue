@@ -81,7 +81,7 @@
                 <select
                   v-model="column.width"
                   @change="updateColumns"
-                  class="text-xs border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:border-primary-500 focus:ring-primary-500 dark:bg-gray-700 dark:text-gray-300"
+                  class="text-xs pl-2 pr-6 py-1 border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:border-primary-500 focus:ring-primary-500 dark:bg-gray-700 dark:text-gray-300"
                 >
                   <option value="auto">Auto</option>
                   <option value="sm">Small</option>
@@ -155,7 +155,8 @@ const dropdownStyle = ref({})
 const defaultColumns = [
   { key: 'checkbox', label: 'Select', visible: true, width: 'auto', required: true },
   { key: 'symbol', label: 'Symbol', visible: true, width: 'auto', required: true },
-  { key: 'date', label: 'Date', visible: true, width: 'auto' },
+  { key: 'entryDate', label: 'Entry Date', visible: true, width: 'auto' },
+  { key: 'exitDate', label: 'Exit Date', visible: true, width: 'auto' },
   { key: 'entryTime', label: 'Entry Time', visible: false, width: 'auto' },
   { key: 'side', label: 'Side', visible: true, width: 'auto' },
   { key: 'entry', label: 'Entry', visible: true, width: 'auto' },
@@ -207,6 +208,23 @@ const loadSavedColumns = () => {
     try {
       const savedColumns = JSON.parse(saved)
       console.log('[COLUMNS] Loaded saved columns from localStorage:', savedColumns.length, 'columns')
+
+      // Migrate old 'date' column to 'entryDate' + 'exitDate'
+      const hasOldDateColumn = savedColumns.some(c => c.key === 'date')
+      const hasEntryDateColumn = savedColumns.some(c => c.key === 'entryDate')
+
+      if (hasOldDateColumn && !hasEntryDateColumn) {
+        console.log('[COLUMNS] MIGRATION: Replacing old date column with entryDate + exitDate')
+        const dateIndex = savedColumns.findIndex(c => c.key === 'date')
+        const oldCol = savedColumns[dateIndex]
+        // Replace old date with entryDate, insert exitDate after it
+        savedColumns.splice(dateIndex, 1,
+          { key: 'entryDate', label: 'Entry Date', visible: oldCol.visible, width: oldCol.width || 'auto' },
+          { key: 'exitDate', label: 'Exit Date', visible: oldCol.visible, width: oldCol.width || 'auto' }
+        )
+        localStorage.setItem('tradeListColumns', JSON.stringify(savedColumns))
+        console.log('[COLUMNS] MIGRATION: date -> entryDate + exitDate complete')
+      }
 
       // Check if quality column exists in saved preferences
       const hasQualityColumn = savedColumns.some(c => c.key === 'quality')

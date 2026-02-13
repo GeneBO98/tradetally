@@ -7,6 +7,15 @@
       </p>
     </div>
 
+    <!-- Guided onboarding: contextual card for this page (first-time only) -->
+    <OnboardingCard
+      v-if="authStore.showOnboardingModal"
+      title="Explore Analytics"
+      description="Dive into advanced metrics, behavioral insights, and performance over time. Use the filters and charts below to analyze your trading."
+      cta-label="Next: Try the Journal"
+      cta-route="diary"
+    />
+
     <div class="space-y-8">
       <!-- Filters -->
       <div class="card">
@@ -74,23 +83,24 @@
               </button>
             </div>
             <button
-              @click="getRecommendations"
-              :disabled="loadingRecommendations"
-              class="px-3 py-2 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed min-w-[120px] flex items-center justify-center"
+              @click="showAIPanel = !showAIPanel"
+              class="px-3 py-2 text-sm font-medium border rounded-md transition-colors"
+              :class="showAIPanel
+                ? 'bg-primary-100 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300 border-primary-300 dark:border-primary-700'
+                : 'text-white bg-primary-600 border-transparent hover:bg-primary-700'"
             >
-              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg class="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
               </svg>
-              <span v-if="loadingRecommendations" class="flex items-center">
-                <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></div>
-                Analyzing...
-              </span>
-              <span v-else>
-                AI Recommendations
-              </span>
+              <span>{{ showAIPanel ? 'Hide AI Assistant' : 'AI Assistant' }}</span>
             </button>
           </div>
         </div>
+      </div>
+
+      <!-- AI Conversation Panel -->
+      <div v-if="showAIPanel" class="card">
+        <AIConversationPanel />
       </div>
 
       <!-- Customization Mode Message -->
@@ -108,13 +118,21 @@
         </div>
       </div>
 
-      <!-- Loading Overlay for Charts -->
-      <div v-if="loading" class="flex justify-center py-12">
+      <!-- Full page spinner only on initial load -->
+      <div v-if="initialLoading" class="flex justify-center py-12">
         <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
       </div>
 
-      <!-- Draggable Grid Container -->
-      <draggable v-show="!loading"
+      <!-- Draggable Grid Container with refresh indicator -->
+      <div v-show="!initialLoading" class="relative">
+        <!-- Subtle refresh indicator -->
+        <div v-if="loading && !initialLoading" class="absolute top-0 right-0 z-10">
+          <div class="flex items-center space-x-2 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-sm border border-gray-200 dark:border-gray-700">
+            <div class="animate-spin rounded-full h-4 w-4 border-2 border-primary-600 border-t-transparent"></div>
+            <span class="text-xs text-gray-600 dark:text-gray-400">Updating...</span>
+          </div>
+        </div>
+      <draggable
         v-model="chartLayout"
         :disabled="!isCustomizing"
         item-key="id"
@@ -1078,6 +1096,7 @@
           </div>
         </template>
       </draggable>
+      </div>
     </div>
 
     <!-- Chart Layout Settings Modal -->
@@ -1191,86 +1210,6 @@
         </div>
       </div>
     </div>
-
-    <!-- Recommendations Modal -->
-    <div v-if="showRecommendations" class="fixed inset-0 z-50 overflow-y-auto" @click="showRecommendations = false">
-      <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"></div>
-        
-        <span class="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
-        
-        <div 
-          class="inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full sm:p-6"
-          @click.stop
-        >
-          <div class="flex items-center justify-between mb-4">
-            <h3 class="heading-card">
-              AI Performance Recommendations
-            </h3>
-            <button 
-              @click="showRecommendations = false"
-              class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-            >
-              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-          
-          <div v-if="recommendations" class="max-h-[70vh] overflow-y-auto pr-2">
-            <div v-if="recommendations.recommendations">
-              <AIReportRenderer :content="recommendations.recommendations" />
-            </div>
-            <div v-else class="text-red-500 p-4">
-              No recommendations content found. Raw data: {{ JSON.stringify(recommendations) }}
-            </div>
-            
-            <div class="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
-              <div class="text-xs text-gray-500 dark:text-gray-400 space-y-1">
-                <p>Analysis completed: {{ formatDate(recommendations.analysisDate) }}</p>
-                <p>Trades analyzed: {{ recommendations.tradesAnalyzed }}</p>
-                <p v-if="recommendations.dateRange.startDate || recommendations.dateRange.endDate">
-                  Date range: {{ recommendations.dateRange.startDate || 'Beginning' }} to {{ recommendations.dateRange.endDate || 'Present' }}
-                </p>
-              </div>
-            </div>
-          </div>
-          
-          <div v-else-if="recommendationError" class="text-center py-8">
-            <div class="text-red-600 dark:text-red-400 mb-2">
-              <svg class="w-12 h-12 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
-              </svg>
-            </div>
-            <p class="text-gray-600 dark:text-gray-400">{{ recommendationError }}</p>
-          </div>
-          
-          <div v-else class="text-center py-8">
-            <div class="text-gray-500 dark:text-gray-400">
-              <svg class="w-12 h-12 mx-auto mb-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-            </div>
-            <div class="text-gray-600 dark:text-gray-400 text-xs space-y-1">
-              <p>Debug: showRecommendations={{ showRecommendations }}, recommendations={{ !!recommendations }}, error={{ !!recommendationError }}</p>
-              <p v-if="recommendations">Recommendations keys: {{ Object.keys(recommendations) }}</p>
-              <p v-if="recommendations">Has recommendations field: {{ !!recommendations.recommendations }}</p>
-              <p v-if="recommendations && recommendations.recommendations">Content length: {{ recommendations.recommendations.length }}</p>
-              <p v-if="recommendations && recommendations.recommendations">Content preview: {{ recommendations.recommendations.substring(0, 50) }}...</p>
-            </div>
-          </div>
-          
-          <div class="mt-5 sm:mt-6 flex justify-end">
-            <button 
-              @click="showRecommendations = false"
-              class="btn-secondary"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -1284,8 +1223,15 @@ import MdiIcon from '@/components/MdiIcon.vue'
 import NewsCorrelationAnalytics from '@/components/analytics/NewsCorrelationAnalytics.vue'
 import TagManagement from '@/components/trades/TagManagement.vue'
 import TradeFilters from '@/components/trades/TradeFilters.vue'
+import OnboardingCard from '@/components/onboarding/OnboardingCard.vue'
 import AIReportRenderer from '@/components/ai/AIReportRenderer.vue'
+import AIConversationPanel from '@/components/ai/AIConversationPanel.vue'
+import { useAIStore } from '@/stores/ai'
+import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
+import { useUserTimezone } from '@/composables/useUserTimezone'
 import Chart from 'chart.js/auto'
+
+const { use12Hour } = useUserTimezone()
 import draggable from 'vuedraggable'
 import {
   mdiCheckCircle,
@@ -1295,6 +1241,7 @@ import {
 } from '@mdi/js'
 
 const loading = ref(true)
+const initialLoading = ref(true) // Track initial load separately to preserve scroll on refresh
 const rValueMode = ref(false)
 const rMultipleFlipped = ref(false)
 const performancePeriod = ref('daily')
@@ -1302,7 +1249,10 @@ const userSettings = ref(null)
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
+const aiStore = useAIStore()
+const { selectedAccount } = useGlobalAccountFilter()
 const showAdvanced = ref(false)
+const showAIPanel = ref(false)
 
 // Check if user is on free tier
 const isFreeTier = computed(() => {
@@ -1774,10 +1724,13 @@ function formatNumber(num) {
 
 function formatHour(hour) {
   const h = parseInt(hour)
-  if (h === 0) return '12:00 AM'
-  if (h < 12) return `${h}:00 AM`
-  if (h === 12) return '12:00 PM'
-  return `${h - 12}:00 PM`
+  if (use12Hour.value) {
+    if (h === 0) return '12:00 AM'
+    if (h < 12) return `${h}:00 AM`
+    if (h === 12) return '12:00 PM'
+    return `${h - 12}:00 PM`
+  }
+  return `${String(h).padStart(2, '0')}:00`
 }
 
 function getWinPercentage() {
@@ -2569,15 +2522,17 @@ async function fetchUserSettings() {
 
     // Load chart layout if saved
     if (userSettings.value.analyticsChartLayout && Array.isArray(userSettings.value.analyticsChartLayout)) {
-      // Merge saved layout with defaults (in case new charts were added)
       const savedLayout = userSettings.value.analyticsChartLayout
-      chartLayout.value = defaultChartLayout.map(defaultChart => {
-        const savedChart = savedLayout.find(s => s.id === defaultChart.id)
-        return savedChart || defaultChart
+      const savedIds = savedLayout.map(s => s.id)
+
+      // Start with saved layout in its saved order (preserves user's custom ordering)
+      // Merge with defaults to pick up any new properties that may have been added
+      chartLayout.value = savedLayout.map(savedChart => {
+        const defaultChart = defaultChartLayout.find(d => d.id === savedChart.id)
+        return defaultChart ? { ...defaultChart, ...savedChart } : savedChart
       })
 
-      // Add any new charts that weren't in the saved layout
-      const savedIds = savedLayout.map(s => s.id)
+      // Add any new charts that weren't in the saved layout (appended at the end)
       const newCharts = defaultChartLayout.filter(d => !savedIds.includes(d.id))
       chartLayout.value = [...chartLayout.value, ...newCharts]
     }
@@ -2667,6 +2622,11 @@ function buildFilterParams(additionalParams = {}) {
   const params = {
     ...additionalParams,
     ...filters.value
+  }
+
+  // Add global account filter if set
+  if (selectedAccount.value) {
+    params.accounts = selectedAccount.value
   }
 
   // Add hasRValue filter when R-value mode is active
@@ -2875,6 +2835,7 @@ async function handleFilter(newFilters) {
   // Load sector data asynchronously
   fetchSectorData()
   loading.value = false
+  initialLoading.value = false
 
   // Create charts after loading is complete and DOM is updated
   await nextTick()
@@ -2931,6 +2892,7 @@ async function applyFilters(newFilters = null) {
   // Load sector data asynchronously after page loads
   fetchSectorData()
   loading.value = false
+  initialLoading.value = false
 
   // Create charts after loading is complete and DOM is updated
   await nextTick()
@@ -3564,17 +3526,23 @@ function navigateToTradesByDate(date) {
   })
 }
 
+// Watch for global account filter changes
+watch(selectedAccount, () => {
+  console.log('[AnalyticsView] Global account filter changed to:', selectedAccount.value || 'All Accounts')
+  loadData()
+})
+
 onMounted(async () => {
   // Add click outside listener
   document.addEventListener('click', handleClickOutside)
-  
+
   // Fetch filter dropdown data
   fetchAvailableSectorsForFilter()
   fetchAvailableBrokersForFilter()
-  
+
   // loadData() now handles initializing localFilters from saved filters
   await loadData()
-  
+
   // Scroll to hash if present
   if (route.hash) {
     await nextTick()
@@ -3651,6 +3619,7 @@ watch(() => rValueMode.value, async () => {
   ])
 
   loading.value = false
+  initialLoading.value = false
 
   // Recreate charts after data is loaded
   await nextTick()

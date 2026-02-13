@@ -2,8 +2,33 @@ const logger = require('../utils/logger');
 const db = require('../config/database');
 const { v4: uuidv4 } = require('uuid');
 
-// Store active SSE connections
+// Store active SSE connections with metadata
 const sseConnections = new Map();
+
+// Cleanup function to properly close an existing connection
+function cleanupConnection(userId, reason = 'unknown') {
+  const connectionData = sseConnections.get(userId);
+  if (connectionData) {
+    const { res, heartbeatInterval } = connectionData;
+
+    // Clear heartbeat interval
+    if (heartbeatInterval) {
+      clearInterval(heartbeatInterval);
+    }
+
+    // Try to end the response gracefully
+    if (res && !res.destroyed && !res.writableEnded) {
+      try {
+        res.end();
+      } catch (error) {
+        // Ignore errors during cleanup
+      }
+    }
+
+    sseConnections.delete(userId);
+    console.log(`User ${userId} connection cleaned up (reason: ${reason})`);
+  }
+}
 
 const notificationsController = {
   // SSE endpoint for real-time notifications
@@ -33,6 +58,11 @@ const notificationsController = {
         'Transfer-Encoding': 'chunked'
       });
 
+      // Clean up any existing connection for this user (prevents orphaned heartbeats)
+      if (sseConnections.has(userId)) {
+        cleanupConnection(userId, 'new_connection_replacing');
+      }
+
       // Send initial connection event
       res.write(`data: ${JSON.stringify({
         type: 'connected',
@@ -40,12 +70,10 @@ const notificationsController = {
         timestamp: new Date().toISOString()
       })}\n\n`);
 
-      // Store connection
-      sseConnections.set(userId, res);
-      
-      // Send heartbeat every 45 seconds to keep connection alive (longer interval)
+      // Send heartbeat every 45 seconds to keep connection alive
       const heartbeatInterval = setInterval(() => {
-        if (sseConnections.has(userId) && !res.destroyed && !res.writableEnded) {
+        const connectionData = sseConnections.get(userId);
+        if (connectionData && connectionData.res === res && !res.destroyed && !res.writableEnded) {
           try {
             res.write(`data: ${JSON.stringify({
               type: 'heartbeat',
@@ -53,14 +81,17 @@ const notificationsController = {
             })}\n\n`);
           } catch (error) {
             logger.logDebug(`Heartbeat error for user ${userId}:`, error);
-            clearInterval(heartbeatInterval);
-            sseConnections.delete(userId);
+            cleanupConnection(userId, 'heartbeat_error');
           }
         } else {
+          // Connection was replaced or closed, stop this heartbeat
           clearInterval(heartbeatInterval);
         }
       }, 45000);
-      
+
+      // Store connection with heartbeat interval reference
+      sseConnections.set(userId, { res, heartbeatInterval });
+
       console.log(`User ${userId} connected to notifications stream`);
 
       // Send recent unread notifications
@@ -95,29 +126,47 @@ const notificationsController = {
         logger.logError('Error fetching recent notifications:', error);
       }
 
-      // Handle client disconnect
+      // Track if cleanup has already run for this connection
+      let cleanedUp = false;
+      const doCleanup = (reason) => {
+        if (cleanedUp) return;
+        // Only cleanup if this is still the active connection for this user
+        const connectionData = sseConnections.get(userId);
+        if (connectionData && connectionData.res === res) {
+          cleanedUp = true;
+          cleanupConnection(userId, reason);
+        }
+      };
+
+      // Handle client disconnect (normal close - user closed tab, navigated away)
       req.on('close', () => {
-        clearInterval(heartbeatInterval);
-        sseConnections.delete(userId);
-        console.log(`User ${userId} disconnected from notifications stream`);
+        doCleanup('client_closed');
       });
 
+      // Handle request errors (distinguish normal vs abnormal)
       req.on('error', (error) => {
-        logger.logError(`SSE connection error for user ${userId}:`, error);
-        clearInterval(heartbeatInterval);
-        sseConnections.delete(userId);
+        // ECONNRESET is normal - client closed connection
+        if (error.code === 'ECONNRESET') {
+          doCleanup('connection_reset');
+        } else {
+          logger.logError(`[SSE] Request error for user ${userId}:`, error);
+          doCleanup('request_error');
+        }
       });
 
+      // Handle response close
       res.on('close', () => {
-        clearInterval(heartbeatInterval);
-        sseConnections.delete(userId);
-        console.log(`User ${userId} response stream closed`);
+        doCleanup('response_closed');
       });
 
+      // Handle response errors
       res.on('error', (error) => {
-        logger.logError(`SSE response error for user ${userId}:`, error);
-        clearInterval(heartbeatInterval);
-        sseConnections.delete(userId);
+        if (error.code === 'ECONNRESET' || error.code === 'EPIPE') {
+          doCleanup('pipe_reset');
+        } else {
+          logger.logError(`[SSE] Response error for user ${userId}:`, error);
+          doCleanup('response_error');
+        }
       });
 
     } catch (error) {
@@ -166,9 +215,9 @@ const notificationsController = {
   // Send notification to specific user
   async sendNotificationToUser(userId, notification) {
     try {
-      const connection = sseConnections.get(userId);
-      
-      if (connection && !connection.destroyed && !connection.writableEnded) {
+      const connectionData = sseConnections.get(userId);
+
+      if (connectionData && connectionData.res && !connectionData.res.destroyed && !connectionData.res.writableEnded) {
         // If notification already has type and data structure, use it as is
         const eventData = notification.type && notification.data ? notification : {
           type: notification.type || 'price_alert',
@@ -176,16 +225,16 @@ const notificationsController = {
           timestamp: new Date().toISOString()
         };
 
-        connection.write(`data: ${JSON.stringify(eventData)}\n\n`);
+        connectionData.res.write(`data: ${JSON.stringify(eventData)}\n\n`);
         logger.logDebug(`Sent real-time notification to user ${userId}:`, eventData.type);
         return true;
       }
-      
+
       return false;
     } catch (error) {
       logger.logError(`Error sending notification to user ${userId}:`, error);
       // Remove broken connection
-      sseConnections.delete(userId);
+      cleanupConnection(userId, 'send_error');
       return false;
     }
   },
@@ -497,25 +546,25 @@ const notificationsController = {
   // Send enrichment status update to specific user
   async sendEnrichmentUpdateToUser(userId, enrichmentData) {
     try {
-      const connection = sseConnections.get(userId);
-      
-      if (connection) {
+      const connectionData = sseConnections.get(userId);
+
+      if (connectionData && connectionData.res && !connectionData.res.destroyed && !connectionData.res.writableEnded) {
         const eventData = {
           type: 'enrichment_update',
           data: enrichmentData,
           timestamp: new Date().toISOString()
         };
 
-        connection.write(`data: ${JSON.stringify(eventData)}\n\n`);
+        connectionData.res.write(`data: ${JSON.stringify(eventData)}\n\n`);
         logger.logDebug(`Sent enrichment update to user ${userId}`);
         return true;
       }
-      
+
       return false;
     } catch (error) {
       logger.logError(`Error sending enrichment update to user ${userId}:`, error);
       // Remove broken connection
-      sseConnections.delete(userId);
+      cleanupConnection(userId, 'enrichment_send_error');
       return false;
     }
   },
@@ -532,10 +581,14 @@ const notificationsController = {
       let sentCount = 0;
       const brokenConnections = [];
 
-      for (const [userId, connection] of sseConnections.entries()) {
+      for (const [userId, connectionData] of sseConnections.entries()) {
         try {
-          connection.write(`data: ${JSON.stringify(eventData)}\n\n`);
-          sentCount++;
+          if (connectionData && connectionData.res && !connectionData.res.destroyed && !connectionData.res.writableEnded) {
+            connectionData.res.write(`data: ${JSON.stringify(eventData)}\n\n`);
+            sentCount++;
+          } else {
+            brokenConnections.push(userId);
+          }
         } catch (error) {
           logger.logError(`Error broadcasting to user ${userId}:`, error);
           brokenConnections.push(userId);
@@ -544,7 +597,7 @@ const notificationsController = {
 
       // Clean up broken connections
       brokenConnections.forEach(userId => {
-        sseConnections.delete(userId);
+        cleanupConnection(userId, 'broadcast_error');
       });
 
       console.log(`Broadcast notification sent to ${sentCount} users`);
@@ -559,8 +612,12 @@ const notificationsController = {
   async getConnectionStatus(req, res, next) {
     try {
       const userId = req.user.id;
-      const isConnected = sseConnections.has(userId);
-      
+      const connectionData = sseConnections.get(userId);
+      const isConnected = connectionData &&
+        connectionData.res &&
+        !connectionData.res.destroyed &&
+        !connectionData.res.writableEnded;
+
       res.json({
         success: true,
         data: {
@@ -838,6 +895,11 @@ const notificationsController = {
       logger.logError('Error sending test push notification:', error);
       next(error);
     }
+  },
+
+  // Get the SSE connections map (for external services)
+  getConnections() {
+    return sseConnections;
   }
 };
 

@@ -52,6 +52,17 @@
             {{ modalAlert.cancelText }}
           </button>
 
+          <!-- Documentation Link Button -->
+          <a
+            v-if="modalAlert.linkUrl"
+            :href="modalAlert.linkUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="w-full sm:w-auto px-4 py-2 text-sm font-medium text-center text-primary-700 bg-primary-100 border border-primary-300 rounded-md hover:bg-primary-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:bg-primary-900/20 dark:text-primary-300 dark:border-primary-700 dark:hover:bg-primary-900/40"
+          >
+            {{ modalAlert.linkText || 'View Documentation' }}
+          </a>
+
           <!-- Primary/Confirm Button -->
           <button
             @click="handleConfirm"

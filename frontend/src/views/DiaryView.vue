@@ -77,6 +77,14 @@
       </div>
     </div>
 
+    <!-- Guided onboarding: contextual card for this page (first-time only) -->
+    <OnboardingCard
+      v-if="authStore.showOnboardingModal"
+      title="Trading Journal"
+      description="Keep a diary and link notes to trades for better reflection. Create entries to track your daily market thoughts and plans."
+      cta-label="Done"
+    />
+
     <!-- Filters -->
     <div class="mb-6 bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
       <div class="flex flex-col sm:flex-row gap-4">
@@ -305,7 +313,7 @@
             <LinkedTradesList :trade-ids="entry.linked_trades" />
           </div>
 
-          <div v-if="entry.tags && entry.tags.length > 0" class="flex flex-wrap gap-2">
+          <div v-if="entry.tags && entry.tags.length > 0" class="flex flex-wrap gap-2 mb-3">
             <span
               v-for="tag in entry.tags.slice(0, 3)"
               :key="tag"
@@ -319,6 +327,28 @@
             >
               +{{ entry.tags.length - 3 }} more tags
             </span>
+          </div>
+
+          <!-- Attachments Preview -->
+          <div v-if="entry.attachments && entry.attachments.length > 0" class="flex flex-wrap gap-2">
+            <div
+              v-for="attachment in entry.attachments.slice(0, 4)"
+              :key="attachment.id"
+              class="w-16 h-16 rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-700 cursor-pointer hover:opacity-80 transition-opacity"
+              @click.stop="openImagePreview(attachment)"
+            >
+              <img
+                :src="getImageUrl(attachment)"
+                :alt="attachment.file_name"
+                class="w-full h-full object-cover"
+              />
+            </div>
+            <div
+              v-if="entry.attachments.length > 4"
+              class="w-16 h-16 rounded-lg bg-gray-200 dark:bg-gray-600 flex items-center justify-center text-sm text-gray-600 dark:text-gray-300 font-medium"
+            >
+              +{{ entry.attachments.length - 4 }}
+            </div>
           </div>
         </div>
 
@@ -513,12 +543,37 @@
         </div>
       </div>
     </div>
+
+    <!-- Image Preview Modal -->
+    <div
+      v-if="previewImage"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75"
+      @click="previewImage = null"
+    >
+      <div class="relative max-w-4xl max-h-[90vh] p-4">
+        <button
+          @click="previewImage = null"
+          class="absolute top-2 right-2 bg-white dark:bg-gray-800 rounded-full p-2 shadow-lg hover:bg-gray-100 dark:hover:bg-gray-700 z-10"
+        >
+          <svg class="w-6 h-6 text-gray-600 dark:text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+          </svg>
+        </button>
+        <img
+          :src="getImageUrl(previewImage)"
+          :alt="previewImage.file_name"
+          class="max-w-full max-h-[85vh] object-contain rounded-lg"
+          @click.stop
+        />
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 import { useDiaryStore } from '@/stores/diary'
 import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isToday, addMonths, subMonths, startOfWeek, endOfWeek } from 'date-fns'
 import { parseMarkdown, truncateHtml as truncateHtmlUtil } from '@/utils/markdown'
@@ -527,6 +582,7 @@ import GeneralNotes from '@/components/diary/GeneralNotes.vue'
 import TemplateManager from '@/components/diary/TemplateManager.vue'
 import LinkedTradesList from '@/components/diary/LinkedTradesList.vue'
 import WatchlistSymbol from '@/components/diary/WatchlistSymbol.vue'
+import OnboardingCard from '@/components/onboarding/OnboardingCard.vue'
 import {
   PlusIcon,
   PencilIcon,
@@ -542,6 +598,7 @@ import {
   DocumentTextIcon
 } from '@heroicons/vue/24/outline'
 
+const authStore = useAuthStore()
 const diaryStore = useDiaryStore()
 const router = useRouter()
 
@@ -556,6 +613,7 @@ const entryToDelete = ref(null)
 const deleting = ref(false)
 const showTagSuggestions = ref(false)
 const allTags = ref([])
+const previewImage = ref(null)
 
 // Calendar state
 const calendarDate = ref(new Date())
@@ -853,6 +911,18 @@ const handleAlertCreated = (symbol) => {
 const handleApplyTemplate = (template) => {
   // Navigate to new entry form (template will be shown there)
   router.push('/diary/new')
+}
+
+// Image handling
+const getImageUrl = (attachment) => {
+  const token = localStorage.getItem('token')
+  // file_url already includes /api prefix, so use origin only (not VITE_API_URL which includes /api)
+  const origin = window.location.origin
+  return `${origin}${attachment.file_url}?token=${token}`
+}
+
+const openImagePreview = (attachment) => {
+  previewImage.value = attachment
 }
 
 // Load entries and tags on component mount

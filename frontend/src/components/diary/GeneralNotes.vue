@@ -115,7 +115,9 @@
 import { ref, onMounted } from 'vue'
 import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
-import { format, parseISO } from 'date-fns'
+import { useUserTimezone } from '@/composables/useUserTimezone'
+
+const { formatDateTime: formatDateTimeTz } = useUserTimezone()
 
 const notes = ref([])
 const showAddModal = ref(false)
@@ -127,7 +129,7 @@ const noteForm = ref({
 
 const formatDate = (dateString) => {
   try {
-    return format(parseISO(dateString), 'MMM d, yyyy h:mm a')
+    return formatDateTimeTz(dateString)
   } catch {
     return dateString
   }

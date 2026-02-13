@@ -11,8 +11,43 @@ const sanitizeForLogging = (body) => {
   return sanitized;
 };
 
+// Normalize snake_case fields to camelCase for API compatibility
+const normalizeFieldNames = (body) => {
+  if (!body || typeof body !== 'object') return body;
+  const normalized = { ...body };
+  
+  // Map snake_case to camelCase (only if camelCase doesn't already exist)
+  const fieldMappings = {
+    instrument_type: 'instrumentType',
+    underlying_symbol: 'underlyingSymbol',
+    option_type: 'optionType',
+    strike_price: 'strikePrice',
+    expiration_date: 'expirationDate',
+    contract_size: 'contractSize',
+    underlying_asset: 'underlyingAsset',
+    contract_month: 'contractMonth',
+    contract_year: 'contractYear',
+    tick_size: 'tickSize',
+    point_value: 'pointValue',
+    stop_loss: 'stopLoss',
+    take_profit: 'takeProfit'
+  };
+  
+  Object.keys(fieldMappings).forEach(snakeCase => {
+    const camelCase = fieldMappings[snakeCase];
+    if (normalized[snakeCase] !== undefined && normalized[camelCase] === undefined) {
+      normalized[camelCase] = normalized[snakeCase];
+    }
+  });
+  
+  return normalized;
+};
+
 const validate = (schema) => {
   return (req, res, next) => {
+    // Normalize snake_case to camelCase before validation
+    req.body = normalizeFieldNames(req.body);
+    
     const { error } = schema.validate(req.body);
     if (error) {
       console.log('[VALIDATION ERROR] Details:', JSON.stringify(error.details, null, 2));
@@ -36,7 +71,7 @@ const schemas = {
   register: Joi.object({
     email: Joi.string().email().required(),
     username: Joi.string().pattern(/^[a-zA-Z0-9_-]+$/).min(3).max(30).required(),
-    password: Joi.string().min(6).required(),
+    password: Joi.string().min(8).required(),
     fullName: Joi.string().max(255).allow(''),
     marketing_consent: Joi.boolean().default(false)
   }),
@@ -55,6 +90,7 @@ const schemas = {
     quantity: Joi.number().positive().required(),
     side: Joi.string().valid('long', 'short').required(),
     instrumentType: Joi.string().valid('stock', 'option', 'future', 'crypto').default('stock'),
+    instrument_type: Joi.string().valid('stock', 'option', 'future', 'crypto').optional(), // Accept snake_case for API compatibility
     commission: Joi.number().default(0),  // Can be negative for rebates
     entryCommission: Joi.number().default(0),  // Can be negative for rebates
     exitCommission: Joi.number().default(0),  // Can be negative for rebates
@@ -78,8 +114,16 @@ const schemas = {
       Joi.number().positive(),
       Joi.valid(null, '')
     ),
+    // Additional take profit targets (TP2, TP3, etc.)
+    takeProfitTargets: Joi.array().items(Joi.object({
+      price: Joi.number().positive().required(),
+      shares: Joi.number().integer().positive().allow(null).optional(),
+      percentage: Joi.number().min(1).max(100).allow(null).optional()
+    })).default([]),
     // Chart URL for TradingView links
     chartUrl: Joi.string().uri().max(1000).allow(null, ''),
+    // Manual target hit override (SL/TP hit first)
+    manualTargetHitFirst: Joi.string().valid('take_profit', 'stop_loss').allow(null, ''),
     // Options-specific fields
     underlyingSymbol: Joi.string().max(10).allow(null, ''),
     optionType: Joi.string().valid('call', 'put').allow(null, ''),
@@ -104,7 +148,12 @@ const schemas = {
           commission: Joi.number().default(0),  // Can be negative for rebates
           fees: Joi.number().default(0),  // Can be negative for rebates
           stopLoss: Joi.number().positive().allow(null, '').optional(),
-          takeProfit: Joi.number().positive().allow(null, '').optional()
+          takeProfit: Joi.number().positive().allow(null, '').optional(),
+          takeProfitTargets: Joi.array().items(Joi.object({
+            price: Joi.number().positive().required(),
+            shares: Joi.number().integer().positive().allow(null).optional(),
+            percentage: Joi.number().min(1).max(100).allow(null).optional()
+          })).default([]).optional()
         }),
         // Grouped round-trip format
         Joi.object({
@@ -118,7 +167,12 @@ const schemas = {
           fees: Joi.number().default(0),  // Can be negative for rebates
           pnl: Joi.number().allow(null).optional(),
           stopLoss: Joi.number().positive().allow(null, '').optional(),
-          takeProfit: Joi.number().positive().allow(null, '').optional()
+          takeProfit: Joi.number().positive().allow(null, '').optional(),
+          takeProfitTargets: Joi.array().items(Joi.object({
+            price: Joi.number().positive().required(),
+            shares: Joi.number().integer().positive().allow(null).optional(),
+            percentage: Joi.number().min(1).max(100).allow(null).optional()
+          })).default([]).optional()
         })
       )
     ).optional()
@@ -156,8 +210,16 @@ const schemas = {
       Joi.number().positive(),
       Joi.valid(null, '')
     ),
+    // Additional take profit targets (TP2, TP3, etc.)
+    takeProfitTargets: Joi.array().items(Joi.object({
+      price: Joi.number().positive().required(),
+      shares: Joi.number().integer().positive().allow(null).optional(),
+      percentage: Joi.number().min(1).max(100).allow(null).optional()
+    })).default([]),
     // Chart URL for TradingView links
     chartUrl: Joi.string().uri().max(1000).allow(null, ''),
+    // Manual target hit override (SL/TP hit first)
+    manualTargetHitFirst: Joi.string().valid('take_profit', 'stop_loss').allow(null, ''),
     // Options-specific fields
     underlyingSymbol: Joi.string().max(10).allow(null, ''),
     optionType: Joi.string().valid('call', 'put').allow(null, ''),
@@ -182,7 +244,12 @@ const schemas = {
           commission: Joi.number().default(0),  // Can be negative for rebates
           fees: Joi.number().default(0),  // Can be negative for rebates
           stopLoss: Joi.number().positive().allow(null, '').optional(),
-          takeProfit: Joi.number().positive().allow(null, '').optional()
+          takeProfit: Joi.number().positive().allow(null, '').optional(),
+          takeProfitTargets: Joi.array().items(Joi.object({
+            price: Joi.number().positive().required(),
+            shares: Joi.number().integer().positive().allow(null).optional(),
+            percentage: Joi.number().min(1).max(100).allow(null).optional()
+          })).default([]).optional()
         }),
         // Grouped round-trip format
         Joi.object({
@@ -196,7 +263,12 @@ const schemas = {
           fees: Joi.number().default(0),  // Can be negative for rebates
           pnl: Joi.number().allow(null).optional(),
           stopLoss: Joi.number().positive().allow(null, '').optional(),
-          takeProfit: Joi.number().positive().allow(null, '').optional()
+          takeProfit: Joi.number().positive().allow(null, '').optional(),
+          takeProfitTargets: Joi.array().items(Joi.object({
+            price: Joi.number().positive().required(),
+            shares: Joi.number().integer().positive().allow(null).optional(),
+            percentage: Joi.number().min(1).max(100).allow(null).optional()
+          })).default([]).optional()
         })
       )
     ).optional()
@@ -209,12 +281,24 @@ const schemas = {
     importSettings: Joi.object(),
     theme: Joi.string().valid('light', 'dark'),
     timezone: Joi.string().max(50),
+    timeDisplayFormat: Joi.string().valid('12h', '24h'),
     statisticsCalculation: Joi.string().valid('average', 'median'),
     enableTradeGrouping: Joi.boolean(),
     tradeGroupingTimeGapMinutes: Joi.number().integer().min(1).max(1440),
     autoCloseExpiredOptions: Joi.boolean(),
+    defaultStopLossType: Joi.string().valid('percent', 'lod', 'dollar').default('percent'),
     defaultStopLossPercent: Joi.number().min(0).max(100).allow(null),
-    defaultTakeProfitPercent: Joi.number().min(0).max(1000).allow(null)
+    defaultStopLossDollars: Joi.number().min(0).allow(null),
+    defaultTakeProfitPercent: Joi.number().min(0).max(1000).allow(null),
+    dashboardLayout: Joi.array().items(Joi.object({
+      id: Joi.string().required(),
+      visible: Joi.boolean().required()
+    })).allow(null),
+    analyticsChartLayout: Joi.array().items(Joi.object({
+      id: Joi.string().required(),
+      visible: Joi.boolean().required(),
+      size: Joi.string().valid('full', 'half').optional()
+    })).allow(null)
   }).min(1),
 
   // Mobile-specific validation schemas
@@ -309,7 +393,7 @@ const schemas = {
   }).min(1),
   changePassword: Joi.object({
     currentPassword: Joi.string().required(),
-    newPassword: Joi.string().min(6).required()
+    newPassword: Joi.string().min(8).required()
   }),
   settings: Joi.ref('updateSettings'),
 

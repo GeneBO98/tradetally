@@ -1,4 +1,5 @@
 const nodemailer = require('nodemailer');
+const unsubscribeService = require('./unsubscribeService');
 
 class EmailService {
   static createTransporter() {
@@ -117,6 +118,31 @@ class EmailService {
     `;
   }
 
+  /**
+   * Generate a personalized unsubscribe URL for a user
+   * @param {number} userId - The user's ID
+   * @returns {string} The full unsubscribe URL with signed token
+   */
+  static getUnsubscribeUrl(userId) {
+    const token = unsubscribeService.generateToken(userId);
+    const baseUrl = process.env.FRONTEND_URL || 'https://tradetally.io';
+    return `${baseUrl}/unsubscribe?token=${token}`;
+  }
+
+  /**
+   * Get marketing email footer with visible unsubscribe link
+   * @param {string} unsubscribeUrl - The personalized unsubscribe URL
+   * @returns {string} HTML footer content
+   */
+  static getMarketingFooter(unsubscribeUrl) {
+    return `
+      <p style="color: #94a3b8; font-size: 11px; margin: 20px 0 0 0; text-align: center;">
+        You're receiving this because you have marketing emails enabled.
+        <a href="${unsubscribeUrl}" style="color: #F0812A; text-decoration: underline;">Unsubscribe</a>
+      </p>
+    `;
+  }
+
   static async sendVerificationEmail(email, token) {
     if (!this.isConfigured()) {
       console.log('Email not configured, skipping verification email');
@@ -163,6 +189,7 @@ class EmailService {
       </p>
     `;
 
+    // Transactional email - no List-Unsubscribe headers (required for account activation)
     const mailOptions = {
       from: {
         name: 'TradeTally',
@@ -173,8 +200,6 @@ class EmailService {
       html: this.getBaseTemplate('Verify Your TradeTally Account', content),
       text: `Welcome to TradeTally! Please verify your email address by visiting: ${verificationUrl}`,
       headers: {
-        'List-Unsubscribe': `<${process.env.FRONTEND_URL}/unsubscribe>`,
-        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
         'X-Entity-Ref-ID': `verify-${Date.now()}`,
         'Message-ID': `<verify-${Date.now()}@tradetally.io>`
       }
@@ -235,6 +260,7 @@ class EmailService {
       </p>
     `;
 
+    // Transactional email - no List-Unsubscribe headers (required for password reset)
     const mailOptions = {
       from: {
         name: 'TradeTally',
@@ -245,8 +271,6 @@ class EmailService {
       html: this.getBaseTemplate('Reset Your TradeTally Password', content),
       text: `Reset your TradeTally password by visiting: ${resetUrl}`,
       headers: {
-        'List-Unsubscribe': `<${process.env.FRONTEND_URL}/unsubscribe>`,
-        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
         'X-Entity-Ref-ID': `reset-${Date.now()}`,
         'Message-ID': `<reset-${Date.now()}@tradetally.io>`
       }
@@ -307,6 +331,7 @@ class EmailService {
       </p>
     `;
 
+    // Transactional email - no List-Unsubscribe headers (required for email change)
     const mailOptions = {
       from: {
         name: 'TradeTally',
@@ -317,8 +342,6 @@ class EmailService {
       html: this.getBaseTemplate('Verify Your New Email Address', content),
       text: `Verify your new TradeTally email address by visiting: ${verificationUrl}`,
       headers: {
-        'List-Unsubscribe': `<${process.env.FRONTEND_URL}/unsubscribe>`,
-        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
         'X-Entity-Ref-ID': `email-change-${Date.now()}`,
         'Message-ID': `<email-change-${Date.now()}@tradetally.io>`
       }
@@ -402,6 +425,7 @@ class EmailService {
       </p>
     `;
 
+    // Transactional email about account status - no List-Unsubscribe headers
     const mailOptions = {
       from: {
         name: 'TradeTally',
@@ -415,8 +439,6 @@ class EmailService {
       ),
       text: `${isExpired ? 'Your TradeTally trial has ended.' : `Your TradeTally trial expires in ${daysRemaining} day${daysRemaining === 1 ? '' : 's'}.`} Visit ${pricingUrl} to continue with Pro features.`,
       headers: {
-        'List-Unsubscribe': `<${process.env.FRONTEND_URL}/unsubscribe>`,
-        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
         'X-Entity-Ref-ID': `trial-${isExpired ? 'expired' : 'reminder'}-${Date.now()}`,
         'Message-ID': `<trial-${isExpired ? 'expired' : 'reminder'}-${Date.now()}@tradetally.io>`
       }
@@ -428,6 +450,122 @@ class EmailService {
       console.log(`Trial ${isExpired ? 'expiration' : 'reminder'} email sent successfully to ${email}`);
     } catch (error) {
       console.error(`Error sending trial ${isExpired ? 'expiration' : 'reminder'} email:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Send weekly digest: "Your week in trades" (trade count, P&L summary, link to dashboard)
+   * @param {string} email - Recipient email
+   * @param {string} username - Username for greeting
+   * @param {object} options - tradeCount, totalPnL, dashboardUrl
+   * @param {number} userId - User ID for personalized unsubscribe link
+   */
+  static async sendWeeklyDigestEmail(email, username, { tradeCount, totalPnL, dashboardUrl }, userId) {
+    if (!this.isConfigured()) {
+      console.log('Email not configured, skipping weekly digest');
+      return;
+    }
+    const url = dashboardUrl || `${process.env.FRONTEND_URL || 'http://localhost:5173'}/dashboard`;
+    const pnlFormatted = totalPnL != null ? `$${Number(totalPnL).toFixed(2)}` : '$0.00';
+    const unsubscribeUrl = userId ? this.getUnsubscribeUrl(userId) : `${process.env.FRONTEND_URL || 'https://tradetally.io'}/settings`;
+    const content = `
+      <div style="text-align: center; margin-bottom: 30px;">
+        <h1 style="color: #1e293b; font-size: 28px; margin: 0 0 16px 0; font-weight: 700;">Your Week in Trades</h1>
+        <p style="color: #64748b; font-size: 16px; line-height: 1.6; margin: 0;">A quick summary of your trading activity</p>
+      </div>
+      <div style="background-color: #f8fafc; padding: 30px; border-radius: 12px; border-left: 4px solid #F0812A; margin: 30px 0;">
+        <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">Hi ${username},</p>
+        <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
+          Here's your trading summary for the past 7 days:
+        </p>
+        <ul style="color: #374151; font-size: 16px; line-height: 1.8; margin: 0; padding-left: 20px;">
+          <li><strong>Trades closed:</strong> ${tradeCount}</li>
+          <li><strong>Total P&L:</strong> ${pnlFormatted}</li>
+        </ul>
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${url}" style="${this.getButtonStyle()}">View Dashboard</a>
+        </div>
+        <p style="color: #64748b; font-size: 14px; margin: 20px 0 0 0; text-align: center;">
+          Keep tracking to improve your edge.
+        </p>
+      </div>
+      ${this.getMarketingFooter(unsubscribeUrl)}
+    `;
+    // Marketing email - include personalized List-Unsubscribe headers
+    const mailOptions = {
+      from: { name: 'TradeTally', address: process.env.EMAIL_FROM || 'noreply@tradetally.io' },
+      to: email,
+      subject: 'Your Week in Trades - TradeTally',
+      html: this.getBaseTemplate('Your Week in Trades', content),
+      text: `Your week: ${tradeCount} trades, P&L ${pnlFormatted}. View dashboard: ${url}. Unsubscribe: ${unsubscribeUrl}`,
+      headers: {
+        'List-Unsubscribe': `<${unsubscribeUrl}>`,
+        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+        'X-Entity-Ref-ID': `weekly-digest-${Date.now()}`,
+        'Message-ID': `<weekly-digest-${Date.now()}@tradetally.io>`
+      }
+    };
+    try {
+      const transporter = this.createTransporter();
+      await transporter.sendMail(mailOptions);
+      console.log('Weekly digest sent to', email);
+    } catch (error) {
+      console.error('Error sending weekly digest to', email, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Send re-engagement email to inactive users (no login in N days)
+   * @param {string} email - Recipient email
+   * @param {string} username - Username for greeting
+   * @param {number} daysInactive - Number of days since last login
+   * @param {number} userId - User ID for personalized unsubscribe link
+   */
+  static async sendInactiveReengagementEmail(email, username, daysInactive, userId) {
+    if (!this.isConfigured()) {
+      console.log('Email not configured, skipping re-engagement email');
+      return;
+    }
+    const loginUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login`;
+    const unsubscribeUrl = userId ? this.getUnsubscribeUrl(userId) : `${process.env.FRONTEND_URL || 'https://tradetally.io'}/settings`;
+    const content = `
+      <div style="text-align: center; margin-bottom: 30px;">
+        <h1 style="color: #1e293b; font-size: 28px; margin: 0 0 16px 0; font-weight: 700;">We Miss You</h1>
+        <p style="color: #64748b; font-size: 16px; line-height: 1.6; margin: 0;">You haven't logged in for a while</p>
+      </div>
+      <div style="background-color: #f8fafc; padding: 30px; border-radius: 12px; border-left: 4px solid #F0812A; margin: 30px 0;">
+        <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">Hi ${username},</p>
+        <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
+          You haven't logged in to TradeTally for ${daysInactive} days. Your journal and analytics are waiting for you.
+        </p>
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${loginUrl}" style="${this.getButtonStyle()}">Log in to TradeTally</a>
+        </div>
+      </div>
+      ${this.getMarketingFooter(unsubscribeUrl)}
+    `;
+    // Marketing email - include personalized List-Unsubscribe headers
+    const mailOptions = {
+      from: { name: 'TradeTally', address: process.env.EMAIL_FROM || 'noreply@tradetally.io' },
+      to: email,
+      subject: `We miss you – log in to TradeTally`,
+      html: this.getBaseTemplate('We miss you', content),
+      text: `You haven't logged in for ${daysInactive} days. Log in: ${loginUrl}. Unsubscribe: ${unsubscribeUrl}`,
+      headers: {
+        'List-Unsubscribe': `<${unsubscribeUrl}>`,
+        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+        'X-Entity-Ref-ID': `reengagement-${Date.now()}`,
+        'Message-ID': `<reengagement-${Date.now()}@tradetally.io>`
+      }
+    };
+    try {
+      const transporter = this.createTransporter();
+      await transporter.sendMail(mailOptions);
+      console.log('Re-engagement email sent to', email);
+    } catch (error) {
+      console.error('Error sending re-engagement email to', email, error);
       throw error;
     }
   }
