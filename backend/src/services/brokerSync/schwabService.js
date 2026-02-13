@@ -42,6 +42,42 @@ class SchwabService {
     if (str.length <= 4) return str;
     return '****' + str.slice(-4);
   }
+
+  /**
+   * Extract date string (YYYY-MM-DD) from various date formats
+   * Handles Date objects, ISO strings, date-only strings, and edge cases
+   * @param {Date|string|any} dateValue - The date value to extract from
+   * @returns {string|null} - Date string in YYYY-MM-DD format, or null if invalid
+   */
+  _extractDateString(dateValue) {
+    if (!dateValue) return null;
+
+    // Handle Date objects
+    if (dateValue instanceof Date) {
+      return dateValue.toISOString().split('T')[0];
+    }
+
+    // Convert to string and handle various formats
+    const str = String(dateValue);
+
+    // ISO format: 2025-01-30T10:00:00Z
+    if (str.includes('T')) {
+      return str.split('T')[0];
+    }
+
+    // Date-only format: 2025-01-30
+    if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
+      return str.slice(0, 10);
+    }
+
+    // Try to parse as date
+    const parsed = new Date(str);
+    if (!isNaN(parsed.getTime())) {
+      return parsed.toISOString().split('T')[0];
+    }
+
+    return null;
+  }
   /**
    * Check if tokens need refresh and refresh if necessary
    * @param {object} connection - BrokerConnection with credentials
@@ -424,9 +460,18 @@ class SchwabService {
       // Handle transactions without positionEffect - try to infer from context
       let positionEffect = tx.positionEffect;
       if (!positionEffect) {
-        // If no position effect, we can't reliably match - log and skip
-        console.log(`[SCHWAB] Transaction without positionEffect: ${symbol} qty=${tx.quantity} price=${tx.price}`);
-        continue;
+        // For TOS trades that might not have positionEffect, try to infer it
+        // If we have open positions for this symbol, assume it's closing
+        // Otherwise, assume it's opening
+        console.log(`[SCHWAB] Transaction without positionEffect: ${symbol} qty=${tx.quantity} price=${tx.price} - attempting to infer`);
+
+        if (openPositions[symbol] && openPositions[symbol].length > 0) {
+          positionEffect = 'CLOSING';
+          console.log(`[SCHWAB] Inferred as CLOSING (found open positions)`);
+        } else {
+          positionEffect = 'OPENING';
+          console.log(`[SCHWAB] Inferred as OPENING (no open positions)`);
+        }
       }
 
       if (positionEffect === 'OPENING') {
@@ -759,6 +804,10 @@ class SchwabService {
   parseTransactionDetails(tx) {
     // Only process TRADE type transactions
     if (tx.type !== 'TRADE') {
+      // Log non-TRADE transactions to help debug TOS issues
+      if (tx.type && tx.transferItems?.[0]?.instrument?.symbol) {
+        console.log(`[SCHWAB] Skipping non-TRADE transaction: type=${tx.type}, symbol=${tx.transferItems[0].instrument.symbol}`);
+      }
       return null;
     }
 
@@ -783,8 +832,11 @@ class SchwabService {
     const assetType = instrument.assetType?.toUpperCase();
 
     // Only accept real tradeable securities
-    const validAssetTypes = ['EQUITY', 'OPTION', 'MUTUAL_FUND', 'ETF', 'INDEX'];
+    // Added FUTURE to support Think Or Swim futures trades
+    const validAssetTypes = ['EQUITY', 'OPTION', 'MUTUAL_FUND', 'ETF', 'INDEX', 'FUTURE', 'COLLECTIVE_INVESTMENT'];
     if (!validAssetTypes.includes(assetType)) {
+      // Log what we're skipping to help debug TOS import issues
+      console.log(`[SCHWAB] Skipping asset type: ${assetType} for symbol: ${instrument.symbol}`);
       // Skip currencies, cash equivalents, fees, etc.
       return null;
     }
@@ -794,9 +846,14 @@ class SchwabService {
       return null;
     }
 
-    // Skip currency symbols
+    // Skip currency symbols (but allow futures symbols like /ES, /NQ that TOS uses)
     if (symbol.startsWith('CURRENCY_') || symbol === 'USD' || symbol === 'CASH') {
       return null;
+    }
+
+    // Log TOS futures symbols for debugging (they typically start with /)
+    if (symbol.startsWith('/')) {
+      console.log(`[SCHWAB] Processing TOS futures symbol: ${symbol}`);
     }
 
     // Get price and quantity
@@ -951,6 +1008,17 @@ class SchwabService {
     const trades = this.parseTransactions(allTransactions);
     console.log(`[SCHWAB] Parsed ${trades.length} trades from ${allTransactions.length} transactions`);
 
+    // Log trade breakdown for debugging TOS issues
+    const tradeBreakdown = {
+      stocks: trades.filter(t => t.instrumentType === 'stock').length,
+      options: trades.filter(t => t.instrumentType === 'option').length,
+      futures: trades.filter(t => t.instrumentType === 'future').length,
+      tosSymbols: trades.filter(t => t.symbol?.startsWith('/')).length,
+      openTrades: trades.filter(t => !t.exitPrice).length,
+      closedTrades: trades.filter(t => t.exitPrice).length
+    };
+    console.log(`[SCHWAB] Trade breakdown:`, tradeBreakdown);
+
     // Update sync log status
     if (syncLogId) {
       await BrokerConnection.updateSyncLog(syncLogId, 'importing');
@@ -998,8 +1066,29 @@ class SchwabService {
         });
 
         imported++;
+
+        // Add the newly imported trade to existingTrades to prevent duplicates within same batch
+        existingTrades.push({
+          symbol: tradeData.symbol,
+          side: tradeData.side,
+          quantity: tradeData.quantity,
+          entry_price: tradeData.entryPrice,
+          exit_price: tradeData.exitPrice,
+          entry_time: tradeData.entryTime,
+          exit_time: tradeData.exitTime,
+          trade_date: tradeData.tradeDate,
+          pnl: tradeData.pnl,
+          executions: tradeData.executionData
+        });
       } catch (error) {
         console.error(`[SCHWAB] Failed to import trade:`, error.message);
+        console.error(`[SCHWAB] Trade details:`, {
+          symbol: tradeData.symbol,
+          quantity: tradeData.quantity,
+          entryPrice: tradeData.entryPrice,
+          exitPrice: tradeData.exitPrice,
+          tradeDate: tradeData.tradeDate
+        });
         failed++;
       }
     }
@@ -1037,17 +1126,28 @@ class SchwabService {
    * Matches against both broker-synced and CSV-imported trades
    */
   isDuplicateTrade(newTrade, existingTrades) {
+    // Guard against invalid input
+    if (!newTrade || !existingTrades || !Array.isArray(existingTrades)) {
+      return false;
+    }
+
     const symbol = newTrade.symbol?.toUpperCase();
+    if (!symbol) return false;
+
     const newTradeDate = newTrade.tradeDate;
-    const newQty = parseFloat(newTrade.quantity);
-    const newEntryPrice = parseFloat(newTrade.entryPrice);
-    const newExitPrice = parseFloat(newTrade.exitPrice);
-    const newPnL = parseFloat(newTrade.pnl);
+    const newQty = parseFloat(newTrade.quantity) || 0;
+    const newEntryPrice = parseFloat(newTrade.entryPrice) || 0;
+    const newExitPrice = parseFloat(newTrade.exitPrice) || 0;
+    const newPnL = parseFloat(newTrade.pnl) || 0;
 
     for (const existing of existingTrades) {
       if (existing.symbol?.toUpperCase() !== symbol) continue;
 
-      // 1. Check execution data match (by order ID) - most reliable
+      // 1. Check execution data match (by EXIT order ID + datetime) - most reliable
+      // IMPORTANT: Only match on EXIT executions, not entry executions.
+      // For partial exits (buy 15, sell 5, sell 10 later), all partial trades share
+      // the same entry order ID but have different exit order IDs.
+      // Matching on ANY execution would incorrectly flag partial exits as duplicates.
       if (newTrade.executionData?.length > 0 && existing.executions) {
         let existingExecs = existing.executions;
         if (typeof existingExecs === 'string') {
@@ -1058,22 +1158,28 @@ class SchwabService {
           }
         }
 
-        const newOrderIds = new Set(
-          newTrade.executionData.map(e => e.orderId).filter(Boolean)
+        // Build a set of EXIT "orderId|datetime" combinations for the new trade
+        // Only use exit executions since entry orders are shared across partial exits
+        const newExitExecKeys = new Set(
+          newTrade.executionData
+            .filter(e => e.orderId && e.type === 'exit')
+            .map(e => `${e.orderId}|${e.datetime}`)
         );
 
-        const hasMatch = existingExecs.some(exec =>
-          exec.orderId && newOrderIds.has(exec.orderId)
+        // Check if any existing EXIT execution matches both orderId AND datetime
+        const hasExitMatch = existingExecs.some(exec =>
+          exec.orderId && exec.datetime && exec.type === 'exit' && newExitExecKeys.has(`${exec.orderId}|${exec.datetime}`)
         );
 
-        if (hasMatch) {
-          console.log(`[SCHWAB] Duplicate found by order ID: ${symbol}`);
+        if (hasExitMatch) {
+          console.log(`[SCHWAB] Duplicate found by exit order ID + datetime: ${symbol}`);
           return true;
         }
       }
 
       // 2. Match by date + quantity + prices (for CSV imports)
-      const existingDate = existing.trade_date?.split('T')[0];
+      const existingDate = this._extractDateString(existing.trade_date);
+
       if (existingDate === newTradeDate) {
         const existingQty = parseFloat(existing.quantity);
         const existingEntryPrice = parseFloat(existing.entry_price);
@@ -1098,11 +1204,11 @@ class SchwabService {
 
       // 3. Match by P&L if available (strong indicator for closed trades)
       if (newPnL && existing.pnl) {
-        const existingDate = existing.trade_date?.split('T')[0];
+        const existingDateForPnL = this._extractDateString(existing.trade_date);
         const existingPnL = parseFloat(existing.pnl);
 
         // Same date, same symbol, same P&L (within $0.01)
-        if (existingDate === newTradeDate && Math.abs(existingPnL - newPnL) < 0.02) {
+        if (existingDateForPnL === newTradeDate && Math.abs(existingPnL - newPnL) < 0.02) {
           console.log(`[SCHWAB] Duplicate found by P&L: ${symbol} on ${newTradeDate} ($${newPnL})`);
           return true;
         }

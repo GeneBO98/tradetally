@@ -80,7 +80,7 @@ class TierService {
     return value === true || value === 'true';
   }
 
-  // Get effective tier for a user
+  // Get effective tier for a user (optimized: single query when possible)
   static async getUserTier(userId) {
     // If billing is disabled (self-hosted), always return 'pro'
     const billingEnabled = await this.isBillingEnabled();
@@ -88,32 +88,53 @@ class TierService {
       return 'pro';
     }
 
-    // Get user info to check role
-    const user = await User.findById(userId);
-    if (!user) return 'free';
+    // Optimized: Single query to get user + tier override + subscription in one round trip
+    const query = `
+      SELECT
+        u.id, u.role, u.tier,
+        t.tier as override_tier, t.expires_at as override_expires,
+        s.status as subscription_status
+      FROM users u
+      LEFT JOIN tier_overrides t ON t.user_id = u.id
+      LEFT JOIN subscriptions s ON s.user_id = u.id
+      WHERE u.id = $1
+    `;
 
+    const result = await db.query(query, [userId]);
+    if (!result.rows[0]) return 'free';
+
+    const row = result.rows[0];
 
     // Admins get Pro tier by default
-    if (user.role === 'admin' || user.role === 'owner') {
+    if (row.role === 'admin' || row.role === 'owner') {
       return 'pro';
     }
 
     // Check for tier override first
-    const tierOverride = await User.getTierOverride(userId);
-    if (tierOverride && (!tierOverride.expires_at || new Date(tierOverride.expires_at) > new Date())) {
-      return tierOverride.tier;
+    if (row.override_tier && (!row.override_expires || new Date(row.override_expires) > new Date())) {
+      return row.override_tier;
     }
 
     // Check subscription status
-    const subscription = await User.getSubscription(userId);
-    if (subscription && subscription.status === 'active') {
-      // Update user's tier based on subscription
-      await User.updateTier(userId, 'pro');
+    if (row.subscription_status === 'active') {
+      // Update user's tier based on subscription (background, non-blocking)
+      User.updateTier(userId, 'pro').catch(() => {});
       return 'pro';
     }
 
     // Return user's stored tier
-    return user?.tier || 'free';
+    return row.tier || 'free';
+  }
+
+  // Get user tier and billing status in one call (optimized for login)
+  static async getUserTierWithBillingStatus(userId) {
+    const billingEnabled = await this.isBillingEnabled();
+    if (!billingEnabled) {
+      return { tier: 'pro', billingEnabled: false };
+    }
+
+    const tier = await this.getUserTier(userId);
+    return { tier, billingEnabled: true };
   }
 
   // Check if user has access to a specific feature
@@ -366,7 +387,8 @@ class TierService {
           'Watchlists + alerts (email + iOS push)',
           'Advanced leaderboard filters (compare by strategy, time frame)',
           'API access',
-          'AI Insights'
+          'AI Insights',
+          'AI Conversations (100 credits/month with follow-up questions)'
         ],
         upgradeMessage: 'Upgrade to Pro to understand why you win or lose — not just how often.'
       }

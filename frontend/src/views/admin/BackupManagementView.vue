@@ -342,8 +342,28 @@
                 <p class="mt-1 text-sm font-medium text-gray-900 dark:text-white">
                   {{ selectedRestoreFile?.name }}
                 </p>
-                <!-- Overwrite option -->
+                <!-- Snapshot restore option -->
                 <div class="mt-4 flex items-start">
+                  <div class="flex items-center h-5">
+                    <input
+                      id="clear-existing"
+                      v-model="clearExisting"
+                      type="checkbox"
+                      class="focus:ring-primary-500 h-4 w-4 text-primary-600 border-gray-300 dark:border-gray-600 dark:bg-gray-700 rounded"
+                    />
+                  </div>
+                  <div class="ml-3 text-sm">
+                    <label for="clear-existing" class="font-medium text-gray-700 dark:text-gray-300">
+                      Full snapshot restore
+                    </label>
+                    <p class="text-gray-500 dark:text-gray-400">
+                      Clear all existing data before restoring. Restores the server to the exact state captured in the backup.
+                    </p>
+                  </div>
+                </div>
+
+                <!-- Overwrite option -->
+                <div v-if="!clearExisting" class="mt-3 flex items-start">
                   <div class="flex items-center h-5">
                     <input
                       id="overwrite-users"
@@ -362,19 +382,21 @@
                   </div>
                 </div>
 
-                <div class="mt-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-md p-3">
+                <div class="mt-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-md p-3" :class="clearExisting ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800' : ''">
                   <div class="flex">
-                    <svg class="h-5 w-5 text-amber-400" fill="currentColor" viewBox="0 0 20 20">
+                    <svg class="h-5 w-5" :class="clearExisting ? 'text-red-400' : 'text-amber-400'" fill="currentColor" viewBox="0 0 20 20">
                       <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
                     </svg>
                     <div class="ml-3">
-                      <h3 class="text-sm font-medium text-amber-800 dark:text-amber-300">Warning</h3>
-                      <div class="mt-1 text-sm text-amber-700 dark:text-amber-400">
+                      <h3 class="text-sm font-medium" :class="clearExisting ? 'text-red-800 dark:text-red-300' : 'text-amber-800 dark:text-amber-300'">{{ clearExisting ? 'Destructive Operation' : 'Warning' }}</h3>
+                      <div class="mt-1 text-sm" :class="clearExisting ? 'text-red-700 dark:text-red-400' : 'text-amber-700 dark:text-amber-400'">
                         <ul class="list-disc list-inside space-y-1">
-                          <li>This will restore users, trades, and other data from the backup</li>
-                          <li v-if="!overwriteUsers">Existing records with the same ID will be skipped</li>
-                          <li v-if="overwriteUsers" class="font-medium">Existing users will be UPDATED with backup data</li>
-                          <li>New records from the backup will be added</li>
+                          <li v-if="clearExisting" class="font-bold">ALL existing data will be permanently deleted before restoring</li>
+                          <li v-if="clearExisting">The server will be reset to the exact state in the backup file</li>
+                          <li v-if="!clearExisting">This will restore users, trades, and other data from the backup</li>
+                          <li v-if="!clearExisting && !overwriteUsers">Existing records with the same ID will be skipped</li>
+                          <li v-if="!clearExisting && overwriteUsers" class="font-medium">Existing users will be UPDATED with backup data</li>
+                          <li v-if="!clearExisting">New records from the backup will be added</li>
                           <li>This action may take several minutes for large backups</li>
                         </ul>
                       </div>
@@ -414,8 +436,10 @@
 
 <script setup>
 import { ref, onMounted } from 'vue';
-import { format } from 'date-fns';
 import api from '@/services/api';
+import { useUserTimezone } from '@/composables/useUserTimezone';
+
+const { formatDateTime: formatDateTimeTz } = useUserTimezone();
 
 const loading = ref(true);
 const creatingBackup = ref(false);
@@ -432,6 +456,7 @@ const deleting = ref({});
 const selectedRestoreFile = ref(null);
 const showRestoreModal = ref(false);
 const overwriteUsers = ref(false);
+const clearExisting = ref(false);
 
 const settings = ref({
   enabled: false,
@@ -638,6 +663,7 @@ async function executeRestore() {
     const formData = new FormData();
     formData.append('file', selectedRestoreFile.value);
     formData.append('overwriteUsers', overwriteUsers.value);
+    formData.append('clearExisting', clearExisting.value);
 
     const response = await api.post('/admin/backup/restore', formData, {
       headers: {
@@ -664,6 +690,7 @@ async function executeRestore() {
     showRestoreModal.value = false;
     selectedRestoreFile.value = null;
     overwriteUsers.value = false;
+    clearExisting.value = false;
 
     // Reload data to reflect any changes
     await loadData();
@@ -682,12 +709,13 @@ function cancelRestore() {
   showRestoreModal.value = false;
   selectedRestoreFile.value = null;
   overwriteUsers.value = false;
+  clearExisting.value = false;
 }
 
 // Format date
 function formatDate(dateString) {
   if (!dateString) return 'Never';
-  return format(new Date(dateString), 'MMM d, yyyy h:mm a');
+  return formatDateTimeTz(dateString);
 }
 
 // Format file size

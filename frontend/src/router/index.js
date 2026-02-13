@@ -1,9 +1,16 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useRegistrationMode } from '@/composables/useRegistrationMode'
+import { useAnalytics } from '@/composables/useAnalytics'
 
 const router = createRouter({
   history: createWebHistory(),
+  scrollBehavior(to, from, savedPosition) {
+    if (savedPosition) {
+      return savedPosition
+    }
+    return { top: 0 }
+  },
   routes: [
     {
       path: '/',
@@ -38,6 +45,12 @@ const router = createRouter({
       path: '/reset-password/:token',
       name: 'reset-password',
       component: () => import('@/views/auth/ResetPasswordView.vue'),
+      meta: { guest: true }
+    },
+    {
+      path: '/unsubscribe',
+      name: 'unsubscribe',
+      component: () => import('@/views/auth/UnsubscribeView.vue'),
       meta: { guest: true }
     },
     {
@@ -146,12 +159,6 @@ const router = createRouter({
       path: '/settings',
       name: 'settings',
       component: () => import('@/views/SettingsView.vue'),
-      meta: { requiresAuth: true }
-    },
-    {
-      path: '/pricing',
-      name: 'pricing',
-      component: () => import('@/views/PricingView.vue'),
       meta: { requiresAuth: true }
     },
     {
@@ -467,6 +474,24 @@ router.beforeEach(async (to, from, next) => {
     }
   } else {
     next()
+  }
+})
+
+// PostHog: identify user and track feature adoption on navigation (authenticated routes only)
+router.afterEach((to) => {
+  const authStore = useAuthStore()
+  const { identifyUser, trackPageView, trackFeatureUsage } = useAnalytics()
+
+  if (authStore.isAuthenticated && authStore.user?.id) {
+    identifyUser(authStore.user.id, {
+      email: authStore.user.email,
+      tier: authStore.user.tier || 'free'
+    })
+  }
+
+  if (to.name && to.meta.requiresAuth) {
+    trackPageView(to.name, { path: to.path })
+    trackFeatureUsage(to.name, { path: to.path })
   }
 })
 

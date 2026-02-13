@@ -113,6 +113,7 @@ router.get('/strategies', authenticate, analyticsController.getStrategyStats);
 router.get('/hours', authenticate, analyticsController.getHourOfDayStats);
 
 router.get('/calendar', authenticate, analyticsController.getCalendarData);
+router.get('/calendar/day', authenticate, analyticsController.getCalendarDayDetail);
 router.get('/export', authenticate, analyticsController.exportData);
 router.get('/charts', authenticate, analyticsController.getChartData);
 router.get('/drawdown', authenticate, analyticsController.getDrawdownAnalysis);

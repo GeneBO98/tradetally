@@ -1,4 +1,4 @@
-import { ref, onMounted, onUnmounted, reactive } from 'vue'
+import { ref, reactive } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useNotification } from './useNotification'
 
@@ -16,6 +16,7 @@ const isConnected = ref(false)
 const eventSource = ref(null)
 const notifications = ref([])
 const reconnectTimeout = ref(null)
+const reconnectDelay = ref(3000) // Start at 3s, exponential backoff up to 60s
 // Ephemeral queue for achievement celebrations and xp updates
 const celebrationQueue = ref([])
 
@@ -24,47 +25,39 @@ export function usePriceAlertNotifications() {
   const { showSuccess, showWarning } = useNotification()
   
   const connect = () => {
-    console.log('Connect called:', { 
-      hasToken: !!authStore.token, 
-      userTier: authStore.user?.tier,
-      user: authStore.user 
-    })
-    
+    // Skip verbose logging - only log important state changes
     if (!authStore.token || (authStore.user?.tier !== 'pro' && authStore.user?.billingEnabled !== false)) {
-      console.log('SSE notifications require Pro tier - not connecting')
       return
     }
-    
+
     // Clear any pending reconnect timeout
     if (reconnectTimeout.value) {
       clearTimeout(reconnectTimeout.value)
       reconnectTimeout.value = null
     }
-    
+
+    // Check if we already have an active connection
+    if (eventSource.value && eventSource.value.readyState === EventSource.OPEN) {
+      console.log('SSE already connected, skipping reconnect')
+      return
+    }
+
+    // Close any existing connection (might be in CONNECTING or CLOSED state)
     if (eventSource.value) {
       disconnect()
     }
 
-    // Construct SSE URL - handle both absolute and relative VITE_API_URL
-    let baseURL = import.meta.env.VITE_API_URL || '/api'
-
-    // If baseURL ends with /api, remove it (we'll add it back with the full path)
-    if (baseURL.endsWith('/api')) {
-      baseURL = baseURL.slice(0, -4)
-    }
-
-    // If baseURL is relative (starts with /), use current origin
-    if (baseURL.startsWith('/')) {
-      baseURL = window.location.origin + baseURL
-    }
-
-    const sseUrl = `${baseURL}/api/notifications/stream?token=${authStore.token}`
+    // Construct SSE URL - always use relative URL to go through Vite proxy in development
+    // This avoids CORS issues since EventSource doesn't support credentials for cross-origin
+    // In production (same origin), relative URLs also work correctly
+    const sseUrl = `/api/notifications/stream?token=${authStore.token}`
     console.log('Connecting to SSE:', sseUrl)
     eventSource.value = new EventSource(sseUrl)
     
     eventSource.value.onopen = () => {
       console.log('Connected to notification stream')
       isConnected.value = true
+      reconnectDelay.value = 3000 // Reset backoff on successful connection
     }
     
     eventSource.value.onmessage = (event) => {
@@ -77,23 +70,34 @@ export function usePriceAlertNotifications() {
     }
     
     eventSource.value.onerror = (error) => {
-      console.error('SSE connection error:', error)
-      
-      // Only mark as disconnected if we stay disconnected for more than 10 seconds
-      setTimeout(() => {
-        if (eventSource.value && eventSource.value.readyState === EventSource.CLOSED) {
-          isConnected.value = false
-        }
-      }, 10000)
-      
-      // Reconnect after 3 seconds, but only if we don't already have a reconnect pending
-      if (!reconnectTimeout.value) {
+      // EventSource fires error events for normal disconnects - only log if unexpected
+      // ReadyState: 0=CONNECTING, 1=OPEN, 2=CLOSED
+      const readyState = eventSource.value?.readyState
+
+      if (readyState === EventSource.CLOSED) {
+        // Connection was closed - this is normal for tab close, navigation, server restart
+        console.log('SSE connection closed')
+        isConnected.value = false
+      } else if (readyState === EventSource.CONNECTING) {
+        // EventSource is trying to reconnect automatically - this is normal
+        console.log('SSE reconnecting...')
+      } else {
+        // Unexpected error while connection was open
+        console.error('SSE connection error:', error)
+      }
+
+      // Only manually reconnect if the connection is CLOSED (not CONNECTING)
+      // EventSource automatically tries to reconnect when in CONNECTING state
+      if (readyState === EventSource.CLOSED && !reconnectTimeout.value) {
+        const delay = reconnectDelay.value
+        reconnectDelay.value = Math.min(reconnectDelay.value * 2, 60000) // Exponential backoff, cap at 60s
         reconnectTimeout.value = setTimeout(() => {
           reconnectTimeout.value = null
           if (authStore.token && (authStore.user?.tier === 'pro' || authStore.user?.billingEnabled === false)) {
+            console.log(`SSE manual reconnect after ${delay / 1000}s`)
             connect()
           }
-        }, 3000)
+        }, delay)
       }
     }
   }
@@ -104,11 +108,16 @@ export function usePriceAlertNotifications() {
       clearTimeout(reconnectTimeout.value)
       reconnectTimeout.value = null
     }
-    
+
     if (eventSource.value) {
+      // Remove event handlers before closing to prevent error events from triggering reconnect
+      eventSource.value.onopen = null
+      eventSource.value.onmessage = null
+      eventSource.value.onerror = null
       eventSource.value.close()
       eventSource.value = null
       isConnected.value = false
+      console.log('SSE disconnected intentionally')
     }
   }
   
@@ -242,17 +251,10 @@ export function usePriceAlertNotifications() {
     return Notification.permission === 'granted'
   }
   
-  // Note: Connection is now managed by App.vue globally
-  // onMounted(() => {
-  //   if (authStore.user?.tier === 'pro') {
-  //     connect()
-  //   }
-  // })
-  
-  onUnmounted(() => {
-    disconnect()
-  })
-  
+  // Note: Connection lifecycle is managed by App.vue globally
+  // Individual components should not disconnect on unmount as it would
+  // break the global SSE connection for other components
+
   return {
     isConnected,
     notifications,

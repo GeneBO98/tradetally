@@ -3,7 +3,7 @@
     <!-- Hero Section with SEO Keywords -->
     <div class="text-center mb-12">
       <h1 class="text-4xl font-bold text-gray-900 dark:text-white mb-4">
-        Best Trading Journal Software Comparison 2025
+        Best Free Trading Journal Comparison 2026
       </h1>
       <p class="text-xl text-gray-600 dark:text-gray-400 max-w-4xl mx-auto">
         Compare TradeTally with TraderVue, TraderSync, Edgewonk, and other leading trading journal platforms.
@@ -269,11 +269,11 @@
         </h2>
         <div class="space-y-3 text-gray-600 dark:text-gray-400">
           <p>
-            Looking for the <strong>best trading journal software</strong> in 2025? TradeTally offers everything serious traders need:
+            Looking for the <strong>best trading journal software</strong> in 2026? TradeTally offers everything serious traders need:
           </p>
           <ul class="list-disc list-inside space-y-2 ml-4">
             <li><strong>Unlimited free trading journal</strong> with no monthly trade limits</li>
-            <li><strong>Automated trade import</strong> from Lightspeed, Schwab, ThinkorSwim, IBKR, E*TRADE, TD Ameritrade</li>
+            <li><strong>Automated trade import</strong> from Schwab, ThinkorSwim, IBKR, Lightspeed, Webull, TradingView, TradeStation, and more</li>
             <li><strong>Custom CSV mapping</strong> for any other broker with CSV export</li>
             <li><strong>Advanced trading performance analytics</strong> including Sharpe ratio, Kelly criterion, and more</li>
             <li><strong>AI-powered insights</strong> and behavioral pattern detection</li>
@@ -342,8 +342,8 @@
             Does TradeTally work with my broker?
           </h3>
           <p class="text-gray-600 dark:text-gray-400">
-            Yes! TradeTally has verified support for Lightspeed, Charles Schwab/ThinkorSwim, Interactive Brokers (IBKR),
-            E*TRADE, and TD Ameritrade. For other brokers with CSV export, you can create a custom CSV column mapping
+            Yes! TradeTally supports auto-sync with Charles Schwab/ThinkorSwim and Interactive Brokers (IBKR),
+            plus CSV import from Lightspeed, Webull, TradingView, TradeStation, Tradovate, and Questrade. For other brokers with CSV export, you can create a custom CSV column mapping
             that saves to your profile for future imports.
           </p>
         </div>
@@ -354,8 +354,8 @@
           </h3>
           <p class="text-gray-600 dark:text-gray-400">
             TradeTally is completely free forever for core features including unlimited trade storage, basic analytics,
-            trade journal, and CSV import/export. Our Pro tier ($8/month) unlocks advanced features like AI insights,
-            behavioral analytics, watchlists, and advanced metrics - but the free tier has no time limit or hidden fees.
+            trade journal, and CSV import/export. Free tier imports are limited to 100 executions per batch, but you can import as many batches as you need. Our Pro tier ($8/month) unlocks advanced features like AI insights,
+            behavioral analytics, unlimited batch imports, and advanced metrics - no time limits or hidden fees.
           </p>
         </div>
 
@@ -366,7 +366,7 @@
           <p class="text-gray-600 dark:text-gray-400">
             TradeTally offers unlimited free trade storage (vs TraderVue's 100/month limit), lower Pro pricing ($8/mo vs $29-79/mo),
             open source code, self-hosting options, and modern features like AI insights and behavioral analytics.
-            TradeTally is built for the next generation of traders who want transparency and value.
+            Free tier imports 100 executions per batch with unlimited total trades. TradeTally is built for the next generation of traders who want transparency and value.
           </p>
         </div>
       </div>
@@ -562,7 +562,7 @@ const getPriceClass = (price) => {
 
 // SEO Meta Tags and GEO structured data
 onMounted(() => {
-  document.title = 'Best Trading Journal Software 2025 - TradeTally vs TraderVue vs TraderSync Comparison'
+  document.title = 'Best Free Trading Journal 2026 - TradeTally vs TraderVue vs TraderSync Comparison'
 
   let metaDescription = document.querySelector('meta[name="description"]')
   if (!metaDescription) {
@@ -570,7 +570,7 @@ onMounted(() => {
     metaDescription.setAttribute('name', 'description')
     document.head.appendChild(metaDescription)
   }
-  metaDescription.setAttribute('content', 'Compare the best trading journal software for day traders in 2025. TradeTally vs TraderVue vs TraderSync vs Edgewonk. Free unlimited trades, auto-sync with Schwab & IBKR, AI insights. Best trading journal for stocks, options, forex, crypto.')
+  metaDescription.setAttribute('content', 'Compare the best free trading journals for day traders in 2026. TradeTally ($0-$8/mo) vs TraderVue ($29-$79) vs TraderSync ($30-$80). Free unlimited trades, broker auto-sync, open-source self-hosting.')
 
   let metaKeywords = document.querySelector('meta[name="keywords"]')
   if (!metaKeywords) {
@@ -578,7 +578,7 @@ onMounted(() => {
     metaKeywords.setAttribute('name', 'keywords')
     document.head.appendChild(metaKeywords)
   }
-  metaKeywords.setAttribute('content', 'best trading journal 2025, trading journal comparison, TradeTally vs TraderVue, TradeTally vs TraderSync, TraderVue alternative, TraderSync alternative, best free trading journal, Schwab trading journal, IBKR trading journal, options trading journal, forex trading journal, day trading journal, self-hosted trading journal')
+  metaKeywords.setAttribute('content', 'best free trading journal 2026, trading journal comparison, TradeTally vs TraderVue, TradeTally vs TraderSync, TraderVue alternative, TraderSync alternative, free trading journal, open source trading journal, self-hosted trading journal, Schwab trading journal, IBKR trading journal, day trading journal')
 
   // Add ItemList structured data for comparison (GEO optimization)
   const comparisonScript = document.createElement('script')
@@ -586,7 +586,7 @@ onMounted(() => {
   comparisonScript.textContent = JSON.stringify({
     "@context": "https://schema.org",
     "@type": "ItemList",
-    "name": "Best Trading Journal Software Comparison 2025",
+    "name": "Best Trading Journal Software Comparison 2026",
     "description": "Comprehensive comparison of the best trading journal platforms for day traders",
     "itemListOrder": "https://schema.org/ItemListOrderDescending",
     "numberOfItems": 5,
@@ -660,10 +660,10 @@ onMounted(() => {
     "mainEntity": [
       {
         "@type": "Question",
-        "name": "What is the best trading journal software in 2025?",
+        "name": "What is the best trading journal software in 2026?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "TradeTally is rated as one of the best trading journals in 2025 due to its unlimited free trades, auto-sync with Schwab and Interactive Brokers, AI-powered insights, and unique self-hosting option. Unlike TraderVue (100 trades/month limit) or TraderSync (20 trades/month), TradeTally has no trade limits on the free tier."
+          "text": "TradeTally is rated as one of the best trading journals in 2026 due to its unlimited trade storage, auto-sync with Schwab and Interactive Brokers, AI-powered insights, and unique self-hosting option. Unlike TraderVue (100 trades/month limit) or TraderSync (20 trades/month), TradeTally offers unlimited storage with batch imports of 100 executions on the free tier."
         }
       },
       {
@@ -671,7 +671,7 @@ onMounted(() => {
         "name": "Is TradeTally better than TraderVue?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "TradeTally offers several advantages over TraderVue: unlimited free trades (vs 100/month), lower Pro pricing ($8/mo vs $29-79/mo), auto-sync with Schwab and IBKR, AI insights, behavioral analytics, open-source code, and self-hosting. TraderVue has more pre-built broker integrations, but TradeTally's custom CSV mapper works with any broker."
+          "text": "TradeTally offers several advantages over TraderVue: unlimited trade storage (vs 100/month), lower Pro pricing ($8/mo vs $29-79/mo), auto-sync with Schwab and IBKR, AI insights, behavioral analytics, open-source code, and self-hosting. Free tier imports 100 executions per batch with no limit on total trades. TraderVue has more pre-built broker integrations, but TradeTally's custom CSV mapper works with any broker."
         }
       },
       {
@@ -679,7 +679,7 @@ onMounted(() => {
         "name": "What is the cheapest trading journal with good features?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "TradeTally offers the best value with a completely free tier that includes unlimited trades, and a Pro tier at only $8/month. This compares favorably to TraderVue ($29-79/month), TraderSync ($49-99/month), and TradesViz ($29-69/month). Edgewonk offers a one-time purchase option at $39-79."
+          "text": "TradeTally offers the best value with a completely free tier that includes unlimited trade storage (import 100 per batch), and a Pro tier at only $8/month for unlimited batch imports. This compares favorably to TraderVue ($29-79/month), TraderSync ($49-99/month), and TradesViz ($29-69/month). Edgewonk offers a one-time purchase option at $39-79."
         }
       }
     ]

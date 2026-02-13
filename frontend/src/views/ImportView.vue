@@ -7,6 +7,15 @@
       </p>
     </div>
 
+    <!-- Guided onboarding: contextual card for this page (first-time only) -->
+    <OnboardingCard
+      v-if="authStore.showOnboardingModal"
+      title="Import your trades"
+      description="Upload a CSV file or connect a broker to sync your trades. Choose your broker format below or use Auto-Detect."
+      cta-label="Next: View Dashboard"
+      cta-route="dashboard"
+    />
+
     <div class="space-y-8">
       <!-- Import Form -->
       <div class="card">
@@ -28,6 +37,8 @@
                 <option value="tradingview">TradingView</option>
                 <option value="tradovate">Tradovate</option>
                 <option value="questrade">Questrade</option>
+                <option value="tradestation">TradeStation</option>
+                <option value="tradingview_performance">TradingView Performance</option>
                 <optgroup v-if="customMappings.length > 0" label="Custom Importers">
                   <option
                     v-for="mapping in customMappings"
@@ -329,6 +340,36 @@
                 <strong>Required columns:</strong> Exec Time, Side, Qty, Symbol, Price. Filled orders are processed as real trades and grouped into round-trip positions with P&L calculations.
               </p>
             </div>
+
+            <div>
+              <h4 class="font-medium text-gray-900 dark:text-white">TradeStation</h4>
+              <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
+                Export transaction history from TradeStation. Supports both equity and options trades with detailed fee breakdown.
+              </p>
+              <div class="bg-gray-50 dark:bg-gray-800 rounded-md p-3 text-xs font-mono overflow-x-auto">
+                Account,T/D,S/D,Currency,Type,Side,Symbol,Qty,Price,Exec Time,Comm,SEC,TAF,NSCC,Nasdaq<br>
+                ABC123,01/15/25,01/17/25,USD,E,B,AAPL,100,150.50,09:30:15,4.95,0.01,0.01,0.01,0.00<br>
+                ABC123,01/15/25,01/17/25,USD,E,S,AAPL,100,152.25,14:20:30,4.95,0.01,0.01,0.01,0.00
+              </div>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                <strong>Required columns:</strong> T/D, S/D, Side, Symbol, Qty, Price, Exec Time. All fee columns are automatically summed.
+              </p>
+            </div>
+
+            <div>
+              <h4 class="font-medium text-gray-900 dark:text-white">TradingView Performance</h4>
+              <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
+                Export performance data from TradingView. Contains completed trades with calculated P&L.
+              </p>
+              <div class="bg-gray-50 dark:bg-gray-800 rounded-md p-3 text-xs font-mono overflow-x-auto">
+                symbol,buyFillId,sellFillId,qty,buyPrice,sellPrice,pnl,boughtTimestamp,soldTimestamp,duration<br>
+                AAPL,fill_001,fill_002,100,150.50,152.25,175.00,1736950800000,1736961600000,3h<br>
+                TSLA,fill_003,fill_004,50,225.75,220.50,-262.50,1736954400000,1736965200000,2h 40m
+              </div>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                <strong>Required columns:</strong> symbol, qty, buyPrice, sellPrice, boughtTimestamp, soldTimestamp. Timestamps are Unix milliseconds.
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -338,27 +379,58 @@
       <div v-if="importHistory.length > 0" class="card">
         <div class="card-body">
           <div class="flex items-center justify-between mb-4">
-            <h3 class="heading-card">
-              Import History
-              <span v-if="pagination.total > 0" class="text-sm font-normal text-gray-500 dark:text-gray-400">
-                ({{ importHistory.length }} of {{ pagination.total }})
-              </span>
-            </h3>
-            <button @click="fetchLogs" class="btn-secondary text-sm">
-              View Logs
-            </button>
+            <div class="flex items-center space-x-3">
+              <h3 class="heading-card">
+                Import History
+                <span v-if="pagination.total > 0" class="text-sm font-normal text-gray-500 dark:text-gray-400">
+                  ({{ importHistory.length }} of {{ pagination.total }})
+                </span>
+              </h3>
+              <button
+                v-if="selectedImportIds.size > 0"
+                @click="bulkDeleteImports"
+                class="px-3 py-1 bg-red-600 text-white text-sm rounded-md hover:bg-red-700 disabled:opacity-50"
+                :disabled="bulkDeleting"
+              >
+                Delete Selected ({{ selectedImportIds.size }})
+              </button>
+            </div>
+            <div class="flex items-center space-x-3">
+              <label class="flex items-center space-x-2 text-sm text-gray-500 dark:text-gray-400 cursor-pointer select-none">
+                <input
+                  ref="selectAllCheckbox"
+                  type="checkbox"
+                  :checked="importHistory.length > 0 && selectedImportIds.size === importHistory.length"
+                  @change="toggleSelectAll"
+                  class="rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500"
+                />
+                <span>Select All</span>
+              </label>
+              <button @click="fetchLogs" class="btn-secondary text-sm">
+                View Logs
+              </button>
+            </div>
           </div>
           <div class="space-y-3">
             <div
               v-for="importLog in importHistory"
               :key="importLog.id"
-              class="flex items-center justify-between p-3 border border-gray-200 dark:border-gray-700 rounded-lg"
+              class="flex items-center justify-between p-3 border rounded-lg"
+              :class="selectedImportIds.has(importLog.id) ? 'border-primary-300 dark:border-primary-600 bg-primary-50 dark:bg-primary-900/20' : 'border-gray-200 dark:border-gray-700'"
             >
-              <div>
-                <p class="font-medium text-gray-900 dark:text-white">{{ importLog.file_name }}</p>
-                <p class="text-sm text-gray-500 dark:text-gray-400">
-                  {{ formatDate(importLog.created_at) }} • {{ importLog.broker }}
-                </p>
+              <div class="flex items-center space-x-3">
+                <input
+                  type="checkbox"
+                  :checked="selectedImportIds.has(importLog.id)"
+                  @change="toggleImportSelection(importLog.id)"
+                  class="rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500"
+                />
+                <div>
+                  <p class="font-medium text-gray-900 dark:text-white">{{ importLog.file_name }}</p>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ formatDate(importLog.created_at) }} • {{ importLog.broker }}
+                  </p>
+                </div>
               </div>
               <div class="flex items-center space-x-3">
                 <div class="text-right">
@@ -384,7 +456,7 @@
               </div>
             </div>
           </div>
-          
+
           <!-- Load More Button -->
           <div v-if="pagination.hasMore" class="mt-4 text-center">
             <button
@@ -697,13 +769,16 @@
             <ExclamationTriangleIcon class="h-6 w-6 text-red-600 dark:text-red-400" />
           </div>
           <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white mt-4">
-            Delete Import
+            {{ bulkDeleteIds ? `Delete ${bulkDeleteIds.length} Imports` : 'Delete Import' }}
           </h3>
           <div class="mt-2 px-7 py-3">
             <p class="text-sm text-gray-500 dark:text-gray-400">
-              Are you sure you want to delete this import and all associated trades?
+              {{ bulkDeleteIds
+                ? `Are you sure you want to delete ${bulkDeleteIds.length} imports and all associated trades?`
+                : 'Are you sure you want to delete this import and all associated trades?' }}
             </p>
-            <div v-if="deleteImportData" class="mt-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-md text-left">
+            <!-- Single delete details -->
+            <div v-if="deleteImportData && !bulkDeleteIds" class="mt-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-md text-left">
               <p class="text-sm font-medium text-gray-900 dark:text-white">{{ deleteImportData.file_name }}</p>
               <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
                 {{ formatDate(deleteImportData.created_at) }}
@@ -712,24 +787,36 @@
                 {{ deleteImportData.trades_imported }} trades will be deleted
               </p>
             </div>
+            <!-- Bulk delete details -->
+            <div v-if="bulkDeleteIds" class="mt-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-md text-left max-h-48 overflow-y-auto">
+              <div v-for="imp in bulkDeleteDetails" :key="imp.id" class="text-sm py-1 border-b border-gray-200 dark:border-gray-600 last:border-0">
+                <p class="font-medium text-gray-900 dark:text-white">{{ imp.file_name }}</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400">
+                  {{ formatDate(imp.created_at) }} - {{ imp.trades_imported }} trades
+                </p>
+              </div>
+              <p class="text-sm font-medium text-gray-900 dark:text-white mt-2 pt-2 border-t border-gray-300 dark:border-gray-500">
+                Total: {{ bulkDeleteTotalTrades }} trades will be deleted
+              </p>
+            </div>
             <p class="text-xs text-red-600 dark:text-red-400 mt-2 font-medium">
               This action cannot be undone.
             </p>
           </div>
           <div class="flex gap-3 justify-center mt-4">
             <button
-              @click="showDeleteModal = false"
+              @click="cancelDelete"
               class="px-4 py-2 bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-300 text-base font-medium rounded-md shadow-sm hover:bg-gray-400 dark:hover:bg-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-300"
-              :disabled="deleting"
+              :disabled="deleting || bulkDeleting"
             >
               Cancel
             </button>
             <button
               @click="confirmDelete"
               class="px-4 py-2 bg-red-600 text-white text-base font-medium rounded-md shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50"
-              :disabled="deleting"
+              :disabled="deleting || bulkDeleting"
             >
-              <span v-if="deleting">Deleting...</span>
+              <span v-if="deleting || bulkDeleting">Deleting...</span>
               <span v-else>Delete</span>
             </button>
           </div>
@@ -772,21 +859,35 @@
             </div>
           </div>
         </div>
-        <div class="mt-5 sm:mt-6 sm:grid sm:grid-cols-2 sm:gap-3 sm:grid-flow-row-dense">
-          <router-link
-            to="/pricing"
-            class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-primary-600 text-base font-medium text-white hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:col-start-2 sm:text-sm"
-            @click="showCurrencyProModal = false"
-          >
-            Upgrade to Pro
-          </router-link>
+        <div class="mt-5 sm:mt-6 space-y-3">
+          <!-- Trial Button - show if user hasn't used trial yet -->
           <button
+            v-if="!hasUsedTrial && (!trialInfo || !trialInfo.active)"
             type="button"
-            class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 dark:border-gray-600 shadow-sm px-4 py-2 bg-white dark:bg-gray-700 text-base font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:mt-0 sm:col-start-1 sm:text-sm"
-            @click="showCurrencyProModal = false"
+            :disabled="startingTrial"
+            class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-green-600 text-base font-medium text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            @click="startTrial"
           >
-            Cancel
+            <span v-if="startingTrial" class="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></span>
+            Start 14-Day Free Trial
           </button>
+
+          <div class="sm:grid sm:grid-cols-2 sm:gap-3">
+            <router-link
+              to="/pricing"
+              class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-primary-600 text-base font-medium text-white hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:text-sm"
+              @click="showCurrencyProModal = false"
+            >
+              View Pricing
+            </router-link>
+            <button
+              type="button"
+              class="mt-3 sm:mt-0 w-full inline-flex justify-center rounded-md border border-gray-300 dark:border-gray-600 shadow-sm px-4 py-2 bg-white dark:bg-gray-700 text-base font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:text-sm"
+              @click="showCurrencyProModal = false"
+            >
+              Cancel
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -841,26 +942,55 @@
         </div>
       </div>
     </div>
+
+    <!-- Broker Mismatch Modal -->
+    <BrokerMismatchModal
+      :is-open="showBrokerMismatchModal"
+      :selected-broker="brokerMismatchData.selectedBroker"
+      :detected-broker="brokerMismatchData.detectedBroker"
+      :detected-headers="brokerMismatchData.detectedHeaders"
+      :row-count="brokerMismatchData.rowCount"
+      :file-name="brokerMismatchData.fileName"
+      @close="handleBrokerMismatchClose"
+      @use-detected="handleUseBrokerDetected"
+      @keep-selected="handleKeepBrokerSelected"
+    />
+
+    <!-- Import Results Modal -->
+    <ImportResultsModal
+      :is-open="showImportResultsModal"
+      :trades-imported="importResultsData.tradesImported"
+      :duplicates-skipped="importResultsData.duplicatesSkipped"
+      :diagnostics="importResultsData.diagnostics"
+      :failed-trades="importResultsData.failedTrades"
+      @close="handleImportResultsClose"
+    />
   </Teleport>
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, nextTick, watch } from 'vue'
 import { useTradesStore } from '@/stores/trades'
 import { useAuthStore } from '@/stores/auth'
 import { useNotification } from '@/composables/useNotification'
 import { format } from 'date-fns'
 import { formatTradeDate } from '@/utils/date'
+import { useUserTimezone } from '@/composables/useUserTimezone'
 import { ArrowUpTrayIcon, XMarkIcon, ExclamationTriangleIcon, Cog6ToothIcon, MagnifyingGlassIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
+
+const { formatDateTime: formatDateTimeTz } = useUserTimezone()
 import UnmappedCusipsModal from '@/components/cusip/UnmappedCusipsModal.vue'
 import AllCusipMappingsModal from '@/components/cusip/AllCusipMappingsModal.vue'
 import CSVColumnMappingModal from '@/components/import/CSVColumnMappingModal.vue'
+import BrokerMismatchModal from '@/components/import/BrokerMismatchModal.vue'
+import ImportResultsModal from '@/components/import/ImportResultsModal.vue'
+import OnboardingCard from '@/components/onboarding/OnboardingCard.vue'
 import { usePriceAlertNotifications } from '@/composables/usePriceAlertNotifications'
 
 const tradesStore = useTradesStore()
 const authStore = useAuthStore()
-const { showSuccess, showError } = useNotification()
+const { showSuccess, showError, showImportantWarning, showSuccessModal, clearModalAlert } = useNotification()
 const { celebrationQueue } = usePriceAlertNotifications()
 
 const loading = ref(false)
@@ -869,12 +999,18 @@ const selectedBroker = ref('auto')
 const selectedFile = ref(null)
 const showCurrencyProModal = ref(false)
 
+// Trial info for import limit modal
+const trialInfo = ref(null)
+const hasUsedTrial = ref(false)
+const startingTrial = ref(false)
+
 // Account selection for imports
 const accounts = ref([])
 const requiresAccountSelection = ref(false)
 const selectedAccountId = ref(null)
 const currencyProMessage = ref('')
 const fileInput = ref(null)
+const selectAllCheckbox = ref(null)
 const dragOver = ref(false)
 const importHistory = ref([])
 const pagination = ref({
@@ -946,6 +1082,32 @@ const showDeleteMappingModal = ref(false)
 const deleteImportId = ref(null)
 const deleteImportData = ref(null)
 
+// Multi-select for bulk delete
+const selectedImportIds = ref(new Set())
+const bulkDeleting = ref(false)
+const bulkDeleteIds = ref(null)
+const bulkDeleteDetails = ref([])
+const bulkDeleteTotalTrades = ref(0)
+
+// Broker mismatch modal
+const showBrokerMismatchModal = ref(false)
+const brokerMismatchData = ref({
+  selectedBroker: '',
+  detectedBroker: '',
+  detectedHeaders: [],
+  rowCount: 0,
+  fileName: ''
+})
+
+// Import results modal
+const showImportResultsModal = ref(false)
+const importResultsData = ref({
+  tradesImported: 0,
+  duplicatesSkipped: 0,
+  diagnostics: null,
+  failedTrades: []
+})
+
 function handleFileSelect(event) {
   const file = event.target.files[0]
   console.log('File selected:', {
@@ -975,8 +1137,8 @@ function formatFileSize(bytes) {
 }
 
 function formatDate(date) {
-  // Import history dates are stored without timezone context; use safe trade formatter
-  return formatTradeDate(date, 'MMM dd, yyyy HH:mm')
+  if (!date) return ''
+  return formatDateTimeTz(date)
 }
 
 function formatBrokerName(broker) {
@@ -990,6 +1152,8 @@ function formatBrokerName(broker) {
     tradingview: 'TradingView',
     tradovate: 'Tradovate',
     questrade: 'Questrade',
+    tradestation: 'TradeStation',
+    tradingview_performance: 'TradingView Performance',
     other: 'Other'
   }
   return brokerLabels[broker] || broker
@@ -1206,6 +1370,27 @@ function detectKnownFormat(headers) {
     return true
   }
 
+  // Questrade detection
+  if (headersStr.includes('fill qty') && headersStr.includes('fill price') &&
+      headersStr.includes('exec time') && headersStr.includes('option') &&
+      headersStr.includes('strategy')) {
+    return true
+  }
+
+  // TradeStation detection
+  if (headersStr.includes('account') && headersStr.includes('t/d') &&
+      headersStr.includes('s/d') && headersStr.includes('exec time') &&
+      (headersStr.includes('gross proceeds') || headersStr.includes('net proceeds'))) {
+    return true
+  }
+
+  // TradingView Performance detection
+  if (headersStr.includes('buyfillid') && headersStr.includes('sellfillid') &&
+      headersStr.includes('boughttimestamp') && headersStr.includes('soldtimestamp') &&
+      headersStr.includes('pnl')) {
+    return true
+  }
+
   // Generic CSV detection - check if it has basic required fields
   const hasSymbol = lowerHeaders.some(h => h.includes('symbol') || h.includes('ticker') || h.includes('stock'))
   const hasSide = lowerHeaders.some(h => h.includes('side') || h.includes('direction') || h.includes('type') || h.includes('action'))
@@ -1259,7 +1444,7 @@ async function handleImport() {
       console.log(`[IMPORT] Free tier user attempting to import ${tradeCount} trades (limit: ${FREE_TIER_IMPORT_LIMIT})`)
       loading.value = false
       showCurrencyProModal.value = true
-      currencyProMessage.value = `Free tier is limited to ${FREE_TIER_IMPORT_LIMIT} trades per import. You are attempting to import ${tradeCount} trades. Please upgrade to Pro for unlimited batch imports, or split your import into smaller batches.`
+      currencyProMessage.value = `Free tier imports are limited to ${FREE_TIER_IMPORT_LIMIT} executions per batch. Your file contains ${tradeCount} executions. You can still import all your trades - just split the file into smaller batches of ${FREE_TIER_IMPORT_LIMIT} or fewer. Upgrade to Pro for unlimited batch sizes.`
       return
     }
 
@@ -1273,6 +1458,40 @@ async function handleImport() {
       mappingId = selectedBroker.value.substring(7) // Remove "custom:" prefix
       broker = 'generic' // Use generic parser with custom mapping
       console.log(`[IMPORT] Using custom mapping ID: ${mappingId}`)
+    }
+
+    // Pre-validate: Check for broker format mismatch (only if user selected a specific broker)
+    if (broker !== 'auto' && broker !== 'generic' && !mappingId) {
+      console.log(`[IMPORT] Validating broker format...`)
+      try {
+        const validationFormData = new FormData()
+        validationFormData.append('file', selectedFile.value)
+        validationFormData.append('broker', broker)
+
+        const validationResult = await api.post('/trades/import/validate', validationFormData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        })
+
+        const validation = validationResult.data
+        console.log(`[IMPORT] Validation result:`, validation)
+
+        if (validation.mismatch) {
+          console.log(`[IMPORT] Broker mismatch detected: selected=${validation.selectedBroker}, detected=${validation.detectedBroker}`)
+          loading.value = false
+          brokerMismatchData.value = {
+            selectedBroker: validation.selectedBroker,
+            detectedBroker: validation.detectedBroker,
+            detectedHeaders: validation.detectedHeaders,
+            rowCount: validation.rowCount,
+            fileName: validation.fileName
+          }
+          showBrokerMismatchModal.value = true
+          return
+        }
+      } catch (validationErr) {
+        console.warn('[IMPORT] Validation check failed, proceeding with import:', validationErr.message)
+        // Continue with import even if validation fails
+      }
     }
 
     // Pre-check: Try to detect format if using auto-detect or generic (and no custom mapping)
@@ -1373,6 +1592,93 @@ async function handleImport() {
   }
 }
 
+// Broker mismatch modal handlers
+function handleBrokerMismatchClose() {
+  showBrokerMismatchModal.value = false
+  brokerMismatchData.value = {
+    selectedBroker: '',
+    detectedBroker: '',
+    detectedHeaders: [],
+    rowCount: 0,
+    fileName: ''
+  }
+}
+
+async function handleUseBrokerDetected(detectedBroker) {
+  console.log(`[IMPORT] User chose to use detected broker: ${detectedBroker}`)
+  showBrokerMismatchModal.value = false
+
+  // Update selected broker to the detected one and re-run import
+  selectedBroker.value = detectedBroker
+
+  // Re-run import with the detected broker
+  await handleImport()
+}
+
+async function handleKeepBrokerSelected(selectedBrokerValue) {
+  console.log(`[IMPORT] User chose to keep selected broker: ${selectedBrokerValue}`)
+  showBrokerMismatchModal.value = false
+
+  // Continue with original import - re-run handleImport but skip validation this time
+  // by temporarily setting a flag
+  loading.value = true
+  error.value = null
+
+  try {
+    // Extract mapping ID if custom mapping is selected
+    let mappingId = null
+    let broker = selectedBroker.value
+
+    if (selectedBroker.value.startsWith('custom:')) {
+      mappingId = selectedBroker.value.substring(7)
+      broker = 'generic'
+    }
+
+    // Get account to send
+    let accountIdToSend = null
+    if (requiresAccountSelection.value && selectedAccountId.value !== null && selectedAccountId.value !== 'none') {
+      accountIdToSend = selectedAccountId.value
+    }
+
+    const result = await tradesStore.importTrades(selectedFile.value, broker, mappingId, accountIdToSend)
+    console.log('Import result:', result)
+    showSuccess('Import Started', `Import has been queued. Import ID: ${result.importId}`)
+
+    // Save broker preference to localStorage
+    localStorage.setItem('lastSelectedBroker', selectedBroker.value)
+
+    // Reset form (but keep broker selection)
+    selectedFile.value = null
+    if (fileInput.value) {
+      fileInput.value.value = ''
+    }
+
+    // Refresh import history
+    fetchImportHistory()
+
+    // Poll import status for achievements and results
+    pollImportStatus(result.importId)
+  } catch (err) {
+    console.error('Import error:', err)
+    const errorMessage = err.response?.data?.error || err.message || 'Import failed'
+    error.value = errorMessage
+    showError('Import Failed', error.value)
+  } finally {
+    loading.value = false
+  }
+}
+
+// Import results modal handler
+function handleImportResultsClose() {
+  showImportResultsModal.value = false
+  importResultsData.value = {
+    tradesImported: 0,
+    duplicatesSkipped: 0,
+    diagnostics: null,
+    failedTrades: []
+  }
+}
+
 async function fetchImportHistory(page = 1) {
   try {
     const response = await api.get('/trades/import/history', {
@@ -1417,14 +1723,42 @@ function deleteImport(importId) {
 }
 
 async function confirmDelete() {
+  // Bulk delete path
+  if (bulkDeleteIds.value) {
+    bulkDeleting.value = true
+    try {
+      const response = await api.delete('/trades/import/bulk', {
+        data: { importIds: bulkDeleteIds.value }
+      })
+      showSuccess('Imports Deleted', `${response.data.deletedImports} imports and ${response.data.deletedTrades} trades deleted`)
+      selectedImportIds.value = new Set()
+      await fetchImportHistory()
+      await tradesStore.fetchTrades()
+      await tradesStore.fetchAnalytics()
+      showDeleteModal.value = false
+    } catch (error) {
+      showError('Delete Failed', error.response?.data?.error || 'Failed to delete imports')
+    } finally {
+      bulkDeleting.value = false
+      bulkDeleteIds.value = null
+      bulkDeleteDetails.value = []
+      bulkDeleteTotalTrades.value = 0
+    }
+    return
+  }
+
+  // Single delete path
   if (!deleteImportId.value) return
 
   deleting.value = true
-  
+
   try {
     await api.delete(`/trades/import/${deleteImportId.value}`)
     showSuccess('Import Deleted', 'Import and associated trades have been deleted')
+    selectedImportIds.value.delete(deleteImportId.value)
     await fetchImportHistory()
+    await tradesStore.fetchTrades()
+    await tradesStore.fetchAnalytics()
     showDeleteModal.value = false
   } catch (error) {
     showError('Delete Failed', error.response?.data?.error || 'Failed to delete import')
@@ -1433,6 +1767,46 @@ async function confirmDelete() {
     deleteImportId.value = null
     deleteImportData.value = null
   }
+}
+
+function cancelDelete() {
+  showDeleteModal.value = false
+  deleteImportId.value = null
+  deleteImportData.value = null
+  bulkDeleteIds.value = null
+  bulkDeleteDetails.value = []
+  bulkDeleteTotalTrades.value = 0
+}
+
+function toggleImportSelection(importId) {
+  const newSet = new Set(selectedImportIds.value)
+  if (newSet.has(importId)) {
+    newSet.delete(importId)
+  } else {
+    newSet.add(importId)
+  }
+  selectedImportIds.value = newSet
+}
+
+function toggleSelectAll() {
+  if (selectedImportIds.value.size === importHistory.value.length) {
+    selectedImportIds.value = new Set()
+  } else {
+    selectedImportIds.value = new Set(importHistory.value.map(imp => imp.id))
+  }
+}
+
+function bulkDeleteImports() {
+  const ids = Array.from(selectedImportIds.value)
+  const details = importHistory.value.filter(imp => selectedImportIds.value.has(imp.id))
+  const totalTrades = details.reduce((sum, imp) => sum + (imp.trades_imported || 0), 0)
+
+  bulkDeleteIds.value = ids
+  bulkDeleteDetails.value = details
+  bulkDeleteTotalTrades.value = totalTrades
+  deleteImportId.value = null
+  deleteImportData.value = null
+  showDeleteModal.value = true
 }
 
 async function fetchLogs(showAll = null, page = 1) {
@@ -1794,6 +2168,42 @@ function pollImportStatus(importId) {
       const status = importLog?.status
 
       if (status === 'completed' || status === 'failed') {
+        // Show import results modal with diagnostics
+        const errorDetails = importLog?.error_details || {}
+        const diagnostics = errorDetails.diagnostics || null
+        const tradesImported = importLog?.trades_imported || 0
+        const duplicatesSkipped = errorDetails.duplicates || 0
+        const failedTrades = errorDetails.failedTrades || []
+
+        // Show results modal if we have diagnostics or notable stats
+        if (diagnostics || tradesImported > 0 || duplicatesSkipped > 0 || failedTrades.length > 0) {
+          importResultsData.value = {
+            tradesImported,
+            duplicatesSkipped,
+            diagnostics,
+            failedTrades
+          }
+          showImportResultsModal.value = true
+        }
+
+        // Show documentation popup when 0 trades imported with a known broker
+        const knownBrokers = [
+          'lightspeed', 'schwab', 'thinkorswim', 'ibkr', 'webull', 'etrade',
+          'papermoney', 'tradingview', 'tradovate', 'questrade', 'tradestation',
+          'tradingview_performance'
+        ]
+        if (tradesImported === 0 && knownBrokers.includes(selectedBroker.value)) {
+          showImportantWarning(
+            'No Trades Imported',
+            `The import completed but no trades were found. This usually means the file format doesn't match what the ${selectedBroker.value} parser expects. Please check the documentation for the correct export format.`,
+            {
+              confirmText: 'OK',
+              linkUrl: 'https://docs.tradetally.io/usage/importing-trades/#supported-brokers',
+              linkText: 'View Documentation'
+            }
+          )
+        }
+
         if (status === 'completed') {
           // Fallback achievement check + local celebration for non-SSE users
           try {
@@ -1991,6 +2401,85 @@ async function handleMappingSaved(mapping) {
   }
 }
 
+// Fetch trial info for the import limit modal
+async function fetchTrialInfo() {
+  try {
+    const response = await api.get('/billing/subscription')
+    trialInfo.value = response.data.data?.trial || null
+    hasUsedTrial.value = response.data.data?.has_used_trial || false
+  } catch (err) {
+    // Billing might not be available (self-hosted), that's ok
+    console.log('[IMPORT] Could not fetch trial info:', err.message)
+  }
+}
+
+// Start 14-day trial from the import limit modal
+async function startTrial() {
+  try {
+    startingTrial.value = true
+    console.log('[IMPORT] Starting 14-day trial...')
+    console.log('[IMPORT] Current user tier before trial:', authStore.user?.tier)
+
+    const response = await api.post('/billing/trial')
+    console.log('[IMPORT] Trial API response:', response.data)
+
+    if (response.data.success) {
+      console.log('[IMPORT] Trial started successfully, refreshing user data...')
+
+      // Refresh user data to get new tier - await the full refresh
+      const updatedUser = await authStore.fetchUser()
+      console.log('[IMPORT] Updated user from fetchUser:', updatedUser)
+      console.log('[IMPORT] authStore.user after fetchUser:', authStore.user)
+      console.log('[IMPORT] User tier after fetchUser:', authStore.user?.tier)
+
+      // Double-check by fetching subscription info directly
+      try {
+        const subResponse = await api.get('/billing/subscription')
+        console.log('[IMPORT] Subscription check response:', subResponse.data)
+        const trialActive = subResponse.data.data?.trial?.active
+        console.log('[IMPORT] Trial active from subscription check:', trialActive)
+      } catch (subErr) {
+        console.log('[IMPORT] Could not verify subscription:', subErr.message)
+      }
+
+      // Also refresh trial info for the modal
+      await fetchTrialInfo()
+
+      showCurrencyProModal.value = false
+
+      // Show success modal and continue import when user clicks OK
+      const fileToImport = selectedFile.value
+      showSuccessModal('Trial Activated', '14-day Pro trial started! You now have unlimited batch imports.', {
+        confirmText: 'Continue Import',
+        onConfirm: () => {
+          clearModalAlert()
+          if (fileToImport) {
+            console.log('[IMPORT] Re-triggering import with file:', fileToImport.name)
+            nextTick().then(() => handleImport())
+          }
+        }
+      })
+    } else {
+      console.error('[IMPORT] Trial API returned success: false')
+      showError('Trial Failed', 'Failed to start trial. Please try again or contact support.')
+    }
+  } catch (err) {
+    console.error('[IMPORT] Error starting trial:', err)
+    const errorMessage = err.response?.data?.message || err.response?.data?.error || 'Failed to start trial. Please try again.'
+    showError('Trial Failed', errorMessage)
+  } finally {
+    startingTrial.value = false
+  }
+}
+
+// Keep select-all checkbox indeterminate state in sync
+watch(selectedImportIds, (ids) => {
+  if (selectAllCheckbox.value) {
+    const isIndeterminate = ids.size > 0 && ids.size < importHistory.value.length
+    selectAllCheckbox.value.indeterminate = isIndeterminate
+  }
+}, { deep: true })
+
 onMounted(() => {
   // Load saved broker preference
   const savedBroker = localStorage.getItem('lastSelectedBroker')
@@ -2002,6 +2491,7 @@ onMounted(() => {
   fetchUnmappedCusipsCount()
   fetchCustomMappings()
   fetchImportRequirements()
+  fetchTrialInfo()
   setInterval(fetchImportHistory, 5000)
 })
 </script>

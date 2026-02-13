@@ -424,6 +424,52 @@ router.get('/accounts', authenticate, tradeController.getAccountList);
  */
 router.get('/import/requirements', authenticate, tradeController.checkImportRequirements);
 
+/**
+ * @swagger
+ * /api/trades/import/validate:
+ *   post:
+ *     summary: Validate import file before importing
+ *     description: Pre-validates a CSV file to detect broker format mismatch and provide file analysis
+ *     tags: [Trades]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *                 description: CSV file to validate
+ *               broker:
+ *                 type: string
+ *                 description: User-selected broker format
+ *     responses:
+ *       200:
+ *         description: Validation result
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 detectedBroker:
+ *                   type: string
+ *                 selectedBroker:
+ *                   type: string
+ *                 mismatch:
+ *                   type: boolean
+ *                 detectedHeaders:
+ *                   type: array
+ *                   items:
+ *                     type: string
+ *                 rowCount:
+ *                   type: integer
+ */
+router.post('/import/validate', authenticate, upload.single('file'), tradeController.validateImportFile);
+
 router.post('/import', authenticate, upload.single('file'), tradeController.importTrades);
 
 /**
@@ -478,6 +524,7 @@ router.get('/import/history', authenticate, tradeController.getImportHistory);
  *       200:
  *         description: Import deleted successfully
  */
+router.delete('/import/bulk', authenticate, tradeController.bulkDeleteImports);
 router.delete('/import/:importId', authenticate, tradeController.deleteImport);
 router.get('/import/logs', authenticate, tradeController.getImportLogs);
 router.get('/import/logs/:filename', authenticate, tradeController.getLogFile);
@@ -691,6 +738,7 @@ router.get('/:id/chart-data', authenticate, tradeController.getTradeChartData);
 router.get('/:id', optionalAuth, tradeController.getTrade);
 router.put('/:id', authenticate, validate(schemas.updateTrade), tradeController.updateTrade);
 router.delete('/:id', authenticate, tradeController.deleteTrade);
+router.post('/:id/split', authenticate, tradeController.splitTrade);
 router.post('/:id/attachments', authenticate, upload.single('file'), tradeController.uploadAttachment);
 router.delete('/:id/attachments/:attachmentId', authenticate, tradeController.deleteAttachment);
 // Image-specific routes

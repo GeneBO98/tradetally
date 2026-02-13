@@ -21,7 +21,8 @@
       </div>
     </div>
 
-    <div v-if="loading" class="flex justify-center py-12">
+    <!-- Full page spinner only on initial load -->
+    <div v-if="initialLoading" class="flex justify-center py-12">
       <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
     </div>
 
@@ -30,7 +31,15 @@
       <button @click="loadMonthlyData" class="btn-primary">Retry</button>
     </div>
 
-    <div v-else class="space-y-6">
+    <!-- Content with optional refresh indicator -->
+    <div v-else class="space-y-6 relative">
+      <!-- Subtle refresh indicator -->
+      <div v-if="loading" class="absolute top-0 right-0 z-10">
+        <div class="flex items-center space-x-2 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-sm border border-gray-200 dark:border-gray-700">
+          <div class="animate-spin rounded-full h-4 w-4 border-2 border-primary-600 border-t-transparent"></div>
+          <span class="text-xs text-gray-600 dark:text-gray-400">Updating...</span>
+        </div>
+      </div>
       <!-- Year Summary -->
       <div class="card">
         <div class="card-body">
@@ -214,6 +223,7 @@ const tradesStore = useTradesStore();
 const { selectedAccount } = useGlobalAccountFilter();
 
 const loading = ref(false);
+const initialLoading = ref(true); // Track initial load separately to preserve scroll on refresh
 const error = ref(null);
 
 // Load saved year from localStorage, or default to current year
@@ -309,6 +319,7 @@ const loadMonthlyData = async () => {
     error.value = 'Failed to load monthly performance data. Please try again.';
   } finally {
     loading.value = false;
+    initialLoading.value = false;
   }
 };
 

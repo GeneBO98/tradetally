@@ -2,6 +2,22 @@ const db = require('../config/database');
 const AchievementService = require('../services/achievementService');
 const { getUserLocalDate } = require('../utils/timezone');
 const { getFuturesPointValue, extractUnderlyingFromFuturesSymbol } = require('../utils/futuresUtils');
+const logger = require('../utils/logger');
+
+/**
+ * Round a numeric value to fit database precision
+ * DECIMAL(20, 8) allows up to 12 integer digits and 8 decimal places
+ * @param {number} value - The value to round
+ * @param {number} decimals - Number of decimal places (default 8 for max precision)
+ * @returns {number|null} - Rounded value or null if input is null/undefined
+ */
+function roundToDbPrecision(value, decimals = 8) {
+  if (value === null || value === undefined || isNaN(value)) return null;
+  const num = parseFloat(value);
+  if (isNaN(num)) return null;
+  const multiplier = Math.pow(10, decimals);
+  return Math.round(num * multiplier) / multiplier;
+}
 
 class Trade {
   /**
@@ -47,9 +63,9 @@ class Trade {
       originalCurrency, exchangeRate, originalEntryPriceCurrency,
       originalExitPriceCurrency, originalPnlCurrency, originalCommissionCurrency,
       originalFeesCurrency,
-      stopLoss, takeProfit, chartUrl,
+      stopLoss, takeProfit, takeProfitTargets, chartUrl,
       brokerConnectionId, accountIdentifier, account_identifier,
-      conid
+      conid, manualTargetHitFirst
     } = tradeData;
 
     // Use snake_case version if provided, fallback to camelCase for legacy support
@@ -236,28 +252,113 @@ class Trade {
     let finalTakeProfit = takeProfit;
     let userSettings = null;
 
+    // Debug logging for default stop loss/take profit application
+    console.log(`[DEFAULTS] Checking defaults for ${symbol}: stopLoss=${stopLoss}, takeProfit=${takeProfit}, entryPrice=${entryPrice}`);
+
     if ((!finalStopLoss || !finalTakeProfit) && entryPrice) {
       try {
         const User = require('./User');
         userSettings = await User.getSettings(userId);
 
+        if (!userSettings) {
+          console.log(`[DEFAULTS] No user settings found for user ${userId}`);
+        } else {
+          console.log(`[DEFAULTS] User settings: stopLossType=${userSettings.default_stop_loss_type || 'not set'}, stopLossPercent=${userSettings.default_stop_loss_percent || 'not set'}, takeProfitPercent=${userSettings.default_take_profit_percent || 'not set'}`);
+        }
+
         // Apply default stop loss if not provided
-        if (!finalStopLoss && userSettings?.default_stop_loss_percent && userSettings.default_stop_loss_percent > 0) {
-          const stopLossPercent = parseFloat(userSettings.default_stop_loss_percent);
+        if (!finalStopLoss) {
+          const stopLossType = userSettings?.default_stop_loss_type || 'percent';
+          console.log(`[DEFAULTS] Applying default stop loss, type=${stopLossType}`);
+          
+          if (stopLossType === 'lod') {
+            // Use Low of Day for long positions, High of Day for short positions
+            try {
+              if (side === 'long' || side === 'buy') {
+                const lod = await this.getLowOfDayAtEntry(symbol, finalEntryTime, userId);
+                if (lod !== null && lod !== undefined) {
+                  finalStopLoss = lod;
+                  if (finalStopLoss >= entryPrice) {
+                    console.warn(`[STOP LOSS] LoD (${finalStopLoss}) is not below entry price (${entryPrice}), using entry price - 0.01 as fallback`);
+                    finalStopLoss = entryPrice - 0.01;
+                  }
+                  console.log(`[STOP LOSS] Applied Low of Day (LoD) stop loss for ${side} position: $${finalStopLoss}`);
+                } else {
+                  console.warn(`[STOP LOSS] Failed to fetch LoD, falling back to percentage`);
+                  if (userSettings?.default_stop_loss_percent && userSettings.default_stop_loss_percent > 0) {
+                    const stopLossPercent = parseFloat(userSettings.default_stop_loss_percent);
+                    finalStopLoss = entryPrice * (1 - stopLossPercent / 100);
+                    finalStopLoss = Math.round(finalStopLoss * 10000) / 10000;
+                    console.log(`[STOP LOSS] Applied default ${stopLossPercent}% stop loss for ${side} position: $${finalStopLoss}`);
+                  }
+                }
+              } else {
+                const hod = await this.getHighOfDayAtEntry(symbol, finalEntryTime, userId);
+                if (hod !== null && hod !== undefined) {
+                  finalStopLoss = hod;
+                  if (finalStopLoss <= entryPrice) {
+                    console.warn(`[STOP LOSS] HoD (${finalStopLoss}) is not above entry price (${entryPrice}), using entry price + 0.01 as fallback`);
+                    finalStopLoss = entryPrice + 0.01;
+                  }
+                  console.log(`[STOP LOSS] Applied High of Day (HoD) stop loss for ${side} position: $${finalStopLoss}`);
+                } else {
+                  console.warn(`[STOP LOSS] Failed to fetch HoD, falling back to percentage`);
+                  if (userSettings?.default_stop_loss_percent && userSettings.default_stop_loss_percent > 0) {
+                    const stopLossPercent = parseFloat(userSettings.default_stop_loss_percent);
+                    finalStopLoss = entryPrice * (1 + stopLossPercent / 100);
+                    finalStopLoss = Math.round(finalStopLoss * 10000) / 10000;
+                    console.log(`[STOP LOSS] Applied default ${stopLossPercent}% stop loss for ${side} position: $${finalStopLoss}`);
+                  }
+                }
+              }
+            } catch (lodError) {
+              console.warn(`[STOP LOSS] Error fetching LoD/HoD: ${lodError.message}, falling back to percentage`);
+              if (userSettings?.default_stop_loss_percent && userSettings.default_stop_loss_percent > 0) {
+                const stopLossPercent = parseFloat(userSettings.default_stop_loss_percent);
+                if (side === 'long' || side === 'buy') {
+                  finalStopLoss = entryPrice * (1 - stopLossPercent / 100);
+                } else if (side === 'short' || side === 'sell') {
+                  finalStopLoss = entryPrice * (1 + stopLossPercent / 100);
+                }
+                finalStopLoss = Math.round(finalStopLoss * 10000) / 10000;
+                console.log(`[STOP LOSS] Applied default ${stopLossPercent}% stop loss for ${side} position: $${finalStopLoss}`);
+              }
+            }
+          } else if (stopLossType === 'dollar' && userSettings?.default_stop_loss_dollars > 0 && quantity > 0) {
+            // Dollar-based stop loss: fixed risk per trade (e.g., $100 per trade)
+            // Uses same multipliers as calculatePnL: stocks 1, options contractSize (100), futures pointValue
+            const stopLossDollars = parseFloat(userSettings.default_stop_loss_dollars);
+            const pointValueForSl = instrumentType === 'future' ? (finalPointValue || pointValue) : null;
+            const priceMove = this.getDollarStopLossPriceMove(stopLossDollars, quantity, instrumentType, contractSize || null, pointValueForSl);
+            if (priceMove != null) {
+              if (side === 'long' || side === 'buy') {
+                finalStopLoss = entryPrice - priceMove;
+              } else if (side === 'short' || side === 'sell') {
+                finalStopLoss = entryPrice + priceMove;
+              }
+              finalStopLoss = Math.round(finalStopLoss * 10000) / 10000;
+              console.log(`[STOP LOSS] Applied default $${stopLossDollars} stop loss for ${side} ${instrumentType} (qty ${quantity}): $${finalStopLoss}`);
+            }
+          } else if (userSettings?.default_stop_loss_percent && userSettings.default_stop_loss_percent > 0) {
+            // Default percentage-based stop loss
+            const stopLossPercent = parseFloat(userSettings.default_stop_loss_percent);
 
-          // Calculate stop loss price based on entry price and side
-          // For long positions: entry price - (entry price * stop loss %)
-          // For short positions: entry price + (entry price * stop loss %)
-          if (side === 'long' || side === 'buy') {
-            finalStopLoss = entryPrice * (1 - stopLossPercent / 100);
-          } else if (side === 'short' || side === 'sell') {
-            finalStopLoss = entryPrice * (1 + stopLossPercent / 100);
+            // Calculate stop loss price based on entry price and side
+            // For long positions: entry price - (entry price * stop loss %)
+            // For short positions: entry price + (entry price * stop loss %)
+            if (side === 'long' || side === 'buy') {
+              finalStopLoss = entryPrice * (1 - stopLossPercent / 100);
+            } else if (side === 'short' || side === 'sell') {
+              finalStopLoss = entryPrice * (1 + stopLossPercent / 100);
+            }
+
+            // Round to 2 decimal places for stocks, 4 for precise pricing
+            finalStopLoss = Math.round(finalStopLoss * 10000) / 10000;
+
+            console.log(`[STOP LOSS] Applied default ${stopLossPercent}% stop loss for ${side} position: $${finalStopLoss}`);
+          } else {
+            console.log(`[DEFAULTS] No default stop loss applied: stopLossType=${stopLossType}, default_stop_loss_percent=${userSettings?.default_stop_loss_percent}`);
           }
-
-          // Round to 2 decimal places for stocks, 4 for precise pricing
-          finalStopLoss = Math.round(finalStopLoss * 10000) / 10000;
-
-          console.log(`[STOP LOSS] Applied default ${stopLossPercent}% stop loss for ${side} position: $${finalStopLoss}`);
         }
 
         // Apply default take profit if not provided
@@ -282,12 +383,59 @@ class Trade {
         console.warn('[DEFAULTS] Failed to apply default stop loss/take profit:', error.message);
         // Continue without defaults if there's an error
       }
+    } else {
+      console.log(`[DEFAULTS] Skipping defaults: stopLoss=${finalStopLoss ? 'provided' : 'missing'}, takeProfit=${finalTakeProfit ? 'provided' : 'missing'}, entryPrice=${entryPrice ? 'provided' : 'missing'}`);
     }
 
+    console.log(`[DEFAULTS] Final values for ${symbol}: stopLoss=${finalStopLoss}, takeProfit=${finalTakeProfit}`);
+
     // Calculate R-Multiple if stop loss and exit price are provided
-    // R-Multiple measures actual performance vs initial risk, so we need the actual exit price
+    // R-Multiple = Profit / Risk (where Risk = distance from entry to stop loss)
     if (finalStopLoss && cleanExitPrice && entryPrice && side) {
       rValue = this.calculateRValue(entryPrice, finalStopLoss, cleanExitPrice, side);
+    }
+
+    // Aggregate take profit targets from executions to trade level
+    // Execution-level targets REPLACE trade-level targets to avoid duplicates
+    const executionList = executions || executionData || [];
+    let aggregatedTakeProfitTargets = [];
+    let hasExecutionTargets = false;
+
+    logger.debug('[TP-AGGREGATION] ========== TP Target Aggregation ==========');
+    logger.debug('[TP-AGGREGATION] Input data:', {
+      symbol: symbol,
+      hasExecutionList: !!(executionList && executionList.length > 0),
+      executionCount: executionList?.length || 0,
+      hasTradeLevelTargets: !!(takeProfitTargets && takeProfitTargets.length > 0),
+      tradeLevelTargetCount: takeProfitTargets?.length || 0
+    });
+
+    if (executionList && executionList.length > 0) {
+      executionList.forEach((exec, index) => {
+        if (exec.takeProfitTargets && Array.isArray(exec.takeProfitTargets) && exec.takeProfitTargets.length > 0) {
+          hasExecutionTargets = true;
+          logger.debug(`[TP-AGGREGATION] Execution ${index + 1} has ${exec.takeProfitTargets.length} targets:`, JSON.stringify(exec.takeProfitTargets));
+          aggregatedTakeProfitTargets.push(...exec.takeProfitTargets);
+        } else {
+          logger.debug(`[TP-AGGREGATION] Execution ${index + 1} has no TP targets`);
+        }
+      });
+    }
+
+    // Only use trade-level targets if NO execution-level targets exist
+    if (!hasExecutionTargets && takeProfitTargets && takeProfitTargets.length > 0) {
+      logger.debug('[TP-AGGREGATION] Using trade-level targets (no execution targets):', JSON.stringify(takeProfitTargets));
+      aggregatedTakeProfitTargets = [...takeProfitTargets];
+    }
+
+    logger.debug('[TP-AGGREGATION] Final aggregated targets:', {
+      count: aggregatedTakeProfitTargets.length,
+      source: hasExecutionTargets ? 'executions' : (aggregatedTakeProfitTargets.length > 0 ? 'trade level' : 'none'),
+      targets: aggregatedTakeProfitTargets.length > 0 ? JSON.stringify(aggregatedTakeProfitTargets) : '[]'
+    });
+
+    if (aggregatedTakeProfitTargets.length > 0) {
+      logger.info(`[TP TARGETS] Using ${aggregatedTakeProfitTargets.length} take profit targets (from ${hasExecutionTargets ? 'executions' : 'trade level'})`);
     }
 
     const query = `
@@ -301,26 +449,33 @@ class Trade {
         contract_month, contract_year, tick_size, point_value, underlying_asset, import_id,
         original_currency, exchange_rate, original_entry_price_currency, original_exit_price_currency,
         original_pnl_currency, original_commission_currency, original_fees_currency,
-        stop_loss, take_profit, r_value, chart_url, broker_connection_id, account_identifier, conid
+        stop_loss, take_profit, take_profit_targets, r_value, chart_url, broker_connection_id, account_identifier, conid, manual_target_hit_first
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58, $59)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58, $59, $60, $61)
       RETURNING *
     `;
 
     const values = [
-      userId, symbol.toUpperCase(), finalTradeDate, finalEntryTime, cleanExitTime, entryPrice, cleanExitPrice,
-      quantity, side, commission || 0, entryCommission || 0, exitCommission || 0, fees || 0, pnl, pnlPercent, notes, isPublic || false,
-      broker, finalStrategy, setup, tags || [], JSON.stringify(executions || executionData || []), mae || null, mfe || null, confidence || 5,
+      userId, symbol.toUpperCase(), finalTradeDate, finalEntryTime, cleanExitTime,
+      roundToDbPrecision(entryPrice), roundToDbPrecision(cleanExitPrice),
+      roundToDbPrecision(quantity), side,
+      roundToDbPrecision(commission) || 0, roundToDbPrecision(entryCommission) || 0, roundToDbPrecision(exitCommission) || 0,
+      roundToDbPrecision(fees) || 0, roundToDbPrecision(pnl), roundToDbPrecision(pnlPercent), notes, isPublic || false,
+      broker, finalStrategy, setup, tags || [], JSON.stringify(executions || executionData || []),
+      roundToDbPrecision(mae), roundToDbPrecision(mfe), confidence || 5,
       strategyConfidence, classificationMethod, JSON.stringify(classificationMetadata), manualOverride,
       JSON.stringify(newsData.newsEvents || []), newsData.hasNews || false, newsData.sentiment, newsData.checkedAt,
-      instrumentType || 'stock', strikePrice || null, expirationDate || null, optionType || null,
+      instrumentType || 'stock', roundToDbPrecision(strikePrice), expirationDate || null, optionType || null,
       contractSize || (instrumentType === 'option' ? 100 : null), underlyingSymbol || null,
-      contractMonth || null, contractYear || null, tickSize || null, finalPointValue || null, finalUnderlyingAsset || null,
+      contractMonth || null, contractYear || null, roundToDbPrecision(tickSize), roundToDbPrecision(finalPointValue), finalUnderlyingAsset || null,
       importId || null,
-      originalCurrency || 'USD', exchangeRate || 1.0, originalEntryPriceCurrency || null, originalExitPriceCurrency || null,
-      originalPnlCurrency || null, originalCommissionCurrency || null, originalFeesCurrency || null,
-      finalStopLoss || null, finalTakeProfit || null, rValue, chartUrl || null, brokerConnectionId || null, finalAccountIdentifier || null,
-      conid || null
+      originalCurrency || 'USD', roundToDbPrecision(exchangeRate) || 1.0,
+      roundToDbPrecision(originalEntryPriceCurrency), roundToDbPrecision(originalExitPriceCurrency),
+      roundToDbPrecision(originalPnlCurrency), roundToDbPrecision(originalCommissionCurrency), roundToDbPrecision(originalFeesCurrency),
+      roundToDbPrecision(finalStopLoss), roundToDbPrecision(finalTakeProfit), JSON.stringify(aggregatedTakeProfitTargets || []),
+      roundToDbPrecision(rValue), chartUrl || null, brokerConnectionId || null, finalAccountIdentifier || null,
+      conid || null,
+      manualTargetHitFirst || null
     ];
 
     const result = await db.query(query, values);
@@ -328,6 +483,11 @@ class Trade {
 
     // Log the strategy and setup assignment for debugging
     console.log(`[TRADE CREATE] Trade ${createdTrade.id}: strategy="${finalStrategy || 'null'}", setup="${setup || 'null'}", confidence=${strategyConfidence}%, method=${classificationMethod}`);
+
+    // Log conid for IBKR options tracking
+    if (conid) {
+      console.log(`[TRADE CREATE] Trade ${createdTrade.id}: conid=${conid} (saved for IBKR position matching)`);
+    }
     
     // Check enrichment cache for existing data
     let appliedCachedData = false;
@@ -544,22 +704,36 @@ class Trade {
     let needsSectorJoin = false;
 
     if (filters.symbol) {
-      // Enhanced symbol filtering to handle both ticker symbols and CUSIPs
-      whereClause += ` AND (
-        t.symbol ILIKE $${paramCount} || '%' OR
-        EXISTS (
-          SELECT 1 FROM cusip_mappings cm
-          WHERE cm.cusip = t.symbol
-          AND cm.ticker ILIKE $${paramCount} || '%'
-          AND (cm.user_id = $1 OR cm.user_id IS NULL)
-        ) OR
-        EXISTS (
-          SELECT 1 FROM cusip_mappings cm
-          WHERE cm.ticker ILIKE $${paramCount} || '%'
-          AND cm.cusip = t.symbol
-          AND (cm.user_id = $1 OR cm.user_id IS NULL)
-        )
-      )`;
+      if (filters.symbolExact) {
+        // Exact symbol matching - case insensitive but no prefix matching
+        whereClause += ` AND (
+          UPPER(t.symbol) = $${paramCount} OR
+          t.symbol IN (
+            SELECT cm.cusip FROM cusip_mappings cm
+            WHERE (cm.user_id = $1 OR cm.user_id IS NULL)
+              AND UPPER(cm.ticker) = $${paramCount}
+          )
+        )`;
+      } else {
+        // Prefix symbol filtering with CUSIP resolution (default behavior)
+        whereClause += ` AND (
+          t.symbol ILIKE $${paramCount} || '%' OR
+          t.symbol IN (
+            SELECT DISTINCT
+              CASE
+                WHEN cm.ticker ILIKE $${paramCount} || '%' THEN cm.cusip
+                WHEN cm.cusip = t.symbol AND cm.ticker ILIKE $${paramCount} || '%' THEN cm.cusip
+                ELSE NULL
+              END
+            FROM cusip_mappings cm
+            WHERE (cm.user_id = $1 OR cm.user_id IS NULL)
+              AND (
+                (cm.cusip = t.symbol AND cm.ticker ILIKE $${paramCount} || '%') OR
+                (cm.ticker ILIKE $${paramCount} || '%')
+              )
+          )
+        )`;
+      }
       values.push(filters.symbol.toUpperCase());
       paramCount++;
     }
@@ -573,6 +747,19 @@ class Trade {
     if (filters.endDate) {
       whereClause += ` AND t.trade_date <= $${paramCount}`;
       values.push(filters.endDate);
+      paramCount++;
+    }
+
+    // Exit date filters - for filtering by when trades were closed (used by calendar)
+    if (filters.exitStartDate) {
+      whereClause += ` AND t.exit_time::date >= $${paramCount}`;
+      values.push(filters.exitStartDate);
+      paramCount++;
+    }
+
+    if (filters.exitEndDate) {
+      whereClause += ` AND t.exit_time::date <= $${paramCount}`;
+      values.push(filters.exitEndDate);
       paramCount++;
     }
 
@@ -679,21 +866,15 @@ class Trade {
     if (filters.daysOfWeek && filters.daysOfWeek.length > 0) {
       // Get user's timezone for accurate day calculation
       const userTimezone = await getUserTimezone(userId);
-      console.log(`🕒 Using timezone ${userTimezone} for day-of-week filtering`);
-      
+      console.log(`[TIMEZONE] Using timezone ${userTimezone} for day-of-week filtering`);
+
       // Use entry_time converted to user's timezone for day calculation
+      // "AT TIME ZONE tz" converts timestamptz from UTC to that timezone
       const placeholders = filters.daysOfWeek.map((_, index) => `$${paramCount + index}`).join(',');
-      if (userTimezone !== 'UTC') {
-        whereClause += ` AND extract(dow from (t.entry_time AT TIME ZONE 'UTC' AT TIME ZONE $${paramCount + filters.daysOfWeek.length})) IN (${placeholders})`;
-        filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
-        values.push(userTimezone);
-        paramCount += filters.daysOfWeek.length + 1;
-      } else {
-        // UTC case - can use simpler extraction
-        whereClause += ` AND extract(dow from t.entry_time) IN (${placeholders})`;
-        filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
-        paramCount += filters.daysOfWeek.length;
-      }
+      whereClause += ` AND extract(dow from (t.entry_time AT TIME ZONE $${paramCount + filters.daysOfWeek.length})) IN (${placeholders})`;
+      filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
+      values.push(userTimezone);
+      paramCount += filters.daysOfWeek.length + 1;
     }
 
     // Instrument types filter (stock, option, future)
@@ -731,10 +912,16 @@ class Trade {
     // Account identifier filter - multi-select support
     if (filters.accounts && filters.accounts.length > 0) {
       console.log('[ACCOUNTS] Applying account filter:', filters.accounts);
-      const placeholders = filters.accounts.map((_, index) => `$${paramCount + index}`).join(',');
-      whereClause += ` AND t.account_identifier IN (${placeholders})`;
-      filters.accounts.forEach(account => values.push(account));
-      paramCount += filters.accounts.length;
+      // Special handling for "__unsorted__" - filter for null/empty accounts
+      if (filters.accounts.includes('__unsorted__')) {
+        console.log('[ACCOUNTS] Filtering for unsorted trades (no account)');
+        whereClause += ` AND (t.account_identifier IS NULL OR t.account_identifier = '')`;
+      } else {
+        const placeholders = filters.accounts.map((_, index) => `$${paramCount + index}`).join(',');
+        whereClause += ` AND t.account_identifier IN (${placeholders})`;
+        filters.accounts.forEach(account => values.push(account));
+        paramCount += filters.accounts.length;
+      }
     }
 
     // Quality grade filter - multi-select support (A, B, C, D, F)
@@ -812,6 +999,21 @@ class Trade {
   }
 
   static async update(id, userId, updates, options = {}) {
+    // Round all numeric fields to fit database precision (DECIMAL(20,8))
+    const numericFields = [
+      'entryPrice', 'exitPrice', 'quantity', 'commission', 'entryCommission', 'exitCommission',
+      'fees', 'pnl', 'pnlPercent', 'mae', 'mfe', 'strikePrice', 'tickSize', 'pointValue',
+      'stopLoss', 'takeProfit', 'rValue', 'exchangeRate',
+      'originalEntryPriceCurrency', 'originalExitPriceCurrency', 'originalPnlCurrency',
+      'originalCommissionCurrency', 'originalFeesCurrency'
+    ];
+
+    numericFields.forEach(field => {
+      if (updates[field] !== undefined && updates[field] !== null && updates[field] !== '') {
+        updates[field] = roundToDbPrecision(updates[field]);
+      }
+    });
+
     // Log stopLoss updates for debugging
     if (updates.stopLoss !== undefined) {
       console.log(`[STOP LOSS UPDATE] Trade ${id}: stopLoss=${updates.stopLoss}`);
@@ -851,20 +1053,139 @@ class Trade {
     if (updates.exitPrice === '') updates.exitPrice = null;
     if (updates.stopLoss === '') updates.stopLoss = null;
     if (updates.takeProfit === '') updates.takeProfit = null;
-    
+
+    // Apply default stop loss/take profit if not provided and user has defaults configured
+    // This ensures defaults are applied on updates as well as creates
+    const entryPrice = updates.entryPrice || currentTrade.entry_price;
+    const side = updates.side || currentTrade.side;
+    const symbol = updates.symbol || currentTrade.symbol;
+    const entryTime = updates.entryTime || currentTrade.entry_time;
+
+    // Check if stop loss or take profit needs defaults applied
+    const needsStopLossDefault = (updates.stopLoss === null || updates.stopLoss === undefined) && !currentTrade.stop_loss;
+    const needsTakeProfitDefault = (updates.takeProfit === null || updates.takeProfit === undefined) && !currentTrade.take_profit;
+    const quantityForDefaults = updates.quantity ?? currentTrade.quantity;
+
+    if ((needsStopLossDefault || needsTakeProfitDefault) && entryPrice) {
+      try {
+        const User = require('./User');
+        const userSettings = await User.getSettings(userId);
+
+        console.log(`[DEFAULTS UPDATE] Checking defaults for ${symbol}: needsStopLoss=${needsStopLossDefault}, needsTakeProfit=${needsTakeProfitDefault}`);
+        console.log(`[DEFAULTS UPDATE] User settings: stopLossType=${userSettings?.default_stop_loss_type || 'not set'}, stopLossPercent=${userSettings?.default_stop_loss_percent || 'not set'}, takeProfitPercent=${userSettings?.default_take_profit_percent || 'not set'}`);
+
+        // Apply default stop loss if not provided
+        if (needsStopLossDefault) {
+          const stopLossType = userSettings?.default_stop_loss_type || 'percent';
+          console.log(`[DEFAULTS UPDATE] Applying default stop loss, type=${stopLossType}`);
+
+          if (stopLossType === 'lod') {
+            // Use Low of Day for long positions, High of Day for short positions
+            try {
+              if (side === 'long' || side === 'buy') {
+                const lod = await this.getLowOfDayAtEntry(symbol, entryTime, userId);
+                if (lod !== null && lod !== undefined) {
+                  updates.stopLoss = lod;
+                  if (updates.stopLoss >= entryPrice) {
+                    console.warn(`[STOP LOSS UPDATE] LoD (${updates.stopLoss}) is not below entry price (${entryPrice}), using entry price - 0.01`);
+                    updates.stopLoss = entryPrice - 0.01;
+                  }
+                  console.log(`[STOP LOSS UPDATE] Applied Low of Day stop loss for ${side} position: $${updates.stopLoss}`);
+                } else {
+                  console.warn(`[STOP LOSS UPDATE] LoD unavailable, falling back to percentage`);
+                  if (userSettings?.default_stop_loss_percent && userSettings.default_stop_loss_percent > 0) {
+                    const stopLossPercent = parseFloat(userSettings.default_stop_loss_percent);
+                    updates.stopLoss = entryPrice * (1 - stopLossPercent / 100);
+                    updates.stopLoss = Math.round(updates.stopLoss * 10000) / 10000;
+                    console.log(`[STOP LOSS UPDATE] Applied ${stopLossPercent}% stop loss for ${side} position: $${updates.stopLoss}`);
+                  }
+                }
+              } else {
+                const hod = await this.getHighOfDayAtEntry(symbol, entryTime, userId);
+                if (hod !== null && hod !== undefined) {
+                  updates.stopLoss = hod;
+                  if (updates.stopLoss <= entryPrice) {
+                    console.warn(`[STOP LOSS UPDATE] HoD (${updates.stopLoss}) is not above entry price (${entryPrice}), using entry price + 0.01`);
+                    updates.stopLoss = entryPrice + 0.01;
+                  }
+                  console.log(`[STOP LOSS UPDATE] Applied High of Day stop loss for ${side} position: $${updates.stopLoss}`);
+                } else {
+                  console.warn(`[STOP LOSS UPDATE] HoD unavailable, falling back to percentage`);
+                  if (userSettings?.default_stop_loss_percent && userSettings.default_stop_loss_percent > 0) {
+                    const stopLossPercent = parseFloat(userSettings.default_stop_loss_percent);
+                    updates.stopLoss = entryPrice * (1 + stopLossPercent / 100);
+                    updates.stopLoss = Math.round(updates.stopLoss * 10000) / 10000;
+                    console.log(`[STOP LOSS UPDATE] Applied ${stopLossPercent}% stop loss for ${side} position: $${updates.stopLoss}`);
+                  }
+                }
+              }
+            } catch (lodError) {
+              console.warn(`[STOP LOSS UPDATE] Error fetching LoD/HoD: ${lodError.message}`);
+              if (userSettings?.default_stop_loss_percent && userSettings.default_stop_loss_percent > 0) {
+                const stopLossPercent = parseFloat(userSettings.default_stop_loss_percent);
+                if (side === 'long' || side === 'buy') {
+                  updates.stopLoss = entryPrice * (1 - stopLossPercent / 100);
+                } else {
+                  updates.stopLoss = entryPrice * (1 + stopLossPercent / 100);
+                }
+                updates.stopLoss = Math.round(updates.stopLoss * 10000) / 10000;
+                console.log(`[STOP LOSS UPDATE] Applied fallback ${stopLossPercent}% stop loss: $${updates.stopLoss}`);
+              }
+            }
+          } else if (stopLossType === 'dollar' && userSettings?.default_stop_loss_dollars > 0 && quantityForDefaults > 0) {
+            // Dollar-based stop loss (same multipliers as calculatePnL for options/futures)
+            const stopLossDollars = parseFloat(userSettings.default_stop_loss_dollars);
+            const instrumentTypeUpdate = updates.instrumentType ?? currentTrade.instrument_type ?? 'stock';
+            const contractSizeUpdate = updates.contractSize !== undefined ? updates.contractSize : currentTrade.contract_size;
+            const pointValueUpdate = updates.pointValue !== undefined ? updates.pointValue : currentTrade.point_value;
+            const priceMove = this.getDollarStopLossPriceMove(stopLossDollars, quantityForDefaults, instrumentTypeUpdate, contractSizeUpdate, pointValueUpdate);
+            if (priceMove != null) {
+              if (side === 'long' || side === 'buy') {
+                updates.stopLoss = entryPrice - priceMove;
+              } else {
+                updates.stopLoss = entryPrice + priceMove;
+              }
+              updates.stopLoss = Math.round(updates.stopLoss * 10000) / 10000;
+              console.log(`[STOP LOSS UPDATE] Applied $${stopLossDollars} stop loss for ${side} ${instrumentTypeUpdate}: $${updates.stopLoss}`);
+            }
+          } else if (userSettings?.default_stop_loss_percent && userSettings.default_stop_loss_percent > 0) {
+            // Percentage-based stop loss
+            const stopLossPercent = parseFloat(userSettings.default_stop_loss_percent);
+            if (side === 'long' || side === 'buy') {
+              updates.stopLoss = entryPrice * (1 - stopLossPercent / 100);
+            } else {
+              updates.stopLoss = entryPrice * (1 + stopLossPercent / 100);
+            }
+            updates.stopLoss = Math.round(updates.stopLoss * 10000) / 10000;
+            console.log(`[STOP LOSS UPDATE] Applied ${stopLossPercent}% stop loss for ${side} position: $${updates.stopLoss}`);
+          } else {
+            console.log(`[DEFAULTS UPDATE] No default stop loss configured`);
+          }
+        }
+
+        // Apply default take profit if not provided
+        if (needsTakeProfitDefault && userSettings?.default_take_profit_percent && userSettings.default_take_profit_percent > 0) {
+          const takeProfitPercent = parseFloat(userSettings.default_take_profit_percent);
+          if (side === 'long' || side === 'buy') {
+            updates.takeProfit = entryPrice * (1 + takeProfitPercent / 100);
+          } else {
+            updates.takeProfit = entryPrice * (1 - takeProfitPercent / 100);
+          }
+          updates.takeProfit = Math.round(updates.takeProfit * 10000) / 10000;
+          console.log(`[TAKE PROFIT UPDATE] Applied ${takeProfitPercent}% take profit for ${side} position: $${updates.takeProfit}`);
+        }
+      } catch (error) {
+        console.warn('[DEFAULTS UPDATE] Failed to apply defaults:', error.message);
+      }
+    }
+
     const fields = [];
     const values = [];
     let paramCount = 1;
 
-    // Calculate trade_date based on exitTime or entryTime
-    if (updates.exitTime) {
-      updates.tradeDate = new Date(updates.exitTime).toISOString().split('T')[0];
-    } else if (updates.entryTime) {
-      // If we're updating entry time and there's no exit time, use entry time for trade date
-      const exitTime = updates.exitTime || currentTrade.exit_time;
-      if (!exitTime) {
-        updates.tradeDate = new Date(updates.entryTime).toISOString().split('T')[0];
-      }
+    // Only update trade_date when entryTime changes (trade_date should always reflect entry date)
+    if (updates.entryTime) {
+      updates.tradeDate = new Date(updates.entryTime).toISOString().split('T')[0];
     }
 
     // Check if user is manually setting strategy - do this first to prevent re-classification from overwriting it
@@ -911,7 +1232,7 @@ class Trade {
         updates.commission !== undefined ? updates.commission : currentTrade.commission,
         updates.fees !== undefined ? updates.fees : currentTrade.fees,
         updates.instrumentType || currentTrade.instrument_type || 'stock',
-        updates.contractSize !== undefined ? updates.contractSize : (currentTrade.contract_size || 1),
+        updates.contractSize !== undefined ? updates.contractSize : (currentTrade.contract_size || (currentTrade.instrument_type === 'option' ? 100 : 1)),
         pointValue
       );
 
@@ -969,21 +1290,21 @@ class Trade {
         // For frontend updates (non-imports), preserve original timestamps from current executions
         // to prevent timestamp truncation from breaking duplicate detection
         if (!options.skipApiCalls && currentTrade.executions && currentTrade.executions.length === updates.executions.length) {
-          // Merge: keep original timestamps but update other fields (commission, fees, etc.)
+          // Merge: use incoming timestamps when explicitly provided, else keep existing (avoids truncation when frontend omits)
+          const hasValue = (v) => v !== undefined && v !== null && String(v).trim() !== '';
           executionsToSet = updates.executions.map((newExec, index) => {
             const currentExec = currentTrade.executions[index];
             if (currentExec) {
               return {
                 ...newExec,
-                // Preserve original timestamps from the database
-                datetime: currentExec.datetime || newExec.datetime,
-                entryTime: currentExec.entryTime || newExec.entryTime,
-                exitTime: currentExec.exitTime || newExec.exitTime
+                datetime: hasValue(newExec.datetime) ? newExec.datetime : (currentExec.datetime ?? newExec.datetime),
+                entryTime: hasValue(newExec.entryTime) ? newExec.entryTime : (currentExec.entryTime ?? newExec.entryTime),
+                exitTime: hasValue(newExec.exitTime) ? newExec.exitTime : (currentExec.exitTime ?? newExec.exitTime)
               };
             }
             return newExec;
           });
-          console.log(`[EXECUTION UPDATE] Merging execution updates for trade ${id} (preserving timestamps)`);
+          console.log(`[EXECUTION UPDATE] Merging execution updates for trade ${id} (user date changes will be saved)`);
         } else {
           // Full replacement for imports or when execution count changes
           executionsToSet = updates.executions;
@@ -1004,6 +1325,50 @@ class Trade {
     // Always remove executions from updates since we handle it separately
     delete updates.executions;
 
+    // Aggregate take profit targets from executions to trade level
+    // This REPLACES trade-level targets with execution-level targets (source of truth)
+    // Keep payload's trade-level targets when they have more (e.g. user edited main form or single-execution sync)
+    const payloadTakeProfitTargets = updates.takeProfitTargets;
+    if (executionsToSet && executionsToSet.length > 0) {
+      const aggregatedTargets = [];
+
+      executionsToSet.forEach(exec => {
+        if (exec.takeProfitTargets && Array.isArray(exec.takeProfitTargets)) {
+          aggregatedTargets.push(...exec.takeProfitTargets);
+        }
+      });
+
+      // Deduplicate by (price, shares) so the same target is not stored once per execution.
+      // When every execution had the same targets, we preserve a single set and keep the first occurrence (first non-null shares).
+      const seen = new Set();
+      const deduplicatedTargets = aggregatedTargets.filter(t => {
+        const price = t.price != null ? parseFloat(t.price) : null;
+        const shares = t.shares != null ? t.shares : (t.quantity != null ? t.quantity : null);
+        const key = `${price}-${shares}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+      // Only update if we found execution-level targets
+      if (deduplicatedTargets.length > 0) {
+        // Prefer payload's trade-level targets when it has more (user may have edited form; execution aggregation may have missed some)
+        if (Array.isArray(payloadTakeProfitTargets) && payloadTakeProfitTargets.length >= deduplicatedTargets.length) {
+          updates.takeProfitTargets = payloadTakeProfitTargets;
+          console.log(`[TP TARGETS UPDATE] Using payload takeProfitTargets (${payloadTakeProfitTargets.length}) over aggregation (${deduplicatedTargets.length})`);
+        } else {
+          updates.takeProfitTargets = deduplicatedTargets;
+          console.log(`[TP TARGETS UPDATE] Aggregated ${aggregatedTargets.length} take profit targets from executions, deduplicated to ${deduplicatedTargets.length}`);
+        }
+      }
+    }
+
+    // Log all updates for debugging
+    console.log(`[TRADE UPDATE] Processing updates for trade ${id}:`, Object.keys(updates));
+    if (updates.takeProfitTargets) {
+      console.log(`[TRADE UPDATE] takeProfitTargets in updates:`, JSON.stringify(updates.takeProfitTargets));
+    }
+
     // Process all other fields
     Object.entries(updates).forEach(([key, value]) => {
       if (key !== 'id' && key !== 'user_id' && key !== 'created_at') {
@@ -1012,7 +1377,8 @@ class Trade {
         fields.push(`${dbKey} = $${paramCount}`);
 
         // Handle JSON/JSONB fields that need serialization
-        if (key === 'classificationMetadata' || key === 'newsEvents') {
+        if (key === 'classificationMetadata' || key === 'newsEvents' || key === 'takeProfitTargets') {
+          console.log(`[TRADE UPDATE] Saving ${key} as ${dbKey}:`, JSON.stringify(value));
           values.push(JSON.stringify(value));
         } else {
           values.push(value);
@@ -1042,6 +1408,17 @@ class Trade {
       return Math.round(parseFloat(num) * Math.pow(10, decimals)) / Math.pow(10, decimals);
     };
 
+    // Debug logging for P&L update detection
+    if (updates.pointValue !== undefined) {
+      console.log('[PNL DEBUG] pointValue update check:', {
+        updateValue: updates.pointValue,
+        currentValue: currentTrade.point_value,
+        roundedUpdate: roundTo(updates.pointValue),
+        roundedCurrent: roundTo(currentTrade.point_value),
+        isDifferent: roundTo(updates.pointValue) !== roundTo(currentTrade.point_value)
+      });
+    }
+
     const hasPnLUpdate = (
       (updates.entryPrice !== undefined && roundTo(updates.entryPrice) !== roundTo(currentTrade.entry_price)) ||
       (updates.exitPrice !== undefined && roundTo(updates.exitPrice) !== roundTo(currentTrade.exit_price)) ||
@@ -1050,15 +1427,19 @@ class Trade {
       (updates.commission !== undefined && roundTo(updates.commission) !== roundTo(currentTrade.commission)) ||
       (updates.fees !== undefined && roundTo(updates.fees) !== roundTo(currentTrade.fees)) ||
       (updates.instrumentType !== undefined && updates.instrumentType !== currentTrade.instrument_type) ||
-      (updates.contractSize !== undefined && roundTo(updates.contractSize) !== roundTo(currentTrade.contract_size))
+      (updates.contractSize !== undefined && roundTo(updates.contractSize) !== roundTo(currentTrade.contract_size)) ||
+      (updates.pointValue !== undefined && roundTo(updates.pointValue) !== roundTo(currentTrade.point_value)) ||
+      (updates.tickSize !== undefined && roundTo(updates.tickSize) !== roundTo(currentTrade.tick_size))
     );
+
+    console.log('[PNL DEBUG] hasPnLUpdate result:', hasPnLUpdate);
 
     if (hasPnLUpdate) {
       console.log('[PNL UPDATE] Values actually changed, recalculating P&L');
       const instrumentType = updates.instrumentType || currentTrade.instrument_type || 'stock';
       const quantity = updates.quantity !== undefined ? updates.quantity : currentTrade.quantity;
       const pointValue = updates.pointValue !== undefined ? updates.pointValue : currentTrade.point_value;
-      const contractSize = updates.contractSize !== undefined ? updates.contractSize : (currentTrade.contract_size || 1);
+      const contractSize = updates.contractSize !== undefined ? updates.contractSize : (currentTrade.contract_size || (instrumentType === 'option' ? 100 : 1));
       // Use !== undefined to properly handle 0 values for commission and fees
       const commission = updates.commission !== undefined ? updates.commission : currentTrade.commission;
       const fees = updates.fees !== undefined ? updates.fees : currentTrade.fees;
@@ -1094,7 +1475,7 @@ class Trade {
     }
 
     // Recalculate R-Multiple if any of the relevant fields are updated
-    // Note: takeProfit does NOT affect R-Multiple calculation (only exitPrice matters)
+    // R-Multiple = Profit / Risk (where Risk = distance from entry to stop loss)
     // Check executions for stopLoss values (use executionsToSet since updates.executions was deleted above)
     const executionsForRCalc = executionsToSet || currentTrade.executions || [];
     const hasExecutionStopLoss = executionsForRCalc.length > 0 &&
@@ -1134,7 +1515,7 @@ class Trade {
       console.log('[R-MULTIPLE CALC] Inputs:', { entryPrice, stopLoss, exitPrice, side });
 
       // Calculate R-Multiple if stop loss and exit price are provided
-      // R-Multiple measures actual performance vs initial risk
+      // R-Multiple = Profit / Risk (where Risk = distance from entry to stop loss)
       const rValue = (stopLoss && exitPrice && entryPrice && side)
         ? this.calculateRValue(entryPrice, stopLoss, exitPrice, side)
         : null;
@@ -1303,7 +1684,11 @@ class Trade {
     let paramCount = 1;
 
     if (filters.symbol) {
-      query += ` AND t.symbol ILIKE $${paramCount} || '%'`;
+      if (filters.symbolExact) {
+        query += ` AND UPPER(t.symbol) = $${paramCount}`;
+      } else {
+        query += ` AND t.symbol ILIKE $${paramCount} || '%'`;
+      }
       values.push(filters.symbol.toUpperCase());
       paramCount++;
     }
@@ -1406,34 +1791,57 @@ class Trade {
   }
 
   /**
-   * Calculate R-Multiple (Actual Risk/Reward achieved)
-   * R-Multiple represents the actual profit/loss in terms of initial risk (R)
+   * Get the price move (in price units) that equals a given dollar risk per trade.
+   * Used for dollar-based default stop loss. Uses the same multipliers as calculatePnL:
+   * - Stock: 1 share = 1 unit → priceMove = dollars / quantity
+   * - Option: 1 contract = contractSize (e.g. 100) → dollar move = priceMove * quantity * contractSize → priceMove = dollars / (quantity * contractSize)
+   * - Future: 1 point = pointValue dollars per contract → priceMove = dollars / (quantity * pointValue)
    *
-   * R-Multiple = Actual P/L / Initial Risk
+   * @param {number} defaultStopLossDollars - Total dollar risk per trade
+   * @param {number} quantity - Number of contracts/shares
+   * @param {string} instrumentType - 'stock', 'option', or 'future'
+   * @param {number|null} contractSize - Options: shares per contract (default 100)
+   * @param {number|null} pointValue - Futures: dollars per point per contract
+   * @returns {number|null} Price move to apply (subtract for long, add for short), or null if invalid
+   */
+  static getDollarStopLossPriceMove(defaultStopLossDollars, quantity, instrumentType = 'stock', contractSize = null, pointValue = null) {
+    if (!defaultStopLossDollars || defaultStopLossDollars <= 0 || !quantity || quantity <= 0) return null;
+    let multiplier;
+    if (instrumentType === 'future') {
+      multiplier = pointValue || 1;
+    } else if (instrumentType === 'option') {
+      multiplier = contractSize || 100;
+    } else {
+      multiplier = 1;
+    }
+    return defaultStopLossDollars / (quantity * multiplier);
+  }
+
+  /**
+   * Calculate R-Multiple (Risk-Adjusted Return)
    *
-   * For Long positions:
-   *   - Risk = entryPrice - stopLoss
-   *   - Actual P/L = exitPrice - entryPrice
-   *   - R-Multiple = (exitPrice - entryPrice) / (entryPrice - stopLoss)
+   * R = Risk = Initial Stop (the distance from entry to stop loss)
+   * R-Multiple = Profit Per Trade / R
    *
-   * For Short positions:
-   *   - Risk = stopLoss - entryPrice
-   *   - Actual P/L = entryPrice - exitPrice
-   *   - R-Multiple = (entryPrice - exitPrice) / (stopLoss - entryPrice)
+   * This measures trade outcomes in terms of risk units (R):
+   *   - R-Multiple of 1.0 means you made exactly what you risked
+   *   - R-Multiple of 2.0 means you made twice what you risked
+   *   - R-Multiple of -0.5 means you lost half of what you risked
+   *   - R-Multiple of -1.0 means you lost exactly what you risked (hit stop loss)
    *
-   * Examples:
-   *   - R-Multiple of 2.0 means you made 2x your initial risk
-   *   - R-Multiple of -1.0 means you lost exactly your initial risk (stop loss hit)
-   *   - R-Multiple of 0 means you broke even at entry price
+   * Examples with a 2.0 pt initial stop (R = 2.0):
+   *   - Lost 1.00 pt → R-Multiple = -1.00 / 2.0 = -0.5R
+   *   - Won 2.00 pt → R-Multiple = 2.00 / 2.0 = 1.0R
+   *   - Won 4.00 pt → R-Multiple = 4.00 / 2.0 = 2.0R
    *
    * @param {number} entryPrice - The entry price of the trade
-   * @param {number} stopLoss - The stop loss price level
+   * @param {number} stopLoss - The stop loss price level (defines R)
    * @param {number} exitPrice - The actual exit price of the trade
    * @param {string} side - The trade side ('long' or 'short')
    * @returns {number|null} The calculated R-Multiple, or null if inputs are invalid
    */
   static calculateRValue(entryPrice, stopLoss, exitPrice, side) {
-    // Validate inputs - exitPrice is required, not takeProfit
+    // Validate inputs - all required for calculation
     if (!entryPrice || !stopLoss || !exitPrice || !side) {
       console.warn('[R-MULTIPLE] Missing required inputs:', { entryPrice, stopLoss, exitPrice, side });
       return null;
@@ -1445,15 +1853,15 @@ class Trade {
       return null;
     }
 
-    let risk;
-    let actualPL;
+    let riskAmount; // R = Initial risk (distance from entry to stop)
+    let actualProfit;
 
     if (side === 'long') {
       // For long positions:
-      // Risk = entry price - stop loss (how much we risked)
-      // Actual P/L = exit price - entry price (what we actually made/lost)
-      risk = entryPrice - stopLoss;
-      actualPL = exitPrice - entryPrice;
+      // R (risk) = entry price - stop loss (stop is below entry)
+      // Actual Profit = exit price - entry price
+      riskAmount = entryPrice - stopLoss;
+      actualProfit = exitPrice - entryPrice;
 
       // Validation: stop loss should be below entry for long
       if (stopLoss >= entryPrice) {
@@ -1462,10 +1870,10 @@ class Trade {
       }
     } else if (side === 'short') {
       // For short positions:
-      // Risk = stop loss - entry price (how much we risked)
-      // Actual P/L = entry price - exit price (what we actually made/lost)
-      risk = stopLoss - entryPrice;
-      actualPL = entryPrice - exitPrice;
+      // R (risk) = stop loss - entry price (stop is above entry)
+      // Actual Profit = entry price - exit price
+      riskAmount = stopLoss - entryPrice;
+      actualProfit = entryPrice - exitPrice;
 
       // Validation: stop loss should be above entry for short
       if (stopLoss <= entryPrice) {
@@ -1477,13 +1885,13 @@ class Trade {
       return null;
     }
 
-    // Calculate R-Multiple as actual P/L divided by risk
-    if (risk <= 0) {
-      console.warn('[R-MULTIPLE] Risk must be positive, got:', risk);
+    // Calculate R-Multiple as actual profit divided by risk amount
+    if (riskAmount <= 0) {
+      console.warn('[R-MULTIPLE] Risk amount must be positive, got:', riskAmount);
       return null;
     }
 
-    const rMultiple = actualPL / risk;
+    const rMultiple = actualProfit / riskAmount;
 
     // Guard against NaN or Infinity (negative values are allowed)
     if (!isFinite(rMultiple)) {
@@ -1579,6 +1987,97 @@ class Trade {
     } catch (error) {
       await client.query('ROLLBACK');
       console.error('[STOP LOSS] Error applying default stop loss to existing trades:', error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Apply default dollar stop loss to all trades without a stop loss
+   * @param {number} userId - The user ID
+   * @param {number} defaultStopLossDollars - The default stop loss in dollars per trade
+   * @returns {Promise<number>} The number of trades updated
+   */
+  static async applyDefaultStopLossToExistingTradesByDollars(userId, defaultStopLossDollars) {
+    if (!defaultStopLossDollars || defaultStopLossDollars <= 0) {
+      console.log('[STOP LOSS] Invalid default stop loss dollars, skipping update');
+      return 0;
+    }
+
+    console.log(`[STOP LOSS] Applying $${defaultStopLossDollars} default stop loss to existing trades without stop loss for user ${userId}`);
+
+    const client = await db.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const tradesQuery = `
+        SELECT id, entry_price, exit_price, side, quantity, instrument_type, contract_size, point_value
+        FROM trades
+        WHERE user_id = $1
+          AND stop_loss IS NULL
+          AND entry_price IS NOT NULL
+          AND side IS NOT NULL
+          AND quantity IS NOT NULL
+          AND quantity > 0
+      `;
+
+      const tradesResult = await client.query(tradesQuery, [userId]);
+      const trades = tradesResult.rows;
+
+      console.log(`[STOP LOSS] Found ${trades.length} trades without stop loss (with quantity for dollar SL)`);
+
+      if (trades.length === 0) {
+        await client.query('COMMIT');
+        return 0;
+      }
+
+      let updatedCount = 0;
+
+      for (const trade of trades) {
+        const { id, entry_price, exit_price, side, quantity, instrument_type, contract_size, point_value } = trade;
+
+        const instrumentType = instrument_type || 'stock';
+        const priceMove = this.getDollarStopLossPriceMove(defaultStopLossDollars, quantity, instrumentType, contract_size, point_value);
+        if (priceMove == null) {
+          console.warn(`[STOP LOSS] Could not compute dollar stop for trade ${id}, skipping`);
+          continue;
+        }
+
+        let stopLoss;
+        if (side === 'long' || side === 'buy') {
+          stopLoss = entry_price - priceMove;
+        } else if (side === 'short' || side === 'sell') {
+          stopLoss = entry_price + priceMove;
+        } else {
+          console.warn(`[STOP LOSS] Unknown side "${side}" for trade ${id}, skipping`);
+          continue;
+        }
+
+        stopLoss = Math.round(stopLoss * 10000) / 10000;
+
+        let rValue = null;
+        if (exit_price) {
+          rValue = this.calculateRValue(entry_price, stopLoss, exit_price, side);
+        }
+
+        const updateQuery = `
+          UPDATE trades
+          SET stop_loss = $1, r_value = $2
+          WHERE id = $3 AND user_id = $4
+        `;
+
+        await client.query(updateQuery, [stopLoss, rValue, id, userId]);
+        updatedCount++;
+      }
+
+      await client.query('COMMIT');
+      console.log(`[STOP LOSS] Successfully updated ${updatedCount} trades with default dollar stop loss`);
+      return updatedCount;
+
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('[STOP LOSS] Error applying default dollar stop loss to existing trades:', error);
       throw error;
     } finally {
       client.release();
@@ -1687,7 +2186,11 @@ class Trade {
     const tablePrefix = needsJoin ? 't.' : '';
     
     if (filters.symbol && filters.symbol.trim()) {
-      query += ` AND ${tablePrefix}symbol ILIKE $${paramCount} || '%'`;
+      if (filters.symbolExact) {
+        query += ` AND UPPER(${tablePrefix}symbol) = $${paramCount}`;
+      } else {
+        query += ` AND ${tablePrefix}symbol ILIKE $${paramCount} || '%'`;
+      }
       values.push(filters.symbol.toUpperCase().trim());
       paramCount++;
     }
@@ -1758,20 +2261,14 @@ class Trade {
     }
 
     // Days of week filter for count (timezone-aware)
+    // "AT TIME ZONE tz" converts timestamptz from UTC to that timezone
     if (filters.daysOfWeek && filters.daysOfWeek.length > 0) {
       const userTimezone = await getUserTimezone(userId);
       const placeholders = filters.daysOfWeek.map((_, index) => `$${paramCount + index}`).join(',');
-      
-      if (userTimezone !== 'UTC') {
-        query += ` AND extract(dow from (${tablePrefix}entry_time AT TIME ZONE 'UTC' AT TIME ZONE $${paramCount + filters.daysOfWeek.length})) IN (${placeholders})`;
-        filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
-        values.push(userTimezone);
-        paramCount += filters.daysOfWeek.length + 1;
-      } else {
-        query += ` AND extract(dow from ${tablePrefix}entry_time) IN (${placeholders})`;
-        filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
-        paramCount += filters.daysOfWeek.length;
-      }
+      query += ` AND extract(dow from (${tablePrefix}entry_time AT TIME ZONE $${paramCount + filters.daysOfWeek.length})) IN (${placeholders})`;
+      filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
+      values.push(userTimezone);
+      paramCount += filters.daysOfWeek.length + 1;
     }
 
     console.log('[COUNT] Count query:', query);
@@ -1818,7 +2315,11 @@ class Trade {
     }
 
     if (filters.symbol) {
-      whereClause += ` AND t.symbol ILIKE $${paramCount} || '%'`;
+      if (filters.symbolExact) {
+        whereClause += ` AND UPPER(t.symbol) = $${paramCount}`;
+      } else {
+        whereClause += ` AND t.symbol ILIKE $${paramCount} || '%'`;
+      }
       values.push(filters.symbol.toUpperCase());
       paramCount++;
     }
@@ -1964,20 +2465,14 @@ class Trade {
     }
 
     // Days of week filter for analytics (timezone-aware)
+    // "AT TIME ZONE tz" converts timestamptz from UTC to that timezone
     if (filters.daysOfWeek && filters.daysOfWeek.length > 0) {
       const userTimezone = await getUserTimezone(userId);
       const placeholders = filters.daysOfWeek.map((_, index) => `$${paramCount + index}`).join(',');
-
-      if (userTimezone !== 'UTC') {
-        whereClause += ` AND extract(dow from (t.entry_time AT TIME ZONE 'UTC' AT TIME ZONE $${paramCount + filters.daysOfWeek.length})) IN (${placeholders})`;
-        filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
-        values.push(userTimezone);
-        paramCount += filters.daysOfWeek.length + 1;
-      } else {
-        whereClause += ` AND extract(dow from t.entry_time) IN (${placeholders})`;
-        filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
-        paramCount += filters.daysOfWeek.length;
-      }
+      whereClause += ` AND extract(dow from (t.entry_time AT TIME ZONE $${paramCount + filters.daysOfWeek.length})) IN (${placeholders})`;
+      filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
+      values.push(userTimezone);
+      paramCount += filters.daysOfWeek.length + 1;
     }
 
     // Instrument types filter (stock, option, future)
@@ -2001,10 +2496,16 @@ class Trade {
     // Account identifier filter - multi-select support for broker accounts
     if (filters.accounts && filters.accounts.length > 0) {
       console.log('[ACCOUNTS] ANALYTICS: Applying account filter:', filters.accounts);
-      const placeholders = filters.accounts.map((_, index) => `$${paramCount + index}`).join(',');
-      whereClause += ` AND t.account_identifier IN (${placeholders})`;
-      filters.accounts.forEach(account => values.push(account));
-      paramCount += filters.accounts.length;
+      // Special handling for "__unsorted__" - filter for null/empty accounts
+      if (filters.accounts.includes('__unsorted__')) {
+        console.log('[ACCOUNTS] ANALYTICS: Filtering for unsorted trades (no account)');
+        whereClause += ` AND (t.account_identifier IS NULL OR t.account_identifier = '')`;
+      } else {
+        const placeholders = filters.accounts.map((_, index) => `$${paramCount + index}`).join(',');
+        whereClause += ` AND t.account_identifier IN (${placeholders})`;
+        filters.accounts.forEach(account => values.push(account));
+        paramCount += filters.accounts.length;
+      }
     }
 
     // hasRValue filter - filter to only trades with valid R-value (stop_loss set)
@@ -2321,8 +2822,17 @@ class Trade {
     };
   }
 
-  static async getMonthlyPerformance(userId, year) {
-    console.log(`[MONTHLY] Getting monthly performance for user ${userId}, year ${year}`);
+  static async getMonthlyPerformance(userId, year, accounts = null) {
+    console.log(`[MONTHLY] Getting monthly performance for user ${userId}, year ${year}, accounts:`, accounts);
+
+    // Build account filter condition
+    let accountFilter = '';
+    const params = [userId, year];
+    if (accounts && accounts.length > 0) {
+      const placeholders = accounts.map((_, i) => `$${i + 3}`).join(',');
+      accountFilter = ` AND account_identifier IN (${placeholders})`;
+      params.push(...accounts);
+    }
 
     const monthlyQuery = `
       WITH monthly_trades AS (
@@ -2346,7 +2856,7 @@ class Trade {
         WHERE user_id = $1
           AND EXTRACT(YEAR FROM trade_date) = $2
           AND exit_price IS NOT NULL
-          AND pnl IS NOT NULL
+          AND pnl IS NOT NULL${accountFilter}
         GROUP BY EXTRACT(MONTH FROM trade_date)
       ),
       all_months AS (
@@ -2379,7 +2889,7 @@ class Trade {
     `;
 
     try {
-      const result = await db.query(monthlyQuery, [userId, year]);
+      const result = await db.query(monthlyQuery, params);
 
       // Format the data for easier consumption
       const monthlyData = result.rows.map(row => ({
@@ -2657,7 +3167,11 @@ class Trade {
     let paramCount = 2;
 
     if (filters.symbol) {
-      whereClause += ` AND symbol ILIKE $${paramCount} || '%'`;
+      if (filters.symbolExact) {
+        whereClause += ` AND UPPER(symbol) = $${paramCount}`;
+      } else {
+        whereClause += ` AND symbol ILIKE $${paramCount} || '%'`;
+      }
       values.push(filters.symbol.toUpperCase());
       paramCount++;
     }
@@ -2687,20 +3201,14 @@ class Trade {
     }
 
     // Days of week filter for round-trip trade count (timezone-aware)
+    // "AT TIME ZONE tz" converts timestamptz from UTC to that timezone
     if (filters.daysOfWeek && filters.daysOfWeek.length > 0) {
       const userTimezone = await getUserTimezone(userId);
       const placeholders = filters.daysOfWeek.map((_, index) => `$${paramCount + index}`).join(',');
-      
-      if (userTimezone !== 'UTC') {
-        whereClause += ` AND extract(dow from (entry_time AT TIME ZONE 'UTC' AT TIME ZONE $${paramCount + filters.daysOfWeek.length})) IN (${placeholders})`;
-        filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
-        values.push(userTimezone);
-        paramCount += filters.daysOfWeek.length + 1;
-      } else {
-        whereClause += ` AND extract(dow from entry_time) IN (${placeholders})`;
-        filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
-        paramCount += filters.daysOfWeek.length;
-      }
+      whereClause += ` AND extract(dow from (entry_time AT TIME ZONE $${paramCount + filters.daysOfWeek.length})) IN (${placeholders})`;
+      filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
+      values.push(userTimezone);
+      paramCount += filters.daysOfWeek.length + 1;
     }
 
     const query = `
@@ -2721,7 +3229,11 @@ class Trade {
     let paramCount = 2;
 
     if (filters.symbol) {
-      whereClause += ` AND rt.symbol ILIKE $${paramCount} || '%'`;
+      if (filters.symbolExact) {
+        whereClause += ` AND UPPER(rt.symbol) = $${paramCount}`;
+      } else {
+        whereClause += ` AND rt.symbol ILIKE $${paramCount} || '%'`;
+      }
       values.push(filters.symbol.toUpperCase());
       paramCount++;
     }
@@ -2759,20 +3271,14 @@ class Trade {
     }
 
     // Days of week filter for round-trip trades (timezone-aware)
+    // "AT TIME ZONE tz" converts timestamptz from UTC to that timezone
     if (filters.daysOfWeek && filters.daysOfWeek.length > 0) {
       const userTimezone = await getUserTimezone(userId);
       const placeholders = filters.daysOfWeek.map((_, index) => `$${paramCount + index}`).join(',');
-      
-      if (userTimezone !== 'UTC') {
-        whereClause += ` AND extract(dow from (rt.entry_time AT TIME ZONE 'UTC' AT TIME ZONE $${paramCount + filters.daysOfWeek.length})) IN (${placeholders})`;
-        filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
-        values.push(userTimezone);
-        paramCount += filters.daysOfWeek.length + 1;
-      } else {
-        whereClause += ` AND extract(dow from rt.entry_time) IN (${placeholders})`;
-        filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
-        paramCount += filters.daysOfWeek.length;
-      }
+      whereClause += ` AND extract(dow from (rt.entry_time AT TIME ZONE $${paramCount + filters.daysOfWeek.length})) IN (${placeholders})`;
+      filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
+      values.push(userTimezone);
+      paramCount += filters.daysOfWeek.length + 1;
     }
 
     // Add pagination
@@ -3562,6 +4068,269 @@ class Trade {
         checkedAt: new Date().toISOString(),
         error: error.message
       };
+    }
+  }
+
+  /**
+   * Get Low of Day "to the left" (LoD) at entry time for a symbol
+   * This is used for Qullamaggie-style swing trades where stop loss is set to the lowest price BEFORE entry
+   * The LoD is the minimum low from all candles STRICTLY BEFORE the entry candle
+   * @param {string} symbol - Stock symbol
+   * @param {Date|string} entryTime - Entry time of the trade
+   * @param {string} userId - User ID for API usage tracking
+   * @returns {Promise<number|null>} - Low of Day price before entry time, or null if unavailable
+   */
+  static async getLowOfDayAtEntry(symbol, entryTime, userId = null) {
+    try {
+      const finnhub = require('../utils/finnhub');
+      const priceFallbackManager = require('../utils/priceFallbackManager');
+
+      const entryDate = new Date(entryTime);
+
+      // Ensure entry time is valid
+      if (isNaN(entryDate.getTime())) {
+        console.warn(`[LoD] Invalid entry time: ${entryTime}`);
+        return null;
+      }
+
+      // Get the start of the trading day (4:00 AM ET for premarket)
+      const entryDateStr = entryDate.toISOString().split('T')[0];
+
+      // Calculate UTC offset for Eastern Time
+      const testUTC = new Date(`${entryDateStr}T12:00:00.000Z`);
+      const etParts = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/New_York',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      }).formatToParts(testUTC);
+
+      const etHour = parseInt(etParts.find(p => p.type === 'hour').value);
+      const offsetHours = 12 - etHour;
+      const utcHour4amET = 4 + offsetHours;
+      const dayStart = new Date(`${entryDateStr}T${String(utcHour4amET).padStart(2, '0')}:00:00.000Z`);
+
+      const entryTimestamp = Math.floor(entryDate.getTime() / 1000);
+      const dayStartTimestamp = Math.floor(dayStart.getTime() / 1000);
+
+      // Calculate time available before entry (in minutes)
+      const minutesBeforeEntry = (entryTimestamp - dayStartTimestamp) / 60;
+
+      console.log(`[LoD] Entry time: ${entryDate.toISOString()}, Day start: ${dayStart.toISOString()}`);
+      console.log(`[LoD] Minutes of trading before entry: ${minutesBeforeEntry.toFixed(1)}`);
+
+      // If entry is within 1 minute of day start, we can't determine LoD "to the left"
+      if (minutesBeforeEntry < 1) {
+        console.warn(`[LoD] Entry time is less than 1 minute after day start, cannot determine LoD to the left`);
+        return null;
+      }
+
+      // Helper function to fetch candles with Finnhub->Schwab fallback
+      const fetchCandlesWithFallback = async (res, from, to) => {
+        // Use the fallback manager which handles 403 errors and routes to Schwab
+        const { data, source } = await priceFallbackManager.getCandlesWithFallback(
+          symbol,
+          res,
+          from,
+          to,
+          async (sym, resolution, fromTs, toTs) => {
+            return await finnhub.getStockCandles(sym, resolution, fromTs, toTs, userId);
+          }
+        );
+
+        if (data && data.length > 0) {
+          console.log(`[LoD] Got ${data.length} candles for ${symbol} from ${source}`);
+        }
+        return data;
+      };
+
+      // Ensure entry time is after day start
+      if (entryTimestamp <= dayStartTimestamp) {
+        console.warn(`[LoD] Entry time is before market open, cannot determine LoD to the left`);
+        return null;
+      }
+
+      // Choose resolution based on time available before entry
+      // Use 1-minute candles if we have less than 30 minutes, otherwise 5-minute is sufficient
+      let resolution = minutesBeforeEntry < 30 ? '1' : '5';
+      console.log(`[LoD] Using ${resolution}-minute resolution based on ${minutesBeforeEntry.toFixed(1)} minutes before entry`);
+
+      // Fetch candles from start of day to entry time
+      let candles = await fetchCandlesWithFallback(resolution, dayStartTimestamp, entryTimestamp);
+
+      // If chosen resolution data is not available, try the other resolution
+      if (!candles || candles.length === 0) {
+        const fallbackResolution = resolution === '1' ? '5' : '1';
+        console.log(`[LoD] No ${resolution}-minute data available, trying ${fallbackResolution}-minute candles`);
+        candles = await fetchCandlesWithFallback(fallbackResolution, dayStartTimestamp, entryTimestamp);
+      }
+
+      // If still no data, cannot determine LoD to the left
+      if (!candles || candles.length === 0) {
+        console.warn(`[LoD] No intraday candle data available for ${symbol}`);
+        return null;
+      }
+
+      // CRITICAL: Filter candles to only include those STRICTLY BEFORE entry time
+      // This gives us "LoD to the left" - the lowest price before we entered the trade
+      const candlesBeforeEntry = candles.filter(c => c.time < entryTimestamp);
+
+      console.log(`[LoD] Filtering candles: ${candles.length} total, ${candlesBeforeEntry.length} strictly before entry`);
+
+      if (candlesBeforeEntry.length === 0) {
+        console.warn(`[LoD] No candles found before entry time for ${symbol}`);
+        return null;
+      }
+
+      // Find the minimum low price from candles BEFORE entry
+      const lows = candlesBeforeEntry.map(c => parseFloat(c.low)).filter(l => !isNaN(l));
+
+      if (lows.length === 0) {
+        console.warn(`[LoD] No valid low prices found for ${symbol}`);
+        return null;
+      }
+
+      const lod = Math.min(...lows);
+
+      // Log detailed info for debugging
+      const firstCandle = candlesBeforeEntry[0];
+      const lastCandle = candlesBeforeEntry[candlesBeforeEntry.length - 1];
+      console.log(`[LoD] Candle range: ${new Date(firstCandle.time * 1000).toISOString()} to ${new Date(lastCandle.time * 1000).toISOString()}`);
+      console.log(`[LoD] Low of Day "to the left" for ${symbol}: $${lod.toFixed(2)} (from ${candlesBeforeEntry.length} candles before entry)`);
+
+      return roundToDbPrecision(lod, 4);
+    } catch (error) {
+      console.warn(`[LoD] Error fetching Low of Day for ${symbol}: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Get the High of Day (HoD) price "to the left" of entry time.
+   * Mirror of getLowOfDayAtEntry() but for short positions.
+   * The HoD is the maximum high from all candles STRICTLY BEFORE the entry candle
+   * @param {string} symbol - Stock symbol
+   * @param {Date|string} entryTime - Entry time of the trade
+   * @param {string} userId - User ID for API usage tracking
+   * @returns {Promise<number|null>} - High of Day price before entry time, or null if unavailable
+   */
+  static async getHighOfDayAtEntry(symbol, entryTime, userId = null) {
+    try {
+      const finnhub = require('../utils/finnhub');
+      const priceFallbackManager = require('../utils/priceFallbackManager');
+
+      const entryDate = new Date(entryTime);
+
+      if (isNaN(entryDate.getTime())) {
+        console.warn(`[HoD] Invalid entry time: ${entryTime}`);
+        return null;
+      }
+
+      const entryDateStr = entryDate.toISOString().split('T')[0];
+
+      // Calculate UTC offset for Eastern Time
+      const testUTC = new Date(`${entryDateStr}T12:00:00.000Z`);
+      const etParts = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/New_York',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      }).formatToParts(testUTC);
+
+      const etHour = parseInt(etParts.find(p => p.type === 'hour').value);
+      const offsetHours = 12 - etHour;
+      const utcHour4amET = 4 + offsetHours;
+      const dayStart = new Date(`${entryDateStr}T${String(utcHour4amET).padStart(2, '0')}:00:00.000Z`);
+
+      const entryTimestamp = Math.floor(entryDate.getTime() / 1000);
+      const dayStartTimestamp = Math.floor(dayStart.getTime() / 1000);
+
+      const minutesBeforeEntry = (entryTimestamp - dayStartTimestamp) / 60;
+
+      console.log(`[HoD] Entry time: ${entryDate.toISOString()}, Day start: ${dayStart.toISOString()}`);
+      console.log(`[HoD] Minutes of trading before entry: ${minutesBeforeEntry.toFixed(1)}`);
+
+      if (minutesBeforeEntry < 1) {
+        console.warn(`[HoD] Entry time is less than 1 minute after day start, cannot determine HoD to the left`);
+        return null;
+      }
+
+      const fetchCandlesWithFallback = async (res, from, to) => {
+        const { data, source } = await priceFallbackManager.getCandlesWithFallback(
+          symbol,
+          res,
+          from,
+          to,
+          async (sym, resolution, fromTs, toTs) => {
+            return await finnhub.getStockCandles(sym, resolution, fromTs, toTs, userId);
+          }
+        );
+
+        if (data && data.length > 0) {
+          console.log(`[HoD] Got ${data.length} candles for ${symbol} from ${source}`);
+        }
+        return data;
+      };
+
+      if (entryTimestamp <= dayStartTimestamp) {
+        console.warn(`[HoD] Entry time is before market open, cannot determine HoD to the left`);
+        return null;
+      }
+
+      let resolution = minutesBeforeEntry < 30 ? '1' : '5';
+      console.log(`[HoD] Using ${resolution}-minute resolution based on ${minutesBeforeEntry.toFixed(1)} minutes before entry`);
+
+      let candles = await fetchCandlesWithFallback(resolution, dayStartTimestamp, entryTimestamp);
+
+      if (!candles || candles.length === 0) {
+        const fallbackResolution = resolution === '1' ? '5' : '1';
+        console.log(`[HoD] No ${resolution}-minute data available, trying ${fallbackResolution}-minute candles`);
+        candles = await fetchCandlesWithFallback(fallbackResolution, dayStartTimestamp, entryTimestamp);
+      }
+
+      if (!candles || candles.length === 0) {
+        console.warn(`[HoD] No intraday candle data available for ${symbol}`);
+        return null;
+      }
+
+      // CRITICAL: Filter candles to only include those STRICTLY BEFORE entry time
+      // This gives us "HoD to the left" - the highest price before we entered the trade
+      const candlesBeforeEntry = candles.filter(c => c.time < entryTimestamp);
+
+      console.log(`[HoD] Filtering candles: ${candles.length} total, ${candlesBeforeEntry.length} strictly before entry`);
+
+      if (candlesBeforeEntry.length === 0) {
+        console.warn(`[HoD] No candles found before entry time for ${symbol}`);
+        return null;
+      }
+
+      // Find the maximum high price from candles BEFORE entry
+      const highs = candlesBeforeEntry.map(c => parseFloat(c.high)).filter(h => !isNaN(h));
+
+      if (highs.length === 0) {
+        console.warn(`[HoD] No valid high prices found for ${symbol}`);
+        return null;
+      }
+
+      const hod = Math.max(...highs);
+
+      const firstCandle = candlesBeforeEntry[0];
+      const lastCandle = candlesBeforeEntry[candlesBeforeEntry.length - 1];
+      console.log(`[HoD] Candle range: ${new Date(firstCandle.time * 1000).toISOString()} to ${new Date(lastCandle.time * 1000).toISOString()}`);
+      console.log(`[HoD] High of Day "to the left" for ${symbol}: $${hod.toFixed(2)} (from ${candlesBeforeEntry.length} candles before entry)`);
+
+      return roundToDbPrecision(hod, 4);
+    } catch (error) {
+      console.warn(`[HoD] Error fetching High of Day for ${symbol}: ${error.message}`);
+      return null;
     }
   }
 

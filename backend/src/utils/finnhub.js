@@ -8,16 +8,23 @@ class FinnhubClient {
   constructor() {
     this.apiKey = process.env.FINNHUB_API_KEY;
     this.baseURL = 'https://finnhub.io/api/v1';
-    
-    // Rate limiting configuration
-    // If API key is configured, assume Basic plan (150/min, 30/sec)
-    // If not configured, use conservative limits for self-hosted
-    if (this.apiKey) {
-      this.maxCallsPerMinute = 150;
-      this.maxCallsPerSecond = 30;
+
+    // Rate limiting configuration - configurable via environment variables
+    // Finnhub plans: Free (60/min), Basic (150/min), Professional (300/min)
+    // Per-second limits vary by plan
+    if (process.env.FINNHUB_RATE_LIMIT_PER_MINUTE || process.env.FINNHUB_RATE_LIMIT_PER_SECOND) {
+      // Use custom limits from environment variables
+      this.maxCallsPerMinute = parseInt(process.env.FINNHUB_RATE_LIMIT_PER_MINUTE, 10) || 60;
+      this.maxCallsPerSecond = parseInt(process.env.FINNHUB_RATE_LIMIT_PER_SECOND, 10) || 1;
+      console.log(`[FINNHUB] Using custom rate limits: ${this.maxCallsPerMinute}/min, ${this.maxCallsPerSecond}/sec`);
+    } else if (this.apiKey) {
+      // Default to Free plan limits (60/min, 1/sec) - most conservative for API key users
+      this.maxCallsPerMinute = 60;
+      this.maxCallsPerSecond = 1;
     } else {
-      this.maxCallsPerMinute = 10;  // Conservative for self-hosted
-      this.maxCallsPerSecond = 2;   // Conservative for self-hosted
+      // No API key - very conservative limits
+      this.maxCallsPerMinute = 10;
+      this.maxCallsPerSecond = 1;
     }
     this.callTimestamps = [];
     this.secondTimestamps = [];

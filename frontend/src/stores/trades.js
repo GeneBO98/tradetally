@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import api from '@/services/api'
+import requestManager from '@/utils/requestManager'
 
 export const useTradesStore = defineStore('trades', () => {
   const trades = ref([])
@@ -15,6 +16,7 @@ export const useTradesStore = defineStore('trades', () => {
   })
   const filters = ref({
     symbol: '',
+    symbolExact: false,
     startDate: '',
     endDate: '',
     tags: [],
@@ -70,23 +72,33 @@ export const useTradesStore = defineStore('trades', () => {
       const offset = (pagination.value.page - 1) * pagination.value.limit
       const skipCount = params.skipCount !== false // Default to true for faster initial load
 
-      // Fetch trades first (with skipCount for faster response)
-      // This allows the UI to render immediately while count/analytics load in background
-      const tradesResponse = await api.get('/trades', {
-        params: {
-          ...filters.value,
-          ...params,
-          limit: pagination.value.limit,
-          offset: offset,
-          skipCount: skipCount ? 'true' : 'false'
-        }
-      })
+      // Fetch trades with request cancellation support
+      const tradesResponse = await requestManager.request('fetchTrades', (cancelToken) =>
+        api.get('/trades', {
+          params: {
+            ...filters.value,
+            ...params,
+            limit: pagination.value.limit,
+            offset: offset,
+            skipCount: skipCount ? 'true' : 'false'
+          },
+          cancelToken
+        })
+      )
+
+      // If request was cancelled, return early
+      if (!tradesResponse) {
+        loading.value = false
+        return
+      }
 
       // Always use the trades data from the trades API
-      if (tradesResponse.data.hasOwnProperty('trades')) {
-        trades.value = tradesResponse.data.trades
-      } else {
-        trades.value = tradesResponse.data
+      if (tradesResponse && tradesResponse.data) {
+        if (tradesResponse.data.hasOwnProperty('trades')) {
+          trades.value = tradesResponse.data.trades
+        } else {
+          trades.value = tradesResponse.data
+        }
       }
 
       // If count was included in response, use it
@@ -167,10 +179,12 @@ export const useTradesStore = defineStore('trades', () => {
       analytics.value = analyticsResponse.data
 
       // Always use the trades data from the trades API
-      if (tradesResponse.data.hasOwnProperty('trades')) {
-        trades.value = tradesResponse.data.trades
-      } else {
-        trades.value = tradesResponse.data
+      if (tradesResponse && tradesResponse.data) {
+        if (tradesResponse.data.hasOwnProperty('trades')) {
+          trades.value = tradesResponse.data.trades
+        } else {
+          trades.value = tradesResponse.data
+        }
       }
 
       // If the response includes pagination metadata, update it
@@ -357,10 +371,16 @@ export const useTradesStore = defineStore('trades', () => {
   }
 
   function setFilters(newFilters) {
+    // Check for global account filter from localStorage
+    // This ensures the global account filter is ALWAYS respected, even on reset
+    const globalAccountKey = 'tradetally_global_account'
+    const globalAccount = localStorage.getItem(globalAccountKey)
+
     // If newFilters is empty object, reset all filters
     if (Object.keys(newFilters).length === 0) {
       filters.value = {
         symbol: '',
+        symbolExact: false,
         startDate: '',
         endDate: '',
         tags: [],
@@ -373,19 +393,52 @@ export const useTradesStore = defineStore('trades', () => {
         hasNews: '',
         broker: '',
         brokers: [],
-        accounts: [],
+        accounts: globalAccount || '', // Preserve global account filter (string format)
         daysOfWeek: [],
         instrumentTypes: []
       }
     } else {
-      filters.value = { ...filters.value, ...newFilters }
+      // Replace filters entirely with newFilters to ensure cleared fields are actually cleared
+      // Start from default empty state, then apply newFilters on top
+      const replacedFilters = {
+        symbol: '',
+        symbolExact: false,
+        startDate: '',
+        endDate: '',
+        tags: [],
+        strategy: '',
+        strategies: [],
+        sectors: [],
+        holdTime: '',
+        minHoldTime: null,
+        maxHoldTime: null,
+        hasNews: '',
+        broker: '',
+        brokers: [],
+        accounts: '',
+        daysOfWeek: [],
+        instrumentTypes: [],
+        ...newFilters
+      }
+
+      // If global account is set and accounts filter is empty/not specified, apply global account
+      if (globalAccount && !newFilters.accounts) {
+        replacedFilters.accounts = globalAccount
+      }
+
+      filters.value = replacedFilters
     }
     pagination.value.page = 1 // Reset to first page when filtering
   }
 
   function resetFilters() {
+    // Check for global account filter from localStorage
+    const globalAccountKey = 'tradetally_global_account'
+    const globalAccount = localStorage.getItem(globalAccountKey)
+
     filters.value = {
       symbol: '',
+      symbolExact: false,
       startDate: '',
       endDate: '',
       tags: [],
@@ -398,7 +451,7 @@ export const useTradesStore = defineStore('trades', () => {
       hasNews: '',
       broker: '',
       brokers: [],
-      accounts: [],
+      accounts: globalAccount || '', // Preserve global account filter (string format)
       daysOfWeek: [],
       instrumentTypes: []
     }

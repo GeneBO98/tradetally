@@ -14,10 +14,10 @@ class BackupController {
   async restoreBackup(req, res, next) {
     try {
       const userId = req.user.id;
-      const { skipUsers, overwriteUsers } = req.body;
+      const { skipUsers, overwriteUsers, clearExisting } = req.body;
 
       console.log(`[RESTORE] Restore requested by user ${userId}`);
-      console.log(`[RESTORE] Options: skipUsers=${skipUsers}, overwriteUsers=${overwriteUsers}`);
+      console.log(`[RESTORE] Options: skipUsers=${skipUsers}, overwriteUsers=${overwriteUsers}, clearExisting=${clearExisting}`);
 
       if (!req.file) {
         return res.status(400).json({ error: 'No backup file uploaded' });
@@ -45,6 +45,7 @@ class BackupController {
 
       // Perform the restore
       const result = await backupService.restoreFromBackup(backupData, {
+        clearExisting: clearExisting === true || clearExisting === 'true',
         skipUsers: skipUsers === true || skipUsers === 'true',
         overwriteUsers: overwriteUsers === true || overwriteUsers === 'true'
       });

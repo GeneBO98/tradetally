@@ -48,8 +48,8 @@ class User {
 
   static async findByEmail(email) {
     const query = `
-      SELECT id, email, username, password_hash, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone, 
-             two_factor_enabled, two_factor_secret, tier, created_at
+      SELECT id, email, username, password_hash, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone,
+             two_factor_enabled, two_factor_secret, tier, created_at, last_login_at
       FROM users
       WHERE email = $1
     `;
@@ -182,15 +182,26 @@ class User {
       tradeGroupingTimeGapMinutes: 'trade_grouping_time_gap_minutes',
       autoCloseExpiredOptions: 'auto_close_expired_options',
       analyticsChartLayout: 'analytics_chart_layout',
+      dashboardLayout: 'dashboard_layout',
       defaultStopLossPercent: 'default_stop_loss_percent',
-      defaultTakeProfitPercent: 'default_take_profit_percent'
+      defaultTakeProfitPercent: 'default_take_profit_percent',
+      defaultStopLossType: 'default_stop_loss_type',
+      defaultStopLossDollars: 'default_stop_loss_dollars',
+      timeDisplayFormat: 'time_display_format'
     };
 
     Object.entries(settings).forEach(([key, value]) => {
       if (key !== 'user_id' && key !== 'id') {
         const dbColumn = columnMapping[key] || key;
-        fields.push(`${dbColumn} = $${paramCount}`);
-        values.push(value);
+        // For JSONB columns, ensure proper casting and JSON serialization
+        if (dbColumn === 'analytics_chart_layout' || dbColumn === 'dashboard_layout') {
+          fields.push(`${dbColumn} = $${paramCount}::jsonb`);
+          // PostgreSQL JSONB requires JSON string, not JavaScript object
+          values.push(value ? JSON.stringify(value) : null);
+        } else {
+          fields.push(`${dbColumn} = $${paramCount}`);
+          values.push(value);
+        }
         paramCount++;
       }
     });
@@ -206,9 +217,24 @@ class User {
 
     try {
       const result = await db.query(query, values);
+      
+      // Log if dashboard_layout was saved
+      if (settings.dashboardLayout) {
+        console.log('[SETTINGS] Dashboard layout saved successfully');
+      }
 
-      // If default stop loss percentage was updated, apply it to existing trades without a stop loss
-      if (settings.defaultStopLossPercent !== undefined && settings.defaultStopLossPercent > 0) {
+      // If default stop loss was updated, apply it to existing trades without a stop loss
+      const stopLossType = settings.defaultStopLossType || 'percent';
+      if (stopLossType === 'dollar' && settings.defaultStopLossDollars !== undefined && settings.defaultStopLossDollars > 0) {
+        const Trade = require('./Trade');
+        Trade.applyDefaultStopLossToExistingTradesByDollars(userId, settings.defaultStopLossDollars)
+          .then(count => {
+            console.log(`[SETTINGS] Applied default dollar stop loss to ${count} existing trades`);
+          })
+          .catch(error => {
+            console.error('[SETTINGS] Failed to apply default dollar stop loss to existing trades:', error);
+          });
+      } else if (settings.defaultStopLossPercent !== undefined && settings.defaultStopLossPercent > 0) {
         const Trade = require('./Trade');
         Trade.applyDefaultStopLossToExistingTrades(userId, settings.defaultStopLossPercent)
           .then(count => {
@@ -233,6 +259,11 @@ class User {
 
       return result.rows[0];
     } catch (error) {
+      console.error('[SETTINGS] Error updating user settings:', error.message);
+      // Check if error is related to missing column
+      if (error.message && error.message.includes('dashboard_layout')) {
+        console.error('[SETTINGS] ERROR: dashboard_layout column may not exist. Please run migration 140_add_dashboard_layout.sql');
+      }
       // If statistics_calculation column doesn't exist, try update without it
       if (error.message.includes('statistics_calculation') && settings.statisticsCalculation) {
         console.warn('statistics_calculation column not yet migrated, skipping field');
@@ -252,8 +283,18 @@ class User {
           filteredValues.push(userId);
           const result = await db.query(fallbackQuery, filteredValues);
 
-          // If default stop loss percentage was updated, apply it to existing trades without a stop loss
-          if (settings.defaultStopLossPercent !== undefined && settings.defaultStopLossPercent > 0) {
+          // If default stop loss was updated, apply it to existing trades without a stop loss
+          const stopLossTypeFallback = settings.defaultStopLossType || 'percent';
+          if (stopLossTypeFallback === 'dollar' && settings.defaultStopLossDollars !== undefined && settings.defaultStopLossDollars > 0) {
+            const Trade = require('./Trade');
+            Trade.applyDefaultStopLossToExistingTradesByDollars(userId, settings.defaultStopLossDollars)
+              .then(count => {
+                console.log(`[SETTINGS] Applied default dollar stop loss to ${count} existing trades`);
+              })
+              .catch(error => {
+                console.error('[SETTINGS] Failed to apply default dollar stop loss to existing trades:', error);
+              });
+          } else if (settings.defaultStopLossPercent !== undefined && settings.defaultStopLossPercent > 0) {
             const Trade = require('./Trade');
             Trade.applyDefaultStopLossToExistingTrades(userId, settings.defaultStopLossPercent)
               .then(count => {
@@ -365,6 +406,17 @@ class User {
     return result.rows[0];
   }
 
+  static async markOnboardingCompleted(userId) {
+    const query = `
+      UPDATE user_settings
+      SET onboarding_completed_at = NOW()
+      WHERE user_id = $1
+      RETURNING onboarding_completed_at
+    `;
+    const result = await db.query(query, [userId]);
+    return result.rows[0];
+  }
+
   static async getUserCount() {
     const query = `SELECT COUNT(*) as count FROM users WHERE is_active = true`;
     const result = await db.query(query);
@@ -382,16 +434,27 @@ class User {
       let whereClause = '';
       let params = [];
       if (search && search.trim() !== '') {
-        whereClause = `WHERE (email ILIKE $1 OR username ILIKE $1 OR full_name ILIKE $1)`;
+        whereClause = `WHERE (u.email ILIKE $1 OR u.username ILIKE $1 OR u.full_name ILIKE $1)`;
         params.push(`%${search.trim()}%`);
       }
 
-      // Get users with pagination
+      // Get users with pagination, including trial status from tier_overrides
       const userQuery = `
-        SELECT id, email, username, full_name, avatar_url, role, is_verified, admin_approved, is_active, timezone, tier, marketing_consent, created_at, updated_at
-        FROM users
+        SELECT
+          u.id, u.email, u.username, u.full_name, u.avatar_url, u.role,
+          u.is_verified, u.admin_approved, u.is_active, u.timezone, u.tier,
+          u.marketing_consent, u.created_at, u.updated_at,
+          CASE
+            WHEN tov.id IS NOT NULL AND tov.reason ILIKE '%trial%' AND (tov.expires_at IS NULL OR tov.expires_at > NOW())
+            THEN true
+            ELSE false
+          END as is_trial
+        FROM users u
+        LEFT JOIN tier_overrides tov ON u.id = tov.user_id
+          AND tov.tier = 'pro'
+          AND (tov.expires_at IS NULL OR tov.expires_at > NOW())
         ${whereClause}
-        ORDER BY created_at DESC
+        ORDER BY u.created_at DESC
         LIMIT $${params.length + 1} OFFSET $${params.length + 2}
       `;
       params.push(limit, offset);
@@ -401,7 +464,7 @@ class User {
       // Get filtered count if search was provided
       let total = parseInt(countResult.rows[0].total);
       if (search && search.trim() !== '') {
-        const filteredCountQuery = `SELECT COUNT(*) as total FROM users ${whereClause}`;
+        const filteredCountQuery = `SELECT COUNT(*) as total FROM users u ${whereClause}`;
         const filteredCountResult = await db.query(filteredCountQuery, [params[0]]);
         total = parseInt(filteredCountResult.rows[0].total);
       }
@@ -489,40 +552,71 @@ class User {
     return result.rows[0];
   }
 
-  static async deleteUser(userId) {
+  static async deleteUser(userId, options = {}) {
+    const { deletionType = 'admin', deletedByAdminId = null } = options;
+
     // Start a transaction to ensure all deletions succeed or fail together
     const client = await db.pool.connect();
-    
+
     try {
       await client.query('BEGIN');
-      
+
+      // Capture user info before deletion for analytics tracking
+      const userInfoQuery = `
+        SELECT id, username, email, tier, created_at,
+          (SELECT COUNT(*) FROM trades WHERE user_id = $1) as trade_count
+        FROM users WHERE id = $1
+      `;
+      const userInfoResult = await client.query(userInfoQuery, [userId]);
+      const userInfo = userInfoResult.rows[0];
+
+      // Log the deletion for analytics (before deleting the user)
+      if (userInfo) {
+        await client.query(`
+          INSERT INTO account_deletions (
+            deleted_user_id, deleted_username, deleted_email, deletion_type,
+            deleted_by_admin_id, user_created_at, user_tier, trade_count
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        `, [
+          userId,
+          userInfo.username,
+          userInfo.email,
+          deletionType,
+          deletedByAdminId,
+          userInfo.created_at,
+          userInfo.tier,
+          parseInt(userInfo.trade_count) || 0
+        ]);
+      }
+
       // Delete related data that doesn't have CASCADE constraints
       // Delete CUSIP mappings for this user
       await client.query('DELETE FROM cusip_mappings WHERE user_id = $1', [userId]);
-      
+
       // Delete user settings
       await client.query('DELETE FROM user_settings WHERE user_id = $1', [userId]);
-      
+
       // Delete API keys
       await client.query('DELETE FROM api_keys WHERE user_id = $1', [userId]);
-      
+
       // Delete trades (if you want to delete them - otherwise comment this out)
       await client.query('DELETE FROM trades WHERE user_id = $1', [userId]);
-      
+
       // Delete job queue entries for this user's trades
       await client.query(`
-        DELETE FROM job_queue 
-        WHERE data->>'userId' = $1 
+        DELETE FROM job_queue
+        WHERE data->>'userId' = $1
         OR data->>'tradeId' IN (SELECT id::text FROM trades WHERE user_id = $2)
       `, [userId, userId]);
-      
+
       // Finally, delete the user
       // Other tables with ON DELETE CASCADE will be handled automatically
       const query = `DELETE FROM users WHERE id = $1`;
       const result = await client.query(query, [userId]);
-      
+
       await client.query('COMMIT');
-      
+
       return result.rowCount > 0;
     } catch (error) {
       await client.query('ROLLBACK');
@@ -751,7 +845,7 @@ class User {
     const query = `
       INSERT INTO tier_overrides (user_id, tier, reason, expires_at, created_by)
       VALUES ($1, $2, $3, $4, $5)
-      ON CONFLICT (user_id) 
+      ON CONFLICT (user_id)
       DO UPDATE SET
         tier = EXCLUDED.tier,
         reason = EXCLUDED.reason,
@@ -760,9 +854,46 @@ class User {
         updated_at = CURRENT_TIMESTAMP
       RETURNING *
     `;
-    
+
     const result = await db.query(query, [userId, tier, reason, expiresAt, createdBy]);
     return result.rows[0];
+  }
+
+  /**
+   * Get a user's marketing consent status by ID
+   * @param {number} userId - The user's ID
+   * @returns {boolean|null} marketing_consent value, or null if user not found
+   */
+  static async getMarketingConsentById(userId) {
+    const query = `
+      SELECT marketing_consent
+      FROM users
+      WHERE id = $1
+    `;
+
+    const result = await db.query(query, [userId]);
+    if (result.rows.length === 0) {
+      return null;
+    }
+    return result.rows[0].marketing_consent;
+  }
+
+  /**
+   * Update a user's marketing consent status
+   * @param {number} userId - The user's ID
+   * @param {boolean} consent - The new consent value
+   * @returns {boolean} true if updated, false if user not found
+   */
+  static async updateMarketingConsent(userId, consent) {
+    const query = `
+      UPDATE users
+      SET marketing_consent = $1, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $2
+      RETURNING id
+    `;
+
+    const result = await db.query(query, [consent, userId]);
+    return result.rows.length > 0;
   }
 }
 

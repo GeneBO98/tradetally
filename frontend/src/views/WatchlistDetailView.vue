@@ -80,7 +80,7 @@
                 </button>
                 <button
                   @click="editNotes(item)"
-                  class="text-indigo-600 hover:text-indigo-900"
+                  class="text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
                 >
                   Edit
                 </button>
@@ -255,11 +255,11 @@
       <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden">
         <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
           <h2 class="text-lg font-medium text-gray-900 dark:text-white flex items-center">
-            <svg class="w-5 h-5 mr-2 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="w-5 h-5 mr-2 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
             </svg>
             8 Pillars Analysis
-            <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400">
+            <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400">
               Pro
             </span>
           </h2>
@@ -283,7 +283,7 @@
         </div>
 
         <div v-if="loadingPillars" class="flex justify-center items-center py-8">
-          <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-600"></div>
+          <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-orange-600"></div>
           <span class="ml-3 text-sm text-gray-500 dark:text-gray-400">Analyzing {{ pillarsLoadingSymbol }}...</span>
         </div>
 
@@ -389,14 +389,12 @@
           <form @submit.prevent="addSymbol">
             <div class="mb-4">
               <label for="symbol" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Symbol</label>
-              <input
+              <SymbolAutocomplete
                 id="symbol"
                 v-model="symbolForm.symbol"
-                type="text"
-                required
-                class="input uppercase dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                :required="true"
                 placeholder="Enter symbol (e.g., AAPL)"
-              >
+              />
             </div>
             <div class="mb-6">
               <label for="notes" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Notes (optional)</label>
@@ -474,9 +472,13 @@ import { useRoute, useRouter } from 'vue-router'
 import { useNotification } from '@/composables/useNotification'
 import { useInvestmentsStore } from '@/stores/investments'
 import api from '@/services/api'
+import SymbolAutocomplete from '@/components/common/SymbolAutocomplete.vue'
 
 export default {
   name: 'WatchlistDetailView',
+  components: {
+    SymbolAutocomplete
+  },
   setup() {
     const route = useRoute()
     const router = useRouter()

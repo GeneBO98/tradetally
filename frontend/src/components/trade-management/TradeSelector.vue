@@ -1,5 +1,5 @@
 <template>
-  <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden">
+  <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg">
     <!-- Filters -->
     <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
       <h2 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Select a Trade to Analyze</h2>
@@ -7,12 +7,10 @@
         <!-- Symbol Search -->
         <div class="flex-1 min-w-[200px]">
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Symbol</label>
-          <input
+          <SymbolAutocomplete
             v-model="localFilters.symbol"
-            type="text"
             placeholder="Search by symbol..."
-            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
-            @input="debouncedFilterChange"
+            @select="debouncedFilterChange"
           />
         </div>
 
@@ -77,6 +75,22 @@
         ]"
       >
         <div class="flex items-center space-x-4">
+          <!-- Trade Number (matches R-Performance chart) -->
+          <div
+            v-if="trade.trade_number"
+            class="flex-shrink-0 w-8 h-8 flex items-center justify-center bg-gray-100 dark:bg-gray-700 rounded-full text-sm font-medium text-gray-600 dark:text-gray-300"
+            :title="`Trade #${trade.trade_number} on R-Performance chart`"
+          >
+            {{ trade.trade_number }}
+          </div>
+          <div
+            v-else
+            class="flex-shrink-0 w-8 h-8 flex items-center justify-center bg-gray-50 dark:bg-gray-800 rounded-full text-sm text-gray-400 dark:text-gray-500"
+            title="No trade number - stop loss not set"
+          >
+            -
+          </div>
+
           <!-- Symbol & Date -->
           <div>
             <div class="flex items-center space-x-2">
@@ -107,7 +121,7 @@
               </span>
             </div>
             <div class="text-sm text-gray-500 dark:text-gray-400">
-              {{ formatDate(trade.trade_date) }}
+              {{ formatDateWithTime(trade) }}
               <span v-if="trade.strategy" class="ml-2 text-gray-400 dark:text-gray-500">- {{ trade.strategy }}</span>
             </div>
           </div>
@@ -190,6 +204,10 @@
 <script setup>
 import { ref, watch, onMounted } from 'vue'
 import { format } from 'date-fns'
+import { useUserTimezone } from '@/composables/useUserTimezone'
+import SymbolAutocomplete from '@/components/common/SymbolAutocomplete.vue'
+
+const { formatDateTime: formatDateTimeTz } = useUserTimezone()
 
 const props = defineProps({
   trades: {
@@ -236,6 +254,11 @@ watch(() => props.initialFilters, (newFilters) => {
   }
 }, { deep: true })
 
+// Watch symbol changes from autocomplete v-model to trigger filtering on typing
+watch(() => localFilters.value.symbol, () => {
+  debouncedFilterChange()
+})
+
 let debounceTimer = null
 
 function debouncedFilterChange() {
@@ -268,6 +291,17 @@ function formatDate(dateString) {
     return format(new Date(dateString), 'MMM d, yyyy')
   } catch {
     return dateString
+  }
+}
+
+/** Date and time using last execution time (exit_time), fallback to entry_time */
+function formatDateWithTime(trade) {
+  const timeStr = trade?.exit_time ?? trade?.entry_time
+  if (!timeStr) return formatDate(trade?.trade_date) || ''
+  try {
+    return formatDateTimeTz(timeStr)
+  } catch {
+    return formatDate(trade?.trade_date) || ''
   }
 }
 

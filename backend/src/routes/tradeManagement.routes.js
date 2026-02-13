@@ -44,9 +44,19 @@ router.get('/analysis/:tradeId/target-hit-first', tradeManagementController.anal
  * @desc Update stop_loss and take_profit for a trade
  * @body stop_loss - Stop loss price
  * @body take_profit - Take profit price
+ * @body manual_target_hit_first - Manual target hit override (optional)
  * @access Pro
  */
 router.patch('/trades/:tradeId/levels', tradeManagementController.updateTradeLevels);
+
+/**
+ * @route PATCH /api/trade-management/trades/:tradeId/manual-target-hit
+ * @desc Set manual target hit first value for a trade
+ * @desc Allows users without Alpha Vantage API to manually specify which target was hit first
+ * @body manual_target_hit_first - Value: 'take_profit', 'stop_loss', 'neither', or null
+ * @access Pro
+ */
+router.patch('/trades/:tradeId/manual-target-hit', tradeManagementController.setManualTargetHitFirst);
 
 /**
  * @route GET /api/trade-management/r-performance

@@ -57,7 +57,9 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useScannerStore } from '@/stores/scanner'
 import { useAuthStore } from '@/stores/auth'
-import { format } from 'date-fns'
+import { useUserTimezone } from '@/composables/useUserTimezone'
+
+const { formatDateTime: formatDateTimeTz } = useUserTimezone()
 
 const scannerStore = useScannerStore()
 const authStore = useAuthStore()
@@ -135,7 +137,7 @@ function stopPolling() {
 function formatDate(dateStr) {
   if (!dateStr) return 'Never'
   try {
-    return format(new Date(dateStr), 'MMM d, h:mm a')
+    return formatDateTimeTz(dateStr)
   } catch {
     return dateStr
   }

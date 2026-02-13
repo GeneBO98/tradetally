@@ -138,6 +138,9 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import api from '@/services/api'
+import { useUserTimezone } from '@/composables/useUserTimezone'
+
+const { formatTime: formatTimeTz } = useUserTimezone()
 
 const logs = ref([])
 const loading = ref(false)
@@ -295,7 +298,7 @@ function formatTime(date) {
   if (diff < 60) return `${diff}s ago`
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
 
-  return date.toLocaleTimeString()
+  return formatTimeTz(date)
 }
 
 // Set up auto-refresh

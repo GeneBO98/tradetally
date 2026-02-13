@@ -1,0 +1,39 @@
+# TradeTally - .dockerignore
+
+# Node modules
+**/node_modules
+
+# Build artifacts
+**/build
+**/dist
+
+# Docker compose files
+**/docker-compose.*.yaml
+
+# Documentation
+**/documentation
+**/*.md
+
+# IDE and editor configs
+**/.idea
+**/.vscode
+**/.agents
+
+# Git
+.git/
+.github/
+
+# Logs and coverage
+**/logs
+**/coverage
+
+# Misc
+**/.env
+**/.env.*
+
+# Temporary files
+**/*.tmp
+**/*.log
+
+# Docker ignore for Dockerfile
+**/Dockerfile

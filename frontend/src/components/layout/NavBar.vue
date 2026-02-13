@@ -1,5 +1,5 @@
 <template>
-  <div class="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700" style="width: 100%; min-width: 100vw;">
+  <div class="sticky top-0 z-50 bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm shadow-sm border-b border-gray-200 dark:border-gray-700" style="width: 100%; min-width: 100vw;">
     <nav class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="flex justify-between h-16">
         <div class="flex items-center">
@@ -388,7 +388,7 @@ const publicNavigation = computed(() => {
     nav.push(
       { name: 'Features', to: '/features', route: 'features' },
       { name: 'FAQ', to: '/faq', route: 'faq' },
-      { name: 'vs TraderVue', to: '/compare/tradervue', route: 'compare-tradervue' }
+      { name: 'Compare', to: '/compare', route: 'compare' }
     )
   }
   

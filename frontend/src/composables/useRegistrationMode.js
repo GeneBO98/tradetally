@@ -2,30 +2,37 @@ import { ref, computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 
 const registrationConfig = ref(null)
+let fetchPromise = null
 
 export function useRegistrationMode() {
   const authStore = useAuthStore()
-  
+
   const fetchRegistrationConfig = async () => {
-    if (!registrationConfig.value) {
-      try {
-        registrationConfig.value = await authStore.getRegistrationConfig()
-        console.log('[REGISTRATION] Config fetched:', {
-          registrationMode: registrationConfig.value.registrationMode,
-          billingEnabled: registrationConfig.value.billingEnabled,
-          allowRegistration: registrationConfig.value.allowRegistration
+    if (registrationConfig.value) return registrationConfig.value
+
+    if (!fetchPromise) {
+      fetchPromise = authStore.getRegistrationConfig()
+        .then(config => {
+          registrationConfig.value = config
+          console.log('[REGISTRATION] Config fetched:', {
+            registrationMode: config.registrationMode,
+            billingEnabled: config.billingEnabled,
+            allowRegistration: config.allowRegistration
+          })
+          return config
         })
-      } catch (error) {
-        console.error('Failed to fetch registration config:', error)
-        // Default to open mode on error
-        registrationConfig.value = {
-          registrationMode: 'open',
-          allowRegistration: true,
-          billingEnabled: false
-        }
-      }
+        .catch(error => {
+          console.error('Failed to fetch registration config:', error)
+          registrationConfig.value = {
+            registrationMode: 'open',
+            allowRegistration: true,
+            billingEnabled: false
+          }
+          return registrationConfig.value
+        })
     }
-    return registrationConfig.value
+
+    return fetchPromise
   }
 
   const isOpenMode = computed(() => {

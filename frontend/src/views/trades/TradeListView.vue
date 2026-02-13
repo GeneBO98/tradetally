@@ -210,8 +210,12 @@
           
           <div class="grid grid-cols-2 gap-4 text-sm">
             <div>
-              <div class="text-gray-500 dark:text-gray-400">Date</div>
-              <div class="text-gray-900 dark:text-white">{{ formatDate(trade.trade_date) }}</div>
+              <div class="text-gray-500 dark:text-gray-400">Entry Date</div>
+              <div class="text-gray-900 dark:text-white">{{ trade.entry_time ? formatDate(trade.entry_time) : '-' }}</div>
+            </div>
+            <div>
+              <div class="text-gray-500 dark:text-gray-400">Exit Date</div>
+              <div class="text-gray-900 dark:text-white">{{ trade.exit_time ? formatDate(trade.exit_time) : '-' }}</div>
             </div>
             <div>
               <div class="text-gray-500 dark:text-gray-400">Entry</div>
@@ -371,14 +375,26 @@
                   </div>
                 </td>
 
-                <!-- Date Column -->
-                <td v-else-if="column.visible && column.key === 'date'"
+                <!-- Entry Date Column -->
+                <td v-else-if="column.visible && column.key === 'entryDate'"
                     :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
-                  <div class="text-sm text-gray-900 dark:text-white leading-tight">
-                    <div>{{ formatDateMonthDay(trade.trade_date) }}</div>
-                    <div class="text-xs text-gray-500 dark:text-gray-400">{{ formatDateYear(trade.trade_date) }}</div>
+                  <div v-if="trade.entry_time" class="text-sm text-gray-900 dark:text-white leading-tight">
+                    <div>{{ formatDateMonthDay(trade.entry_time) }}</div>
+                    <div class="text-xs text-gray-500 dark:text-gray-400">{{ formatDateYear(trade.entry_time) }}</div>
                   </div>
+                  <div v-else class="text-sm text-gray-500 dark:text-gray-400">-</div>
+                </td>
+
+                <!-- Exit Date Column -->
+                <td v-else-if="column.visible && column.key === 'exitDate'"
+                    :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']"
+                    @click="$router.push(`/trades/${trade.id}`)">
+                  <div v-if="trade.exit_time" class="text-sm text-gray-900 dark:text-white leading-tight">
+                    <div>{{ formatDateMonthDay(trade.exit_time) }}</div>
+                    <div class="text-xs text-gray-500 dark:text-gray-400">{{ formatDateYear(trade.exit_time) }}</div>
+                  </div>
+                  <div v-else class="text-sm text-gray-500 dark:text-gray-400">-</div>
                 </td>
 
                 <!-- Entry Time Column -->
@@ -852,6 +868,7 @@
 import { onMounted, computed, watch, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTradesStore } from '@/stores/trades'
+import { useUserTimezone } from '@/composables/useUserTimezone'
 import { format } from 'date-fns'
 import { DocumentTextIcon, ChatBubbleLeftIcon } from '@heroicons/vue/24/outline'
 import TradeFilters from '@/components/trades/TradeFilters.vue'
@@ -864,6 +881,7 @@ import { mdiNewspaper } from '@mdi/js'
 import api from '@/services/api'
 
 const tradesStore = useTradesStore()
+const { formatTime: formatTimeTz } = useUserTimezone()
 const route = useRoute()
 const router = useRouter()
 
@@ -1149,22 +1167,8 @@ function formatHoldTime(trade) {
 
 function formatTime(datetime) {
   if (!datetime) return '-'
-  try {
-    const dateStr = datetime.toString()
-    // Parse datetime string manually to avoid timezone issues (same as TradeDetailView)
-    const isoMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?/)
-    if (isoMatch) {
-      const [, , , , hour, minute, second] = isoMatch.map(Number)
-      // Format time directly from parsed components, ignoring timezone
-      return `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}:${second.toString().padStart(2, '0')}`
-    }
-    // Fallback
-    const date = new Date(datetime)
-    return format(date, 'HH:mm:ss')
-  } catch (error) {
-    console.error('Time formatting error:', error, 'for datetime:', datetime)
-    return '-'
-  }
+  // Use timezone-aware formatting from composable
+  return formatTimeTz(datetime)
 }
 
 function handleFilter(filters) {

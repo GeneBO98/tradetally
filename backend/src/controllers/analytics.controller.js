@@ -1,4 +1,5 @@
 const db = require('../config/database');
+const crypto = require('crypto');
 const aiService = require('../utils/aiService');
 const User = require('../models/User');
 const Trade = require('../models/Trade');
@@ -6,6 +7,12 @@ const finnhub = require('../utils/finnhub');
 const cache = require('../utils/cache');
 const MAEEstimator = require('../utils/maeEstimator');
 const symbolCategories = require('../utils/symbolCategories');
+
+// Helper function to create a short but collision-resistant hash for cache keys
+function createFilterHash(filters) {
+  const str = JSON.stringify(filters);
+  return crypto.createHash('md5').update(str).digest('hex').slice(0, 16);
+}
 
 // Async MAE/MFE calculation function
 async function calculateMAEMFEAsync(userId, filterConditions, params) {
@@ -126,7 +133,8 @@ function convertQueryToTradeFilters(query) {
     instrumentTypes: toArray(query.instrumentTypes),
     optionTypes: toArray(query.optionTypes),
     holdTime: query.holdTime || undefined,
-    hasRValue: query.hasRValue
+    hasRValue: query.hasRValue,
+    accounts: toArray(query.accounts)
   };
 }
 
@@ -343,6 +351,13 @@ function buildFilterConditions(query) {
     }
   }
 
+  // Account identifier filter - multi-select support
+  if (filters.accounts && filters.accounts.length > 0) {
+    const placeholders = filters.accounts.map(() => `$${paramIndex++}`).join(',');
+    filterConditions += ` AND account_identifier IN (${placeholders})`;
+    params.push(...filters.accounts);
+  }
+
   console.log('--- Filter Results (normalized) ---');
   console.log('Final filter conditions:', filterConditions);
   console.log('Final params:', params);
@@ -369,34 +384,19 @@ const analyticsController = {
       
       // Include filter hash in cache key to handle different filter combinations
       const normalizedFiltersForCache = convertQueryToTradeFilters(req.query);
-      const filterHash = JSON.stringify(normalizedFiltersForCache);
-      const cacheKey = `analytics_overview_${req.user.id}_${Buffer.from(filterHash).toString('base64').slice(0, 32)}_${useMedian ? 'median' : 'avg'}`;
-      
-      console.log('[CACHE] Cache key for analytics overview:', cacheKey);
-      console.log('[CACHE] Normalized filters for cache:', normalizedFiltersForCache);
+      const filterHashKey = createFilterHash(normalizedFiltersForCache);
+      const cacheKey = `analytics_overview_${req.user.id}_${filterHashKey}_${useMedian ? 'median' : 'avg'}`;
       
       // Check cache first for faster response
-      // TEMPORARILY DISABLED FOR DEBUGGING - filters not applying
-      // const cachedData = cache.get(cacheKey);
-      // if (cachedData) {
-      //   console.log('[CACHE] Returning cached analytics data');
-      //   return res.json(cachedData);
-      // }
-      console.log('[DEBUG] Cache disabled - running fresh query');
-      console.log('[DEBUG] filterData from buildFilterConditions:', JSON.stringify(filterData));
+      const cachedData = cache.get(cacheKey);
+      if (cachedData) {
+        console.log(`[CACHE HIT] Analytics overview returned from cache for user ${req.user.id}`);
+        return res.json(cachedData);
+      }
+      console.log(`[CACHE MISS] Computing analytics overview for user ${req.user.id}`);
 
       const { filterConditions, params: filterParams } = filterData;
       const params = [req.user.id, ...filterParams];
-      
-      console.log('Filters applied:', req.query);
-      console.log('Filter conditions:', filterConditions);
-      console.log('Query params:', params);
-
-      // Test simple query first to debug
-      const testQuery = `SELECT COUNT(*) as count FROM trades WHERE user_id = $1 ${filterConditions}`;
-      console.log('Test query:', testQuery);
-      const testResult = await db.query(testQuery, params);
-      console.log('Test result:', testResult.rows[0]);
 
       const overviewQuery = `
         WITH completed_trades AS (
@@ -695,9 +695,11 @@ const analyticsController = {
         avg_mfe: overview.avg_mfe
       });
 
-      console.log('Analytics overview calculation completed, sending response');
       // Cache the result for 5 minutes (300000ms)
-      cache.set(cacheKey, { overview }, 300000);
+      // Cache analytics overview for 5 minutes for better performance
+      const cacheTTL = 5 * 60 * 1000; // 5 minutes
+      cache.set(cacheKey, { overview }, cacheTTL);
+      console.log(`[CACHE SET] Analytics overview cached for ${cacheTTL/1000}s for user ${req.user.id}`);
       res.json({ overview });
     } catch (error) {
       console.error('Analytics overview error:', error);
@@ -888,46 +890,25 @@ const analyticsController = {
       const { getUserTimezone } = require('../utils/timezone');
       const userTimezone = await getUserTimezone(req.user.id);
 
-      let hourQuery;
-      let hourParams;
-
-      if (userTimezone !== 'UTC') {
-        hourQuery = `
-          SELECT
-            EXTRACT(HOUR FROM (entry_time AT TIME ZONE 'UTC' AT TIME ZONE $2)) as hour,
-            COUNT(*) as total_trades,
-            COUNT(CASE WHEN pnl > 0 THEN 1 END) as winning_trades,
-            COALESCE(SUM(pnl), 0) as total_pnl,
-            COALESCE(AVG(pnl), 0) as avg_pnl,
-            COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value,
-            COALESCE(AVG(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as avg_r_value,
-            COUNT(CASE WHEN stop_loss IS NOT NULL THEN 1 END) as trades_with_r
-          FROM trades
-          WHERE user_id = $1 ${filterConditions}
-            AND entry_time IS NOT NULL
-          GROUP BY EXTRACT(HOUR FROM (entry_time AT TIME ZONE 'UTC' AT TIME ZONE $2))
-          ORDER BY hour
-        `;
-        hourParams = params.concat([userTimezone]);
-      } else {
-        hourQuery = `
-          SELECT
-            EXTRACT(HOUR FROM entry_time) as hour,
-            COUNT(*) as total_trades,
-            COUNT(CASE WHEN pnl > 0 THEN 1 END) as winning_trades,
-            COALESCE(SUM(pnl), 0) as total_pnl,
-            COALESCE(AVG(pnl), 0) as avg_pnl,
-            COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value,
-            COALESCE(AVG(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as avg_r_value,
-            COUNT(CASE WHEN stop_loss IS NOT NULL THEN 1 END) as trades_with_r
-          FROM trades
-          WHERE user_id = $1 ${filterConditions}
-            AND entry_time IS NOT NULL
-          GROUP BY EXTRACT(HOUR FROM entry_time)
-          ORDER BY hour
-        `;
-        hourParams = params;
-      }
+      // Convert entry_time from UTC to user's timezone for hour extraction
+      // For timestamptz columns, "AT TIME ZONE 'tz'" converts the UTC time to that timezone
+      const hourQuery = `
+        SELECT
+          EXTRACT(HOUR FROM (entry_time AT TIME ZONE $2)) as hour,
+          COUNT(*) as total_trades,
+          COUNT(CASE WHEN pnl > 0 THEN 1 END) as winning_trades,
+          COALESCE(SUM(pnl), 0) as total_pnl,
+          COALESCE(AVG(pnl), 0) as avg_pnl,
+          COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value,
+          COALESCE(AVG(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as avg_r_value,
+          COUNT(CASE WHEN stop_loss IS NOT NULL THEN 1 END) as trades_with_r
+        FROM trades
+        WHERE user_id = $1 ${filterConditions}
+          AND entry_time IS NOT NULL
+        GROUP BY EXTRACT(HOUR FROM (entry_time AT TIME ZONE $2))
+        ORDER BY hour
+      `;
+      const hourParams = params.concat([userTimezone]);
 
       const result = await db.query(hourQuery, hourParams);
 
@@ -939,49 +920,348 @@ const analyticsController = {
 
   async getCalendarData(req, res, next) {
     try {
-      const { year, month } = req.query;
+      const { year } = req.query;
       
-      // Add year/month to query params if provided for buildFilterConditions
-      const queryWithDates = { ...req.query };
+      // Require year parameter for performance - fetch only one year at a time
+      if (!year) {
+        return res.status(400).json({ error: 'Year parameter is required' });
+      }
       
-      if (year && month) {
-        // Validate and sanitize year and month to prevent injection
-        const sanitizedYear = parseInt(year);
-        const sanitizedMonth = parseInt(month);
-        
-        // Validate ranges
-        if (isNaN(sanitizedYear) || sanitizedYear < 1900 || sanitizedYear > 2100) {
-          return res.status(400).json({ error: 'Invalid year parameter' });
-        }
-        
-        if (isNaN(sanitizedMonth) || sanitizedMonth < 1 || sanitizedMonth > 12) {
-          return res.status(400).json({ error: 'Invalid month parameter' });
-        }
-        
-        const startDate = `${sanitizedYear}-${sanitizedMonth.toString().padStart(2, '0')}-01`;
-        const endDate = new Date(sanitizedYear, sanitizedMonth, 0).toISOString().split('T')[0];
-        queryWithDates.startDate = startDate;
-        queryWithDates.endDate = endDate;
+      const sanitizedYear = parseInt(year);
+      if (isNaN(sanitizedYear) || sanitizedYear < 1900 || sanitizedYear > 2100) {
+        return res.status(400).json({ error: 'Invalid year parameter' });
       }
 
-      const { filterConditions, params: filterParams } = buildFilterConditions(queryWithDates);
+      const startDate = `${sanitizedYear}-01-01`;
+      const endDate = `${sanitizedYear}-12-31`;
+
+      // Build filter conditions without date range - dates are handled explicitly in each CTE
+      // Using req.query directly avoids adding trade_date filters that exclude trades whose
+      // trade_date moved to a different year (e.g. partial exits spanning calendar years)
+      const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
       const params = [req.user.id, ...filterParams];
 
+      // Execution-level calendar: each exit execution contributes P&L on the date it occurred
+      const paramOffset = params.length;
+      const tableAlias = 't';
+      const fc = filterConditions ? filterConditions.replace(/\btrade_date\b/g, `${tableAlias}.trade_date`).replace(/\bsymbol\b/g, `${tableAlias}.symbol`).replace(/\bstrategy\b/g, `${tableAlias}.strategy`).replace(/\bside\b/g, `${tableAlias}.side`) : '';
       const calendarQuery = `
-        SELECT 
-          trade_date,
-          COUNT(*) as trades,
-          COALESCE(SUM(pnl), 0) as daily_pnl
-        FROM trades
-        WHERE user_id = $1 ${filterConditions}
-        GROUP BY trade_date
-        ORDER BY trade_date
+        WITH exit_executions AS (
+          SELECT ${tableAlias}.user_id, ${tableAlias}.id AS trade_id, ${tableAlias}.symbol, ${tableAlias}.side,
+            (COALESCE(exec->>'datetime', exec->>'exitTime', exec->>'exit_time'))::timestamp::date AS exec_date,
+            (
+              CASE
+                -- Priority 1: If execution has entryPrice AND exitPrice (partial close), calculate fresh
+                -- This avoids using stored pnl which may have incorrect fee proration from import
+                WHEN (exec->>'entryPrice') IS NOT NULL AND (exec->>'exitPrice') IS NOT NULL AND (exec->>'quantity') IS NOT NULL
+                  THEN (
+                    CASE WHEN ${tableAlias}.side IN ('long','buy')
+                         THEN ((exec->>'exitPrice')::numeric - (exec->>'entryPrice')::numeric) * (exec->>'quantity')::numeric
+                         WHEN ${tableAlias}.side IN ('short','sell')
+                         THEN ((exec->>'entryPrice')::numeric - (exec->>'exitPrice')::numeric) * (exec->>'quantity')::numeric
+                         ELSE NULL END
+                    ) * (CASE WHEN COALESCE(${tableAlias}.instrument_type, 'stock') = 'future'
+                              THEN CASE WHEN ${tableAlias}.point_value IS NOT NULL AND ${tableAlias}.point_value > 1
+                                        THEN ${tableAlias}.point_value
+                                        ELSE NULL END
+                              WHEN COALESCE(${tableAlias}.instrument_type, 'stock') = 'option' THEN COALESCE(${tableAlias}.contract_size, 100)
+                              ELSE 1 END)
+                    -- Subtract execution's own fees + prorated entry commission
+                    - COALESCE((exec->>'fees')::numeric, 0)
+                    - CASE WHEN (${tableAlias}.quantity IS NOT NULL AND ${tableAlias}.quantity > 0) THEN ((exec->>'quantity')::numeric / ${tableAlias}.quantity) * (
+                      COALESCE(${tableAlias}.entry_commission, 0)
+                    ) ELSE 0 END
+                -- Priority 2: For broker-synced data with pre-calculated pnl (like Schwab netAmount), use as-is
+                WHEN (exec->>'pnl') IS NOT NULL AND (exec->>'entryPrice') IS NULL THEN (exec->>'pnl')::numeric
+                WHEN (exec->>'profitLoss') IS NOT NULL AND (exec->>'entryPrice') IS NULL THEN (exec->>'profitLoss')::numeric
+                -- Priority 3: Calculate from trade-level entry_price and exec exit price (e.g., expirations, CSV imports)
+                WHEN (exec->>'price') IS NOT NULL AND (exec->>'quantity') IS NOT NULL AND ${tableAlias}.entry_price IS NOT NULL
+                  THEN (
+                    CASE WHEN ${tableAlias}.side IN ('long','buy') THEN ((exec->>'price')::numeric - ${tableAlias}.entry_price) * (exec->>'quantity')::numeric
+                         WHEN ${tableAlias}.side IN ('short','sell') THEN (${tableAlias}.entry_price - (exec->>'price')::numeric) * (exec->>'quantity')::numeric
+                         ELSE NULL END
+                    ) * (CASE WHEN COALESCE(${tableAlias}.instrument_type, 'stock') = 'future'
+                              THEN CASE WHEN ${tableAlias}.point_value IS NOT NULL AND ${tableAlias}.point_value > 1
+                                        THEN ${tableAlias}.point_value
+                                        ELSE NULL END  -- Skip execution calc for futures without valid point_value
+                              WHEN COALESCE(${tableAlias}.instrument_type, 'stock') = 'option' THEN COALESCE(${tableAlias}.contract_size, 100)
+                              ELSE 1 END)
+                    -- Subtract this execution's fees
+                    - COALESCE((exec->>'fees')::numeric, 0)
+                    -- Subtract prorated entry commission
+                    - CASE WHEN (${tableAlias}.quantity IS NOT NULL AND ${tableAlias}.quantity > 0) THEN ((exec->>'quantity')::numeric / ${tableAlias}.quantity) * (
+                      COALESCE(${tableAlias}.entry_commission, 0)
+                    ) ELSE 0 END
+                ELSE NULL
+              END
+            ) AS exec_pnl,
+            (exec->>'quantity')::numeric AS exec_qty,
+            (exec->>'price')::numeric AS exec_price
+          FROM trades ${tableAlias}
+          CROSS JOIN LATERAL jsonb_array_elements(COALESCE(${tableAlias}.executions, '[]'::jsonb)) WITH ORDINALITY AS arr(exec, ord)
+          WHERE ${tableAlias}.user_id = $1
+            AND (exec->>'datetime' IS NOT NULL OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL)
+            AND (
+              (${tableAlias}.side IN ('long','buy') AND (
+                (exec->>'action') IN ('sell','short') OR (exec->>'type') IN ('sell','short')
+                OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL
+              ))
+              OR (${tableAlias}.side IN ('short','sell') AND (
+                (exec->>'action') IN ('buy','long') OR (exec->>'type') IN ('buy','long')
+                OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL
+              ))
+            )
+            AND (COALESCE(exec->>'datetime', exec->>'exitTime', exec->>'exit_time'))::timestamp::date >= $${paramOffset + 1}::date
+            AND (COALESCE(exec->>'datetime', exec->>'exitTime', exec->>'exit_time'))::timestamp::date <= $${paramOffset + 2}::date
+            ${fc}
+        ),
+        daily_from_exec AS (
+          SELECT trade_id, exec_date AS trade_date, exec_pnl AS pnl
+          FROM exit_executions
+          WHERE exec_pnl IS NOT NULL
+        ),
+        daily_from_trade AS (
+          SELECT ${tableAlias}.id AS trade_id, (${tableAlias}.exit_time::timestamp)::date AS trade_date, ${tableAlias}.pnl
+          FROM trades ${tableAlias}
+          WHERE ${tableAlias}.user_id = $1
+            AND ${tableAlias}.exit_time IS NOT NULL
+            AND ${tableAlias}.pnl IS NOT NULL
+            AND (${tableAlias}.executions IS NULL OR jsonb_array_length(${tableAlias}.executions) = 0
+                 OR (COALESCE(${tableAlias}.instrument_type, 'stock') = 'future' AND (${tableAlias}.point_value IS NULL OR ${tableAlias}.point_value <= 1))
+                 OR NOT EXISTS (
+                   SELECT 1 FROM jsonb_array_elements(COALESCE(${tableAlias}.executions, '[]'::jsonb)) AS e(exec)
+                   WHERE (
+                     ( (e.exec->>'pnl') IS NOT NULL AND (e.exec->>'pnl') ~ '^-?[0-9]+(\\.[0-9]*)?$' )
+                     OR ( (e.exec->>'profitLoss') IS NOT NULL AND (e.exec->>'profitLoss') ~ '^-?[0-9]+(\\.[0-9]*)?$' )
+                     OR ( (e.exec->>'price') IS NOT NULL AND (e.exec->>'quantity') IS NOT NULL AND ${tableAlias}.entry_price IS NOT NULL )
+                     OR ( (e.exec->>'entryPrice') IS NOT NULL AND (e.exec->>'exitPrice') IS NOT NULL AND (e.exec->>'quantity') IS NOT NULL )
+                   )
+                   AND ( (${tableAlias}.side IN ('long','buy') AND ((e.exec->>'action') IN ('sell','short') OR (e.exec->>'type') IN ('sell','short') OR e.exec->>'exitTime' IS NOT NULL OR e.exec->>'exit_time' IS NOT NULL)) OR (${tableAlias}.side IN ('short','sell') AND ((e.exec->>'action') IN ('buy','long') OR (e.exec->>'type') IN ('buy','long') OR e.exec->>'exitTime' IS NOT NULL OR e.exec->>'exit_time' IS NOT NULL)) )
+                 ))
+            AND (${tableAlias}.exit_time::timestamp)::date >= $${paramOffset + 1}::date
+            AND (${tableAlias}.exit_time::timestamp)::date <= $${paramOffset + 2}::date
+            ${fc}
+        ),
+        combined AS (
+          SELECT trade_id, trade_date, pnl FROM daily_from_exec
+          UNION ALL
+          SELECT trade_id, trade_date, pnl FROM daily_from_trade
+        ),
+        pnl_by_date AS (
+          SELECT trade_date, COUNT(DISTINCT trade_id)::int AS trades, COALESCE(SUM(pnl), 0)::numeric AS daily_pnl
+          FROM combined
+          GROUP BY trade_date
+        ),
+        -- R-value by date: attribute trade's r_value to its final exit date
+        r_value_by_date AS (
+          SELECT
+            (${tableAlias}.exit_time::timestamp)::date AS trade_date,
+            COALESCE(SUM(${tableAlias}.r_value) FILTER (WHERE ${tableAlias}.r_value IS NOT NULL AND ${tableAlias}.stop_loss IS NOT NULL), 0)::numeric AS daily_r_value
+          FROM trades ${tableAlias}
+          WHERE ${tableAlias}.user_id = $1
+            AND ${tableAlias}.exit_time IS NOT NULL
+            AND (${tableAlias}.exit_time::timestamp)::date >= $${paramOffset + 1}::date
+            AND (${tableAlias}.exit_time::timestamp)::date <= $${paramOffset + 2}::date
+            ${fc}
+          GROUP BY (${tableAlias}.exit_time::timestamp)::date
+        )
+        SELECT
+          p.trade_date::text,
+          p.trades,
+          p.daily_pnl,
+          COALESCE(r.daily_r_value, 0)::numeric AS daily_r_value
+        FROM pnl_by_date p
+        LEFT JOIN r_value_by_date r ON p.trade_date = r.trade_date
+        ORDER BY p.trade_date
       `;
 
-      const result = await db.query(calendarQuery, params);
+      // Add start and end date to params
+      const finalParams = [...params, startDate, endDate];
+      const result = await db.query(calendarQuery, finalParams);
       
       res.json({ calendar: result.rows });
     } catch (error) {
+      console.error('Calendar data error:', error);
+      next(error);
+    }
+  },
+
+  /**
+   * Get execution-level contributions for a single calendar day (for day detail modal).
+   * Returns each exit execution that occurred on the given date so the calendar detail
+   * shows the same symbols/P&L as the execution-based calendar.
+   */
+  async getCalendarDayDetail(req, res, next) {
+    try {
+      const { date } = req.query;
+      if (!date) {
+        return res.status(400).json({ error: 'Date parameter is required (YYYY-MM-DD)' });
+      }
+      const dateStr = String(date).trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        return res.status(400).json({ error: 'Invalid date format. Use YYYY-MM-DD' });
+      }
+
+      const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
+      const params = [req.user.id, ...filterParams, dateStr, dateStr];
+      const paramLen = params.length;
+      const fc = filterConditions ? filterConditions.replace(/\btrade_date\b/g, 't.trade_date').replace(/\bsymbol\b/g, 't.symbol').replace(/\bstrategy\b/g, 't.strategy').replace(/\bside\b/g, 't.side') : '';
+
+      const dayQuery = `
+        WITH exit_execs AS (
+          SELECT t.id AS trade_id, t.symbol, t.side,
+            COALESCE(exec->>'datetime', exec->>'exitTime', exec->>'exit_time') AS exec_datetime,
+            (
+              CASE
+                -- Priority 1: If execution has entryPrice AND exitPrice (partial close), calculate fresh
+                -- This avoids using stored pnl which may have incorrect fee proration from import
+                WHEN (exec->>'entryPrice') IS NOT NULL AND (exec->>'exitPrice') IS NOT NULL AND (exec->>'quantity') IS NOT NULL
+                  THEN (
+                    CASE WHEN t.side IN ('long','buy')
+                         THEN ((exec->>'exitPrice')::numeric - (exec->>'entryPrice')::numeric) * (exec->>'quantity')::numeric
+                         WHEN t.side IN ('short','sell')
+                         THEN ((exec->>'entryPrice')::numeric - (exec->>'exitPrice')::numeric) * (exec->>'quantity')::numeric
+                         ELSE NULL END
+                    ) * (CASE WHEN COALESCE(t.instrument_type, 'stock') = 'future'
+                              THEN CASE WHEN t.point_value IS NOT NULL AND t.point_value > 1
+                                        THEN t.point_value
+                                        ELSE NULL END
+                              WHEN COALESCE(t.instrument_type, 'stock') = 'option' THEN COALESCE(t.contract_size, 100)
+                              ELSE 1 END)
+                    -- Subtract execution's own fees + prorated entry commission
+                    - COALESCE((exec->>'fees')::numeric, 0)
+                    - CASE WHEN (t.quantity IS NOT NULL AND t.quantity > 0) THEN ((exec->>'quantity')::numeric / t.quantity) * (
+                      COALESCE(t.entry_commission, 0)
+                    ) ELSE 0 END
+                -- Priority 2: For broker-synced data with pre-calculated pnl (like Schwab netAmount), use as-is
+                WHEN (exec->>'pnl') IS NOT NULL AND (exec->>'entryPrice') IS NULL THEN (exec->>'pnl')::numeric
+                WHEN (exec->>'profitLoss') IS NOT NULL AND (exec->>'entryPrice') IS NULL THEN (exec->>'profitLoss')::numeric
+                -- Priority 3: Calculate from trade-level entry_price and exec exit price (e.g., expirations, CSV imports)
+                WHEN (exec->>'price') IS NOT NULL AND (exec->>'quantity') IS NOT NULL AND t.entry_price IS NOT NULL
+                  THEN (
+                    CASE WHEN t.side IN ('long','buy') THEN ((exec->>'price')::numeric - t.entry_price) * (exec->>'quantity')::numeric
+                         WHEN t.side IN ('short','sell') THEN (t.entry_price - (exec->>'price')::numeric) * (exec->>'quantity')::numeric
+                         ELSE NULL END
+                  ) * (CASE WHEN COALESCE(t.instrument_type, 'stock') = 'future'
+                            THEN CASE WHEN t.point_value IS NOT NULL AND t.point_value > 1
+                                      THEN t.point_value
+                                      ELSE NULL END  -- Skip execution calc for futures without valid point_value
+                            WHEN COALESCE(t.instrument_type, 'stock') = 'option' THEN COALESCE(t.contract_size, 100)
+                            ELSE 1 END)
+                  -- Subtract this execution's fees
+                  - COALESCE((exec->>'fees')::numeric, 0)
+                  -- Subtract prorated entry commission
+                  - CASE WHEN (t.quantity IS NOT NULL AND t.quantity > 0) THEN ((exec->>'quantity')::numeric / t.quantity) * (
+                    COALESCE(t.entry_commission, 0)
+                  ) ELSE 0 END
+                ELSE NULL
+              END
+            ) AS exec_pnl,
+            (exec->>'quantity')::numeric AS exec_quantity,
+            (exec->>'price')::numeric AS exec_price
+          FROM trades t
+          CROSS JOIN LATERAL jsonb_array_elements(COALESCE(t.executions, '[]'::jsonb)) WITH ORDINALITY AS arr(exec, ord)
+          WHERE t.user_id = $1
+            AND (exec->>'datetime' IS NOT NULL OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL)
+            AND (
+              (t.side IN ('long','buy') AND (
+                (exec->>'action') IN ('sell','short') OR (exec->>'type') IN ('sell','short')
+                OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL
+              ))
+              OR (t.side IN ('short','sell') AND (
+                (exec->>'action') IN ('buy','long') OR (exec->>'type') IN ('buy','long')
+                OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL
+              ))
+            )
+            AND (COALESCE(exec->>'datetime', exec->>'exitTime', exec->>'exit_time'))::timestamp::date >= $${paramLen - 1}::date
+            AND (COALESCE(exec->>'datetime', exec->>'exitTime', exec->>'exit_time'))::timestamp::date <= $${paramLen}::date
+            ${fc}
+        ),
+        grouped_by_trade AS (
+          SELECT trade_id, symbol, side,
+            SUM(exec_pnl) AS total_pnl,
+            COUNT(*)::int AS exit_count
+          FROM exit_execs
+          WHERE exec_pnl IS NOT NULL
+          GROUP BY trade_id, symbol, side
+        ),
+        trade_total_exits AS (
+          SELECT t.id AS trade_id, COUNT(*)::int AS total_exit_count
+          FROM trades t
+          CROSS JOIN LATERAL jsonb_array_elements(COALESCE(t.executions, '[]'::jsonb)) AS exec
+          WHERE t.user_id = $1
+            AND (exec->>'datetime' IS NOT NULL OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL)
+            AND (
+              (t.side IN ('long','buy') AND ((exec->>'action') IN ('sell','short') OR (exec->>'type') IN ('sell','short') OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL))
+              OR (t.side IN ('short','sell') AND ((exec->>'action') IN ('buy','long') OR (exec->>'type') IN ('buy','long') OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL))
+            )
+          GROUP BY t.id
+        )
+        SELECT g.trade_id, g.symbol, g.side, g.total_pnl AS exec_pnl, g.exit_count,
+               COALESCE(tt.total_exit_count, 1) AS total_exit_count,
+               tr.r_value, tr.stop_loss
+        FROM grouped_by_trade g
+        LEFT JOIN trade_total_exits tt ON g.trade_id = tt.trade_id
+        LEFT JOIN trades tr ON g.trade_id = tr.id
+        ORDER BY g.trade_id
+      `;
+      const execResult = await db.query(dayQuery, params);
+
+      const rows = execResult.rows.map(r => {
+        const exitCountOnDay = r.exit_count != null ? parseInt(r.exit_count, 10) : 1;
+        const totalExitCount = r.total_exit_count != null ? parseInt(r.total_exit_count, 10) : 1;
+        const isPartial = exitCountOnDay < totalExitCount;
+        return {
+          trade_id: r.trade_id,
+          symbol: r.symbol,
+          side: r.side,
+          pnl: r.exec_pnl != null ? parseFloat(r.exec_pnl) : null,
+          // Only show r_value for fully closed trades (not partial exits)
+          r_value: (!isPartial && r.r_value != null && r.stop_loss != null) ? parseFloat(r.r_value) : null,
+          exit_count: exitCountOnDay,
+          // Only mark as partial if exits span multiple days (not all exits are on this day)
+          is_partial: isPartial
+        };
+      });
+
+      const tradeLevelFallbackQuery = `
+        SELECT t.id AS trade_id, t.symbol, t.side, t.exit_time AS exec_datetime, t.pnl, t.quantity, t.exit_price AS price, t.r_value, t.stop_loss
+        FROM trades t
+        WHERE t.user_id = $1
+          AND t.exit_time IS NOT NULL
+          AND t.pnl IS NOT NULL
+          AND (t.executions IS NULL OR jsonb_array_length(t.executions) = 0
+               OR NOT EXISTS (
+                 SELECT 1 FROM jsonb_array_elements(COALESCE(t.executions, '[]'::jsonb)) AS e(exec)
+                 WHERE (
+                   ( (e.exec->>'pnl') IS NOT NULL AND (e.exec->>'pnl') ~ '^-?[0-9]+(\\.[0-9]*)?$' )
+                   OR ( (e.exec->>'profitLoss') IS NOT NULL AND (e.exec->>'profitLoss') ~ '^-?[0-9]+(\\.[0-9]*)?$' )
+                   OR ( (e.exec->>'price') IS NOT NULL AND (e.exec->>'quantity') IS NOT NULL AND t.entry_price IS NOT NULL )
+                   OR ( (e.exec->>'entryPrice') IS NOT NULL AND (e.exec->>'exitPrice') IS NOT NULL AND (e.exec->>'quantity') IS NOT NULL )
+                 )
+                 AND ( (t.side IN ('long','buy') AND ((e.exec->>'action') IN ('sell','short') OR (e.exec->>'type') IN ('sell','short') OR e.exec->>'exitTime' IS NOT NULL OR e.exec->>'exit_time' IS NOT NULL)) OR (t.side IN ('short','sell') AND ((e.exec->>'action') IN ('buy','long') OR (e.exec->>'type') IN ('buy','long') OR e.exec->>'exitTime' IS NOT NULL OR e.exec->>'exit_time' IS NOT NULL)) )
+               ))
+          AND (t.exit_time::timestamp)::date >= $${paramLen - 1}::date
+          AND (t.exit_time::timestamp)::date <= $${paramLen}::date
+          ${fc}
+      `;
+      const tradeResult = await db.query(tradeLevelFallbackQuery, params);
+      const fallbackRows = tradeResult.rows.map(r => ({
+        trade_id: r.trade_id,
+        symbol: r.symbol,
+        side: r.side,
+        pnl: r.pnl != null ? parseFloat(r.pnl) : null,
+        r_value: (r.r_value != null && r.stop_loss != null) ? parseFloat(r.r_value) : null,
+        exit_count: 1,
+        is_partial: false
+      }));
+
+      const contributions = [...rows, ...fallbackRows].sort((a, b) =>
+        (a.trade_id || '').localeCompare(b.trade_id || '')
+      );
+      res.json({ date: dateStr, contributions });
+    } catch (error) {
+      console.error('Calendar day detail error:', error);
       next(error);
     }
   },
@@ -1022,8 +1302,8 @@ const analyticsController = {
     try {
       // Include filter hash in cache key to handle different filter combinations
       const normalizedForCache = convertQueryToTradeFilters(req.query);
-      const filterHash = JSON.stringify(normalizedForCache);
-      const cacheKey = `analytics_chart_data_${req.user.id}_${Buffer.from(filterHash).toString('base64').slice(0, 32)}`;
+      const filterHashKey = createFilterHash(normalizedForCache);
+      const cacheKey = `analytics_chart_data_${req.user.id}_${filterHashKey}`;
       const cachedData = cache.get(cacheKey);
 
       if (cachedData) {
@@ -1417,41 +1697,23 @@ const analyticsController = {
       });
 
       // Day of Week Performance (timezone-aware and excluding weekends)
+      // Convert entry_time from UTC to user's timezone for day extraction
       const { getUserTimezone } = require('../utils/timezone');
       const userTimezone = await getUserTimezone(req.user.id);
-      
-      let dayOfWeekQuery;
-      let dayOfWeekParams;
-      
-      if (userTimezone !== 'UTC') {
-        dayOfWeekQuery = `
-          SELECT
-            EXTRACT(DOW FROM (entry_time AT TIME ZONE 'UTC' AT TIME ZONE $2)) as day_of_week,
-            COUNT(*) as trade_count,
-            COALESCE(SUM(pnl), 0) as total_pnl,
-            COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value
-          FROM trades
-          WHERE user_id = $1 ${filterConditions}
-            AND EXTRACT(DOW FROM (entry_time AT TIME ZONE 'UTC' AT TIME ZONE $2)) NOT IN (0, 6) -- Exclude weekends
-          GROUP BY EXTRACT(DOW FROM (entry_time AT TIME ZONE 'UTC' AT TIME ZONE $2))
-          ORDER BY EXTRACT(DOW FROM (entry_time AT TIME ZONE 'UTC' AT TIME ZONE $2))
-        `;
-        dayOfWeekParams = params.concat([userTimezone]);
-      } else {
-        dayOfWeekQuery = `
-          SELECT
-            EXTRACT(DOW FROM entry_time) as day_of_week,
-            COUNT(*) as trade_count,
-            COALESCE(SUM(pnl), 0) as total_pnl,
-            COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value
-          FROM trades
-          WHERE user_id = $1 ${filterConditions}
-            AND EXTRACT(DOW FROM entry_time) NOT IN (0, 6) -- Exclude weekends
-          GROUP BY EXTRACT(DOW FROM entry_time)
-          ORDER BY EXTRACT(DOW FROM entry_time)
-        `;
-        dayOfWeekParams = params;
-      }
+
+      const dayOfWeekQuery = `
+        SELECT
+          EXTRACT(DOW FROM (entry_time AT TIME ZONE $2)) as day_of_week,
+          COUNT(*) as trade_count,
+          COALESCE(SUM(pnl), 0) as total_pnl,
+          COALESCE(SUM(r_value) FILTER (WHERE stop_loss IS NOT NULL), 0) as total_r_value
+        FROM trades
+        WHERE user_id = $1 ${filterConditions}
+          AND EXTRACT(DOW FROM (entry_time AT TIME ZONE $2)) NOT IN (0, 6) -- Exclude weekends
+        GROUP BY EXTRACT(DOW FROM (entry_time AT TIME ZONE $2))
+        ORDER BY EXTRACT(DOW FROM (entry_time AT TIME ZONE $2))
+      `;
+      const dayOfWeekParams = params.concat([userTimezone]);
 
       const dayOfWeekResult = await db.query(dayOfWeekQuery, dayOfWeekParams);
 
@@ -1519,7 +1781,10 @@ const analyticsController = {
         }
       };
 
-      cache.set(cacheKey, responseData);
+      // Cache performance data for 5 minutes
+      const cacheTTL = 5 * 60 * 1000; // 5 minutes
+      cache.set(cacheKey, responseData, cacheTTL);
+      console.log(`[CACHE SET] Performance analytics cached for ${cacheTTL/1000}s`);
 
       res.json(responseData);
     } catch (error) {

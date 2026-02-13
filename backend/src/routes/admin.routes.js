@@ -196,4 +196,53 @@ router.get('/logs/recent', requireAdmin, async (req, res, next) => {
   }
 });
 
+// Get unknown CSV headers (imports that didn't match a parser or failed to parse)
+router.get('/unknown-csv-headers', requireAdmin, async (req, res, next) => {
+  try {
+    const { page = 1, limit = 25, outcome } = req.query;
+    const db = require('../config/database');
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(parseInt(limit, 10) || 25, 100);
+    const offset = (pageNum - 1) * limitNum;
+
+    let whereClause = '';
+    const values = [];
+    if (outcome) {
+      values.push(outcome);
+      whereClause = ` WHERE outcome = $${values.length}`;
+    }
+
+    // Count total records
+    const countResult = await db.query(
+      `SELECT COUNT(*) FROM unknown_csv_headers${whereClause}`,
+      values
+    );
+    const total = parseInt(countResult.rows[0].count, 10);
+
+    // Fetch page of data
+    const dataValues = [...values];
+    const dataQuery = `
+      SELECT id, user_id, header_line, broker_attempted, outcome, file_name, created_at,
+             detected_broker, selected_broker, row_count, trades_parsed, diagnostics_json, sample_data
+      FROM unknown_csv_headers${whereClause}
+      ORDER BY created_at DESC
+      LIMIT $${dataValues.length + 1} OFFSET $${dataValues.length + 2}
+    `;
+    dataValues.push(limitNum, offset);
+    const result = await db.query(dataQuery, dataValues);
+
+    res.json({
+      data: result.rows,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages: Math.ceil(total / limitNum)
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 module.exports = router;

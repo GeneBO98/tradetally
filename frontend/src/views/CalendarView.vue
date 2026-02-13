@@ -8,8 +8,19 @@
         </p>
       </div>
       
-      <!-- Year Navigation -->
       <div class="flex items-center space-x-4">
+        <!-- R-Value Toggle -->
+        <button
+          @click="toggleRValue"
+          class="px-3 py-1.5 text-xs font-medium rounded-md transition-colors"
+          :class="showRValue
+            ? 'bg-primary-600 text-white hover:bg-primary-700'
+            : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'"
+        >
+          {{ showRValue ? 'Show P&L ($)' : 'Show R-Value' }}
+        </button>
+
+        <!-- Year Navigation -->
         <button @click="changeYear(-1)" class="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
           <ChevronLeftIcon class="h-5 w-5" />
         </button>
@@ -20,24 +31,41 @@
       </div>
     </div>
 
-    <div v-if="loading" class="flex justify-center py-12">
+    <!-- Full page spinner only on initial load -->
+    <div v-if="initialLoading" class="flex justify-center py-12">
       <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
     </div>
 
-    <div v-else>
+    <!-- Content with optional refresh indicator -->
+    <div v-else class="relative">
+      <!-- Subtle refresh indicator -->
+      <div v-if="loading" class="absolute top-0 right-0 z-10">
+        <div class="flex items-center space-x-2 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-sm border border-gray-200 dark:border-gray-700">
+          <div class="animate-spin rounded-full h-4 w-4 border-2 border-primary-600 border-t-transparent"></div>
+          <span class="text-xs text-gray-600 dark:text-gray-400">Updating...</span>
+        </div>
+      </div>
       <!-- Expanded Month View -->
       <div v-if="expandedMonth" ref="expandedMonthContainer" class="mb-8">
         <div class="card">
           <div class="card-body">
             <div class="flex justify-between items-center mb-6">
-              <h2 class="heading-section">
-                {{ format(expandedMonth, 'MMMM yyyy') }}
-              </h2>
+              <div class="flex items-center space-x-2">
+                <button @click="changeMonth(-1)" class="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200" title="Previous month">
+                  <ChevronLeftIcon class="h-5 w-5" />
+                </button>
+                <h2 class="heading-section min-w-[180px] text-center">
+                  {{ format(expandedMonth, 'MMMM yyyy') }}
+                </h2>
+                <button @click="changeMonth(1)" class="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200" title="Next month">
+                  <ChevronRightIcon class="h-5 w-5" />
+                </button>
+              </div>
               <div class="flex items-center space-x-4">
                 <div class="text-right">
-                  <p class="text-sm text-gray-500 dark:text-gray-400">Total P/L</p>
-                  <p class="text-2xl font-bold" :class="monthlyPnl >= 0 ? 'text-green-600' : 'text-red-600'">
-                    ${{ formatNumber(monthlyPnl) }}
+                  <p class="text-sm text-gray-500 dark:text-gray-400">{{ showRValue ? 'Total R' : 'Total P/L' }}</p>
+                  <p class="text-2xl font-bold" :class="monthlyTotal >= 0 ? 'text-green-600' : 'text-red-600'">
+                    {{ showRValue ? formatRValue(monthlyTotal) : '$' + formatNumber(monthlyTotal) }}
                   </p>
                 </div>
                 <button @click="closeExpandedMonth" class="btn-secondary">
@@ -53,7 +81,7 @@
                 {{ day }}
               </div>
               <div class="text-center text-xs font-medium text-gray-500 dark:text-gray-400 py-2">
-                Week P/L
+                {{ showRValue ? 'Week R' : 'Week P/L' }}
               </div>
             </div>
             <div v-for="(week, weekIndex) in expandedMonthWeekdays" :key="weekIndex" class="grid grid-cols-6 gap-1 mb-1">
@@ -68,7 +96,7 @@
                   </div>
                   <div v-if="day.pnl !== undefined && day.trades > 0" class="mt-1">
                     <p class="text-xs sm:text-sm font-semibold truncate" :class="getDayPnlTextColor(day)">
-                      ${{ formatNumber(day.pnl, 0) }}
+                      {{ showRValue ? formatRValue(day.rValue || 0, 1) : '$' + formatNumber(day.pnl, 0) }}
                     </p>
                     <p class="text-xs" :class="getDaySubTextColor(day)">
                       {{ day.trades }} {{ day.trades === 1 ? 'trade' : 'trades' }}
@@ -76,10 +104,10 @@
                   </div>
                 </div>
               </div>
-              <!-- Week P/L Column -->
+              <!-- Week P/L or R-Value Column -->
               <div class="flex items-center justify-center border border-gray-200 dark:border-gray-700 rounded-lg p-2 sm:p-3 bg-gray-50 dark:bg-gray-800">
-                <p class="text-xs sm:text-sm font-semibold" :class="week.weekPnl >= 0 ? 'text-green-600' : 'text-red-600'">
-                  ${{ formatNumber(week.weekPnl, 0) }}
+                <p class="text-xs sm:text-sm font-semibold" :class="getWeekTotal(week) >= 0 ? 'text-green-600' : 'text-red-600'">
+                  {{ showRValue ? formatRValue(week.weekRValue || 0, 1) : '$' + formatNumber(week.weekPnl, 0) }}
                 </p>
               </div>
             </div>
@@ -121,57 +149,77 @@
 
     <!-- Day Trades Modal -->
     <div v-if="selectedDay" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-      <div class="relative top-20 mx-auto p-5 border w-full max-w-2xl shadow-lg rounded-md bg-white dark:bg-gray-800">
-        <div class="mt-3">
+      <div
+        class="relative mx-auto p-5 border shadow-lg rounded-md bg-white dark:bg-gray-800 transition-all duration-300"
+        :class="isModalExpanded
+          ? 'top-4 w-full max-w-6xl h-[calc(100vh-2rem)]'
+          : 'top-20 w-full max-w-2xl'">
+        <div class="h-full flex flex-col">
           <div class="flex justify-between items-center mb-4">
             <h3 class="heading-card">
               Trades for {{ format(selectedDay.date, 'MMMM d, yyyy') }}
             </h3>
-            <button @click="selectedDay = null" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
-              <XMarkIcon class="h-6 w-6" />
-            </button>
+            <div class="flex items-center space-x-2">
+              <button
+                @click="isModalExpanded = !isModalExpanded"
+                class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                :title="isModalExpanded ? 'Collapse' : 'Expand'">
+                <ArrowsPointingInIcon v-if="isModalExpanded" class="h-5 w-5" />
+                <ArrowsPointingOutIcon v-else class="h-5 w-5" />
+              </button>
+              <button @click="selectedDay = null; isModalExpanded = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                <XMarkIcon class="h-6 w-6" />
+              </button>
+            </div>
           </div>
-          
-          <div class="space-y-3 max-h-96 overflow-y-auto">
-            <div v-for="trade in selectedDayTrades" :key="trade.id"
+
+          <div class="space-y-3 overflow-y-auto flex-1" :class="isModalExpanded ? '' : 'max-h-96'">
+            <div v-for="(contrib, index) in selectedDayContributions" :key="contrib.trade_id + '-' + index"
               class="p-4 border border-gray-200 dark:border-gray-700 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-              @click="navigateToTrade(trade.id)">
+              @click="navigateToTrade(contrib.trade_id)">
               <div class="flex justify-between items-start">
                 <div>
-                  <div class="flex items-center space-x-2">
-                    <h4 class="font-medium text-gray-900 dark:text-white">{{ trade.symbol }}</h4>
+                  <div class="flex items-center space-x-2 flex-wrap gap-y-1">
+                    <h4 class="font-medium text-gray-900 dark:text-white">{{ contrib.symbol }}</h4>
                     <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
                       :class="[
-                        trade.side === 'long' 
+                        contrib.side === 'long'
                           ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
                           : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
                       ]">
-                      {{ trade.side }}
+                      {{ contrib.side }}
+                    </span>
+                    <span v-if="contrib.is_partial" class="px-2 inline-flex text-xs leading-5 font-medium rounded-full bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300">
+                      {{ (contrib.exit_count || 1) > 1 ? `Partial exits (${contrib.exit_count})` : 'Partial exit' }}
+                    </span>
+                    <span v-else class="px-2 inline-flex text-xs leading-5 font-medium rounded-full bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300">
+                      Trade
                     </span>
                   </div>
-                  <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                    <p>Entry: ${{ formatNumber(trade.entry_price, 4) }} | Exit: {{ trade.exit_price ? `$${formatNumber(trade.exit_price, 4)}` : 'Open' }}</p>
-                    <p>Quantity: {{ formatNumber(trade.quantity, 0) }}</p>
-                    <p v-if="trade.notes" class="mt-1">{{ trade.notes }}</p>
-                  </div>
+                  <p v-if="contrib.is_partial && (contrib.exit_count || 1) > 1" class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    {{ contrib.exit_count }} exits from same trade
+                  </p>
                 </div>
                 <div class="text-right">
-                  <p class="font-semibold" :class="trade.pnl >= 0 ? 'text-green-600' : 'text-red-600'">
-                    ${{ formatNumber(trade.pnl) }}
+                  <p class="font-semibold" :class="(contrib.pnl || 0) >= 0 ? 'text-green-600' : 'text-red-600'">
+                    {{ showRValue && contrib.r_value != null ? formatRValue(contrib.r_value) : '$' + formatNumber(contrib.pnl) }}
                   </p>
-                  <p v-if="trade.pnl_percent" class="text-sm text-gray-500 dark:text-gray-400">
-                    {{ trade.pnl_percent > 0 ? '+' : '' }}{{ formatNumber(trade.pnl_percent) }}%
+                  <p v-if="showRValue && contrib.r_value == null && !contrib.is_partial" class="text-xs text-gray-400">
+                    No R data
+                  </p>
+                  <p v-else-if="showRValue && contrib.is_partial" class="text-xs text-gray-400">
+                    Partial
                   </p>
                 </div>
               </div>
             </div>
           </div>
 
-          <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+          <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 flex-shrink-0">
             <div class="flex justify-between items-center">
-              <span class="font-medium text-gray-900 dark:text-white">Total for day:</span>
-              <span class="font-bold text-lg" :class="selectedDay.pnl >= 0 ? 'text-green-600' : 'text-red-600'">
-                ${{ formatNumber(selectedDay.pnl) }}
+              <span class="font-medium text-gray-900 dark:text-white">{{ showRValue ? 'Total R for day:' : 'Total for day:' }}</span>
+              <span class="font-bold text-lg" :class="selectedDayTotal >= 0 ? 'text-green-600' : 'text-red-600'">
+                {{ showRValue ? formatRValue(selectedDayTotalRValue) : '$' + formatNumber(selectedDayTotalPnl) }}
               </span>
             </div>
           </div>
@@ -183,48 +231,67 @@
 
 <script setup>
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
-import { useRouter } from 'vue-router'
-import { format, startOfYear, endOfYear, eachMonthOfInterval, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameMonth } from 'date-fns'
-import { ChevronLeftIcon, ChevronRightIcon, XMarkIcon } from '@heroicons/vue/24/outline'
+import { useRouter, useRoute } from 'vue-router'
+import { format, startOfYear, endOfYear, eachMonthOfInterval, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameMonth, addMonths } from 'date-fns'
+import { ChevronLeftIcon, ChevronRightIcon, XMarkIcon, ArrowsPointingOutIcon, ArrowsPointingInIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 
 const { selectedAccount } = useGlobalAccountFilter()
 
 const router = useRouter()
+const route = useRoute()
 
 const loading = ref(true)
-const trades = ref([])
+const initialLoading = ref(true) // Track initial load separately to preserve scroll on refresh
+const calendarData = ref(new Map()) // Map of date string -> { trades: number, pnl: number }
+const dayContributions = ref([]) // Execution-level contributions for selected day (from /analytics/calendar/day)
 const expandedMonth = ref(null)
-const currentYear = ref(new Date().getFullYear())
+// Initialize year from route query, localStorage, or current year (in that order)
+const getInitialYear = () => {
+  // First check route query
+  if (route.query.year) {
+    const queryYear = parseInt(route.query.year)
+    if (!isNaN(queryYear) && queryYear >= 1900 && queryYear <= 2100) {
+      return queryYear
+    }
+  }
+  // Then check localStorage
+  const savedYear = localStorage.getItem('calendar_year')
+  if (savedYear) {
+    const parsedYear = parseInt(savedYear)
+    if (!isNaN(parsedYear) && parsedYear >= 1900 && parsedYear <= 2100) {
+      return parsedYear
+    }
+  }
+  // Default to current year
+  return new Date().getFullYear()
+}
+const currentYear = ref(getInitialYear())
 const selectedDay = ref(null)
 const expandedMonthContainer = ref(null)
+const isModalExpanded = ref(false)
+const showRValue = ref(false)
 
-// Pre-compute a map of exit date to trades for O(1) lookup
-// P&L is realized on the exit date, not the entry date
-const tradesByDate = computed(() => {
-  const map = new Map()
-  for (const trade of trades.value) {
-    // Only include closed trades (those with an exit_time)
-    if (!trade.exit_time) continue
+function toggleRValue() {
+  showRValue.value = !showRValue.value
+}
 
-    const dateKey = trade.exit_time.split('T')[0]
-    if (!map.has(dateKey)) {
-      map.set(dateKey, [])
-    }
-    map.get(dateKey).push(trade)
-  }
-  return map
-})
-
-// Helper to get trades for a date using the cached map
-function getTradesForDate(date) {
-  if (!date) return []
+// Helper to get calendar data for a date
+function getCalendarDataForDate(date) {
+  if (!date) return { trades: 0, pnl: 0, rValue: 0 }
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const day = String(date.getDate()).padStart(2, '0')
   const dateKey = `${year}-${month}-${day}`
-  return tradesByDate.value.get(dateKey) || []
+  return calendarData.value.get(dateKey) || { trades: 0, pnl: 0, rValue: 0 }
+}
+
+// Day detail shows execution-level contributions (from API), not getTradesForDate
+
+// Helper to get total P&L for a date
+function getPnlForDate(date) {
+  return getCalendarDataForDate(date).pnl
 }
 
 const yearlyCalendar = computed(() => {
@@ -282,7 +349,7 @@ const expandedMonthWeekdays = computed(() => {
   const allDays = eachDayOfInterval({ start: monthStart, end: monthEnd })
 
   const weeks = []
-  let currentWeek = { days: [], weekPnl: 0 }
+  let currentWeek = { days: [], weekPnl: 0, weekRValue: 0 }
 
   for (const date of allDays) {
     const dayOfWeek = getDay(date) // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
@@ -296,7 +363,7 @@ const expandedMonthWeekdays = computed(() => {
           currentWeek.days.push({ date: null })
         }
         weeks.push(currentWeek)
-        currentWeek = { days: [], weekPnl: 0 }
+        currentWeek = { days: [], weekPnl: 0, weekRValue: 0 }
       }
       continue
     }
@@ -308,7 +375,7 @@ const expandedMonthWeekdays = computed(() => {
         currentWeek.days.push({ date: null })
       }
       weeks.push(currentWeek)
-      currentWeek = { days: [], weekPnl: 0 }
+      currentWeek = { days: [], weekPnl: 0, weekRValue: 0 }
     }
 
     // Add padding for the first week if it doesn't start on Monday
@@ -318,21 +385,19 @@ const expandedMonthWeekdays = computed(() => {
       }
     }
 
-    // Get trade data using optimized lookup
-    const dayTrades = getTradesForDate(date)
-    let dayPnl = 0
-    for (const trade of dayTrades) {
-      dayPnl += parseFloat(trade.pnl) || 0
-    }
+    // Get calendar data using optimized lookup
+    const dayData = getCalendarDataForDate(date)
 
     currentWeek.days.push({
       date,
-      trades: dayTrades.length,
-      pnl: dayTrades.length > 0 ? dayPnl : undefined
+      trades: dayData.trades,
+      pnl: dayData.trades > 0 ? dayData.pnl : undefined,
+      rValue: dayData.trades > 0 ? dayData.rValue : undefined
     })
 
-    if (dayTrades.length > 0) {
-      currentWeek.weekPnl += dayPnl
+    if (dayData.trades > 0) {
+      currentWeek.weekPnl += dayData.pnl
+      currentWeek.weekRValue += dayData.rValue || 0
     }
   }
 
@@ -347,37 +412,62 @@ const expandedMonthWeekdays = computed(() => {
   return weeks
 })
 
-const selectedDayTrades = computed(() => {
-  if (!selectedDay.value || !selectedDay.value.date) return []
-  return getTradesForDate(selectedDay.value.date)
+const selectedDayContributions = computed(() => dayContributions.value)
+
+// Total P&L for selected day = sum of execution contributions (matches calendar)
+const selectedDayTotalPnl = computed(() => {
+  return selectedDayContributions.value.reduce((sum, c) => sum + (parseFloat(c.pnl) || 0), 0)
 })
 
 const expandedMonthTrades = computed(() => {
   if (!expandedMonth.value) return []
-  return trades.value
-    .filter(trade => {
-      // Only include closed trades with exit_time
-      if (!trade.exit_time) return false
-      // Parse exit date as local date to avoid timezone issues
-      const [year, month, day] = trade.exit_time.split('T')[0].split('-')
-      const exitDate = new Date(year, month - 1, day)
-      return isSameMonth(exitDate, expandedMonth.value)
-    })
-    .sort((a, b) => {
-      // Sort by exit date
-      const [yearA, monthA, dayA] = a.exit_time.split('T')[0].split('-')
-      const [yearB, monthB, dayB] = b.exit_time.split('T')[0].split('-')
-      const dateA = new Date(yearA, monthA - 1, dayA)
-      const dateB = new Date(yearB, monthB - 1, dayB)
-      return dateB - dateA
-    })
+  // Calculate monthly P&L from calendar data
+  const monthStart = startOfMonth(expandedMonth.value)
+  const monthEnd = endOfMonth(expandedMonth.value)
+  const monthDays = eachDayOfInterval({ start: monthStart, end: monthEnd })
+  return monthDays.map(date => {
+    const data = getCalendarDataForDate(date)
+    return {
+      date: date.toISOString().split('T')[0],
+      trades: data.trades,
+      pnl: data.pnl
+    }
+  }).filter(day => day.trades > 0)
 })
 
 const monthlyPnl = computed(() => {
-  return expandedMonthTrades.value.reduce((sum, trade) => {
-    const pnl = parseFloat(trade.pnl) || 0
-    return sum + pnl
+  if (!expandedMonth.value) return 0
+  const monthStart = startOfMonth(expandedMonth.value)
+  const monthEnd = endOfMonth(expandedMonth.value)
+  const monthDays = eachDayOfInterval({ start: monthStart, end: monthEnd })
+  return monthDays.reduce((sum, date) => {
+    return sum + getCalendarDataForDate(date).pnl
   }, 0)
+})
+
+const monthlyRValue = computed(() => {
+  if (!expandedMonth.value) return 0
+  const monthStart = startOfMonth(expandedMonth.value)
+  const monthEnd = endOfMonth(expandedMonth.value)
+  const monthDays = eachDayOfInterval({ start: monthStart, end: monthEnd })
+  return monthDays.reduce((sum, date) => {
+    return sum + (getCalendarDataForDate(date).rValue || 0)
+  }, 0)
+})
+
+// Returns P&L or R-value based on toggle
+const monthlyTotal = computed(() => {
+  return showRValue.value ? monthlyRValue.value : monthlyPnl.value
+})
+
+// Total R-value for selected day
+const selectedDayTotalRValue = computed(() => {
+  return selectedDayContributions.value.reduce((sum, c) => sum + (parseFloat(c.r_value) || 0), 0)
+})
+
+// Returns P&L or R-value total for selected day based on toggle
+const selectedDayTotal = computed(() => {
+  return showRValue.value ? selectedDayTotalRValue.value : selectedDayTotalPnl.value
 })
 
 
@@ -393,16 +483,13 @@ function generateMonthDays(monthStart, monthEnd) {
   // Add all days of the month using optimized lookup
   const monthDays = eachDayOfInterval({ start: monthStart, end: monthEnd })
   for (const date of monthDays) {
-    const dayTrades = getTradesForDate(date)
-    let dayPnl = 0
-    for (const trade of dayTrades) {
-      dayPnl += parseFloat(trade.pnl) || 0
-    }
+    const dayData = getCalendarDataForDate(date)
 
     days.push({
       date,
-      trades: dayTrades.length,
-      pnl: dayTrades.length > 0 ? dayPnl : undefined
+      trades: dayData.trades,
+      pnl: dayData.trades > 0 ? dayData.pnl : undefined,
+      rValue: dayData.trades > 0 ? dayData.rValue : undefined
     })
   }
 
@@ -471,14 +558,9 @@ async function expandMonth(monthDate) {
     console.warn('Failed to save expanded month to localStorage:', e)
   }
 
-  // Scroll to the expanded month view after DOM updates
+  // Scroll to the top of the page after DOM updates
   await nextTick()
-  if (expandedMonthContainer.value) {
-    expandedMonthContainer.value.scrollIntoView({
-      behavior: 'smooth',
-      block: 'start'
-    })
-  }
+  window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
 function closeExpandedMonth() {
@@ -492,8 +574,11 @@ function closeExpandedMonth() {
   }
 }
 
-function selectDay(day) {
+async function selectDay(day) {
   selectedDay.value = day
+  if (day.date) {
+    await fetchTradesForDate(day.date)
+  }
 }
 
 function changeYear(direction) {
@@ -504,7 +589,31 @@ function changeYear(direction) {
     expandedMonth.value = new Date(currentYear.value, currentMonth, 1)
   }
   selectedDay.value = null
-  fetchTrades()
+
+  // Save to localStorage and update URL for back button support
+  localStorage.setItem('calendar_year', currentYear.value.toString())
+  router.replace({ query: { ...route.query, year: currentYear.value } })
+
+  fetchCalendarData()
+}
+
+function changeMonth(direction) {
+  if (!expandedMonth.value) return
+  const newDate = addMonths(expandedMonth.value, direction)
+  const newYear = newDate.getFullYear()
+
+  expandedMonth.value = startOfMonth(newDate)
+  selectedDay.value = null
+
+  if (newYear !== currentYear.value) {
+    currentYear.value = newYear
+    localStorage.setItem('calendar_year', currentYear.value.toString())
+    router.replace({ query: { ...route.query, year: currentYear.value } })
+    fetchCalendarData()
+  } else {
+    localStorage.setItem('calendar_expanded_month', expandedMonth.value.toISOString())
+    localStorage.setItem('calendar_expanded_year', currentYear.value.toString())
+  }
 }
 
 function formatNumber(num, decimals = 2) {
@@ -514,44 +623,103 @@ function formatNumber(num, decimals = 2) {
   }).format(num || 0)
 }
 
+function formatRValue(num, decimals = 2) {
+  const value = parseFloat(num) || 0
+  const sign = value >= 0 ? '+' : ''
+  return `${sign}${value.toFixed(decimals)}R`
+}
+
+function getWeekTotal(week) {
+  return showRValue.value ? (week.weekRValue || 0) : (week.weekPnl || 0)
+}
+
 function navigateToTrade(tradeId) {
+  // Save current state to localStorage before navigating
+  localStorage.setItem('calendar_year', currentYear.value.toString())
+  if (expandedMonth.value) {
+    localStorage.setItem('calendar_expanded_month', expandedMonth.value.toISOString())
+    localStorage.setItem('calendar_expanded_year', currentYear.value.toString())
+  }
   router.push(`/trades/${tradeId}`)
 }
 
-async function fetchTrades() {
+async function fetchCalendarData() {
   loading.value = true
   try {
     const params = {
-      limit: 1000,
-      startDate: `${currentYear.value}-01-01`,
-      endDate: `${currentYear.value}-12-31`
+      year: currentYear.value
     }
     // Apply global account filter
     if (selectedAccount.value) {
       params.accounts = selectedAccount.value
     }
-    const response = await api.get('/trades', { params })
-    trades.value = response.data.trades
+    const response = await api.get('/analytics/calendar', { params })
+    
+    // Convert array to Map for O(1) lookup
+    const dataMap = new Map()
+    if (response.data.calendar) {
+      for (const day of response.data.calendar) {
+        dataMap.set(day.trade_date, {
+          trades: parseInt(day.trades) || 0,
+          pnl: parseFloat(day.daily_pnl) || 0,
+          rValue: parseFloat(day.daily_r_value) || 0
+        })
+      }
+    }
+    calendarData.value = dataMap
   } catch (error) {
-    console.error('Failed to fetch trades:', error)
+    console.error('Failed to fetch calendar data:', error)
   } finally {
     loading.value = false
+    initialLoading.value = false
   }
 }
 
+// Fetch trades for a specific date (lazy loading for modal)
+async function fetchTradesForDate(date) {
+  if (!date) return []
+  
+  // Check if we already have trades for this date
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const dateKey = `${year}-${month}-${day}`
+
+  // Fetch execution-level contributions for this date (matches calendar P&L)
+  try {
+    const params = { date: dateKey }
+    if (selectedAccount.value) {
+      params.accounts = selectedAccount.value
+    }
+    const response = await api.get('/analytics/calendar/day', { params })
+    dayContributions.value = response.data.contributions || []
+    return dayContributions.value
+  } catch (error) {
+    console.error('Failed to fetch day contributions:', error)
+    dayContributions.value = []
+    return []
+  }
+}
+
+
 onMounted(() => {
-  // Restore expanded month from localStorage if it exists
+  // Sync URL with current year if it came from localStorage (not from route query)
+  if (!route.query.year || parseInt(route.query.year) !== currentYear.value) {
+    router.replace({ query: { ...route.query, year: currentYear.value } })
+  }
+
+  // Restore expanded month from localStorage if it exists and matches current year
   try {
     const savedMonth = localStorage.getItem('calendar_expanded_month')
     const savedYear = localStorage.getItem('calendar_expanded_year')
 
     if (savedMonth && savedYear) {
       const year = parseInt(savedYear)
-      // Only restore if it's for the current year being viewed
+      // Restore if it matches the current year being viewed
       if (year === currentYear.value) {
         expandedMonth.value = new Date(savedMonth)
       } else {
-        // Clear stale data
+        // Clear stale expanded month data (but keep calendar_year)
         localStorage.removeItem('calendar_expanded_month')
         localStorage.removeItem('calendar_expanded_year')
       }
@@ -560,16 +728,36 @@ onMounted(() => {
     console.warn('Failed to restore expanded month from localStorage:', e)
   }
 
-  fetchTrades()
+  fetchCalendarData()
 })
 
 watch(currentYear, () => {
-  fetchTrades()
+  fetchCalendarData()
+})
+
+// Watch for route query changes (handles browser back/forward buttons)
+watch(() => route.query.year, (newYear) => {
+  if (newYear) {
+    const parsedYear = parseInt(newYear)
+    if (!isNaN(parsedYear) && parsedYear !== currentYear.value) {
+      currentYear.value = parsedYear
+      localStorage.setItem('calendar_year', parsedYear.toString())
+      // Restore expanded month if it matches the new year
+      const savedMonth = localStorage.getItem('calendar_expanded_month')
+      const savedYear = localStorage.getItem('calendar_expanded_year')
+      if (savedMonth && savedYear && parseInt(savedYear) === parsedYear) {
+        expandedMonth.value = new Date(savedMonth)
+      } else {
+        expandedMonth.value = null
+      }
+      selectedDay.value = null
+    }
+  }
 })
 
 // Watch for global account filter changes
 watch(selectedAccount, () => {
   console.log('Calendar: Global account filter changed to:', selectedAccount.value || 'All Accounts')
-  fetchTrades()
+  fetchCalendarData()
 })
 </script>
