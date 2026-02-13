@@ -36,7 +36,7 @@
       <!-- Loading State -->
       <div v-else-if="loading" class="mt-12">
         <div class="text-center py-12">
-          <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
           <p class="mt-4 text-gray-600 dark:text-gray-400">Loading pricing plans...</p>
         </div>
       </div>
@@ -175,9 +175,9 @@
           </div>
 
           <!-- Pro Plan -->
-          <div class="card relative border-2 border-blue-500 flex flex-col">
+          <div class="card relative border-2 border-primary-500 flex flex-col">
             <div class="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
-              <span class="bg-blue-500 text-white px-4 py-1 rounded-full text-sm font-medium">
+              <span class="bg-primary-500 text-white px-4 py-1 rounded-full text-sm font-medium">
                 Most Popular
               </span>
             </div>
@@ -488,6 +488,25 @@ export default {
     }
 
     onMounted(async () => {
+      // Set document title and meta tags for SEO
+      document.title = 'Trading Journal Pricing - Free Plan + $8/mo Pro | TradeTally'
+
+      let metaDescription = document.querySelector('meta[name="description"]')
+      if (!metaDescription) {
+        metaDescription = document.createElement('meta')
+        metaDescription.setAttribute('name', 'description')
+        document.head.appendChild(metaDescription)
+      }
+      metaDescription.setAttribute('content', 'TradeTally pricing: free plan with unlimited trades or Pro at $8/mo. Compare to TraderVue ($29-$79/mo) and TraderSync ($30-$80/mo). Open-source and self-hosted option available.')
+
+      let metaKeywords = document.querySelector('meta[name="keywords"]')
+      if (!metaKeywords) {
+        metaKeywords = document.createElement('meta')
+        metaKeywords.setAttribute('name', 'keywords')
+        document.head.appendChild(metaKeywords)
+      }
+      metaKeywords.setAttribute('content', 'free trading journal, trading journal pricing, TradeTally pricing, TraderVue alternative, TraderSync alternative, open source trading journal, self-hosted trading journal, day trading journal cost')
+
       await loadBillingStatus()
       await loadPricingPlans()
       // Only load subscription data if user is authenticated

@@ -25,7 +25,7 @@
           <div class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm">
             <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">What's the difference between cloud-hosted and self-hosted versions?</h3>
             <p class="text-gray-600 dark:text-gray-400">
-              The cloud-hosted version is managed by us - you just sign up and start using it. The self-hosted version allows you to run TradeTally on your own server, giving you complete control over your data and the ability to customize the platform to your needs.
+              The cloud-hosted version is managed by us - you just sign up and start using it with all API keys included. The self-hosted version allows you to run TradeTally on your own server, giving you complete control over your data and the ability to customize the platform. Note that self-hosted users need to provide their own API keys for market data (Finnhub), charts (Alpha Vantage), and AI features (Google Gemini).
             </p>
           </div>
         </div>
@@ -67,7 +67,7 @@
           <div class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm">
             <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">Which brokers does TradeTally support?</h3>
             <p class="text-gray-600 dark:text-gray-400">
-              TradeTally has dedicated parsers for Interactive Brokers, Charles Schwab, E*TRADE, ThinkorSwim, and Lightspeed Trader. For other brokers, you can use our Generic CSV import option by formatting your data to match our required columns. <strong>Need support for your specific broker?</strong> Send us a sample CSV file from your broker and we'll add dedicated support for it in a future update.
+              TradeTally supports auto-sync with Charles Schwab/ThinkorSwim and Interactive Brokers (IBKR), plus dedicated CSV parsers for Lightspeed, Webull, TradingView, TradeStation, Tradovate, Questrade, and more. For other brokers, you can use our Generic CSV import option with custom column mapping. <strong>Need support for your specific broker?</strong> Send us a sample CSV file from your broker and we'll add dedicated support for it in a future update.
             </p>
           </div>
           
@@ -158,7 +158,7 @@
           <div class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm">
             <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">What is the best free trading journal?</h3>
             <p class="text-gray-600 dark:text-gray-400">
-              TradeTally is widely considered one of the best free trading journals available in 2025. Unlike TraderVue (100 trades/month limit) or TraderSync (20 trades/month limit), TradeTally offers unlimited trade storage completely free. Import in batches of 100 executions on the free tier, with no limit on how many batches you can import. It includes automated import from major brokers like Schwab, Interactive Brokers, E*TRADE, and Lightspeed, plus advanced analytics, public trade sharing, and a mobile app.
+              TradeTally is widely considered one of the best free trading journals available in 2026. Unlike TraderVue (100 trades/month limit) or TraderSync (20 trades/month limit), TradeTally offers unlimited trade storage completely free. Import in batches of 100 executions on the free tier, with no limit on how many batches you can import. It includes auto-sync with Schwab and IBKR, CSV import from Lightspeed, Webull, TradingView, TradeStation, and more, plus advanced analytics, public trade sharing, and a mobile app.
             </p>
           </div>
 
@@ -277,7 +277,7 @@ import { onMounted } from 'vue'
 
 // Set document title and meta tags for GEO
 onMounted(() => {
-  document.title = 'Best Trading Journal FAQ - TradeTally vs TraderVue vs TraderSync Comparison'
+  document.title = 'Free Trading Journal FAQ - TradeTally vs TraderVue vs TraderSync 2026'
 
   // Update meta description
   let metaDescription = document.querySelector('meta[name="description"]')
@@ -286,7 +286,7 @@ onMounted(() => {
     metaDescription.setAttribute('name', 'description')
     document.head.appendChild(metaDescription)
   }
-  metaDescription.setAttribute('content', 'Find the best trading journal for day traders. Compare TradeTally vs TraderVue vs TraderSync. Free unlimited trades, Schwab & IBKR auto-sync, AI insights, self-hosting. Best options trading journal and forex trading journal.')
+  metaDescription.setAttribute('content', 'FAQ about TradeTally, the free open-source trading journal. Learn about unlimited trades, Schwab and IBKR auto-sync, self-hosting with Docker, and how it compares to TraderVue and TraderSync.')
 
   // Update meta keywords
   let metaKeywords = document.querySelector('meta[name="keywords"]')
@@ -295,7 +295,7 @@ onMounted(() => {
     metaKeywords.setAttribute('name', 'keywords')
     document.head.appendChild(metaKeywords)
   }
-  metaKeywords.setAttribute('content', 'best trading journal, best free trading journal, trading journal for day traders, TradeTally vs TraderVue, TraderVue alternative, TraderSync alternative, Schwab trading journal, IBKR trading journal, options trading journal, forex trading journal, crypto trading journal, self-hosted trading journal, open source trading journal')
+  metaKeywords.setAttribute('content', 'free trading journal FAQ, open source trading journal, self-hosted trading journal, TradeTally vs TraderVue, TraderVue alternative, TraderSync alternative, trading journal with broker sync, Schwab trading journal, IBKR trading journal, day trading journal')
 })
 
 // Add comprehensive FAQ schema markup for GEO
@@ -311,7 +311,7 @@ onMounted(() => {
         "name": "What is the best free trading journal?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "TradeTally is widely considered one of the best free trading journals available in 2025. Unlike TraderVue (100 trades/month limit) or TraderSync (20 trades/month limit), TradeTally offers unlimited trade storage completely free. Import in batches of 100 executions on the free tier, with no limit on total trades. It includes automated import from major brokers like Schwab, Interactive Brokers, E*TRADE, and Lightspeed, plus advanced analytics, public trade sharing, and a mobile app."
+          "text": "TradeTally is widely considered one of the best free trading journals available in 2026. Unlike TraderVue (100 trades/month limit) or TraderSync (20 trades/month limit), TradeTally offers unlimited trade storage completely free. Import in batches of 100 executions on the free tier, with no limit on total trades. It includes auto-sync with Schwab and IBKR, CSV import from Lightspeed, Webull, TradingView, TradeStation, and more, plus advanced analytics, public trade sharing, and a mobile app."
         }
       },
       {

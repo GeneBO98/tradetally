@@ -7,16 +7,16 @@
     <link rel="apple-touch-icon" href="/favicon-32x32.png">
     <link rel="shortcut icon" href="/favicon.svg">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TradeTally - Free Trading Journal for Day Traders</title>
-    <meta name="description" content="Free trading journal with unlimited trades. Auto-sync Schwab and IBKR, CSV import, advanced analytics, and AI insights. Open-source TraderVue alternative.">
-    <meta name="keywords" content="trading journal, trade tracking, trading analytics, stock trading, day trading, trade analysis, portfolio tracking, TraderVue alternative, free trading journal, self-hosted trading journal">
+    <title>TradeTally - Free Trading Journal and Investment Tracker</title>
+    <meta name="description" content="Free open-source trading journal and investment tracker. Auto-sync Schwab and IBKR, stock analyzer, real-time holdings P&L, AI insights. Self-host with Docker.">
+    <meta name="keywords" content="trading journal, investment tracker, stock analyzer, portfolio tracker, free trading journal, open source trading journal, self-hosted trading journal, TraderVue alternative, day trading, Schwab trading journal, IBKR trading journal">
     <meta name="robots" content="index, follow">
     <meta name="author" content="TradeTally">
     <link rel="canonical" href="https://tradetally.io">
 
     <!-- Open Graph Meta Tags -->
-    <meta property="og:title" content="TradeTally - Free Trading Journal for Day Traders">
-    <meta property="og:description" content="Free trading journal with unlimited trades. Auto-sync Schwab and IBKR, CSV import, advanced analytics, and AI insights.">
+    <meta property="og:title" content="TradeTally - Free Trading Journal and Investment Tracker">
+    <meta property="og:description" content="Free open-source trading journal and investment tracker. Auto-sync Schwab and IBKR, stock analyzer, real-time holdings P&L, AI insights.">
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://tradetally.io">
     <meta property="og:image" content="https://tradetally.io/tradetally-banner.svg">
@@ -26,8 +26,8 @@
 
     <!-- Twitter Card Meta Tags -->
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="TradeTally - Free Trading Journal for Day Traders">
-    <meta name="twitter:description" content="Free trading journal with unlimited trades. Auto-sync Schwab and IBKR, CSV import, advanced analytics, and AI insights.">
+    <meta name="twitter:title" content="TradeTally - Free Trading Journal and Investment Tracker">
+    <meta name="twitter:description" content="Free open-source trading journal and investment tracker. Auto-sync Schwab and IBKR, stock analyzer, real-time holdings P&L, AI insights.">
     <meta name="twitter:image" content="https://tradetally.io/tradetally-banner.svg">
 
     <!-- Additional SEO Meta Tags -->
@@ -39,17 +39,21 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 
+    <!-- Hide static fallback content from users; crawlers still see it in the HTML source -->
+    <style>#app-fallback{display:none}</style>
+
     <!-- TradingView Widget -->
     <script type="text/javascript" src="https://s3.tradingview.com/tv.js" integrity="sha384-uo5ViWsaG+8CW5k5QTvfolKuoi7WPePbBtYmE1lHx+KFfmeBeoWukTos6jV2su3C" crossorigin="anonymous"></script>
   </head>
   <body>
     <div id="app">
       <!-- Static fallback content for search engine crawlers. Vue replaces this on mount. -->
+      <div id="app-fallback">
       <main>
         <section>
-          <h1>TradeTally - Free Trading Journal for Day Traders</h1>
-          <p>TradeTally is a free, open-source trading journal that helps day traders track performance, analyze patterns, and improve results. Log unlimited trades with no subscription fees and take control of your trading data.</p>
-          <p>Whether you trade stocks, options, or futures, TradeTally provides the analytics tools you need to identify strengths, fix weaknesses, and grow as a trader.</p>
+          <h1>TradeTally - Free Trading Journal and Investment Tracker</h1>
+          <p>TradeTally is a free, open-source trading journal and investment tracker that helps traders and investors track performance, analyze stocks, and improve results. Log unlimited trades with no subscription fees and take control of your data.</p>
+          <p>Whether you day trade stocks and options or build a long-term portfolio, TradeTally provides the tools you need to identify strengths, fix weaknesses, and grow.</p>
           <nav>
             <a href="/register">Get Started Free</a>
             <a href="/login">Sign In</a>
@@ -58,12 +62,17 @@
 
         <section>
           <h2>Auto-Sync Your Broker</h2>
-          <p>Connect your Schwab or Interactive Brokers account to automatically import trades. No manual data entry required. TradeTally also supports CSV import from Lightspeed, E*TRADE, ThinkorSwim, and more.</p>
+          <p>Connect your Schwab or Interactive Brokers account to automatically import trades. No manual data entry required. TradeTally also supports CSV import from Lightspeed, Webull, TradingView, TradeStation, Tradovate, Questrade, and more.</p>
         </section>
 
         <section>
           <h2>Advanced Analytics and AI Insights</h2>
           <p>Visualize your performance with detailed P&amp;L charts, win rate tracking, and risk analysis. AI-powered insights highlight patterns in your trading and suggest areas for improvement.</p>
+        </section>
+
+        <section>
+          <h2>Investment Analysis and Portfolio Tracking</h2>
+          <p>Go beyond trade journaling with the 8 Pillars stock analyzer, DCF valuation calculator, and real-time holdings tracking. Monitor unrealized P&amp;L, track dividends, scan the Russell 2000 for undervalued stocks, and set price alerts -- all for $8/mo with Pro.</p>
         </section>
 
         <section>
@@ -87,6 +96,7 @@
           <p>TradeTally requires JavaScript to run. Please enable JavaScript in your browser to use the full application.</p>
         </noscript>
       </main>
+      </div>
     </div>
     <script type="module" src="/src/main.js"></script>
   </body>
