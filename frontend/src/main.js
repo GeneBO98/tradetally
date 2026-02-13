@@ -15,9 +15,19 @@ app.use(router)
 const authStore = useAuthStore()
 authStore.checkAuth()
 
-// Initialize analytics (if configured)
+// Start fetching registration config early so it's cached
+// before the router guard runs on first navigation
+import { useRegistrationMode } from '@/composables/useRegistrationMode'
+const { fetchRegistrationConfig } = useRegistrationMode()
+fetchRegistrationConfig() // fire-and-forget, router guard awaits same promise
+
+// Initialize analytics after first paint to avoid blocking LCP
 const analytics = useAnalytics()
-analytics.initialize()
+if (typeof requestIdleCallback !== 'undefined') {
+  requestIdleCallback(() => analytics.initialize())
+} else {
+  setTimeout(() => analytics.initialize(), 1)
+}
 
 // Load PromoteKit affiliate tracking if configured
 const promoteKitId = import.meta.env.VITE_PROMOTEKIT_ID
