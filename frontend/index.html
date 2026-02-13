@@ -35,8 +35,17 @@
     <meta name="theme-color" content="#3B82F6">
     <meta name="format-detection" content="telephone=no">
 
-    <!-- Hide static fallback content from users; crawlers still see it in the HTML source -->
-    <style>#app-fallback{display:none}</style>
+    <!-- Static fallback is shown instantly for fast LCP, then Vue replaces it on mount -->
+    <style>
+      #app-fallback{max-width:72rem;margin:0 auto;padding:4rem 1rem;text-align:center;font-family:system-ui,-apple-system,sans-serif}
+      #app-fallback h1{font-size:2.25rem;font-weight:800;color:#111827;line-height:1.2;margin:0 0 1.25rem}
+      #app-fallback .hero-sub{font-size:1.25rem;color:#6b7280;line-height:1.75;max-width:48rem;margin:0 auto}
+      #app-fallback .hero-cta{margin-top:2rem;display:flex;justify-content:center;gap:1rem}
+      #app-fallback .hero-cta a{display:inline-block;padding:0.75rem 2rem;border-radius:0.5rem;font-weight:600;font-size:1.125rem;text-decoration:none}
+      #app-fallback .hero-cta a:first-child{background:#2563eb;color:#fff}
+      #app-fallback .hero-cta a:last-child{background:#f3f4f6;color:#374151}
+      #app-fallback .seo-sections{display:none}
+    </style>
   </head>
   <body>
     <div id="app">
@@ -44,15 +53,15 @@
       <div id="app-fallback">
       <main>
         <section>
-          <h1>TradeTally - Free Trading Journal and Investment Tracker</h1>
-          <p>TradeTally is a free, open-source trading journal and investment tracker that helps traders and investors track performance, analyze stocks, and improve results. Log unlimited trades with no subscription fees and take control of your data.</p>
-          <p>Whether you day trade stocks and options or build a long-term portfolio, TradeTally provides the tools you need to identify strengths, fix weaknesses, and grow.</p>
-          <nav>
+          <h1>Best Free Trading Journal Software for Day Traders</h1>
+          <p class="hero-sub">Professional trade tracking platform with automated trade import, advanced analytics, and broker integration. The best TraderVue alternative with unlimited free trade storage for stocks and options trading.</p>
+          <div class="hero-cta">
             <a href="/register">Get Started Free</a>
-            <a href="/login">Sign In</a>
-          </nav>
+            <a href="/public">View Public Trades</a>
+          </div>
         </section>
 
+        <div class="seo-sections">
         <section>
           <h2>Auto-Sync Your Broker</h2>
           <p>Connect your Schwab or Interactive Brokers account to automatically import trades. No manual data entry required. TradeTally also supports CSV import from Lightspeed, Webull, TradingView, TradeStation, Tradovate, Questrade, and more.</p>
@@ -84,6 +93,7 @@
             <a href="/public">Public Trades</a>
           </nav>
         </section>
+        </div>
 
         <noscript>
           <p>TradeTally requires JavaScript to run. Please enable JavaScript in your browser to use the full application.</p>
