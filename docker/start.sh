@@ -3,8 +3,19 @@
 # Function to inject analytics script at runtime
 inject_analytics() {
     if [ -n "$VITE_ANALYTICS_DOMAIN" ] && [ -n "$VITE_ANALYTICS_SITE_ID" ]; then
+        # Validate analytics domain - must be HTTPS URL with valid hostname
+        if ! echo "$VITE_ANALYTICS_DOMAIN" | grep -qE '^https://[a-zA-Z0-9.-]+$'; then
+            echo "[ERROR] Invalid VITE_ANALYTICS_DOMAIN - must be HTTPS URL with valid hostname"
+            return 1
+        fi
+        # Validate analytics site ID - must be alphanumeric (with hyphens/underscores)
+        if ! echo "$VITE_ANALYTICS_SITE_ID" | grep -qE '^[a-zA-Z0-9_-]+$'; then
+            echo "[ERROR] Invalid VITE_ANALYTICS_SITE_ID - must be alphanumeric"
+            return 1
+        fi
+
         echo "Injecting analytics script: $VITE_ANALYTICS_DOMAIN with site ID $VITE_ANALYTICS_SITE_ID"
-        
+
         # Find all HTML files and inject analytics script
         find /usr/share/nginx/html -name "*.html" -type f | while read file; do
             if ! grep -q "data-site-id=\"$VITE_ANALYTICS_SITE_ID\"" "$file"; then
