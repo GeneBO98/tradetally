@@ -388,7 +388,7 @@ const publicNavigation = computed(() => {
     nav.push(
       { name: 'Features', to: '/features', route: 'features' },
       { name: 'FAQ', to: '/faq', route: 'faq' },
-      { name: 'vs TraderVue', to: '/compare/tradervue', route: 'compare-tradervue' }
+      { name: 'Compare', to: '/compare', route: 'compare' }
     )
   }
   

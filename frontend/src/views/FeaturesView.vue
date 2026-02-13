@@ -2,11 +2,11 @@
   <div class="max-w-7xl mx-auto py-8 px-4">
     <div class="text-center mb-12">
       <h1 class="text-4xl font-bold text-gray-900 dark:text-white mb-4">
-        Advanced Trading Journal Features
+        Free Open-Source Trading Journal Features
       </h1>
       <p class="text-xl text-gray-600 dark:text-gray-400 max-w-3xl mx-auto">
-        Professional trade tracking platform with automated import, performance analytics, broker integration, and AI-powered insights.
-        Everything day traders need to analyze and improve trading performance.
+        TradeTally is a free, open-source trading journal with Schwab and IBKR auto-sync, AI-powered insights, and advanced analytics.
+        Self-host with Docker or use our cloud. Everything day traders need at a fraction of the cost of TraderVue or TraderSync.
       </p>
     </div>
 
@@ -19,7 +19,7 @@
           <h3 class="text-xl font-semibold text-gray-900 dark:text-white">Universal Trade Import</h3>
         </div>
         <p class="text-gray-600 dark:text-gray-400">
-          Automated trade import from verified brokers: Lightspeed, Schwab/ThinkorSwim, IBKR, E*TRADE, TD Ameritrade.
+          Auto-sync with Schwab/ThinkorSwim and IBKR. CSV import from Lightspeed, Webull, TradingView, TradeStation, Tradovate, Questrade, and more.
           Custom CSV column mapping for other brokers. Support for stocks and options with automatic symbol resolution.
         </p>
       </div>
@@ -103,6 +103,104 @@
       </div>
     </div>
 
+    <!-- Investment Analysis Section -->
+    <div class="mb-16">
+      <div class="text-center mb-10">
+        <h2 class="text-3xl font-bold text-gray-900 dark:text-white mb-4">
+          Investment Analysis and Portfolio Tracking
+        </h2>
+        <p class="text-lg text-gray-600 dark:text-gray-400 max-w-3xl mx-auto">
+          TradeTally is more than a trading journal. Track long-term holdings with real-time P&amp;L, analyze stocks with the 8 Pillars value investing framework, and monitor earnings and news -- all for $8/mo with Pro.
+        </p>
+      </div>
+
+      <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+        <!-- 8 Pillars Stock Analyzer -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm hover:shadow-lg transition-shadow border border-primary-100 dark:border-primary-900">
+          <div class="flex items-center mb-4">
+            <MagnifyingGlassIcon class="h-8 w-8 text-primary-600 mr-3" />
+            <div>
+              <h3 class="text-xl font-semibold text-gray-900 dark:text-white">8 Pillars Stock Analyzer</h3>
+              <span class="text-xs font-medium text-primary-600 dark:text-primary-400">Pro</span>
+            </div>
+          </div>
+          <p class="text-gray-600 dark:text-gray-400">
+            Evaluate any stock against 8 value investing pillars: P/E ratio, ROIC, share buybacks, cash flow growth, net income growth, revenue growth, debt coverage, and price-to-FCF. Includes DCF valuation calculator and full financial statements.
+          </p>
+        </div>
+
+        <!-- Holdings Tracking -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm hover:shadow-lg transition-shadow border border-primary-100 dark:border-primary-900">
+          <div class="flex items-center mb-4">
+            <CurrencyDollarIcon class="h-8 w-8 text-primary-600 mr-3" />
+            <div>
+              <h3 class="text-xl font-semibold text-gray-900 dark:text-white">Holdings with Real-Time P&amp;L</h3>
+              <span class="text-xs font-medium text-primary-600 dark:text-primary-400">Pro</span>
+            </div>
+          </div>
+          <p class="text-gray-600 dark:text-gray-400">
+            Track investment positions with live market prices, unrealized P&amp;L, cost basis per lot, and dividend income. Monitor your entire portfolio value in real time alongside your trading journal.
+          </p>
+        </div>
+
+        <!-- Stock Scanner -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm hover:shadow-lg transition-shadow border border-primary-100 dark:border-primary-900">
+          <div class="flex items-center mb-4">
+            <FunnelIcon class="h-8 w-8 text-primary-600 mr-3" />
+            <div>
+              <h3 class="text-xl font-semibold text-gray-900 dark:text-white">Russell 2000 Stock Scanner</h3>
+              <span class="text-xs font-medium text-primary-600 dark:text-primary-400">Pro</span>
+            </div>
+          </div>
+          <p class="text-gray-600 dark:text-gray-400">
+            Quarterly scan of every Russell 2000 stock against the 8 Pillars framework. Filter results by specific pillars, sort by P/E or ROIC, and find undervalued small-cap stocks.
+          </p>
+        </div>
+
+        <!-- Watchlists & Price Alerts -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm hover:shadow-lg transition-shadow border border-primary-100 dark:border-primary-900">
+          <div class="flex items-center mb-4">
+            <BellAlertIcon class="h-8 w-8 text-primary-600 mr-3" />
+            <div>
+              <h3 class="text-xl font-semibold text-gray-900 dark:text-white">Watchlists and Price Alerts</h3>
+              <span class="text-xs font-medium text-primary-600 dark:text-primary-400">Pro</span>
+            </div>
+          </div>
+          <p class="text-gray-600 dark:text-gray-400">
+            Create multiple watchlists with live prices. Set price alerts that notify you by email or push notification when a stock hits your target price or changes by a set percentage.
+          </p>
+        </div>
+
+        <!-- Earnings Calendar -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm hover:shadow-lg transition-shadow">
+          <div class="flex items-center mb-4">
+            <CalendarDaysIcon class="h-8 w-8 text-primary-600 mr-3" />
+            <div>
+              <h3 class="text-xl font-semibold text-gray-900 dark:text-white">Earnings Calendar</h3>
+              <span class="text-xs font-medium text-green-600 dark:text-green-400">Free</span>
+            </div>
+          </div>
+          <p class="text-gray-600 dark:text-gray-400">
+            See upcoming earnings dates for stocks you hold. Shows EPS estimates, prior-year actuals, and whether the report is before or after market hours.
+          </p>
+        </div>
+
+        <!-- News & Sentiment -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm hover:shadow-lg transition-shadow">
+          <div class="flex items-center mb-4">
+            <NewspaperIcon class="h-8 w-8 text-primary-600 mr-3" />
+            <div>
+              <h3 class="text-xl font-semibold text-gray-900 dark:text-white">News Correlation Analytics</h3>
+              <span class="text-xs font-medium text-green-600 dark:text-green-400">Free</span>
+            </div>
+          </div>
+          <p class="text-gray-600 dark:text-gray-400">
+            Trades are automatically enriched with news from the trade date. See how your win rate correlates with news sentiment and identify which news-driven setups work best for you.
+          </p>
+        </div>
+      </div>
+    </div>
+
     <!-- Premium Features Section -->
     <div class="bg-gradient-to-r from-primary-50 to-primary-100 dark:from-gray-800 dark:to-gray-900 rounded-2xl p-8 mb-16">
       <h2 class="text-3xl font-bold text-gray-900 dark:text-white mb-8 text-center">
@@ -110,7 +208,7 @@
       </h2>
       
       <div class="flex justify-center">
-        <div class="grid md:grid-cols-2 gap-4 max-w-4xl">
+        <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-6xl">
           <div>
             <h3 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">Performance Metrics</h3>
             <ul class="space-y-2">
@@ -132,7 +230,29 @@
               </li>
             </ul>
           </div>
-          
+
+          <div>
+            <h3 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">R-Multiple and Trade Management</h3>
+            <ul class="space-y-2">
+              <li class="flex items-center text-gray-700 dark:text-gray-300">
+                <CheckIcon class="h-5 w-5 text-green-500 mr-2" />
+                R-Multiple tracking (net of commissions)
+              </li>
+              <li class="flex items-center text-gray-700 dark:text-gray-300">
+                <CheckIcon class="h-5 w-5 text-green-500 mr-2" />
+                Weighted Target R for multi-target exits
+              </li>
+              <li class="flex items-center text-gray-700 dark:text-gray-300">
+                <CheckIcon class="h-5 w-5 text-green-500 mr-2" />
+                Management R (execution vs plan)
+              </li>
+              <li class="flex items-center text-gray-700 dark:text-gray-300">
+                <CheckIcon class="h-5 w-5 text-green-500 mr-2" />
+                R-Performance chart with cumulative curves
+              </li>
+            </ul>
+          </div>
+
           <div>
             <h3 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">Trade Analysis</h3>
             <ul class="space-y-2">
@@ -161,35 +281,57 @@
     <!-- Self-Hosting Section -->
     <div class="text-center mb-16">
       <h2 class="text-3xl font-bold text-gray-900 dark:text-white mb-6">
-        Self-Hosting for Ultimate Control
+        Open-Source and Self-Hosted Trading Journal
       </h2>
       <p class="text-lg text-gray-600 dark:text-gray-400 mb-8 max-w-3xl mx-auto">
-        Deploy TradeTally on your own infrastructure for complete data sovereignty. Perfect for traders who prioritize privacy and customization.
+        TradeTally is fully open source on GitHub and can be self-hosted with a single Docker command. Your trading data stays on your server with complete privacy. No vendor lock-in, no recurring fees for self-hosted users.
       </p>
       
-      <div class="grid md:grid-cols-3 gap-6 max-w-4xl mx-auto">
+      <div class="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto mb-8">
+        <!-- Cloud Column -->
         <div class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm">
-          <ServerIcon class="h-12 w-12 text-primary-600 mx-auto mb-4" />
-          <h3 class="font-semibold text-gray-900 dark:text-white mb-2">Your Server</h3>
-          <p class="text-gray-600 dark:text-gray-400 text-sm">
-            Run on any VPS, dedicated server, or even locally on your machine.
-          </p>
+          <h3 class="text-xl font-semibold text-gray-900 dark:text-white mb-4 text-center">Cloud (tradetally.io)</h3>
+          <ul class="space-y-3 text-gray-600 dark:text-gray-400 text-sm">
+            <li class="flex items-start">
+              <CheckIcon class="h-5 w-5 text-green-500 mr-2 mt-0.5 flex-shrink-0" />
+              <span>Sign up and start journaling immediately</span>
+            </li>
+            <li class="flex items-start">
+              <CheckIcon class="h-5 w-5 text-green-500 mr-2 mt-0.5 flex-shrink-0" />
+              <span>All API keys provided (market data, AI, charts)</span>
+            </li>
+            <li class="flex items-start">
+              <CheckIcon class="h-5 w-5 text-green-500 mr-2 mt-0.5 flex-shrink-0" />
+              <span>Automatic updates and backups</span>
+            </li>
+            <li class="flex items-start">
+              <CheckIcon class="h-5 w-5 text-green-500 mr-2 mt-0.5 flex-shrink-0" />
+              <span>Free tier + $8/mo Pro option</span>
+            </li>
+          </ul>
         </div>
-        
+
+        <!-- Self-Hosted Column -->
         <div class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm">
-          <ShieldCheckIcon class="h-12 w-12 text-primary-600 mx-auto mb-4" />
-          <h3 class="font-semibold text-gray-900 dark:text-white mb-2">Your Data</h3>
-          <p class="text-gray-600 dark:text-gray-400 text-sm">
-            Complete control over your trading data with no third-party access.
-          </p>
-        </div>
-        
-        <div class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm">
-          <CodeBracketIcon class="h-12 w-12 text-primary-600 mx-auto mb-4" />
-          <h3 class="font-semibold text-gray-900 dark:text-white mb-2">Your Rules</h3>
-          <p class="text-gray-600 dark:text-gray-400 text-sm">
-            Customize features, add integrations, and modify to your needs.
-          </p>
+          <h3 class="text-xl font-semibold text-gray-900 dark:text-white mb-4 text-center">Self-Hosted (Docker)</h3>
+          <ul class="space-y-3 text-gray-600 dark:text-gray-400 text-sm">
+            <li class="flex items-start">
+              <CheckIcon class="h-5 w-5 text-green-500 mr-2 mt-0.5 flex-shrink-0" />
+              <span>All features unlocked, no subscription required</span>
+            </li>
+            <li class="flex items-start">
+              <CheckIcon class="h-5 w-5 text-green-500 mr-2 mt-0.5 flex-shrink-0" />
+              <span>Complete data privacy on your own server</span>
+            </li>
+            <li class="flex items-start">
+              <CheckIcon class="h-5 w-5 text-green-500 mr-2 mt-0.5 flex-shrink-0" />
+              <span>Full source code access and customization</span>
+            </li>
+            <li class="flex items-start">
+              <ExclamationTriangleIcon class="h-5 w-5 text-yellow-500 mr-2 mt-0.5 flex-shrink-0" />
+              <span>You provide your own API keys for market data (Finnhub), charts (Alpha Vantage), and AI features (Google Gemini)</span>
+            </li>
+          </ul>
         </div>
       </div>
     </div>
@@ -211,25 +353,32 @@
 </template>
 
 <script setup>
-import { 
-  ArrowUpTrayIcon, 
-  ChartBarIcon, 
-  DocumentTextIcon, 
+import {
+  ArrowUpTrayIcon,
+  ChartBarIcon,
+  DocumentTextIcon,
   ShareIcon,
   CalendarIcon,
+  CalendarDaysIcon,
   ArrowDownTrayIcon,
   CheckIcon,
   ServerIcon,
   ShieldCheckIcon,
   CodeBracketIcon,
   ArrowRightIcon,
-  DevicePhoneMobileIcon
+  DevicePhoneMobileIcon,
+  ExclamationTriangleIcon,
+  MagnifyingGlassIcon,
+  CurrencyDollarIcon,
+  FunnelIcon,
+  BellAlertIcon,
+  NewspaperIcon
 } from '@heroicons/vue/24/outline'
 import { onMounted } from 'vue'
 
 // Set document title and meta tags for GEO
 onMounted(() => {
-  document.title = 'Best Trading Journal Features 2025 - Auto-Sync, AI Analytics, Self-Hosting | TradeTally'
+  document.title = 'Free Open-Source Trading Journal Features - Auto-Sync, AI Analytics, Self-Hosting | TradeTally'
 
   // Update meta description
   let metaDescription = document.querySelector('meta[name="description"]')
@@ -238,7 +387,7 @@ onMounted(() => {
     metaDescription.setAttribute('name', 'description')
     document.head.appendChild(metaDescription)
   }
-  metaDescription.setAttribute('content', 'TradeTally trading journal features: Auto-sync with Schwab & IBKR, AI-powered insights, behavioral analytics, unlimited free trades. Best trading journal for stocks, options, forex, crypto. Self-hosting and open source available.')
+  metaDescription.setAttribute('content', 'Free open-source trading journal and investment tracker. Schwab and IBKR auto-sync, 8 Pillars stock analyzer, real-time holdings P&L, AI insights. Self-host with Docker or use our cloud.')
 
   // Update meta keywords
   let metaKeywords = document.querySelector('meta[name="keywords"]')
@@ -247,7 +396,7 @@ onMounted(() => {
     metaKeywords.setAttribute('name', 'keywords')
     document.head.appendChild(metaKeywords)
   }
-  metaKeywords.setAttribute('content', 'trading journal features, best trading journal, Schwab auto-sync, IBKR auto-sync, AI trading insights, behavioral analytics, trading performance analytics, stock trading journal, options trading journal, forex trading journal, crypto trading journal, self-hosted trading journal, open source trading journal')
+  metaKeywords.setAttribute('content', 'free trading journal, open source trading journal, self-hosted trading journal, stock analyzer, investment tracker, portfolio tracker, 8 pillars stock analysis, holdings tracker real-time P&L, Schwab trading journal, IBKR trading journal, free TraderVue alternative, DCF valuation calculator')
 
   // Add SoftwareApplication structured data for GEO
   const script = document.createElement('script')
@@ -278,10 +427,10 @@ onMounted(() => {
           "priceCurrency": "USD",
           "billingDuration": "P1M"
         },
-        "description": "AI insights, behavioral analytics, stock scanner, advanced metrics"
+        "description": "AI insights, behavioral analytics, 8 Pillars stock analyzer, DCF valuation, holdings with real-time P&L, Russell 2000 scanner, watchlists, price alerts"
       }
     ],
-    "description": "Professional trading journal with auto-sync from Schwab and Interactive Brokers, AI-powered insights, behavioral analytics, and self-hosting option. Best free alternative to TraderVue and TraderSync for stocks, options, forex, and crypto trading.",
+    "description": "Free open-source trading journal and investment tracker with auto-sync from Schwab and Interactive Brokers. 8 Pillars stock analyzer, real-time holdings P&L, DCF valuation, AI insights, and self-hosting with Docker.",
     "url": "https://tradetally.io",
     "screenshot": "https://tradetally.io/screenshot.png",
     "softwareVersion": "2.0",
@@ -290,13 +439,23 @@ onMounted(() => {
       "Unlimited free trade storage",
       "Auto-sync with Charles Schwab and ThinkorSwim",
       "Auto-sync with Interactive Brokers (IBKR)",
-      "CSV import from Lightspeed, E*TRADE, TD Ameritrade",
+      "CSV import from Lightspeed, Webull, TradingView, TradeStation, Tradovate, Questrade",
       "Custom CSV column mapping for any broker",
       "Stocks, options, forex, and crypto support",
       "AI-powered trading insights and recommendations",
       "Behavioral analytics (revenge trading, loss aversion)",
       "8 Pillars value investing stock analysis",
+      "DCF valuation calculator",
       "Russell 2000 stock scanner",
+      "Holdings tracking with real-time P&L",
+      "Dividend income tracking",
+      "Watchlists with live prices and price alerts",
+      "Earnings calendar",
+      "News correlation analytics",
+      "Financial statements and SEC filings",
+      "R-Multiple tracking with Management R",
+      "Weighted Target R for multi-target exits",
+      "R-Performance cumulative chart",
       "Advanced metrics: Sharpe ratio, Kelly criterion, SQN",
       "MAE/MFE analysis",
       "Public trade sharing",

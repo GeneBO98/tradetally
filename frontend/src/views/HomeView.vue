@@ -220,7 +220,7 @@
             <div class="bg-gray-50 dark:bg-gray-900 rounded-lg p-6">
               <h3 class="heading-card">Works With Your Broker</h3>
               <p class="mt-2 text-gray-600 dark:text-gray-400">
-                Auto-sync with Schwab and IBKR, plus CSV import from Lightspeed, E*TRADE, TD Ameritrade, and custom mapping for any broker.
+                Auto-sync with Schwab and IBKR, plus CSV import from Lightspeed, Webull, TradingView, TradeStation, and custom mapping for any broker.
               </p>
             </div>
             <div class="bg-gray-50 dark:bg-gray-900 rounded-lg p-6">
@@ -256,8 +256,10 @@
               <li>✓ <strong>Charles Schwab / ThinkorSwim</strong> - <span class="text-primary-600 font-medium">Auto-Sync</span> + CSV import</li>
               <li>✓ <strong>Interactive Brokers (IBKR)</strong> - <span class="text-primary-600 font-medium">Auto-Sync</span> + CSV import</li>
               <li>✓ <strong>Lightspeed Trading</strong> - Direct CSV import</li>
-              <li>✓ <strong>E*TRADE</strong> - Direct CSV import</li>
-              <li>✓ <strong>TD Ameritrade</strong> - Direct CSV import</li>
+              <li>✓ <strong>Webull</strong> - Direct CSV import</li>
+              <li>✓ <strong>TradingView</strong> - Direct CSV import</li>
+              <li>✓ <strong>TradeStation</strong> - Direct CSV import</li>
+              <li>✓ <strong>Tradovate / Questrade</strong> - Direct CSV import</li>
               <li>✓ <strong>Other Brokers</strong> - Custom CSV column mapping</li>
             </ul>
             <p class="text-sm text-gray-500 dark:text-gray-400 mt-4">
@@ -359,7 +361,7 @@ onMounted(async () => {
   }
 
   // Update meta tags for SEO
-  document.title = 'TradeTally - Free Trading Journal for Day Traders'
+  document.title = 'TradeTally - Free Trading Journal and Investment Tracker'
 
   let metaDescription = document.querySelector('meta[name="description"]')
   if (!metaDescription) {
@@ -367,7 +369,7 @@ onMounted(async () => {
     metaDescription.setAttribute('name', 'description')
     document.head.appendChild(metaDescription)
   }
-  metaDescription.setAttribute('content', 'Free trading journal with unlimited trades. Auto-sync Schwab and IBKR, CSV import, advanced analytics, and AI insights. Open-source TraderVue alternative.')
+  metaDescription.setAttribute('content', 'Free open-source trading journal and investment tracker. Auto-sync Schwab and IBKR, stock analyzer, real-time holdings P&L, AI insights. Self-host with Docker.')
 
   let metaKeywords = document.querySelector('meta[name="keywords"]')
   if (!metaKeywords) {
@@ -397,7 +399,7 @@ onMounted(async () => {
         "ratingValue": "4.8",
         "ratingCount": "150"
       },
-      "description": "Best free trading journal software with unlimited trade storage, automated trade import from major brokers (Lightspeed, Schwab, IBKR, E*TRADE, TD Ameritrade), advanced analytics, and AI-powered insights. The #1 TraderVue alternative for stocks and options trading.",
+      "description": "Best free trading journal software with unlimited trade storage, auto-sync with Schwab and IBKR, CSV import from Lightspeed, Webull, TradingView, TradeStation, and more. Advanced analytics and AI-powered insights. The #1 TraderVue alternative for stocks and options trading.",
       "url": "https://tradetally.io",
       "author": {
         "@type": "Organization",
