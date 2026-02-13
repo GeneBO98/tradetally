@@ -359,7 +359,7 @@ onMounted(async () => {
   }
 
   // Update meta tags for SEO
-  document.title = 'TradeTally - Best Free Trading Journal Software for Day Traders | TraderVue Alternative'
+  document.title = 'TradeTally - Free Trading Journal for Day Traders'
 
   let metaDescription = document.querySelector('meta[name="description"]')
   if (!metaDescription) {
@@ -367,7 +367,7 @@ onMounted(async () => {
     metaDescription.setAttribute('name', 'description')
     document.head.appendChild(metaDescription)
   }
-  metaDescription.setAttribute('content', 'Best free trading journal software with unlimited trade storage. Auto-sync with Schwab and Interactive Brokers, plus CSV import from Lightspeed, E*TRADE, TD Ameritrade. Advanced analytics and AI insights. The #1 TraderVue and TraderSync alternative for stocks and options trading.')
+  metaDescription.setAttribute('content', 'Free trading journal with unlimited trades. Auto-sync Schwab and IBKR, CSV import, advanced analytics, and AI insights. Open-source TraderVue alternative.')
 
   let metaKeywords = document.querySelector('meta[name="keywords"]')
   if (!metaKeywords) {

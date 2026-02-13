@@ -320,50 +320,9 @@ app.post('/api/csp-report', express.json({ type: 'application/csp-report' }), (r
   res.status(204).end(); // No content response
 });
 
-// OWASP-compliant security headers test endpoint
-app.get('/api/security-test', (req, res) => {
-  res.json({
-    message: 'OWASP-compliant security headers applied',
-    timestamp: new Date().toISOString(),
-    owasp_compliance: {
-      'HTTP_Headers_Cheat_Sheet': 'https://cheatsheetseries.owasp.org/cheatsheets/HTTP_Headers_Cheat_Sheet.html',
-      'HSTS_Cheat_Sheet': 'https://cheatsheetseries.owasp.org/cheatsheets/HTTP_Strict_Transport_Security_Cheat_Sheet.html',
-      'CWE-693': 'Protection Mechanism Failure - Mitigated with strict CSP directives',
-      'CWE-1021': 'Improper Restriction of Rendered UI Layers - Mitigated with enhanced anti-clickjacking',
-      'WASC-15': 'Application Misconfiguration - Addressed with OWASP-compliant headers',
-      'OWASP_A05_2021': 'Security Misconfiguration - Comprehensive header implementation',
-      'WSTG-v42-CLNT-09': 'Clickjacking Testing - Multiple protection layers implemented'
-    },
-    headers: {
-      'X-Frame-Options': res.getHeader('X-Frame-Options') || 'Not Set',
-      'X-Content-Type-Options': res.getHeader('X-Content-Type-Options') || 'Not Set',
-      'X-XSS-Protection': 'Disabled (OWASP Recommended)',
-      'Content-Security-Policy': res.getHeader('Content-Security-Policy') ? 'Set with OWASP Level 3 directives' : 'Not Set',
-      'Strict-Transport-Security': res.getHeader('Strict-Transport-Security') ? 'Set (2-year max-age)' : 'Not Set',
-      'Referrer-Policy': res.getHeader('Referrer-Policy') || 'Not Set',
-      'Cross-Origin-Resource-Policy': res.getHeader('Cross-Origin-Resource-Policy') || 'Not Set',
-      'Cross-Origin-Opener-Policy': res.getHeader('Cross-Origin-Opener-Policy') || 'Not Set',
-      'Permissions-Policy': res.getHeader('Permissions-Policy') ? 'Set' : 'Not Set',
-      'Server': res.getHeader('Server') || 'Hidden'
-    },
-    security_measures: {
-      'CWE-693_Mitigation': 'Comprehensive CSP with report-uri, strict directives',
-      'CWE-1021_Mitigation': 'Enhanced anti-clickjacking with multiple protection layers',
-      'WASC-15_Mitigation': 'OWASP-compliant headers, secure configuration',
-      'OWASP_A05_2021_Mitigation': 'Security misconfiguration prevention with comprehensive headers',
-      'WSTG-v42-CLNT-09_Mitigation': 'Multi-layered clickjacking protection (CSP + X-Frame-Options + legacy headers)',
-      'CSP_Level': '3 (Latest)',
-      'CSP_Violations': 'Monitored via /api/csp-report endpoint',
-      'Clickjacking_Protection': 'frame-ancestors none, X-Frame-Options DENY, legacy CSP headers',
-      'XSS_Protection': 'Explicitly disabled per OWASP recommendation - modern browsers have better protection',
-      'HSTS_MaxAge': '63072000 seconds (2 years) as per OWASP guidelines',
-      'CSP_FrameAncestors': 'Complete UI layer restriction for CWE-1021 compliance'
-    }
-  });
-});
-
 // Admin endpoint to check enrichment status
-app.get('/api/admin/enrichment-status', async (req, res) => {
+const { requireAdmin } = require('./middleware/auth');
+app.get('/api/admin/enrichment-status', requireAdmin, async (req, res) => {
   try {
     const db = require('./config/database');
     
@@ -386,7 +345,7 @@ app.get('/api/admin/enrichment-status', async (req, res) => {
 });
 
 // Admin endpoint to trigger manual recovery
-app.post('/api/admin/trigger-recovery', async (req, res) => {
+app.post('/api/admin/trigger-recovery', requireAdmin, async (req, res) => {
   try {
     await jobRecoveryService.triggerRecovery();
     res.json({ 
