@@ -26,7 +26,7 @@ This guide walks you through migrating your TradeTally database from PostgreSQL 
 cd /path/to/tradetally
 
 # Run the migration script
-./migrate-postgres-16.sh
+./scripts/migrate-postgres-16.sh
 ```
 
 The script will:
@@ -69,7 +69,7 @@ docker-compose -f docker-compose.dev.yaml exec postgres psql -U trader -d tradet
 If something goes wrong, you can rollback to PostgreSQL 15:
 
 ```bash
-./rollback-postgres-15.sh
+./scripts/rollback-postgres-15.sh
 ```
 
 This will restore your original PostgreSQL 15 setup using the backups created during migration.
@@ -114,7 +114,7 @@ docker-compose -f docker-compose.dev.yaml logs postgres
 
 ### Data Missing After Migration
 1. **Don't panic** - your data is safe in the backups
-2. Run the rollback script: `./rollback-postgres-15.sh`
+2. Run the rollback script: `./scripts/rollback-postgres-15.sh`
 3. Contact support with the error logs
 
 ## 📋 Post-Migration Cleanup
@@ -126,7 +126,7 @@ After confirming everything works correctly (wait at least a week):
 rm -rf ./postgres-migration-backup/
 
 # Remove migration scripts (optional)
-rm migrate-postgres-16.sh rollback-postgres-15.sh POSTGRES_MIGRATION.md
+rm scripts/migrate-postgres-16.sh scripts/rollback-postgres-15.sh documentation/POSTGRES_MIGRATION.md
 ```
 
 ## 🔐 Security Benefits

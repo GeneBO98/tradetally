@@ -16,7 +16,7 @@ docker-compose up -d app
 
 # Initialize database if needed
 echo "[DB] Checking database..."
-./init-db.sh
+./scripts/init-db.sh
 
 echo "[SUCCESS] Deployment complete!"
 echo "[INFO] App available at: http://localhost"

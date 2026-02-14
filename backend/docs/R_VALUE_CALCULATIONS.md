@@ -185,7 +185,7 @@ This is different from Weighted Target R (which assumes all targets hit) - it re
 | `backend/src/services/targetHitAnalysisService.js` | `calculateWeightedTargetR()` | Weighted average target R |
 | `backend/src/services/targetHitAnalysisService.js` | `calculateSLMoveImpact()` | Saved R from SL moves |
 | `backend/src/controllers/tradeManagement.controller.js` | `calculateRMultiples()` | R-Multiple analysis (calls service) |
-| `backend/recalculate_r_values.js` | `calculateRValue()` | Batch recalculation script |
+| `backend/scripts/recalculate_r_values.js` | `calculateRValue()` | Batch recalculation script |
 
 ---
 
