@@ -176,8 +176,11 @@ ecosystem.config.js.backup
 uploads/
 backend/uploads/
 
-# CUSIP cache backup files
-backend/src/data/cusip_cache_backup_*.json
+# CUSIP cache files
+backend/src/data/cusip_cache*.json
+
+# Backup data files
+backend/src/data/backups/
 
 # Build artifacts
 build/

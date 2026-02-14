@@ -137,10 +137,10 @@ The migration runs automatically on container startup. To run manually:
 
 ```bash
 # Inside the container
-node run-export-migration.js
+node scripts/run-export-migration.js
 
 # Or via docker-compose
-docker-compose exec backend node run-export-migration.js
+docker-compose exec backend node scripts/run-export-migration.js
 ```
 
 ## Migration Details
