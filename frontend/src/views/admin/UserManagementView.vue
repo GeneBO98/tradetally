@@ -1,1158 +1,1645 @@
 <template>
-  <div class="min-h-screen bg-gray-50 dark:bg-gray-900 py-8">
-    <div class="content-wrapper">
-      <div class="mb-8">
-        <h1 class="text-3xl font-bold text-gray-900 dark:text-white">User Management</h1>
-        <p class="mt-2 text-gray-600 dark:text-gray-400">
-          Manage user accounts, roles, and permissions
-        </p>
-      </div>
-
-      <!-- Loading state -->
-      <div v-if="loading" class="flex justify-center items-center h-64">
-        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
-      </div>
-
-      <!-- Error state -->
-      <div v-else-if="error" class="rounded-md bg-red-50 dark:bg-red-900/20 p-4 mb-6">
-        <p class="text-sm text-red-800 dark:text-red-400">{{ error }}</p>
-      </div>
-
-      <!-- Users table -->
-      <div v-else class="bg-white dark:bg-gray-800 shadow overflow-hidden sm:rounded-lg">
-        <!-- Search bar -->
-        <div class="px-4 py-4 sm:px-6 border-b border-gray-200 dark:border-gray-700">
-          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-3 sm:space-y-0">
-            <div class="flex-shrink-0 w-full sm:w-96">
-              <div class="relative rounded-md shadow-sm">
-                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <svg class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                </div>
-                <input
-                  v-model="searchQuery"
-                  @input="handleSearch"
-                  type="text"
-                  placeholder="Search users..."
-                  class="focus:ring-primary-500 focus:border-primary-500 block w-full pl-10 pr-12 sm:text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md"
-                />
-                <div v-if="searchQuery" class="absolute inset-y-0 right-0 pr-3 flex items-center">
-                  <button
-                    @click="clearSearch"
-                    class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-                  >
-                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-            </div>
-            <div class="flex items-center space-x-4 flex-shrink-0">
-              <span class="text-sm text-gray-500 dark:text-gray-400">
-                {{ totalUsers }} user{{ totalUsers !== 1 ? 's' : '' }} found
-              </span>
-              <button
-                @click="exportUsersToCSV"
-                :disabled="loading || users.length === 0"
-                class="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                Export CSV
-              </button>
-            </div>
-          </div>
+    <div class="content-wrapper py-8">
+        <div class="mb-8">
+            <h1 class="heading-page">User Management</h1>
+            <p class="mt-2 text-gray-600 dark:text-gray-400">
+                Manage user accounts, roles, and permissions
+            </p>
         </div>
-        
-        <div class="px-4 py-5 sm:p-6">
-          <div class="overflow-x-auto">
-            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-              <thead class="bg-gray-50 dark:bg-gray-700">
-                <tr>
-                  <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-1/6">
-                    User
-                  </th>
-                  <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-1/6">
-                    Email
-                  </th>
-                  <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-20">
-                    Role
-                  </th>
-                  <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-20">
-                    Tier
-                  </th>
-                  <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-20">
-                    Status
-                  </th>
-                  <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-20">
-                    Verified
-                  </th>
-                  <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-20">
-                    Approved
-                  </th>
-                  <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-20">
-                    Marketing
-                  </th>
-                  <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-24">
-                    Joined
-                  </th>
-                  <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider" style="width: 200px;">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                <tr v-for="user in users" :key="user.id" class="hover:bg-gray-50 dark:hover:bg-gray-700">
-                  <td class="px-3 py-3 whitespace-nowrap">
-                    <div class="flex items-center">
-                      <div class="flex-shrink-0 h-8 w-8">
-                        <img
-                          v-if="user.avatar_url"
-                          class="h-8 w-8 rounded-full"
-                          :src="user.avatar_url"
-                          :alt="user.username"
-                        />
-                        <div
-                          v-else
-                          class="h-8 w-8 rounded-full bg-primary-500 flex items-center justify-center"
+
+        <!-- Loading state -->
+        <div v-if="loading" class="flex justify-center items-center h-64">
+            <div
+                class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"
+            ></div>
+        </div>
+
+        <!-- Error state -->
+        <div
+            v-else-if="error"
+            class="rounded-md bg-red-50 dark:bg-red-900/20 p-4 mb-6"
+        >
+            <p class="text-sm text-red-800 dark:text-red-400">
+                {{ error }}
+            </p>
+        </div>
+
+        <!-- Users table -->
+        <div
+            v-else
+            class="bg-white dark:bg-gray-800 shadow overflow-hidden sm:rounded-lg"
+        >
+            <!-- Search bar -->
+            <div
+                class="px-4 py-4 sm:px-6 border-b border-gray-200 dark:border-gray-700"
+            >
+                <div
+                    class="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-3 sm:space-y-0"
+                >
+                    <div class="flex-shrink-0 w-full sm:w-96">
+                        <div class="relative rounded-md shadow-sm">
+                            <div
+                                class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"
+                            >
+                                <svg
+                                    class="h-5 w-5 text-gray-400"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        stroke-width="2"
+                                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                                    />
+                                </svg>
+                            </div>
+                            <input
+                                v-model="searchQuery"
+                                @input="handleSearch"
+                                type="text"
+                                placeholder="Search users..."
+                                class="focus:ring-primary-500 focus:border-primary-500 block w-full pl-10 pr-12 sm:text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md"
+                            />
+                            <div
+                                v-if="searchQuery"
+                                class="absolute inset-y-0 right-0 pr-3 flex items-center"
+                            >
+                                <button
+                                    @click="clearSearch"
+                                    class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                                >
+                                    <svg
+                                        class="h-5 w-5"
+                                        fill="none"
+                                        viewBox="0 0 24 24"
+                                        stroke="currentColor"
+                                    >
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            stroke-width="2"
+                                            d="M6 18L18 6M6 6l12 12"
+                                        />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-4 flex-shrink-0">
+                        <span class="text-sm text-gray-500 dark:text-gray-400">
+                            {{ totalUsers }} user{{
+                                totalUsers !== 1 ? "s" : ""
+                            }}
+                            found
+                        </span>
+                        <button
+                            @click="exportUsersToCSV"
+                            :disabled="loading || users.length === 0"
+                            class="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          <span class="text-xs font-medium text-white">
-                            {{ user.username.charAt(0).toUpperCase() }}
-                          </span>
-                        </div>
-                      </div>
-                      <div class="ml-2">
-                        <div class="text-sm font-medium text-gray-900 dark:text-white truncate">
-                          {{ user.username }}
-                        </div>
-                        <div class="text-xs text-gray-500 dark:text-gray-400 truncate">
-                          {{ user.full_name || 'No name set' }}
-                        </div>
-                      </div>
+                            <svg
+                                class="w-4 h-4 mr-1.5"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    stroke-width="2"
+                                    d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                                />
+                            </svg>
+                            Export CSV
+                        </button>
                     </div>
-                  </td>
-                  <td class="px-3 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                    <div class="truncate">{{ user.email }}</div>
-                  </td>
-                  <td class="px-3 py-3 whitespace-nowrap">
-                    <select
-                      :value="user.role"
-                      @change="updateUserRole(user, $event.target.value)"
-                      :disabled="isUpdating || (user.role === 'admin' && adminCount <= 1)"
-                      class="text-xs border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded focus:ring-primary-500 focus:border-primary-500 disabled:opacity-50"
+                </div>
+            </div>
+
+            <div class="px-4 py-5 sm:p-6">
+                <div class="overflow-x-auto">
+                    <table
+                        class="min-w-full divide-y divide-gray-200 dark:divide-gray-700"
                     >
-                      <option value="user">User</option>
-                      <option value="admin">Admin</option>
-                    </select>
-                  </td>
-                  <td class="px-3 py-3 whitespace-nowrap">
-                    <span
-                      :class="{
-                        'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400': getUserDisplayTier(user) === 'free',
-                        'bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400': getUserDisplayTier(user) === 'pro',
-                        'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400': getUserDisplayTier(user) === 'trial'
-                      }"
-                      class="inline-flex px-2 py-1 text-xs font-semibold rounded-full"
+                        <thead class="bg-gray-50 dark:bg-gray-700">
+                            <tr>
+                                <th
+                                    class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-1/6"
+                                >
+                                    User
+                                </th>
+                                <th
+                                    class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-1/6"
+                                >
+                                    Email
+                                </th>
+                                <th
+                                    class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-20"
+                                >
+                                    Role
+                                </th>
+                                <th
+                                    class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-20"
+                                >
+                                    Tier
+                                </th>
+                                <th
+                                    class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-20"
+                                >
+                                    Status
+                                </th>
+                                <th
+                                    class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-20"
+                                >
+                                    Verified
+                                </th>
+                                <th
+                                    class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-20"
+                                >
+                                    Approved
+                                </th>
+                                <th
+                                    class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-20"
+                                >
+                                    Marketing
+                                </th>
+                                <th
+                                    class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-24"
+                                >
+                                    Joined
+                                </th>
+                                <th
+                                    class="px-3 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                    style="width: 200px"
+                                >
+                                    Actions
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody
+                            class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700"
+                        >
+                            <tr
+                                v-for="user in users"
+                                :key="user.id"
+                                class="hover:bg-gray-50 dark:hover:bg-gray-700"
+                            >
+                                <td class="px-3 py-3 whitespace-nowrap">
+                                    <div class="flex items-center">
+                                        <div class="flex-shrink-0 h-8 w-8">
+                                            <img
+                                                v-if="user.avatar_url"
+                                                class="h-8 w-8 rounded-full"
+                                                :src="user.avatar_url"
+                                                :alt="user.username"
+                                            />
+                                            <div
+                                                v-else
+                                                class="h-8 w-8 rounded-full bg-primary-500 flex items-center justify-center"
+                                            >
+                                                <span
+                                                    class="text-xs font-medium text-white"
+                                                >
+                                                    {{
+                                                        user.username
+                                                            .charAt(0)
+                                                            .toUpperCase()
+                                                    }}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div class="ml-2">
+                                            <div
+                                                class="text-sm font-medium text-gray-900 dark:text-white truncate"
+                                            >
+                                                {{ user.username }}
+                                            </div>
+                                            <div
+                                                class="text-xs text-gray-500 dark:text-gray-400 truncate"
+                                            >
+                                                {{
+                                                    user.full_name ||
+                                                    "No name set"
+                                                }}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td
+                                    class="px-3 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white"
+                                >
+                                    <div class="truncate">
+                                        {{ user.email }}
+                                    </div>
+                                </td>
+                                <td class="px-3 py-3 whitespace-nowrap">
+                                    <select
+                                        :value="user.role"
+                                        @change="
+                                            updateUserRole(
+                                                user,
+                                                $event.target.value,
+                                            )
+                                        "
+                                        :disabled="
+                                            isUpdating ||
+                                            (user.role === 'admin' &&
+                                                adminCount <= 1)
+                                        "
+                                        class="text-xs border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded focus:ring-primary-500 focus:border-primary-500 disabled:opacity-50"
+                                    >
+                                        <option value="user">User</option>
+                                        <option value="admin">Admin</option>
+                                    </select>
+                                </td>
+                                <td class="px-3 py-3 whitespace-nowrap">
+                                    <span
+                                        :class="{
+                                            'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400':
+                                                getUserDisplayTier(user) ===
+                                                'free',
+                                            'bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400':
+                                                getUserDisplayTier(user) ===
+                                                'pro',
+                                            'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400':
+                                                getUserDisplayTier(user) ===
+                                                'trial',
+                                        }"
+                                        class="inline-flex px-2 py-1 text-xs font-semibold rounded-full"
+                                    >
+                                        {{ getUserDisplayTier(user) }}
+                                    </span>
+                                </td>
+                                <td class="px-3 py-3 whitespace-nowrap">
+                                    <span
+                                        :class="{
+                                            'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400':
+                                                user.is_active,
+                                            'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400':
+                                                !user.is_active,
+                                        }"
+                                        class="inline-flex px-1 py-1 text-xs font-semibold rounded-full"
+                                    >
+                                        <MdiIcon
+                                            :icon="
+                                                user.is_active
+                                                    ? mdiCheckCircle
+                                                    : mdiCloseCircle
+                                            "
+                                            :size="16"
+                                        />
+                                    </span>
+                                </td>
+                                <td class="px-3 py-3 whitespace-nowrap">
+                                    <span
+                                        :class="{
+                                            'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400':
+                                                user.is_verified,
+                                            'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400':
+                                                !user.is_verified,
+                                        }"
+                                        class="inline-flex px-1 py-1 text-xs font-semibold rounded-full"
+                                    >
+                                        <MdiIcon
+                                            :icon="
+                                                user.is_verified
+                                                    ? mdiCheckCircle
+                                                    : mdiCloseCircle
+                                            "
+                                            :size="16"
+                                        />
+                                    </span>
+                                </td>
+                                <td class="px-3 py-3 whitespace-nowrap">
+                                    <span
+                                        :class="{
+                                            'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400':
+                                                user.admin_approved,
+                                            'bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400':
+                                                !user.admin_approved,
+                                        }"
+                                        class="inline-flex px-1 py-1 text-xs font-semibold rounded-full"
+                                    >
+                                        <MdiIcon
+                                            :icon="
+                                                user.admin_approved
+                                                    ? mdiCheckCircle
+                                                    : mdiCloseCircle
+                                            "
+                                            :size="16"
+                                        />
+                                    </span>
+                                </td>
+                                <td class="px-3 py-3 whitespace-nowrap">
+                                    <button
+                                        @click="toggleMarketingConsent(user)"
+                                        :disabled="isUpdating"
+                                        :class="{
+                                            'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-800/30':
+                                                user.marketing_consent,
+                                            'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800/30':
+                                                !user.marketing_consent,
+                                        }"
+                                        class="inline-flex px-1 py-1 text-xs font-semibold rounded-full cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                        :title="
+                                            user.marketing_consent
+                                                ? 'Click to opt out of marketing'
+                                                : 'Click to opt into marketing'
+                                        "
+                                    >
+                                        <MdiIcon
+                                            :icon="
+                                                user.marketing_consent
+                                                    ? mdiCheckCircle
+                                                    : mdiCloseCircle
+                                            "
+                                            :size="16"
+                                        />
+                                    </button>
+                                </td>
+                                <td
+                                    class="px-3 py-3 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400"
+                                >
+                                    {{ formatDate(user.created_at) }}
+                                </td>
+                                <td
+                                    class="px-3 py-3 whitespace-nowrap text-right text-sm font-medium"
+                                    style="width: 200px"
+                                >
+                                    <div class="flex justify-end space-x-1">
+                                        <!-- Blue: Verify -->
+                                        <button
+                                            v-if="!user.is_verified"
+                                            @click="verifyUser(user)"
+                                            :disabled="isUpdating"
+                                            class="px-2 py-1 text-xs bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/20 dark:text-blue-400 dark:hover:bg-blue-800/30 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            Verify
+                                        </button>
+
+                                        <!-- Green: Approve or Activate -->
+                                        <button
+                                            v-if="!user.admin_approved"
+                                            @click="approveUser(user)"
+                                            :disabled="isUpdating"
+                                            class="px-2 py-1 text-xs bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/20 dark:text-green-400 dark:hover:bg-green-800/30 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            Approve
+                                        </button>
+                                        <button
+                                            v-else-if="!user.is_active"
+                                            @click="toggleUserStatus(user)"
+                                            :disabled="
+                                                isUpdating ||
+                                                (user.role === 'admin' &&
+                                                    adminCount <= 1 &&
+                                                    user.is_active)
+                                            "
+                                            class="px-2 py-1 text-xs bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/20 dark:text-green-400 dark:hover:bg-green-800/30 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            Activate
+                                        </button>
+
+                                        <!-- Orange: Deactivate -->
+                                        <button
+                                            v-if="
+                                                user.is_active &&
+                                                user.admin_approved
+                                            "
+                                            @click="toggleUserStatus(user)"
+                                            :disabled="
+                                                isUpdating ||
+                                                (user.role === 'admin' &&
+                                                    adminCount <= 1 &&
+                                                    user.is_active)
+                                            "
+                                            class="px-2 py-1 text-xs bg-orange-100 text-orange-700 hover:bg-orange-200 dark:bg-orange-900/20 dark:text-orange-400 dark:hover:bg-orange-800/30 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            Deactivate
+                                        </button>
+
+                                        <!-- Purple: Tier Management -->
+                                        <button
+                                            @click="openTierModal(user)"
+                                            :disabled="isUpdating"
+                                            class="px-2 py-1 text-xs bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/20 dark:text-purple-400 dark:hover:bg-purple-800/30 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            Tier
+                                        </button>
+
+                                        <!-- Red: Delete -->
+                                        <button
+                                            @click="confirmDeleteUser(user)"
+                                            :disabled="
+                                                isUpdating ||
+                                                user.id === currentUserId ||
+                                                (user.role === 'admin' &&
+                                                    adminCount <= 1)
+                                            "
+                                            class="px-2 py-1 text-xs bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-800/30 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            Delete
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Pagination Controls -->
+                <div
+                    class="px-4 py-3 flex items-center justify-between border-t border-gray-200 dark:border-gray-700"
+                >
+                    <div
+                        class="flex items-center text-sm text-gray-700 dark:text-gray-300"
                     >
-                      {{ getUserDisplayTier(user) }}
-                    </span>
-                  </td>
-                  <td class="px-3 py-3 whitespace-nowrap">
-                    <span
-                      :class="{
-                        'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400': user.is_active,
-                        'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400': !user.is_active
-                      }"
-                      class="inline-flex px-1 py-1 text-xs font-semibold rounded-full"
-                    >
-                      <MdiIcon :icon="user.is_active ? mdiCheckCircle : mdiCloseCircle" :size="16" />
-                    </span>
-                  </td>
-                  <td class="px-3 py-3 whitespace-nowrap">
-                    <span
-                      :class="{
-                        'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400': user.is_verified,
-                        'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400': !user.is_verified
-                      }"
-                      class="inline-flex px-1 py-1 text-xs font-semibold rounded-full"
-                    >
-                      <MdiIcon :icon="user.is_verified ? mdiCheckCircle : mdiCloseCircle" :size="16" />
-                    </span>
-                  </td>
-                  <td class="px-3 py-3 whitespace-nowrap">
-                    <span
-                      :class="{
-                        'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400': user.admin_approved,
-                        'bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400': !user.admin_approved
-                      }"
-                      class="inline-flex px-1 py-1 text-xs font-semibold rounded-full"
-                    >
-                      <MdiIcon :icon="user.admin_approved ? mdiCheckCircle : mdiCloseCircle" :size="16" />
-                    </span>
-                  </td>
-                  <td class="px-3 py-3 whitespace-nowrap">
-                    <button
-                      @click="toggleMarketingConsent(user)"
-                      :disabled="isUpdating"
-                      :class="{
-                        'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-800/30': user.marketing_consent,
-                        'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800/30': !user.marketing_consent
-                      }"
-                      class="inline-flex px-1 py-1 text-xs font-semibold rounded-full cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                      :title="user.marketing_consent ? 'Click to opt out of marketing' : 'Click to opt into marketing'"
-                    >
-                      <MdiIcon :icon="user.marketing_consent ? mdiCheckCircle : mdiCloseCircle" :size="16" />
-                    </button>
-                  </td>
-                  <td class="px-3 py-3 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">
-                    {{ formatDate(user.created_at) }}
-                  </td>
-                  <td class="px-3 py-3 whitespace-nowrap text-right text-sm font-medium" style="width: 200px;">
-                    <div class="flex justify-end space-x-1">
-                      <!-- Blue: Verify -->
-                      <button
-                        v-if="!user.is_verified"
-                        @click="verifyUser(user)"
-                        :disabled="isUpdating"
-                        class="px-2 py-1 text-xs bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/20 dark:text-blue-400 dark:hover:bg-blue-800/30 rounded disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        Verify
-                      </button>
-                      
-                      <!-- Green: Approve or Activate -->
-                      <button
-                        v-if="!user.admin_approved"
-                        @click="approveUser(user)"
-                        :disabled="isUpdating"
-                        class="px-2 py-1 text-xs bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/20 dark:text-green-400 dark:hover:bg-green-800/30 rounded disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        Approve
-                      </button>
-                      <button
-                        v-else-if="!user.is_active"
-                        @click="toggleUserStatus(user)"
-                        :disabled="isUpdating || (user.role === 'admin' && adminCount <= 1 && user.is_active)"
-                        class="px-2 py-1 text-xs bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/20 dark:text-green-400 dark:hover:bg-green-800/30 rounded disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        Activate
-                      </button>
-                      
-                      <!-- Orange: Deactivate -->
-                      <button
-                        v-if="user.is_active && user.admin_approved"
-                        @click="toggleUserStatus(user)"
-                        :disabled="isUpdating || (user.role === 'admin' && adminCount <= 1 && user.is_active)"
-                        class="px-2 py-1 text-xs bg-orange-100 text-orange-700 hover:bg-orange-200 dark:bg-orange-900/20 dark:text-orange-400 dark:hover:bg-orange-800/30 rounded disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        Deactivate
-                      </button>
-                      
-                      <!-- Purple: Tier Management -->
-                      <button
-                        @click="openTierModal(user)"
-                        :disabled="isUpdating"
-                        class="px-2 py-1 text-xs bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/20 dark:text-purple-400 dark:hover:bg-purple-800/30 rounded disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        Tier
-                      </button>
-                      
-                      <!-- Red: Delete -->
-                      <button
-                        @click="confirmDeleteUser(user)"
-                        :disabled="isUpdating || user.id === currentUserId || (user.role === 'admin' && adminCount <= 1)"
-                        class="px-2 py-1 text-xs bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-800/30 rounded disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        Delete
-                      </button>
+                        Showing {{ startIndex }} to {{ endIndex }} of
+                        {{ totalUsers }} users
                     </div>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          
-          <!-- Pagination Controls -->
-          <div class="px-4 py-3 flex items-center justify-between border-t border-gray-200 dark:border-gray-700">
-            <div class="flex items-center text-sm text-gray-700 dark:text-gray-300">
-              Showing {{ startIndex }} to {{ endIndex }} of {{ totalUsers }} users
-            </div>
-            
-            <div class="flex items-center space-x-1">
-              <!-- Previous button -->
-              <button
-                @click="prevPage"
-                :disabled="currentPage === 1"
-                class="relative inline-flex items-center px-2 py-2 text-sm font-medium rounded-l-md border border-gray-300 bg-white text-gray-500 hover:bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-                  <path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" />
-                </svg>
-              </button>
-              
-              <!-- Page numbers -->
-              <button
-                v-for="page in getVisiblePages"
-                :key="page.value"
-                @click="page.type === 'page' ? goToPage(page.value) : null"
-                :disabled="page.type === 'ellipsis'"
-                :class="{
-                  'bg-primary-50 border-primary-500 text-primary-600 dark:bg-primary-900/20 dark:border-primary-500 dark:text-primary-400': page.value === currentPage && page.type === 'page',
-                  'bg-white border-gray-300 text-gray-500 hover:bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-600': page.value !== currentPage && page.type === 'page',
-                  'bg-white border-gray-300 text-gray-700 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 cursor-default': page.type === 'ellipsis'
-                }"
-                class="relative inline-flex items-center px-4 py-2 text-sm font-medium border"
-              >
-                {{ page.display }}
-              </button>
-              
-              <!-- Next button -->
-              <button
-                @click="nextPage"
-                :disabled="currentPage === totalPages"
-                class="relative inline-flex items-center px-2 py-2 text-sm font-medium rounded-r-md border border-gray-300 bg-white text-gray-500 hover:bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-                  <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" />
-                </svg>
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
 
-      <!-- Stats cards -->
-      <div class="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-5">
-        <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg min-w-0">
-          <div class="p-5">
-            <div class="flex items-center min-w-0">
-              <div class="flex-shrink-0">
-                <svg class="h-6 w-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                </svg>
-              </div>
-              <div class="ml-5 min-w-0 flex-1">
-                <dl>
-                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Total Users</dt>
-                  <dd class="text-lg font-medium text-gray-900 dark:text-white truncate">{{ statistics.totalUsers || totalUsers }}</dd>
-                </dl>
-              </div>
+                    <div class="flex items-center space-x-1">
+                        <!-- Previous button -->
+                        <button
+                            @click="prevPage"
+                            :disabled="currentPage === 1"
+                            class="relative inline-flex items-center px-2 py-2 text-sm font-medium rounded-l-md border border-gray-300 bg-white text-gray-500 hover:bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            <svg
+                                class="h-5 w-5"
+                                fill="currentColor"
+                                viewBox="0 0 20 20"
+                            >
+                                <path
+                                    fill-rule="evenodd"
+                                    d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z"
+                                    clip-rule="evenodd"
+                                />
+                            </svg>
+                        </button>
+
+                        <!-- Page numbers -->
+                        <button
+                            v-for="page in getVisiblePages"
+                            :key="page.value"
+                            @click="
+                                page.type === 'page'
+                                    ? goToPage(page.value)
+                                    : null
+                            "
+                            :disabled="page.type === 'ellipsis'"
+                            :class="{
+                                'bg-primary-50 border-primary-500 text-primary-600 dark:bg-primary-900/20 dark:border-primary-500 dark:text-primary-400':
+                                    page.value === currentPage &&
+                                    page.type === 'page',
+                                'bg-white border-gray-300 text-gray-500 hover:bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-600':
+                                    page.value !== currentPage &&
+                                    page.type === 'page',
+                                'bg-white border-gray-300 text-gray-700 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 cursor-default':
+                                    page.type === 'ellipsis',
+                            }"
+                            class="relative inline-flex items-center px-4 py-2 text-sm font-medium border"
+                        >
+                            {{ page.display }}
+                        </button>
+
+                        <!-- Next button -->
+                        <button
+                            @click="nextPage"
+                            :disabled="currentPage === totalPages"
+                            class="relative inline-flex items-center px-2 py-2 text-sm font-medium rounded-r-md border border-gray-300 bg-white text-gray-500 hover:bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            <svg
+                                class="h-5 w-5"
+                                fill="currentColor"
+                                viewBox="0 0 20 20"
+                            >
+                                <path
+                                    fill-rule="evenodd"
+                                    d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
+                                    clip-rule="evenodd"
+                                />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
             </div>
-          </div>
         </div>
 
-        <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg min-w-0">
-          <div class="p-5">
-            <div class="flex items-center min-w-0">
-              <div class="flex-shrink-0">
-                <svg class="h-6 w-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.031 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                </svg>
-              </div>
-              <div class="ml-5 min-w-0 flex-1">
-                <dl>
-                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Admin Users</dt>
-                  <dd class="text-lg font-medium text-gray-900 dark:text-white truncate">{{ adminCount }}</dd>
-                </dl>
-              </div>
+        <!-- Stats cards -->
+        <div class="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-5">
+            <div
+                class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg min-w-0"
+            >
+                <div class="p-5">
+                    <div class="flex items-center min-w-0">
+                        <div class="flex-shrink-0">
+                            <svg
+                                class="h-6 w-6 text-gray-400"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    stroke-width="2"
+                                    d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                                />
+                            </svg>
+                        </div>
+                        <div class="ml-5 min-w-0 flex-1">
+                            <dl>
+                                <dt
+                                    class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate"
+                                >
+                                    Total Users
+                                </dt>
+                                <dd
+                                    class="text-lg font-medium text-gray-900 dark:text-white truncate"
+                                >
+                                    {{ statistics.totalUsers || totalUsers }}
+                                </dd>
+                            </dl>
+                        </div>
+                    </div>
+                </div>
             </div>
-          </div>
-        </div>
 
-        <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg min-w-0">
-          <div class="p-5">
-            <div class="flex items-center min-w-0">
-              <div class="flex-shrink-0">
-                <svg class="h-6 w-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <div class="ml-5 min-w-0 flex-1">
-                <dl>
-                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Active Users</dt>
-                  <dd class="text-lg font-medium text-gray-900 dark:text-white truncate">{{ activeUserCount }}</dd>
-                </dl>
-              </div>
+            <div
+                class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg min-w-0"
+            >
+                <div class="p-5">
+                    <div class="flex items-center min-w-0">
+                        <div class="flex-shrink-0">
+                            <svg
+                                class="h-6 w-6 text-gray-400"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    stroke-width="2"
+                                    d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.031 9-11.622 0-1.042-.133-2.052-.382-3.016z"
+                                />
+                            </svg>
+                        </div>
+                        <div class="ml-5 min-w-0 flex-1">
+                            <dl>
+                                <dt
+                                    class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate"
+                                >
+                                    Admin Users
+                                </dt>
+                                <dd
+                                    class="text-lg font-medium text-gray-900 dark:text-white truncate"
+                                >
+                                    {{ adminCount }}
+                                </dd>
+                            </dl>
+                        </div>
+                    </div>
+                </div>
             </div>
-          </div>
-        </div>
 
-        <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg min-w-0">
-          <div class="p-5">
-            <div class="flex items-center min-w-0">
-              <div class="flex-shrink-0">
-                <svg class="h-6 w-6 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <div class="ml-5 min-w-0 flex-1">
-                <dl>
-                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Pending Approval</dt>
-                  <dd class="text-lg font-medium text-orange-600 dark:text-orange-400 truncate">{{ pendingApprovalCount }}</dd>
-                </dl>
-              </div>
+            <div
+                class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg min-w-0"
+            >
+                <div class="p-5">
+                    <div class="flex items-center min-w-0">
+                        <div class="flex-shrink-0">
+                            <svg
+                                class="h-6 w-6 text-gray-400"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    stroke-width="2"
+                                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                                />
+                            </svg>
+                        </div>
+                        <div class="ml-5 min-w-0 flex-1">
+                            <dl>
+                                <dt
+                                    class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate"
+                                >
+                                    Active Users
+                                </dt>
+                                <dd
+                                    class="text-lg font-medium text-gray-900 dark:text-white truncate"
+                                >
+                                    {{ activeUserCount }}
+                                </dd>
+                            </dl>
+                        </div>
+                    </div>
+                </div>
             </div>
-          </div>
-        </div>
 
-        <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg min-w-0">
-          <div class="p-5">
-            <div class="flex items-center min-w-0">
-              <div class="flex-shrink-0">
-                <svg class="h-6 w-6 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207" />
-                </svg>
-              </div>
-              <div class="ml-5 min-w-0 flex-1">
-                <dl>
-                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Unverified</dt>
-                  <dd class="text-lg font-medium text-yellow-600 dark:text-yellow-400 truncate">{{ unverifiedCount }}</dd>
-                </dl>
-              </div>
+            <div
+                class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg min-w-0"
+            >
+                <div class="p-5">
+                    <div class="flex items-center min-w-0">
+                        <div class="flex-shrink-0">
+                            <svg
+                                class="h-6 w-6 text-orange-400"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    stroke-width="2"
+                                    d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                                />
+                            </svg>
+                        </div>
+                        <div class="ml-5 min-w-0 flex-1">
+                            <dl>
+                                <dt
+                                    class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate"
+                                >
+                                    Pending Approval
+                                </dt>
+                                <dd
+                                    class="text-lg font-medium text-orange-600 dark:text-orange-400 truncate"
+                                >
+                                    {{ pendingApprovalCount }}
+                                </dd>
+                            </dl>
+                        </div>
+                    </div>
+                </div>
             </div>
-          </div>
+
+            <div
+                class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg min-w-0"
+            >
+                <div class="p-5">
+                    <div class="flex items-center min-w-0">
+                        <div class="flex-shrink-0">
+                            <svg
+                                class="h-6 w-6 text-yellow-400"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    stroke-width="2"
+                                    d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207"
+                                />
+                            </svg>
+                        </div>
+                        <div class="ml-5 min-w-0 flex-1">
+                            <dl>
+                                <dt
+                                    class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate"
+                                >
+                                    Unverified
+                                </dt>
+                                <dd
+                                    class="text-lg font-medium text-yellow-600 dark:text-yellow-400 truncate"
+                                >
+                                    {{ unverifiedCount }}
+                                </dd>
+                            </dl>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
-      </div>
     </div>
 
     <!-- Delete confirmation modal -->
-    <div v-if="showDeleteConfirm" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-      <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white dark:bg-gray-800">
-        <div class="mt-3 text-center">
-          <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 dark:bg-red-900/20">
-            <svg class="h-6 w-6 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
-            </svg>
-          </div>
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white mt-2">Delete User</h3>
-          <div class="mt-2 px-7 py-3">
-            <p class="text-sm text-gray-500 dark:text-gray-400">
-              Are you sure you want to permanently delete user <strong>{{ userToDelete?.username }}</strong>?
-              This action cannot be undone.
-            </p>
-          </div>
-          <div class="flex justify-center gap-4 mt-4">
-            <button
-              @click="showDeleteConfirm = false"
-              class="px-4 py-2 bg-gray-300 text-gray-800 text-base font-medium rounded-md shadow-sm hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-300"
-            >
-              Cancel
-            </button>
-            <button
-              @click="deleteUser"
-              :disabled="isUpdating"
-              class="px-4 py-2 bg-red-600 text-white text-base font-medium rounded-md shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50"
-            >
-              {{ isUpdating ? 'Deleting...' : 'Delete' }}
-            </button>
-          </div>
+    <div
+        v-if="showDeleteConfirm"
+        class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50"
+    >
+        <div
+            class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white dark:bg-gray-800"
+        >
+            <div class="mt-3 text-center">
+                <div
+                    class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 dark:bg-red-900/20"
+                >
+                    <svg
+                        class="h-6 w-6 text-red-600 dark:text-red-400"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                    >
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"
+                        />
+                    </svg>
+                </div>
+                <h3
+                    class="text-lg font-medium text-gray-900 dark:text-white mt-2"
+                >
+                    Delete User
+                </h3>
+                <div class="mt-2 px-7 py-3">
+                    <p class="text-sm text-gray-500 dark:text-gray-400">
+                        Are you sure you want to permanently delete user
+                        <strong>{{ userToDelete?.username }}</strong
+                        >? This action cannot be undone.
+                    </p>
+                </div>
+                <div class="flex justify-center gap-4 mt-4">
+                    <button
+                        @click="showDeleteConfirm = false"
+                        class="px-4 py-2 bg-gray-300 text-gray-800 text-base font-medium rounded-md shadow-sm hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-300"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        @click="deleteUser"
+                        :disabled="isUpdating"
+                        class="px-4 py-2 bg-red-600 text-white text-base font-medium rounded-md shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50"
+                    >
+                        {{ isUpdating ? "Deleting..." : "Delete" }}
+                    </button>
+                </div>
+            </div>
         </div>
-      </div>
     </div>
-    
+
     <!-- Tier Management Modal -->
-    <div v-if="showTierModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-      <div class="relative top-20 mx-auto p-5 border w-[500px] shadow-lg rounded-md bg-white dark:bg-gray-800">
-        <div class="mt-3">
-          <div class="flex justify-between items-start mb-4">
-            <h3 class="heading-card">
-              Manage Tier - {{ selectedUser?.username }}
-            </h3>
-            <button
-              @click="closeTierModal"
-              class="text-gray-400 hover:text-gray-500"
-            >
-              <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
+    <div
+        v-if="showTierModal"
+        class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50"
+    >
+        <div
+            class="relative top-20 mx-auto p-5 border w-[500px] shadow-lg rounded-md bg-white dark:bg-gray-800"
+        >
+            <div class="mt-3">
+                <div class="flex justify-between items-start mb-4">
+                    <h3 class="heading-card">
+                        Manage Tier - {{ selectedUser?.username }}
+                    </h3>
+                    <button
+                        @click="closeTierModal"
+                        class="text-gray-400 hover:text-gray-500"
+                    >
+                        <svg
+                            class="h-5 w-5"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                        >
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2"
+                                d="M6 18L18 6M6 6l12 12"
+                            />
+                        </svg>
+                    </button>
+                </div>
 
-          <!-- Current Tier Info -->
-          <div v-if="tierInfo" class="space-y-3">
-            <div>
-              <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Current Tier</h4>
-              <div class="flex items-center space-x-2">
-                <span
-                  :class="{
-                    'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400': tierInfo?.tier === 'free',
-                    'bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400': tierInfo?.tier === 'pro'
-                  }"
-                  class="inline-flex px-3 py-1 text-sm font-semibold rounded-full"
-                >
-                  {{ tierInfo?.tier }}
-                </span>
-                <span v-if="tierInfo?.override" class="text-xs text-amber-600 dark:text-amber-400">
-                  (Override active)
-                </span>
-                <span v-if="selectedUser && (selectedUser.role === 'admin' || selectedUser.role === 'owner')" class="text-xs text-blue-600 dark:text-blue-400">
-                  (Admin - Pro by default)
-                </span>
-              </div>
-            </div>
+                <!-- Current Tier Info -->
+                <div v-if="tierInfo" class="space-y-3">
+                    <div>
+                        <h4
+                            class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                        >
+                            Current Tier
+                        </h4>
+                        <div class="flex items-center space-x-2">
+                            <span
+                                :class="{
+                                    'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400':
+                                        tierInfo?.tier === 'free',
+                                    'bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400':
+                                        tierInfo?.tier === 'pro',
+                                }"
+                                class="inline-flex px-3 py-1 text-sm font-semibold rounded-full"
+                            >
+                                {{ tierInfo?.tier }}
+                            </span>
+                            <span
+                                v-if="tierInfo?.override"
+                                class="text-xs text-amber-600 dark:text-amber-400"
+                            >
+                                (Override active)
+                            </span>
+                            <span
+                                v-if="
+                                    selectedUser &&
+                                    (selectedUser.role === 'admin' ||
+                                        selectedUser.role === 'owner')
+                                "
+                                class="text-xs text-blue-600 dark:text-blue-400"
+                            >
+                                (Admin - Pro by default)
+                            </span>
+                        </div>
+                    </div>
 
-            <!-- Override Info -->
-            <div v-if="tierInfo?.override" class="bg-amber-50 dark:bg-amber-900/20 rounded-lg p-3">
-              <p class="text-sm text-amber-800 dark:text-amber-300">
-                <strong>Override:</strong> {{ tierInfo?.override?.tier }} tier
-                <span v-if="tierInfo?.override?.expires_at">
-                  until {{ new Date(tierInfo?.override?.expires_at).toLocaleDateString() }}
-                </span>
-              </p>
-              <p v-if="tierInfo?.override?.reason" class="text-xs text-amber-700 dark:text-amber-400 mt-1">
-                Reason: {{ tierInfo?.override?.reason }}
-              </p>
-              <p v-if="tierInfo?.override?.created_by_username" class="text-xs text-amber-700 dark:text-amber-400">
-                Set by: {{ tierInfo?.override?.created_by_username }}
-              </p>
-            </div>
+                    <!-- Override Info -->
+                    <div
+                        v-if="tierInfo?.override"
+                        class="bg-amber-50 dark:bg-amber-900/20 rounded-lg p-3"
+                    >
+                        <p class="text-sm text-amber-800 dark:text-amber-300">
+                            <strong>Override:</strong>
+                            {{ tierInfo?.override?.tier }} tier
+                            <span v-if="tierInfo?.override?.expires_at">
+                                until
+                                {{
+                                    new Date(
+                                        tierInfo?.override?.expires_at,
+                                    ).toLocaleDateString()
+                                }}
+                            </span>
+                        </p>
+                        <p
+                            v-if="tierInfo?.override?.reason"
+                            class="text-xs text-amber-700 dark:text-amber-400 mt-1"
+                        >
+                            Reason: {{ tierInfo?.override?.reason }}
+                        </p>
+                        <p
+                            v-if="tierInfo?.override?.created_by_username"
+                            class="text-xs text-amber-700 dark:text-amber-400"
+                        >
+                            Set by:
+                            {{ tierInfo?.override?.created_by_username }}
+                        </p>
+                    </div>
 
-            <!-- Subscription Info -->
-            <div v-if="tierInfo?.subscription && tierInfo?.subscription?.status === 'active'" class="bg-green-50 dark:bg-green-900/20 rounded-lg p-3">
-              <p class="text-sm text-green-800 dark:text-green-300">
-                <strong>Active Subscription</strong>
-              </p>
-              <p class="text-xs text-green-700 dark:text-green-400 mt-1">
-                Renews: {{ tierInfo?.subscription?.current_period_end ? new Date(tierInfo.subscription.current_period_end).toLocaleDateString() : 'N/A' }}
-              </p>
-            </div>
-          </div>
+                    <!-- Subscription Info -->
+                    <div
+                        v-if="
+                            tierInfo?.subscription &&
+                            tierInfo?.subscription?.status === 'active'
+                        "
+                        class="bg-green-50 dark:bg-green-900/20 rounded-lg p-3"
+                    >
+                        <p class="text-sm text-green-800 dark:text-green-300">
+                            <strong>Active Subscription</strong>
+                        </p>
+                        <p
+                            class="text-xs text-green-700 dark:text-green-400 mt-1"
+                        >
+                            Renews:
+                            {{
+                                tierInfo?.subscription?.current_period_end
+                                    ? new Date(
+                                          tierInfo.subscription
+                                              .current_period_end,
+                                      ).toLocaleDateString()
+                                    : "N/A"
+                            }}
+                        </p>
+                    </div>
+                </div>
 
-          <!-- Action Buttons -->
-          <div class="space-y-3 pt-4 border-t dark:border-gray-700 mt-4">
-            <!-- Set Override -->
-            <div>
-              <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Set Tier Override</h4>
-              <div class="flex items-center space-x-2">
-                <select
-                  v-model="overrideTier"
-                  class="text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded focus:ring-primary-500 focus:border-primary-500"
-                >
-                  <option value="free">Free</option>
-                  <option value="pro">Pro</option>
-                </select>
-                <button
-                  @click="setTierOverride"
-                  :disabled="isUpdating"
-                  class="px-3 py-1 bg-purple-600 text-white text-sm font-medium rounded hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50"
-                >
-                  Set Override
-                </button>
-              </div>
-              <input
-                v-model="overrideExpiry"
-                type="date"
-                placeholder="Expiry date (optional)"
-                class="w-full mt-2 text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded focus:ring-primary-500 focus:border-primary-500"
-              />
-              <input
-                v-model="overrideReason"
-                type="text"
-                placeholder="Reason for override (optional)"
-                class="w-full mt-2 text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded focus:ring-primary-500 focus:border-primary-500"
-              />
-            </div>
+                <!-- Action Buttons -->
+                <div class="space-y-3 pt-4 border-t dark:border-gray-700 mt-4">
+                    <!-- Set Override -->
+                    <div>
+                        <h4
+                            class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+                        >
+                            Set Tier Override
+                        </h4>
+                        <div class="flex items-center space-x-2">
+                            <select
+                                v-model="overrideTier"
+                                class="text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded focus:ring-primary-500 focus:border-primary-500"
+                            >
+                                <option value="free">Free</option>
+                                <option value="pro">Pro</option>
+                            </select>
+                            <button
+                                @click="setTierOverride"
+                                :disabled="isUpdating"
+                                class="px-3 py-1 bg-purple-600 text-white text-sm font-medium rounded hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50"
+                            >
+                                Set Override
+                            </button>
+                        </div>
+                        <input
+                            v-model="overrideExpiry"
+                            type="date"
+                            placeholder="Expiry date (optional)"
+                            class="w-full mt-2 text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded focus:ring-primary-500 focus:border-primary-500"
+                        />
+                        <input
+                            v-model="overrideReason"
+                            type="text"
+                            placeholder="Reason for override (optional)"
+                            class="w-full mt-2 text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded focus:ring-primary-500 focus:border-primary-500"
+                        />
+                    </div>
 
-            <!-- 14-Day Free Trial Button -->
-            <div class="flex justify-between items-center">
-              <span class="text-sm text-gray-600 dark:text-gray-400">Grant 14-day Pro trial</span>
-              <button
-                @click="grant14DayTrial"
-                :disabled="isUpdating"
-                class="px-3 py-1 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-              >
-                Grant Trial
-              </button>
-            </div>
+                    <!-- 14-Day Free Trial Button -->
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm text-gray-600 dark:text-gray-400"
+                            >Grant 14-day Pro trial</span
+                        >
+                        <button
+                            @click="grant14DayTrial"
+                            :disabled="isUpdating"
+                            class="px-3 py-1 bg-primary-600 text-white text-sm font-medium rounded hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
+                        >
+                            Grant Trial
+                        </button>
+                    </div>
 
-            <!-- Remove Override -->
-            <div v-if="tierInfo?.override" class="flex justify-between items-center">
-              <span class="text-sm text-gray-600 dark:text-gray-400">Remove tier override</span>
-              <button
-                @click="removeTierOverride"
-                :disabled="isUpdating"
-                class="px-3 py-1 bg-red-600 text-white text-sm font-medium rounded hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50"
-              >
-                Remove Override
-              </button>
+                    <!-- Remove Override -->
+                    <div
+                        v-if="tierInfo?.override"
+                        class="flex justify-between items-center"
+                    >
+                        <span class="text-sm text-gray-600 dark:text-gray-400"
+                            >Remove tier override</span
+                        >
+                        <button
+                            @click="removeTierOverride"
+                            :disabled="isUpdating"
+                            class="px-3 py-1 bg-red-600 text-white text-sm font-medium rounded hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50"
+                        >
+                            Remove Override
+                        </button>
+                    </div>
+                </div>
             </div>
-          </div>
         </div>
-      </div>
     </div>
-  </div>
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
-import api from '@/services/api'
-import { useNotification } from '@/composables/useNotification'
-import { useAuthStore } from '@/stores/auth'
-import MdiIcon from '@/components/MdiIcon.vue'
-import { mdiCheckCircle, mdiCloseCircle } from '@mdi/js'
+import { ref, onMounted, computed } from "vue";
+import api from "@/services/api";
+import { useNotification } from "@/composables/useNotification";
+import { useAuthStore } from "@/stores/auth";
+import MdiIcon from "@/components/MdiIcon.vue";
+import { mdiCheckCircle, mdiCloseCircle } from "@mdi/js";
 
-const { showSuccess, showError } = useNotification()
-const authStore = useAuthStore()
+const { showSuccess, showError } = useNotification();
+const authStore = useAuthStore();
 
-const users = ref([])
-const loading = ref(true)
-const error = ref(null)
-const isUpdating = ref(false)
-const showDeleteConfirm = ref(false)
-const userToDelete = ref(null)
+const users = ref([]);
+const loading = ref(true);
+const error = ref(null);
+const isUpdating = ref(false);
+const showDeleteConfirm = ref(false);
+const userToDelete = ref(null);
 
 // Tier management state
-const showTierModal = ref(false)
-const selectedUser = ref(null)
-const tierInfo = ref(null)
-const overrideTier = ref('pro')
-const overrideExpiry = ref('')
-const overrideReason = ref('')
+const showTierModal = ref(false);
+const selectedUser = ref(null);
+const tierInfo = ref(null);
+const overrideTier = ref("pro");
+const overrideExpiry = ref("");
+const overrideReason = ref("");
 
 // Pagination state
-const currentPage = ref(1)
-const totalPages = ref(1)
-const totalUsers = ref(0)
-const usersPerPage = ref(25)
-const hasMore = ref(false)
+const currentPage = ref(1);
+const totalPages = ref(1);
+const totalUsers = ref(0);
+const usersPerPage = ref(25);
+const hasMore = ref(false);
 
 // Search state
-const searchQuery = ref('')
-const searchTimeout = ref(null)
+const searchQuery = ref("");
+const searchTimeout = ref(null);
 
 // Statistics state (overall totals, not just current page)
 const statistics = ref({
-  totalUsers: 0,
-  adminUsers: 0,
-  activeUsers: 0,
-  pendingApproval: 0,
-  unverified: 0,
-  proUsers: 0
-})
+    totalUsers: 0,
+    adminUsers: 0,
+    activeUsers: 0,
+    pendingApproval: 0,
+    unverified: 0,
+    proUsers: 0,
+});
 
-const currentUserId = computed(() => authStore.user?.id)
+const currentUserId = computed(() => authStore.user?.id);
 
 // Use statistics for counts instead of computing from current page
-const adminCount = computed(() => statistics.value.adminUsers)
-const activeUserCount = computed(() => statistics.value.activeUsers)
-const pendingApprovalCount = computed(() => statistics.value.pendingApproval)
-const unverifiedCount = computed(() => statistics.value.unverified)
-const proUserCount = computed(() => statistics.value.proUsers)
+const adminCount = computed(() => statistics.value.adminUsers);
+const activeUserCount = computed(() => statistics.value.activeUsers);
+const pendingApprovalCount = computed(() => statistics.value.pendingApproval);
+const unverifiedCount = computed(() => statistics.value.unverified);
+const proUserCount = computed(() => statistics.value.proUsers);
 
 // Helper function to get the display tier for a user
 function getUserDisplayTier(user) {
-  // Admins get Pro tier by default
-  if (user.role === 'admin' || user.role === 'owner') {
-    return 'pro';
-  }
-  // Check if user is on a trial
-  if (user.is_trial) {
-    return 'trial';
-  }
-  return user.tier || 'free';
+    // Admins get Pro tier by default
+    if (user.role === "admin" || user.role === "owner") {
+        return "pro";
+    }
+    // Check if user is on a trial
+    if (user.is_trial) {
+        return "trial";
+    }
+    return user.tier || "free";
 }
 
-const startIndex = computed(() => (currentPage.value - 1) * usersPerPage.value + 1)
-const endIndex = computed(() => Math.min(startIndex.value + users.value.length - 1, totalUsers.value))
+const startIndex = computed(
+    () => (currentPage.value - 1) * usersPerPage.value + 1,
+);
+const endIndex = computed(() =>
+    Math.min(startIndex.value + users.value.length - 1, totalUsers.value),
+);
 
 const getVisiblePages = computed(() => {
-  const pages = []
-  const delta = 2
-  const range = []
-  
-  // Calculate range of pages to show
-  for (let i = Math.max(2, currentPage.value - delta); i <= Math.min(totalPages.value - 1, currentPage.value + delta); i++) {
-    range.push(i)
-  }
-  
-  if (currentPage.value - delta > 2) {
-    range.unshift('...')
-  }
-  if (currentPage.value + delta < totalPages.value - 1) {
-    range.push('...')
-  }
-  
-  range.unshift(1)
-  if (totalPages.value !== 1) {
-    range.push(totalPages.value)
-  }
-  
-  // Convert to page objects
-  let pageNum = 1
-  for (const item of range) {
-    if (item === '...') {
-      pages.push({ type: 'ellipsis', display: '...', value: `ellipsis-${pageNum++}` })
-    } else {
-      pages.push({ type: 'page', display: item, value: item })
+    const pages = [];
+    const delta = 2;
+    const range = [];
+
+    // Calculate range of pages to show
+    for (
+        let i = Math.max(2, currentPage.value - delta);
+        i <= Math.min(totalPages.value - 1, currentPage.value + delta);
+        i++
+    ) {
+        range.push(i);
     }
-  }
-  
-  return pages
-})
+
+    if (currentPage.value - delta > 2) {
+        range.unshift("...");
+    }
+    if (currentPage.value + delta < totalPages.value - 1) {
+        range.push("...");
+    }
+
+    range.unshift(1);
+    if (totalPages.value !== 1) {
+        range.push(totalPages.value);
+    }
+
+    // Convert to page objects
+    let pageNum = 1;
+    for (const item of range) {
+        if (item === "...") {
+            pages.push({
+                type: "ellipsis",
+                display: "...",
+                value: `ellipsis-${pageNum++}`,
+            });
+        } else {
+            pages.push({ type: "page", display: item, value: item });
+        }
+    }
+
+    return pages;
+});
 
 async function fetchUsers(page = 1) {
-  try {
-    loading.value = true
-    error.value = null
-    
-    const params = new URLSearchParams({
-      page: page.toString(),
-      limit: usersPerPage.value.toString()
-    })
-    
-    if (searchQuery.value.trim()) {
-      params.append('search', searchQuery.value.trim())
+    try {
+        loading.value = true;
+        error.value = null;
+
+        const params = new URLSearchParams({
+            page: page.toString(),
+            limit: usersPerPage.value.toString(),
+        });
+
+        if (searchQuery.value.trim()) {
+            params.append("search", searchQuery.value.trim());
+        }
+
+        const response = await api.get(`/users/admin/users?${params}`);
+        users.value = response.data.users;
+        totalUsers.value = response.data.total;
+        totalPages.value = response.data.totalPages;
+        currentPage.value = response.data.page;
+        hasMore.value = response.data.hasMore;
+
+        // Also fetch overall statistics (only on first page or when not searching)
+        if (page === 1 && !searchQuery.value.trim()) {
+            await fetchStatistics();
+        }
+    } catch (err) {
+        error.value = err.response?.data?.error || "Failed to load users";
+        showError("Error", error.value);
+    } finally {
+        loading.value = false;
     }
-    
-    const response = await api.get(`/users/admin/users?${params}`)
-    users.value = response.data.users
-    totalUsers.value = response.data.total
-    totalPages.value = response.data.totalPages
-    currentPage.value = response.data.page
-    hasMore.value = response.data.hasMore
-    
-    // Also fetch overall statistics (only on first page or when not searching)
-    if (page === 1 && !searchQuery.value.trim()) {
-      await fetchStatistics()
-    }
-  } catch (err) {
-    error.value = err.response?.data?.error || 'Failed to load users'
-    showError('Error', error.value)
-  } finally {
-    loading.value = false
-  }
 }
 
 async function fetchStatistics() {
-  try {
-    const response = await api.get('/users/admin/statistics')
-    const stats = response.data
-    
-    statistics.value = {
-      totalUsers: stats.total_users || 0,
-      adminUsers: stats.admin_users || 0,
-      activeUsers: stats.active_users || 0,
-      pendingApproval: (stats.total_users || 0) - (stats.approved_users || 0),
-      unverified: (stats.total_users || 0) - (stats.verified_users || 0),
-      proUsers: stats.pro_users || 0
+    try {
+        const response = await api.get("/users/admin/statistics");
+        const stats = response.data;
+
+        statistics.value = {
+            totalUsers: stats.total_users || 0,
+            adminUsers: stats.admin_users || 0,
+            activeUsers: stats.active_users || 0,
+            pendingApproval:
+                (stats.total_users || 0) - (stats.approved_users || 0),
+            unverified: (stats.total_users || 0) - (stats.verified_users || 0),
+            proUsers: stats.pro_users || 0,
+        };
+    } catch (err) {
+        console.error("Failed to fetch statistics:", err);
     }
-  } catch (err) {
-    console.error('Failed to fetch statistics:', err)
-  }
 }
 
 function goToPage(page) {
-  if (page >= 1 && page <= totalPages.value) {
-    fetchUsers(page)
-  }
+    if (page >= 1 && page <= totalPages.value) {
+        fetchUsers(page);
+    }
 }
 
 function nextPage() {
-  if (currentPage.value < totalPages.value) {
-    goToPage(currentPage.value + 1)
-  }
+    if (currentPage.value < totalPages.value) {
+        goToPage(currentPage.value + 1);
+    }
 }
 
 function prevPage() {
-  if (currentPage.value > 1) {
-    goToPage(currentPage.value - 1)
-  }
+    if (currentPage.value > 1) {
+        goToPage(currentPage.value - 1);
+    }
 }
 
 function handleSearch() {
-  // Clear existing timeout
-  if (searchTimeout.value) {
-    clearTimeout(searchTimeout.value)
-  }
-  
-  // Debounce search to avoid too many API calls
-  searchTimeout.value = setTimeout(() => {
-    currentPage.value = 1 // Reset to first page on search
-    fetchUsers(1)
-  }, 300)
+    // Clear existing timeout
+    if (searchTimeout.value) {
+        clearTimeout(searchTimeout.value);
+    }
+
+    // Debounce search to avoid too many API calls
+    searchTimeout.value = setTimeout(() => {
+        currentPage.value = 1; // Reset to first page on search
+        fetchUsers(1);
+    }, 300);
 }
 
 function clearSearch() {
-  searchQuery.value = ''
-  currentPage.value = 1
-  fetchUsers(1)
+    searchQuery.value = "";
+    currentPage.value = 1;
+    fetchUsers(1);
 }
 
 async function updateUserRole(user, newRole) {
-  if (user.role === newRole) return
-  
-  try {
-    isUpdating.value = true
-    
-    const response = await api.put(`/users/admin/users/${user.id}/role`, {
-      role: newRole
-    })
-    
-    // Update the user in the local array
-    const userIndex = users.value.findIndex(u => u.id === user.id)
-    if (userIndex !== -1) {
-      users.value[userIndex] = response.data.user
+    if (user.role === newRole) return;
+
+    try {
+        isUpdating.value = true;
+
+        const response = await api.put(`/users/admin/users/${user.id}/role`, {
+            role: newRole,
+        });
+
+        // Update the user in the local array
+        const userIndex = users.value.findIndex((u) => u.id === user.id);
+        if (userIndex !== -1) {
+            users.value[userIndex] = response.data.user;
+        }
+
+        showSuccess("Success", response.data.message);
+    } catch (err) {
+        showError(
+            "Error",
+            err.response?.data?.error || "Failed to update user role",
+        );
+    } finally {
+        isUpdating.value = false;
     }
-    
-    showSuccess('Success', response.data.message)
-  } catch (err) {
-    showError('Error', err.response?.data?.error || 'Failed to update user role')
-  } finally {
-    isUpdating.value = false
-  }
 }
 
 async function toggleUserStatus(user) {
-  const newStatus = !user.is_active
+    const newStatus = !user.is_active;
 
-  try {
-    isUpdating.value = true
+    try {
+        isUpdating.value = true;
 
-    const response = await api.put(`/users/admin/users/${user.id}/status`, {
-      isActive: newStatus
-    })
+        const response = await api.put(`/users/admin/users/${user.id}/status`, {
+            isActive: newStatus,
+        });
 
-    // Update the user in the local array
-    const userIndex = users.value.findIndex(u => u.id === user.id)
-    if (userIndex !== -1) {
-      users.value[userIndex] = response.data.user
+        // Update the user in the local array
+        const userIndex = users.value.findIndex((u) => u.id === user.id);
+        if (userIndex !== -1) {
+            users.value[userIndex] = response.data.user;
+        }
+
+        showSuccess("Success", response.data.message);
+    } catch (err) {
+        showError(
+            "Error",
+            err.response?.data?.error || "Failed to update user status",
+        );
+    } finally {
+        isUpdating.value = false;
     }
-
-    showSuccess('Success', response.data.message)
-  } catch (err) {
-    showError('Error', err.response?.data?.error || 'Failed to update user status')
-  } finally {
-    isUpdating.value = false
-  }
 }
 
 async function toggleMarketingConsent(user) {
-  const newConsent = !user.marketing_consent
+    const newConsent = !user.marketing_consent;
 
-  try {
-    isUpdating.value = true
+    try {
+        isUpdating.value = true;
 
-    const response = await api.put(`/users/admin/users/${user.id}/marketing-consent`, {
-      marketingConsent: newConsent
-    })
+        const response = await api.put(
+            `/users/admin/users/${user.id}/marketing-consent`,
+            {
+                marketingConsent: newConsent,
+            },
+        );
 
-    // Update the user in the local array
-    const userIndex = users.value.findIndex(u => u.id === user.id)
-    if (userIndex !== -1) {
-      users.value[userIndex] = response.data.user
+        // Update the user in the local array
+        const userIndex = users.value.findIndex((u) => u.id === user.id);
+        if (userIndex !== -1) {
+            users.value[userIndex] = response.data.user;
+        }
+
+        showSuccess("Success", response.data.message);
+    } catch (err) {
+        showError(
+            "Error",
+            err.response?.data?.error || "Failed to update marketing consent",
+        );
+    } finally {
+        isUpdating.value = false;
     }
-
-    showSuccess('Success', response.data.message)
-  } catch (err) {
-    showError('Error', err.response?.data?.error || 'Failed to update marketing consent')
-  } finally {
-    isUpdating.value = false
-  }
 }
 
 function confirmDeleteUser(user) {
-  userToDelete.value = user
-  showDeleteConfirm.value = true
+    userToDelete.value = user;
+    showDeleteConfirm.value = true;
 }
 
 async function deleteUser() {
-  if (!userToDelete.value) return
-  
-  try {
-    isUpdating.value = true
-    
-    const response = await api.delete(`/users/admin/users/${userToDelete.value.id}`)
-    
-    // Refresh the current page to reflect the deletion
-    await fetchUsers(currentPage.value)
-    
-    showSuccess('Success', response.data.message)
-    showDeleteConfirm.value = false
-    userToDelete.value = null
-  } catch (err) {
-    showError('Error', err.response?.data?.error || 'Failed to delete user')
-  } finally {
-    isUpdating.value = false
-  }
+    if (!userToDelete.value) return;
+
+    try {
+        isUpdating.value = true;
+
+        const response = await api.delete(
+            `/users/admin/users/${userToDelete.value.id}`,
+        );
+
+        // Refresh the current page to reflect the deletion
+        await fetchUsers(currentPage.value);
+
+        showSuccess("Success", response.data.message);
+        showDeleteConfirm.value = false;
+        userToDelete.value = null;
+    } catch (err) {
+        showError(
+            "Error",
+            err.response?.data?.error || "Failed to delete user",
+        );
+    } finally {
+        isUpdating.value = false;
+    }
 }
 
 async function verifyUser(user) {
-  try {
-    isUpdating.value = true
-    
-    const response = await api.post(`/users/admin/users/${user.id}/verify`)
-    
-    // Update the user in the local array
-    const userIndex = users.value.findIndex(u => u.id === user.id)
-    if (userIndex !== -1) {
-      users.value[userIndex] = response.data.user
+    try {
+        isUpdating.value = true;
+
+        const response = await api.post(`/users/admin/users/${user.id}/verify`);
+
+        // Update the user in the local array
+        const userIndex = users.value.findIndex((u) => u.id === user.id);
+        if (userIndex !== -1) {
+            users.value[userIndex] = response.data.user;
+        }
+
+        showSuccess("Success", response.data.message);
+    } catch (err) {
+        showError(
+            "Error",
+            err.response?.data?.error || "Failed to verify user",
+        );
+    } finally {
+        isUpdating.value = false;
     }
-    
-    showSuccess('Success', response.data.message)
-  } catch (err) {
-    showError('Error', err.response?.data?.error || 'Failed to verify user')
-  } finally {
-    isUpdating.value = false
-  }
 }
 
 async function approveUser(user) {
-  try {
-    isUpdating.value = true
-    
-    const response = await api.post(`/users/admin/users/${user.id}/approve`)
-    
-    // Update the user in the local array
-    const userIndex = users.value.findIndex(u => u.id === user.id)
-    if (userIndex !== -1) {
-      users.value[userIndex] = response.data.user
+    try {
+        isUpdating.value = true;
+
+        const response = await api.post(
+            `/users/admin/users/${user.id}/approve`,
+        );
+
+        // Update the user in the local array
+        const userIndex = users.value.findIndex((u) => u.id === user.id);
+        if (userIndex !== -1) {
+            users.value[userIndex] = response.data.user;
+        }
+
+        showSuccess("Success", response.data.message);
+    } catch (err) {
+        showError(
+            "Error",
+            err.response?.data?.error || "Failed to approve user",
+        );
+    } finally {
+        isUpdating.value = false;
     }
-    
-    showSuccess('Success', response.data.message)
-  } catch (err) {
-    showError('Error', err.response?.data?.error || 'Failed to approve user')
-  } finally {
-    isUpdating.value = false
-  }
 }
 
 function formatDate(dateString) {
-  return new Date(dateString).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric'
-  })
+    return new Date(dateString).toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+    });
 }
 
 // CSV Export Function
 async function exportUsersToCSV() {
-  try {
-    loading.value = true
+    try {
+        loading.value = true;
 
-    // Fetch all users (no pagination limit) for export
-    const params = new URLSearchParams({
-      page: '1',
-      limit: '10000' // Large limit to get all users
-    })
+        // Fetch all users (no pagination limit) for export
+        const params = new URLSearchParams({
+            page: "1",
+            limit: "10000", // Large limit to get all users
+        });
 
-    if (searchQuery.value.trim()) {
-      params.append('search', searchQuery.value.trim())
-    }
-
-    const response = await api.get(`/users/admin/users?${params}`)
-    const allUsers = response.data.users
-
-    if (allUsers.length === 0) {
-      showError('No Data', 'No users to export')
-      return
-    }
-
-    // Define CSV columns
-    const headers = [
-      'ID',
-      'Username',
-      'Email',
-      'First Name',
-      'Last Name',
-      'Role',
-      'Tier',
-      'Status',
-      'Verified',
-      'Admin Approved',
-      'Marketing Consent',
-      'Created At',
-      'Last Login'
-    ]
-
-    // Helper function to split full name into first and last name
-    const splitName = (fullName) => {
-      if (!fullName) return { firstName: '', lastName: '' }
-      const parts = fullName.trim().split(/\s+/)
-      if (parts.length === 1) {
-        return { firstName: parts[0], lastName: '' }
-      }
-      const firstName = parts[0]
-      const lastName = parts.slice(1).join(' ')
-      return { firstName, lastName }
-    }
-
-    // Convert users to CSV rows
-    const rows = allUsers.map(user => {
-      const { firstName, lastName } = splitName(user.full_name)
-      return [
-        user.id,
-        user.username,
-        user.email,
-        firstName,
-        lastName,
-        user.role,
-        getUserDisplayTier(user),
-        user.is_active ? 'Active' : 'Inactive',
-        user.is_verified ? 'Yes' : 'No',
-        user.admin_approved ? 'Yes' : 'No',
-        user.marketing_consent ? 'Yes' : 'No',
-        user.created_at ? new Date(user.created_at).toISOString() : '',
-        user.last_login ? new Date(user.last_login).toISOString() : ''
-      ]
-    })
-
-    // Build CSV content
-    const csvContent = [
-      headers.join(','),
-      ...rows.map(row => row.map(cell => {
-        // Escape cells that contain commas, quotes, or newlines
-        const cellStr = String(cell)
-        if (cellStr.includes(',') || cellStr.includes('"') || cellStr.includes('\n')) {
-          return `"${cellStr.replace(/"/g, '""')}"`
+        if (searchQuery.value.trim()) {
+            params.append("search", searchQuery.value.trim());
         }
-        return cellStr
-      }).join(','))
-    ].join('\n')
 
-    // Create and download the file
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-    const link = document.createElement('a')
-    const url = URL.createObjectURL(blob)
+        const response = await api.get(`/users/admin/users?${params}`);
+        const allUsers = response.data.users;
 
-    const timestamp = new Date().toISOString().split('T')[0]
-    link.setAttribute('href', url)
-    link.setAttribute('download', `users_export_${timestamp}.csv`)
-    link.style.visibility = 'hidden'
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
+        if (allUsers.length === 0) {
+            showError("No Data", "No users to export");
+            return;
+        }
 
-    showSuccess('Export Complete', `Exported ${allUsers.length} users to CSV`)
-  } catch (err) {
-    console.error('Export failed:', err)
-    showError('Export Failed', err.response?.data?.error || 'Failed to export users')
-  } finally {
-    loading.value = false
-  }
+        // Define CSV columns
+        const headers = [
+            "ID",
+            "Username",
+            "Email",
+            "First Name",
+            "Last Name",
+            "Role",
+            "Tier",
+            "Status",
+            "Verified",
+            "Admin Approved",
+            "Marketing Consent",
+            "Created At",
+            "Last Login",
+        ];
+
+        // Helper function to split full name into first and last name
+        const splitName = (fullName) => {
+            if (!fullName) return { firstName: "", lastName: "" };
+            const parts = fullName.trim().split(/\s+/);
+            if (parts.length === 1) {
+                return { firstName: parts[0], lastName: "" };
+            }
+            const firstName = parts[0];
+            const lastName = parts.slice(1).join(" ");
+            return { firstName, lastName };
+        };
+
+        // Convert users to CSV rows
+        const rows = allUsers.map((user) => {
+            const { firstName, lastName } = splitName(user.full_name);
+            return [
+                user.id,
+                user.username,
+                user.email,
+                firstName,
+                lastName,
+                user.role,
+                getUserDisplayTier(user),
+                user.is_active ? "Active" : "Inactive",
+                user.is_verified ? "Yes" : "No",
+                user.admin_approved ? "Yes" : "No",
+                user.marketing_consent ? "Yes" : "No",
+                user.created_at ? new Date(user.created_at).toISOString() : "",
+                user.last_login ? new Date(user.last_login).toISOString() : "",
+            ];
+        });
+
+        // Build CSV content
+        const csvContent = [
+            headers.join(","),
+            ...rows.map((row) =>
+                row
+                    .map((cell) => {
+                        // Escape cells that contain commas, quotes, or newlines
+                        const cellStr = String(cell);
+                        if (
+                            cellStr.includes(",") ||
+                            cellStr.includes('"') ||
+                            cellStr.includes("\n")
+                        ) {
+                            return `"${cellStr.replace(/"/g, '""')}"`;
+                        }
+                        return cellStr;
+                    })
+                    .join(","),
+            ),
+        ].join("\n");
+
+        // Create and download the file
+        const blob = new Blob([csvContent], {
+            type: "text/csv;charset=utf-8;",
+        });
+        const link = document.createElement("a");
+        const url = URL.createObjectURL(blob);
+
+        const timestamp = new Date().toISOString().split("T")[0];
+        link.setAttribute("href", url);
+        link.setAttribute("download", `users_export_${timestamp}.csv`);
+        link.style.visibility = "hidden";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+        showSuccess(
+            "Export Complete",
+            `Exported ${allUsers.length} users to CSV`,
+        );
+    } catch (err) {
+        console.error("Export failed:", err);
+        showError(
+            "Export Failed",
+            err.response?.data?.error || "Failed to export users",
+        );
+    } finally {
+        loading.value = false;
+    }
 }
 
 // Tier Management Functions
 async function openTierModal(user) {
-  selectedUser.value = user
-  showTierModal.value = true
-  await fetchTierInfo(user.id)
+    selectedUser.value = user;
+    showTierModal.value = true;
+    await fetchTierInfo(user.id);
 }
 
 function closeTierModal() {
-  showTierModal.value = false
-  selectedUser.value = null
-  tierInfo.value = null
-  overrideTier.value = 'pro'
-  overrideExpiry.value = ''
-  overrideReason.value = ''
+    showTierModal.value = false;
+    selectedUser.value = null;
+    tierInfo.value = null;
+    overrideTier.value = "pro";
+    overrideExpiry.value = "";
+    overrideReason.value = "";
 }
 
 async function fetchTierInfo(userId) {
-  try {
-    const response = await api.get(`/users/admin/users/${userId}/tier`)
-    tierInfo.value = response.data
-  } catch (err) {
-    console.error('Failed to fetch tier info:', err)
-    showError('Error', 'Failed to fetch tier information')
-  }
+    try {
+        const response = await api.get(`/users/admin/users/${userId}/tier`);
+        tierInfo.value = response.data;
+    } catch (err) {
+        console.error("Failed to fetch tier info:", err);
+        showError("Error", "Failed to fetch tier information");
+    }
 }
 
 async function setTierOverride() {
-  if (!selectedUser.value) return
-  
-  try {
-    isUpdating.value = true
-    
-    const response = await api.post(`/users/admin/users/${selectedUser.value.id}/tier-override`, {
-      tier: overrideTier.value,
-      expiresAt: overrideExpiry.value || null,
-      reason: overrideReason.value || null
-    })
-    
-    // Update the user in the local array
-    const userIndex = users.value.findIndex(u => u.id === selectedUser.value.id)
-    if (userIndex !== -1) {
-      users.value[userIndex].tier = overrideTier.value
+    if (!selectedUser.value) return;
+
+    try {
+        isUpdating.value = true;
+
+        const response = await api.post(
+            `/users/admin/users/${selectedUser.value.id}/tier-override`,
+            {
+                tier: overrideTier.value,
+                expiresAt: overrideExpiry.value || null,
+                reason: overrideReason.value || null,
+            },
+        );
+
+        // Update the user in the local array
+        const userIndex = users.value.findIndex(
+            (u) => u.id === selectedUser.value.id,
+        );
+        if (userIndex !== -1) {
+            users.value[userIndex].tier = overrideTier.value;
+        }
+
+        // Refresh tier info
+        await fetchTierInfo(selectedUser.value.id);
+        await fetchStatistics(); // Update overall statistics
+
+        showSuccess(
+            "Success",
+            response.data.message || "Tier override set successfully",
+        );
+    } catch (err) {
+        showError(
+            "Error",
+            err.response?.data?.error || "Failed to set tier override",
+        );
+    } finally {
+        isUpdating.value = false;
     }
-    
-    // Refresh tier info
-    await fetchTierInfo(selectedUser.value.id)
-    await fetchStatistics() // Update overall statistics
-    
-    showSuccess('Success', response.data.message || 'Tier override set successfully')
-  } catch (err) {
-    showError('Error', err.response?.data?.error || 'Failed to set tier override')
-  } finally {
-    isUpdating.value = false
-  }
 }
 
 async function grant14DayTrial() {
-  if (!selectedUser.value) return
-  
-  try {
-    isUpdating.value = true
-    
-    // Calculate 14 days from now
-    const trialEnd = new Date()
-    trialEnd.setDate(trialEnd.getDate() + 14)
-    
-    const response = await api.post(`/users/admin/users/${selectedUser.value.id}/tier-override`, {
-      tier: 'pro',
-      expiresAt: trialEnd.toISOString(),
-      reason: '14-day Pro trial'
-    })
-    
-    // Update the user in the local array
-    const userIndex = users.value.findIndex(u => u.id === selectedUser.value.id)
-    if (userIndex !== -1) {
-      users.value[userIndex].tier = 'pro'
+    if (!selectedUser.value) return;
+
+    try {
+        isUpdating.value = true;
+
+        // Calculate 14 days from now
+        const trialEnd = new Date();
+        trialEnd.setDate(trialEnd.getDate() + 14);
+
+        const response = await api.post(
+            `/users/admin/users/${selectedUser.value.id}/tier-override`,
+            {
+                tier: "pro",
+                expiresAt: trialEnd.toISOString(),
+                reason: "14-day Pro trial",
+            },
+        );
+
+        // Update the user in the local array
+        const userIndex = users.value.findIndex(
+            (u) => u.id === selectedUser.value.id,
+        );
+        if (userIndex !== -1) {
+            users.value[userIndex].tier = "pro";
+        }
+
+        // Refresh tier info
+        await fetchTierInfo(selectedUser.value.id);
+        await fetchStatistics(); // Update overall statistics
+
+        showSuccess("Success", "14-day Pro trial granted successfully");
+    } catch (err) {
+        showError(
+            "Error",
+            err.response?.data?.error || "Failed to grant trial",
+        );
+    } finally {
+        isUpdating.value = false;
     }
-    
-    // Refresh tier info
-    await fetchTierInfo(selectedUser.value.id)
-    await fetchStatistics() // Update overall statistics
-    
-    showSuccess('Success', '14-day Pro trial granted successfully')
-  } catch (err) {
-    showError('Error', err.response?.data?.error || 'Failed to grant trial')
-  } finally {
-    isUpdating.value = false
-  }
 }
 
 async function removeTierOverride() {
-  if (!selectedUser.value) return
-  
-  try {
-    isUpdating.value = true
-    
-    const response = await api.delete(`/users/admin/users/${selectedUser.value.id}/tier-override`)
-    
-    // Refresh tier info
-    await fetchTierInfo(selectedUser.value.id)
-    
-    // Update the user in the local array
-    const userIndex = users.value.findIndex(u => u.id === selectedUser.value.id)
-    if (userIndex !== -1) {
-      // Reset to base tier (free unless admin)
-      users.value[userIndex].tier = (users.value[userIndex].role === 'admin' || users.value[userIndex].role === 'owner') ? 'pro' : 'free'
+    if (!selectedUser.value) return;
+
+    try {
+        isUpdating.value = true;
+
+        const response = await api.delete(
+            `/users/admin/users/${selectedUser.value.id}/tier-override`,
+        );
+
+        // Refresh tier info
+        await fetchTierInfo(selectedUser.value.id);
+
+        // Update the user in the local array
+        const userIndex = users.value.findIndex(
+            (u) => u.id === selectedUser.value.id,
+        );
+        if (userIndex !== -1) {
+            // Reset to base tier (free unless admin)
+            users.value[userIndex].tier =
+                users.value[userIndex].role === "admin" ||
+                users.value[userIndex].role === "owner"
+                    ? "pro"
+                    : "free";
+        }
+
+        await fetchStatistics(); // Update overall statistics
+
+        showSuccess(
+            "Success",
+            response.data.message || "Tier override removed successfully",
+        );
+    } catch (err) {
+        showError(
+            "Error",
+            err.response?.data?.error || "Failed to remove tier override",
+        );
+    } finally {
+        isUpdating.value = false;
     }
-    
-    await fetchStatistics() // Update overall statistics
-    
-    showSuccess('Success', response.data.message || 'Tier override removed successfully')
-  } catch (err) {
-    showError('Error', err.response?.data?.error || 'Failed to remove tier override')
-  } finally {
-    isUpdating.value = false
-  }
 }
 
 onMounted(() => {
-  fetchUsers()
-})
+    fetchUsers();
+});
 </script>
