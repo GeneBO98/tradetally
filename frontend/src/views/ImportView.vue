@@ -24,8 +24,8 @@
             <div>
               <label for="broker" class="label">Broker Format</label>
               <select id="broker" v-model="selectedBroker" required class="input">
-                <option value="">Select broker format</option>
-                <option value="auto">Auto-Detect</option>
+                <option value="auto">Auto-Detect (Recommended)</option>
+                <option disabled>--- Or select your broker ---</option>
                 <option value="generic">Generic CSV</option>
                 <option value="lightspeed">Lightspeed Trader</option>
                 <option value="schwab">Charles Schwab</option>
@@ -50,7 +50,7 @@
                 </optgroup>
               </select>
               <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                Choose the format that matches your CSV file structure, or use Auto-Detect. If your format isn't recognized, you'll be prompted to create a custom column mapping.
+                We'll automatically detect your broker from the CSV file. Select a specific broker only if auto-detection doesn't work.
               </p>
             </div>
 
@@ -115,12 +115,24 @@
               <p class="text-sm text-red-800 dark:text-red-400">{{ error }}</p>
             </div>
 
+            <!-- Import progress indicator -->
+            <div v-if="loading && importStage" class="rounded-md bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 p-4">
+              <div class="flex items-center space-x-3">
+                <div class="animate-spin rounded-full h-5 w-5 border-2 border-primary-600 border-t-transparent flex-shrink-0"></div>
+                <span class="text-sm font-medium text-primary-700 dark:text-primary-300">{{ importStage }}</span>
+              </div>
+            </div>
+
             <div class="flex justify-end">
               <button
                 type="submit"
                 :disabled="!selectedFile || !selectedBroker || loading"
-                class="btn-primary"
+                class="btn-primary inline-flex items-center"
               >
+                <svg v-if="loading" class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
                 <span v-if="loading">Importing...</span>
                 <span v-else>Import Trades</span>
               </button>
@@ -995,6 +1007,7 @@ const { celebrationQueue } = usePriceAlertNotifications()
 
 const loading = ref(false)
 const error = ref(null)
+const importStage = ref('')
 const selectedBroker = ref('auto')
 const selectedFile = ref(null)
 const showCurrencyProModal = ref(false)
@@ -1430,6 +1443,7 @@ async function handleImport() {
 
   loading.value = true
   error.value = null
+  importStage.value = 'Validating file...'
 
   try {
     // Pre-check: Count rows and check tier limits before uploading
@@ -1443,6 +1457,7 @@ async function handleImport() {
     if (userTier === 'free' && tradeCount > FREE_TIER_IMPORT_LIMIT) {
       console.log(`[IMPORT] Free tier user attempting to import ${tradeCount} trades (limit: ${FREE_TIER_IMPORT_LIMIT})`)
       loading.value = false
+      importStage.value = ''
       showCurrencyProModal.value = true
       currencyProMessage.value = `Free tier imports are limited to ${FREE_TIER_IMPORT_LIMIT} executions per batch. Your file contains ${tradeCount} executions. You can still import all your trades - just split the file into smaller batches of ${FREE_TIER_IMPORT_LIMIT} or fewer. Upgrade to Pro for unlimited batch sizes.`
       return
@@ -1519,8 +1534,10 @@ async function handleImport() {
       console.log(`[IMPORT] Known format detected, proceeding with import`)
     }
 
+    importStage.value = `Uploading and processing${tradeCount ? ` ~${tradeCount} trades` : ''}...`
     const result = await tradesStore.importTrades(selectedFile.value, broker, mappingId, accountIdToSend)
     console.log('Import result:', result)
+    importStage.value = 'Processing trades...'
     showSuccess('Import Started', `Import has been queued. Import ID: ${result.importId}`)
 
     // Save broker preference to localStorage
@@ -1589,6 +1606,7 @@ async function handleImport() {
     }
   } finally {
     loading.value = false
+    importStage.value = ''
   }
 }
 
@@ -1623,6 +1641,7 @@ async function handleKeepBrokerSelected(selectedBrokerValue) {
   // by temporarily setting a flag
   loading.value = true
   error.value = null
+  importStage.value = 'Uploading and processing...'
 
   try {
     // Extract mapping ID if custom mapping is selected
@@ -1642,6 +1661,7 @@ async function handleKeepBrokerSelected(selectedBrokerValue) {
 
     const result = await tradesStore.importTrades(selectedFile.value, broker, mappingId, accountIdToSend)
     console.log('Import result:', result)
+    importStage.value = 'Processing trades...'
     showSuccess('Import Started', `Import has been queued. Import ID: ${result.importId}`)
 
     // Save broker preference to localStorage
@@ -1665,6 +1685,7 @@ async function handleKeepBrokerSelected(selectedBrokerValue) {
     showError('Import Failed', error.value)
   } finally {
     loading.value = false
+    importStage.value = ''
   }
 }
 
@@ -2186,16 +2207,21 @@ function pollImportStatus(importId) {
           showImportResultsModal.value = true
         }
 
-        // Show documentation popup when 0 trades imported with a known broker
-        const knownBrokers = [
-          'lightspeed', 'schwab', 'thinkorswim', 'ibkr', 'webull', 'etrade',
-          'papermoney', 'tradingview', 'tradovate', 'questrade', 'tradestation',
-          'tradingview_performance'
-        ]
-        if (tradesImported === 0 && knownBrokers.includes(selectedBroker.value)) {
+        // Show actionable help when 0 trades imported
+        if (tradesImported === 0 && duplicatesSkipped === 0) {
+          const brokerName = selectedBroker.value || 'selected'
+          const isSpecificBroker = selectedBroker.value && selectedBroker.value !== 'auto' && selectedBroker.value !== 'generic'
+          const suggestions = [
+            isSpecificBroker
+              ? `Try using Auto-Detect instead of the "${brokerName}" format`
+              : 'Try selecting your specific broker format instead of Auto-Detect',
+            'Make sure your file contains actual trade data, not just an account summary or positions',
+            'Verify the file is a .csv file (not .xlsx or .xls)',
+            'Check that the file was exported from the correct section of your broker platform'
+          ]
           showImportantWarning(
             'No Trades Imported',
-            `The import completed but no trades were found. This usually means the file format doesn't match what the ${selectedBroker.value} parser expects. Please check the documentation for the correct export format.`,
+            `The import completed but no trades were found.\n\nSuggestions:\n${suggestions.map((s, i) => `${i + 1}. ${s}`).join('\n')}`,
             {
               confirmText: 'OK',
               linkUrl: 'https://docs.tradetally.io/usage/importing-trades/#supported-brokers',
@@ -2371,12 +2397,14 @@ async function handleMappingSaved(mapping) {
 
   loading.value = true
   error.value = null
+  importStage.value = 'Uploading and processing with custom mapping...'
 
   try {
     // Import with the mapping ID (convert "none" to null)
     const accountIdToSend = selectedAccountId.value === 'none' ? null : selectedAccountId.value
     const result = await tradesStore.importTrades(currentMappingFile.value, 'generic', mapping.id, accountIdToSend)
     console.log('Import result:', result)
+    importStage.value = 'Processing trades...'
     showSuccess('Import Started', `Import has been queued. Import ID: ${result.importId}`)
 
     // Save broker preference
@@ -2398,6 +2426,7 @@ async function handleMappingSaved(mapping) {
     showError('Import Failed', error.value)
   } finally {
     loading.value = false
+    importStage.value = ''
   }
 }
 

@@ -1219,8 +1219,11 @@
       </div>
         </div>
 
-      <div v-if="error" class="rounded-md bg-red-50 dark:bg-red-900/20 p-4">
-          <p class="text-sm text-red-800 dark:text-red-400">{{ error }}</p>
+      <div v-if="error" ref="errorRef" class="rounded-md bg-red-50 dark:bg-red-900/20 p-4">
+          <p class="text-sm font-medium text-red-800 dark:text-red-400">{{ error }}</p>
+          <ul v-if="validationErrors.length" class="mt-2 text-sm text-red-700 dark:text-red-400 list-disc list-inside space-y-1">
+            <li v-for="(ve, i) in validationErrors" :key="i">{{ ve }}</li>
+          </ul>
         </div>
 
         <div class="flex justify-end space-x-3">
@@ -1230,9 +1233,13 @@
           <button
             type="submit"
             :disabled="loading"
-            class="btn-primary"
+            class="btn-primary inline-flex items-center"
           >
-            <span v-if="loading">{{ isEdit ? 'Updating...' : 'Creating...' }}</span>
+            <svg v-if="loading" class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span v-if="loading">{{ isEdit ? 'Updating...' : 'Saving trade...' }}</span>
             <span v-else>{{ isEdit ? 'Update Trade' : 'Create Trade' }}</span>
           </button>
         </div>
@@ -1585,6 +1592,8 @@ const { toLocalInput, toUTC, getCurrentTimeLocal, timezoneLabel } = useUserTimez
 
 const loading = ref(false)
 const error = ref(null)
+const validationErrors = ref([])
+const errorRef = ref(null)
 const behavioralAlert = ref(null)
 const tradeBlocked = ref(false)
 const tradeBlockingInfo = ref(null)
@@ -2122,8 +2131,25 @@ function handleNotesKeydown(event) {
 }
 
 async function handleSubmit() {
-  loading.value = true
   error.value = null
+  validationErrors.value = []
+
+  // Client-side validation for required fields
+  const errors = []
+  if (!form.value.symbol || !form.value.symbol.trim()) {
+    errors.push('Symbol is required')
+  }
+  if (!hasGroupedExecutions.value && !form.value.side) {
+    errors.push('Side is required (Long or Short)')
+  }
+  if (errors.length > 0) {
+    error.value = 'Please fix the following issues:'
+    validationErrors.value = errors
+    nextTick(() => errorRef.value?.scrollIntoView({ behavior: 'smooth', block: 'center' }))
+    return
+  }
+
+  loading.value = true
 
   try {
     // Check for trade blocking if user has Pro access and it's a new trade
@@ -2507,8 +2533,11 @@ async function handleSubmit() {
       router.push(`/trades/${newTrade.id}`)
     }
   } catch (err) {
-    error.value = err.response?.data?.error || 'An error occurred'
+    const serverError = err.response?.data?.error || err.message || 'An unexpected error occurred. Please try again.'
+    error.value = serverError
+    validationErrors.value = err.response?.data?.details || []
     showError('Error', error.value)
+    nextTick(() => errorRef.value?.scrollIntoView({ behavior: 'smooth', block: 'center' }))
   } finally {
     loading.value = false
   }
