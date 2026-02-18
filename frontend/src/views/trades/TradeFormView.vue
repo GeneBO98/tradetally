@@ -1966,8 +1966,11 @@ async function loadTrade() {
             // Check if this is a grouped execution (complete trade with entry/exit)
             if (exec.entryPrice !== undefined || exec.exitPrice !== undefined || exec.entryTime !== undefined) {
               // Preserve grouped format
+              // Derive side: prefer exec.side (long/short), fall back to mapping exec.action (buy->long, sell->short)
+              // IBKR partial-close executions have action:'buy'/'sell' but no side field
+              const execSideValue = exec.side || (exec.action === 'buy' ? 'long' : exec.action === 'sell' ? 'short' : '')
               const result = {
-                side: exec.side,
+                side: execSideValue,
                 quantity: exec.quantity != null ? Number(exec.quantity) : '',
                 entryPrice: exec.entryPrice != null ? Number(exec.entryPrice) : '',
                 exitPrice: exec.exitPrice != null ? Number(exec.exitPrice) : null,
@@ -2148,8 +2151,10 @@ async function handleSubmit() {
           if (exec.entryPrice !== undefined || exec.exitPrice !== undefined || exec.entryTime !== undefined) {
             // Grouped format - keep entry/exit fields
             // Convert times from user's local timezone to UTC
+            // Derive side: prefer exec.side (long/short), fall back to mapping exec.action (buy->long, sell->short)
+            const execSideValue = exec.side || (exec.action === 'buy' ? 'long' : exec.action === 'sell' ? 'short' : '')
             return {
-              side: exec.side,
+              side: execSideValue,
               quantity: parseFloat(exec.quantity),
               entryPrice: parseFloat(exec.entryPrice),
               exitPrice: exec.exitPrice ? parseFloat(exec.exitPrice) : null,
