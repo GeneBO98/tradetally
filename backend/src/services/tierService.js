@@ -5,6 +5,8 @@ const { getTierLimits, hasReachedLimit, getRemainingQuota, PRICING } = require('
 class TierService {
   // Cache for environment-based billing override so we only log once per process
   static _billingEnvOverride = undefined; // undefined = not checked yet, null = no override, boolean = forced value
+  // Cache for domain-based billing check so it only logs once per process
+  static _billingDomainResult = undefined; // undefined = not checked yet, boolean = cached result
 
   static _getBillingEnvOverride() {
     // If we've already resolved the override (including "no override"), just return it
@@ -47,6 +49,11 @@ class TierService {
       return envOverride;
     }
 
+    // Return cached domain result if already determined (only log once per process)
+    if (this._billingDomainResult !== undefined) {
+      return this._billingDomainResult;
+    }
+
     // Auto-disable billing for non-tradetally.io domains (self-hosted)
     const frontendUrl = process.env.FRONTEND_URL || '';
 
@@ -54,6 +61,7 @@ class TierService {
     // Only ENABLE for tradetally.io, disable for everything else (including localhost for self-hosted)
     if (hostHeader && !hostHeader.includes('tradetally.io')) {
       console.log(`[BILLING] Disabled for host: ${hostHeader} (not tradetally.io)`);
+      this._billingDomainResult = false;
       return false;
     }
 
@@ -61,6 +69,7 @@ class TierService {
     // Only ENABLE for tradetally.io, disable for everything else
     if (!hostHeader && frontendUrl && !frontendUrl.includes('tradetally.io')) {
       console.log(`[BILLING] Disabled for frontend URL: ${frontendUrl} (not tradetally.io)`);
+      this._billingDomainResult = false;
       return false;
     }
 
