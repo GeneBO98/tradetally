@@ -100,7 +100,7 @@ const flexibleAuth = async (req, res, next) => {
       // Otherwise, try JWT authentication
       try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        const user = await User.findById(decoded.userId);
+        const user = await User.findById(decoded.id || decoded.userId);
         
         if (user && user.is_active) {
           req.user = user;
