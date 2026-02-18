@@ -1285,8 +1285,8 @@ onMounted(() => {
     const savedStartDate = filters.value.startDate
     const savedEndDate = filters.value.endDate
     filters.value = { ...filters.value, ...storeFilters }
-    // Restore dates if period is custom
-    if (selectedPeriod.value === 'custom') {
+    // Restore dates if period is custom or today - don't let store defaults overwrite them
+    if (selectedPeriod.value === 'custom' || selectedPeriod.value === 'today') {
       if (savedStartDate) filters.value.startDate = savedStartDate
       if (savedEndDate) filters.value.endDate = savedEndDate
     }
