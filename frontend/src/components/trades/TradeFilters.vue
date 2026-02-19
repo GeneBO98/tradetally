@@ -600,7 +600,7 @@ const showAdvanced = ref(false)
 
 // Load saved period from localStorage on initialization
 const savedPeriodInit = localStorage.getItem('tradeFiltersPeriod')
-const selectedPeriod = ref(savedPeriodInit || 'today')
+const selectedPeriod = ref(savedPeriodInit || 'all')
 console.log('[TradeFilters] Initialized selectedPeriod from localStorage:', selectedPeriod.value)
 
 // Apply a period preset (7d, 30d, etc.)
@@ -913,8 +913,11 @@ function toggleAllQualityGrades(event) {
 const activeFiltersCount = computed(() => {
   let count = 0
   if (filters.value.symbol) count++
-  if (filters.value.startDate) count++
-  if (filters.value.endDate) count++
+  // Only count date filters if using custom range (period presets are not "filters")
+  if (selectedPeriod.value === 'custom') {
+    if (filters.value.startDate) count++
+    if (filters.value.endDate) count++
+  }
   if (filters.value.strategies && filters.value.strategies.length > 0) count++
   if (filters.value.side) count++
   if (filters.value.status) count++
@@ -1065,8 +1068,8 @@ function resetFilters() {
   // Reset to defaults
   filters.value = { ...defaultFilters }
 
-  // Reset period selector to Today (new default)
-  selectedPeriod.value = 'today'
+  // Reset period selector to All Time so all trades are visible
+  selectedPeriod.value = 'all'
   applyPeriodPreset()
 
   // Clear localStorage
