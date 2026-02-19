@@ -3167,6 +3167,7 @@ async function parseLightspeedTransactions(records, existingPositions = {}, user
             // Update the last execution with exit info and P&L
             const lastExec = currentTrade.executions[currentTrade.executions.length - 1];
             if (lastExec && lastExec.action === 'buy') {
+              lastExec.entryTime = currentTrade.entryTime;
               lastExec.exitTime = transaction.entryTime;
               lastExec.exitPrice = transaction.entryPrice;
               lastExec.entryPrice = avgEntryPrice;
@@ -3199,6 +3200,7 @@ async function parseLightspeedTransactions(records, existingPositions = {}, user
             // Update the last execution with exit info and P&L
             const lastExec = currentTrade.executions[currentTrade.executions.length - 1];
             if (lastExec && lastExec.action === 'sell') {
+              lastExec.entryTime = currentTrade.entryTime;
               lastExec.exitTime = transaction.entryTime;
               lastExec.exitPrice = transaction.entryPrice;
               lastExec.entryPrice = avgEntryPrice;
@@ -3733,6 +3735,7 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
             // Update the last execution with exit info and P&L
             const lastExec = currentTrade.executions[currentTrade.executions.length - 1];
             if (lastExec && lastExec.action === 'buy') {
+              lastExec.entryTime = currentTrade.entryTime;
               lastExec.exitTime = transaction.datetime;
               lastExec.exitPrice = transaction.price;
               lastExec.entryPrice = avgEntryPrice;
@@ -3749,7 +3752,7 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
           date: transaction.date,
           datetime: transaction.datetime
         });
-        
+
       } else if (transaction.action === 'short' || transaction.action === 'sell') {
         currentPosition -= qty;
 
@@ -3775,6 +3778,7 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
             // Update the last execution with exit info and P&L
             const lastExec = currentTrade.executions[currentTrade.executions.length - 1];
             if (lastExec && lastExec.action === 'sell') {
+              lastExec.entryTime = currentTrade.entryTime;
               lastExec.exitTime = transaction.datetime;
               lastExec.exitPrice = transaction.price;
               lastExec.entryPrice = avgEntryPrice;
@@ -5647,6 +5651,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
             // Update the last execution with exit info and P&L
             const lastExec = currentTrade.executions[currentTrade.executions.length - 1];
             if (lastExec && lastExec.action === 'buy') {
+              lastExec.entryTime = currentTrade.entryTime;
               lastExec.exitTime = transaction.datetime;
               lastExec.exitPrice = transaction.price;
               lastExec.entryPrice = avgEntryPrice;
@@ -5688,6 +5693,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
             // Update the last execution with exit info and P&L
             const lastExec = currentTrade.executions[currentTrade.executions.length - 1];
             if (lastExec && lastExec.action === 'sell') {
+              lastExec.entryTime = currentTrade.entryTime;
               lastExec.exitTime = transaction.datetime;
               lastExec.exitPrice = transaction.price;
               lastExec.entryPrice = avgEntryPrice;
@@ -6521,6 +6527,7 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
               // Update the last execution with exit info and P&L
               const lastExec = currentTrade.executions[currentTrade.executions.length - 1];
               if (lastExec && lastExec.action === 'buy') {
+                lastExec.entryTime = currentTrade.entryTime;
                 lastExec.exitTime = transaction.datetime;
                 lastExec.exitPrice = transaction.price;
                 lastExec.entryPrice = avgEntryPrice;
@@ -6554,6 +6561,7 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
               // Update the last execution with exit info and P&L
               const lastExec = currentTrade.executions[currentTrade.executions.length - 1];
               if (lastExec && lastExec.action === 'sell') {
+                lastExec.entryTime = currentTrade.entryTime;
                 lastExec.exitTime = transaction.datetime;
                 lastExec.exitPrice = transaction.price;
                 lastExec.entryPrice = avgEntryPrice;
@@ -7397,6 +7405,8 @@ async function parseQuestradeTransactions(records, existingPositions = {}, conte
           if (isPartialClose) {
             // Add the sell execution to the trade
             currentTrade.executions.push({
+              entryTime: currentTrade.entryTime || currentTrade.datetime,
+              entryPrice: currentTrade.entryPrice,
               exitTime: transaction.datetime,
               exitPrice: transaction.price,
               quantity: closeQty,
