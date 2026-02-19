@@ -38,6 +38,7 @@
                 <option value="tradovate">Tradovate</option>
                 <option value="questrade">Questrade</option>
                 <option value="tradestation">TradeStation</option>
+                <option value="tastytrade">Tastytrade</option>
                 <option value="tradingview_performance">TradingView Performance</option>
                 <optgroup v-if="customMappings.length > 0" label="Custom Importers">
                   <option
@@ -1166,6 +1167,7 @@ function formatBrokerName(broker) {
     tradovate: 'Tradovate',
     questrade: 'Questrade',
     tradestation: 'TradeStation',
+    tastytrade: 'Tastytrade',
     tradingview_performance: 'TradingView Performance',
     other: 'Other'
   }
