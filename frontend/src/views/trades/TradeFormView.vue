@@ -1983,7 +1983,7 @@ async function loadTrade() {
                 quantity: exec.quantity != null ? Number(exec.quantity) : '',
                 entryPrice: exec.entryPrice != null ? Number(exec.entryPrice) : '',
                 exitPrice: exec.exitPrice != null ? Number(exec.exitPrice) : null,
-                entryTime: exec.entryTime ? formatDateTimeLocal(exec.entryTime) : '',
+                entryTime: exec.entryTime ? formatDateTimeLocal(exec.entryTime) : (exec.entry_time ? formatDateTimeLocal(exec.entry_time) : (tradeData.entry_time ? formatDateTimeLocal(tradeData.entry_time) : '')),
                 exitTime: exec.exitTime ? formatDateTimeLocal(exec.exitTime) : null,
                 commission: execCommission,
                 fees: execFees,
