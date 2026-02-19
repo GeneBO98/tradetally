@@ -23,6 +23,7 @@
       <div>
         <label class="label">Time Period</label>
         <select v-model="selectedPeriod" @change="applyPeriodPreset" class="input">
+          <option value="today">Today</option>
           <option value="custom">Custom Range</option>
           <option value="7d">Last 7 Days</option>
           <option value="30d">Last 30 Days</option>
@@ -599,7 +600,7 @@ const showAdvanced = ref(false)
 
 // Load saved period from localStorage on initialization
 const savedPeriodInit = localStorage.getItem('tradeFiltersPeriod')
-const selectedPeriod = ref(savedPeriodInit || 'all')
+const selectedPeriod = ref(savedPeriodInit || 'today')
 console.log('[TradeFilters] Initialized selectedPeriod from localStorage:', selectedPeriod.value)
 
 // Apply a period preset (7d, 30d, etc.)
@@ -609,6 +610,10 @@ function applyPeriodPreset() {
   const today = formatLocalDate(now)
 
   switch (selectedPeriod.value) {
+    case 'today':
+      filters.value.startDate = today
+      filters.value.endDate = today
+      break
     case '7d': {
       const start = new Date(now)
       start.setDate(start.getDate() - 7)
@@ -1060,8 +1065,9 @@ function resetFilters() {
   // Reset to defaults
   filters.value = { ...defaultFilters }
 
-  // Reset period selector
-  selectedPeriod.value = 'all'
+  // Reset period selector to Today (new default)
+  selectedPeriod.value = 'today'
+  applyPeriodPreset()
 
   // Clear localStorage
   try {
@@ -1071,9 +1077,8 @@ function resetFilters() {
     // localStorage clear failed
   }
 
-  // Emit empty filters to trigger reset
-  // Note: The trades store will automatically preserve the global account filter
-  emit('filter', {})
+  // Apply today filter
+  applyFilters()
 }
 
 async function fetchAvailableSectors() {
@@ -1228,6 +1233,11 @@ onMounted(() => {
     }
   }
 
+  // If period is 'today', always recalculate dates to today (prevents stale dates from localStorage)
+  if (selectedPeriod.value === 'today') {
+    applyPeriodPreset()
+  }
+
   // Filters and period are already loaded from localStorage during initialization
   // Now we just need to handle query params and store overrides
   let shouldApply = false
@@ -1275,8 +1285,8 @@ onMounted(() => {
     const savedStartDate = filters.value.startDate
     const savedEndDate = filters.value.endDate
     filters.value = { ...filters.value, ...storeFilters }
-    // Restore dates if period is custom
-    if (selectedPeriod.value === 'custom') {
+    // Restore dates if period is custom or today - don't let store defaults overwrite them
+    if (selectedPeriod.value === 'custom' || selectedPeriod.value === 'today') {
       if (savedStartDate) filters.value.startDate = savedStartDate
       if (savedEndDate) filters.value.endDate = savedEndDate
     }
