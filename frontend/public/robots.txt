@@ -10,18 +10,29 @@ Sitemap: https://tradetally.io/sitemap.xml
 # Block access to API endpoints
 Disallow: /api/
 
-# Block access to user-specific pages (if not already handled by authentication)
+# Block access to authenticated pages
 Disallow: /dashboard
 Disallow: /trades/
 Disallow: /settings
 Disallow: /import
+Disallow: /metrics
+Disallow: /diary
+Disallow: /calendar
+Disallow: /broker-sync
+Disallow: /billing
+Disallow: /profile
+Disallow: /admin/
 
-# Allow crawling of public pages
+# Allow crawling of public and SEO pages
 Allow: /$
 Allow: /login
 Allow: /register
 Allow: /public
-Allow: /analytics
+Allow: /features
+Allow: /faq
+Allow: /compare
+Allow: /pricing
+Allow: /privacy
 
-# Crawl delay (in seconds) - optional, adjust as needed
+# Crawl delay (in seconds)
 Crawl-delay: 1

@@ -295,6 +295,7 @@ router.post('/admin/users/:userId/approve', requireAdmin, userController.approve
 router.post('/admin/users/:userId/verify', requireAdmin, userController.verifyUser);
 router.put('/admin/users/:userId/role', requireAdmin, userController.updateUserRole);
 router.put('/admin/users/:userId/status', requireAdmin, userController.toggleUserStatus);
+router.put('/admin/users/:userId/marketing-consent', requireAdmin, userController.updateMarketingConsent);
 router.delete('/admin/users/:userId', requireAdmin, userController.deleteUser);
 
 // Tier management routes
