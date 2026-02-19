@@ -1,9 +1,168 @@
 <template>
+<<<<<<< HEAD
     <div class="content-wrapper py-8">
         <div class="mb-8">
             <h1 class="heading-page">Import Trades</h1>
             <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
                 Import your trades from CSV files exported from major brokers.
+=======
+  <div class="content-wrapper py-8">
+    <div class="mb-8">
+      <h1 class="heading-page">Import Trades</h1>
+      <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
+        Import your trades from CSV files exported from major brokers.
+      </p>
+    </div>
+
+    <!-- Guided onboarding: contextual card for this page (first-time only) -->
+    <OnboardingCard
+      v-if="authStore.showOnboardingModal"
+      title="Import your trades"
+      description="Upload a CSV file or connect a broker to sync your trades. Choose your broker format below or use Auto-Detect."
+      cta-label="Next: View Dashboard"
+      cta-route="dashboard"
+    />
+
+    <div class="space-y-8">
+      <!-- Import Form -->
+      <div class="card">
+        <div class="card-body">
+          <form @submit.prevent="handleImport" class="space-y-6">
+            <div>
+              <label for="broker" class="label">Broker Format</label>
+              <select id="broker" v-model="selectedBroker" required class="input">
+                <option value="">Select broker format</option>
+                <option value="auto">Auto-Detect</option>
+                <option value="generic">Generic CSV</option>
+                <option value="lightspeed">Lightspeed Trader</option>
+                <option value="schwab">Charles Schwab</option>
+                <option value="thinkorswim">ThinkorSwim</option>
+                <option value="ibkr">Interactive Brokers</option>
+                <option value="webull">Webull</option>
+                <option value="etrade">E*TRADE</option>
+                <option value="papermoney">PaperMoney</option>
+                <option value="tradingview">TradingView</option>
+                <option value="tradovate">Tradovate</option>
+                <option value="questrade">Questrade</option>
+                <option value="tradestation">TradeStation</option>
+                <option value="tastytrade">Tastytrade</option>
+                <option value="tradingview_performance">TradingView Performance</option>
+                <optgroup v-if="customMappings.length > 0" label="Custom Importers">
+                  <option
+                    v-for="mapping in customMappings"
+                    :key="mapping.id"
+                    :value="`custom:${mapping.id}`"
+                  >
+                    {{ mapping.mapping_name }}
+                  </option>
+                </optgroup>
+              </select>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Choose the format that matches your CSV file structure, or use Auto-Detect. If your format isn't recognized, you'll be prompted to create a custom column mapping.
+              </p>
+            </div>
+
+            <!-- Account Selection (only shown if user has defined accounts) -->
+            <div v-if="requiresAccountSelection">
+              <label for="account" class="label">Trading Account</label>
+              <select id="account" v-model="selectedAccountId" class="input">
+                <option :value="null">Select account...</option>
+                <option v-for="account in accounts" :key="account.id" :value="account.id">
+                  {{ account.name }}{{ account.identifier ? ` (${redactAccountId(account.identifier)})` : '' }}{{ account.broker ? ` - ${formatBrokerName(account.broker)}` : '' }}
+                </option>
+                <option value="none">None (different broker/account)</option>
+              </select>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Select a trading account to associate with this import, or choose "None" if importing from a different broker.
+                <router-link to="/accounts" class="text-primary-600 hover:text-primary-500">Manage accounts</router-link>
+              </p>
+            </div>
+
+            <div>
+              <label for="file" class="label">CSV File</label>
+              <div 
+                class="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-dashed rounded-md transition-colors"
+                :class="[
+                  dragOver ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20' : 'border-gray-300 dark:border-gray-600'
+                ]"
+                @dragover.prevent="handleDragOver"
+                @dragleave.prevent="handleDragLeave"
+                @drop.prevent="handleDrop"
+              >
+                <div class="space-y-1 text-center">
+                  <ArrowUpTrayIcon class="mx-auto h-12 w-12 text-gray-400" />
+                  <div class="flex text-sm text-gray-600 dark:text-gray-400">
+                    <label
+                      for="file-upload"
+                      class="relative cursor-pointer bg-white dark:bg-gray-800 rounded-md font-medium text-primary-600 hover:text-primary-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-primary-500"
+                    >
+                      <span>Upload a file</span>
+                      <input
+                        id="file-upload"
+                        ref="fileInput"
+                        name="file-upload"
+                        type="file"
+                        accept=".csv"
+                        class="sr-only"
+                        @change="handleFileSelect"
+                      />
+                    </label>
+                    <p class="pl-1">or drag and drop</p>
+                  </div>
+                  <p class="text-xs text-gray-500 dark:text-gray-400">CSV files only (up to 50MB)</p>
+                </div>
+              </div>
+              <div v-if="selectedFile" class="mt-2">
+                <p class="text-sm text-gray-900 dark:text-white">
+                  Selected: {{ selectedFile.name }} ({{ formatFileSize(selectedFile.size) }})
+                </p>
+              </div>
+            </div>
+
+            <div v-if="error" class="rounded-md bg-red-50 dark:bg-red-900/20 p-4">
+              <p class="text-sm text-red-800 dark:text-red-400">{{ error }}</p>
+            </div>
+
+            <div class="flex justify-end">
+              <button
+                type="submit"
+                :disabled="!selectedFile || !selectedBroker || loading"
+                class="btn-primary"
+              >
+                <span v-if="loading">Importing...</span>
+                <span v-else>Import Trades</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Manage Custom Importers -->
+      <div v-if="customMappings.length > 0" class="card">
+        <div class="card-body">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="heading-card">Custom Importers</h3>
+            <button
+              @click="showCustomMappings = !showCustomMappings"
+              class="flex items-center space-x-2 text-sm text-primary-600 dark:text-primary-400 hover:text-primary-500"
+            >
+              <span>{{ showCustomMappings ? 'Hide' : 'Show' }} Importers</span>
+              <svg
+                class="w-4 h-4 transition-transform duration-200"
+                :class="{ 'rotate-180': showCustomMappings }"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+          </div>
+
+          <div v-show="showCustomMappings" class="space-y-3">
+            <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+              Manage your custom CSV importers. These appear in the broker format dropdown for quick reuse.
+>>>>>>> b1d1c46 (Add Tastytrade CSV parser support)
             </p>
         </div>
 
@@ -1774,6 +1933,7 @@ function formatDate(date) {
 }
 
 function formatBrokerName(broker) {
+<<<<<<< HEAD
     const brokerLabels = {
         schwab: "Charles Schwab",
         thinkorswim: "thinkorswim",
@@ -1789,6 +1949,24 @@ function formatBrokerName(broker) {
         other: "Other",
     };
     return brokerLabels[broker] || broker;
+=======
+  const brokerLabels = {
+    schwab: 'Charles Schwab',
+    thinkorswim: 'thinkorswim',
+    ibkr: 'Interactive Brokers',
+    lightspeed: 'Lightspeed',
+    webull: 'Webull',
+    etrade: 'E*TRADE',
+    tradingview: 'TradingView',
+    tradovate: 'Tradovate',
+    questrade: 'Questrade',
+    tradestation: 'TradeStation',
+    tastytrade: 'Tastytrade',
+    tradingview_performance: 'TradingView Performance',
+    other: 'Other'
+  }
+  return brokerLabels[broker] || broker
+>>>>>>> b1d1c46 (Add Tastytrade CSV parser support)
 }
 
 function redactAccountId(accountId) {
@@ -3026,6 +3204,7 @@ function pollImportStatus(importId) {
                 const duplicatesSkipped = errorDetails.duplicates || 0;
                 const failedTrades = errorDetails.failedTrades || [];
 
+<<<<<<< HEAD
                 // Show results modal if we have diagnostics or notable stats
                 if (
                     diagnostics ||
@@ -3040,6 +3219,73 @@ function pollImportStatus(importId) {
                         failedTrades,
                     };
                     showImportResultsModal.value = true;
+=======
+        // Show results modal if we have diagnostics or notable stats
+        if (diagnostics || tradesImported > 0 || duplicatesSkipped > 0 || failedTrades.length > 0) {
+          importResultsData.value = {
+            tradesImported,
+            duplicatesSkipped,
+            diagnostics,
+            failedTrades
+          }
+          showImportResultsModal.value = true
+        }
+
+        // Show documentation popup when 0 trades imported with a known broker
+        const knownBrokers = [
+          'lightspeed', 'schwab', 'thinkorswim', 'ibkr', 'webull', 'etrade',
+          'papermoney', 'tradingview', 'tradovate', 'questrade', 'tradestation',
+          'tastytrade', 'tradingview_performance'
+        ]
+        if (tradesImported === 0 && knownBrokers.includes(selectedBroker.value)) {
+          showImportantWarning(
+            'No Trades Imported',
+            `The import completed but no trades were found. This usually means the file format doesn't match what the ${selectedBroker.value} parser expects. Please check the documentation for the correct export format.`,
+            {
+              confirmText: 'OK',
+              linkUrl: 'https://docs.tradetally.io/usage/importing-trades/#supported-brokers',
+              linkText: 'View Documentation'
+            }
+          )
+        }
+
+        if (status === 'completed') {
+          // Fallback achievement check + local celebration for non-SSE users
+          try {
+            const before = await api.get('/gamification/dashboard')
+            const beforeStats = before.data?.data?.stats || {}
+            const beforeXP = beforeStats.experience_points || 0
+            const beforeLevel = beforeStats.level || 1
+            const beforeMin = beforeStats.level_progress?.current_level_min_xp || 0
+            const beforeNext = beforeStats.level_progress?.next_level_min_xp || 100
+
+            const checkRes = await api.post('/gamification/achievements/check')
+            const newAchievements = checkRes.data?.data?.newAchievements || []
+            const count = newAchievements.length
+            if (count > 0) {
+              newAchievements.forEach(a => {
+                celebrationQueue.value.push({ type: 'achievement', payload: { achievement: a } })
+              })
+              const after = await api.get('/gamification/dashboard')
+              const afterStats = after.data?.data?.stats || {}
+              const afterXP = afterStats.experience_points || beforeXP
+              const afterLevel = afterStats.level || beforeLevel
+              const afterMin = afterStats.level_progress?.current_level_min_xp || beforeMin
+              const afterNext = afterStats.level_progress?.next_level_min_xp || beforeNext
+              const deltaXP = Math.max(0, afterXP - beforeXP)
+              celebrationQueue.value.push({
+                type: 'xp_update',
+                payload: {
+                  oldXP: beforeXP,
+                  newXP: afterXP,
+                  deltaXP,
+                  oldLevel: beforeLevel,
+                  newLevel: afterLevel,
+                  currentLevelMinXPBefore: beforeMin,
+                  nextLevelMinXPBefore: beforeNext,
+                  currentLevelMinXPAfter: afterMin,
+                  nextLevelMinXPAfter: afterNext
+>>>>>>> b1d1c46 (Add Tastytrade CSV parser support)
                 }
 
                 // Show documentation popup when 0 trades imported with a known broker
