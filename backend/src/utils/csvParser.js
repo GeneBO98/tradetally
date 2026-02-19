@@ -628,12 +628,12 @@ const brokerParsers = {
 
   ibkr: (row) => {
     // IBKR uses signed quantities: positive = buy, negative = sell
-    const quantity = parseFloat(row.Quantity);
+    const quantity = parseNumeric(row.Quantity, NaN);
     const absQuantity = Math.abs(quantity);
-    const price = parseFloat(row.Price);
+    const price = parseNumeric(row.Price, NaN);
     // IBKR commission: negative = fee paid, positive = rebate received
     // Convert to our convention: positive = fee paid, negative = rebate (credit)
-    const commission = -(parseFloat(row.Commission || 0));
+    const commission = -(parseNumeric(row.Commission || 0, 0));
     const symbol = cleanString(row.Symbol);
 
     // Parse instrument data (options/futures detection)
@@ -659,7 +659,7 @@ const brokerParsers = {
       quantity: finalQuantity,
       side: quantity > 0 ? 'buy' : 'sell',
       commission: commission,
-      fees: parseFloat(row.Fees || 0),
+      fees: parseNumeric(row.Fees || 0, 0),
       broker: 'ibkr',
       ...instrumentData
     };
@@ -674,13 +674,13 @@ const brokerParsers = {
     const strike = parseFloat(row.Strike);
     const expiry = row.Expiry; // Format: YYYYMMDD
     const putCall = cleanString(row['Put/Call']);
-    const quantity = parseFloat(row.Quantity);
-    const multiplier = parseFloat(row.Multiplier || 100);
+    const quantity = parseNumeric(row.Quantity, NaN);
+    const multiplier = parseNumeric(row.Multiplier || 100, 100);
     const buySell = cleanString(row['Buy/Sell']).toUpperCase();
-    const price = parseFloat(row.Price);
+    const price = parseNumeric(row.Price, NaN);
     // IBKR commission: negative = fee paid, positive = rebate received
     // Convert to our convention: positive = fee paid, negative = rebate (credit)
-    const commission = -(parseFloat(row.Commission || 0));
+    const commission = -(parseNumeric(row.Commission || 0, 0));
 
     // Parse date/time - format is YYYYMMDD;HHMMSS
     const dateTimeParts = (row['Date/Time'] || '').split(';');
@@ -5072,14 +5072,14 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
       if (isTradeConfirmation) {
         // Trade Confirmation format
         symbol = cleanString(record.Symbol);
-        quantity = parseFloat(record.Quantity);
+        quantity = parseNumeric(record.Quantity, NaN);
         absQuantity = Math.abs(quantity);
         // Handle both "Price" and "TradePrice" column names (Flex Query exports use TradePrice)
-        price = parseFloat(record.Price || record.TradePrice);
+        price = parseNumeric(record.Price || record.TradePrice, NaN);
         // IBKR commission: negative = fee paid, positive = rebate received
         // Convert to our convention: positive = fee paid, negative = rebate (credit)
         // Handle both "Commission" and "IBCommission" column names
-        commission = -(parseFloat(record.Commission || record.IBCommission || 0));
+        commission = -(parseNumeric(record.Commission || record.IBCommission || 0, 0));
 
         // Parse date/time - format is YYYYMMDD;HHMMSS
         // Handle both "Date/Time" and "DateTime" column names (Flex Query exports use DateTime)
@@ -5098,23 +5098,23 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         const buySell = cleanString(record['Buy/Sell']).toUpperCase();
         action = buySell === 'BUY' ? 'buy' : 'sell';
         // Read Multiplier column for Trade Confirmation format
-        multiplierFromCSV = record.Multiplier ? parseFloat(record.Multiplier) : null;
+        multiplierFromCSV = record.Multiplier ? parseNumeric(record.Multiplier, null) : null;
       } else {
         // Activity Statement format (original)
         symbol = cleanString(record.Symbol);
-        quantity = parseFloat(record.Quantity);
+        quantity = parseNumeric(record.Quantity, NaN);
         absQuantity = Math.abs(quantity);
-        price = parseFloat(record.Price);
+        price = parseNumeric(record.Price, NaN);
         // IBKR commission: negative = fee paid, positive = rebate received
         // Convert to our convention: positive = fee paid, negative = rebate (credit)
-        commission = -(parseFloat(record.Commission || 0));
+        commission = -(parseNumeric(record.Commission || 0, 0));
         // Handle both "DateTime" and "Date/Time" column names
         // Clean DateTime - remove leading and trailing apostrophes/quotes if present
         const rawDateTime = (record.DateTime || record['Date/Time'] || '').toString();
         dateTime = rawDateTime.replace(/^[\x27\x22\u2018\u2019\u201C\u201D]|[\x27\x22\u2018\u2019\u201C\u201D]$/g, '').trim();
         action = quantity > 0 ? 'buy' : 'sell';
         // Check for Multiplier column (some IBKR Activity Statement exports include this)
-        multiplierFromCSV = record.Multiplier ? parseFloat(record.Multiplier) : null;
+        multiplierFromCSV = record.Multiplier ? parseNumeric(record.Multiplier, null) : null;
       }
 
 
@@ -5138,7 +5138,9 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
       const isExpirationCode = code && (code.includes('EP') || code.includes('EX') || code.includes('A'));
       const isOptionClose = code && code.includes('C') && isOptionSymbol;
       const isExpiration = isExpirationCode || (price === 0 && isOptionClose);
-      if (!symbol || absQuantity === 0 || (price === 0 && !isExpiration) || !dateTime) {
+      const invalidQuantity = !isFinite(absQuantity) || absQuantity <= 0;
+      const invalidPrice = !isFinite(price) || (price === 0 && !isExpiration);
+      if (!symbol || invalidQuantity || invalidPrice || !dateTime) {
         console.log(`Skipping IBKR record missing data:`, { symbol, quantity, price, dateTime, code });
         continue;
       }
