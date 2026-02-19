@@ -7568,10 +7568,14 @@ async function parseTastytradeTransactions(records, existingPositions = {}, cont
       const rawSymbol = cleanString(record.Symbol || record.symbol || record.Symbol_Type || record.symbol_type || '');
       const instrumentType = cleanString(record['Instrument Type'] || record['instrument type'] || '');
       const quantity = Math.abs(parseInteger(record.Quantity || record.quantity || record.Quantity_Type || record.quantity_type || 0));
-      const avgPrice = Math.abs(parseNumeric(record['Average Price'] || record['average price'] || 0));
       const commission = Math.abs(parseNumeric(record.Commissions || record.commissions || 0));
       const fees = Math.abs(parseNumeric(record.Fees || record.fees || 0));
       const multiplier = parseInteger(record.Multiplier || record.multiplier || 1);
+      // Tastytrade "Average Price" is already multiplied by the contract multiplier
+      // (e.g., a $1.00 option with 100x multiplier shows as -100 in Average Price)
+      // Divide by multiplier to get the per-share/per-contract price
+      const rawAvgPrice = Math.abs(parseNumeric(record['Average Price'] || record['average price'] || 0));
+      const avgPrice = multiplier > 1 ? rawAvgPrice / multiplier : rawAvgPrice;
       const rootSymbol = cleanString(record['Root Symbol'] || record['root symbol'] || '');
       const underlyingSymbol = cleanString(record['Underlying Symbol'] || record['underlying symbol'] || '');
       const expirationDateRaw = cleanString(record['Expiration Date'] || record['expiration date'] || '');
