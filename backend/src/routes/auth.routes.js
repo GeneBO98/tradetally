@@ -1,9 +1,26 @@
 const express = require('express');
+const rateLimit = require('express-rate-limit');
 const router = express.Router();
 const authController = require('../controllers/auth.controller');
 const { validate, schemas } = require('../middleware/validation');
 const { authenticate } = require('../middleware/auth');
 const { attachTierInfo } = require('../middleware/tierAuth');
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: 'Too many attempts. Please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+const twoFactorLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: { error: 'Too many 2FA attempts. Please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
 
 /**
  * @swagger
@@ -45,7 +62,7 @@ router.get('/config', authController.getRegistrationConfig);
  *                 format: email
  *               password:
  *                 type: string
- *                 minLength: 6
+ *                 minLength: 8
  *               fullName:
  *                 type: string
  *     responses:
@@ -54,7 +71,7 @@ router.get('/config', authController.getRegistrationConfig);
  *       400:
  *         description: Validation error
  */
-router.post('/register', validate(schemas.register), authController.register);
+router.post('/register', authLimiter, validate(schemas.register), authController.register);
 
 /**
  * @swagger
@@ -90,7 +107,7 @@ router.post('/register', validate(schemas.register), authController.register);
  *       401:
  *         description: Invalid credentials
  */
-router.post('/login', validate(schemas.login), authController.login);
+router.post('/login', authLimiter, validate(schemas.login), authController.login);
 /**
  * @swagger
  * /api/auth/verify-2fa:
@@ -113,7 +130,7 @@ router.post('/login', validate(schemas.login), authController.login);
  *       200:
  *         description: 2FA verified successfully
  */
-router.post('/verify-2fa', authController.verify2FA);
+router.post('/verify-2fa', twoFactorLimiter, authController.verify2FA);
 
 /**
  * @swagger
@@ -179,7 +196,7 @@ router.post('/refresh', authController.refreshToken);
  *       200:
  *         description: Password reset email sent
  */
-router.post('/forgot-password', authController.forgotPassword);
+router.post('/forgot-password', authLimiter, authController.forgotPassword);
 
 /**
  * @swagger
@@ -199,14 +216,14 @@ router.post('/forgot-password', authController.forgotPassword);
  *                 type: string
  *               password:
  *                 type: string
- *                 minLength: 6
+ *                 minLength: 8
  *     responses:
  *       200:
  *         description: Password reset successful
  */
-router.post('/reset-password', authController.resetPassword);
+router.post('/reset-password', authLimiter, authController.resetPassword);
 router.get('/verify-email/:token', authController.verifyEmail);
-router.post('/resend-verification', authController.resendVerification);
+router.post('/resend-verification', authLimiter, authController.resendVerification);
 router.post('/test-email', authController.sendTestEmail);
 
 module.exports = router;

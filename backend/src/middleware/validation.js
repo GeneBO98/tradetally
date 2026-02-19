@@ -71,7 +71,7 @@ const schemas = {
   register: Joi.object({
     email: Joi.string().email().required(),
     username: Joi.string().pattern(/^[a-zA-Z0-9_-]+$/).min(3).max(30).required(),
-    password: Joi.string().min(6).required(),
+    password: Joi.string().min(8).required(),
     fullName: Joi.string().max(255).allow(''),
     marketing_consent: Joi.boolean().default(false)
   }),
@@ -393,7 +393,7 @@ const schemas = {
   }).min(1),
   changePassword: Joi.object({
     currentPassword: Joi.string().required(),
-    newPassword: Joi.string().min(6).required()
+    newPassword: Joi.string().min(8).required()
   }),
   settings: Joi.ref('updateSettings'),
 

@@ -17,7 +17,7 @@ Run the automatic migration script:
 
 ```bash
 # Run the migration script
-./rescue-migrate-postgres-16.sh
+./scripts/rescue-migrate-postgres-16.sh
 ```
 
 This script will:
@@ -68,7 +68,7 @@ Then run:
 If the migration fails:
 1. **Don't panic** - your data is safe in the backups
 2. Check the error logs
-3. Run the rollback script: `./rollback-postgres-15.sh`
+3. Run the rollback script: `./scripts/rollback-postgres-15.sh`
 4. Your database will be restored to the working PostgreSQL 15 state
 
 ## Environment Configuration

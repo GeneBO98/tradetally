@@ -302,6 +302,31 @@ const userController = {
     }
   },
 
+  async updateMarketingConsent(req, res, next) {
+    try {
+      const { userId } = req.params;
+      const { marketingConsent } = req.body;
+
+      if (typeof marketingConsent !== 'boolean') {
+        return res.status(400).json({ error: 'marketingConsent must be a boolean' });
+      }
+
+      const updated = await User.updateMarketingConsent(userId, marketingConsent);
+      if (!updated) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      // Fetch updated user to return
+      const user = await User.findByIdForAdmin(userId);
+      res.json({
+        user,
+        message: `Marketing consent ${marketingConsent ? 'enabled' : 'disabled'} for user`
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
   async deleteUser(req, res, next) {
     try {
       const { userId } = req.params;
