@@ -312,24 +312,6 @@
             <router-link to="/faq" class="btn-secondary text-center">FAQ</router-link>
             <router-link to="/public" class="btn-secondary text-center">Public Trades</router-link>
           </div>
-          <div class="flex flex-wrap justify-center gap-6 text-sm">
-            <a
-              href="https://docs.tradetally.io"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="text-primary-600 hover:text-primary-500"
-            >
-              Documentation
-            </a>
-            <a
-              href="https://github.com/GeneBO98/tradetally"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="text-primary-600 hover:text-primary-500"
-            >
-              GitHub Repository
-            </a>
-          </div>
         </div>
       </div>
     </div>
