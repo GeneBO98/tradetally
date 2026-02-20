@@ -348,7 +348,7 @@ class SchwabService {
         console.log(`[SCHWAB] Fetched ${count} transactions for this period`);
         allTransactions = allTransactions.concat(response.data || []);
       } catch (error) {
-        console.error('[SCHWAB] Transaction fetch error:', error.response?.data || error.message);
+        console.error('[SCHWAB] Transaction fetch error:', error.response?.status || error.message);
         throw error;
       }
     }

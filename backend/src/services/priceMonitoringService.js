@@ -7,6 +7,13 @@ const { v4: uuidv4 } = require('uuid');
 const TierService = require('./tierService');
 const NotificationPreferenceService = require('./notificationPreferenceService');
 
+function maskEmail(email) {
+  if (!email || !email.includes('@')) return '***';
+  const [localPart, domain] = email.split('@');
+  if (localPart.length <= 2) return `**@${domain}`;
+  return `${localPart.slice(0, 2)}***@${domain}`;
+}
+
 class PriceMonitoringService {
   constructor() {
     this.isRunning = false;
@@ -407,7 +414,7 @@ class PriceMonitoringService {
       // Log notification
       await this.logNotification(alert.id, alert.user_id, symbol, 'email', message, alert, 'sent');
 
-      console.log(`Email notification sent to ${email} for ${symbol} alert`);
+      console.log(`Email notification sent to ${maskEmail(email)} for ${symbol} alert`);
 
     } catch (error) {
       logger.logError('Error sending email notification:', error);

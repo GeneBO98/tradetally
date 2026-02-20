@@ -12,6 +12,8 @@ docker-compose.yaml
 *.p12
 *.pfx
 *.jks
+backend/src/keys/*.pem
+backend/src/keys/*.key
 secrets/
 config/secrets/
 *dev2.yaml
@@ -271,6 +273,8 @@ database_backup_*.sql
 secrets/
 keys/
 certificates/
+!backend/src/keys/
+!backend/src/keys/README.md
 
 *claude.md*
 *CLAUDE.md*

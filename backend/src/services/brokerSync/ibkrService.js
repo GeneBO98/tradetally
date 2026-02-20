@@ -66,7 +66,7 @@ class IBKRService {
 
       // Parse XML response
       const data = response.data;
-      console.log('[IBKR] Request response:', data.substring(0, 500));
+      console.log(`[IBKR] Request response received (${data.length} chars)`);
 
       // Check for errors in response
       if (data.includes('<ErrorCode>')) {
@@ -90,7 +90,7 @@ class IBKRService {
       return { referenceCode };
     } catch (error) {
       if (error.response) {
-        console.error('[IBKR] API error response:', error.response.data);
+        console.error('[IBKR] API error status:', error.response.status);
         throw new Error(`IBKR API error: ${error.response.status}`);
       }
       throw error;
@@ -148,7 +148,7 @@ class IBKRService {
         }
 
         // Handle unexpected response format
-        console.warn('[IBKR] Unexpected response format:', data.substring(0, 200));
+        console.warn('[IBKR] Unexpected response format from IBKR; retrying');
         await this.sleep(REPORT_POLL_INTERVAL);
       } catch (error) {
         if (error.code === 'ECONNABORTED') {

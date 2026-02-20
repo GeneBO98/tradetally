@@ -1569,7 +1569,7 @@ const tradeManagementController = {
         userId,
         tradeId,
         manual_target_hit_first,
-        body: JSON.stringify(req.body)
+        bodyKeys: Object.keys(req.body || {})
       });
 
       // Validate the value

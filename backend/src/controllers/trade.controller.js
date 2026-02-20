@@ -2141,7 +2141,9 @@ const tradeController = {
               }
               imported++;
             } catch (error) {
-              logger.logError(`Failed to import trade: ${JSON.stringify(tradeData)} - ${error.message}`);
+              logger.logError(
+                `Failed to import trade (symbol=${tradeData?.symbol || 'unknown'}, date=${tradeData?.tradeDate || 'unknown'}, qty=${tradeData?.quantity || 'unknown'}): ${error.message}`
+              );
               logger.logError(`Error stack: ${error.stack}`);
               failed++;
               failedTrades.push({
