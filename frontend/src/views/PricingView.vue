@@ -504,7 +504,7 @@ export default {
 
     onMounted(async () => {
       // Set document title and meta tags for SEO
-      document.title = 'Trading Journal Pricing - Free Plan + $8/mo Pro | TradeTally'
+      document.title = 'Choose Your Plan - Trading Journal Pricing | TradeTally'
 
       let metaDescription = document.querySelector('meta[name="description"]')
       if (!metaDescription) {

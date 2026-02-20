@@ -1,69 +1,222 @@
 <template>
   <div>
-    <section class="bg-white dark:bg-gray-800">
-      <div class="max-w-7xl mx-auto py-16 px-4 sm:py-24 sm:px-6 lg:px-8">
-        <div class="text-center">
-          <h1 class="text-4xl font-extrabold text-gray-900 dark:text-white sm:text-5xl sm:tracking-tight lg:text-6xl">
-            TradeTally Free Trading Journal and Investment Tracker for Day Traders
-          </h1>
-          <p class="mt-5 max-w-3xl mx-auto text-xl text-gray-500 dark:text-gray-400">
-            TradeTally is a professional trade tracking platform with automated broker import, advanced analytics, and portfolio tools.
-            Use one free trading journal and investment tracker for stocks, options, and long-term positions with unlimited trade storage.
-          </p>
-          <div class="mt-8 flex justify-center space-x-4">
-            <router-link 
-              v-if="showRegisterButton" 
-              to="/register" 
-              class="btn-primary text-lg px-8 py-3"
-            >
-              Get Started Free
-            </router-link>
-            <router-link to="/public" class="btn-secondary text-lg px-8 py-3">
-              View Public Trades
-            </router-link>
+    <!-- Hero Section -->
+    <section class="relative overflow-hidden bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
+      <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-primary-900/20 via-transparent to-transparent"></div>
+      <div class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-20 lg:py-24">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+          <!-- Left: Text Content -->
+          <div>
+            <h1 class="text-4xl font-extrabold text-white sm:text-5xl lg:text-6xl tracking-tight">
+              Best Free Trading Journal Software for Day Traders
+            </h1>
+            <p class="mt-6 text-lg text-gray-300 max-w-xl">
+              Professional trade tracking platform with automated trade import, advanced analytics, and broker integration.
+              The best TraderVue alternative with unlimited free trade storage for stocks and options trading.
+            </p>
+            <div class="mt-8 flex flex-wrap gap-4">
+              <router-link
+                v-if="showRegisterButton"
+                to="/register"
+                class="btn-primary text-lg px-8 py-3"
+              >
+                Get Started Free
+              </router-link>
+              <router-link to="/public" class="inline-flex items-center px-8 py-3 text-lg font-medium text-gray-300 border border-gray-600 rounded-lg hover:bg-white/10 hover:border-gray-400 transition-colors">
+                View Public Trades
+              </router-link>
+            </div>
+            <div class="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-gray-400">
+              <span class="flex items-center gap-1.5">
+                <CheckCircleIcon class="h-4 w-4 text-emerald-400" />
+                Free forever
+              </span>
+              <span class="flex items-center gap-1.5">
+                <CheckCircleIcon class="h-4 w-4 text-emerald-400" />
+                No credit card required
+              </span>
+              <span class="flex items-center gap-1.5">
+                <CheckCircleIcon class="h-4 w-4 text-emerald-400" />
+                Open source
+              </span>
+            </div>
+          </div>
+          <!-- Right: Hero Video -->
+          <div class="relative lg:ml-4">
+            <div class="rounded-xl overflow-hidden shadow-2xl shadow-black/40 ring-1 ring-white/10">
+              <video
+                autoplay
+                loop
+                muted
+                playsinline
+                poster="/images/screenshot-dashboard.png"
+                class="w-full h-auto"
+              >
+                <source src="/images/hero-dashboard.mp4" type="video/mp4" />
+                <source src="/images/hero-dashboard.webm" type="video/webm" />
+                <img
+                  src="/images/screenshot-dashboard.png"
+                  alt="TradeTally Dashboard - Trading performance analytics with P&L charts, win rate, and open positions"
+                  class="w-full h-auto"
+                />
+              </video>
+            </div>
+            <div class="absolute -inset-4 bg-gradient-to-t from-gray-900/60 via-transparent to-transparent rounded-xl pointer-events-none lg:hidden"></div>
           </div>
         </div>
       </div>
     </section>
 
-    <section class="bg-gray-50 dark:bg-gray-900 py-16">
+    <!-- Broker Marquee -->
+    <section class="bg-gray-50 dark:bg-gray-900 border-y border-gray-200 dark:border-gray-700/50 py-5 overflow-hidden">
+      <p class="text-center text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-4">
+        Works with your broker
+      </p>
+      <div class="marquee relative">
+        <div class="absolute left-0 top-0 bottom-0 w-24 bg-gradient-to-r from-gray-50 dark:from-gray-900 to-transparent z-10 pointer-events-none"></div>
+        <div class="absolute right-0 top-0 bottom-0 w-24 bg-gradient-to-l from-gray-50 dark:from-gray-900 to-transparent z-10 pointer-events-none"></div>
+        <div class="marquee-inner">
+          <div class="marquee-set" v-for="n in 3" :key="n" :aria-hidden="n > 1 || undefined">
+            <div v-for="broker in brokers" :key="broker.name + '-' + n" class="marquee-item">
+              <img
+                v-if="broker.logo"
+                :src="broker.logo"
+                :alt="broker.name"
+                class="h-7 w-auto opacity-70 hover:opacity-100 transition-opacity dark:invert"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Feature Showcase: Alternating Sections -->
+
+    <!-- Feature 1: Analytics (image left, text right) -->
+    <section data-reveal class="bg-white dark:bg-gray-800 py-16 sm:py-20">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="grid grid-cols-1 gap-8 md:grid-cols-3">
-          <div class="text-center">
-            <div class="flex justify-center">
-              <ChartBarIcon class="h-12 w-12 text-primary-600" />
-            </div>
-            <h2 class="mt-4 text-lg font-medium text-gray-900 dark:text-white">Advanced Analytics</h2>
-            <p class="mt-2 text-gray-500 dark:text-gray-400">
-              Visualize your trading performance with comprehensive charts and statistics.
-            </p>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+          <div class="rounded-xl overflow-hidden shadow-xl ring-1 ring-gray-200 dark:ring-gray-700" data-parallax>
+            <img
+              src="/images/screenshot-trade-management.png"
+              alt="TradeTally Trade Management - R-Multiple performance analysis with cumulative chart"
+              class="w-full h-auto"
+              loading="lazy"
+            />
           </div>
-          
-          <div class="text-center">
-            <div class="flex justify-center">
-              <DocumentTextIcon class="h-12 w-12 text-primary-600" />
-            </div>
-            <h2 class="mt-4 text-lg font-medium text-gray-900 dark:text-white">Trade Journal</h2>
-            <p class="mt-2 text-gray-500 dark:text-gray-400">
-              Keep detailed records of all your trades with notes, tags, and attachments.
+          <div>
+            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 mb-4">
+              ANALYTICS
+            </span>
+            <h2 class="text-3xl font-extrabold text-gray-900 dark:text-white">
+              Trade Analytics & Performance
+            </h2>
+            <p class="mt-4 text-lg text-gray-500 dark:text-gray-400">
+              Understand your edge with comprehensive performance metrics and visual analytics.
             </p>
-          </div>
-          
-          <div class="text-center">
-            <div class="flex justify-center">
-              <ArrowUpTrayIcon class="h-12 w-12 text-primary-600" />
-            </div>
-            <h2 class="mt-4 text-lg font-medium text-gray-900 dark:text-white">Easy Import</h2>
-            <p class="mt-2 text-gray-500 dark:text-gray-400">
-              Import trades from major brokers with CSV support for seamless integration.
-            </p>
+            <ul class="mt-6 space-y-3">
+              <li class="flex items-start gap-3">
+                <ChartBarIcon class="h-6 w-6 text-primary-600 flex-shrink-0 mt-0.5" />
+                <span class="text-gray-600 dark:text-gray-300">Cumulative P&L charts and R-Multiple performance tracking</span>
+              </li>
+              <li class="flex items-start gap-3">
+                <PresentationChartLineIcon class="h-6 w-6 text-primary-600 flex-shrink-0 mt-0.5" />
+                <span class="text-gray-600 dark:text-gray-300">Win rate, profit factor, average win/loss, and max drawdown</span>
+              </li>
+              <li class="flex items-start gap-3">
+                <CpuChipIcon class="h-6 w-6 text-primary-600 flex-shrink-0 mt-0.5" />
+                <span class="text-gray-600 dark:text-gray-300">AI-powered behavioral analytics and pattern recognition</span>
+              </li>
+            </ul>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- Pro Features Section -->
-    <section class="bg-gradient-to-br from-primary-600 to-primary-800 py-16">
+    <!-- Feature 2: Journal (text left, image right) -->
+    <section data-reveal class="bg-gray-50 dark:bg-gray-900 py-16 sm:py-20">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+          <div class="order-2 lg:order-1">
+            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 mb-4">
+              JOURNAL
+            </span>
+            <h2 class="text-3xl font-extrabold text-gray-900 dark:text-white">
+              Trading Journal with Notes & Charts
+            </h2>
+            <p class="mt-4 text-lg text-gray-500 dark:text-gray-400">
+              Document your trading process with a structured journal that tracks what matters.
+            </p>
+            <ul class="mt-6 space-y-3">
+              <li class="flex items-start gap-3">
+                <DocumentTextIcon class="h-6 w-6 text-primary-600 flex-shrink-0 mt-0.5" />
+                <span class="text-gray-600 dark:text-gray-300">Daily entries with market bias, key levels, and watchlists</span>
+              </li>
+              <li class="flex items-start gap-3">
+                <TagIcon class="h-6 w-6 text-primary-600 flex-shrink-0 mt-0.5" />
+                <span class="text-gray-600 dark:text-gray-300">Tag entries, link trades, and track plan adherence over time</span>
+              </li>
+              <li class="flex items-start gap-3">
+                <LightBulbIcon class="h-6 w-6 text-primary-600 flex-shrink-0 mt-0.5" />
+                <span class="text-gray-600 dark:text-gray-300">Capture lessons learned and review past decisions with AI analysis</span>
+              </li>
+            </ul>
+          </div>
+          <div class="order-1 lg:order-2 rounded-xl overflow-hidden shadow-xl ring-1 ring-gray-200 dark:ring-gray-700" data-parallax>
+            <img
+              src="/images/screenshot-journal.png"
+              alt="TradeTally Trading Journal - Daily entries with market bias, watchlists, and tags"
+              class="w-full h-auto"
+              loading="lazy"
+            />
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Feature 3: Stock Analyzer (image left, text right) -->
+    <section data-reveal class="bg-white dark:bg-gray-800 py-16 sm:py-20">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+          <div class="rounded-xl overflow-hidden shadow-xl ring-1 ring-gray-200 dark:ring-gray-700" data-parallax>
+            <img
+              src="/images/screenshot-stock-analyzer.png"
+              alt="TradeTally Stock Analyzer - DCF valuation calculator with Bear, Base, and Bull scenarios"
+              class="w-full h-auto"
+              loading="lazy"
+            />
+          </div>
+          <div>
+            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 mb-4">
+              INVESTMENTS
+            </span>
+            <h2 class="text-3xl font-extrabold text-gray-900 dark:text-white">
+              DCF Valuation & Stock Analysis
+            </h2>
+            <p class="mt-4 text-lg text-gray-500 dark:text-gray-400">
+              Go beyond trade tracking with built-in fundamental analysis tools for smarter investing.
+            </p>
+            <ul class="mt-6 space-y-3">
+              <li class="flex items-start gap-3">
+                <CalculatorIcon class="h-6 w-6 text-primary-600 flex-shrink-0 mt-0.5" />
+                <span class="text-gray-600 dark:text-gray-300">Discounted Cash Flow calculator with Bear/Base/Bull scenarios</span>
+              </li>
+              <li class="flex items-start gap-3">
+                <ShieldCheckIcon class="h-6 w-6 text-primary-600 flex-shrink-0 mt-0.5" />
+                <span class="text-gray-600 dark:text-gray-300">8 Pillars value investing analysis with pass/fail grading</span>
+              </li>
+              <li class="flex items-start gap-3">
+                <MagnifyingGlassIcon class="h-6 w-6 text-primary-600 flex-shrink-0 mt-0.5" />
+                <span class="text-gray-600 dark:text-gray-300">Russell 2000 nightly scanner to find undervalued stocks</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Pro Features Section (kept from original) -->
+    <section data-reveal class="bg-gradient-to-br from-primary-600 to-primary-800 py-16">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="text-center mb-12">
           <span class="inline-flex items-center px-4 py-1 rounded-full text-sm font-semibold bg-white/20 text-white mb-4">
@@ -78,36 +231,7 @@
           </p>
         </div>
 
-        <!-- DCF Stock Analyzer - Featured (standalone row) -->
-        <div class="mb-6 bg-white/15 backdrop-blur-sm rounded-xl p-8 hover:bg-white/20 transition-colors border border-white/20">
-          <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
-            <div>
-              <div class="flex items-center mb-3">
-                <div class="flex-shrink-0 p-3 bg-white/20 rounded-lg">
-                  <CalculatorIcon class="h-8 w-8 text-white" />
-                </div>
-                <div class="ml-4">
-                  <span class="inline-block px-2 py-0.5 text-xs font-semibold bg-yellow-400 text-yellow-900 rounded mb-1">NEW</span>
-                  <h3 class="text-xl font-bold text-white">DCF Stock Valuation Calculator</h3>
-                </div>
-              </div>
-              <p class="text-primary-100 max-w-2xl">
-                Calculate fair value for any stock using Discounted Cash Flow analysis. View historical ROIC, revenue growth, profit margins, and FCF metrics.
-                Enter your own Bear/Base/Bull assumptions to see if a stock is undervalued or overvalued with margin of safety calculations.
-              </p>
-            </div>
-            <div class="flex-shrink-0">
-              <div class="bg-white/10 rounded-lg p-4 text-center">
-                <div class="text-3xl font-bold text-white">3</div>
-                <div class="text-sm text-primary-200">Scenarios</div>
-                <div class="text-xs text-primary-300 mt-1">Bear / Base / Bull</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
         <div class="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-          <!-- 8 Pillars Analysis -->
           <div class="bg-white/10 backdrop-blur-sm rounded-xl p-6 hover:bg-white/15 transition-colors">
             <div class="flex items-center mb-4">
               <div class="flex-shrink-0 p-3 bg-white/20 rounded-lg">
@@ -120,7 +244,6 @@
             </p>
           </div>
 
-          <!-- Stock Scanner -->
           <div class="bg-white/10 backdrop-blur-sm rounded-xl p-6 hover:bg-white/15 transition-colors">
             <div class="flex items-center mb-4">
               <div class="flex-shrink-0 p-3 bg-white/20 rounded-lg">
@@ -133,7 +256,6 @@
             </p>
           </div>
 
-          <!-- AI Insights -->
           <div class="bg-white/10 backdrop-blur-sm rounded-xl p-6 hover:bg-white/15 transition-colors">
             <div class="flex items-center mb-4">
               <div class="flex-shrink-0 p-3 bg-white/20 rounded-lg">
@@ -146,7 +268,6 @@
             </p>
           </div>
 
-          <!-- Behavioral Analytics -->
           <div class="bg-white/10 backdrop-blur-sm rounded-xl p-6 hover:bg-white/15 transition-colors">
             <div class="flex items-center mb-4">
               <div class="flex-shrink-0 p-3 bg-white/20 rounded-lg">
@@ -159,7 +280,6 @@
             </p>
           </div>
 
-          <!-- Health Correlations -->
           <div class="bg-white/10 backdrop-blur-sm rounded-xl p-6 hover:bg-white/15 transition-colors">
             <div class="flex items-center mb-4">
               <div class="flex-shrink-0 p-3 bg-white/20 rounded-lg">
@@ -172,7 +292,6 @@
             </p>
           </div>
 
-          <!-- Real-time Data -->
           <div class="bg-white/10 backdrop-blur-sm rounded-xl p-6 hover:bg-white/15 transition-colors">
             <div class="flex items-center mb-4">
               <div class="flex-shrink-0 p-3 bg-white/20 rounded-lg">
@@ -200,6 +319,7 @@
       </div>
     </section>
 
+    <!-- SEO: TraderVue Alternative -->
     <section v-if="showSEOPages" class="bg-white dark:bg-gray-800 py-16">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="text-center">
@@ -207,7 +327,7 @@
             The Modern Alternative to TraderVue
           </h2>
           <p class="mt-4 max-w-3xl mx-auto text-lg text-gray-500 dark:text-gray-400">
-            Looking for a TraderVue alternative? TradeTally offers all the trade journaling features you need with a modern interface, 
+            Looking for a TraderVue alternative? TradeTally offers all the trade journaling features you need with a modern interface,
             advanced analytics, and competitive pricing. Switch from TraderVue to TradeTally and experience the next generation of trade tracking.
           </p>
           <div class="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 max-w-5xl mx-auto">
@@ -234,7 +354,7 @@
       </div>
     </section>
 
-    <!-- Broker & Asset Compatibility Section -->
+    <!-- SEO: Broker & Asset Compatibility -->
     <section v-if="showSEOPages" class="bg-gray-50 dark:bg-gray-900 py-16">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="text-center mb-12">
@@ -253,14 +373,14 @@
               Import trades automatically from verified brokers:
             </p>
             <ul class="space-y-2 text-gray-600 dark:text-gray-400">
-              <li>✓ <strong>Charles Schwab / ThinkorSwim</strong> - <span class="text-primary-600 font-medium">Auto-Sync</span> + CSV import</li>
-              <li>✓ <strong>Interactive Brokers (IBKR)</strong> - <span class="text-primary-600 font-medium">Auto-Sync</span> + CSV import</li>
-              <li>✓ <strong>Lightspeed Trading</strong> - Direct CSV import</li>
-              <li>✓ <strong>Webull</strong> - Direct CSV import</li>
-              <li>✓ <strong>TradingView</strong> - Direct CSV import</li>
-              <li>✓ <strong>TradeStation</strong> - Direct CSV import</li>
-              <li>✓ <strong>Tradovate / Questrade</strong> - Direct CSV import</li>
-              <li>✓ <strong>Other Brokers</strong> - Custom CSV column mapping</li>
+              <li>&#10003; <strong>Charles Schwab / ThinkorSwim</strong> - <span class="text-primary-600 font-medium">Auto-Sync</span> + CSV import</li>
+              <li>&#10003; <strong>Interactive Brokers (IBKR)</strong> - <span class="text-primary-600 font-medium">Auto-Sync</span> + CSV import</li>
+              <li>&#10003; <strong>Lightspeed Trading</strong> - Direct CSV import</li>
+              <li>&#10003; <strong>Webull</strong> - Direct CSV import</li>
+              <li>&#10003; <strong>TradingView</strong> - Direct CSV import</li>
+              <li>&#10003; <strong>TradeStation</strong> - Direct CSV import</li>
+              <li>&#10003; <strong>Tradovate / Questrade</strong> - Direct CSV import</li>
+              <li>&#10003; <strong>Other Brokers</strong> - Custom CSV column mapping</li>
             </ul>
             <p class="text-sm text-gray-500 dark:text-gray-400 mt-4">
               Don't see your broker? Use our custom CSV mapper to create a template for any broker with CSV export.
@@ -273,11 +393,11 @@
               Track performance across supported markets:
             </p>
             <ul class="space-y-2 text-gray-600 dark:text-gray-400">
-              <li>✓ <strong>Stocks</strong> - Day trading, swing trading, position trading</li>
-              <li>✓ <strong>Options</strong> - Calls, puts, spreads, covered calls, iron condors</li>
-              <li>✓ <strong>ETFs</strong> - Market and sector tracking</li>
-              <li>✓ <strong>Crypto</strong> - Bitcoin, Ethereum, and all major cryptocurrencies</li>
-              <li>✓ <strong>Forex</strong> - EUR/USD, GBP/JPY, and all currency pairs</li>
+              <li>&#10003; <strong>Stocks</strong> - Day trading, swing trading, position trading</li>
+              <li>&#10003; <strong>Options</strong> - Calls, puts, spreads, covered calls, iron condors</li>
+              <li>&#10003; <strong>ETFs</strong> - Market and sector tracking</li>
+              <li>&#10003; <strong>Crypto</strong> - Bitcoin, Ethereum, and all major cryptocurrencies</li>
+              <li>&#10003; <strong>Forex</strong> - EUR/USD, GBP/JPY, and all currency pairs</li>
             </ul>
             <div class="mt-6 p-4 bg-gray-50 dark:bg-gray-900 rounded-lg">
               <p class="text-sm text-gray-600 dark:text-gray-400">
@@ -289,40 +409,54 @@
       </div>
     </section>
 
-    <!-- Comparison & CTA Section -->
-    <section v-if="showSEOPages" class="bg-white dark:bg-gray-800 py-16">
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="text-center">
-          <h2 class="text-3xl font-extrabold text-gray-900 dark:text-white mb-4">
-            Compare Trading Journal Platforms
-          </h2>
-          <p class="mt-4 max-w-3xl mx-auto text-lg text-gray-500 dark:text-gray-400">
-            See how TradeTally compares to TraderVue, TraderSync, Edgewonk, and other trading journal software
-          </p>
-          <div class="mt-8">
-            <router-link to="/compare" class="btn-primary text-lg px-8 py-3">
-              View Detailed Comparison
-            </router-link>
+    <!-- Stats Bar -->
+    <section data-reveal class="bg-white dark:bg-gray-800 border-y border-gray-200 dark:border-gray-700/50 py-12">
+      <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-8">
+          <div class="text-center">
+            <div class="text-3xl font-bold text-primary-600">Free</div>
+            <div class="text-sm text-gray-500 dark:text-gray-400 mt-1">Forever Plan</div>
           </div>
+          <div class="text-center">
+            <div class="text-3xl font-bold text-primary-600">Unlimited</div>
+            <div class="text-sm text-gray-500 dark:text-gray-400 mt-1">Trade Storage</div>
+          </div>
+          <div class="text-center">
+            <div class="text-3xl font-bold text-primary-600">$8/mo</div>
+            <div class="text-sm text-gray-500 dark:text-gray-400 mt-1">Pro Features</div>
+          </div>
+          <div class="text-center">
+            <div class="text-3xl font-bold text-primary-600">Open</div>
+            <div class="text-sm text-gray-500 dark:text-gray-400 mt-1">Source Code</div>
+          </div>
+        </div>
+      </div>
+    </section>
 
-          <div class="mt-12 grid grid-cols-2 md:grid-cols-4 gap-6 max-w-4xl mx-auto">
-            <div class="text-center">
-              <div class="text-3xl font-bold text-primary-600">Free</div>
-              <div class="text-sm text-gray-500 dark:text-gray-400">Forever Plan</div>
-            </div>
-            <div class="text-center">
-              <div class="text-3xl font-bold text-primary-600">Unlimited</div>
-              <div class="text-sm text-gray-500 dark:text-gray-400">Trade Storage</div>
-            </div>
-            <div class="text-center">
-              <div class="text-3xl font-bold text-primary-600">$8/mo</div>
-              <div class="text-sm text-gray-500 dark:text-gray-400">Pro Features</div>
-            </div>
-            <div class="text-center">
-              <div class="text-3xl font-bold text-primary-600">Open</div>
-              <div class="text-sm text-gray-500 dark:text-gray-400">Source Code</div>
-            </div>
-          </div>
+    <!-- Final CTA -->
+    <section data-reveal class="bg-gray-50 dark:bg-gray-900 py-16 sm:py-20">
+      <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+        <h2 class="text-3xl font-extrabold text-gray-900 dark:text-white">
+          Start tracking your trades today
+        </h2>
+        <p class="mt-4 text-lg text-gray-500 dark:text-gray-400">
+          Join traders using TradeTally to analyze performance, identify patterns, and improve their edge.
+        </p>
+        <div class="mt-8 flex flex-wrap justify-center gap-4">
+          <router-link
+            v-if="showRegisterButton"
+            to="/register"
+            class="btn-primary text-lg px-10 py-3"
+          >
+            Get Started Free
+          </router-link>
+          <router-link
+            v-if="showSEOPages"
+            to="/compare"
+            class="btn-secondary text-lg px-8 py-3"
+          >
+            Compare Platforms
+          </router-link>
         </div>
       </div>
     </section>
@@ -373,21 +507,38 @@ import { ref, onMounted } from 'vue'
 import {
   ChartBarIcon,
   DocumentTextIcon,
-  ArrowUpTrayIcon,
   SparklesIcon,
   MagnifyingGlassIcon,
   CpuChipIcon,
   PresentationChartLineIcon,
   HeartIcon,
   ShieldCheckIcon,
-  CalculatorIcon
+  CalculatorIcon,
+  CheckCircleIcon,
+  TagIcon,
+  LightBulbIcon
 } from '@heroicons/vue/24/outline'
 import { useAuthStore } from '@/stores/auth'
 import { useRegistrationMode } from '@/composables/useRegistrationMode'
+import { useScrollReveal } from '@/composables/useScrollReveal'
 
+useScrollReveal()
 const authStore = useAuthStore()
 const { showSEOPages } = useRegistrationMode()
 const showRegisterButton = ref(true)
+
+const brokers = [
+  { name: 'Schwab', logo: '/images/brokers/schwab.svg', height: 'h-10' },
+  { name: 'Interactive Brokers', logo: '/images/brokers/ibkr.svg', darkInvert: true },
+  { name: 'ThinkorSwim', logo: '/images/brokers/thinkorswim.png', height: 'h-10' },
+  { name: 'Lightspeed', logo: '/images/brokers/lightspeed.svg', darkInvert: true },
+  { name: 'Webull', logo: '/images/brokers/webull.svg', darkInvert: true },
+  { name: 'TradingView', logo: '/images/brokers/tradingview.svg', darkInvert: true },
+  { name: 'TradeStation', logo: '/images/brokers/tradestation.svg' },
+  { name: 'Tastytrade', logo: '/images/brokers/tastytrade.svg', darkInvert: true },
+  { name: 'Tradovate', logo: '/images/brokers/tradovate.png', darkInvert: true },
+  { name: 'Questrade', logo: '/images/brokers/questrade.svg', height: 'h-10' }
+]
 
 onMounted(async () => {
   try {
@@ -395,12 +546,11 @@ onMounted(async () => {
     showRegisterButton.value = config.allowRegistration
   } catch (error) {
     console.error('Failed to fetch registration config:', error)
-    // Default to showing the button if we can't determine the config
     showRegisterButton.value = true
   }
 
   // Update meta tags for SEO
-  document.title = 'TradeTally - Free Trading Journal and Investment Tracker'
+  document.title = 'Best Free Trading Journal Software for Day Traders | TradeTally'
 
   let metaDescription = document.querySelector('meta[name="description"]')
   if (!metaDescription) {
@@ -428,7 +578,13 @@ onMounted(async () => {
 
   // Add structured data for SEO
   if (showSEOPages.value) {
+    const existingScript = document.getElementById('home-softwareapp-jsonld')
+    if (existingScript) {
+      existingScript.remove()
+    }
+
     const script = document.createElement('script')
+    script.id = 'home-softwareapp-jsonld'
     script.type = 'application/ld+json'
     script.textContent = JSON.stringify({
       "@context": "https://schema.org",
@@ -473,3 +629,40 @@ onMounted(async () => {
   }
 })
 </script>
+
+<style scoped>
+.marquee {
+  overflow: hidden;
+}
+
+.marquee-inner {
+  display: flex;
+  width: fit-content;
+  animation: scroll 40s linear infinite;
+}
+
+.marquee-inner:hover {
+  animation-play-state: paused;
+}
+
+.marquee-set {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+}
+
+.marquee-item {
+  flex-shrink: 0;
+  padding: 0 2rem;
+}
+
+@keyframes scroll {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(calc(-100% / 3));
+  }
+}
+
+</style>
