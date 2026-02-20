@@ -14,18 +14,16 @@ class EmailService {
     return nodemailer.createTransport({
       host: process.env.EMAIL_HOST,
       port: port,
-      secure: port === 465, // Use SSL for port 465, TLS for others
+      secure: port === 465,
       auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS
       },
-      // Add authentication headers to improve deliverability
       dkim: process.env.DKIM_PRIVATE_KEY ? {
         domainName: process.env.EMAIL_DOMAIN || 'tradetally.io',
         keySelector: process.env.DKIM_SELECTOR || 'default',
         privateKey: process.env.DKIM_PRIVATE_KEY
       } : undefined,
-      // Additional headers for better deliverability
       headers: {
         'X-Mailer': 'TradeTally Email Service',
         'X-Priority': '3',
@@ -58,46 +56,35 @@ class EmailService {
         </noscript>
         <![endif]-->
       </head>
-      <body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: Arial, sans-serif; -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%;">
-        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #f8fafc;">
+      <body style="margin: 0; padding: 0; background-color: #f4f4f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%;">
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #f4f4f5;">
           <tr>
-            <td align="center" style="padding: 20px 0;">
-              <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" style="max-width: 600px; background-color: #ffffff;">
-                <!-- Header -->
+            <td align="center" style="padding: 40px 16px;">
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="520" style="max-width: 520px;">
+                <!-- Logo -->
                 <tr>
-                  <td style="background-color: #F0812A; padding: 40px 20px; text-align: center;">
-                    <h1 style="color: #ffffff; font-size: 32px; font-weight: bold; margin: 0 0 8px 0; font-family: Arial, sans-serif;">
-                      TradeTally
-                    </h1>
-                    <p style="color: #fef5ea; font-size: 16px; margin: 0; font-family: Arial, sans-serif;">
-                      Smart Trading Analytics
-                    </p>
+                  <td style="padding: 0 0 32px 0; text-align: center;">
+                    <span style="font-size: 22px; font-weight: 700; color: #18181b; letter-spacing: -0.5px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">TradeTally</span>
                   </td>
                 </tr>
-                
-                <!-- Content -->
+                <!-- Card -->
                 <tr>
-                  <td style="padding: 40px 30px;">
+                  <td style="background-color: #ffffff; border-radius: 12px; padding: 40px 36px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
                     ${content}
                   </td>
                 </tr>
-                
                 <!-- Footer -->
                 <tr>
-                  <td style="background-color: #f8fafc; padding: 30px; text-align: center; border-top: 1px solid #e2e8f0;">
-                    <p style="color: #64748b; font-size: 14px; margin: 0 0 15px 0; font-family: Arial, sans-serif;">
-                      <strong>TradeTally</strong> - Empowering traders with intelligent analytics
+                  <td style="padding: 28px 0 0 0; text-align: center;">
+                    <p style="color: #a1a1aa; font-size: 12px; line-height: 1.6; margin: 0 0 8px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+                      <a href="https://tradetally.io" style="color: #a1a1aa; text-decoration: none;">TradeTally</a>
+                      &nbsp;&middot;&nbsp;
+                      <a href="https://tradetally.io/privacy" style="color: #a1a1aa; text-decoration: none;">Privacy</a>
+                      &nbsp;&middot;&nbsp;
+                      <a href="https://tradetally.io/terms" style="color: #a1a1aa; text-decoration: none;">Terms</a>
                     </p>
-                    <p style="color: #94a3b8; font-size: 12px; line-height: 1.5; margin: 0 0 20px 0; font-family: Arial, sans-serif;">
-                      This email was sent to you because you have an account with TradeTally.<br>
-                      If you have any questions, contact us at <a href="mailto:support@tradetally.io" style="color: #F0812A; text-decoration: none;">support@tradetally.io</a>
-                    </p>
-                    <p style="margin: 0; font-family: Arial, sans-serif;">
-                      <a href="https://tradetally.io" style="color: #F0812A; text-decoration: none; font-size: 12px;">Visit TradeTally</a>
-                      <span style="color: #cbd5e1; margin: 0 8px;">|</span>
-                      <a href="https://tradetally.io/privacy" style="color: #F0812A; text-decoration: none; font-size: 12px;">Privacy Policy</a>
-                      <span style="color: #cbd5e1; margin: 0 8px;">|</span>
-                      <a href="https://tradetally.io/terms" style="color: #F0812A; text-decoration: none; font-size: 12px;">Terms of Service</a>
+                    <p style="color: #d4d4d8; font-size: 11px; margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+                      You received this email because you have a TradeTally account.
                     </p>
                   </td>
                 </tr>
@@ -112,16 +99,33 @@ class EmailService {
 
   static getButtonStyle() {
     return `
-      background-color: #F0812A;
+      background-color: #18181b;
       color: #ffffff;
-      padding: 16px 32px;
+      padding: 12px 28px;
       text-decoration: none;
-      border-radius: 6px;
+      border-radius: 8px;
       display: inline-block;
       font-weight: 600;
-      font-size: 16px;
+      font-size: 14px;
       text-align: center;
       border: none;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    `;
+  }
+
+  static getSecondaryButtonStyle() {
+    return `
+      background-color: #ffffff;
+      color: #18181b;
+      padding: 12px 28px;
+      text-decoration: none;
+      border-radius: 8px;
+      display: inline-block;
+      font-weight: 600;
+      font-size: 14px;
+      text-align: center;
+      border: 1px solid #e4e4e7;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     `;
   }
 
@@ -143,9 +147,9 @@ class EmailService {
    */
   static getMarketingFooter(unsubscribeUrl) {
     return `
-      <p style="color: #94a3b8; font-size: 11px; margin: 20px 0 0 0; text-align: center;">
-        You're receiving this because you have marketing emails enabled.
-        <a href="${unsubscribeUrl}" style="color: #F0812A; text-decoration: underline;">Unsubscribe</a>
+      <p style="color: #a1a1aa; font-size: 11px; margin: 24px 0 0 0; padding-top: 20px; border-top: 1px solid #f4f4f5; text-align: center; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        You're receiving this because you opted into marketing emails.
+        <a href="${unsubscribeUrl}" style="color: #71717a; text-decoration: underline;">Unsubscribe</a>
       </p>
     `;
   }
@@ -157,53 +161,36 @@ class EmailService {
     }
 
     const verificationUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/verify-email/${token}`;
-    
+
     const content = `
-      <div style="text-align: center; margin-bottom: 30px;">
-        <h1 style="color: #1e293b; font-size: 28px; margin: 0 0 16px 0; font-weight: 700;">
-          Welcome to TradeTally!
-        </h1>
-        <p style="color: #64748b; font-size: 16px; line-height: 1.6; margin: 0;">
-          Thank you for joining our community of smart traders
-        </p>
+      <h1 style="color: #18181b; font-size: 22px; margin: 0 0 8px 0; font-weight: 700; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        Verify your email
+      </h1>
+      <p style="color: #71717a; font-size: 15px; line-height: 1.6; margin: 0 0 28px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        Welcome to TradeTally. Confirm your email address to get started with your trading journal.
+      </p>
+
+      <div style="text-align: center; margin: 0 0 28px 0;">
+        <a href="${verificationUrl}" style="${this.getButtonStyle()}">
+          Verify Email Address
+        </a>
       </div>
-      
-      <div style="background-color: #f8fafc; padding: 30px; border-radius: 12px; border-left: 4px solid #F0812A; margin: 30px 0;">
-        <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
-          To get started with TradeTally and unlock powerful trading analytics, please verify your email address:
-        </p>
-        
-        <div style="text-align: center; margin: 30px 0;">
-          <a href="${verificationUrl}" style="${this.getButtonStyle()}">
-            Verify Email Address
-          </a>
-        </div>
-        
-        <p style="color: #64748b; font-size: 14px; margin: 20px 0 0 0;">
-          Or copy and paste this link into your browser:<br>
-          <span style="word-break: break-all; color: #F0812A;">${verificationUrl}</span>
-        </p>
-      </div>
-      
-      <div style="background-color: #fef3cd; padding: 20px; border-radius: 8px; border-left: 4px solid #f59e0b; margin: 25px 0;">
-        <p style="color: #92400e; font-size: 14px; margin: 0; font-weight: 500;">
-          Important: This verification link will expire in 24 hours for security reasons.
-        </p>
-      </div>
-      
-      <p style="color: #64748b; font-size: 14px; line-height: 1.5; margin: 25px 0 0 0;">
-        If you didn't create an account with TradeTally, you can safely ignore this email.
+
+      <p style="color: #a1a1aa; font-size: 13px; line-height: 1.5; margin: 0 0 4px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        This link expires in 24 hours. If you didn't create this account, ignore this email.
+      </p>
+      <p style="color: #a1a1aa; font-size: 12px; margin: 16px 0 0 0; word-break: break-all; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        ${verificationUrl}
       </p>
     `;
 
-    // Transactional email - no List-Unsubscribe headers (required for account activation)
     const mailOptions = {
       from: {
         name: 'TradeTally',
         address: process.env.EMAIL_FROM || 'noreply@tradetally.io'
       },
       to: email,
-      subject: 'Welcome to TradeTally - Verify Your Account',
+      subject: 'Verify your email - TradeTally',
       html: this.getBaseTemplate('Verify Your TradeTally Account', content),
       text: `Welcome to TradeTally! Please verify your email address by visiting: ${verificationUrl}`,
       headers: {
@@ -228,53 +215,36 @@ class EmailService {
     }
 
     const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/reset-password/${token}`;
-    
+
     const content = `
-      <div style="text-align: center; margin-bottom: 30px;">
-        <h1 style="color: #1e293b; font-size: 28px; margin: 0 0 16px 0; font-weight: 700;">
-          Reset Your Password
-        </h1>
-        <p style="color: #64748b; font-size: 16px; line-height: 1.6; margin: 0;">
-          Secure your TradeTally account with a new password
-        </p>
+      <h1 style="color: #18181b; font-size: 22px; margin: 0 0 8px 0; font-weight: 700; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        Reset your password
+      </h1>
+      <p style="color: #71717a; font-size: 15px; line-height: 1.6; margin: 0 0 28px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        We received a request to reset the password for your TradeTally account.
+      </p>
+
+      <div style="text-align: center; margin: 0 0 28px 0;">
+        <a href="${resetUrl}" style="${this.getButtonStyle()}">
+          Reset Password
+        </a>
       </div>
-      
-      <div style="background-color: #f8fafc; padding: 30px; border-radius: 12px; border-left: 4px solid #F0812A; margin: 30px 0;">
-        <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
-          You requested to reset your password for your TradeTally account. Click the button below to create a new password:
-        </p>
-        
-        <div style="text-align: center; margin: 30px 0;">
-          <a href="${resetUrl}" style="${this.getButtonStyle()}">
-            Reset Password
-          </a>
-        </div>
-        
-        <p style="color: #64748b; font-size: 14px; margin: 20px 0 0 0;">
-          Or copy and paste this link into your browser:<br>
-          <span style="word-break: break-all; color: #F0812A;">${resetUrl}</span>
-        </p>
-      </div>
-      
-      <div style="background-color: #fee2e2; padding: 20px; border-radius: 8px; border-left: 4px solid #ef4444; margin: 25px 0;">
-        <p style="color: #dc2626; font-size: 14px; margin: 0; font-weight: 500;">
-          Security: This reset link will expire in 1 hour for security reasons.
-        </p>
-      </div>
-      
-      <p style="color: #64748b; font-size: 14px; line-height: 1.5; margin: 25px 0 0 0;">
-        If you didn't request a password reset, you can safely ignore this email. Your password will not be changed.
+
+      <p style="color: #a1a1aa; font-size: 13px; line-height: 1.5; margin: 0 0 4px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        This link expires in 1 hour. If you didn't request this, you can safely ignore this email.
+      </p>
+      <p style="color: #a1a1aa; font-size: 12px; margin: 16px 0 0 0; word-break: break-all; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        ${resetUrl}
       </p>
     `;
 
-    // Transactional email - no List-Unsubscribe headers (required for password reset)
     const mailOptions = {
       from: {
         name: 'TradeTally',
         address: process.env.EMAIL_FROM || 'noreply@tradetally.io'
       },
       to: email,
-      subject: 'Reset Your TradeTally Password',
+      subject: 'Reset your password - TradeTally',
       html: this.getBaseTemplate('Reset Your TradeTally Password', content),
       text: `Reset your TradeTally password by visiting: ${resetUrl}`,
       headers: {
@@ -299,53 +269,36 @@ class EmailService {
     }
 
     const verificationUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/verify-email/${token}`;
-    
+
     const content = `
-      <div style="text-align: center; margin-bottom: 30px;">
-        <h1 style="color: #1e293b; font-size: 28px; margin: 0 0 16px 0; font-weight: 700;">
-          Verify Email Change
-        </h1>
-        <p style="color: #64748b; font-size: 16px; line-height: 1.6; margin: 0;">
-          Confirm your new email address for TradeTally
-        </p>
+      <h1 style="color: #18181b; font-size: 22px; margin: 0 0 8px 0; font-weight: 700; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        Confirm your new email
+      </h1>
+      <p style="color: #71717a; font-size: 15px; line-height: 1.6; margin: 0 0 28px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        You requested to change the email address on your TradeTally account. Confirm this is your new address.
+      </p>
+
+      <div style="text-align: center; margin: 0 0 28px 0;">
+        <a href="${verificationUrl}" style="${this.getButtonStyle()}">
+          Verify New Email
+        </a>
       </div>
-      
-      <div style="background-color: #f8fafc; padding: 30px; border-radius: 12px; border-left: 4px solid #F0812A; margin: 30px 0;">
-        <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
-          You have requested to change your email address for your TradeTally account. Please verify your new email address:
-        </p>
-        
-        <div style="text-align: center; margin: 30px 0;">
-          <a href="${verificationUrl}" style="${this.getButtonStyle()}">
-            Verify New Email Address
-          </a>
-        </div>
-        
-        <p style="color: #64748b; font-size: 14px; margin: 20px 0 0 0;">
-          Or copy and paste this link into your browser:<br>
-          <span style="word-break: break-all; color: #F0812A;">${verificationUrl}</span>
-        </p>
-      </div>
-      
-      <div style="background-color: #fef3cd; padding: 20px; border-radius: 8px; border-left: 4px solid #f59e0b; margin: 25px 0;">
-        <p style="color: #92400e; font-size: 14px; margin: 0; font-weight: 500;">
-          Important: This verification link will expire in 24 hours for security reasons.
-        </p>
-      </div>
-      
-      <p style="color: #64748b; font-size: 14px; line-height: 1.5; margin: 25px 0 0 0;">
-        If you didn't request this email change, please contact support immediately.
+
+      <p style="color: #a1a1aa; font-size: 13px; line-height: 1.5; margin: 0 0 4px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        This link expires in 24 hours. If you didn't request this change, contact support immediately.
+      </p>
+      <p style="color: #a1a1aa; font-size: 12px; margin: 16px 0 0 0; word-break: break-all; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        ${verificationUrl}
       </p>
     `;
 
-    // Transactional email - no List-Unsubscribe headers (required for email change)
     const mailOptions = {
       from: {
         name: 'TradeTally',
         address: process.env.EMAIL_FROM || 'noreply@tradetally.io'
       },
       to: email,
-      subject: 'Verify Your New Email Address - TradeTally',
+      subject: 'Confirm your new email - TradeTally',
       html: this.getBaseTemplate('Verify Your New Email Address', content),
       text: `Verify your new TradeTally email address by visiting: ${verificationUrl}`,
       headers: {
@@ -372,74 +325,42 @@ class EmailService {
 
     const isExpired = daysRemaining <= 0;
     const pricingUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/pricing`;
-    
+
     const content = `
-      <div style="text-align: center; margin-bottom: 30px;">
-        <h1 style="color: #1e293b; font-size: 28px; margin: 0 0 16px 0; font-weight: 700;">
-          ${isExpired ? 'Your Free Trial Has Ended' : `${daysRemaining} Day${daysRemaining === 1 ? '' : 's'} Left in Your Trial`}
-        </h1>
-        <p style="color: #64748b; font-size: 16px; line-height: 1.6; margin: 0;">
-          ${isExpired ? 'Continue your trading analytics journey' : 'Don\'t miss out on Pro features'}
-        </p>
+      <h1 style="color: #18181b; font-size: 22px; margin: 0 0 8px 0; font-weight: 700; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        ${isExpired ? 'Your Pro trial has ended' : `${daysRemaining} day${daysRemaining === 1 ? '' : 's'} left on your trial`}
+      </h1>
+      <p style="color: #71717a; font-size: 15px; line-height: 1.6; margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        Hi ${username},
+      </p>
+      <p style="color: #52525b; font-size: 15px; line-height: 1.6; margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        ${isExpired
+          ? 'Your 14-day Pro trial has ended. You can continue using TradeTally on the free plan, or upgrade to keep Pro features like behavioral analytics, price alerts, and enhanced charts.'
+          : `Your Pro trial expires in ${daysRemaining} day${daysRemaining === 1 ? '' : 's'}. Upgrade to keep access to behavioral analytics, price alerts, and enhanced charts.`
+        }
+      </p>
+
+      <div style="text-align: center; margin: 0 0 28px 0;">
+        <a href="${pricingUrl}" style="${this.getButtonStyle()}">
+          ${isExpired ? 'View Plans' : 'Upgrade Now'}
+        </a>
       </div>
-      
-      <div style="background-color: #f8fafc; padding: 30px; border-radius: 12px; border-left: 4px solid #F0812A; margin: 30px 0;">
-        <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
-          Hi ${username},
-        </p>
-        
-        <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
-          ${isExpired 
-            ? 'Your 14-day Pro trial has ended. Thank you for exploring our advanced trading analytics features.'
-            : `Your Pro trial will expire in ${daysRemaining} day${daysRemaining === 1 ? '' : 's'}. To continue using Pro features, please consider upgrading your account.`
-          }
-        </p>
-        
-        <div style="background-color: #e0f2fe; padding: 20px; border-radius: 8px; margin: 20px 0;">
-          <h3 style="color: #0277bd; font-size: 18px; margin: 0 0 12px 0; font-weight: 600;">
-            Pro Features You've Been Using:
-          </h3>
-          <ul style="color: #01579b; font-size: 14px; line-height: 1.6; margin: 0; padding-left: 20px;">
-            <li>Advanced behavioral analytics (revenge trading, overconfidence detection)</li>
-            <li>Price alerts and watchlists</li>
-            <li>Real-time notifications</li>
-            <li>Enhanced charts and news enrichment</li>
-            <li>Unlimited data export</li>
-          </ul>
-        </div>
-        
-        <div style="text-align: center; margin: 30px 0;">
-          <a href="${pricingUrl}" style="${this.getButtonStyle()}">
-            ${isExpired ? 'View Pro Plans' : 'View Upgrade Options'}
-          </a>
-        </div>
-        
-        <p style="color: #64748b; font-size: 14px; margin: 20px 0 0 0; text-align: center;">
-          Questions? Reply to this email or contact our support team.
-        </p>
-      </div>
-      
-      ${!isExpired ? `
-      <div style="background-color: #f0f9ff; padding: 20px; border-radius: 8px; border-left: 4px solid #0ea5e9; margin: 25px 0;">
-        <p style="color: #0c4a6e; font-size: 14px; margin: 0; font-weight: 500;">
-          Your trial expires in ${daysRemaining} day${daysRemaining === 1 ? '' : 's'}. After that, you'll return to the free plan.
-        </p>
-      </div>
-      ` : ''}
-      
-      <p style="color: #64748b; font-size: 14px; line-height: 1.5; margin: 25px 0 0 0;">
-        Thank you for trying TradeTally Pro. We're here to help you make better trading decisions!
+
+      <p style="color: #a1a1aa; font-size: 13px; line-height: 1.5; margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        ${isExpired
+          ? 'Your free plan includes unlimited trade storage, CSV import, and basic analytics.'
+          : 'After your trial ends, you\'ll return to the free plan with unlimited trade storage.'
+        }
       </p>
     `;
 
-    // Transactional email about account status - no List-Unsubscribe headers
     const mailOptions = {
       from: {
         name: 'TradeTally',
         address: process.env.EMAIL_FROM || 'noreply@tradetally.io'
       },
       to: email,
-      subject: `${isExpired ? 'Your TradeTally Trial Ended' : `${daysRemaining} Day${daysRemaining === 1 ? '' : 's'} Left in Your Trial`} - TradeTally Pro`,
+      subject: `${isExpired ? 'Your Pro trial ended' : `${daysRemaining} day${daysRemaining === 1 ? '' : 's'} left on your trial`} - TradeTally`,
       html: this.getBaseTemplate(
         `${isExpired ? 'Trial Ended' : 'Trial Expiring'} - TradeTally`,
         content
@@ -475,35 +396,38 @@ class EmailService {
     }
     const url = dashboardUrl || `${process.env.FRONTEND_URL || 'http://localhost:5173'}/dashboard`;
     const pnlFormatted = totalPnL != null ? `$${Number(totalPnL).toFixed(2)}` : '$0.00';
+    const pnlColor = totalPnL >= 0 ? '#16a34a' : '#dc2626';
     const unsubscribeUrl = userId ? this.getUnsubscribeUrl(userId) : `${process.env.FRONTEND_URL || 'https://tradetally.io'}/settings`;
     const content = `
-      <div style="text-align: center; margin-bottom: 30px;">
-        <h1 style="color: #1e293b; font-size: 28px; margin: 0 0 16px 0; font-weight: 700;">Your Week in Trades</h1>
-        <p style="color: #64748b; font-size: 16px; line-height: 1.6; margin: 0;">A quick summary of your trading activity</p>
-      </div>
-      <div style="background-color: #f8fafc; padding: 30px; border-radius: 12px; border-left: 4px solid #F0812A; margin: 30px 0;">
-        <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">Hi ${username},</p>
-        <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
-          Here's your trading summary for the past 7 days:
-        </p>
-        <ul style="color: #374151; font-size: 16px; line-height: 1.8; margin: 0; padding-left: 20px;">
-          <li><strong>Trades closed:</strong> ${tradeCount}</li>
-          <li><strong>Total P&L:</strong> ${pnlFormatted}</li>
-        </ul>
-        <div style="text-align: center; margin: 30px 0;">
-          <a href="${url}" style="${this.getButtonStyle()}">View Dashboard</a>
-        </div>
-        <p style="color: #64748b; font-size: 14px; margin: 20px 0 0 0; text-align: center;">
-          Keep tracking to improve your edge.
-        </p>
+      <h1 style="color: #18181b; font-size: 22px; margin: 0 0 8px 0; font-weight: 700; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        Your week in trades
+      </h1>
+      <p style="color: #71717a; font-size: 15px; line-height: 1.6; margin: 0 0 28px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        Hi ${username}, here's your 7-day summary.
+      </p>
+
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin: 0 0 28px 0;">
+        <tr>
+          <td style="padding: 16px 20px; background-color: #fafafa; border-radius: 8px 0 0 8px; border-right: 1px solid #f4f4f5; width: 50%; text-align: center;">
+            <p style="color: #a1a1aa; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 6px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">Trades</p>
+            <p style="color: #18181b; font-size: 26px; font-weight: 700; margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">${tradeCount}</p>
+          </td>
+          <td style="padding: 16px 20px; background-color: #fafafa; border-radius: 0 8px 8px 0; width: 50%; text-align: center;">
+            <p style="color: #a1a1aa; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 6px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">P&L</p>
+            <p style="color: ${pnlColor}; font-size: 26px; font-weight: 700; margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">${pnlFormatted}</p>
+          </td>
+        </tr>
+      </table>
+
+      <div style="text-align: center; margin: 0 0 8px 0;">
+        <a href="${url}" style="${this.getButtonStyle()}">View Dashboard</a>
       </div>
       ${this.getMarketingFooter(unsubscribeUrl)}
     `;
-    // Marketing email - include personalized List-Unsubscribe headers
     const mailOptions = {
       from: { name: 'TradeTally', address: process.env.EMAIL_FROM || 'noreply@tradetally.io' },
       to: email,
-      subject: 'Your Week in Trades - TradeTally',
+      subject: `${tradeCount} trades this week - TradeTally`,
       html: this.getBaseTemplate('Your Week in Trades', content),
       text: `Your week: ${tradeCount} trades, P&L ${pnlFormatted}. View dashboard: ${url}. Unsubscribe: ${unsubscribeUrl}`,
       headers: {
@@ -538,27 +462,23 @@ class EmailService {
     const loginUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login`;
     const unsubscribeUrl = userId ? this.getUnsubscribeUrl(userId) : `${process.env.FRONTEND_URL || 'https://tradetally.io'}/settings`;
     const content = `
-      <div style="text-align: center; margin-bottom: 30px;">
-        <h1 style="color: #1e293b; font-size: 28px; margin: 0 0 16px 0; font-weight: 700;">We Miss You</h1>
-        <p style="color: #64748b; font-size: 16px; line-height: 1.6; margin: 0;">You haven't logged in for a while</p>
-      </div>
-      <div style="background-color: #f8fafc; padding: 30px; border-radius: 12px; border-left: 4px solid #F0812A; margin: 30px 0;">
-        <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">Hi ${username},</p>
-        <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
-          You haven't logged in to TradeTally for ${daysInactive} days. Your journal and analytics are waiting for you.
-        </p>
-        <div style="text-align: center; margin: 30px 0;">
-          <a href="${loginUrl}" style="${this.getButtonStyle()}">Log in to TradeTally</a>
-        </div>
+      <h1 style="color: #18181b; font-size: 22px; margin: 0 0 8px 0; font-weight: 700; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        Your journal is waiting
+      </h1>
+      <p style="color: #71717a; font-size: 15px; line-height: 1.6; margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        Hi ${username}, it's been ${daysInactive} days since your last visit. Your trades and analytics are right where you left them.
+      </p>
+
+      <div style="text-align: center; margin: 0 0 8px 0;">
+        <a href="${loginUrl}" style="${this.getButtonStyle()}">Log In</a>
       </div>
       ${this.getMarketingFooter(unsubscribeUrl)}
     `;
-    // Marketing email - include personalized List-Unsubscribe headers
     const mailOptions = {
       from: { name: 'TradeTally', address: process.env.EMAIL_FROM || 'noreply@tradetally.io' },
       to: email,
-      subject: `We miss you – log in to TradeTally`,
-      html: this.getBaseTemplate('We miss you', content),
+      subject: `Your journal is waiting - TradeTally`,
+      html: this.getBaseTemplate('Your journal is waiting', content),
       text: `You haven't logged in for ${daysInactive} days. Log in: ${loginUrl}. Unsubscribe: ${unsubscribeUrl}`,
       headers: {
         'List-Unsubscribe': `<${unsubscribeUrl}>`,
