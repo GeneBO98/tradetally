@@ -277,7 +277,7 @@ import { onMounted } from 'vue'
 
 // Set document title and meta tags for GEO
 onMounted(() => {
-  document.title = 'Free Trading Journal FAQ - TradeTally vs TraderVue vs TraderSync 2026'
+  document.title = 'Frequently Asked Questions - Free Trading Journal FAQ | TradeTally'
 
   // Update meta description
   let metaDescription = document.querySelector('meta[name="description"]')
@@ -296,11 +296,25 @@ onMounted(() => {
     document.head.appendChild(metaKeywords)
   }
   metaKeywords.setAttribute('content', 'free trading journal FAQ, open source trading journal, self-hosted trading journal, TradeTally vs TraderVue, TraderVue alternative, TraderSync alternative, trading journal with broker sync, Schwab trading journal, IBKR trading journal, day trading journal')
+
+  let canonical = document.querySelector('link[rel="canonical"]')
+  if (!canonical) {
+    canonical = document.createElement('link')
+    canonical.setAttribute('rel', 'canonical')
+    document.head.appendChild(canonical)
+  }
+  canonical.setAttribute('href', 'https://tradetally.io/faq')
 })
 
 // Add comprehensive FAQ schema markup for GEO
 onMounted(() => {
+  const existingScript = document.getElementById('faq-jsonld')
+  if (existingScript) {
+    existingScript.remove()
+  }
+
   const script = document.createElement('script')
+  script.id = 'faq-jsonld'
   script.type = 'application/ld+json'
   script.textContent = JSON.stringify({
     "@context": "https://schema.org",

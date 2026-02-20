@@ -194,6 +194,32 @@ async function fetchProfile() {
   try {
     const response = await api.get(`/users/${route.params.username}`)
     profile.value = response.data.user
+
+    document.title = `${profile.value.fullName || profile.value.username} - Public Trading Profile | TradeTally`
+
+    let metaDescription = document.querySelector('meta[name="description"]')
+    if (!metaDescription) {
+      metaDescription = document.createElement('meta')
+      metaDescription.setAttribute('name', 'description')
+      document.head.appendChild(metaDescription)
+    }
+    metaDescription.setAttribute('content', `View public trades and trading activity shared by @${profile.value.username} on TradeTally.`)
+
+    let metaKeywords = document.querySelector('meta[name="keywords"]')
+    if (!metaKeywords) {
+      metaKeywords = document.createElement('meta')
+      metaKeywords.setAttribute('name', 'keywords')
+      document.head.appendChild(metaKeywords)
+    }
+    metaKeywords.setAttribute('content', 'public trader profile, shared trades, trading journal profile, TradeTally user profile')
+
+    let canonical = document.querySelector('link[rel="canonical"]')
+    if (!canonical) {
+      canonical = document.createElement('link')
+      canonical.setAttribute('rel', 'canonical')
+      document.head.appendChild(canonical)
+    }
+    canonical.setAttribute('href', `https://tradetally.io/u/${encodeURIComponent(profile.value.username)}`)
   } catch (err) {
     if (err.response?.status === 404) {
       error.value = 'User not found'
@@ -231,6 +257,7 @@ async function loadData() {
 }
 
 onMounted(() => {
+  document.title = 'Public Trading Profile | TradeTally'
   loadData()
 })
 </script>
