@@ -1545,10 +1545,8 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       };
       console.log('Using special parsing options for thinkorswim CSV');
 
-      // Log first few lines for debugging
-      const debugLines = csvString.split('\n').slice(0, 5);
-      console.log('First few lines after cleanup:');
-      debugLines.forEach((line, i) => console.log(`Line ${i}: ${line}`));
+      const previewLineCount = Math.min(csvString.split('\n').length, 5);
+      console.log(`Prepared thinkorswim CSV for parsing (preview lines redacted, count=${previewLineCount})`);
     }
     
     // Special handling for IBKR CSV formats
@@ -1568,10 +1566,8 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       };
       console.log('Using special parsing options for IBKR CSV');
       
-      // Log first few lines for debugging
-      const debugLines = csvString.split('\n').slice(0, 5);
-      console.log('First few lines of IBKR CSV:');
-      debugLines.forEach((line, i) => console.log(`Line ${i}: ${line.substring(0, 200)}`));
+      const previewLineCount = Math.min(csvString.split('\n').length, 5);
+      console.log(`Prepared IBKR CSV for parsing (preview lines redacted, count=${previewLineCount})`);
     }
     
     let records;
@@ -1628,7 +1624,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
           const hasTypeWord = /type|transaction|description/i.test(line);
 
           if (commaCount >= 3 && hasDateWord && hasTypeWord) {
-            console.log(`Found potential header at line ${i}: ${line.substring(0, 100)}`);
+            console.log(`Found potential header at line ${i}`);
             csvString = lines.slice(i).join('\n');
             headerFound = true;
             break;
