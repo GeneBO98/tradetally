@@ -4658,40 +4658,51 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
   // Get diagnostics from context if available
   const diagnostics = context.diagnostics;
 
+  // Helper for case-insensitive field access
+  const getField = (record, fieldName) => {
+    if (record[fieldName] !== undefined) return record[fieldName];
+    const lower = fieldName.toLowerCase();
+    for (const key of Object.keys(record)) {
+      if (key.toLowerCase() === lower) return record[key];
+    }
+    return undefined;
+  };
+
   // First, parse all filled orders
   let rowIndex = 0;
   for (const record of records) {
     rowIndex++;
     try {
-      const symbol = cleanString(record.Symbol);
-      const side = record.Side ? record.Side.toLowerCase() : '';
-      const status = record.Status || '';
-      const quantity = Math.abs(parseInteger(record.Qty));
-      const fillPrice = parseNumeric(record['Fill Price']);
-      const commission = parseNumeric(record.Commission);
-      const placingTime = record['Placing Time'] || '';
-      const closingTime = record['Closing Time'] || '';
-      const orderId = record['Order ID'] || '';
-      const orderType = record.Type || '';
-      const leverage = record.Leverage || '';
+      const symbol = cleanString(getField(record, 'Symbol'));
+      const side = getField(record, 'Side') ? getField(record, 'Side').toLowerCase() : '';
+      const statusRaw = getField(record, 'Status') || '';
+      const status = statusRaw.toLowerCase();
+      const quantity = Math.abs(parseInteger(getField(record, 'Qty')));
+      const fillPrice = parseNumeric(getField(record, 'Fill Price'));
+      const commission = parseNumeric(getField(record, 'Commission'));
+      const placingTime = getField(record, 'Placing Time') || '';
+      const closingTime = getField(record, 'Closing Time') || placingTime;
+      const orderId = getField(record, 'Order ID') || '';
+      const orderType = getField(record, 'Type') || '';
+      const leverage = getField(record, 'Leverage') || '';
 
       // Only process filled orders
-      if (status !== 'Filled') {
-        console.log(`Skipping non-filled order: ${status}`);
+      if (status !== 'filled') {
+        console.log(`Skipping non-filled order: ${statusRaw}`);
         if (diagnostics) {
           diagnostics.skippedRows++;
           // Provide clear, user-friendly skip reasons
           let reason;
           if (!status) {
             reason = 'Missing Status column - file may not be in TradingView format';
-          } else if (status === 'Cancelled' || status === 'Canceled') {
+          } else if (status === 'cancelled' || status === 'canceled') {
             reason = 'Cancelled order (not executed)';
-          } else if (status === 'Pending') {
+          } else if (status === 'pending') {
             reason = 'Pending order (not yet filled)';
-          } else if (status === 'Rejected') {
+          } else if (status === 'rejected') {
             reason = 'Rejected order';
           } else {
-            reason = `Order not filled (status: ${status})`;
+            reason = `Order not filled (status: ${statusRaw})`;
           }
           diagnostics.skippedReasons.push({ row: rowIndex, reason });
         }
