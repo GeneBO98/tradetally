@@ -33,17 +33,29 @@
         
         <!-- Filters and Customization Controls -->
         <div class="mt-4 sm:mt-0 flex flex-wrap gap-3 items-center justify-end">
-          <select v-model="filters.timeRange" @change="applyFilters" class="input text-sm">
-            <option value="all">All Time</option>
-            <option value="custom">Custom Range</option>
-            <option value="feb2025">February 2025</option>
-            <option value="march2025">March 2025</option>
-            <option value="7d">Last 7 Days</option>
-            <option value="30d">Last 30 Days</option>
-            <option value="90d">Last 90 Days</option>
-            <option value="1y">Last Year</option>
-            <option value="ytd">Year to Date</option>
-          </select>
+          <div class="relative" data-dropdown="timeRange">
+            <button
+              @click.stop="showTimeRangeDropdown = !showTimeRangeDropdown"
+              class="input text-sm text-left flex items-center justify-between min-w-[160px]"
+              type="button"
+            >
+              <span class="truncate">{{ getSelectedTimeRangeText() }}</span>
+              <svg class="h-4 w-4 text-gray-400 ml-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+              </svg>
+            </button>
+            <div v-if="showTimeRangeDropdown" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
+              <div
+                v-for="option in timeRangeOptions"
+                :key="option.value"
+                @click="selectTimeRange(option.value)"
+                class="px-3 py-2 cursor-pointer text-sm"
+                :class="filters.timeRange === option.value ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300' : 'text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700'"
+              >
+                {{ option.label }}
+              </div>
+            </div>
+          </div>
 
           <!-- Custom Date Range Inputs -->
           <div v-if="filters.timeRange === 'custom'" class="flex gap-2">
@@ -1187,6 +1199,31 @@ const filters = ref({
   endDate: ''
 })
 
+const showTimeRangeDropdown = ref(false)
+
+const timeRangeOptions = [
+  { value: 'all', label: 'All Time' },
+  { value: 'custom', label: 'Custom Range' },
+  { value: 'feb2025', label: 'February 2025' },
+  { value: 'march2025', label: 'March 2025' },
+  { value: '7d', label: 'Last 7 Days' },
+  { value: '30d', label: 'Last 30 Days' },
+  { value: '90d', label: 'Last 90 Days' },
+  { value: '1y', label: 'Last Year' },
+  { value: 'ytd', label: 'Year to Date' }
+]
+
+function getSelectedTimeRangeText() {
+  const option = timeRangeOptions.find(o => o.value === filters.value.timeRange)
+  return option ? option.label : 'All Time'
+}
+
+function selectTimeRange(value) {
+  filters.value.timeRange = value
+  showTimeRangeDropdown.value = false
+  applyFilters()
+}
+
 const pnlChart = ref(null)
 const distributionChart = ref(null)
 const winRateChart = ref(null)
@@ -2191,8 +2228,19 @@ async function fetchExpiredOptionsCount() {
 
 let marketStatusChecker = null
 
+function handleClickOutside(event) {
+  if (showTimeRangeDropdown.value) {
+    const target = event.target
+    if (!target.closest('[data-dropdown="timeRange"]')) {
+      showTimeRangeDropdown.value = false
+    }
+  }
+}
+
 onMounted(async () => {
   console.log('Dashboard: Component mounted')
+
+  document.addEventListener('click', handleClickOutside)
 
   // Load manual option prices from localStorage
   loadManualOptionPrices()
@@ -2242,6 +2290,8 @@ onMounted(async () => {
 
 onUnmounted(() => {
   console.log('Dashboard: Component unmounting - cleaning up all intervals...')
+
+  document.removeEventListener('click', handleClickOutside)
 
   // Stop auto-update (clears updateInterval and countdownInterval)
   stopAutoUpdate()
