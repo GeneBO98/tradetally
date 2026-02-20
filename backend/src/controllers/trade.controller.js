@@ -2424,7 +2424,8 @@ const tradeController = {
                                         execution.exitPrice !== undefined ||
                                         execution.entryTime !== undefined;
 
-            if (isGroupedExecution) {
+            const isMixedFormat = isGroupedExecution && execution.action && execution.price !== undefined && execution.datetime;
+            if (isGroupedExecution && !isMixedFormat) {
               // Grouped execution: represents a round-trip trade or open position
               // If no exitPrice, it's an open position - add/subtract based on trade side
               // If has exitPrice, it's a closed round-trip - net 0 (but shouldn't be in open trades)
@@ -2551,8 +2552,8 @@ const tradeController = {
       // Remove symbols with zero net position
       symbolsToDelete.forEach(symbol => delete positionMap[symbol]);
 
-      // Get unique symbols for quotes
-      const symbols = Object.keys(positionMap);
+      // Get unique symbols for quotes (exclude options - Finnhub returns underlying price, not contract premium)
+      const symbols = Object.keys(positionMap).filter(sym => positionMap[sym].instrumentType !== 'option');
       console.log('Symbols to get quotes for:', symbols);
       
       // If Finnhub is not configured, return positions without quotes
@@ -2573,6 +2574,18 @@ const tradeController = {
         
         // Enhance positions with real-time data
         const enhancedPositions = Object.values(positionMap).map(position => {
+          // Skip Finnhub quotes for options - free tier returns underlying stock price, not contract premium
+          if (position.instrumentType === 'option') {
+            return {
+              ...position,
+              currentPrice: null,
+              currentValue: null,
+              unrealizedPnL: null,
+              unrealizedPnLPercent: null,
+              requires_manual_price: true
+            };
+          }
+
           const quote = quotes[position.symbol];
 
           if (quote) {
