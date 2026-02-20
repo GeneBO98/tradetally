@@ -868,8 +868,43 @@
                     <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
                       Win/Loss Distribution
                     </h3>
-                    <div class="h-80">
+                    <div class="h-64 relative">
                       <canvas ref="distributionChart"></canvas>
+                      <!-- Center label below the arc -->
+                      <div class="absolute bottom-0 left-0 right-0 flex justify-center pointer-events-none" style="margin-bottom: 0.25rem;">
+                        <div class="text-center">
+                          <div class="text-3xl font-bold text-gray-900 dark:text-white">
+                            {{ computedWinRate }}%
+                          </div>
+                          <div class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                            Win Rate
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <!-- Custom legend -->
+                    <div class="flex justify-center gap-5 mt-2">
+                      <button
+                        class="flex items-center gap-1.5 text-sm cursor-pointer hover:opacity-80 transition-opacity"
+                        @click="navigateToTradesByPnLType('profit')"
+                      >
+                        <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                        <span class="text-gray-600 dark:text-gray-400">{{ parseInt(analytics?.summary?.winningTrades) || 0 }} Wins</span>
+                      </button>
+                      <button
+                        class="flex items-center gap-1.5 text-sm cursor-pointer hover:opacity-80 transition-opacity"
+                        @click="navigateToTradesByPnLType('loss')"
+                      >
+                        <span class="w-2.5 h-2.5 rounded-full bg-red-500"></span>
+                        <span class="text-gray-600 dark:text-gray-400">{{ parseInt(analytics?.summary?.losingTrades) || 0 }} Losses</span>
+                      </button>
+                      <button
+                        class="flex items-center gap-1.5 text-sm cursor-pointer hover:opacity-80 transition-opacity"
+                        @click="navigateToTradesByPnLType('breakeven')"
+                      >
+                        <span class="w-2.5 h-2.5 rounded-full bg-gray-400"></span>
+                        <span class="text-gray-600 dark:text-gray-400">{{ parseInt(analytics?.summary?.breakevenTrades) || 0 }} BE</span>
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -1395,6 +1430,17 @@ const totalUnrealizedPnLPercent = computed(() => {
   return (totalUnrealizedPnL.value / totalOpenCost.value) * 100
 })
 
+const computedWinRate = computed(() => {
+  const summary = analytics.value?.summary
+  if (!summary) return '0'
+  const wins = parseInt(summary.winningTrades) || 0
+  const losses = parseInt(summary.losingTrades) || 0
+  const be = parseInt(summary.breakevenTrades) || 0
+  const total = wins + losses + be
+  if (total === 0) return '0'
+  return ((wins / total) * 100).toFixed(1)
+})
+
 function formatCurrency(amount) {
   if (!amount && amount !== 0) return '0.00'
   return Math.abs(amount).toLocaleString('en-US', { 
@@ -1706,45 +1752,38 @@ function createPnLChart() {
 }
 
 function createDistributionChart() {
-  console.log('Dashboard: Creating distribution chart...')
-  console.log('Dashboard: distributionChart.value exists:', !!distributionChart.value)
-  console.log('Dashboard: summary data:', analytics.value.summary)
-  
   if (distributionChartInstance) {
     distributionChartInstance.destroy()
   }
-  
+
   const ctx = distributionChart.value.getContext('2d')
   const summary = analytics.value.summary
-  
-  console.log('Dashboard: Distribution data:', [
-    summary.winningTrades || 0,
-    summary.losingTrades || 0,
-    summary.breakevenTrades || 0
-  ])
-  
+  const isDark = document.documentElement.classList.contains('dark')
+
+  const wins = parseInt(summary.winningTrades) || 0
+  const losses = parseInt(summary.losingTrades) || 0
+  const breakeven = parseInt(summary.breakevenTrades) || 0
+
   distributionChartInstance = new Chart(ctx, {
     type: 'doughnut',
     data: {
       labels: ['Wins', 'Losses', 'Breakeven'],
       datasets: [{
-        data: [
-          parseInt(summary.winningTrades) || 0,
-          parseInt(summary.losingTrades) || 0,
-          parseInt(summary.breakevenTrades) || 0
-        ],
-        backgroundColor: [
-          '#10b981',
-          '#ef4444',
-          '#6b7280'
-        ],
-        borderWidth: 2,
-        borderColor: '#ffffff'
+        data: [wins, losses, breakeven],
+        backgroundColor: ['#10b981', '#ef4444', '#9ca3af'],
+        hoverBackgroundColor: ['#34d399', '#f87171', '#b0b5bf'],
+        borderWidth: 0,
+        hoverOffset: 6,
+        spacing: 4,
+        borderRadius: 20
       }]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      rotation: -90,
+      circumference: 180,
+      cutout: '72%',
       onClick: (event, elements) => {
         if (elements.length > 0) {
           const index = elements[0].index
@@ -1752,10 +1791,31 @@ function createDistributionChart() {
           navigateToTradesByPnLType(clickedSegment)
         }
       },
+      animation: {
+        animateRotate: true,
+        duration: 800
+      },
       plugins: {
         legend: {
-          position: 'bottom',
-          onClick: null // Disable legend clicking
+          display: false
+        },
+        tooltip: {
+          backgroundColor: isDark ? '#374151' : '#1f2937',
+          titleColor: '#f9fafb',
+          bodyColor: '#d1d5db',
+          borderColor: isDark ? '#4b5563' : '#374151',
+          borderWidth: 1,
+          cornerRadius: 8,
+          padding: 10,
+          displayColors: true,
+          boxPadding: 4,
+          callbacks: {
+            label: function(context) {
+              const total = wins + losses + breakeven
+              const pct = total > 0 ? ((context.raw / total) * 100).toFixed(1) : 0
+              return ` ${context.raw} trades (${pct}%)`
+            }
+          }
         }
       }
     }

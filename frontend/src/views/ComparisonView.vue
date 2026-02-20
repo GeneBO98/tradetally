@@ -622,7 +622,13 @@ onMounted(() => {
   canonical.setAttribute('href', 'https://tradetally.io/compare')
 
   // Add ItemList structured data for comparison (GEO optimization)
+  const existingComparisonScript = document.getElementById('comparison-itemlist-jsonld')
+  if (existingComparisonScript) {
+    existingComparisonScript.remove()
+  }
+
   const comparisonScript = document.createElement('script')
+  comparisonScript.id = 'comparison-itemlist-jsonld'
   comparisonScript.type = 'application/ld+json'
   comparisonScript.textContent = JSON.stringify({
     "@context": "https://schema.org",
@@ -693,7 +699,13 @@ onMounted(() => {
   document.head.appendChild(comparisonScript)
 
   // Add FAQ structured data for comparison questions
+  const existingFaqScript = document.getElementById('comparison-faq-jsonld')
+  if (existingFaqScript) {
+    existingFaqScript.remove()
+  }
+
   const faqScript = document.createElement('script')
+  faqScript.id = 'comparison-faq-jsonld'
   faqScript.type = 'application/ld+json'
   faqScript.textContent = JSON.stringify({
     "@context": "https://schema.org",

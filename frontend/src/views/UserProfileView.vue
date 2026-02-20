@@ -203,7 +203,7 @@ async function fetchProfile() {
       metaDescription.setAttribute('name', 'description')
       document.head.appendChild(metaDescription)
     }
-    metaDescription.setAttribute('content', `View public trades and performance history shared by @${profile.value.username} on TradeTally, a free trading journal and investment tracker.`)
+    metaDescription.setAttribute('content', `View public trades and trading activity shared by @${profile.value.username} on TradeTally.`)
 
     let metaKeywords = document.querySelector('meta[name="keywords"]')
     if (!metaKeywords) {
@@ -257,7 +257,7 @@ async function loadData() {
 }
 
 onMounted(() => {
-  document.title = 'Public Trader Profile - TradeTally'
+  document.title = 'Public Trading Profile | TradeTally'
   loadData()
 })
 </script>

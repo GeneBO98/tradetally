@@ -348,7 +348,7 @@ async function deleteTrade(trade) {
 }
 
 onMounted(() => {
-  document.title = 'Public Trades - TradeTally Free Trading Journal Community'
+  document.title = 'Public Trades - TradeTally Trading Journal Community'
 
   let metaDescription = document.querySelector('meta[name="description"]')
   if (!metaDescription) {
@@ -356,7 +356,7 @@ onMounted(() => {
     metaDescription.setAttribute('name', 'description')
     document.head.appendChild(metaDescription)
   }
-  metaDescription.setAttribute('content', 'Browse public trades shared by the TradeTally community. Review entries, exits, P&L, notes, and trade tags from a free trading journal and investment tracker platform.')
+  metaDescription.setAttribute('content', 'Explore public trades shared by the TradeTally community. Review entries, exits, notes, tags, and performance from a free trading journal platform.')
 
   let metaKeywords = document.querySelector('meta[name="keywords"]')
   if (!metaKeywords) {
@@ -364,7 +364,7 @@ onMounted(() => {
     metaKeywords.setAttribute('name', 'keywords')
     document.head.appendChild(metaKeywords)
   }
-  metaKeywords.setAttribute('content', 'public trades, trading journal community, shared trade ideas, free trading journal, TradeTally public feed')
+  metaKeywords.setAttribute('content', 'public trades, shared trading journal, TradeTally community trades, free trading journal examples')
 
   let canonical = document.querySelector('link[rel="canonical"]')
   if (!canonical) {

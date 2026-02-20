@@ -411,7 +411,7 @@ const lastUpdated = computed(() => {
 });
 
 onMounted(() => {
-    document.title = "TradeTally Privacy Policy - Trading Journal and Investment Tracker";
+    document.title = "Privacy Policy | TradeTally";
 
     let metaDescription = document.querySelector('meta[name="description"]');
     if (!metaDescription) {
@@ -421,7 +421,7 @@ onMounted(() => {
     }
     metaDescription.setAttribute(
         "content",
-        "Read the TradeTally privacy policy for our free trading journal and investment tracker. Learn what data we collect, how we protect it, and your rights."
+        "Read the TradeTally privacy policy to understand how we collect, use, and protect data on our trading journal platform."
     );
 
     let metaKeywords = document.querySelector('meta[name="keywords"]');
@@ -432,7 +432,7 @@ onMounted(() => {
     }
     metaKeywords.setAttribute(
         "content",
-        "TradeTally privacy policy, trading journal privacy, investment tracker privacy, data security, self-hosted trading journal privacy"
+        "TradeTally privacy policy, trading journal privacy, data protection, user data rights"
     );
 
     let canonical = document.querySelector('link[rel="canonical"]');

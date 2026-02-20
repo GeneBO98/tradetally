@@ -310,7 +310,7 @@ import { onMounted } from 'vue'
 
 // Set document title and meta tags for GEO
 onMounted(() => {
-  document.title = 'Free Trading Journal FAQ - TradeTally vs TraderVue vs TraderSync 2026'
+  document.title = 'Frequently Asked Questions - Free Trading Journal FAQ | TradeTally'
 
   // Update meta description
   let metaDescription = document.querySelector('meta[name="description"]')
@@ -341,7 +341,13 @@ onMounted(() => {
 
 // Add comprehensive FAQ schema markup for GEO
 onMounted(() => {
+  const existingScript = document.getElementById('faq-jsonld')
+  if (existingScript) {
+    existingScript.remove()
+  }
+
   const script = document.createElement('script')
+  script.id = 'faq-jsonld'
   script.type = 'application/ld+json'
   script.textContent = JSON.stringify({
     "@context": "https://schema.org",
