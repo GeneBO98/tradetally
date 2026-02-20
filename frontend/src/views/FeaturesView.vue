@@ -337,6 +337,41 @@
     </div>
 
     <!-- CTA Section -->
+    <div class="mb-16">
+      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-8">
+        <h2 class="text-2xl font-bold text-gray-900 dark:text-white text-center mb-4">
+          Related Pages and Resources
+        </h2>
+        <p class="text-gray-600 dark:text-gray-400 text-center max-w-3xl mx-auto mb-6">
+          Compare plans, read FAQs, review platform comparisons, and access deployment docs if you want to self-host TradeTally.
+        </p>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+          <router-link to="/pricing" class="btn-secondary text-center">Pricing</router-link>
+          <router-link to="/compare" class="btn-secondary text-center">Compare</router-link>
+          <router-link to="/faq" class="btn-secondary text-center">FAQ</router-link>
+          <router-link to="/public" class="btn-secondary text-center">Public Trades</router-link>
+        </div>
+        <div class="flex flex-wrap justify-center gap-6 text-sm">
+          <a
+            href="https://docs.tradetally.io"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="text-primary-600 hover:text-primary-500"
+          >
+            Documentation
+          </a>
+          <a
+            href="https://github.com/GeneBO98/tradetally"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="text-primary-600 hover:text-primary-500"
+          >
+            GitHub Repository
+          </a>
+        </div>
+      </div>
+    </div>
+
     <div class="bg-primary-600 rounded-2xl p-8 text-center text-white">
       <h2 class="text-3xl font-bold mb-4">
         Ready to Elevate Your Trading?
@@ -397,6 +432,14 @@ onMounted(() => {
     document.head.appendChild(metaKeywords)
   }
   metaKeywords.setAttribute('content', 'free trading journal, open source trading journal, self-hosted trading journal, stock analyzer, investment tracker, portfolio tracker, 8 pillars stock analysis, holdings tracker real-time P&L, Schwab trading journal, IBKR trading journal, free TraderVue alternative, DCF valuation calculator')
+
+  let canonical = document.querySelector('link[rel="canonical"]')
+  if (!canonical) {
+    canonical = document.createElement('link')
+    canonical.setAttribute('rel', 'canonical')
+    document.head.appendChild(canonical)
+  }
+  canonical.setAttribute('href', 'https://tradetally.io/features')
 
   // Add SoftwareApplication structured data for GEO
   const script = document.createElement('script')

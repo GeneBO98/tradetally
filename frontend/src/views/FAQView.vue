@@ -1,6 +1,6 @@
 <template>
   <div class="max-w-4xl mx-auto py-8 px-4">
-    <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-8">Frequently Asked Questions</h1>
+    <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-8">Free Trading Journal FAQ: TradeTally vs TraderVue vs TraderSync</h1>
     
     <div class="space-y-8">
       <!-- Getting Started -->
@@ -268,6 +268,39 @@
           </div>
         </div>
       </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold text-gray-800 dark:text-gray-200 mb-4">More Resources</h2>
+        <div class="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm">
+          <p class="text-gray-600 dark:text-gray-400 mb-4">
+            Compare features, review pricing, and browse public examples to decide whether TradeTally is the right trading journal and investment tracker for your workflow.
+          </p>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+            <router-link to="/features" class="btn-secondary text-center">Features</router-link>
+            <router-link to="/compare" class="btn-secondary text-center">Compare</router-link>
+            <router-link to="/pricing" class="btn-secondary text-center">Pricing</router-link>
+            <router-link to="/public" class="btn-secondary text-center">Public Trades</router-link>
+          </div>
+          <div class="flex flex-wrap gap-6 text-sm">
+            <a
+              href="https://docs.tradetally.io"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="text-primary-600 hover:text-primary-500"
+            >
+              Documentation
+            </a>
+            <a
+              href="https://github.com/GeneBO98/tradetally"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="text-primary-600 hover:text-primary-500"
+            >
+              GitHub Repository
+            </a>
+          </div>
+        </div>
+      </section>
     </div>
   </div>
 </template>
@@ -296,6 +329,14 @@ onMounted(() => {
     document.head.appendChild(metaKeywords)
   }
   metaKeywords.setAttribute('content', 'free trading journal FAQ, open source trading journal, self-hosted trading journal, TradeTally vs TraderVue, TraderVue alternative, TraderSync alternative, trading journal with broker sync, Schwab trading journal, IBKR trading journal, day trading journal')
+
+  let canonical = document.querySelector('link[rel="canonical"]')
+  if (!canonical) {
+    canonical = document.createElement('link')
+    canonical.setAttribute('rel', 'canonical')
+    document.head.appendChild(canonical)
+  }
+  canonical.setAttribute('href', 'https://tradetally.io/faq')
 })
 
 // Add comprehensive FAQ schema markup for GEO

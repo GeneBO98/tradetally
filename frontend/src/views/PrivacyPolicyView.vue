@@ -3,6 +3,15 @@
         <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
             <div class="bg-white dark:bg-gray-800 rounded-lg shadow px-8 py-10">
                 <h1 class="heading-page mb-8">Privacy Policy</h1>
+                <p class="text-gray-700 dark:text-gray-300 mb-6">
+                    This policy explains how TradeTally handles data for our free trading journal and investment tracker, including cloud-hosted and self-hosted usage.
+                    You can also review our
+                    <router-link to="/features" class="text-primary-600 dark:text-primary-400 hover:underline">features</router-link>,
+                    <router-link to="/pricing" class="text-primary-600 dark:text-primary-400 hover:underline">pricing</router-link>,
+                    and
+                    <router-link to="/faq" class="text-primary-600 dark:text-primary-400 hover:underline">FAQ</router-link>
+                    pages.
+                </p>
 
                 <div class="prose prose-gray dark:prose-invert max-w-none">
                     <p class="text-gray-600 dark:text-gray-400 mb-6">
@@ -390,7 +399,7 @@
 </template>
 
 <script setup>
-import { computed } from "vue";
+import { computed, onMounted } from "vue";
 
 const lastUpdated = computed(() => {
     const date = new Date("2025-01-07");
@@ -399,5 +408,39 @@ const lastUpdated = computed(() => {
         month: "long",
         day: "numeric",
     });
+});
+
+onMounted(() => {
+    document.title = "TradeTally Privacy Policy - Trading Journal and Investment Tracker";
+
+    let metaDescription = document.querySelector('meta[name="description"]');
+    if (!metaDescription) {
+        metaDescription = document.createElement("meta");
+        metaDescription.setAttribute("name", "description");
+        document.head.appendChild(metaDescription);
+    }
+    metaDescription.setAttribute(
+        "content",
+        "Read the TradeTally privacy policy for our free trading journal and investment tracker. Learn what data we collect, how we protect it, and your rights."
+    );
+
+    let metaKeywords = document.querySelector('meta[name="keywords"]');
+    if (!metaKeywords) {
+        metaKeywords = document.createElement("meta");
+        metaKeywords.setAttribute("name", "keywords");
+        document.head.appendChild(metaKeywords);
+    }
+    metaKeywords.setAttribute(
+        "content",
+        "TradeTally privacy policy, trading journal privacy, investment tracker privacy, data security, self-hosted trading journal privacy"
+    );
+
+    let canonical = document.querySelector('link[rel="canonical"]');
+    if (!canonical) {
+        canonical = document.createElement("link");
+        canonical.setAttribute("rel", "canonical");
+        document.head.appendChild(canonical);
+    }
+    canonical.setAttribute("href", "https://tradetally.io/privacy");
 });
 </script>
