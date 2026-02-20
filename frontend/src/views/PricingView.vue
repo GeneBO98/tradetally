@@ -489,7 +489,7 @@ export default {
 
     onMounted(async () => {
       // Set document title and meta tags for SEO
-      document.title = 'Trading Journal Pricing - Free Plan + $8/mo Pro | TradeTally'
+      document.title = 'Choose Your Plan - Trading Journal Pricing | TradeTally'
 
       let metaDescription = document.querySelector('meta[name="description"]')
       if (!metaDescription) {
@@ -506,6 +506,14 @@ export default {
         document.head.appendChild(metaKeywords)
       }
       metaKeywords.setAttribute('content', 'free trading journal, trading journal pricing, TradeTally pricing, TraderVue alternative, TraderSync alternative, open source trading journal, self-hosted trading journal, day trading journal cost')
+
+      let canonical = document.querySelector('link[rel="canonical"]')
+      if (!canonical) {
+        canonical = document.createElement('link')
+        canonical.setAttribute('rel', 'canonical')
+        document.head.appendChild(canonical)
+      }
+      canonical.setAttribute('href', 'https://tradetally.io/pricing')
 
       await loadBillingStatus()
       await loadPricingPlans()

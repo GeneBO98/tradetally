@@ -390,7 +390,7 @@
 </template>
 
 <script setup>
-import { computed } from "vue";
+import { computed, onMounted } from "vue";
 
 const lastUpdated = computed(() => {
     const date = new Date("2025-01-07");
@@ -399,5 +399,39 @@ const lastUpdated = computed(() => {
         month: "long",
         day: "numeric",
     });
+});
+
+onMounted(() => {
+    document.title = "Privacy Policy | TradeTally";
+
+    let metaDescription = document.querySelector('meta[name="description"]');
+    if (!metaDescription) {
+        metaDescription = document.createElement("meta");
+        metaDescription.setAttribute("name", "description");
+        document.head.appendChild(metaDescription);
+    }
+    metaDescription.setAttribute(
+        "content",
+        "Read the TradeTally privacy policy to understand how we collect, use, and protect data on our trading journal platform."
+    );
+
+    let metaKeywords = document.querySelector('meta[name="keywords"]');
+    if (!metaKeywords) {
+        metaKeywords = document.createElement("meta");
+        metaKeywords.setAttribute("name", "keywords");
+        document.head.appendChild(metaKeywords);
+    }
+    metaKeywords.setAttribute(
+        "content",
+        "TradeTally privacy policy, trading journal privacy, data protection, user data rights"
+    );
+
+    let canonical = document.querySelector('link[rel="canonical"]');
+    if (!canonical) {
+        canonical = document.createElement("link");
+        canonical.setAttribute("rel", "canonical");
+        document.head.appendChild(canonical);
+    }
+    canonical.setAttribute("href", "https://tradetally.io/privacy");
 });
 </script>
