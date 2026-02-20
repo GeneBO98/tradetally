@@ -2472,8 +2472,15 @@ async function handleSubmit() {
         strategy: tradeData.strategy,
         notes: !!tradeData.notes
       })
-      // For edits, go back to the trade detail page (replace history so back button works logically)
-      router.replace(`/trades/${route.params.id}`)
+      // If edit was opened from trade detail, use real history back to avoid duplicate detail entries.
+      const fromQuery = route.query.from
+      const cameFromTradeDetail = fromQuery === 'trade-detail' || (Array.isArray(fromQuery) && fromQuery.includes('trade-detail'))
+
+      if (cameFromTradeDetail && window.history.length > 1) {
+        router.back()
+      } else {
+        router.replace(`/trades/${route.params.id}`)
+      }
     } else {
       // Analyze for revenge trading before creating (non-blocking)
       if (hasProAccess.value) {
@@ -2531,7 +2538,8 @@ async function handleSubmit() {
         strategy: tradeData.strategy,
         notes: !!tradeData.notes
       })
-      router.push(`/trades/${newTrade.id}`)
+      // Replace the form entry in history so "Back" from detail returns to the prior page.
+      router.replace(`/trades/${newTrade.id}`)
     }
   } catch (err) {
     const serverError = err.response?.data?.error || err.message || 'An unexpected error occurred. Please try again.'
