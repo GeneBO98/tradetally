@@ -2,8 +2,22 @@
   <div class="content-wrapper py-8">
     <div class="mb-8">
       <h1 class="heading-page">Public Trades</h1>
-      <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
-        Explore trades shared by the community.
+      <p class="mt-2 text-gray-600 dark:text-gray-400 max-w-3xl">
+        Explore real trades shared by the TradeTally community to study entries, exits, risk sizing, and execution outcomes across different symbols and setups.
+        Public trades are useful for benchmarking ideas, reviewing strategy tags, and learning how other traders document decisions.
+      </p>
+      <p class="mt-3 text-sm text-gray-500 dark:text-gray-400 max-w-3xl">
+        Looking for platform details? Visit our
+        <router-link to="/features" class="text-primary-600 hover:text-primary-500">Features</router-link>,
+        <router-link to="/compare" class="text-primary-600 hover:text-primary-500">Compare</router-link>,
+        <router-link to="/pricing" class="text-primary-600 hover:text-primary-500">Pricing</router-link>,
+        and
+        <router-link to="/faq" class="text-primary-600 hover:text-primary-500">FAQ</router-link>
+        pages.
+        You can also read
+        <a href="https://docs.tradetally.io" target="_blank" rel="noopener noreferrer" class="text-primary-600 hover:text-primary-500">Documentation</a>
+        and view the
+        <a href="https://github.com/GeneBO98/tradetally" target="_blank" rel="noopener noreferrer" class="text-primary-600 hover:text-primary-500">open-source repository</a>.
       </p>
     </div>
 
@@ -334,6 +348,32 @@ async function deleteTrade(trade) {
 }
 
 onMounted(() => {
+  document.title = 'Public Trades - TradeTally Free Trading Journal Community'
+
+  let metaDescription = document.querySelector('meta[name="description"]')
+  if (!metaDescription) {
+    metaDescription = document.createElement('meta')
+    metaDescription.setAttribute('name', 'description')
+    document.head.appendChild(metaDescription)
+  }
+  metaDescription.setAttribute('content', 'Browse public trades shared by the TradeTally community. Review entries, exits, P&L, notes, and trade tags from a free trading journal and investment tracker platform.')
+
+  let metaKeywords = document.querySelector('meta[name="keywords"]')
+  if (!metaKeywords) {
+    metaKeywords = document.createElement('meta')
+    metaKeywords.setAttribute('name', 'keywords')
+    document.head.appendChild(metaKeywords)
+  }
+  metaKeywords.setAttribute('content', 'public trades, trading journal community, shared trade ideas, free trading journal, TradeTally public feed')
+
+  let canonical = document.querySelector('link[rel="canonical"]')
+  if (!canonical) {
+    canonical = document.createElement('link')
+    canonical.setAttribute('rel', 'canonical')
+    document.head.appendChild(canonical)
+  }
+  canonical.setAttribute('href', 'https://tradetally.io/public')
+
   fetchTrades()
 })
 </script>
