@@ -1973,7 +1973,8 @@ async function loadTrade() {
             }
 
             // Check if this is a grouped execution (complete trade with entry/exit)
-            if (exec.entryPrice !== undefined || exec.exitPrice !== undefined || exec.entryTime !== undefined) {
+            if ((exec.entryPrice !== undefined || exec.exitPrice !== undefined || exec.entryTime !== undefined) &&
+                !(exec.action && exec.price !== undefined && exec.datetime)) {
               // Preserve grouped format
               // Derive side: prefer exec.side (long/short), fall back to mapping exec.action (buy->long, sell->short)
               // IBKR partial-close executions have action:'buy'/'sell' but no side field

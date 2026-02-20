@@ -5650,16 +5650,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
             const partialCommission = (currentTrade.totalFees / currentTrade.totalQuantity) * qty;
             const netPartialPnl = partialPnl - partialCommission;
 
-            // Update the last execution with exit info and P&L
-            const lastExec = currentTrade.executions[currentTrade.executions.length - 1];
-            if (lastExec && lastExec.action === 'buy') {
-              lastExec.entryTime = currentTrade.entryTime;
-              lastExec.exitTime = transaction.datetime;
-              lastExec.exitPrice = transaction.price;
-              lastExec.entryPrice = avgEntryPrice;
-              lastExec.pnl = netPartialPnl;
-              console.log(`  → [PARTIAL COVER] Covered ${qty} @ $${transaction.price.toFixed(2)}, Entry avg: $${avgEntryPrice.toFixed(2)}, P&L: $${netPartialPnl.toFixed(2)}, Remaining: ${Math.abs(currentPosition)} shares short`);
-            }
+            console.log(`  → [PARTIAL COVER] Covered ${qty} @ $${transaction.price.toFixed(2)}, Entry avg: $${avgEntryPrice.toFixed(2)}, P&L: $${netPartialPnl.toFixed(2)}, Remaining: ${Math.abs(currentPosition)} shares short`);
           }
         }
       } else if (transaction.action === 'sell') {
@@ -5692,16 +5683,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
             const partialCommission = (currentTrade.totalFees / currentTrade.totalQuantity) * qty;
             const netPartialPnl = partialPnl - partialCommission;
 
-            // Update the last execution with exit info and P&L
-            const lastExec = currentTrade.executions[currentTrade.executions.length - 1];
-            if (lastExec && lastExec.action === 'sell') {
-              lastExec.entryTime = currentTrade.entryTime;
-              lastExec.exitTime = transaction.datetime;
-              lastExec.exitPrice = transaction.price;
-              lastExec.entryPrice = avgEntryPrice;
-              lastExec.pnl = netPartialPnl;
-              console.log(`  → [PARTIAL CLOSE] Sold ${qty} @ $${transaction.price.toFixed(2)}, Entry avg: $${avgEntryPrice.toFixed(2)}, P&L: $${netPartialPnl.toFixed(2)}, Remaining: ${currentPosition} shares`);
-            }
+            console.log(`  → [PARTIAL CLOSE] Sold ${qty} @ $${transaction.price.toFixed(2)}, Entry avg: $${avgEntryPrice.toFixed(2)}, P&L: $${netPartialPnl.toFixed(2)}, Remaining: ${currentPosition} shares`);
           }
         }
       }
