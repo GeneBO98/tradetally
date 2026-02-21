@@ -7638,7 +7638,12 @@ async function parseTastytradeTransactions(records, existingPositions = {}, cont
         if (expirationDateRaw) {
           const parts = expirationDateRaw.split('/');
           if (parts.length === 3) {
-            optExpiration = `${parts[2]}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
+            // Handle 2-digit year (e.g., 2/20/26 -> 2026-02-20)
+            let year = parts[2];
+            if (year.length === 2) {
+              year = `20${year}`;
+            }
+            optExpiration = `${year}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
           }
         }
 

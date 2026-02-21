@@ -560,6 +560,7 @@ import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDiaryStore } from '@/stores/diary'
 import { useDiaryTemplateStore } from '@/stores/diaryTemplate'
+import { getLocalToday } from '@/utils/date'
 import TradeSelector from '@/components/diary/TradeSelector.vue'
 import DiaryImageUpload from '@/components/diary/DiaryImageUpload.vue'
 import SymbolAutocomplete from '@/components/common/SymbolAutocomplete.vue'
@@ -597,9 +598,10 @@ const newWatchlistSymbol = ref('')
 const newTag = ref('')
 const imageUploadRef = ref(null)
 
-// Form data
+// Form data - use route query date (from calendar click) or local today
+const initialDate = route.query.date || getLocalToday()
 const form = ref({
-  entryDate: new Date().toISOString().split('T')[0],
+  entryDate: initialDate,
   entryType: 'diary',
   title: '',
   marketBias: '',

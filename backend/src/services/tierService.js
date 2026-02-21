@@ -403,6 +403,16 @@ class TierService {
       }
     };
   }
+  /**
+   * Set a user's tier directly (used by Apple IAP verification).
+   * Updates the base tier and creates/updates a tier override.
+   */
+  static async setUserTier(userId, tier, reason) {
+    await User.updateTier(userId, tier);
+    // Create a permanent tier override (no expiry) so getUserTier picks it up
+    await User.createTierOverride(userId, tier, reason, null, null);
+    console.log(`✅ TierService: Set user ${userId} to tier '${tier}' (${reason})`);
+  }
 }
 
 module.exports = TierService;
