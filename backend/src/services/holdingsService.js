@@ -39,6 +39,15 @@ class HoldingsService {
           t.entry_time,
           t.broker,
           t.executions,
+          t.instrument_type,
+          t.contract_size,
+          t.point_value,
+          -- Calculate cost multiplier based on instrument type
+          CASE
+            WHEN t.instrument_type = 'future' THEN COALESCE(t.point_value, 1)
+            WHEN t.instrument_type = 'option' THEN COALESCE(t.contract_size, 100)
+            ELSE 1
+          END as cost_multiplier,
           -- Calculate net position from executions (buys - sells)
           -- Handles both grouped executions (entryPrice/exitPrice/entryTime) and individual fills (action)
           COALESCE(
@@ -82,13 +91,16 @@ class HoldingsService {
         SUM(shares_traded) as total_shares_traded,
         SUM(trade_quantity) as total_shares,
         SUM(trade_quantity * entry_price) / NULLIF(SUM(trade_quantity), 0) as average_cost_basis,
-        -- Fix: total_cost_basis should sum each trade's (net_position * entry_price)
-        -- This ensures correct unrealized P&L when trades have different entry prices
-        COALESCE(SUM(net_position * COALESCE(entry_price, 0)), 0) as total_cost_basis,
+        -- Apply contract multiplier to total_cost_basis (options * 100, futures * point_value)
+        COALESCE(SUM(net_position * COALESCE(entry_price, 0) * cost_multiplier), 0) as total_cost_basis,
         COUNT(*) as trade_count,
         MIN(entry_time) as first_entry,
         MAX(entry_time) as last_entry,
-        STRING_AGG(DISTINCT broker, ', ') as brokers
+        STRING_AGG(DISTINCT broker, ', ') as brokers,
+        -- Carry instrument info through for value calculations
+        MAX(instrument_type) as instrument_type,
+        MAX(contract_size) as contract_size,
+        MAX(point_value) as point_value
       FROM trade_executions
       GROUP BY symbol
       HAVING SUM(net_position) > 0
@@ -119,7 +131,10 @@ class HoldingsService {
       createdAt: row.first_entry,
       updatedAt: row.last_entry,
       source: 'trades', // Mark as coming from trades
-      brokers: row.brokers
+      brokers: row.brokers,
+      instrumentType: row.instrument_type || 'stock',
+      contractSize: row.instrument_type === 'option' ? (parseFloat(row.contract_size) || 100) : 1,
+      pointValue: row.instrument_type === 'future' ? (parseFloat(row.point_value) || 1) : null
     }));
 
     // Fetch dividend totals for trade-based holdings
@@ -565,7 +580,14 @@ class HoldingsService {
           : await finnhub.getQuote(holding.symbol);
         if (quote && quote.c) {
           const currentPrice = quote.c;
-          const currentValue = holding.totalShares * currentPrice;
+          // Apply contract multiplier for options/futures (same as dashboard calculation)
+          let valueMultiplier = 1;
+          if (holding.instrumentType === 'future') {
+            valueMultiplier = holding.pointValue || 1;
+          } else if (holding.instrumentType === 'option') {
+            valueMultiplier = holding.contractSize || 100;
+          }
+          const currentValue = holding.totalShares * currentPrice * valueMultiplier;
           const unrealizedPnl = currentValue - holding.totalCostBasis;
           const unrealizedPnlPercent = holding.totalCostBasis > 0
             ? (unrealizedPnl / holding.totalCostBasis) * 100
