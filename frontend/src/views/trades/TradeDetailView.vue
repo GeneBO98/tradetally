@@ -32,7 +32,7 @@
           <router-link :to="`/analysis/trade-management?tradeId=${trade.id}`" class="btn-primary">
             Manage
           </router-link>
-          <router-link :to="`/trades/${trade.id}/edit`" class="btn-secondary">
+          <router-link :to="{ path: `/trades/${trade.id}/edit`, query: { from: 'trade-detail' } }" class="btn-secondary">
             Edit
           </router-link>
           <button @click="deleteTrade" class="btn-danger">

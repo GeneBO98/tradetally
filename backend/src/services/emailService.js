@@ -1,6 +1,13 @@
 const nodemailer = require('nodemailer');
 const unsubscribeService = require('./unsubscribeService');
 
+function maskEmail(email) {
+  if (!email || !email.includes('@')) return '***';
+  const [localPart, domain] = email.split('@');
+  if (localPart.length <= 2) return `**@${domain}`;
+  return `${localPart.slice(0, 2)}***@${domain}`;
+}
+
 class EmailService {
   static createTransporter() {
     const port = parseInt(process.env.EMAIL_PORT) || 587;
@@ -195,7 +202,7 @@ class EmailService {
     try {
       const transporter = this.createTransporter();
       await transporter.sendMail(mailOptions);
-      console.log('Verification email sent to:', email);
+      console.log('Verification email sent to:', maskEmail(email));
     } catch (error) {
       console.error('Failed to send verification email:', error);
     }
@@ -249,7 +256,7 @@ class EmailService {
     try {
       const transporter = this.createTransporter();
       await transporter.sendMail(mailOptions);
-      console.log('Password reset email sent to:', email);
+      console.log('Password reset email sent to:', maskEmail(email));
     } catch (error) {
       console.error('Failed to send password reset email:', error);
     }
@@ -303,7 +310,7 @@ class EmailService {
     try {
       const transporter = this.createTransporter();
       await transporter.sendMail(mailOptions);
-      console.log('Email change verification email sent to:', email);
+      console.log('Email change verification email sent to:', maskEmail(email));
     } catch (error) {
       console.error('Failed to send email change verification email:', error);
       throw error;
@@ -368,7 +375,7 @@ class EmailService {
     try {
       const transporter = this.createTransporter();
       await transporter.sendMail(mailOptions);
-      console.log(`Trial ${isExpired ? 'expiration' : 'reminder'} email sent successfully to ${email}`);
+      console.log(`Trial ${isExpired ? 'expiration' : 'reminder'} email sent successfully to ${maskEmail(email)}`);
     } catch (error) {
       console.error(`Error sending trial ${isExpired ? 'expiration' : 'reminder'} email:`, error);
       throw error;
@@ -433,9 +440,9 @@ class EmailService {
     try {
       const transporter = this.createTransporter();
       await transporter.sendMail(mailOptions);
-      console.log('Weekly digest sent to', email);
+      console.log('Weekly digest sent to', maskEmail(email));
     } catch (error) {
-      console.error('Error sending weekly digest to', email, error);
+      console.error('Error sending weekly digest to', maskEmail(email), error);
       throw error;
     }
   }
@@ -483,9 +490,9 @@ class EmailService {
     try {
       const transporter = this.createTransporter();
       await transporter.sendMail(mailOptions);
-      console.log('Re-engagement email sent to', email);
+      console.log('Re-engagement email sent to', maskEmail(email));
     } catch (error) {
-      console.error('Error sending re-engagement email to', email, error);
+      console.error('Error sending re-engagement email to', maskEmail(email), error);
       throw error;
     }
   }

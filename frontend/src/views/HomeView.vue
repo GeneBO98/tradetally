@@ -460,6 +460,45 @@
         </div>
       </div>
     </section>
+
+    <section class="bg-gray-50 dark:bg-gray-900 py-16">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center mb-8">
+          <h2 class="text-3xl font-extrabold text-gray-900 dark:text-white">Explore TradeTally Resources</h2>
+          <p class="mt-4 max-w-3xl mx-auto text-lg text-gray-500 dark:text-gray-400">
+            Use these pages to compare platforms, review pricing, read common questions, and access documentation for cloud or self-hosted setups.
+          </p>
+        </div>
+        <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 max-w-5xl mx-auto">
+          <router-link to="/features" class="btn-secondary text-center">Features</router-link>
+          <router-link to="/compare" class="btn-secondary text-center">Compare</router-link>
+          <router-link to="/pricing" class="btn-secondary text-center">Pricing</router-link>
+          <router-link to="/faq" class="btn-secondary text-center">FAQ</router-link>
+          <router-link to="/public" class="btn-secondary text-center">Public Trades</router-link>
+          <router-link to="/privacy" class="btn-secondary text-center">Privacy</router-link>
+          <router-link to="/login" class="btn-secondary text-center">Login</router-link>
+          <router-link to="/register" class="btn-primary text-center">Create Account</router-link>
+        </div>
+        <div class="mt-8 flex flex-wrap justify-center gap-6 text-sm">
+          <a
+            href="https://docs.tradetally.io"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="text-primary-600 hover:text-primary-500"
+          >
+            Documentation
+          </a>
+          <a
+            href="https://github.com/GeneBO98/tradetally"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="text-primary-600 hover:text-primary-500"
+          >
+            GitHub Repository
+          </a>
+        </div>
+      </div>
+    </section>
   </div>
 </template>
 

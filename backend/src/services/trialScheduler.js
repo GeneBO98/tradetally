@@ -1,6 +1,13 @@
 const db = require('../config/database');
 const EmailService = require('./emailService');
 
+function maskEmail(email) {
+  if (!email || !email.includes('@')) return '***';
+  const [localPart, domain] = email.split('@');
+  if (localPart.length <= 2) return `**@${domain}`;
+  return `${localPart.slice(0, 2)}***@${domain}`;
+}
+
 class TrialScheduler {
   
   // Run all trial-related scheduled tasks
@@ -74,9 +81,9 @@ class TrialScheduler {
             [user.id]
           );
           
-          console.log(`Trial reminder sent to ${user.email} (${daysRemaining} days)`);
+          console.log(`Trial reminder sent to ${maskEmail(user.email)} (${daysRemaining} days)`);
         } catch (error) {
-          console.error(`Failed to send trial reminder to ${user.email}:`, error);
+          console.error(`Failed to send trial reminder to ${maskEmail(user.email)}:`, error);
         }
       }
       
@@ -131,9 +138,9 @@ class TrialScheduler {
             [user.id]
           );
           
-          console.log(`Trial expiration notice sent to ${user.email}`);
+          console.log(`Trial expiration notice sent to ${maskEmail(user.email)}`);
         } catch (error) {
-          console.error(`Failed to send trial expiration notice to ${user.email}:`, error);
+          console.error(`Failed to send trial expiration notice to ${maskEmail(user.email)}:`, error);
         }
       }
       

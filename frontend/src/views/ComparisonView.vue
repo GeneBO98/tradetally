@@ -371,6 +371,39 @@
         </div>
       </div>
     </div>
+
+    <div class="mt-12 bg-white dark:bg-gray-800 rounded-lg p-8 shadow-sm">
+      <h2 class="text-2xl font-bold text-gray-900 dark:text-white text-center mb-4">
+        Related Links
+      </h2>
+      <p class="text-gray-600 dark:text-gray-400 text-center max-w-3xl mx-auto mb-6">
+        Use these pages to validate feature details, plan pricing, and implementation options for cloud or self-hosted usage.
+      </p>
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+        <router-link to="/features" class="btn-secondary text-center">Features</router-link>
+        <router-link to="/pricing" class="btn-secondary text-center">Pricing</router-link>
+        <router-link to="/faq" class="btn-secondary text-center">FAQ</router-link>
+        <router-link to="/public" class="btn-secondary text-center">Public Trades</router-link>
+      </div>
+      <div class="flex flex-wrap justify-center gap-6 text-sm">
+        <a
+          href="https://docs.tradetally.io"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="text-primary-600 hover:text-primary-500"
+        >
+          Documentation
+        </a>
+        <a
+          href="https://github.com/GeneBO98/tradetally"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="text-primary-600 hover:text-primary-500"
+        >
+          GitHub Repository
+        </a>
+      </div>
+    </div>
   </div>
 </template>
 

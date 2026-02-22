@@ -44,20 +44,13 @@
       #app-fallback .hero-cta a{display:inline-block;padding:0.75rem 2rem;border-radius:0.5rem;font-weight:600;font-size:1.125rem;text-decoration:none}
       #app-fallback .hero-cta a:first-child{background:#2563eb;color:#fff}
       #app-fallback .hero-cta a:last-child{background:#f3f4f6;color:#374151}
-      #app-fallback .seo-sections{display:none}
-      /* Loading screen for authenticated users - prevents flash of public page */
-      #app-loading{display:none;min-height:100vh;align-items:center;justify-content:center;background:#f9fafb;font-family:system-ui,-apple-system,sans-serif}
-      #app-loading .spinner{width:2.5rem;height:2.5rem;border:3px solid #e5e7eb;border-top-color:#2563eb;border-radius:50%;animation:spin .6s linear infinite}
-      @keyframes spin{to{transform:rotate(360deg)}}
-      @media(prefers-color-scheme:dark){#app-loading{background:#111827}#app-loading .spinner{border-color:#374151;border-top-color:#3b82f6}}
-    </style>
-    <script>
-      // If user has a token, hide SEO fallback and show loading spinner instead
-      if(localStorage.getItem('token')){document.documentElement.classList.add('tt-auth')}
-    </script>
-    <style>
-      .tt-auth #app-fallback{display:none!important}
-      .tt-auth #app-loading{display:flex!important}
+      #app-fallback .seo-sections{display:block;margin-top:2.5rem;text-align:left}
+      #app-fallback .seo-sections section{max-width:54rem;margin:0 auto 1rem;padding:1rem 1.25rem;background:#f9fafb;border:1px solid #e5e7eb;border-radius:0.75rem}
+      #app-fallback .seo-sections h2{margin:0 0 0.5rem;color:#111827;font-size:1.25rem}
+      #app-fallback .seo-sections p{margin:0;color:#4b5563;line-height:1.65}
+      #app-fallback .seo-sections nav{margin-top:0.75rem;display:flex;flex-wrap:wrap;gap:0.75rem}
+      #app-fallback .seo-sections a{color:#1d4ed8;text-decoration:none}
+      #app-fallback .seo-sections a:hover{text-decoration:underline}
     </style>
   </head>
   <body>
@@ -68,8 +61,8 @@
       <div id="app-fallback">
       <main>
         <section>
-          <h1>Best Free Trading Journal Software for Day Traders</h1>
-          <p class="hero-sub">Professional trade tracking platform with automated trade import, advanced analytics, and broker integration. The best TraderVue alternative with unlimited free trade storage for stocks and options trading.</p>
+          <h1>TradeTally Free Trading Journal and Investment Tracker for Day Traders</h1>
+          <p class="hero-sub">TradeTally is a free open-source trading journal and investment tracker built for active traders. Track every trade, import broker history, review analytics, and improve execution with practical workflows for stocks, options, and long-term portfolio management.</p>
           <div class="hero-cta">
             <a href="/register">Get Started Free</a>
             <a href="/public">View Public Trades</a>
@@ -78,34 +71,42 @@
 
         <div class="seo-sections">
         <section>
-          <h2>Auto-Sync Your Broker</h2>
-          <p>Connect your Schwab or Interactive Brokers account to automatically import trades. No manual data entry required. TradeTally also supports CSV import from Lightspeed, Webull, TradingView, TradeStation, Tradovate, Questrade, and more.</p>
+          <h2>Trading Journal Software with Broker Import</h2>
+          <p>TradeTally gives you a complete trading journal workflow: log entries and exits, save notes and charts, tag setups, and review outcomes over time. You can auto-sync with Charles Schwab and Interactive Brokers or use CSV imports from Lightspeed, Webull, TradingView, TradeStation, Tradovate, Questrade, and other brokers.</p>
         </section>
 
         <section>
-          <h2>Advanced Analytics and AI Insights</h2>
-          <p>Visualize your performance with detailed P&amp;L charts, win rate tracking, and risk analysis. AI-powered insights highlight patterns in your trading and suggest areas for improvement.</p>
+          <h2>Investment Tracker and Performance Analytics</h2>
+          <p>As an investment tracker, TradeTally helps you monitor holdings, review unrealized and realized P&amp;L, and analyze performance by symbol, strategy, and time period. Advanced metrics and AI-assisted insights make it easier to identify what is working and what is hurting your trading results.</p>
         </section>
 
         <section>
-          <h2>Investment Analysis and Portfolio Tracking</h2>
-          <p>Go beyond trade journaling with the 8 Pillars stock analyzer, DCF valuation calculator, and real-time holdings tracking. Monitor unrealized P&amp;L, track dividends, scan the Russell 2000 for undervalued stocks, and set price alerts -- all for $8/mo with Pro.</p>
+          <h2>Open Source and Self-Hosted Trading Journal</h2>
+          <p>TradeTally is open source and can be self-hosted with Docker if you prefer full infrastructure control. Cloud users can get started immediately, while self-hosted users can run the same product with their own data policies, deployment process, and security controls.</p>
         </section>
 
         <section>
-          <h2>Open Source and Self-Hosted</h2>
-          <p>TradeTally is fully open source and can be self-hosted with Docker. Your trading data stays on your own server, giving you complete privacy and control. No vendor lock-in, ever.</p>
-        </section>
-
-        <section>
-          <h2>Compare TradeTally</h2>
-          <p>See how TradeTally compares to paid trading journals like TraderVue and TraderSync. Get unlimited trades, broker auto-sync, and AI analytics without the monthly subscription.</p>
+          <h2>Compare TradeTally to Other Trading Journals</h2>
+          <p>If you are evaluating alternatives to TraderVue or TraderSync, review our comparison pages and FAQ to see feature coverage, pricing differences, and broker support details. TradeTally offers unlimited trade storage on the free tier and a low-cost Pro tier for deeper analytics and automation.</p>
           <nav>
             <a href="/features">Features</a>
-            <a href="/compare">Compare</a>
-            <a href="/faq">FAQ</a>
+            <a href="/compare">Compare Platforms</a>
             <a href="/pricing">Pricing</a>
+            <a href="/faq">FAQ</a>
+            <a href="/privacy">Privacy Policy</a>
             <a href="/public">Public Trades</a>
+            <a href="/login">Login</a>
+            <a href="/register">Create Account</a>
+          </nav>
+        </section>
+
+        <section>
+          <h2>Helpful External Resources</h2>
+          <p>For technical details, documentation, and source code, you can visit our official docs and GitHub repository. These resources include deployment guides, API references, and implementation details for self-hosted setups.</p>
+          <nav>
+            <a href="https://docs.tradetally.io" target="_blank" rel="noopener noreferrer">TradeTally Documentation</a>
+            <a href="https://github.com/GeneBO98/tradetally" target="_blank" rel="noopener noreferrer">TradeTally on GitHub</a>
+            <a href="mailto:support@tradetally.io">Contact Support</a>
           </nav>
         </section>
         </div>

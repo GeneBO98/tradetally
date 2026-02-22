@@ -1,5 +1,50 @@
 const oauth2Service = require('../services/oauth2.service');
 const User = require('../models/User');
+const fs = require('fs');
+const path = require('path');
+
+function normalizePem(value = '') {
+  return value.includes('\\n') ? value.replace(/\\n/g, '\n') : value;
+}
+
+function readPemFromEnvOrFile(envVar, pathVar, defaultRelativePath) {
+  const inlineValue = process.env[envVar];
+  if (inlineValue && inlineValue.trim()) {
+    return normalizePem(inlineValue.trim());
+  }
+
+  const filePath = process.env[pathVar] || path.join(__dirname, defaultRelativePath);
+  return fs.readFileSync(filePath, 'utf8');
+}
+
+function getOAuthPrivateKey() {
+  try {
+    return readPemFromEnvOrFile(
+      'OAUTH_PRIVATE_KEY',
+      'OAUTH_PRIVATE_KEY_PATH',
+      '../keys/oauth-private.pem'
+    );
+  } catch (error) {
+    throw new Error(
+      `OAuth private key not configured. Set OAUTH_PRIVATE_KEY or OAUTH_PRIVATE_KEY_PATH. (${error.message})`
+    );
+  }
+}
+
+function getOAuthPublicKey() {
+  try {
+    return readPemFromEnvOrFile(
+      'OAUTH_PUBLIC_KEY',
+      'OAUTH_PUBLIC_KEY_PATH',
+      '../keys/oauth-public.pem'
+    );
+  } catch {
+    // Fall back to deriving the public key from the configured private key.
+    const crypto = require('crypto');
+    const privateKey = getOAuthPrivateKey();
+    return crypto.createPublicKey(privateKey).export({ type: 'spki', format: 'pem' });
+  }
+}
 
 /**
  * GET /oauth/authorize
@@ -323,14 +368,11 @@ const token = async (req, res) => {
       // Add nonce if it was in the authorization request (required for OIDC)
       if (authCode.nonce) {
         idTokenPayload.nonce = authCode.nonce;
-        console.log('[OAuth] Added nonce to ID token:', authCode.nonce);
+        console.log('[OAuth] Added nonce to ID token');
       }
 
       // Sign ID token with RS256 using RSA private key
-      const fs = require('fs');
-      const path = require('path');
-      const privateKeyPath = path.join(__dirname, '../keys/oauth-private.pem');
-      const privateKey = fs.readFileSync(privateKeyPath, 'utf8');
+      const privateKey = getOAuthPrivateKey();
 
       const idToken = jwt.sign(idTokenPayload, privateKey, { algorithm: 'RS256' });
       console.log('[OAuth] ID token created with RS256');
@@ -347,8 +389,7 @@ const token = async (req, res) => {
       console.log('[OAuth] Sending token response to client:', {
         has_access_token: !!tokenResponse.access_token,
         has_id_token: !!tokenResponse.id_token,
-        has_refresh_token: !!tokenResponse.refresh_token,
-        id_token_preview: idToken.substring(0, 50) + '...'
+        has_refresh_token: !!tokenResponse.refresh_token
       });
 
       return res.json(tokenResponse);
@@ -369,7 +410,7 @@ const token = async (req, res) => {
       });
     }
   } catch (error) {
-    console.error('Token error:', error);
+    console.error('Token error:', error.message);
     return res.status(400).json({ error: 'invalid_grant', error_description: error.message });
   }
 };
@@ -649,12 +690,9 @@ const openidConfiguration = async (req, res) => {
  */
 const jwks = async (req, res) => {
   try {
-    const fs = require('fs');
-    const path = require('path');
     const crypto = require('crypto');
 
-    const publicKeyPath = path.join(__dirname, '../keys/oauth-public.pem');
-    const publicKeyPem = fs.readFileSync(publicKeyPath, 'utf8');
+    const publicKeyPem = getOAuthPublicKey();
 
     // Convert PEM to JWK format
     const publicKey = crypto.createPublicKey(publicKeyPem);

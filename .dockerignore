@@ -30,6 +30,8 @@
 # Misc
 **/.env
 **/.env.*
+**/*.pem
+**/*.key
 
 # Temporary files
 **/*.tmp
