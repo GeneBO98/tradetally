@@ -71,7 +71,7 @@ const app = express();
 const PORT = process.env.PORT || 5001;
 
 // Trust proxy headers for rate limiting and forwarded headers
-app.set('trust proxy', true);
+app.set('trust proxy', 1);
 
 // Rate limiting configuration - can be disabled or adjusted via environment variables
 // RATE_LIMIT_ENABLED=false disables rate limiting entirely (useful for self-hosted instances)

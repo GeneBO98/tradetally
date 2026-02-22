@@ -126,24 +126,42 @@ class AIProvider {
     }
 
     try {
+      // Determine token parameter based on API target
+      // OpenAI API uses max_completion_tokens; local/other APIs may still use max_tokens
+      const isOpenAIAPI = apiUrl && apiUrl.includes('api.openai.com');
+
+      // Reasoning models (o1, o3, gpt-5-nano, etc.) need higher token limits
+      // because reasoning tokens count toward max_completion_tokens but don't produce visible output
+      const isReasoningModel = /^(o\d|gpt-5-nano)/i.test(modelName);
+      const tokenLimit = isReasoningModel ? 16384 : 4096;
+
+      const tokenParam = isOpenAIAPI
+        ? { max_completion_tokens: tokenLimit }
+        : { max_tokens: 4096 };
+
+      // Reasoning models don't support custom temperature
+      const supportsTemperature = !isReasoningModel;
+
+      const body = {
+        model: modelName,
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a professional trading performance analyst helping traders improve their performance.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        ...tokenParam,
+        ...(supportsTemperature && { temperature: 0.7 })
+      };
+
       const response = await fetch(url, {
         method: 'POST',
         headers,
-        body: JSON.stringify({
-          model: modelName,
-          messages: [
-            {
-              role: 'system',
-              content: 'You are a professional trading performance analyst helping traders improve their performance.'
-            },
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          max_tokens: 4096,
-          temperature: 0.7
-        })
+        body: JSON.stringify(body)
       });
 
       if (!response.ok) {
@@ -159,11 +177,27 @@ class AIProvider {
 
       const data = await response.json();
 
+      console.log('[AI_PROVIDER] Response structure:', JSON.stringify(data, null, 2).substring(0, 1000));
+
       if (!data.choices || data.choices.length === 0) {
         throw new Error('No response generated');
       }
 
-      return data.choices[0].message.content;
+      // Try standard content field first, then check alternative response formats
+      const choice = data.choices[0];
+      const content = choice.message?.content
+        || choice.text
+        || choice.message?.refusal;
+
+      // Some models return content in the top-level output field
+      const finalContent = content || data.output_text || data.output;
+
+      if (!finalContent) {
+        console.error('[AI_PROVIDER] Empty content. Full response:', JSON.stringify(data).substring(0, 2000));
+        throw new Error('AI returned empty response');
+      }
+
+      return finalContent;
     } catch (error) {
       console.error('[AI_PROVIDER] OpenAI-compatible API error:', error.message);
 
