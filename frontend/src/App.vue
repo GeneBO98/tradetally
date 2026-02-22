@@ -141,9 +141,7 @@ onMounted(async () => {
   // Listen for rate limit events from the API interceptor
   window.addEventListener('rate-limit-exceeded', handleRateLimitExceeded)
 
-  await authStore.checkAuth()
-  // Note: Achievement celebrations are now handled by GamificationView only
-  // This prevents conflicts between App.vue and GamificationView celebration logic
+  // Note: checkAuth() is awaited in main.js before mount to prevent flash of public page
 
   // Initialize version store and check for updates
   versionStore.initialize()

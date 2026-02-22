@@ -45,10 +45,25 @@
       #app-fallback .hero-cta a:first-child{background:#2563eb;color:#fff}
       #app-fallback .hero-cta a:last-child{background:#f3f4f6;color:#374151}
       #app-fallback .seo-sections{display:none}
+      /* Loading screen for authenticated users - prevents flash of public page */
+      #app-loading{display:none;min-height:100vh;align-items:center;justify-content:center;background:#f9fafb;font-family:system-ui,-apple-system,sans-serif}
+      #app-loading .spinner{width:2.5rem;height:2.5rem;border:3px solid #e5e7eb;border-top-color:#2563eb;border-radius:50%;animation:spin .6s linear infinite}
+      @keyframes spin{to{transform:rotate(360deg)}}
+      @media(prefers-color-scheme:dark){#app-loading{background:#111827}#app-loading .spinner{border-color:#374151;border-top-color:#3b82f6}}
+    </style>
+    <script>
+      // If user has a token, hide SEO fallback and show loading spinner instead
+      if(localStorage.getItem('token')){document.documentElement.classList.add('tt-auth')}
+    </script>
+    <style>
+      .tt-auth #app-fallback{display:none!important}
+      .tt-auth #app-loading{display:flex!important}
     </style>
   </head>
   <body>
     <div id="app">
+      <!-- Loading spinner for authenticated users (hidden by default, shown via .tt-auth class) -->
+      <div id="app-loading"><div class="spinner"></div></div>
       <!-- Static fallback content for search engine crawlers. Vue replaces this on mount. -->
       <div id="app-fallback">
       <main>
