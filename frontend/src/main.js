@@ -11,22 +11,22 @@ const app = createApp(App)
 app.use(createPinia())
 app.use(router)
 
-// Initialize auth state on app startup
+// Initialize auth state before mounting to prevent flash of public page
 const authStore = useAuthStore()
-authStore.checkAuth()
+authStore.checkAuth().finally(() => {
+  // Initialize analytics (if configured)
+  const analytics = useAnalytics()
+  analytics.initialize()
 
-// Initialize analytics (if configured)
-const analytics = useAnalytics()
-analytics.initialize()
+  // Load PromoteKit affiliate tracking if configured
+  const promoteKitId = import.meta.env.VITE_PROMOTEKIT_ID
+  if (promoteKitId) {
+    const script = document.createElement('script')
+    script.src = 'https://cdn.promotekit.com/promotekit.js'
+    script.async = true
+    script.setAttribute('data-promotekit', promoteKitId)
+    document.head.appendChild(script)
+  }
 
-// Load PromoteKit affiliate tracking if configured
-const promoteKitId = import.meta.env.VITE_PROMOTEKIT_ID
-if (promoteKitId) {
-  const script = document.createElement('script')
-  script.src = 'https://cdn.promotekit.com/promotekit.js'
-  script.async = true
-  script.setAttribute('data-promotekit', promoteKitId)
-  document.head.appendChild(script)
-}
-
-app.mount('#app')
+  app.mount('#app')
+})
