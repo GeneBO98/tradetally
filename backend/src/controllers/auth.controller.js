@@ -29,6 +29,13 @@ function getBillingEnabled() {
   return process.env.BILLING_ENABLED === 'true';
 }
 
+function maskEmail(email) {
+  if (!email || !email.includes('@')) return '***';
+  const [localPart, domain] = email.split('@');
+  if (localPart.length <= 2) return `**@${domain}`;
+  return `${localPart.slice(0, 2)}***@${domain}`;
+}
+
 const authController = {
   async register(req, res, next) {
     try {
@@ -99,7 +106,7 @@ const authController = {
 
       // Log if this user was made an admin
       if (isFirstUser) {
-        console.log(`🔐 First user registered - automatically granted admin privileges: ${user.username} (${user.email})`);
+        console.log(`🔐 First user registered - automatically granted admin privileges: ${user.username} (${maskEmail(user.email)})`);
       }
 
       // Send verification email only if email is configured AND not first user

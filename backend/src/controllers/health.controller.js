@@ -12,14 +12,16 @@ class HealthController {
       // Enhanced logging for debugging mobile app submissions
       console.log('\n🔔 HEALTH DATA SUBMISSION RECEIVED FROM MOBILE APP');
       console.log('  User ID:', userId);
-      console.log('  User Email:', req.user.email);
       console.log('  Timestamp:', new Date().toISOString());
       console.log('  Request Headers:', {
         'user-agent': req.headers['user-agent'],
         'content-type': req.headers['content-type'],
         'x-device-id': req.headers['x-device-id'] || 'not provided'
       });
-      console.log('  Request Body:', JSON.stringify(req.body, null, 2));
+      console.log('  Request Body Summary:', {
+        hasHealthDataArray: Array.isArray(healthData),
+        healthDataPoints: Array.isArray(healthData) ? healthData.length : 0
+      });
 
       if (!Array.isArray(healthData)) {
         console.log('  ❌ ERROR: Health data must be an array');
@@ -51,7 +53,7 @@ class HealthController {
 
         // Validate required fields
         if (!date || !type || value === undefined) {
-          logger.warn(`Invalid health data point: ${JSON.stringify(dataPoint)}`, 'health');
+          logger.warn(`Invalid health data point received (date=${date || 'missing'}, type=${type || 'missing'})`, 'health');
           continue;
         }
 
