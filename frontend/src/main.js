@@ -11,22 +11,34 @@ const app = createApp(App)
 app.use(createPinia())
 app.use(router)
 
-// Initialize auth state on app startup
-const authStore = useAuthStore()
-authStore.checkAuth()
+async function bootstrap() {
+  const authStore = useAuthStore()
 
-// Initialize analytics (if configured)
-const analytics = useAnalytics()
-analytics.initialize()
+  try {
+    // Initialize auth state before mount.
+    await authStore.checkAuth()
+  } catch (error) {
+    console.error('Auth bootstrap failed:', error)
+  }
 
-// Load PromoteKit affiliate tracking if configured
-const promoteKitId = import.meta.env.VITE_PROMOTEKIT_ID
-if (promoteKitId) {
-  const script = document.createElement('script')
-  script.src = 'https://cdn.promotekit.com/promotekit.js'
-  script.async = true
-  script.setAttribute('data-promotekit', promoteKitId)
-  document.head.appendChild(script)
+  // Wait for initial navigation/redirects so public routes don't paint briefly on refresh.
+  await router.isReady()
+
+  // Initialize analytics (if configured)
+  const analytics = useAnalytics()
+  analytics.initialize()
+
+  // Load PromoteKit affiliate tracking if configured
+  const promoteKitId = import.meta.env.VITE_PROMOTEKIT_ID
+  if (promoteKitId) {
+    const script = document.createElement('script')
+    script.src = 'https://cdn.promotekit.com/promotekit.js'
+    script.async = true
+    script.setAttribute('data-promotekit', promoteKitId)
+    document.head.appendChild(script)
+  }
+
+  app.mount('#app')
 }
 
-app.mount('#app')
+bootstrap()

@@ -4,6 +4,13 @@ const path = require('path');
 const archiver = require('archiver');
 const { createWriteStream } = require('fs');
 
+function maskEmail(email) {
+  if (!email || !email.includes('@')) return '***';
+  const [localPart, domain] = email.split('@');
+  if (localPart.length <= 2) return `**@${domain}`;
+  return `${localPart.slice(0, 2)}***@${domain}`;
+}
+
 /**
  * Backup Service
  * Handles full site data export and automatic backups
@@ -429,7 +436,7 @@ class BackupService {
 
                 if (findExisting.rows.length > 0) {
                   userIdMapping.set(user.id, findExisting.rows[0].id);
-                  console.log(`[RESTORE] Mapping user ${user.email} (${user.id}) to existing user (${findExisting.rows[0].id})`);
+                  console.log(`[RESTORE] Mapping user ${maskEmail(user.email)} (${user.id}) to existing user (${findExisting.rows[0].id})`);
                 }
 
                 results.users.skipped++;
@@ -463,10 +470,10 @@ class BackupService {
                   updateValues
                 );
 
-                console.log(`[RESTORE] Updated user ${user.email} (${existingUserId})`);
+                console.log(`[RESTORE] Updated user ${maskEmail(user.email)} (${existingUserId})`);
                 results.users.updated++;
               } else {
-                console.log(`[RESTORE] User ${user.email} already exists (${existingUserId})`);
+                console.log(`[RESTORE] User ${maskEmail(user.email)} already exists (${existingUserId})`);
                 results.users.skipped++;
               }
             }

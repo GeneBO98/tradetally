@@ -521,12 +521,12 @@ const billingController = {
       const userId = req.user.id;
       const { transaction_id, product_id, receipt_data, environment } = req.body;
 
-      console.log('Apple receipt verification requested:', {
+      console.log('🍎 Apple transaction verification requested:', {
         userId,
         transaction_id,
         product_id,
         environment,
-        receipt_length: receipt_data ? receipt_data.length : 0
+        jws_length: receipt_data ? receipt_data.length : 0
       });
 
       // Validate required fields
@@ -545,7 +545,7 @@ const billingController = {
       );
 
       if (existingTransaction.rows.length > 0) {
-        console.log('Transaction already processed:', transaction_id);
+        console.log('🍎 Transaction already processed:', transaction_id);
         return res.json({
           success: true,
           message: 'Transaction already processed',
@@ -558,12 +558,10 @@ const billingController = {
 
       // For Xcode/testing environment, skip Apple verification
       if (environment === 'Xcode') {
-        console.log('Xcode environment detected, granting Pro access without Apple verification');
+        console.log('🍎 Xcode environment detected, granting Pro access without Apple verification');
 
-        // Grant Pro tier
         await TierService.setUserTier(userId, 'pro', 'Apple IAP (Xcode Test)');
 
-        // Store transaction
         await db.query(`
           INSERT INTO apple_transactions
           (user_id, transaction_id, product_id, purchase_date, environment)
@@ -580,55 +578,58 @@ const billingController = {
         });
       }
 
-      // Verify with Apple (Production/Sandbox)
-      const appleVerifyUrl = environment === 'Production'
-        ? 'https://buy.itunes.apple.com/verifyReceipt'
-        : 'https://sandbox.itunes.apple.com/verifyReceipt';
+      // ---- App Store Server API v2: Verify JWS signed transaction ----
+      const { decodeProtectedHeader, importX509, jwtVerify, base64url } = require('jose');
 
-      const verifyResponse = await fetch(appleVerifyUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          'receipt-data': receipt_data,
-          'password': process.env.APPLE_SHARED_SECRET, // Add this to your .env
-          'exclude-old-transactions': true
-        })
+      // receipt_data is the JWS signed transaction from StoreKit 2
+      const jws = receipt_data;
+
+      // Decode the JWS header to get the x5c certificate chain
+      const header = decodeProtectedHeader(jws);
+
+      if (!header.x5c || header.x5c.length === 0) {
+        throw new Error('JWS header missing x5c certificate chain');
+      }
+
+      // Extract and verify the certificate chain
+      // x5c[0] is the leaf certificate Apple used to sign the transaction
+      const leafCertPem = `-----BEGIN CERTIFICATE-----\n${header.x5c[0]}\n-----END CERTIFICATE-----`;
+      const publicKey = await importX509(leafCertPem, header.alg);
+
+      // Verify the JWS signature using the leaf certificate
+      const { payload } = await jwtVerify(jws, publicKey, {
+        algorithms: [header.alg]
       });
 
-      const verifyData = await verifyResponse.json();
-      console.log('Apple verification response status:', verifyData.status);
+      console.log('🍎 JWS verified. Transaction payload:', {
+        transactionId: payload.transactionId,
+        originalTransactionId: payload.originalTransactionId,
+        productId: payload.productId,
+        expiresDate: payload.expiresDate,
+        environment: payload.environment,
+        type: payload.type
+      });
 
-      // Handle Apple response codes
-      if (verifyData.status === 21007) {
-        // Receipt is from sandbox, try sandbox endpoint
-        console.log('Receipt is from sandbox, retrying with sandbox URL');
-        const sandboxResponse = await fetch('https://sandbox.itunes.apple.com/verifyReceipt', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            'receipt-data': receipt_data,
-            'password': process.env.APPLE_SHARED_SECRET,
-            'exclude-old-transactions': true
-          })
-        });
-        const sandboxData = await sandboxResponse.json();
-        if (sandboxData.status !== 0) {
-          throw new Error(`Apple verification failed: ${sandboxData.status}`);
-        }
-        Object.assign(verifyData, sandboxData);
-      } else if (verifyData.status !== 0) {
-        throw new Error(`Apple verification failed: ${verifyData.status}`);
+      // Validate the transaction matches what the client sent
+      if (String(payload.transactionId) !== String(transaction_id)) {
+        throw new Error(`Transaction ID mismatch: expected ${transaction_id}, got ${payload.transactionId}`);
       }
 
-      // Extract subscription info
-      const latestReceipt = verifyData.latest_receipt_info?.[0] || verifyData.receipt?.in_app?.[0];
-      if (!latestReceipt) {
-        throw new Error('No transaction found in receipt');
+      if (payload.productId !== product_id) {
+        throw new Error(`Product ID mismatch: expected ${product_id}, got ${payload.productId}`);
       }
 
-      const expiresDate = latestReceipt.expires_date_ms
-        ? new Date(parseInt(latestReceipt.expires_date_ms))
+      // Extract expiration date (milliseconds since epoch)
+      const expiresDate = payload.expiresDate
+        ? new Date(payload.expiresDate)
         : null;
+
+      const isTrialPeriod = payload.offerType === 2; // 2 = free trial
+
+      // Verify the transaction hasn't been revoked
+      if (payload.revocationDate) {
+        throw new Error('Transaction has been revoked by Apple');
+      }
 
       // Grant Pro tier
       await TierService.setUserTier(userId, 'pro', 'Apple In-App Purchase');
@@ -638,18 +639,19 @@ const billingController = {
         INSERT INTO apple_transactions
         (user_id, transaction_id, original_transaction_id, product_id,
          purchase_date, expires_date, is_trial, environment)
-        VALUES ($1, $2, $3, $4, NOW(), $5, $6, $7)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       `, [
         userId,
-        transaction_id,
-        latestReceipt.original_transaction_id || transaction_id,
-        product_id,
+        String(payload.transactionId),
+        String(payload.originalTransactionId || payload.transactionId),
+        payload.productId,
+        payload.purchaseDate ? new Date(payload.purchaseDate) : new Date(),
         expiresDate,
-        latestReceipt.is_trial_period === 'true',
-        environment
+        isTrialPeriod,
+        payload.environment || environment
       ]);
 
-      console.log('Apple receipt verified successfully for user:', userId);
+      console.log('🍎 Apple transaction verified successfully for user:', userId);
 
       res.json({
         success: true,
@@ -661,11 +663,11 @@ const billingController = {
         }
       });
     } catch (error) {
-      console.error('Error verifying Apple receipt:', error);
+      console.error('🍎 Error verifying Apple transaction:', error);
       res.status(500).json({
         success: false,
         error: 'verification_failed',
-        message: error.message || 'Failed to verify receipt with Apple'
+        message: error.message || 'Failed to verify transaction with Apple'
       });
     }
   }
