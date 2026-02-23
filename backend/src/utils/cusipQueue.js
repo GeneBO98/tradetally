@@ -407,8 +407,7 @@ Response:`;
 // Create singleton instance
 const cusipQueue = new CusipQueueManager();
 
-// Start processing on module load
-cusipQueue.startProcessing();
+// NOTE: Do not auto-start here. Processing is started in server.js after migrations complete.
 
 // Cleanup old entries daily
 setInterval(() => {

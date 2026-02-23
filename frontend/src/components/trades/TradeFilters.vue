@@ -22,15 +22,29 @@
 
       <div>
         <label class="label">Time Period</label>
-        <select v-model="selectedPeriod" @change="applyPeriodPreset" class="input">
-          <option value="custom">Custom Range</option>
-          <option value="7d">Last 7 Days</option>
-          <option value="30d">Last 30 Days</option>
-          <option value="90d">Last 90 Days</option>
-          <option value="ytd">Year to Date</option>
-          <option value="1y">Last Year</option>
-          <option value="all">All Time</option>
-        </select>
+        <div class="relative" data-dropdown="timePeriod">
+          <button
+            @click.stop="showTimePeriodDropdown = !showTimePeriodDropdown"
+            class="input w-full text-left flex items-center justify-between"
+            type="button"
+          >
+            <span class="truncate">{{ getSelectedTimePeriodText() }}</span>
+            <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+            </svg>
+          </button>
+          <div v-if="showTimePeriodDropdown" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
+            <div
+              v-for="option in timePeriodOptions"
+              :key="option.value"
+              @click="selectTimePeriod(option.value)"
+              class="px-3 py-2 cursor-pointer text-sm"
+              :class="selectedPeriod === option.value ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300' : 'text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700'"
+            >
+              {{ option.label }}
+            </div>
+          </div>
+        </div>
       </div>
 
       <div v-if="selectedPeriod === 'custom'">
@@ -105,20 +119,56 @@
     <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
       <div>
         <label class="label">Trade Status</label>
-        <select v-model="filters.status" class="input">
-          <option value="">All Trades</option>
-          <option value="open">Open Only</option>
-          <option value="closed">Closed Only</option>
-        </select>
+        <div class="relative" data-dropdown="status">
+          <button
+            @click.stop="showStatusDropdown = !showStatusDropdown"
+            class="input w-full text-left flex items-center justify-between"
+            type="button"
+          >
+            <span class="truncate">{{ getSelectedStatusText() }}</span>
+            <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+            </svg>
+          </button>
+          <div v-if="showStatusDropdown" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
+            <div
+              v-for="option in statusOptions"
+              :key="option.value"
+              @click="selectStatus(option.value)"
+              class="px-3 py-2 cursor-pointer text-sm"
+              :class="filters.status === option.value ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300' : 'text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700'"
+            >
+              {{ option.label }}
+            </div>
+          </div>
+        </div>
       </div>
 
       <div>
         <label class="label">Position Type</label>
-        <select v-model="filters.side" class="input">
-          <option value="">All</option>
-          <option value="long">Long</option>
-          <option value="short">Short</option>
-        </select>
+        <div class="relative" data-dropdown="side">
+          <button
+            @click.stop="showSideDropdown = !showSideDropdown"
+            class="input w-full text-left flex items-center justify-between"
+            type="button"
+          >
+            <span class="truncate">{{ getSelectedSideText() }}</span>
+            <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+            </svg>
+          </button>
+          <div v-if="showSideDropdown" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
+            <div
+              v-for="option in sideOptions"
+              :key="option.value"
+              @click="selectSide(option.value)"
+              class="px-3 py-2 cursor-pointer text-sm"
+              :class="filters.side === option.value ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300' : 'text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700'"
+            >
+              {{ option.label }}
+            </div>
+          </div>
+        </div>
       </div>
 
       <div>
@@ -280,20 +330,29 @@
             <!-- Hold Time -->
             <div>
               <label class="label">Hold Time</label>
-              <select v-model="filters.holdTime" class="input">
-                <option value="">All</option>
-                <option value="< 1 min">< 1 minute</option>
-                <option value="1-5 min">1-5 minutes</option>
-                <option value="5-15 min">5-15 minutes</option>
-                <option value="15-30 min">15-30 minutes</option>
-                <option value="30-60 min">30-60 minutes</option>
-                <option value="1-2 hours">1-2 hours</option>
-                <option value="2-4 hours">2-4 hours</option>
-                <option value="4-24 hours">4-24 hours</option>
-                <option value="1-7 days">1-7 days</option>
-                <option value="1-4 weeks">1-4 weeks</option>
-                <option value="1+ months">1+ months</option>
-              </select>
+              <div class="relative" data-dropdown="holdTime">
+                <button
+                  @click.stop="showHoldTimeDropdown = !showHoldTimeDropdown"
+                  class="input w-full text-left flex items-center justify-between"
+                  type="button"
+                >
+                  <span class="truncate">{{ getSelectedHoldTimeText() }}</span>
+                  <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                  </svg>
+                </button>
+                <div v-if="showHoldTimeDropdown" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
+                  <div
+                    v-for="option in holdTimeOptions"
+                    :key="option.value"
+                    @click="selectHoldTime(option.value)"
+                    class="px-3 py-2 cursor-pointer text-sm"
+                    :class="filters.holdTime === option.value ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300' : 'text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700'"
+                  >
+                    {{ option.label }}
+                  </div>
+                </div>
+              </div>
             </div>
 
             <!-- Day of Week -->
@@ -444,16 +503,30 @@
 
           <!-- News -->
           <div>
-            <label for="hasNews" class="label">News</label>
-            <select
-              id="hasNews"
-              v-model="filters.hasNews"
-              class="input"
-            >
-              <option value="">All Trades</option>
-              <option value="true">With News</option>
-              <option value="false">No News</option>
-            </select>
+            <label class="label">News</label>
+            <div class="relative" data-dropdown="news">
+              <button
+                @click.stop="showNewsDropdown = !showNewsDropdown"
+                class="input w-full text-left flex items-center justify-between"
+                type="button"
+              >
+                <span class="truncate">{{ getSelectedNewsText() }}</span>
+                <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                </svg>
+              </button>
+              <div v-if="showNewsDropdown" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
+                <div
+                  v-for="option in newsOptions"
+                  :key="option.value"
+                  @click="selectNews(option.value)"
+                  class="px-3 py-2 cursor-pointer text-sm"
+                  :class="filters.hasNews === option.value ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300' : 'text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700'"
+                >
+                  {{ option.label }}
+                </div>
+              </div>
+            </div>
           </div>
 
           <!-- Broker -->
@@ -506,11 +579,29 @@
           <!-- P&L Type -->
           <div>
             <label class="label">P&L Type</label>
-            <select v-model="filters.pnlType" class="input">
-              <option value="">All</option>
-              <option value="profit">Profit Only</option>
-              <option value="loss">Loss Only</option>
-            </select>
+            <div class="relative" data-dropdown="pnlType">
+              <button
+                @click.stop="showPnlTypeDropdown = !showPnlTypeDropdown"
+                class="input w-full text-left flex items-center justify-between"
+                type="button"
+              >
+                <span class="truncate">{{ getSelectedPnlTypeText() }}</span>
+                <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                </svg>
+              </button>
+              <div v-if="showPnlTypeDropdown" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
+                <div
+                  v-for="option in pnlTypeOptions"
+                  :key="option.value"
+                  @click="selectPnlType(option.value)"
+                  class="px-3 py-2 cursor-pointer text-sm"
+                  :class="filters.pnlType === option.value ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300' : 'text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700'"
+                >
+                  {{ option.label }}
+                </div>
+              </div>
+            </div>
           </div>
 
           <!-- Quality Grade -->
@@ -609,6 +700,10 @@ function applyPeriodPreset() {
   const today = formatLocalDate(now)
 
   switch (selectedPeriod.value) {
+    case 'today':
+      filters.value.startDate = today
+      filters.value.endDate = today
+      break
     case '7d': {
       const start = new Date(now)
       start.setDate(start.getDate() - 7)
@@ -673,6 +768,12 @@ const showBrokerDropdown = ref(false)
 const showInstrumentTypeDropdown = ref(false)
 const showOptionTypeDropdown = ref(false)
 const showQualityGradeDropdown = ref(false)
+const showTimePeriodDropdown = ref(false)
+const showStatusDropdown = ref(false)
+const showSideDropdown = ref(false)
+const showHoldTimeDropdown = ref(false)
+const showNewsDropdown = ref(false)
+const showPnlTypeDropdown = ref(false)
 
 // Day of week options (weekdays only - markets are closed weekends)
 const dayOfWeekOptions = [
@@ -704,6 +805,62 @@ const qualityGradeOptions = [
   { value: 'C', label: 'C - Average' },
   { value: 'D', label: 'D - Below Average' },
   { value: 'F', label: 'F - Poor' }
+]
+
+// Time period options
+const timePeriodOptions = [
+  { value: 'today', label: 'Today' },
+  { value: 'custom', label: 'Custom Range' },
+  { value: '7d', label: 'Last 7 Days' },
+  { value: '30d', label: 'Last 30 Days' },
+  { value: '90d', label: 'Last 90 Days' },
+  { value: 'ytd', label: 'Year to Date' },
+  { value: '1y', label: 'Last Year' },
+  { value: 'all', label: 'All Time' }
+]
+
+// Trade status options
+const statusOptions = [
+  { value: '', label: 'All Trades' },
+  { value: 'open', label: 'Open Only' },
+  { value: 'closed', label: 'Closed Only' }
+]
+
+// Position type options
+const sideOptions = [
+  { value: '', label: 'All' },
+  { value: 'long', label: 'Long' },
+  { value: 'short', label: 'Short' }
+]
+
+// Hold time options
+const holdTimeOptions = [
+  { value: '', label: 'All' },
+  { value: '< 1 min', label: '< 1 minute' },
+  { value: '1-5 min', label: '1-5 minutes' },
+  { value: '5-15 min', label: '5-15 minutes' },
+  { value: '15-30 min', label: '15-30 minutes' },
+  { value: '30-60 min', label: '30-60 minutes' },
+  { value: '1-2 hours', label: '1-2 hours' },
+  { value: '2-4 hours', label: '2-4 hours' },
+  { value: '4-24 hours', label: '4-24 hours' },
+  { value: '1-7 days', label: '1-7 days' },
+  { value: '1-4 weeks', label: '1-4 weeks' },
+  { value: '1+ months', label: '1+ months' }
+]
+
+// News filter options
+const newsOptions = [
+  { value: '', label: 'All Trades' },
+  { value: 'true', label: 'With News' },
+  { value: 'false', label: 'No News' }
+]
+
+// P&L type options
+const pnlTypeOptions = [
+  { value: '', label: 'All' },
+  { value: 'profit', label: 'Profit Only' },
+  { value: 'loss', label: 'Loss Only' }
 ]
 
 // Strategy options
@@ -904,12 +1061,77 @@ function toggleAllQualityGrades(event) {
   }
 }
 
+// Helper methods for single-select dropdowns
+function getSelectedTimePeriodText() {
+  const option = timePeriodOptions.find(o => o.value === selectedPeriod.value)
+  return option ? option.label : 'All Time'
+}
+
+function selectTimePeriod(value) {
+  selectedPeriod.value = value
+  showTimePeriodDropdown.value = false
+  applyPeriodPreset()
+}
+
+function getSelectedStatusText() {
+  const option = statusOptions.find(o => o.value === filters.value.status)
+  return option ? option.label : 'All Trades'
+}
+
+function selectStatus(value) {
+  filters.value.status = value
+  showStatusDropdown.value = false
+}
+
+function getSelectedSideText() {
+  const option = sideOptions.find(o => o.value === filters.value.side)
+  return option ? option.label : 'All'
+}
+
+function selectSide(value) {
+  filters.value.side = value
+  showSideDropdown.value = false
+}
+
+function getSelectedHoldTimeText() {
+  const option = holdTimeOptions.find(o => o.value === filters.value.holdTime)
+  return option ? option.label : 'All'
+}
+
+function selectHoldTime(value) {
+  filters.value.holdTime = value
+  showHoldTimeDropdown.value = false
+}
+
+function getSelectedNewsText() {
+  const option = newsOptions.find(o => o.value === filters.value.hasNews)
+  return option ? option.label : 'All Trades'
+}
+
+function selectNews(value) {
+  filters.value.hasNews = value
+  showNewsDropdown.value = false
+}
+
+function getSelectedPnlTypeText() {
+  const option = pnlTypeOptions.find(o => o.value === filters.value.pnlType)
+  return option ? option.label : 'All'
+}
+
+function selectPnlType(value) {
+  filters.value.pnlType = value
+  showPnlTypeDropdown.value = false
+}
+
 // Count active filters
 const activeFiltersCount = computed(() => {
   let count = 0
   if (filters.value.symbol) count++
-  if (filters.value.startDate) count++
-  if (filters.value.endDate) count++
+  // Only count date filters if using custom range (period presets are not "filters")
+  if (selectedPeriod.value === 'custom') {
+    if (filters.value.startDate) count++
+    if (filters.value.endDate) count++
+  }
   if (filters.value.strategies && filters.value.strategies.length > 0) count++
   if (filters.value.side) count++
   if (filters.value.status) count++
@@ -1060,8 +1282,9 @@ function resetFilters() {
   // Reset to defaults
   filters.value = { ...defaultFilters }
 
-  // Reset period selector
+  // Reset period selector to All Time so all trades are visible
   selectedPeriod.value = 'all'
+  applyPeriodPreset()
 
   // Clear localStorage
   try {
@@ -1071,9 +1294,8 @@ function resetFilters() {
     // localStorage clear failed
   }
 
-  // Emit empty filters to trigger reset
-  // Note: The trades store will automatically preserve the global account filter
-  emit('filter', {})
+  // Apply today filter
+  applyFilters()
 }
 
 async function fetchAvailableSectors() {
@@ -1183,6 +1405,48 @@ function handleClickOutside(event) {
       showQualityGradeDropdown.value = false
     }
   }
+
+  // Check if click is outside time period dropdown
+  if (showTimePeriodDropdown.value) {
+    if (!target.closest('[data-dropdown="timePeriod"]')) {
+      showTimePeriodDropdown.value = false
+    }
+  }
+
+  // Check if click is outside status dropdown
+  if (showStatusDropdown.value) {
+    if (!target.closest('[data-dropdown="status"]')) {
+      showStatusDropdown.value = false
+    }
+  }
+
+  // Check if click is outside side dropdown
+  if (showSideDropdown.value) {
+    if (!target.closest('[data-dropdown="side"]')) {
+      showSideDropdown.value = false
+    }
+  }
+
+  // Check if click is outside hold time dropdown
+  if (showHoldTimeDropdown.value) {
+    if (!target.closest('[data-dropdown="holdTime"]')) {
+      showHoldTimeDropdown.value = false
+    }
+  }
+
+  // Check if click is outside news dropdown
+  if (showNewsDropdown.value) {
+    if (!target.closest('[data-dropdown="news"]')) {
+      showNewsDropdown.value = false
+    }
+  }
+
+  // Check if click is outside P&L type dropdown
+  if (showPnlTypeDropdown.value) {
+    if (!target.closest('[data-dropdown="pnlType"]')) {
+      showPnlTypeDropdown.value = false
+    }
+  }
 }
 
 // Watch for global account filter changes and re-apply filters
@@ -1226,6 +1490,11 @@ onMounted(() => {
     } catch (e) {
       console.error('[TradeFilters] Failed to restore dates on mount:', e)
     }
+  }
+
+  // If period is 'today', always recalculate dates to today (prevents stale dates from localStorage)
+  if (selectedPeriod.value === 'today') {
+    applyPeriodPreset()
   }
 
   // Filters and period are already loaded from localStorage during initialization
@@ -1275,8 +1544,8 @@ onMounted(() => {
     const savedStartDate = filters.value.startDate
     const savedEndDate = filters.value.endDate
     filters.value = { ...filters.value, ...storeFilters }
-    // Restore dates if period is custom
-    if (selectedPeriod.value === 'custom') {
+    // Restore dates if period is custom or today - don't let store defaults overwrite them
+    if (selectedPeriod.value === 'custom' || selectedPeriod.value === 'today') {
       if (savedStartDate) filters.value.startDate = savedStartDate
       if (savedEndDate) filters.value.endDate = savedEndDate
     }

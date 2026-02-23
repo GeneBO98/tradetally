@@ -11,6 +11,13 @@ const AnalyticsCache = require('../services/analyticsCache');
 const cache = require('../utils/cache');
 const logger = require('../utils/logger');
 
+function redactAccountNumber(accountNumber) {
+  if (!accountNumber) return null;
+  const value = String(accountNumber);
+  if (value.length <= 4) return value;
+  return `****${value.slice(-4)}`;
+}
+
 // Helper function to invalidate in-memory analytics cache for a user
 function invalidateInMemoryCache(userId) {
   const cacheKeys = Object.keys(cache.data || {}).filter(key =>
@@ -247,9 +254,9 @@ const brokerSyncController = {
         }
       );
 
-      console.log('[SCHWAB-OAUTH] Accounts response:', JSON.stringify(accountsResponse.data, null, 2));
       const accountNumber = accountsResponse.data?.[0]?.securitiesAccount?.accountNumber;
-      console.log('[SCHWAB-OAUTH] Account Number:', accountNumber);
+      console.log(`[SCHWAB-OAUTH] Accounts response count: ${accountsResponse.data?.length || 0}`);
+      console.log('[SCHWAB-OAUTH] Primary account (redacted):', redactAccountNumber(accountNumber) || 'unknown');
 
       // Create or update connection
       console.log('[SCHWAB-OAUTH] Creating broker connection for user:', userId);
@@ -274,8 +281,9 @@ const brokerSyncController = {
     } catch (error) {
       console.error('[SCHWAB-OAUTH] ERROR MESSAGE:', error.message);
       console.error('[SCHWAB-OAUTH] ERROR STATUS:', error.response?.status);
-      console.error('[SCHWAB-OAUTH] ERROR RESPONSE:', JSON.stringify(error.response?.data, null, 2));
-      console.error('[SCHWAB-OAUTH] ERROR STACK:', error.stack);
+      if (error.response?.data?.error) {
+        console.error('[SCHWAB-OAUTH] ERROR CODE:', error.response.data.error);
+      }
       logger.logError('Error handling Schwab OAuth callback:', error);
 
       // Provide more specific error message in redirect

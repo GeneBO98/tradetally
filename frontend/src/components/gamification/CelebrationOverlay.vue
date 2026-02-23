@@ -1,6 +1,6 @@
 <template>
   <transition name="fade">
-    <div v-if="visible" class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50">
+    <div v-if="visible" class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50" @click.self="handleDismissAll">
       <div class="relative bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-md mx-4 p-6 text-center">
         <div class="absolute -top-4 left-1/2 -translate-x-1/2">
           <div class="w-12 h-12 rounded-full bg-primary-500 text-white flex items-center justify-center">
@@ -30,6 +30,13 @@
           class="mt-6 btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {{ isAnimating ? 'Please wait...' : (remainingCount > 0 ? `Continue (${remainingCount} more)` : 'Done') }}
+        </button>
+        <button
+          v-if="remainingCount > 0"
+          @click="handleDismissAll"
+          class="mt-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+        >
+          Dismiss all
         </button>
       </div>
 
@@ -161,6 +168,16 @@ function showNextItem() {
     visible.value = false
     currentItem.value = null
   }
+}
+
+function handleDismissAll() {
+  console.log('[CELEBRATION] Dismiss all called, clearing queue of', props.queue.length, 'items')
+  stopConfetti()
+  props.queue.splice(0, props.queue.length)
+  visible.value = false
+  currentItem.value = null
+  isAnimating.value = false
+  remainingCount.value = 0
 }
 
 async function handleContinue() {

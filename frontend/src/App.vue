@@ -1,6 +1,7 @@
 <template>
   <div id="app" style="width: 100%; min-width: 100%; overflow-x: visible;">
     <UpdateBanner v-if="!isAuthRoute" />
+    <EmailVerificationBanner v-if="!isAuthRoute" />
     <NavBar v-if="!isAuthRoute" />
     <main class="min-h-screen">
       <router-view />
@@ -81,6 +82,7 @@ import Notification from '@/components/common/Notification.vue'
 import ModalAlert from '@/components/common/ModalAlert.vue'
 import CelebrationOverlay from '@/components/gamification/CelebrationOverlay.vue'
 import UpdateBanner from '@/components/common/UpdateBanner.vue'
+import EmailVerificationBanner from '@/components/common/EmailVerificationBanner.vue'
 import VersionDisplay from '@/components/common/VersionDisplay.vue'
 import api from '@/services/api'
 
@@ -141,9 +143,7 @@ onMounted(async () => {
   // Listen for rate limit events from the API interceptor
   window.addEventListener('rate-limit-exceeded', handleRateLimitExceeded)
 
-  await authStore.checkAuth()
-  // Note: Achievement celebrations are now handled by GamificationView only
-  // This prevents conflicts between App.vue and GamificationView celebration logic
+  // Note: checkAuth() is awaited in main.js before mount to prevent flash of public page
 
   // Initialize version store and check for updates
   versionStore.initialize()

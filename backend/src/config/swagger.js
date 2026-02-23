@@ -24,12 +24,14 @@ const options = {
         bearerAuth: {
           type: 'http',
           scheme: 'bearer',
-          bearerFormat: 'JWT',
+          bearerFormat: 'JWT or API Key',
+          description: 'Enter a JWT access token or an API key (format: tt_live_xxx). API keys can be created under Profile > API Keys.',
         },
         apiKeyAuth: {
           type: 'apiKey',
           in: 'header',
           name: 'X-API-Key',
+          description: 'Enter your API key (format: tt_live_xxx). API keys can be created under Profile > API Keys.',
         },
       },
       schemas: {
