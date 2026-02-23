@@ -14,14 +14,24 @@
               Professional trade tracking platform with automated trade import, advanced analytics, and broker integration.
               The best TraderVue alternative with unlimited free trade storage for stocks and options trading.
             </p>
-            <div class="mt-8 flex flex-wrap gap-4">
-              <router-link
-                v-if="showRegisterButton"
-                to="/register"
-                class="btn-primary text-lg px-8 py-3"
-              >
-                Get Started Free
-              </router-link>
+            <div v-if="showRegisterButton" class="mt-8">
+              <form @submit.prevent="handleQuickSignup" class="flex flex-col sm:flex-row gap-3 max-w-lg">
+                <input
+                  v-model="quickEmail"
+                  type="email"
+                  required
+                  placeholder="Enter your email"
+                  class="flex-1 px-4 py-3 rounded-lg bg-white/10 border border-gray-500 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                />
+                <button
+                  type="submit"
+                  class="btn-primary text-lg px-8 py-3 whitespace-nowrap"
+                >
+                  Get Started Free
+                </button>
+              </form>
+            </div>
+            <div class="mt-4">
               <router-link to="/public" class="inline-flex items-center px-8 py-3 text-lg font-medium text-gray-300 border border-gray-600 rounded-lg hover:bg-white/10 hover:border-gray-400 transition-colors">
                 View Public Trades
               </router-link>
@@ -442,16 +452,25 @@
         <p class="mt-4 text-lg text-gray-500 dark:text-gray-400">
           Join traders using TradeTally to analyze performance, identify patterns, and improve their edge.
         </p>
-        <div class="mt-8 flex flex-wrap justify-center gap-4">
+        <div v-if="showRegisterButton" class="mt-8 flex justify-center">
+          <form @submit.prevent="handleQuickSignup" class="flex flex-col sm:flex-row gap-3 w-full max-w-lg">
+            <input
+              v-model="quickEmail"
+              type="email"
+              required
+              placeholder="Enter your email"
+              class="flex-1 px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            />
+            <button
+              type="submit"
+              class="btn-primary text-lg px-8 py-3 whitespace-nowrap"
+            >
+              Get Started Free
+            </button>
+          </form>
+        </div>
+        <div v-if="showSEOPages" class="mt-4 flex justify-center">
           <router-link
-            v-if="showRegisterButton"
-            to="/register"
-            class="btn-primary text-lg px-10 py-3"
-          >
-            Get Started Free
-          </router-link>
-          <router-link
-            v-if="showSEOPages"
             to="/compare"
             class="btn-secondary text-lg px-8 py-3"
           >
@@ -518,14 +537,23 @@ import {
   TagIcon,
   LightBulbIcon
 } from '@heroicons/vue/24/outline'
+import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useRegistrationMode } from '@/composables/useRegistrationMode'
 import { useScrollReveal } from '@/composables/useScrollReveal'
 
 useScrollReveal()
+const router = useRouter()
 const authStore = useAuthStore()
 const { showSEOPages } = useRegistrationMode()
 const showRegisterButton = ref(true)
+const quickEmail = ref('')
+
+function handleQuickSignup() {
+  if (quickEmail.value) {
+    router.push({ name: 'register', query: { email: quickEmail.value } })
+  }
+}
 
 const brokers = [
   { name: 'Schwab', logo: '/images/brokers/schwab.svg', height: 'h-10' },
