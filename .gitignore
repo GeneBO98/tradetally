@@ -281,3 +281,6 @@ certificates/
 .claude/*
 performance-test.js
 backend/TELEMETRY.md
+
+# Analytics (deployment-specific)
+frontend/src/composables/useAnalytics.js
