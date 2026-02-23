@@ -24,15 +24,6 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const response = await api.post('/auth/login', credentials)
 
-      // Check if email verification is required
-      if (response.data.requiresVerification) {
-        error.value = response.data.error
-        const verificationError = new Error('Email verification required')
-        verificationError.requiresVerification = true
-        verificationError.email = response.data.email
-        throw verificationError
-      }
-
       // Check if admin approval is required
       if (response.data.requiresApproval) {
         error.value = response.data.error
@@ -75,8 +66,8 @@ export const useAuthStore = defineStore('auth', () => {
 
       return response.data
     } catch (err) {
-      // Don't set error for 2FA, verification, or approval - these are normal flows
-      if (!err.requires2FA && !err.requiresVerification && !err.requiresApproval) {
+      // Don't set error for 2FA or approval - these are normal flows
+      if (!err.requires2FA && !err.requiresApproval) {
         error.value = err.response?.data?.error || 'Login failed'
       }
       throw err
