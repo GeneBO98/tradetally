@@ -71,7 +71,7 @@ const app = express();
 const PORT = process.env.PORT || 5001;
 
 // Trust proxy headers for rate limiting and forwarded headers
-app.set('trust proxy', true);
+app.set('trust proxy', 1);
 
 // Rate limiting configuration - can be disabled or adjusted via environment variables
 // RATE_LIMIT_ENABLED=false disables rate limiting entirely (useful for self-hosted instances)
@@ -380,6 +380,10 @@ async function startServer() {
       logger.info('Skipping migrations (RUN_MIGRATIONS=false)');
     }
     
+    // Start CUSIP queue processing (after migrations have created the table)
+    const cusipQueue = require('./utils/cusipQueue');
+    cusipQueue.startProcessing();
+
     // Initialize billing service (conditional)
     await BillingService.initialize();
     

@@ -33,17 +33,29 @@
         
         <!-- Filters and Customization Controls -->
         <div class="mt-4 sm:mt-0 flex flex-wrap gap-3 items-center justify-end">
-          <select v-model="filters.timeRange" @change="applyFilters" class="input text-sm">
-            <option value="all">All Time</option>
-            <option value="custom">Custom Range</option>
-            <option value="feb2025">February 2025</option>
-            <option value="march2025">March 2025</option>
-            <option value="7d">Last 7 Days</option>
-            <option value="30d">Last 30 Days</option>
-            <option value="90d">Last 90 Days</option>
-            <option value="1y">Last Year</option>
-            <option value="ytd">Year to Date</option>
-          </select>
+          <div class="relative" data-dropdown="timeRange">
+            <button
+              @click.stop="showTimeRangeDropdown = !showTimeRangeDropdown"
+              class="input text-sm text-left flex items-center justify-between min-w-[160px]"
+              type="button"
+            >
+              <span class="truncate">{{ getSelectedTimeRangeText() }}</span>
+              <svg class="h-4 w-4 text-gray-400 ml-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+              </svg>
+            </button>
+            <div v-if="showTimeRangeDropdown" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
+              <div
+                v-for="option in timeRangeOptions"
+                :key="option.value"
+                @click="selectTimeRange(option.value)"
+                class="px-3 py-2 cursor-pointer text-sm"
+                :class="filters.timeRange === option.value ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300' : 'text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700'"
+              >
+                {{ option.label }}
+              </div>
+            </div>
+          </div>
 
           <!-- Custom Date Range Inputs -->
           <div v-if="filters.timeRange === 'custom'" class="flex gap-2">
@@ -341,7 +353,22 @@
                     {{ position.side === 'neutral' ? 'hedged' : position.side }}
                   </span>
                 </div>
-                <div v-if="position.unrealizedPnL !== null" class="text-right">
+                <div v-if="position.requires_manual_price" class="text-right">
+                  <template v-if="getOptionPnL(position).unrealizedPnL !== null">
+                    <div class="text-lg font-bold" :class="[
+                      getOptionPnL(position).unrealizedPnL >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                    ]">
+                      {{ getOptionPnL(position).unrealizedPnL >= 0 ? '+' : '' }}${{ formatCurrency(Math.abs(getOptionPnL(position).unrealizedPnL)) }}
+                    </div>
+                    <div class="text-xs font-medium" :class="[
+                      getOptionPnL(position).unrealizedPnLPercent >= 0 ? 'text-green-500' : 'text-red-500'
+                    ]">
+                      {{ getOptionPnL(position).unrealizedPnLPercent >= 0 ? '+' : '' }}{{ formatNumber(getOptionPnL(position).unrealizedPnLPercent) }}%
+                    </div>
+                  </template>
+                  <span v-else class="text-xs text-gray-400">Enter premium below</span>
+                </div>
+                <div v-else-if="position.unrealizedPnL !== null" class="text-right">
                   <div class="text-lg font-bold" :class="[
                     position.unrealizedPnL >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                   ]">
@@ -378,10 +405,26 @@
                   <span class="table-card-value">${{ formatCurrency(position.totalCost) }}</span>
                 </div>
                 <div class="table-card-row">
-                  <span class="table-card-label">Current Price</span>
+                  <span class="table-card-label">{{ position.requires_manual_price ? 'Premium' : 'Current Price' }}</span>
                   <span class="table-card-value">
-                    <span v-if="position.currentPrice !== null">${{ formatCurrency(position.currentPrice) }}</span>
-                    <span v-else class="text-xs text-gray-400">No quote</span>
+                    <template v-if="position.requires_manual_price">
+                      <div class="flex items-center space-x-1">
+                        <span class="text-xs text-gray-400">$</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="Enter"
+                          :value="manualOptionPrices[position.symbol] ?? ''"
+                          @input="setManualOptionPrice(position.symbol, $event.target.value)"
+                          class="w-20 text-right text-sm font-bold bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-1.5 py-0.5 text-gray-900 dark:text-white focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
+                        />
+                      </div>
+                    </template>
+                    <template v-else>
+                      <span v-if="position.currentPrice !== null">${{ formatCurrency(position.currentPrice) }}</span>
+                      <span v-else class="text-xs text-gray-400">No quote</span>
+                    </template>
                   </span>
                 </div>
               </div>
@@ -509,37 +552,80 @@
                       ${{ formatCurrency(position.totalCost) }}
                     </td>
                     <td class="px-3 py-2 text-sm text-right">
-                      <div v-if="position.currentPrice !== null" class="font-bold text-gray-900 dark:text-white">
-                        ${{ formatCurrency(position.currentPrice) }}
-                        <div v-if="position.dayChange !== undefined" class="text-xs" :class="[
-                          position.dayChange >= 0 ? 'text-green-600' : 'text-red-600'
-                        ]">
-                          {{ position.dayChange >= 0 ? '+' : '' }}{{ formatCurrency(position.dayChange) }}
-                          ({{ position.dayChangePercent >= 0 ? '+' : '' }}{{ formatNumber(position.dayChangePercent) }}%)
+                      <!-- Option: manual premium input -->
+                      <template v-if="position.requires_manual_price">
+                        <div class="flex items-center justify-end space-x-1">
+                          <span class="text-xs text-gray-400">$</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="Premium"
+                            :value="manualOptionPrices[position.symbol] ?? ''"
+                            @input="setManualOptionPrice(position.symbol, $event.target.value)"
+                            class="w-20 text-right text-sm font-bold bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-1.5 py-0.5 text-gray-900 dark:text-white focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
+                          />
                         </div>
-                      </div>
-                      <span v-else class="text-xs text-gray-400">No quote</span>
+                      </template>
+                      <!-- Stock/Future: Finnhub price -->
+                      <template v-else>
+                        <div v-if="position.currentPrice !== null" class="font-bold text-gray-900 dark:text-white">
+                          ${{ formatCurrency(position.currentPrice) }}
+                          <div v-if="position.dayChange !== undefined" class="text-xs" :class="[
+                            position.dayChange >= 0 ? 'text-green-600' : 'text-red-600'
+                          ]">
+                            {{ position.dayChange >= 0 ? '+' : '' }}{{ formatCurrency(position.dayChange) }}
+                            ({{ position.dayChangePercent >= 0 ? '+' : '' }}{{ formatNumber(position.dayChangePercent) }}%)
+                          </div>
+                        </div>
+                        <span v-else class="text-xs text-gray-400">No quote</span>
+                      </template>
                     </td>
                     <td class="px-3 py-2 text-sm font-bold text-right">
-                      <span v-if="position.currentValue !== null" class="text-gray-900 dark:text-white">
-                        ${{ formatCurrency(position.currentValue) }}
-                      </span>
-                      <span v-else class="text-xs text-gray-400">-</span>
+                      <template v-if="position.requires_manual_price">
+                        <span v-if="getOptionPnL(position).currentValue !== null" class="text-gray-900 dark:text-white">
+                          ${{ formatCurrency(getOptionPnL(position).currentValue) }}
+                        </span>
+                        <span v-else class="text-xs text-gray-400">-</span>
+                      </template>
+                      <template v-else>
+                        <span v-if="position.currentValue !== null" class="text-gray-900 dark:text-white">
+                          ${{ formatCurrency(position.currentValue) }}
+                        </span>
+                        <span v-else class="text-xs text-gray-400">-</span>
+                      </template>
                     </td>
                     <td class="px-3 py-2 text-sm font-bold text-right">
-                      <div v-if="position.unrealizedPnL !== null">
-                        <div :class="[
-                          position.unrealizedPnL >= 0 ? 'text-green-600' : 'text-red-600'
-                        ]">
-                          {{ position.unrealizedPnL >= 0 ? '+' : '' }}${{ formatCurrency(Math.abs(position.unrealizedPnL)) }}
+                      <template v-if="position.requires_manual_price">
+                        <div v-if="getOptionPnL(position).unrealizedPnL !== null">
+                          <div :class="[
+                            getOptionPnL(position).unrealizedPnL >= 0 ? 'text-green-600' : 'text-red-600'
+                          ]">
+                            {{ getOptionPnL(position).unrealizedPnL >= 0 ? '+' : '' }}${{ formatCurrency(Math.abs(getOptionPnL(position).unrealizedPnL)) }}
+                          </div>
+                          <div class="text-xs" :class="[
+                            getOptionPnL(position).unrealizedPnLPercent >= 0 ? 'text-green-500' : 'text-red-500'
+                          ]">
+                            {{ getOptionPnL(position).unrealizedPnLPercent >= 0 ? '+' : '' }}{{ formatNumber(getOptionPnL(position).unrealizedPnLPercent) }}%
+                          </div>
                         </div>
-                        <div class="text-xs" :class="[
-                          position.unrealizedPnLPercent >= 0 ? 'text-green-500' : 'text-red-500'
-                        ]">
-                          {{ position.unrealizedPnLPercent >= 0 ? '+' : '' }}{{ formatNumber(position.unrealizedPnLPercent) }}%
+                        <span v-else class="text-xs text-gray-400">Enter premium</span>
+                      </template>
+                      <template v-else>
+                        <div v-if="position.unrealizedPnL !== null">
+                          <div :class="[
+                            position.unrealizedPnL >= 0 ? 'text-green-600' : 'text-red-600'
+                          ]">
+                            {{ position.unrealizedPnL >= 0 ? '+' : '' }}${{ formatCurrency(Math.abs(position.unrealizedPnL)) }}
+                          </div>
+                          <div class="text-xs" :class="[
+                            position.unrealizedPnLPercent >= 0 ? 'text-green-500' : 'text-red-500'
+                          ]">
+                            {{ position.unrealizedPnLPercent >= 0 ? '+' : '' }}{{ formatNumber(position.unrealizedPnLPercent) }}%
+                          </div>
                         </div>
-                      </div>
-                      <span v-else class="text-xs text-gray-400">-</span>
+                        <span v-else class="text-xs text-gray-400">-</span>
+                      </template>
                     </td>
                     <td class="px-3 py-2 text-sm text-gray-500 dark:text-gray-400 text-right">
                       {{ position.trades.length }} {{ position.trades.length === 1 ? 'trade' : 'trades' }}
@@ -782,8 +868,43 @@
                     <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
                       Win/Loss Distribution
                     </h3>
-                    <div class="h-80">
+                    <div class="h-64 relative">
                       <canvas ref="distributionChart"></canvas>
+                      <!-- Center label below the arc -->
+                      <div class="absolute bottom-0 left-0 right-0 flex justify-center pointer-events-none" style="margin-bottom: 0.25rem;">
+                        <div class="text-center">
+                          <div class="text-3xl font-bold text-gray-900 dark:text-white">
+                            {{ computedWinRate }}%
+                          </div>
+                          <div class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                            Win Rate
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <!-- Custom legend -->
+                    <div class="flex justify-center gap-5 mt-2">
+                      <button
+                        class="flex items-center gap-1.5 text-sm cursor-pointer hover:opacity-80 transition-opacity"
+                        @click="navigateToTradesByPnLType('profit')"
+                      >
+                        <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                        <span class="text-gray-600 dark:text-gray-400">{{ parseInt(analytics?.summary?.winningTrades) || 0 }} Wins</span>
+                      </button>
+                      <button
+                        class="flex items-center gap-1.5 text-sm cursor-pointer hover:opacity-80 transition-opacity"
+                        @click="navigateToTradesByPnLType('loss')"
+                      >
+                        <span class="w-2.5 h-2.5 rounded-full bg-red-500"></span>
+                        <span class="text-gray-600 dark:text-gray-400">{{ parseInt(analytics?.summary?.losingTrades) || 0 }} Losses</span>
+                      </button>
+                      <button
+                        class="flex items-center gap-1.5 text-sm cursor-pointer hover:opacity-80 transition-opacity"
+                        @click="navigateToTradesByPnLType('breakeven')"
+                      >
+                        <span class="w-2.5 h-2.5 rounded-full bg-gray-400"></span>
+                        <span class="text-gray-600 dark:text-gray-400">{{ parseInt(analytics?.summary?.breakevenTrades) || 0 }} BE</span>
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -1069,11 +1190,74 @@ const calculationMethod = computed(() => {
 })
 const openTrades = ref([])
 
+// Manual option price tracking (persisted in localStorage)
+const manualOptionPrices = ref({})
+
+function loadManualOptionPrices() {
+  try {
+    const stored = localStorage.getItem('tradetally_manual_option_prices')
+    if (stored) manualOptionPrices.value = JSON.parse(stored)
+  } catch (e) {
+    console.log('[DASHBOARD] Failed to load manual option prices:', e)
+  }
+}
+
+function saveManualOptionPrices() {
+  localStorage.setItem('tradetally_manual_option_prices', JSON.stringify(manualOptionPrices.value))
+}
+
+function setManualOptionPrice(symbol, value) {
+  const num = parseFloat(value)
+  if (isNaN(num) || num < 0) {
+    delete manualOptionPrices.value[symbol]
+  } else {
+    manualOptionPrices.value[symbol] = num
+  }
+  saveManualOptionPrices()
+}
+
+function getOptionPnL(position) {
+  const price = manualOptionPrices.value[position.symbol]
+  if (price === undefined || price === null) return { currentValue: null, unrealizedPnL: null, unrealizedPnLPercent: null }
+  const multiplier = position.contractSize || 100
+  const currentValue = price * position.totalQuantity * multiplier
+  const unrealizedPnL = position.side === 'short'
+    ? position.totalCost - currentValue
+    : currentValue - position.totalCost
+  const unrealizedPnLPercent = position.totalCost !== 0 ? (unrealizedPnL / position.totalCost) * 100 : 0
+  return { currentValue, unrealizedPnL, unrealizedPnLPercent }
+}
+
 const filters = ref({
   timeRange: 'all',
   startDate: '',
   endDate: ''
 })
+
+const showTimeRangeDropdown = ref(false)
+
+const timeRangeOptions = [
+  { value: 'all', label: 'All Time' },
+  { value: 'custom', label: 'Custom Range' },
+  { value: 'feb2025', label: 'February 2025' },
+  { value: 'march2025', label: 'March 2025' },
+  { value: '7d', label: 'Last 7 Days' },
+  { value: '30d', label: 'Last 30 Days' },
+  { value: '90d', label: 'Last 90 Days' },
+  { value: '1y', label: 'Last Year' },
+  { value: 'ytd', label: 'Year to Date' }
+]
+
+function getSelectedTimeRangeText() {
+  const option = timeRangeOptions.find(o => o.value === filters.value.timeRange)
+  return option ? option.label : 'All Time'
+}
+
+function selectTimeRange(value) {
+  filters.value.timeRange = value
+  showTimeRangeDropdown.value = false
+  applyFilters()
+}
 
 const pnlChart = ref(null)
 const distributionChart = ref(null)
@@ -1224,15 +1408,37 @@ const totalOpenCost = computed(() => {
 })
 
 const totalUnrealizedPnL = computed(() => {
-  const hasQuotes = openTrades.value.some(position => position.unrealizedPnL !== null)
-  if (!hasQuotes) return null
-  
-  return openTrades.value.reduce((sum, position) => sum + (position.unrealizedPnL || 0), 0)
+  let total = 0
+  let hasAny = false
+  openTrades.value.forEach(position => {
+    if (position.requires_manual_price) {
+      const optPnL = getOptionPnL(position)
+      if (optPnL.unrealizedPnL !== null) {
+        total += optPnL.unrealizedPnL
+        hasAny = true
+      }
+    } else if (position.unrealizedPnL !== null) {
+      total += position.unrealizedPnL
+      hasAny = true
+    }
+  })
+  return hasAny ? total : null
 })
 
 const totalUnrealizedPnLPercent = computed(() => {
   if (totalUnrealizedPnL.value === null || totalOpenCost.value === 0) return 0
   return (totalUnrealizedPnL.value / totalOpenCost.value) * 100
+})
+
+const computedWinRate = computed(() => {
+  const summary = analytics.value?.summary
+  if (!summary) return '0'
+  const wins = parseInt(summary.winningTrades) || 0
+  const losses = parseInt(summary.losingTrades) || 0
+  const be = parseInt(summary.breakevenTrades) || 0
+  const total = wins + losses + be
+  if (total === 0) return '0'
+  return ((wins / total) * 100).toFixed(1)
 })
 
 function formatCurrency(amount) {
@@ -1404,7 +1610,18 @@ async function fetchOpenTrades() {
     
     openTrades.value = response.data.positions || []
     console.log('Set openTrades to:', openTrades.value)
-    
+
+    // Clean up stale manual option prices for symbols no longer in open positions
+    const openSymbols = new Set(openTrades.value.filter(p => p.requires_manual_price).map(p => p.symbol))
+    let cleaned = false
+    Object.keys(manualOptionPrices.value).forEach(sym => {
+      if (!openSymbols.has(sym)) {
+        delete manualOptionPrices.value[sym]
+        cleaned = true
+      }
+    })
+    if (cleaned) saveManualOptionPrices()
+
   } catch (error) {
     console.error('Failed to fetch open trades:', error)
     
@@ -1535,45 +1752,38 @@ function createPnLChart() {
 }
 
 function createDistributionChart() {
-  console.log('Dashboard: Creating distribution chart...')
-  console.log('Dashboard: distributionChart.value exists:', !!distributionChart.value)
-  console.log('Dashboard: summary data:', analytics.value.summary)
-  
   if (distributionChartInstance) {
     distributionChartInstance.destroy()
   }
-  
+
   const ctx = distributionChart.value.getContext('2d')
   const summary = analytics.value.summary
-  
-  console.log('Dashboard: Distribution data:', [
-    summary.winningTrades || 0,
-    summary.losingTrades || 0,
-    summary.breakevenTrades || 0
-  ])
-  
+  const isDark = document.documentElement.classList.contains('dark')
+
+  const wins = parseInt(summary.winningTrades) || 0
+  const losses = parseInt(summary.losingTrades) || 0
+  const breakeven = parseInt(summary.breakevenTrades) || 0
+
   distributionChartInstance = new Chart(ctx, {
     type: 'doughnut',
     data: {
       labels: ['Wins', 'Losses', 'Breakeven'],
       datasets: [{
-        data: [
-          parseInt(summary.winningTrades) || 0,
-          parseInt(summary.losingTrades) || 0,
-          parseInt(summary.breakevenTrades) || 0
-        ],
-        backgroundColor: [
-          '#10b981',
-          '#ef4444',
-          '#6b7280'
-        ],
-        borderWidth: 2,
-        borderColor: '#ffffff'
+        data: [wins, losses, breakeven],
+        backgroundColor: ['#10b981', '#ef4444', '#9ca3af'],
+        hoverBackgroundColor: ['#34d399', '#f87171', '#b0b5bf'],
+        borderWidth: 0,
+        hoverOffset: 6,
+        spacing: 4,
+        borderRadius: 20
       }]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      rotation: -90,
+      circumference: 180,
+      cutout: '72%',
       onClick: (event, elements) => {
         if (elements.length > 0) {
           const index = elements[0].index
@@ -1581,10 +1791,31 @@ function createDistributionChart() {
           navigateToTradesByPnLType(clickedSegment)
         }
       },
+      animation: {
+        animateRotate: true,
+        duration: 800
+      },
       plugins: {
         legend: {
-          position: 'bottom',
-          onClick: null // Disable legend clicking
+          display: false
+        },
+        tooltip: {
+          backgroundColor: isDark ? '#374151' : '#1f2937',
+          titleColor: '#f9fafb',
+          bodyColor: '#d1d5db',
+          borderColor: isDark ? '#4b5563' : '#374151',
+          borderWidth: 1,
+          cornerRadius: 8,
+          padding: 10,
+          displayColors: true,
+          boxPadding: 4,
+          callbacks: {
+            label: function(context) {
+              const total = wins + losses + breakeven
+              const pct = total > 0 ? ((context.raw / total) * 100).toFixed(1) : 0
+              return ` ${context.raw} trades (${pct}%)`
+            }
+          }
         }
       }
     }
@@ -2057,8 +2288,22 @@ async function fetchExpiredOptionsCount() {
 
 let marketStatusChecker = null
 
+function handleClickOutside(event) {
+  if (showTimeRangeDropdown.value) {
+    const target = event.target
+    if (!target.closest('[data-dropdown="timeRange"]')) {
+      showTimeRangeDropdown.value = false
+    }
+  }
+}
+
 onMounted(async () => {
   console.log('Dashboard: Component mounted')
+
+  document.addEventListener('click', handleClickOutside)
+
+  // Load manual option prices from localStorage
+  loadManualOptionPrices()
 
   // Load saved time range from localStorage
   try {
@@ -2105,6 +2350,8 @@ onMounted(async () => {
 
 onUnmounted(() => {
   console.log('Dashboard: Component unmounting - cleaning up all intervals...')
+
+  document.removeEventListener('click', handleClickOutside)
 
   // Stop auto-update (clears updateInterval and countdownInterval)
   stopAutoUpdate()

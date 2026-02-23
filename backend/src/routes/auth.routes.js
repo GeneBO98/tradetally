@@ -11,7 +11,8 @@ const authLimiter = rateLimit({
   max: 10,
   message: { error: 'Too many attempts. Please try again later.' },
   standardHeaders: true,
-  legacyHeaders: false
+  legacyHeaders: false,
+  validate: { trustProxy: false }
 });
 
 const twoFactorLimiter = rateLimit({
@@ -19,7 +20,8 @@ const twoFactorLimiter = rateLimit({
   max: 5,
   message: { error: 'Too many 2FA attempts. Please try again later.' },
   standardHeaders: true,
-  legacyHeaders: false
+  legacyHeaders: false,
+  validate: { trustProxy: false }
 });
 
 /**
