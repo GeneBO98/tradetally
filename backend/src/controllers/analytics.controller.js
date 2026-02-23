@@ -2126,11 +2126,37 @@ const analyticsController = {
         sectorData = null;
       }
 
-      // Generate AI recommendations with sector data
+      // Fetch global community benchmarks for AI context
+      let globalBenchmarks = null;
+      try {
+        const AggregateAnalytics = require('../models/AggregateAnalytics');
+        const benchmarkCacheKey = 'aggregate:ai-benchmarks';
+        const cache = require('../utils/cache');
+        globalBenchmarks = cache.get(benchmarkCacheKey);
+        if (!globalBenchmarks) {
+          const [overview, timeAnalysis] = await Promise.all([
+            AggregateAnalytics.getOverviewStats('90d'),
+            AggregateAnalytics.getTimeOfDayAnalysis('90d')
+          ]);
+          // Find best/worst hours by win rate
+          const hourly = timeAnalysis.hourly || [];
+          const sortedByWinRate = [...hourly].sort((a, b) => (b.win_rate || 0) - (a.win_rate || 0));
+          globalBenchmarks = {
+            overview,
+            best_hours: sortedByWinRate.slice(0, 3),
+            worst_hours: sortedByWinRate.slice(-3).reverse()
+          };
+          cache.set(benchmarkCacheKey, globalBenchmarks, 60 * 60 * 1000); // 1 hour TTL
+        }
+      } catch (benchmarkError) {
+        console.warn('[WARNING] Failed to fetch global benchmarks for AI:', benchmarkError.message);
+      }
+
+      // Generate AI recommendations with sector data and global benchmarks
       console.log('[AI] Generating AI recommendations with sector analysis...');
       let recommendations;
       try {
-        recommendations = await aiService.generateResponse(req.user.id, analyticsController.buildRecommendationPrompt(metrics, trades, tradingProfile, sectorData));
+        recommendations = await aiService.generateResponse(req.user.id, analyticsController.buildRecommendationPrompt(metrics, trades, tradingProfile, sectorData, globalBenchmarks));
         if (!recommendations) {
           throw new Error('AI service returned undefined recommendations');
         }
@@ -2526,16 +2552,33 @@ const analyticsController = {
     }
   },
 
-  buildRecommendationPrompt(metrics, trades, tradingProfile, sectorData) {
-    const sectorAnalysis = sectorData && sectorData.length > 0 
-      ? `\n\nSector Performance Analysis:\n${sectorData.map(s => 
+  buildRecommendationPrompt(metrics, trades, tradingProfile, sectorData, globalBenchmarks) {
+    const sectorAnalysis = sectorData && sectorData.length > 0
+      ? `\n\nSector Performance Analysis:\n${sectorData.map(s =>
           `- ${s.industry}: ${s.total_trades} trades, ${s.total_pnl > 0 ? '+' : ''}$${s.total_pnl.toFixed(2)} P&L, ${s.win_rate}% win rate`
         ).join('\n')}`
       : '';
 
-    const tradingProfileInfo = tradingProfile 
+    const tradingProfileInfo = tradingProfile
       ? `\n\nTrading Profile:\n- Experience: ${tradingProfile.experienceLevel}\n- Risk Tolerance: ${tradingProfile.riskTolerance}\n- Trading Styles: ${tradingProfile.tradingStyles.join(', ')}\n- Strategies: ${tradingProfile.tradingStrategies.join(', ')}`
       : '';
+
+    let benchmarkSection = '';
+    if (globalBenchmarks && globalBenchmarks.overview) {
+      const ov = globalBenchmarks.overview;
+      benchmarkSection = `\n\nGLOBAL COMMUNITY BENCHMARKS (last 90 days):
+- Community Win Rate: ${ov.overall_win_rate}%
+- Community Avg P&L/Trade: $${ov.avg_pnl_per_trade}
+- Community Avg Hold Time: ${ov.avg_hold_time_minutes} minutes
+- Active Community Traders: ${ov.active_traders}`;
+      if (globalBenchmarks.best_hours && globalBenchmarks.best_hours.length > 0) {
+        benchmarkSection += `\n- Best Trading Hours (by win rate): ${globalBenchmarks.best_hours.map(h => `${h.hour}:00 (${h.win_rate}%)`).join(', ')}`;
+      }
+      if (globalBenchmarks.worst_hours && globalBenchmarks.worst_hours.length > 0) {
+        benchmarkSection += `\n- Worst Trading Hours (by win rate): ${globalBenchmarks.worst_hours.map(h => `${h.hour}:00 (${h.win_rate}%)`).join(', ')}`;
+      }
+      benchmarkSection += `\n\nCompare the trader's metrics against these community benchmarks and highlight where they differ significantly.`;
+    }
 
     return `As a professional trading analyst, provide personalized trading recommendations based on this performance data:
 
@@ -2548,7 +2591,7 @@ PERFORMANCE METRICS:
 - Average Loss: $${parseFloat(metrics.avg_loss).toFixed(2)}
 - Best Trade: $${parseFloat(metrics.best_trade).toFixed(2)}
 - Worst Trade: $${parseFloat(metrics.worst_trade).toFixed(2)}
-- Profit Factor: ${metrics.profit_factor}${tradingProfileInfo}${sectorAnalysis}
+- Profit Factor: ${metrics.profit_factor}${tradingProfileInfo}${sectorAnalysis}${benchmarkSection}
 
 RECENT TRADES SAMPLE:
 ${trades.slice(0, 10).map(t => 

@@ -990,11 +990,51 @@
                 </div>
               </div>
             </template>
+
+            <!-- Community Percentile Widget -->
+            <template v-if="element.id === 'community-percentile'">
+              <div v-if="percentileData" class="card">
+                <div class="card-body">
+                  <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Community Ranking</h3>
+                  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div v-for="m in percentileData.metrics" :key="m.metric" class="p-4 rounded-lg bg-gray-50 dark:bg-gray-700/50">
+                      <div class="text-sm text-gray-500 dark:text-gray-400">{{ m.label }}</div>
+                      <div class="text-xl font-bold text-gray-900 dark:text-white mt-1">
+                        <span v-if="m.unit === '$'">${{ formatNumber(m.user_value) }}</span>
+                        <span v-else-if="m.unit === '%'">{{ formatNumber(m.user_value, 1) }}%</span>
+                        <span v-else>{{ formatHoldTimeShort(m.user_value) }}</span>
+                      </div>
+                      <div class="mt-2">
+                        <div class="flex items-center justify-between text-xs mb-1">
+                          <span class="text-gray-500 dark:text-gray-400">Top {{ 100 - (m.percentile || 0) }}%</span>
+                          <span class="text-gray-400">Avg: <span v-if="m.unit === '$'">${{ formatNumber(m.global_average) }}</span><span v-else-if="m.unit === '%'">{{ formatNumber(m.global_average, 1) }}%</span><span v-else>{{ formatHoldTimeShort(m.global_average) }}</span></span>
+                        </div>
+                        <div class="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2">
+                          <div class="h-2 rounded-full" :class="(m.percentile || 0) >= 50 ? 'bg-green-500' : 'bg-primary-500'" :style="{ width: (m.percentile || 0) + '%' }"></div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <p class="text-xs text-gray-400 mt-3">Compared against {{ percentileData.total_community_traders }} community traders</p>
+                </div>
+              </div>
+              <div v-else-if="authStore.user?.tier === 'pro' && !percentileLoading" class="card">
+                <div class="card-body text-center py-6 text-gray-500 dark:text-gray-400 text-sm">
+                  Not enough data for community ranking (need 10+ trades and 3+ community traders).
+                </div>
+              </div>
+              <div v-else-if="authStore.user?.tier !== 'pro'" class="card">
+                <div class="card-body">
+                  <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">Community Ranking</h3>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">See how you compare against other TradeTally traders. <router-link to="/pricing" class="text-primary-600 hover:text-primary-700">Upgrade to Pro</router-link></p>
+                </div>
+              </div>
+            </template>
           </div>
         </template>
       </draggable>
     </div>
-    
+
     <!-- Layout Settings Modal -->
     <div v-if="showLayoutSettings" class="fixed inset-0 z-50 overflow-y-auto" @click="showLayoutSettings = false">
       <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
@@ -1085,6 +1125,8 @@ const router = useRouter()
 const loading = ref(true)
 const initialLoading = ref(true) // Track initial load separately to preserve scroll on refresh
 const userSettings = ref(null)
+const percentileData = ref(null)
+const percentileLoading = ref(false)
 const analytics = ref({
   summary: {},
   performanceBySymbol: [],
@@ -1130,7 +1172,8 @@ const sectionDefinitions = [
   { id: 'charts', title: 'P&L & Distribution Charts', category: 'charts' },
   { id: 'win-rate-chart', title: 'Daily Win Rate Chart', category: 'charts' },
   { id: 'performance-tables', title: 'Performance Tables', category: 'tables' },
-  { id: 'additional-stats', title: 'Additional Statistics', category: 'stats' }
+  { id: 'additional-stats', title: 'Additional Statistics', category: 'stats' },
+  { id: 'community-percentile', title: 'Community Ranking', category: 'stats' }
 ]
 
 const defaultDashboardLayout = sectionDefinitions.map(section => ({
@@ -2117,6 +2160,28 @@ async function fetchExpiredOptionsCount() {
 
 let marketStatusChecker = null
 
+function formatHoldTimeShort(minutes) {
+  if (!minutes) return '-'
+  if (minutes < 60) return `${Math.round(minutes)}m`
+  const hours = Math.floor(minutes / 60)
+  const mins = Math.round(minutes % 60)
+  return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`
+}
+
+async function fetchPercentileData() {
+  if (authStore.user?.tier !== 'pro') return
+  percentileLoading.value = true
+  try {
+    const response = await api.get('/community-insights/percentile')
+    percentileData.value = response.data
+  } catch (error) {
+    console.log('[DASHBOARD] Percentile data not available:', error.response?.status)
+    percentileData.value = null
+  } finally {
+    percentileLoading.value = false
+  }
+}
+
 onMounted(async () => {
   console.log('Dashboard: Component mounted')
 
@@ -2143,6 +2208,9 @@ onMounted(async () => {
     fetchOpenTrades(),
     fetchExpiredOptionsCount()
   ])
+
+  // Fetch community percentile data (non-blocking)
+  fetchPercentileData()
 
   // Check Year Wrapped banner status (non-blocking)
   yearWrappedStore.checkBannerStatus()
