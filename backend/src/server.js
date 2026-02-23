@@ -380,6 +380,10 @@ async function startServer() {
       logger.info('Skipping migrations (RUN_MIGRATIONS=false)');
     }
     
+    // Start CUSIP queue processing (after migrations have created the table)
+    const cusipQueue = require('./utils/cusipQueue');
+    cusipQueue.startProcessing();
+
     // Initialize billing service (conditional)
     await BillingService.initialize();
     
