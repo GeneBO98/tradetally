@@ -37,33 +37,6 @@
       <form v-if="!registrationDisabled" class="mt-8 space-y-6" @submit.prevent="handleRegister">
         <div class="space-y-4">
           <div>
-            <label for="fullName" class="label">Full Name</label>
-            <input
-              id="fullName"
-              v-model="form.fullName"
-              name="fullName"
-              type="text"
-              class="input"
-              placeholder="John Doe"
-              @keydown.enter="handleRegister"
-            />
-          </div>
-          
-          <div>
-            <label for="username" class="label">Username</label>
-            <input
-              id="username"
-              v-model="form.username"
-              name="username"
-              type="text"
-              required
-              class="input"
-              placeholder="johndoe"
-              @keydown.enter="handleRegister"
-            />
-          </div>
-          
-          <div>
             <label for="email" class="label">Email address</label>
             <input
               id="email"
@@ -76,7 +49,7 @@
               @keydown.enter="handleRegister"
             />
           </div>
-          
+
           <div>
             <label for="password" class="label">Password</label>
             <input
@@ -132,17 +105,16 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useNotification } from '@/composables/useNotification'
 
 const authStore = useAuthStore()
 const router = useRouter()
+const route = useRoute()
 const { showError, showSuccess } = useNotification()
 
 const form = ref({
-  fullName: '',
-  username: '',
   email: '',
   password: '',
   marketing_consent: false
@@ -152,6 +124,11 @@ const registrationDisabled = ref(false)
 const billingEnabled = ref(false)
 
 onMounted(async () => {
+  // Pre-fill email from query param (from home page quick signup)
+  if (route.query.email) {
+    form.value.email = route.query.email
+  }
+
   try {
     const config = await authStore.getRegistrationConfig()
     registrationDisabled.value = !config.allowRegistration
@@ -177,9 +154,9 @@ async function handleRegister() {
     
     // Check if email verification or admin approval is required
     if (response.requiresVerification && response.requiresApproval) {
-      router.push({ name: 'login', query: { message: 'Please check your email to verify your account and wait for admin approval' } })
+      router.push({ name: 'login', query: { message: 'Registration successful! Please check your email to verify your account and wait for admin approval.' } })
     } else if (response.requiresVerification) {
-      router.push({ name: 'login', query: { message: 'Please check your email to verify your account' } })
+      router.push({ name: 'login', query: { message: 'Registration successful! Please check your email to verify your account.' } })
     } else if (response.requiresApproval) {
       router.push({ name: 'login', query: { message: 'Your account is pending admin approval' } })
     } else {

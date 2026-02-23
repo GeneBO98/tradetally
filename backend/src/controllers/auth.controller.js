@@ -29,24 +29,39 @@ function getBillingEnabled() {
   return process.env.BILLING_ENABLED === 'true';
 }
 
+// Auto-generate a username from email, with random suffix if taken
+async function generateUsername(email) {
+  const base = email.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '').substring(0, 20) || 'user';
+  let username = base;
+  let attempts = 0;
+  while (attempts < 10) {
+    const existing = await User.findByUsername(username);
+    if (!existing) return username;
+    username = `${base}${Math.floor(Math.random() * 9000) + 1000}`;
+    attempts++;
+  }
+  // Fallback to UUID-style
+  return `${base}_${Date.now().toString(36)}`;
+}
+
 const authController = {
   async register(req, res, next) {
     try {
-      const { email, username, password, fullName, marketing_consent } = req.body;
+      const { email, username: providedUsername, password, fullName, marketing_consent } = req.body;
 
       // Check registration mode
       const registrationMode = getRegistrationMode();
       if (registrationMode === 'disabled') {
-        return res.status(403).json({ 
+        return res.status(403).json({
           error: 'User registration is currently disabled. Please contact an administrator.',
           registrationMode: 'disabled'
         });
       }
 
-      // Validate required fields
-      if (!email || !username || !password) {
-        return res.status(400).json({ 
-          error: 'Missing required fields: email, username, and password are required' 
+      // Validate required fields (only email and password required)
+      if (!email || !password) {
+        return res.status(400).json({
+          error: 'Missing required fields: email and password are required'
         });
       }
 
@@ -55,9 +70,16 @@ const authController = {
         return res.status(409).json({ error: 'Email already registered' });
       }
 
-      const existingUsername = await User.findByUsername(username);
-      if (existingUsername) {
-        return res.status(409).json({ error: 'Username already taken' });
+      // Auto-generate username if not provided
+      let username;
+      if (providedUsername) {
+        const existingUsername = await User.findByUsername(providedUsername);
+        if (existingUsername) {
+          return res.status(409).json({ error: 'Username already taken' });
+        }
+        username = providedUsername;
+      } else {
+        username = await generateUsername(email);
       }
 
       // Check if this is the first user (make them admin)
@@ -173,16 +195,6 @@ const authController = {
         });
       }
 
-      // Check if email is verified (only if email verification is configured)
-      const emailConfigured = isEmailConfigured();
-      if (emailConfigured && !user.is_verified) {
-        return res.status(403).json({ 
-          error: 'Please verify your email before signing in',
-          requiresVerification: true,
-          email: user.email
-        });
-      }
-
       // Check if user is approved by admin (if approval mode is enabled)
       const registrationMode = getRegistrationMode();
       if (registrationMode === 'approval' && !user.admin_approved) {
@@ -240,7 +252,8 @@ const authController = {
           billingEnabled: billingEnabled,
           isVerified: user.is_verified,
           adminApproved: user.admin_approved,
-          twoFactorEnabled: user.two_factor_enabled || false
+          twoFactorEnabled: user.two_factor_enabled || false,
+          createdAt: user.created_at
         },
         is_first_login: isFirstLogin,
         token
