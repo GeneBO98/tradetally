@@ -59,7 +59,7 @@
               type="password"
               required
               class="input"
-              placeholder="Minimum 6 characters"
+              placeholder="Minimum 8 characters"
               @keydown.enter="handleRegister"
             />
           </div>
