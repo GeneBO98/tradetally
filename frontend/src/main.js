@@ -11,9 +11,19 @@ const app = createApp(App)
 app.use(createPinia())
 app.use(router)
 
-// Initialize auth state before mounting to prevent flash of public page
-const authStore = useAuthStore()
-authStore.checkAuth().finally(() => {
+async function bootstrap() {
+  const authStore = useAuthStore()
+
+  try {
+    // Initialize auth state before mount.
+    await authStore.checkAuth()
+  } catch (error) {
+    console.error('Auth bootstrap failed:', error)
+  }
+
+  // Wait for initial navigation/redirects so public routes don't paint briefly on refresh.
+  await router.isReady()
+
   // Initialize analytics (if configured)
   const analytics = useAnalytics()
   analytics.initialize()
@@ -29,4 +39,6 @@ authStore.checkAuth().finally(() => {
   }
 
   app.mount('#app')
-})
+}
+
+bootstrap()
