@@ -29,19 +29,11 @@ function getBillingEnabled() {
   return process.env.BILLING_ENABLED === 'true';
 }
 
-// Auto-generate a username from email, with random suffix if taken
-async function generateUsername(email) {
-  const base = email.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '').substring(0, 20) || 'user';
-  let username = base;
-  let attempts = 0;
-  while (attempts < 10) {
-    const existing = await User.findByUsername(username);
-    if (!existing) return username;
-    username = `${base}${Math.floor(Math.random() * 9000) + 1000}`;
-    attempts++;
-  }
-  // Fallback to UUID-style
-  return `${base}_${Date.now().toString(36)}`;
+function maskEmail(email) {
+  if (!email || !email.includes('@')) return '***';
+  const [localPart, domain] = email.split('@');
+  if (localPart.length <= 2) return `**@${domain}`;
+  return `${localPart.slice(0, 2)}***@${domain}`;
 }
 
 const authController = {
@@ -121,7 +113,7 @@ const authController = {
 
       // Log if this user was made an admin
       if (isFirstUser) {
-        console.log(`🔐 First user registered - automatically granted admin privileges: ${user.username} (${user.email})`);
+        console.log(`🔐 First user registered - automatically granted admin privileges: ${user.username} (${maskEmail(user.email)})`);
       }
 
       // Send verification email only if email is configured AND not first user
