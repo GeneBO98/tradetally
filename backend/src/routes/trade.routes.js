@@ -46,6 +46,7 @@ const upload = multer({
  *     tags: [Trades]
  *     security:
  *       - bearerAuth: []
+ *       - apiKeyAuth: []
  *     parameters:
  *       - in: query
  *         name: page
@@ -96,6 +97,7 @@ const upload = multer({
  *     tags: [Trades]
  *     security:
  *       - bearerAuth: []
+ *       - apiKeyAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -119,9 +121,9 @@ const upload = multer({
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.get('/', authenticate, tradeController.getUserTrades);
-router.get('/count', authenticate, tradeController.getTradesCount);
-router.post('/', authenticate, validate(schemas.createTrade), tradeController.createTrade);
+router.get('/', flexibleAuth, tradeController.getUserTrades);
+router.get('/count', flexibleAuth, tradeController.getTradesCount);
+router.post('/', flexibleAuth, validate(schemas.createTrade), tradeController.createTrade);
 
 /**
  * @swagger
@@ -290,11 +292,12 @@ router.get('/public', optionalAuth, tradeController.getPublicTrades);
  *     tags: [Trades]
  *     security:
  *       - bearerAuth: []
+ *       - apiKeyAuth: []
  *     responses:
  *       200:
  *         description: Trade analytics data
  */
-router.get('/analytics', authenticate, tradeController.getAnalytics);
+router.get('/analytics', flexibleAuth, tradeController.getAnalytics);
 
 /**
  * @swagger
@@ -314,7 +317,7 @@ router.get('/analytics', authenticate, tradeController.getAnalytics);
  *       200:
  *         description: Monthly performance metrics
  */
-router.get('/analytics/monthly', authenticate, tradeController.getMonthlyPerformance);
+router.get('/analytics/monthly', flexibleAuth, tradeController.getMonthlyPerformance);
 
 /**
  * @swagger
@@ -736,8 +739,8 @@ router.get('/:id/chart-data', authenticate, tradeController.getTradeChartData);
  *         description: Trade deleted successfully
  */
 router.get('/:id', optionalAuth, tradeController.getTrade);
-router.put('/:id', authenticate, validate(schemas.updateTrade), tradeController.updateTrade);
-router.delete('/:id', authenticate, tradeController.deleteTrade);
+router.put('/:id', flexibleAuth, validate(schemas.updateTrade), tradeController.updateTrade);
+router.delete('/:id', flexibleAuth, tradeController.deleteTrade);
 router.post('/:id/split', authenticate, tradeController.splitTrade);
 router.post('/:id/attachments', authenticate, upload.single('file'), tradeController.uploadAttachment);
 router.delete('/:id/attachments/:attachmentId', authenticate, tradeController.deleteAttachment);
