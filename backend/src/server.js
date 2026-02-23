@@ -50,6 +50,7 @@ const tradeManagementRoutes = require('./routes/tradeManagement.routes');
 const aiRoutes = require('./routes/ai.routes');
 const symbolsRoutes = require('./routes/symbols.routes');
 const unsubscribeRoutes = require('./routes/unsubscribe.routes');
+const { adminRouter: adminAggregateRoutes, communityRouter: communityInsightsRoutes, publicRouter: publicInsightsRoutes } = require('./routes/aggregateAnalytics.routes');
 const BillingService = require('./services/billingService');
 const priceMonitoringService = require('./services/priceMonitoringService');
 const backupScheduler = require('./services/backupScheduler.service');
@@ -60,6 +61,7 @@ const RetentionEmailScheduler = require('./services/retentionEmailScheduler');
 const OptionsScheduler = require('./services/optionsScheduler');
 const brokerSyncScheduler = require('./services/brokerSync/brokerSyncScheduler');
 const dividendScheduler = require('./services/dividendScheduler');
+const communityInsightsScheduler = require('./services/communityInsightsScheduler');
 const backgroundWorker = require('./workers/backgroundWorker');
 const jobRecoveryService = require('./services/jobRecoveryService');
 const pushNotificationService = require('./services/pushNotificationService');
@@ -247,6 +249,9 @@ app.use('/api/trade-management', tradeManagementRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/symbols', symbolsRoutes);
 app.use('/api/unsubscribe', unsubscribeRoutes);
+app.use('/api/admin/aggregate-analytics', adminAggregateRoutes);
+app.use('/api/community-insights', communityInsightsRoutes);
+app.use('/api/community-insights/public', publicInsightsRoutes);
 
 // OAuth2 Provider endpoints
 app.use('/oauth', oauth2Routes);
@@ -526,6 +531,15 @@ async function startServer() {
       console.log('Stock scanner disabled (ENABLE_STOCK_SCANNER=false)');
     }
 
+    // Initialize community insights scheduler (daily AI summary generation)
+    if (process.env.ENABLE_COMMUNITY_INSIGHTS_SCHEDULER !== 'false') {
+      console.log('Initializing community insights scheduler...');
+      await communityInsightsScheduler.initialize();
+      console.log('[SUCCESS] Community insights scheduler initialized');
+    } else {
+      console.log('Community insights scheduler disabled (ENABLE_COMMUNITY_INSIGHTS_SCHEDULER=false)');
+    }
+
     // Start the server
     app.listen(PORT, () => {
       logger.info(`✓ TradeTally server running on port ${PORT}`);
@@ -556,6 +570,7 @@ process.on('SIGTERM', async () => {
   globalEnrichmentCacheCleanupService.stop();
   backupScheduler.stopAll();
   stockScannerScheduler.stop();
+  communityInsightsScheduler.stop();
   await backgroundWorker.stop();
   await shutdownPostHogTelemetry();
   process.exit(0);
@@ -573,6 +588,7 @@ process.on('SIGINT', async () => {
   globalEnrichmentCacheCleanupService.stop();
   backupScheduler.stopAll();
   stockScannerScheduler.stop();
+  communityInsightsScheduler.stop();
   await backgroundWorker.stop();
   await shutdownPostHogTelemetry();
   process.exit(0);
