@@ -114,6 +114,12 @@ const router = createRouter({
       meta: { requiresAuth: true, requiresTier: 'pro' }
     },
     {
+      path: '/metrics/community',
+      name: 'community-insights',
+      component: () => import('@/views/CommunityInsightsView.vue'),
+      meta: { requiresAuth: true, requiresTier: 'pro' }
+    },
+    {
       path: '/diary',
       name: 'diary',
       component: () => import('@/views/DiaryView.vue'),
@@ -216,9 +222,20 @@ const router = createRouter({
       meta: { requiresAuth: true, requiresAdmin: true }
     },
     {
+      path: '/admin/aggregate-analytics',
+      name: 'admin-aggregate-analytics',
+      component: () => import('@/views/admin/AdminAggregateAnalyticsView.vue'),
+      meta: { requiresAuth: true, requiresAdmin: true }
+    },
+    {
       path: '/oauth/authorize',
       name: 'oauth-authorize',
       component: () => import('@/views/OAuth/AuthorizeView.vue')
+    },
+    {
+      path: '/market-pulse',
+      name: 'market-pulse',
+      component: () => import('@/views/MarketPulseView.vue')
     },
     {
       path: '/pricing',

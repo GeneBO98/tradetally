@@ -404,6 +404,54 @@
                                 </div>
                             </div>
 
+                            <div
+                                class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg"
+                            >
+                                <div class="flex-1">
+                                    <label
+                                        for="contributeAnonymousData"
+                                        class="block text-sm font-medium text-gray-900 dark:text-white"
+                                    >
+                                        Contribute Anonymous Data
+                                    </label>
+                                    <p
+                                        class="mt-1 text-sm text-gray-600 dark:text-gray-400"
+                                    >
+                                        Allow your anonymized trading patterns to
+                                        be included in Community Insights. No
+                                        personal information is ever shared.
+                                    </p>
+                                </div>
+                                <div class="ml-4 flex-shrink-0">
+                                    <button
+                                        type="button"
+                                        @click="
+                                            privacyForm.contributeAnonymousData =
+                                                !privacyForm.contributeAnonymousData
+                                        "
+                                        :class="[
+                                            privacyForm.contributeAnonymousData
+                                                ? 'bg-primary-600'
+                                                : 'bg-gray-200 dark:bg-gray-700',
+                                            'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-600 focus:ring-offset-2',
+                                        ]"
+                                        role="switch"
+                                        :aria-checked="
+                                            privacyForm.contributeAnonymousData
+                                        "
+                                    >
+                                        <span
+                                            :class="[
+                                                privacyForm.contributeAnonymousData
+                                                    ? 'translate-x-5'
+                                                    : 'translate-x-0',
+                                                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                                            ]"
+                                        />
+                                    </button>
+                                </div>
+                            </div>
+
                             <div class="flex justify-end">
                                 <button
                                     type="submit"
@@ -2595,6 +2643,7 @@ const analyticsLoading = ref(false);
 // Privacy Settings
 const privacyForm = ref({
     publicProfile: false,
+    contributeAnonymousData: true,
 });
 const privacyLoading = ref(false);
 
@@ -2951,12 +3000,14 @@ async function loadPrivacySettings() {
         const settings = response.data.settings;
 
         privacyForm.value = {
-            publicProfile: settings.publicProfile ?? false,
+            publicProfile: settings.publicProfile ?? settings.public_profile ?? false,
+            contributeAnonymousData: settings.contributeAnonymousData ?? settings.contribute_anonymous_data ?? true,
         };
     } catch (error) {
         console.error("Failed to load privacy settings:", error);
-        // Default to false if loading fails
+        // Default to false/true if loading fails
         privacyForm.value.publicProfile = false;
+        privacyForm.value.contributeAnonymousData = true;
     }
 }
 
@@ -2965,6 +3016,7 @@ async function updatePrivacySettings() {
     try {
         await api.put("/settings", {
             publicProfile: privacyForm.value.publicProfile,
+            contributeAnonymousData: privacyForm.value.contributeAnonymousData,
         });
 
         // Refresh user data to update settings in auth store

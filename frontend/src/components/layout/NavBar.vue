@@ -343,6 +343,13 @@ const baseNavigation = [
         route: 'health-analytics',
         description: 'Correlate health metrics with trading performance',
         badge: { type: 'pro', text: 'Pro' }
+      },
+      {
+        name: 'Community Insights',
+        to: '/metrics/community',
+        route: 'community-insights',
+        description: 'Anonymized aggregate trading patterns from the community',
+        badge: { type: 'pro', text: 'Pro' }
       }
     ]
   },
@@ -427,6 +434,12 @@ const navigation = computed(() => {
           to: '/admin/backups',
           route: 'admin-backups',
           description: 'Full site backups and restore'
+        },
+        {
+          name: 'Aggregate Analytics',
+          to: '/admin/aggregate-analytics',
+          route: 'admin-aggregate-analytics',
+          description: 'Anonymized aggregate analytics across all users'
         }
       ]
     })

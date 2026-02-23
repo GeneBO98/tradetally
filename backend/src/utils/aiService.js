@@ -136,7 +136,7 @@ class AIService {
     console.log('[AI] AI Service - Response preview:', result ? (result.substring ? result.substring(0, 100) : JSON.stringify(result).substring(0, 100)) : 'undefined/null');
     
     if (!result) {
-      throw new Error(`AI provider ${settings.provider} returned no response`);
+      throw new Error(`AI provider "${settings.provider}" (model: ${settings.model || 'default'}) returned an empty response. This can happen when the model uses all tokens for reasoning. Try a different model or increase max tokens.`);
     }
     
     return result;
@@ -279,7 +279,7 @@ Your response:`;
 
   async useOpenAI(prompt, settings, options = {}) {
     const { default: OpenAI } = await import('openai');
-    
+
     if (!settings.apiKey) {
       throw new Error('OpenAI API key not configured');
     }
@@ -288,10 +288,14 @@ Your response:`;
       apiKey: settings.apiKey,
     });
 
-    const model = settings.model || 'gpt-4o';
-    console.log(`[OPENAI] OpenAI: Using model ${model}`);
+    const model = (settings.model || 'gpt-4o').trim();
+    console.log(`[OPENAI] OpenAI: Using model "${model}"`);
 
     try {
+      // GPT-5 models use reasoning tokens so need higher max_completion_tokens
+      const isGpt5 = model.toLowerCase().startsWith('gpt-5');
+      const defaultMaxTokens = isGpt5 ? 5000 : 1000;
+
       // Build request parameters
       const requestParams = {
         model: model,
@@ -301,16 +305,17 @@ Your response:`;
             content: prompt
           }
         ],
-        max_completion_tokens: options.maxTokens || 1000,
+        max_completion_tokens: options.maxTokens || defaultMaxTokens,
       };
-      
+
       // Only add temperature for models that support it
-      // Some models like o1-preview, o1-mini, and custom/nano models don't support temperature
-      const noTempModels = ['o1-preview', 'o1-mini', 'o1', 'gpt-5-nano', 'nano'];
+      // GPT-5 series, o1 series, and nano models don't support temperature
+      const noTempModels = ['o1-preview', 'o1-mini', 'o1', 'gpt-5'];
       if (!noTempModels.some(m => model.toLowerCase().includes(m.toLowerCase()))) {
         requestParams.temperature = 0.1;
       }
-      
+
+      console.log(`[OPENAI] Request params:`, JSON.stringify({ model: requestParams.model, max_completion_tokens: requestParams.max_completion_tokens, hasTemperature: 'temperature' in requestParams }));
       const response = await openai.chat.completions.create(requestParams);
 
       console.log('[OPENAI] OpenAI raw response:', JSON.stringify(response, null, 2).substring(0, 500));
@@ -327,13 +332,29 @@ Your response:`;
         throw new Error('No message in OpenAI response choice');
       }
       
+      // Log usage for debugging (gpt-5 models use reasoning tokens)
+      if (response.usage) {
+        console.log(`[OPENAI] Token usage: prompt=${response.usage.prompt_tokens}, completion=${response.usage.completion_tokens}, total=${response.usage.total_tokens}${response.usage.completion_tokens_details ? `, reasoning=${response.usage.completion_tokens_details.reasoning_tokens || 0}` : ''}`);
+      }
+
       const content = response.choices[0].message.content;
       console.log('[OPENAI] OpenAI extracted content:', content ? `${content.substring(0, 100)}...` : 'undefined/null');
-      
+      console.log('[OPENAI] Finish reason:', response.choices[0].finish_reason);
+
+      if (!content && response.choices[0].finish_reason === 'length') {
+        throw new Error('Model ran out of tokens before generating output. Try increasing max tokens or using a different model.');
+      }
+
       return content;
     } catch (error) {
       console.error('[ERROR] OpenAI API error:', error.message);
-      console.error('[ERROR] OpenAI error details:', error.response?.data || error);
+      console.error('[ERROR] OpenAI error status:', error.status);
+      console.error('[ERROR] OpenAI error code:', error.code);
+      console.error('[ERROR] OpenAI error details:', JSON.stringify(error.error || error.response?.data || {}).substring(0, 500));
+      // Provide clear error messages for common issues
+      if (error.status === 404 || (error.message && error.message.includes('model'))) {
+        throw new Error(`OpenAI model "${model}" not found. Check that the model name is correct and your API key has access to it.`);
+      }
       throw error;
     }
   }
@@ -396,23 +417,27 @@ Your response:`;
 
   async useLMStudio(prompt, settings, options = {}) {
     const { default: fetch } = await import('node-fetch');
-    
+
     // LM Studio defaults to localhost:1234
-    const apiUrl = settings.apiUrl || 'http://localhost:1234';
-    
+    const apiUrl = (settings.apiUrl || 'http://localhost:1234').trim().replace(/\/+$/, '');
+    const model = (settings.model || 'local-model').trim();
+
     console.log('[LMSTUDIO] Using LM Studio at:', apiUrl);
-    console.log('[LMSTUDIO] Model:', settings.model || 'auto-detect');
+    console.log('[LMSTUDIO] Model:', model);
 
     try {
       // LM Studio uses OpenAI-compatible API at /v1/chat/completions
-      const response = await fetch(`${apiUrl}/v1/chat/completions`, {
+      const url = `${apiUrl}/v1/chat/completions`;
+      console.log('[LMSTUDIO] Full URL:', url);
+
+      const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...(settings.apiKey && { 'Authorization': `Bearer ${settings.apiKey}` })
         },
         body: JSON.stringify({
-          model: settings.model || 'local-model', // LM Studio will use loaded model
+          model: model,
           messages: [
             {
               role: 'user',
@@ -427,20 +452,26 @@ Your response:`;
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('[LMSTUDIO] LM Studio API error:', errorText);
-        throw new Error(`LM Studio API error: ${response.status} - ${errorText}`);
+        console.error('[LMSTUDIO] LM Studio API error:', response.status, errorText);
+        throw new Error(`LM Studio API error (${response.status}): ${errorText}`);
       }
 
       const data = await response.json();
-      
+
       if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-        console.error('[LMSTUDIO] Unexpected response format:', data);
+        console.error('[LMSTUDIO] Unexpected response format:', JSON.stringify(data).substring(0, 500));
         throw new Error('Invalid response format from LM Studio');
       }
-      
+
       return data.choices[0].message.content;
     } catch (error) {
       console.error('[LMSTUDIO] LM Studio request failed:', error.message);
+      if (error.message.includes('ECONNREFUSED') || error.message.includes('fetch failed')) {
+        throw new Error(`Cannot connect to LM Studio at ${apiUrl}. Make sure LM Studio is running and the server is started.`);
+      }
+      if (error.message.includes('LM Studio API error')) {
+        throw error;
+      }
       throw new Error(`LM Studio connection failed: ${error.message}. Make sure LM Studio is running with a loaded model.`);
     }
   }
