@@ -153,10 +153,7 @@ async function handleLogin() {
     const returnUrl = route.query.return_url
     await authStore.login(form.value, returnUrl)
   } catch (error) {
-    if (error.requiresVerification) {
-      showResendVerification.value = true
-      userEmail.value = error.email || form.value.email
-    } else if (error.requiresApproval) {
+    if (error.requiresApproval) {
       showApprovalMessage.value = true
       userEmail.value = error.email || form.value.email
     } else if (error.requires2FA) {
@@ -164,10 +161,6 @@ async function handleLogin() {
       tempToken.value = error.tempToken
       // Clear any error message since 2FA is a normal flow
       authStore.error = null
-    } else if (authStore.error && authStore.error.includes('verify your email')) {
-      // Fallback for other email verification error patterns
-      showResendVerification.value = true
-      userEmail.value = form.value.email
     }
     // Error will be displayed via authStore.error in the template
   }
