@@ -1,6 +1,13 @@
 const db = require('../config/database');
 const EmailService = require('./emailService');
 
+function maskEmail(email) {
+  if (!email || !email.includes('@')) return '***';
+  const [localPart, domain] = email.split('@');
+  if (localPart.length <= 2) return `**@${domain}`;
+  return `${localPart.slice(0, 2)}***@${domain}`;
+}
+
 /**
  * Sends weekly digest and inactive re-engagement emails.
  * Weekly digest: Monday only, to users with trades in the last 7 days.
@@ -69,7 +76,7 @@ class RetentionEmailScheduler {
             row.user_id // Pass userId for personalized unsubscribe link
           );
         } catch (err) {
-          console.error(`Failed to send weekly digest to ${row.email}:`, err.message);
+          console.error(`Failed to send weekly digest to ${maskEmail(row.email)}:`, err.message);
         }
       }
       console.log(`Weekly digests sent: ${result.rows.length}`);
@@ -114,7 +121,7 @@ class RetentionEmailScheduler {
             [row.id]
           );
         } catch (err) {
-          console.error(`Failed to send re-engagement to ${row.email}:`, err.message);
+          console.error(`Failed to send re-engagement to ${maskEmail(row.email)}:`, err.message);
         }
       }
       console.log(`Re-engagement emails sent: ${result.rows.length}`);

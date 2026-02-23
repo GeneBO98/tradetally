@@ -4,10 +4,10 @@
       <!-- Header -->
       <div class="text-center">
         <h1 class="text-4xl font-bold text-gray-900 dark:text-white">
-          Choose Your Plan
+          Trading Journal Pricing: Free Plan + $8/mo Pro
         </h1>
         <p class="mt-4 text-xl text-gray-600 dark:text-gray-400">
-          Unlock advanced trading analytics and insights
+          Compare TradeTally pricing for a free trading journal and low-cost Pro analytics.
         </p>
       </div>
 
@@ -296,6 +296,21 @@
                 </p>
               </div>
             </div>
+          </div>
+        </div>
+
+        <div class="mt-12 bg-white dark:bg-gray-800 rounded-lg p-8 shadow-sm max-w-3xl mx-auto">
+          <h2 class="text-xl font-bold text-gray-900 dark:text-white text-center mb-3">
+            Explore More TradeTally Pages
+          </h2>
+          <p class="text-gray-600 dark:text-gray-400 text-center mb-5">
+            Review feature details, platform comparisons, and deployment docs before choosing a plan.
+          </p>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+            <router-link to="/features" class="btn-secondary text-center">Features</router-link>
+            <router-link to="/compare" class="btn-secondary text-center">Compare</router-link>
+            <router-link to="/faq" class="btn-secondary text-center">FAQ</router-link>
+            <router-link to="/public" class="btn-secondary text-center">Public Trades</router-link>
           </div>
         </div>
       </div>
