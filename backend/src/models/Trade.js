@@ -75,6 +75,17 @@ class Trade {
     const cleanExitTime = exitTime === '' ? null : exitTime;
     const cleanExitPrice = exitPrice === '' ? null : exitPrice;
 
+    // Validate expiration date has 4-digit year (safety net for parser bugs)
+    let cleanExpirationDate = expirationDate || null;
+    if (cleanExpirationDate && typeof cleanExpirationDate === 'string') {
+      const expMatch = cleanExpirationDate.match(/^(\d{2})-(\d{2})-(\d{2})$/);
+      if (expMatch) {
+        // 2-digit year detected (e.g., "26-02-20"), expand to 4-digit
+        cleanExpirationDate = `20${expMatch[1]}-${expMatch[2]}-${expMatch[3]}`;
+        console.log(`[WARNING] Fixed 2-digit year in expirationDate: "${expirationDate}" -> "${cleanExpirationDate}"`);
+      }
+    }
+
     // Handle case where entryTime is null but tradeDate is provided (e.g., from imports)
     // Use tradeDate with a default time of 09:30 (market open)
     const finalEntryTime = entryTime || (tradeDate ? `${tradeDate}T09:30:00` : null);
@@ -465,7 +476,7 @@ class Trade {
       roundToDbPrecision(mae), roundToDbPrecision(mfe), confidence || 5,
       strategyConfidence, classificationMethod, JSON.stringify(classificationMetadata), manualOverride,
       JSON.stringify(newsData.newsEvents || []), newsData.hasNews || false, newsData.sentiment, newsData.checkedAt,
-      instrumentType || 'stock', roundToDbPrecision(strikePrice), expirationDate || null, optionType || null,
+      instrumentType || 'stock', roundToDbPrecision(strikePrice), cleanExpirationDate, optionType || null,
       contractSize || (instrumentType === 'option' ? 100 : null), underlyingSymbol || null,
       contractMonth || null, contractYear || null, roundToDbPrecision(tickSize), roundToDbPrecision(finalPointValue), finalUnderlyingAsset || null,
       importId || null,
@@ -1053,6 +1064,15 @@ class Trade {
     if (updates.exitPrice === '') updates.exitPrice = null;
     if (updates.stopLoss === '') updates.stopLoss = null;
     if (updates.takeProfit === '') updates.takeProfit = null;
+
+    // Validate expiration date has 4-digit year (safety net for parser bugs)
+    if (updates.expirationDate && typeof updates.expirationDate === 'string') {
+      const expMatch = updates.expirationDate.match(/^(\d{2})-(\d{2})-(\d{2})$/);
+      if (expMatch) {
+        updates.expirationDate = `20${expMatch[1]}-${expMatch[2]}-${expMatch[3]}`;
+        console.log(`[WARNING] Fixed 2-digit year in expirationDate update: "${updates.expirationDate}"`);
+      }
+    }
 
     // Apply default stop loss/take profit if not provided and user has defaults configured
     // This ensures defaults are applied on updates as well as creates
