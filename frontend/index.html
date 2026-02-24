@@ -37,6 +37,15 @@
 
     <!-- Static fallback is shown instantly for fast LCP, then Vue replaces it on mount -->
     <style>
+      /* Loading spinner for authenticated users while Vue bootstraps */
+      #app-loading{display:none;justify-content:center;align-items:center;min-height:100vh;background:#fff}
+      #app-loading .spinner{width:3rem;height:3rem;border:3px solid #e5e7eb;border-top-color:#2563eb;border-radius:50%;animation:tt-spin 0.7s linear infinite}
+      @keyframes tt-spin{to{transform:rotate(360deg)}}
+      @media(prefers-color-scheme:dark){#app-loading{background:#111827}#app-loading .spinner{border-color:#374151;border-top-color:#3b82f6}}
+      /* When auth token exists, show spinner and hide fallback */
+      .tt-has-token #app-loading{display:flex}
+      .tt-has-token #app-fallback{display:none}
+
       #app-fallback{max-width:72rem;margin:0 auto;padding:4rem 1rem;text-align:center;font-family:system-ui,-apple-system,sans-serif}
       #app-fallback h1{font-size:2.25rem;font-weight:800;color:#111827;line-height:1.2;margin:0 0 1.25rem}
       #app-fallback .hero-sub{font-size:1.25rem;color:#6b7280;line-height:1.75;max-width:48rem;margin:0 auto}
@@ -52,6 +61,8 @@
       #app-fallback .seo-sections a{color:#1d4ed8;text-decoration:none}
       #app-fallback .seo-sections a:hover{text-decoration:underline}
     </style>
+    <!-- Instantly check for auth token and toggle loading state before any rendering -->
+    <script>try{if(localStorage.getItem('token')){document.documentElement.classList.add('tt-has-token')}}catch(e){}</script>
   </head>
   <body>
     <div id="app">

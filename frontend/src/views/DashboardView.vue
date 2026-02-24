@@ -380,6 +380,10 @@
                     {{ position.unrealizedPnLPercent >= 0 ? '+' : '' }}{{ formatNumber(position.unrealizedPnLPercent) }}%
                   </div>
                 </div>
+                <div v-else-if="quotesLoading" class="text-right space-y-1">
+                  <div class="h-5 w-20 bg-gray-200 dark:bg-gray-700 rounded animate-pulse ml-auto"></div>
+                  <div class="h-3 w-12 bg-gray-200 dark:bg-gray-700 rounded animate-pulse ml-auto"></div>
+                </div>
               </div>
 
               <!-- Key Metrics Grid -->
@@ -423,6 +427,7 @@
                     </template>
                     <template v-else>
                       <span v-if="position.currentPrice !== null">${{ formatCurrency(position.currentPrice) }}</span>
+                      <span v-else-if="quotesLoading" class="inline-block h-4 w-14 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></span>
                       <span v-else class="text-xs text-gray-400">No quote</span>
                     </template>
                   </span>
@@ -578,6 +583,7 @@
                             ({{ position.dayChangePercent >= 0 ? '+' : '' }}{{ formatNumber(position.dayChangePercent) }}%)
                           </div>
                         </div>
+                        <div v-else-if="quotesLoading" class="h-4 w-16 bg-gray-200 dark:bg-gray-700 rounded animate-pulse ml-auto"></div>
                         <span v-else class="text-xs text-gray-400">No quote</span>
                       </template>
                     </td>
@@ -592,6 +598,7 @@
                         <span v-if="position.currentValue !== null" class="text-gray-900 dark:text-white">
                           ${{ formatCurrency(position.currentValue) }}
                         </span>
+                        <div v-else-if="quotesLoading" class="h-4 w-16 bg-gray-200 dark:bg-gray-700 rounded animate-pulse ml-auto"></div>
                         <span v-else class="text-xs text-gray-400">-</span>
                       </template>
                     </td>
@@ -623,6 +630,10 @@
                           ]">
                             {{ position.unrealizedPnLPercent >= 0 ? '+' : '' }}{{ formatNumber(position.unrealizedPnLPercent) }}%
                           </div>
+                        </div>
+                        <div v-else-if="quotesLoading" class="space-y-1">
+                          <div class="h-4 w-20 bg-gray-200 dark:bg-gray-700 rounded animate-pulse ml-auto"></div>
+                          <div class="h-3 w-12 bg-gray-200 dark:bg-gray-700 rounded animate-pulse ml-auto"></div>
                         </div>
                         <span v-else class="text-xs text-gray-400">-</span>
                       </template>
@@ -733,7 +744,17 @@
 
             <!-- Key Metrics Cards -->
             <template v-if="element.id === 'key-metrics'">
-              <div class="flex-card-container">
+              <!-- Skeleton while analytics loads -->
+              <div v-if="analyticsLoading" class="flex-card-container">
+                <div v-for="n in 4" :key="n" class="card card-mobile-safe flex-1">
+                  <div class="card-body">
+                    <div class="h-4 w-20 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
+                    <div class="mt-3 h-8 w-28 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
+                    <div class="mt-3 h-3 w-24 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
+                  </div>
+                </div>
+              </div>
+              <div v-else class="flex-card-container">
                 <div class="card card-mobile-safe flex-1">
                   <div class="card-body">
                     <dt class="text-data-secondary truncate">
@@ -800,7 +821,15 @@
 
             <!-- Additional Metrics Row -->
             <template v-if="element.id === 'additional-metrics'">
-              <div class="flex-card-container">
+              <div v-if="analyticsLoading" class="flex-card-container">
+                <div v-for="n in 4" :key="n" class="card card-mobile-safe flex-1">
+                  <div class="card-body">
+                    <div class="h-4 w-20 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
+                    <div class="mt-3 h-7 w-24 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
+                  </div>
+                </div>
+              </div>
+              <div v-else class="flex-card-container">
                 <div class="card card-mobile-safe flex-1 cursor-pointer hover:shadow-lg transition-shadow" @click="navigateToTradesFiltered('avgWin')">
                   <div class="card-body">
                     <dt class="text-data-secondary truncate">
@@ -849,7 +878,21 @@
 
             <!-- Charts Row -->
             <template v-if="element.id === 'charts'">
-              <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              <div v-if="analyticsLoading" class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <div class="lg:col-span-2 card">
+                  <div class="card-body">
+                    <div class="h-4 w-48 bg-gray-200 dark:bg-gray-700 rounded animate-pulse mb-4"></div>
+                    <div class="h-80 bg-gray-100 dark:bg-gray-800 rounded animate-pulse"></div>
+                  </div>
+                </div>
+                <div class="lg:col-span-1 card">
+                  <div class="card-body">
+                    <div class="h-4 w-40 bg-gray-200 dark:bg-gray-700 rounded animate-pulse mb-4"></div>
+                    <div class="h-64 bg-gray-100 dark:bg-gray-800 rounded animate-pulse"></div>
+                  </div>
+                </div>
+              </div>
+              <div v-else class="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <!-- P&L Over Time Chart (2/3 width) -->
                 <div class="lg:col-span-2 card">
                   <div class="card-body">
@@ -1168,7 +1211,7 @@ const { selectedAccount } = useGlobalAccountFilter()
 const yearWrappedStore = useYearWrappedStore()
 const router = useRouter()
 
-const loading = ref(true)
+const loading = computed(() => analyticsLoading.value || quotesLoading.value)
 const initialLoading = ref(true) // Track initial load separately to preserve scroll on refresh
 const userSettings = ref(null)
 const analytics = ref({
@@ -1189,6 +1232,8 @@ const calculationMethod = computed(() => {
   return userSettings.value?.statisticsCalculation === 'median' ? 'Median' : 'Average'
 })
 const openTrades = ref([])
+const quotesLoading = ref(false) // True while Finnhub quotes are being fetched
+const analyticsLoading = ref(true) // True while analytics data is being fetched
 
 // Manual option price tracking (persisted in localStorage)
 const manualOptionPrices = ref({})
@@ -1531,8 +1576,8 @@ function getDateRange(range) {
 
 async function fetchAnalytics() {
   try {
-    loading.value = true
-    
+    analyticsLoading.value = true
+
     const dateRange = getDateRange(filters.value.timeRange)
     const params = new URLSearchParams()
     
@@ -1563,8 +1608,7 @@ async function fetchAnalytics() {
   } catch (error) {
     console.error('Failed to fetch analytics:', error)
   } finally {
-    loading.value = false
-    initialLoading.value = false // Mark initial load complete
+    analyticsLoading.value = false
   }
 }
 
@@ -1591,27 +1635,20 @@ async function fetchBillingAndSubscription() {
   }
 }
 
-async function fetchOpenTrades() {
+// Phase 1: Fast DB-only fetch (no Finnhub calls) - used for initial render
+async function fetchOpenPositions() {
   try {
-    // Use the new endpoint that includes real-time quotes
-    console.log('Fetching open positions with quotes...')
-    const params = {}
-    // Use global account filter
+    console.log('Fetching open positions (DB only, no quotes)...')
+    const params = { skipQuotes: 'true' }
     if (selectedAccount.value) {
       params.accounts = selectedAccount.value
     }
     const response = await api.get('/trades/open-positions-quotes', { params })
-    
-    console.log('Open positions response:', response.data)
-    
-    if (response.data.error) {
-      console.warn('Real-time quotes not available:', response.data.error)
-    }
-    
     openTrades.value = response.data.positions || []
-    console.log('Set openTrades to:', openTrades.value)
+    quotesLoading.value = openTrades.value.length > 0
+    console.log(`Set ${openTrades.value.length} open positions (quotes pending)`)
 
-    // Clean up stale manual option prices for symbols no longer in open positions
+    // Clean up stale manual option prices
     const openSymbols = new Set(openTrades.value.filter(p => p.requires_manual_price).map(p => p.symbol))
     let cleaned = false
     Object.keys(manualOptionPrices.value).forEach(sym => {
@@ -1621,53 +1658,65 @@ async function fetchOpenTrades() {
       }
     })
     if (cleaned) saveManualOptionPrices()
+  } catch (error) {
+    console.error('Failed to fetch open positions:', error)
+    openTrades.value = []
+    quotesLoading.value = false
+  }
+}
 
+// Phase 2: Full fetch with Finnhub quotes - fired non-blocking after initial render
+async function fetchOpenTradeQuotes() {
+  try {
+    console.log('Fetching open positions with quotes...')
+    const params = {}
+    if (selectedAccount.value) {
+      params.accounts = selectedAccount.value
+    }
+    const response = await api.get('/trades/open-positions-quotes', { params })
+
+    if (response.data.error) {
+      console.warn('Real-time quotes not available:', response.data.error)
+    }
+
+    openTrades.value = response.data.positions || []
+    console.log('Updated openTrades with quotes:', openTrades.value.length)
+  } catch (error) {
+    console.error('Failed to fetch open trade quotes:', error)
+    // Keep positions from phase 1 - just won't have quotes
+  } finally {
+    quotesLoading.value = false
+  }
+}
+
+// Combined fetch (used by auto-refresh and fallback paths)
+async function fetchOpenTrades() {
+  try {
+    const params = {}
+    if (selectedAccount.value) {
+      params.accounts = selectedAccount.value
+    }
+    const response = await api.get('/trades/open-positions-quotes', { params })
+
+    if (response.data.error) {
+      console.warn('Real-time quotes not available:', response.data.error)
+    }
+
+    openTrades.value = response.data.positions || []
+
+    // Clean up stale manual option prices
+    const openSymbols = new Set(openTrades.value.filter(p => p.requires_manual_price).map(p => p.symbol))
+    let cleaned = false
+    Object.keys(manualOptionPrices.value).forEach(sym => {
+      if (!openSymbols.has(sym)) {
+        delete manualOptionPrices.value[sym]
+        cleaned = true
+      }
+    })
+    if (cleaned) saveManualOptionPrices()
   } catch (error) {
     console.error('Failed to fetch open trades:', error)
-    
-    // Fallback to original endpoint if the new one fails
-    try {
-      const fallbackParams = { status: 'open', limit: 100 }
-      // Use global account filter
-      if (selectedAccount.value) {
-        fallbackParams.accounts = selectedAccount.value
-      }
-      const fallbackResponse = await api.get('/trades', {
-        params: fallbackParams
-      })
-      const trades = fallbackResponse.data.trades || fallbackResponse.data
-      
-      // Group trades by symbol and calculate totals (without real-time data)
-      const grouped = {}
-      trades.forEach(trade => {
-        if (!grouped[trade.symbol]) {
-          grouped[trade.symbol] = {
-            symbol: trade.symbol,
-            side: trade.side,
-            trades: [],
-            totalQuantity: 0,
-            totalSharesTraded: 0,
-            totalCost: 0,
-            avgPrice: 0
-          }
-        }
-
-        grouped[trade.symbol].trades.push(trade)
-        grouped[trade.symbol].totalQuantity += trade.quantity
-        grouped[trade.symbol].totalSharesTraded += Math.abs(trade.quantity)
-        grouped[trade.symbol].totalCost += (trade.entry_price * trade.quantity)
-      })
-
-      // Calculate average prices and convert to array
-      openTrades.value = Object.values(grouped).map(group => {
-        group.avgPrice = group.totalCost / group.totalQuantity
-        return group
-      }).sort((a, b) => a.symbol.localeCompare(b.symbol))
-      
-    } catch (fallbackError) {
-      console.error('Fallback fetch also failed:', fallbackError)
-      openTrades.value = []
-    }
+    openTrades.value = []
   }
 }
 
@@ -1937,7 +1986,7 @@ function saveFiltersToStorage() {
 function applyFilters() {
   saveFiltersToStorage()
   fetchAnalytics()
-  fetchOpenTrades()
+  fetchOpenPositions().then(() => fetchOpenTradeQuotes())
 }
 
 function navigateToTradesWithSymbol(symbol) {
@@ -2124,7 +2173,7 @@ watch(() => filters.value.endDate, (newDate) => {
 watch(selectedAccount, () => {
   console.log('Dashboard: Global account filter changed to:', selectedAccount.value || 'All Accounts')
   fetchAnalytics()
-  fetchOpenTrades()
+  fetchOpenPositions().then(() => fetchOpenTradeQuotes())
 })
 
 async function fetchUserSettings() {
@@ -2319,15 +2368,19 @@ onMounted(async () => {
     // localStorage load failed
   }
 
-  // Fetch user settings first (needed to check autoCloseExpiredOptions)
-  await fetchUserSettings()
-
-  // Then fetch other data in parallel, including expired options check (which uses settings)
+  // Phase 1: Fetch settings + positions in parallel (both fast) to show dashboard shell ASAP
   await Promise.all([
-    fetchAnalytics(),
-    fetchOpenTrades(),
-    fetchExpiredOptionsCount()
+    fetchUserSettings(),
+    fetchOpenPositions()
   ])
+
+  // Dashboard shell is ready - drop the full-page spinner
+  initialLoading.value = false
+
+  // Phase 2: Fire all remaining data fetches non-blocking (analytics is heavy, quotes are slow)
+  fetchAnalytics()
+  fetchOpenTradeQuotes()
+  fetchExpiredOptionsCount()
 
   // Check Year Wrapped banner status (non-blocking)
   yearWrappedStore.checkBannerStatus()

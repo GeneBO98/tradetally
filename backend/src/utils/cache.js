@@ -38,6 +38,14 @@ const cache = {
       expiry: Date.now() + actualTtl,
     };
   },
+  // Get cached value even if expired (for stale-while-revalidate pattern)
+  getStale(namespaceOrKey, keyOrUndefined) {
+    const actualKey = keyOrUndefined !== undefined ? `${namespaceOrKey}:${keyOrUndefined}` : namespaceOrKey;
+    const cachedItem = this.data[actualKey];
+    if (!cachedItem) return { value: null, stale: false };
+    const isStale = Date.now() >= cachedItem.expiry;
+    return { value: cachedItem.value, stale: isStale };
+  },
   del(namespaceOrKey, keyOrUndefined) {
     const actualKey = keyOrUndefined !== undefined ? `${namespaceOrKey}:${keyOrUndefined}` : namespaceOrKey;
     delete this.data[actualKey];
