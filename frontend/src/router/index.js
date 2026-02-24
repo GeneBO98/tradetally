@@ -375,10 +375,12 @@ const router = createRouter({
 
 router.beforeEach(async (to, from, next) => {
   const authStore = useAuthStore()
-  const { fetchRegistrationConfig, isClosedMode, isBillingEnabled, showSEOPages } = useRegistrationMode()
+  const { registrationConfig, fetchRegistrationConfig, isClosedMode, isBillingEnabled, showSEOPages } = useRegistrationMode()
 
-  // Fetch registration config for all routes
-  await fetchRegistrationConfig()
+  // Only fetch registration config if not already cached (skip async on subsequent navigations)
+  if (!registrationConfig.value) {
+    await fetchRegistrationConfig()
+  }
 
   // Handle billing enabled - when FALSE (default), redirect home to login and block public pages
   // When TRUE, show public pages for SaaS offering
