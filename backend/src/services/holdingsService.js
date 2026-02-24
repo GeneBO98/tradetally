@@ -570,55 +570,93 @@ class HoldingsService {
    */
   static async refreshPrices(userId) {
     const holdings = await this.getHoldings(userId);
-    const chunkSize = finnhub.maxCallsPerSecond || 1;
+    if (holdings.length === 0) return holdings;
 
-    // Process holdings in chunks to respect rate limits while parallelizing
-    for (let i = 0; i < holdings.length; i += chunkSize) {
-      const chunk = holdings.slice(i, i + chunkSize);
+    // Collect unique symbols
+    const uniqueSymbols = [...new Set(holdings.map(h => h.symbol))];
 
-      // Wait between chunks (not before the first one)
-      if (i > 0) {
-        await new Promise(resolve => setTimeout(resolve, 1050));
+    // Check price_monitoring cache first (2-minute staleness threshold)
+    const cacheResult = await db.query(
+      `SELECT symbol, current_price
+       FROM price_monitoring
+       WHERE symbol = ANY($1)
+         AND last_updated > NOW() - INTERVAL '2 minutes'`,
+      [uniqueSymbols]
+    );
+
+    const cachedPrices = {};
+    for (const row of cacheResult.rows) {
+      cachedPrices[row.symbol] = parseFloat(row.current_price);
+    }
+
+    // Apply cached prices to holdings
+    const uncachedHoldings = [];
+    for (const holding of holdings) {
+      const cached = cachedPrices[holding.symbol];
+      if (cached) {
+        this._applyPriceToHolding(holding, cached);
+        if (holding.source !== 'trades' && !String(holding.id).startsWith('trade-')) {
+          await this.refreshHoldingPrice(userId, holding.id);
+        }
+      } else {
+        uncachedHoldings.push(holding);
       }
+    }
 
-      await Promise.allSettled(
-        chunk.map(async (holding) => {
-          try {
-            const quote = finnhub.isCryptoSymbol(holding.symbol)
-              ? await finnhub.getCryptoQuote(holding.symbol)
-              : await finnhub.getQuote(holding.symbol);
-            if (quote && quote.c) {
-              const currentPrice = quote.c;
-              let valueMultiplier = 1;
-              if (holding.instrumentType === 'future') {
-                valueMultiplier = holding.pointValue || 1;
-              } else if (holding.instrumentType === 'option') {
-                valueMultiplier = holding.contractSize || 100;
+    console.log(`[HOLDINGS] Price cache: ${holdings.length - uncachedHoldings.length} cached, ${uncachedHoldings.length} uncached`);
+
+    // Only call Finnhub for uncached holdings
+    if (uncachedHoldings.length > 0) {
+      const chunkSize = finnhub.maxCallsPerSecond || 1;
+      for (let i = 0; i < uncachedHoldings.length; i += chunkSize) {
+        const chunk = uncachedHoldings.slice(i, i + chunkSize);
+        if (i > 0) {
+          await new Promise(resolve => setTimeout(resolve, 1050));
+        }
+        await Promise.allSettled(
+          chunk.map(async (holding) => {
+            try {
+              const quote = finnhub.isCryptoSymbol(holding.symbol)
+                ? await finnhub.getCryptoQuote(holding.symbol)
+                : await finnhub.getQuote(holding.symbol);
+              if (quote && quote.c) {
+                this._applyPriceToHolding(holding, quote.c);
+                if (holding.source !== 'trades' && !String(holding.id).startsWith('trade-')) {
+                  await this.refreshHoldingPrice(userId, holding.id);
+                }
               }
-              const currentValue = holding.totalShares * currentPrice * valueMultiplier;
-              const unrealizedPnl = currentValue - holding.totalCostBasis;
-              const unrealizedPnlPercent = holding.totalCostBasis > 0
-                ? (unrealizedPnl / holding.totalCostBasis) * 100
-                : 0;
-
-              holding.currentPrice = currentPrice;
-              holding.currentValue = currentValue;
-              holding.unrealizedPnl = unrealizedPnl;
-              holding.unrealizedPnlPercent = unrealizedPnlPercent;
-              holding.priceUpdatedAt = new Date();
-
-              if (holding.source !== 'trades' && !String(holding.id).startsWith('trade-')) {
-                await this.refreshHoldingPrice(userId, holding.id);
-              }
+            } catch (error) {
+              console.error(`[HOLDINGS] Failed to refresh price for ${holding.symbol}: ${error.message}`);
             }
-          } catch (error) {
-            console.error(`[HOLDINGS] Failed to refresh price for ${holding.symbol}: ${error.message}`);
-          }
-        })
-      );
+          })
+        );
+      }
     }
 
     return holdings;
+  }
+
+  /**
+   * Apply a price to a holding and compute derived values
+   */
+  static _applyPriceToHolding(holding, currentPrice) {
+    let valueMultiplier = 1;
+    if (holding.instrumentType === 'future') {
+      valueMultiplier = holding.pointValue || 1;
+    } else if (holding.instrumentType === 'option') {
+      valueMultiplier = holding.contractSize || 100;
+    }
+    const currentValue = holding.totalShares * currentPrice * valueMultiplier;
+    const unrealizedPnl = currentValue - holding.totalCostBasis;
+    const unrealizedPnlPercent = holding.totalCostBasis > 0
+      ? (unrealizedPnl / holding.totalCostBasis) * 100
+      : 0;
+
+    holding.currentPrice = currentPrice;
+    holding.currentValue = currentValue;
+    holding.unrealizedPnl = unrealizedPnl;
+    holding.unrealizedPnlPercent = unrealizedPnlPercent;
+    holding.priceUpdatedAt = new Date();
   }
 
   /**

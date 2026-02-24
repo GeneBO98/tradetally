@@ -141,6 +141,45 @@
           </div>
         </div>
 
+        <!-- Need Help? Section (for supported brokers with 0 trades) -->
+        <div v-if="showNeedHelp" class="mt-4">
+          <div class="bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-lg p-4">
+            <div class="flex items-start">
+              <InformationCircleIcon class="h-5 w-5 text-primary-600 dark:text-primary-400 mr-2 flex-shrink-0 mt-0.5" />
+              <div class="flex-1">
+                <p class="text-sm font-medium text-primary-800 dark:text-primary-200">
+                  Need Help?
+                </p>
+                <p class="mt-1 text-sm text-primary-700 dark:text-primary-300">
+                  Having trouble importing from {{ formatBrokerName(effectiveBroker) }}?
+                </p>
+                <div class="mt-3 flex flex-col sm:flex-row gap-2">
+                  <a
+                    href="https://docs.tradetally.io/usage/importing-trades/#supported-brokers"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="inline-flex items-center justify-center px-3 py-1.5 text-sm font-medium text-primary-700 dark:text-primary-300 bg-white dark:bg-gray-800 border border-primary-300 dark:border-primary-600 rounded-md hover:bg-primary-50 dark:hover:bg-primary-900/30"
+                  >
+                    View Import Documentation
+                    <svg class="ml-1.5 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                  </a>
+                  <a
+                    :href="supportMailtoLink"
+                    class="inline-flex items-center justify-center px-3 py-1.5 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-md hover:bg-primary-700"
+                  >
+                    Open a Support Ticket
+                    <svg class="ml-1.5 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                    </svg>
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Close Button -->
         <div class="mt-5 sm:mt-6">
           <button
@@ -180,6 +219,18 @@ const props = defineProps({
   failedTrades: {
     type: Array,
     default: () => []
+  },
+  selectedBroker: {
+    type: String,
+    default: ''
+  },
+  fileName: {
+    type: String,
+    default: ''
+  },
+  userEmail: {
+    type: String,
+    default: ''
   }
 })
 
@@ -203,8 +254,18 @@ const brokerNames = {
   tradingview: 'TradingView',
   tradovate: 'Tradovate',
   questrade: 'Questrade',
-  projectx: 'ProjectX'
+  projectx: 'ProjectX',
+  tradestation: 'TradeStation',
+  tastytrade: 'Tastytrade',
+  tradingview_performance: 'TradingView Performance',
+  tradingview_paper: 'TradingView Paper'
 }
+
+const supportedBrokers = [
+  'lightspeed', 'schwab', 'thinkorswim', 'ibkr', 'ibkr_trade_confirmation',
+  'webull', 'etrade', 'papermoney', 'tradingview', 'tradovate', 'questrade',
+  'projectx', 'tradestation', 'tastytrade', 'tradingview_performance', 'tradingview_paper'
+]
 
 function formatBrokerName(broker) {
   return brokerNames[broker] || broker
@@ -260,5 +321,44 @@ const iconClass = computed(() => {
     case 'warning': return 'text-yellow-600 dark:text-yellow-400'
     default: return 'text-red-600 dark:text-red-400'
   }
+})
+
+const effectiveBroker = computed(() => {
+  return props.diagnostics?.detectedBroker || props.selectedBroker || ''
+})
+
+const isSupportedBroker = computed(() => {
+  const broker = effectiveBroker.value
+  if (!broker || broker === 'auto' || broker === 'generic' || broker.startsWith('custom:')) {
+    return false
+  }
+  return supportedBrokers.includes(broker)
+})
+
+const showNeedHelp = computed(() => {
+  return props.tradesImported === 0 && isSupportedBroker.value
+})
+
+const supportMailtoLink = computed(() => {
+  const broker = effectiveBroker.value
+  const brokerDisplay = formatBrokerName(broker)
+  const subject = encodeURIComponent(`Import Support: ${brokerDisplay} - 0 trades parsed`)
+
+  const headers = props.diagnostics?.headerAnalysis?.foundHeaders?.join(', ') || 'N/A'
+  const totalRows = props.diagnostics?.totalRows || 0
+  const detectedBroker = props.diagnostics?.detectedBroker || 'N/A'
+
+  const body = encodeURIComponent(
+    `--- Import Details ---\n` +
+    `User: ${props.userEmail || 'N/A'}\n` +
+    `Selected Broker: ${formatBrokerName(props.selectedBroker) || 'N/A'}\n` +
+    `Detected Broker: ${detectedBroker !== 'N/A' ? formatBrokerName(detectedBroker) : 'N/A'}\n` +
+    `File Name: ${props.fileName || 'N/A'}\n` +
+    `Total Rows: ${totalRows}\n` +
+    `CSV Headers: ${headers}\n\n` +
+    `Please describe the issue:\n\n`
+  )
+
+  return `mailto:support@tradetally.io?subject=${subject}&body=${body}`
 })
 </script>

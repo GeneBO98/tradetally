@@ -976,6 +976,9 @@
       :duplicates-skipped="importResultsData.duplicatesSkipped"
       :diagnostics="importResultsData.diagnostics"
       :failed-trades="importResultsData.failedTrades"
+      :selected-broker="selectedBroker"
+      :file-name="selectedFile?.name || ''"
+      :user-email="authStore.user?.email || ''"
       @close="handleImportResultsClose"
     />
   </Teleport>
