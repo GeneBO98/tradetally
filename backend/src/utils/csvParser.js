@@ -318,7 +318,7 @@ function detectBrokerFormat(fileBuffer) {
     if (headers.includes('name') && headers.includes('symbol') && headers.includes('side') &&
         headers.includes('status') && headers.includes('filled') && headers.includes('time-in-force') &&
         headers.includes('placed time') && headers.includes('filled time')) {
-      console.log('[AUTO-DETECT] Detected: Webull (options)');
+      console.log('[AUTO-DETECT] Detected: Webull');
       return 'webull';
     }
 
@@ -373,6 +373,14 @@ function detectBrokerFormat(fileBuffer) {
         headers.includes('pnl')) {
       console.log('[AUTO-DETECT] Detected: TradingView Performance Export');
       return 'tradingview_performance';
+    }
+
+    // TradingView Paper Trading detection - buyPrice/sellPrice with status but no buyFillId/pnl
+    if (headers.includes('buyprice') && headers.includes('sellprice') &&
+        headers.includes('boughttimestamp') && headers.includes('soldtimestamp') &&
+        headers.includes('status') && !headers.includes('buyfillid')) {
+      console.log('[AUTO-DETECT] Detected: TradingView (paper trading format)');
+      return 'tradingview_paper';
     }
 
     // Tastytrade detection - look for unique tastytrade headers
@@ -1549,6 +1557,41 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       console.log(`Prepared thinkorswim CSV for parsing (preview lines redacted, count=${previewLineCount})`);
     }
     
+    // Special handling for TradingView Paper Trading CSV (Margin column has commas in quotes)
+    if (broker === 'tradingview_paper') {
+      parseOptions = {
+        columns: true,
+        skip_empty_lines: true,
+        trim: true,
+        delimiter: ',',
+        relax: true,
+        relax_column_count: true,
+        quote: '"',
+        escape: '"',
+        skip_records_with_empty_values: false,
+        skip_records_with_error: true
+      };
+      console.log('Using special parsing options for TradingView Paper Trading CSV');
+    }
+
+    // Special handling for Webull CSV formats
+    if (broker === 'webull') {
+      // Webull Name column can contain commas (e.g., "Gold 100 OZ, April 2026") which breaks default CSV parsing
+      parseOptions = {
+        columns: true,
+        skip_empty_lines: true,
+        trim: true,
+        delimiter: ',',
+        relax: true,
+        relax_column_count: true,
+        quote: '"',
+        escape: '"',
+        skip_records_with_empty_values: false,
+        skip_records_with_error: true
+      };
+      console.log('Using special parsing options for Webull CSV');
+    }
+
     // Special handling for IBKR CSV formats
     if (broker === 'ibkr' || broker === 'ibkr_trade_confirmation') {
       // IBKR CSVs can have quoted fields with commas inside and variable column counts
@@ -1792,6 +1835,13 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       return wrapResultWithDiagnostics(finalTrades, diagnostics);
     }
 
+    if (broker === 'tradingview_paper') {
+      console.log('Starting TradingView Paper Trading parsing');
+      const result = await parseTradingViewPaperTrades(records, context);
+      console.log('Finished TradingView Paper Trading parsing');
+      return wrapResultWithDiagnostics(result, diagnostics);
+    }
+
     if (broker === 'ibkr' || broker === 'ibkr_trade_confirmation') {
       console.log(`Starting IBKR transaction parsing (${broker} format)`);
       const tradeGroupingSettings = context.tradeGroupingSettings || { enabled: true, timeGapMinutes: 60 };
@@ -1802,7 +1852,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
 
     if (broker === 'webull') {
       console.log('Starting Webull transaction parsing');
-      const result = await parseWebullTransactions(records, existingPositions, context);
+      const result = await parseWebullTransactions(records, existingPositions, { ...context, diagnostics });
       console.log('Finished Webull transaction parsing');
 
       // Apply trade grouping if enabled
@@ -5038,6 +5088,197 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
   return completedTrades;
 }
 
+/**
+ * Parse TradingView Paper Trading CSV - each row is a complete round-trip trade
+ * Headers: symbol,,qty,buyPrice,sellPrice,boughtTimestamp,soldTimestamp,Margin,Commission,leverage,status
+ * Timestamps are Unix milliseconds. Side is determined by which timestamp came first.
+ * Symbol format: EXCHANGE:TICKER (e.g., COMEX:GC1!)
+ */
+async function parseTradingViewPaperTrades(records, context = {}) {
+  console.log(`\n=== TRADINGVIEW PAPER TRADING PARSER ===`);
+  console.log(`Processing ${records.length} TradingView paper trading records`);
+
+  const diagnostics = context.diagnostics;
+  const completedTrades = [];
+
+  // Debug: Log first few records
+  console.log('Sample TradingView Paper records:');
+  records.slice(0, 3).forEach((record, i) => {
+    console.log(`Record ${i}:`, JSON.stringify(record));
+  });
+
+  // Helper for case-insensitive field access
+  const getField = (record, fieldName) => {
+    if (record[fieldName] !== undefined) return record[fieldName];
+    const lower = fieldName.toLowerCase();
+    for (const key of Object.keys(record)) {
+      if (key.toLowerCase() === lower) return record[key];
+    }
+    return undefined;
+  };
+
+  let rowIndex = 0;
+  for (const record of records) {
+    rowIndex++;
+    try {
+      const rawSymbol = cleanString(getField(record, 'symbol'));
+      const quantity = Math.abs(parseInteger(getField(record, 'qty')));
+      const buyPrice = parseNumeric(getField(record, 'buyPrice'));
+      const sellPrice = parseNumeric(getField(record, 'sellPrice'));
+      const boughtTs = parseInt(getField(record, 'boughtTimestamp'));
+      const soldTs = parseInt(getField(record, 'soldTimestamp'));
+      const commission = parseNumeric(getField(record, 'Commission'));
+      const statusRaw = cleanString(getField(record, 'status'));
+      const status = statusRaw.toLowerCase();
+      const leverage = cleanString(getField(record, 'leverage'));
+
+      // Only process filled orders
+      if (status !== 'filled') {
+        console.log(`Skipping non-filled order: ${statusRaw}`);
+        if (diagnostics) {
+          diagnostics.skippedRows++;
+          const reason = status === 'cancelled' || status === 'canceled'
+            ? 'Cancelled order' : `Order not filled (status: ${statusRaw})`;
+          diagnostics.skippedReasons.push({ row: rowIndex, reason });
+        }
+        continue;
+      }
+
+      // Validate essential data
+      if (!rawSymbol || quantity === 0 || buyPrice === 0 || sellPrice === 0 || isNaN(boughtTs) || isNaN(soldTs)) {
+        console.log(`Skipping record missing data:`, { rawSymbol, quantity, buyPrice, sellPrice, boughtTs, soldTs });
+        if (diagnostics) {
+          diagnostics.invalidRows++;
+          diagnostics.skippedReasons.push({ row: rowIndex, reason: 'Missing required fields (symbol, qty, prices, or timestamps)' });
+        }
+        continue;
+      }
+
+      // Parse timestamps (Unix milliseconds)
+      const boughtTime = new Date(boughtTs);
+      const soldTime = new Date(soldTs);
+
+      if (isNaN(boughtTime.getTime()) || isNaN(soldTime.getTime())) {
+        console.log(`Skipping record with invalid timestamps:`, { boughtTs, soldTs });
+        if (diagnostics) {
+          diagnostics.invalidRows++;
+          diagnostics.skippedReasons.push({ row: rowIndex, reason: `Invalid timestamp values` });
+        }
+        continue;
+      }
+
+      // Determine side from timestamp order
+      // If bought first then sold -> long; if sold first then bought -> short
+      const isLong = boughtTs <= soldTs;
+      const side = isLong ? 'long' : 'short';
+      const entryPrice = isLong ? buyPrice : sellPrice;
+      const exitPrice = isLong ? sellPrice : buyPrice;
+      const entryTime = isLong ? boughtTime : soldTime;
+      const exitTime = isLong ? soldTime : boughtTime;
+      const tradeDate = entryTime.toISOString().split('T')[0];
+
+      // Clean symbol: strip exchange prefix (COMEX:GC1! -> GC1!)
+      let symbol = rawSymbol;
+      if (rawSymbol.includes(':')) {
+        symbol = rawSymbol.split(':')[1];
+      }
+
+      // Detect futures instrument from symbol
+      const underlying = extractUnderlyingFromFuturesSymbol(rawSymbol);
+      const pointValue = underlying ? getFuturesPointValue(underlying) : 1;
+      const isFuture = !!underlying;
+
+      // Calculate P&L: (sellPrice - buyPrice) * qty * pointValue - commission
+      const rawPnl = (sellPrice - buyPrice) * quantity * pointValue;
+      const pnl = rawPnl - commission;
+
+      // Build instrument data
+      const instrumentData = isFuture ? {
+        instrumentType: 'future',
+        underlyingSymbol: underlying,
+        underlyingAsset: underlying,
+        pointValue: pointValue,
+        contractSize: pointValue
+      } : {
+        instrumentType: 'stock',
+        contractSize: null
+      };
+
+      // Determine account identifier
+      const accountIdentifier = context.selectedAccountId || null;
+
+      const trade = {
+        symbol: underlying || symbol,
+        tradeDate,
+        entryTime: entryTime.toISOString(),
+        exitTime: exitTime.toISOString(),
+        entryPrice,
+        exitPrice,
+        quantity,
+        side,
+        commission,
+        fees: 0,
+        pnl,
+        profitLoss: pnl,
+        broker: 'TradingView',
+        accountIdentifier,
+        notes: leverage ? `Leverage: ${leverage}` : '',
+        executions: [
+          {
+            entryTime: entryTime.toISOString(),
+            entryPrice,
+            quantity,
+            side,
+            commission: 0,
+            fees: 0
+          },
+          {
+            exitTime: exitTime.toISOString(),
+            exitPrice,
+            quantity,
+            side: isLong ? 'sell' : 'buy',
+            commission,
+            fees: 0,
+            pnl
+          }
+        ],
+        executionData: [
+          {
+            entryTime: entryTime.toISOString(),
+            entryPrice,
+            quantity,
+            side,
+            commission: 0,
+            fees: 0
+          },
+          {
+            exitTime: exitTime.toISOString(),
+            exitPrice,
+            quantity,
+            side: isLong ? 'sell' : 'buy',
+            commission,
+            fees: 0,
+            pnl
+          }
+        ],
+        ...instrumentData
+      };
+
+      completedTrades.push(trade);
+      console.log(`Parsed TradingView paper trade: ${side} ${quantity} ${symbol} @ $${entryPrice} -> $${exitPrice}, P&L: $${pnl.toFixed(2)}`);
+    } catch (error) {
+      console.error('Error parsing TradingView paper trade:', error, record);
+      if (diagnostics) {
+        diagnostics.invalidRows++;
+        diagnostics.skippedReasons.push({ row: rowIndex, reason: `Parse error: ${error.message}` });
+      }
+    }
+  }
+
+  console.log(`[SUCCESS] Parsed ${completedTrades.length} TradingView paper trades from ${records.length} records`);
+  return completedTrades;
+}
+
 async function parseIBKRTransactions(records, existingPositions = {}, tradeGroupingSettings = { enabled: true, timeGapMinutes: 60 }, context = {}) {
   console.log(`\n=== IBKR TRANSACTION PARSER ===`);
   console.log(`Processing ${records.length} IBKR transaction records`);
@@ -5904,15 +6145,28 @@ async function parseWebullTransactions(records, existingPositions = {}, context 
       const price = parseFloat(record['Avg Price'] || record['avg price'] || record.Price || record.price || 0);
       const filledTime = record['Filled Time'] || record['filled time'] || '';
 
+      const diag = context.diagnostics;
+
       // Only process filled orders
       if (status.toLowerCase() !== 'filled' || filled === 0) {
         console.log(`Skipping Webull record - not filled or zero quantity:`, { symbol, status, filled });
+        if (diag) {
+          diag.skippedRows = (diag.skippedRows || 0) + 1;
+          if (!diag.skippedReasons) diag.skippedReasons = {};
+          const reason = status.toLowerCase() === 'cancelled' ? 'Cancelled order' : `Status: ${status}, Filled: ${filled}`;
+          diag.skippedReasons[reason] = (diag.skippedReasons[reason] || 0) + 1;
+        }
         continue;
       }
 
       // Skip if missing essential data
       if (!symbol || !side || price === 0 || !filledTime) {
         console.log(`Skipping Webull record missing data:`, { symbol, side, filled, price, filledTime });
+        if (diag) {
+          diag.invalidRows = (diag.invalidRows || 0) + 1;
+          if (!diag.skippedReasons) diag.skippedReasons = {};
+          diag.skippedReasons['Missing essential data'] = (diag.skippedReasons['Missing essential data'] || 0) + 1;
+        }
         continue;
       }
 
@@ -5935,14 +6189,25 @@ async function parseWebullTransactions(records, existingPositions = {}, context 
       const now = new Date();
       const maxFutureDate = new Date(now.getTime() + 24 * 60 * 60 * 1000); // Allow 1 day in future for timezone issues
       const minPastDate = new Date('2000-01-01');
+      const entryTimeDate = new Date(entryTime);
 
-      if (entryTime > maxFutureDate) {
-        console.log(`Skipping Webull record with future date: ${filledTime}`);
+      if (isNaN(entryTimeDate.getTime()) || entryTimeDate > maxFutureDate) {
+        console.log(`Skipping Webull record with invalid/future date: ${filledTime}`);
+        if (diag) {
+          diag.invalidRows = (diag.invalidRows || 0) + 1;
+          if (!diag.skippedReasons) diag.skippedReasons = {};
+          diag.skippedReasons['Invalid or future date'] = (diag.skippedReasons['Invalid or future date'] || 0) + 1;
+        }
         continue;
       }
 
-      if (entryTime < minPastDate) {
+      if (entryTimeDate < minPastDate) {
         console.log(`Skipping Webull record with date too far in past: ${filledTime}`);
+        if (diag) {
+          diag.invalidRows = (diag.invalidRows || 0) + 1;
+          if (!diag.skippedReasons) diag.skippedReasons = {};
+          diag.skippedReasons['Date too far in past'] = (diag.skippedReasons['Date too far in past'] || 0) + 1;
+        }
         continue;
       }
 
@@ -7625,15 +7890,14 @@ async function parseTastytradeTransactions(records, existingPositions = {}, cont
         let optStrike = strikePrice;
         let optType = callOrPut.toLowerCase() === 'call' || callOrPut.toLowerCase() === 'c' ? 'call' : 'put';
 
-        // Parse expiration date - format: M/D/YYYY
+        // Parse expiration date - format: M/D/YY or M/D/YYYY
         if (expirationDateRaw) {
           const parts = expirationDateRaw.split('/');
           if (parts.length === 3) {
             // Handle 2-digit year (e.g., 2/20/26 -> 2026-02-20)
-            let year = parts[2];
-            if (year.length === 2) {
-              year = `20${year}`;
-            }
+            // Use parseInt to be robust against invisible Unicode characters
+            const yearNum = parseInt(parts[2], 10);
+            const year = yearNum < 100 ? `${2000 + yearNum}` : `${yearNum}`;
             optExpiration = `${year}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
           }
         }
