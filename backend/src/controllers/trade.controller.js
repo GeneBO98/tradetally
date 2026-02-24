@@ -2378,7 +2378,7 @@ const tradeController = {
     try {
       console.log('getOpenPositionsWithQuotes called for user:', req.user.id);
       const finnhub = require('../utils/finnhub');
-      const { accounts } = req.query;
+      const { accounts, skipQuotes } = req.query;
       
       // Check if Finnhub is configured
       if (!finnhub.isConfigured()) {
@@ -2554,10 +2554,21 @@ const tradeController = {
       // Remove symbols with zero net position
       symbolsToDelete.forEach(symbol => delete positionMap[symbol]);
 
+      // If skipQuotes is requested, return positions immediately without Finnhub calls
+      if (skipQuotes === 'true') {
+        const positions = Object.values(positionMap).map(position => {
+          if (position.instrumentType === 'option') {
+            return { ...position, currentPrice: null, currentValue: null, unrealizedPnL: null, unrealizedPnLPercent: null, requires_manual_price: true, quotePending: true };
+          }
+          return { ...position, currentPrice: null, currentValue: null, unrealizedPnL: null, unrealizedPnLPercent: null, quotePending: true };
+        });
+        return res.json({ positions, quotePending: true });
+      }
+
       // Get unique symbols for quotes (exclude options - Finnhub returns underlying price, not contract premium)
       const symbols = Object.keys(positionMap).filter(sym => positionMap[sym].instrumentType !== 'option');
       console.log('Symbols to get quotes for:', symbols);
-      
+
       // If Finnhub is not configured, return positions without quotes
       if (!finnhub.isConfigured()) {
         console.log('Finnhub not configured, returning positions without quotes');
@@ -2895,11 +2906,25 @@ const tradeController = {
       // Generate cache key based on userId and filters
       const cacheKey = `analytics:user_${req.user.id}:${JSON.stringify(filters)}`;
 
-      // Check cache first
-      const cachedAnalytics = cache.get(cacheKey);
-      if (cachedAnalytics) {
-        console.log('[CACHE] Analytics cache hit for user:', req.user.id);
-        return res.json(cachedAnalytics);
+      // Stale-while-revalidate: return cached data immediately, recompute in background if stale
+      const cached = cache.getStale(cacheKey);
+      if (cached.value && !cached.stale) {
+        console.log('[CACHE] Analytics cache hit (fresh) for user:', req.user.id);
+        return res.json(cached.value);
+      }
+
+      if (cached.value && cached.stale) {
+        console.log('[CACHE] Analytics cache hit (stale) for user:', req.user.id, '- returning stale, recomputing in background');
+        // Return stale data immediately
+        res.json(cached.value);
+        // Recompute in background for next request (fire-and-forget)
+        Trade.getAnalytics(req.user.id, filters).then(analytics => {
+          cache.set(cacheKey, analytics, 300000);
+          console.log('[CACHE] Background recompute complete for user:', req.user.id);
+        }).catch(err => {
+          console.error('[CACHE] Background recompute failed:', err.message);
+        });
+        return;
       }
 
       console.log('[CACHE] Analytics cache miss for user:', req.user.id);
@@ -2908,8 +2933,6 @@ const tradeController = {
       // Cache the result for 5 minutes (300000ms)
       cache.set(cacheKey, analytics, 300000);
       console.log('[CACHE] Cached analytics for 5 minutes');
-
-      console.log('Analytics result:', JSON.stringify(analytics, null, 2));
 
       res.json(analytics);
     } catch (error) {

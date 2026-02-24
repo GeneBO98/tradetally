@@ -332,24 +332,39 @@ class FinnhubClient {
       return results;
     }
 
-    // Process symbols with automatic rate limiting
-    // No need for manual batching since makeRequest handles rate limiting
-    console.log(`Getting quotes for ${validSymbols.length} symbols`);
+    // Process symbols in chunks to respect rate limits while parallelizing
+    // Chunk size matches maxCallsPerSecond (1 for free tier, more for paid)
+    const chunkSize = this.maxCallsPerSecond;
+    console.log(`Getting quotes for ${validSymbols.length} symbols (chunk size: ${chunkSize})`);
 
-    for (const symbol of validSymbols) {
-      try {
-        // Check if this is a crypto symbol
-        if (this.isCryptoSymbol(symbol)) {
-          console.log(`[CRYPTO] ${symbol} detected as crypto, using crypto quote`);
-          const quote = await this.getCryptoQuote(symbol);
-          results[symbol] = quote;
+    for (let i = 0; i < validSymbols.length; i += chunkSize) {
+      const chunk = validSymbols.slice(i, i + chunkSize);
+
+      // Wait between chunks (not before the first one)
+      if (i > 0) {
+        await new Promise(resolve => setTimeout(resolve, 1050));
+      }
+
+      const settled = await Promise.allSettled(
+        chunk.map(async (symbol) => {
+          if (this.isCryptoSymbol(symbol)) {
+            console.log(`[CRYPTO] ${symbol} detected as crypto, using crypto quote`);
+            const quote = await this.getCryptoQuote(symbol);
+            return { symbol, quote };
+          } else {
+            const quote = await this.getQuote(symbol);
+            console.log(`Got quote for ${symbol}:`, quote);
+            return { symbol, quote };
+          }
+        })
+      );
+
+      for (const result of settled) {
+        if (result.status === 'fulfilled') {
+          results[result.value.symbol] = result.value.quote;
         } else {
-          const quote = await this.getQuote(symbol);
-          console.log(`Got quote for ${symbol}:`, quote);
-          results[symbol] = quote;
+          console.warn(`Failed to get quote:`, result.reason?.message);
         }
-      } catch (error) {
-        console.warn(`Failed to get quote for ${symbol}:`, error.message);
       }
     }
 
