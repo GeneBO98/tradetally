@@ -570,49 +570,55 @@ class HoldingsService {
    */
   static async refreshPrices(userId) {
     const holdings = await this.getHoldings(userId);
-    const updatedHoldings = [];
+    const chunkSize = finnhub.maxCallsPerSecond || 1;
 
-    for (const holding of holdings) {
-      try {
-        // Use crypto quote for crypto symbols
-        const quote = finnhub.isCryptoSymbol(holding.symbol)
-          ? await finnhub.getCryptoQuote(holding.symbol)
-          : await finnhub.getQuote(holding.symbol);
-        if (quote && quote.c) {
-          const currentPrice = quote.c;
-          // Apply contract multiplier for options/futures (same as dashboard calculation)
-          let valueMultiplier = 1;
-          if (holding.instrumentType === 'future') {
-            valueMultiplier = holding.pointValue || 1;
-          } else if (holding.instrumentType === 'option') {
-            valueMultiplier = holding.contractSize || 100;
-          }
-          const currentValue = holding.totalShares * currentPrice * valueMultiplier;
-          const unrealizedPnl = currentValue - holding.totalCostBasis;
-          const unrealizedPnlPercent = holding.totalCostBasis > 0
-            ? (unrealizedPnl / holding.totalCostBasis) * 100
-            : 0;
+    // Process holdings in chunks to respect rate limits while parallelizing
+    for (let i = 0; i < holdings.length; i += chunkSize) {
+      const chunk = holdings.slice(i, i + chunkSize);
 
-          // Update the holding object
-          holding.currentPrice = currentPrice;
-          holding.currentValue = currentValue;
-          holding.unrealizedPnl = unrealizedPnl;
-          holding.unrealizedPnlPercent = unrealizedPnlPercent;
-          holding.priceUpdatedAt = new Date();
-
-          // If this is an investment_holdings record (not from trades), update the database
-          if (holding.source !== 'trades' && !String(holding.id).startsWith('trade-')) {
-            await this.refreshHoldingPrice(userId, holding.id);
-          }
-        }
-        updatedHoldings.push(holding);
-      } catch (error) {
-        console.error(`[HOLDINGS] Failed to refresh price for ${holding.symbol}: ${error.message}`);
-        updatedHoldings.push(holding);
+      // Wait between chunks (not before the first one)
+      if (i > 0) {
+        await new Promise(resolve => setTimeout(resolve, 1050));
       }
+
+      await Promise.allSettled(
+        chunk.map(async (holding) => {
+          try {
+            const quote = finnhub.isCryptoSymbol(holding.symbol)
+              ? await finnhub.getCryptoQuote(holding.symbol)
+              : await finnhub.getQuote(holding.symbol);
+            if (quote && quote.c) {
+              const currentPrice = quote.c;
+              let valueMultiplier = 1;
+              if (holding.instrumentType === 'future') {
+                valueMultiplier = holding.pointValue || 1;
+              } else if (holding.instrumentType === 'option') {
+                valueMultiplier = holding.contractSize || 100;
+              }
+              const currentValue = holding.totalShares * currentPrice * valueMultiplier;
+              const unrealizedPnl = currentValue - holding.totalCostBasis;
+              const unrealizedPnlPercent = holding.totalCostBasis > 0
+                ? (unrealizedPnl / holding.totalCostBasis) * 100
+                : 0;
+
+              holding.currentPrice = currentPrice;
+              holding.currentValue = currentValue;
+              holding.unrealizedPnl = unrealizedPnl;
+              holding.unrealizedPnlPercent = unrealizedPnlPercent;
+              holding.priceUpdatedAt = new Date();
+
+              if (holding.source !== 'trades' && !String(holding.id).startsWith('trade-')) {
+                await this.refreshHoldingPrice(userId, holding.id);
+              }
+            }
+          } catch (error) {
+            console.error(`[HOLDINGS] Failed to refresh price for ${holding.symbol}: ${error.message}`);
+          }
+        })
+      );
     }
 
-    return updatedHoldings;
+    return holdings;
   }
 
   /**
