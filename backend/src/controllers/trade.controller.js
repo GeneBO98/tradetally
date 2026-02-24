@@ -2580,9 +2580,40 @@ const tradeController = {
       }
       
       try {
-        // Get real-time quotes
-        console.log('Attempting to get quotes from Finnhub...');
-        const quotes = await finnhub.getBatchQuotes(symbols);
+        // Try cached prices from price_monitoring first, fallback to Finnhub for uncached
+        console.log('Checking price_monitoring cache for position quotes...');
+        const cacheResult = await db.query(
+          `SELECT symbol, current_price, previous_price, price_change, percent_change,
+                  high_of_day, low_of_day, open_price
+           FROM price_monitoring
+           WHERE symbol = ANY($1)
+             AND last_updated > NOW() - INTERVAL '2 minutes'`,
+          [symbols]
+        );
+
+        const quotes = {};
+        for (const row of cacheResult.rows) {
+          quotes[row.symbol] = {
+            c: parseFloat(row.current_price),
+            pc: parseFloat(row.previous_price) || 0,
+            d: parseFloat(row.price_change) || 0,
+            dp: parseFloat(row.percent_change) || 0,
+            h: row.high_of_day ? parseFloat(row.high_of_day) : null,
+            l: row.low_of_day ? parseFloat(row.low_of_day) : null,
+            o: row.open_price ? parseFloat(row.open_price) : null
+          };
+        }
+
+        const cachedCount = Object.keys(quotes).length;
+        const uncachedSymbols = symbols.filter(s => !quotes[s]);
+        console.log(`Price cache: ${cachedCount} cached, ${uncachedSymbols.length} uncached`);
+
+        // Fallback to Finnhub for any uncached symbols
+        if (uncachedSymbols.length > 0 && finnhub.isConfigured()) {
+          console.log('Fetching uncached symbols from Finnhub:', uncachedSymbols);
+          const freshQuotes = await finnhub.getBatchQuotes(uncachedSymbols);
+          Object.assign(quotes, freshQuotes);
+        }
         console.log('Received quotes:', quotes);
         
         // Enhance positions with real-time data

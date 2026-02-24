@@ -1,5 +1,6 @@
 const axios = require('axios');
 const cache = require('./cache');
+const historicalPriceCache = require('./historicalPriceCache');
 
 class AlphaVantageClient {
   constructor() {
@@ -198,6 +199,13 @@ class AlphaVantageClient {
       // Cache the result
       await cache.set('chart_daily', cacheKey, candles);
 
+      // Persist candles to DB for long-term caching
+      try {
+        await historicalPriceCache.insertCandles(symbol, candles, 'alphavantage');
+      } catch (dbErr) {
+        console.warn(`[PRICE-CACHE] Failed to persist daily candles for ${symbol}: ${dbErr.message}`);
+      }
+
       return candles;
     } catch (error) {
       console.error(`Failed to get daily data for ${symbol}: ${error.message}`);
@@ -216,6 +224,29 @@ class AlphaVantageClient {
     console.log(`Alpha Vantage chart request - Symbol: ${symbol}, Entry: ${entryTime.toISOString()}, Exit: ${exitTime.toISOString()}, Duration: ${Math.ceil(tradeDuration / oneDayMs)} days`);
 
     try {
+      // Compute date window for DB lookup
+      const windowStartDate = new Date(entryTime.getTime() - 7 * oneDayMs).toISOString().split('T')[0];
+      const windowEndDate = new Date(exitTime.getTime() + 7 * oneDayMs).toISOString().split('T')[0];
+
+      // Check persistent DB cache first (zero API calls if covered)
+      try {
+        const hasCached = await historicalPriceCache.hasRange(symbol, windowStartDate, windowEndDate);
+        if (hasCached) {
+          const cachedCandles = await historicalPriceCache.getRange(symbol, windowStartDate, windowEndDate);
+          if (cachedCandles.length > 0) {
+            console.log(`[PRICE-CACHE] Returning ${cachedCandles.length} cached candles from DB for ${symbol} (zero API calls)`);
+            return {
+              type: 'daily',
+              interval: 'daily',
+              candles: cachedCandles,
+              source: 'alphavantage_cache'
+            };
+          }
+        }
+      } catch (dbErr) {
+        console.warn(`[PRICE-CACHE] DB lookup failed for ${symbol}, falling through to API: ${dbErr.message}`);
+      }
+
       // Use daily data only - intraday endpoints require premium subscription
       // Free tier: TIME_SERIES_DAILY with 'compact' (last 100 days), 25 requests/day limit
       console.log(`Fetching daily data for ${symbol} (free tier - daily resolution only)`);

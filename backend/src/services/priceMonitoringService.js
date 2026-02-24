@@ -2,6 +2,7 @@ const db = require('../config/database');
 const logger = require('../utils/logger');
 const finnhub = require('../utils/finnhub');
 const priceFallbackManager = require('../utils/priceFallbackManager');
+const historicalPriceCache = require('../utils/historicalPriceCache');
 const nodemailer = require('nodemailer');
 const { v4: uuidv4 } = require('uuid');
 const TierService = require('./tierService');
@@ -21,6 +22,8 @@ class PriceMonitoringService {
     this.intervalMs = 30000; // 30 seconds
     this.emailTransporter = null;
     this.failedSymbols = new Map(); // Track failed symbols to reduce log spam
+    this.symbolOffset = 0; // Round-robin offset for batching
+    this.maxSymbolsPerCycle = parseInt(process.env.PRICE_MONITOR_MAX_SYMBOLS, 10) || 25;
     this.initializeEmailTransporter();
   }
 
@@ -84,25 +87,48 @@ class PriceMonitoringService {
 
   async monitorPrices() {
     try {
-      // Get all unique symbols from active alerts and watchlists
+      // Get all unique symbols from active alerts, watchlists, open positions, and holdings
       const symbolsQuery = `
-        SELECT DISTINCT symbol 
+        SELECT DISTINCT symbol
         FROM (
           SELECT symbol FROM price_alerts WHERE is_active = TRUE
           UNION
           SELECT symbol FROM watchlist_items
+          UNION
+          SELECT DISTINCT symbol FROM trades
+            WHERE exit_price IS NULL AND exit_date IS NULL
+          UNION
+          SELECT DISTINCT symbol FROM investment_holdings
         ) AS symbols
       `;
-      
-      const symbolsResult = await db.query(symbolsQuery);
-      const symbols = symbolsResult.rows.map(row => row.symbol);
 
-      if (symbols.length === 0) {
+      const symbolsResult = await db.query(symbolsQuery);
+      const allSymbols = symbolsResult.rows.map(row => row.symbol);
+
+      if (allSymbols.length === 0) {
         logger.debug('No symbols to monitor');
         return;
       }
 
-      logger.debug(`Monitoring ${symbols.length} symbols: ${symbols.join(', ')}`);
+      // Round-robin batching: if total symbols exceed max per cycle, rotate through them
+      let symbols;
+      if (allSymbols.length > this.maxSymbolsPerCycle) {
+        // Wrap offset if it exceeds total symbols
+        if (this.symbolOffset >= allSymbols.length) {
+          this.symbolOffset = 0;
+        }
+        symbols = allSymbols.slice(this.symbolOffset, this.symbolOffset + this.maxSymbolsPerCycle);
+        // If we wrapped around the end, grab remaining from the start
+        if (symbols.length < this.maxSymbolsPerCycle) {
+          symbols = symbols.concat(allSymbols.slice(0, this.maxSymbolsPerCycle - symbols.length));
+        }
+        logger.debug(`Round-robin batch: ${symbols.length}/${allSymbols.length} symbols (offset ${this.symbolOffset})`);
+        this.symbolOffset += this.maxSymbolsPerCycle;
+      } else {
+        symbols = allSymbols;
+      }
+
+      logger.debug(`Monitoring ${symbols.length} symbols (${allSymbols.length} total): ${symbols.join(', ')}`);
 
       // Track API failures to detect widespread outages
       let consecutiveFailures = 0;
@@ -216,6 +242,18 @@ class PriceMonitoringService {
           last_updated = CURRENT_TIMESTAMP,
           data_source = $9
       `, [symbol, currentPrice, previousClose, priceChange, percentChange, highOfDay, lowOfDay, openPrice, dataSource]);
+
+      // Persist today's price to historical_prices DB table
+      try {
+        await historicalPriceCache.upsertToday(symbol, {
+          o: openPrice,
+          h: highOfDay,
+          l: lowOfDay,
+          c: currentPrice
+        }, 'price_monitor');
+      } catch (dbErr) {
+        logger.debug(`[PRICE-CACHE] Failed to persist monitored price for ${symbol}: ${dbErr.message}`);
+      }
 
       logger.debug(`Updated price for ${symbol}: ${currentPrice} (${percentChange >= 0 ? '+' : ''}${percentChange.toFixed(2)}%)`);
 

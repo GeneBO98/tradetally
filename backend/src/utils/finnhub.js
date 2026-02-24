@@ -1,6 +1,7 @@
 const axios = require('axios');
 const cache = require('./cache');
 const aiService = require('./aiService');
+const historicalPriceCache = require('./historicalPriceCache');
 const ApiUsageService = require('../services/apiUsageService');
 const TierService = require('../services/tierService');
 
@@ -146,6 +147,13 @@ class FinnhubClient {
 
       // Cache the result
       await cache.set('quote', symbolUpper, quote);
+
+      // Persist today's price to historical_prices DB table
+      try {
+        await historicalPriceCache.upsertToday(symbolUpper, quote, 'finnhub');
+      } catch (dbErr) {
+        console.warn(`[PRICE-CACHE] Failed to persist quote for ${symbolUpper}: ${dbErr.message}`);
+      }
 
       // Track usage if userId provided
       if (userId) {
@@ -295,6 +303,13 @@ class FinnhubClient {
 
       // Cache the result (1 minute TTL)
       await cache.set('crypto_quote', cacheKey, quote);
+
+      // Persist today's crypto price to historical_prices DB table
+      try {
+        await historicalPriceCache.upsertToday(symbolUpper, quote, 'coingecko');
+      } catch (dbErr) {
+        console.warn(`[PRICE-CACHE] Failed to persist crypto quote for ${symbolUpper}: ${dbErr.message}`);
+      }
 
       console.log(`[CRYPTO] Quote for ${symbolUpper}: $${quote.c.toLocaleString()}`);
       return quote;
