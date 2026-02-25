@@ -57,9 +57,14 @@ export const useAuthStore = defineStore('auth', () => {
       // Fetch complete user data with settings
       await fetchUser()
 
-      // If there's a return URL (from OAuth flow), redirect there instead of dashboard
+      // If there's a return URL, redirect there instead of dashboard
       if (returnUrl) {
-        window.location.href = decodeURIComponent(returnUrl)
+        const decoded = decodeURIComponent(returnUrl)
+        if (decoded.startsWith('/')) {
+          router.push(decoded)
+        } else {
+          window.location.href = decoded
+        }
       } else {
         router.push({ name: 'dashboard' })
       }

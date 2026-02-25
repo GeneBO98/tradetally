@@ -149,8 +149,8 @@ async function handleLogin() {
   tempToken.value = ''
 
   try {
-    // Check if there's a return URL from OAuth flow
-    const returnUrl = route.query.return_url
+    // Check if there's a return URL from OAuth flow or a redirect path
+    const returnUrl = route.query.return_url || route.query.redirect || null
     await authStore.login(form.value, returnUrl)
   } catch (error) {
     if (error.requiresApproval) {
