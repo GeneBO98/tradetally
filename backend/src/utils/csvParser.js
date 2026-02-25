@@ -343,13 +343,13 @@ function detectBrokerFormat(fileBuffer) {
       return 'tradovate';
     }
 
-    // Questrade detection - look for Fill qty, Fill price, Exec time, Option, Strategy columns
-    // Questrade Edge export has unique column names like "Fill qty" and "Exec time"
+    // Questrade detection - prioritize core transaction columns
+    // Some Questrade exports omit Option/Strategy when there are no option trades.
     if (headers.includes('fill qty') &&
         headers.includes('fill price') &&
         headers.includes('exec time') &&
-        headers.includes('option') &&
-        headers.includes('strategy')) {
+        headers.includes('action') &&
+        headers.includes('symbol')) {
       console.log('[AUTO-DETECT] Detected: Questrade');
       return 'questrade';
     }
@@ -1591,6 +1591,25 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       console.log('Using special parsing options for Webull CSV');
     }
 
+    // Special handling for Questrade CSV formats
+    if (broker === 'questrade') {
+      // Questrade exports can include trailing delimiters/empty columns.
+      // Use relaxed column handling to avoid hard parse failures.
+      parseOptions = {
+        columns: true,
+        skip_empty_lines: true,
+        trim: true,
+        delimiter: ',',
+        relax: true,
+        relax_column_count: true,
+        quote: '"',
+        escape: '"',
+        skip_records_with_empty_values: false,
+        skip_records_with_error: true
+      };
+      console.log('Using special parsing options for Questrade CSV');
+    }
+
     // Special handling for IBKR CSV formats
     if (broker === 'ibkr' || broker === 'ibkr_trade_confirmation') {
       // IBKR CSVs can have quoted fields with commas inside and variable column counts
@@ -1732,22 +1751,29 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
     if (hasCurrencyColumn) {
       console.log(`[CURRENCY] Currency column detected in CSV import`);
 
-      // Check if user has pro tier access
-      const userId = context.userId;
-      if (!userId) {
-        throw new Error('CURRENCY_REQUIRES_PRO:User authentication required for currency conversion');
+      // Some broker parsers (like Questrade) preserve source currency directly
+      // and do not require USD conversion at import time.
+      const preservesSourceCurrency = broker === 'questrade';
+      if (preservesSourceCurrency) {
+        console.log(`[CURRENCY] ${broker} parser preserves source currency; skipping Pro conversion gate`);
+      } else {
+        // Check if user has pro tier access
+        const userId = context.userId;
+        if (!userId) {
+          throw new Error('CURRENCY_REQUIRES_PRO:User authentication required for currency conversion');
+        }
+
+        const hasProAccess = await currencyConverter.userHasProAccess(userId);
+        if (!hasProAccess) {
+          throw new Error('CURRENCY_REQUIRES_PRO:Currency conversion is a Pro feature. Please upgrade to Pro to import trades with non-USD currencies.');
+        }
+
+        console.log(`[CURRENCY] User ${userId} has Pro access, currency conversion enabled`);
+
+        // Store currency column info in context for broker parsers to use
+        context.hasCurrencyColumn = true;
+        context.currencyRecords = records; // Store original records with currency data
       }
-
-      const hasProAccess = await currencyConverter.userHasProAccess(userId);
-      if (!hasProAccess) {
-        throw new Error('CURRENCY_REQUIRES_PRO:Currency conversion is a Pro feature. Please upgrade to Pro to import trades with non-USD currencies.');
-      }
-
-      console.log(`[CURRENCY] User ${userId} has Pro access, currency conversion enabled`);
-
-      // Store currency column info in context for broker parsers to use
-      context.hasCurrencyColumn = true;
-      context.currencyRecords = records; // Store original records with currency data
     }
 
     // Check if CSV contains an account column for automatic account detection
