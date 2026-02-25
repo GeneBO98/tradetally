@@ -759,6 +759,7 @@ const availableSectors = ref([])
 const loadingSectors = ref(false)
 const availableBrokers = ref([])
 const loadingBrokers = ref(false)
+const loadingStrategies = ref(false)
 
 // Dropdown visibility
 const showStrategyDropdown = ref(false)
@@ -864,7 +865,7 @@ const pnlTypeOptions = [
 ]
 
 // Strategy options
-const strategyOptions = [
+const defaultStrategyOptions = [
   { value: 'scalper', label: 'Scalper' },
   { value: 'momentum', label: 'Momentum' },
   { value: 'mean_reversion', label: 'Mean Reversion' },
@@ -879,6 +880,7 @@ const strategyOptions = [
   { value: 'news_swing', label: 'News Swing' },
   { value: 'news_uncertainty', label: 'News Uncertainty' }
 ]
+const strategyOptions = ref([...defaultStrategyOptions])
 
 // Initialize filters with defaults, then load from localStorage
 const defaultFilters = {
@@ -964,10 +966,13 @@ const filters = ref(loadInitialFilters())
 
 // Helper methods for multi-select dropdowns
 function getSelectedStrategyText() {
-  if (!filters.value.strategies || filters.value.strategies.length === 0) return 'All Strategies'
+  if (!filters.value.strategies || filters.value.strategies.length === 0) {
+    return loadingStrategies.value ? 'Loading strategies...' : 'All Strategies'
+  }
   if (filters.value.strategies.length === 1) {
-    const strategy = strategyOptions.find(s => s.value === filters.value.strategies[0])
-    return strategy ? strategy.label : 'All Strategies'
+    const selectedValue = filters.value.strategies[0]
+    const strategy = strategyOptions.value.find(s => s.value === selectedValue)
+    return strategy ? strategy.label : selectedValue
   }
   return `${filters.value.strategies.length} strategies selected`
 }
@@ -1324,6 +1329,36 @@ async function fetchAvailableBrokers() {
   }
 }
 
+function mergeStrategyOptions(strategies = []) {
+  const merged = new Map(defaultStrategyOptions.map((option) => [option.value, option]))
+
+  strategyOptions.value.forEach((option) => {
+    merged.set(option.value, option)
+  })
+
+  strategies
+    .filter((strategy) => typeof strategy === 'string' && strategy.trim() !== '')
+    .forEach((strategy) => {
+      if (!merged.has(strategy)) {
+        merged.set(strategy, { value: strategy, label: strategy })
+      }
+    })
+
+  strategyOptions.value = Array.from(merged.values())
+}
+
+async function fetchAvailableStrategies() {
+  try {
+    loadingStrategies.value = true
+    const response = await api.get('/trades/strategies')
+    mergeStrategyOptions(response.data?.strategies || [])
+  } catch (error) {
+    console.warn('Failed to fetch available strategies:', error)
+  } finally {
+    loadingStrategies.value = false
+  }
+}
+
 // Convert minHoldTime/maxHoldTime to holdTime range option
 const convertHoldTimeRange = (minMinutes, maxMinutes) => {
   // Handle specific strategy ranges first (more inclusive approach)
@@ -1461,7 +1496,8 @@ onMounted(() => {
     document.addEventListener('click', handleClickOutside)
   }, 100)
 
-  // Fetch available sectors and brokers for dropdowns
+  // Fetch available dropdown options
+  fetchAvailableStrategies()
   fetchAvailableSectors()
   fetchAvailableBrokers()
 
@@ -1641,6 +1677,9 @@ onMounted(() => {
     filters.value.strategies = route.query.strategies.split(',')
     shouldApply = true
   }
+
+  // Ensure selected strategies are always visible in the dropdown
+  mergeStrategyOptions(filters.value.strategies || [])
   
   // Handle multi-select sectors from query parameters
   if (route.query.sectors) {
