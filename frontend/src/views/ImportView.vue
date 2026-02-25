@@ -265,27 +265,31 @@
                 Export from ThinkorSwim's "Account Statement" section. Only processes trade (TRD) records.
               </p>
               <div class="bg-gray-50 dark:bg-gray-800 rounded-md p-3 text-xs font-mono overflow-x-auto">
-                DATE,TIME,TYPE,DESCRIPTION,Commissions & Fees,Misc Fees<br>
-                01/15/2024,09:30:00,TRD,"BOT +100 AAPL @150.25",1.00,0.00<br>
-                01/15/2024,10:45:00,TRD,"SOLD -100 AAPL @155.50",1.00,0.00
+                DATE,TIME,TYPE,REF #,DESCRIPTION,Commissions & Fees,Misc Fees<br>
+                01/15/2024,09:30:00,TRD,12345,"BOT +100 AAPL @150.25",1.00,0.00<br>
+                01/15/2024,10:45:00,TRD,12346,"SOLD -100 AAPL @155.50",1.00,0.00
               </div>
               <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                <strong>Required columns:</strong> DATE, TIME, TYPE (must be "TRD"), DESCRIPTION (BOT/SOLD format). Optional: Commissions & Fees, Misc Fees
+                <strong>Required columns:</strong> DATE, TIME, TYPE (must be "TRD"), REF #, DESCRIPTION (BOT/SOLD format). Optional: Commissions & Fees, Misc Fees
               </p>
             </div>
 
             <div>
               <h4 class="font-medium text-gray-900 dark:text-white">Interactive Brokers</h4>
               <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
-                Export from IBKR's "Reports" > "Trade Confirmation" section.
+                Supports both Activity Statement and Trade Confirmation exports. Also supports Flex Query exports.
               </p>
               <div class="bg-gray-50 dark:bg-gray-800 rounded-md p-3 text-xs font-mono overflow-x-auto">
-                Symbol,DateTime,Quantity,Price,Commission,Fees<br>
-                AAPL,2024-01-15 09:30:00,100,150.25,1.00,0.00<br>
-                AAPL,2024-01-15 10:45:00,-100,155.50,1.00,0.00
+                <strong>Activity Statement:</strong><br>
+                Symbol,Date/Time,Quantity,Price,Commission,Fees<br>
+                AAPL,2024-01-15 09:30:00,100,150.25,-1.00,0.00<br>
+                AAPL,2024-01-15 10:45:00,-100,155.50,-1.00,0.00<br><br>
+                <strong>Trade Confirmation:</strong><br>
+                Symbol,UnderlyingSymbol,Strike,Expiry,Put/Call,Quantity,Multiplier,Buy/Sell,Date/Time,Price,Commission<br>
+                AAPL,,,,,,BUY,20240115;093000,150.25,-1.00
               </div>
               <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                <strong>Required columns:</strong> Symbol, DateTime, Quantity (positive=buy, negative=sell), Price. Optional: Commission, Fees
+                <strong>Activity Statement:</strong> Symbol, Date/Time or DateTime, Quantity (positive=buy, negative=sell), Price. <strong>Trade Confirmation:</strong> Symbol, Buy/Sell, Date/Time, Price, UnderlyingSymbol, Strike, Expiry, Put/Call, Multiplier.
               </p>
             </div>
 
@@ -360,12 +364,12 @@
                 Export transaction history from TradeStation. Supports both equity and options trades with detailed fee breakdown.
               </p>
               <div class="bg-gray-50 dark:bg-gray-800 rounded-md p-3 text-xs font-mono overflow-x-auto">
-                Account,T/D,S/D,Currency,Type,Side,Symbol,Qty,Price,Exec Time,Comm,SEC,TAF,NSCC,Nasdaq<br>
-                ABC123,01/15/25,01/17/25,USD,E,B,AAPL,100,150.50,09:30:15,4.95,0.01,0.01,0.01,0.00<br>
-                ABC123,01/15/25,01/17/25,USD,E,S,AAPL,100,152.25,14:20:30,4.95,0.01,0.01,0.01,0.00
+                Account,T/D,S/D,Currency,Type,Side,Symbol,Qty,Price,Exec Time,Comm,SEC,TAF,NSCC,Nasdaq,ECN Remove,ECN Add,Gross Proceeds,Net Proceeds<br>
+                ABC123,01/15/25,01/17/25,USD,E,B,AAPL,100,150.50,09:30:15,4.95,0.01,0.01,0.01,0.00,0.00,0.00,15050.00,15045.02<br>
+                ABC123,01/15/25,01/17/25,USD,E,S,AAPL,100,152.25,14:20:30,4.95,0.01,0.01,0.01,0.00,0.00,0.00,15225.00,15220.02
               </div>
               <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                <strong>Required columns:</strong> T/D, S/D, Side, Symbol, Qty, Price, Exec Time. All fee columns are automatically summed.
+                <strong>Required columns:</strong> Account, T/D, S/D, Side, Symbol, Qty, Price, Exec Time, Gross Proceeds or Net Proceeds. All fee columns (Comm, SEC, TAF, NSCC, Nasdaq, ECN Remove, ECN Add) are automatically summed.
               </p>
             </div>
 
