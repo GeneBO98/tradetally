@@ -395,6 +395,34 @@ class AdminAnalytics {
     `);
     const atRiskCancellations = parseInt(atRiskResult.rows[0].count) || 0;
 
+    // Expired trial users who never converted to a paid subscription
+    const expiredTrialResult = await db.query(`
+      SELECT COUNT(DISTINCT to2.user_id) as count
+      FROM tier_overrides to2
+      WHERE to2.reason ILIKE '%trial%'
+        AND to2.expires_at < NOW()
+        AND NOT EXISTS (
+          SELECT 1 FROM subscriptions s
+          WHERE s.user_id = to2.user_id AND s.status = 'active'
+        )
+    `);
+    const expiredTrialNotConverted = parseInt(expiredTrialResult.rows[0].count) || 0;
+
+    // Expired trial user details for admin drill-down
+    const expiredTrialUsersResult = await db.query(`
+      SELECT DISTINCT u.id, u.email, u.username, u.created_at, to2.expires_at as trial_expired_at
+      FROM tier_overrides to2
+      JOIN users u ON u.id = to2.user_id
+      WHERE to2.reason ILIKE '%trial%'
+        AND to2.expires_at < NOW()
+        AND NOT EXISTS (
+          SELECT 1 FROM subscriptions s
+          WHERE s.user_id = to2.user_id AND s.status = 'active'
+        )
+      ORDER BY to2.expires_at DESC
+    `);
+    const expiredTrialUsers = expiredTrialUsersResult.rows;
+
     return {
       payingUsers,
       mrr,
@@ -403,6 +431,8 @@ class AdminAnalytics {
       totalTrialUsers,
       trialConvertedCount,
       atRiskCancellations,
+      expiredTrialNotConverted,
+      expiredTrialUsers,
       signupsInPeriod,
       trialsStartedInPeriod
     };

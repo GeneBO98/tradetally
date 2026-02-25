@@ -266,7 +266,7 @@
                     Revenue & Subscriptions
                 </h2>
                 <div
-                    class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4"
+                    class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
                 >
                     <div
                         class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-5 min-h-[7.5rem] flex flex-col justify-center min-w-0"
@@ -392,6 +392,88 @@
                                 )
                             }}
                         </p>
+                    </div>
+                    <div
+                        class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-5 min-h-[7.5rem] flex flex-col justify-center min-w-0 cursor-pointer ring-1 ring-transparent hover:ring-primary-300 dark:hover:ring-primary-700 transition-all"
+                        @click="showExpiredTrialUsers = !showExpiredTrialUsers"
+                    >
+                        <div class="flex items-center justify-between">
+                            <p
+                                class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate"
+                            >
+                                Expired (Not Converted)
+                            </p>
+                            <svg
+                                class="w-4 h-4 text-gray-400 transition-transform"
+                                :class="{ 'rotate-180': showExpiredTrialUsers }"
+                                fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                            >
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                            </svg>
+                        </div>
+                        <p
+                            class="text-xl sm:text-2xl font-semibold text-gray-900 dark:text-white truncate mt-1"
+                            :title="
+                                formatNumber(
+                                    analytics.subscriptionMetrics
+                                        .expiredTrialNotConverted,
+                                )
+                            "
+                        >
+                            {{
+                                formatNumber(
+                                    analytics.subscriptionMetrics
+                                        .expiredTrialNotConverted,
+                                )
+                            }}
+                        </p>
+                        <p
+                            class="text-xs text-gray-400 dark:text-gray-500 mt-0.5 truncate"
+                        >
+                            trial ended, no subscription
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Expired Trial Users Detail -->
+                <div
+                    v-if="showExpiredTrialUsers && analytics.subscriptionMetrics.expiredTrialUsers?.length"
+                    class="mt-4 bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden"
+                >
+                    <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                        <h3 class="text-sm font-medium text-gray-900 dark:text-white">
+                            Expired Trial Users ({{ analytics.subscriptionMetrics.expiredTrialUsers.length }})
+                        </h3>
+                        <button
+                            @click.stop="copyExpiredTrialEmails"
+                            class="text-xs text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 font-medium"
+                        >
+                            {{ clipboardFeedback === 'expiredEmails' ? 'Copied' : 'Copy All Emails' }}
+                        </button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                            <thead class="bg-gray-50 dark:bg-gray-900/50">
+                                <tr>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Email</th>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Username</th>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Signed Up</th>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Trial Expired</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                                <tr
+                                    v-for="user in analytics.subscriptionMetrics.expiredTrialUsers"
+                                    :key="user.id"
+                                    class="hover:bg-gray-50 dark:hover:bg-gray-700/50"
+                                >
+                                    <td class="px-4 py-2 text-sm text-gray-900 dark:text-white">{{ user.email }}</td>
+                                    <td class="px-4 py-2 text-sm text-gray-600 dark:text-gray-300">{{ user.username || '-' }}</td>
+                                    <td class="px-4 py-2 text-sm text-gray-600 dark:text-gray-300">{{ formatShortDate(user.created_at) }}</td>
+                                    <td class="px-4 py-2 text-sm text-gray-600 dark:text-gray-300">{{ formatShortDate(user.trial_expired_at) }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
@@ -1152,6 +1234,7 @@ const unknownCsvHeaders = ref([]);
 const unknownCsvHeadersLoading = ref(false);
 const csvPagination = ref({ page: 1, limit: 25, total: 0, totalPages: 0 });
 const expandedRowId = ref(null);
+const showExpiredTrialUsers = ref(false);
 const copiedRowId = ref(null);
 const clipboardFeedback = ref(null);
 
@@ -1163,6 +1246,36 @@ function formatNumber(num) {
 function formatCurrency(num) {
     if (num === null || num === undefined) return "0.00";
     return Number(num).toFixed(2);
+}
+
+function formatShortDate(iso) {
+    if (!iso) return "-";
+    try {
+        return new Date(iso).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+        });
+    } catch {
+        return iso;
+    }
+}
+
+async function copyExpiredTrialEmails() {
+    try {
+        const emails = analytics.value?.subscriptionMetrics?.expiredTrialUsers
+            ?.map((u) => u.email)
+            .join(", ");
+        if (emails) {
+            await navigator.clipboard.writeText(emails);
+            clipboardFeedback.value = "expiredEmails";
+            setTimeout(() => {
+                clipboardFeedback.value = null;
+            }, 2000);
+        }
+    } catch {
+        console.warn("[WARNING] Failed to copy to clipboard");
+    }
 }
 
 function formatUnknownCsvDate(iso) {
