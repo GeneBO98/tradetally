@@ -484,7 +484,7 @@ class Trade {
       roundToDbPrecision(originalEntryPriceCurrency), roundToDbPrecision(originalExitPriceCurrency),
       roundToDbPrecision(originalPnlCurrency), roundToDbPrecision(originalCommissionCurrency), roundToDbPrecision(originalFeesCurrency),
       roundToDbPrecision(finalStopLoss), roundToDbPrecision(finalTakeProfit), JSON.stringify(aggregatedTakeProfitTargets || []),
-      roundToDbPrecision(rValue), chartUrl || null, brokerConnectionId || null, finalAccountIdentifier || null,
+      roundToDbPrecision(rValue), chartUrl || null, brokerConnectionId || null, finalAccountIdentifier ? String(finalAccountIdentifier).substring(0, 50) : null,
       conid || null,
       manualTargetHitFirst || null
     ];
@@ -749,14 +749,16 @@ class Trade {
       paramCount++;
     }
 
-    if (filters.startDate) {
-      whereClause += ` AND t.trade_date >= $${paramCount}`;
+    if (filters.startDate && filters.endDate) {
+      whereClause += ` AND ((t.trade_date >= $${paramCount} AND t.trade_date <= $${paramCount + 1}) OR (t.exit_time::date >= $${paramCount} AND t.exit_time::date <= $${paramCount + 1}))`;
+      values.push(filters.startDate, filters.endDate);
+      paramCount += 2;
+    } else if (filters.startDate) {
+      whereClause += ` AND (t.trade_date >= $${paramCount} OR t.exit_time::date >= $${paramCount})`;
       values.push(filters.startDate);
       paramCount++;
-    }
-
-    if (filters.endDate) {
-      whereClause += ` AND t.trade_date <= $${paramCount}`;
+    } else if (filters.endDate) {
+      whereClause += ` AND (t.trade_date <= $${paramCount} OR t.exit_time::date <= $${paramCount})`;
       values.push(filters.endDate);
       paramCount++;
     }
@@ -2321,15 +2323,17 @@ class Trade {
     const values = [userId];
     let paramCount = 2;
 
-    // Add date filtering
-    if (filters.startDate) {
-      whereClause += ` AND t.trade_date >= $${paramCount}`;
+    // Add date filtering - include trades where entry OR exit date falls within range
+    if (filters.startDate && filters.endDate) {
+      whereClause += ` AND ((t.trade_date >= $${paramCount} AND t.trade_date <= $${paramCount + 1}) OR (t.exit_time::date >= $${paramCount} AND t.exit_time::date <= $${paramCount + 1}))`;
+      values.push(filters.startDate, filters.endDate);
+      paramCount += 2;
+    } else if (filters.startDate) {
+      whereClause += ` AND (t.trade_date >= $${paramCount} OR t.exit_time::date >= $${paramCount})`;
       values.push(filters.startDate);
       paramCount++;
-    }
-
-    if (filters.endDate) {
-      whereClause += ` AND t.trade_date <= $${paramCount}`;
+    } else if (filters.endDate) {
+      whereClause += ` AND (t.trade_date <= $${paramCount} OR t.exit_time::date <= $${paramCount})`;
       values.push(filters.endDate);
       paramCount++;
     }
