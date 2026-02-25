@@ -243,7 +243,7 @@ const authController = {
 
       // Get user tier and billing status in one optimized call
       const TierService = require('../services/tierService');
-      const { tier: userTier, billingEnabled } = await TierService.getUserTierWithBillingStatus(user.id);
+      const { tier: userTier, billingEnabled } = await TierService.getUserTierWithBillingStatus(user.id, req.headers.host);
 
       res.json({
         message: 'Login successful',
@@ -327,8 +327,8 @@ const authController = {
 
       // Get tier and billing status
       const TierService = require('../services/tierService');
-      const userTier = await TierService.getUserTier(user.id);
-      const billingEnabled = await TierService.isBillingEnabled();
+      const userTier = await TierService.getUserTier(user.id, req.headers.host);
+      const billingEnabled = await TierService.isBillingEnabled(req.headers.host);
 
       res.json({
         message: 'Login successful',
