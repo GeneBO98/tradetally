@@ -449,7 +449,7 @@ const userController = {
     try {
       const { userId } = req.params;
 
-      const tier = await TierService.getUserTier(userId);
+      const tier = await TierService.getUserTier(userId, req.headers.host);
       const subscription = await User.getSubscription(userId);
       const override = await User.getTierOverride(userId);
 
@@ -457,7 +457,7 @@ const userController = {
         tier,
         subscription,
         override,
-        billingEnabled: await TierService.isBillingEnabled()
+        billingEnabled: await TierService.isBillingEnabled(req.headers.host)
       });
     } catch (error) {
       next(error);

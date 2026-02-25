@@ -2,11 +2,15 @@ FROM node:20-alpine AS frontend-builder
 # Update packages to fix vulnerabilities
 RUN apk update && apk upgrade --no-cache
 WORKDIR /app/frontend
+ENV NPM_CONFIG_REGISTRY=https://registry.npmjs.org/ \
+    NPM_CONFIG_FETCH_RETRIES=5 \
+    NPM_CONFIG_FETCH_RETRY_FACTOR=2 \
+    NPM_CONFIG_FETCH_RETRY_MINTIMEOUT=20000 \
+    NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT=120000
 
 COPY frontend/package*.json ./
-# Update npm to latest version to fix cross-spawn vulnerability
-RUN npm install -g npm@latest
-RUN npm install
+# Use lockfile-based installs for deterministic CI builds.
+RUN npm ci --no-audit --no-fund
 COPY frontend/ ./
 
 # Set VITE_API_URL to use relative path for Nginx proxy
@@ -23,6 +27,11 @@ FROM node:20-alpine AS backend-builder
 # Update packages to fix vulnerabilities
 RUN apk update && apk upgrade --no-cache
 WORKDIR /app/backend
+ENV NPM_CONFIG_REGISTRY=https://registry.npmjs.org/ \
+    NPM_CONFIG_FETCH_RETRIES=5 \
+    NPM_CONFIG_FETCH_RETRY_FACTOR=2 \
+    NPM_CONFIG_FETCH_RETRY_MINTIMEOUT=20000 \
+    NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT=120000
 
 # Install build dependencies for native modules (excluding vips-dev to avoid Sharp build issues)
 RUN apk add --no-cache --no-scripts \
@@ -34,14 +43,14 @@ RUN apk add --no-cache --no-scripts \
 
 COPY backend/package*.json ./
 
-# Update npm and install node-gyp globally for native module builds
-RUN npm install -g npm@latest node-gyp
+# Install node-gyp globally for native module builds.
+RUN npm install -g node-gyp
 
 # Install dependencies
 # Sharp will automatically download prebuilt binaries for Alpine Linux
 # Set environment variable to ensure Sharp uses prebuilt binaries
 ENV SHARP_IGNORE_GLOBAL_LIBVIPS=1
-RUN npm install --omit=dev
+RUN npm ci --omit=dev --no-audit --no-fund
 
 COPY backend/ ./
 

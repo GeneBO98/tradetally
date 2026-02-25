@@ -5,8 +5,6 @@ const { getTierLimits, hasReachedLimit, getRemainingQuota, PRICING } = require('
 class TierService {
   // Cache for environment-based billing override so we only log once per process
   static _billingEnvOverride = undefined; // undefined = not checked yet, null = no override, boolean = forced value
-  // Cache for domain-based billing check so it only logs once per process
-  static _billingDomainResult = undefined; // undefined = not checked yet, boolean = cached result
 
   static _getBillingEnvOverride() {
     // If we've already resolved the override (including "no override"), just return it
@@ -49,11 +47,6 @@ class TierService {
       return envOverride;
     }
 
-    // Return cached domain result if already determined (only log once per process)
-    if (this._billingDomainResult !== undefined) {
-      return this._billingDomainResult;
-    }
-
     // Auto-disable billing for non-tradetally.io domains (self-hosted)
     const frontendUrl = process.env.FRONTEND_URL || '';
 
@@ -61,7 +54,6 @@ class TierService {
     // Only ENABLE for tradetally.io, disable for everything else (including localhost for self-hosted)
     if (hostHeader && !hostHeader.includes('tradetally.io')) {
       console.log(`[BILLING] Disabled for host: ${hostHeader} (not tradetally.io)`);
-      this._billingDomainResult = false;
       return false;
     }
 
@@ -69,7 +61,6 @@ class TierService {
     // Only ENABLE for tradetally.io, disable for everything else
     if (!hostHeader && frontendUrl && !frontendUrl.includes('tradetally.io')) {
       console.log(`[BILLING] Disabled for frontend URL: ${frontendUrl} (not tradetally.io)`);
-      this._billingDomainResult = false;
       return false;
     }
 
@@ -90,9 +81,9 @@ class TierService {
   }
 
   // Get effective tier for a user (optimized: single query when possible)
-  static async getUserTier(userId) {
+  static async getUserTier(userId, hostHeader = null) {
     // If billing is disabled (self-hosted), always return 'pro'
-    const billingEnabled = await this.isBillingEnabled();
+    const billingEnabled = await this.isBillingEnabled(hostHeader);
     if (!billingEnabled) {
       return 'pro';
     }
@@ -136,20 +127,20 @@ class TierService {
   }
 
   // Get user tier and billing status in one call (optimized for login)
-  static async getUserTierWithBillingStatus(userId) {
-    const billingEnabled = await this.isBillingEnabled();
+  static async getUserTierWithBillingStatus(userId, hostHeader = null) {
+    const billingEnabled = await this.isBillingEnabled(hostHeader);
     if (!billingEnabled) {
       return { tier: 'pro', billingEnabled: false };
     }
 
-    const tier = await this.getUserTier(userId);
+    const tier = await this.getUserTier(userId, hostHeader);
     return { tier, billingEnabled: true };
   }
 
   // Check if user has access to a specific feature
-  static async hasFeatureAccess(userId, featureKey) {
+  static async hasFeatureAccess(userId, featureKey, hostHeader = null) {
     // If billing is disabled (self-hosted), grant all features
-    const billingEnabled = await this.isBillingEnabled();
+    const billingEnabled = await this.isBillingEnabled(hostHeader);
     if (!billingEnabled) {
       return true;
     }
@@ -171,7 +162,7 @@ class TierService {
     }
 
     // Check user's tier
-    const userTier = await this.getUserTier(userId);
+    const userTier = await this.getUserTier(userId, hostHeader);
     return userTier === 'pro';
   }
 
