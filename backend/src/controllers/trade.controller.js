@@ -3623,7 +3623,7 @@ const tradeController = {
 
       // Get chart data using the ChartService (for both stocks and options)
       // For options, this fetches the underlying stock's candlestick data (e.g., SPY)
-      const chartData = await ChartService.getTradeChartData(userId, symbol, entryDate, exitDate);
+      const chartData = await ChartService.getTradeChartData(userId, symbol, entryDate, exitDate, req.headers.host);
 
       // Add trade information to the response
       chartData.trade = {
@@ -3664,7 +3664,7 @@ const tradeController = {
       });
 
       // Get usage statistics for the response
-      const usageStats = await ChartService.getUsageStats(userId);
+      const usageStats = await ChartService.getUsageStats(userId, req.headers.host);
       chartData.usage = usageStats;
 
       res.json(chartData);
@@ -3672,6 +3672,13 @@ const tradeController = {
       console.error('Error fetching trade chart data:', error);
       
       // Handle specific errors
+      if (error.statusCode === 403) {
+        return res.status(403).json({
+          error: error.message,
+          requiresPro: true
+        });
+      }
+
       if (error.message && error.message.includes('not configured')) {
         return res.status(503).json({
           error: 'Chart service not configured',

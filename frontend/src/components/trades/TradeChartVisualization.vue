@@ -14,17 +14,24 @@
                 :class="getSourceBadgeClass(chartData.source)">
             {{ getSourceLabel(chartData.source) }}
           </span>
-          <div v-if="chartData.usage && chartData.usage.alphaVantage && userTier !== 'pro'" class="text-xs text-gray-500 dark:text-gray-400">
-            ({{ chartData.usage.alphaVantage.dailyCallsRemaining }}/25 API calls remaining today)
+          <div v-if="chartData.source === 'finnhub'" class="text-xs text-primary-500 dark:text-primary-400">
+            (High-precision data)
           </div>
-          <div v-else-if="chartData.source === 'finnhub' && userTier === 'pro'" class="text-xs text-blue-500 dark:text-blue-400">
-            (Unlimited high-precision data)
+          <div v-else-if="chartData.usage && chartData.usage.alphaVantage" class="text-xs text-gray-500 dark:text-gray-400">
+            ({{ chartData.usage.alphaVantage.dailyCallsRemaining }}/25 API calls remaining today)
           </div>
         </div>
       </div>
 
+      <!-- Pro upgrade prompt for free users when billing is enabled -->
+      <ProUpgradePrompt
+        v-if="requiresProUpgrade"
+        variant="compact"
+        description="Trade charts with high-precision candlestick data are available with a Pro subscription."
+      />
+
       <!-- Show Chart Button -->
-      <div v-if="!showChart && !loading" class="text-center py-8">
+      <div v-else-if="!showChart && !loading" class="text-center py-8">
         <div class="mb-4">
           <svg class="w-16 h-16 mx-auto text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
@@ -36,11 +43,8 @@
         <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
           See your entry and exit points on a candlestick chart with market context
         </p>
-        <div v-if="userTier === 'pro'" class="text-xs text-blue-600 dark:text-blue-400 mb-4">
-          [PRO] Pro Feature: Exclusive Finnhub data with 1-minute precision (no Alpha Vantage fallback)
-        </div>
-        <button 
-          @click="loadChart" 
+        <button
+          @click="loadChart"
           class="btn-primary"
         >
           <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -49,9 +53,8 @@
           Load Chart
         </button>
         <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
-          <span v-if="userTier === 'pro'">Uses Finnhub Pro API exclusively (unlimited high-precision data)</span>
-          <span v-else-if="userTier === 'free'">Uses Alpha Vantage API (1 call, 25 free per day)</span>
-          <span v-else>Chart service configuration pending...</span>
+          <span v-if="isBillingEnabled">Uses Finnhub API with high-precision intraday data</span>
+          <span v-else>Uses Finnhub (if configured) or Alpha Vantage for chart data</span>
         </p>
       </div>
 
@@ -67,8 +70,7 @@
         </div>
         <p class="text-red-600 dark:text-red-400 mb-2 font-medium">{{ error }}</p>
         <p v-if="error.includes('limit')" class="text-sm text-gray-600 dark:text-gray-400 mb-4">
-          <span v-if="userTier === 'pro'">Finnhub Pro API rate limit reached. Please wait a moment before retrying.</span>
-          <span v-else>Free tier allows 25 Alpha Vantage API calls per day. Try again tomorrow or upgrade to Pro for unlimited Finnhub access.</span>
+          Chart API rate limit reached. Please wait a moment before retrying.
         </p>
         <p v-else-if="error.includes('not configured')" class="text-sm text-gray-600 dark:text-gray-400 mb-4">
           Chart service requires API configuration. Contact your administrator to enable chart visualization.
@@ -149,6 +151,7 @@ import * as LightweightCharts from 'lightweight-charts'
 import api from '@/services/api'
 import { useNotification } from '@/composables/useNotification'
 import { useAuthStore } from '@/stores/auth'
+import ProUpgradePrompt from '@/components/ProUpgradePrompt.vue'
 
 const props = defineProps({
   tradeId: {
@@ -171,6 +174,8 @@ let candleSeries = null
 
 // Computed properties
 const userTier = computed(() => authStore.user?.tier?.tier_name || 'free')
+const isBillingEnabled = computed(() => authStore.user?.billingEnabled !== false)
+const requiresProUpgrade = computed(() => isBillingEnabled.value && userTier.value !== 'pro')
 
 // Helper methods for source display
 const getSourceLabel = (source) => {
@@ -838,18 +843,18 @@ const fetchChartData = async () => {
     console.error('Error response:', err.response?.data)
     console.error('Error status:', err.response?.status)
     
-    if (err.response?.status === 503) {
+    if (err.response?.status === 403 && err.response.data?.requiresPro) {
+      // Pro feature gate - should not normally reach here since frontend guards it
+      error.value = err.response.data.error || 'Pro feature'
+    } else if (err.response?.status === 503) {
       isConfigured.value = false
       error.value = err.response.data.error || 'Chart service not configured'
-      const configMessage = userTier.value === 'pro' 
-        ? 'Chart visualization requires Finnhub API configuration.'
-        : 'Chart visualization requires API configuration (Finnhub for Pro, Alpha Vantage for Free).'
-      showError('Chart Service Unavailable', configMessage)
+      showError('Chart Service Unavailable', 'Chart visualization requires API configuration. Contact your administrator.')
     } else if (err.response?.status === 429) {
       error.value = err.response.data.error || 'API rate limit exceeded'
-      const limitMessage = userTier.value === 'pro' 
-        ? 'Finnhub Pro rate limit reached (150/min). Please wait a moment before retrying.'
-        : 'Alpha Vantage daily limit reached (25/day). Try again tomorrow or upgrade to Pro for unlimited access.'
+      const limitMessage = isBillingEnabled.value
+        ? 'Finnhub rate limit reached. Please wait a moment before retrying.'
+        : 'Chart API rate limit reached. Please wait before retrying.'
       showWarning('Chart API Limit Reached', limitMessage)
     } else if (err.response?.status === 404) {
       error.value = err.response.data.error || 'Chart data not available'
