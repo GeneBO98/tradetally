@@ -307,9 +307,8 @@ function detectBrokerFormat(fileBuffer) {
       return 'ibkr';
     }
 
-    // E*TRADE detection
-    if (headers.includes('transaction date') && headers.includes('transaction type') &&
-        (headers.includes('buy') || headers.includes('sell'))) {
+    // E*TRADE detection - Transaction Date + Transaction Type is unique to E*TRADE
+    if (headers.includes('transaction date') && headers.includes('transaction type')) {
       console.log('[AUTO-DETECT] Detected: E*TRADE');
       return 'etrade';
     }
@@ -4834,10 +4833,16 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
 
     console.log(`\n=== Processing ${symbolTransactions.length} TradingView transactions for ${symbol} ===`);
 
-    // TradingView is stock trading, so contract multiplier is always 1
-    const contractMultiplier = 1;
+    // Detect futures from TradingView exchange prefix (e.g., CME_MINI:MNQH2026, CME:ESH2026, NYMEX:CLH2026)
+    const futuresExchanges = ['CME_MINI', 'CME', 'NYMEX', 'COMEX', 'CBOT', 'CME_MICRO'];
+    const exchangeMatch = symbol.match(/^([^:]+):(.+)$/);
+    const exchange = exchangeMatch ? exchangeMatch[1] : null;
+    const rawContract = exchangeMatch ? exchangeMatch[2] : symbol;
+    const isFutures = exchange && futuresExchanges.includes(exchange.toUpperCase());
+
+    let contractMultiplier = 1;
     const instrumentData = {
-      instrumentType: 'stock',
+      instrumentType: isFutures ? 'future' : 'stock',
       contractSize: null,
       underlyingSymbol: null,
       optionType: null,
@@ -4850,20 +4855,45 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
       pointValue: null
     };
 
+    let valueMultiplier = 1;
+
+    if (isFutures) {
+      // Parse futures contract: MNQH2026 -> MNQ (product), H (month), 2026 (year)
+      const futuresMatch = rawContract.match(/^([A-Z]+?)([FGHJKMNQUVXZ])(\d{2,4})$/);
+      const baseProduct = futuresMatch ? futuresMatch[1] : rawContract.replace(/[FGHJKMNQUVXZ]\d+$/, '');
+      const pointValue = getFuturesPointValue(baseProduct);
+      valueMultiplier = pointValue;
+      instrumentData.underlyingAsset = baseProduct;
+      instrumentData.pointValue = pointValue;
+
+      if (futuresMatch) {
+        const monthCodes = { F: '01', G: '02', H: '03', J: '04', K: '05', M: '06', N: '07', Q: '08', U: '09', V: '10', X: '11', Z: '12' };
+        instrumentData.contractMonth = monthCodes[futuresMatch[2]];
+        let year = parseInt(futuresMatch[3]);
+        if (year < 100) year += 2000;
+        instrumentData.contractYear = year;
+      }
+
+      console.log(`  Detected futures: product=${baseProduct}, pointValue=$${pointValue}, contract=${rawContract}`);
+    }
+
+    // Use contract symbol without exchange prefix for storage
+    const tradeSymbol = isFutures ? rawContract : symbol;
+
     // Track position and round-trip trades
     // Start with existing position if we have one for this symbol
     const existingPosition = existingPositions[symbol];
     let currentPosition = existingPosition ?
       (existingPosition.side === 'long' ? existingPosition.quantity : -existingPosition.quantity) : 0;
     let currentTrade = existingPosition ? {
-      symbol: symbol,
+      symbol: tradeSymbol,
       entryTime: existingPosition.entryTime,
       tradeDate: existingPosition.tradeDate,
       side: existingPosition.side,
       executions: existingPosition.executions || [],
       totalQuantity: existingPosition.quantity,
       totalFees: existingPosition.commission || 0,
-      entryValue: existingPosition.quantity * existingPosition.entryPrice,
+      entryValue: existingPosition.quantity * existingPosition.entryPrice * valueMultiplier,
       exitValue: 0,
       broker: existingPosition.broker || 'tradingview',
       isExistingPosition: true,
@@ -4885,7 +4915,7 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
       // Start new trade if going from flat to position
       if (currentPosition === 0) {
         currentTrade = {
-          symbol: symbol,
+          symbol: tradeSymbol,
           entryTime: transaction.datetime,
           tradeDate: transaction.date,
           side: transaction.action === 'buy' ? 'long' : 'short',
@@ -4949,19 +4979,19 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
         currentPosition += qty;
 
         if (currentTrade && currentTrade.side === 'long') {
-          currentTrade.entryValue += qty * transaction.price;
+          currentTrade.entryValue += qty * transaction.price * valueMultiplier;
           currentTrade.totalQuantity += qty;
         } else if (currentTrade && currentTrade.side === 'short') {
-          currentTrade.exitValue += qty * transaction.price;
+          currentTrade.exitValue += qty * transaction.price * valueMultiplier;
         }
       } else if (transaction.action === 'sell') {
         currentPosition -= qty;
 
         if (currentTrade && currentTrade.side === 'short') {
-          currentTrade.entryValue += qty * transaction.price;
+          currentTrade.entryValue += qty * transaction.price * valueMultiplier;
           currentTrade.totalQuantity += qty;
         } else if (currentTrade && currentTrade.side === 'long') {
-          currentTrade.exitValue += qty * transaction.price;
+          currentTrade.exitValue += qty * transaction.price * valueMultiplier;
         }
       }
 
