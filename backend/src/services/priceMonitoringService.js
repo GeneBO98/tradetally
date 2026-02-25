@@ -96,7 +96,7 @@ class PriceMonitoringService {
           SELECT symbol FROM watchlist_items
           UNION
           SELECT DISTINCT symbol FROM trades
-            WHERE exit_price IS NULL AND exit_date IS NULL
+            WHERE exit_price IS NULL AND exit_time IS NULL
           UNION
           SELECT DISTINCT symbol FROM investment_holdings
         ) AS symbols
