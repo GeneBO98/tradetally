@@ -260,6 +260,25 @@
             </div>
 
             <div>
+              <h4 class="font-medium text-gray-900 dark:text-white">Charles Schwab</h4>
+              <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
+                Supports both completed trades export and transaction history. Tab-separated files are automatically detected.
+              </p>
+              <div class="bg-gray-50 dark:bg-gray-800 rounded-md p-3 text-xs font-mono overflow-x-auto">
+                <strong>Completed Trades:</strong><br>
+                Symbol,Opened Date,Closed Date,Quantity,Cost Per Share,Proceeds Per Share,Gain/Loss ($)<br>
+                AAPL,01/15/2024,01/15/2024,100,150.25,155.50,525.00<br><br>
+                <strong>Transaction History:</strong><br>
+                Date,Action,Symbol,Description,Quantity,Price,Fees & Comm,Amount<br>
+                01/15/2024,Buy,AAPL,Buy,100,150.25,1.00,15026.00<br>
+                01/15/2024,Sell,AAPL,Sell,100,155.50,1.00,15549.00
+              </div>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                <strong>Supports both formats:</strong> Completed trades with P&L or individual transactions. Auto-detects format and delimiter.
+              </p>
+            </div>
+
+            <div>
               <h4 class="font-medium text-gray-900 dark:text-white">ThinkorSwim</h4>
               <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
                 Export from ThinkorSwim's "Account Statement" section. Only processes trade (TRD) records.
@@ -324,25 +343,6 @@
             </div>
 
             <div>
-              <h4 class="font-medium text-gray-900 dark:text-white">Charles Schwab</h4>
-              <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
-                Supports both completed trades export and transaction history. Tab-separated files are automatically detected.
-              </p>
-              <div class="bg-gray-50 dark:bg-gray-800 rounded-md p-3 text-xs font-mono overflow-x-auto">
-                <strong>Completed Trades:</strong><br>
-                Symbol,Opened Date,Closed Date,Quantity,Cost Per Share,Proceeds Per Share,Gain/Loss ($)<br>
-                AAPL,01/15/2024,01/15/2024,100,150.25,155.50,525.00<br><br>
-                <strong>Transaction History:</strong><br>
-                Date,Action,Symbol,Description,Quantity,Price,Fees & Comm,Amount<br>
-                01/15/2024,Buy,AAPL,Buy,100,150.25,1.00,15026.00<br>
-                01/15/2024,Sell,AAPL,Sell,100,155.50,1.00,15549.00
-              </div>
-              <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                <strong>Supports both formats:</strong> Completed trades with P&L or individual transactions. Auto-detects format and delimiter.
-              </p>
-            </div>
-
-            <div>
               <h4 class="font-medium text-gray-900 dark:text-white">PaperMoney</h4>
               <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
                 Export from ThinkorSwim's PaperMoney platform. Filled orders are treated as actual executed trades for analysis and tracking.
@@ -359,6 +359,51 @@
             </div>
 
             <div>
+              <h4 class="font-medium text-gray-900 dark:text-white">TradingView</h4>
+              <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
+                Export filled orders from TradingView's paper or live trading. Supports futures contracts with leverage detection.
+              </p>
+              <div class="bg-gray-50 dark:bg-gray-800 rounded-md p-3 text-xs font-mono overflow-x-auto">
+                Symbol,Side,Type,Qty,Fill Price,Commission,Placing Time,Closing Time,Order ID,Leverage<br>
+                CME_MINI:NQ1!,Buy,Market,1,25297,,2026-02-25 23:37:36,2026-02-25 23:37:36,2796864834,20:1<br>
+                CME_MINI:NQ1!,Sell,Limit,1,25419,,2026-02-25 23:38:50,2026-02-26 05:31:17,2796872396,
+              </div>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                <strong>Required columns:</strong> Symbol, Side, Fill Price, Order ID. Optional: Status (if present, only "Filled" rows are imported), Qty, Type, Leverage, Commission, Placing Time/Closing Time.
+              </p>
+            </div>
+
+            <div>
+              <h4 class="font-medium text-gray-900 dark:text-white">Tradovate</h4>
+              <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
+                Export order history from Tradovate. Supports futures contracts with automatic contract month/year parsing and point value calculations.
+              </p>
+              <div class="bg-gray-50 dark:bg-gray-800 rounded-md p-3 text-xs font-mono overflow-x-auto">
+                Contract,Product,Product Description,B/S,Status,Filled Qty,Avg Fill Price,Fill Time,Order ID<br>
+                MESZ5,MES,Micro E-mini S&P 500,Buy,Filled,1,6025.50,11/25/2025 09:38:24,12345<br>
+                MESZ5,MES,Micro E-mini S&P 500,Sell,Filled,1,6030.75,11/25/2025 10:15:10,12346
+              </div>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                <strong>Required columns:</strong> Contract, Product, B/S, Filled Qty (or filledQty), Avg Fill Price (or avgPrice), Fill Time. Optional: Order ID, Status, Product Description.
+              </p>
+            </div>
+
+            <div>
+              <h4 class="font-medium text-gray-900 dark:text-white">Questrade</h4>
+              <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
+                Export trade executions from Questrade. Supports stocks and options with automatic option symbol parsing.
+              </p>
+              <div class="bg-gray-50 dark:bg-gray-800 rounded-md p-3 text-xs font-mono overflow-x-auto">
+                Symbol,Action,Fill qty,Fill price,Exec time,Account,Currency,Commission<br>
+                AAPL,Buy,100,150.25,16 Dec 2025 09:30:15 AM,ABC123,USD,4.95<br>
+                AAPL,Sell,100,155.50,16 Dec 2025 02:15:30 PM,ABC123,USD,4.95
+              </div>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                <strong>Required columns:</strong> Symbol, Action (Buy/Sell/BTO/STC/BTC/STO), Fill qty, Fill price, Exec time. Optional: Account, Currency, Commission. Date format: DD Mon YYYY HH:MM:SS AM/PM.
+              </p>
+            </div>
+
+            <div>
               <h4 class="font-medium text-gray-900 dark:text-white">TradeStation</h4>
               <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
                 Export transaction history from TradeStation. Supports both equity and options trades with detailed fee breakdown.
@@ -370,6 +415,21 @@
               </div>
               <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
                 <strong>Required columns:</strong> Account, T/D, S/D, Side, Symbol, Qty, Price, Exec Time, Gross Proceeds or Net Proceeds. All fee columns (Comm, SEC, TAF, NSCC, Nasdaq, ECN Remove, ECN Add) are automatically summed.
+              </p>
+            </div>
+
+            <div>
+              <h4 class="font-medium text-gray-900 dark:text-white">Tastytrade</h4>
+              <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
+                Export transaction history from Tastytrade. Supports stocks, options, and futures with OCC option symbol parsing.
+              </p>
+              <div class="bg-gray-50 dark:bg-gray-800 rounded-md p-3 text-xs font-mono overflow-x-auto">
+                Date,Type,Action,Symbol,Instrument Type,Quantity,Average Price,Root Symbol,Underlying Symbol,Expiration Date,Strike Price,Call or Put,Multiplier,Commissions,Fees<br>
+                2026-02-18T09:30:00-0500,Trade,BTO,IBM 260220C00265000,Option,5,2.15,IBM,IBM,2/20/26,265.00,Call,100,5.00,0.70<br>
+                2026-02-18T14:15:00-0500,Trade,STC,IBM 260220C00265000,Option,5,3.40,IBM,IBM,2/20/26,265.00,Call,100,5.00,0.70
+              </div>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                <strong>Required columns:</strong> Type (must be "Trade"), Action (Buy/Sell/BTO/STC/BTC/STO), Symbol, Instrument Type, Quantity, Average Price, Root Symbol, Underlying Symbol, Call or Put. Optional: Date, Expiration Date, Strike Price, Multiplier, Commissions, Fees.
               </p>
             </div>
 

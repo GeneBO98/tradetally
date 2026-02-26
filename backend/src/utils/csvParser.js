@@ -250,12 +250,12 @@ function detectBrokerFormat(fileBuffer) {
     }
 
     // TradingView detection - look for specific column combination
+    // Some TradingView exports include a Status column, others don't
     if (headers.includes('symbol') &&
         headers.includes('side') &&
         headers.includes('fill price') &&
-        headers.includes('status') &&
         headers.includes('order id') &&
-        headers.includes('leverage')) {
+        (headers.includes('leverage') || headers.includes('placing time') || headers.includes('closing time'))) {
       console.log('[AUTO-DETECT] Detected: TradingView (futures trading format)');
       return 'tradingview';
     }
@@ -826,8 +826,8 @@ const brokerParsers = {
     const orderType = row.Type || '';
     const leverage = row.Leverage || '';
 
-    // Only process filled orders
-    if (status !== 'Filled') {
+    // Only process filled orders - if no Status column exists, treat all rows as filled
+    if (status && status !== 'Filled') {
       return null;
     }
 
@@ -1376,7 +1376,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
             break;
           }
         }
-        
+
         // Find the end of the filled orders section (next empty line or section)
         for (let i = filledOrdersStart + 1; i < lines.length; i++) {
           if (lines[i].trim() === '' || lines[i].includes('Canceled Orders') || lines[i].includes('Rolling Strategies')) {
@@ -1384,16 +1384,38 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
             break;
           }
         }
-        
+
         if (filledOrdersEnd === -1) {
           filledOrdersEnd = lines.length;
         }
-        
+
         // Extract only the filled orders section
         csvString = lines.slice(filledOrdersStart, filledOrdersEnd).join('\n');
-        console.log(`Extracted PaperMoney filled orders section: lines ${filledOrdersStart} to ${filledOrdersEnd}`);
+        console.log(`[PAPERMONEY] Extracted filled orders section: lines ${filledOrdersStart} to ${filledOrdersEnd}`);
       } else {
-        throw new Error('Could not find "Filled Orders" section in PaperMoney CSV');
+        // No "Filled Orders" section header - check if the CSV starts directly with the header row
+        let headerLineIndex = -1;
+        for (let i = 0; i < Math.min(lines.length, 5); i++) {
+          if (lines[i].includes('Exec Time') && lines[i].includes('Side') && lines[i].includes('Qty')) {
+            headerLineIndex = i;
+            break;
+          }
+        }
+
+        if (headerLineIndex >= 0) {
+          // Find end of data (next empty line or section header)
+          let dataEnd = lines.length;
+          for (let i = headerLineIndex + 1; i < lines.length; i++) {
+            if (lines[i].trim() === '' || lines[i].includes('Canceled Orders') || lines[i].includes('Rolling Strategies')) {
+              dataEnd = i;
+              break;
+            }
+          }
+          csvString = lines.slice(headerLineIndex, dataEnd).join('\n');
+          console.log(`[PAPERMONEY] No section header found, using CSV directly from line ${headerLineIndex} to ${dataEnd}`);
+        } else {
+          throw new Error('Could not find "Filled Orders" section or valid header row in PaperMoney CSV');
+        }
       }
     }
     
@@ -1891,6 +1913,21 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
     }
 
     if (broker === 'tradovate') {
+      // Check if this is a Performance Report format (pre-matched round-trip trades)
+      // vs the standard Order/Fill History format
+      const firstRecord = records[0] || {};
+      const recordKeys = Object.keys(firstRecord).map(k => k.toLowerCase().trim());
+      const isPerformanceReport = recordKeys.some(k => k === 'buyprice') &&
+                                   recordKeys.some(k => k === 'sellprice') &&
+                                   recordKeys.some(k => k === 'boughttimestamp');
+
+      if (isPerformanceReport) {
+        console.log('Starting Tradovate Performance Report parsing');
+        const result = await parseTradovatePerformanceReport(records, context);
+        console.log('Finished Tradovate Performance Report parsing');
+        return wrapResultWithDiagnostics(result, diagnostics);
+      }
+
       console.log('Starting Tradovate transaction parsing');
       const result = await parseTradovateTransactions(records, existingPositions, context);
       console.log('Finished Tradovate transaction parsing');
@@ -6975,6 +7012,166 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
 
 /**
  * Parse Tradovate futures transactions
+ * Tradovate Performance Report parser - pre-matched round-trip trades
+ * Headers: symbol, _priceFormat, _priceFormatType, _tickSize, buyFillId, sellFillId, qty, buyPrice, sellPrice, pnl, boughtTimestamp, soldTimestamp, duration
+ * Each row is a completed round-trip trade (entry + exit already paired)
+ */
+async function parseTradovatePerformanceReport(records, context = {}) {
+  console.log(`\n=== TRADOVATE PERFORMANCE REPORT PARSER ===`);
+  console.log(`Processing ${records.length} pre-matched round-trip trades`);
+
+  const completedTrades = [];
+
+  // Debug: Log first few records
+  console.log('Sample Tradovate Performance Report records:');
+  records.slice(0, 3).forEach((record, i) => {
+    console.log(`Record ${i}:`, JSON.stringify(record));
+  });
+
+  for (let i = 0; i < records.length; i++) {
+    const record = records[i];
+    try {
+      const rawSymbol = cleanString(record.symbol);
+      const quantity = Math.abs(parseInteger(record.qty));
+      const buyPrice = parseNumeric(record.buyPrice);
+      const sellPrice = parseNumeric(record.sellPrice);
+
+      // Parse PnL - Tradovate uses $185.00 or $(160.00) for negative
+      let pnlStr = (record.pnl || '').toString().trim();
+      let pnl = 0;
+      if (pnlStr) {
+        const isNegative = pnlStr.includes('(') && pnlStr.includes(')');
+        const cleaned = pnlStr.replace(/[$(),]/g, '');
+        pnl = parseFloat(cleaned) || 0;
+        if (isNegative) pnl = -pnl;
+      }
+
+      // Parse timestamps (Unix timestamps in milliseconds)
+      const boughtTimestamp = parseInt(record.boughtTimestamp);
+      const soldTimestamp = parseInt(record.soldTimestamp);
+
+      if (isNaN(boughtTimestamp) || isNaN(soldTimestamp)) {
+        console.log(`[WARNING] Skipping row ${i + 1}: invalid timestamps`);
+        continue;
+      }
+
+      const boughtTime = new Date(boughtTimestamp);
+      const soldTime = new Date(soldTimestamp);
+
+      if (isNaN(boughtTime.getTime()) || isNaN(soldTime.getTime())) {
+        console.log(`[WARNING] Skipping row ${i + 1}: invalid date from timestamps`);
+        continue;
+      }
+
+      if (!rawSymbol || quantity === 0) {
+        console.log(`[WARNING] Skipping row ${i + 1}: missing symbol or zero quantity`);
+        continue;
+      }
+
+      // Determine side: if bought first then sold -> LONG, if sold first then bought -> SHORT
+      const isLong = boughtTimestamp <= soldTimestamp;
+      const side = isLong ? 'long' : 'short';
+      const entryPrice = isLong ? buyPrice : sellPrice;
+      const exitPrice = isLong ? sellPrice : buyPrice;
+      const entryTime = isLong ? boughtTime : soldTime;
+      const exitTime = isLong ? soldTime : boughtTime;
+      const tradeDate = entryTime.toISOString().split('T')[0];
+
+      // Extract futures underlying from symbol (e.g., NQH6 -> NQ)
+      const underlying = extractUnderlyingFromFuturesSymbol(rawSymbol);
+      const pointValue = underlying ? getFuturesPointValue(underlying) : 1;
+      const isFuture = !!underlying;
+      const displaySymbol = underlying || rawSymbol;
+
+      // If PnL was not parsed from the formatted string, calculate it
+      if (pnl === 0 && buyPrice !== sellPrice) {
+        pnl = (sellPrice - buyPrice) * quantity * pointValue;
+      }
+
+      // Build instrument data
+      const instrumentData = isFuture ? {
+        instrumentType: 'future',
+        underlyingSymbol: underlying,
+        underlyingAsset: underlying,
+        pointValue: pointValue,
+        contractSize: pointValue
+      } : {
+        instrumentType: 'stock',
+        contractSize: null
+      };
+
+      // Determine account identifier
+      const accountIdentifier = context.selectedAccountId || null;
+
+      const trade = {
+        symbol: displaySymbol,
+        tradeDate,
+        entryTime: entryTime.toISOString(),
+        exitTime: exitTime.toISOString(),
+        entryPrice,
+        exitPrice,
+        quantity,
+        side,
+        commission: 0,
+        fees: 0,
+        pnl,
+        profitLoss: pnl,
+        broker: 'Tradovate',
+        accountIdentifier,
+        notes: record.duration ? `Duration: ${record.duration}` : '',
+        executions: [
+          {
+            entryTime: entryTime.toISOString(),
+            entryPrice,
+            quantity,
+            side,
+            commission: 0,
+            fees: 0
+          },
+          {
+            exitTime: exitTime.toISOString(),
+            exitPrice,
+            quantity,
+            side: isLong ? 'sell' : 'buy',
+            commission: 0,
+            fees: 0,
+            pnl
+          }
+        ],
+        executionData: [
+          {
+            entryTime: entryTime.toISOString(),
+            entryPrice,
+            quantity,
+            side,
+            commission: 0,
+            fees: 0
+          },
+          {
+            exitTime: exitTime.toISOString(),
+            exitPrice,
+            quantity,
+            side: isLong ? 'sell' : 'buy',
+            commission: 0,
+            fees: 0,
+            pnl
+          }
+        ],
+        ...instrumentData
+      };
+
+      completedTrades.push(trade);
+      console.log(`Parsed Tradovate performance trade: ${side} ${quantity} ${displaySymbol} @ $${entryPrice} -> $${exitPrice}, P&L: $${pnl.toFixed(2)}`);
+    } catch (error) {
+      console.error(`Error parsing Tradovate Performance Report row ${i + 1}:`, error.message, record);
+    }
+  }
+
+  console.log(`[SUCCESS] Parsed ${completedTrades.length} Tradovate Performance Report trades from ${records.length} records`);
+  return completedTrades;
+}
+
+/**
  * Tradovate exports orders with columns: orderId, B/S, Contract, Product, avgPrice, filledQty, Fill Time, Status, Text
  * This parser matches entry orders with exit orders to create complete trades
  */
