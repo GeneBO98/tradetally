@@ -1,5 +1,9 @@
 # TradeTally - Trading Journal & Analytics Platform
 
+[![Docker Pulls](https://img.shields.io/docker/pulls/potentialmidas/tradetally)](https://hub.docker.com/r/potentialmidas/tradetally)
+[![License](https://img.shields.io/github/license/GeneBO98/tradetally)](https://github.com/GeneBO98/tradetally/blob/main/LICENSE)
+[![GitHub Release](https://img.shields.io/github/v/release/GeneBO98/tradetally)](https://github.com/GeneBO98/tradetally/releases)
+
 **Dominate With Data**
 
 <img width="1269" height="1258" alt="SCR-20251016-iosj" src="https://github.com/user-attachments/assets/ce052bdd-f149-4041-b759-3c0f47c926e0" />
@@ -114,6 +118,10 @@ Comprehensive documentation is available at [docs.tradetally.io](https://docs.tr
 <img width="1232" height="954" alt="SCR-20251016-iolb" src="https://github.com/user-attachments/assets/19be38eb-c2fa-40a4-843d-b38a5a1129cd" />
 <img width="1301" alt="Leaderboards" src="https://github.com/user-attachments/assets/659c6bf8-4624-4cf1-bb27-0ec80a8dadc7" />
 <img width="1320" alt="Achievements" src="https://github.com/user-attachments/assets/ea2266fe-72ee-4722-99be-f29f3930bdf5" />
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=GeneBO98/tradetally&type=Date)](https://star-history.com/#GeneBO98/tradetally&Date)
 
 ## License
 
