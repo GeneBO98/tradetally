@@ -124,6 +124,7 @@ const upload = multer({
 router.get('/', flexibleAuth, tradeController.getUserTrades);
 router.get('/count', flexibleAuth, tradeController.getTradesCount);
 router.post('/', flexibleAuth, validate(schemas.createTrade), tradeController.createTrade);
+router.post('/shell', flexibleAuth, validate(schemas.createShellTrade), tradeController.createShellTrade);
 
 /**
  * @swagger
@@ -741,6 +742,7 @@ router.get('/:id/chart-data', authenticate, tradeController.getTradeChartData);
 router.get('/:id', optionalAuth, tradeController.getTrade);
 router.put('/:id', flexibleAuth, validate(schemas.updateTrade), tradeController.updateTrade);
 router.delete('/:id', flexibleAuth, tradeController.deleteTrade);
+router.post('/:id/fills', flexibleAuth, validate(schemas.addFill), tradeController.addFill);
 router.post('/:id/split', authenticate, tradeController.splitTrade);
 router.post('/:id/attachments', authenticate, upload.single('file'), tradeController.uploadAttachment);
 router.delete('/:id/attachments/:attachmentId', authenticate, tradeController.deleteAttachment);
