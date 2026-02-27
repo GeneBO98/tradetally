@@ -171,9 +171,83 @@ const flexibleAuth = async (req, res, next) => {
   }
 };
 
+/**
+ * Like flexibleAuth but silently falls through when no auth is provided.
+ * Supports JWT, API key, and unauthenticated access (for public trades).
+ */
+const flexibleOptionalAuth = async (req, res, next) => {
+  const jwt = require('jsonwebtoken');
+  const User = require('../models/User');
+
+  try {
+    const authHeader = req.headers.authorization;
+    const apiKeyHeader = req.headers['x-api-key'];
+
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+
+      if (token.startsWith('tt_live_') || token.startsWith('tt_test_')) {
+        // API key in Bearer header — authenticate but don't fail hard
+        try {
+          const keyData = await ApiKey.verifyKey(token);
+          if (keyData && keyData.is_active && (!keyData.expires_at || new Date(keyData.expires_at) >= new Date())) {
+            const effectiveScopes = resolveEffectiveScopes({ permissions: keyData.permissions, scopes: keyData.scopes });
+            req.user = { id: keyData.user_id, username: keyData.username, email: keyData.email, role: keyData.role };
+            req.apiKey = { id: keyData.id, name: keyData.name, permissions: keyData.permissions, scopes: keyData.scopes || [], effectiveScopes };
+            req.authMethod = 'api_key';
+          }
+        } catch (_) { /* fall through unauthenticated */ }
+        return next();
+      }
+
+      // JWT token
+      try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const user = await User.findById(decoded.id || decoded.userId);
+        if (user && user.is_active) {
+          req.user = user;
+          req.authMethod = 'jwt';
+        }
+      } catch (_) { /* fall through unauthenticated */ }
+      return next();
+    }
+
+    if (apiKeyHeader) {
+      try {
+        const keyData = await ApiKey.verifyKey(apiKeyHeader);
+        if (keyData && keyData.is_active && (!keyData.expires_at || new Date(keyData.expires_at) >= new Date())) {
+          const effectiveScopes = resolveEffectiveScopes({ permissions: keyData.permissions, scopes: keyData.scopes });
+          req.user = { id: keyData.user_id, username: keyData.username, email: keyData.email, role: keyData.role };
+          req.apiKey = { id: keyData.id, name: keyData.name, permissions: keyData.permissions, scopes: keyData.scopes || [], effectiveScopes };
+          req.authMethod = 'api_key';
+        }
+      } catch (_) { /* fall through unauthenticated */ }
+      return next();
+    }
+
+    // Check for cookie-based JWT (same as optionalAuth)
+    if (req.cookies && req.cookies.token) {
+      try {
+        const decoded = jwt.verify(req.cookies.token, process.env.JWT_SECRET);
+        const user = await User.findById(decoded.id || decoded.userId);
+        if (user && user.is_active) {
+          req.user = user;
+          req.authMethod = 'jwt';
+        }
+      } catch (_) { /* fall through unauthenticated */ }
+    }
+
+    next();
+  } catch (error) {
+    // Never fail — just proceed unauthenticated
+    next();
+  }
+};
+
 module.exports = {
   apiKeyAuth,
   requireApiPermission,
   requireApiScope,
-  flexibleAuth
+  flexibleAuth,
+  flexibleOptionalAuth
 };

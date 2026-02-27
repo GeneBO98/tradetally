@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const tradeController = require('../controllers/trade.controller');
 const { authenticate, optionalAuth } = require('../middleware/auth');
-const { flexibleAuth, requireApiScope } = require('../middleware/apiKeyAuth');
+const { flexibleAuth, flexibleOptionalAuth, requireApiScope } = require('../middleware/apiKeyAuth');
 const { validate, schemas } = require('../middleware/validation');
 const multer = require('multer');
 const imageUpload = require('../middleware/upload');
@@ -795,7 +795,7 @@ router.get('/:id/chart-data', authenticate, tradeController.getTradeChartData);
  *       200:
  *         description: Trade deleted successfully
  */
-router.get('/:id', optionalAuth, tradeController.getTrade);
+router.get('/:id', flexibleOptionalAuth, tradeController.getTrade);
 router.put('/:id', flexibleAuth, requireApiScope('trades:write'), validate(schemas.updateTrade), tradeController.updateTrade);
 router.delete('/:id', flexibleAuth, requireApiScope('trades:write'), tradeController.deleteTrade);
 /**
