@@ -1,3 +1,5 @@
+const { isV1Request, sendV1Error } = require('../utils/apiResponse');
+
 const errorHandler = (err, req, res, next) => {
   // Skip logging for benign client disconnect errors
   // These occur when users navigate away, close browser, or network drops
@@ -13,6 +15,31 @@ const errorHandler = (err, req, res, next) => {
   // If client disconnected, no point sending response
   if (isClientDisconnect) {
     return;
+  }
+
+  if (isV1Request(req)) {
+    if (err.name === 'ValidationError') {
+      return sendV1Error(res, 400, 'VALIDATION_ERROR', err.message);
+    }
+
+    if (err.name === 'UnauthorizedError' || err.name === 'JsonWebTokenError') {
+      return sendV1Error(res, 401, 'UNAUTHORIZED', 'Invalid token');
+    }
+
+    if (err.code === '23505') {
+      return sendV1Error(res, 409, 'CONFLICT', 'Resource already exists');
+    }
+
+    if (err.code === '23503') {
+      return sendV1Error(res, 400, 'BAD_REQUEST', 'Invalid reference');
+    }
+
+    return sendV1Error(
+      res,
+      500,
+      'INTERNAL_ERROR',
+      process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong'
+    );
   }
 
   if (err.name === 'ValidationError') {

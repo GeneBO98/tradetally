@@ -14,6 +14,7 @@ const path = require('path');
 const fs = require('fs').promises;
 const ChartService = require('../services/chartService');
 const axios = require('axios');
+const { sendV1NotImplemented } = require('../utils/apiResponse');
 
 // Helper function to invalidate analytics cache for a user
 function invalidateAnalyticsCache(userId) {
@@ -3338,10 +3339,7 @@ const tradeController = {
         return res.status(404).json({ error: 'Trade not found' });
       }
 
-      res.json({
-        message: 'Trade journal entries not yet implemented',
-        entries: []
-      });
+      return sendV1NotImplemented(res, 'Trade journal entries are not part of the supported public API yet');
     } catch (error) {
       next(error);
     }
@@ -3354,10 +3352,7 @@ const tradeController = {
         return res.status(404).json({ error: 'Trade not found' });
       }
 
-      res.status(201).json({
-        message: 'Journal entry creation not yet implemented',
-        entry: null
-      });
+      return sendV1NotImplemented(res, 'Trade journal entry creation is not part of the supported public API yet');
     } catch (error) {
       next(error);
     }
@@ -3370,10 +3365,7 @@ const tradeController = {
         return res.status(404).json({ error: 'Trade not found' });
       }
 
-      res.json({
-        message: 'Journal entry update not yet implemented',
-        entry: null
-      });
+      return sendV1NotImplemented(res, 'Trade journal entry updates are not part of the supported public API yet');
     } catch (error) {
       next(error);
     }
@@ -3386,10 +3378,7 @@ const tradeController = {
         return res.status(404).json({ error: 'Trade not found' });
       }
 
-      res.json({
-        message: 'Journal entry deletion not yet implemented',
-        deleted: false
-      });
+      return sendV1NotImplemented(res, 'Trade journal entry deletion is not part of the supported public API yet');
     } catch (error) {
       next(error);
     }

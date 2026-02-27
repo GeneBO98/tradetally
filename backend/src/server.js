@@ -60,12 +60,15 @@ const RetentionEmailScheduler = require('./services/retentionEmailScheduler');
 const OptionsScheduler = require('./services/optionsScheduler');
 const brokerSyncScheduler = require('./services/brokerSync/brokerSyncScheduler');
 const dividendScheduler = require('./services/dividendScheduler');
+const webhookEventBridge = require('./services/webhookEventBridge');
 const backgroundWorker = require('./workers/backgroundWorker');
 const jobRecoveryService = require('./services/jobRecoveryService');
 const pushNotificationService = require('./services/pushNotificationService');
 const globalEnrichmentCacheCleanupService = require('./services/globalEnrichmentCacheCleanupService');
 const { swaggerSpec, swaggerUi } = require('./config/swagger');
 const errorHandler = require('./middleware/errorHandler');
+const requestIdMiddleware = require('./middleware/requestId');
+const { isV1Request, sendV1Error } = require('./utils/apiResponse');
 
 const app = express();
 const PORT = process.env.PORT || 5001;
@@ -131,6 +134,7 @@ const skipRateLimit = (req, res, next) => {
 
 // Apply security middleware (CSP, anti-clickjacking, etc.)
 app.use(securityMiddleware());
+app.use(requestIdMiddleware);
 
 // Optimized CORS configuration
 const allowedOrigins = [
@@ -179,17 +183,18 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
-// Use morgan for logging in development, but not in production
-if (process.env.NODE_ENV !== 'production') {
-  app.use(morgan('dev', {
-    skip: function (req, res) {
-      // Skip logging for frequently polled endpoints
-      return req.path.includes('/import/history') || 
-             req.path.includes('/health') ||
-             (req.path.includes('/trades') && req.query && req.query.page);
+morgan.token('request-id', (req) => req.requestId || '-');
+app.use(morgan(':method :url :status :response-time ms req_id=:request-id', {
+  skip: function (req, res) {
+    if (process.env.NODE_ENV === 'production') {
+      return false;
     }
-  }));
-}
+
+    return req.path.includes('/import/history') ||
+           req.path.includes('/health') ||
+           (req.path.includes('/trades') && req.query && req.query.page);
+  }
+}));
 
 // Cookie parser middleware
 app.use(cookieParser());
@@ -361,6 +366,10 @@ app.post('/api/admin/trigger-recovery', requireAdmin, async (req, res) => {
 app.use(errorHandler);
 
 app.use((req, res) => {
+  if (isV1Request(req)) {
+    return sendV1Error(res, 404, 'NOT_FOUND', 'Route not found');
+  }
+
   res.status(404).json({ error: 'Route not found' });
 });
 
@@ -443,6 +452,10 @@ async function startServer() {
       console.log('[SUCCESS] Dividend scheduler started');
     } else {
       console.log('Dividend scheduler disabled (ENABLE_DIVIDEND_SCHEDULER=false)');
+    }
+
+    if (process.env.ENABLE_V1_WEBHOOKS === 'true') {
+      webhookEventBridge.start();
     }
 
     // Initialize push notification service
@@ -553,9 +566,10 @@ process.on('SIGTERM', async () => {
   await priceMonitoringService.stop();
   OptionsScheduler.stop();
   brokerSyncScheduler.stop();
-  GamificationScheduler.stopScheduler();
-  TrialScheduler.stopScheduler();
+  if (typeof GamificationScheduler.stopScheduler === 'function') GamificationScheduler.stopScheduler();
+  if (typeof TrialScheduler.stopScheduler === 'function') TrialScheduler.stopScheduler();
   if (RetentionEmailScheduler.stopScheduler) RetentionEmailScheduler.stopScheduler();
+  webhookEventBridge.stop();
   jobRecoveryService.stop();
   globalEnrichmentCacheCleanupService.stop();
   backupScheduler.stopAll();
@@ -570,9 +584,10 @@ process.on('SIGINT', async () => {
   await priceMonitoringService.stop();
   OptionsScheduler.stop();
   brokerSyncScheduler.stop();
-  GamificationScheduler.stopScheduler();
-  TrialScheduler.stopScheduler();
+  if (typeof GamificationScheduler.stopScheduler === 'function') GamificationScheduler.stopScheduler();
+  if (typeof TrialScheduler.stopScheduler === 'function') TrialScheduler.stopScheduler();
   if (RetentionEmailScheduler.stopScheduler) RetentionEmailScheduler.stopScheduler();
+  webhookEventBridge.stop();
   jobRecoveryService.stop();
   globalEnrichmentCacheCleanupService.stop();
   backupScheduler.stopAll();

@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const { isV1Request, sendV1Error } = require('../utils/apiResponse');
 
 const authenticate = async (req, res, next) => {
   try {
@@ -26,16 +27,28 @@ const authenticate = async (req, res, next) => {
     next();
   } catch (error) {
     if (error.name === 'TokenExpiredError') {
+      if (isV1Request(req)) {
+        return sendV1Error(res, 401, 'TOKEN_EXPIRED', 'Access token has expired. Please refresh your token.');
+      }
+
       return res.status(401).json({ 
         error: 'Token expired',
         code: 'TOKEN_EXPIRED',
         message: 'Access token has expired. Please refresh your token.'
       });
     } else if (error.name === 'JsonWebTokenError') {
+      if (isV1Request(req)) {
+        return sendV1Error(res, 401, 'INVALID_TOKEN', 'Invalid token');
+      }
+
       return res.status(401).json({ 
         error: 'Invalid token',
         code: 'INVALID_TOKEN'
       });
+    }
+
+    if (isV1Request(req)) {
+      return sendV1Error(res, 401, 'UNAUTHORIZED', 'Please authenticate');
     }
     
     res.status(401).json({ error: 'Please authenticate' });
@@ -79,11 +92,19 @@ const requireAdmin = async (req, res, next) => {
 
     // Check if user has admin role
     if (req.user.role !== 'admin') {
+      if (isV1Request(req)) {
+        return sendV1Error(res, 403, 'FORBIDDEN', 'Admin access required');
+      }
+
       return res.status(403).json({ error: 'Admin access required' });
     }
 
     next();
   } catch (error) {
+    if (isV1Request(req)) {
+      return sendV1Error(res, 401, 'UNAUTHORIZED', 'Please authenticate');
+    }
+
     res.status(401).json({ error: 'Please authenticate' });
   }
 };

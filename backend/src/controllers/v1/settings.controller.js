@@ -1,21 +1,44 @@
 const User = require('../../models/User');
+const settingsController = require('../settings.controller');
+const userController = require('../user.controller');
+const { captureControllerResult } = require('../../utils/legacyControllerAdapter');
+const { sendV1Error, sendV1ErrorFromLegacy, sendV1NotImplemented } = require('../../utils/apiResponse');
+
+function toCamelCaseRecord(record = {}) {
+  const converted = {};
+
+  Object.entries(record || {}).forEach(([key, value]) => {
+    const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+    converted[camelKey] = value;
+  });
+
+  return converted;
+}
+
+async function getSettingsState(userId) {
+  const settings = await User.getSettings(userId);
+  return toCamelCaseRecord(settings || {});
+}
 
 const settingsV1Controller = {
-  /**
-   * Get all settings
-   */
   async getSettings(req, res, next) {
     try {
-      const settings = await User.getSettings(req.user.id);
-      
-      res.json({
+      const legacyResult = await captureControllerResult(settingsController.getSettings, req);
+
+      if (legacyResult.statusCode >= 400) {
+        return sendV1ErrorFromLegacy(res, legacyResult, 'Failed to load settings');
+      }
+
+      const settings = legacyResult.body?.settings || {};
+
+      return res.json({
         settings: {
           ...settings,
           mobile: {
-            syncEnabled: true,
-            backgroundSync: true,
+            syncEnabled: false,
+            backgroundSync: false,
             notifications: settings.emailNotifications || false,
-            biometric: false, // Client-side setting
+            biometric: false,
             theme: settings.theme || 'light'
           }
         }
@@ -25,41 +48,42 @@ const settingsV1Controller = {
     }
   },
 
-  /**
-   * Update settings
-   */
   async updateSettings(req, res, next) {
     try {
-      // TODO: Implement settings update
-      res.json({
-        message: 'Settings update not yet implemented',
-        updated: false
+      const legacyResult = await captureControllerResult(settingsController.updateSettings, req);
+
+      if (legacyResult.statusCode >= 400) {
+        return sendV1ErrorFromLegacy(res, legacyResult, 'Failed to update settings');
+      }
+
+      return res.status(legacyResult.statusCode || 200).json({
+        settings: legacyResult.body?.settings || {},
+        updated: true
       });
     } catch (error) {
       next(error);
     }
   },
 
-  /**
-   * Get mobile-specific settings
-   */
   async getMobileSettings(req, res, next) {
     try {
+      const settings = await getSettingsState(req.user.id);
+
       res.json({
         mobile: {
-          syncEnabled: true,
-          backgroundSync: true,
-          syncInterval: 300, // seconds
-          offlineMode: true,
-          biometricEnabled: false, // Client decides
+          syncEnabled: false,
+          backgroundSync: false,
+          syncInterval: null,
+          offlineMode: false,
+          biometricEnabled: false,
           notifications: {
-            enabled: false,
+            enabled: settings.emailNotifications || false,
             tradeClosed: false,
             dailySummary: false,
             weeklyReport: false
           },
           display: {
-            theme: 'light',
+            theme: settings.theme || 'light',
             currency: 'USD',
             dateFormat: 'MM/DD/YYYY',
             timeFormat: '12h'
@@ -71,30 +95,18 @@ const settingsV1Controller = {
     }
   },
 
-  /**
-   * Update mobile settings
-   */
   async updateMobileSettings(req, res, next) {
     try {
-      const { mobile } = req.body;
-      
-      res.json({
-        message: 'Mobile settings update not yet implemented',
-        settings: mobile,
-        updated: false
-      });
+      return sendV1NotImplemented(res, 'Mobile-only settings are read-only in the supported public API');
     } catch (error) {
       next(error);
     }
   },
 
-  /**
-   * Get notification settings
-   */
   async getNotificationSettings(req, res, next) {
     try {
-      const settings = await User.getSettings(req.user.id);
-      
+      const settings = await getSettingsState(req.user.id);
+
       res.json({
         notifications: {
           email: settings.emailNotifications || false,
@@ -113,27 +125,46 @@ const settingsV1Controller = {
     }
   },
 
-  /**
-   * Update notification settings
-   */
   async updateNotificationSettings(req, res, next) {
     try {
-      res.json({
-        message: 'Notification settings update not yet implemented',
-        updated: false
+      const email = req.body?.email ?? req.body?.notifications?.email;
+
+      if (email === undefined) {
+        return sendV1Error(res, 400, 'BAD_REQUEST', 'notifications.email or email is required');
+      }
+
+      const legacyResult = await captureControllerResult(settingsController.updateSettings, {
+        ...req,
+        body: { emailNotifications: email }
+      });
+
+      if (legacyResult.statusCode >= 400) {
+        return sendV1ErrorFromLegacy(res, legacyResult, 'Failed to update notification settings');
+      }
+
+      return res.json({
+        updated: true,
+        notifications: {
+          email: legacyResult.body?.settings?.emailNotifications || false,
+          push: {
+            enabled: false,
+            tradeClosed: false,
+            dailySummary: false,
+            weeklyReport: false,
+            marketOpen: false,
+            marketClose: false
+          }
+        }
       });
     } catch (error) {
       next(error);
     }
   },
 
-  /**
-   * Get display settings
-   */
   async getDisplaySettings(req, res, next) {
     try {
-      const settings = await User.getSettings(req.user.id);
-      
+      const settings = await getSettingsState(req.user.id);
+
       res.json({
         display: {
           theme: settings.theme || 'light',
@@ -149,27 +180,60 @@ const settingsV1Controller = {
     }
   },
 
-  /**
-   * Update display settings
-   */
   async updateDisplaySettings(req, res, next) {
     try {
-      res.json({
-        message: 'Display settings update not yet implemented',
-        updated: false
+      const theme = req.body?.theme ?? req.body?.display?.theme;
+      const timezone = req.body?.timezone ?? req.body?.display?.timezone;
+
+      if (theme === undefined && timezone === undefined) {
+        return sendV1Error(res, 400, 'BAD_REQUEST', 'theme or timezone is required');
+      }
+
+      if (theme !== undefined) {
+        const settingsResult = await captureControllerResult(settingsController.updateSettings, {
+          ...req,
+          body: { theme }
+        });
+
+        if (settingsResult.statusCode >= 400) {
+          return sendV1ErrorFromLegacy(res, settingsResult, 'Failed to update display settings');
+        }
+      }
+
+      if (timezone !== undefined) {
+        const profileResult = await captureControllerResult(userController.updateProfile, {
+          ...req,
+          body: { timezone }
+        });
+
+        if (profileResult.statusCode >= 400) {
+          return sendV1ErrorFromLegacy(res, profileResult, 'Failed to update display settings');
+        }
+      }
+
+      const user = await User.findById(req.user.id);
+      const settings = await getSettingsState(req.user.id);
+
+      return res.json({
+        updated: true,
+        display: {
+          theme: settings.theme || theme || 'light',
+          currency: 'USD',
+          timezone: user.timezone || timezone || 'UTC',
+          dateFormat: 'MM/DD/YYYY',
+          timeFormat: '12h',
+          language: 'en'
+        }
       });
     } catch (error) {
       next(error);
     }
   },
 
-  /**
-   * Get privacy settings
-   */
   async getPrivacySettings(req, res, next) {
     try {
-      const settings = await User.getSettings(req.user.id);
-      
+      const settings = await getSettingsState(req.user.id);
+
       res.json({
         privacy: {
           publicProfile: settings.publicProfile || false,
@@ -183,23 +247,37 @@ const settingsV1Controller = {
     }
   },
 
-  /**
-   * Update privacy settings
-   */
   async updatePrivacySettings(req, res, next) {
     try {
-      res.json({
-        message: 'Privacy settings update not yet implemented',
-        updated: false
+      const publicProfile = req.body?.publicProfile ?? req.body?.privacy?.publicProfile;
+
+      if (publicProfile === undefined) {
+        return sendV1Error(res, 400, 'BAD_REQUEST', 'privacy.publicProfile or publicProfile is required');
+      }
+
+      const legacyResult = await captureControllerResult(settingsController.updateSettings, {
+        ...req,
+        body: { publicProfile }
+      });
+
+      if (legacyResult.statusCode >= 400) {
+        return sendV1ErrorFromLegacy(res, legacyResult, 'Failed to update privacy settings');
+      }
+
+      return res.json({
+        updated: true,
+        privacy: {
+          publicProfile: legacyResult.body?.settings?.publicProfile || false,
+          shareData: false,
+          analytics: true,
+          crashReports: true
+        }
       });
     } catch (error) {
       next(error);
     }
   },
 
-  /**
-   * Get data settings
-   */
   async getDataSettings(req, res, next) {
     try {
       res.json({
@@ -217,15 +295,17 @@ const settingsV1Controller = {
     }
   },
 
-  /**
-   * Update data settings
-   */
   async updateDataSettings(req, res, next) {
     try {
-      res.json({
-        message: 'Data settings update not yet implemented',
-        updated: false
-      });
+      return sendV1NotImplemented(res, 'Data settings updates are not part of the supported public API yet');
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async resetSettings(req, res, next) {
+    try {
+      return sendV1NotImplemented(res, 'Settings reset is not part of the supported public API yet');
     } catch (error) {
       next(error);
     }
