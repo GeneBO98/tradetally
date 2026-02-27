@@ -178,6 +178,55 @@ const schemas = {
     ).optional()
   }),
 
+  createShellTrade: Joi.object({
+    symbol: Joi.string().max(20).required(),
+    side: Joi.string().valid('long', 'short').required(),
+    instrumentType: Joi.string().valid('stock', 'option', 'future', 'crypto').default('stock'),
+    instrument_type: Joi.string().valid('stock', 'option', 'future', 'crypto').optional(),
+    broker: Joi.string().max(50).allow(''),
+    account_identifier: Joi.string().max(50).allow(''),
+    strategy: Joi.string().max(100).allow(''),
+    setup: Joi.string().max(100).allow(''),
+    tags: Joi.array().items(Joi.string().max(50)),
+    notes: Joi.string().allow(''),
+    confidence: Joi.number().integer().min(1).max(10).allow(null, ''),
+    stopLoss: Joi.alternatives().try(
+      Joi.number().positive(),
+      Joi.valid(null, '')
+    ),
+    takeProfit: Joi.alternatives().try(
+      Joi.number().positive(),
+      Joi.valid(null, '')
+    ),
+    takeProfitTargets: Joi.array().items(Joi.object({
+      price: Joi.number().positive().required(),
+      shares: Joi.number().integer().positive().allow(null).optional(),
+      percentage: Joi.number().min(1).max(100).allow(null).optional()
+    })).default([]),
+    chartUrl: Joi.string().uri().max(1000).allow(null, ''),
+    // Options-specific fields
+    underlyingSymbol: Joi.string().max(10).allow(null, ''),
+    optionType: Joi.string().valid('call', 'put').allow(null, ''),
+    strikePrice: Joi.number().positive().allow(null, ''),
+    expirationDate: Joi.date().iso().allow(null, ''),
+    contractSize: Joi.number().integer().positive().allow(null, ''),
+    // Futures-specific fields
+    underlyingAsset: Joi.string().max(50).allow(null, ''),
+    contractMonth: Joi.string().valid('JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC').allow(null, ''),
+    contractYear: Joi.number().integer().min(2020).max(2100).allow(null, ''),
+    tickSize: Joi.number().positive().allow(null, ''),
+    pointValue: Joi.number().positive().allow(null, '')
+  }),
+
+  addFill: Joi.object({
+    action: Joi.string().valid('buy', 'sell').required(),
+    quantity: Joi.number().positive().required(),
+    price: Joi.number().min(0).required(),
+    datetime: Joi.date().iso().required(),
+    commission: Joi.number().default(0),
+    fees: Joi.number().default(0)
+  }),
+
   updateTrade: Joi.object({
     symbol: Joi.string().max(20),
     entryTime: Joi.date().iso(),

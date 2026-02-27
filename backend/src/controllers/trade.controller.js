@@ -443,6 +443,71 @@ const tradeController = {
     }
   },
 
+  async createShellTrade(req, res, next) {
+    try {
+      // Normalize snake_case field names to camelCase for compatibility
+      const normalizedBody = { ...req.body };
+      if (normalizedBody.instrument_type && !normalizedBody.instrumentType) {
+        normalizedBody.instrumentType = normalizedBody.instrument_type;
+      }
+      if (normalizedBody.stop_loss !== undefined && normalizedBody.stopLoss === undefined) {
+        normalizedBody.stopLoss = normalizedBody.stop_loss;
+      }
+      if (normalizedBody.take_profit !== undefined && normalizedBody.takeProfit === undefined) {
+        normalizedBody.takeProfit = normalizedBody.take_profit;
+      }
+
+      const trade = await Trade.createShell(req.user.id, normalizedBody);
+
+      // Invalidate analytics cache
+      invalidateAnalyticsCache(req.user.id);
+
+      // Invalidate database analytics cache
+      try {
+        const AnalyticsCache = require('../services/analyticsCache');
+        await AnalyticsCache.invalidateUserCache(req.user.id);
+      } catch (cacheError) {
+        console.warn('[WARNING] Failed to invalidate analytics DB cache:', cacheError.message);
+      }
+
+      res.status(201).json({ trade });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async addFill(req, res, next) {
+    try {
+      const tradeId = req.params.id;
+
+      // Validate UUID format
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(tradeId)) {
+        return res.status(400).json({ error: 'Invalid trade ID format' });
+      }
+
+      const trade = await Trade.addFill(tradeId, req.user.id, req.body);
+
+      // Invalidate analytics cache
+      invalidateAnalyticsCache(req.user.id);
+
+      // Invalidate database analytics cache
+      try {
+        const AnalyticsCache = require('../services/analyticsCache');
+        await AnalyticsCache.invalidateUserCache(req.user.id);
+      } catch (cacheError) {
+        console.warn('[WARNING] Failed to invalidate analytics DB cache:', cacheError.message);
+      }
+
+      res.status(200).json({ trade });
+    } catch (error) {
+      if (error.status) {
+        return res.status(error.status).json({ error: error.message });
+      }
+      next(error);
+    }
+  },
+
   async getTrade(req, res, next) {
     try {
       const tradeId = req.params.id;
@@ -2121,7 +2186,8 @@ const tradeController = {
                 const {
                   totalQuantity, entryValue, exitValue, isExistingPosition,
                   existingTradeId, isUpdate, executionData, totalFees, totalFeesForSymbol,
-                  pnl, pnlPercent, newExecutionsAdded,
+                  pnl, pnlPercent, profitLoss, newExecutionsAdded,
+                  groupedTrades, originalNotes, existingExecutions,
                   ...cleanTradeData
                 } = tradeData;
 
