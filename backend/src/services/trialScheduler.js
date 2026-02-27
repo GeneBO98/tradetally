@@ -151,17 +151,31 @@ class TrialScheduler {
   
   // Start the trial scheduler
   static startScheduler() {
+    if (this.schedulerInterval) {
+      console.log('[START] Trial scheduler is already running');
+      return;
+    }
+
     console.log('[START] Starting trial scheduler...');
     
     // Run immediately
     this.runScheduledTasks();
     
     // Run every 6 hours (4 times per day)
-    setInterval(() => {
+    this.schedulerInterval = setInterval(() => {
       this.runScheduledTasks();
     }, 6 * 60 * 60 * 1000);
     
     console.log('[SUCCESS] Trial scheduler started (runs every 6 hours)');
+  }
+
+  static stopScheduler() {
+    if (this.schedulerInterval) {
+      clearInterval(this.schedulerInterval);
+      this.schedulerInterval = null;
+    }
+
+    console.log('[SUCCESS] Trial scheduler stopped');
   }
 }
 

@@ -39,6 +39,36 @@ async function ensureMigrationsTable() {
   }
 }
 
+async function syncMigrationsSequence(client = db) {
+  await client.query(`
+    SELECT setval(
+      pg_get_serial_sequence('migrations', 'id'),
+      COALESCE((SELECT MAX(id) FROM migrations), 1),
+      COALESCE((SELECT MAX(id) IS NOT NULL FROM migrations), false)
+    );
+  `);
+}
+
+async function recordMigration(client, filename, checksum) {
+  try {
+    await client.query(
+      'INSERT INTO migrations (filename, checksum) VALUES ($1, $2) ON CONFLICT (filename) DO NOTHING',
+      [filename, checksum]
+    );
+  } catch (error) {
+    // If the serial sequence drifted behind existing IDs, resync and retry once.
+    if (error.code === '23505' && error.constraint === 'migrations_pkey') {
+      await syncMigrationsSequence(client);
+      await client.query(
+        'INSERT INTO migrations (filename, checksum) VALUES ($1, $2) ON CONFLICT (filename) DO NOTHING',
+        [filename, checksum]
+      );
+      return;
+    }
+    throw error;
+  }
+}
+
 async function getAppliedMigrations() {
   const result = await db.query('SELECT filename, checksum FROM migrations ORDER BY id');
   return new Map(result.rows.map(row => [row.filename, row.checksum]));
@@ -104,10 +134,7 @@ async function runMigration(filename, content, checksum) {
     }
 
     // Record the migration
-    await client.query(
-      'INSERT INTO migrations (filename, checksum) VALUES ($1, $2)',
-      [filename, checksum]
-    );
+    await recordMigration(client, filename, checksum);
 
     await client.query('COMMIT');
     console.log(`${colors.green}[SUCCESS] Migration ${filename} applied successfully${colors.reset}`);
@@ -118,24 +145,15 @@ async function runMigration(filename, content, checksum) {
     if (error.code === '42P07') { // duplicate_table
       console.log(`${colors.yellow}[WARNING] Table already exists in ${filename}, marking as applied${colors.reset}`);
       // Mark migration as applied anyway
-      await client.query(
-        'INSERT INTO migrations (filename, checksum) VALUES ($1, $2) ON CONFLICT (filename) DO NOTHING',
-        [filename, checksum]
-      );
+      await recordMigration(client, filename, checksum);
       return;
     } else if (error.code === '42701') { // duplicate_column
       console.log(`${colors.yellow}[WARNING] Column already exists in ${filename}, marking as applied${colors.reset}`);
-      await client.query(
-        'INSERT INTO migrations (filename, checksum) VALUES ($1, $2) ON CONFLICT (filename) DO NOTHING',
-        [filename, checksum]
-      );
+      await recordMigration(client, filename, checksum);
       return;
     } else if (error.code === '42710') { // duplicate_object (for indexes, etc)
       console.log(`${colors.yellow}[WARNING] Object already exists in ${filename}, marking as applied${colors.reset}`);
-      await client.query(
-        'INSERT INTO migrations (filename, checksum) VALUES ($1, $2) ON CONFLICT (filename) DO NOTHING',
-        [filename, checksum]
-      );
+      await recordMigration(client, filename, checksum);
       return;
     }
 
@@ -173,6 +191,7 @@ async function migrate() {
     
     // Ensure migrations table exists
     await ensureMigrationsTable();
+    await syncMigrationsSequence();
     
     // Get applied migrations
     const appliedMigrations = await getAppliedMigrations();

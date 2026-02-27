@@ -2674,16 +2674,13 @@ const enrichmentSuccess = ref(false);
 
 // Get API docs URL
 function getApiDocsUrl() {
-    // Check if we're in development and need to use a different port
-    const currentUrl = window.location;
-
-    // If frontend is on port 5173 (Vite dev), backend is on port 3000
-    if (currentUrl.port === "5173" || currentUrl.hostname === "localhost") {
-        return `http://localhost:3000/api-docs`;
+    const apiUrl = import.meta.env.VITE_API_URL;
+    if (apiUrl && apiUrl.startsWith('http')) {
+        // VITE_API_URL is an absolute URL (e.g. http://localhost:3030/api)
+        return apiUrl.replace(/\/api\/?$/, '') + '/api-docs';
     }
-
-    // Otherwise use the same origin
-    return `${currentUrl.origin}/api-docs`;
+    // Relative URL or not set — use same origin
+    return `${window.location.origin}/api-docs`;
 }
 
 // AI Provider Functions

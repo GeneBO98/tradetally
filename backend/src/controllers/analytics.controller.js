@@ -7,6 +7,7 @@ const finnhub = require('../utils/finnhub');
 const cache = require('../utils/cache');
 const MAEEstimator = require('../utils/maeEstimator');
 const symbolCategories = require('../utils/symbolCategories');
+const { sendV1NotImplemented } = require('../utils/apiResponse');
 
 // Helper function to create a short but collision-resistant hash for cache keys
 function createFilterHash(filters) {
@@ -1794,10 +1795,7 @@ const analyticsController = {
 
   async getProfitLoss(req, res, next) {
     try {
-      res.json({
-        message: 'Profit/Loss analytics not yet implemented',
-        data: null
-      });
+      return sendV1NotImplemented(res, 'Profit/loss analytics are not part of the supported public API yet');
     } catch (error) {
       next(error);
     }
@@ -1805,10 +1803,7 @@ const analyticsController = {
 
   async getWinRate(req, res, next) {
     try {
-      res.json({
-        message: 'Win rate analytics not yet implemented',
-        winRate: 0
-      });
+      return sendV1NotImplemented(res, 'Win rate analytics are not part of the supported public API yet');
     } catch (error) {
       next(error);
     }
@@ -1816,10 +1811,7 @@ const analyticsController = {
 
   async getMonthlySummary(req, res, next) {
     try {
-      res.json({
-        message: 'Monthly summary not yet implemented',
-        summary: null
-      });
+      return sendV1NotImplemented(res, 'Monthly summary analytics are not part of the supported public API yet');
     } catch (error) {
       next(error);
     }
@@ -1827,10 +1819,7 @@ const analyticsController = {
 
   async getDailyAnalytics(req, res, next) {
     try {
-      res.json({
-        message: 'Daily analytics not yet implemented',
-        analytics: null
-      });
+      return sendV1NotImplemented(res, 'Daily analytics are not part of the supported public API yet');
     } catch (error) {
       next(error);
     }
@@ -1838,10 +1827,7 @@ const analyticsController = {
 
   async getWeeklyAnalytics(req, res, next) {
     try {
-      res.json({
-        message: 'Weekly analytics not yet implemented',
-        analytics: null
-      });
+      return sendV1NotImplemented(res, 'Weekly analytics are not part of the supported public API yet');
     } catch (error) {
       next(error);
     }
@@ -1849,10 +1835,7 @@ const analyticsController = {
 
   async getMonthlyAnalytics(req, res, next) {
     try {
-      res.json({
-        message: 'Monthly analytics not yet implemented',
-        analytics: null
-      });
+      return sendV1NotImplemented(res, 'Monthly analytics are not part of the supported public API yet');
     } catch (error) {
       next(error);
     }
@@ -1860,10 +1843,7 @@ const analyticsController = {
 
   async getYearlyAnalytics(req, res, next) {
     try {
-      res.json({
-        message: 'Yearly analytics not yet implemented',
-        analytics: null
-      });
+      return sendV1NotImplemented(res, 'Yearly analytics are not part of the supported public API yet');
     } catch (error) {
       next(error);
     }
@@ -1919,10 +1899,7 @@ const analyticsController = {
 
   async getRiskMetrics(req, res, next) {
     try {
-      res.json({
-        message: 'Risk metrics not yet implemented',
-        metrics: null
-      });
+      return sendV1NotImplemented(res, 'Risk metrics are not part of the supported public API yet');
     } catch (error) {
       next(error);
     }
@@ -1930,10 +1907,7 @@ const analyticsController = {
 
   async getTradeDistribution(req, res, next) {
     try {
-      res.json({
-        message: 'Trade distribution not yet implemented',
-        distribution: null
-      });
+      return sendV1NotImplemented(res, 'Trade distribution analytics are not part of the supported public API yet');
     } catch (error) {
       next(error);
     }
