@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const tradeController = require('../controllers/trade.controller');
 const { authenticate, optionalAuth } = require('../middleware/auth');
-const { flexibleAuth } = require('../middleware/apiKeyAuth');
+const { flexibleAuth, flexibleOptionalAuth, requireApiScope } = require('../middleware/apiKeyAuth');
 const { validate, schemas } = require('../middleware/validation');
 const multer = require('multer');
 const imageUpload = require('../middleware/upload');
@@ -121,9 +121,117 @@ const upload = multer({
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.get('/', flexibleAuth, tradeController.getUserTrades);
-router.get('/count', flexibleAuth, tradeController.getTradesCount);
-router.post('/', flexibleAuth, validate(schemas.createTrade), tradeController.createTrade);
+router.get('/', flexibleAuth, requireApiScope('trades:read'), tradeController.getUserTrades);
+
+/**
+ * @swagger
+ * /api/trades/count:
+ *   get:
+ *     summary: Get total trade count
+ *     description: Returns the total number of trades for the authenticated user, respecting any active filters.
+ *     tags: [Trades]
+ *     security:
+ *       - bearerAuth: []
+ *       - apiKeyAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: symbol
+ *         schema:
+ *           type: string
+ *         description: Filter by symbol
+ *       - in: query
+ *         name: side
+ *         schema:
+ *           type: string
+ *           enum: [long, short]
+ *         description: Filter by trade direction
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [open, closed]
+ *         description: Filter by trade status
+ *     responses:
+ *       200:
+ *         description: Trade count
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 count:
+ *                   type: integer
+ *       401:
+ *         description: Unauthorized
+ */
+router.get('/count', flexibleAuth, requireApiScope('trades:read'), tradeController.getTradesCount);
+router.post('/', flexibleAuth, requireApiScope('trades:write'), validate(schemas.createTrade), tradeController.createTrade);
+
+/**
+ * @swagger
+ * /api/trades/shell:
+ *   post:
+ *     summary: Create a shell trade (no executions)
+ *     description: >
+ *       Creates a trade with metadata only (symbol, side, strategy, etc.) but no
+ *       entry/exit executions. Use POST /api/trades/{id}/fills to add executions
+ *       incrementally after creation.
+ *     tags: [Trades]
+ *     security:
+ *       - bearerAuth: []
+ *       - apiKeyAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [symbol, side]
+ *             properties:
+ *               symbol:
+ *                 type: string
+ *                 maxLength: 20
+ *                 example: AAPL
+ *               side:
+ *                 type: string
+ *                 enum: [long, short]
+ *               instrumentType:
+ *                 type: string
+ *                 enum: [stock, option, future, crypto]
+ *                 default: stock
+ *               broker:
+ *                 type: string
+ *                 maxLength: 50
+ *               account_identifier:
+ *                 type: string
+ *                 maxLength: 50
+ *               strategy:
+ *                 type: string
+ *                 maxLength: 100
+ *               setup:
+ *                 type: string
+ *                 maxLength: 100
+ *               tags:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               notes:
+ *                 type: string
+ *               confidence:
+ *                 type: integer
+ *                 minimum: 1
+ *                 maximum: 10
+ *               stopLoss:
+ *                 type: number
+ *               takeProfit:
+ *                 type: number
+ *     responses:
+ *       201:
+ *         description: Shell trade created
+ *       400:
+ *         description: Validation error
+ */
+router.post('/shell', flexibleAuth, requireApiScope('trades:write'), validate(schemas.createShellTrade), tradeController.createShellTrade);
 
 /**
  * @swagger
@@ -195,36 +303,6 @@ router.get('/enrichment-status', authenticate, tradeController.getEnrichmentStat
 
 /**
  * @swagger
- * /api/trades/retry-enrichment:
- *   post:
- *     summary: Retry trade enrichment for stuck CUSIPs
- *     tags: [Trades]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Enrichment retry initiated
- */
-// TODO: Add missing retryEnrichment method
-// router.post('/retry-enrichment', authenticate, tradeController.retryEnrichment);
-
-/**
- * @swagger
- * /api/trades/sync-enrichment-status:
- *   post:
- *     summary: Sync enrichment status with completed jobs
- *     tags: [Trades]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Enrichment status synced
- */
-// TODO: Add missing syncEnrichmentStatus method
-// router.post('/sync-enrichment-status', authenticate, tradeController.syncEnrichmentStatus);
-
-/**
- * @swagger
  * /api/trades/force-complete-enrichment:
  *   post:
  *     summary: NUCLEAR OPTION - Force complete ALL enrichment jobs
@@ -236,27 +314,6 @@ router.get('/enrichment-status', authenticate, tradeController.getEnrichmentStat
  *         description: All enrichment force completed
  */
 router.post('/force-complete-enrichment', authenticate, tradeController.forceCompleteEnrichment);
-
-/**
- * @swagger
- * /api/trades/debug-symbol:
- *   get:
- *     summary: Debug symbol search
- *     tags: [Trades]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: query
- *         name: symbol
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Debug information about symbol search
- */
-// TODO: Add missing debugSymbolSearch method
-// router.get('/debug-symbol', authenticate, tradeController.debugSymbolSearch);
 
 /**
  * @swagger
@@ -297,7 +354,7 @@ router.get('/public', optionalAuth, tradeController.getPublicTrades);
  *       200:
  *         description: Trade analytics data
  */
-router.get('/analytics', flexibleAuth, tradeController.getAnalytics);
+router.get('/analytics', flexibleAuth, requireApiScope('trades:read'), tradeController.getAnalytics);
 
 /**
  * @swagger
@@ -317,7 +374,7 @@ router.get('/analytics', flexibleAuth, tradeController.getAnalytics);
  *       200:
  *         description: Monthly performance metrics
  */
-router.get('/analytics/monthly', flexibleAuth, tradeController.getMonthlyPerformance);
+router.get('/analytics/monthly', flexibleAuth, requireApiScope('trades:read'), tradeController.getMonthlyPerformance);
 
 /**
  * @swagger
@@ -738,9 +795,75 @@ router.get('/:id/chart-data', authenticate, tradeController.getTradeChartData);
  *       200:
  *         description: Trade deleted successfully
  */
-router.get('/:id', optionalAuth, tradeController.getTrade);
-router.put('/:id', flexibleAuth, validate(schemas.updateTrade), tradeController.updateTrade);
-router.delete('/:id', flexibleAuth, tradeController.deleteTrade);
+router.get('/:id', flexibleOptionalAuth, tradeController.getTrade);
+router.put('/:id', flexibleAuth, requireApiScope('trades:write'), validate(schemas.updateTrade), tradeController.updateTrade);
+router.delete('/:id', flexibleAuth, requireApiScope('trades:write'), tradeController.deleteTrade);
+/**
+ * @swagger
+ * /api/trades/{id}/fills:
+ *   post:
+ *     summary: Add a fill (execution) to an existing trade
+ *     description: >
+ *       Appends a single execution to a trade. The trade's entry/exit price,
+ *       quantity, P&L, and open/closed status are recalculated automatically
+ *       from all fills. Use with shell trades or to add partial fills to any trade.
+ *     tags: [Trades]
+ *     security:
+ *       - bearerAuth: []
+ *       - apiKeyAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Trade ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [action, quantity, price, datetime]
+ *             properties:
+ *               action:
+ *                 type: string
+ *                 enum: [buy, sell]
+ *                 description: Fill direction
+ *               quantity:
+ *                 type: number
+ *                 minimum: 0
+ *                 exclusiveMinimum: true
+ *                 description: Number of shares/contracts
+ *                 example: 50
+ *               price:
+ *                 type: number
+ *                 minimum: 0
+ *                 description: Fill price per share/contract
+ *                 example: 152.30
+ *               datetime:
+ *                 type: string
+ *                 format: date-time
+ *                 description: Execution timestamp
+ *                 example: "2025-01-15T14:30:00Z"
+ *               commission:
+ *                 type: number
+ *                 default: 0
+ *                 description: Commission for this fill
+ *               fees:
+ *                 type: number
+ *                 default: 0
+ *                 description: Additional fees for this fill
+ *     responses:
+ *       200:
+ *         description: Fill added, trade recalculated
+ *       400:
+ *         description: Validation error
+ *       404:
+ *         description: Trade not found
+ */
+router.post('/:id/fills', flexibleAuth, requireApiScope('trades:write'), validate(schemas.addFill), tradeController.addFill);
 router.post('/:id/split', authenticate, tradeController.splitTrade);
 router.post('/:id/attachments', authenticate, upload.single('file'), tradeController.uploadAttachment);
 router.delete('/:id/attachments/:attachmentId', authenticate, tradeController.deleteAttachment);

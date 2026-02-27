@@ -960,12 +960,21 @@ const brokerParsers = {
     const sellPrice = parseNumeric(row.sellPrice);
     const pnl = parseNumeric(row.pnl);
 
-    // Parse timestamps (Unix timestamps in milliseconds)
-    const boughtTimestamp = parseInt(row.boughtTimestamp);
-    const soldTimestamp = parseInt(row.soldTimestamp);
+    // Parse timestamps - can be Unix timestamps in milliseconds or date strings like "02/26/2026 09:12:07"
+    let entryTime = null;
+    let exitTime = null;
 
-    const entryTime = !isNaN(boughtTimestamp) ? new Date(boughtTimestamp) : null;
-    const exitTime = !isNaN(soldTimestamp) ? new Date(soldTimestamp) : null;
+    if (row.boughtTimestamp) {
+      const ts = Number(row.boughtTimestamp);
+      // If it's a large number (>1e10), treat as Unix ms timestamp; otherwise parse as date string
+      entryTime = ts > 1e10 ? new Date(ts) : new Date(row.boughtTimestamp);
+      if (isNaN(entryTime.getTime())) entryTime = null;
+    }
+    if (row.soldTimestamp) {
+      const ts = Number(row.soldTimestamp);
+      exitTime = ts > 1e10 ? new Date(ts) : new Date(row.soldTimestamp);
+      if (isNaN(exitTime.getTime())) exitTime = null;
+    }
     const tradeDate = entryTime ? new Date(entryTime.toISOString().split('T')[0]) : null;
 
     // Determine side based on P&L and prices

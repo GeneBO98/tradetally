@@ -1,13 +1,27 @@
 const User = require('../../models/User');
+const db = require('../../config/database');
+const userController = require('../user.controller');
+const settingsController = require('../settings.controller');
+const { captureControllerResult } = require('../../utils/legacyControllerAdapter');
+const { sendV1ErrorFromLegacy, sendV1NotImplemented } = require('../../utils/apiResponse');
+
+function toCamelCaseRecord(record = {}) {
+  const converted = {};
+
+  Object.entries(record || {}).forEach(([key, value]) => {
+    const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+    converted[camelKey] = value;
+  });
+
+  return converted;
+}
 
 const userV1Controller = {
-  /**
-   * Get enhanced user profile for mobile
-   */
   async getProfile(req, res, next) {
     try {
       const user = await User.findById(req.user.id);
-      const settings = await User.getSettings(req.user.id);
+      const rawSettings = await User.getSettings(req.user.id);
+      const settings = toCamelCaseRecord(rawSettings || {});
 
       res.json({
         profile: {
@@ -20,12 +34,12 @@ const userV1Controller = {
           isVerified: user.is_verified,
           timezone: user.timezone,
           createdAt: user.created_at,
-          lastLoginAt: user.updated_at // Placeholder
+          lastLoginAt: user.updated_at
         },
         settings,
         mobile: {
-          lastSyncAt: null, // TODO: Implement
-          syncEnabled: true,
+          lastSyncAt: null,
+          syncEnabled: false,
           notificationsEnabled: settings.emailNotifications || false
         }
       });
@@ -34,57 +48,61 @@ const userV1Controller = {
     }
   },
 
-  /**
-   * Update user profile
-   */
   async updateProfile(req, res, next) {
     try {
-      // TODO: Implement profile update logic
-      // For now, return success
-      res.json({ 
-        message: 'Profile update not yet implemented',
-        updated: false 
+      const legacyResult = await captureControllerResult(userController.updateProfile, req);
+
+      if (legacyResult.statusCode >= 400) {
+        return sendV1ErrorFromLegacy(res, legacyResult, 'Failed to update profile');
+      }
+
+      return res.status(legacyResult.statusCode || 200).json({
+        profile: legacyResult.body?.user || null,
+        message: legacyResult.body?.message
       });
     } catch (error) {
       next(error);
     }
   },
 
-  /**
-   * Upload avatar (placeholder)
-   */
   async uploadAvatar(req, res, next) {
     try {
-      res.json({ 
-        message: 'Avatar upload not yet implemented',
-        avatarUrl: null 
+      const legacyResult = await captureControllerResult(userController.uploadAvatar, req);
+
+      if (legacyResult.statusCode >= 400) {
+        return sendV1ErrorFromLegacy(res, legacyResult, 'Failed to upload avatar');
+      }
+
+      return res.status(legacyResult.statusCode || 200).json({
+        profile: legacyResult.body?.user || null
       });
     } catch (error) {
       next(error);
     }
   },
 
-  /**
-   * Delete avatar (placeholder)
-   */
   async deleteAvatar(req, res, next) {
     try {
-      res.json({ 
-        message: 'Avatar deletion not yet implemented',
-        deleted: false 
+      const legacyResult = await captureControllerResult(userController.deleteAvatar, req);
+
+      if (legacyResult.statusCode >= 400) {
+        return sendV1ErrorFromLegacy(res, legacyResult, 'Failed to delete avatar');
+      }
+
+      return res.status(legacyResult.statusCode || 200).json({
+        deleted: true,
+        profile: legacyResult.body?.user || null
       });
     } catch (error) {
       next(error);
     }
   },
 
-  /**
-   * Get user preferences
-   */
   async getPreferences(req, res, next) {
     try {
-      const settings = await User.getSettings(req.user.id);
-      
+      const rawSettings = await User.getSettings(req.user.id);
+      const settings = toCamelCaseRecord(rawSettings || {});
+
       res.json({
         preferences: {
           theme: settings.theme || 'light',
@@ -99,34 +117,51 @@ const userV1Controller = {
     }
   },
 
-  /**
-   * Update user preferences
-   */
   async updatePreferences(req, res, next) {
     try {
-      // TODO: Implement preferences update
-      res.json({ 
-        message: 'Preferences update not yet implemented',
-        updated: false 
-      });
-    } catch (error) {
-      next(error);
-    }
-  },
+      const { theme, timezone, emailNotifications, publicProfile, defaultTags } = req.body || {};
 
-  /**
-   * Get sync info for mobile
-   */
-  async getSyncInfo(req, res, next) {
-    try {
-      res.json({
-        sync: {
-          lastSyncAt: null,
-          syncVersion: 0,
-          pendingChanges: 0,
-          conflictsCount: 0,
-          deviceCount: 1, // TODO: Get actual device count
-          enabled: true
+      if (timezone !== undefined) {
+        const profileResult = await captureControllerResult(userController.updateProfile, {
+          ...req,
+          body: { timezone }
+        });
+
+        if (profileResult.statusCode >= 400) {
+          return sendV1ErrorFromLegacy(res, profileResult, 'Failed to update preferences');
+        }
+      }
+
+      const settingsPayload = {};
+      if (theme !== undefined) settingsPayload.theme = theme;
+      if (emailNotifications !== undefined) settingsPayload.emailNotifications = emailNotifications;
+      if (publicProfile !== undefined) settingsPayload.publicProfile = publicProfile;
+      if (defaultTags !== undefined) settingsPayload.defaultTags = defaultTags;
+
+      let updatedSettings = {};
+      if (Object.keys(settingsPayload).length > 0) {
+        const settingsResult = await captureControllerResult(settingsController.updateSettings, {
+          ...req,
+          body: settingsPayload
+        });
+
+        if (settingsResult.statusCode >= 400) {
+          return sendV1ErrorFromLegacy(res, settingsResult, 'Failed to update preferences');
+        }
+
+        updatedSettings = settingsResult.body?.settings || {};
+      }
+
+      const currentUser = await User.findById(req.user.id);
+
+      return res.json({
+        updated: true,
+        preferences: {
+          theme: updatedSettings.theme || theme || 'light',
+          timezone: currentUser.timezone || timezone || 'UTC',
+          emailNotifications: updatedSettings.emailNotifications ?? emailNotifications ?? false,
+          publicProfile: updatedSettings.publicProfile ?? publicProfile ?? false,
+          defaultTags: updatedSettings.defaultTags ?? defaultTags ?? []
         }
       });
     } catch (error) {
@@ -134,15 +169,29 @@ const userV1Controller = {
     }
   },
 
-  /**
-   * Update sync info
-   */
+  async getSyncInfo(req, res, next) {
+    try {
+      const result = await db.query('SELECT COUNT(*)::integer AS count FROM devices WHERE user_id = $1', [req.user.id]);
+      const deviceCount = result.rows[0]?.count || 0;
+
+      res.json({
+        sync: {
+          lastSyncAt: null,
+          syncVersion: 0,
+          pendingChanges: 0,
+          conflictsCount: 0,
+          deviceCount,
+          enabled: false
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
   async updateSyncInfo(req, res, next) {
     try {
-      res.json({ 
-        message: 'Sync info update not yet implemented',
-        updated: false 
-      });
+      return sendV1NotImplemented(res, 'Sync info updates are not part of the supported public API yet');
     } catch (error) {
       next(error);
     }

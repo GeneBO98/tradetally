@@ -582,6 +582,305 @@ class Trade {
     return createdTrade;
   }
 
+  /**
+   * Create a shell trade - just symbol + side, no entry data required.
+   * Entry fields (entry_price, quantity, entry_time, trade_date) are all NULL.
+   * Fills can be added later via Trade.addFill().
+   */
+  static async createShell(userId, data) {
+    const {
+      symbol, side,
+      instrumentType = 'stock', broker, account_identifier, accountIdentifier,
+      strategy, setup, tags, notes, confidence,
+      stopLoss, takeProfit, takeProfitTargets,
+      chartUrl,
+      // Options fields
+      underlyingSymbol, optionType, strikePrice, expirationDate, contractSize,
+      // Futures fields
+      underlyingAsset, contractMonth, contractYear, tickSize, pointValue
+    } = data;
+
+    const finalAccountIdentifier = account_identifier || accountIdentifier;
+
+    // Ensure tags exist in tags table
+    if (tags && tags.length > 0) {
+      await this.ensureTagsExist(userId, tags);
+    }
+
+    // Auto-set point value for futures
+    let finalPointValue = pointValue;
+    let finalUnderlyingAsset = underlyingAsset;
+    if (instrumentType === 'future') {
+      if (!finalUnderlyingAsset && symbol) {
+        finalUnderlyingAsset = extractUnderlyingFromFuturesSymbol(symbol) || underlyingSymbol || null;
+      }
+      if (!finalPointValue && finalUnderlyingAsset) {
+        finalPointValue = getFuturesPointValue(finalUnderlyingAsset);
+      }
+    }
+
+    const query = `
+      INSERT INTO trades (
+        user_id, symbol, side,
+        trade_date, entry_time, exit_time, entry_price, exit_price, quantity,
+        commission, fees, pnl, pnl_percent,
+        notes, is_public, broker, strategy, setup, tags, executions,
+        confidence, instrument_type,
+        strike_price, expiration_date, option_type, contract_size, underlying_symbol,
+        contract_month, contract_year, tick_size, point_value, underlying_asset,
+        stop_loss, take_profit, take_profit_targets, chart_url, account_identifier
+      )
+      VALUES (
+        $1, $2, $3,
+        NULL, NULL, NULL, NULL, NULL, NULL,
+        0, 0, NULL, NULL,
+        $4, false, $5, $6, $7, $8, '[]'::jsonb,
+        $9, $10,
+        $11, $12, $13, $14, $15,
+        $16, $17, $18, $19, $20,
+        $21, $22, $23, $24, $25
+      )
+      RETURNING *
+    `;
+
+    const values = [
+      userId, symbol.toUpperCase(), side,
+      notes || null, broker || null, strategy || null, setup || null, tags || [],
+      confidence || 5, instrumentType || 'stock',
+      roundToDbPrecision(strikePrice), expirationDate || null, optionType || null,
+      contractSize || (instrumentType === 'option' ? 100 : null), underlyingSymbol || null,
+      contractMonth || null, contractYear || null, roundToDbPrecision(tickSize),
+      roundToDbPrecision(finalPointValue), finalUnderlyingAsset || null,
+      roundToDbPrecision(stopLoss), roundToDbPrecision(takeProfit),
+      JSON.stringify(takeProfitTargets || []), chartUrl || null,
+      finalAccountIdentifier ? String(finalAccountIdentifier).substring(0, 50) : null
+    ];
+
+    const result = await db.query(query, values);
+    const createdTrade = result.rows[0];
+
+    console.log(`[TRADE] Shell trade created: ${createdTrade.id} (${symbol.toUpperCase()} ${side})`);
+
+    return createdTrade;
+  }
+
+  /**
+   * Add a fill (execution) to an existing trade and recalculate aggregate fields.
+   * Validates ownership, fill ordering (entry before exit), and quantity limits.
+   */
+  static async addFill(tradeId, userId, fillData) {
+    // Fetch the trade and verify ownership
+    const tradeResult = await db.query(
+      'SELECT * FROM trades WHERE id = $1 AND user_id = $2',
+      [tradeId, userId]
+    );
+
+    if (tradeResult.rows.length === 0) {
+      const error = new Error('Trade not found');
+      error.status = 404;
+      throw error;
+    }
+
+    const trade = tradeResult.rows[0];
+    const { action, quantity, price, datetime, commission = 0, fees = 0 } = fillData;
+
+    // Parse existing executions
+    let executions = [];
+    if (trade.executions) {
+      executions = typeof trade.executions === 'string'
+        ? JSON.parse(trade.executions)
+        : trade.executions;
+    }
+
+    // Determine if this is an entry or exit fill based on trade side
+    const isEntryFill = (trade.side === 'long' && action === 'buy') ||
+                        (trade.side === 'short' && action === 'sell');
+
+    // Validate: can't add exit fill if no entry fills exist
+    if (!isEntryFill) {
+      const entryFills = executions.filter(e => {
+        const eAction = e.action;
+        return (trade.side === 'long' && eAction === 'buy') ||
+               (trade.side === 'short' && eAction === 'sell');
+      });
+      if (entryFills.length === 0) {
+        const error = new Error('Cannot add exit fill before any entry fills exist');
+        error.status = 400;
+        throw error;
+      }
+
+      // Validate: exit quantity cannot exceed entry quantity
+      const totalEntryQty = entryFills.reduce((sum, e) => sum + parseFloat(e.quantity), 0);
+      const existingExitFills = executions.filter(e => {
+        const eAction = e.action;
+        return (trade.side === 'long' && eAction === 'sell') ||
+               (trade.side === 'short' && eAction === 'buy');
+      });
+      const totalExitQty = existingExitFills.reduce((sum, e) => sum + parseFloat(e.quantity), 0);
+
+      if (totalExitQty + quantity > totalEntryQty) {
+        const error = new Error(`Exit quantity (${totalExitQty + quantity}) would exceed entry quantity (${totalEntryQty})`);
+        error.status = 400;
+        throw error;
+      }
+    }
+
+    // Append the new fill
+    const newFill = {
+      action,
+      quantity: parseFloat(quantity),
+      price: parseFloat(price),
+      datetime: new Date(datetime).toISOString(),
+      commission: parseFloat(commission) || 0,
+      fees: parseFloat(fees) || 0
+    };
+    executions.push(newFill);
+
+    // Recalculate aggregate fields from all fills
+    const aggregates = this.recalculateFromFills(trade, executions);
+
+    // Calculate R-value if stop_loss and exit_price exist
+    let rValue = null;
+    if (trade.stop_loss && aggregates.exit_price && aggregates.entry_price) {
+      rValue = this.calculateRValue(
+        aggregates.entry_price, trade.stop_loss, aggregates.exit_price, trade.side
+      );
+    }
+
+    // Update the trade
+    const updateQuery = `
+      UPDATE trades SET
+        executions = $1,
+        entry_price = $2,
+        exit_price = $3,
+        quantity = $4,
+        entry_time = $5,
+        exit_time = $6,
+        trade_date = $7,
+        commission = $8,
+        fees = $9,
+        pnl = $10,
+        pnl_percent = $11,
+        r_value = $12,
+        updated_at = NOW()
+      WHERE id = $13 AND user_id = $14
+      RETURNING *
+    `;
+
+    const updateValues = [
+      JSON.stringify(executions),
+      roundToDbPrecision(aggregates.entry_price),
+      roundToDbPrecision(aggregates.exit_price),
+      roundToDbPrecision(aggregates.quantity),
+      aggregates.entry_time,
+      aggregates.exit_time,
+      aggregates.trade_date,
+      roundToDbPrecision(aggregates.commission),
+      roundToDbPrecision(aggregates.fees),
+      roundToDbPrecision(aggregates.pnl),
+      roundToDbPrecision(aggregates.pnl_percent),
+      roundToDbPrecision(rValue),
+      tradeId,
+      userId
+    ];
+
+    const result = await db.query(updateQuery, updateValues);
+    const updatedTrade = result.rows[0];
+
+    console.log(`[TRADE] Fill added to ${tradeId}: ${action} ${quantity} @ ${price} (${new Date(datetime).toISOString()})`);
+
+    return updatedTrade;
+  }
+
+  /**
+   * Pure function: recalculate aggregate trade fields from an array of fills.
+   * Returns computed entry_price, exit_price, quantity, entry_time, exit_time,
+   * trade_date, commission, fees, pnl, pnl_percent.
+   */
+  static recalculateFromFills(trade, executions) {
+    const side = trade.side;
+
+    // Separate entry and exit fills
+    const entryFills = executions.filter(e =>
+      (side === 'long' && e.action === 'buy') || (side === 'short' && e.action === 'sell')
+    );
+    const exitFills = executions.filter(e =>
+      (side === 'long' && e.action === 'sell') || (side === 'short' && e.action === 'buy')
+    );
+
+    // Entry aggregates
+    let entry_price = null;
+    let entry_time = null;
+    let quantity = null;
+    let trade_date = null;
+
+    if (entryFills.length > 0) {
+      // Volume-weighted average price
+      const totalQty = entryFills.reduce((sum, f) => sum + parseFloat(f.quantity), 0);
+      const totalNotional = entryFills.reduce((sum, f) => sum + parseFloat(f.quantity) * parseFloat(f.price), 0);
+      entry_price = totalNotional / totalQty;
+      quantity = totalQty;
+
+      // Earliest entry fill datetime
+      const entryTimes = entryFills.map(f => new Date(f.datetime));
+      entry_time = new Date(Math.min(...entryTimes)).toISOString();
+      trade_date = entry_time.split('T')[0];
+    }
+
+    // Exit aggregates — only set exit_price/exit_time on the trade when fully closed.
+    // This keeps the trade status "open" for partial exits since status is derived
+    // from exit_price being NULL (open) vs NOT NULL (closed).
+    let exit_price = null;
+    let exit_time = null;
+    const totalEntryQty = entryFills.reduce((sum, f) => sum + parseFloat(f.quantity), 0);
+    const totalExitQty = exitFills.reduce((sum, f) => sum + parseFloat(f.quantity), 0);
+    const isFullyClosed = exitFills.length > 0 && totalExitQty >= totalEntryQty;
+
+    // VWAP of exit fills (used for P&L calc even on partial exits)
+    let exitVwap = null;
+    if (exitFills.length > 0) {
+      const totalExitNotional = exitFills.reduce((sum, f) => sum + parseFloat(f.quantity) * parseFloat(f.price), 0);
+      exitVwap = totalExitNotional / totalExitQty;
+
+      // Only write exit_price/exit_time to the trade when position is fully closed
+      if (isFullyClosed) {
+        exit_price = exitVwap;
+        const exitTimes = exitFills.map(f => new Date(f.datetime));
+        exit_time = new Date(Math.max(...exitTimes)).toISOString();
+      }
+    }
+
+    // Sum all commissions and fees
+    const commission = executions.reduce((sum, f) => sum + (parseFloat(f.commission) || 0), 0);
+    const fees = executions.reduce((sum, f) => sum + (parseFloat(f.fees) || 0), 0);
+
+    // Calculate P&L if we have both entry fills and exit fills
+    let pnl = null;
+    let pnl_percent = null;
+
+    if (entry_price != null && exitVwap != null && quantity > 0) {
+      const instrumentType = trade.instrument_type || 'stock';
+      const contractSize = trade.contract_size;
+      const pointValue = trade.point_value;
+
+      pnl = this.calculatePnL(entry_price, exitVwap, totalExitQty, side, commission, fees, instrumentType, contractSize, pointValue);
+      pnl_percent = this.calculatePnLPercent(entry_price, exitVwap, side, pnl, totalExitQty, instrumentType, pointValue);
+    }
+
+    return {
+      entry_price,
+      exit_price,
+      quantity,
+      entry_time,
+      exit_time,
+      trade_date,
+      commission,
+      fees,
+      pnl,
+      pnl_percent
+    };
+  }
+
   static async findById(id, userId = null) {
     let query = `
       SELECT t.*,
@@ -851,8 +1150,10 @@ class Trade {
       paramCount++;
     }
 
-    if (filters.status === 'open') {
-      whereClause += ` AND t.exit_price IS NULL`;
+    if (filters.status === 'pending') {
+      whereClause += ` AND t.entry_price IS NULL`;
+    } else if (filters.status === 'open') {
+      whereClause += ` AND t.entry_price IS NOT NULL AND t.exit_price IS NULL`;
     } else if (filters.status === 'closed') {
       whereClause += ` AND t.exit_price IS NOT NULL`;
     }
@@ -2241,8 +2542,10 @@ class Trade {
       query += ` AND ${tablePrefix}pnl < 0`;
     }
 
-    if (filters.status === 'open') {
-      query += ` AND ${tablePrefix}exit_price IS NULL`;
+    if (filters.status === 'pending') {
+      query += ` AND ${tablePrefix}entry_price IS NULL`;
+    } else if (filters.status === 'open') {
+      query += ` AND ${tablePrefix}entry_price IS NOT NULL AND ${tablePrefix}exit_price IS NULL`;
     } else if (filters.status === 'closed') {
       query += ` AND ${tablePrefix}exit_price IS NOT NULL`;
     }
@@ -2400,8 +2703,10 @@ class Trade {
       paramCount++;
     }
 
-    if (filters.status === 'open') {
-      whereClause += ` AND t.exit_price IS NULL`;
+    if (filters.status === 'pending') {
+      whereClause += ` AND t.entry_price IS NULL`;
+    } else if (filters.status === 'open') {
+      whereClause += ` AND t.entry_price IS NOT NULL AND t.exit_price IS NULL`;
     } else if (filters.status === 'closed') {
       whereClause += ` AND t.exit_price IS NOT NULL`;
     }

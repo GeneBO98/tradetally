@@ -1,6 +1,5 @@
 const express = require('express');
 const router = express.Router();
-const settingsController = require('../../controllers/settings.controller');
 const settingsV1Controller = require('../../controllers/v1/settings.controller');
 const { authenticate } = require('../../middleware/auth');
 const { validate, schemas } = require('../../middleware/validation');
@@ -30,6 +29,6 @@ router.get('/data', authenticate, settingsV1Controller.getDataSettings);
 router.put('/data', authenticate, settingsV1Controller.updateDataSettings);
 
 // Backup existing settings functionality
-router.get('/reset', authenticate, settingsController.resetSettings);
+router.get('/reset', authenticate, settingsV1Controller.resetSettings);
 
 module.exports = router;

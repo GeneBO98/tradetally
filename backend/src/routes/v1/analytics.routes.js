@@ -1,30 +1,65 @@
 const express = require('express');
 const router = express.Router();
 const analyticsController = require('../../controllers/analytics.controller');
-const analyticsV1Controller = require('../../controllers/v1/analytics.controller');
-const { authenticate } = require('../../middleware/auth');
+const { flexibleAuth, requireApiScope } = require('../../middleware/apiKeyAuth');
 
-// Enhanced analytics for mobile
-router.get('/dashboard', authenticate, analyticsV1Controller.getDashboardData);
-router.get('/performance', authenticate, analyticsV1Controller.getPerformanceMetrics);
-router.get('/profit-loss', authenticate, analyticsController.getProfitLoss);
-router.get('/win-rate', authenticate, analyticsController.getWinRate);
-router.get('/monthly-summary', authenticate, analyticsController.getMonthlySummary);
-
-// Mobile-optimized analytics
-router.get('/mobile/summary', authenticate, analyticsV1Controller.getMobileSummary);
-router.get('/mobile/charts', authenticate, analyticsV1Controller.getMobileCharts);
-router.get('/mobile/streaks', authenticate, analyticsV1Controller.getStreaks);
-
-// Time-based analytics
-router.get('/daily', authenticate, analyticsController.getDailyAnalytics);
-router.get('/weekly', authenticate, analyticsController.getWeeklyAnalytics);
-router.get('/monthly', authenticate, analyticsController.getMonthlyAnalytics);
-router.get('/yearly', authenticate, analyticsController.getYearlyAnalytics);
-
-// Advanced analytics
-router.get('/drawdown', authenticate, analyticsController.getDrawdownAnalysis);
-router.get('/risk-metrics', authenticate, analyticsController.getRiskMetrics);
-router.get('/trade-distribution', authenticate, analyticsController.getTradeDistribution);
+/**
+ * @swagger
+ * /api/v1/analytics/drawdown:
+ *   get:
+ *     summary: Drawdown analysis (V1)
+ *     description: >
+ *       Returns daily P&L, cumulative P&L, running max, and drawdown values
+ *       ordered by trade date. Useful for charting equity drawdown curves.
+ *     tags: [V1 Analytics]
+ *     security:
+ *       - bearerAuth: []
+ *       - apiKeyAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: startDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *       - in: query
+ *         name: endDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *       - in: query
+ *         name: accounts
+ *         schema:
+ *           type: string
+ *         description: Comma-separated account identifiers
+ *     responses:
+ *       200:
+ *         description: Drawdown analysis data
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 drawdown:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       trade_date:
+ *                         type: string
+ *                         format: date
+ *                       daily_pnl:
+ *                         type: number
+ *                       cumulative_pnl:
+ *                         type: number
+ *                       running_max_pnl:
+ *                         type: number
+ *                       drawdown:
+ *                         type: number
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Insufficient scope
+ */
+router.get('/drawdown', flexibleAuth, requireApiScope('analytics:read'), analyticsController.getDrawdownAnalysis);
 
 module.exports = router;

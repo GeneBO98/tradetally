@@ -1,12 +1,30 @@
 const ApiKey = require('../models/ApiKey');
 const logger = require('../utils/logger');
 const db = require('../config/database');
+const { validateScopes, resolveEffectiveScopes } = require('../utils/apiScopes');
+
+function parseJsonArray(value, fallback = []) {
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : fallback;
+    } catch (error) {
+      return fallback;
+    }
+  }
+
+  return fallback;
+}
 
 const apiKeyController = {
   // Create a new API key
   async createApiKey(req, res, next) {
     try {
-      const { name, permissions, expiresIn } = req.body;
+      const { name, permissions, scopes, expiresIn } = req.body;
       const userId = req.user.id;
 
       // Calculate expiration date if provided
@@ -23,6 +41,7 @@ const apiKeyController = {
       // Validate permissions
       const validPermissions = ['read', 'write', 'admin'];
       const requestedPermissions = permissions || ['read'];
+      const requestedScopes = scopes || [];
       
       for (const permission of requestedPermissions) {
         if (!validPermissions.includes(permission)) {
@@ -32,6 +51,13 @@ const apiKeyController = {
         }
       }
 
+      const scopeValidation = validateScopes(requestedScopes);
+      if (!scopeValidation.valid) {
+        return res.status(400).json({
+          error: `Invalid scopes: ${scopeValidation.invalid.join(', ')}`
+        });
+      }
+
       // Users can only create keys with permissions they have
       if (requestedPermissions.includes('admin') && req.user.role !== 'admin') {
         return res.status(403).json({ 
@@ -39,10 +65,22 @@ const apiKeyController = {
         });
       }
 
+      const resolvedScopes = resolveEffectiveScopes({
+        permissions: requestedPermissions,
+        scopes: requestedScopes
+      });
+
+      if (resolvedScopes.includes('admin:*') && req.user.role !== 'admin') {
+        return res.status(403).json({
+          error: 'Only administrators can create API keys with admin scopes'
+        });
+      }
+
       const apiKey = await ApiKey.create({
         userId,
         name,
         permissions: requestedPermissions,
+        scopes: resolvedScopes,
         expiresAt
       });
 
@@ -56,6 +94,8 @@ const apiKeyController = {
           key: apiKey.key, // Only shown once
           keyPrefix: apiKey.key_prefix,
           permissions: apiKey.permissions,
+          scopes: apiKey.scopes,
+          effectiveScopes: apiKey.effectiveScopes,
           expiresAt: apiKey.expires_at,
           isActive: apiKey.is_active,
           createdAt: apiKey.created_at
@@ -79,6 +119,8 @@ const apiKeyController = {
           name: key.name,
           keyPrefix: key.key_prefix,
           permissions: key.permissions,
+          scopes: key.scopes,
+          effectiveScopes: key.effectiveScopes,
           lastUsedAt: key.last_used_at,
           expiresAt: key.expires_at,
           isActive: key.is_active,
@@ -115,6 +157,8 @@ const apiKeyController = {
           name: apiKey.name,
           keyPrefix: apiKey.key_prefix,
           permissions: apiKey.permissions,
+          scopes: apiKey.scopes,
+          effectiveScopes: apiKey.effectiveScopes,
           lastUsedAt: apiKey.last_used_at,
           expiresAt: apiKey.expires_at,
           isActive: apiKey.is_active,
@@ -132,7 +176,7 @@ const apiKeyController = {
   async updateApiKey(req, res, next) {
     try {
       const { keyId } = req.params;
-      const { name, permissions, expiresIn, isActive } = req.body;
+      const { name, permissions, scopes, expiresIn, isActive } = req.body;
       const userId = req.user.id;
 
       const existingKey = await ApiKey.findById(keyId);
@@ -181,9 +225,37 @@ const apiKeyController = {
         }
       }
 
+      // Validate scopes if provided
+      if (scopes) {
+        const scopeValidation = validateScopes(scopes);
+        if (!scopeValidation.valid) {
+          return res.status(400).json({
+            error: `Invalid scopes: ${scopeValidation.invalid.join(', ')}`
+          });
+        }
+      }
+
+      const permissionsForScopeResolution = permissions !== undefined
+        ? permissions
+        : existingKey.permissions;
+      const scopesForScopeResolution = scopes !== undefined
+        ? scopes
+        : existingKey.scopes;
+      const resolvedScopes = resolveEffectiveScopes({
+        permissions: permissionsForScopeResolution,
+        scopes: scopesForScopeResolution
+      });
+
+      if (resolvedScopes.includes('admin:*') && req.user.role !== 'admin') {
+        return res.status(403).json({
+          error: 'Only administrators can set admin scopes'
+        });
+      }
+
       const updatedKey = await ApiKey.update(keyId, {
         name,
         permissions,
+        scopes: permissions !== undefined || scopes !== undefined ? resolvedScopes : undefined,
         expiresAt,
         isActive
       });
@@ -197,6 +269,8 @@ const apiKeyController = {
           name: updatedKey.name,
           keyPrefix: updatedKey.key_prefix,
           permissions: updatedKey.permissions,
+          scopes: updatedKey.scopes,
+          effectiveScopes: updatedKey.effectiveScopes,
           lastUsedAt: updatedKey.last_used_at,
           expiresAt: updatedKey.expires_at,
           isActive: updatedKey.is_active,
@@ -259,10 +333,15 @@ const apiKeyController = {
       
       const result = await db.query(query);
       const apiKeys = result.rows.map(row => ({
+        permissions: parseJsonArray(row.permissions, ['read']),
+        scopes: parseJsonArray(row.scopes, []),
         id: row.id,
         name: row.name,
         keyPrefix: row.key_prefix,
-        permissions: JSON.parse(row.permissions),
+        effectiveScopes: resolveEffectiveScopes({
+          permissions: parseJsonArray(row.permissions, ['read']),
+          scopes: parseJsonArray(row.scopes, [])
+        }),
         lastUsedAt: row.last_used_at,
         expiresAt: row.expires_at,
         isActive: row.is_active,
