@@ -827,39 +827,44 @@ class Trade {
       trade_date = entry_time.split('T')[0];
     }
 
-    // Exit aggregates
+    // Exit aggregates — only set exit_price/exit_time on the trade when fully closed.
+    // This keeps the trade status "open" for partial exits since status is derived
+    // from exit_price being NULL (open) vs NOT NULL (closed).
     let exit_price = null;
     let exit_time = null;
+    const totalEntryQty = entryFills.reduce((sum, f) => sum + parseFloat(f.quantity), 0);
+    const totalExitQty = exitFills.reduce((sum, f) => sum + parseFloat(f.quantity), 0);
+    const isFullyClosed = exitFills.length > 0 && totalExitQty >= totalEntryQty;
 
+    // VWAP of exit fills (used for P&L calc even on partial exits)
+    let exitVwap = null;
     if (exitFills.length > 0) {
-      const totalExitQty = exitFills.reduce((sum, f) => sum + parseFloat(f.quantity), 0);
       const totalExitNotional = exitFills.reduce((sum, f) => sum + parseFloat(f.quantity) * parseFloat(f.price), 0);
-      exit_price = totalExitNotional / totalExitQty;
+      exitVwap = totalExitNotional / totalExitQty;
 
-      // Latest exit fill datetime
-      const exitTimes = exitFills.map(f => new Date(f.datetime));
-      exit_time = new Date(Math.max(...exitTimes)).toISOString();
+      // Only write exit_price/exit_time to the trade when position is fully closed
+      if (isFullyClosed) {
+        exit_price = exitVwap;
+        const exitTimes = exitFills.map(f => new Date(f.datetime));
+        exit_time = new Date(Math.max(...exitTimes)).toISOString();
+      }
     }
 
     // Sum all commissions and fees
     const commission = executions.reduce((sum, f) => sum + (parseFloat(f.commission) || 0), 0);
     const fees = executions.reduce((sum, f) => sum + (parseFloat(f.fees) || 0), 0);
 
-    // Calculate P&L if both entry and exit exist
+    // Calculate P&L if we have both entry fills and exit fills
     let pnl = null;
     let pnl_percent = null;
 
-    if (entry_price != null && exit_price != null && quantity > 0) {
-      // Determine multiplier based on instrument type
+    if (entry_price != null && exitVwap != null && quantity > 0) {
       const instrumentType = trade.instrument_type || 'stock';
       const contractSize = trade.contract_size;
       const pointValue = trade.point_value;
 
-      // Only calculate P&L on the exited portion
-      const exitedQty = exitFills.reduce((sum, f) => sum + parseFloat(f.quantity), 0);
-
-      pnl = this.calculatePnL(entry_price, exit_price, exitedQty, side, commission, fees, instrumentType, contractSize, pointValue);
-      pnl_percent = this.calculatePnLPercent(entry_price, exit_price, side, pnl, exitedQty, instrumentType, pointValue);
+      pnl = this.calculatePnL(entry_price, exitVwap, totalExitQty, side, commission, fees, instrumentType, contractSize, pointValue);
+      pnl_percent = this.calculatePnLPercent(entry_price, exitVwap, side, pnl, totalExitQty, instrumentType, pointValue);
     }
 
     return {
