@@ -450,7 +450,7 @@ class IBKRService {
    */
   async getExistingTradesForDuplicateCheck(userId) {
     const query = `
-      SELECT symbol, side, quantity, entry_price, exit_price, entry_time, exit_time,
+      SELECT id, symbol, side, quantity, entry_price, exit_price, entry_time, exit_time,
              pnl, executions, trade_date
       FROM trades
       WHERE user_id = $1
@@ -508,7 +508,7 @@ class IBKRService {
             console.log(`[IBKR] Trade ${symbol} has ${newExecCount} executions vs ${existingExecCount} existing - NOT duplicate (has additional data)`);
             // Mark for update handling
             newTrade.isUpdate = true;
-            newTrade.existingTradeId = existing.id;
+            newTrade.existingTradeId = newTrade.existingTradeId || existing.id;
             return false;
           }
         }

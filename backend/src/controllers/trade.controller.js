@@ -14,6 +14,7 @@ const path = require('path');
 const fs = require('fs').promises;
 const ChartService = require('../services/chartService');
 const axios = require('axios');
+const { sendV1NotImplemented } = require('../utils/apiResponse');
 
 // Helper function to invalidate analytics cache for a user
 function invalidateAnalyticsCache(userId) {
@@ -439,6 +440,71 @@ const tradeController = {
 
       res.status(201).json({ trade });
     } catch (error) {
+      next(error);
+    }
+  },
+
+  async createShellTrade(req, res, next) {
+    try {
+      // Normalize snake_case field names to camelCase for compatibility
+      const normalizedBody = { ...req.body };
+      if (normalizedBody.instrument_type && !normalizedBody.instrumentType) {
+        normalizedBody.instrumentType = normalizedBody.instrument_type;
+      }
+      if (normalizedBody.stop_loss !== undefined && normalizedBody.stopLoss === undefined) {
+        normalizedBody.stopLoss = normalizedBody.stop_loss;
+      }
+      if (normalizedBody.take_profit !== undefined && normalizedBody.takeProfit === undefined) {
+        normalizedBody.takeProfit = normalizedBody.take_profit;
+      }
+
+      const trade = await Trade.createShell(req.user.id, normalizedBody);
+
+      // Invalidate analytics cache
+      invalidateAnalyticsCache(req.user.id);
+
+      // Invalidate database analytics cache
+      try {
+        const AnalyticsCache = require('../services/analyticsCache');
+        await AnalyticsCache.invalidateUserCache(req.user.id);
+      } catch (cacheError) {
+        console.warn('[WARNING] Failed to invalidate analytics DB cache:', cacheError.message);
+      }
+
+      res.status(201).json({ trade });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async addFill(req, res, next) {
+    try {
+      const tradeId = req.params.id;
+
+      // Validate UUID format
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(tradeId)) {
+        return res.status(400).json({ error: 'Invalid trade ID format' });
+      }
+
+      const trade = await Trade.addFill(tradeId, req.user.id, req.body);
+
+      // Invalidate analytics cache
+      invalidateAnalyticsCache(req.user.id);
+
+      // Invalidate database analytics cache
+      try {
+        const AnalyticsCache = require('../services/analyticsCache');
+        await AnalyticsCache.invalidateUserCache(req.user.id);
+      } catch (cacheError) {
+        console.warn('[WARNING] Failed to invalidate analytics DB cache:', cacheError.message);
+      }
+
+      res.status(200).json({ trade });
+    } catch (error) {
+      if (error.status) {
+        return res.status(error.status).json({ error: error.message });
+      }
       next(error);
     }
   },
@@ -2121,7 +2187,8 @@ const tradeController = {
                 const {
                   totalQuantity, entryValue, exitValue, isExistingPosition,
                   existingTradeId, isUpdate, executionData, totalFees, totalFeesForSymbol,
-                  pnl, pnlPercent, newExecutionsAdded,
+                  pnl, pnlPercent, profitLoss, newExecutionsAdded,
+                  groupedTrades, originalNotes, existingExecutions,
                   ...cleanTradeData
                 } = tradeData;
 
@@ -3272,10 +3339,7 @@ const tradeController = {
         return res.status(404).json({ error: 'Trade not found' });
       }
 
-      res.json({
-        message: 'Trade journal entries not yet implemented',
-        entries: []
-      });
+      return sendV1NotImplemented(res, 'Trade journal entries are not part of the supported public API yet');
     } catch (error) {
       next(error);
     }
@@ -3288,10 +3352,7 @@ const tradeController = {
         return res.status(404).json({ error: 'Trade not found' });
       }
 
-      res.status(201).json({
-        message: 'Journal entry creation not yet implemented',
-        entry: null
-      });
+      return sendV1NotImplemented(res, 'Trade journal entry creation is not part of the supported public API yet');
     } catch (error) {
       next(error);
     }
@@ -3304,10 +3365,7 @@ const tradeController = {
         return res.status(404).json({ error: 'Trade not found' });
       }
 
-      res.json({
-        message: 'Journal entry update not yet implemented',
-        entry: null
-      });
+      return sendV1NotImplemented(res, 'Trade journal entry updates are not part of the supported public API yet');
     } catch (error) {
       next(error);
     }
@@ -3320,10 +3378,7 @@ const tradeController = {
         return res.status(404).json({ error: 'Trade not found' });
       }
 
-      res.json({
-        message: 'Journal entry deletion not yet implemented',
-        deleted: false
-      });
+      return sendV1NotImplemented(res, 'Trade journal entry deletion is not part of the supported public API yet');
     } catch (error) {
       next(error);
     }

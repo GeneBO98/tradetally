@@ -339,13 +339,18 @@ class GamificationScheduler {
   
   // Start the gamification scheduler
   static startScheduler() {
+    if (this.schedulerInterval || this.weeklyTimeout || this.weeklyInterval) {
+      console.log('[TARGET] Gamification scheduler is already running');
+      return;
+    }
+
     console.log('[TARGET] Starting gamification scheduler...');
     
     // Run immediately
     this.runScheduledTasks();
     
     // Run every hour
-    setInterval(() => {
+    this.schedulerInterval = setInterval(() => {
       this.runScheduledTasks();
     }, 60 * 60 * 1000);
     
@@ -357,15 +362,35 @@ class GamificationScheduler {
     
     const timeToNextSunday = nextSunday.getTime() - now.getTime();
     
-    setTimeout(() => {
+    this.weeklyTimeout = setTimeout(() => {
+      this.weeklyTimeout = null;
       this.generateWeeklyReport();
       
       // Then run weekly reports every week
-      setInterval(() => {
+      this.weeklyInterval = setInterval(() => {
         this.generateWeeklyReport();
       }, 7 * 24 * 60 * 60 * 1000);
       
     }, timeToNextSunday);
+  }
+
+  static stopScheduler() {
+    if (this.schedulerInterval) {
+      clearInterval(this.schedulerInterval);
+      this.schedulerInterval = null;
+    }
+
+    if (this.weeklyInterval) {
+      clearInterval(this.weeklyInterval);
+      this.weeklyInterval = null;
+    }
+
+    if (this.weeklyTimeout) {
+      clearTimeout(this.weeklyTimeout);
+      this.weeklyTimeout = null;
+    }
+
+    console.log('[TARGET] Gamification scheduler stopped');
   }
 }
 

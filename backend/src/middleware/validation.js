@@ -1,4 +1,16 @@
 const Joi = require('joi');
+const { isV1Request, sendV1Error } = require('../utils/apiResponse');
+const { ALL_SCOPES } = require('../utils/apiScopes');
+
+const WEBHOOK_EVENT_TYPES = Object.freeze([
+  'trade.created',
+  'trade.updated',
+  'trade.deleted',
+  'import.completed',
+  'broker_sync.completed',
+  'price_alert.triggered',
+  'enrichment.completed'
+]);
 
 // Sanitize sensitive fields from request body for logging
 const sanitizeForLogging = (body) => {
@@ -51,16 +63,22 @@ const validate = (schema) => {
     const { error } = schema.validate(req.body);
     if (error) {
       console.log('[VALIDATION ERROR] Details:', JSON.stringify(error.details, null, 2));
+      const fields = error.details.map(d => ({
+        field: d.path.join('.'),
+        message: d.message,
+        type: d.type
+      }));
       const errorMessages = error.details.map(d => `${d.path.join('.')}: ${d.message}`);
       console.log('[VALIDATION ERROR] Messages:', errorMessages);
+
+      if (isV1Request(req)) {
+        return sendV1Error(res, 400, 'VALIDATION_ERROR', 'Request validation failed', fields);
+      }
+
       return res.status(400).json({
         error: 'Validation Error',
         details: errorMessages.join(', '),
-        fields: error.details.map(d => ({
-          field: d.path.join('.'),
-          message: d.message,
-          type: d.type
-        }))
+        fields
       });
     }
     next();
@@ -176,6 +194,55 @@ const schemas = {
         })
       )
     ).optional()
+  }),
+
+  createShellTrade: Joi.object({
+    symbol: Joi.string().max(20).required(),
+    side: Joi.string().valid('long', 'short').required(),
+    instrumentType: Joi.string().valid('stock', 'option', 'future', 'crypto').default('stock'),
+    instrument_type: Joi.string().valid('stock', 'option', 'future', 'crypto').optional(),
+    broker: Joi.string().max(50).allow(''),
+    account_identifier: Joi.string().max(50).allow(''),
+    strategy: Joi.string().max(100).allow(''),
+    setup: Joi.string().max(100).allow(''),
+    tags: Joi.array().items(Joi.string().max(50)),
+    notes: Joi.string().allow(''),
+    confidence: Joi.number().integer().min(1).max(10).allow(null, ''),
+    stopLoss: Joi.alternatives().try(
+      Joi.number().positive(),
+      Joi.valid(null, '')
+    ),
+    takeProfit: Joi.alternatives().try(
+      Joi.number().positive(),
+      Joi.valid(null, '')
+    ),
+    takeProfitTargets: Joi.array().items(Joi.object({
+      price: Joi.number().positive().required(),
+      shares: Joi.number().integer().positive().allow(null).optional(),
+      percentage: Joi.number().min(1).max(100).allow(null).optional()
+    })).default([]),
+    chartUrl: Joi.string().uri().max(1000).allow(null, ''),
+    // Options-specific fields
+    underlyingSymbol: Joi.string().max(10).allow(null, ''),
+    optionType: Joi.string().valid('call', 'put').allow(null, ''),
+    strikePrice: Joi.number().positive().allow(null, ''),
+    expirationDate: Joi.date().iso().allow(null, ''),
+    contractSize: Joi.number().integer().positive().allow(null, ''),
+    // Futures-specific fields
+    underlyingAsset: Joi.string().max(50).allow(null, ''),
+    contractMonth: Joi.string().valid('JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC').allow(null, ''),
+    contractYear: Joi.number().integer().min(2020).max(2100).allow(null, ''),
+    tickSize: Joi.number().positive().allow(null, ''),
+    pointValue: Joi.number().positive().allow(null, '')
+  }),
+
+  addFill: Joi.object({
+    action: Joi.string().valid('buy', 'sell').required(),
+    quantity: Joi.number().positive().required(),
+    price: Joi.number().min(0).required(),
+    datetime: Joi.date().iso().required(),
+    commission: Joi.number().default(0),
+    fees: Joi.number().default(0)
   }),
 
   updateTrade: Joi.object({
@@ -401,14 +468,36 @@ const schemas = {
   createApiKey: Joi.object({
     name: Joi.string().min(1).max(255).required(),
     permissions: Joi.array().items(Joi.string().valid('read', 'write', 'admin')).default(['read']),
+    scopes: Joi.array().items(Joi.string().valid(...ALL_SCOPES)).optional(),
     expiresIn: Joi.number().integer().min(1).max(365).allow(null)
   }),
 
   updateApiKey: Joi.object({
     name: Joi.string().min(1).max(255),
     permissions: Joi.array().items(Joi.string().valid('read', 'write', 'admin')),
+    scopes: Joi.array().items(Joi.string().valid(...ALL_SCOPES)),
     expiresIn: Joi.number().integer().min(1).max(365).allow(null),
     isActive: Joi.boolean()
+  }).min(1),
+
+  // Webhook validation schemas
+  createWebhook: Joi.object({
+    url: Joi.string().uri({ scheme: ['http', 'https'] }).required(),
+    description: Joi.string().max(500).allow('', null),
+    eventTypes: Joi.array().items(Joi.string().valid(...WEBHOOK_EVENT_TYPES)).min(1).optional(),
+    customHeaders: Joi.object().pattern(Joi.string(), Joi.string().max(1000)).default({}),
+    isActive: Joi.boolean().default(true),
+    secret: Joi.string().max(255).allow('', null)
+  }),
+
+  updateWebhook: Joi.object({
+    url: Joi.string().uri({ scheme: ['http', 'https'] }),
+    description: Joi.string().max(500).allow('', null),
+    eventTypes: Joi.array().items(Joi.string().valid(...WEBHOOK_EVENT_TYPES)).min(1),
+    customHeaders: Joi.object().pattern(Joi.string(), Joi.string().max(1000)),
+    isActive: Joi.boolean(),
+    secret: Joi.string().max(255).allow('', null),
+    rotateSecret: Joi.boolean()
   }).min(1),
 
   // Diary validation schemas
