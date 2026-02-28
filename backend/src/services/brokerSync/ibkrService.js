@@ -233,7 +233,7 @@ class IBKRService {
     // Import trades
     const result = await this.importTrades(connection.userId, trades, existingContext);
 
-    console.log(`[IBKR] Sync complete: ${result.imported} imported, ${result.skipped} skipped, ${result.duplicates} duplicates, ${result.failed} failed`);
+    console.log(`[IBKR] Sync complete: ${result.imported} imported, ${result.updated || 0} updated, ${result.skipped} skipped, ${result.duplicates} duplicates, ${result.failed} failed`);
 
     return result;
   }

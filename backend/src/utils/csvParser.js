@@ -7055,20 +7055,27 @@ async function parseTradovatePerformanceReport(records, context = {}) {
         if (isNegative) pnl = -pnl;
       }
 
-      // Parse timestamps (Unix timestamps in milliseconds)
-      const boughtTimestamp = parseInt(record.boughtTimestamp);
-      const soldTimestamp = parseInt(record.soldTimestamp);
+      // Parse timestamps - supports both Unix milliseconds and date strings (MM/DD/YYYY HH:MM:SS)
+      let boughtTime, soldTime;
+      const rawBought = (record.boughtTimestamp || '').toString().trim();
+      const rawSold = (record.soldTimestamp || '').toString().trim();
 
-      if (isNaN(boughtTimestamp) || isNaN(soldTimestamp)) {
-        console.log(`[WARNING] Skipping row ${i + 1}: invalid timestamps`);
-        continue;
+      // Try parsing as Unix millisecond timestamps first
+      const boughtMs = parseInt(rawBought);
+      const soldMs = parseInt(rawSold);
+
+      if (!isNaN(boughtMs) && rawBought === boughtMs.toString()) {
+        // Pure numeric - Unix millisecond timestamp
+        boughtTime = new Date(boughtMs);
+        soldTime = new Date(soldMs);
+      } else {
+        // Try parsing as date string (MM/DD/YYYY HH:MM:SS)
+        boughtTime = new Date(rawBought);
+        soldTime = new Date(rawSold);
       }
 
-      const boughtTime = new Date(boughtTimestamp);
-      const soldTime = new Date(soldTimestamp);
-
       if (isNaN(boughtTime.getTime()) || isNaN(soldTime.getTime())) {
-        console.log(`[WARNING] Skipping row ${i + 1}: invalid date from timestamps`);
+        console.log(`[WARNING] Skipping row ${i + 1}: invalid timestamps - bought: "${rawBought}", sold: "${rawSold}"`);
         continue;
       }
 
@@ -7078,7 +7085,7 @@ async function parseTradovatePerformanceReport(records, context = {}) {
       }
 
       // Determine side: if bought first then sold -> LONG, if sold first then bought -> SHORT
-      const isLong = boughtTimestamp <= soldTimestamp;
+      const isLong = boughtTime.getTime() <= soldTime.getTime();
       const side = isLong ? 'long' : 'short';
       const entryPrice = isLong ? buyPrice : sellPrice;
       const exitPrice = isLong ? sellPrice : buyPrice;
@@ -7103,11 +7110,34 @@ async function parseTradovatePerformanceReport(records, context = {}) {
         underlyingSymbol: underlying,
         underlyingAsset: underlying,
         pointValue: pointValue,
-        contractSize: pointValue
+        contractSize: pointValue,
+        contractMonth: null,
+        contractYear: null
       } : {
         instrumentType: 'stock',
         contractSize: null
       };
+
+      // Extract contract month/year from futures symbol (e.g., MNQH6 -> H = March, 6 = 2026)
+      if (isFuture) {
+        const normalizedSymbol = rawSymbol.toString().toUpperCase().trim();
+        const contractMatch = normalizedSymbol.match(/^([A-Z]+)([FGHJKMNQUVXZ])(\d{1,2})$/);
+        if (contractMatch) {
+          const [, , monthCode, yearDigit] = contractMatch;
+          const monthCodes = { F: '01', G: '02', H: '03', J: '04', K: '05', M: '06', N: '07', Q: '08', U: '09', V: '10', X: '11', Z: '12' };
+          instrumentData.contractMonth = monthCodes[monthCode];
+
+          let year = parseInt(yearDigit);
+          if (year < 10) {
+            const currentYear = new Date().getFullYear();
+            const currentDecade = Math.floor(currentYear / 10) * 10;
+            year = currentDecade + year;
+          } else if (year < 100) {
+            year += year < 50 ? 2000 : 1900;
+          }
+          instrumentData.contractYear = year;
+        }
+      }
 
       // Determine account identifier
       const accountIdentifier = context.selectedAccountId || null;

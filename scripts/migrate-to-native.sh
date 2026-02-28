@@ -274,6 +274,16 @@ server {
     root /opt/tradetally/frontend/dist;
     index index.html;
 
+    # OWASP-aligned security headers for frontend responses
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://s3.tradingview.com https://analytics.whitenov.com https://cdn.jsdelivr.net https://unpkg.com https://cdn.promotekit.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; img-src 'self' data: https: blob:; font-src 'self' https://fonts.gstatic.com data:; connect-src 'self' https://api.finnhub.io https://www.alphavantage.co https://generativelanguage.googleapis.com https://promotekit.com; frame-src 'none'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self';" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Permissions-Policy "geolocation=(), camera=(), microphone=(), payment=(), usb=(), fullscreen=(), display-capture=()" always;
+    add_header Cross-Origin-Resource-Policy "same-site" always;
+    add_header Cross-Origin-Opener-Policy "same-origin" always;
+
     location /api {
         proxy_pass http://localhost:3000;
         proxy_http_version 1.1;
@@ -289,6 +299,22 @@ server {
 
     location / {
         try_files $uri $uri/ /index.html;
+    }
+
+    # Cache Vite-hashed assets (1 year, immutable)
+    location /assets/ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+
+        # Security headers must be repeated in location blocks (nginx inheritance quirk)
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://s3.tradingview.com https://analytics.whitenov.com https://cdn.jsdelivr.net https://unpkg.com https://cdn.promotekit.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; img-src 'self' data: https: blob:; font-src 'self' https://fonts.gstatic.com data:; connect-src 'self' https://api.finnhub.io https://www.alphavantage.co https://generativelanguage.googleapis.com https://promotekit.com; frame-src 'none'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self';" always;
+        add_header X-Frame-Options "DENY" always;
+        add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Permissions-Policy "geolocation=(), camera=(), microphone=(), payment=(), usb=(), fullscreen=(), display-capture=()" always;
+        add_header Cross-Origin-Resource-Policy "same-site" always;
+        add_header Cross-Origin-Opener-Policy "same-origin" always;
     }
 }
 EOF
