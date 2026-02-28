@@ -7,7 +7,7 @@ const CACHE_TTL = 300000; // 5 minutes
 async function searchSymbols(req, res) {
   try {
     const userId = req.user.id;
-    const query = (req.query.q || '').trim().toUpperCase();
+    const query = (typeof req.query.q === 'string' ? req.query.q : '').trim().toUpperCase();
 
     if (!query || query.length < 1) {
       return res.json({ results: [] });

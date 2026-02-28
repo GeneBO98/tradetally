@@ -73,6 +73,9 @@ const { isV1Request, sendV1Error } = require('./utils/apiResponse');
 const app = express();
 const PORT = process.env.PORT || 5001;
 
+// Disable X-Powered-By header to prevent server fingerprinting
+app.disable('x-powered-by');
+
 // Trust proxy headers for rate limiting and forwarded headers
 app.set('trust proxy', 1);
 

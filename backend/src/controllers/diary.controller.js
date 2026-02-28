@@ -3,6 +3,7 @@ const { validate, schemas } = require('../middleware/validation');
 const upload = require('../middleware/upload');
 const multer = require('multer');
 const aiService = require('../utils/aiService');
+const ensureString = require('../utils/ensureString');
 const db = require('../config/database');
 const imageProcessor = require('../utils/imageProcessor');
 const path = require('path');
@@ -267,7 +268,7 @@ const uploadDiaryImages = async (req, res) => {
         });
 
       } catch (error) {
-        console.error(`Failed to process image ${file.originalname}:`, error);
+        console.error('Failed to process image %s:', file.originalname, error);
         processedImages.push({
           filename: file.originalname,
           error: error.message
@@ -446,7 +447,7 @@ const deleteDiaryImage = async (req, res) => {
       await fs.unlink(filePath);
       console.log(`Deleted diary image: ${filePath}`);
     } catch (error) {
-      console.error(`Failed to delete diary image file ${filePath}:`, error.message);
+      console.error('Failed to delete diary image file %s:', filePath, error.message);
     }
 
     res.json({ message: 'Image deleted successfully' });
@@ -555,13 +556,14 @@ const searchEntries = async (req, res) => {
       tags
     } = req.query;
 
-    if (!search || search.trim().length < 2) {
+    const searchStr = ensureString(search);
+    if (!searchStr || searchStr.trim().length < 2) {
       return res.status(400).json({ error: 'Search query must be at least 2 characters' });
     }
 
     const offset = (parseInt(page) - 1) * parseInt(limit);
     const filters = {
-      search: search.trim(),
+      search: searchStr.trim(),
       limit: parseInt(limit),
       offset,
       entryType,

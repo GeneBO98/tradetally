@@ -166,7 +166,7 @@ const updateTag = async (req, res) => {
 
     if (name) {
       updates.push(`name = $${paramCount++}`);
-      values.push(name.trim());
+      values.push((typeof name === 'string' ? name : '').trim());
     }
 
     if (color) {

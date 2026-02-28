@@ -1,5 +1,6 @@
 const nodemailer = require('nodemailer');
 const unsubscribeService = require('./unsubscribeService');
+const escapeHtml = require('../utils/escapeHtml');
 
 function maskEmail(email) {
   if (!email || !email.includes('@')) return '***';
@@ -325,13 +326,14 @@ class EmailService {
 
     const isExpired = daysRemaining <= 0;
     const pricingUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/pricing`;
+    const safeUsername = escapeHtml(username);
 
     const content = `
       <h1 style="color: #18181b; font-size: 22px; margin: 0 0 8px 0; font-weight: 700; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
         ${isExpired ? 'Your Pro trial has ended' : `${daysRemaining} day${daysRemaining === 1 ? '' : 's'} left on your trial`}
       </h1>
       <p style="color: #71717a; font-size: 15px; line-height: 1.6; margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
-        Hi ${username},
+        Hi ${safeUsername},
       </p>
       <p style="color: #52525b; font-size: 15px; line-height: 1.6; margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
         ${isExpired
@@ -398,12 +400,13 @@ class EmailService {
     const pnlFormatted = totalPnL != null ? `$${Number(totalPnL).toFixed(2)}` : '$0.00';
     const pnlColor = totalPnL >= 0 ? '#16a34a' : '#dc2626';
     const unsubscribeUrl = userId ? this.getUnsubscribeUrl(userId) : `${process.env.FRONTEND_URL || 'https://tradetally.io'}/settings`;
+    const safeUsername = escapeHtml(username);
     const content = `
       <h1 style="color: #18181b; font-size: 22px; margin: 0 0 8px 0; font-weight: 700; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
         Your week in trades
       </h1>
       <p style="color: #71717a; font-size: 15px; line-height: 1.6; margin: 0 0 28px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
-        Hi ${username}, here's your 7-day summary.
+        Hi ${safeUsername}, here's your 7-day summary.
       </p>
 
       <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin: 0 0 28px 0;">
@@ -461,12 +464,13 @@ class EmailService {
     }
     const loginUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login`;
     const unsubscribeUrl = userId ? this.getUnsubscribeUrl(userId) : `${process.env.FRONTEND_URL || 'https://tradetally.io'}/settings`;
+    const safeUsername = escapeHtml(username);
     const content = `
       <h1 style="color: #18181b; font-size: 22px; margin: 0 0 8px 0; font-weight: 700; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
         Your journal is waiting
       </h1>
       <p style="color: #71717a; font-size: 15px; line-height: 1.6; margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
-        Hi ${username}, it's been ${daysInactive} days since your last visit. Your trades and analytics are right where you left them.
+        Hi ${safeUsername}, it's been ${daysInactive} days since your last visit. Your trades and analytics are right where you left them.
       </p>
 
       <div style="text-align: center; margin: 0 0 8px 0;">

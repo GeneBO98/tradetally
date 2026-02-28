@@ -205,9 +205,11 @@ router.get('/unknown-csv-headers', requireAdmin, async (req, res, next) => {
     const limitNum = Math.min(parseInt(limit, 10) || 25, 100);
     const offset = (pageNum - 1) * limitNum;
 
+    // Validate outcome against allowed values to prevent SQL injection
+    const validOutcomes = ['success', 'failure', 'unknown', 'partial'];
     let whereClause = '';
     const values = [];
-    if (outcome) {
+    if (outcome && typeof outcome === 'string' && validOutcomes.includes(outcome)) {
       values.push(outcome);
       whereClause = ` WHERE outcome = $${values.length}`;
     }

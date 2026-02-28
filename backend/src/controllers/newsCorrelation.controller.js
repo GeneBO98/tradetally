@@ -87,7 +87,7 @@ class NewsCorrelationController {
       }
 
       const details = await NewsCorrelationService.getPerformerDetails(userId, {
-        symbol: symbol.toUpperCase(),
+        symbol: (typeof symbol === 'string' ? symbol : '').toUpperCase(),
         sentiment,
         side
       });

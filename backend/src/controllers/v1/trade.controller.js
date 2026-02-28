@@ -209,7 +209,8 @@ const tradeV1Controller = {
 
   async bulkCreateTrades(req, res, next) {
     try {
-      const trades = Array.isArray(req.body?.trades) ? req.body.trades : [];
+      const rawTrades = Array.isArray(req.body?.trades) ? req.body.trades : [];
+      const trades = rawTrades.slice(0, 500); // Cap bulk operations
 
       if (trades.length === 0) {
         return sendV1Error(res, 400, 'BAD_REQUEST', 'A non-empty trades array is required');
@@ -262,7 +263,8 @@ const tradeV1Controller = {
 
   async bulkUpdateTrades(req, res, next) {
     try {
-      const trades = Array.isArray(req.body?.trades) ? req.body.trades : [];
+      const rawTrades = Array.isArray(req.body?.trades) ? req.body.trades : [];
+      const trades = rawTrades.slice(0, 500); // Cap bulk operations
 
       if (trades.length === 0) {
         return sendV1Error(res, 400, 'BAD_REQUEST', 'A non-empty trades array is required');
@@ -324,7 +326,8 @@ const tradeV1Controller = {
 
   async bulkDeleteTrades(req, res, next) {
     try {
-      const tradeIds = Array.isArray(req.body?.tradeIds) ? req.body.tradeIds : [];
+      const rawTradeIds = Array.isArray(req.body?.tradeIds) ? req.body.tradeIds : [];
+      const tradeIds = rawTradeIds.slice(0, 500); // Cap bulk operations
 
       if (tradeIds.length === 0) {
         return sendV1Error(res, 400, 'BAD_REQUEST', 'A non-empty tradeIds array is required');

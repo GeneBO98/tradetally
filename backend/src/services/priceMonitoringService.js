@@ -7,6 +7,7 @@ const nodemailer = require('nodemailer');
 const { v4: uuidv4 } = require('uuid');
 const TierService = require('./tierService');
 const NotificationPreferenceService = require('./notificationPreferenceService');
+const escapeHtml = require('../utils/escapeHtml');
 
 function maskEmail(email) {
   if (!email || !email.includes('@')) return '***';
@@ -426,17 +427,20 @@ class PriceMonitoringService {
       }
 
       const subject = `Price Alert: ${symbol}`;
+      const safeSymbol = escapeHtml(symbol);
+      const safeMessage = escapeHtml(message);
+      const safeAlertType = escapeHtml(alert.alert_type);
       const html = `
         <h2>Price Alert Triggered</h2>
-        <p><strong>${message}</strong></p>
+        <p><strong>${safeMessage}</strong></p>
         <hr>
         <h3>Alert Details:</h3>
         <ul>
-          <li><strong>Symbol:</strong> ${symbol}</li>
+          <li><strong>Symbol:</strong> ${safeSymbol}</li>
           <li><strong>Current Price:</strong> $${parseFloat(alert.current_price).toFixed(2)}</li>
-          <li><strong>Alert Type:</strong> ${alert.alert_type}</li>
+          <li><strong>Alert Type:</strong> ${safeAlertType}</li>
           ${alert.target_price ? `<li><strong>Target Price:</strong> $${parseFloat(alert.target_price).toFixed(2)}</li>` : ''}
-          ${alert.change_percent ? `<li><strong>Target Change:</strong> ${alert.change_percent}%</li>` : ''}
+          ${alert.change_percent ? `<li><strong>Target Change:</strong> ${escapeHtml(alert.change_percent)}%</li>` : ''}
           <li><strong>Time:</strong> ${new Date().toLocaleString()}</li>
         </ul>
         <p><em>This alert was sent from your TradeTally Pro account.</em></p>
