@@ -338,15 +338,36 @@ server {
         client_max_body_size 52M;
     }
 
+    # Security headers
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://s3.tradingview.com https://analytics.whitenov.com https://cdn.jsdelivr.net https://unpkg.com https://cdn.promotekit.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; img-src 'self' data: https: blob:; font-src 'self' https://fonts.gstatic.com data:; connect-src 'self' https://api.finnhub.io https://www.alphavantage.co https://generativelanguage.googleapis.com https://promotekit.com; frame-src 'none'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self';" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Permissions-Policy "geolocation=(), camera=(), microphone=(), payment=(), usb=(), fullscreen=(), display-capture=()" always;
+    add_header Cross-Origin-Resource-Policy "same-site" always;
+    add_header Cross-Origin-Opener-Policy "same-origin" always;
+
     # Frontend routing
     location / {
         try_files $uri $uri/ /index.html;
     }
 
-    # Security headers
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header X-XSS-Protection "1; mode=block" always;
+    # Cache Vite-hashed assets (1 year, immutable)
+    location /assets/ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+
+        # Security headers must be repeated in location blocks (nginx inheritance quirk)
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://s3.tradingview.com https://analytics.whitenov.com https://cdn.jsdelivr.net https://unpkg.com https://cdn.promotekit.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; img-src 'self' data: https: blob:; font-src 'self' https://fonts.gstatic.com data:; connect-src 'self' https://api.finnhub.io https://www.alphavantage.co https://generativelanguage.googleapis.com https://promotekit.com; frame-src 'none'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self';" always;
+        add_header X-Frame-Options "DENY" always;
+        add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Permissions-Policy "geolocation=(), camera=(), microphone=(), payment=(), usb=(), fullscreen=(), display-capture=()" always;
+        add_header Cross-Origin-Resource-Policy "same-site" always;
+        add_header Cross-Origin-Opener-Policy "same-origin" always;
+    }
 }
 ```
 
@@ -374,6 +395,8 @@ sudo certbot --nginx -d your-domain.com -d www.your-domain.com
 
 # Auto-renewal is set up automatically
 ```
+
+If you front the app with Cloudflare, also enable `Always Use HTTPS` and use SSL/TLS mode `Full (strict)` to eliminate "HTTPS content available via HTTP" findings for edge-served paths like `/cdn-cgi/*`.
 
 ## Step 7: Run Database Migrations
 
