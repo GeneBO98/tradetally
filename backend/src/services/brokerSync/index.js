@@ -4,6 +4,8 @@
  */
 
 const BrokerConnection = require('../../models/BrokerConnection');
+const Trade = require('../../models/Trade');
+const db = require('../../config/database');
 const ibkrService = require('./ibkrService');
 const schwabService = require('./schwabService');
 
@@ -60,9 +62,13 @@ class BrokerSyncService {
           throw new Error(`Unknown broker type: ${connection.brokerType}`);
       }
 
+      // Auto-close expired options after importing broker data
+      const expiredClosed = await this.closeExpiredOptions(connection.userId);
+      result.expiredClosed = expiredClosed;
+
       // Update sync log with results
       await BrokerConnection.updateSyncLog(syncLog.id, 'completed', {
-        tradesImported: result.imported,
+        tradesImported: result.imported + expiredClosed,
         tradesSkipped: result.skipped,
         tradesFailed: result.failed,
         duplicatesDetected: result.duplicates
@@ -75,12 +81,12 @@ class BrokerSyncService {
 
       await BrokerConnection.updateAfterSync(
         connectionId,
-        result.imported,
+        result.imported + expiredClosed,
         result.skipped,
         nextSync
       );
 
-      console.log(`[BROKER-SYNC] Sync completed: ${result.imported} imported, ${result.duplicates} duplicates`);
+      console.log(`[BROKER-SYNC] Sync completed: ${result.imported} imported, ${result.duplicates} duplicates, ${expiredClosed} expired options closed`);
 
       return {
         success: true,
@@ -164,6 +170,112 @@ class BrokerSyncService {
       default:
         return { valid: false, message: `Unknown broker type: ${brokerType}` };
     }
+  }
+
+  /**
+   * Auto-close open option positions where the expiration date has passed.
+   * If no exercise/assignment transaction was received from the broker, the option expired worthless.
+   * Closes them with exit_price = 0 and calculates final P&L.
+   * This is broker-agnostic and runs after every sync.
+   */
+  async closeExpiredOptions(userId) {
+    let closed = 0;
+
+    try {
+      const query = `
+        SELECT id, symbol, side, quantity, entry_price, commission, fees, expiration_date,
+               instrument_type, contract_size, point_value, executions, entry_time, trade_date
+        FROM trades
+        WHERE user_id = $1
+          AND instrument_type = 'option'
+          AND expiration_date IS NOT NULL
+          AND expiration_date < CURRENT_DATE
+          AND exit_price IS NULL
+          AND exit_time IS NULL
+      `;
+      const result = await db.query(query, [userId]);
+
+      if (result.rows.length === 0) {
+        return 0;
+      }
+
+      console.log(`[BROKER-SYNC] Found ${result.rows.length} expired option(s) to auto-close`);
+
+      for (const trade of result.rows) {
+        try {
+          const expDate = trade.expiration_date instanceof Date
+            ? trade.expiration_date.toISOString().split('T')[0]
+            : String(trade.expiration_date).split('T')[0];
+          const exitTime = `${expDate}T16:00:00`;
+
+          // Parse existing executions
+          let executions = [];
+          if (trade.executions) {
+            try {
+              executions = typeof trade.executions === 'string'
+                ? JSON.parse(trade.executions)
+                : trade.executions;
+            } catch (e) {
+              executions = [];
+            }
+          }
+
+          // Add expiration execution
+          const closingAction = trade.side === 'long' ? 'sell' : 'buy';
+          executions.push({
+            action: closingAction,
+            quantity: parseInt(trade.quantity),
+            price: 0,
+            datetime: exitTime,
+            fees: 0,
+            note: 'Option expired worthless (auto-closed)'
+          });
+
+          // Calculate P&L
+          const contractSize = trade.contract_size || 100;
+          const entryPrice = parseFloat(trade.entry_price);
+          const quantity = parseInt(trade.quantity);
+          const commission = parseFloat(trade.commission) || 0;
+          const fees = parseFloat(trade.fees) || 0;
+
+          let pnl;
+          if (trade.side === 'long') {
+            pnl = -(entryPrice * quantity * contractSize) - commission - fees;
+          } else {
+            pnl = (entryPrice * quantity * contractSize) - commission - fees;
+          }
+
+          const pnlPercent = entryPrice > 0
+            ? (pnl / (entryPrice * quantity * contractSize)) * 100
+            : 0;
+
+          console.log(`[BROKER-SYNC] Auto-closing expired ${trade.side} option: ${trade.symbol} (exp: ${expDate}), ${quantity} contracts @ $${entryPrice}, P&L: $${pnl.toFixed(2)}`);
+
+          await Trade.update(trade.id, userId, {
+            exitPrice: 0,
+            exitTime: exitTime,
+            pnl: pnl,
+            pnlPercent: pnlPercent,
+            executions: executions
+          }, {
+            skipAchievements: true,
+            skipApiCalls: true
+          });
+
+          closed++;
+        } catch (error) {
+          console.error(`[BROKER-SYNC] Failed to auto-close expired option ${trade.id}:`, error.message);
+        }
+      }
+
+      if (closed > 0) {
+        console.log(`[BROKER-SYNC] Auto-closed ${closed} expired option(s)`);
+      }
+    } catch (error) {
+      console.error('[BROKER-SYNC] Error checking for expired options:', error.message);
+    }
+
+    return closed;
   }
 
   /**
