@@ -526,7 +526,7 @@ const billingController = {
         transaction_id,
         product_id,
         environment,
-        jws_length: receipt_data ? receipt_data.length : 0
+        jws_length: (typeof receipt_data === 'string') ? receipt_data.length : 0
       });
 
       // Validate required fields

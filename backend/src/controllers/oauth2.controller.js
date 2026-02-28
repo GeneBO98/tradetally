@@ -94,7 +94,7 @@ const authorize = async (req, res) => {
     }
 
     // Parse and validate scopes
-    const requestedScopes = scope ? scope.split(' ') : ['openid', 'profile', 'email'];
+    const requestedScopes = scope ? (typeof scope === 'string' ? scope : '').split(' ') : ['openid', 'profile', 'email'];
     if (!oauth2Service.validateScopes(client, requestedScopes)) {
       return res.status(400).json({ error: 'invalid_scope', error_description: 'Invalid scope requested' });
     }
@@ -188,6 +188,16 @@ const authorizeApprove = async (req, res) => {
       return res.status(401).json({ error: 'unauthorized', error_description: 'User not authenticated' });
     }
 
+    // Validate client and redirect_uri before any redirect to prevent open redirect
+    const client = await oauth2Service.getClient(client_id);
+    if (!client) {
+      return res.status(400).json({ error: 'invalid_client' });
+    }
+
+    if (!oauth2Service.validateRedirectUri(client, redirect_uri)) {
+      return res.status(400).json({ error: 'invalid_request', error_description: 'Invalid redirect_uri' });
+    }
+
     // User denied
     if (!approved) {
       const redirectUrl = new URL(redirect_uri);
@@ -206,12 +216,6 @@ const authorizeApprove = async (req, res) => {
       } else {
         return res.json({ redirect_url: redirectUrl.toString() });
       }
-    }
-
-    // Get client
-    const client = await oauth2Service.getClient(client_id);
-    if (!client) {
-      return res.status(400).json({ error: 'invalid_client' });
     }
 
     // Parse scopes

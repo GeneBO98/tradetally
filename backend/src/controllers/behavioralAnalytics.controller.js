@@ -7,6 +7,7 @@ const RevengeTradeDetector = require('../services/revengeTradeDetector');
 const TierService = require('../services/tierService');
 const TickDataService = require('../services/tickDataService');
 const db = require('../config/database');
+const ensureString = require('../utils/ensureString');
 
 const behavioralAnalyticsController = {
   
@@ -19,7 +20,7 @@ const behavioralAnalyticsController = {
       const dateFilter = {};
       if (startDate) dateFilter.startDate = startDate;
       if (endDate) dateFilter.endDate = endDate;
-      if (accounts) dateFilter.accounts = accounts.split(',');
+      if (accounts) dateFilter.accounts = ensureString(accounts).split(',');
 
       const overview = await BehavioralAnalyticsService.getBehavioralOverview(userId, dateFilter);
       
@@ -48,7 +49,7 @@ const behavioralAnalyticsController = {
       const dateFilter = {};
       if (startDate) dateFilter.startDate = startDate;
       if (endDate) dateFilter.endDate = endDate;
-      if (accounts) dateFilter.accounts = accounts.split(',');
+      if (accounts) dateFilter.accounts = ensureString(accounts).split(',');
 
       const paginationOptions = {
         page: parseInt(page) || 1,
@@ -685,7 +686,7 @@ const behavioralAnalyticsController = {
       const dateFilter = {};
       if (startDate) dateFilter.startDate = startDate;
       if (endDate) dateFilter.endDate = endDate;
-      if (accounts) dateFilter.accounts = accounts.split(',');
+      if (accounts) dateFilter.accounts = ensureString(accounts).split(',');
 
       const paginationOptions = {
         page: parseInt(page) || 1,
@@ -744,7 +745,7 @@ const behavioralAnalyticsController = {
       const dateFilter = {};
       if (startDate) dateFilter.startDate = startDate;
       if (endDate) dateFilter.endDate = endDate;
-      if (accounts) dateFilter.accounts = accounts.split(',');
+      if (accounts) dateFilter.accounts = ensureString(accounts).split(',');
 
       const analysis = await OverconfidenceAnalyticsService.analyzeHistoricalTrades(userId, dateFilter);
 
@@ -913,7 +914,7 @@ const behavioralAnalyticsController = {
 
       console.log(`Loss aversion analysis requested for user ${userId}, dates: ${startDate} - ${endDate}`);
 
-      const accountsArray = accounts ? accounts.split(',') : undefined;
+      const accountsArray = accounts ? ensureString(accounts).split(',') : undefined;
       const analysis = await LossAversionAnalyticsService.analyzeLossAversion(userId, startDate, endDate, accountsArray);
       
       if (analysis.error) {
@@ -1016,7 +1017,7 @@ const behavioralAnalyticsController = {
       const { limit = 20, startDate, endDate, forceRefresh, accounts } = req.query;
 
       const shouldForceRefresh = forceRefresh === 'true' || forceRefresh === true;
-      const accountsArray = accounts ? accounts.split(',') : undefined;
+      const accountsArray = accounts ? ensureString(accounts).split(',') : undefined;
 
       console.log(`Top missed trades requested for user ${userId}, limit: ${limit}, dateRange: ${startDate} to ${endDate}, forceRefresh: ${shouldForceRefresh}`);
 
@@ -1057,7 +1058,7 @@ const behavioralAnalyticsController = {
 
       console.log(`Personality analysis requested for user ${userId}, dates: ${startDate} - ${endDate}`);
 
-      const accountsArray = accounts ? accounts.split(',') : undefined;
+      const accountsArray = accounts ? ensureString(accounts).split(',') : undefined;
       const analysis = await TradingPersonalityService.analyzePersonality(userId, startDate, endDate, accountsArray);
       
       if (analysis.error) {

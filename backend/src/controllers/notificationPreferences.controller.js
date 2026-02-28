@@ -80,18 +80,25 @@ class NotificationPreferencesController {
       }
 
       // Build dynamic query based on provided fields
+      // Field names are from a hardcoded allowlist (validFields above), not user input
+      const allowedFieldSet = new Set(validFields);
       const updateFields = [];
       const values = [userId];
       let paramCount = 2;
 
       providedFields.forEach(field => {
+        if (!allowedFieldSet.has(field)) return; // Extra safety: skip non-allowlisted fields
         updateFields.push(`${field} = $${paramCount}`);
         values.push(Boolean(req.body[field]));
         paramCount++;
       });
 
+      if (updateFields.length === 0) {
+        return res.status(400).json({ error: 'No valid fields to update' });
+      }
+
       const query = `
-        UPDATE users 
+        UPDATE users
         SET ${updateFields.join(', ')}, updated_at = CURRENT_TIMESTAMP
         WHERE id = $1
         RETURNING 

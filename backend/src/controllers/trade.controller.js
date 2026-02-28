@@ -8,6 +8,7 @@ const finnhub = require('../utils/finnhub');
 const cache = require('../utils/cache');
 const symbolCategories = require('../utils/symbolCategories');
 const imageProcessor = require('../utils/imageProcessor');
+const ensureString = require('../utils/ensureString');
 const upload = require('../middleware/upload');
 const currencyConverter = require('../utils/currencyConverter');
 const path = require('path');
@@ -48,17 +49,17 @@ const tradeController = {
         endDate,
         exitStartDate,
         exitEndDate,
-        tags: tags ? tags.split(',').map(t => t.trim()).filter(Boolean) : undefined,
+        tags: tags ? ensureString(tags).split(',').map(t => t.trim()).filter(Boolean) : undefined,
         strategy,
         sector,
         // Multi-select filters
-        strategies: strategies ? strategies.split(',') : undefined,
-        sectors: sectors ? sectors.split(',') : undefined,
+        strategies: strategies ? ensureString(strategies).split(',') : undefined,
+        sectors: sectors ? ensureString(sectors).split(',') : undefined,
         hasNews,
-        daysOfWeek: daysOfWeek ? daysOfWeek.split(',').map(d => parseInt(d)) : undefined,
-        instrumentTypes: instrumentTypes ? instrumentTypes.split(',') : undefined,
-        optionTypes: optionTypes ? optionTypes.split(',') : undefined,
-        qualityGrades: qualityGrades ? qualityGrades.split(',') : undefined,
+        daysOfWeek: daysOfWeek ? ensureString(daysOfWeek).split(',').map(d => parseInt(d)) : undefined,
+        instrumentTypes: instrumentTypes ? ensureString(instrumentTypes).split(',') : undefined,
+        optionTypes: optionTypes ? ensureString(optionTypes).split(',') : undefined,
+        qualityGrades: qualityGrades ? ensureString(qualityGrades).split(',') : undefined,
         // New advanced filters
         side,
         minPrice: minPrice ? parseFloat(minPrice) : undefined,
@@ -71,7 +72,7 @@ const tradeController = {
         pnlType,
         broker, // Keep for backward compatibility
         brokers, // New multi-select broker filter
-        accounts: accounts ? accounts.split(',') : undefined, // Account identifier filter
+        accounts: accounts ? ensureString(accounts).split(',') : undefined, // Account identifier filter
         // Pagination
         limit: parseInt(limit),
         offset: parseInt(offset)
@@ -162,16 +163,16 @@ const tradeController = {
         symbol,
         startDate,
         endDate,
-        tags: tags ? tags.split(',').map(t => t.trim()).filter(Boolean) : undefined,
+        tags: tags ? ensureString(tags).split(',').map(t => t.trim()).filter(Boolean) : undefined,
         strategy,
         sector,
-        strategies: strategies ? strategies.split(',') : undefined,
-        sectors: sectors ? sectors.split(',') : undefined,
+        strategies: strategies ? ensureString(strategies).split(',') : undefined,
+        sectors: sectors ? ensureString(sectors).split(',') : undefined,
         hasNews,
-        daysOfWeek: daysOfWeek ? daysOfWeek.split(',').map(d => parseInt(d)) : undefined,
-        instrumentTypes: instrumentTypes ? instrumentTypes.split(',') : undefined,
-        optionTypes: optionTypes ? optionTypes.split(',') : undefined,
-        qualityGrades: qualityGrades ? qualityGrades.split(',') : undefined,
+        daysOfWeek: daysOfWeek ? ensureString(daysOfWeek).split(',').map(d => parseInt(d)) : undefined,
+        instrumentTypes: instrumentTypes ? ensureString(instrumentTypes).split(',') : undefined,
+        optionTypes: optionTypes ? ensureString(optionTypes).split(',') : undefined,
+        qualityGrades: qualityGrades ? ensureString(qualityGrades).split(',') : undefined,
         side,
         minPrice: minPrice ? parseFloat(minPrice) : undefined,
         maxPrice: maxPrice ? parseFloat(maxPrice) : undefined,
@@ -182,7 +183,7 @@ const tradeController = {
         maxPnl: (maxPnl !== undefined && maxPnl !== null && maxPnl !== '') ? parseFloat(maxPnl) : undefined,
         pnlType,
         broker,
-        brokers: brokers ? brokers.split(',') : undefined
+        brokers: brokers ? ensureString(brokers).split(',') : undefined
       };
 
       const total = await Trade.getCountWithFilters(req.user.id, filters);
@@ -210,16 +211,16 @@ const tradeController = {
         symbol,
         startDate,
         endDate,
-        tags: tags ? tags.split(',').map(t => t.trim()).filter(Boolean) : undefined,
+        tags: tags ? ensureString(tags).split(',').map(t => t.trim()).filter(Boolean) : undefined,
         strategy,
         sector,
-        strategies: strategies ? strategies.split(',') : undefined,
-        sectors: sectors ? sectors.split(',') : undefined,
+        strategies: strategies ? ensureString(strategies).split(',') : undefined,
+        sectors: sectors ? ensureString(sectors).split(',') : undefined,
         hasNews,
-        daysOfWeek: daysOfWeek ? daysOfWeek.split(',').map(d => parseInt(d)) : undefined,
-        instrumentTypes: instrumentTypes ? instrumentTypes.split(',') : undefined,
-        optionTypes: optionTypes ? optionTypes.split(',') : undefined,
-        qualityGrades: qualityGrades ? qualityGrades.split(',') : undefined,
+        daysOfWeek: daysOfWeek ? ensureString(daysOfWeek).split(',').map(d => parseInt(d)) : undefined,
+        instrumentTypes: instrumentTypes ? ensureString(instrumentTypes).split(',') : undefined,
+        optionTypes: optionTypes ? ensureString(optionTypes).split(',') : undefined,
+        qualityGrades: qualityGrades ? ensureString(qualityGrades).split(',') : undefined,
         side,
         minPrice: minPrice ? parseFloat(minPrice) : undefined,
         maxPrice: maxPrice ? parseFloat(maxPrice) : undefined,
@@ -230,7 +231,7 @@ const tradeController = {
         maxPnl: (maxPnl !== undefined && maxPnl !== null && maxPnl !== '') ? parseFloat(maxPnl) : undefined,
         pnlType,
         broker,
-        brokers: brokers ? brokers.split(',') : undefined,
+        brokers: brokers ? ensureString(brokers).split(',') : undefined,
         // No pagination - export all matching trades
         limit: 999999,
         offset: 0
@@ -337,7 +338,7 @@ const tradeController = {
         symbol,
         startDate,
         endDate,
-        tags: tags ? tags.split(',') : undefined,
+        tags: tags ? ensureString(tags).split(',') : undefined,
         strategy,
         sector,
         side,
@@ -2457,7 +2458,7 @@ const tradeController = {
       const openTrades = await Trade.findByUser(req.user.id, {
         status: 'open',
         limit: 200,
-        accounts: accounts ? accounts.split(',') : undefined
+        accounts: accounts ? ensureString(accounts).split(',') : undefined
       });
 
       console.log(`Found ${openTrades.length} open trades`);
@@ -2545,9 +2546,9 @@ const tradeController = {
       };
 
       // Group trades by symbol and calculate net position
-      const positionMap = {};
+      const positionMap = Object.create(null);
       openTrades.forEach(trade => {
-        if (!positionMap[trade.symbol]) {
+        if (!Object.hasOwn(positionMap, trade.symbol)) {
         positionMap[trade.symbol] = {
           symbol: trade.symbol,
           side: null, // Will be determined by net position
@@ -2849,13 +2850,19 @@ const tradeController = {
         return res.status(400).json({ error: 'Cannot delete more than 50 imports at once' });
       }
 
+      // Validate all IDs are integers to prevent SQL injection
+      const safeImportIds = importIds.map(id => parseInt(id, 10)).filter(id => Number.isFinite(id));
+      if (safeImportIds.length === 0) {
+        return res.status(400).json({ error: 'No valid import IDs provided' });
+      }
+
       // Verify all imports belong to the user
-      const placeholders = importIds.map((_, i) => `$${i + 2}`).join(',');
+      const placeholders = safeImportIds.map((_, i) => `$${i + 2}`).join(',');
       const verifyQuery = `
         SELECT id FROM import_logs
         WHERE user_id = $1 AND id IN (${placeholders})
       `;
-      const verifyResult = await db.query(verifyQuery, [req.user.id, ...importIds]);
+      const verifyResult = await db.query(verifyQuery, [req.user.id, ...safeImportIds]);
 
       const validIds = verifyResult.rows.map(r => r.id);
       if (validIds.length === 0) {
@@ -2964,9 +2971,9 @@ const tradeController = {
         sector,
         strategy,
         // Multi-select filters
-        tags: tags ? tags.split(',').map(t => t.trim()).filter(Boolean) : undefined,
-        strategies: strategies ? strategies.split(',') : undefined,
-        sectors: sectors ? sectors.split(',') : undefined,
+        tags: tags ? ensureString(tags).split(',').map(t => t.trim()).filter(Boolean) : undefined,
+        strategies: strategies ? ensureString(strategies).split(',') : undefined,
+        sectors: sectors ? ensureString(sectors).split(',') : undefined,
         side,
         minPrice,
         maxPrice,
@@ -2978,13 +2985,13 @@ const tradeController = {
         pnlType,
         broker: broker || undefined,
         brokers: brokers || undefined,  // Support both broker and brokers
-        accounts: accounts ? accounts.split(',') : undefined, // Account identifier filter
+        accounts: accounts ? ensureString(accounts).split(',') : undefined, // Account identifier filter
         hasNews,
         holdTime,
-        daysOfWeek: daysOfWeek ? daysOfWeek.split(',').map(d => parseInt(d)) : undefined,
-        instrumentTypes: instrumentTypes ? instrumentTypes.split(',') : undefined,
-        optionTypes: optionTypes ? optionTypes.split(',') : undefined,
-        qualityGrades: qualityGrades ? qualityGrades.split(',') : undefined
+        daysOfWeek: daysOfWeek ? ensureString(daysOfWeek).split(',').map(d => parseInt(d)) : undefined,
+        instrumentTypes: instrumentTypes ? ensureString(instrumentTypes).split(',') : undefined,
+        optionTypes: optionTypes ? ensureString(optionTypes).split(',') : undefined,
+        qualityGrades: qualityGrades ? ensureString(qualityGrades).split(',') : undefined
       };
 
       console.log('[ANALYTICS] Raw query:', req.query);
@@ -3043,7 +3050,7 @@ const tradeController = {
     try {
       const year = parseInt(req.query.year) || new Date().getFullYear();
       const { accounts } = req.query;
-      const accountsArray = accounts ? accounts.split(',') : null;
+      const accountsArray = accounts ? ensureString(accounts).split(',') : null;
 
       console.log('[MONTHLY] Getting monthly performance for user:', req.user.id, 'year:', year, 'accounts:', accountsArray);
 
@@ -3530,7 +3537,7 @@ const tradeController = {
         return res.status(400).json({ error: 'Symbols parameter is required' });
       }
 
-      const symbolList = symbols.split(',').map(s => s.trim()).filter(s => s);
+      const symbolList = ensureString(symbols).split(',').map(s => s.trim()).filter(s => s);
       
       if (symbolList.length === 0) {
         return res.json([]);
@@ -3566,7 +3573,7 @@ const tradeController = {
           
           allNews.push(...enrichedNews);
         } catch (error) {
-          console.error(`Failed to fetch news for ${symbol}:`, error);
+          console.error('Failed to fetch news for %s:', symbol, error);
           errors.push({ symbol, error: error.message });
         }
       }
@@ -3588,7 +3595,7 @@ const tradeController = {
         return res.status(400).json({ error: 'Symbols parameter is required' });
       }
 
-      const symbolList = symbols.split(',').map(s => s.trim()).filter(s => s);
+      const symbolList = ensureString(symbols).split(',').map(s => s.trim()).filter(s => s);
       
       if (symbolList.length === 0) {
         return res.json([]);
@@ -3874,7 +3881,7 @@ const tradeController = {
           });
 
         } catch (error) {
-          console.error(`Failed to process image ${file.originalname}:`, error);
+          console.error('Failed to process image %s:', file.originalname, error);
           processedImages.push({
             filename: file.originalname,
             error: error.message

@@ -74,7 +74,7 @@ const aiController = {
       const { id: sessionId } = req.params;
       const { message } = req.body;
 
-      if (!message || message.trim() === '') {
+      if (!message || (typeof message !== 'string') || message.trim() === '') {
         return res.status(400).json({
           success: false,
           error: 'Message required',
