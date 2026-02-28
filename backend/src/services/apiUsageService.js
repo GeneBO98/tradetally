@@ -244,14 +244,18 @@ class ApiUsageService {
       };
 
       // Fill in actual usage from database
+      // Validate endpoint_type against known keys to prevent prototype pollution
+      const validEndpoints = new Set(Object.keys(usage.endpoints));
       result.rows.forEach(row => {
-        if (usage.endpoints[row.endpoint_type]) {
-          usage.endpoints[row.endpoint_type].used = row.call_count;
-          usage.endpoints[row.endpoint_type].remaining = Math.max(
+        const endpointType = String(row.endpoint_type);
+        if (validEndpoints.has(endpointType)) {
+          const endpoint = usage.endpoints[endpointType];
+          endpoint.used = row.call_count;
+          endpoint.remaining = Math.max(
             0,
-            RATE_LIMITS.free[row.endpoint_type] - row.call_count
+            RATE_LIMITS.free[endpointType] - row.call_count
           );
-          usage.endpoints[row.endpoint_type].resetAt = new Date(row.reset_at);
+          endpoint.resetAt = new Date(row.reset_at);
         }
       });
 

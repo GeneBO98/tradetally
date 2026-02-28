@@ -8,6 +8,7 @@ const Trade = require('../models/Trade');
 const logger = require('../utils/logger');
 const TargetHitAnalysisService = require('../services/targetHitAnalysisService');
 const { getFuturesPointValue, extractUnderlyingFromFuturesSymbol } = require('../utils/futuresUtils');
+const ensureString = require('../utils/ensureString');
 const { v4: uuidv4 } = require('uuid');
 
 /**
@@ -737,7 +738,9 @@ const tradeManagementController = {
   async getTradesForSelection(req, res) {
     try {
       const userId = req.user.id;
-      const { startDate, endDate, symbol, limit = 100, offset = 0, accounts } = req.query;
+      const { startDate, endDate, limit = 100, offset = 0 } = req.query;
+      const symbol = ensureString(req.query.symbol);
+      const accounts = ensureString(req.query.accounts);
 
       logger.info('[TRADE-MGMT] getTradesForSelection called', { userId, symbol, startDate, endDate, limit, offset, accounts });
 
@@ -1296,7 +1299,9 @@ const tradeManagementController = {
   async getRPerformance(req, res) {
     try {
       const userId = req.user.id;
-      const { startDate, endDate, symbol, limit = 2000, accounts } = req.query;
+      const { startDate, endDate, limit = 2000 } = req.query;
+      const symbol = ensureString(req.query.symbol);
+      const accounts = ensureString(req.query.accounts);
 
       logger.info('[TRADE-MGMT] getRPerformance called', { userId, symbol, startDate, endDate, limit, accounts });
 

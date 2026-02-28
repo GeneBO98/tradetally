@@ -1,7 +1,7 @@
 import { ref, computed, watch } from 'vue'
 import api from '@/services/api'
 
-const STORAGE_KEY = 'tradetally_global_account'
+export const STORAGE_KEY = 'tradetally_global_account'
 
 // Special filter value for trades without an account
 export const UNSORTED_ACCOUNT = '__unsorted__'

@@ -910,7 +910,7 @@ const getChartData = async (req, res) => {
 
         console.log(`[INVESTMENTS] Got ${candles.length} crypto data points for ${symbol}`);
       } catch (error) {
-        console.error(`[INVESTMENTS] CoinGecko chart error for ${symbol}:`, error.message);
+        console.error('[INVESTMENTS] CoinGecko chart error for %s:', symbol, error.message);
         return res.status(500).json({ error: `Failed to fetch crypto chart for ${symbol}` });
       }
     } else {

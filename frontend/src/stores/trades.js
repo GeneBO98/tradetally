@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import api from '@/services/api'
 import requestManager from '@/utils/requestManager'
+import { STORAGE_KEY as GLOBAL_ACCOUNT_KEY } from '@/composables/useGlobalAccountFilter'
 
 export const useTradesStore = defineStore('trades', () => {
   const trades = ref([])
@@ -373,8 +374,7 @@ export const useTradesStore = defineStore('trades', () => {
   function setFilters(newFilters) {
     // Check for global account filter from localStorage
     // This ensures the global account filter is ALWAYS respected, even on reset
-    const globalAccountKey = 'tradetally_global_account'
-    const globalAccount = localStorage.getItem(globalAccountKey)
+    const globalAccount = localStorage.getItem(GLOBAL_ACCOUNT_KEY)
 
     // If newFilters is empty object, reset all filters
     if (Object.keys(newFilters).length === 0) {
@@ -433,8 +433,7 @@ export const useTradesStore = defineStore('trades', () => {
 
   function resetFilters() {
     // Check for global account filter from localStorage
-    const globalAccountKey = 'tradetally_global_account'
-    const globalAccount = localStorage.getItem(globalAccountKey)
+    const globalAccount = localStorage.getItem(GLOBAL_ACCOUNT_KEY)
 
     filters.value = {
       symbol: '',

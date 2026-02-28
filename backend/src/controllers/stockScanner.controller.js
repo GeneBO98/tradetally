@@ -2,6 +2,7 @@
  * Stock Scanner Controller
  * API endpoints for Russell 2000 8 Pillars scan results
  */
+const ensureString = require('../utils/ensureString');
 
 const StockScannerService = require('../services/stockScannerService');
 
@@ -28,7 +29,7 @@ const getScanResults = async (req, res) => {
 
     // Parse pillars filter (comma-separated string to array of numbers)
     const pillarFilter = pillars
-      ? pillars.split(',').map(p => parseInt(p.trim())).filter(p => p >= 1 && p <= 8)
+      ? ensureString(pillars).split(',').map(p => parseInt(p.trim())).filter(p => p >= 1 && p <= 8)
       : [];
 
     const results = await StockScannerService.getScanResults({

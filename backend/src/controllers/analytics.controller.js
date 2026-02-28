@@ -8,6 +8,7 @@ const cache = require('../utils/cache');
 const MAEEstimator = require('../utils/maeEstimator');
 const symbolCategories = require('../utils/symbolCategories');
 const { sendV1NotImplemented } = require('../utils/apiResponse');
+const ensureString = require('../utils/ensureString');
 
 // Helper function to create a short but collision-resistant hash for cache keys
 function createFilterHash(filters) {
@@ -88,10 +89,15 @@ async function calculateMAEMFEAsync(userId, filterConditions, params) {
 
 // New helper to convert query params into the Trade model's filter format
 function convertQueryToTradeFilters(query) {
+  // Sanitize all query parameters at the boundary to prevent SQL injection.
+  // All string values are coerced to strings, arrays are validated, numbers are parsed.
+  const toSafeString = (val) => (typeof val === 'string' ? val : '');
+
   const toArray = (val) => {
-    if (Array.isArray(val)) return val.filter(Boolean);
-    if (typeof val === 'string' && val.trim() !== '') {
-      return val.split(',').map(s => s.trim()).filter(Boolean);
+    if (Array.isArray(val)) return val.map(v => String(v)).filter(Boolean);
+    const str = toSafeString(val);
+    if (str.trim() !== '') {
+      return str.split(',').map(s => s.trim()).filter(Boolean);
     }
     return [];
   };
@@ -104,36 +110,48 @@ function convertQueryToTradeFilters(query) {
 
   const toIntArray = (val) => toArray(val).map(v => parseInt(v, 10)).filter(v => Number.isInteger(v));
 
+  // Allowlist for enum-like fields to prevent injection via unexpected values
+  const validSides = ['long', 'short'];
+  const validStatuses = ['open', 'closed'];
+  const validPnlTypes = ['profit', 'loss'];
+  const validHoldTimes = [
+    '< 1 min', '1-5 min', '5-15 min', '15-30 min', '30-60 min',
+    '1-2 hours', '2-4 hours', '4-24 hours', '1-7 days', '1-4 weeks', '1+ months'
+  ];
+
+  const sideVal = toSafeString(query.side);
+  const statusVal = toSafeString(query.status);
+  const pnlTypeVal = toSafeString(query.pnlType);
+  const holdTimeVal = toSafeString(query.holdTime);
+
   // Normalize brokers: support both `brokers` (CSV) and `broker` (single)
-  const brokersRaw = query.brokers !== undefined && query.brokers !== null && String(query.brokers).trim() !== ''
-    ? String(query.brokers)
-    : (query.broker !== undefined && query.broker !== null && String(query.broker).trim() !== ''
-      ? String(query.broker)
-      : undefined);
+  const brokersStr = toSafeString(query.brokers).trim();
+  const brokerStr = toSafeString(query.broker).trim();
+  const brokersRaw = brokersStr !== '' ? brokersStr : (brokerStr !== '' ? brokerStr : undefined);
 
   return {
-    startDate: query.startDate || undefined,
-    endDate: query.endDate || undefined,
-    symbol: query.symbol ? String(query.symbol).toUpperCase().trim() : undefined,
+    startDate: toSafeString(query.startDate) || undefined,
+    endDate: toSafeString(query.endDate) || undefined,
+    symbol: query.symbol ? toSafeString(query.symbol).toUpperCase().trim() : undefined,
     strategies: toArray(query.strategies),
     sectors: toArray(query.sectors),
     tags: toArray(query.tags),
     hasNews: query.hasNews,
-    side: query.side || undefined,
+    side: validSides.includes(sideVal) ? sideVal : undefined,
     minPrice: toNumber(query.minPrice),
     maxPrice: toNumber(query.maxPrice),
     minQuantity: toNumber(query.minQuantity),
     maxQuantity: toNumber(query.maxQuantity),
-    status: query.status || undefined,
+    status: validStatuses.includes(statusVal) ? statusVal : undefined,
     minPnl: toNumber(query.minPnl),
     maxPnl: toNumber(query.maxPnl),
-    pnlType: query.pnlType || undefined,
-    brokers: brokersRaw, // accept CSV or single broker
+    pnlType: validPnlTypes.includes(pnlTypeVal) ? pnlTypeVal : undefined,
+    brokers: brokersRaw,
     daysOfWeek: toIntArray(query.daysOfWeek),
     qualityGrades: toArray(query.qualityGrades),
     instrumentTypes: toArray(query.instrumentTypes),
     optionTypes: toArray(query.optionTypes),
-    holdTime: query.holdTime || undefined,
+    holdTime: validHoldTimes.includes(holdTimeVal) ? holdTimeVal : undefined,
     hasRValue: query.hasRValue,
     accounts: toArray(query.accounts)
   };
@@ -363,6 +381,20 @@ function buildFilterConditions(query) {
   console.log('Final filter conditions:', filterConditions);
   console.log('Final params:', params);
   console.log('--- End Filter Debug ---');
+
+  // Validate that filterConditions only contains parameterized placeholders ($N), not raw user input.
+  // This serves as a security checkpoint - all user values MUST be in the params array.
+  if (filterConditions) {
+    // Strip all known safe SQL tokens and $N placeholders; remainder should be empty
+    const stripped = filterConditions
+      .replace(/\$\d+/g, '')
+      .replace(/(::\w+\[\]|::\w+)/g, '')
+      .replace(/\b(AND|OR|IN|IS|NOT|NULL|LIKE|UPPER|BETWEEN|EXTRACT|EPOCH|FROM|COALESCE|NOW|ANY|DOW|SELECT|WHERE|symbol|symbol_categories|finnhub_industry|trade_date|strategy|side|entry_price|exit_price|quantity|pnl|broker|tags|quality_grade|instrument_type|option_type|account_identifier|stop_loss|has_news|true|false|CAST|DECIMAL|AS)\b/gi, '')
+      .replace(/[(),\s>=<!.&]+/g, '');
+    if (stripped.length > 0) {
+      console.warn('[SECURITY] Unexpected tokens in filter conditions:', stripped.substring(0, 100));
+    }
+  }
 
   return { filterConditions, params };
 }
@@ -2080,7 +2112,7 @@ const analyticsController = {
               await new Promise(resolve => setTimeout(resolve, 1000));
               
             } catch (error) {
-              console.warn(`[WARNING] Failed to get sector for ${symbolInfo.symbol}:`, error.message);
+              console.warn('[WARNING] Failed to get sector for %s:', symbolInfo.symbol, error.message);
             }
           }
 

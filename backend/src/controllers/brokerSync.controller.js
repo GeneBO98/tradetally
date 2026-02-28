@@ -412,7 +412,7 @@ const brokerSyncController = {
 
           console.log(`[BROKER-SYNC] Sync completed for connection ${id}: ${result.imported || 0} imported`);
         } catch (error) {
-          console.error(`[BROKER-SYNC] Sync failed for connection ${id}:`, error.message);
+          console.error('[BROKER-SYNC] Sync failed for connection %s:', id, error.message);
           // Error handling is done in the service layer
         }
       });
