@@ -4,10 +4,19 @@
  */
 
 const BrokerConnection = require('../../models/BrokerConnection');
-const Trade = require('../../models/Trade');
 const db = require('../../config/database');
+const AnalyticsCache = require('../analyticsCache');
+const cache = require('../../utils/cache');
 const ibkrService = require('./ibkrService');
 const schwabService = require('./schwabService');
+
+// Helper function to invalidate in-memory analytics cache for a user
+function invalidateInMemoryCache(userId) {
+  const cacheKeys = Object.keys(cache.data || {}).filter(key =>
+    key.startsWith(`analytics:user_${userId}:`)
+  );
+  cacheKeys.forEach(key => cache.del(key));
+}
 
 class BrokerSyncService {
   /**
@@ -182,9 +191,9 @@ class BrokerSyncService {
     let closed = 0;
 
     try {
-      const query = `
+      const findQuery = `
         SELECT id, symbol, side, quantity, entry_price, commission, fees, expiration_date,
-               instrument_type, contract_size, point_value, executions, entry_time, trade_date
+               contract_size, executions
         FROM trades
         WHERE user_id = $1
           AND instrument_type = 'option'
@@ -193,13 +202,15 @@ class BrokerSyncService {
           AND exit_price IS NULL
           AND exit_time IS NULL
       `;
-      const result = await db.query(query, [userId]);
+      const result = await db.query(findQuery, [userId]);
 
       if (result.rows.length === 0) {
         return 0;
       }
 
       console.log(`[BROKER-SYNC] Found ${result.rows.length} expired option(s) to auto-close`);
+
+      const now = new Date();
 
       for (const trade of result.rows) {
         try {
@@ -228,40 +239,36 @@ class BrokerSyncService {
             price: 0,
             datetime: exitTime,
             fees: 0,
-            note: 'Option expired worthless (auto-closed)'
+            note: 'Option expired worthless (auto-closed by broker sync)'
           });
 
-          // Calculate P&L
-          const contractSize = trade.contract_size || 100;
-          const entryPrice = parseFloat(trade.entry_price);
           const quantity = parseInt(trade.quantity);
-          const commission = parseFloat(trade.commission) || 0;
-          const fees = parseFloat(trade.fees) || 0;
+          const entryPrice = parseFloat(trade.entry_price);
+          const contractSize = trade.contract_size || 100;
 
-          let pnl;
-          if (trade.side === 'long') {
-            pnl = -(entryPrice * quantity * contractSize) - commission - fees;
-          } else {
-            pnl = (entryPrice * quantity * contractSize) - commission - fees;
-          }
+          console.log(`[BROKER-SYNC] Auto-closing expired ${trade.side} option: ${trade.symbol} (exp: ${expDate}), ${quantity} contracts @ $${entryPrice}`);
 
-          const pnlPercent = entryPrice > 0
-            ? (pnl / (entryPrice * quantity * contractSize)) * 100
-            : 0;
+          // Direct SQL UPDATE - avoids Trade.update() complex side effects
+          const updateQuery = `
+            UPDATE trades
+            SET exit_time = $1,
+                exit_price = 0,
+                pnl = CASE
+                  WHEN side = 'long' THEN (0 - entry_price) * quantity * COALESCE(contract_size, 100)
+                  WHEN side = 'short' THEN (entry_price - 0) * quantity * COALESCE(contract_size, 100)
+                END,
+                pnl_percent = CASE
+                  WHEN side = 'long' THEN -100.0
+                  WHEN side = 'short' THEN 100.0
+                END,
+                auto_closed = true,
+                auto_close_reason = 'Option expired worthless (broker sync)',
+                executions = $2::jsonb,
+                updated_at = $3
+            WHERE id = $4 AND user_id = $5
+          `;
 
-          console.log(`[BROKER-SYNC] Auto-closing expired ${trade.side} option: ${trade.symbol} (exp: ${expDate}), ${quantity} contracts @ $${entryPrice}, P&L: $${pnl.toFixed(2)}`);
-
-          await Trade.update(trade.id, userId, {
-            exitPrice: 0,
-            exitTime: exitTime,
-            pnl: pnl,
-            pnlPercent: pnlPercent,
-            executions: executions
-          }, {
-            skipAchievements: true,
-            skipApiCalls: true
-          });
-
+          await db.query(updateQuery, [exitTime, JSON.stringify(executions), now, trade.id, userId]);
           closed++;
         } catch (error) {
           console.error(`[BROKER-SYNC] Failed to auto-close expired option ${trade.id}:`, error.message);
@@ -270,6 +277,9 @@ class BrokerSyncService {
 
       if (closed > 0) {
         console.log(`[BROKER-SYNC] Auto-closed ${closed} expired option(s)`);
+        // Invalidate both caches so analytics reflect the closed trades
+        await AnalyticsCache.invalidateUserCache(userId);
+        invalidateInMemoryCache(userId);
       }
     } catch (error) {
       console.error('[BROKER-SYNC] Error checking for expired options:', error.message);
