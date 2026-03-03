@@ -49,6 +49,8 @@ class OptionsScheduler {
               WHEN side = 'long' THEN -100.0
               WHEN side = 'short' THEN 100.0
             END,
+            auto_closed = true,
+            auto_close_reason = 'Option expired worthless (scheduler)',
             notes = CASE
               WHEN notes IS NULL OR notes = '' THEN 'Auto-closed: Option expired worthless'
               ELSE notes || ' | Auto-closed: Option expired worthless'
