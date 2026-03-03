@@ -39,7 +39,6 @@
                 <option value="questrade">Questrade</option>
                 <option value="tradestation">TradeStation</option>
                 <option value="tastytrade">Tastytrade</option>
-                <option value="tradingview_performance">TradingView Performance</option>
                 <optgroup v-if="customMappings.length > 0" label="Custom Importers">
                   <option
                     v-for="mapping in customMappings"
@@ -1231,11 +1230,12 @@ function formatBrokerName(broker) {
     webull: 'Webull',
     etrade: 'E*TRADE',
     tradingview: 'TradingView',
+    tradingview_performance: 'TradingView',
+    tradingview_paper: 'TradingView',
     tradovate: 'Tradovate',
     questrade: 'Questrade',
     tradestation: 'TradeStation',
     tastytrade: 'Tastytrade',
-    tradingview_performance: 'TradingView Performance',
     other: 'Other'
   }
   return brokerLabels[broker] || broker
