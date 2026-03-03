@@ -281,3 +281,6 @@ certificates/
 .claude/*
 performance-test.js
 backend/TELEMETRY.md
+
+# Customizable email templates (use email-templates.example/ as starting point)
+backend/src/email-templates/

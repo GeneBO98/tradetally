@@ -433,6 +433,33 @@
                             trial ended, no subscription
                         </p>
                     </div>
+                    <div
+                        class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-5 min-h-[7.5rem] flex flex-col justify-center min-w-0"
+                    >
+                        <p
+                            class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate"
+                        >
+                            Conversion Emails Sent
+                        </p>
+                        <p
+                            class="text-xl sm:text-2xl font-semibold text-gray-900 dark:text-white truncate mt-1"
+                        >
+                            {{
+                                formatNumber(
+                                    analytics.subscriptionMetrics
+                                        .conversionEmailsSent,
+                                )
+                            }}
+                        </p>
+                        <p
+                            class="text-xs text-gray-400 dark:text-gray-500 mt-0.5 truncate"
+                        >
+                            {{ formatNumber(analytics.subscriptionMetrics.convertedAfterEmail) }} converted
+                            <template v-if="analytics.subscriptionMetrics.conversionEmailsPending > 0">
+                                &middot; {{ formatNumber(analytics.subscriptionMetrics.conversionEmailsPending) }} pending
+                            </template>
+                        </p>
+                    </div>
                 </div>
 
                 <!-- Expired Trial Users Detail -->
@@ -459,6 +486,7 @@
                                     <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Username</th>
                                     <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Signed Up</th>
                                     <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Trial Expired</th>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Conversion Email</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
@@ -471,6 +499,12 @@
                                     <td class="px-4 py-2 text-sm text-gray-600 dark:text-gray-300">{{ user.username || '-' }}</td>
                                     <td class="px-4 py-2 text-sm text-gray-600 dark:text-gray-300">{{ formatShortDate(user.created_at) }}</td>
                                     <td class="px-4 py-2 text-sm text-gray-600 dark:text-gray-300">{{ formatShortDate(user.trial_expired_at) }}</td>
+                                    <td class="px-4 py-2 text-sm">
+                                        <span v-if="user.conversion_email_sent_at" class="text-green-600 dark:text-green-400">
+                                            Sent {{ formatShortDate(user.conversion_email_sent_at) }}
+                                        </span>
+                                        <span v-else class="text-gray-400 dark:text-gray-500">Not sent</span>
+                                    </td>
                                 </tr>
                             </tbody>
                         </table>

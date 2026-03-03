@@ -1,6 +1,7 @@
 const nodemailer = require('nodemailer');
 const unsubscribeService = require('./unsubscribeService');
 const escapeHtml = require('../utils/escapeHtml');
+const { loadTemplate, renderTemplate } = require('../utils/emailTemplateLoader');
 
 function maskEmail(email) {
   if (!email || !email.includes('@')) return '***';
@@ -497,6 +498,146 @@ class EmailService {
       console.log('Re-engagement email sent to', maskEmail(email));
     } catch (error) {
       console.error('Error sending re-engagement email to', maskEmail(email), error);
+      throw error;
+    }
+  }
+  /**
+   * Send trial conversion email to users whose Pro trial expired without subscribing.
+   * @param {string} email - Recipient email
+   * @param {string} username - Username for greeting
+   * @param {object} metrics - { totalTrades, winRate, totalPnL, topSymbol, brokersUsed, trialType, daysSinceExpiry }
+   * @param {number} userId - User ID for personalized unsubscribe link
+   */
+  static async sendTrialConversionEmail(email, username, metrics, userId) {
+    if (!this.isConfigured()) {
+      console.log('Email not configured, skipping trial conversion email');
+      return;
+    }
+
+    const upgradeUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/settings`;
+    const unsubscribeUrl = userId ? this.getUnsubscribeUrl(userId) : `${process.env.FRONTEND_URL || 'https://tradetally.io'}/settings`;
+    const safeUsername = escapeHtml(username);
+
+    // Determine engagement tier
+    const tier = metrics.totalTrades >= 20 ? 'high'
+      : metrics.totalTrades >= 5 ? 'medium'
+      : metrics.totalTrades > 0 ? 'low'
+      : 'never_imported';
+
+    // Build headline and messaging per tier
+    let headline, greeting, bodyText, ctaText, subject;
+    const pnlFormatted = metrics.totalPnL != null ? `$${Number(metrics.totalPnL).toFixed(2)}` : '$0.00';
+    const winRateFormatted = metrics.winRate != null ? `${Number(metrics.winRate).toFixed(1)}%` : 'N/A';
+
+    switch (tier) {
+      case 'high':
+        headline = 'Your trading data deserves Pro analytics';
+        greeting = `Hi ${safeUsername}, during your trial you imported ${metrics.totalTrades} trades with a ${winRateFormatted} win rate. That's serious activity.`;
+        bodyText = `Your ${pnlFormatted} P&L and insights on ${escapeHtml(metrics.topSymbol || 'your top symbols')} are still available — upgrade to keep advanced analytics, unlimited imports, and full journaling features.`;
+        ctaText = 'Upgrade to Pro';
+        subject = `${metrics.totalTrades} trades tracked — keep your Pro analytics`;
+        break;
+      case 'medium':
+        headline = 'Your trial insights are waiting';
+        greeting = `Hi ${safeUsername}, you tracked ${metrics.totalTrades} trades during your trial — nice start!`;
+        bodyText = `With Pro, you'll keep access to detailed analytics, unlimited broker imports${metrics.brokersUsed ? ` (including ${escapeHtml(metrics.brokersUsed)})` : ''}, and everything you need to improve your edge.`;
+        ctaText = 'Continue with Pro';
+        subject = 'Your trial insights are waiting — TradeTally';
+        break;
+      case 'low':
+        headline = 'Pick up where you left off';
+        greeting = `Hi ${safeUsername}, you started importing trades during your trial but there's so much more to explore.`;
+        bodyText = 'Pro gives you unlimited imports, advanced P&L analytics, win rate tracking, and broker integrations to make journaling effortless.';
+        ctaText = 'Explore Pro Features';
+        subject = 'Pick up where you left off — TradeTally';
+        break;
+      default: // never_imported
+        headline = 'You haven\'t tried the best part yet';
+        greeting = `Hi ${safeUsername}, your Pro trial ended but you haven't imported any trades yet.`;
+        bodyText = 'Import your first trades and see what TradeTally can do — detailed analytics, automatic broker parsing, and insights that help you trade better.';
+        ctaText = 'Start Your Pro Journey';
+        subject = 'You haven\'t tried the best part — TradeTally';
+        break;
+    }
+
+    // Build metrics block for high/medium engagement
+    let metricsBlock = '';
+    if (tier === 'high' || tier === 'medium') {
+      const pnlColor = metrics.totalPnL >= 0 ? '#16a34a' : '#dc2626';
+      metricsBlock = `
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin: 0 0 28px 0;">
+          <tr>
+            <td style="padding: 16px 20px; background-color: #fafafa; border-radius: 8px 0 0 8px; border-right: 1px solid #f4f4f5; width: 33%; text-align: center;">
+              <p style="color: #a1a1aa; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 6px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">Trades</p>
+              <p style="color: #18181b; font-size: 26px; font-weight: 700; margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">${metrics.totalTrades}</p>
+            </td>
+            <td style="padding: 16px 20px; background-color: #fafafa; border-right: 1px solid #f4f4f5; width: 33%; text-align: center;">
+              <p style="color: #a1a1aa; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 6px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">Win Rate</p>
+              <p style="color: #18181b; font-size: 26px; font-weight: 700; margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">${winRateFormatted}</p>
+            </td>
+            <td style="padding: 16px 20px; background-color: #fafafa; border-radius: 0 8px 8px 0; width: 33%; text-align: center;">
+              <p style="color: #a1a1aa; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 6px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">P&amp;L</p>
+              <p style="color: ${pnlColor}; font-size: 26px; font-weight: 700; margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">${pnlFormatted}</p>
+            </td>
+          </tr>
+        </table>`;
+    }
+
+    const footer = this.getMarketingFooter(unsubscribeUrl);
+
+    // Try custom template, fall back to inline
+    const templateHtml = loadTemplate('trial-conversion.html');
+    let content;
+    if (templateHtml) {
+      content = renderTemplate(templateHtml, {
+        headline,
+        greeting,
+        metricsBlock,
+        bodyText,
+        upgradeUrl,
+        buttonStyle: this.getButtonStyle(),
+        ctaText,
+        footer
+      });
+    } else {
+      content = `
+        <h1 style="color: #18181b; font-size: 22px; margin: 0 0 8px 0; font-weight: 700; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+          ${headline}
+        </h1>
+        <p style="color: #71717a; font-size: 15px; line-height: 1.6; margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+          ${greeting}
+        </p>
+        ${metricsBlock}
+        <p style="color: #71717a; font-size: 15px; line-height: 1.6; margin: 0 0 28px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+          ${bodyText}
+        </p>
+        <div style="text-align: center; margin: 0 0 8px 0;">
+          <a href="${upgradeUrl}" style="${this.getButtonStyle()}">${ctaText}</a>
+        </div>
+        ${footer}
+      `;
+    }
+
+    const mailOptions = {
+      from: { name: 'TradeTally', address: process.env.EMAIL_FROM || 'noreply@tradetally.io' },
+      to: email,
+      subject,
+      html: this.getBaseTemplate(headline, content),
+      text: `${greeting} ${bodyText} Upgrade: ${upgradeUrl} Unsubscribe: ${unsubscribeUrl}`,
+      headers: {
+        'List-Unsubscribe': `<${unsubscribeUrl}>`,
+        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+        'X-Entity-Ref-ID': `trial-conversion-${Date.now()}`,
+        'Message-ID': `<trial-conversion-${Date.now()}@tradetally.io>`
+      }
+    };
+
+    try {
+      const transporter = this.createTransporter();
+      await transporter.sendMail(mailOptions);
+      console.log('Trial conversion email sent to', maskEmail(email));
+    } catch (error) {
+      console.error('Error sending trial conversion email to', maskEmail(email), error);
       throw error;
     }
   }
