@@ -82,12 +82,18 @@ describe('v1 public OpenAPI contract', () => {
   test('capabilities reflect supported surface', () => {
     const capabilities = getPublicCapabilities();
 
-    expect(capabilities.data.sync).toBe(false);
-    expect(capabilities.data.offline_support).toBe(false);
-    expect(capabilities.data.conflict_resolution).toBe(false);
-    expect(capabilities.data.real_time).toBe(false);
-    expect(capabilities.platform.websockets).toBe(false);
+    // Verify supported features are present
+    expect(capabilities.data.trade_crud).toBe(true);
     expect(capabilities.data.bulk_operations).toBe(true);
     expect(capabilities.authentication.api_keys).toBe(true);
+    expect(capabilities.platform.request_ids).toBe(true);
+    expect(capabilities.platform.rate_limiting).toBe(true);
+
+    // Verify unsupported features are not advertised
+    expect(capabilities.data.sync).toBeUndefined();
+    expect(capabilities.data.offline_support).toBeUndefined();
+    expect(capabilities.data.conflict_resolution).toBeUndefined();
+    expect(capabilities.data.real_time).toBeUndefined();
+    expect(capabilities.platform.websockets).toBeUndefined();
   });
 });

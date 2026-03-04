@@ -26,16 +26,23 @@ describe('v1 server controller', () => {
     expect(res.json).toHaveBeenCalledWith({
       capabilities: expect.objectContaining({
         data: expect.objectContaining({
-          sync: false,
-          offline_support: false,
-          conflict_resolution: false,
-          real_time: false
+          trade_crud: true,
+          bulk_operations: true
         }),
         platform: expect.objectContaining({
-          websockets: false
+          request_ids: true,
+          rate_limiting: true
+        }),
+        authentication: expect.objectContaining({
+          api_keys: true
         })
       })
     });
+    // These features were removed from the capabilities object
+    const caps = res.json.mock.calls[0][0].capabilities;
+    expect(caps.data.sync).toBeUndefined();
+    expect(caps.data.offline_support).toBeUndefined();
+    expect(caps.platform.websockets).toBeUndefined();
     expect(next).not.toHaveBeenCalled();
   });
 });
