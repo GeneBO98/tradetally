@@ -115,10 +115,134 @@ async function getUserDayOfWeek(userId, timestamp) {
   return getDayOfWeekInTimezone(timestamp, userTimezone);
 }
 
+/**
+ * Convert a naive datetime string (no timezone info) from a given timezone to UTC.
+ * If the datetime already has a Z suffix or timezone offset, it is returned as-is.
+ *
+ * @param {string} naiveDatetime - Datetime string like "2025-09-05T16:33:00"
+ * @param {string} timezone - IANA timezone (e.g., "Europe/Berlin", "America/New_York")
+ * @returns {string|null} UTC datetime with Z suffix, e.g., "2025-09-05T14:33:00Z"
+ */
+function localToUTC(naiveDatetime, timezone) {
+  if (!naiveDatetime || !timezone || timezone === 'UTC') {
+    // If already UTC or no timezone provided, just ensure Z suffix
+    if (naiveDatetime && !naiveDatetime.endsWith('Z') && !/[+-]\d{2}:\d{2}$/.test(naiveDatetime)) {
+      return naiveDatetime + 'Z';
+    }
+    return naiveDatetime;
+  }
+
+  // If it already has timezone info, return as-is
+  if (naiveDatetime.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(naiveDatetime)) {
+    return naiveDatetime;
+  }
+
+  try {
+    // Parse the components from the naive datetime string
+    // Expected format: YYYY-MM-DDTHH:MM:SS or YYYY-MM-DD HH:MM:SS
+    const match = naiveDatetime.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})$/);
+    if (!match) {
+      // If we can't parse it, just append Z and hope for the best
+      return naiveDatetime + 'Z';
+    }
+
+    const [, yearStr, monthStr, dayStr, hourStr, minStr, secStr] = match;
+    const year = parseInt(yearStr);
+    const month = parseInt(monthStr) - 1; // JS months are 0-indexed
+    const day = parseInt(dayStr);
+    const hour = parseInt(hourStr);
+    const min = parseInt(minStr);
+    const sec = parseInt(secStr);
+
+    // Use Intl.DateTimeFormat to find the UTC offset for the given timezone at the given local time.
+    // Strategy: We create a UTC date with the same numeric components, then use the formatter
+    // to find what the offset is at that moment in the target timezone.
+
+    // First estimate: treat the datetime as UTC and find what the local time would be
+    const estimateUTC = new Date(Date.UTC(year, month, day, hour, min, sec));
+
+    // Get the local representation in the target timezone
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    }).formatToParts(estimateUTC);
+
+    const getPart = (type) => {
+      const p = parts.find(p => p.type === type);
+      return p ? parseInt(p.value) : 0;
+    };
+
+    const localYear = getPart('year');
+    const localMonth = getPart('month') - 1;
+    const localDay = getPart('day');
+    const localHour = getPart('hour') === 24 ? 0 : getPart('hour');
+    const localMin = getPart('minute');
+    const localSec = getPart('second');
+
+    // Compute offset: local = UTC + offset, so offset = local - UTC (in ms)
+    const localMs = new Date(localYear, localMonth, localDay, localHour, localMin, localSec).getTime();
+    const utcMs = new Date(year, month, day, hour, min, sec).getTime();
+    const offsetMs = localMs - utcMs;
+
+    // The actual UTC time = naive datetime interpreted as local - offset
+    // naive local = UTC + offset => UTC = naive local - offset
+    const resultUTC = new Date(estimateUTC.getTime() - offsetMs);
+
+    // Verify with a second iteration for DST edge cases
+    const verifyParts = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    }).formatToParts(resultUTC);
+
+    const getVerifyPart = (type) => {
+      const p = verifyParts.find(p => p.type === type);
+      return p ? parseInt(p.value) : 0;
+    };
+
+    const vHour = getVerifyPart('hour') === 24 ? 0 : getVerifyPart('hour');
+    const vMin = getVerifyPart('minute');
+
+    // If the verification doesn't match (DST transition edge case), adjust
+    if (vHour !== hour || vMin !== min) {
+      const vLocalMs = new Date(
+        getVerifyPart('year'),
+        getVerifyPart('month') - 1,
+        getVerifyPart('day'),
+        vHour,
+        vMin,
+        getVerifyPart('second')
+      ).getTime();
+      const targetLocalMs = new Date(year, month, day, hour, min, sec).getTime();
+      const correction = targetLocalMs - vLocalMs;
+      const correctedUTC = new Date(resultUTC.getTime() + correction);
+      return correctedUTC.toISOString().replace(/\.\d{3}Z$/, 'Z');
+    }
+
+    return resultUTC.toISOString().replace(/\.\d{3}Z$/, 'Z');
+  } catch (error) {
+    console.error('Error in localToUTC:', error, { naiveDatetime, timezone });
+    // Fallback: just append Z
+    return naiveDatetime + 'Z';
+  }
+}
+
 module.exports = {
   getUserTimezone,
   getDateInTimezone,
   getDayOfWeekInTimezone,
   getUserLocalDate,
-  getUserDayOfWeek
+  getUserDayOfWeek,
+  localToUTC
 };

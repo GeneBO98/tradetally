@@ -16,6 +16,7 @@ const fs = require('fs').promises;
 const ChartService = require('../services/chartService');
 const axios = require('axios');
 const { sendV1NotImplemented } = require('../utils/apiResponse');
+const { getUserTimezone } = require('../utils/timezone');
 
 // Helper function to invalidate analytics cache for a user
 function invalidateAnalyticsCache(userId) {
@@ -1548,10 +1549,15 @@ const tradeController = {
             }
           }
 
+          // Fetch user's timezone for converting CSV times to UTC
+          const userTimezone = await getUserTimezone(fileUserId);
+          logger.logImport(`User timezone: ${userTimezone}`);
+
           const context = {
             existingPositions,
             existingExecutions,
             userId: req.user.id,
+            userTimezone,
             tradeGroupingSettings: {
               enabled: userSettings.enable_trade_grouping ?? true,
               timeGapMinutes: userSettings.trade_grouping_time_gap_minutes ?? 60

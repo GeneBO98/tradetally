@@ -6,6 +6,7 @@ const cusipQueue = require('./cusipQueue');
 const currencyConverter = require('./currencyConverter');
 const db = require('../config/database');
 const { getFuturesPointValue, extractUnderlyingFromFuturesSymbol } = require('./futuresUtils');
+const { localToUTC } = require('./timezone');
 
 // CUSIP resolution is now handled by the cusipQueue module
 
@@ -1277,7 +1278,53 @@ function applyTradeGrouping(trades, settings) {
  * @param {Array} unresolvedCusips - Optional unresolved CUSIPs
  * @returns {Object} - { trades, diagnostics, unresolvedCusips }
  */
-function wrapResultWithDiagnostics(trades, diagnostics, unresolvedCusips = []) {
+/**
+ * Convert all naive datetime fields in trades to UTC using the user's timezone.
+ * Fields that already have a Z suffix or timezone offset are left unchanged.
+ * Also converts datetime fields inside execution arrays.
+ *
+ * @param {Array} trades - Array of trade objects
+ * @param {string} timezone - IANA timezone (e.g., "America/New_York")
+ * @returns {Array} trades with datetime fields converted to UTC
+ */
+function convertTradeDatetimesToUTC(trades, timezone) {
+  if (!timezone || timezone === 'UTC' || !trades || trades.length === 0) {
+    return trades;
+  }
+
+  const datetimeFields = ['entryTime', 'exitTime', 'entry_time', 'exit_time'];
+  const executionDatetimeFields = ['datetime', 'time', 'entry_time', 'exit_time'];
+
+  for (const trade of trades) {
+    for (const field of datetimeFields) {
+      if (trade[field] && typeof trade[field] === 'string') {
+        trade[field] = localToUTC(trade[field], timezone);
+      }
+    }
+
+    // Also convert execution datetimes if present
+    const executions = trade.executions || trade.execution;
+    if (Array.isArray(executions)) {
+      for (const exec of executions) {
+        for (const field of executionDatetimeFields) {
+          if (exec[field] && typeof exec[field] === 'string') {
+            exec[field] = localToUTC(exec[field], timezone);
+          }
+        }
+      }
+    }
+  }
+
+  return trades;
+}
+
+function wrapResultWithDiagnostics(trades, diagnostics, unresolvedCusips = [], userTimezone = null) {
+  // Convert naive datetimes to UTC using the user's timezone
+  if (userTimezone && userTimezone !== 'UTC') {
+    console.log(`[TIMEZONE] Converting trade datetimes from ${userTimezone} to UTC`);
+    convertTradeDatetimesToUTC(trades, userTimezone);
+  }
+
   // Update diagnostics with final counts
   diagnostics.parsedRows = trades.length;
 
@@ -1336,9 +1383,11 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
     }
 
     const existingPositions = context.existingPositions || {};
+    const userTimezone = context.userTimezone || null;
     console.log(`\n=== IMPORT CONTEXT ===`);
     console.log(`Broker format: ${broker}`);
     console.log(`User ID: ${context.userId || 'NOT PROVIDED'}`);
+    console.log(`User timezone: ${userTimezone || 'NOT PROVIDED (will store as-is)'}`);
     console.log(`Existing open positions: ${Object.keys(existingPositions).length}`);
     Object.entries(existingPositions).forEach(([symbol, position]) => {
       console.log(`  ${symbol}: ${position.side} ${position.quantity} shares @ $${position.entryPrice}`);
@@ -1880,7 +1929,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
         finalTrades = applyTradeGrouping(result, tradeGroupingSettings);
       }
 
-      return wrapResultWithDiagnostics(finalTrades, diagnostics);
+      return wrapResultWithDiagnostics(finalTrades, diagnostics, [], userTimezone);
     }
 
     if (broker === 'schwab') {
@@ -1893,7 +1942,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       // Trade grouping would incorrectly merge multiple round trips on the same day
       console.log('[INFO] Skipping trade grouping for Schwab (already grouped by round-trip logic)');
 
-      return wrapResultWithDiagnostics(result, diagnostics);
+      return wrapResultWithDiagnostics(result, diagnostics, [], userTimezone);
     }
 
     if (broker === 'thinkorswim') {
@@ -1908,7 +1957,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
         finalTrades = applyTradeGrouping(result, tradeGroupingSettings);
       }
 
-      return wrapResultWithDiagnostics(finalTrades, diagnostics);
+      return wrapResultWithDiagnostics(finalTrades, diagnostics, [], userTimezone);
     }
 
     if (broker === 'papermoney') {
@@ -1923,7 +1972,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
         finalTrades = applyTradeGrouping(result, tradeGroupingSettings);
       }
 
-      return wrapResultWithDiagnostics(finalTrades, diagnostics);
+      return wrapResultWithDiagnostics(finalTrades, diagnostics, [], userTimezone);
     }
 
     if (broker === 'tradingview') {
@@ -1938,14 +1987,14 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
         finalTrades = applyTradeGrouping(result, tradeGroupingSettings);
       }
 
-      return wrapResultWithDiagnostics(finalTrades, diagnostics);
+      return wrapResultWithDiagnostics(finalTrades, diagnostics, [], userTimezone);
     }
 
     if (broker === 'tradingview_paper') {
       console.log('Starting TradingView Paper Trading parsing');
       const result = await parseTradingViewPaperTrades(records, context);
       console.log('Finished TradingView Paper Trading parsing');
-      return wrapResultWithDiagnostics(result, diagnostics);
+      return wrapResultWithDiagnostics(result, diagnostics, [], userTimezone);
     }
 
     if (broker === 'ibkr' || broker === 'ibkr_trade_confirmation') {
@@ -1953,7 +2002,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       const tradeGroupingSettings = context.tradeGroupingSettings || { enabled: true, timeGapMinutes: 60 };
       const result = await parseIBKRTransactions(records, existingPositions, tradeGroupingSettings, context);
       console.log('Finished IBKR transaction parsing');
-      return wrapResultWithDiagnostics(result, diagnostics);
+      return wrapResultWithDiagnostics(result, diagnostics, [], userTimezone);
     }
 
     if (broker === 'webull') {
@@ -1968,7 +2017,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
         finalTrades = applyTradeGrouping(result, tradeGroupingSettings);
       }
 
-      return wrapResultWithDiagnostics(finalTrades, diagnostics);
+      return wrapResultWithDiagnostics(finalTrades, diagnostics, [], userTimezone);
     }
 
     if (broker === 'tradovate') {
@@ -1984,7 +2033,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
         console.log('Starting Tradovate Performance Report parsing');
         const result = await parseTradovatePerformanceReport(records, context);
         console.log('Finished Tradovate Performance Report parsing');
-        return wrapResultWithDiagnostics(result, diagnostics);
+        return wrapResultWithDiagnostics(result, diagnostics, [], userTimezone);
       }
 
       console.log('Starting Tradovate transaction parsing');
@@ -1996,7 +2045,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       // Trade grouping would incorrectly merge multiple round trips when exit and new entry have same timestamp
       console.log('[INFO] Skipping trade grouping for Tradovate (already grouped by round-trip logic)');
 
-      return wrapResultWithDiagnostics(result, diagnostics);
+      return wrapResultWithDiagnostics(result, diagnostics, [], userTimezone);
     }
 
     if (broker === 'questrade') {
@@ -2008,7 +2057,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       // and trade grouping would incorrectly merge partial close trades back together
       console.log('[INFO] Skipping trade grouping for Questrade (already grouped by round-trip logic)');
 
-      return wrapResultWithDiagnostics(result, diagnostics);
+      return wrapResultWithDiagnostics(result, diagnostics, [], userTimezone);
     }
 
     if (broker === 'tastytrade') {
@@ -2019,7 +2068,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       // Skip trade grouping for Tastytrade - the parser already handles position tracking
       console.log('[INFO] Skipping trade grouping for Tastytrade (already grouped by round-trip logic)');
 
-      return wrapResultWithDiagnostics(result, diagnostics);
+      return wrapResultWithDiagnostics(result, diagnostics, [], userTimezone);
     }
 
     // TradeStation exports transactions, needs position tracking
@@ -2111,7 +2160,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       }
 
       console.log(`[SUCCESS] Parsed ${completedTrades.length} TradeStation trades`);
-      return wrapResultWithDiagnostics(completedTrades, diagnostics);
+      return wrapResultWithDiagnostics(completedTrades, diagnostics, [], userTimezone);
     }
 
     // ProjectX provides completed trades (not transactions), use simple parsing
@@ -2162,7 +2211,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
         finalTrades = applyTradeGrouping(trades, tradeGroupingSettings);
       }
 
-      return wrapResultWithDiagnostics(finalTrades, diagnostics);
+      return wrapResultWithDiagnostics(finalTrades, diagnostics, [], userTimezone);
     }
 
     // TradingView Performance also provides completed trades (not transactions), use simple parsing
@@ -2198,7 +2247,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
         finalTrades = applyTradeGrouping(trades, tradeGroupingSettings);
       }
 
-      return wrapResultWithDiagnostics(finalTrades, diagnostics);
+      return wrapResultWithDiagnostics(finalTrades, diagnostics, [], userTimezone);
     }
 
     // Generic parser - Use transaction-based processing for better position tracking
@@ -2218,7 +2267,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
         finalTrades = applyTradeGrouping(result, tradeGroupingSettings);
       }
 
-      return wrapResultWithDiagnostics(finalTrades, diagnostics);
+      return wrapResultWithDiagnostics(finalTrades, diagnostics, [], userTimezone);
     }
 
     // Fallback to simple row-by-row parsing (legacy mode)
@@ -2352,7 +2401,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
       finalTrades = applyTradeGrouping(trades, tradeGroupingSettings);
     }
 
-    return wrapResultWithDiagnostics(finalTrades, diagnostics);
+    return wrapResultWithDiagnostics(finalTrades, diagnostics, [], userTimezone);
   } catch (error) {
     throw new Error(`CSV parsing failed: ${error.message}`);
   }
