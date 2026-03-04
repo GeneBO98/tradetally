@@ -337,6 +337,14 @@ function detectBrokerFormat(fileBuffer) {
       return 'webull';
     }
 
+    // Webull alternate format detection - B/S, Side Type, Filled Qty, Filled Avg Price
+    if (headers.includes('b/s') && headers.includes('side type') &&
+        headers.includes('filled qty') && headers.includes('filled avg price') &&
+        headers.includes('filled time') && headers.includes('symbol')) {
+      console.log('[AUTO-DETECT] Detected: Webull (alternate format)');
+      return 'webull';
+    }
+
     // ProjectX detection - look for ContractName, EnteredAt, ExitedAt, PnL columns
     if (headers.includes('contractname') &&
         headers.includes('enteredat') &&
@@ -4792,6 +4800,7 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
 
   const transactions = [];
   const completedTrades = [];
+  const lastTradeEndTime = {};
 
   // Debug: Log first few records to see structure
   console.log('Sample TradingView records:');
@@ -6264,22 +6273,39 @@ async function parseWebullTransactions(records, existingPositions = {}, context 
     try {
       // Get symbol from Symbol column (full option symbol like SPY251114C00672000)
       const symbol = cleanString(record.Symbol || record.symbol);
-      const side = cleanString(record.Side || record.side).toLowerCase();
+      // Support both formats: "Side" (old) and "B/S" (alternate)
+      const sideRaw = cleanString(record.Side || record.side || record['B/S'] || record['b/s']);
+      const side = sideRaw.toLowerCase();
       const status = cleanString(record.Status || record.status);
-      const filled = parseInt(record.Filled || record.filled || 0);
-      const price = parseFloat(record['Avg Price'] || record['avg price'] || record.Price || record.price || 0);
+      // Support both "Filled" (old) and "Filled Qty" (alternate)
+      const filled = parseInt(record.Filled || record.filled || record['Filled Qty'] || record['filled qty'] || 0);
+      // Support both "Avg Price" (old) and "Filled Avg Price" (alternate, may have $ prefix)
+      const priceRaw = cleanString(record['Avg Price'] || record['avg price'] || record['Filled Avg Price'] || record['filled avg price'] || record.Price || record.price || '0');
+      const price = parseFloat(priceRaw.replace(/^\$/, ''));
       const filledTime = record['Filled Time'] || record['filled time'] || '';
 
       const diag = context.diagnostics;
 
-      // Only process filled orders
-      if (status.toLowerCase() !== 'filled' || filled === 0) {
+      // Determine if this is the alternate format (no Status column, uses B/S + Side Type)
+      const isAlternateFormat = !!(record['B/S'] || record['b/s'] || record['Side Type'] || record['side type']);
+
+      // Only process filled orders (skip status check for alternate format which has no Status column)
+      if (!isAlternateFormat && (status.toLowerCase() !== 'filled' || filled === 0)) {
         console.log(`Skipping Webull record - not filled or zero quantity:`, { symbol, status, filled });
         if (diag) {
           diag.skippedRows = (diag.skippedRows || 0) + 1;
           if (!diag.skippedReasons) diag.skippedReasons = {};
           const reason = status.toLowerCase() === 'cancelled' ? 'Cancelled order' : `Status: ${status}, Filled: ${filled}`;
           diag.skippedReasons[reason] = (diag.skippedReasons[reason] || 0) + 1;
+        }
+        continue;
+      }
+
+      // For alternate format, skip if zero quantity
+      if (isAlternateFormat && filled === 0) {
+        console.log(`Skipping Webull record - zero quantity:`, { symbol, filled });
+        if (diag) {
+          diag.skippedRows = (diag.skippedRows || 0) + 1;
         }
         continue;
       }
@@ -6346,6 +6372,11 @@ async function parseWebullTransactions(records, existingPositions = {}, context 
           ? extractAccountFromRecord(record, context.accountColumnName)
           : null;
 
+      // Parse fees - alternate format has Commission and Fee columns (may have $ prefix)
+      const commissionRaw = cleanString(record.Commission || record.commission || '0');
+      const feeRaw = cleanString(record.Fee || record.fee || '0');
+      const totalFees = parseFloat(commissionRaw.replace(/^\$/, '')) + parseFloat(feeRaw.replace(/^\$/, ''));
+
       transactions.push({
         symbol,
         date: tradeDate,
@@ -6353,7 +6384,7 @@ async function parseWebullTransactions(records, existingPositions = {}, context 
         action: action,
         quantity: filled,
         price: price,
-        fees: 0, // Webull doesn't show fees separately in this format
+        fees: isNaN(totalFees) ? 0 : totalFees,
         description: `Webull ${action}`,
         raw: record,
         accountIdentifier
