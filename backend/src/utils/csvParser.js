@@ -1668,6 +1668,31 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
 
     // Special handling for IBKR CSV formats
     if (broker === 'ibkr' || broker === 'ibkr_trade_confirmation') {
+      // IBKR Flex Query exports can contain multiple sections with different column layouts.
+      // Each section has its own header row. We need to extract only the first section
+      // (trade executions) and discard later sections to prevent column mismatch issues.
+      const lines = csvString.split('\n');
+      if (lines.length > 1) {
+        const firstHeader = lines[0].trim();
+        const filteredLines = [lines[0]]; // Keep the first header
+        for (let i = 1; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (!line) continue;
+          // Detect section header rows: they start with "ClientAccountID" or "CurrencyPrimary"
+          // and contain column names rather than data values
+          if (/^"?ClientAccountID"?,"?AccountAlias"?/i.test(line) ||
+              /^"?CurrencyPrimary"?,"?AssetClass"?/i.test(line)) {
+            console.log(`[IBKR] Stopping at section header on line ${i + 1} (multi-section Flex Query)`);
+            break;
+          }
+          filteredLines.push(lines[i]);
+        }
+        if (filteredLines.length < lines.length) {
+          console.log(`[IBKR] Trimmed multi-section CSV from ${lines.length} to ${filteredLines.length} lines`);
+          csvString = filteredLines.join('\n');
+        }
+      }
+
       // IBKR CSVs can have quoted fields with commas inside and variable column counts
       parseOptions = {
         columns: true,
@@ -1682,7 +1707,7 @@ async function parseCSV(fileBuffer, broker = 'generic', context = {}) {
         skip_records_with_error: true // Skip problematic records instead of failing
       };
       console.log('Using special parsing options for IBKR CSV');
-      
+
       const previewLineCount = Math.min(csvString.split('\n').length, 5);
       console.log(`Prepared IBKR CSV for parsing (preview lines redacted, count=${previewLineCount})`);
     }
@@ -2407,14 +2432,32 @@ function parseDate(dateStr) {
     if (monthNum < 1 || monthNum > 12) return null;
     if (dayNum < 1 || dayNum > 31) return null;
     if (yearNum < 1900 || yearNum > 2100) return null;
-    
+
     // Validate the date is actually valid (e.g., not Feb 30)
     const date = new Date(yearNum, monthNum - 1, dayNum);
     if (date.getFullYear() !== yearNum || date.getMonth() !== monthNum - 1 || date.getDate() !== dayNum) {
       return null; // Invalid date (e.g., Feb 30)
     }
-    
+
     // Create date in YYYY-MM-DD format directly to avoid timezone issues
+    const monthPadded = monthNum.toString().padStart(2, '0');
+    const dayPadded = dayNum.toString().padStart(2, '0');
+    return `${yearNum}-${monthPadded}-${dayPadded}`;
+  }
+
+  // Try to parse MM/DD/YY format (2-digit year with slashes, used in some IBKR Flex Query exports)
+  // Also handles MM/DD/YY;HHMMSS by matching only the date portion
+  const mmddyySlashMatch = cleanDateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})(?:;|$|\s)/);
+  if (mmddyySlashMatch) {
+    const [_, month, day, shortYear] = mmddyySlashMatch;
+    const monthNum = parseInt(month);
+    const dayNum = parseInt(day);
+    const yearNum = 2000 + parseInt(shortYear);
+
+    if (monthNum < 1 || monthNum > 12) return null;
+    if (dayNum < 1 || dayNum > 31) return null;
+    if (yearNum < 1900 || yearNum > 2100) return null;
+
     const monthPadded = monthNum.toString().padStart(2, '0');
     const dayPadded = dayNum.toString().padStart(2, '0');
     return `${yearNum}-${monthPadded}-${dayPadded}`;
@@ -2491,6 +2534,23 @@ function parseDateTime(dateTimeStr) {
       if (yearNum < 1900 || yearNum > 2100) return null;
 
       return `${year}-${month}-${day}T${hour}:${minute}:${second}`;
+    }
+
+    // Check for MM/DD/YY;HHMMSS format (IBKR Flex Query with slash-separated dates)
+    const mmddyyFlexMatch = cleanDateTimeStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2});(\d{2})(\d{2})(\d{2})$/);
+    if (mmddyyFlexMatch) {
+      const [, month, day, shortYear, hour, minute, second] = mmddyyFlexMatch;
+      const yearNum = 2000 + parseInt(shortYear);
+      const monthNum = parseInt(month);
+      const dayNum = parseInt(day);
+
+      if (monthNum < 1 || monthNum > 12) return null;
+      if (dayNum < 1 || dayNum > 31) return null;
+      if (yearNum < 1900 || yearNum > 2100) return null;
+
+      const monthPadded = monthNum.toString().padStart(2, '0');
+      const dayPadded = dayNum.toString().padStart(2, '0');
+      return `${yearNum}-${monthPadded}-${dayPadded}T${hour}:${minute}:${second}`;
     }
 
     // Check for IBKR format "XX-XX-YY H:MM" or "XX-XX-YY HH:MM" (could be MM-DD-YY or DD-MM-YY)
@@ -5452,7 +5512,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
       }
 
       if (isTradeConfirmation) {
-        // Trade Confirmation format
+        // Trade Confirmation format (also matches Flex Query exports with Buy/Sell column)
         symbol = cleanString(record.Symbol);
         quantity = parseNumeric(record.Quantity, NaN);
         absQuantity = Math.abs(quantity);
@@ -5463,18 +5523,12 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         // Handle both "Commission" and "IBCommission" column names
         commission = -(parseNumeric(record.Commission || record.IBCommission || 0, 0));
 
-        // Parse date/time - format is YYYYMMDD;HHMMSS
-        // Handle both "Date/Time" and "DateTime" column names (Flex Query exports use DateTime)
-        const dateTimeParts = (record['Date/Time'] || record.DateTime || '').split(';');
-        const dateStr = dateTimeParts[0]; // YYYYMMDD
-        const timeStr = dateTimeParts[1] || '093000'; // HHMMSS
-
-        // Convert YYYYMMDD to YYYY-MM-DD
-        const tradeDate = dateStr ? `${dateStr.substring(0,4)}-${dateStr.substring(4,6)}-${dateStr.substring(6,8)}` : null;
-
-        // Convert HHMMSS to HH:MM:SS
-        const time = timeStr ? `${timeStr.substring(0,2)}:${timeStr.substring(2,4)}:${timeStr.substring(4,6)}` : '09:30:00';
-        dateTime = tradeDate ? `${tradeDate} ${time}` : '';
+        // Handle multiple DateTime formats:
+        // - YYYYMMDD;HHMMSS (original Trade Confirmation)
+        // - MM/DD/YY;HHMMSS (Flex Query with slash dates, e.g. IBKR Japan)
+        // - Date/Time or DateTime column names
+        const rawDateTime = (record['Date/Time'] || record.DateTime || '').toString();
+        dateTime = rawDateTime.replace(/^[\x27\x22\u2018\u2019\u201C\u201D]|[\x27\x22\u2018\u2019\u201C\u201D]$/g, '').trim();
 
         // Determine action from Buy/Sell column
         const buySell = cleanString(record['Buy/Sell']).toUpperCase();
@@ -5508,8 +5562,23 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         continue;
       }
 
-      // Skip if symbol is literally "Symbol" (a header row being parsed as data)
-      if (symbol === 'SYMBOL' || symbol === 'Symbol') {
+      // In multi-section Flex Query CSVs, later sections have different column layouts.
+      // When parsed using the first section's headers, these rows produce garbage data.
+      // If LevelOfDetail exists in the header and this row has a non-empty value that
+      // isn't EXECUTION, skip it (e.g., "DETAIL", "SUMMARY", or text from wrong columns).
+      if (levelOfDetail && levelOfDetail !== 'EXECUTION') {
+        continue;
+      }
+
+      // Skip if symbol is literally "Symbol" or other header text (a header row being parsed as data)
+      if (symbol === 'SYMBOL' || symbol === 'Symbol' || symbol === 'ISIN' || symbol === 'SecurityIDType') {
+        continue;
+      }
+
+      // Skip rows from other Flex Query sections where ClientAccountID column has unexpected values
+      // (e.g., "CurrencyPrimary" from Financial Instrument Information section)
+      const clientAccountId = cleanString(record.ClientAccountID || '');
+      if (clientAccountId === 'ClientAccountID' || clientAccountId === 'CurrencyPrimary') {
         continue;
       }
 
