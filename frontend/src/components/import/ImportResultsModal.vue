@@ -252,19 +252,19 @@ const brokerNames = {
   etrade: 'E*TRADE',
   papermoney: 'PaperMoney',
   tradingview: 'TradingView',
+  tradingview_performance: 'TradingView',
+  tradingview_paper: 'TradingView',
   tradovate: 'Tradovate',
   questrade: 'Questrade',
   projectx: 'ProjectX',
   tradestation: 'TradeStation',
-  tastytrade: 'Tastytrade',
-  tradingview_performance: 'TradingView Performance',
-  tradingview_paper: 'TradingView Paper'
+  tastytrade: 'Tastytrade'
 }
 
 const supportedBrokers = [
   'lightspeed', 'schwab', 'thinkorswim', 'ibkr', 'ibkr_trade_confirmation',
   'webull', 'etrade', 'papermoney', 'tradingview', 'tradovate', 'questrade',
-  'projectx', 'tradestation', 'tastytrade', 'tradingview_performance', 'tradingview_paper'
+  'projectx', 'tradestation', 'tastytrade'
 ]
 
 function formatBrokerName(broker) {
