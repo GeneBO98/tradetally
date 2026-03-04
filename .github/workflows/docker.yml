@@ -6,7 +6,26 @@
       tags: ['v*']
 
   jobs:
+    test:
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@v4
+
+        - name: Set up Node.js
+          uses: actions/setup-node@v4
+          with:
+            node-version: '20'
+            cache: 'npm'
+            cache-dependency-path: 'backend/package-lock.json'
+
+        - name: Install dependencies
+          run: cd backend && npm ci
+
+        - name: Run tests
+          run: cd backend && npm test
+
     build:
+      needs: test
       runs-on: ubuntu-latest
       steps:
         - uses: actions/checkout@v4

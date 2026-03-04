@@ -4634,7 +4634,8 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
   // Process transactions using round-trip trade grouping
   for (const symbol in transactionsBySymbol) {
     const symbolTransactions = transactionsBySymbol[symbol];
-    
+    const instrumentData = parseInstrumentData(symbol);
+
     console.log(`\n=== Processing ${symbolTransactions.length} PaperMoney transactions for ${symbol} ===`);
     
     // Track position and round-trip trades
@@ -8657,5 +8658,9 @@ module.exports = {
   parseSide,
   cleanString,
   parseNumeric,
-  parseInteger
+  parseInteger,
+  applyTradeGrouping,
+  isValidTrade,
+  parseInstrumentData,
+  normalizeRecord
 };
