@@ -65,6 +65,7 @@
     
     <Notification />
     <ModalAlert />
+    <CookieConsentBanner />
     <!-- Gamification celebration overlay -->
     <CelebrationOverlay :queue="celebrationQueue" />
   </div>
@@ -84,6 +85,7 @@ import CelebrationOverlay from '@/components/gamification/CelebrationOverlay.vue
 import UpdateBanner from '@/components/common/UpdateBanner.vue'
 import EmailVerificationBanner from '@/components/common/EmailVerificationBanner.vue'
 import VersionDisplay from '@/components/common/VersionDisplay.vue'
+import CookieConsentBanner from '@/components/common/CookieConsentBanner.vue'
 import api from '@/services/api'
 
 // Rate limit notification handling
