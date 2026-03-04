@@ -24,6 +24,7 @@ class RetentionEmailScheduler {
         await this.sendWeeklyDigests();
       }
       await this.sendReengagementEmails();
+      await this.sendTrialConversionEmails();
       console.log('[SUCCESS] Retention email tasks completed');
     } catch (error) {
       console.error('[ERROR] Error running retention email tasks:', error);
@@ -127,6 +128,93 @@ class RetentionEmailScheduler {
       console.log(`Re-engagement emails sent: ${result.rows.length}`);
     } catch (error) {
       console.error('Error sending re-engagement emails:', error);
+    }
+  }
+
+  /**
+   * Send conversion emails to users whose Pro trial expired 3-7 days ago without subscribing.
+   * Sends once per user (tracks conversion_email_sent_at on tier_overrides).
+   */
+  static async sendTrialConversionEmails() {
+    try {
+      console.log('[EMAIL] Checking for expired trial users to send conversion emails...');
+
+      const query = `
+        SELECT
+          u.id AS user_id,
+          u.email,
+          u.username,
+          u.full_name,
+          tor.expires_at,
+          EXTRACT(DAY FROM NOW() - tor.expires_at)::int AS days_since_expiry,
+          tor.reason AS trial_type,
+          COALESCE(stats.total_trades, 0)::int AS total_trades,
+          COALESCE(stats.win_rate, 0)::double precision AS win_rate,
+          COALESCE(stats.total_pnl, 0)::double precision AS total_pnl,
+          stats.top_symbol,
+          stats.brokers_used
+        FROM tier_overrides tor
+        INNER JOIN users u ON u.id = tor.user_id
+          AND u.is_active = true
+          AND u.marketing_consent = true
+        LEFT JOIN LATERAL (
+          SELECT
+            COUNT(*)::int AS total_trades,
+            CASE WHEN COUNT(*) > 0
+              THEN (COUNT(*) FILTER (WHERE t.pnl > 0) * 100.0 / COUNT(*))
+              ELSE 0
+            END AS win_rate,
+            COALESCE(SUM(t.pnl), 0) AS total_pnl,
+            (SELECT t2.symbol FROM trades t2 WHERE t2.user_id = u.id GROUP BY t2.symbol ORDER BY COUNT(*) DESC LIMIT 1) AS top_symbol,
+            STRING_AGG(DISTINCT t.broker, ', ') AS brokers_used
+          FROM trades t
+          WHERE t.user_id = u.id
+        ) stats ON true
+        WHERE tor.expires_at < NOW()
+          AND tor.expires_at > NOW() - INTERVAL '7 days'
+          AND tor.expires_at < NOW() - INTERVAL '3 days'
+          AND tor.reason ILIKE '%trial%'
+          AND tor.conversion_email_sent_at IS NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM subscriptions s
+            WHERE s.user_id = u.id
+              AND s.status IN ('active', 'trialing')
+          )
+      `;
+
+      const result = await db.query(query);
+      if (result.rows.length === 0) {
+        console.log('No trial conversion emails to send');
+        return;
+      }
+
+      for (const row of result.rows) {
+        try {
+          await EmailService.sendTrialConversionEmail(
+            row.email,
+            row.username || row.full_name || 'there',
+            {
+              totalTrades: row.total_trades,
+              winRate: parseFloat(row.win_rate) || 0,
+              totalPnL: parseFloat(row.total_pnl) || 0,
+              topSymbol: row.top_symbol || null,
+              brokersUsed: row.brokers_used || null,
+              trialType: row.trial_type || 'trial',
+              daysSinceExpiry: row.days_since_expiry || 0
+            },
+            row.user_id
+          );
+          await db.query(
+            'UPDATE tier_overrides SET conversion_email_sent_at = NOW() WHERE user_id = $1 AND reason ILIKE $2',
+            [row.user_id, '%trial%']
+          );
+        } catch (err) {
+          console.error(`Failed to send trial conversion email to ${maskEmail(row.email)}:`, err.message);
+        }
+      }
+      console.log(`Trial conversion emails sent: ${result.rows.length}`);
+    } catch (error) {
+      console.error('Error sending trial conversion emails:', error);
     }
   }
 

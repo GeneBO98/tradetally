@@ -408,9 +408,11 @@ class AdminAnalytics {
     `);
     const expiredTrialNotConverted = parseInt(expiredTrialResult.rows[0].count) || 0;
 
-    // Expired trial user details for admin drill-down
+    // Expired trial user details for admin drill-down (includes conversion email status)
     const expiredTrialUsersResult = await db.query(`
-      SELECT DISTINCT u.id, u.email, u.username, u.created_at, to2.expires_at as trial_expired_at
+      SELECT DISTINCT u.id, u.email, u.username, u.created_at,
+        to2.expires_at as trial_expired_at,
+        to2.conversion_email_sent_at
       FROM tier_overrides to2
       JOIN users u ON u.id = to2.user_id
       WHERE to2.reason ILIKE '%trial%'
@@ -423,6 +425,27 @@ class AdminAnalytics {
     `);
     const expiredTrialUsers = expiredTrialUsersResult.rows;
 
+    // Conversion email metrics
+    const conversionEmailResult = await db.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE conversion_email_sent_at IS NOT NULL) AS emails_sent,
+        COUNT(*) FILTER (WHERE conversion_email_sent_at IS NOT NULL
+          AND EXISTS (SELECT 1 FROM subscriptions s WHERE s.user_id = to3.user_id AND s.status = 'active')
+        ) AS converted_after_email,
+        COUNT(*) FILTER (WHERE conversion_email_sent_at IS NULL
+          AND expires_at < NOW()
+          AND expires_at > NOW() - INTERVAL '7 days'
+          AND expires_at < NOW() - INTERVAL '3 days'
+          AND NOT EXISTS (SELECT 1 FROM subscriptions s WHERE s.user_id = to3.user_id AND s.status IN ('active', 'trialing'))
+        ) AS pending_to_send
+      FROM tier_overrides to3
+      WHERE to3.reason ILIKE '%trial%'
+    `);
+    const convEmailRow = conversionEmailResult.rows[0];
+    const conversionEmailsSent = parseInt(convEmailRow.emails_sent) || 0;
+    const convertedAfterEmail = parseInt(convEmailRow.converted_after_email) || 0;
+    const conversionEmailsPending = parseInt(convEmailRow.pending_to_send) || 0;
+
     return {
       payingUsers,
       mrr,
@@ -434,7 +457,10 @@ class AdminAnalytics {
       expiredTrialNotConverted,
       expiredTrialUsers,
       signupsInPeriod,
-      trialsStartedInPeriod
+      trialsStartedInPeriod,
+      conversionEmailsSent,
+      convertedAfterEmail,
+      conversionEmailsPending
     };
   }
 

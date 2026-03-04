@@ -3560,7 +3560,7 @@ async function parseLightspeedTransactions(records, existingPositions = {}, user
   });
 
   console.log(`Created ${completedTrades.length} trades from ${transactions.length} transactions`);
-  return { trades: completedTrades };
+  return completedTrades;
 }
 
 async function parseSchwabTrades(records, existingPositions = {}, context = {}) {

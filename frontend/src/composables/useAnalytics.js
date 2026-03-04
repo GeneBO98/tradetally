@@ -37,13 +37,26 @@ export function useAnalytics() {
         posthog.init('${POSTHOG_KEY}', {
           api_host: '${POSTHOG_HOST}',
           person_profiles: 'identified_only',
-          disable_session_recording: true
+          opt_out_capturing_by_default: true
         })
       `
       document.head.appendChild(script)
-      console.log('[STATS] PostHog analytics initialized')
+      console.log('[STATS] PostHog analytics initialized (opted out by default)')
       isInitialized.value = true
-      isEnabled.value = true
+      isEnabled.value = false
+
+      // Restore consent from localStorage
+      const consent = localStorage.getItem('cookie_consent')
+      if (consent === 'accepted') {
+        // Wait briefly for PostHog SDK to load before opting in
+        setTimeout(() => {
+          if (window.posthog) {
+            window.posthog.opt_in_capturing()
+            isEnabled.value = true
+            console.log('[STATS] Restored opt-in from saved consent')
+          }
+        }, 1000)
+      }
     } else {
       console.log('[STATS] Analytics disabled')
       isInitialized.value = false
