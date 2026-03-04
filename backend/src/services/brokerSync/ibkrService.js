@@ -268,19 +268,31 @@ class IBKRService {
           // This trade has more executions than existing - update it
           console.log(`[IBKR] Updating existing trade ${tradeData.existingTradeId} with additional executions for ${tradeData.symbol}`);
 
-          // Update the existing trade with all executions
-          await Trade.update(tradeData.existingTradeId, userId, {
-            executions: preparedTrade.executions || preparedTrade.executionData,
-            exitTime: preparedTrade.exitTime,
-            exitPrice: preparedTrade.exitPrice,
-            pnl: preparedTrade.pnl,
-            pnlPercent: preparedTrade.pnlPercent,
-            quantity: preparedTrade.quantity,
-            commission: preparedTrade.commission
-          }, {
-            skipAchievements: true,
-            skipApiCalls: true
-          });
+          // Direct SQL UPDATE - avoids Trade.update() complex side effects that can silently fail
+          const executions = preparedTrade.executions || preparedTrade.executionData;
+          const updateQuery = `
+            UPDATE trades
+            SET executions = $1::jsonb,
+                exit_time = $2,
+                exit_price = $3,
+                pnl = $4,
+                pnl_percent = $5,
+                quantity = $6,
+                commission = $7,
+                updated_at = NOW()
+            WHERE id = $8 AND user_id = $9
+          `;
+          await db.query(updateQuery, [
+            JSON.stringify(executions),
+            preparedTrade.exitTime || null,
+            preparedTrade.exitPrice != null ? preparedTrade.exitPrice : null,
+            preparedTrade.pnl != null ? preparedTrade.pnl : null,
+            preparedTrade.pnlPercent != null ? preparedTrade.pnlPercent : null,
+            preparedTrade.quantity,
+            preparedTrade.commission || 0,
+            tradeData.existingTradeId,
+            userId
+          ]);
 
           updated++;
         } else {
