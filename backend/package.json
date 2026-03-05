@@ -18,6 +18,7 @@
     "@opentelemetry/resources": "^2.5.0",
     "@opentelemetry/sdk-logs": "^0.211.0",
     "@parse/node-apn": "^7.0.1",
+    "@simplewebauthn/server": "^13.2.3",
     "archiver": "^7.0.1",
     "autocannon": "^8.0.0",
     "axios": "^1.13.5",

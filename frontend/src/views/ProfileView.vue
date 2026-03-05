@@ -256,6 +256,69 @@
                 </div>
             </div>
 
+            <!-- Passkeys -->
+            <div class="card">
+                <div class="card-body">
+                    <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-6">
+                        Passkeys
+                    </h3>
+                    <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
+                        Sign in without a password using your device's biometrics, security key, or PIN.
+                    </p>
+
+                    <!-- Loading -->
+                    <div v-if="passkeysLoading && passkeys.length === 0" class="flex justify-center py-4">
+                        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+                    </div>
+
+                    <!-- Passkey list -->
+                    <div v-if="passkeys.length > 0" class="space-y-3 mb-6">
+                        <div
+                            v-for="pk in passkeys"
+                            :key="pk.id"
+                            class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg"
+                        >
+                            <div class="flex items-center space-x-3">
+                                <svg class="w-5 h-5 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                                </svg>
+                                <div>
+                                    <p class="text-sm font-medium text-gray-900 dark:text-white">
+                                        {{ pk.device_name }}
+                                    </p>
+                                    <p class="text-xs text-gray-500 dark:text-gray-400">
+                                        Added {{ formatDate(pk.created_at) }}
+                                        <span v-if="pk.last_used_at"> - Last used {{ formatDate(pk.last_used_at) }}</span>
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                @click="deletePasskeyConfirm(pk)"
+                                class="text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 text-sm"
+                            >
+                                Delete
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- No passkeys message -->
+                    <div v-else-if="!passkeysLoading" class="mb-6">
+                        <p class="text-sm text-gray-500 dark:text-gray-400">
+                            No passkeys registered yet.
+                        </p>
+                    </div>
+
+                    <button
+                        @click="addPasskey"
+                        :disabled="addingPasskey"
+                        class="btn-primary"
+                    >
+                        <span v-if="addingPasskey">Registering...</span>
+                        <span v-else>Add passkey</span>
+                    </button>
+                </div>
+            </div>
+
             <!-- Subscription Status -->
             <div v-if="billingStatus.billing_available" class="card">
                 <div class="card-body">
@@ -1518,6 +1581,12 @@ const subscription = ref({
     has_used_trial: false,
 });
 
+// Passkeys data
+const passkeys = ref([]);
+const passkeysLoading = ref(false);
+const addingPasskey = ref(false);
+const passkeyToDelete = ref(null);
+
 // API Keys data
 const apiKeys = ref([]);
 const apiKeysLoading = ref(false);
@@ -1796,6 +1865,77 @@ function cancel2FASetup() {
     qrCodeUrl.value = "";
     setupSecret.value = "";
     backupCodes.value = [];
+}
+
+// Passkey methods
+async function fetchPasskeys() {
+    try {
+        passkeysLoading.value = true;
+        const response = await api.get("/auth/passkey");
+        passkeys.value = response.data.passkeys;
+    } catch (error) {
+        console.error("[PASSKEYS] Failed to fetch passkeys:", error);
+    } finally {
+        passkeysLoading.value = false;
+    }
+}
+
+async function addPasskey() {
+    console.log("[PASSKEY] addPasskey() called");
+    addingPasskey.value = true;
+    try {
+        console.log("[PASSKEY] Importing @simplewebauthn/browser...");
+        const { startRegistration } = await import("@simplewebauthn/browser");
+        console.log("[PASSKEY] Import OK, fetching options...");
+
+        // Get registration options
+        const optionsRes = await api.post("/auth/passkey/register/options");
+        const options = optionsRes.data;
+        console.log("[PASSKEY] Options received, rpID:", options.rp?.id, "options:", JSON.stringify(options).substring(0, 200));
+
+        // Prompt browser for passkey creation
+        const regResponse = await startRegistration({ optionsJSON: options });
+        console.log("[PASSKEY] Registration response received");
+
+        // Ask for device name
+        const deviceName = prompt("Name this passkey (e.g., MacBook Touch ID):") || "Unnamed passkey";
+
+        // Verify with server
+        await api.post("/auth/passkey/register/verify", {
+            response: regResponse,
+            deviceName,
+        });
+
+        showSuccess("Success", "Passkey registered successfully.");
+        await fetchPasskeys();
+    } catch (error) {
+        console.error("[PASSKEY] Registration error:", error.name, error.message, error);
+        if (error.name === "NotAllowedError" || error.name === "InvalidStateError") {
+            showError("Cancelled", "Passkey registration was cancelled.");
+        } else {
+            showError("Error", error.response?.data?.error || error.message || "Failed to register passkey.");
+        }
+    } finally {
+        addingPasskey.value = false;
+    }
+}
+
+function deletePasskeyConfirm(pk) {
+    passkeyToDelete.value = pk;
+    if (confirm(`Delete passkey "${pk.device_name}"? This cannot be undone.`)) {
+        deletePasskey(pk.id);
+    }
+    passkeyToDelete.value = null;
+}
+
+async function deletePasskey(id) {
+    try {
+        await api.delete(`/auth/passkey/${id}`);
+        showSuccess("Success", "Passkey deleted.");
+        await fetchPasskeys();
+    } catch (error) {
+        showError("Error", error.response?.data?.error || "Failed to delete passkey.");
+    }
 }
 
 // API Key methods
@@ -2079,6 +2219,7 @@ onMounted(async () => {
     // Load all data
     await Promise.all([
         fetch2FAStatus(),
+        fetchPasskeys(),
         fetchApiKeys(),
         fetchTradingProfile(),
         loadBillingStatus(),

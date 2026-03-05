@@ -31,7 +31,7 @@
           @cancel="handleTwoFactorCancel"
         />
       </div>
-      
+
       <form v-else class="mt-8 space-y-6" @submit.prevent="handleLogin">
         <div class="rounded-md shadow-sm -space-y-px">
           <div>
@@ -81,7 +81,7 @@
             </p>
           </div>
         </div>
-        
+
         <!-- Resend verification success message -->
         <div v-if="resendSuccess" class="rounded-md bg-green-50 dark:bg-green-900/20 p-4">
           <p class="text-sm text-green-800 dark:text-green-400">
@@ -97,6 +97,32 @@
           >
             <span v-if="authStore.loading">Signing in...</span>
             <span v-else>Sign in</span>
+          </button>
+        </div>
+
+        <!-- Divider -->
+        <div class="relative">
+          <div class="absolute inset-0 flex items-center">
+            <div class="w-full border-t border-gray-300 dark:border-gray-600"></div>
+          </div>
+          <div class="relative flex justify-center text-sm">
+            <span class="px-2 bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400">or</span>
+          </div>
+        </div>
+
+        <!-- Passkey login -->
+        <div>
+          <button
+            type="button"
+            :disabled="passkeyLoading"
+            @click="handlePasskeyLogin"
+            class="group relative w-full flex justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50"
+          >
+            <svg class="w-5 h-5 mr-2 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+            </svg>
+            <span v-if="passkeyLoading">Verifying passkey...</span>
+            <span v-else>Sign in with passkey</span>
           </button>
         </div>
 
@@ -133,6 +159,7 @@ const resendCooldown = ref(0)
 const resendSuccess = ref(false)
 const showTwoFactor = ref(false)
 const tempToken = ref('')
+const passkeyLoading = ref(false)
 
 const form = ref({
   email: '',
@@ -140,7 +167,6 @@ const form = ref({
 })
 
 async function handleLogin() {
-  // Reset state
   showResendVerification.value = false
   showApprovalMessage.value = false
   resendSuccess.value = false
@@ -149,7 +175,6 @@ async function handleLogin() {
   tempToken.value = ''
 
   try {
-    // Check if there's a return URL from OAuth flow or a redirect path
     const returnUrl = route.query.return_url || route.query.redirect || null
     await authStore.login(form.value, returnUrl)
   } catch (error) {
@@ -159,10 +184,30 @@ async function handleLogin() {
     } else if (error.requires2FA) {
       showTwoFactor.value = true
       tempToken.value = error.tempToken
-      // Clear any error message since 2FA is a normal flow
       authStore.error = null
     }
-    // Error will be displayed via authStore.error in the template
+  }
+}
+
+async function handlePasskeyLogin() {
+  passkeyLoading.value = true
+  showResendVerification.value = false
+  showApprovalMessage.value = false
+  resendSuccess.value = false
+  showTwoFactor.value = false
+  authStore.error = null
+
+  try {
+    const returnUrl = route.query.return_url || route.query.redirect || null
+    await authStore.loginWithPasskey(returnUrl)
+  } catch (error) {
+    if (error.requires2FA) {
+      showTwoFactor.value = true
+      tempToken.value = error.tempToken
+      authStore.error = null
+    }
+  } finally {
+    passkeyLoading.value = false
   }
 }
 
@@ -172,22 +217,19 @@ async function handleResendVerification() {
     showError('Error', 'Please enter your email address')
     return
   }
-  
+
   resendLoading.value = true
   resendSuccess.value = false
-  
+
   try {
     const response = await api.post('/auth/resend-verification', {
       email: emailToUse
     })
-    
+
     resendSuccess.value = true
     showSuccess('Success', response.data.message)
-    
-    // Clear the auth error since we've sent a new verification email
     authStore.error = null
-    
-    // Start cooldown timer
+
     resendCooldown.value = 60
     const cooldownInterval = setInterval(() => {
       resendCooldown.value--
@@ -195,7 +237,7 @@ async function handleResendVerification() {
         clearInterval(cooldownInterval)
       }
     }, 1000)
-    
+
   } catch (error) {
     showError('Error', error.response?.data?.error || 'Failed to resend verification email')
   } finally {
@@ -218,10 +260,8 @@ function handleTwoFactorCancel() {
 }
 
 onMounted(async () => {
-  // Fetch registration config to determine if registration is allowed
   await fetchRegistrationConfig()
-  
-  // Check for verification message from registration
+
   if (route.query.message) {
     verificationMessage.value = route.query.message
   }

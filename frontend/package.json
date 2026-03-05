@@ -11,6 +11,7 @@
   "dependencies": {
     "@heroicons/vue": "^2.0.18",
     "@mdi/js": "^7.4.47",
+    "@simplewebauthn/browser": "^13.2.2",
     "@stripe/stripe-js": "^2.4.0",
     "axios": "^1.13.5",
     "chart.js": "^4.5.1",
