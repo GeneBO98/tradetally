@@ -3,7 +3,30 @@
     <div class="card-body">
       <div class="flex items-center justify-between mb-4">
         <h3 class="text-lg font-medium text-gray-900 dark:text-white">Upcoming Earnings</h3>
-        <span class="text-xs text-gray-500 dark:text-gray-400">Next 2 weeks</span>
+        <div class="flex items-center space-x-2">
+          <span class="text-xs text-gray-500 dark:text-gray-400">Next 2 weeks</span>
+          <button
+            @click="refreshEarnings"
+            :disabled="loading"
+            class="inline-flex items-center px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <svg
+              class="w-4 h-4 mr-1.5"
+              :class="{ 'animate-spin': loading }"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
+            </svg>
+            Refresh
+          </button>
+        </div>
       </div>
 
       <div v-if="loading && !earnings.length" class="flex justify-center py-8">
@@ -170,6 +193,42 @@ const fetchEarnings = async () => {
   } catch (err) {
     console.error('Failed to fetch earnings:', err)
     error.value = err.response?.data?.error || 'Failed to load earnings data. Please try again later.'
+  } finally {
+    loading.value = false
+  }
+}
+
+const refreshEarnings = async () => {
+  if (!props.symbols.length) return
+
+  loading.value = true
+  error.value = null
+
+  try {
+    const response = await api.post('/trades/earnings/refresh', {
+      symbols: props.symbols.join(',')
+    })
+
+    const now = new Date()
+    now.setHours(0, 0, 0, 0)
+
+    earnings.value = response.data
+      .map(earning => {
+        const earningsDate = new Date(earning.date)
+        earningsDate.setHours(0, 0, 0, 0)
+        const diffTime = earningsDate - now
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+
+        return {
+          ...earning,
+          daysUntil: diffDays
+        }
+      })
+      .filter(earning => earning.daysUntil >= 0 && earning.daysUntil <= 14)
+      .sort((a, b) => a.daysUntil - b.daysUntil)
+  } catch (err) {
+    console.error('Failed to refresh earnings:', err)
+    error.value = err.response?.data?.error || 'Failed to refresh earnings data. Please try again later.'
   } finally {
     loading.value = false
   }

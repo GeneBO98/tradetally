@@ -60,6 +60,9 @@ const RetentionEmailScheduler = require('./services/retentionEmailScheduler');
 const OptionsScheduler = require('./services/optionsScheduler');
 const brokerSyncScheduler = require('./services/brokerSync/brokerSyncScheduler');
 const dividendScheduler = require('./services/dividendScheduler');
+const newsScheduler = require('./services/newsScheduler');
+const earningsScheduler = require('./services/earningsScheduler');
+const symbolCategoryScheduler = require('./services/symbolCategoryScheduler');
 const webhookEventBridge = require('./services/webhookEventBridge');
 const backgroundWorker = require('./workers/backgroundWorker');
 const jobRecoveryService = require('./services/jobRecoveryService');
@@ -457,6 +460,33 @@ async function startServer() {
       console.log('Dividend scheduler disabled (ENABLE_DIVIDEND_SCHEDULER=false)');
     }
 
+    // Start news scheduler (pre-fetches company news for dashboard)
+    if (process.env.ENABLE_NEWS_SCHEDULER !== 'false') {
+      console.log('Starting news scheduler...');
+      newsScheduler.start();
+      console.log('[SUCCESS] News scheduler started');
+    } else {
+      console.log('News scheduler disabled (ENABLE_NEWS_SCHEDULER=false)');
+    }
+
+    // Start earnings scheduler (pre-fetches earnings calendar for dashboard)
+    if (process.env.ENABLE_EARNINGS_SCHEDULER !== 'false') {
+      console.log('Starting earnings scheduler...');
+      earningsScheduler.start();
+      console.log('[SUCCESS] Earnings scheduler started');
+    } else {
+      console.log('Earnings scheduler disabled (ENABLE_EARNINGS_SCHEDULER=false)');
+    }
+
+    // Start symbol category scheduler (pre-categorizes traded symbols with industry data)
+    if (process.env.ENABLE_CATEGORY_SCHEDULER !== 'false') {
+      console.log('Starting symbol category scheduler...');
+      symbolCategoryScheduler.start();
+      console.log('[SUCCESS] Symbol category scheduler started');
+    } else {
+      console.log('Symbol category scheduler disabled (ENABLE_CATEGORY_SCHEDULER=false)');
+    }
+
     if (process.env.ENABLE_V1_WEBHOOKS === 'true') {
       webhookEventBridge.start();
     }
@@ -569,6 +599,9 @@ process.on('SIGTERM', async () => {
   await priceMonitoringService.stop();
   OptionsScheduler.stop();
   brokerSyncScheduler.stop();
+  newsScheduler.stop();
+  earningsScheduler.stop();
+  symbolCategoryScheduler.stop();
   if (typeof GamificationScheduler.stopScheduler === 'function') GamificationScheduler.stopScheduler();
   if (typeof TrialScheduler.stopScheduler === 'function') TrialScheduler.stopScheduler();
   if (RetentionEmailScheduler.stopScheduler) RetentionEmailScheduler.stopScheduler();
@@ -587,6 +620,9 @@ process.on('SIGINT', async () => {
   await priceMonitoringService.stop();
   OptionsScheduler.stop();
   brokerSyncScheduler.stop();
+  newsScheduler.stop();
+  earningsScheduler.stop();
+  symbolCategoryScheduler.stop();
   if (typeof GamificationScheduler.stopScheduler === 'function') GamificationScheduler.stopScheduler();
   if (typeof TrialScheduler.stopScheduler === 'function') TrialScheduler.stopScheduler();
   if (RetentionEmailScheduler.stopScheduler) RetentionEmailScheduler.stopScheduler();

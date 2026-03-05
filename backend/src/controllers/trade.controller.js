@@ -24,6 +24,7 @@ function invalidateAnalyticsCache(userId) {
   const cacheKeys = Object.keys(cache.data).filter(key =>
     key.startsWith(`analytics:user_${userId}:`) ||
     key.startsWith(`analytics_overview_${userId}_`) ||
+    key.startsWith(`analytics_chart_data_${userId}_`) ||
     key.startsWith(`performance_${userId}_`)
   );
   cacheKeys.forEach(key => cache.del(key));
@@ -3017,33 +3018,19 @@ const tradeController = {
       // Generate cache key based on userId and filters
       const cacheKey = `analytics:user_${req.user.id}:${JSON.stringify(filters)}`;
 
-      // Stale-while-revalidate: return cached data immediately, recompute in background if stale
-      const cached = cache.getStale(cacheKey);
-      if (cached.value && !cached.stale) {
-        console.log('[CACHE] Analytics cache hit (fresh) for user:', req.user.id);
-        return res.json(cached.value);
-      }
-
-      if (cached.value && cached.stale) {
-        console.log('[CACHE] Analytics cache hit (stale) for user:', req.user.id, '- returning stale, recomputing in background');
-        // Return stale data immediately
-        res.json(cached.value);
-        // Recompute in background for next request (fire-and-forget)
-        Trade.getAnalytics(req.user.id, filters).then(analytics => {
-          cache.set(cacheKey, analytics, 300000);
-          console.log('[CACHE] Background recompute complete for user:', req.user.id);
-        }).catch(err => {
-          console.error('[CACHE] Background recompute failed:', err.message);
-        });
-        return;
+      // Cache until invalidated - invalidateAnalyticsCache() clears on trade mutations
+      // (import, create, update, delete, sync). No need for time-based expiry.
+      const cached = cache.get(cacheKey);
+      if (cached) {
+        console.log('[CACHE] Analytics cache hit for user:', req.user.id);
+        return res.json(cached);
       }
 
       console.log('[CACHE] Analytics cache miss for user:', req.user.id);
       const analytics = await Trade.getAnalytics(req.user.id, filters);
 
-      // Cache the result for 5 minutes (300000ms)
-      cache.set(cacheKey, analytics, 300000);
-      console.log('[CACHE] Cached analytics for 5 minutes');
+      // Cache for 24h - effectively permanent since invalidateAnalyticsCache() clears on mutations
+      cache.set(cacheKey, analytics, 86400000);
 
       res.json(analytics);
     } catch (error) {
@@ -3538,54 +3525,49 @@ const tradeController = {
   async getTradeNews(req, res, next) {
     try {
       const { symbols } = req.query;
-      
+
       if (!symbols) {
         return res.status(400).json({ error: 'Symbols parameter is required' });
       }
 
       const symbolList = ensureString(symbols).split(',').map(s => s.trim()).filter(s => s);
-      
+
       if (symbolList.length === 0) {
         return res.json([]);
       }
 
-      const finnhub = require('../utils/finnhub');
-      
+      const NewsService = require('../services/newsService');
+      const allNews = await NewsService.getNewsForSymbols(symbolList);
+
+      res.json(allNews);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async refreshTradeNews(req, res, next) {
+    try {
+      const { symbols } = req.body;
+
+      if (!symbols) {
+        return res.status(400).json({ error: 'Symbols parameter is required' });
+      }
+
+      const symbolList = ensureString(symbols).split(',').map(s => s.trim()).filter(s => s);
+
+      if (symbolList.length === 0) {
+        return res.json([]);
+      }
+
       if (!finnhub.isConfigured()) {
-        return res.status(503).json({ 
+        return res.status(503).json({
           error: 'News service not configured',
           details: 'Finnhub API key is required for news data. Add FINNHUB_API_KEY to your environment variables.'
         });
       }
 
-      const allNews = [];
-      const errors = [];
-
-      // Fetch news for each symbol
-      for (const symbol of symbolList) {
-        try {
-          const news = await finnhub.getCompanyNews(symbol);
-          
-          // Add symbol to each news item and filter to last 7 days
-          const enrichedNews = news
-            .map(item => ({ ...item, symbol }))
-            .filter(item => {
-              // Ensure news is from last 7 days
-              const newsDate = new Date(item.datetime * 1000);
-              const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-              return newsDate >= sevenDaysAgo;
-            })
-            .slice(0, 5); // Limit to 5 news items per symbol
-          
-          allNews.push(...enrichedNews);
-        } catch (error) {
-          console.error('Failed to fetch news for %s:', symbol, error);
-          errors.push({ symbol, error: error.message });
-        }
-      }
-
-      // Sort all news by datetime descending
-      allNews.sort((a, b) => b.datetime - a.datetime);
+      const NewsService = require('../services/newsService');
+      const allNews = await NewsService.refreshNewsForSymbols(symbolList);
 
       res.json(allNews);
     } catch (error) {
@@ -3596,48 +3578,51 @@ const tradeController = {
   async getUpcomingEarnings(req, res, next) {
     try {
       const { symbols } = req.query;
-      
+
       if (!symbols) {
         return res.status(400).json({ error: 'Symbols parameter is required' });
       }
 
       const symbolList = ensureString(symbols).split(',').map(s => s.trim()).filter(s => s);
-      
+
       if (symbolList.length === 0) {
         return res.json([]);
       }
 
-      const finnhub = require('../utils/finnhub');
-      
+      const EarningsService = require('../services/earningsService');
+      const relevantEarnings = await EarningsService.getEarningsForSymbols(symbolList);
+
+      res.json(relevantEarnings);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async refreshUpcomingEarnings(req, res, next) {
+    try {
+      const { symbols } = req.body;
+
+      if (!symbols) {
+        return res.status(400).json({ error: 'Symbols parameter is required' });
+      }
+
+      const symbolList = ensureString(symbols).split(',').map(s => s.trim()).filter(s => s);
+
+      if (symbolList.length === 0) {
+        return res.json([]);
+      }
+
       if (!finnhub.isConfigured()) {
-        return res.status(503).json({ 
+        return res.status(503).json({
           error: 'Earnings service not configured',
           details: 'Finnhub API key is required for earnings data. Add FINNHUB_API_KEY to your environment variables.'
         });
       }
 
-      // Get earnings for next 2 weeks
-      const from = new Date().toISOString().split('T')[0];
-      const to = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-      
-      try {
-        // Fetch all earnings for the date range
-        const allEarnings = await finnhub.getEarningsCalendar(from, to);
-        
-        // Filter to only include symbols in user's open positions
-        const symbolSet = new Set(symbolList.map(s => s.toUpperCase()));
-        const relevantEarnings = allEarnings.filter(earning => 
-          symbolSet.has(earning.symbol.toUpperCase())
-        );
-        
-        // Sort by date
-        relevantEarnings.sort((a, b) => new Date(a.date) - new Date(b.date));
-        
-        res.json(relevantEarnings);
-      } catch (error) {
-        console.error('Failed to fetch earnings calendar:', error);
-        res.json([]); // Return empty array on error to not break the UI
-      }
+      const EarningsService = require('../services/earningsService');
+      const relevantEarnings = await EarningsService.refreshEarnings(symbolList);
+
+      res.json(relevantEarnings);
     } catch (error) {
       next(error);
     }
