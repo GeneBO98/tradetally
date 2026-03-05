@@ -94,7 +94,6 @@
                         ref="fileInput"
                         name="file-upload"
                         type="file"
-                        accept=".csv"
                         class="sr-only"
                         @change="handleFileSelect"
                       />
@@ -1048,7 +1047,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed, nextTick, watch } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed, nextTick, watch } from 'vue'
 import { useTradesStore } from '@/stores/trades'
 import { useAuthStore } from '@/stores/auth'
 import { useNotification } from '@/composables/useNotification'
@@ -2578,6 +2577,8 @@ watch(selectedImportIds, (ids) => {
   }
 }, { deep: true })
 
+let importHistoryInterval = null
+
 onMounted(() => {
   // Load saved broker preference
   const savedBroker = localStorage.getItem('lastSelectedBroker')
@@ -2590,6 +2591,12 @@ onMounted(() => {
   fetchCustomMappings()
   fetchImportRequirements()
   fetchTrialInfo()
-  setInterval(fetchImportHistory, 5000)
+  importHistoryInterval = setInterval(fetchImportHistory, 5000)
+})
+
+onBeforeUnmount(() => {
+  if (importHistoryInterval) {
+    clearInterval(importHistoryInterval)
+  }
 })
 </script>

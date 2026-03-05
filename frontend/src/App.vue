@@ -65,7 +65,7 @@
     
     <Notification />
     <ModalAlert />
-    <CookieConsentBanner />
+    <CookieConsentBanner v-if="isBillingEnabled" />
     <!-- Gamification celebration overlay -->
     <CelebrationOverlay :queue="celebrationQueue" />
   </div>
@@ -86,6 +86,7 @@ import UpdateBanner from '@/components/common/UpdateBanner.vue'
 import EmailVerificationBanner from '@/components/common/EmailVerificationBanner.vue'
 import VersionDisplay from '@/components/common/VersionDisplay.vue'
 import CookieConsentBanner from '@/components/common/CookieConsentBanner.vue'
+import { useRegistrationMode } from '@/composables/useRegistrationMode'
 import api from '@/services/api'
 
 // Rate limit notification handling
@@ -95,6 +96,7 @@ const lastRateLimitNotification = ref(0)
 const route = useRoute()
 const authStore = useAuthStore()
 const versionStore = useVersionStore()
+const { isBillingEnabled } = useRegistrationMode()
 
 // Initialize price alert notifications globally
 const { isConnected, connect, disconnect, celebrationQueue } = usePriceAlertNotifications()

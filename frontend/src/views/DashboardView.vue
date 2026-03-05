@@ -1434,19 +1434,30 @@ watch(dashboardLayout, () => {
   }, 1000) // Save 1 second after user stops making changes
 }, { deep: true })
 
-const openTradeSymbols = computed(() => {
-  // Filter positions to only include those matching the selected account
-  const filteredPositions = selectedAccount.value
-    ? openTrades.value.filter(position => {
-        // Check if any trade in this position matches the selected account
-        return position.trades && position.trades.some(trade => 
-          trade.account_identifier === selectedAccount.value
-        )
-      })
-    : openTrades.value
-  
-  return [...new Set(filteredPositions.map(position => position.symbol))]
-})
+// Stable symbol list - only updates the ref when symbols actually change.
+// This prevents child components (UpcomingEarnings, TradeNews) from re-fetching
+// on every auto-update cycle when open positions refresh but symbols stay the same.
+const openTradeSymbols = ref([])
+watch(
+  [openTrades, selectedAccount],
+  () => {
+    const filteredPositions = selectedAccount.value
+      ? openTrades.value.filter(position => {
+          return position.trades && position.trades.some(trade =>
+            trade.account_identifier === selectedAccount.value
+          )
+        })
+      : openTrades.value
+
+    const symbols = [...new Set(filteredPositions.map(position => position.symbol))].sort()
+    const newKey = symbols.join(',')
+    const oldKey = openTradeSymbols.value.slice().sort().join(',')
+    if (newKey !== oldKey) {
+      openTradeSymbols.value = symbols
+    }
+  },
+  { immediate: true }
+)
 
 const totalOpenCost = computed(() => {
   return openTrades.value.reduce((sum, position) => sum + (position.totalCost || 0), 0)
