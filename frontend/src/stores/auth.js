@@ -42,32 +42,18 @@ export const useAuthStore = defineStore('auth', () => {
         throw twoFactorError
       }
 
-      const { user: userData, token: authToken } = response.data
+      const { token: authToken } = response.data
 
       token.value = authToken
       localStorage.setItem('token', authToken)
-
-      // Set authorization header for subsequent requests
       api.defaults.headers.common['Authorization'] = `Bearer ${authToken}`
 
       if (response.data.is_first_login === true) {
         pendingOnboarding.value = true
       }
 
-      // Fetch complete user data with settings
       await fetchUser()
-
-      // If there's a return URL, redirect there instead of dashboard
-      if (returnUrl) {
-        const decoded = decodeURIComponent(returnUrl)
-        if (decoded.startsWith('/')) {
-          router.push(decoded)
-        } else {
-          window.location.href = decoded
-        }
-      } else {
-        router.push({ name: 'dashboard' })
-      }
+      navigateAfterLogin(returnUrl)
 
       return response.data
     } catch (err) {
@@ -78,6 +64,19 @@ export const useAuthStore = defineStore('auth', () => {
       throw err
     } finally {
       loading.value = false
+    }
+  }
+
+  function navigateAfterLogin(returnUrl = null) {
+    if (returnUrl) {
+      const decoded = decodeURIComponent(returnUrl)
+      if (decoded.startsWith('/')) {
+        router.push(decoded)
+      } else {
+        window.location.href = decoded
+      }
+    } else {
+      router.push({ name: 'dashboard' })
     }
   }
 
@@ -241,6 +240,63 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  async function loginWithPasskey(returnUrl = null) {
+    loading.value = true
+    error.value = null
+
+    try {
+      const { startAuthentication } = await import('@simplewebauthn/browser')
+
+      // Get authentication options from server
+      const optionsRes = await api.post('/auth/passkey/login/options')
+      const options = optionsRes.data
+      const sessionToken = options.sessionToken
+
+      // Prompt user's browser/device for passkey
+      const authResponse = await startAuthentication({ optionsJSON: options })
+
+      // Verify with server
+      const verifyRes = await api.post('/auth/passkey/login/verify', {
+        response: authResponse,
+        sessionToken
+      })
+
+      // Check if 2FA is required
+      if (verifyRes.data.requires2FA) {
+        const twoFactorError = new Error('Two-factor authentication required')
+        twoFactorError.requires2FA = true
+        twoFactorError.tempToken = verifyRes.data.tempToken
+        throw twoFactorError
+      }
+
+      const { token: authToken } = verifyRes.data
+
+      token.value = authToken
+      localStorage.setItem('token', authToken)
+      api.defaults.headers.common['Authorization'] = `Bearer ${authToken}`
+
+      if (verifyRes.data.is_first_login === true) {
+        pendingOnboarding.value = true
+      }
+
+      await fetchUser()
+      navigateAfterLogin(returnUrl)
+
+      return verifyRes.data
+    } catch (err) {
+      if (!err.requires2FA) {
+        if (err.name === 'NotAllowedError') {
+          error.value = 'No passkey found for this device, or the request was cancelled. Register a passkey from your Profile first.'
+        } else {
+          error.value = err.response?.data?.error || err.message || 'Passkey login failed'
+        }
+      }
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
   async function completeOnboarding() {
     try {
       await api.post('/users/onboarding-completed')
@@ -288,6 +344,8 @@ export const useAuthStore = defineStore('auth', () => {
     forgotPassword,
     resetPassword,
     verify2FA,
+    loginWithPasskey,
+    navigateAfterLogin,
     completeOnboarding,
     getRegistrationConfig
   }
