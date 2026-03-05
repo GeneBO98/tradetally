@@ -728,11 +728,9 @@ const analyticsController = {
         avg_mfe: overview.avg_mfe
       });
 
-      // Cache the result for 5 minutes (300000ms)
-      // Cache analytics overview for 5 minutes for better performance
-      const cacheTTL = 5 * 60 * 1000; // 5 minutes
+      // Cache until invalidated by trade mutations (24h fallback TTL)
+      const cacheTTL = 24 * 60 * 60 * 1000;
       cache.set(cacheKey, { overview }, cacheTTL);
-      console.log(`[CACHE SET] Analytics overview cached for ${cacheTTL/1000}s for user ${req.user.id}`);
       res.json({ overview });
     } catch (error) {
       console.error('Analytics overview error:', error);
@@ -1744,10 +1742,9 @@ const analyticsController = {
         }
       };
 
-      // Cache performance data for 5 minutes
-      const cacheTTL = 5 * 60 * 1000; // 5 minutes
+      // Cache until invalidated by trade mutations (24h fallback TTL)
+      const cacheTTL = 24 * 60 * 60 * 1000;
       cache.set(cacheKey, responseData, cacheTTL);
-      console.log(`[CACHE SET] Performance analytics cached for ${cacheTTL/1000}s`);
 
       res.json(responseData);
     } catch (error) {
@@ -2009,41 +2006,37 @@ const analyticsController = {
         const symbolResult = await db.query(symbolQuery, params);
         const symbolData = symbolResult.rows;
 
-        if (symbolData.length > 0 && finnhub.isConfigured()) {
+        if (symbolData.length > 0) {
           console.log(`[ANALYSIS] Analyzing ${symbolData.length} symbols for sector data...`);
+
+          // Read industries from symbol_categories table (populated by SymbolCategoryScheduler)
+          const symbolList = symbolData.map(s => s.symbol);
+          const catResult = await db.query(
+            `SELECT symbol, finnhub_industry FROM symbol_categories WHERE symbol = ANY($1::text[])`,
+            [symbolList]
+          );
+          const industryMap = new Map(catResult.rows.map(r => [r.symbol, r.finnhub_industry]));
+
           const sectorMap = new Map();
-          
-          // Process top symbols for sector analysis (limit to avoid delays)
-          for (const symbolInfo of symbolData.slice(0, 10)) {
-            try {
-              const profile = await finnhub.getCompanyProfile(symbolInfo.symbol);
-              
-              if (profile && profile.finnhubIndustry) {
-                const industry = profile.finnhubIndustry;
-                
-                if (!sectorMap.has(industry)) {
-                  sectorMap.set(industry, {
-                    industry: industry,
-                    total_trades: 0,
-                    total_pnl: 0,
-                    winning_trades: 0,
-                    symbols: []
-                  });
-                }
-                
-                const sector = sectorMap.get(industry);
-                sector.total_trades += parseInt(symbolInfo.total_trades);
-                sector.total_pnl += parseFloat(symbolInfo.total_pnl);
-                sector.winning_trades += parseInt(symbolInfo.winning_trades);
-                sector.symbols.push(symbolInfo.symbol);
-              }
-              
-              // Shorter delay for AI analysis
-              await new Promise(resolve => setTimeout(resolve, 1000));
-              
-            } catch (error) {
-              console.warn('[WARNING] Failed to get sector for %s:', symbolInfo.symbol, error.message);
+          for (const symbolInfo of symbolData) {
+            const industry = industryMap.get(symbolInfo.symbol);
+            if (!industry) continue;
+
+            if (!sectorMap.has(industry)) {
+              sectorMap.set(industry, {
+                industry: industry,
+                total_trades: 0,
+                total_pnl: 0,
+                winning_trades: 0,
+                symbols: []
+              });
             }
+
+            const sector = sectorMap.get(industry);
+            sector.total_trades += parseInt(symbolInfo.total_trades);
+            sector.total_pnl += parseFloat(symbolInfo.total_pnl);
+            sector.winning_trades += parseInt(symbolInfo.winning_trades);
+            sector.symbols.push(symbolInfo.symbol);
           }
 
           // Convert to array with calculated metrics
@@ -2055,7 +2048,7 @@ const analyticsController = {
 
           console.log(`[COMPLETE] Sector analysis complete: ${sectorData.length} sectors identified`);
         } else {
-          console.log('[SKIP] Skipping sector analysis - insufficient data or Finnhub not configured');
+          console.log('[SKIP] Skipping sector analysis - insufficient data');
         }
       } catch (error) {
         console.warn('[WARNING] Failed to fetch sector data for AI analysis:', error.message);
@@ -2102,13 +2095,6 @@ const analyticsController = {
   async getSectorPerformance(req, res, next) {
     try {
       console.log('[SECTOR] Starting sector performance analysis...');
-      
-      if (!finnhub.isConfigured()) {
-        console.log('[ERROR] Finnhub API key not configured');
-        return res.status(400).json({ 
-          error: 'Sector analysis not available. Finnhub API key not configured.' 
-        });
-      }
 
       // Use buildFilterConditions for consistency
       const { filterConditions, params: filterParams } = buildFilterConditions(req.query);
@@ -2237,14 +2223,9 @@ const analyticsController = {
         }
       };
 
-      // Start background categorization for uncategorized symbols (don't await)
-      if (uncategorizedSymbols.length > 0 && finnhub.isConfigured()) {
-        console.log(`[BACKGROUND] Starting background categorization for ${uncategorizedSymbols.length} symbols...`);
-        symbolCategories.getSymbolCategories(uncategorizedSymbols).then(() => {
-          console.log(`[COMPLETE] Background categorization complete for ${uncategorizedSymbols.length} symbols`);
-        }).catch(error => {
-          console.warn('[WARNING] Background categorization failed:', error.message);
-        });
+      // Uncategorized symbols will be picked up by the symbol category scheduler
+      if (uncategorizedSymbols.length > 0) {
+        console.log(`[INFO] ${uncategorizedSymbols.length} uncategorized symbols will be processed by the category scheduler`);
       }
 
       res.json(resultData);
