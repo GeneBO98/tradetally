@@ -980,59 +980,13 @@ const analyticsController = {
       const fc = filterConditions ? filterConditions.replace(/\btrade_date\b/g, `${tableAlias}.trade_date`).replace(/\bsymbol\b/g, `${tableAlias}.symbol`).replace(/\bstrategy\b/g, `${tableAlias}.strategy`).replace(/\bside\b/g, `${tableAlias}.side`) : '';
       const calendarQuery = `
         WITH exit_executions AS (
-          SELECT ${tableAlias}.user_id, ${tableAlias}.id AS trade_id, ${tableAlias}.symbol, ${tableAlias}.side,
+          SELECT ${tableAlias}.id AS trade_id, ${tableAlias}.pnl AS trade_pnl,
             (COALESCE(exec->>'datetime', exec->>'exitTime', exec->>'exit_time'))::timestamp::date AS exec_date,
-            (
-              CASE
-                -- Priority 1: If execution has entryPrice AND exitPrice (partial close), calculate fresh
-                -- This avoids using stored pnl which may have incorrect fee proration from import
-                WHEN (exec->>'entryPrice') IS NOT NULL AND (exec->>'exitPrice') IS NOT NULL AND (exec->>'quantity') IS NOT NULL
-                  THEN (
-                    CASE WHEN ${tableAlias}.side IN ('long','buy')
-                         THEN ((exec->>'exitPrice')::numeric - (exec->>'entryPrice')::numeric) * (exec->>'quantity')::numeric
-                         WHEN ${tableAlias}.side IN ('short','sell')
-                         THEN ((exec->>'entryPrice')::numeric - (exec->>'exitPrice')::numeric) * (exec->>'quantity')::numeric
-                         ELSE NULL END
-                    ) * (CASE WHEN COALESCE(${tableAlias}.instrument_type, 'stock') = 'future'
-                              THEN CASE WHEN ${tableAlias}.point_value IS NOT NULL AND ${tableAlias}.point_value > 1
-                                        THEN ${tableAlias}.point_value
-                                        ELSE NULL END
-                              WHEN COALESCE(${tableAlias}.instrument_type, 'stock') = 'option' THEN COALESCE(${tableAlias}.contract_size, 100)
-                              ELSE 1 END)
-                    -- Subtract execution's own fees + prorated entry commission
-                    - COALESCE((exec->>'fees')::numeric, 0)
-                    - CASE WHEN (${tableAlias}.quantity IS NOT NULL AND ${tableAlias}.quantity > 0) THEN ((exec->>'quantity')::numeric / ${tableAlias}.quantity) * (
-                      COALESCE(${tableAlias}.entry_commission, 0)
-                    ) ELSE 0 END
-                -- Priority 2: For broker-synced data with pre-calculated pnl (like Schwab netAmount), use as-is
-                WHEN (exec->>'pnl') IS NOT NULL AND (exec->>'entryPrice') IS NULL THEN (exec->>'pnl')::numeric
-                WHEN (exec->>'profitLoss') IS NOT NULL AND (exec->>'entryPrice') IS NULL THEN (exec->>'profitLoss')::numeric
-                -- Priority 3: Calculate from trade-level entry_price and exec exit price (e.g., expirations, CSV imports)
-                WHEN (exec->>'price') IS NOT NULL AND (exec->>'quantity') IS NOT NULL AND ${tableAlias}.entry_price IS NOT NULL
-                  THEN (
-                    CASE WHEN ${tableAlias}.side IN ('long','buy') THEN ((exec->>'price')::numeric - ${tableAlias}.entry_price) * (exec->>'quantity')::numeric
-                         WHEN ${tableAlias}.side IN ('short','sell') THEN (${tableAlias}.entry_price - (exec->>'price')::numeric) * (exec->>'quantity')::numeric
-                         ELSE NULL END
-                    ) * (CASE WHEN COALESCE(${tableAlias}.instrument_type, 'stock') = 'future'
-                              THEN CASE WHEN ${tableAlias}.point_value IS NOT NULL AND ${tableAlias}.point_value > 1
-                                        THEN ${tableAlias}.point_value
-                                        ELSE NULL END  -- Skip execution calc for futures without valid point_value
-                              WHEN COALESCE(${tableAlias}.instrument_type, 'stock') = 'option' THEN COALESCE(${tableAlias}.contract_size, 100)
-                              ELSE 1 END)
-                    -- Subtract this execution's fees
-                    - COALESCE((exec->>'fees')::numeric, 0)
-                    -- Subtract prorated entry commission
-                    - CASE WHEN (${tableAlias}.quantity IS NOT NULL AND ${tableAlias}.quantity > 0) THEN ((exec->>'quantity')::numeric / ${tableAlias}.quantity) * (
-                      COALESCE(${tableAlias}.entry_commission, 0)
-                    ) ELSE 0 END
-                ELSE NULL
-              END
-            ) AS exec_pnl,
-            (exec->>'quantity')::numeric AS exec_qty,
-            (exec->>'price')::numeric AS exec_price
+            (exec->>'quantity')::numeric AS exec_qty
           FROM trades ${tableAlias}
           CROSS JOIN LATERAL jsonb_array_elements(COALESCE(${tableAlias}.executions, '[]'::jsonb)) WITH ORDINALITY AS arr(exec, ord)
           WHERE ${tableAlias}.user_id = $1
+            AND ${tableAlias}.pnl IS NOT NULL
             AND (exec->>'datetime' IS NOT NULL OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL)
             AND (
               (${tableAlias}.side IN ('long','buy') AND (
@@ -1048,10 +1002,32 @@ const analyticsController = {
             AND (COALESCE(exec->>'datetime', exec->>'exitTime', exec->>'exit_time'))::timestamp::date <= $${paramOffset + 2}::date
             ${fc}
         ),
+        trade_exit_totals AS (
+          SELECT ${tableAlias}.id AS trade_id, SUM((exec->>'quantity')::numeric) AS total_exit_qty
+          FROM trades ${tableAlias}
+          CROSS JOIN LATERAL jsonb_array_elements(COALESCE(${tableAlias}.executions, '[]'::jsonb)) AS arr(exec)
+          WHERE ${tableAlias}.user_id = $1
+            AND ${tableAlias}.pnl IS NOT NULL
+            AND (exec->>'datetime' IS NOT NULL OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL)
+            AND (
+              (${tableAlias}.side IN ('long','buy') AND (
+                (exec->>'action') IN ('sell','short') OR (exec->>'type') IN ('sell','short')
+                OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL
+              ))
+              OR (${tableAlias}.side IN ('short','sell') AND (
+                (exec->>'action') IN ('buy','long') OR (exec->>'type') IN ('buy','long')
+                OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL
+              ))
+            )
+            ${fc}
+          GROUP BY ${tableAlias}.id
+        ),
         daily_from_exec AS (
-          SELECT trade_id, exec_date AS trade_date, exec_pnl AS pnl
-          FROM exit_executions
-          WHERE exec_pnl IS NOT NULL
+          SELECT e.trade_id, e.exec_date AS trade_date,
+            e.trade_pnl * (e.exec_qty / NULLIF(t.total_exit_qty, 0)) AS pnl
+          FROM exit_executions e
+          JOIN trade_exit_totals t ON e.trade_id = t.trade_id
+          WHERE t.total_exit_qty > 0
         ),
         daily_from_trade AS (
           SELECT ${tableAlias}.id AS trade_id, (${tableAlias}.exit_time::timestamp)::date AS trade_date, ${tableAlias}.pnl
@@ -1059,18 +1035,9 @@ const analyticsController = {
           WHERE ${tableAlias}.user_id = $1
             AND ${tableAlias}.exit_time IS NOT NULL
             AND ${tableAlias}.pnl IS NOT NULL
-            AND (${tableAlias}.executions IS NULL OR jsonb_array_length(${tableAlias}.executions) = 0
-                 OR (COALESCE(${tableAlias}.instrument_type, 'stock') = 'future' AND (${tableAlias}.point_value IS NULL OR ${tableAlias}.point_value <= 1))
-                 OR NOT EXISTS (
-                   SELECT 1 FROM jsonb_array_elements(COALESCE(${tableAlias}.executions, '[]'::jsonb)) AS e(exec)
-                   WHERE (
-                     ( (e.exec->>'pnl') IS NOT NULL AND (e.exec->>'pnl') ~ '^-?[0-9]+(\\.[0-9]*)?$' )
-                     OR ( (e.exec->>'profitLoss') IS NOT NULL AND (e.exec->>'profitLoss') ~ '^-?[0-9]+(\\.[0-9]*)?$' )
-                     OR ( (e.exec->>'price') IS NOT NULL AND (e.exec->>'quantity') IS NOT NULL AND ${tableAlias}.entry_price IS NOT NULL )
-                     OR ( (e.exec->>'entryPrice') IS NOT NULL AND (e.exec->>'exitPrice') IS NOT NULL AND (e.exec->>'quantity') IS NOT NULL )
-                   )
-                   AND ( (${tableAlias}.side IN ('long','buy') AND ((e.exec->>'action') IN ('sell','short') OR (e.exec->>'type') IN ('sell','short') OR e.exec->>'exitTime' IS NOT NULL OR e.exec->>'exit_time' IS NOT NULL)) OR (${tableAlias}.side IN ('short','sell') AND ((e.exec->>'action') IN ('buy','long') OR (e.exec->>'type') IN ('buy','long') OR e.exec->>'exitTime' IS NOT NULL OR e.exec->>'exit_time' IS NOT NULL)) )
-                 ))
+            AND NOT EXISTS (
+              SELECT 1 FROM trade_exit_totals tet WHERE tet.trade_id = ${tableAlias}.id
+            )
             AND (${tableAlias}.exit_time::timestamp)::date >= $${paramOffset + 1}::date
             AND (${tableAlias}.exit_time::timestamp)::date <= $${paramOffset + 2}::date
             ${fc}
@@ -1142,59 +1109,12 @@ const analyticsController = {
 
       const dayQuery = `
         WITH exit_execs AS (
-          SELECT t.id AS trade_id, t.symbol, t.side,
-            COALESCE(exec->>'datetime', exec->>'exitTime', exec->>'exit_time') AS exec_datetime,
-            (
-              CASE
-                -- Priority 1: If execution has entryPrice AND exitPrice (partial close), calculate fresh
-                -- This avoids using stored pnl which may have incorrect fee proration from import
-                WHEN (exec->>'entryPrice') IS NOT NULL AND (exec->>'exitPrice') IS NOT NULL AND (exec->>'quantity') IS NOT NULL
-                  THEN (
-                    CASE WHEN t.side IN ('long','buy')
-                         THEN ((exec->>'exitPrice')::numeric - (exec->>'entryPrice')::numeric) * (exec->>'quantity')::numeric
-                         WHEN t.side IN ('short','sell')
-                         THEN ((exec->>'entryPrice')::numeric - (exec->>'exitPrice')::numeric) * (exec->>'quantity')::numeric
-                         ELSE NULL END
-                    ) * (CASE WHEN COALESCE(t.instrument_type, 'stock') = 'future'
-                              THEN CASE WHEN t.point_value IS NOT NULL AND t.point_value > 1
-                                        THEN t.point_value
-                                        ELSE NULL END
-                              WHEN COALESCE(t.instrument_type, 'stock') = 'option' THEN COALESCE(t.contract_size, 100)
-                              ELSE 1 END)
-                    -- Subtract execution's own fees + prorated entry commission
-                    - COALESCE((exec->>'fees')::numeric, 0)
-                    - CASE WHEN (t.quantity IS NOT NULL AND t.quantity > 0) THEN ((exec->>'quantity')::numeric / t.quantity) * (
-                      COALESCE(t.entry_commission, 0)
-                    ) ELSE 0 END
-                -- Priority 2: For broker-synced data with pre-calculated pnl (like Schwab netAmount), use as-is
-                WHEN (exec->>'pnl') IS NOT NULL AND (exec->>'entryPrice') IS NULL THEN (exec->>'pnl')::numeric
-                WHEN (exec->>'profitLoss') IS NOT NULL AND (exec->>'entryPrice') IS NULL THEN (exec->>'profitLoss')::numeric
-                -- Priority 3: Calculate from trade-level entry_price and exec exit price (e.g., expirations, CSV imports)
-                WHEN (exec->>'price') IS NOT NULL AND (exec->>'quantity') IS NOT NULL AND t.entry_price IS NOT NULL
-                  THEN (
-                    CASE WHEN t.side IN ('long','buy') THEN ((exec->>'price')::numeric - t.entry_price) * (exec->>'quantity')::numeric
-                         WHEN t.side IN ('short','sell') THEN (t.entry_price - (exec->>'price')::numeric) * (exec->>'quantity')::numeric
-                         ELSE NULL END
-                  ) * (CASE WHEN COALESCE(t.instrument_type, 'stock') = 'future'
-                            THEN CASE WHEN t.point_value IS NOT NULL AND t.point_value > 1
-                                      THEN t.point_value
-                                      ELSE NULL END  -- Skip execution calc for futures without valid point_value
-                            WHEN COALESCE(t.instrument_type, 'stock') = 'option' THEN COALESCE(t.contract_size, 100)
-                            ELSE 1 END)
-                  -- Subtract this execution's fees
-                  - COALESCE((exec->>'fees')::numeric, 0)
-                  -- Subtract prorated entry commission
-                  - CASE WHEN (t.quantity IS NOT NULL AND t.quantity > 0) THEN ((exec->>'quantity')::numeric / t.quantity) * (
-                    COALESCE(t.entry_commission, 0)
-                  ) ELSE 0 END
-                ELSE NULL
-              END
-            ) AS exec_pnl,
-            (exec->>'quantity')::numeric AS exec_quantity,
-            (exec->>'price')::numeric AS exec_price
+          SELECT t.id AS trade_id, t.symbol, t.side, t.pnl AS trade_pnl,
+            (exec->>'quantity')::numeric AS exec_qty
           FROM trades t
           CROSS JOIN LATERAL jsonb_array_elements(COALESCE(t.executions, '[]'::jsonb)) WITH ORDINALITY AS arr(exec, ord)
           WHERE t.user_id = $1
+            AND t.pnl IS NOT NULL
             AND (exec->>'datetime' IS NOT NULL OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL)
             AND (
               (t.side IN ('long','buy') AND (
@@ -1210,31 +1130,42 @@ const analyticsController = {
             AND (COALESCE(exec->>'datetime', exec->>'exitTime', exec->>'exit_time'))::timestamp::date <= $${paramLen}::date
             ${fc}
         ),
-        grouped_by_trade AS (
-          SELECT trade_id, symbol, side,
-            SUM(exec_pnl) AS total_pnl,
-            COUNT(*)::int AS exit_count
-          FROM exit_execs
-          WHERE exec_pnl IS NOT NULL
-          GROUP BY trade_id, symbol, side
-        ),
-        trade_total_exits AS (
-          SELECT t.id AS trade_id, COUNT(*)::int AS total_exit_count
+        trade_exit_totals AS (
+          SELECT t.id AS trade_id,
+            SUM((exec->>'quantity')::numeric) AS total_exit_qty,
+            COUNT(*)::int AS total_exit_count
           FROM trades t
-          CROSS JOIN LATERAL jsonb_array_elements(COALESCE(t.executions, '[]'::jsonb)) AS exec
+          CROSS JOIN LATERAL jsonb_array_elements(COALESCE(t.executions, '[]'::jsonb)) AS arr(exec)
           WHERE t.user_id = $1
+            AND t.pnl IS NOT NULL
             AND (exec->>'datetime' IS NOT NULL OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL)
             AND (
               (t.side IN ('long','buy') AND ((exec->>'action') IN ('sell','short') OR (exec->>'type') IN ('sell','short') OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL))
               OR (t.side IN ('short','sell') AND ((exec->>'action') IN ('buy','long') OR (exec->>'type') IN ('buy','long') OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL))
             )
+            ${fc}
           GROUP BY t.id
+        ),
+        prorated_execs AS (
+          SELECT e.trade_id, e.symbol, e.side,
+            e.trade_pnl * (e.exec_qty / NULLIF(t.total_exit_qty, 0)) AS exec_pnl,
+            e.exec_qty
+          FROM exit_execs e
+          JOIN trade_exit_totals t ON e.trade_id = t.trade_id
+          WHERE t.total_exit_qty > 0
+        ),
+        grouped_by_trade AS (
+          SELECT trade_id, symbol, side,
+            SUM(exec_pnl) AS total_pnl,
+            COUNT(*)::int AS exit_count
+          FROM prorated_execs
+          GROUP BY trade_id, symbol, side
         )
         SELECT g.trade_id, g.symbol, g.side, g.total_pnl AS exec_pnl, g.exit_count,
                COALESCE(tt.total_exit_count, 1) AS total_exit_count,
                tr.r_value, tr.stop_loss
         FROM grouped_by_trade g
-        LEFT JOIN trade_total_exits tt ON g.trade_id = tt.trade_id
+        LEFT JOIN trade_exit_totals tt ON g.trade_id = tt.trade_id
         LEFT JOIN trades tr ON g.trade_id = tr.id
         ORDER BY g.trade_id
       `;
@@ -1257,23 +1188,22 @@ const analyticsController = {
         };
       });
 
+      // Fallback: trades without exit executions (no executions array, or no exit execs with quantity)
       const tradeLevelFallbackQuery = `
         SELECT t.id AS trade_id, t.symbol, t.side, t.exit_time AS exec_datetime, t.pnl, t.quantity, t.exit_price AS price, t.r_value, t.stop_loss
         FROM trades t
         WHERE t.user_id = $1
           AND t.exit_time IS NOT NULL
           AND t.pnl IS NOT NULL
-          AND (t.executions IS NULL OR jsonb_array_length(t.executions) = 0
-               OR NOT EXISTS (
-                 SELECT 1 FROM jsonb_array_elements(COALESCE(t.executions, '[]'::jsonb)) AS e(exec)
-                 WHERE (
-                   ( (e.exec->>'pnl') IS NOT NULL AND (e.exec->>'pnl') ~ '^-?[0-9]+(\\.[0-9]*)?$' )
-                   OR ( (e.exec->>'profitLoss') IS NOT NULL AND (e.exec->>'profitLoss') ~ '^-?[0-9]+(\\.[0-9]*)?$' )
-                   OR ( (e.exec->>'price') IS NOT NULL AND (e.exec->>'quantity') IS NOT NULL AND t.entry_price IS NOT NULL )
-                   OR ( (e.exec->>'entryPrice') IS NOT NULL AND (e.exec->>'exitPrice') IS NOT NULL AND (e.exec->>'quantity') IS NOT NULL )
-                 )
-                 AND ( (t.side IN ('long','buy') AND ((e.exec->>'action') IN ('sell','short') OR (e.exec->>'type') IN ('sell','short') OR e.exec->>'exitTime' IS NOT NULL OR e.exec->>'exit_time' IS NOT NULL)) OR (t.side IN ('short','sell') AND ((e.exec->>'action') IN ('buy','long') OR (e.exec->>'type') IN ('buy','long') OR e.exec->>'exitTime' IS NOT NULL OR e.exec->>'exit_time' IS NOT NULL)) )
-               ))
+          AND NOT EXISTS (
+            SELECT 1 FROM jsonb_array_elements(COALESCE(t.executions, '[]'::jsonb)) AS e(exec)
+            WHERE (exec->>'quantity') IS NOT NULL
+              AND (exec->>'datetime' IS NOT NULL OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL)
+              AND (
+                (t.side IN ('long','buy') AND ((exec->>'action') IN ('sell','short') OR (exec->>'type') IN ('sell','short') OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL))
+                OR (t.side IN ('short','sell') AND ((exec->>'action') IN ('buy','long') OR (exec->>'type') IN ('buy','long') OR exec->>'exitTime' IS NOT NULL OR exec->>'exit_time' IS NOT NULL))
+              )
+          )
           AND (t.exit_time::timestamp)::date >= $${paramLen - 1}::date
           AND (t.exit_time::timestamp)::date <= $${paramLen}::date
           ${fc}
