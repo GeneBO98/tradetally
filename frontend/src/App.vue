@@ -68,6 +68,35 @@
     <CookieConsentBanner v-if="isBillingEnabled" />
     <!-- Gamification celebration overlay -->
     <CelebrationOverlay :queue="celebrationQueue" />
+
+    <!-- Passkey registration prompt (shown after login if user has no passkeys) -->
+    <div v-if="showPasskeyPrompt" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+      <div class="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-md w-full mx-4 p-6 text-center">
+        <svg class="w-12 h-12 mx-auto mb-4 text-primary-600 dark:text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+        </svg>
+        <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">Add a passkey?</h3>
+        <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
+          Sign in faster next time using your device's biometrics, security key, or PIN. No password needed.
+        </p>
+        <div class="flex space-x-3 justify-center">
+          <button
+            @click="registerPasskey"
+            :disabled="passkeyRegistering"
+            class="px-6 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-md disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+          >
+            <span v-if="passkeyRegistering">Setting up...</span>
+            <span v-else>Add passkey</span>
+          </button>
+          <button
+            @click="dismissPasskeyPrompt"
+            class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
+          >
+            Skip for now
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -90,7 +119,7 @@ import { useRegistrationMode } from '@/composables/useRegistrationMode'
 import api from '@/services/api'
 
 // Rate limit notification handling
-const { showError } = useNotification()
+const { showError, showSuccess } = useNotification()
 const lastRateLimitNotification = ref(0)
 
 const route = useRoute()
@@ -123,6 +152,63 @@ watch(() => [authStore.user?.tier, authStore.token, authStore.user?.billingEnabl
     }
   }
 }, { immediate: true })
+
+// Passkey registration prompt
+const showPasskeyPrompt = ref(false)
+const passkeyRegistering = ref(false)
+const PASSKEY_PROMPT_DISMISSED_KEY = 'passkey_prompt_dismissed'
+
+// Watch for login: when token appears, check if user has passkeys
+let previousToken = authStore.token
+watch(() => authStore.token, async (newToken) => {
+  if (newToken && !previousToken) {
+    if (localStorage.getItem(PASSKEY_PROMPT_DISMISSED_KEY)) {
+      previousToken = newToken
+      return
+    }
+    // Wait for page to settle after redirect
+    setTimeout(async () => {
+      try {
+        const res = await api.get('/auth/passkey')
+        if (!res.data.passkeys || res.data.passkeys.length === 0) {
+          showPasskeyPrompt.value = true
+        }
+      } catch (e) {
+        // Not critical
+      }
+    }, 1500)
+  }
+  previousToken = newToken
+})
+
+async function registerPasskey() {
+  passkeyRegistering.value = true
+  try {
+    const { startRegistration } = await import('@simplewebauthn/browser')
+    const optionsRes = await api.post('/auth/passkey/register/options')
+    const regResponse = await startRegistration({ optionsJSON: optionsRes.data })
+
+    await api.post('/auth/passkey/register/verify', {
+      response: regResponse,
+      deviceName: navigator.platform || 'My device',
+    })
+
+    showPasskeyPrompt.value = false
+    showSuccess('Passkey added', 'You can now sign in with your passkey next time.')
+  } catch (err) {
+    showPasskeyPrompt.value = false
+    if (err.name !== 'NotAllowedError') {
+      showError('Error', err.response?.data?.error || err.message || 'Failed to register passkey.')
+    }
+  } finally {
+    passkeyRegistering.value = false
+  }
+}
+
+function dismissPasskeyPrompt() {
+  showPasskeyPrompt.value = false
+  localStorage.setItem(PASSKEY_PROMPT_DISMISSED_KEY, 'true')
+}
 
 // Version check polling interval (6 hours)
 let versionPollInterval = null
