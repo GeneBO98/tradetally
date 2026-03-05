@@ -707,6 +707,7 @@ router.post('/bulk/tags', authenticate, tradeController.bulkAddTags);
  *         description: List of upcoming earnings
  */
 router.get('/earnings', authenticate, tradeController.getUpcomingEarnings);
+router.post('/earnings/refresh', authenticate, tradeController.refreshUpcomingEarnings);
 
 /**
  * @swagger
@@ -721,6 +722,7 @@ router.get('/earnings', authenticate, tradeController.getUpcomingEarnings);
  *         description: List of trade-related news
  */
 router.get('/news', authenticate, tradeController.getTradeNews);
+router.post('/news/refresh', authenticate, tradeController.refreshTradeNews);
 
 // Export trades - MUST be before /:id route to avoid matching "export" as an ID
 router.get('/export', authenticate, tradeController.exportTrades);

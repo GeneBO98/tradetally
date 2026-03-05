@@ -1585,36 +1585,57 @@ function getDateRange(range) {
   }
 }
 
+function getAnalyticsCacheKey() {
+  const dateRange = getDateRange(filters.value.timeRange)
+  const parts = [dateRange.startDate || '', dateRange.endDate || '', selectedAccount.value || '']
+  return 'dashboard_analytics_' + parts.join('_')
+}
+
+function loadCachedAnalytics() {
+  try {
+    const key = getAnalyticsCacheKey()
+    const stored = sessionStorage.getItem(key)
+    if (stored) {
+      const data = JSON.parse(stored)
+      analytics.value = data
+      analyticsLoading.value = false
+      nextTick(() => createCharts())
+      return true
+    }
+  } catch (e) {
+    // sessionStorage read failed
+  }
+  return false
+}
+
 async function fetchAnalytics() {
   try {
-    analyticsLoading.value = true
+    // Only show skeleton if we have no cached data to display
+    if (!analytics.value?.summary?.totalTrades && analytics.value?.summary?.totalTrades !== 0) {
+      analyticsLoading.value = true
+    }
 
     const dateRange = getDateRange(filters.value.timeRange)
     const params = new URLSearchParams()
-    
+
     // Only add parameters if they have values
     if (dateRange.startDate) params.append('startDate', dateRange.startDate)
     if (dateRange.endDate) params.append('endDate', dateRange.endDate)
     // Use global account filter
     if (selectedAccount.value) params.append('accounts', selectedAccount.value)
-    
-    console.log('Dashboard: Fetching analytics with params:', params.toString())
+
     const response = await api.get(`/trades/analytics?${params}`)
     analytics.value = response.data
-    
-    console.log('Dashboard: Analytics response:', analytics.value)
-    console.log('Dashboard: Daily P&L data length:', analytics.value.dailyPnL?.length)
-    console.log('Dashboard: Daily P&L data:', analytics.value.dailyPnL)
-    console.log('Dashboard: Summary data:', analytics.value.summary)
-    console.log('Dashboard: Top trades data:', analytics.value.topTrades)
-    console.log('Dashboard: Win/Loss counts:', {
-      wins: analytics.value.summary?.winningTrades,
-      losses: analytics.value.summary?.losingTrades,
-      breakeven: analytics.value.summary?.breakevenTrades
-    })
-    
+
+    // Persist to sessionStorage for instant display on page reload
+    try {
+      const key = getAnalyticsCacheKey()
+      sessionStorage.setItem(key, JSON.stringify(response.data))
+    } catch (e) {
+      // sessionStorage write failed (quota, private mode, etc.)
+    }
+
     await nextTick()
-    // Create charts immediately without artificial delay
     createCharts()
   } catch (error) {
     console.error('Failed to fetch analytics:', error)
@@ -2379,6 +2400,9 @@ onMounted(async () => {
     // localStorage load failed
   }
 
+  // Try to restore analytics from sessionStorage for instant chart rendering
+  const hasCachedAnalytics = loadCachedAnalytics()
+
   // Phase 1: Fetch settings + positions in parallel (both fast) to show dashboard shell ASAP
   await Promise.all([
     fetchUserSettings(),
@@ -2388,7 +2412,8 @@ onMounted(async () => {
   // Dashboard shell is ready - drop the full-page spinner
   initialLoading.value = false
 
-  // Phase 2: Fire all remaining data fetches non-blocking (analytics is heavy, quotes are slow)
+  // Phase 2: Fire all remaining data fetches non-blocking
+  // If we had cached analytics, this silently refreshes in background; otherwise it loads fresh
   fetchAnalytics()
   fetchOpenTradeQuotes()
   fetchExpiredOptionsCount()

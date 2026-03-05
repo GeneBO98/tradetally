@@ -187,8 +187,24 @@ const fetchNews = async () => {
   }
 }
 
-const refreshNews = () => {
-  fetchNews()
+const refreshNews = async () => {
+  if (!props.symbols.length) return
+
+  loading.value = true
+  error.value = null
+
+  try {
+    const response = await api.post('/trades/news/refresh', {
+      symbols: props.symbols.join(',')
+    })
+
+    newsItems.value = response.data
+  } catch (err) {
+    console.error('Failed to refresh news:', err)
+    error.value = err.response?.data?.error || 'Failed to refresh news. Please try again later.'
+  } finally {
+    loading.value = false
+  }
 }
 
 onMounted(() => {

@@ -3,6 +3,8 @@ const logger = require('../utils/logger');
 const finnhub = require('../utils/finnhub');
 const alphaVantage = require('../utils/alphaVantage');
 const { v4: uuidv4 } = require('uuid');
+const NewsService = require('../services/newsService');
+const EarningsService = require('../services/earningsService');
 
 const watchlistController = {
   // Get all watchlists for a user
@@ -436,38 +438,25 @@ const watchlistController = {
       }
       
       const symbols = symbolsResult.rows.map(row => row.symbol);
-      const allNews = [];
-      
-      // Get news for each symbol
-      for (const symbol of symbols) {
-        try {
-          const fromDate = new Date(Date.now() - parseInt(days) * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-          const newsData = await finnhub.getCompanyNews(symbol, fromDate);
-          
-          if (newsData && newsData.length > 0) {
-            // Add symbol information to each news item
-            const symbolNews = newsData.map(article => ({
-              ...article,
-              symbol: symbol,
-              source: 'finnhub'
-            }));
-            allNews.push(...symbolNews);
-          }
-        } catch (error) {
-          logger.logWarn(`Could not fetch news for ${symbol}:`, error.message);
-        }
-      }
-      
-      // Sort by date (most recent first) and limit results
-      allNews.sort((a, b) => b.datetime - a.datetime);
-      const limitedNews = allNews.slice(0, parseInt(limit));
-      
+
+      // Read from news cache (populated by NewsScheduler)
+      let allNews = await NewsService.getNewsForSymbols(symbols);
+
+      // Post-filter by days parameter
+      const daysInt = parseInt(days);
+      const cutoff = Date.now() / 1000 - daysInt * 24 * 60 * 60;
+      allNews = allNews.filter(item => item.datetime >= cutoff);
+
+      // Apply limit
+      const limitInt = parseInt(limit);
+      const limitedNews = allNews.slice(0, limitInt);
+
       res.json({
         success: true,
         data: limitedNews,
         meta: {
           symbols: symbols,
-          days: parseInt(days),
+          days: daysInt,
           total_articles: allNews.length,
           returned_articles: limitedNews.length
         }
@@ -508,38 +497,21 @@ const watchlistController = {
       }
       
       const symbols = symbolsResult.rows.map(row => row.symbol);
-      const allEarnings = [];
-      
-      // Get earnings for each symbol
-      for (const symbol of symbols) {
-        try {
-          const fromDate = new Date().toISOString().split('T')[0];
-          const toDate = new Date(Date.now() + parseInt(days) * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-          const earningsData = await finnhub.getEarningsCalendar(fromDate, toDate, symbol);
-          
-          if (earningsData && earningsData.length > 0) {
-            // Add symbol information to each earnings item
-            const symbolEarnings = earningsData.map(earnings => ({
-              ...earnings,
-              symbol: symbol,
-              source: 'finnhub'
-            }));
-            allEarnings.push(...symbolEarnings);
-          }
-        } catch (error) {
-          logger.logWarn(`Could not fetch earnings for ${symbol}:`, error.message);
-        }
-      }
-      
-      // Sort by date (earliest first)
-      allEarnings.sort((a, b) => new Date(a.date) - new Date(b.date));
-      
+
+      // Read from earnings cache (populated by EarningsScheduler)
+      let allEarnings = await EarningsService.getEarningsForSymbols(symbols);
+
+      // Post-filter by days parameter (earnings within N days from now)
+      const daysInt = parseInt(days);
+      const cutoffDate = new Date(Date.now() + daysInt * 24 * 60 * 60 * 1000);
+      allEarnings = allEarnings.filter(e => new Date(e.date) <= cutoffDate);
+
       res.json({
         success: true,
         data: allEarnings,
         meta: {
           symbols: symbols,
-          days: parseInt(days),
+          days: daysInt,
           total_earnings: allEarnings.length
         }
       });
