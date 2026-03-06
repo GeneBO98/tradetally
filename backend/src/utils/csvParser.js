@@ -270,9 +270,9 @@ function detectBrokerFormat(fileBuffer) {
     // Futures transaction format: Side, Fill Price, Order ID
     if (headers.includes('symbol') &&
         headers.includes('side') &&
-        headers.includes('fill price') &&
         headers.includes('order id') &&
-        (headers.includes('leverage') || headers.includes('placing time') || headers.includes('closing time'))) {
+        (headers.includes('fill price') || headers.includes('avg fill price')) &&
+        (headers.includes('leverage') || headers.includes('placing time') || headers.includes('closing time') || headers.includes('update time'))) {
       console.log('[AUTO-DETECT] Detected: TradingView (futures trading format)');
       return 'tradingview';
     }
@@ -343,6 +343,14 @@ function detectBrokerFormat(fileBuffer) {
         headers.includes('filled qty') && headers.includes('filled avg price') &&
         headers.includes('filled time') && headers.includes('symbol')) {
       console.log('[AUTO-DETECT] Detected: Webull (alternate format)');
+      return 'webull';
+    }
+
+    // Webull newer format - Side + Side Type, Filled Qty, Filled AVG Price, Fill Time
+    if (headers.includes('side') && headers.includes('side type') &&
+        headers.includes('filled qty') && headers.includes('filled avg price') &&
+        headers.includes('fill time') && headers.includes('symbol')) {
+      console.log('[AUTO-DETECT] Detected: Webull (newer format)');
       return 'webull';
     }
 
@@ -824,11 +832,11 @@ const brokerParsers = {
     const symbol = cleanString(row.Symbol);
     const side = row.Side ? row.Side.toLowerCase() : '';
     const status = row.Status || '';
-    const quantity = Math.abs(parseInteger(row.Qty));
-    const fillPrice = parseNumeric(row['Fill Price']);
+    const quantity = Math.abs(parseInteger(row['Filled Qty'] || row.Qty));
+    const fillPrice = parseNumeric(row['Fill Price'] || row['Avg Fill Price']);
     const commission = parseNumeric(row.Commission);
     const placingTime = row['Placing Time'] || '';
-    const closingTime = row['Closing Time'] || '';
+    const closingTime = row['Closing Time'] || row['Update Time'] || '';
     const orderId = row['Order ID'] || '';
     const orderType = row.Type || '';
     const leverage = row.Leverage || '';
@@ -4940,11 +4948,11 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
       const side = getField(record, 'Side') ? getField(record, 'Side').toLowerCase() : '';
       const statusRaw = getField(record, 'Status') || '';
       const status = statusRaw.toLowerCase();
-      const quantity = Math.abs(parseInteger(getField(record, 'Qty')));
-      const fillPrice = parseNumeric(getField(record, 'Fill Price'));
+      const quantity = Math.abs(parseInteger(getField(record, 'Filled Qty') || getField(record, 'Qty')));
+      const fillPrice = parseNumeric(getField(record, 'Fill Price') || getField(record, 'Avg Fill Price'));
       const commission = parseNumeric(getField(record, 'Commission'));
       const placingTime = getField(record, 'Placing Time') || '';
-      const closingTime = getField(record, 'Closing Time') || placingTime;
+      const closingTime = getField(record, 'Closing Time') || getField(record, 'Update Time') || placingTime;
       const orderId = getField(record, 'Order ID') || '';
       const orderType = getField(record, 'Type') || '';
       const leverage = getField(record, 'Leverage') || '';
@@ -6398,10 +6406,10 @@ async function parseWebullTransactions(records, existingPositions = {}, context 
       const status = cleanString(record.Status || record.status);
       // Support both "Filled" (old) and "Filled Qty" (alternate)
       const filled = parseInt(record.Filled || record.filled || record['Filled Qty'] || record['filled qty'] || 0);
-      // Support both "Avg Price" (old) and "Filled Avg Price" (alternate, may have $ prefix)
-      const priceRaw = cleanString(record['Avg Price'] || record['avg price'] || record['Filled Avg Price'] || record['filled avg price'] || record.Price || record.price || '0');
+      // Support both "Avg Price" (old) and "Filled Avg Price" / "Filled AVG Price" (alternate, may have $ prefix)
+      const priceRaw = cleanString(record['Avg Price'] || record['avg price'] || record['Filled Avg Price'] || record['filled avg price'] || record['Filled AVG Price'] || record.Price || record.price || '0');
       const price = parseFloat(priceRaw.replace(/^\$/, ''));
-      const filledTime = record['Filled Time'] || record['filled time'] || '';
+      const filledTime = record['Filled Time'] || record['filled time'] || record['Fill Time'] || record['fill time'] || '';
 
       const diag = context.diagnostics;
 
@@ -6491,10 +6499,13 @@ async function parseWebullTransactions(records, existingPositions = {}, context 
           ? extractAccountFromRecord(record, context.accountColumnName)
           : null;
 
-      // Parse fees - alternate format has Commission and Fee columns (may have $ prefix)
+      // Parse fees - alternate format has Commission, Fee, Platform Fee, GST columns (may have $ prefix)
       const commissionRaw = cleanString(record.Commission || record.commission || '0');
       const feeRaw = cleanString(record.Fee || record.fee || '0');
-      const totalFees = parseFloat(commissionRaw.replace(/^\$/, '')) + parseFloat(feeRaw.replace(/^\$/, ''));
+      const platformFeeRaw = cleanString(record['Platform Fee'] || record['platform fee'] || '0');
+      const gstRaw = cleanString(record.GST || record.gst || '0');
+      const totalFees = parseFloat(commissionRaw.replace(/^\$/, '')) + parseFloat(feeRaw.replace(/^\$/, ''))
+        + parseFloat(platformFeeRaw.replace(/^\$/, '')) + parseFloat(gstRaw.replace(/^\$/, ''));
 
       transactions.push({
         symbol,
