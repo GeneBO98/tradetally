@@ -10,6 +10,7 @@ export const useAuthStore = defineStore('auth', () => {
   const error = ref(null)
   const registrationConfig = ref(null)
   const pendingOnboarding = ref(false)
+  let registrationConfigPromise = null
 
   const isAuthenticated = computed(() => !!token.value)
   const showOnboardingModal = computed(() => {
@@ -311,19 +312,31 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function getRegistrationConfig() {
-    try {
-      const response = await api.get('/auth/config')
-      registrationConfig.value = response.data
-      return response.data
-    } catch (err) {
-      console.error('Failed to fetch registration config:', err)
-      // Return default values as fallback
-      return {
-        registrationMode: 'open',
-        emailVerificationEnabled: false,
-        allowRegistration: true
-      }
+    if (registrationConfig.value) {
+      return registrationConfig.value
     }
+
+    if (!registrationConfigPromise) {
+      registrationConfigPromise = api.get('/auth/config')
+        .then((response) => {
+          registrationConfig.value = response.data
+          return response.data
+        })
+        .catch((err) => {
+          console.error('Failed to fetch registration config:', err)
+          // Return default values as fallback
+          return {
+            registrationMode: 'open',
+            emailVerificationEnabled: false,
+            allowRegistration: true
+          }
+        })
+        .finally(() => {
+          registrationConfigPromise = null
+        })
+    }
+
+    return registrationConfigPromise
   }
 
   return {

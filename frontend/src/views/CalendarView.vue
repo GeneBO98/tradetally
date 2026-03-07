@@ -49,7 +49,7 @@
       <div v-if="expandedMonth" ref="expandedMonthContainer" class="mb-8">
         <div class="card">
           <div class="card-body">
-            <div class="flex justify-between items-center mb-6">
+            <div class="mb-6 flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
               <div class="flex items-center space-x-2">
                 <button @click="changeMonth(-1)" class="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200" title="Previous month">
                   <ChevronLeftIcon class="h-5 w-5" />
@@ -61,14 +61,36 @@
                   <ChevronRightIcon class="h-5 w-5" />
                 </button>
               </div>
-              <div class="flex items-center space-x-4">
-                <div class="text-right">
-                  <p class="text-sm text-gray-500 dark:text-gray-400">{{ showRValue ? 'Total R' : 'Total P/L' }}</p>
-                  <p class="text-2xl font-bold" :class="monthlyTotal >= 0 ? 'text-green-600' : 'text-red-600'">
-                    {{ showRValue ? formatRValue(monthlyTotal) : '$' + formatNumber(monthlyTotal) }}
-                  </p>
+              <div class="flex flex-col gap-3 sm:flex-row sm:items-stretch xl:justify-end">
+                <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div class="card card-mobile-safe min-w-[210px] border-l-4 border-l-primary-500">
+                    <div class="card-body">
+                      <dt class="text-data-secondary truncate">
+                        {{ format(expandedMonth, 'MMMM') }} {{ showRValue ? 'R-Value' : 'P&L' }}
+                      </dt>
+                      <dd class="mt-1 text-xl sm:text-2xl lg:text-3xl font-semibold whitespace-nowrap" :class="monthlyTotal >= 0 ? 'text-green-600' : 'text-red-600'">
+                        {{ showRValue ? formatRValue(monthlyTotal) : '$' + formatNumber(monthlyTotal) }}
+                      </dd>
+                      <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                        {{ showRValue ? 'Performance in R' : 'Net profit and loss' }}
+                      </div>
+                    </div>
+                  </div>
+                  <div class="card card-mobile-safe min-w-[210px] border-l-4 border-l-amber-500">
+                    <div class="card-body">
+                      <dt class="text-data-secondary truncate">
+                        Year To Date
+                      </dt>
+                      <dd class="mt-1 text-xl sm:text-2xl lg:text-3xl font-semibold whitespace-nowrap" :class="ytdPnl >= 0 ? 'text-green-600' : 'text-red-600'">
+                        {{ '$' + formatNumber(ytdPnl) }}
+                      </dd>
+                      <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                        Through {{ format(expandedMonth, 'MMMM') }}
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <button @click="closeExpandedMonth" class="btn-secondary">
+                <button @click="closeExpandedMonth" class="btn-secondary self-start sm:self-center xl:self-start">
                   Close
                 </button>
               </div>
@@ -419,6 +441,14 @@ const selectedDayTotalPnl = computed(() => {
   return selectedDayContributions.value.reduce((sum, c) => sum + (parseFloat(c.pnl) || 0), 0)
 })
 
+function sumCalendarMetric(startDate, endDate, metric) {
+  const days = eachDayOfInterval({ start: startDate, end: endDate })
+  return days.reduce((sum, date) => {
+    const value = getCalendarDataForDate(date)[metric]
+    return sum + (parseFloat(value) || 0)
+  }, 0)
+}
+
 const expandedMonthTrades = computed(() => {
   if (!expandedMonth.value) return []
   // Calculate monthly P&L from calendar data
@@ -439,20 +469,21 @@ const monthlyPnl = computed(() => {
   if (!expandedMonth.value) return 0
   const monthStart = startOfMonth(expandedMonth.value)
   const monthEnd = endOfMonth(expandedMonth.value)
-  const monthDays = eachDayOfInterval({ start: monthStart, end: monthEnd })
-  return monthDays.reduce((sum, date) => {
-    return sum + getCalendarDataForDate(date).pnl
-  }, 0)
+  return sumCalendarMetric(monthStart, monthEnd, 'pnl')
 })
 
 const monthlyRValue = computed(() => {
   if (!expandedMonth.value) return 0
   const monthStart = startOfMonth(expandedMonth.value)
   const monthEnd = endOfMonth(expandedMonth.value)
-  const monthDays = eachDayOfInterval({ start: monthStart, end: monthEnd })
-  return monthDays.reduce((sum, date) => {
-    return sum + (getCalendarDataForDate(date).rValue || 0)
-  }, 0)
+  return sumCalendarMetric(monthStart, monthEnd, 'rValue')
+})
+
+const ytdPnl = computed(() => {
+  if (!expandedMonth.value) return 0
+  const yearStart = startOfYear(expandedMonth.value)
+  const monthEnd = endOfMonth(expandedMonth.value)
+  return sumCalendarMetric(yearStart, monthEnd, 'pnl')
 })
 
 // Returns P&L or R-value based on toggle

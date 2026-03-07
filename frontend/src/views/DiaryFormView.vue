@@ -79,7 +79,7 @@
             </div>
             <button
               type="button"
-              @click="showTemplates = !showTemplates"
+              @click="toggleTemplates"
               class="text-sm text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300"
             >
               {{ showTemplates ? 'Hide' : 'Show' }}
@@ -87,7 +87,10 @@
           </div>
 
           <div v-if="showTemplates" class="space-y-3">
-            <div v-if="availableTemplates.length === 0" class="text-sm text-primary-700 dark:text-primary-300">
+            <div v-if="templatesLoading" class="text-sm text-primary-700 dark:text-primary-300">
+              Loading templates...
+            </div>
+            <div v-else-if="availableTemplates.length === 0" class="text-sm text-primary-700 dark:text-primary-300">
               No templates available. Create one from the Templates section in your journal.
             </div>
             <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-2">
@@ -412,13 +415,29 @@
 
           <!-- Linked Trades -->
           <div class="mb-6">
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Linked Trades
-            </label>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
-              Link trades from {{ form.entryDate }} to this journal entry
-            </p>
+            <div class="flex items-start justify-between gap-4 mb-2">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Linked Trades
+                </label>
+                <p class="text-xs text-gray-500 dark:text-gray-400">
+                  Link trades from {{ form.entryDate }} to this journal entry
+                </p>
+              </div>
+              <button
+                type="button"
+                @click="showLinkedTradesSection = !showLinkedTradesSection"
+                class="text-sm text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 whitespace-nowrap"
+              >
+                {{ showLinkedTradesSection ? 'Hide' : (form.linkedTrades.length > 0 ? 'Manage' : 'Add trades') }}
+              </button>
+            </div>
+            <div v-if="!showLinkedTradesSection" class="text-sm text-gray-500 dark:text-gray-400">
+              <span v-if="form.linkedTrades.length > 0">{{ form.linkedTrades.length }} trade{{ form.linkedTrades.length === 1 ? '' : 's' }} linked</span>
+              <span v-else>Trade lookup loads when you open this section.</span>
+            </div>
             <TradeSelector
+              v-else
               v-model="form.linkedTrades"
               :entry-date="form.entryDate"
             />
@@ -525,12 +544,36 @@
 
         <!-- Attachments -->
         <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+          <div class="flex items-start justify-between gap-4 mb-3">
+            <div>
+              <h2 class="text-lg font-medium text-gray-900 dark:text-white">Attachments</h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Add charts and screenshots only when you need them.
+              </p>
+            </div>
+            <button
+              type="button"
+              @click="showAttachmentsSection = !showAttachmentsSection"
+              class="text-sm text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 whitespace-nowrap"
+            >
+              {{ showAttachmentsSection ? 'Hide' : ((entryAttachments.length > 0 || hasPendingImages) ? 'Manage' : 'Add images') }}
+            </button>
+          </div>
+
+          <div v-if="!showAttachmentsSection" class="text-sm text-gray-500 dark:text-gray-400">
+            <span v-if="entryAttachments.length > 0">{{ entryAttachments.length }} uploaded image{{ entryAttachments.length === 1 ? '' : 's' }}</span>
+            <span v-else-if="hasPendingImages">Images ready to upload when you save.</span>
+            <span v-else>Uploader stays unloaded until you open this section.</span>
+          </div>
+
           <DiaryImageUpload
+            v-else
             ref="imageUploadRef"
             :diary-entry-id="entryId"
             :existing-images="entryAttachments"
             @uploaded="handleImagesUploaded"
             @deleted="handleImageDeleted"
+            @pending-changed="handlePendingImagesChange"
           />
         </div>
 
@@ -556,13 +599,11 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, nextTick, watch, defineAsyncComponent } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDiaryStore } from '@/stores/diary'
 import { useDiaryTemplateStore } from '@/stores/diaryTemplate'
 import { getLocalToday } from '@/utils/date'
-import TradeSelector from '@/components/diary/TradeSelector.vue'
-import DiaryImageUpload from '@/components/diary/DiaryImageUpload.vue'
 import SymbolAutocomplete from '@/components/common/SymbolAutocomplete.vue'
 import {
   ArrowLeftIcon,
@@ -580,6 +621,9 @@ import {
   DocumentTextIcon
 } from '@heroicons/vue/24/outline'
 
+const TradeSelector = defineAsyncComponent(() => import('@/components/diary/TradeSelector.vue'))
+const DiaryImageUpload = defineAsyncComponent(() => import('@/components/diary/DiaryImageUpload.vue'))
+
 const route = useRoute()
 const router = useRouter()
 const diaryStore = useDiaryStore()
@@ -591,6 +635,11 @@ const saving = ref(false)
 const error = ref(null)
 const showTemplates = ref(false)
 const availableTemplates = ref([])
+const templatesLoading = ref(false)
+const templatesLoadedForType = ref(null)
+const showLinkedTradesSection = ref(false)
+const showAttachmentsSection = ref(false)
+const hasPendingImages = ref(false)
 
 const contentEditor = ref(null)
 const lessonsLearnedEditor = ref(null)
@@ -623,17 +672,27 @@ const isEditing = computed(() => !!route.params.id)
 
 // Template methods
 const loadTemplates = async () => {
+  if (templatesLoading.value || templatesLoadedForType.value === form.value.entryType) {
+    return
+  }
+
   try {
+    templatesLoading.value = true
     await templateStore.fetchTemplates({ entryType: form.value.entryType })
     availableTemplates.value = templateStore.templates
-
-    // Auto-show templates if there's a default one
-    const defaultTemplate = availableTemplates.value.find(t => t.is_default)
-    if (defaultTemplate && !isEditing.value) {
-      showTemplates.value = true
-    }
+    templatesLoadedForType.value = form.value.entryType
   } catch (err) {
     console.error('Failed to load templates:', err)
+  } finally {
+    templatesLoading.value = false
+  }
+}
+
+const toggleTemplates = async () => {
+  showTemplates.value = !showTemplates.value
+
+  if (showTemplates.value) {
+    await loadTemplates()
   }
 }
 
@@ -954,6 +1013,9 @@ const loadEntry = async () => {
         followedPlan: entry.followed_plan,
         lessonsLearned: entry.lessons_learned || ''
       }
+
+      showLinkedTradesSection.value = form.value.linkedTrades.length > 0
+      showAttachmentsSection.value = entryAttachments.value.length > 0
     }
   } catch (err) {
     error.value = err.response?.data?.error || 'Failed to load diary entry'
@@ -970,6 +1032,10 @@ const handleImagesUploaded = (images) => {
 // Handle image deleted event - remove from attachments list
 const handleImageDeleted = (imageId) => {
   entryAttachments.value = entryAttachments.value.filter(img => img.id !== imageId)
+}
+
+const handlePendingImagesChange = (pendingFiles) => {
+  hasPendingImages.value = pendingFiles.length > 0
 }
 
 const showDuplicateModal = ref(false)
@@ -1089,8 +1155,9 @@ onMounted(async () => {
   if (isEditing.value) {
     await loadEntry()
   } else {
-    // Load templates for new entries
-    await loadTemplates()
+    // Keep expensive helpers collapsed on fresh entries.
+    showLinkedTradesSection.value = false
+    showAttachmentsSection.value = false
   }
 
   // Adjust textarea height after content is loaded
@@ -1098,6 +1165,19 @@ onMounted(async () => {
     adjustTextareaHeight()
     adjustLessonsTextareaHeight()
   })
+})
+
+watch(() => form.value.entryType, async (newEntryType, oldEntryType) => {
+  if (newEntryType === oldEntryType) {
+    return
+  }
+
+  availableTemplates.value = []
+  templatesLoadedForType.value = null
+
+  if (showTemplates.value) {
+    await loadTemplates()
+  }
 })
 </script>
 

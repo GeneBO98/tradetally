@@ -409,7 +409,7 @@
                   <span class="table-card-value">${{ formatCurrency(position.totalCost) }}</span>
                 </div>
                 <div class="table-card-row">
-                  <span class="table-card-label">{{ position.requires_manual_price ? 'Premium' : 'Current Price' }}</span>
+                  <span class="table-card-label">{{ position.requires_manual_price ? 'Premium' : 'Current Price' }}<span v-if="position.quoteSource === 'alpaca'" class="ml-1 text-gray-400 font-normal">(via Alpaca)</span></span>
                   <span class="table-card-value">
                     <template v-if="position.requires_manual_price">
                       <div class="flex items-center space-x-1">
@@ -582,6 +582,7 @@
                             {{ position.dayChange >= 0 ? '+' : '' }}{{ formatCurrency(position.dayChange) }}
                             ({{ position.dayChangePercent >= 0 ? '+' : '' }}{{ formatNumber(position.dayChangePercent) }}%)
                           </div>
+                          <div v-if="position.quoteSource === 'alpaca'" class="text-xs text-gray-400">via Alpaca</div>
                         </div>
                         <div v-else-if="quotesLoading" class="h-4 w-16 bg-gray-200 dark:bg-gray-700 rounded animate-pulse ml-auto"></div>
                         <span v-else class="text-xs text-gray-400">No quote</span>

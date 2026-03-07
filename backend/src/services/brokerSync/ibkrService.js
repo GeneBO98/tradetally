@@ -248,7 +248,7 @@ class IBKRService {
     let failed = 0;
     let duplicates = 0;
 
-    const existingTrades = await this.getExistingTradesForDuplicateCheck(userId);
+    const existingTrades = await this.getExistingTradesForDuplicateCheck(userId, trades);
 
     for (const tradeData of trades) {
       try {
@@ -294,6 +294,15 @@ class IBKRService {
             userId
           ]);
 
+          const existingTrade = existingTrades.find(trade => trade.id === tradeData.existingTradeId);
+          if (existingTrade) {
+            existingTrade.executions = executions;
+            existingTrade.exit_time = preparedTrade.exitTime || null;
+            existingTrade.exit_price = preparedTrade.exitPrice != null ? preparedTrade.exitPrice : null;
+            existingTrade.pnl = preparedTrade.pnl != null ? preparedTrade.pnl : null;
+            existingTrade.quantity = preparedTrade.quantity;
+          }
+
           updated++;
         } else {
           // Create new trade
@@ -303,6 +312,27 @@ class IBKRService {
           });
 
           imported++;
+
+          // Track newly-created trades so duplicate detection also works within the same sync batch.
+          existingTrades.push({
+            id: preparedTrade.id,
+            symbol: preparedTrade.symbol,
+            side: preparedTrade.side,
+            quantity: preparedTrade.quantity,
+            entry_price: preparedTrade.entryPrice,
+            exit_price: preparedTrade.exitPrice,
+            entry_time: preparedTrade.entryTime,
+            exit_time: preparedTrade.exitTime,
+            pnl: preparedTrade.pnl,
+            executions: preparedTrade.executions || preparedTrade.executionData || [],
+            trade_date: preparedTrade.tradeDate,
+            instrument_type: preparedTrade.instrumentType || 'stock',
+            strike_price: preparedTrade.strikePrice || null,
+            expiration_date: preparedTrade.expirationDate || null,
+            option_type: preparedTrade.optionType || null,
+            conid: preparedTrade.conid || null,
+            account_identifier: preparedTrade.accountIdentifier || preparedTrade.account_identifier || null
+          });
         }
       } catch (error) {
         console.error(`[IBKR] Failed to import trade:`, error.message);
@@ -460,17 +490,35 @@ class IBKRService {
   /**
    * Get existing trades for duplicate checking
    */
-  async getExistingTradesForDuplicateCheck(userId) {
-    const query = `
+  async getExistingTradesForDuplicateCheck(userId, incomingTrades = []) {
+    if (!Array.isArray(incomingTrades) || incomingTrades.length === 0) {
+      return [];
+    }
+
+    const { minDate, maxDate } = this.getTradeDateRange(incomingTrades);
+    const params = [userId];
+
+    let query = `
       SELECT id, symbol, side, quantity, entry_price, exit_price, entry_time, exit_time,
-             pnl, executions, trade_date
+             pnl, executions, trade_date, instrument_type, strike_price,
+             expiration_date, option_type, conid, account_identifier
       FROM trades
       WHERE user_id = $1
-      ORDER BY entry_time DESC
-      LIMIT 1000
     `;
 
-    const result = await db.query(query, [userId]);
+    if (minDate && maxDate) {
+      params.push(minDate, maxDate);
+      query += `
+        AND trade_date >= $2
+        AND trade_date <= $3
+      `;
+    }
+
+    query += `
+      ORDER BY trade_date DESC, entry_time DESC
+    `;
+
+    const result = await db.query(query, params);
     return result.rows;
   }
 
@@ -478,10 +526,42 @@ class IBKRService {
    * Check if trade is a duplicate
    */
   isDuplicateTrade(newTrade, existingTrades, context) {
+    if (!newTrade || !Array.isArray(existingTrades)) {
+      return false;
+    }
+
     const symbol = newTrade.symbol?.toUpperCase();
+    const newInstrumentType = newTrade.instrumentType || newTrade.instrument_type || 'stock';
+    const newConid = newTrade.conid ? String(newTrade.conid) : null;
+    const newAccountIdentifier = newTrade.accountIdentifier || newTrade.account_identifier || null;
 
     for (const existing of existingTrades) {
-      if (existing.symbol?.toUpperCase() !== symbol) continue;
+      const existingSymbol = existing.symbol?.toUpperCase();
+      const existingInstrumentType = existing.instrument_type || 'stock';
+      const existingConid = existing.conid ? String(existing.conid) : null;
+      const existingAccountIdentifier = existing.account_identifier || null;
+
+      if (newAccountIdentifier && existingAccountIdentifier && newAccountIdentifier !== existingAccountIdentifier) {
+        continue;
+      }
+
+      const conidMatch = newConid && existingConid && newConid === existingConid;
+      const symbolMatch = existingSymbol === symbol;
+
+      if (!conidMatch && !symbolMatch) continue;
+      if (!conidMatch && existingInstrumentType !== newInstrumentType) continue;
+
+      if (!conidMatch && newInstrumentType === 'option') {
+        const optionTypeMatches = !newTrade.optionType || !existing.option_type || newTrade.optionType === existing.option_type;
+        const strikeMatches = newTrade.strikePrice == null || existing.strike_price == null ||
+          Math.abs(parseFloat(newTrade.strikePrice) - parseFloat(existing.strike_price)) < 0.0001;
+        const expirationMatches = !newTrade.expirationDate || !existing.expiration_date ||
+          this.extractDateString(newTrade.expirationDate) === this.extractDateString(existing.expiration_date);
+
+        if (!optionTypeMatches || !strikeMatches || !expirationMatches) {
+          continue;
+        }
+      }
 
       // Check execution data match
       if (newTrade.executionData && existing.executions) {
@@ -577,6 +657,38 @@ class IBKRService {
 
       return true;
     });
+  }
+
+  extractDateString(value) {
+    if (!value) return null;
+
+    if (value instanceof Date) {
+      return value.toISOString().split('T')[0];
+    }
+
+    const stringValue = String(value);
+    if (stringValue.includes('T')) {
+      return stringValue.split('T')[0];
+    }
+
+    const parsed = new Date(stringValue);
+    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().split('T')[0];
+  }
+
+  getTradeDateRange(trades) {
+    const dateStrings = trades
+      .map(trade => this.extractDateString(trade.tradeDate || trade.exitTime || trade.entryTime))
+      .filter(Boolean)
+      .sort();
+
+    if (dateStrings.length === 0) {
+      return { minDate: null, maxDate: null };
+    }
+
+    return {
+      minDate: dateStrings[0],
+      maxDate: dateStrings[dateStrings.length - 1]
+    };
   }
 
   /**
