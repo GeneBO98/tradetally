@@ -2453,6 +2453,7 @@ const tradeController = {
     try {
       console.log('getOpenPositionsWithQuotes called for user:', req.user.id);
       const finnhub = require('../utils/finnhub');
+      const alpacaMarketData = require('../utils/alpacaMarketData');
       const { accounts, skipQuotes } = req.query;
       
       // Check if Finnhub is configured
@@ -2566,7 +2567,12 @@ const tradeController = {
           avgPrice: 0,
           instrumentType: trade.instrument_type || 'stock',
           contractSize: trade.contract_size || (trade.instrument_type === 'option' ? 100 : 1),
-          pointValue: trade.point_value || null
+          pointValue: trade.point_value || null,
+          // Option metadata for Alpaca pricing
+          underlying_symbol: trade.underlying_symbol || null,
+          expiration_date: trade.expiration_date || null,
+          option_type: trade.option_type || null,
+          strike_price: trade.strike_price || null
         };
         }
 
@@ -2691,10 +2697,47 @@ const tradeController = {
         }
         console.log('Received quotes:', quotes);
         
+        // Fetch Alpaca quotes for option positions
+        let alpacaQuotes = {};
+        const optionPositions = Object.values(positionMap).filter(p => p.instrumentType === 'option');
+        if (optionPositions.length > 0 && alpacaMarketData.isConfigured()) {
+          try {
+            console.log(`[ALPACA] Fetching quotes for ${optionPositions.length} option positions`);
+            alpacaQuotes = await alpacaMarketData.getOptionSnapshots(optionPositions);
+            console.log(`[ALPACA] Received quotes for ${Object.keys(alpacaQuotes).length} options`);
+          } catch (alpacaError) {
+            console.error('[ALPACA] Failed to fetch option quotes:', alpacaError.message);
+          }
+        }
+
         // Enhance positions with real-time data
         const enhancedPositions = Object.values(positionMap).map(position => {
-          // Skip Finnhub quotes for options - free tier returns underlying stock price, not contract premium
+          // Options: use Alpaca quotes if available, otherwise fall back to manual price
           if (position.instrumentType === 'option') {
+            const alpacaQuote = alpacaQuotes[position.symbol];
+            if (alpacaQuote && alpacaQuote.price > 0) {
+              const currentPrice = alpacaQuote.price;
+              const valueMultiplier = position.contractSize || 100;
+              const currentValue = currentPrice * position.totalQuantity * valueMultiplier;
+              const unrealizedPnL = position.side === 'short'
+                ? position.totalCost - currentValue
+                : currentValue - position.totalCost;
+              const unrealizedPnLPercent = position.totalCost > 0
+                ? (unrealizedPnL / position.totalCost) * 100
+                : 0;
+              return {
+                ...position,
+                currentPrice,
+                currentValue,
+                unrealizedPnL,
+                unrealizedPnLPercent,
+                quoteSource: 'alpaca',
+                bid: alpacaQuote.bid,
+                ask: alpacaQuote.ask,
+                quoteTime: new Date().toISOString()
+              };
+            }
+            // No Alpaca quote available - fall back to manual price
             return {
               ...position,
               currentPrice: null,

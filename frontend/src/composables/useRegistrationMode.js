@@ -8,6 +8,10 @@ export function useRegistrationMode() {
   const authStore = useAuthStore()
 
   const fetchRegistrationConfig = async () => {
+    if (!registrationConfig.value && authStore.registrationConfig) {
+      registrationConfig.value = authStore.registrationConfig
+    }
+
     if (registrationConfig.value) return registrationConfig.value
 
     if (!fetchPromise) {
@@ -29,6 +33,9 @@ export function useRegistrationMode() {
             billingEnabled: false
           }
           return registrationConfig.value
+        })
+        .finally(() => {
+          fetchPromise = null
         })
     }
 

@@ -377,9 +377,12 @@ router.beforeEach(async (to, from, next) => {
   const authStore = useAuthStore()
   const { registrationConfig, fetchRegistrationConfig, isClosedMode, isBillingEnabled, showSEOPages } = useRegistrationMode()
 
-  // Only fetch registration config if not already cached (skip async on subsequent navigations)
-  if (!registrationConfig.value) {
+  // Only block navigation when the route depends on registration/billing mode.
+  const requiresRegistrationMode = to.name === 'home' || to.meta.requiresOpen
+  if (requiresRegistrationMode && !registrationConfig.value) {
     await fetchRegistrationConfig()
+  } else if (!registrationConfig.value) {
+    fetchRegistrationConfig().catch(() => {})
   }
 
   // Handle billing enabled - when FALSE (default), redirect home to login and block public pages

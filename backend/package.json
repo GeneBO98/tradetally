@@ -61,9 +61,6 @@
     "node": ">=14.0.0"
   },
   "overrides": {
-    "nodemon": {
-      "minimatch": "^3.1.2"
-    },
     "tar": "^7.5.9",
     "cross-spawn": "^7.0.6",
     "lodash": "^4.17.23",

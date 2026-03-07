@@ -216,8 +216,10 @@ const selectedConnection = ref(null)
 const successMessage = ref('')
 
 onMounted(async () => {
-  await store.fetchConnections()
-  await store.fetchSyncLogs()
+  await Promise.all([
+    store.fetchConnections(),
+    store.fetchSyncLogs()
+  ])
 
   // Check for OAuth callback success
   if (route.query.success === 'schwab') {
@@ -233,7 +235,10 @@ onMounted(async () => {
 // Watch for route changes (OAuth callback)
 watch(() => route.query, async (newQuery) => {
   if (newQuery.success === 'schwab') {
-    await store.fetchConnections()
+    await Promise.all([
+      store.fetchConnections(),
+      store.fetchSyncLogs()
+    ])
     successMessage.value = 'Schwab account connected successfully!'
     setTimeout(() => { successMessage.value = '' }, 5000)
   }
@@ -283,11 +288,15 @@ async function handleSync(connection) {
 
     // Poll for updates and refresh trades data
     setTimeout(async () => {
-      await store.fetchConnections()
-      await store.fetchSyncLogs()
+      await Promise.all([
+        store.fetchConnections(),
+        store.fetchSyncLogs()
+      ])
       // Refresh trades data to update P&L and counts after sync
-      await tradesStore.fetchTrades()
-      await tradesStore.fetchAnalytics()
+      await Promise.all([
+        tradesStore.fetchTrades(),
+        tradesStore.fetchAnalytics()
+      ])
     }, 5000)
   } catch (error) {
     // Error is handled by store
@@ -351,8 +360,10 @@ async function handleDeleteTrades(connection) {
 
         // Refresh trades data to update P&L and counts
         console.log('[BROKER-SYNC] Refreshing trades store after delete...')
-        await tradesStore.fetchTrades()
-        await tradesStore.fetchAnalytics()
+        await Promise.all([
+          tradesStore.fetchTrades(),
+          tradesStore.fetchAnalytics()
+        ])
         console.log('[BROKER-SYNC] Trades store refreshed. Total P&L:', tradesStore.totalPnL, 'Total trades:', tradesStore.totalTrades)
       } catch (error) {
         console.error('[BROKER-SYNC] Error refreshing trades:', error)

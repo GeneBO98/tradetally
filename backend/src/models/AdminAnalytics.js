@@ -145,18 +145,18 @@ class AdminAnalytics {
    * @param {string} startDate - ISO date string for period start
    * @returns {Array} Daily signup counts
    */
-  static async getSignupTrend(startDate) {
+  static async getSignupTrend(startDate, timezone = 'America/Chicago') {
     const query = `
       SELECT
-        DATE_TRUNC('day', created_at)::date as date,
+        DATE_TRUNC('day', created_at AT TIME ZONE $2)::date as date,
         COUNT(*) as count
       FROM users
       WHERE created_at >= $1 AND is_active = true
-      GROUP BY DATE_TRUNC('day', created_at)
+      GROUP BY DATE_TRUNC('day', created_at AT TIME ZONE $2)
       ORDER BY date ASC
     `;
 
-    const result = await db.query(query, [startDate]);
+    const result = await db.query(query, [startDate, timezone]);
     return result.rows.map(row => ({
       date: row.date,
       count: parseInt(row.count) || 0
@@ -168,18 +168,18 @@ class AdminAnalytics {
    * @param {string} startDate - ISO date string for period start
    * @returns {Array} Daily unique login counts
    */
-  static async getLoginTrend(startDate) {
+  static async getLoginTrend(startDate, timezone = 'America/Chicago') {
     const query = `
       SELECT
-        DATE_TRUNC('day', last_login_at)::date as date,
+        DATE_TRUNC('day', last_login_at AT TIME ZONE $2)::date as date,
         COUNT(DISTINCT id) as unique_users
       FROM users
       WHERE last_login_at >= $1 AND is_active = true
-      GROUP BY DATE_TRUNC('day', last_login_at)
+      GROUP BY DATE_TRUNC('day', last_login_at AT TIME ZONE $2)
       ORDER BY date ASC
     `;
 
-    const result = await db.query(query, [startDate]);
+    const result = await db.query(query, [startDate, timezone]);
     return result.rows.map(row => ({
       date: row.date,
       uniqueUsers: parseInt(row.unique_users) || 0
@@ -191,19 +191,19 @@ class AdminAnalytics {
    * @param {string} startDate - ISO date string for period start
    * @returns {Array} Daily import counts and trades imported
    */
-  static async getImportTrend(startDate) {
+  static async getImportTrend(startDate, timezone = 'America/Chicago') {
     const query = `
       SELECT
-        DATE_TRUNC('day', created_at)::date as date,
+        DATE_TRUNC('day', created_at AT TIME ZONE $2)::date as date,
         COUNT(*) as count,
         COALESCE(SUM(trades_imported), 0) as trades_count
       FROM import_logs
       WHERE created_at >= $1 AND status = 'completed'
-      GROUP BY DATE_TRUNC('day', created_at)
+      GROUP BY DATE_TRUNC('day', created_at AT TIME ZONE $2)
       ORDER BY date ASC
     `;
 
-    const result = await db.query(query, [startDate]);
+    const result = await db.query(query, [startDate, timezone]);
     return result.rows.map(row => ({
       date: row.date,
       count: parseInt(row.count) || 0,
@@ -250,20 +250,20 @@ class AdminAnalytics {
    * @param {string} startDate - ISO date string for period start
    * @returns {Array} Daily deletion counts
    */
-  static async getDeletionTrend(startDate) {
+  static async getDeletionTrend(startDate, timezone = 'America/Chicago') {
     const query = `
       SELECT
-        DATE_TRUNC('day', deleted_at)::date as date,
+        DATE_TRUNC('day', deleted_at AT TIME ZONE $2)::date as date,
         COUNT(*) as count,
         COUNT(*) FILTER (WHERE deletion_type = 'self') as self_deletions,
         COUNT(*) FILTER (WHERE deletion_type = 'admin') as admin_deletions
       FROM account_deletions
       WHERE deleted_at >= $1
-      GROUP BY DATE_TRUNC('day', deleted_at)
+      GROUP BY DATE_TRUNC('day', deleted_at AT TIME ZONE $2)
       ORDER BY date ASC
     `;
 
-    const result = await db.query(query, [startDate]);
+    const result = await db.query(query, [startDate, timezone]);
     return result.rows.map(row => ({
       date: row.date,
       count: parseInt(row.count) || 0,
@@ -516,11 +516,11 @@ class AdminAnalytics {
       activation
     ] = await Promise.all([
       this.getSummary(startDate, timezone),
-      this.getSignupTrend(startDate),
-      this.getLoginTrend(startDate),
-      this.getImportTrend(startDate),
+      this.getSignupTrend(startDate, timezone),
+      this.getLoginTrend(startDate, timezone),
+      this.getImportTrend(startDate, timezone),
       this.getApiUsageTrend(startDate),
-      this.getDeletionTrend(startDate),
+      this.getDeletionTrend(startDate, timezone),
       this.getBrokerSyncStats(startDate),
       this.getSubscriptionMetrics(startDate),
       this.getActivationRate(startDate)
