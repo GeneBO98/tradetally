@@ -5695,9 +5695,21 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         console.log(`[IBKR] Contract ID (Conid): ${conid} for symbol ${symbol}`);
       }
 
+      const orderId = cleanString(
+        record['Order ID'] ||
+        record.OrderID ||
+        record.OrderId ||
+        record.orderId ||
+        record['OrderId'] ||
+        record['Trade ID'] ||
+        record.TradeID ||
+        ''
+      );
+
       transactions.push({
         symbol,
         conid, // Contract ID for reliable options grouping
+        orderId,
         date: tradeDate,
         datetime: entryTime,
         action: action,
@@ -6018,7 +6030,8 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
               price: transaction.price,
               datetime: transaction.datetime,
               fees: transaction.fees || 0,
-              conid: transaction.conid
+              conid: transaction.conid,
+              orderId: transaction.orderId || null
             }],
             executionData: [{
               action: transaction.action,
@@ -6026,7 +6039,8 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
               price: transaction.price,
               datetime: transaction.datetime,
               fees: transaction.fees || 0,
-              conid: transaction.conid
+              conid: transaction.conid,
+              orderId: transaction.orderId || null
             }],
             notes: `Close-only trade: ${originalSide} position closed via ${transactionCode}. Opening transaction not in import.`,
             isCloseOnly: true
@@ -6101,7 +6115,8 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
           price: transaction.price,
           datetime: transaction.datetime,
           fees: transaction.fees,
-          conid: transaction.conid // Include Conid for duplicate detection
+          conid: transaction.conid, // Include Conid for duplicate detection
+          orderId: transaction.orderId || null
         };
 
         // First, check if this execution exists in ANY existing trade (complete or open)

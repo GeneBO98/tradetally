@@ -84,6 +84,52 @@ describe('broker sync duplicate protection', () => {
     expect(params).toEqual(['user-1', '2026-03-05', '2026-03-07']);
   });
 
+  test('IBKR duplicate detection falls back to closed-trade fields when executions do not match', () => {
+    const isDuplicate = ibkrService.isDuplicateTrade(
+      {
+        symbol: 'AAPL',
+        side: 'long',
+        quantity: 10,
+        entryPrice: 100,
+        exitPrice: 104,
+        pnl: 40,
+        entryTime: '2026-03-06T15:00:00Z',
+        tradeDate: '2026-03-06',
+        executionData: [
+          { datetime: '2026-03-06T15:00:05Z', quantity: 10, price: 100, action: 'buy' }
+        ]
+      },
+      [
+        {
+          symbol: 'AAPL',
+          side: 'long',
+          quantity: 10,
+          entry_price: 100,
+          exit_price: 104,
+          pnl: 40,
+          entry_time: '2026-03-06T15:00:00Z',
+          trade_date: '2026-03-06',
+          instrument_type: 'stock',
+          executions: [
+            { datetime: '2026-03-06T15:10:00Z', quantity: 10, price: 104, action: 'sell' }
+          ]
+        }
+      ],
+      {}
+    );
+
+    expect(isDuplicate).toBe(true);
+  });
+
+  test('IBKR execution matching uses order IDs when they are present', () => {
+    expect(
+      ibkrService.executionsMatch(
+        { orderId: 'abc123', datetime: '2026-03-06T15:00:00Z', quantity: 5, price: 100 },
+        { orderId: 'abc123', datetime: '2026-03-06T15:30:00Z', quantity: 5, price: 101 }
+      )
+    ).toBe(true);
+  });
+
   test('Schwab importTrades skips a trade already imported by a previous sync', async () => {
     db.query.mockResolvedValueOnce({
       rows: [

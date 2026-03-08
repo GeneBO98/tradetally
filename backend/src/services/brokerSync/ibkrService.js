@@ -574,17 +574,9 @@ class IBKRService {
           }
         }
 
-        const newExecTimes = new Set(
-          newTrade.executionData
-            .map(e => new Date(e.entryTime || e.datetime).getTime())
-            .filter(t => !isNaN(t))
-        );
-
-        // Count matching executions instead of just checking for any match
-        const matchingCount = existingExecs.filter(exec => {
-          const execTime = new Date(exec.entryTime || exec.datetime).getTime();
-          return !isNaN(execTime) && newExecTimes.has(execTime);
-        }).length;
+        const matchingCount = newTrade.executionData.filter(newExecution =>
+          existingExecs.some(existingExecution => this.executionsMatch(newExecution, existingExecution))
+        ).length;
 
         if (matchingCount > 0) {
           // Only mark as duplicate if the new trade doesn't have MORE executions
@@ -621,6 +613,23 @@ class IBKRService {
 
       if (entryTimeMatch && entryPriceMatch && quantityMatch) {
         return true;
+      }
+
+      if (newTrade.exitPrice && existing.exit_price) {
+        const exitPriceMatch = Math.abs(
+          parseFloat(existing.exit_price) -
+          parseFloat(newTrade.exitPrice)
+        ) < 0.01;
+
+        const pnlMatch = Math.abs(
+          parseFloat(existing.pnl || 0) -
+          parseFloat(newTrade.pnl || 0)
+        ) < 0.01;
+
+        if (entryTimeMatch && entryPriceMatch && exitPriceMatch && pnlMatch) {
+          console.log(`[IBKR] Duplicate detected by closed-trade fields: ${symbol}`);
+          return true;
+        }
       }
     }
 
@@ -689,6 +698,39 @@ class IBKRService {
       minDate: dateStrings[0],
       maxDate: dateStrings[dateStrings.length - 1]
     };
+  }
+
+  executionsMatch(left, right) {
+    if (!left || !right) {
+      return false;
+    }
+
+    if (left.orderId && right.orderId) {
+      return String(left.orderId) === String(right.orderId);
+    }
+
+    const leftTime = new Date(left.datetime || left.entryTime).getTime();
+    const rightTime = new Date(right.datetime || right.entryTime).getTime();
+
+    if (Number.isNaN(leftTime) || Number.isNaN(rightTime) || Math.abs(leftTime - rightTime) > 1000) {
+      return false;
+    }
+
+    const leftQuantity = parseFloat(left.quantity);
+    const rightQuantity = parseFloat(right.quantity);
+    const leftPrice = parseFloat(left.price ?? left.entryPrice);
+    const rightPrice = parseFloat(right.price ?? right.entryPrice);
+
+    const quantityMatches = !Number.isNaN(leftQuantity) && !Number.isNaN(rightQuantity)
+      ? Math.abs(leftQuantity - rightQuantity) < 0.0001
+      : true;
+    const priceMatches = !Number.isNaN(leftPrice) && !Number.isNaN(rightPrice)
+      ? Math.abs(leftPrice - rightPrice) < 0.01
+      : true;
+    const actionMatches = !left.action || !right.action || left.action === right.action;
+    const conidMatches = !left.conid || !right.conid || String(left.conid) === String(right.conid);
+
+    return quantityMatches && priceMatches && actionMatches && conidMatches;
   }
 
   /**
