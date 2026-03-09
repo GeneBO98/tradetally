@@ -4939,6 +4939,10 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
     return undefined;
   };
 
+  // Some TradingView transaction exports omit the Status column entirely.
+  // In that format, all rows represent executed fills and should be parsed.
+  const fileHasStatusColumn = records.some(record => getField(record, 'Status') !== undefined);
+
   // First, parse all filled orders
   let rowIndex = 0;
   for (const record of records) {
@@ -4957,8 +4961,8 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
       const orderType = getField(record, 'Type') || '';
       const leverage = getField(record, 'Leverage') || '';
 
-      // Only process filled orders
-      if (status !== 'filled') {
+      // Only require Filled status when the CSV actually includes a Status column.
+      if (fileHasStatusColumn && status !== 'filled') {
         console.log(`Skipping non-filled order: ${statusRaw}`);
         if (diagnostics) {
           diagnostics.skippedRows++;
