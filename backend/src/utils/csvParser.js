@@ -975,22 +975,29 @@ const brokerParsers = {
     const sellPrice = parseNumeric(row.sellPrice);
     const pnl = parseNumeric(row.pnl);
 
-    // Parse timestamps - can be Unix timestamps in milliseconds or date strings like "02/26/2026 09:12:07"
+    // Parse timestamps - can be Unix timestamps in milliseconds or local date strings like "02/26/2026 09:12:07"
+    const parseTradingViewPerformanceTimestamp = (value) => {
+      if (!value) return null;
+
+      const ts = Number(value);
+      if (Number.isFinite(ts) && Math.abs(ts) > 1e10) {
+        const parsed = new Date(ts);
+        return isNaN(parsed.getTime()) ? null : parsed.toISOString();
+      }
+
+      return parseDateTime(value);
+    };
+
     let entryTime = null;
     let exitTime = null;
 
     if (row.boughtTimestamp) {
-      const ts = Number(row.boughtTimestamp);
-      // If it's a large number (>1e10), treat as Unix ms timestamp; otherwise parse as date string
-      entryTime = ts > 1e10 ? new Date(ts) : new Date(row.boughtTimestamp);
-      if (isNaN(entryTime.getTime())) entryTime = null;
+      entryTime = parseTradingViewPerformanceTimestamp(row.boughtTimestamp);
     }
     if (row.soldTimestamp) {
-      const ts = Number(row.soldTimestamp);
-      exitTime = ts > 1e10 ? new Date(ts) : new Date(row.soldTimestamp);
-      if (isNaN(exitTime.getTime())) exitTime = null;
+      exitTime = parseTradingViewPerformanceTimestamp(row.soldTimestamp);
     }
-    const tradeDate = entryTime ? new Date(entryTime.toISOString().split('T')[0]) : null;
+    const tradeDate = parseDate(row.boughtTimestamp) || (entryTime ? entryTime.split('T')[0] : null);
 
     // Determine side based on P&L and prices
     // If sellPrice > buyPrice and PnL > 0, it was a long trade
@@ -2546,15 +2553,31 @@ function parseDateTime(dateTimeStr) {
   // Remove leading and trailing quotes/apostrophes (including Unicode curly quotes), then trim
   const cleanDateTimeStr = dateTimeStr.toString().replace(/^[\x27\x22\u2018\u2019\u201C\u201D]|[\x27\x22\u2018\u2019\u201C\u201D]$/g, '').trim();
 
+  const normalizeTimezoneOffset = (offset) => {
+    if (!offset || offset === 'Z') return 'Z';
+    return /^[+-]\d{4}$/.test(offset)
+      ? `${offset.slice(0, 3)}:${offset.slice(3)}`
+      : offset;
+  };
+
   try {
+    // Preserve ISO timestamps that already include timezone information.
+    const isoWithTimezoneMatch = cleanDateTimeStr.match(
+      /^(\d{4}-\d{2}-\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?(Z|[+-]\d{2}:?\d{2})$/i
+    );
+    if (isoWithTimezoneMatch) {
+      const [, datePart, hour, minute, second = '00', offset] = isoWithTimezoneMatch;
+      return `${datePart}T${hour}:${minute}:${second}${normalizeTimezoneOffset(offset.toUpperCase())}`;
+    }
+
     // Check for MM/DD/YYYY HH:MM:SS +TZ format (ProjectX with timezone)
-    const mmddyyyyTimeWithTzMatch = cleanDateTimeStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})\s+[+-]\d{2}:\d{2}$/);
+    const mmddyyyyTimeWithTzMatch = cleanDateTimeStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})\s+([+-]\d{2}:?\d{2})$/);
     if (mmddyyyyTimeWithTzMatch) {
-      const [, month, day, year, hour, minute, second] = mmddyyyyTimeWithTzMatch;
+      const [, month, day, year, hour, minute, second, offset] = mmddyyyyTimeWithTzMatch;
       const monthPadded = month.padStart(2, '0');
       const dayPadded = day.padStart(2, '0');
       const hourPadded = hour.padStart(2, '0');
-      return `${year}-${monthPadded}-${dayPadded}T${hourPadded}:${minute}:${second}`;
+      return `${year}-${monthPadded}-${dayPadded}T${hourPadded}:${minute}:${second}${normalizeTimezoneOffset(offset)}`;
     }
 
     // Check for MM/DD/YYYY HH:MM:SS format (common in many CSVs)
