@@ -15,6 +15,8 @@ const FLEX_BASE_URL = 'https://gdcdyn.interactivebrokers.com/Universal/servlet/F
 const REPORT_REQUEST_TIMEOUT = 120000; // 2 minutes to request report
 const REPORT_POLL_INTERVAL = 5000; // Poll every 5 seconds
 const REPORT_MAX_WAIT = 300000; // Max 5 minutes to wait for report
+const MAX_FLEX_OVERRIDE_DAYS = 365;
+const DEFAULT_MANUAL_LOOKBACK_DAYS = 365;
 
 class IBKRService {
   /**
@@ -48,15 +50,11 @@ class IBKRService {
    * @param {string} queryId - Flex Query ID
    * @returns {Promise<{referenceCode: string} | {error: string}>}
    */
-  async requestFlexReport(flexToken, queryId) {
+  async requestFlexReport(flexToken, queryId, options = {}) {
     console.log('[IBKR] Requesting Flex report...');
 
     const url = `${FLEX_BASE_URL}.SendRequest`;
-    const params = {
-      t: flexToken,
-      q: queryId,
-      v: '3' // API version
-    };
+    const params = this.buildReportRequestParams(flexToken, queryId, options);
 
     try {
       const response = await axios.get(url, {
@@ -170,7 +168,7 @@ class IBKRService {
    * @returns {Promise<{imported: number, skipped: number, failed: number, duplicates: number}>}
    */
   async syncTrades(connection, options = {}) {
-    const { startDate, endDate, syncLogId } = options;
+    const { startDate, endDate, syncLogId, syncType = 'manual' } = options;
 
     console.log(`[IBKR] Starting sync for connection ${connection.id}`);
     console.log(`[IBKR] Date range: ${startDate || 'default'} to ${endDate || 'default'}`);
@@ -183,7 +181,8 @@ class IBKRService {
     // Request and fetch report
     const reportResponse = await this.requestFlexReport(
       connection.ibkrFlexToken,
-      connection.ibkrFlexQueryId
+      connection.ibkrFlexQueryId,
+      { startDate, endDate, syncType }
     );
 
     if (!reportResponse.referenceCode) {
@@ -698,6 +697,85 @@ class IBKRService {
       minDate: dateStrings[0],
       maxDate: dateStrings[dateStrings.length - 1]
     };
+  }
+
+  buildReportRequestParams(flexToken, queryId, options = {}) {
+    const params = {
+      t: flexToken,
+      q: queryId,
+      v: '3'
+    };
+
+    const overrideRange = this.getReportDateOverride(options);
+    if (overrideRange) {
+      params.fd = overrideRange.start.replace(/-/g, '');
+      params.td = overrideRange.end.replace(/-/g, '');
+    }
+
+    return params;
+  }
+
+  getReportDateOverride(options = {}) {
+    const { startDate, endDate, syncType = 'manual' } = options;
+
+    if (startDate || endDate) {
+      return this.normalizeReportDateRange(startDate, endDate);
+    }
+
+    if (syncType === 'manual') {
+      const end = this.normalizeDateString(new Date());
+      const startDateValue = new Date(`${end}T00:00:00Z`);
+      startDateValue.setUTCDate(startDateValue.getUTCDate() - (DEFAULT_MANUAL_LOOKBACK_DAYS - 1));
+      const start = startDateValue.toISOString().split('T')[0];
+
+      return { start, end };
+    }
+
+    return null;
+  }
+
+  normalizeReportDateRange(startDate, endDate) {
+    const normalizedStart = this.normalizeDateString(startDate || endDate);
+    const normalizedEnd = this.normalizeDateString(endDate || startDate);
+
+    if (!normalizedStart || !normalizedEnd) {
+      throw new Error('Invalid IBKR date override supplied');
+    }
+
+    if (normalizedStart > normalizedEnd) {
+      throw new Error('IBKR sync start date must be on or before end date');
+    }
+
+    const daySpan = Math.floor(
+      (new Date(`${normalizedEnd}T00:00:00Z`) - new Date(`${normalizedStart}T00:00:00Z`)) / 86400000
+    ) + 1;
+
+    if (daySpan > MAX_FLEX_OVERRIDE_DAYS) {
+      throw new Error(`IBKR Flex Web Service supports up to ${MAX_FLEX_OVERRIDE_DAYS} days per request`);
+    }
+
+    return {
+      start: normalizedStart,
+      end: normalizedEnd
+    };
+  }
+
+  normalizeDateString(value) {
+    if (!value) {
+      return null;
+    }
+
+    if (value instanceof Date) {
+      return value.toISOString().split('T')[0];
+    }
+
+    const stringValue = String(value);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(stringValue)) {
+      return stringValue;
+    }
+
+    const parsed = new Date(stringValue);
+    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().split('T')[0];
   }
 
   executionsMatch(left, right) {
