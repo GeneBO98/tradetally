@@ -62,7 +62,7 @@
                 </button>
               </div>
               <div class="flex flex-col gap-3 sm:flex-row sm:items-stretch xl:justify-end">
-                <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
                   <div class="card card-mobile-safe min-w-[210px] border-l-4 border-l-primary-500">
                     <div class="card-body">
                       <dt class="text-data-secondary truncate">
@@ -73,6 +73,21 @@
                       </dd>
                       <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
                         {{ showRValue ? 'Performance in R' : 'Net profit and loss' }}
+                      </div>
+                    </div>
+                  </div>
+                  <div class="card card-mobile-safe min-w-[210px] border-l-4 border-l-sky-500">
+                    <div class="card-body">
+                      <dt class="text-data-secondary truncate">
+                        Avg Initial Risk
+                      </dt>
+                      <dd class="mt-1 text-xl sm:text-2xl lg:text-3xl font-semibold whitespace-nowrap text-gray-900 dark:text-white">
+                        {{ monthlyRiskTradeCount > 0 ? '$' + formatNumber(monthlyAvgRiskAmount) : 'N/A' }}
+                      </dd>
+                      <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                        {{ monthlyRiskTradeCount > 0
+                          ? `${monthlyRiskTradeCount} ${monthlyRiskTradeCount === 1 ? 'trade' : 'trades'} with stop loss`
+                          : 'No stop-loss data this month' }}
                       </div>
                     </div>
                   </div>
@@ -232,6 +247,9 @@
                   <p v-else-if="showRValue && contrib.is_partial" class="text-xs text-gray-400">
                     Partial
                   </p>
+                  <p v-if="contrib.risk_amount != null" class="text-xs text-gray-500 dark:text-gray-400">
+                    Risk ${{ formatNumber(contrib.risk_amount) }}
+                  </p>
                 </div>
               </div>
             </div>
@@ -243,6 +261,10 @@
               <span class="font-bold text-lg" :class="selectedDayTotal >= 0 ? 'text-green-600' : 'text-red-600'">
                 {{ showRValue ? formatRValue(selectedDayTotalRValue) : '$' + formatNumber(selectedDayTotalPnl) }}
               </span>
+            </div>
+            <div v-if="selectedDayRiskTradeCount > 0" class="mt-2 flex justify-between items-center text-sm text-gray-500 dark:text-gray-400">
+              <span>Avg initial risk</span>
+              <span>${{ formatNumber(selectedDayAvgRiskAmount) }} across {{ selectedDayRiskTradeCount }} {{ selectedDayRiskTradeCount === 1 ? 'trade' : 'trades' }}</span>
             </div>
           </div>
         </div>
@@ -266,7 +288,7 @@ const route = useRoute()
 
 const loading = ref(true)
 const initialLoading = ref(true) // Track initial load separately to preserve scroll on refresh
-const calendarData = ref(new Map()) // Map of date string -> { trades: number, pnl: number }
+const calendarData = ref(new Map()) // Map of date string -> { trades, pnl, rValue, riskAmount, riskTradeCount }
 const dayContributions = ref([]) // Execution-level contributions for selected day (from /analytics/calendar/day)
 const expandedMonth = ref(null)
 // Initialize year from route query, localStorage, or current year (in that order)
@@ -301,12 +323,12 @@ function toggleRValue() {
 
 // Helper to get calendar data for a date
 function getCalendarDataForDate(date) {
-  if (!date) return { trades: 0, pnl: 0, rValue: 0 }
+  if (!date) return { trades: 0, pnl: 0, rValue: 0, riskAmount: 0, riskTradeCount: 0 }
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const day = String(date.getDate()).padStart(2, '0')
   const dateKey = `${year}-${month}-${day}`
-  return calendarData.value.get(dateKey) || { trades: 0, pnl: 0, rValue: 0 }
+  return calendarData.value.get(dateKey) || { trades: 0, pnl: 0, rValue: 0, riskAmount: 0, riskTradeCount: 0 }
 }
 
 // Day detail shows execution-level contributions (from API), not getTradesForDate
@@ -479,6 +501,25 @@ const monthlyRValue = computed(() => {
   return sumCalendarMetric(monthStart, monthEnd, 'rValue')
 })
 
+const monthlyRiskAmount = computed(() => {
+  if (!expandedMonth.value) return 0
+  const monthStart = startOfMonth(expandedMonth.value)
+  const monthEnd = endOfMonth(expandedMonth.value)
+  return sumCalendarMetric(monthStart, monthEnd, 'riskAmount')
+})
+
+const monthlyRiskTradeCount = computed(() => {
+  if (!expandedMonth.value) return 0
+  const monthStart = startOfMonth(expandedMonth.value)
+  const monthEnd = endOfMonth(expandedMonth.value)
+  return sumCalendarMetric(monthStart, monthEnd, 'riskTradeCount')
+})
+
+const monthlyAvgRiskAmount = computed(() => {
+  if (!monthlyRiskTradeCount.value) return 0
+  return monthlyRiskAmount.value / monthlyRiskTradeCount.value
+})
+
 const ytdPnl = computed(() => {
   if (!expandedMonth.value) return 0
   const yearStart = startOfYear(expandedMonth.value)
@@ -494,6 +535,19 @@ const monthlyTotal = computed(() => {
 // Total R-value for selected day
 const selectedDayTotalRValue = computed(() => {
   return selectedDayContributions.value.reduce((sum, c) => sum + (parseFloat(c.r_value) || 0), 0)
+})
+
+const selectedDayTotalRiskAmount = computed(() => {
+  return selectedDayContributions.value.reduce((sum, c) => sum + (parseFloat(c.risk_amount) || 0), 0)
+})
+
+const selectedDayRiskTradeCount = computed(() => {
+  return selectedDayContributions.value.reduce((count, c) => count + (c.risk_amount != null ? 1 : 0), 0)
+})
+
+const selectedDayAvgRiskAmount = computed(() => {
+  if (!selectedDayRiskTradeCount.value) return 0
+  return selectedDayTotalRiskAmount.value / selectedDayRiskTradeCount.value
 })
 
 // Returns P&L or R-value total for selected day based on toggle
@@ -693,7 +747,9 @@ async function fetchCalendarData() {
         dataMap.set(day.trade_date, {
           trades: parseInt(day.trades) || 0,
           pnl: parseFloat(day.daily_pnl) || 0,
-          rValue: parseFloat(day.daily_r_value) || 0
+          rValue: parseFloat(day.daily_r_value) || 0,
+          riskAmount: parseFloat(day.daily_risk_amount) || 0,
+          riskTradeCount: parseInt(day.risk_trade_count) || 0
         })
       }
     }

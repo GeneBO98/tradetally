@@ -399,6 +399,46 @@ function buildFilterConditions(query) {
   return { filterConditions, params };
 }
 
+function buildCalendarRiskMetrics(rows = []) {
+  const metricsByDate = new Map();
+
+  rows.forEach((row) => {
+    if (!row.trade_date) return;
+
+    const current = metricsByDate.get(row.trade_date) || {
+      dailyRValue: 0,
+      dailyRiskAmount: 0,
+      riskTradeCount: 0
+    };
+
+    const rValue = row.r_value != null ? parseFloat(row.r_value) : null;
+    if (rValue != null && isFinite(rValue)) {
+      current.dailyRValue += rValue;
+    }
+
+    const riskAmount = Trade.calculateRiskAmount(
+      row.entry_price,
+      row.stop_loss,
+      row.quantity,
+      row.side,
+      row.instrument_type,
+      row.contract_size,
+      row.point_value,
+      row.symbol,
+      row.underlying_asset
+    );
+
+    if (riskAmount != null) {
+      current.dailyRiskAmount += riskAmount;
+      current.riskTradeCount += 1;
+    }
+
+    metricsByDate.set(row.trade_date, current);
+  });
+
+  return metricsByDate;
+}
+
 const analyticsController = {
   async getOverview(req, res, next) {
     try {
@@ -1049,35 +1089,60 @@ const analyticsController = {
           SELECT trade_date, COUNT(DISTINCT trade_id)::int AS trades, COALESCE(SUM(pnl), 0)::numeric AS daily_pnl
           FROM combined
           GROUP BY trade_date
-        ),
-        -- R-value by date: attribute trade's r_value to its final exit date
-        r_value_by_date AS (
-          SELECT
-            (${tableAlias}.exit_time::timestamp)::date AS trade_date,
-            COALESCE(SUM(${tableAlias}.r_value) FILTER (WHERE ${tableAlias}.r_value IS NOT NULL AND ${tableAlias}.stop_loss IS NOT NULL), 0)::numeric AS daily_r_value
-          FROM trades ${tableAlias}
-          WHERE ${tableAlias}.user_id = $1
-            AND ${tableAlias}.exit_time IS NOT NULL
-            AND (${tableAlias}.exit_time::timestamp)::date >= $${paramOffset + 1}::date
-            AND (${tableAlias}.exit_time::timestamp)::date <= $${paramOffset + 2}::date
-            ${fc}
-          GROUP BY (${tableAlias}.exit_time::timestamp)::date
         )
         SELECT
           p.trade_date::text,
           p.trades,
-          p.daily_pnl,
-          COALESCE(r.daily_r_value, 0)::numeric AS daily_r_value
+          p.daily_pnl
         FROM pnl_by_date p
-        LEFT JOIN r_value_by_date r ON p.trade_date = r.trade_date
         ORDER BY p.trade_date
+      `;
+
+      const riskMetricsQuery = `
+        SELECT
+          (${tableAlias}.exit_time::timestamp)::date::text AS trade_date,
+          ${tableAlias}.r_value,
+          ${tableAlias}.entry_price,
+          ${tableAlias}.stop_loss,
+          ${tableAlias}.quantity,
+          ${tableAlias}.side,
+          ${tableAlias}.instrument_type,
+          ${tableAlias}.contract_size,
+          ${tableAlias}.point_value,
+          ${tableAlias}.symbol,
+          ${tableAlias}.underlying_asset
+        FROM trades ${tableAlias}
+        WHERE ${tableAlias}.user_id = $1
+          AND ${tableAlias}.exit_time IS NOT NULL
+          AND (${tableAlias}.exit_time::timestamp)::date >= $${paramOffset + 1}::date
+          AND (${tableAlias}.exit_time::timestamp)::date <= $${paramOffset + 2}::date
+          ${fc}
       `;
 
       // Add start and end date to params
       const finalParams = [...params, startDate, endDate];
-      const result = await db.query(calendarQuery, finalParams);
-      
-      res.json({ calendar: result.rows });
+      const [calendarResult, riskMetricsResult] = await Promise.all([
+        db.query(calendarQuery, finalParams),
+        db.query(riskMetricsQuery, finalParams)
+      ]);
+
+      const riskMetricsByDate = buildCalendarRiskMetrics(riskMetricsResult.rows);
+      const calendarRows = calendarResult.rows.map((row) => {
+        const riskMetrics = riskMetricsByDate.get(row.trade_date) || {
+          dailyRValue: 0,
+          dailyRiskAmount: 0,
+          riskTradeCount: 0
+        };
+
+        return {
+          ...row,
+          daily_r_value: riskMetrics.dailyRValue,
+          daily_risk_amount: riskMetrics.dailyRiskAmount,
+          risk_trade_count: riskMetrics.riskTradeCount
+        };
+      });
+
+      res.json({ calendar: calendarRows });
     } catch (error) {
       console.error('Calendar data error:', error);
       next(error);
@@ -1161,7 +1226,8 @@ const analyticsController = {
         )
         SELECT g.trade_id, g.symbol, g.side, g.total_pnl AS exec_pnl, g.exit_count,
                COALESCE(tt.total_exit_count, 1) AS total_exit_count,
-               tr.r_value, tr.stop_loss
+               tr.r_value, tr.stop_loss, tr.entry_price, tr.quantity,
+               tr.instrument_type, tr.contract_size, tr.point_value, tr.underlying_asset
         FROM grouped_by_trade g
         LEFT JOIN trade_exit_totals tt ON g.trade_id = tt.trade_id
         LEFT JOIN trades tr ON g.trade_id = tr.id
@@ -1173,6 +1239,17 @@ const analyticsController = {
         const exitCountOnDay = r.exit_count != null ? parseInt(r.exit_count, 10) : 1;
         const totalExitCount = r.total_exit_count != null ? parseInt(r.total_exit_count, 10) : 1;
         const isPartial = exitCountOnDay < totalExitCount;
+        const riskAmount = Trade.calculateRiskAmount(
+          r.entry_price,
+          r.stop_loss,
+          r.quantity,
+          r.side,
+          r.instrument_type,
+          r.contract_size,
+          r.point_value,
+          r.symbol,
+          r.underlying_asset
+        );
         return {
           trade_id: r.trade_id,
           symbol: r.symbol,
@@ -1180,6 +1257,7 @@ const analyticsController = {
           pnl: r.exec_pnl != null ? parseFloat(r.exec_pnl) : null,
           // Only show r_value for fully closed trades (not partial exits)
           r_value: (!isPartial && r.r_value != null && r.stop_loss != null) ? parseFloat(r.r_value) : null,
+          risk_amount: riskAmount != null ? Math.round(riskAmount * 100) / 100 : null,
           exit_count: exitCountOnDay,
           // Only mark as partial if exits span multiple days (not all exits are on this day)
           is_partial: isPartial
@@ -1188,7 +1266,8 @@ const analyticsController = {
 
       // Fallback: trades without exit executions (no executions array, or no exit execs with quantity)
       const tradeLevelFallbackQuery = `
-        SELECT t.id AS trade_id, t.symbol, t.side, t.exit_time AS exec_datetime, t.pnl, t.quantity, t.exit_price AS price, t.r_value, t.stop_loss
+        SELECT t.id AS trade_id, t.symbol, t.side, t.exit_time AS exec_datetime, t.pnl, t.quantity, t.exit_price AS price,
+               t.r_value, t.stop_loss, t.entry_price, t.instrument_type, t.contract_size, t.point_value, t.underlying_asset
         FROM trades t
         WHERE t.user_id = $1
           AND t.exit_time IS NOT NULL
@@ -1207,15 +1286,30 @@ const analyticsController = {
           ${fc}
       `;
       const tradeResult = await db.query(tradeLevelFallbackQuery, params);
-      const fallbackRows = tradeResult.rows.map(r => ({
-        trade_id: r.trade_id,
-        symbol: r.symbol,
-        side: r.side,
-        pnl: r.pnl != null ? parseFloat(r.pnl) : null,
-        r_value: (r.r_value != null && r.stop_loss != null) ? parseFloat(r.r_value) : null,
-        exit_count: 1,
-        is_partial: false
-      }));
+      const fallbackRows = tradeResult.rows.map(r => {
+        const riskAmount = Trade.calculateRiskAmount(
+          r.entry_price,
+          r.stop_loss,
+          r.quantity,
+          r.side,
+          r.instrument_type,
+          r.contract_size,
+          r.point_value,
+          r.symbol,
+          r.underlying_asset
+        );
+
+        return {
+          trade_id: r.trade_id,
+          symbol: r.symbol,
+          side: r.side,
+          pnl: r.pnl != null ? parseFloat(r.pnl) : null,
+          r_value: (r.r_value != null && r.stop_loss != null) ? parseFloat(r.r_value) : null,
+          risk_amount: riskAmount != null ? Math.round(riskAmount * 100) / 100 : null,
+          exit_count: 1,
+          is_partial: false
+        };
+      });
 
       const contributions = [...rows, ...fallbackRows].sort((a, b) =>
         (a.trade_id || '').localeCompare(b.trade_id || '')
