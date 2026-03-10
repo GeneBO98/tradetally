@@ -573,14 +573,23 @@ class IBKRService {
           }
         }
 
-        const matchingCount = newTrade.executionData.filter(newExecution =>
+        // Deduplicate new trade's executions before comparison to prevent
+        // doubled executions from inflating the count (e.g., when conid vs composite key mismatch
+        // causes the parser to add executions twice)
+        const uniqueNewExecs = [];
+        for (const exec of newTrade.executionData) {
+          const isDupe = uniqueNewExecs.some(u => this.executionsMatch(u, exec));
+          if (!isDupe) uniqueNewExecs.push(exec);
+        }
+
+        const matchingCount = uniqueNewExecs.filter(newExecution =>
           existingExecs.some(existingExecution => this.executionsMatch(newExecution, existingExecution))
         ).length;
 
         if (matchingCount > 0) {
           // Only mark as duplicate if the new trade doesn't have MORE executions
           // If new trade has more executions, it contains additional data (like partial closes)
-          const newExecCount = newTrade.executionData.length;
+          const newExecCount = uniqueNewExecs.length;
           const existingExecCount = existingExecs.length;
 
           if (newExecCount <= existingExecCount) {

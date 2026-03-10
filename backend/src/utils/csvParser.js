@@ -43,7 +43,7 @@ function isExecutionDuplicate(execution, symbol, context) {
 
     // Check by order ID if available (for Interactive Brokers)
     if (execution.orderId && existingExec.orderId) {
-      return existingExec.orderId === execution.orderId;
+      return String(existingExec.orderId) === String(execution.orderId);
     }
 
     // Fallback to timestamp + quantity + price matching
@@ -71,6 +71,19 @@ function isExecutionDuplicate(execution, symbol, context) {
            existingExec.quantity === execution.quantity &&
            Math.abs((existingPrice || 0) - (execution.price || 0)) < 0.01;
   });
+}
+
+/**
+ * Check if an execution already exists using multiple candidate lookup keys.
+ * This handles cases where IBKR returns a conid-based key but the DB trade
+ * was imported via CSV under a composite key (e.g., AMGN_392.5_2026-03-13_call).
+ * @param {Object} execution - The execution to check
+ * @param {Array<String>} keys - Array of candidate lookup keys to try
+ * @param {Object} context - Context object containing existingExecutions
+ * @returns {boolean} - True if execution already exists under any key
+ */
+function isExecutionDuplicateMultiKey(execution, keys, context) {
+  return keys.some(key => isExecutionDuplicate(execution, key, context));
 }
 
 /**
@@ -6166,8 +6179,13 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         };
 
         // First, check if this execution exists in ANY existing trade (complete or open)
-        // Use positionLookupKey for options to match the composite key format in existingExecutions
-        const existsGlobally = isExecutionDuplicate(newExecution, positionLookupKey, context);
+        // Try multiple candidate keys: conid, composite key, and plain symbol
+        // This handles cases where IBKR returns conid but DB trade was imported via CSV under composite key
+        const candidateKeys = [];
+        if (transaction.conid) candidateKeys.push(`conid_${transaction.conid}`);
+        if (positionLookupKey && !candidateKeys.includes(positionLookupKey)) candidateKeys.push(positionLookupKey);
+        if (symbol && !candidateKeys.includes(symbol)) candidateKeys.push(symbol);
+        const existsGlobally = isExecutionDuplicateMultiKey(newExecution, candidateKeys, context);
 
         // Then check if it exists in the current trade being built
         // For fresh imports, we trust each CSV row is a unique execution
@@ -6175,7 +6193,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         const executionExists = existsGlobally || currentTrade.executions.some(exec => {
           // If both have order IDs, use that for comparison (most reliable)
           if (exec.orderId && newExecution.orderId) {
-            return exec.orderId === newExecution.orderId;
+            return String(exec.orderId) === String(newExecution.orderId);
           }
           // Without unique identifiers, don't deduplicate within the current import
           // This allows multiple identical executions from the same CSV (legitimate fills)
