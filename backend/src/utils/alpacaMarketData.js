@@ -78,7 +78,13 @@ class AlpacaMarketDataClient {
     }
 
     // Parse expiration date using UTC to avoid timezone off-by-one
-    const expDate = new Date(expiration_date + 'T00:00:00Z');
+    // Handle both Date objects (from PostgreSQL) and date strings
+    let expDate;
+    if (expiration_date instanceof Date) {
+      expDate = expiration_date;
+    } else {
+      expDate = new Date(expiration_date + 'T00:00:00Z');
+    }
     if (isNaN(expDate.getTime())) return null;
 
     const yy = String(expDate.getUTCFullYear()).slice(-2);
@@ -107,8 +113,8 @@ class AlpacaMarketDataClient {
       return {};
     }
 
-    // Build OCC symbols and map them back to position symbols
-    const occToPosition = {};
+    // Build OCC symbols and map them back to position keys
+    const occToPositionKey = {};
     const uncachedOcc = [];
 
     const results = {};
@@ -126,12 +132,14 @@ class AlpacaMarketDataClient {
         continue;
       }
 
-      occToPosition[occ] = pos.symbol;
+      // Use _positionKey if provided (unique per contract), otherwise fall back to symbol
+      const posKey = pos._positionKey || pos.symbol;
+      occToPositionKey[occ] = posKey;
 
       // Check cache first (2 min TTL)
       const cached = cache.get(`alpaca_option:${occ}`);
       if (cached) {
-        results[pos.symbol] = cached;
+        results[posKey] = cached;
         console.log(`[ALPACA] Cache hit for ${occ} -> $${cached.price}`);
       } else {
         uncachedOcc.push(occ);
@@ -160,7 +168,7 @@ class AlpacaMarketDataClient {
 
         for (const occ of batch) {
           const snapshot = snapshots[occ];
-          const posSymbol = occToPosition[occ];
+          const posKey = occToPositionKey[occ];
 
           if (snapshot) {
             const bid = snapshot.latestQuote?.bp || snapshot.latestQuote?.bidPrice || 0;
@@ -179,7 +187,7 @@ class AlpacaMarketDataClient {
             }
 
             const result = { price, bid, ask };
-            results[posSymbol] = result;
+            results[posKey] = result;
 
             // Cache for 2 minutes
             cache.set(`alpaca_option:${occ}`, result, 120000);

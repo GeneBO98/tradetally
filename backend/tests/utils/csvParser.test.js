@@ -21,4 +21,22 @@ describe('csvParser timezone handling', () => {
     expect(result.trades[0].exitTime).toBe('2026-03-09T15:45:00Z');
     expect(result.trades[0].tradeDate).toBe('2026-03-09');
   });
+
+  test('keeps Tradovate aggregate trade times aligned with execution times', async () => {
+    const csv = [
+      'orderId,Account,Order ID,B/S,Contract,Product,Product Description,avgPrice,filledQty,Fill Time,lastCommandId,Status,_priceFormat,_priceFormatType,_tickSize,spreadDefinitionId,Version ID,Timestamp,Date,Quantity,Text,Type,Limit Price,Stop Price,decimalLimit,decimalStop,Filled Qty,Avg Fill Price,decimalFillAvg,Venue,Notional Value,Currency',
+      '1,,1,Sell,MESH6,MES,Micro E-mini S&P 500,6714,8,03/09/2026 16:29:00,1,Filled,-2,0,0.25,,1,03/09/2026 16:29:00,3/9/26,8,multibracket,Limit,6714,,6714,,8,6714,6714,,268560,USD',
+      '2,,2,Buy,MESH6,MES,Micro E-mini S&P 500,6713.75,8,03/09/2026 16:31:05,2,Filled,-2,0,0.25,,2,03/09/2026 16:31:05,3/9/26,8,multibracket,Stop,,6713.75,,6713.75,8,6713.75,6713.75,,268550,USD'
+    ].join('\n');
+
+    const result = await parseCSV(Buffer.from(csv), 'tradovate', {
+      userTimezone: 'Europe/Berlin'
+    });
+
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0].entryTime).toBe('2026-03-09T15:29:00Z');
+    expect(result.trades[0].exitTime).toBe('2026-03-09T15:31:05Z');
+    expect(result.trades[0].executions[0].datetime).toBe('2026-03-09T15:29:00Z');
+    expect(result.trades[0].executions[1].datetime).toBe('2026-03-09T15:31:05Z');
+  });
 });
