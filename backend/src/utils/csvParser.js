@@ -1308,7 +1308,7 @@ function convertTradeDatetimesToUTC(trades, timezone) {
   }
 
   const datetimeFields = ['entryTime', 'exitTime', 'entry_time', 'exit_time'];
-  const executionDatetimeFields = ['datetime', 'time', 'entry_time', 'exit_time'];
+  const executionDatetimeFields = ['datetime', 'time', 'entry_time', 'exit_time', 'entryTime', 'exitTime'];
 
   for (const trade of trades) {
     for (const field of datetimeFields) {
@@ -2736,6 +2736,45 @@ function parseDateTime(dateTimeStr) {
   }
 }
 
+function hasExplicitTimezone(dateTimeStr) {
+  return typeof dateTimeStr === 'string' &&
+    (dateTimeStr.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(dateTimeStr));
+}
+
+function compareCanonicalDateTimes(left, right) {
+  if (left === right) return 0;
+
+  const leftHasTimezone = hasExplicitTimezone(left);
+  const rightHasTimezone = hasExplicitTimezone(right);
+
+  if (leftHasTimezone || rightHasTimezone) {
+    const leftTime = new Date(left).getTime();
+    const rightTime = new Date(right).getTime();
+
+    if (!Number.isNaN(leftTime) && !Number.isNaN(rightTime) && leftTime !== rightTime) {
+      return leftTime - rightTime;
+    }
+  }
+
+  return left.localeCompare(right);
+}
+
+function getExecutionTimeBounds(executions = []) {
+  const datetimes = executions
+    .map((execution) => execution?.datetime)
+    .filter((value) => typeof value === 'string' && value.trim() !== '');
+
+  if (datetimes.length === 0) {
+    return { entryTime: null, exitTime: null };
+  }
+
+  const sortedTimes = [...datetimes].sort(compareCanonicalDateTimes);
+  return {
+    entryTime: sortedTimes[0],
+    exitTime: sortedTimes[sortedTimes.length - 1]
+  };
+}
+
 // Lightspeed-specific datetime parser that handles Central Time
 function parseLightspeedDateTime(dateTimeStr) {
   if (!dateTimeStr) return null;
@@ -3536,14 +3575,10 @@ async function parseLightspeedTransactions(records, existingPositions = {}, user
 
         currentTrade.fees = 0;
         // FIXED: Calculate proper entry and exit times from all executions
-        const executionTimes = currentTrade.executions
-          .filter(e => e.datetime)
-          .map(e => new Date(e.datetime))
-          .filter(d => !isNaN(d.getTime()));
-        const sortedTimes = executionTimes.sort((a, b) => a - b);
-        if (sortedTimes.length > 0) {
-          currentTrade.entryTime = sortedTimes[0].toISOString();
-          currentTrade.exitTime = sortedTimes[sortedTimes.length - 1].toISOString();
+        const { entryTime, exitTime } = getExecutionTimeBounds(currentTrade.executions);
+        if (entryTime && exitTime) {
+          currentTrade.entryTime = entryTime;
+          currentTrade.exitTime = exitTime;
         }
 
         // Executions are stored in the executions field (no need for executionData)
@@ -4109,14 +4144,10 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
         currentTrade.fees = 0;
 
         // Calculate proper entry and exit times from all executions
-        const executionTimes = currentTrade.executions
-          .filter(e => e.datetime)
-          .map(e => new Date(e.datetime))
-          .filter(d => !isNaN(d.getTime()));
-        const sortedTimes = executionTimes.sort((a, b) => a - b);
-        if (sortedTimes.length > 0) {
-          currentTrade.entryTime = sortedTimes[0].toISOString();
-          currentTrade.exitTime = sortedTimes[sortedTimes.length - 1].toISOString();
+        const { entryTime, exitTime } = getExecutionTimeBounds(currentTrade.executions);
+        if (entryTime && exitTime) {
+          currentTrade.entryTime = entryTime;
+          currentTrade.exitTime = exitTime;
         }
 
         currentTrade.executionData = currentTrade.executions;
@@ -4516,14 +4547,10 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
         currentTrade.fees = 0;
 
         // Calculate proper entry and exit times from all executions
-        const executionTimes = currentTrade.executions
-          .filter(e => e.datetime)
-          .map(e => new Date(e.datetime))
-          .filter(d => !isNaN(d.getTime()));
-        const sortedTimes = executionTimes.sort((a, b) => a - b);
-        if (sortedTimes.length > 0) {
-          currentTrade.entryTime = sortedTimes[0].toISOString();
-          currentTrade.exitTime = sortedTimes[sortedTimes.length - 1].toISOString();
+        const { entryTime, exitTime } = getExecutionTimeBounds(currentTrade.executions);
+        if (entryTime && exitTime) {
+          currentTrade.entryTime = entryTime;
+          currentTrade.exitTime = exitTime;
         }
 
         currentTrade.executionData = currentTrade.executions;
@@ -4853,14 +4880,10 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
         currentTrade.fees = 0;
 
         // Calculate proper entry and exit times from all executions
-        const executionTimes = currentTrade.executions
-          .filter(e => e.datetime)
-          .map(e => new Date(e.datetime))
-          .filter(d => !isNaN(d.getTime()));
-        const sortedTimes = executionTimes.sort((a, b) => a - b);
-        if (sortedTimes.length > 0) {
-          currentTrade.entryTime = sortedTimes[0].toISOString();
-          currentTrade.exitTime = sortedTimes[sortedTimes.length - 1].toISOString();
+        const { entryTime, exitTime } = getExecutionTimeBounds(currentTrade.executions);
+        if (entryTime && exitTime) {
+          currentTrade.entryTime = entryTime;
+          currentTrade.exitTime = exitTime;
         }
 
         currentTrade.executionData = currentTrade.executions;
@@ -5281,14 +5304,10 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
         currentTrade.fees = 0;
 
         // Calculate proper entry and exit times from all executions
-        const executionTimes = currentTrade.executions
-          .filter(e => e.datetime)
-          .map(e => new Date(e.datetime))
-          .filter(d => !isNaN(d.getTime()));
-        const sortedTimes = executionTimes.sort((a, b) => a - b);
-        if (sortedTimes.length > 0) {
-          currentTrade.entryTime = sortedTimes[0].toISOString();
-          currentTrade.exitTime = sortedTimes[sortedTimes.length - 1].toISOString();
+        const { entryTime, exitTime } = getExecutionTimeBounds(currentTrade.executions);
+        if (entryTime && exitTime) {
+          currentTrade.entryTime = entryTime;
+          currentTrade.exitTime = exitTime;
         }
 
         currentTrade.executionData = currentTrade.executions;
@@ -6284,14 +6303,10 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         currentTrade.fees = 0;
 
         // Calculate proper entry and exit times from all executions
-        const executionTimes = currentTrade.executions
-          .filter(e => e.datetime)
-          .map(e => new Date(e.datetime))
-          .filter(d => !isNaN(d.getTime()));
-        const sortedTimes = executionTimes.sort((a, b) => a - b);
-        if (sortedTimes.length > 0) {
-          currentTrade.entryTime = sortedTimes[0].toISOString();
-          currentTrade.exitTime = sortedTimes[sortedTimes.length - 1].toISOString();
+        const { entryTime, exitTime } = getExecutionTimeBounds(currentTrade.executions);
+        if (entryTime && exitTime) {
+          currentTrade.entryTime = entryTime;
+          currentTrade.exitTime = exitTime;
         }
 
         currentTrade.executionData = currentTrade.executions;
@@ -6769,14 +6784,10 @@ async function parseWebullTransactions(records, existingPositions = {}, context 
         currentTrade.fees = 0;
 
         // Calculate proper entry and exit times from all executions
-        const executionTimes = currentTrade.executions
-          .filter(e => e.datetime)
-          .map(e => new Date(e.datetime))
-          .filter(d => !isNaN(d.getTime()));
-        const sortedTimes = executionTimes.sort((a, b) => a - b);
-        if (sortedTimes.length > 0) {
-          currentTrade.entryTime = sortedTimes[0].toISOString();
-          currentTrade.exitTime = sortedTimes[sortedTimes.length - 1].toISOString();
+        const { entryTime, exitTime } = getExecutionTimeBounds(currentTrade.executions);
+        if (entryTime && exitTime) {
+          currentTrade.entryTime = entryTime;
+          currentTrade.exitTime = exitTime;
         }
 
         currentTrade.executionData = currentTrade.executions;
@@ -7178,14 +7189,10 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
         currentTrade.fees = 0;
 
         // Set proper entry and exit times
-        const executionTimes = currentTrade.executions
-          .filter(e => e.datetime)
-          .map(e => new Date(e.datetime))
-          .filter(d => !isNaN(d.getTime()));
-        const sortedTimes = executionTimes.sort((a, b) => a - b);
-        if (sortedTimes.length > 0) {
-          currentTrade.entryTime = sortedTimes[0].toISOString();
-          currentTrade.exitTime = sortedTimes[sortedTimes.length - 1].toISOString();
+        const { entryTime, exitTime } = getExecutionTimeBounds(currentTrade.executions);
+        if (entryTime && exitTime) {
+          currentTrade.entryTime = entryTime;
+          currentTrade.exitTime = exitTime;
         }
 
         // Mark as update if this was an existing position
@@ -7735,14 +7742,10 @@ async function parseTradovateTransactions(records, existingPositions = {}, conte
         currentTrade.fees = 0;
 
         // Calculate proper entry and exit times
-        const executionTimes = currentTrade.executions
-          .filter(e => e.datetime)
-          .map(e => new Date(e.datetime))
-          .filter(d => !isNaN(d.getTime()));
-        const sortedTimes = executionTimes.sort((a, b) => a - b);
-        if (sortedTimes.length > 0) {
-          currentTrade.entryTime = sortedTimes[0].toISOString();
-          currentTrade.exitTime = sortedTimes[sortedTimes.length - 1].toISOString();
+        const { entryTime, exitTime } = getExecutionTimeBounds(currentTrade.executions);
+        if (entryTime && exitTime) {
+          currentTrade.entryTime = entryTime;
+          currentTrade.exitTime = exitTime;
         }
 
         currentTrade.executionData = currentTrade.executions;
