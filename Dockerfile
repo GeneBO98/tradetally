@@ -59,8 +59,8 @@ FROM node:20-alpine3.21
 # Create nginx user/group and directories manually since --no-scripts skips post-install scripts
 # Note: vips is NOT needed here - Sharp uses bundled libvips via SHARP_IGNORE_GLOBAL_LIBVIPS=1
 RUN apk update && apk upgrade --no-cache && \
-    addgroup -g 101 -S nginx && \
-    adduser -S -D -H -u 101 -h /var/lib/nginx -s /sbin/nologin -G nginx -g nginx nginx && \
+    (getent group nginx >/dev/null 2>&1 || addgroup -g 101 -S nginx) && \
+    (getent passwd nginx >/dev/null 2>&1 || adduser -S -D -H -u 101 -h /var/lib/nginx -s /sbin/nologin -G nginx -g nginx nginx) && \
     apk add --no-cache --no-scripts \
     nginx \
     netcat-openbsd \
