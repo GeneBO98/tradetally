@@ -925,25 +925,9 @@ class TargetHitAnalysisService {
       // - Entry 100, SL 90, Exit 90 (stopped exactly): Actual R = -1, Planned R = -1, Management R = 0R
       // - Entry 100, SL 90, Exit 85 (slipped): Actual R = -1.5, Planned R = -1, Management R = -0.5R
 
-      if (hasPartialExits) {
-        // With partial exits: hit targets were captured, remaining would have stopped at -1R
-        // Apply commission to the planned scenario as well
-        plannedR = hitTargetsContribution + (remainingRatio * -1) - commissionR;
-
-        logger.debug('[MANAGEMENT-R] SL Hit First with partial exits:', {
-          hitTargetsContribution: hitTargetsContribution.toFixed(4),
-          remainingRatio: remainingRatio.toFixed(4),
-          commissionR: commissionR.toFixed(4),
-          plannedR: plannedR.toFixed(4)
-        });
-      } else {
-        // No partial exits: full position would have stopped at -1R, minus commissions
-        plannedR = -1 - commissionR;
-
-        logger.debug('[MANAGEMENT-R] SL Hit First without partial exits:', {
-          commissionR: commissionR.toFixed(4),
-          plannedR: plannedR.toFixed(4)
-        });
+      plannedR = this.calculatePlannedR(trade, risk, commissionR);
+      if (plannedR === null) {
+        return null;
       }
 
       managementR = actualR - plannedR;
@@ -958,19 +942,15 @@ class TargetHitAnalysisService {
       // TP Hit First: Management R = Actual R (net) - Weighted Target R (net)
       // Both sides include commissions for apples-to-apples comparison.
       // This measures how much better/worse you did vs your potential (all targets hit perfectly)
-      const weightedTargetR = this.calculateWeightedTargetR(trade, risk);
-      if (weightedTargetR === null) return null;
-
-      // Apply commission to target R as well - hitting targets also incurs commissions
-      plannedR = weightedTargetR - commissionR;
+      plannedR = this.calculatePlannedR(trade, risk, commissionR);
+      if (plannedR === null) return null;
 
       // Use the already commission-adjusted actualR calculated earlier
       managementR = actualR - plannedR;
 
       logger.debug('[MANAGEMENT-R] TP Hit First:', {
         actualR: actualR.toFixed(4),
-        weightedTargetR: weightedTargetR.toFixed(4),
-        weightedTargetRNet: plannedR.toFixed(4),
+        plannedR: plannedR.toFixed(4),
         commissionR: commissionR.toFixed(4),
         managementR: managementR.toFixed(4)
       });
@@ -981,6 +961,163 @@ class TargetHitAnalysisService {
     });
 
     return managementR !== null ? Math.round(managementR * 100) / 100 : null;
+  }
+
+  /**
+   * Build normalized take profit targets with effective share allocation.
+   * Uses take_profit_targets as the source of truth when present.
+   */
+  static getNormalizedTakeProfitTargets(trade) {
+    const {
+      take_profit,
+      take_profit_targets,
+      quantity
+    } = trade;
+
+    const totalQty = parseFloat(quantity) || 1;
+    let targets = [];
+
+    if (Array.isArray(take_profit_targets) && take_profit_targets.length > 0) {
+      targets = take_profit_targets
+        .filter(target => target && target.price != null && !isNaN(parseFloat(target.price)))
+        .map((target, index) => {
+          const rawShares = target.shares ?? target.quantity;
+          const parsedShares = rawShares != null && rawShares !== ''
+            ? parseFloat(rawShares)
+            : null;
+
+          return {
+            id: target.id || `tp_${index + 1}`,
+            label: `TP${target.order || index + 1}`,
+            price: parseFloat(target.price),
+            shares: parsedShares,
+            order: target.order || index + 1,
+            status: target.status || 'pending'
+          };
+        });
+    } else if (take_profit != null && !isNaN(parseFloat(take_profit))) {
+      targets = [{
+        id: 'tp_1',
+        label: 'TP1',
+        price: parseFloat(take_profit),
+        shares: totalQty,
+        order: 1,
+        status: 'pending'
+      }];
+    }
+
+    if (targets.length === 0) {
+      return [];
+    }
+
+    const specifiedShares = targets.reduce((sum, target) => sum + (target.shares || 0), 0);
+    const unspecifiedTargets = targets.filter(target => target.shares === null || target.shares === undefined);
+    const remainingShares = Math.max(0, totalQty - specifiedShares);
+    const fallbackShare = unspecifiedTargets.length > 0
+      ? (remainingShares > 0 ? remainingShares / unspecifiedTargets.length : totalQty / targets.length)
+      : 0;
+
+    return targets.map(target => ({
+      ...target,
+      shares: target.shares != null ? target.shares : fallbackShare
+    }));
+  }
+
+  /**
+   * Determine which manual hit targets should contribute to the planned stop-loss path.
+   * Priority: explicit target.status === 'hit' > execution matching > no hit targets.
+   */
+  static calculateHitTargetsSummary(trade, risk) {
+    const {
+      executions,
+      side
+    } = trade;
+
+    const isLong = side === 'long';
+    const totalQty = parseFloat(trade.quantity) || 1;
+    const normalizedTargets = this.getNormalizedTakeProfitTargets(trade);
+
+    const emptySummary = {
+      hitTargetsContribution: 0,
+      hitTargetsShares: 0,
+      remainingRatio: 1,
+      hasPartialExits: false,
+      source: 'none'
+    };
+
+    if (normalizedTargets.length === 0 || risk <= 0 || totalQty <= 0) {
+      return emptySummary;
+    }
+
+    const summarizeTargets = (targets, source) => {
+      const hitTargetsContribution = targets.reduce((sum, target) => {
+        const targetR = isLong
+          ? (target.price - parseFloat(trade.entry_price)) / risk
+          : (parseFloat(trade.entry_price) - target.price) / risk;
+        return sum + (targetR * (target.shares / totalQty));
+      }, 0);
+
+      const hitTargetsShares = targets.reduce((sum, target) => sum + target.shares, 0);
+      const remainingRatio = Math.max(0, totalQty - hitTargetsShares) / totalQty;
+
+      return {
+        hitTargetsContribution,
+        hitTargetsShares,
+        remainingRatio,
+        hasPartialExits: hitTargetsShares > 0 && hitTargetsShares < totalQty,
+        source
+      };
+    };
+
+    const manualHits = normalizedTargets.filter(target => target.status === 'hit');
+    if (manualHits.length > 0) {
+      return summarizeTargets(manualHits, 'manual_status');
+    }
+
+    if (Array.isArray(executions) && executions.length > 0) {
+      const exitAction = isLong ? 'sell' : 'buy';
+      const exitExecs = executions.filter(execution =>
+        (execution.action === exitAction || execution.type === exitAction) &&
+        parseFloat(execution.price) > 0
+      );
+      const matchedTargets = [];
+
+      for (const target of normalizedTargets) {
+        const matchingExec = exitExecs.find(execution => Math.abs(parseFloat(execution.price) - target.price) < 1);
+        if (matchingExec) {
+          matchedTargets.push(target);
+        }
+      }
+
+      if (matchedTargets.length > 0) {
+        return summarizeTargets(matchedTargets, 'executions');
+      }
+    }
+
+    return emptySummary;
+  }
+
+  /**
+   * Calculate the planned R path based on the selected manual target hit order.
+   * When SL hit first, any hit TP targets contribute to the plan and the remainder stops at -1R.
+   */
+  static calculatePlannedR(trade, risk, commissionR = 0) {
+    if (!trade?.manual_target_hit_first) {
+      return null;
+    }
+
+    if (trade.manual_target_hit_first === 'take_profit') {
+      const weightedTargetR = this.calculateWeightedTargetR(trade, risk);
+      return weightedTargetR === null ? null : weightedTargetR - commissionR;
+    }
+
+    if (trade.manual_target_hit_first === 'stop_loss') {
+      const hitSummary = this.calculateHitTargetsSummary(trade, risk);
+      const plannedRGross = hitSummary.hitTargetsContribution + (hitSummary.remainingRatio * -1);
+      return plannedRGross - commissionR;
+    }
+
+    return null;
   }
 
   /**
@@ -995,84 +1132,41 @@ class TargetHitAnalysisService {
   static calculateWeightedTargetR(trade, risk) {
     const {
       entry_price,
-      take_profit,
-      take_profit_targets,
-      side,
-      quantity
+      side
     } = trade;
 
     const entryPrice = parseFloat(entry_price);
     const isLong = side === 'long';
-    const totalQty = parseFloat(quantity) || 1;
+    const normalizedTargets = this.getNormalizedTakeProfitTargets(trade);
 
-    const hasTargetsArray = take_profit_targets && Array.isArray(take_profit_targets) && take_profit_targets.length > 0;
-    const hasPrimaryTp = !!take_profit;
-
-    // If we have take_profit_targets array, include TP1 from take_profit field in weighted calculation
-    if (hasTargetsArray) {
-      let totalShares = 0;
-      let weightedSum = 0;
-
-      // Calculate total shares specified in targets array to determine remaining for TP1
-      const specifiedShares = take_profit_targets.reduce(
-        (sum, t) => sum + (parseFloat(t.shares || t.quantity) || 0), 0
-      );
-
-      // Add TP1 from take_profit field if it exists
-      if (hasPrimaryTp) {
-        const tp1Price = parseFloat(take_profit);
-        const tp1R = isLong ? (tp1Price - entryPrice) / risk : (entryPrice - tp1Price) / risk;
-
-        // Calculate shares for TP1: remaining shares after accounting for targets array
-        const tp1Shares = specifiedShares > 0
-          ? Math.max(0, totalQty - specifiedShares)
-          : totalQty / (take_profit_targets.length + 1);
-
-        if (tp1Shares > 0 && isFinite(tp1R)) {
-          weightedSum += tp1R * tp1Shares;
-          totalShares += tp1Shares;
-          logger.debug('[WEIGHTED-TARGET-R] TP1 contribution:', { tp1Price, tp1R: tp1R.toFixed(2), shares: tp1Shares });
-        }
-      }
-
-      // Process all targets from the array
-      take_profit_targets.forEach((t, index) => {
-        if (t.price) {
-          const tpPrice = parseFloat(t.price);
-          const tpR = isLong ? (tpPrice - entryPrice) / risk : (entryPrice - tpPrice) / risk;
-
-          let shares;
-          if (t.shares || t.quantity) {
-            shares = parseFloat(t.shares || t.quantity);
-          } else if (specifiedShares === 0) {
-            // No targets have shares specified - distribute equally (including TP1 if exists)
-            shares = totalQty / (hasPrimaryTp ? take_profit_targets.length + 1 : take_profit_targets.length);
-          } else {
-            shares = 1;
-          }
-
-          if (isFinite(tpR)) {
-            weightedSum += tpR * shares;
-            totalShares += shares;
-            logger.debug(`[WEIGHTED-TARGET-R] Target ${index + 1} contribution:`, { tpPrice, tpR: tpR.toFixed(2), shares });
-          }
-        }
-      });
-
-      if (totalShares > 0) {
-        const weightedR = weightedSum / totalShares;
-        logger.debug('[WEIGHTED-TARGET-R] Final weighted average:', { weightedR: weightedR.toFixed(2), totalShares });
-        return weightedR;
-      }
+    if (normalizedTargets.length === 0) {
+      return null;
     }
 
-    // Fall back to single take_profit field (no targets array)
-    if (take_profit) {
-      const tpPrice = parseFloat(take_profit);
-      return isLong ? (tpPrice - entryPrice) / risk : (entryPrice - tpPrice) / risk;
+    const totalShares = normalizedTargets.reduce((sum, target) => sum + target.shares, 0);
+    if (totalShares <= 0) {
+      return null;
     }
 
-    return null;
+    const weightedSum = normalizedTargets.reduce((sum, target) => {
+      const targetR = isLong
+        ? (target.price - entryPrice) / risk
+        : (entryPrice - target.price) / risk;
+
+      if (!isFinite(targetR)) {
+        return sum;
+      }
+
+      return sum + (targetR * target.shares);
+    }, 0);
+
+    const weightedR = weightedSum / totalShares;
+    logger.debug('[WEIGHTED-TARGET-R] Final weighted average:', {
+      weightedR: weightedR.toFixed(2),
+      totalShares,
+      targetCount: normalizedTargets.length
+    });
+    return weightedR;
   }
 
   /**

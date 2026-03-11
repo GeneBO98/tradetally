@@ -3899,17 +3899,23 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
     transactionsByDateSymbol[key].push(txn);
   }
 
-  // Assign incremental times (1 millisecond apart) to transactions with the same date+symbol
+  // Assign incremental seconds to transactions with the same date+symbol to make each unique
+  // IMPORTANT: Keep datetime as a naive string (no Z suffix) so convertTradeDatetimesToUTC
+  // will properly convert it using the user's timezone, not Docker's TZ env var
   for (const key in transactionsByDateSymbol) {
     const group = transactionsByDateSymbol[key];
     if (group.length > 1) {
       console.log(`[DEBUG] Found ${group.length} transactions for ${key}:`);
       group.forEach((txn, index) => {
         const originalTime = txn.datetime;
-        // Keep the same time but add milliseconds to make each unique
-        const baseTime = new Date(txn.datetime);
-        baseTime.setMilliseconds(index);
-        txn.datetime = baseTime.toISOString();
+        // Add incremental seconds to make each unique while keeping naive format
+        // Parse the existing time and add index seconds
+        const match = String(txn.datetime).match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}):(\d{2})(.*)$/);
+        if (match) {
+          const [, prefix, secStr, suffix] = match;
+          const newSec = String(Math.min(parseInt(secStr) + index, 59)).padStart(2, '0');
+          txn.datetime = `${prefix}:${newSec}${suffix}`;
+        }
         console.log(`[DEBUG]   [${index}] ${txn.action} ${txn.quantity} @ $${txn.price} - Time: ${originalTime} → ${txn.datetime}`);
       });
       console.log(`[INFO] Assigned unique times to ${group.length} transactions for ${key} to preserve order`);
@@ -7883,7 +7889,15 @@ async function parseQuestradeTransactions(records, existingPositions = {}, conte
       if (ampm.toUpperCase() === 'AM' && hour === 12) hour = 0;
     }
 
-    return new Date(parseInt(year), month, parseInt(day), hour, parseInt(minutes), parseInt(seconds));
+    // Return naive datetime string (no timezone) so convertTradeDatetimesToUTC
+    // will properly convert it using the user's timezone, not Docker's TZ env var
+    const y = parseInt(year);
+    const d = String(parseInt(day)).padStart(2, '0');
+    const mo = String(month + 1).padStart(2, '0');
+    const h = String(hour).padStart(2, '0');
+    const mi = String(parseInt(minutes)).padStart(2, '0');
+    const s = String(parseInt(seconds)).padStart(2, '0');
+    return `${y}-${mo}-${d}T${h}:${mi}:${s}`;
   }
 
   // Helper to parse Questrade options symbol format: SLV20Feb26C55.00
@@ -7966,12 +7980,9 @@ async function parseQuestradeTransactions(records, existingPositions = {}, conte
         continue;
       }
 
-      // Validate date is reasonable
-      const now = new Date();
-      const maxFutureDate = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-      const minPastDate = new Date('2000-01-01');
-
-      if (execDateTime > maxFutureDate || execDateTime < minPastDate) {
+      // Validate date is reasonable (compare as strings - naive dates are YYYY-MM-DD format)
+      const execYear = parseInt(execDateTime.substring(0, 4));
+      if (execYear < 2000 || execYear > new Date().getFullYear() + 1) {
         console.log(`Skipping Questrade record with invalid date range: ${execTime}`);
         continue;
       }
@@ -8014,7 +8025,7 @@ async function parseQuestradeTransactions(records, existingPositions = {}, conte
       transactions.push({
         symbol: groupingSymbol,
         fullSymbol: symbol, // Keep original for options
-        date: execDateTime.toISOString().split('T')[0],
+        date: execDateTime.split('T')[0],
         datetime: execDateTime,
         action: tradeAction,
         quantity: fillQty,
