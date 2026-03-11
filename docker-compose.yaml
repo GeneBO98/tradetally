@@ -46,6 +46,9 @@ services:
       EMAIL_FROM: ${EMAIL_FROM:-noreply@tradetally.io}
       # Frontend API URL
       VITE_API_URL: ${VITE_API_URL:-http://localhost/api}
+      # Instance Configuration
+      INSTANCE_NAME: ${INSTANCE_NAME:-TradeTally}
+      INSTANCE_URL: ${INSTANCE_URL:-}
       # CORS Configuration for Mobile Apps
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
       CORS_ORIGINS: ${CORS_ORIGINS:-}
