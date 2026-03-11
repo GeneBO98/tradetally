@@ -36,12 +36,13 @@ const serverController = {
     try {
       const { flat } = await getPublicConfigRows();
       const origin = `${req.protocol}://${req.get('host')}`;
+      const instanceUrl = process.env.INSTANCE_URL || flat.instance_url || origin;
 
       res.json({
         server: {
           name: flat.instance_name || 'TradeTally',
           version: 'v1',
-          url: flat.instance_url || origin,
+          url: instanceUrl,
           isCloud: req.get('host')?.includes('tradetally.io') || false,
           timestamp: new Date().toISOString()
         },
@@ -227,19 +228,20 @@ const serverController = {
     try {
       const { flat } = await getPublicConfigRows();
       const origin = `${req.protocol}://${req.get('host')}`;
+      const instanceUrl = process.env.INSTANCE_URL || flat.instance_url || origin;
 
       res.json({
         name: flat.instance_name || 'TradeTally',
         api: {
           version: 'v1',
           base_url: '/api/v1',
-          openapi_url: `${origin}/.well-known/openapi.json`,
-          documentation_url: `${origin}/.well-known/api-docs.json`
+          openapi_url: `${instanceUrl}/.well-known/openapi.json`,
+          documentation_url: `${instanceUrl}/.well-known/api-docs.json`
         },
         features: getPublicFeatures(),
         server: {
           name: flat.instance_name || 'TradeTally',
-          url: flat.instance_url || origin,
+          url: instanceUrl,
           isCloud: req.get('host')?.includes('tradetally.io') || false,
           discovery_version: '2.0'
         },
@@ -255,7 +257,8 @@ const serverController = {
 
   async getOpenAPISpec(req, res, next) {
     try {
-      res.json(buildV1OpenApiSpec(`${req.protocol}://${req.get('host')}`));
+      const origin = process.env.INSTANCE_URL || `${req.protocol}://${req.get('host')}`;
+      res.json(buildV1OpenApiSpec(origin));
     } catch (error) {
       next(error);
     }
@@ -263,7 +266,8 @@ const serverController = {
 
   async getAPIDocumentation(req, res, next) {
     try {
-      res.json(getDocumentationMetadata(`${req.protocol}://${req.get('host')}`));
+      const origin = process.env.INSTANCE_URL || `${req.protocol}://${req.get('host')}`;
+      res.json(getDocumentationMetadata(origin));
     } catch (error) {
       next(error);
     }
