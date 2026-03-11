@@ -46,54 +46,88 @@
     </div>
 
     <!-- Manual Mode -->
-    <div v-if="mode === 'manual'" class="space-y-4">
-      <div>
-        <label class="block text-sm text-gray-600 dark:text-gray-400 mb-2">
-          Which target was hit first?
-        </label>
-        <select
-          v-model="manualSelection"
-          class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
-                 bg-white dark:bg-gray-700 text-gray-900 dark:text-white
-                 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+    <div v-if="mode === 'manual'" class="space-y-3">
+      <p class="text-xs text-gray-500 dark:text-gray-400">
+        Select which targets were reached during this trade:
+      </p>
+
+      <!-- Target Checklist -->
+      <div class="space-y-2">
+        <!-- Take Profit Targets -->
+        <div
+          v-for="(target, index) in displayTargets"
+          :key="'tp_' + index"
+          class="flex items-center justify-between p-2 rounded bg-gray-50 dark:bg-gray-700/50"
         >
-          <option value="">-- Select --</option>
-          <option value="take_profit">Take Profit Hit First</option>
-          <option value="stop_loss">Stop Loss Hit First</option>
-        </select>
-      </div>
-
-      <!-- Save Button -->
-      <button
-        @click="saveManualSelection"
-        :disabled="saving || !manualSelection"
-        class="w-full px-4 py-2 text-sm font-medium rounded-lg transition-colors
-               bg-primary-600 hover:bg-primary-700 text-white
-               disabled:bg-gray-300 dark:disabled:bg-gray-600 disabled:cursor-not-allowed"
-      >
-        <span v-if="saving">Saving...</span>
-        <span v-else>Save</span>
-      </button>
-
-      <!-- Current Manual Result -->
-      <div v-if="trade.manual_target_hit_first" class="p-3 rounded-lg border" :class="manualResultBorderClass">
-        <div class="flex items-center space-x-2">
-          <span :class="manualResultBadgeClass">
-            {{ manualResultLabel }}
+          <label class="flex items-center gap-2 cursor-pointer flex-1">
+            <input
+              :checked="target.status === 'hit'"
+              type="checkbox"
+              class="rounded border-gray-300 text-green-600 focus:ring-green-500 dark:border-gray-600 dark:bg-gray-700"
+              :disabled="saving"
+              @change="toggleTarget('tp', index, $event.target.checked)"
+            />
+            <span class="w-2 h-2 rounded-full bg-green-500 shrink-0"></span>
+            <span class="text-sm text-gray-700 dark:text-gray-300">
+              TP{{ index + 1 }} (${{ formatPrice(target.price) }})
+            </span>
+            <span v-if="target.rValue" class="text-xs text-primary-600 dark:text-primary-400 font-medium">
+              {{ target.rValue }}R
+            </span>
+          </label>
+          <span v-if="target.status === 'hit'" class="px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
+            Hit
           </span>
-          <span class="text-xs text-gray-500 dark:text-gray-400">(Manual)</span>
+        </div>
+
+        <!-- Stop Loss -->
+        <div
+          v-if="trade.stop_loss"
+          class="flex items-center justify-between p-2 rounded bg-gray-50 dark:bg-gray-700/50"
+        >
+          <label class="flex items-center gap-2 cursor-pointer flex-1">
+            <input
+              :checked="slHit"
+              type="checkbox"
+              class="rounded border-gray-300 text-red-600 focus:ring-red-500 dark:border-gray-600 dark:bg-gray-700"
+              :disabled="saving"
+              @change="toggleTarget('sl', 0, $event.target.checked)"
+            />
+            <span class="w-2 h-2 rounded-full bg-red-500 shrink-0"></span>
+            <span class="text-sm text-gray-700 dark:text-gray-300">
+              Stop Loss (${{ formatPrice(trade.stop_loss) }})
+            </span>
+          </label>
+          <span v-if="slHit" class="px-2 py-0.5 text-xs font-medium rounded-full bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">
+            Hit
+          </span>
         </div>
       </div>
 
-      <!-- Clear Manual Selection -->
+      <!-- Saving indicator -->
+      <div v-if="saving" class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+        <div class="animate-spin rounded-full h-3 w-3 border-2 border-primary-600 border-t-transparent"></div>
+        Saving...
+      </div>
+
+      <!-- Current Result Summary -->
+      <div v-if="derivedResult && !saving" class="p-3 rounded-lg border" :class="derivedResultBorderClass">
+        <div class="flex items-center space-x-2">
+          <span :class="derivedResultBadgeClass">
+            {{ derivedResultLabel }}
+          </span>
+        </div>
+      </div>
+
+      <!-- Clear Selection -->
       <button
-        v-if="trade.manual_target_hit_first"
-        @click="clearManualSelection"
+        v-if="hasAnySelection"
+        @click="clearAllSelections"
         :disabled="saving"
         class="w-full px-3 py-1.5 text-xs text-gray-600 dark:text-gray-400
                hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
       >
-        Clear manual selection (use auto-detection)
+        Clear all selections
       </button>
     </div>
 
@@ -204,10 +238,9 @@
         </div>
 
         <!-- Conclusion -->
-        <!-- Hide the old "Neither" message - it's not accurate when price data isn't available -->
-        <div 
-          v-if="analysis.analysis_result?.conclusion && 
-                !analysis.analysis_result.conclusion.includes('Neither stop loss nor take profit')" 
+        <div
+          v-if="analysis.analysis_result?.conclusion &&
+                !analysis.analysis_result.conclusion.includes('Neither stop loss nor take profit')"
           class="p-3 bg-primary-50 dark:bg-primary-900/20 rounded-lg"
         >
           <p class="text-sm text-primary-800 dark:text-primary-200">
@@ -251,24 +284,114 @@ const error = ref('')
 const dataUnavailable = ref(false)
 const analysis = ref(null)
 const mode = ref('auto')
-const manualSelection = ref('')
 
-// Initialize mode based on existing data
+// Local state for target hit toggles
+const slHit = ref(false)
+const tpStatuses = ref([]) // array of 'hit' | 'pending'
+
+// Build display targets from trade data
+const displayTargets = computed(() => {
+  const targets = props.trade.take_profit_targets || []
+  const singleTp = props.trade.take_profit
+
+  if (targets.length > 0) {
+    return targets.map((t, index) => ({
+      price: t.price,
+      shares: t.shares || t.quantity || null,
+      status: tpStatuses.value[index] || 'pending',
+      rValue: calculateTargetR(t.price)
+    }))
+  } else if (singleTp) {
+    return [{
+      price: parseFloat(singleTp),
+      shares: null,
+      status: tpStatuses.value[0] || 'pending',
+      rValue: calculateTargetR(singleTp)
+    }]
+  }
+  return []
+})
+
+const hasAnySelection = computed(() => {
+  return slHit.value || tpStatuses.value.some(s => s === 'hit')
+})
+
+// Derive the manual_target_hit_first value from toggles
+const derivedResult = computed(() => {
+  if (!hasAnySelection.value) return null
+  if (slHit.value) return 'stop_loss'
+  return 'take_profit'
+})
+
+const derivedResultLabel = computed(() => {
+  if (derivedResult.value === 'stop_loss') {
+    const hitTps = tpStatuses.value.filter(s => s === 'hit').length
+    if (hitTps > 0) {
+      return `SL Hit First (${hitTps} TP${hitTps > 1 ? 's' : ''} reached before SL)`
+    }
+    return 'SL Hit First'
+  }
+  if (derivedResult.value === 'take_profit') {
+    return 'All Targets Hit'
+  }
+  return ''
+})
+
+const derivedResultBadgeClass = computed(() => {
+  if (derivedResult.value === 'stop_loss') {
+    return 'px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
+  }
+  return 'px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+})
+
+const derivedResultBorderClass = computed(() => {
+  if (derivedResult.value === 'stop_loss') {
+    return 'border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-900/20'
+  }
+  return 'border-green-200 dark:border-green-900/50 bg-green-50 dark:bg-green-900/20'
+})
+
+// Initialize state from existing trade data
+function initializeFromTrade() {
+  const trade = props.trade
+
+  // Initialize SL hit state
+  slHit.value = trade.manual_target_hit_first === 'stop_loss'
+
+  // Initialize TP statuses from take_profit_targets
+  const targets = trade.take_profit_targets || []
+  if (targets.length > 0) {
+    tpStatuses.value = targets.map(t => t.status || 'pending')
+  } else if (trade.take_profit) {
+    // Single TP - if manual is 'take_profit', mark as hit
+    tpStatuses.value = [trade.manual_target_hit_first === 'take_profit' ? 'hit' : 'pending']
+  } else {
+    tpStatuses.value = []
+  }
+
+  // If manual is take_profit, all TPs should be marked hit
+  if (trade.manual_target_hit_first === 'take_profit') {
+    tpStatuses.value = tpStatuses.value.map(() => 'hit')
+  }
+}
+
 onMounted(() => {
   if (props.trade.manual_target_hit_first) {
     mode.value = 'manual'
-    manualSelection.value = props.trade.manual_target_hit_first
+    initializeFromTrade()
   } else if (props.trade.target_hit_analysis) {
-    // Only use cached analysis if it doesn't have the old "Neither" message
     const cachedAnalysis = props.trade.target_hit_analysis
     if (!cachedAnalysis?.analysis_result?.conclusion?.includes('Neither stop loss nor take profit')) {
       analysis.value = cachedAnalysis
     } else if (props.autoAnalyze && props.trade.stop_loss && props.trade.entry_time) {
-      // If cached analysis has old message, re-run analysis
       runAnalysis()
     }
-  } else if (props.autoAnalyze && props.trade.stop_loss && props.trade.entry_time) {
-    runAnalysis()
+    initializeFromTrade()
+  } else {
+    if (props.autoAnalyze && props.trade.stop_loss && props.trade.entry_time) {
+      runAnalysis()
+    }
+    initializeFromTrade()
   }
 })
 
@@ -276,14 +399,11 @@ onMounted(() => {
 watch(() => props.trade.id, () => {
   analysis.value = null
   error.value = ''
-  manualSelection.value = ''
 
   if (props.trade.manual_target_hit_first) {
     mode.value = 'manual'
-    manualSelection.value = props.trade.manual_target_hit_first
   } else if (props.trade.target_hit_analysis) {
     mode.value = 'auto'
-    // Only use cached analysis if it doesn't have the old "Neither" message
     const cachedAnalysis = props.trade.target_hit_analysis
     if (!cachedAnalysis?.analysis_result?.conclusion?.includes('Neither stop loss nor take profit')) {
       analysis.value = cachedAnalysis
@@ -291,91 +411,146 @@ watch(() => props.trade.id, () => {
   } else {
     mode.value = 'auto'
   }
+
+  initializeFromTrade()
 })
 
 function setMode(newMode) {
   mode.value = newMode
   error.value = ''
+  if (newMode === 'manual') {
+    initializeFromTrade()
+  }
 }
 
+function calculateTargetR(tpPrice) {
+  if (!tpPrice || !props.trade.stop_loss || !props.trade.entry_price) return null
+  const entry = parseFloat(props.trade.entry_price)
+  const sl = parseFloat(props.trade.stop_loss)
+  const tp = parseFloat(tpPrice)
+  let risk, reward
+  if (props.trade.side === 'long') {
+    risk = entry - sl
+    reward = tp - entry
+  } else {
+    risk = sl - entry
+    reward = entry - tp
+  }
+  if (risk <= 0) return null
+  return (reward / risk).toFixed(2)
+}
+
+async function toggleTarget(type, index, checked) {
+  if (type === 'sl') {
+    slHit.value = checked
+  } else {
+    tpStatuses.value[index] = checked ? 'hit' : 'pending'
+  }
+
+  await saveSelection()
+}
+
+async function saveSelection() {
+  const result = derivedResult.value
+  saving.value = true
+  error.value = ''
+
+  try {
+    // Build target_statuses array
+    const target_statuses = tpStatuses.value.map((status, index) => ({
+      index,
+      status
+    }))
+
+    const response = await api.patch(`/trade-management/trades/${props.trade.id}/manual-target-hit`, {
+      manual_target_hit_first: result,
+      target_statuses
+    })
+
+    emit('updated', {
+      trade_id: props.trade.id,
+      manual_target_hit_first: result,
+      management_r: response.data.management_r,
+      take_profit_targets: response.data.take_profit_targets,
+      analysis: response.data.analysis
+    })
+  } catch (err) {
+    error.value = err.response?.data?.error || 'Failed to save selection'
+  } finally {
+    saving.value = false
+  }
+}
+
+async function clearAllSelections() {
+  slHit.value = false
+  tpStatuses.value = tpStatuses.value.map(() => 'pending')
+
+  saving.value = true
+  error.value = ''
+
+  try {
+    const response = await api.patch(`/trade-management/trades/${props.trade.id}/manual-target-hit`, {
+      manual_target_hit_first: null,
+      target_statuses: tpStatuses.value.map((status, index) => ({ index, status: 'pending' }))
+    })
+
+    emit('updated', {
+      trade_id: props.trade.id,
+      manual_target_hit_first: null,
+      management_r: response.data.management_r,
+      take_profit_targets: response.data.take_profit_targets,
+      analysis: response.data.analysis
+    })
+  } catch (err) {
+    error.value = err.response?.data?.error || 'Failed to clear selection'
+  } finally {
+    saving.value = false
+  }
+}
+
+// Auto mode computed properties
 const resultBadgeClass = computed(() => {
   const firstHit = analysis.value?.analysis_result?.first_target_hit
-
   if (!firstHit || firstHit === 'none') {
     return 'px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
   }
-
   if (firstHit === 'stop_loss') {
     return 'px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
   }
-
-  // Take profit was hit first
   return 'px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
 })
 
 const resultLabel = computed(() => {
   const result = analysis.value?.analysis_result
   if (!result) return 'Unknown'
-
   if (result.first_target_hit === 'none') {
-    // If exit price analysis was used, show a different message
     if (result.used_exit_price_analysis || analysis.value?.candle_data_used?.source === 'exit_price_analysis') {
       return 'Unable to Determine'
     }
     return 'Neither Target Hit'
   }
-
   return `${result.first_target_label} Hit First`
 })
 
 const resultDescription = computed(() => {
   const result = analysis.value?.analysis_result
   if (!result || !result.first_hit_time) return ''
-
   return `at ${formatTimeTz(result.first_hit_time)}`
 })
 
-// Manual result computed properties
 const manualResultBadgeClass = computed(() => {
   const value = props.trade.manual_target_hit_first
-
-  if (!value) {
-    return 'px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
-  }
-
-  if (value === 'stop_loss') {
-    return 'px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
-  }
-
-  // take_profit
+  if (!value) return 'px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
+  if (value === 'stop_loss') return 'px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
   return 'px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
-})
-
-const manualResultBorderClass = computed(() => {
-  const value = props.trade.manual_target_hit_first
-
-  if (!value) {
-    return 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50'
-  }
-
-  if (value === 'stop_loss') {
-    return 'border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-900/20'
-  }
-
-  // take_profit
-  return 'border-green-200 dark:border-green-900/50 bg-green-50 dark:bg-green-900/20'
 })
 
 const manualResultLabel = computed(() => {
   const value = props.trade.manual_target_hit_first
-
   switch (value) {
-    case 'take_profit':
-      return 'TP Hit First'
-    case 'stop_loss':
-      return 'SL Hit First'
-    default:
-      return 'Not Set'
+    case 'take_profit': return 'TP Hit First'
+    case 'stop_loss': return 'SL Hit First'
+    default: return 'Not Set'
   }
 })
 
@@ -396,59 +571,11 @@ async function runAnalysis() {
     const errorData = err.response?.data
     error.value = errorData?.error || 'Failed to analyze target hit order'
     dataUnavailable.value = errorData?.data_unavailable || false
-
-    // If we have cached analysis, keep showing it
     if (props.trade.target_hit_analysis) {
       analysis.value = props.trade.target_hit_analysis
     }
   } finally {
     loading.value = false
-  }
-}
-
-async function saveManualSelection() {
-  if (!manualSelection.value) return
-
-  saving.value = true
-  error.value = ''
-
-  try {
-    await api.patch(`/trade-management/trades/${props.trade.id}/manual-target-hit`, {
-      manual_target_hit_first: manualSelection.value
-    })
-
-    // Emit update event so parent can refresh trade data
-    emit('updated', {
-      trade_id: props.trade.id,
-      manual_target_hit_first: manualSelection.value
-    })
-  } catch (err) {
-    error.value = err.response?.data?.error || 'Failed to save manual selection'
-  } finally {
-    saving.value = false
-  }
-}
-
-async function clearManualSelection() {
-  saving.value = true
-  error.value = ''
-
-  try {
-    await api.patch(`/trade-management/trades/${props.trade.id}/manual-target-hit`, {
-      manual_target_hit_first: null
-    })
-
-    manualSelection.value = ''
-
-    // Emit update event so parent can refresh trade data
-    emit('updated', {
-      trade_id: props.trade.id,
-      manual_target_hit_first: null
-    })
-  } catch (err) {
-    error.value = err.response?.data?.error || 'Failed to clear manual selection'
-  } finally {
-    saving.value = false
   }
 }
 

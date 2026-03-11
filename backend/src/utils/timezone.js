@@ -139,14 +139,14 @@ function localToUTC(naiveDatetime, timezone) {
 
   try {
     // Parse the components from the naive datetime string
-    // Expected format: YYYY-MM-DDTHH:MM:SS or YYYY-MM-DD HH:MM:SS
-    const match = naiveDatetime.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})$/);
+    // Expected format: YYYY-MM-DDTHH:MM:SS or YYYY-MM-DD HH:MM:SS (also handles without seconds)
+    const match = naiveDatetime.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?$/);
     if (!match) {
       // If we can't parse it, just append Z and hope for the best
       return naiveDatetime + 'Z';
     }
 
-    const [, yearStr, monthStr, dayStr, hourStr, minStr, secStr] = match;
+    const [, yearStr, monthStr, dayStr, hourStr, minStr, secStr = '00'] = match;
     const year = parseInt(yearStr);
     const month = parseInt(monthStr) - 1; // JS months are 0-indexed
     const day = parseInt(dayStr);
