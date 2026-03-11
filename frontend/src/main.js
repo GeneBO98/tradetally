@@ -13,6 +13,9 @@ app.use(router)
 
 async function bootstrap() {
   const authStore = useAuthStore()
+  const runWhenIdle = window.requestIdleCallback
+    ? (callback) => window.requestIdleCallback(callback)
+    : (callback) => setTimeout(callback, 1)
 
   try {
     // Initialize auth state before mount.
@@ -24,21 +27,23 @@ async function bootstrap() {
   // Wait for initial navigation/redirects so public routes don't paint briefly on refresh.
   await router.isReady()
 
-  // Initialize analytics (if configured)
-  const analytics = useAnalytics()
-  analytics.initialize()
-
-  // Load PromoteKit affiliate tracking if configured
-  const promoteKitId = import.meta.env.VITE_PROMOTEKIT_ID
-  if (promoteKitId) {
-    const script = document.createElement('script')
-    script.src = 'https://cdn.promotekit.com/promotekit.js'
-    script.async = true
-    script.setAttribute('data-promotekit', promoteKitId)
-    document.head.appendChild(script)
-  }
-
   app.mount('#app')
+
+  runWhenIdle(() => {
+    // Initialize analytics after the app has painted.
+    const analytics = useAnalytics()
+    analytics.initialize()
+
+    // Load PromoteKit affiliate tracking only after the main app is interactive.
+    const promoteKitId = import.meta.env.VITE_PROMOTEKIT_ID
+    if (promoteKitId) {
+      const script = document.createElement('script')
+      script.src = 'https://cdn.promotekit.com/promotekit.js'
+      script.async = true
+      script.setAttribute('data-promotekit', promoteKitId)
+      document.head.appendChild(script)
+    }
+  })
 }
 
 bootstrap()

@@ -104,15 +104,17 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useNotification } from '@/composables/useNotification'
+import { useRegistrationMode } from '@/composables/useRegistrationMode'
 
 const authStore = useAuthStore()
 const router = useRouter()
 const route = useRoute()
 const { showError, showSuccess } = useNotification()
+const { registrationConfig, fetchRegistrationConfig } = useRegistrationMode()
 
 const form = ref({
   email: '',
@@ -120,8 +122,9 @@ const form = ref({
   marketing_consent: false
 })
 
-const registrationDisabled = ref(false)
-const billingEnabled = ref(false)
+const registrationDisabled = computed(() => registrationConfig.value?.allowRegistration === false)
+const billingEnabled = computed(() => registrationConfig.value?.billingEnabled === true)
+let redirectTimeoutId = null
 
 onMounted(async () => {
   // Pre-fill email from query param (from home page quick signup)
@@ -129,19 +132,27 @@ onMounted(async () => {
     form.value.email = route.query.email
   }
 
-  try {
-    const config = await authStore.getRegistrationConfig()
-    registrationDisabled.value = !config.allowRegistration
-    billingEnabled.value = config.billingEnabled === true
-
-    // If registration is disabled, redirect to login after 3 seconds
-    if (registrationDisabled.value) {
-      setTimeout(() => {
-        router.push('/login')
-      }, 5000)
-    }
-  } catch (error) {
+  fetchRegistrationConfig().catch((error) => {
     console.error('Failed to fetch registration config:', error)
+  })
+})
+
+watch(registrationDisabled, (isDisabled) => {
+  if (redirectTimeoutId) {
+    clearTimeout(redirectTimeoutId)
+    redirectTimeoutId = null
+  }
+
+  if (isDisabled) {
+    redirectTimeoutId = setTimeout(() => {
+      router.push('/login')
+    }, 5000)
+  }
+})
+
+onUnmounted(() => {
+  if (redirectTimeoutId) {
+    clearTimeout(redirectTimeoutId)
   }
 })
 

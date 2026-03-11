@@ -259,8 +259,8 @@ function handleTwoFactorCancel() {
   authStore.error = null
 }
 
-onMounted(async () => {
-  await fetchRegistrationConfig()
+onMounted(() => {
+  fetchRegistrationConfig().catch(() => {})
 
   if (route.query.message) {
     verificationMessage.value = route.query.message

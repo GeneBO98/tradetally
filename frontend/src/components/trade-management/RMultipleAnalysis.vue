@@ -25,7 +25,7 @@
         <div v-if="effectiveTargetR !== null" class="r-multiple-card flex flex-col min-h-[5rem] p-3 sm:p-4 bg-primary-50 dark:bg-primary-900/20 rounded-lg">
           <div class="text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-400 mb-0.5 shrink-0 truncate">
             Target R (Net)
-            <span v-if="weightedAverageR !== null" class="text-xs font-normal">(weighted avg)</span>
+            <span v-if="showWeightedAverageHint" class="text-xs font-normal">(weighted avg)</span>
           </div>
           <div class="text-xl sm:text-2xl md:text-3xl font-bold truncate text-primary-600 dark:text-primary-400">
             {{ formatR(effectiveTargetR) }}
@@ -211,6 +211,7 @@ const weightedAverageR = computed(() => {
 })
 
 // Effective target R (prefer backend weighted_target_r, then frontend calculation, then single target_r)
+// This always shows the original target - never overridden by planned_r
 const effectiveTargetR = computed(() => {
   // First prefer backend-calculated weighted average
   if (props.analysis.weighted_target_r !== null && props.analysis.weighted_target_r !== undefined) {
@@ -253,6 +254,10 @@ const effectiveRLost = computed(() => {
   }
   if (effectiveTargetR.value === null) return null
   return Math.round((effectiveTargetR.value - props.analysis.actual_r) * 100) / 100
+})
+
+const showWeightedAverageHint = computed(() => {
+  return weightedAverageR.value !== null
 })
 
 const maxR = computed(() => {

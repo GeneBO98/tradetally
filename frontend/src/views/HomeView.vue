@@ -522,7 +522,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import {
   ChartBarIcon,
   DocumentTextIcon,
@@ -538,15 +538,13 @@ import {
   LightBulbIcon
 } from '@heroicons/vue/24/outline'
 import { useRouter } from 'vue-router'
-import { useAuthStore } from '@/stores/auth'
 import { useRegistrationMode } from '@/composables/useRegistrationMode'
 import { useScrollReveal } from '@/composables/useScrollReveal'
 
 useScrollReveal()
 const router = useRouter()
-const authStore = useAuthStore()
-const { showSEOPages } = useRegistrationMode()
-const showRegisterButton = ref(true)
+const { showSEOPages, registrationConfig, fetchRegistrationConfig } = useRegistrationMode()
+const showRegisterButton = computed(() => registrationConfig.value?.allowRegistration !== false)
 const quickEmail = ref('')
 
 function handleQuickSignup() {
@@ -568,14 +566,10 @@ const brokers = [
   { name: 'Questrade', logo: '/images/brokers/questrade.svg', height: 'h-10' }
 ]
 
-onMounted(async () => {
-  try {
-    const config = await authStore.getRegistrationConfig()
-    showRegisterButton.value = config.allowRegistration
-  } catch (error) {
+onMounted(() => {
+  fetchRegistrationConfig().catch((error) => {
     console.error('Failed to fetch registration config:', error)
-    showRegisterButton.value = true
-  }
+  })
 
   // Update meta tags for SEO
   document.title = 'Best Free Trading Journal Software for Day Traders | TradeTally'

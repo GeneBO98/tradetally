@@ -404,10 +404,20 @@ const { showSuccess, showError } = useNotification();
 
 const selectedChart = ref(null);
 const chartToDelete = ref(null);
-const apiBaseUrl = (import.meta.env.VITE_API_URL || "/api").replace(/\/$/, "");
+// Use relative path for image URLs to stay same-origin (avoids CORS issues)
+// VITE_API_URL may be an absolute URL (e.g., http://localhost:3030/api) which
+// would make <img> tags cross-origin. Extract just the path portion instead.
+const apiBasePath = (() => {
+    const url = import.meta.env.VITE_API_URL || "/api";
+    try {
+        return new URL(url).pathname.replace(/\/$/, "");
+    } catch {
+        return url.replace(/\/$/, "");
+    }
+})();
 
 function getTradingViewSnapshotProxyUrl(snapshotId) {
-    return `${apiBaseUrl}/trades/tradingview/snapshot/${snapshotId}`;
+    return `${apiBasePath}/trades/tradingview/snapshot/${snapshotId}`;
 }
 
 function isTradingViewUrl(chart) {

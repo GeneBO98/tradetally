@@ -162,7 +162,7 @@
             </button>
           </div>
 
-          <div v-show="showCustomMappings" class="space-y-3">
+          <div v-if="showCustomMappings" class="space-y-3">
             <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
               Manage your custom CSV importers. These appear in the broker format dropdown for quick reuse.
             </p>
@@ -226,7 +226,7 @@
             </button>
           </div>
           
-          <div v-show="showFormats" class="space-y-6">
+          <div v-if="showFormats" class="space-y-6">
             <div>
               <h4 class="font-medium text-gray-900 dark:text-white">Generic CSV</h4>
               <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
@@ -1187,6 +1187,17 @@ const importResultsData = ref({
   failedTrades: []
 })
 
+function runWhenIdle(callback, timeout = 1500) {
+  if (typeof window === 'undefined') return
+
+  if (window.requestIdleCallback) {
+    window.requestIdleCallback(() => callback(), { timeout })
+    return
+  }
+
+  window.setTimeout(callback, 1)
+}
+
 function handleFileSelect(event) {
   const file = event.target.files[0]
   console.log('File selected:', {
@@ -1611,9 +1622,6 @@ async function handleImport() {
     // Save broker preference to localStorage
     localStorage.setItem('lastSelectedBroker', selectedBroker.value)
 
-    // Keep reference to file for potential column mapping modal
-    const importedFile = selectedFile.value
-
     // Reset form (but keep broker selection)
     selectedFile.value = null
     // Don't reset selectedBroker - keep it for next import
@@ -1623,6 +1631,7 @@ async function handleImport() {
 
     // Refresh import history
     fetchImportHistory()
+    startImportHistoryPolling()
 
     // Poll import status for achievements
     pollImportStatus(result.importId)
@@ -1743,6 +1752,7 @@ async function handleKeepBrokerSelected(selectedBrokerValue) {
 
     // Refresh import history
     fetchImportHistory()
+    startImportHistoryPolling()
 
     // Poll import status for achievements and results
     pollImportStatus(result.importId)
@@ -1791,6 +1801,8 @@ async function fetchImportHistory(page = 1) {
       totalPages: 0,
       hasMore: false
     }
+
+    syncImportHistoryPolling(importHistory.value)
   } catch (error) {
     console.error('Failed to fetch import history:', error)
   }
@@ -1800,6 +1812,32 @@ function loadMoreHistory() {
   if (pagination.value.hasMore) {
     fetchImportHistory(pagination.value.page + 1)
   }
+}
+
+function hasActiveImportHistory(imports = importHistory.value) {
+  return imports.some(importLog => ['pending', 'processing'].includes(importLog.status))
+}
+
+function startImportHistoryPolling() {
+  if (importHistoryInterval) return
+  importHistoryInterval = window.setInterval(() => {
+    fetchImportHistory()
+  }, 5000)
+}
+
+function stopImportHistoryPolling() {
+  if (!importHistoryInterval) return
+  clearInterval(importHistoryInterval)
+  importHistoryInterval = null
+}
+
+function syncImportHistoryPolling(imports = importHistory.value) {
+  if (hasActiveImportHistory(imports)) {
+    startImportHistoryPolling()
+    return
+  }
+
+  stopImportHistoryPolling()
 }
 
 function deleteImport(importId) {
@@ -2484,6 +2522,7 @@ async function handleMappingSaved(mapping) {
 
     // Refresh import history
     fetchImportHistory()
+    startImportHistoryPolling()
 
     // Poll for completion (for achievements)
     pollImportStatus(result.importId)
@@ -2586,17 +2625,23 @@ onMounted(() => {
     selectedBroker.value = savedBroker
   }
 
-  fetchImportHistory()
-  fetchUnmappedCusipsCount()
-  fetchCustomMappings()
   fetchImportRequirements()
-  fetchTrialInfo()
-  importHistoryInterval = setInterval(fetchImportHistory, 5000)
+  if (savedBroker?.startsWith('custom:')) {
+    fetchCustomMappings()
+  } else {
+    runWhenIdle(() => {
+      fetchCustomMappings()
+    })
+  }
+
+  runWhenIdle(() => {
+    fetchImportHistory()
+    fetchUnmappedCusipsCount()
+    fetchTrialInfo()
+  })
 })
 
 onBeforeUnmount(() => {
-  if (importHistoryInterval) {
-    clearInterval(importHistoryInterval)
-  }
+  stopImportHistoryPolling()
 })
 </script>

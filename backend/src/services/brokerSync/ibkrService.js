@@ -15,6 +15,8 @@ const FLEX_BASE_URL = 'https://gdcdyn.interactivebrokers.com/Universal/servlet/F
 const REPORT_REQUEST_TIMEOUT = 120000; // 2 minutes to request report
 const REPORT_POLL_INTERVAL = 5000; // Poll every 5 seconds
 const REPORT_MAX_WAIT = 300000; // Max 5 minutes to wait for report
+const MAX_FLEX_OVERRIDE_DAYS = 365;
+const DEFAULT_MANUAL_LOOKBACK_DAYS = 365;
 
 class IBKRService {
   /**
@@ -48,15 +50,11 @@ class IBKRService {
    * @param {string} queryId - Flex Query ID
    * @returns {Promise<{referenceCode: string} | {error: string}>}
    */
-  async requestFlexReport(flexToken, queryId) {
+  async requestFlexReport(flexToken, queryId, options = {}) {
     console.log('[IBKR] Requesting Flex report...');
 
     const url = `${FLEX_BASE_URL}.SendRequest`;
-    const params = {
-      t: flexToken,
-      q: queryId,
-      v: '3' // API version
-    };
+    const params = this.buildReportRequestParams(flexToken, queryId, options);
 
     try {
       const response = await axios.get(url, {
@@ -170,7 +168,7 @@ class IBKRService {
    * @returns {Promise<{imported: number, skipped: number, failed: number, duplicates: number}>}
    */
   async syncTrades(connection, options = {}) {
-    const { startDate, endDate, syncLogId } = options;
+    const { startDate, endDate, syncLogId, syncType = 'manual' } = options;
 
     console.log(`[IBKR] Starting sync for connection ${connection.id}`);
     console.log(`[IBKR] Date range: ${startDate || 'default'} to ${endDate || 'default'}`);
@@ -183,7 +181,8 @@ class IBKRService {
     // Request and fetch report
     const reportResponse = await this.requestFlexReport(
       connection.ibkrFlexToken,
-      connection.ibkrFlexQueryId
+      connection.ibkrFlexQueryId,
+      { startDate, endDate, syncType }
     );
 
     if (!reportResponse.referenceCode) {
@@ -248,7 +247,7 @@ class IBKRService {
     let failed = 0;
     let duplicates = 0;
 
-    const existingTrades = await this.getExistingTradesForDuplicateCheck(userId);
+    const existingTrades = await this.getExistingTradesForDuplicateCheck(userId, trades);
 
     for (const tradeData of trades) {
       try {
@@ -294,6 +293,15 @@ class IBKRService {
             userId
           ]);
 
+          const existingTrade = existingTrades.find(trade => trade.id === tradeData.existingTradeId);
+          if (existingTrade) {
+            existingTrade.executions = executions;
+            existingTrade.exit_time = preparedTrade.exitTime || null;
+            existingTrade.exit_price = preparedTrade.exitPrice != null ? preparedTrade.exitPrice : null;
+            existingTrade.pnl = preparedTrade.pnl != null ? preparedTrade.pnl : null;
+            existingTrade.quantity = preparedTrade.quantity;
+          }
+
           updated++;
         } else {
           // Create new trade
@@ -303,6 +311,27 @@ class IBKRService {
           });
 
           imported++;
+
+          // Track newly-created trades so duplicate detection also works within the same sync batch.
+          existingTrades.push({
+            id: preparedTrade.id,
+            symbol: preparedTrade.symbol,
+            side: preparedTrade.side,
+            quantity: preparedTrade.quantity,
+            entry_price: preparedTrade.entryPrice,
+            exit_price: preparedTrade.exitPrice,
+            entry_time: preparedTrade.entryTime,
+            exit_time: preparedTrade.exitTime,
+            pnl: preparedTrade.pnl,
+            executions: preparedTrade.executions || preparedTrade.executionData || [],
+            trade_date: preparedTrade.tradeDate,
+            instrument_type: preparedTrade.instrumentType || 'stock',
+            strike_price: preparedTrade.strikePrice || null,
+            expiration_date: preparedTrade.expirationDate || null,
+            option_type: preparedTrade.optionType || null,
+            conid: preparedTrade.conid || null,
+            account_identifier: preparedTrade.accountIdentifier || preparedTrade.account_identifier || null
+          });
         }
       } catch (error) {
         console.error(`[IBKR] Failed to import trade:`, error.message);
@@ -460,17 +489,35 @@ class IBKRService {
   /**
    * Get existing trades for duplicate checking
    */
-  async getExistingTradesForDuplicateCheck(userId) {
-    const query = `
+  async getExistingTradesForDuplicateCheck(userId, incomingTrades = []) {
+    if (!Array.isArray(incomingTrades) || incomingTrades.length === 0) {
+      return [];
+    }
+
+    const { minDate, maxDate } = this.getTradeDateRange(incomingTrades);
+    const params = [userId];
+
+    let query = `
       SELECT id, symbol, side, quantity, entry_price, exit_price, entry_time, exit_time,
-             pnl, executions, trade_date
+             pnl, executions, trade_date, instrument_type, strike_price,
+             expiration_date, option_type, conid, account_identifier
       FROM trades
       WHERE user_id = $1
-      ORDER BY entry_time DESC
-      LIMIT 1000
     `;
 
-    const result = await db.query(query, [userId]);
+    if (minDate && maxDate) {
+      params.push(minDate, maxDate);
+      query += `
+        AND trade_date >= $2
+        AND trade_date <= $3
+      `;
+    }
+
+    query += `
+      ORDER BY trade_date DESC, entry_time DESC
+    `;
+
+    const result = await db.query(query, params);
     return result.rows;
   }
 
@@ -478,10 +525,42 @@ class IBKRService {
    * Check if trade is a duplicate
    */
   isDuplicateTrade(newTrade, existingTrades, context) {
+    if (!newTrade || !Array.isArray(existingTrades)) {
+      return false;
+    }
+
     const symbol = newTrade.symbol?.toUpperCase();
+    const newInstrumentType = newTrade.instrumentType || newTrade.instrument_type || 'stock';
+    const newConid = newTrade.conid ? String(newTrade.conid) : null;
+    const newAccountIdentifier = newTrade.accountIdentifier || newTrade.account_identifier || null;
 
     for (const existing of existingTrades) {
-      if (existing.symbol?.toUpperCase() !== symbol) continue;
+      const existingSymbol = existing.symbol?.toUpperCase();
+      const existingInstrumentType = existing.instrument_type || 'stock';
+      const existingConid = existing.conid ? String(existing.conid) : null;
+      const existingAccountIdentifier = existing.account_identifier || null;
+
+      if (newAccountIdentifier && existingAccountIdentifier && newAccountIdentifier !== existingAccountIdentifier) {
+        continue;
+      }
+
+      const conidMatch = newConid && existingConid && newConid === existingConid;
+      const symbolMatch = existingSymbol === symbol;
+
+      if (!conidMatch && !symbolMatch) continue;
+      if (!conidMatch && existingInstrumentType !== newInstrumentType) continue;
+
+      if (!conidMatch && newInstrumentType === 'option') {
+        const optionTypeMatches = !newTrade.optionType || !existing.option_type || newTrade.optionType === existing.option_type;
+        const strikeMatches = newTrade.strikePrice == null || existing.strike_price == null ||
+          Math.abs(parseFloat(newTrade.strikePrice) - parseFloat(existing.strike_price)) < 0.0001;
+        const expirationMatches = !newTrade.expirationDate || !existing.expiration_date ||
+          this.extractDateString(newTrade.expirationDate) === this.extractDateString(existing.expiration_date);
+
+        if (!optionTypeMatches || !strikeMatches || !expirationMatches) {
+          continue;
+        }
+      }
 
       // Check execution data match
       if (newTrade.executionData && existing.executions) {
@@ -494,22 +573,23 @@ class IBKRService {
           }
         }
 
-        const newExecTimes = new Set(
-          newTrade.executionData
-            .map(e => new Date(e.entryTime || e.datetime).getTime())
-            .filter(t => !isNaN(t))
-        );
+        // Deduplicate new trade's executions before comparison to prevent
+        // doubled executions from inflating the count (e.g., when conid vs composite key mismatch
+        // causes the parser to add executions twice)
+        const uniqueNewExecs = [];
+        for (const exec of newTrade.executionData) {
+          const isDupe = uniqueNewExecs.some(u => this.executionsMatch(u, exec));
+          if (!isDupe) uniqueNewExecs.push(exec);
+        }
 
-        // Count matching executions instead of just checking for any match
-        const matchingCount = existingExecs.filter(exec => {
-          const execTime = new Date(exec.entryTime || exec.datetime).getTime();
-          return !isNaN(execTime) && newExecTimes.has(execTime);
-        }).length;
+        const matchingCount = uniqueNewExecs.filter(newExecution =>
+          existingExecs.some(existingExecution => this.executionsMatch(newExecution, existingExecution))
+        ).length;
 
         if (matchingCount > 0) {
           // Only mark as duplicate if the new trade doesn't have MORE executions
           // If new trade has more executions, it contains additional data (like partial closes)
-          const newExecCount = newTrade.executionData.length;
+          const newExecCount = uniqueNewExecs.length;
           const existingExecCount = existingExecs.length;
 
           if (newExecCount <= existingExecCount) {
@@ -541,6 +621,23 @@ class IBKRService {
 
       if (entryTimeMatch && entryPriceMatch && quantityMatch) {
         return true;
+      }
+
+      if (newTrade.exitPrice && existing.exit_price) {
+        const exitPriceMatch = Math.abs(
+          parseFloat(existing.exit_price) -
+          parseFloat(newTrade.exitPrice)
+        ) < 0.01;
+
+        const pnlMatch = Math.abs(
+          parseFloat(existing.pnl || 0) -
+          parseFloat(newTrade.pnl || 0)
+        ) < 0.01;
+
+        if (entryTimeMatch && entryPriceMatch && exitPriceMatch && pnlMatch) {
+          console.log(`[IBKR] Duplicate detected by closed-trade fields: ${symbol}`);
+          return true;
+        }
       }
     }
 
@@ -577,6 +674,150 @@ class IBKRService {
 
       return true;
     });
+  }
+
+  extractDateString(value) {
+    if (!value) return null;
+
+    if (value instanceof Date) {
+      return value.toISOString().split('T')[0];
+    }
+
+    const stringValue = String(value);
+    if (stringValue.includes('T')) {
+      return stringValue.split('T')[0];
+    }
+
+    const parsed = new Date(stringValue);
+    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().split('T')[0];
+  }
+
+  getTradeDateRange(trades) {
+    const dateStrings = trades
+      .map(trade => this.extractDateString(trade.tradeDate || trade.exitTime || trade.entryTime))
+      .filter(Boolean)
+      .sort();
+
+    if (dateStrings.length === 0) {
+      return { minDate: null, maxDate: null };
+    }
+
+    return {
+      minDate: dateStrings[0],
+      maxDate: dateStrings[dateStrings.length - 1]
+    };
+  }
+
+  buildReportRequestParams(flexToken, queryId, options = {}) {
+    const params = {
+      t: flexToken,
+      q: queryId,
+      v: '3'
+    };
+
+    const overrideRange = this.getReportDateOverride(options);
+    if (overrideRange) {
+      params.fd = overrideRange.start.replace(/-/g, '');
+      params.td = overrideRange.end.replace(/-/g, '');
+    }
+
+    return params;
+  }
+
+  getReportDateOverride(options = {}) {
+    const { startDate, endDate, syncType = 'manual' } = options;
+
+    if (startDate || endDate) {
+      return this.normalizeReportDateRange(startDate, endDate);
+    }
+
+    if (syncType === 'manual') {
+      const end = this.normalizeDateString(new Date());
+      const startDateValue = new Date(`${end}T00:00:00Z`);
+      startDateValue.setUTCDate(startDateValue.getUTCDate() - (DEFAULT_MANUAL_LOOKBACK_DAYS - 1));
+      const start = startDateValue.toISOString().split('T')[0];
+
+      return { start, end };
+    }
+
+    return null;
+  }
+
+  normalizeReportDateRange(startDate, endDate) {
+    const normalizedStart = this.normalizeDateString(startDate || endDate);
+    const normalizedEnd = this.normalizeDateString(endDate || startDate);
+
+    if (!normalizedStart || !normalizedEnd) {
+      throw new Error('Invalid IBKR date override supplied');
+    }
+
+    if (normalizedStart > normalizedEnd) {
+      throw new Error('IBKR sync start date must be on or before end date');
+    }
+
+    const daySpan = Math.floor(
+      (new Date(`${normalizedEnd}T00:00:00Z`) - new Date(`${normalizedStart}T00:00:00Z`)) / 86400000
+    ) + 1;
+
+    if (daySpan > MAX_FLEX_OVERRIDE_DAYS) {
+      throw new Error(`IBKR Flex Web Service supports up to ${MAX_FLEX_OVERRIDE_DAYS} days per request`);
+    }
+
+    return {
+      start: normalizedStart,
+      end: normalizedEnd
+    };
+  }
+
+  normalizeDateString(value) {
+    if (!value) {
+      return null;
+    }
+
+    if (value instanceof Date) {
+      return value.toISOString().split('T')[0];
+    }
+
+    const stringValue = String(value);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(stringValue)) {
+      return stringValue;
+    }
+
+    const parsed = new Date(stringValue);
+    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().split('T')[0];
+  }
+
+  executionsMatch(left, right) {
+    if (!left || !right) {
+      return false;
+    }
+
+    if (left.orderId && right.orderId) {
+      return String(left.orderId) === String(right.orderId);
+    }
+
+    const leftTime = new Date(left.datetime || left.entryTime).getTime();
+    const rightTime = new Date(right.datetime || right.entryTime).getTime();
+
+    if (Number.isNaN(leftTime) || Number.isNaN(rightTime) || Math.abs(leftTime - rightTime) > 1000) {
+      return false;
+    }
+
+    const leftQuantity = parseFloat(left.quantity);
+    const rightQuantity = parseFloat(right.quantity);
+    const leftPrice = parseFloat(left.price ?? left.entryPrice);
+    const rightPrice = parseFloat(right.price ?? right.entryPrice);
+
+    const quantityMatches = !Number.isNaN(leftQuantity) && !Number.isNaN(rightQuantity)
+      ? Math.abs(leftQuantity - rightQuantity) < 0.0001
+      : true;
+    const priceMatches = !Number.isNaN(leftPrice) && !Number.isNaN(rightPrice)
+      ? Math.abs(leftPrice - rightPrice) < 0.01
+      : true;
+    const actionMatches = !left.action || !right.action || left.action === right.action;
+    const conidMatches = !left.conid || !right.conid || String(left.conid) === String(right.conid);
+
+    return quantityMatches && priceMatches && actionMatches && conidMatches;
   }
 
   /**
