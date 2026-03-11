@@ -1,4 +1,4 @@
-FROM node:20-alpine AS frontend-builder
+FROM node:20-alpine3.21 AS frontend-builder
 # Update packages to fix vulnerabilities
 RUN apk update && apk upgrade --no-cache
 WORKDIR /app/frontend
@@ -23,7 +23,7 @@ ENV VITE_PROMOTEKIT_ID=${VITE_PROMOTEKIT_ID}
 
 RUN npm run build
 
-FROM node:20-alpine AS backend-builder
+FROM node:20-alpine3.21 AS backend-builder
 # Update packages to fix vulnerabilities
 RUN apk update && apk upgrade --no-cache
 WORKDIR /app/backend
@@ -54,7 +54,7 @@ RUN npm ci --omit=dev --no-audit --no-fund
 
 COPY backend/ ./
 
-FROM node:20-alpine
+FROM node:20-alpine3.21
 # Update packages to fix vulnerabilities
 # Create nginx user/group and directories manually since --no-scripts skips post-install scripts
 # Note: vips is NOT needed here - Sharp uses bundled libvips via SHARP_IGNORE_GLOBAL_LIBVIPS=1
