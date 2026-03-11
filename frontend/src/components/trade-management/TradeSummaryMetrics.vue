@@ -732,12 +732,8 @@ const weightedAverageR = computed(() => {
 })
 
 const riskRewardPlanned = computed(() => {
-  // Use weighted average if multiple targets exist, otherwise use analysis.target_r
-  const avgR = weightedAverageR.value
-  if (avgR !== null) {
-    return `1:${avgR.toFixed(2)}`
-  }
-  const targetR = props.analysis.target_r
+  // Use backend-calculated values to match the Target R card exactly
+  const targetR = props.analysis.weighted_target_r ?? props.analysis.target_r
   if (targetR === null || targetR === undefined) return null
   return `1:${targetR.toFixed(2)}`
 })
