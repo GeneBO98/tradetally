@@ -367,9 +367,19 @@ async function onLevelsUpdated(updatedTrade) {
 }
 
 async function onTargetHitUpdated(data) {
-    // Re-fetch analysis to get updated trade data including manual_target_hit_first
-    if (selectedTradeId.value) {
-        await fetchAnalysis(selectedTradeId.value);
+    // Update trade and analysis in-place to avoid full page re-render
+    if (selectedTrade.value) {
+        selectedTrade.value = {
+            ...selectedTrade.value,
+            manual_target_hit_first: data.manual_target_hit_first,
+            management_r: data.management_r
+        };
+        if (data.take_profit_targets) {
+            selectedTrade.value.take_profit_targets = data.take_profit_targets;
+        }
+    }
+    if (data.analysis && analysis.value) {
+        analysis.value = { ...analysis.value, ...data.analysis };
     }
     // Trigger refresh of the R-Performance chart to reflect updated management R values
     rPerfRefreshTrigger.value++;

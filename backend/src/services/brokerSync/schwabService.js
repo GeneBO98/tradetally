@@ -1044,7 +1044,7 @@ class SchwabService {
     let failed = 0;
     let duplicates = 0;
 
-    const existingTrades = await this.getExistingTrades(userId);
+    const existingTrades = await this.getExistingTrades(userId, trades);
 
     for (const tradeData of trades) {
       try {
@@ -1078,7 +1078,12 @@ class SchwabService {
           exit_time: tradeData.exitTime,
           trade_date: tradeData.tradeDate,
           pnl: tradeData.pnl,
-          executions: tradeData.executionData
+          executions: tradeData.executionData,
+          instrument_type: tradeData.instrumentType || 'stock',
+          strike_price: tradeData.strikePrice || null,
+          expiration_date: tradeData.expirationDate || null,
+          option_type: tradeData.optionType || null,
+          account_identifier: tradeData.accountIdentifier || null
         });
       } catch (error) {
         console.error(`[SCHWAB] Failed to import trade:`, error.message);
@@ -1107,17 +1112,35 @@ class SchwabService {
    * Get existing trades for duplicate checking
    * Fetches ALL user trades (not just Schwab) to catch CSV imports too
    */
-  async getExistingTrades(userId) {
-    const query = `
+  async getExistingTrades(userId, incomingTrades = []) {
+    if (!Array.isArray(incomingTrades) || incomingTrades.length === 0) {
+      return [];
+    }
+
+    const { minDate, maxDate } = this.getTradeDateRange(incomingTrades);
+    const params = [userId];
+
+    let query = `
       SELECT symbol, side, quantity, entry_price, exit_price, entry_time, exit_time,
-             executions, trade_date, pnl
+             executions, trade_date, pnl, instrument_type, strike_price,
+             expiration_date, option_type, account_identifier
       FROM trades
       WHERE user_id = $1
-      ORDER BY trade_date DESC, entry_time DESC
-      LIMIT 5000
     `;
 
-    const result = await db.query(query, [userId]);
+    if (minDate && maxDate) {
+      params.push(minDate, maxDate);
+      query += `
+        AND trade_date >= $2
+        AND trade_date <= $3
+      `;
+    }
+
+    query += `
+      ORDER BY trade_date DESC, entry_time DESC
+    `;
+
+    const result = await db.query(query, params);
     return result.rows;
   }
 
@@ -1139,9 +1162,32 @@ class SchwabService {
     const newEntryPrice = parseFloat(newTrade.entryPrice) || 0;
     const newExitPrice = parseFloat(newTrade.exitPrice) || 0;
     const newPnL = parseFloat(newTrade.pnl) || 0;
+    const newInstrumentType = newTrade.instrumentType || 'stock';
+    const newAccountIdentifier = newTrade.accountIdentifier || null;
 
     for (const existing of existingTrades) {
       if (existing.symbol?.toUpperCase() !== symbol) continue;
+
+      if (newAccountIdentifier && existing.account_identifier && newAccountIdentifier !== existing.account_identifier) {
+        continue;
+      }
+
+      const existingInstrumentType = existing.instrument_type || 'stock';
+      if (existingInstrumentType !== newInstrumentType) {
+        continue;
+      }
+
+      if (newInstrumentType === 'option') {
+        const optionTypeMatches = !newTrade.optionType || !existing.option_type || newTrade.optionType === existing.option_type;
+        const strikeMatches = newTrade.strikePrice == null || existing.strike_price == null ||
+          Math.abs(parseFloat(newTrade.strikePrice) - parseFloat(existing.strike_price)) < 0.0001;
+        const expirationMatches = !newTrade.expirationDate || !existing.expiration_date ||
+          this._extractDateString(newTrade.expirationDate) === this._extractDateString(existing.expiration_date);
+
+        if (!optionTypeMatches || !strikeMatches || !expirationMatches) {
+          continue;
+        }
+      }
 
       // 1. Check execution data match (by EXIT order ID + datetime) - most reliable
       // IMPORTANT: Only match on EXIT executions, not entry executions.
@@ -1216,6 +1262,22 @@ class SchwabService {
     }
 
     return false;
+  }
+
+  getTradeDateRange(trades) {
+    const dateStrings = trades
+      .map(trade => this._extractDateString(trade.tradeDate || trade.exitTime || trade.entryTime))
+      .filter(Boolean)
+      .sort();
+
+    if (dateStrings.length === 0) {
+      return { minDate: null, maxDate: null };
+    }
+
+    return {
+      minDate: dateStrings[0],
+      maxDate: dateStrings[dateStrings.length - 1]
+    };
   }
 
   /**

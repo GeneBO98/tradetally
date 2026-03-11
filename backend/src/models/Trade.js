@@ -2114,6 +2114,64 @@ class Trade {
   }
 
   /**
+   * Calculate the total dollar risk for a trade based on entry, stop loss, size, and instrument multiplier.
+   * This is the initial risk amount used to interpret summed R values in analytics surfaces.
+   *
+   * @param {number} entryPrice
+   * @param {number} stopLoss
+   * @param {number} quantity
+   * @param {string} side
+   * @param {string} instrumentType
+   * @param {number|null} contractSize
+   * @param {number|null} pointValue
+   * @param {string|null} symbol
+   * @param {string|null} underlyingAsset
+   * @returns {number|null}
+   */
+  static calculateRiskAmount(entryPrice, stopLoss, quantity, side, instrumentType = 'stock', contractSize = null, pointValue = null, symbol = null, underlyingAsset = null) {
+    if (entryPrice == null || stopLoss == null || quantity == null || !side) return null;
+
+    const parsedEntry = parseFloat(entryPrice);
+    const parsedStop = parseFloat(stopLoss);
+    const parsedQty = parseFloat(quantity);
+
+    if (!isFinite(parsedEntry) || !isFinite(parsedStop) || !isFinite(parsedQty) || parsedQty <= 0) {
+      return null;
+    }
+
+    let riskPerUnit;
+    if (side === 'long' || side === 'buy') {
+      if (parsedStop >= parsedEntry) return null;
+      riskPerUnit = parsedEntry - parsedStop;
+    } else if (side === 'short' || side === 'sell') {
+      if (parsedStop <= parsedEntry) return null;
+      riskPerUnit = parsedStop - parsedEntry;
+    } else {
+      return null;
+    }
+
+    let multiplier = 1;
+    if (instrumentType === 'future') {
+      let finalPointValue = pointValue ? parseFloat(pointValue) : null;
+
+      if (!finalPointValue || !isFinite(finalPointValue) || finalPointValue <= 0) {
+        const underlying = underlyingAsset || extractUnderlyingFromFuturesSymbol(symbol);
+        finalPointValue = getFuturesPointValue(underlying);
+      }
+
+      multiplier = finalPointValue;
+    } else if (instrumentType === 'option') {
+      const parsedContractSize = contractSize ? parseFloat(contractSize) : null;
+      multiplier = parsedContractSize && isFinite(parsedContractSize) && parsedContractSize > 0
+        ? parsedContractSize
+        : 100;
+    }
+
+    const riskAmount = riskPerUnit * parsedQty * multiplier;
+    return isFinite(riskAmount) ? riskAmount : null;
+  }
+
+  /**
    * Get the price move (in price units) that equals a given dollar risk per trade.
    * Used for dollar-based default stop loss. Uses the same multipliers as calculatePnL:
    * - Stock: 1 share = 1 unit → priceMove = dollars / quantity

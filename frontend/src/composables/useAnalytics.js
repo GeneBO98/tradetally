@@ -2,6 +2,7 @@ import { ref } from 'vue'
 
 const isInitialized = ref(false)
 const isEnabled = ref(false)
+const lastIdentifySignature = ref('')
 
 // PostHog configuration from environment variables
 const POSTHOG_KEY = import.meta.env.VITE_POSTHOG_KEY || ''
@@ -10,6 +11,16 @@ const POSTHOG_ENABLED = import.meta.env.VITE_POSTHOG_ENABLED === 'true'
 
 export function useAnalytics() {
   // Analytics implementation with optional PostHog support
+  const runWhenIdle = (callback) => {
+    if (typeof window === 'undefined') return
+
+    if (window.requestIdleCallback) {
+      window.requestIdleCallback(callback, { timeout: 1500 })
+      return
+    }
+
+    window.setTimeout(callback, 1)
+  }
   
   const initialize = async () => {
     if (POSTHOG_ENABLED && POSTHOG_KEY && !isInitialized.value) {
@@ -65,9 +76,25 @@ export function useAnalytics() {
   }
 
   const identifyUser = (userId, properties = {}) => {
-    if (POSTHOG_ENABLED && window.posthog) {
-      window.posthog.identify(userId, properties)
+    if (!POSTHOG_ENABLED || !userId) return
+
+    const signature = JSON.stringify({
+      userId,
+      email: properties.email || null,
+      tier: properties.tier || null
+    })
+
+    if (lastIdentifySignature.value === signature) {
+      return
     }
+
+    lastIdentifySignature.value = signature
+
+    runWhenIdle(() => {
+      if (window.posthog) {
+        window.posthog.identify(userId, properties)
+      }
+    })
   }
 
   const track = (eventName, properties = {}) => {
@@ -77,9 +104,13 @@ export function useAnalytics() {
   }
 
   const trackPageView = (pageName, properties = {}) => {
-    if (POSTHOG_ENABLED && window.posthog) {
-      window.posthog.capture('$pageview', { ...properties, page: pageName })
-    }
+    if (!POSTHOG_ENABLED) return
+
+    runWhenIdle(() => {
+      if (window.posthog) {
+        window.posthog.capture('$pageview', { ...properties, page: pageName })
+      }
+    })
   }
 
   const trackTradeAction = (action, metadata = {}) => {
@@ -89,9 +120,13 @@ export function useAnalytics() {
   }
 
   const trackFeatureUsage = (featureName, context = {}) => {
-    if (POSTHOG_ENABLED && window.posthog) {
-      window.posthog.capture('feature_usage', { feature: featureName, ...context })
-    }
+    if (!POSTHOG_ENABLED) return
+
+    runWhenIdle(() => {
+      if (window.posthog) {
+        window.posthog.capture('feature_usage', { feature: featureName, ...context })
+      }
+    })
   }
 
   const trackImport = (broker, outcome, tradeCount = null) => {
@@ -110,6 +145,7 @@ export function useAnalytics() {
     if (POSTHOG_ENABLED && window.posthog) {
       window.posthog.reset()
     }
+    lastIdentifySignature.value = ''
   }
 
   const optOut = () => {

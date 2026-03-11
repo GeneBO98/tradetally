@@ -2453,6 +2453,7 @@ const tradeController = {
     try {
       console.log('getOpenPositionsWithQuotes called for user:', req.user.id);
       const finnhub = require('../utils/finnhub');
+      const alpacaMarketData = require('../utils/alpacaMarketData');
       const { accounts, skipQuotes } = req.query;
       
       // Check if Finnhub is configured
@@ -2552,11 +2553,28 @@ const tradeController = {
         return trade.quantity || 0;
       };
 
-      // Group trades by symbol and calculate net position
+      // Build a unique position key for each trade
+      // Options: use underlying_strike_expiration_type to keep different contracts separate
+      // Stocks/futures: use symbol
+      const normalizeExpDate = (d) => {
+        if (!d) return '';
+        if (d instanceof Date) return d.toISOString().slice(0, 10);
+        return String(d).slice(0, 10);
+      };
+      const getPositionKey = (trade) => {
+        if (trade.instrument_type === 'option' && trade.underlying_symbol && trade.strike_price && trade.expiration_date && trade.option_type) {
+          return `${trade.underlying_symbol}_${trade.strike_price}_${normalizeExpDate(trade.expiration_date)}_${trade.option_type}`;
+        }
+        return trade.symbol;
+      };
+
+      // Group trades by position key and calculate net position
       const positionMap = Object.create(null);
       openTrades.forEach(trade => {
-        if (!Object.hasOwn(positionMap, trade.symbol)) {
-        positionMap[trade.symbol] = {
+        const posKey = getPositionKey(trade);
+
+        if (!Object.hasOwn(positionMap, posKey)) {
+        positionMap[posKey] = {
           symbol: trade.symbol,
           side: null, // Will be determined by net position
           trades: [],
@@ -2566,19 +2584,24 @@ const tradeController = {
           avgPrice: 0,
           instrumentType: trade.instrument_type || 'stock',
           contractSize: trade.contract_size || (trade.instrument_type === 'option' ? 100 : 1),
-          pointValue: trade.point_value || null
+          pointValue: trade.point_value || null,
+          // Option metadata for Alpaca pricing
+          underlying_symbol: trade.underlying_symbol || null,
+          expiration_date: trade.expiration_date || null,
+          option_type: trade.option_type || null,
+          strike_price: trade.strike_price || null
         };
         }
 
-        positionMap[trade.symbol].trades.push(trade);
+        positionMap[posKey].trades.push(trade);
 
         // Calculate net position considering executions or trade direction
         const netPosition = calculateNetPosition(trade);
-        positionMap[trade.symbol].totalQuantity += netPosition;
+        positionMap[posKey].totalQuantity += netPosition;
 
         // Calculate total shares traded (all executions count as positive)
         const sharesTraded = calculateTotalSharesTraded(trade);
-        positionMap[trade.symbol].totalSharesTraded += sharesTraded;
+        positionMap[posKey].totalSharesTraded += sharesTraded;
 
         // For cost calculation, account for multipliers (options use contract_size, futures use point_value)
         let costMultiplier;
@@ -2592,15 +2615,15 @@ const tradeController = {
           // For stocks, no multiplier needed
           costMultiplier = 1;
         }
-        positionMap[trade.symbol].totalCost += Math.abs(netPosition) * trade.entry_price * costMultiplier;
+        positionMap[posKey].totalCost += Math.abs(netPosition) * trade.entry_price * costMultiplier;
       });
 
       // Calculate average prices and determine position side
-      const symbolsToDelete = [];
-      Object.values(positionMap).forEach(position => {
+      const keysToDelete = [];
+      Object.entries(positionMap).forEach(([key, position]) => {
         if (position.totalQuantity === 0) {
           // No net position, mark for deletion
-          symbolsToDelete.push(position.symbol);
+          keysToDelete.push(key);
           return;
         }
 
@@ -2625,9 +2648,9 @@ const tradeController = {
         // avgPrice should be per-share/per-contract price, so divide totalCost by (quantity * multiplier)
         position.avgPrice = position.totalCost / (absQuantity * avgPriceMultiplier);
       });
-      
-      // Remove symbols with zero net position
-      symbolsToDelete.forEach(symbol => delete positionMap[symbol]);
+
+      // Remove positions with zero net quantity
+      keysToDelete.forEach(key => delete positionMap[key]);
 
       // If skipQuotes is requested, return positions immediately without Finnhub calls
       if (skipQuotes === 'true') {
@@ -2640,142 +2663,170 @@ const tradeController = {
         return res.json({ positions, quotePending: true });
       }
 
-      // Get unique symbols for quotes (exclude options - Finnhub returns underlying price, not contract premium)
-      const symbols = Object.keys(positionMap).filter(sym => positionMap[sym].instrumentType !== 'option');
+      // Get unique stock/futures symbols for Finnhub quotes (options use Alpaca instead)
+      const stockPositions = Object.values(positionMap).filter(p => p.instrumentType !== 'option');
+      const symbols = [...new Set(stockPositions.map(p => p.symbol))];
       console.log('Symbols to get quotes for:', symbols);
 
-      // If Finnhub is not configured, return positions without quotes
-      if (!finnhub.isConfigured()) {
-        console.log('Finnhub not configured, returning positions without quotes');
-        const positions = Object.values(positionMap);
-        return res.json({ 
-          positions,
-          error: 'Real-time quotes not available - Finnhub API key not configured'
-        });
+      // Fetch Alpaca quotes for option positions (independent of Finnhub)
+      let alpacaQuotes = {};
+      const optionPositions = Object.values(positionMap).filter(p => p.instrumentType === 'option');
+      if (optionPositions.length > 0 && alpacaMarketData.isConfigured()) {
+        try {
+          console.log(`[ALPACA] Fetching quotes for ${optionPositions.length} option positions`);
+          // Pass positions with unique keys for mapping quotes back per contract
+          const positionsWithKeys = optionPositions.map(p => ({
+            ...p,
+            _positionKey: `${p.underlying_symbol}_${p.strike_price}_${normalizeExpDate(p.expiration_date)}_${p.option_type}`
+          }));
+          alpacaQuotes = await alpacaMarketData.getOptionSnapshots(positionsWithKeys);
+          console.log(`[ALPACA] Received quotes for ${Object.keys(alpacaQuotes).length} options`);
+        } catch (alpacaError) {
+          console.error('[ALPACA] Failed to fetch option quotes:', alpacaError.message);
+        }
+      } else if (optionPositions.length > 0) {
+        console.log('[ALPACA] Alpaca not configured, skipping option quotes');
       }
-      
-      try {
-        // Try cached prices from price_monitoring first, fallback to Finnhub for uncached
-        console.log('Checking price_monitoring cache for position quotes...');
-        const cacheResult = await db.query(
-          `SELECT symbol, current_price, previous_price, price_change, percent_change,
-                  high_of_day, low_of_day, open_price
-           FROM price_monitoring
-           WHERE symbol = ANY($1)
-             AND last_updated > NOW() - INTERVAL '2 minutes'`,
-          [symbols]
-        );
 
-        const quotes = {};
-        for (const row of cacheResult.rows) {
-          quotes[row.symbol] = {
-            c: parseFloat(row.current_price),
-            pc: parseFloat(row.previous_price) || 0,
-            d: parseFloat(row.price_change) || 0,
-            dp: parseFloat(row.percent_change) || 0,
-            h: row.high_of_day ? parseFloat(row.high_of_day) : null,
-            l: row.low_of_day ? parseFloat(row.low_of_day) : null,
-            o: row.open_price ? parseFloat(row.open_price) : null
-          };
-        }
+      // Fetch stock/futures quotes from Finnhub
+      let quotes = {};
+      if (symbols.length > 0 && finnhub.isConfigured()) {
+        try {
+          // Try cached prices from price_monitoring first, fallback to Finnhub for uncached
+          console.log('Checking price_monitoring cache for position quotes...');
+          const cacheResult = await db.query(
+            `SELECT symbol, current_price, previous_price, price_change, percent_change,
+                    high_of_day, low_of_day, open_price
+             FROM price_monitoring
+             WHERE symbol = ANY($1)
+               AND last_updated > NOW() - INTERVAL '2 minutes'`,
+            [symbols]
+          );
 
-        const cachedCount = Object.keys(quotes).length;
-        const uncachedSymbols = symbols.filter(s => !quotes[s]);
-        console.log(`Price cache: ${cachedCount} cached, ${uncachedSymbols.length} uncached`);
-
-        // Fallback to Finnhub for any uncached symbols
-        if (uncachedSymbols.length > 0 && finnhub.isConfigured()) {
-          console.log('Fetching uncached symbols from Finnhub:', uncachedSymbols);
-          const freshQuotes = await finnhub.getBatchQuotes(uncachedSymbols);
-          Object.assign(quotes, freshQuotes);
-        }
-        console.log('Received quotes:', quotes);
-        
-        // Enhance positions with real-time data
-        const enhancedPositions = Object.values(positionMap).map(position => {
-          // Skip Finnhub quotes for options - free tier returns underlying stock price, not contract premium
-          if (position.instrumentType === 'option') {
-            return {
-              ...position,
-              currentPrice: null,
-              currentValue: null,
-              unrealizedPnL: null,
-              unrealizedPnLPercent: null,
-              requires_manual_price: true
+          for (const row of cacheResult.rows) {
+            quotes[row.symbol] = {
+              c: parseFloat(row.current_price),
+              pc: parseFloat(row.previous_price) || 0,
+              d: parseFloat(row.price_change) || 0,
+              dp: parseFloat(row.percent_change) || 0,
+              h: row.high_of_day ? parseFloat(row.high_of_day) : null,
+              l: row.low_of_day ? parseFloat(row.low_of_day) : null,
+              o: row.open_price ? parseFloat(row.open_price) : null
             };
           }
 
-          const quote = quotes[position.symbol];
+          const cachedCount = Object.keys(quotes).length;
+          const uncachedSymbols = symbols.filter(s => !quotes[s]);
+          console.log(`Price cache: ${cachedCount} cached, ${uncachedSymbols.length} uncached`);
 
-          if (quote) {
-            const currentPrice = quote.c; // Current price
-            // Account for multiplier in current value calculation
-            // For futures: use pointValue; for options: use contractSize; for stocks: use 1
-            let valueMultiplier;
-            if (position.instrumentType === 'future') {
-              valueMultiplier = position.pointValue || 1;
-            } else if (position.instrumentType === 'option') {
-              valueMultiplier = position.contractSize || 100;
-            } else {
-              valueMultiplier = 1;
-            }
+          // Fallback to Finnhub for any uncached symbols
+          if (uncachedSymbols.length > 0) {
+            console.log('Fetching uncached symbols from Finnhub:', uncachedSymbols);
+            const freshQuotes = await finnhub.getBatchQuotes(uncachedSymbols);
+            Object.assign(quotes, freshQuotes);
+          }
+          console.log('Received quotes:', quotes);
+        } catch (quoteError) {
+          console.error('Failed to get stock quotes:', quoteError.message);
+        }
+      } else if (symbols.length > 0) {
+        console.log('Finnhub not configured, skipping stock quotes');
+      }
+
+      // Enhance positions with real-time data
+      const enhancedPositions = Object.entries(positionMap).map(([posKey, position]) => {
+        // Options: use Alpaca quotes keyed by position key
+        if (position.instrumentType === 'option') {
+          const alpacaQuote = alpacaQuotes[posKey];
+          if (alpacaQuote && alpacaQuote.price > 0) {
+            const currentPrice = alpacaQuote.price;
+            const valueMultiplier = position.contractSize || 100;
             const currentValue = currentPrice * position.totalQuantity * valueMultiplier;
-            // For short positions, profit is made when price goes down
             const unrealizedPnL = position.side === 'short'
-              ? position.totalCost - currentValue  // Short: profit when current value < entry cost
-              : currentValue - position.totalCost;  // Long: profit when current value > entry cost
-            const unrealizedPnLPercent = (unrealizedPnL / position.totalCost) * 100;
-            
+              ? position.totalCost - currentValue
+              : currentValue - position.totalCost;
+            const unrealizedPnLPercent = position.totalCost > 0
+              ? (unrealizedPnL / position.totalCost) * 100
+              : 0;
             return {
               ...position,
               currentPrice,
               currentValue,
               unrealizedPnL,
               unrealizedPnLPercent,
-              dayChange: quote.d, // Day's change in price
-              dayChangePercent: quote.dp, // Day's change in percent
-              high: quote.h, // Day's high
-              low: quote.l, // Day's low
-              open: quote.o, // Day's open
-              previousClose: quote.pc, // Previous close
+              quoteSource: 'alpaca',
+              bid: alpacaQuote.bid,
+              ask: alpacaQuote.ask,
               quoteTime: new Date().toISOString()
             };
-          } else {
-            // Return position without real-time data
-            return {
-              ...position,
-              currentPrice: null,
-              currentValue: null,
-              unrealizedPnL: null,
-              unrealizedPnLPercent: null,
-              error: `No quote available for ${position.symbol}`
-            };
           }
-        });
+          // No Alpaca quote available - fall back to manual price
+          return {
+            ...position,
+            currentPrice: null,
+            currentValue: null,
+            unrealizedPnL: null,
+            unrealizedPnLPercent: null,
+            requires_manual_price: true
+          };
+        }
 
-        // Sort by unrealized P&L (biggest gains/losses first)
-        enhancedPositions.sort((a, b) => {
-          if (a.unrealizedPnL === null) return 1;
-          if (b.unrealizedPnL === null) return -1;
-          return Math.abs(b.unrealizedPnL) - Math.abs(a.unrealizedPnL);
-        });
+        const quote = quotes[position.symbol];
 
-        res.json({ 
-          positions: enhancedPositions,
-          quotesAvailable: Object.keys(quotes).length,
-          totalPositions: enhancedPositions.length
-        });
+        if (quote) {
+          const currentPrice = quote.c; // Current price
+          // Account for multiplier in current value calculation
+          let valueMultiplier;
+          if (position.instrumentType === 'future') {
+            valueMultiplier = position.pointValue || 1;
+          } else {
+            valueMultiplier = 1;
+          }
+          const currentValue = currentPrice * position.totalQuantity * valueMultiplier;
+          // For short positions, profit is made when price goes down
+          const unrealizedPnL = position.side === 'short'
+            ? position.totalCost - currentValue
+            : currentValue - position.totalCost;
+          const unrealizedPnLPercent = (unrealizedPnL / position.totalCost) * 100;
 
-      } catch (quoteError) {
-        console.error('Failed to get quotes:', quoteError);
-        
-        // Return positions without real-time data
-        const positions = Object.values(positionMap);
-        res.json({ 
-          positions,
-          error: `Failed to get real-time quotes: ${quoteError.message}`
-        });
-      }
+          return {
+            ...position,
+            currentPrice,
+            currentValue,
+            unrealizedPnL,
+            unrealizedPnLPercent,
+            dayChange: quote.d,
+            dayChangePercent: quote.dp,
+            high: quote.h,
+            low: quote.l,
+            open: quote.o,
+            previousClose: quote.pc,
+            quoteTime: new Date().toISOString()
+          };
+        } else {
+          return {
+            ...position,
+            currentPrice: null,
+            currentValue: null,
+            unrealizedPnL: null,
+            unrealizedPnLPercent: null,
+            error: `No quote available for ${position.symbol}`
+          };
+        }
+      });
+
+      // Sort by unrealized P&L (biggest gains/losses first)
+      enhancedPositions.sort((a, b) => {
+        if (a.unrealizedPnL === null) return 1;
+        if (b.unrealizedPnL === null) return -1;
+        return Math.abs(b.unrealizedPnL) - Math.abs(a.unrealizedPnL);
+      });
+
+      res.json({
+        positions: enhancedPositions,
+        quotesAvailable: Object.keys(quotes).length + Object.keys(alpacaQuotes).length,
+        totalPositions: enhancedPositions.length
+      });
 
     } catch (error) {
       console.error('Failed to get open positions:', error);

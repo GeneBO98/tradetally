@@ -230,6 +230,12 @@ describe('TradingView parser', () => {
     'ESM24,Sell,1,5010.00,124,,2025-01-01 10:00:00,2025-01-01 10:00:00,Filled'
   ].join('\n');
 
+  const tvFuturesNoStatusCSV = [
+    'Symbol,Side,Type,Qty,Fill Price,Commission,Placing Time,Closing Time,Order ID,Leverage',
+    'FX_IDC:EURUSD,Buy,Limit,400000,1.17973,,2026-02-25 18:20:04,2026-02-25 18:20:19,2794916838,50:1',
+    'FX_IDC:EURUSD,Sell,Stop,400000,1.18032,,2026-02-25 18:36:32,2026-02-25 18:46:01,2794952343,'
+  ].join('\n');
+
   test('returns valid result with trades array (regression)', async () => {
     const result = await parseCSV(buf(tvFuturesCSV), 'tradingview', {});
     expectValidResult(result);
@@ -237,6 +243,12 @@ describe('TradingView parser', () => {
 
   test('parses futures transactions', async () => {
     const result = await parseCSV(buf(tvFuturesCSV), 'tradingview', {});
+    expect(result.trades.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test('parses TradingView transaction exports without a Status column', async () => {
+    const result = await parseCSV(buf(tvFuturesNoStatusCSV), 'tradingview', {});
+    expectValidResult(result);
     expect(result.trades.length).toBeGreaterThanOrEqual(1);
   });
 

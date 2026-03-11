@@ -107,7 +107,7 @@ describe('parseDateTime', () => {
   });
 
   test('parses MM/DD/YYYY HH:MM:SS +TZ format (ProjectX)', () => {
-    expect(parseDateTime('07/04/2025 09:30:00 +05:00')).toBe('2025-07-04T09:30:00');
+    expect(parseDateTime('07/04/2025 09:30:00 +05:00')).toBe('2025-07-04T09:30:00+05:00');
   });
 
   test('parses IBKR Flex YYYYMMDD;HHMMSS format', () => {

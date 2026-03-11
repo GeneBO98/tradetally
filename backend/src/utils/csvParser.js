@@ -43,7 +43,7 @@ function isExecutionDuplicate(execution, symbol, context) {
 
     // Check by order ID if available (for Interactive Brokers)
     if (execution.orderId && existingExec.orderId) {
-      return existingExec.orderId === execution.orderId;
+      return String(existingExec.orderId) === String(execution.orderId);
     }
 
     // Fallback to timestamp + quantity + price matching
@@ -71,6 +71,19 @@ function isExecutionDuplicate(execution, symbol, context) {
            existingExec.quantity === execution.quantity &&
            Math.abs((existingPrice || 0) - (execution.price || 0)) < 0.01;
   });
+}
+
+/**
+ * Check if an execution already exists using multiple candidate lookup keys.
+ * This handles cases where IBKR returns a conid-based key but the DB trade
+ * was imported via CSV under a composite key (e.g., AMGN_392.5_2026-03-13_call).
+ * @param {Object} execution - The execution to check
+ * @param {Array<String>} keys - Array of candidate lookup keys to try
+ * @param {Object} context - Context object containing existingExecutions
+ * @returns {boolean} - True if execution already exists under any key
+ */
+function isExecutionDuplicateMultiKey(execution, keys, context) {
+  return keys.some(key => isExecutionDuplicate(execution, key, context));
 }
 
 /**
@@ -975,22 +988,29 @@ const brokerParsers = {
     const sellPrice = parseNumeric(row.sellPrice);
     const pnl = parseNumeric(row.pnl);
 
-    // Parse timestamps - can be Unix timestamps in milliseconds or date strings like "02/26/2026 09:12:07"
+    // Parse timestamps - can be Unix timestamps in milliseconds or local date strings like "02/26/2026 09:12:07"
+    const parseTradingViewPerformanceTimestamp = (value) => {
+      if (!value) return null;
+
+      const ts = Number(value);
+      if (Number.isFinite(ts) && Math.abs(ts) > 1e10) {
+        const parsed = new Date(ts);
+        return isNaN(parsed.getTime()) ? null : parsed.toISOString();
+      }
+
+      return parseDateTime(value);
+    };
+
     let entryTime = null;
     let exitTime = null;
 
     if (row.boughtTimestamp) {
-      const ts = Number(row.boughtTimestamp);
-      // If it's a large number (>1e10), treat as Unix ms timestamp; otherwise parse as date string
-      entryTime = ts > 1e10 ? new Date(ts) : new Date(row.boughtTimestamp);
-      if (isNaN(entryTime.getTime())) entryTime = null;
+      entryTime = parseTradingViewPerformanceTimestamp(row.boughtTimestamp);
     }
     if (row.soldTimestamp) {
-      const ts = Number(row.soldTimestamp);
-      exitTime = ts > 1e10 ? new Date(ts) : new Date(row.soldTimestamp);
-      if (isNaN(exitTime.getTime())) exitTime = null;
+      exitTime = parseTradingViewPerformanceTimestamp(row.soldTimestamp);
     }
-    const tradeDate = entryTime ? new Date(entryTime.toISOString().split('T')[0]) : null;
+    const tradeDate = parseDate(row.boughtTimestamp) || (entryTime ? entryTime.split('T')[0] : null);
 
     // Determine side based on P&L and prices
     // If sellPrice > buyPrice and PnL > 0, it was a long trade
@@ -1301,7 +1321,7 @@ function convertTradeDatetimesToUTC(trades, timezone) {
   }
 
   const datetimeFields = ['entryTime', 'exitTime', 'entry_time', 'exit_time'];
-  const executionDatetimeFields = ['datetime', 'time', 'entry_time', 'exit_time'];
+  const executionDatetimeFields = ['datetime', 'time', 'entry_time', 'exit_time', 'entryTime', 'exitTime'];
 
   for (const trade of trades) {
     for (const field of datetimeFields) {
@@ -2546,15 +2566,31 @@ function parseDateTime(dateTimeStr) {
   // Remove leading and trailing quotes/apostrophes (including Unicode curly quotes), then trim
   const cleanDateTimeStr = dateTimeStr.toString().replace(/^[\x27\x22\u2018\u2019\u201C\u201D]|[\x27\x22\u2018\u2019\u201C\u201D]$/g, '').trim();
 
+  const normalizeTimezoneOffset = (offset) => {
+    if (!offset || offset === 'Z') return 'Z';
+    return /^[+-]\d{4}$/.test(offset)
+      ? `${offset.slice(0, 3)}:${offset.slice(3)}`
+      : offset;
+  };
+
   try {
+    // Preserve ISO timestamps that already include timezone information.
+    const isoWithTimezoneMatch = cleanDateTimeStr.match(
+      /^(\d{4}-\d{2}-\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?(Z|[+-]\d{2}:?\d{2})$/i
+    );
+    if (isoWithTimezoneMatch) {
+      const [, datePart, hour, minute, second = '00', offset] = isoWithTimezoneMatch;
+      return `${datePart}T${hour}:${minute}:${second}${normalizeTimezoneOffset(offset.toUpperCase())}`;
+    }
+
     // Check for MM/DD/YYYY HH:MM:SS +TZ format (ProjectX with timezone)
-    const mmddyyyyTimeWithTzMatch = cleanDateTimeStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})\s+[+-]\d{2}:\d{2}$/);
+    const mmddyyyyTimeWithTzMatch = cleanDateTimeStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})\s+([+-]\d{2}:?\d{2})$/);
     if (mmddyyyyTimeWithTzMatch) {
-      const [, month, day, year, hour, minute, second] = mmddyyyyTimeWithTzMatch;
+      const [, month, day, year, hour, minute, second, offset] = mmddyyyyTimeWithTzMatch;
       const monthPadded = month.padStart(2, '0');
       const dayPadded = day.padStart(2, '0');
       const hourPadded = hour.padStart(2, '0');
-      return `${year}-${monthPadded}-${dayPadded}T${hourPadded}:${minute}:${second}`;
+      return `${year}-${monthPadded}-${dayPadded}T${hourPadded}:${minute}:${second}${normalizeTimezoneOffset(offset)}`;
     }
 
     // Check for MM/DD/YYYY HH:MM:SS format (common in many CSVs)
@@ -2711,6 +2747,45 @@ function parseDateTime(dateTimeStr) {
     console.warn(`Invalid datetime format: ${cleanDateTimeStr}`);
     return null;
   }
+}
+
+function hasExplicitTimezone(dateTimeStr) {
+  return typeof dateTimeStr === 'string' &&
+    (dateTimeStr.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(dateTimeStr));
+}
+
+function compareCanonicalDateTimes(left, right) {
+  if (left === right) return 0;
+
+  const leftHasTimezone = hasExplicitTimezone(left);
+  const rightHasTimezone = hasExplicitTimezone(right);
+
+  if (leftHasTimezone || rightHasTimezone) {
+    const leftTime = new Date(left).getTime();
+    const rightTime = new Date(right).getTime();
+
+    if (!Number.isNaN(leftTime) && !Number.isNaN(rightTime) && leftTime !== rightTime) {
+      return leftTime - rightTime;
+    }
+  }
+
+  return left.localeCompare(right);
+}
+
+function getExecutionTimeBounds(executions = []) {
+  const datetimes = executions
+    .map((execution) => execution?.datetime)
+    .filter((value) => typeof value === 'string' && value.trim() !== '');
+
+  if (datetimes.length === 0) {
+    return { entryTime: null, exitTime: null };
+  }
+
+  const sortedTimes = [...datetimes].sort(compareCanonicalDateTimes);
+  return {
+    entryTime: sortedTimes[0],
+    exitTime: sortedTimes[sortedTimes.length - 1]
+  };
 }
 
 // Lightspeed-specific datetime parser that handles Central Time
@@ -3513,14 +3588,10 @@ async function parseLightspeedTransactions(records, existingPositions = {}, user
 
         currentTrade.fees = 0;
         // FIXED: Calculate proper entry and exit times from all executions
-        const executionTimes = currentTrade.executions
-          .filter(e => e.datetime)
-          .map(e => new Date(e.datetime))
-          .filter(d => !isNaN(d.getTime()));
-        const sortedTimes = executionTimes.sort((a, b) => a - b);
-        if (sortedTimes.length > 0) {
-          currentTrade.entryTime = sortedTimes[0].toISOString();
-          currentTrade.exitTime = sortedTimes[sortedTimes.length - 1].toISOString();
+        const { entryTime, exitTime } = getExecutionTimeBounds(currentTrade.executions);
+        if (entryTime && exitTime) {
+          currentTrade.entryTime = entryTime;
+          currentTrade.exitTime = exitTime;
         }
 
         // Executions are stored in the executions field (no need for executionData)
@@ -3828,17 +3899,23 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
     transactionsByDateSymbol[key].push(txn);
   }
 
-  // Assign incremental times (1 millisecond apart) to transactions with the same date+symbol
+  // Assign incremental seconds to transactions with the same date+symbol to make each unique
+  // IMPORTANT: Keep datetime as a naive string (no Z suffix) so convertTradeDatetimesToUTC
+  // will properly convert it using the user's timezone, not Docker's TZ env var
   for (const key in transactionsByDateSymbol) {
     const group = transactionsByDateSymbol[key];
     if (group.length > 1) {
       console.log(`[DEBUG] Found ${group.length} transactions for ${key}:`);
       group.forEach((txn, index) => {
         const originalTime = txn.datetime;
-        // Keep the same time but add milliseconds to make each unique
-        const baseTime = new Date(txn.datetime);
-        baseTime.setMilliseconds(index);
-        txn.datetime = baseTime.toISOString();
+        // Add incremental seconds to make each unique while keeping naive format
+        // Parse the existing time and add index seconds
+        const match = String(txn.datetime).match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}):(\d{2})(.*)$/);
+        if (match) {
+          const [, prefix, secStr, suffix] = match;
+          const newSec = String(Math.min(parseInt(secStr) + index, 59)).padStart(2, '0');
+          txn.datetime = `${prefix}:${newSec}${suffix}`;
+        }
         console.log(`[DEBUG]   [${index}] ${txn.action} ${txn.quantity} @ $${txn.price} - Time: ${originalTime} → ${txn.datetime}`);
       });
       console.log(`[INFO] Assigned unique times to ${group.length} transactions for ${key} to preserve order`);
@@ -4086,14 +4163,10 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
         currentTrade.fees = 0;
 
         // Calculate proper entry and exit times from all executions
-        const executionTimes = currentTrade.executions
-          .filter(e => e.datetime)
-          .map(e => new Date(e.datetime))
-          .filter(d => !isNaN(d.getTime()));
-        const sortedTimes = executionTimes.sort((a, b) => a - b);
-        if (sortedTimes.length > 0) {
-          currentTrade.entryTime = sortedTimes[0].toISOString();
-          currentTrade.exitTime = sortedTimes[sortedTimes.length - 1].toISOString();
+        const { entryTime, exitTime } = getExecutionTimeBounds(currentTrade.executions);
+        if (entryTime && exitTime) {
+          currentTrade.entryTime = entryTime;
+          currentTrade.exitTime = exitTime;
         }
 
         currentTrade.executionData = currentTrade.executions;
@@ -4493,14 +4566,10 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
         currentTrade.fees = 0;
 
         // Calculate proper entry and exit times from all executions
-        const executionTimes = currentTrade.executions
-          .filter(e => e.datetime)
-          .map(e => new Date(e.datetime))
-          .filter(d => !isNaN(d.getTime()));
-        const sortedTimes = executionTimes.sort((a, b) => a - b);
-        if (sortedTimes.length > 0) {
-          currentTrade.entryTime = sortedTimes[0].toISOString();
-          currentTrade.exitTime = sortedTimes[sortedTimes.length - 1].toISOString();
+        const { entryTime, exitTime } = getExecutionTimeBounds(currentTrade.executions);
+        if (entryTime && exitTime) {
+          currentTrade.entryTime = entryTime;
+          currentTrade.exitTime = exitTime;
         }
 
         currentTrade.executionData = currentTrade.executions;
@@ -4830,14 +4899,10 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
         currentTrade.fees = 0;
 
         // Calculate proper entry and exit times from all executions
-        const executionTimes = currentTrade.executions
-          .filter(e => e.datetime)
-          .map(e => new Date(e.datetime))
-          .filter(d => !isNaN(d.getTime()));
-        const sortedTimes = executionTimes.sort((a, b) => a - b);
-        if (sortedTimes.length > 0) {
-          currentTrade.entryTime = sortedTimes[0].toISOString();
-          currentTrade.exitTime = sortedTimes[sortedTimes.length - 1].toISOString();
+        const { entryTime, exitTime } = getExecutionTimeBounds(currentTrade.executions);
+        if (entryTime && exitTime) {
+          currentTrade.entryTime = entryTime;
+          currentTrade.exitTime = exitTime;
         }
 
         currentTrade.executionData = currentTrade.executions;
@@ -4939,6 +5004,10 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
     return undefined;
   };
 
+  // Some TradingView transaction exports omit the Status column entirely.
+  // In that format, all rows represent executed fills and should be parsed.
+  const fileHasStatusColumn = records.some(record => getField(record, 'Status') !== undefined);
+
   // First, parse all filled orders
   let rowIndex = 0;
   for (const record of records) {
@@ -4957,8 +5026,8 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
       const orderType = getField(record, 'Type') || '';
       const leverage = getField(record, 'Leverage') || '';
 
-      // Only process filled orders
-      if (status !== 'filled') {
+      // Only require Filled status when the CSV actually includes a Status column.
+      if (fileHasStatusColumn && status !== 'filled') {
         console.log(`Skipping non-filled order: ${statusRaw}`);
         if (diagnostics) {
           diagnostics.skippedRows++;
@@ -5254,14 +5323,10 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
         currentTrade.fees = 0;
 
         // Calculate proper entry and exit times from all executions
-        const executionTimes = currentTrade.executions
-          .filter(e => e.datetime)
-          .map(e => new Date(e.datetime))
-          .filter(d => !isNaN(d.getTime()));
-        const sortedTimes = executionTimes.sort((a, b) => a - b);
-        if (sortedTimes.length > 0) {
-          currentTrade.entryTime = sortedTimes[0].toISOString();
-          currentTrade.exitTime = sortedTimes[sortedTimes.length - 1].toISOString();
+        const { entryTime, exitTime } = getExecutionTimeBounds(currentTrade.executions);
+        if (entryTime && exitTime) {
+          currentTrade.entryTime = entryTime;
+          currentTrade.exitTime = exitTime;
         }
 
         currentTrade.executionData = currentTrade.executions;
@@ -5695,9 +5760,21 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         console.log(`[IBKR] Contract ID (Conid): ${conid} for symbol ${symbol}`);
       }
 
+      const orderId = cleanString(
+        record['Order ID'] ||
+        record.OrderID ||
+        record.OrderId ||
+        record.orderId ||
+        record['OrderId'] ||
+        record['Trade ID'] ||
+        record.TradeID ||
+        ''
+      );
+
       transactions.push({
         symbol,
         conid, // Contract ID for reliable options grouping
+        orderId,
         date: tradeDate,
         datetime: entryTime,
         action: action,
@@ -6018,7 +6095,8 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
               price: transaction.price,
               datetime: transaction.datetime,
               fees: transaction.fees || 0,
-              conid: transaction.conid
+              conid: transaction.conid,
+              orderId: transaction.orderId || null
             }],
             executionData: [{
               action: transaction.action,
@@ -6026,7 +6104,8 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
               price: transaction.price,
               datetime: transaction.datetime,
               fees: transaction.fees || 0,
-              conid: transaction.conid
+              conid: transaction.conid,
+              orderId: transaction.orderId || null
             }],
             notes: `Close-only trade: ${originalSide} position closed via ${transactionCode}. Opening transaction not in import.`,
             isCloseOnly: true
@@ -6101,12 +6180,18 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
           price: transaction.price,
           datetime: transaction.datetime,
           fees: transaction.fees,
-          conid: transaction.conid // Include Conid for duplicate detection
+          conid: transaction.conid, // Include Conid for duplicate detection
+          orderId: transaction.orderId || null
         };
 
         // First, check if this execution exists in ANY existing trade (complete or open)
-        // Use positionLookupKey for options to match the composite key format in existingExecutions
-        const existsGlobally = isExecutionDuplicate(newExecution, positionLookupKey, context);
+        // Try multiple candidate keys: conid, composite key, and plain symbol
+        // This handles cases where IBKR returns conid but DB trade was imported via CSV under composite key
+        const candidateKeys = [];
+        if (transaction.conid) candidateKeys.push(`conid_${transaction.conid}`);
+        if (positionLookupKey && !candidateKeys.includes(positionLookupKey)) candidateKeys.push(positionLookupKey);
+        if (symbol && !candidateKeys.includes(symbol)) candidateKeys.push(symbol);
+        const existsGlobally = isExecutionDuplicateMultiKey(newExecution, candidateKeys, context);
 
         // Then check if it exists in the current trade being built
         // For fresh imports, we trust each CSV row is a unique execution
@@ -6114,7 +6199,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         const executionExists = existsGlobally || currentTrade.executions.some(exec => {
           // If both have order IDs, use that for comparison (most reliable)
           if (exec.orderId && newExecution.orderId) {
-            return exec.orderId === newExecution.orderId;
+            return String(exec.orderId) === String(newExecution.orderId);
           }
           // Without unique identifiers, don't deduplicate within the current import
           // This allows multiple identical executions from the same CSV (legitimate fills)
@@ -6242,14 +6327,10 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         currentTrade.fees = 0;
 
         // Calculate proper entry and exit times from all executions
-        const executionTimes = currentTrade.executions
-          .filter(e => e.datetime)
-          .map(e => new Date(e.datetime))
-          .filter(d => !isNaN(d.getTime()));
-        const sortedTimes = executionTimes.sort((a, b) => a - b);
-        if (sortedTimes.length > 0) {
-          currentTrade.entryTime = sortedTimes[0].toISOString();
-          currentTrade.exitTime = sortedTimes[sortedTimes.length - 1].toISOString();
+        const { entryTime, exitTime } = getExecutionTimeBounds(currentTrade.executions);
+        if (entryTime && exitTime) {
+          currentTrade.entryTime = entryTime;
+          currentTrade.exitTime = exitTime;
         }
 
         currentTrade.executionData = currentTrade.executions;
@@ -6727,14 +6808,10 @@ async function parseWebullTransactions(records, existingPositions = {}, context 
         currentTrade.fees = 0;
 
         // Calculate proper entry and exit times from all executions
-        const executionTimes = currentTrade.executions
-          .filter(e => e.datetime)
-          .map(e => new Date(e.datetime))
-          .filter(d => !isNaN(d.getTime()));
-        const sortedTimes = executionTimes.sort((a, b) => a - b);
-        if (sortedTimes.length > 0) {
-          currentTrade.entryTime = sortedTimes[0].toISOString();
-          currentTrade.exitTime = sortedTimes[sortedTimes.length - 1].toISOString();
+        const { entryTime, exitTime } = getExecutionTimeBounds(currentTrade.executions);
+        if (entryTime && exitTime) {
+          currentTrade.entryTime = entryTime;
+          currentTrade.exitTime = exitTime;
         }
 
         currentTrade.executionData = currentTrade.executions;
@@ -7136,14 +7213,10 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
         currentTrade.fees = 0;
 
         // Set proper entry and exit times
-        const executionTimes = currentTrade.executions
-          .filter(e => e.datetime)
-          .map(e => new Date(e.datetime))
-          .filter(d => !isNaN(d.getTime()));
-        const sortedTimes = executionTimes.sort((a, b) => a - b);
-        if (sortedTimes.length > 0) {
-          currentTrade.entryTime = sortedTimes[0].toISOString();
-          currentTrade.exitTime = sortedTimes[sortedTimes.length - 1].toISOString();
+        const { entryTime, exitTime } = getExecutionTimeBounds(currentTrade.executions);
+        if (entryTime && exitTime) {
+          currentTrade.entryTime = entryTime;
+          currentTrade.exitTime = exitTime;
         }
 
         // Mark as update if this was an existing position
@@ -7693,14 +7766,10 @@ async function parseTradovateTransactions(records, existingPositions = {}, conte
         currentTrade.fees = 0;
 
         // Calculate proper entry and exit times
-        const executionTimes = currentTrade.executions
-          .filter(e => e.datetime)
-          .map(e => new Date(e.datetime))
-          .filter(d => !isNaN(d.getTime()));
-        const sortedTimes = executionTimes.sort((a, b) => a - b);
-        if (sortedTimes.length > 0) {
-          currentTrade.entryTime = sortedTimes[0].toISOString();
-          currentTrade.exitTime = sortedTimes[sortedTimes.length - 1].toISOString();
+        const { entryTime, exitTime } = getExecutionTimeBounds(currentTrade.executions);
+        if (entryTime && exitTime) {
+          currentTrade.entryTime = entryTime;
+          currentTrade.exitTime = exitTime;
         }
 
         currentTrade.executionData = currentTrade.executions;
@@ -7820,7 +7889,15 @@ async function parseQuestradeTransactions(records, existingPositions = {}, conte
       if (ampm.toUpperCase() === 'AM' && hour === 12) hour = 0;
     }
 
-    return new Date(parseInt(year), month, parseInt(day), hour, parseInt(minutes), parseInt(seconds));
+    // Return naive datetime string (no timezone) so convertTradeDatetimesToUTC
+    // will properly convert it using the user's timezone, not Docker's TZ env var
+    const y = parseInt(year);
+    const d = String(parseInt(day)).padStart(2, '0');
+    const mo = String(month + 1).padStart(2, '0');
+    const h = String(hour).padStart(2, '0');
+    const mi = String(parseInt(minutes)).padStart(2, '0');
+    const s = String(parseInt(seconds)).padStart(2, '0');
+    return `${y}-${mo}-${d}T${h}:${mi}:${s}`;
   }
 
   // Helper to parse Questrade options symbol format: SLV20Feb26C55.00
@@ -7903,12 +7980,9 @@ async function parseQuestradeTransactions(records, existingPositions = {}, conte
         continue;
       }
 
-      // Validate date is reasonable
-      const now = new Date();
-      const maxFutureDate = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-      const minPastDate = new Date('2000-01-01');
-
-      if (execDateTime > maxFutureDate || execDateTime < minPastDate) {
+      // Validate date is reasonable (compare as strings - naive dates are YYYY-MM-DD format)
+      const execYear = parseInt(execDateTime.substring(0, 4));
+      if (execYear < 2000 || execYear > new Date().getFullYear() + 1) {
         console.log(`Skipping Questrade record with invalid date range: ${execTime}`);
         continue;
       }
@@ -7951,7 +8025,7 @@ async function parseQuestradeTransactions(records, existingPositions = {}, conte
       transactions.push({
         symbol: groupingSymbol,
         fullSymbol: symbol, // Keep original for options
-        date: execDateTime.toISOString().split('T')[0],
+        date: execDateTime.split('T')[0],
         datetime: execDateTime,
         action: tradeAction,
         quantity: fillQty,

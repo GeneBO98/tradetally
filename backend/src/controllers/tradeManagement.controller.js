@@ -53,6 +53,7 @@ function calculateRMultiples(trade) {
 
   const entryPrice = parseFloat(entry_price);
   const exitPrice = parseFloat(exit_price);
+  const normalizedTargets = TargetHitAnalysisService.getNormalizedTakeProfitTargets(trade);
   
   // Validate that stop_loss is a valid number
   if (isNaN(parseFloat(stop_loss)) || stop_loss === null || stop_loss === undefined) {
@@ -87,12 +88,13 @@ function calculateRMultiples(trade) {
   logger.debug('[R-CALC] Processing take profit targets:', {
     hasTargetsArray: !!(targets && Array.isArray(targets)),
     targetsCount: targets && Array.isArray(targets) ? targets.length : 0,
+    normalizedTargetsCount: normalizedTargets.length,
     hasSingleTakeProfit: !!take_profit
   });
 
-  if (targets && Array.isArray(targets) && targets.length > 0) {
-    const firstTarget = targets[0];
-    logger.debug('[R-CALC] First target from array:', JSON.stringify(firstTarget));
+  if (normalizedTargets.length > 0) {
+    const firstTarget = normalizedTargets[0];
+    logger.debug('[R-CALC] First normalized target:', JSON.stringify(firstTarget));
     if (firstTarget && firstTarget.price) {
       takeProfit = parseFloat(firstTarget.price);
       logger.debug('[R-CALC] Using first target price as takeProfit:', takeProfit);
@@ -110,24 +112,17 @@ function calculateRMultiples(trade) {
   // Also track direct target P&L calculation (sum of net profits at each TP level)
   let weightedTargetR = null;
   let directTargetPLAmount = null; // Direct calculation: sum of (profit - commission) at each TP
-  const hasTargetsArray = targets && Array.isArray(targets) && targets.length > 0;
-  const hasPrimaryTp = !!take_profit;
-
-  // Calculate weighted average if we have at least one target in array (matches frontend logic)
-  // We'll include TP1 if it exists, and only return weighted average if we have at least 2 targets total
-  if (hasTargetsArray) {
-    logger.debug('[R-CALC] Calculating weighted average R for multiple targets (including TP1 from take_profit field)');
+  // Calculate weighted average from normalized targets so TP1 is not double-counted.
+  if (normalizedTargets.length > 1) {
+    logger.debug('[R-CALC] Calculating weighted average R for normalized targets');
     const isLong = side === 'long';
     const riskCalc = isLong ? entryPrice - stopLoss : stopLoss - entryPrice;
     logger.debug('[R-CALC] Risk calculation:', { isLong, risk: riskCalc });
 
     if (riskCalc > 0) {
-      let totalShares = 0;
+      const totalShares = normalizedTargets.reduce((sum, target) => sum + target.shares, 0);
       let weightedSum = 0;
       let directPLSum = 0; // Sum of gross profits at each TP level
-
-      // Calculate total shares from targets array to determine remaining shares for TP1
-      const specifiedShares = targets.reduce((sum, t) => sum + (parseFloat(t.shares || t.quantity) || 0), 0);
       const totalQuantity = parseFloat(quantity) || 1;
 
       // Determine multiplier early for direct P&L calculation
@@ -139,59 +134,22 @@ function calculateRMultiples(trade) {
         calcMultiplier = contract_size ? parseFloat(contract_size) : 100;
       }
 
-      // Add TP1 from take_profit field if it exists
-      if (hasPrimaryTp) {
-        const tp1Price = parseFloat(take_profit);
-        const tp1R = isLong ? (tp1Price - entryPrice) / riskCalc : (entryPrice - tp1Price) / riskCalc;
+      normalizedTargets.forEach((target, index) => {
+        const tpR = isLong ? (target.price - entryPrice) / riskCalc : (entryPrice - target.price) / riskCalc;
+        weightedSum += tpR * target.shares;
 
-        // Calculate shares for TP1: remaining shares after accounting for targets array
-        const tp1Shares = specifiedShares > 0
-          ? Math.max(0, totalQuantity - specifiedShares)
-          : (hasTargetsArray ? totalQuantity / (targets.length + 1) : totalQuantity);
-
-        if (tp1Shares > 0) {
-          weightedSum += tp1R * tp1Shares;
-          totalShares += tp1Shares;
-          // Direct P&L: profit per share × shares × multiplier
-          const tp1ProfitPerShare = isLong ? (tp1Price - entryPrice) : (entryPrice - tp1Price);
-          directPLSum += tp1ProfitPerShare * tp1Shares * calcMultiplier;
-          logger.debug('[R-CALC] TP1 (from take_profit field) contribution:', { tp1Price, tp1R: tp1R.toFixed(2), shares: tp1Shares, directPL: (tp1ProfitPerShare * tp1Shares * calcMultiplier).toFixed(2) });
-        }
-      }
-
-      // Process all targets from the array
-      if (hasTargetsArray) {
-        targets.forEach((t, index) => {
-          if (t.price) {
-            const tpPrice = parseFloat(t.price);
-            const tpR = isLong ? (tpPrice - entryPrice) / riskCalc : (entryPrice - tpPrice) / riskCalc;
-
-            let shares;
-            if (t.shares || t.quantity) {
-              // Target has specified shares
-              shares = parseFloat(t.shares || t.quantity);
-            } else if (specifiedShares === 0) {
-              // No targets have shares specified - distribute equally (including TP1)
-              shares = totalQuantity / (hasPrimaryTp ? targets.length + 1 : targets.length);
-            } else {
-              // Default to 1 share
-              shares = 1;
-            }
-
-            weightedSum += tpR * shares;
-            totalShares += shares;
-            // Direct P&L: profit per share × shares × multiplier
-            const tpProfitPerShare = isLong ? (tpPrice - entryPrice) : (entryPrice - tpPrice);
-            directPLSum += tpProfitPerShare * shares * calcMultiplier;
-            logger.debug(`[R-CALC] Target ${index + 1} (TP${index + 2}) contribution:`, { tpPrice, tpR: tpR.toFixed(2), shares, directPL: (tpProfitPerShare * shares * calcMultiplier).toFixed(2) });
-          }
+        const tpProfitPerShare = isLong ? (target.price - entryPrice) : (entryPrice - target.price);
+        directPLSum += tpProfitPerShare * target.shares * calcMultiplier;
+        logger.debug(`[R-CALC] Normalized target ${index + 1} contribution:`, {
+          tpPrice: target.price,
+          tpR: tpR.toFixed(2),
+          shares: target.shares,
+          directPL: (tpProfitPerShare * target.shares * calcMultiplier).toFixed(2),
+          status: target.status
         });
-      }
+      });
 
-      // Only return weighted average if we have at least 2 targets total (matches frontend: allTargets.length > 1)
-      // Count: TP1 (if exists) + targets in array
-      const totalTargetCount = (hasPrimaryTp ? 1 : 0) + (hasTargetsArray ? targets.length : 0);
-      if (totalShares > 0 && totalTargetCount > 1) {
+      if (totalShares > 0) {
         weightedTargetR = weightedSum / totalShares;
 
         // Calculate commission to subtract from direct P&L
@@ -209,13 +167,11 @@ function calculateRMultiples(trade) {
           weightedSum: weightedSum.toFixed(2),
           totalShares,
           weightedTargetR: weightedTargetR.toFixed(2),
-          totalTargetCount,
+          totalTargetCount: normalizedTargets.length,
           directPLSum: directPLSum.toFixed(2),
           targetExitCommission: targetExitCommission.toFixed(2),
           directTargetPLAmount: directTargetPLAmount.toFixed(2)
         });
-      } else if (totalTargetCount <= 1) {
-        logger.debug('[R-CALC] Only one target total, skipping weighted average (use single target_r instead)');
       }
     } else {
       logger.debug('[R-CALC] Risk is not positive, skipping weighted calculation');
@@ -506,11 +462,17 @@ function calculateRMultiples(trade) {
   logger.debug('[R-CALC] manual_target_hit_first:', manual_target_hit_first);
 
   let managementR = null;
+  let plannedR = null;
+  let plannedPLAmount = null;
 
   if (manual_target_hit_first) {
     // Use TargetHitAnalysisService for proper partial exit handling
     managementR = TargetHitAnalysisService.calculateManagementR(trade);
     logger.debug('[R-CALC] Management R from TargetHitAnalysisService:', managementR);
+    if (managementR !== null) {
+      plannedR = actualR - managementR;
+      plannedPLAmount = plannedR * riskAmount;
+    }
   } else {
     logger.debug('[R-CALC] No target hit selection - cannot calculate management R');
   }
@@ -523,6 +485,8 @@ function calculateRMultiples(trade) {
     weighted_target_r: weightedTargetR !== null ? Math.round(weightedTargetR * 100) / 100 : null,
     effective_r_lost: effectiveRLost !== undefined ? Math.round(effectiveRLost * 100) / 100 : null,
     management_r: managementR !== null ? Math.round(managementR * 100) / 100 : null,
+    planned_r: plannedR !== null ? Math.round(plannedR * 100) / 100 : null,
+    planned_pl_amount: plannedPLAmount !== null ? Math.round(plannedPLAmount * 100) / 100 : null,
     risk_amount: Math.round(riskAmount * 100) / 100,
     multiplier: multiplier,
     instrument_type: instrumentType
@@ -540,6 +504,8 @@ function calculateRMultiples(trade) {
 
     // Management R = Actual R - Target R (simplified formula)
     management_r: managementR !== null ? Math.round(managementR * 100) / 100 : null,
+    planned_r: plannedR !== null ? Math.round(plannedR * 100) / 100 : null,
+    planned_pl_amount: plannedPLAmount !== null ? Math.round(plannedPLAmount * 100) / 100 : null,
 
     // Dollar amounts
     risk_per_share: Math.round(risk * 100) / 100,
@@ -1406,13 +1372,10 @@ const tradeManagementController = {
 
         cumulativeActualR += actualR;
 
-        // Target R: same logic as before — SL hit first = -1R, TP hit first = weighted/target R
-        const effectiveTargetR = analysis.weighted_target_r ?? analysis.target_r;
+        // Target R follows the reconstructed planned path when target-hit data exists.
+        const effectiveTargetR = analysis.planned_r ?? analysis.weighted_target_r ?? analysis.target_r;
         let tradeTargetR = null;
-        if (trade.manual_target_hit_first === 'stop_loss') {
-          tradeTargetR = -1;
-          tradesWithTarget++;
-        } else if (trade.manual_target_hit_first === 'take_profit' && effectiveTargetR != null) {
+        if (trade.manual_target_hit_first && effectiveTargetR != null) {
           tradeTargetR = effectiveTargetR;
           tradesWithTarget++;
         }
@@ -1567,13 +1530,14 @@ const tradeManagementController = {
     try {
       const userId = req.user.id;
       const { tradeId } = req.params;
-      const { manual_target_hit_first } = req.body;
+      const { manual_target_hit_first, target_statuses } = req.body;
 
       logger.debug('[MANUAL-TARGET] ========================================');
       logger.debug('[MANUAL-TARGET] setManualTargetHitFirst called:', {
         userId,
         tradeId,
         manual_target_hit_first,
+        target_statuses: target_statuses ? JSON.stringify(target_statuses) : null,
         bodyKeys: Object.keys(req.body || {})
       });
 
@@ -1613,22 +1577,37 @@ const tradeManagementController = {
         logger.warn(`[TRADE-MANAGEMENT] Setting manual_target_hit_first without stop_loss for trade ${tradeId}`);
       }
 
+      // Apply target_statuses to take_profit_targets if provided
+      let updatedTargets = trade.take_profit_targets;
+      if (Array.isArray(target_statuses) && Array.isArray(trade.take_profit_targets)) {
+        updatedTargets = trade.take_profit_targets.map((t, idx) => {
+          const statusEntry = target_statuses.find(s => s.index === idx);
+          if (statusEntry) {
+            return { ...t, status: statusEntry.status };
+          }
+          return t;
+        });
+        logger.debug('[MANUAL-TARGET] Updated target statuses:', JSON.stringify(updatedTargets));
+      }
+
       // Recalculate management_r with the new manual_target_hit_first value
       let newManagementR = null;
+      let rValues = null;
       if (trade.stop_loss && trade.exit_price) {
         // Create a trade object with the new manual_target_hit_first for recalculation
         const tradeForCalc = {
           ...trade,
-          manual_target_hit_first: manual_target_hit_first
+          manual_target_hit_first: manual_target_hit_first,
+          take_profit_targets: updatedTargets
         };
-        const rValues = calculateRMultiples(tradeForCalc);
+        rValues = calculateRMultiples(tradeForCalc);
         if (rValues && !rValues.error) {
           newManagementR = rValues.management_r;
           logger.debug('[MANUAL-TARGET] Recalculated management_r:', newManagementR);
         }
       }
 
-      // Update the trade with both manual_target_hit_first and recalculated management_r
+      // Update the trade with manual_target_hit_first, target statuses, and recalculated management_r
       let updateQuery;
       let updateValues;
 
@@ -1638,21 +1617,27 @@ const tradeManagementController = {
         logger.debug('[MANUAL-TARGET] Setting manual value, clearing automated analysis, and updating management_r');
         updateQuery = `
           UPDATE trades
-          SET manual_target_hit_first = $1, target_hit_analysis = NULL, management_r = $2, updated_at = NOW()
-          WHERE id = $3 AND user_id = $4
-          RETURNING id, manual_target_hit_first, target_hit_analysis, management_r
+          SET manual_target_hit_first = $1, target_hit_analysis = NULL, management_r = $2,
+              take_profit_targets = $3, updated_at = NOW()
+          WHERE id = $4 AND user_id = $5
+          RETURNING id, manual_target_hit_first, target_hit_analysis, management_r, take_profit_targets
         `;
-        updateValues = [manual_target_hit_first, newManagementR, tradeId, userId];
+        updateValues = [manual_target_hit_first, newManagementR, JSON.stringify(updatedTargets), tradeId, userId];
       } else {
-        // Clearing manual value - recalculate management_r without manual setting
+        // Clearing manual value - also reset target statuses to pending
         logger.debug('[MANUAL-TARGET] Clearing manual value and recalculating management_r');
+        let clearedTargets = updatedTargets;
+        if (Array.isArray(clearedTargets)) {
+          clearedTargets = clearedTargets.map(t => ({ ...t, status: 'pending' }));
+        }
         updateQuery = `
           UPDATE trades
-          SET manual_target_hit_first = NULL, management_r = $1, updated_at = NOW()
-          WHERE id = $2 AND user_id = $3
-          RETURNING id, manual_target_hit_first, target_hit_analysis, management_r
+          SET manual_target_hit_first = NULL, management_r = $1,
+              take_profit_targets = $2, updated_at = NOW()
+          WHERE id = $3 AND user_id = $4
+          RETURNING id, manual_target_hit_first, target_hit_analysis, management_r, take_profit_targets
         `;
-        updateValues = [newManagementR, tradeId, userId];
+        updateValues = [newManagementR, JSON.stringify(clearedTargets), tradeId, userId];
       }
 
       logger.debug('[MANUAL-TARGET] Executing update query...');
@@ -1673,7 +1658,9 @@ const tradeManagementController = {
         trade_id: tradeId,
         manual_target_hit_first: updatedTrade.manual_target_hit_first,
         target_hit_analysis: updatedTrade.target_hit_analysis,
-        management_r: updatedTrade.management_r
+        management_r: updatedTrade.management_r,
+        take_profit_targets: updatedTrade.take_profit_targets,
+        analysis: rValues && !rValues.error ? rValues : null
       };
       logger.debug('[MANUAL-TARGET] Sending response:', JSON.stringify(response));
 

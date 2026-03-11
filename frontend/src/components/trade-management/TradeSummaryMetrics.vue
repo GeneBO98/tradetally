@@ -145,6 +145,9 @@
               <span v-if="target.price && calculateTargetR(target.price)" class="text-xs text-primary-600 dark:text-primary-400 font-medium">
                 ({{ calculateTargetR(target.price) }}R)
               </span>
+              <span v-if="target.status === 'hit'" :class="`${getTargetStatusClass('hit')} ml-2`">
+                Hit
+              </span>
               <button
                 @click="removeTakeProfitTarget(index)"
                 class="p-0.5 text-gray-400 hover:text-red-600 dark:hover:text-red-400 ml-auto"
@@ -434,7 +437,8 @@ function initializeTakeProfitTargets() {
     // Map to our editable format
     allTargets = targets.map(t => ({
       price: t.price ? parseFloat(t.price) : null,
-      shares: t.shares || t.quantity || null
+      shares: t.shares || t.quantity || null,
+      status: t.status || 'pending'
     }))
 
     // Check if take_profit is different from the first target (edge case from edit page)
@@ -448,7 +452,8 @@ function initializeTakeProfitTargets() {
         console.log('[TP TARGETS] take_profit not in array, prepending as TP1:', takeProfitPrice)
         allTargets.unshift({
           price: takeProfitPrice,
-          shares: null
+          shares: null,
+          status: 'pending'
         })
       }
     }
@@ -457,7 +462,8 @@ function initializeTakeProfitTargets() {
     console.log('[TP TARGETS] No targets array, using take_profit as TP1')
     allTargets.push({
       price: parseFloat(singleTakeProfit),
-      shares: null
+      shares: null,
+      status: 'pending'
     })
   }
 
@@ -494,14 +500,16 @@ function addTakeProfitTarget() {
     console.log('[TP TARGETS] Migrating single take_profit to array as TP1')
     editableTakeProfitTargets.value.push({
       price: parseFloat(props.trade.take_profit),
-      shares: null // Will use remaining shares calculation
+      shares: null, // Will use remaining shares calculation
+      status: 'pending'
     })
   }
 
   // Now add the new empty target
   editableTakeProfitTargets.value.push({
     price: null,
-    shares: null
+    shares: null,
+    status: 'pending'
   })
   console.log('[TP TARGETS] Added new target, total:', editableTakeProfitTargets.value.length)
 }
@@ -556,7 +564,8 @@ async function saveTakeProfitTargets() {
       })
       .map(t => ({
         price: parseFloat(t.price),
-        shares: t.shares ? parseInt(t.shares) : null
+        shares: t.shares ? parseInt(t.shares) : null,
+        status: t.status || 'pending'
       }))
 
     console.log('[TP TARGETS] Valid targets to save:', validTargets)
@@ -584,7 +593,8 @@ async function saveTakeProfitTargets() {
     const serverTargets = response.data.trade?.take_profit_targets || []
     editableTakeProfitTargets.value = serverTargets.map(t => ({
       price: t.price ? parseFloat(t.price) : null,
-      shares: t.shares || t.quantity || null
+      shares: t.shares || t.quantity || null,
+      status: t.status || 'pending'
     }))
     console.log('[TP TARGETS] Updated local state from server:', editableTakeProfitTargets.value)
 
@@ -722,12 +732,8 @@ const weightedAverageR = computed(() => {
 })
 
 const riskRewardPlanned = computed(() => {
-  // Use weighted average if multiple targets exist, otherwise use analysis.target_r
-  const avgR = weightedAverageR.value
-  if (avgR !== null) {
-    return `1:${avgR.toFixed(2)}`
-  }
-  const targetR = props.analysis.target_r
+  // Use backend-calculated values to match the Target R card exactly
+  const targetR = props.analysis.weighted_target_r ?? props.analysis.target_r
   if (targetR === null || targetR === undefined) return null
   return `1:${targetR.toFixed(2)}`
 })
@@ -840,6 +846,14 @@ async function saveLevels(updates) {
 // Handle manual target hit update from TargetHitFirstIndicator
 function handleTargetHitUpdated(data) {
   console.log('[TRADE-MGMT] Target hit updated:', data)
+  // Update local target statuses to reflect changes without full re-render
+  if (data.take_profit_targets) {
+    editableTakeProfitTargets.value = data.take_profit_targets.map(t => ({
+      price: t.price ? parseFloat(t.price) : null,
+      shares: t.shares || t.quantity || null,
+      status: t.status || 'pending'
+    }))
+  }
   emit('target-hit-updated', data)
 }
 
