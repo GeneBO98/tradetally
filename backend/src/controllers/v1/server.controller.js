@@ -230,19 +230,28 @@ const serverController = {
       const origin = `${req.protocol}://${req.get('host')}`;
       const instanceUrl = process.env.INSTANCE_URL || flat.instance_url || origin;
 
+      const isCloud = req.get('host')?.includes('tradetally.io') || false;
+      const features = getPublicFeatures();
+      const instanceName = flat.instance_name || 'TradeTally';
+
       res.json({
-        name: flat.instance_name || 'TradeTally',
+        name: instanceName,
+        // Flat fields for iOS app compatibility
+        instanceName: instanceName,
+        version: 'v1',
+        isCloud: isCloud,
+        supportedFeatures: Object.keys(features).filter(k => features[k]),
         api: {
           version: 'v1',
           base_url: '/api/v1',
           openapi_url: `${instanceUrl}/.well-known/openapi.json`,
           documentation_url: `${instanceUrl}/.well-known/api-docs.json`
         },
-        features: getPublicFeatures(),
+        features: features,
         server: {
-          name: flat.instance_name || 'TradeTally',
+          name: instanceName,
           url: instanceUrl,
-          isCloud: req.get('host')?.includes('tradetally.io') || false,
+          isCloud: isCloud,
           discovery_version: '2.0'
         },
         discovery: {
