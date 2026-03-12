@@ -23,9 +23,7 @@ services:
 
   # Application (Frontend + Backend) - Built from local Dockerfile
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: tradetally-app:dev
     container_name: tradetally-app-dev
     depends_on:
       postgres:
