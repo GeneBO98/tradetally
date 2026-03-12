@@ -88,14 +88,12 @@ docker run -d -p 80:80 potentialmidas/tradetally:latest
 See the [Docker Deployment Guide](https://docs.tradetally.io/deployment/docker/) for production setup.
 
 ### Development Startup
+
 - Create, by copy-paste in directory frontend,backend and root
   - .env.example to .env
-    - there are three of them
-    - project root
-    - frontend
-    - backend
-  - Configure the new created .env files
-    - the .env file is used in docker-compose by default, see documentation "env_file"
+    - there are three of them but you need only the project root .env
+  - Configure the new created .env file
+    - the .env file is used in docker-compose by default, see docker documentation "env_file"
 - Run this Steps
   - `make init`
     - pre-speed up startup, after that it is rarely needed. example, build images after changes, you can run the specific command -> `make build_service_images` or `make build_tradetally_image`
