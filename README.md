@@ -87,9 +87,9 @@ docker run -d -p 80:80 potentialmidas/tradetally:latest
 
 See the [Docker Deployment Guide](https://docs.tradetally.io/deployment/docker/) for production setup.
 
-### Development Startup
+### Docker Development Startup
 
-- Create, by copy-paste in directory frontend,backend and root
+- Create, by copy-paste
   - .env.example to .env
     - there are three of them but you need only the project root .env
   - Configure the new created .env file
