@@ -230,6 +230,11 @@ const handleRateLimitExceeded = (event) => {
 }
 
 onMounted(async () => {
+  // Initialize dark mode from localStorage (needed for auth pages where NavBar isn't rendered)
+  if (localStorage.getItem('darkMode') === 'true') {
+    document.documentElement.classList.add('dark')
+  }
+
   // Listen for rate limit events from the API interceptor
   window.addEventListener('rate-limit-exceeded', handleRateLimitExceeded)
 

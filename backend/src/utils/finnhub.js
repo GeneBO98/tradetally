@@ -273,14 +273,18 @@ class FinnhubClient {
     try {
       console.log(`[CRYPTO] Fetching quote from CoinGecko for ${symbolUpper} (${coinGeckoId})`);
 
-      // CoinGecko API - free, no key required
+      // CoinGecko API - works without key, but key improves rate limits
       const url = `https://api.coingecko.com/api/v3/simple/price?ids=${coinGeckoId}&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true&include_last_updated_at=true`;
+
+      const headers = { 'Accept': 'application/json' };
+      const apiKey = process.env.COINGECKO_API_KEY;
+      if (apiKey) {
+        headers['x-cg-demo-api-key'] = apiKey;
+      }
 
       const response = await axios.get(url, {
         timeout: 10000,
-        headers: {
-          'Accept': 'application/json'
-        }
+        headers
       });
 
       const data = response.data[coinGeckoId];
