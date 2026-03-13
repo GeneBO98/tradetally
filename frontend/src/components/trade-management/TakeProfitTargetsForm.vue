@@ -202,6 +202,7 @@ const emit = defineEmits(['update:targets'])
 
 const maxTargets = 5
 const targets = ref([])
+const internalUpdate = ref(false)
 
 const entryPrice = computed(() => parseFloat(props.trade.entry_price))
 const tradeQuantity = computed(() => parseFloat(props.trade.quantity) || 0)
@@ -217,6 +218,11 @@ const quantityDifference = computed(() => {
 
 // Initialize with existing targets or from take_profit
 watch(() => [props.initialTargets, props.trade.take_profit], () => {
+  // Skip if this change was triggered by our own emit
+  if (internalUpdate.value) {
+    internalUpdate.value = false
+    return
+  }
   if (props.initialTargets && props.initialTargets.length > 0) {
     targets.value = props.initialTargets.map((t, i) => ({
       id: t.id || generateId(),
@@ -241,6 +247,7 @@ watch(() => [props.initialTargets, props.trade.take_profit], () => {
 
 // Emit changes
 watch(targets, () => {
+  internalUpdate.value = true
   emit('update:targets', targets.value.map(t => ({
     id: t.id,
     price: parseFloat(t.price) || null,

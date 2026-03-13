@@ -332,7 +332,12 @@ const derivedResultLabel = computed(() => {
     return 'SL Hit First'
   }
   if (derivedResult.value === 'take_profit') {
-    return 'All Targets Hit'
+    const hitTps = tpStatuses.value.filter(s => s === 'hit').length
+    const totalTps = displayTargets.value.length
+    if (hitTps >= totalTps) {
+      return 'All Targets Hit'
+    }
+    return `${hitTps} of ${totalTps} Target${totalTps > 1 ? 's' : ''} Hit`
   }
   return ''
 })
@@ -369,10 +374,6 @@ function initializeFromTrade() {
     tpStatuses.value = []
   }
 
-  // If manual is take_profit, all TPs should be marked hit
-  if (trade.manual_target_hit_first === 'take_profit') {
-    tpStatuses.value = tpStatuses.value.map(() => 'hit')
-  }
 }
 
 onMounted(() => {
