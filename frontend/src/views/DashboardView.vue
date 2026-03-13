@@ -1034,7 +1034,7 @@
                       <div>
                         <h4 class="text-sm font-medium text-green-600 mb-2">Best Trades</h4>
                         <div class="space-y-1">
-                          <div v-for="trade in analytics.topTrades.best" :key="`best-${trade.symbol}-${trade.trade_date}`" 
+                          <div v-for="trade in analytics.topTrades.best" :key="`best-${trade.symbol}-${trade.trade_date}`"
                                @click="navigateToTradesBySymbolAndDate(trade.symbol, trade.trade_date)"
                                class="flex justify-between items-center text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 rounded p-2 transition-colors">
                             <span class="text-gray-900 dark:text-white">
@@ -1051,7 +1051,7 @@
                         <h4 class="text-sm font-medium text-red-600 mb-2">Worst Trades</h4>
                         <div class="space-y-1">
                           <div v-if="analytics.topTrades.worst && analytics.topTrades.worst.length > 0"
-                               v-for="trade in analytics.topTrades.worst" :key="`worst-${trade.symbol}-${trade.trade_date}`" 
+                               v-for="trade in analytics.topTrades.worst" :key="`worst-${trade.symbol}-${trade.trade_date}`"
                                @click="navigateToTradesBySymbolAndDate(trade.symbol, trade.trade_date)"
                                class="flex justify-between items-center text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 rounded p-2 transition-colors">
                             <span class="text-gray-900 dark:text-white">
@@ -1068,6 +1068,16 @@
                             <MdiIcon :icon="mdiCheckCircle" :size="16" class="mr-1 text-green-500" />
                             No losing trades found
                           </div>
+                        </div>
+                      </div>
+
+                      <!-- Net P&L Difference -->
+                      <div v-if="analytics.topTrades.best?.length && analytics.topTrades.worst?.length" class="border-t border-gray-200 dark:border-gray-600 pt-3">
+                        <div class="flex justify-between items-center px-2">
+                          <span class="text-sm font-semibold text-gray-900 dark:text-white">Net Difference</span>
+                          <span class="text-sm font-semibold" :class="topTradesNetPnl >= 0 ? 'text-green-600' : 'text-red-600'">
+                            {{ topTradesNetPnl >= 0 ? '' : '-' }}${{ formatCurrency(topTradesNetPnl) }}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -1496,6 +1506,12 @@ const computedWinRate = computed(() => {
   const total = wins + losses + be
   if (total === 0) return '0'
   return ((wins / total) * 100).toFixed(1)
+})
+
+const topTradesNetPnl = computed(() => {
+  const bestTotal = (analytics.value?.topTrades?.best || []).reduce((sum, t) => sum + (parseFloat(t.pnl) || 0), 0)
+  const worstTotal = (analytics.value?.topTrades?.worst || []).reduce((sum, t) => sum + (parseFloat(t.pnl) || 0), 0)
+  return bestTotal + worstTotal
 })
 
 function formatCurrency(amount) {
