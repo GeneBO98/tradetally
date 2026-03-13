@@ -902,6 +902,7 @@
 
   <!-- CSV Column Mapping Modal -->
   <CSVColumnMappingModal
+    v-if="showMappingModal"
     :is-open="showMappingModal"
     :csv-headers="csvHeaders"
     :csv-file="currentMappingFile"
@@ -1020,6 +1021,7 @@
 
     <!-- Broker Mismatch Modal -->
     <BrokerMismatchModal
+      v-if="showBrokerMismatchModal"
       :is-open="showBrokerMismatchModal"
       :selected-broker="brokerMismatchData.selectedBroker"
       :detected-broker="brokerMismatchData.detectedBroker"
@@ -1033,6 +1035,7 @@
 
     <!-- Import Results Modal -->
     <ImportResultsModal
+      v-if="showImportResultsModal"
       :is-open="showImportResultsModal"
       :trades-imported="importResultsData.tradesImported"
       :duplicates-skipped="importResultsData.duplicatesSkipped"
@@ -1047,7 +1050,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, computed, nextTick, watch } from 'vue'
+import { ref, defineAsyncComponent, onMounted, onBeforeUnmount, computed, nextTick, watch } from 'vue'
 import { useTradesStore } from '@/stores/trades'
 import { useAuthStore } from '@/stores/auth'
 import { useNotification } from '@/composables/useNotification'
@@ -1058,11 +1061,12 @@ import { ArrowUpTrayIcon, XMarkIcon, ExclamationTriangleIcon, Cog6ToothIcon, Mag
 import api from '@/services/api'
 
 const { formatDateTime: formatDateTimeTz } = useUserTimezone()
-import UnmappedCusipsModal from '@/components/cusip/UnmappedCusipsModal.vue'
-import AllCusipMappingsModal from '@/components/cusip/AllCusipMappingsModal.vue'
-import CSVColumnMappingModal from '@/components/import/CSVColumnMappingModal.vue'
-import BrokerMismatchModal from '@/components/import/BrokerMismatchModal.vue'
-import ImportResultsModal from '@/components/import/ImportResultsModal.vue'
+// Lazy-load modal components - only parsed/executed when first shown
+const UnmappedCusipsModal = defineAsyncComponent(() => import('@/components/cusip/UnmappedCusipsModal.vue'))
+const AllCusipMappingsModal = defineAsyncComponent(() => import('@/components/cusip/AllCusipMappingsModal.vue'))
+const CSVColumnMappingModal = defineAsyncComponent(() => import('@/components/import/CSVColumnMappingModal.vue'))
+const BrokerMismatchModal = defineAsyncComponent(() => import('@/components/import/BrokerMismatchModal.vue'))
+const ImportResultsModal = defineAsyncComponent(() => import('@/components/import/ImportResultsModal.vue'))
 import OnboardingCard from '@/components/onboarding/OnboardingCard.vue'
 import { usePriceAlertNotifications } from '@/composables/usePriceAlertNotifications'
 
@@ -2629,16 +2633,13 @@ onMounted(() => {
   if (savedBroker?.startsWith('custom:')) {
     fetchCustomMappings()
   } else {
-    runWhenIdle(() => {
-      fetchCustomMappings()
-    })
+    runWhenIdle(() => fetchCustomMappings())
   }
 
-  runWhenIdle(() => {
-    fetchImportHistory()
-    fetchUnmappedCusipsCount()
-    fetchTrialInfo()
-  })
+  // Stagger deferred calls so they don't all block the main thread at once
+  runWhenIdle(() => fetchImportHistory())
+  runWhenIdle(() => fetchUnmappedCusipsCount(), 2500)
+  runWhenIdle(() => fetchTrialInfo(), 3500)
 })
 
 onBeforeUnmount(() => {
