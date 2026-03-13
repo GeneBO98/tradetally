@@ -434,10 +434,10 @@
                 </div>
               </div>
 
-              <!-- Individual Trades -->
-              <div class="pt-3 border-t border-gray-200 dark:border-gray-700">
+              <!-- Individual Trades (only show when position has multiple trades) -->
+              <div v-if="position.trades.length > 1" class="pt-3 border-t border-gray-200 dark:border-gray-700">
                 <div class="text-xs text-gray-500 dark:text-gray-400 mb-2">
-                  {{ position.trades.length }} {{ position.trades.length === 1 ? 'trade' : 'trades' }}
+                  {{ position.trades.length }} trades
                 </div>
                 <div class="space-y-2">
                   <div v-for="trade in position.trades" :key="trade.id"
@@ -464,6 +464,15 @@
                     </router-link>
                   </div>
                 </div>
+              </div>
+              <!-- Single trade: just show a View link -->
+              <div v-else class="pt-3 border-t border-gray-200 dark:border-gray-700">
+                <router-link
+                  :to="`/trades/${position.trades[0].id}`"
+                  class="text-sm text-primary-600 hover:text-primary-900 dark:hover:text-primary-400 font-medium"
+                >
+                  View Trade →
+                </router-link>
               </div>
             </div>
 
@@ -643,12 +652,19 @@
                       {{ position.trades.length }} {{ position.trades.length === 1 ? 'trade' : 'trades' }}
                     </td>
                     <td class="px-3 py-2 text-sm text-right">
-                      <span class="text-xs text-gray-400">Position Total</span>
+                      <router-link
+                        v-if="position.trades.length === 1"
+                        :to="`/trades/${position.trades[0].id}`"
+                        class="text-primary-600 hover:text-primary-900 dark:hover:text-primary-400 font-medium text-xs"
+                      >
+                        View
+                      </router-link>
+                      <span v-else class="text-xs text-gray-400">Position Total</span>
                     </td>
                   </tr>
                   
-                  <!-- Individual Trade Rows -->
-                  <tr v-for="trade in position.trades" :key="trade.id" class="hover:bg-gray-50 dark:hover:bg-gray-800">
+                  <!-- Individual Trade Rows (only show when position has multiple trades) -->
+                  <tr v-if="position.trades.length > 1" v-for="trade in position.trades" :key="trade.id" class="hover:bg-gray-50 dark:hover:bg-gray-800">
                     <td class="px-3 py-2 text-sm text-gray-500 dark:text-gray-400 pl-6">
                       <span class="text-xs">└─</span> Trade #{{ trade.id }}
                     </td>
