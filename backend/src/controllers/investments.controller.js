@@ -46,9 +46,13 @@ const analyzeStock = async (req, res) => {
       try {
         // Get detailed crypto data from CoinGecko
         const axios = require('axios');
+        const cgHeaders = { 'Accept': 'application/json' };
+        if (process.env.COINGECKO_API_KEY) {
+          cgHeaders['x-cg-demo-api-key'] = process.env.COINGECKO_API_KEY;
+        }
         const response = await axios.get(
           `https://api.coingecko.com/api/v3/coins/${coinGeckoId}?localization=false&tickers=false&community_data=false&developer_data=false`,
-          { timeout: 10000 }
+          { timeout: 10000, headers: cgHeaders }
         );
 
         const coin = response.data;
@@ -891,9 +895,13 @@ const getChartData = async (req, res) => {
 
         console.log(`[INVESTMENTS] Fetching crypto chart from CoinGecko for ${symbol} (${days} days)`);
 
+        const cgChartHeaders = { 'Accept': 'application/json' };
+        if (process.env.COINGECKO_API_KEY) {
+          cgChartHeaders['x-cg-demo-api-key'] = process.env.COINGECKO_API_KEY;
+        }
         const response = await axios.get(
           `https://api.coingecko.com/api/v3/coins/${coinGeckoId}/market_chart?vs_currency=usd&days=${days}`,
-          { timeout: 15000 }
+          { timeout: 15000, headers: cgChartHeaders }
         );
 
         // Convert CoinGecko format to candle format
