@@ -434,10 +434,10 @@
                 </div>
               </div>
 
-              <!-- Individual Trades -->
-              <div class="pt-3 border-t border-gray-200 dark:border-gray-700">
+              <!-- Individual Trades (only show when position has multiple trades) -->
+              <div v-if="position.trades.length > 1" class="pt-3 border-t border-gray-200 dark:border-gray-700">
                 <div class="text-xs text-gray-500 dark:text-gray-400 mb-2">
-                  {{ position.trades.length }} {{ position.trades.length === 1 ? 'trade' : 'trades' }}
+                  {{ position.trades.length }} trades
                 </div>
                 <div class="space-y-2">
                   <div v-for="trade in position.trades" :key="trade.id"
@@ -464,6 +464,15 @@
                     </router-link>
                   </div>
                 </div>
+              </div>
+              <!-- Single trade: just show a View link -->
+              <div v-else class="pt-3 border-t border-gray-200 dark:border-gray-700">
+                <router-link
+                  :to="`/trades/${position.trades[0].id}`"
+                  class="text-sm text-primary-600 hover:text-primary-900 dark:hover:text-primary-400 font-medium"
+                >
+                  View Trade →
+                </router-link>
               </div>
             </div>
 
@@ -643,12 +652,19 @@
                       {{ position.trades.length }} {{ position.trades.length === 1 ? 'trade' : 'trades' }}
                     </td>
                     <td class="px-3 py-2 text-sm text-right">
-                      <span class="text-xs text-gray-400">Position Total</span>
+                      <router-link
+                        v-if="position.trades.length === 1"
+                        :to="`/trades/${position.trades[0].id}`"
+                        class="text-primary-600 hover:text-primary-900 dark:hover:text-primary-400 font-medium text-xs"
+                      >
+                        View
+                      </router-link>
+                      <span v-else class="text-xs text-gray-400">Position Total</span>
                     </td>
                   </tr>
                   
-                  <!-- Individual Trade Rows -->
-                  <tr v-for="trade in position.trades" :key="trade.id" class="hover:bg-gray-50 dark:hover:bg-gray-800">
+                  <!-- Individual Trade Rows (only show when position has multiple trades) -->
+                  <tr v-if="position.trades.length > 1" v-for="trade in position.trades" :key="trade.id" class="hover:bg-gray-50 dark:hover:bg-gray-800">
                     <td class="px-3 py-2 text-sm text-gray-500 dark:text-gray-400 pl-6">
                       <span class="text-xs">└─</span> Trade #{{ trade.id }}
                     </td>
@@ -1034,7 +1050,7 @@
                       <div>
                         <h4 class="text-sm font-medium text-green-600 mb-2">Best Trades</h4>
                         <div class="space-y-1">
-                          <div v-for="trade in analytics.topTrades.best" :key="`best-${trade.symbol}-${trade.trade_date}`" 
+                          <div v-for="trade in analytics.topTrades.best" :key="`best-${trade.symbol}-${trade.trade_date}`"
                                @click="navigateToTradesBySymbolAndDate(trade.symbol, trade.trade_date)"
                                class="flex justify-between items-center text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 rounded p-2 transition-colors">
                             <span class="text-gray-900 dark:text-white">
@@ -1051,7 +1067,7 @@
                         <h4 class="text-sm font-medium text-red-600 mb-2">Worst Trades</h4>
                         <div class="space-y-1">
                           <div v-if="analytics.topTrades.worst && analytics.topTrades.worst.length > 0"
-                               v-for="trade in analytics.topTrades.worst" :key="`worst-${trade.symbol}-${trade.trade_date}`" 
+                               v-for="trade in analytics.topTrades.worst" :key="`worst-${trade.symbol}-${trade.trade_date}`"
                                @click="navigateToTradesBySymbolAndDate(trade.symbol, trade.trade_date)"
                                class="flex justify-between items-center text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 rounded p-2 transition-colors">
                             <span class="text-gray-900 dark:text-white">
@@ -1068,6 +1084,16 @@
                             <MdiIcon :icon="mdiCheckCircle" :size="16" class="mr-1 text-green-500" />
                             No losing trades found
                           </div>
+                        </div>
+                      </div>
+
+                      <!-- Net P&L Difference -->
+                      <div v-if="analytics.topTrades.best?.length && analytics.topTrades.worst?.length" class="border-t border-gray-200 dark:border-gray-600 pt-3">
+                        <div class="flex justify-between items-center px-2">
+                          <span class="text-sm font-semibold text-gray-900 dark:text-white">Net Difference</span>
+                          <span class="text-sm font-semibold" :class="topTradesNetPnl >= 0 ? 'text-green-600' : 'text-red-600'">
+                            {{ topTradesNetPnl >= 0 ? '' : '-' }}${{ formatCurrency(topTradesNetPnl) }}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -1496,6 +1522,12 @@ const computedWinRate = computed(() => {
   const total = wins + losses + be
   if (total === 0) return '0'
   return ((wins / total) * 100).toFixed(1)
+})
+
+const topTradesNetPnl = computed(() => {
+  const bestTotal = (analytics.value?.topTrades?.best || []).reduce((sum, t) => sum + (parseFloat(t.pnl) || 0), 0)
+  const worstTotal = (analytics.value?.topTrades?.worst || []).reduce((sum, t) => sum + (parseFloat(t.pnl) || 0), 0)
+  return bestTotal + worstTotal
 })
 
 function formatCurrency(amount) {

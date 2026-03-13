@@ -1,13 +1,70 @@
 const TierService = require('./tierService');
 const finnhub = require('../utils/finnhub');
 const alphaVantage = require('../utils/alphaVantage');
+const axios = require('axios');
 
 class ChartService {
+  // Get crypto chart data from CoinGecko for a trade's date range
+  static async getCryptoTradeChartData(symbol, entryDate, exitDate = null) {
+    const symbolUpper = symbol.toUpperCase();
+    const coinGeckoId = finnhub.constructor.CRYPTO_TO_COINGECKO[symbolUpper];
+
+    if (!coinGeckoId) {
+      throw new Error(`Unknown crypto symbol: ${symbolUpper}. CoinGecko mapping not found.`);
+    }
+
+    const entryTime = new Date(entryDate);
+    const exitTime = exitDate ? new Date(exitDate) : new Date();
+
+    // Calculate days from entry to exit (minimum 1 day, add padding)
+    const durationMs = exitTime - entryTime;
+    const durationDays = Math.max(1, Math.ceil(durationMs / (24 * 60 * 60 * 1000)));
+    // Add padding: 2 days before entry, 2 days after exit (or up to today)
+    const days = durationDays + 4;
+
+    console.log(`[CRYPTO-CHART] Fetching CoinGecko chart for ${symbolUpper} (${coinGeckoId}), ${days} days`);
+
+    const headers = { 'Accept': 'application/json' };
+    const apiKey = process.env.COINGECKO_API_KEY;
+    if (apiKey) {
+      headers['x-cg-demo-api-key'] = apiKey;
+    }
+
+    const response = await axios.get(
+      `https://api.coingecko.com/api/v3/coins/${coinGeckoId}/market_chart?vs_currency=usd&days=${days}`,
+      { timeout: 15000, headers }
+    );
+
+    const prices = response.data.prices || [];
+    const candles = prices.map(([timestamp, price]) => ({
+      time: Math.floor(timestamp / 1000),
+      open: price,
+      high: price,
+      low: price,
+      close: price
+    }));
+
+    console.log(`[CRYPTO-CHART] Got ${candles.length} data points for ${symbolUpper}`);
+
+    return {
+      type: 'daily',
+      interval: 'daily',
+      candles,
+      source: 'coingecko'
+    };
+  }
+
   // Get chart data for a trade
   // When billing is enabled (tradetally.io): Finnhub only, Pro users only
   // When billing is disabled (self-hosted): Finnhub preferred, Alpha Vantage fallback, all users
   static async getTradeChartData(userId, symbol, entryDate, exitDate = null, hostHeader = null) {
     try {
+      // Crypto symbols always use CoinGecko regardless of tier/billing
+      if (finnhub.isCryptoSymbol(symbol)) {
+        console.log(`[CHART] ${symbol} is crypto, using CoinGecko`);
+        return await ChartService.getCryptoTradeChartData(symbol, entryDate, exitDate);
+      }
+
       // Check user tier and billing status
       const userTier = await TierService.getUserTier(userId, hostHeader);
       const isProUser = userTier === 'pro';
