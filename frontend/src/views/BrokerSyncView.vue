@@ -286,18 +286,35 @@ async function handleSync(connection) {
     successMessage.value = 'Sync started! Check the history below for results.'
     setTimeout(() => { successMessage.value = '' }, 5000)
 
-    // Poll for updates and refresh trades data
-    setTimeout(async () => {
+    // Poll for updates until sync completes
+    const pollInterval = 3000
+    const maxAttempts = 40 // 2 minutes max
+    let attempts = 0
+
+    const poll = async () => {
+      attempts++
       await Promise.all([
         store.fetchConnections(),
         store.fetchSyncLogs()
       ])
-      // Refresh trades data to update P&L and counts after sync
-      await Promise.all([
-        tradesStore.fetchTrades(),
-        tradesStore.fetchAnalytics()
-      ])
-    }, 5000)
+
+      const inProgressStatuses = ['started', 'fetching', 'parsing', 'importing']
+      const hasActiveSyncs = store.syncLogs.some(log =>
+        log.connectionId === connection.id && inProgressStatuses.includes(log.status)
+      )
+
+      if (hasActiveSyncs && attempts < maxAttempts) {
+        setTimeout(poll, pollInterval)
+      } else {
+        // Sync finished - refresh trades data to update P&L and counts
+        await Promise.all([
+          tradesStore.fetchTrades(),
+          tradesStore.fetchAnalytics()
+        ])
+      }
+    }
+
+    setTimeout(poll, pollInterval)
   } catch (error) {
     // Error is handled by store
   }
