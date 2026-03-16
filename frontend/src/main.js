@@ -7,9 +7,24 @@ import { useAuthStore } from './stores/auth'
 import { useAnalytics } from './composables/useAnalytics'
 
 const app = createApp(App)
+const AUTH_BOOTSTRAP_TIMEOUT_MS = 4000
 
 app.use(createPinia())
 app.use(router)
+
+function withTimeout(promise, timeoutMs) {
+  let timeoutId
+
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = window.setTimeout(() => {
+      reject(new Error(`Timed out after ${timeoutMs}ms`))
+    }, timeoutMs)
+  })
+
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    window.clearTimeout(timeoutId)
+  })
+}
 
 async function bootstrap() {
   const authStore = useAuthStore()
@@ -18,8 +33,8 @@ async function bootstrap() {
     : (callback) => setTimeout(callback, 1)
 
   try {
-    // Initialize auth state before mount.
-    await authStore.checkAuth()
+    // Bound auth bootstrap so a slow /api/auth/me cannot trap the app behind the loader.
+    await withTimeout(authStore.checkAuth(), AUTH_BOOTSTRAP_TIMEOUT_MS)
   } catch (error) {
     console.error('Auth bootstrap failed:', error)
   }
