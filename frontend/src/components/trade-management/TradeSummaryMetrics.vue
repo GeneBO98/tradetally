@@ -293,19 +293,19 @@
       </div>
 
       <!-- Management R Summary (use analysis.management_r which is recalculated fresh) -->
-      <div v-if="analysis?.management_r !== null && analysis?.management_r !== undefined" class="border-t border-gray-200 dark:border-gray-700 mt-6 pt-6">
+      <div v-show="analysis?.management_r !== null && analysis?.management_r !== undefined" class="border-t border-gray-200 dark:border-gray-700 mt-6 pt-6">
         <div class="flex items-center justify-between p-4 rounded-lg" :class="getManagementRBgClass">
           <div>
             <div class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Trade Management Impact</div>
             <div class="text-lg font-semibold" :class="getManagementRTextClass">
-              {{ analysis.management_r >= 0 ? '+' : '' }}{{ analysis.management_r }}R
+              {{ analysis?.management_r >= 0 ? '+' : '' }}{{ analysis?.management_r }}R
             </div>
           </div>
           <div class="text-sm text-gray-600 dark:text-gray-400 text-right max-w-xs">
-            <span v-if="analysis.management_r > 0">
+            <span v-if="analysis?.management_r > 0">
               Good management - captured more R than planned
             </span>
-            <span v-else-if="analysis.management_r < 0">
+            <span v-else-if="analysis?.management_r < 0">
               Poor management - missed planned R target
             </span>
             <span v-else>
@@ -522,7 +522,15 @@ function removeTakeProfitTarget(index) {
 }
 
 // Handle blur - save valid targets (empty ones get filtered out anyway)
-function handleTargetBlur() {
+function handleTargetBlur(event) {
+  // Check if focus is moving to another element within the targets container
+  // If so, skip the save - user is still interacting with targets
+  const targetsContainer = event?.target?.closest('.space-y-3')
+  if (targetsContainer && event?.relatedTarget && targetsContainer.contains(event.relatedTarget)) {
+    console.log('[TP TARGETS] Blur - focus staying within targets section, skipping save')
+    return
+  }
+
   // Check if there are any targets with valid prices (not null, not empty string, not NaN)
   const hasValidData = editableTakeProfitTargets.value.some(t => {
     const price = t.price
@@ -602,11 +610,11 @@ async function saveTakeProfitTargets() {
     emit('levels-updated', response.data.trade)
 
     // Keep editing flag true longer to prevent watchers from reinitializing
-    // during the parent's fetch cycle (which can take 500ms+)
+    // during the parent's analysis refresh cycle
     setTimeout(() => {
       isEditingTargets.value = false
       console.log('[TP TARGETS] Editing flag cleared')
-    }, 1000)
+    }, 2000)
   } catch (err) {
     console.error('[TRADE-MGMT] Save targets error:', err)
     error.value = err.response?.data?.error || 'Failed to save targets'
