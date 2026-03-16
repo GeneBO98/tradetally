@@ -358,28 +358,48 @@ async function onLevelsSaved(updatedTrade) {
     updateTradeInList(updatedTrade);
 }
 
+async function refreshAnalysisOnly(tradeId) {
+    try {
+        const response = await api.get(`/trade-management/analysis/${tradeId}`);
+        analysis.value = response.data.analysis;
+        // Keep chart data fresh if present
+        if (response.data.trade?.charts && selectedTrade.value) {
+            selectedTrade.value.charts = response.data.trade.charts;
+        }
+    } catch (err) {
+        console.log('[TRADE-MGMT] Analysis-only refresh error:', err.message);
+    }
+}
+
 async function onLevelsUpdated(updatedTrade) {
-    // Update the selected trade
-    selectedTrade.value = updatedTrade;
-    // Re-fetch analysis with new levels
-    await fetchAnalysis(updatedTrade.id);
+    // Merge specific fields into existing object instead of replacing entirely
+    // This avoids triggering the take_profit_targets watcher in child components
+    if (selectedTrade.value) {
+        selectedTrade.value.stop_loss = updatedTrade.stop_loss;
+        selectedTrade.value.take_profit = updatedTrade.take_profit;
+        selectedTrade.value.take_profit_targets = updatedTrade.take_profit_targets;
+        selectedTrade.value.r_value = updatedTrade.r_value;
+        selectedTrade.value.management_r = updatedTrade.management_r;
+        selectedTrade.value.risk_level_history = updatedTrade.risk_level_history;
+    } else {
+        selectedTrade.value = updatedTrade;
+    }
+    // Refresh analysis without replacing selectedTrade
+    await refreshAnalysisOnly(updatedTrade.id);
     updateTradeInList(updatedTrade);
 }
 
 async function onTargetHitUpdated(data) {
-    // Update trade and analysis in-place to avoid full page re-render
+    // Mutate individual properties to avoid triggering full reactivity cascade
     if (selectedTrade.value) {
-        selectedTrade.value = {
-            ...selectedTrade.value,
-            manual_target_hit_first: data.manual_target_hit_first,
-            management_r: data.management_r
-        };
+        selectedTrade.value.manual_target_hit_first = data.manual_target_hit_first;
+        selectedTrade.value.management_r = data.management_r;
         if (data.take_profit_targets) {
             selectedTrade.value.take_profit_targets = data.take_profit_targets;
         }
     }
     if (data.analysis && analysis.value) {
-        analysis.value = { ...analysis.value, ...data.analysis };
+        Object.assign(analysis.value, data.analysis);
     }
     // Trigger refresh of the R-Performance chart to reflect updated management R values
     rPerfRefreshTrigger.value++;
