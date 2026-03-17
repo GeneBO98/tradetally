@@ -2618,6 +2618,52 @@ const tradeController = {
         positionMap[posKey].totalCost += Math.abs(netPosition) * trade.entry_price * costMultiplier;
       });
 
+      // Merge positions that were split due to incomplete option metadata
+      // When an option trade is missing underlying_symbol/strike/expiration/option_type,
+      // getPositionKey falls back to trade.symbol, creating a separate position from
+      // the same contract that has full metadata (composite key). Merge them here.
+      // Only merge when one position used a fallback key (just the symbol) - never merge
+      // two positions that both have full composite keys (they're genuinely different contracts).
+      const fallbackKeys = new Set();
+      Object.entries(positionMap).forEach(([key, position]) => {
+        // A fallback key is one that equals the trade symbol (no composite option metadata)
+        if (position.instrumentType === 'option' && key === position.symbol) {
+          fallbackKeys.add(key);
+        }
+      });
+
+      if (fallbackKeys.size > 0) {
+        // For each fallback-keyed option position, find a composite-keyed position with same symbol to merge into
+        for (const fbKey of fallbackKeys) {
+          if (!positionMap[fbKey]) continue; // Already merged
+          const fbPosition = positionMap[fbKey];
+          const fbSymbol = fbPosition.symbol;
+
+          // Find composite-keyed positions with same symbol and instrument type
+          const compositeMatch = Object.entries(positionMap).find(([key, pos]) => {
+            return key !== fbKey && pos.symbol === fbSymbol && pos.instrumentType === 'option' && !fallbackKeys.has(key);
+          });
+
+          if (compositeMatch) {
+            const [compositeKey, compositePosition] = compositeMatch;
+            console.log(`[POSITION] Merging fallback position "${fbKey}" into composite position "${compositeKey}" (symbol: ${fbSymbol})`);
+
+            compositePosition.trades.push(...fbPosition.trades);
+            compositePosition.totalQuantity += fbPosition.totalQuantity;
+            compositePosition.totalSharesTraded += fbPosition.totalSharesTraded;
+            compositePosition.totalCost += fbPosition.totalCost;
+
+            // Fill in missing option metadata from fallback position
+            if (!compositePosition.underlying_symbol && fbPosition.underlying_symbol) compositePosition.underlying_symbol = fbPosition.underlying_symbol;
+            if (!compositePosition.strike_price && fbPosition.strike_price) compositePosition.strike_price = fbPosition.strike_price;
+            if (!compositePosition.expiration_date && fbPosition.expiration_date) compositePosition.expiration_date = fbPosition.expiration_date;
+            if (!compositePosition.option_type && fbPosition.option_type) compositePosition.option_type = fbPosition.option_type;
+
+            delete positionMap[fbKey];
+          }
+        }
+      }
+
       // Calculate average prices and determine position side
       const keysToDelete = [];
       Object.entries(positionMap).forEach(([key, position]) => {
