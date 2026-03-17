@@ -355,6 +355,12 @@ const baseNavigation = [
         description: 'Month-by-month performance breakdown and comparison'
       },
       {
+        name: 'Partial Exit Analytics',
+        to: '/metrics/partial-exits',
+        route: 'partial-exit-analytics',
+        description: 'Analyze hit rates and performance per partial exit level'
+      },
+      {
         name: 'Behavioral Analytics',
         to: '/metrics/behavioral',
         route: 'behavioral-analytics',
