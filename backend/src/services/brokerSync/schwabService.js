@@ -282,7 +282,7 @@ class SchwabService {
             params: {
               types: 'TRADE',
               startDate: this.formatDateForApi(startStr),
-              endDate: this.formatDateForApi(endStr)
+              endDate: this.formatDateForApi(endStr, true)
             },
             headers: {
               Authorization: `Bearer ${accessToken}`
@@ -336,7 +336,7 @@ class SchwabService {
             params: {
               types: 'TRADE',
               startDate: this.formatDateForApi(chunk.start),
-              endDate: this.formatDateForApi(chunk.end)
+              endDate: this.formatDateForApi(chunk.end, true)
             },
             headers: {
               Authorization: `Bearer ${accessToken}`
@@ -367,7 +367,7 @@ class SchwabService {
 
     let chunkStart = new Date(start);
 
-    while (chunkStart < end) {
+    while (chunkStart <= end) {
       let chunkEnd = new Date(chunkStart);
       chunkEnd.setDate(chunkEnd.getDate() + maxDays);
 
@@ -392,15 +392,15 @@ class SchwabService {
    * @param {string} dateStr - Date string (YYYY-MM-DD or ISO format)
    * @returns {string} - Formatted date string
    */
-  formatDateForApi(dateStr) {
+  formatDateForApi(dateStr, endOfDay = false) {
     // If already in full ISO format, return as is
     if (dateStr.includes('T') && dateStr.includes('Z')) {
       return dateStr;
     }
 
     // Convert YYYY-MM-DD to full ISO-8601 format
-    // Use start of day for startDate
-    const date = new Date(dateStr + 'T00:00:00.000Z');
+    const time = endOfDay ? 'T23:59:59.000Z' : 'T00:00:00.000Z';
+    const date = new Date(dateStr + time);
     return date.toISOString();
   }
 

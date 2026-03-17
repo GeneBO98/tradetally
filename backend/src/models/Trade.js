@@ -3209,6 +3209,294 @@ class Trade {
     };
   }
 
+  static async getPartialExitAnalytics(userId, filters = {}) {
+    console.log('[PARTIAL-EXIT] Getting partial exit analytics for user:', userId);
+
+    // Build WHERE clause using the same filter pattern as getAnalytics
+    let whereClause = 'WHERE t.user_id = $1 AND t.exit_price IS NOT NULL';
+    const values = [userId];
+    let paramCount = 2;
+
+    // Date filtering
+    if (filters.startDate && filters.endDate) {
+      whereClause += ` AND ((t.trade_date >= $${paramCount} AND t.trade_date <= $${paramCount + 1}) OR (t.exit_time::date >= $${paramCount} AND t.exit_time::date <= $${paramCount + 1}))`;
+      values.push(filters.startDate, filters.endDate);
+      paramCount += 2;
+    } else if (filters.startDate) {
+      whereClause += ` AND (t.trade_date >= $${paramCount} OR t.exit_time::date >= $${paramCount})`;
+      values.push(filters.startDate);
+      paramCount++;
+    } else if (filters.endDate) {
+      whereClause += ` AND (t.trade_date <= $${paramCount} OR t.exit_time::date <= $${paramCount})`;
+      values.push(filters.endDate);
+      paramCount++;
+    }
+
+    if (filters.symbol) {
+      if (filters.symbolExact) {
+        whereClause += ` AND UPPER(t.symbol) = $${paramCount}`;
+      } else {
+        whereClause += ` AND t.symbol ILIKE $${paramCount} || '%'`;
+      }
+      values.push(filters.symbol.toUpperCase());
+      paramCount++;
+    }
+
+    if (filters.broker) {
+      whereClause += ` AND t.broker = $${paramCount}`;
+      values.push(filters.broker);
+      paramCount++;
+    } else if (filters.brokers) {
+      const brokerList = filters.brokers.split(',').map(b => b.trim()).filter(b => b);
+      if (brokerList.length > 0) {
+        whereClause += ` AND t.broker = ANY($${paramCount}::text[])`;
+        values.push(brokerList);
+        paramCount++;
+      }
+    }
+
+    if (filters.side) {
+      whereClause += ` AND t.side = $${paramCount}`;
+      values.push(filters.side);
+      paramCount++;
+    }
+
+    if (filters.strategies && filters.strategies.length > 0) {
+      const placeholders = filters.strategies.map((_, index) => `$${paramCount + index}`).join(',');
+      whereClause += ` AND t.strategy IN (${placeholders})`;
+      filters.strategies.forEach(s => values.push(s));
+      paramCount += filters.strategies.length;
+    } else if (filters.strategy) {
+      whereClause += ` AND t.strategy = $${paramCount}`;
+      values.push(filters.strategy);
+      paramCount++;
+    }
+
+    if (filters.tags && filters.tags.length > 0) {
+      whereClause += ` AND t.tags && $${paramCount}::text[]`;
+      values.push(filters.tags);
+      paramCount++;
+    }
+
+    if (filters.instrumentTypes && filters.instrumentTypes.length > 0) {
+      const placeholders = filters.instrumentTypes.map((_, index) => `$${paramCount + index}`).join(',');
+      whereClause += ` AND t.instrument_type IN (${placeholders})`;
+      filters.instrumentTypes.forEach(it => values.push(it));
+      paramCount += filters.instrumentTypes.length;
+    }
+
+    if (filters.accounts && filters.accounts.length > 0) {
+      if (filters.accounts.includes('__unsorted__')) {
+        whereClause += ` AND (t.account_identifier IS NULL OR t.account_identifier = '')`;
+      } else {
+        const placeholders = filters.accounts.map((_, index) => `$${paramCount + index}`).join(',');
+        whereClause += ` AND t.account_identifier IN (${placeholders})`;
+        filters.accounts.forEach(account => values.push(account));
+        paramCount += filters.accounts.length;
+      }
+    }
+
+    if (filters.qualityGrades && filters.qualityGrades.length > 0) {
+      const placeholders = filters.qualityGrades.map((_, index) => `$${paramCount + index}`).join(',');
+      whereClause += ` AND t.quality_grade IN (${placeholders})`;
+      filters.qualityGrades.forEach(grade => values.push(grade));
+      paramCount += filters.qualityGrades.length;
+    }
+
+    // Fetch trades with their executions - only need specific columns
+    const query = `
+      SELECT t.id, t.side, t.entry_price, t.stop_loss, t.tick_size,
+             t.point_value, t.contract_size, t.instrument_type, t.executions
+      FROM trades t
+      ${whereClause}
+      AND t.executions IS NOT NULL
+      AND jsonb_array_length(t.executions) > 0
+    `;
+
+    console.log('[PARTIAL-EXIT] Query:', query);
+    console.log('[PARTIAL-EXIT] Values:', values);
+
+    const result = await db.query(query, values);
+    const trades = result.rows;
+
+    console.log('[PARTIAL-EXIT] Found', trades.length, 'trades with executions');
+
+    // Process each trade to extract partial exit data
+    const tradePartials = [];
+
+    for (const trade of trades) {
+      let executions = trade.executions;
+      if (typeof executions === 'string') {
+        try { executions = JSON.parse(executions); } catch { continue; }
+      }
+      if (!Array.isArray(executions) || executions.length === 0) continue;
+
+      const side = trade.side;
+      const entryPrice = parseFloat(trade.entry_price);
+      if (isNaN(entryPrice)) continue;
+
+      // Separate exit fills using same logic as recalculateFromFills
+      const exitFills = executions.filter(e =>
+        (side === 'long' && e.action === 'sell') || (side === 'short' && e.action === 'buy')
+      );
+
+      // Must have at least 2 exit fills to be included
+      if (exitFills.length < 2) continue;
+
+      // Sort exit fills chronologically
+      exitFills.sort((a, b) => new Date(a.datetime) - new Date(b.datetime));
+
+      // Determine tick size for classification
+      const tickSize = parseFloat(trade.tick_size) || 0.01;
+
+      // Calculate stop distance in points
+      const stopLoss = parseFloat(trade.stop_loss);
+      const hasStopLoss = !isNaN(stopLoss) && stopLoss > 0;
+      const slDistance = hasStopLoss ? Math.abs(entryPrice - stopLoss) : null;
+
+      // Process each exit fill as a partial
+      const partials = exitFills.map((fill, index) => {
+        const exitPrice = parseFloat(fill.price);
+        // pts from entry
+        const pts = side === 'long' ? (exitPrice - entryPrice) : (entryPrice - exitPrice);
+
+        // Classify
+        let classification;
+        if (pts > tickSize) {
+          classification = 'profitable';
+        } else if (pts < -tickSize) {
+          classification = 'loss';
+        } else {
+          classification = 'be_scratch';
+        }
+
+        // R-value (only if stop_loss is set)
+        const rValue = (slDistance && slDistance > 0) ? (pts / slDistance) : null;
+
+        return {
+          index: index + 1, // P1, P2, P3...
+          pts,
+          classification,
+          rValue,
+          slDistance
+        };
+      });
+
+      tradePartials.push({
+        exitCount: exitFills.length,
+        partials
+      });
+    }
+
+    // Apply minPartials/maxPartials filters (post-query JS filter)
+    let filteredTradePartials = tradePartials;
+    if (filters.minPartials) {
+      const min = parseInt(filters.minPartials);
+      if (!isNaN(min)) {
+        filteredTradePartials = filteredTradePartials.filter(t => t.exitCount >= min);
+      }
+    }
+    if (filters.maxPartials) {
+      const max = parseInt(filters.maxPartials);
+      if (!isNaN(max)) {
+        filteredTradePartials = filteredTradePartials.filter(t => t.exitCount <= max);
+      }
+    }
+
+    const totalTrades = filteredTradePartials.length;
+    if (totalTrades === 0) {
+      return { partials: [], total_trades: 0, max_partials: 0 };
+    }
+
+    // Find max partial index across all trades
+    const maxPartialIndex = Math.max(...filteredTradePartials.map(t => t.exitCount));
+
+    // Aggregate metrics per partial index
+    const partialResults = [];
+
+    for (let pIndex = 1; pIndex <= maxPartialIndex; pIndex++) {
+      // Eligible trades = those with at least pIndex exit fills
+      const eligible = filteredTradePartials.filter(t => t.exitCount >= pIndex);
+      if (eligible.length === 0) continue;
+
+      const partialsAtIndex = eligible.map(t => t.partials[pIndex - 1]);
+
+      // Counts by classification
+      const profitableCount = partialsAtIndex.filter(p => p.classification === 'profitable').length;
+      const beScratchCount = partialsAtIndex.filter(p => p.classification === 'be_scratch').length;
+      const lossCount = partialsAtIndex.filter(p => p.classification === 'loss').length;
+
+      // Absolute hit rate: profitable / total trades (not eligible, for comparability per issue spec)
+      const absoluteHitRate = totalTrades > 0 ? (profitableCount / totalTrades) * 100 : 0;
+
+      // Conditional hit rate (P2 onwards)
+      let conditionalHitRate = null;
+      if (pIndex >= 2) {
+        // Trades where P(n-1) was profitable
+        const prevProfitable = filteredTradePartials.filter(t =>
+          t.exitCount >= pIndex && t.partials[pIndex - 2].classification === 'profitable'
+        );
+        if (prevProfitable.length > 0) {
+          // Of those, how many have Pn profitable?
+          const bothProfitable = prevProfitable.filter(t =>
+            t.partials[pIndex - 1].classification === 'profitable'
+          );
+          conditionalHitRate = (bothProfitable.length / prevProfitable.length) * 100;
+        } else {
+          conditionalHitRate = 0;
+        }
+      }
+
+      // Avg exit pts (all)
+      const allPts = partialsAtIndex.map(p => p.pts);
+      const avgExitPts = allPts.reduce((sum, v) => sum + v, 0) / allPts.length;
+
+      // Avg exit pts (profitable only)
+      const profitablePts = partialsAtIndex.filter(p => p.classification === 'profitable').map(p => p.pts);
+      const avgExitPtsProfitable = profitablePts.length > 0
+        ? profitablePts.reduce((sum, v) => sum + v, 0) / profitablePts.length
+        : null;
+
+      // Avg R at exit (only trades with stop_loss)
+      const rValues = partialsAtIndex.filter(p => p.rValue !== null).map(p => p.rValue);
+      const avgR = rValues.length > 0
+        ? rValues.reduce((sum, v) => sum + v, 0) / rValues.length
+        : null;
+
+      // Avg SL in pts (only eligible trades with stop_loss)
+      const slDistances = partialsAtIndex.filter(p => p.slDistance !== null).map(p => p.slDistance);
+      const avgSlPts = slDistances.length > 0
+        ? slDistances.reduce((sum, v) => sum + v, 0) / slDistances.length
+        : null;
+
+      // Determine if this is the "last" partial for majority of eligible trades
+      const lastCount = eligible.filter(t => t.exitCount === pIndex).length;
+      const isLast = lastCount > eligible.length / 2;
+
+      partialResults.push({
+        index: pIndex,
+        label: `P${pIndex}`,
+        eligible_trades: eligible.length,
+        absolute_hit_rate: Math.round(absoluteHitRate * 100) / 100,
+        conditional_hit_rate: conditionalHitRate !== null ? Math.round(conditionalHitRate * 100) / 100 : null,
+        profitable_count: profitableCount,
+        be_scratch_count: beScratchCount,
+        loss_count: lossCount,
+        avg_exit_pts: Math.round(avgExitPts * 100) / 100,
+        avg_exit_pts_profitable: avgExitPtsProfitable !== null ? Math.round(avgExitPtsProfitable * 100) / 100 : null,
+        avg_r_at_exit: avgR !== null ? Math.round(avgR * 100) / 100 : null,
+        avg_sl_pts: avgSlPts !== null ? Math.round(avgSlPts * 100) / 100 : null,
+        is_last: isLast
+      });
+    }
+
+    return {
+      partials: partialResults,
+      total_trades: totalTrades,
+      max_partials: maxPartialIndex
+    };
+  }
+
   static async getMonthlyPerformance(userId, year, accounts = null) {
     console.log(`[MONTHLY] Getting monthly performance for user ${userId}, year ${year}, accounts:`, accounts);
 
