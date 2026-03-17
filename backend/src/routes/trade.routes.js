@@ -375,6 +375,7 @@ router.get('/analytics', flexibleAuth, requireApiScope('trades:read'), tradeCont
  *         description: Monthly performance metrics
  */
 router.get('/analytics/monthly', flexibleAuth, requireApiScope('trades:read'), tradeController.getMonthlyPerformance);
+router.get('/analytics/partial-exits', flexibleAuth, requireApiScope('trades:read'), tradeController.getPartialExitAnalytics);
 
 /**
  * @swagger

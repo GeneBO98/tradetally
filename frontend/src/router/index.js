@@ -102,6 +102,12 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
+      path: '/metrics/partial-exits',
+      name: 'partial-exit-analytics',
+      component: () => import('@/views/PartialExitAnalyticsView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
       path: '/metrics/behavioral',
       name: 'behavioral-analytics',
       component: () => import('@/views/BehavioralAnalyticsView.vue'),
