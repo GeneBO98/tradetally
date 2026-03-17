@@ -25,7 +25,8 @@ function invalidateAnalyticsCache(userId) {
     key.startsWith(`analytics:user_${userId}:`) ||
     key.startsWith(`analytics_overview_${userId}_`) ||
     key.startsWith(`analytics_chart_data_${userId}_`) ||
-    key.startsWith(`performance_${userId}_`)
+    key.startsWith(`performance_${userId}_`) ||
+    key.startsWith(`partial_exit_analytics:user_${userId}:`)
   );
   cacheKeys.forEach(key => cache.del(key));
   console.log(`[CACHE] Invalidated ${cacheKeys.length} analytics cache entries for user ${userId}`);
@@ -3132,6 +3133,53 @@ const tradeController = {
       res.json(analytics);
     } catch (error) {
       console.error('Analytics error:', error);
+      next(error);
+    }
+  },
+
+  async getPartialExitAnalytics(req, res, next) {
+    try {
+      console.log('[PARTIAL-EXIT] Endpoint called, query:', req.query);
+
+      const {
+        startDate, endDate, symbol, symbolExact, sector, strategy, tags,
+        strategies, sectors, side, broker, brokers, accounts,
+        instrumentTypes, qualityGrades, minPartials, maxPartials
+      } = req.query;
+
+      const filters = {
+        startDate,
+        endDate,
+        symbol,
+        symbolExact: symbolExact === 'true',
+        sector,
+        strategy,
+        tags: tags ? ensureString(tags).split(',').map(t => t.trim()).filter(Boolean) : undefined,
+        strategies: strategies ? ensureString(strategies).split(',') : undefined,
+        sectors: sectors ? ensureString(sectors).split(',') : undefined,
+        side,
+        broker: broker || undefined,
+        brokers: brokers || undefined,
+        accounts: accounts ? ensureString(accounts).split(',') : undefined,
+        instrumentTypes: instrumentTypes ? ensureString(instrumentTypes).split(',') : undefined,
+        qualityGrades: qualityGrades ? ensureString(qualityGrades).split(',') : undefined,
+        minPartials,
+        maxPartials
+      };
+
+      const cacheKey = `partial_exit_analytics:user_${req.user.id}:${JSON.stringify(filters)}`;
+      const cached = cache.get(cacheKey);
+      if (cached) {
+        console.log('[CACHE] Partial exit analytics cache hit');
+        return res.json(cached);
+      }
+
+      const analytics = await Trade.getPartialExitAnalytics(req.user.id, filters);
+      cache.set(cacheKey, analytics, 86400000);
+
+      res.json(analytics);
+    } catch (error) {
+      console.error('[ERROR] Partial exit analytics error:', error);
       next(error);
     }
   },
