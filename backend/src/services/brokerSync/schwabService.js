@@ -442,6 +442,8 @@ class SchwabService {
     const rawTrades = [];
     // Track open positions by symbol: { symbol: [{ qty, price, time, ... }] }
     const openPositions = {};
+    // Track round-trip IDs per symbol - increments each time position goes flat then re-opens
+    const roundTripCounters = {};
 
     // Sort all transactions by time
     const sorted = [...transactions].sort((a, b) => new Date(a.time) - new Date(b.time));
@@ -479,6 +481,10 @@ class SchwabService {
         if (!openPositions[symbol]) {
           openPositions[symbol] = [];
         }
+        // If position was flat (empty queue), this starts a new round-trip
+        if (openPositions[symbol].length === 0) {
+          roundTripCounters[symbol] = (roundTripCounters[symbol] || 0) + 1;
+        }
         openPositions[symbol].push({
           qty: tx.quantity,
           price: tx.price,
@@ -493,7 +499,8 @@ class SchwabService {
           underlyingSymbol: tx.underlyingSymbol,
           cusip: tx.cusip,
           orderId: tx.orderId,
-          accountIdentifier: tx.accountIdentifier
+          accountIdentifier: tx.accountIdentifier,
+          roundTripId: roundTripCounters[symbol]
         });
       } else if (positionEffect === 'CLOSING') {
         // Match against open positions using FIFO
@@ -520,6 +527,7 @@ class SchwabService {
             underlyingSymbol: tx.underlyingSymbol,
             cusip: tx.cusip,
             accountIdentifier: tx.accountIdentifier,
+            roundTripId: 0, // No matching open - unique round-trip
             executionData: [{
               datetime: tx.time,
               price: tx.price,
@@ -561,6 +569,7 @@ class SchwabService {
             underlyingSymbol: openPos.underlyingSymbol,
             cusip: openPos.cusip,
             accountIdentifier: openPos.accountIdentifier,
+            roundTripId: openPos.roundTripId,
             executionData: [
               {
                 datetime: openPos.time,
@@ -616,6 +625,7 @@ class SchwabService {
             underlyingSymbol: pos.underlyingSymbol,
             cusip: pos.cusip,
             accountIdentifier: pos.accountIdentifier,
+            roundTripId: pos.roundTripId,
             executionData: [{
               datetime: pos.time,
               price: pos.price,
@@ -651,8 +661,9 @@ class SchwabService {
     const groupedMap = new Map();
 
     for (const trade of rawTrades) {
-      // Create group key: symbol + trade date + side + account
-      const key = `${trade.symbol}|${trade.tradeDate}|${trade.side}|${trade.accountIdentifier || 'default'}`;
+      // Create group key: symbol + trade date + side + account + round-trip
+      // roundTripId ensures separate round-trips (position went flat then re-opened) are not merged
+      const key = `${trade.symbol}|${trade.tradeDate}|${trade.side}|${trade.accountIdentifier || 'default'}|${trade.roundTripId || 0}`;
 
       if (!groupedMap.has(key)) {
         groupedMap.set(key, {
@@ -671,6 +682,8 @@ class SchwabService {
           totalQuantity: 0,
           totalEntryValue: 0,
           totalExitValue: 0,
+          entryQuantity: 0,
+          exitQuantity: 0,
           totalCommission: 0,
           totalFees: 0,
           totalPnL: 0,
@@ -691,6 +704,7 @@ class SchwabService {
 
       if (trade.entryPrice !== null) {
         group.totalEntryValue += trade.entryPrice * trade.quantity;
+        group.entryQuantity += trade.quantity;
         group.hasEntry = true;
         if (!group.earliestEntryTime || new Date(trade.entryTime) < new Date(group.earliestEntryTime)) {
           group.earliestEntryTime = trade.entryTime;
@@ -699,6 +713,7 @@ class SchwabService {
 
       if (trade.exitPrice !== null) {
         group.totalExitValue += trade.exitPrice * trade.quantity;
+        group.exitQuantity += trade.quantity;
         group.hasExit = true;
         if (!group.latestExitTime || new Date(trade.exitTime) > new Date(group.latestExitTime)) {
           group.latestExitTime = trade.exitTime;
@@ -718,8 +733,8 @@ class SchwabService {
     // Convert grouped data back to trade format
     const groupedTrades = [];
     for (const group of groupedMap.values()) {
-      const entryPrice = group.hasEntry ? Math.round((group.totalEntryValue / group.totalQuantity) * 10000) / 10000 : null;
-      const exitPrice = group.hasExit ? Math.round((group.totalExitValue / group.totalQuantity) * 10000) / 10000 : null;
+      const entryPrice = group.hasEntry ? Math.round((group.totalEntryValue / group.entryQuantity) * 10000) / 10000 : null;
+      const exitPrice = group.hasExit ? Math.round((group.totalExitValue / group.exitQuantity) * 10000) / 10000 : null;
 
       // Recalculate P&L if we have both entry and exit
       let pnl = group.totalPnL;
