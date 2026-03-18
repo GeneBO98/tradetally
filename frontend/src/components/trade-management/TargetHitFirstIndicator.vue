@@ -104,19 +104,24 @@
         </div>
       </div>
 
-      <!-- Saving indicator -->
-      <div v-if="saving" class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-        <div class="animate-spin rounded-full h-3 w-3 border-2 border-primary-600 border-t-transparent"></div>
-        Saving...
-      </div>
-
-      <!-- Current Result Summary -->
-      <div v-if="derivedResult && !saving" class="p-3 rounded-lg border" :class="derivedResultBorderClass">
+      <!-- Current Result Summary (always rendered when result exists to prevent layout shift) -->
+      <div v-if="derivedResult" class="relative p-3 rounded-lg border" :class="derivedResultBorderClass">
         <div class="flex items-center space-x-2">
           <span :class="derivedResultBadgeClass">
             {{ derivedResultLabel }}
           </span>
+          <!-- Saving indicator overlaid on result -->
+          <div v-if="saving" class="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 ml-auto">
+            <div class="animate-spin rounded-full h-3 w-3 border-2 border-primary-600 border-t-transparent"></div>
+            Saving...
+          </div>
         </div>
+      </div>
+
+      <!-- Saving indicator when no result yet -->
+      <div v-else-if="saving" class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+        <div class="animate-spin rounded-full h-3 w-3 border-2 border-primary-600 border-t-transparent"></div>
+        Saving...
       </div>
 
       <!-- Clear Selection -->
@@ -332,7 +337,12 @@ const derivedResultLabel = computed(() => {
     return 'SL Hit First'
   }
   if (derivedResult.value === 'take_profit') {
-    return 'All Targets Hit'
+    const hitTps = tpStatuses.value.filter(s => s === 'hit').length
+    const totalTps = displayTargets.value.length
+    if (hitTps >= totalTps) {
+      return 'All Targets Hit'
+    }
+    return `${hitTps} of ${totalTps} Target${totalTps > 1 ? 's' : ''} Hit`
   }
   return ''
 })
@@ -369,10 +379,6 @@ function initializeFromTrade() {
     tpStatuses.value = []
   }
 
-  // If manual is take_profit, all TPs should be marked hit
-  if (trade.manual_target_hit_first === 'take_profit') {
-    tpStatuses.value = tpStatuses.value.map(() => 'hit')
-  }
 }
 
 onMounted(() => {

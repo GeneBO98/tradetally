@@ -40,41 +40,67 @@
         class="absolute left-0 top-full mt-1 w-64 rounded-md shadow-lg bg-white dark:bg-gray-800 ring-1 ring-black ring-opacity-5 focus:outline-none z-50"
       >
         <div class="py-1">
-          <router-link
-            v-for="item in items"
-            :key="item.name"
-            :to="item.to"
-            @click="closeDropdown"
-            class="group flex items-center px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-white transition-colors"
-            :class="{
-              'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white': $route.name === item.route
-            }"
-          >
-            <div class="flex-1">
-              <div class="flex items-center">
-                <span class="font-medium">{{ item.name }}</span>
-                <span 
-                  v-if="item.badge"
-                  class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
-                  :class="getBadgeClasses(item.badge.type)"
-                >
-                  {{ item.badge.text }}
-                </span>
-              </div>
-              <p v-if="item.description" class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                {{ item.description }}
-              </p>
-            </div>
-            <svg 
-              v-if="item.external" 
-              class="ml-2 h-4 w-4 text-gray-400" 
-              fill="none" 
-              viewBox="0 0 24 24" 
-              stroke="currentColor"
+          <template v-for="item in items" :key="item.name">
+            <!-- External link -->
+            <a
+              v-if="item.external"
+              :href="item.href"
+              target="_blank"
+              rel="noopener noreferrer"
+              @click="closeDropdown"
+              class="group flex items-center px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-white transition-colors"
             >
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-            </svg>
-          </router-link>
+              <div class="flex-1">
+                <div class="flex items-center">
+                  <span class="font-medium">{{ item.name }}</span>
+                  <span
+                    v-if="item.badge"
+                    class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
+                    :class="getBadgeClasses(item.badge.type)"
+                  >
+                    {{ item.badge.text }}
+                  </span>
+                </div>
+                <p v-if="item.description" class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  {{ item.description }}
+                </p>
+              </div>
+              <svg
+                class="ml-2 h-4 w-4 text-gray-400"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+            </a>
+            <!-- Internal router link -->
+            <router-link
+              v-else
+              :to="item.to"
+              @click="closeDropdown"
+              class="group flex items-center px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-white transition-colors"
+              :class="{
+                'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white': $route.name === item.route
+              }"
+            >
+              <div class="flex-1">
+                <div class="flex items-center">
+                  <span class="font-medium">{{ item.name }}</span>
+                  <span
+                    v-if="item.badge"
+                    class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
+                    :class="getBadgeClasses(item.badge.type)"
+                  >
+                    {{ item.badge.text }}
+                  </span>
+                </div>
+                <p v-if="item.description" class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  {{ item.description }}
+                </p>
+              </div>
+            </router-link>
+          </template>
         </div>
       </div>
     </transition>

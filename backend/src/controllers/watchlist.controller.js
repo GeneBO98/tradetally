@@ -278,30 +278,34 @@ const watchlistController = {
         });
       }
       
-      // Get current price for the symbol
+      // Get current price for the symbol (route crypto through CoinGecko)
       let currentPrice = null;
       try {
-        const priceData = await finnhub.getQuote(symbolUpper, userId);
+        const isCrypto = finnhub.isCryptoSymbol(symbolUpper);
+        const priceData = isCrypto
+          ? await finnhub.getCryptoQuote(symbolUpper)
+          : await finnhub.getQuote(symbolUpper, userId);
+        const dataSource = isCrypto ? 'coingecko' : 'finnhub';
         if (priceData && priceData.c) {
           currentPrice = priceData.c;
-          
+
           // Update or insert price monitoring data
           await db.query(`
             INSERT INTO price_monitoring (symbol, current_price, previous_price, price_change, percent_change, volume, data_source)
-            VALUES ($1, $2, $3, $4, $5, $6, 'finnhub')
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             ON CONFLICT (symbol) DO UPDATE SET
               previous_price = price_monitoring.current_price,
               current_price = $2,
               price_change = $2 - price_monitoring.current_price,
-              percent_change = CASE 
-                WHEN price_monitoring.current_price > 0 
-                THEN (($2 - price_monitoring.current_price) / price_monitoring.current_price) * 100 
-                ELSE 0 
+              percent_change = CASE
+                WHEN price_monitoring.current_price > 0
+                THEN (($2 - price_monitoring.current_price) / price_monitoring.current_price) * 100
+                ELSE 0
               END,
               volume = $6,
               last_updated = CURRENT_TIMESTAMP,
-              data_source = 'finnhub'
-          `, [symbolUpper, currentPrice, null, 0, 0, priceData.pc || 0]);
+              data_source = $7
+          `, [symbolUpper, currentPrice, null, 0, 0, priceData.pc || 0, dataSource]);
         }
       } catch (priceError) {
         logger.logWarn(`Could not fetch price for symbol ${symbolUpper}:`, priceError.message);

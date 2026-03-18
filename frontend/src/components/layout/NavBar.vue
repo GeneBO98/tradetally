@@ -147,31 +147,49 @@
                   leave-to-class="opacity-0 -translate-y-1"
                 >
                   <div v-if="expandedSections[item.name]" class="pb-2">
-                    <router-link
-                      v-for="subItem in item.items"
-                      :key="subItem.name"
-                      :to="subItem.to"
-                      @click="isMobileMenuOpen = false"
-                      class="block ml-6 mr-3 pl-3 pr-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200"
-                      :class="[
-                        $route.name === subItem.route
-                          ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300 shadow-sm'
-                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700'
-                      ]"
-                    >
-                      <div class="flex items-center">
-                        {{ subItem.name }}
-                        <span
-                          v-if="subItem.badge"
-                          class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
-                          :class="{
-                            'bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400': subItem.badge.type === 'pro'
-                          }"
-                        >
-                          {{ subItem.badge.text }}
-                        </span>
-                      </div>
-                    </router-link>
+                    <template v-for="subItem in item.items" :key="subItem.name">
+                      <!-- External link -->
+                      <a
+                        v-if="subItem.external"
+                        :href="subItem.href"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        @click="isMobileMenuOpen = false"
+                        class="block ml-6 mr-3 pl-3 pr-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700"
+                      >
+                        <div class="flex items-center">
+                          {{ subItem.name }}
+                          <svg class="ml-1.5 h-3.5 w-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                          </svg>
+                        </div>
+                      </a>
+                      <!-- Internal router link -->
+                      <router-link
+                        v-else
+                        :to="subItem.to"
+                        @click="isMobileMenuOpen = false"
+                        class="block ml-6 mr-3 pl-3 pr-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200"
+                        :class="[
+                          $route.name === subItem.route
+                            ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300 shadow-sm'
+                            : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700'
+                        ]"
+                      >
+                        <div class="flex items-center">
+                          {{ subItem.name }}
+                          <span
+                            v-if="subItem.badge"
+                            class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
+                            :class="{
+                              'bg-primary-100 text-primary-800 dark:bg-primary-900/20 dark:text-primary-400': subItem.badge.type === 'pro'
+                            }"
+                          >
+                            {{ subItem.badge.text }}
+                          </span>
+                        </div>
+                      </router-link>
+                    </template>
                   </div>
                 </transition>
               </template>
@@ -305,11 +323,17 @@ const baseNavigation = [
         route: 'leaderboard',
         description: 'Track achievements, challenges, and compete with peers'
       },
-      { 
-        name: 'Public Trades', 
-        to: '/public', 
+      {
+        name: 'Public Trades',
+        to: '/public',
         route: 'public-trades',
         description: 'Browse public trades shared by the community'
+      },
+      {
+        name: 'Community Forum',
+        href: 'https://forum.tradetally.io',
+        external: true,
+        description: 'Discuss strategies and connect with fellow traders'
       }
     ]
   },
@@ -329,6 +353,12 @@ const baseNavigation = [
         to: '/metrics/monthly',
         route: 'monthly-performance',
         description: 'Month-by-month performance breakdown and comparison'
+      },
+      {
+        name: 'Partial Exit Analytics',
+        to: '/metrics/partial-exits',
+        route: 'partial-exit-analytics',
+        description: 'Analyze hit rates and performance per partial exit level'
       },
       {
         name: 'Behavioral Analytics',
