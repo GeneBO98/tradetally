@@ -275,7 +275,7 @@ server {
     index index.html;
 
     # OWASP-aligned security headers for frontend responses
-    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://s3.tradingview.com https://analytics.whitenov.com https://cdn.jsdelivr.net https://unpkg.com https://cdn.promotekit.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; img-src 'self' data: https: blob:; font-src 'self' https://fonts.gstatic.com data:; connect-src 'self' https://api.finnhub.io https://www.alphavantage.co https://generativelanguage.googleapis.com https://promotekit.com; frame-src 'none'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self';" always;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://s3.tradingview.com https://cdn.jsdelivr.net https://unpkg.com https://cdn.promotekit.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; img-src 'self' data: https: blob:; font-src 'self' https://fonts.gstatic.com data:; connect-src 'self' https://api.finnhub.io https://www.alphavantage.co https://generativelanguage.googleapis.com https://promotekit.com; frame-src 'none'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self';" always;
     add_header X-Frame-Options "DENY" always;
     add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
     add_header X-Content-Type-Options "nosniff" always;
@@ -307,7 +307,7 @@ server {
         add_header Cache-Control "public, immutable";
 
         # Security headers must be repeated in location blocks (nginx inheritance quirk)
-        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://s3.tradingview.com https://analytics.whitenov.com https://cdn.jsdelivr.net https://unpkg.com https://cdn.promotekit.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; img-src 'self' data: https: blob:; font-src 'self' https://fonts.gstatic.com data:; connect-src 'self' https://api.finnhub.io https://www.alphavantage.co https://generativelanguage.googleapis.com https://promotekit.com; frame-src 'none'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self';" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://s3.tradingview.com https://cdn.jsdelivr.net https://unpkg.com https://cdn.promotekit.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; img-src 'self' data: https: blob:; font-src 'self' https://fonts.gstatic.com data:; connect-src 'self' https://api.finnhub.io https://www.alphavantage.co https://generativelanguage.googleapis.com https://promotekit.com; frame-src 'none'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self';" always;
         add_header X-Frame-Options "DENY" always;
         add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
         add_header X-Content-Type-Options "nosniff" always;
