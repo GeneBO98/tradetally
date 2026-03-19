@@ -8,6 +8,7 @@ docker-compose.yaml
 .env
 .env.*
 !.env.example
+!.env.development.example
 *.key
 *.pem
 *.p12
