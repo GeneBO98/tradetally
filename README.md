@@ -98,18 +98,16 @@ See the [Docker Deployment Guide](https://docs.tradetally.io/deployment/docker/)
 ### Docker Development Startup
 
 - Create, by copy-paste (optional, but recommended to configure as far as possible!)
-  - .env.example to .env
-    - there are three of them but you need only the project root .env
+  - .env.development.example to .env
   - Configure the new created .env file
-    - the .env file is used in docker-compose by default, see docker documentation "env_file"
-    - add 5173 as port to the localhost so Vite works properly. example FRONTEND_URL & FOLLOWING_URL
+    - the .env file is used in docker-compose.dev.yaml
+    - the port 5173 is for vite and port 3000 for backend nodemon. example FRONTEND_URL & FOLLOWING_URL
 - Run this Steps
   - `make init`
-    - pre-speed up startup, after that it is rarely needed. example, build images after changes, you can run the specific command -> `make build_service_images` or `make build_tradetally_image`
+    - pre-speed up startup, after that it is rarely needed. example, build images after changes, you can run the specific command -> `make build_service_images` or `make build_tradetally_image` uses buildkit to have layer-build
   - `make startup ENV=development`
     - Hot-Reload is active trough Docker-Mount of Code
-    - Backend/Frontend is auto-update trough mount + backend/src/server.js and frontend/vite
-      - Vite is under Port 5173 example localhost:5173 ignore :8081
+    - Backend/Frontend is auto-update trough mount + backend/src/server.js (called trough start.sh -> nodemon.js) and frontend/vite-server (vite.config.js)
 
 ## Documentation
 
