@@ -97,6 +97,7 @@ See the [Docker Deployment Guide](https://docs.tradetally.io/deployment/docker/)
 
 ### Docker Development Startup
 
+`Used to develop and test code on WSL + Distro Ubuntu`
 - Create, by copy-paste (optional, but recommended to configure as far as possible!)
   - .env.development.example to .env
   - Configure the new created .env file
@@ -106,8 +107,9 @@ See the [Docker Deployment Guide](https://docs.tradetally.io/deployment/docker/)
   - `make init`
     - pre-speed up startup, after that it is rarely needed. example, build images after changes, you can run the specific command -> `make build_service_images` or `make build_tradetally_image` uses buildkit to have layer-build
   - `make startup ENV=development`
-    - Hot-Reload is active trough Docker-Mount of Code
-    - Backend/Frontend is auto-update trough mount + backend/src/server.js (called trough start.sh -> nodemon.js) and frontend/vite-server (vite.config.js)
+    - Backend/Frontend is auto-update/Hot-Reload
+      - Hot-Reload is active trough Docker-Mount of Code
+      - start.sh calls backend/src/server.js (nodemon.js) and frontend/vite-server (vite.config.js) on app startup
 
 ## Documentation
 
