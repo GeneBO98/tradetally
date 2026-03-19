@@ -192,6 +192,8 @@ class BitunixService {
     const entryTime = this.toIsoString(position.ctime);
     const exitTime = this.toIsoString(position.mtime);
     const originalCurrency = this.normalizeOriginalCurrency(marginCoin);
+    const tradingFees = Math.abs(parseFloat(position.fee || 0));
+    const fundingFees = Math.abs(parseFloat(position.funding || 0));
 
     if (!position.positionId || !position.symbol || !quantity || !entryTime) {
       return null;
@@ -206,10 +208,11 @@ class BitunixService {
       entryTime,
       exitTime,
       tradeDate: this.toTradeDate(position.mtime || position.ctime),
-      commission: Math.abs(parseFloat(position.fee || 0)),
-      fees: Math.abs(parseFloat(position.funding || 0)),
+      commission: 0,
+      fees: tradingFees + fundingFees,
       pnl: parseFloat(position.realizedPNL || 0),
       broker: 'bitunix',
+      instrumentType: 'crypto',
       originalCurrency,
       accountIdentifier: `bitunix-${marginCoin.toLowerCase()}`,
       executionData: [
@@ -238,6 +241,8 @@ class BitunixService {
     const quantity = Math.abs(parseFloat(position.qty || 0));
     const entryTime = this.toIsoString(position.ctime);
     const originalCurrency = this.normalizeOriginalCurrency(marginCoin);
+    const tradingFees = Math.abs(parseFloat(position.fee || 0));
+    const fundingFees = Math.abs(parseFloat(position.funding || 0));
 
     if (!position.positionId || !position.symbol || !quantity || !entryTime) {
       return null;
@@ -252,10 +257,11 @@ class BitunixService {
       entryTime,
       exitTime: null,
       tradeDate: this.toTradeDate(position.ctime),
-      commission: Math.abs(parseFloat(position.fee || 0)),
-      fees: Math.abs(parseFloat(position.funding || 0)),
+      commission: 0,
+      fees: tradingFees + fundingFees,
       pnl: null,
       broker: 'bitunix',
+      instrumentType: 'crypto',
       originalCurrency,
       accountIdentifier: `bitunix-${marginCoin.toLowerCase()}`,
       executionData: [

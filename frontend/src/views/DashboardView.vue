@@ -389,15 +389,15 @@
               <!-- Key Metrics Grid -->
               <div class="grid grid-cols-2 gap-3 mb-3">
                 <div class="table-card-row">
-                  <span class="table-card-label">Traded</span>
+                  <span class="table-card-label">{{ getPositionTradedLabel(position) }}</span>
                   <span class="table-card-value">
-                    {{ (position.totalSharesTraded || position.totalQuantity || 0).toLocaleString() }}
+                    {{ formatPositionQuantity(position.totalSharesTraded || position.totalQuantity || 0, position) }}
                   </span>
                 </div>
                 <div class="table-card-row">
-                  <span class="table-card-label">Shares Held</span>
+                  <span class="table-card-label">{{ getPositionHeldLabel(position) }}</span>
                   <span class="table-card-value">
-                    {{ position.totalQuantity === 0 ? 'Hedged' : (position.totalQuantity || 0).toLocaleString() }}
+                    {{ position.totalQuantity === 0 ? 'Hedged' : formatPositionQuantity(position.totalQuantity || 0, position) }}
                   </span>
                 </div>
                 <div class="table-card-row">
@@ -453,7 +453,7 @@
                         {{ trade.side }}
                       </span>
                       <span class="text-xs text-gray-600 dark:text-gray-400">
-                        {{ (trade.quantity || 0).toLocaleString() }} @ ${{ formatCurrency(trade.entry_price) }}
+                        {{ formatPositionQuantity(trade.quantity || 0, position) }} @ ${{ formatCurrency(trade.entry_price) }}
                       </span>
                     </div>
                     <router-link
@@ -506,10 +506,10 @@
                     Side
                   </th>
                   <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Traded
+                    Qty Traded
                   </th>
                   <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Shares Held
+                    Position Size
                   </th>
                   <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                     Avg Entry Price
@@ -554,10 +554,10 @@
                       </span>
                     </td>
                     <td class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300 text-right">
-                      {{ (position.totalSharesTraded || position.totalQuantity || 0).toLocaleString() }}
+                      {{ formatPositionQuantity(position.totalSharesTraded || position.totalQuantity || 0, position) }}
                     </td>
                     <td class="px-3 py-2 text-sm font-bold text-gray-900 dark:text-white text-right">
-                      {{ position.totalQuantity === 0 ? 'Hedged' : (position.totalQuantity || 0).toLocaleString() }}
+                      {{ position.totalQuantity === 0 ? 'Hedged' : formatPositionQuantity(position.totalQuantity || 0, position) }}
                     </td>
                     <td class="px-3 py-2 text-sm font-bold text-gray-900 dark:text-white text-right">
                       ${{ formatCurrency(position.avgPrice) }}
@@ -1541,6 +1541,58 @@ function formatCurrency(amount) {
 function formatNumber(num) {
   if (!num && num !== 0) return '0.00'
   return parseFloat(num).toFixed(2)
+}
+
+function isCryptoLikePosition(position) {
+  const primaryTrade = position?.trades?.[0]
+  const instrumentType = primaryTrade?.instrument_type || primaryTrade?.instrumentType || position?.instrumentType || 'stock'
+  const symbol = String(position?.symbol || '').toUpperCase()
+  const broker = String(primaryTrade?.broker || '').toLowerCase()
+
+  return instrumentType === 'crypto' ||
+    instrumentType === 'future' ||
+    broker === 'bitunix' ||
+    symbol.endsWith('USDT') ||
+    symbol.endsWith('USDC')
+}
+
+function formatPositionQuantity(value, position) {
+  const numericValue = Number(value || 0)
+  const absoluteValue = Math.abs(numericValue)
+  const isCryptoLike = isCryptoLikePosition(position)
+
+  if (!Number.isFinite(numericValue)) {
+    return '0'
+  }
+
+  if (!isCryptoLike) {
+    return numericValue.toLocaleString('en-US')
+  }
+
+  if (absoluteValue === 0) {
+    return '0'
+  }
+
+  let maximumFractionDigits = 4
+
+  if (absoluteValue < 0.01) {
+    maximumFractionDigits = 6
+  } else if (absoluteValue < 1) {
+    maximumFractionDigits = 5
+  }
+
+  return numericValue.toLocaleString('en-US', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits
+  })
+}
+
+function getPositionTradedLabel(position) {
+  return isCryptoLikePosition(position) ? 'Qty Traded' : 'Traded'
+}
+
+function getPositionHeldLabel(position) {
+  return isCryptoLikePosition(position) ? 'Position Size' : 'Shares Held'
 }
 
 function formatPercent(num) {
