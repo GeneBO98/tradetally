@@ -278,8 +278,11 @@ class IBKRService {
                 pnl_percent = $5,
                 quantity = $6,
                 commission = $7,
+                fees = $8,
+                entry_commission = $9,
+                exit_commission = $10,
                 updated_at = NOW()
-            WHERE id = $8 AND user_id = $9
+            WHERE id = $11 AND user_id = $12
           `;
           await db.query(updateQuery, [
             JSON.stringify(executions),
@@ -289,6 +292,9 @@ class IBKRService {
             preparedTrade.pnlPercent != null ? preparedTrade.pnlPercent : null,
             preparedTrade.quantity,
             preparedTrade.commission || 0,
+            preparedTrade.fees || 0,
+            preparedTrade.entryCommission || 0,
+            preparedTrade.exitCommission || 0,
             tradeData.existingTradeId,
             userId
           ]);
