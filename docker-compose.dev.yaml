@@ -72,15 +72,17 @@ services:
       # Timezone Configuration
       TZ: ${TZ:-America/Chicago}
     ports:
-      - "8081:80"
+      # - "8081:80" useless as long as vite running on 5173 with nginx passtrough
+      - "5173:5173"
       - "3000:3000"
     volumes:
-      - ./backend/src/logs:/app/backend/src/logs
-      - ./backend/src/data:/app/backend/src/data
-      - ./backend/uploads:/app/backend/uploads
+      # - ./backend/src/logs:/app/backend/src/logs
+      # - ./backend/src/data:/app/backend/src/data
+      # - ./backend/uploads:/app/backend/uploads
       # Mount source code for development (optional - enables hot reload if supported)
-      - ./backend/src:/app/backend/src
-      - ./frontend/src:/app/frontend/src
+      # Covers everything avoids annyoing npm hot reload bug
+      - ./backend:/app/backend
+      - ./frontend:/app/frontend
     networks:
       - trader-network-dev
     restart: unless-stopped

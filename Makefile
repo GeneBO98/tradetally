@@ -20,26 +20,17 @@ pull_base_images:
 	$(MAKE) pull_base_node_image
 	$(MAKE) pull_base_adminer_image
 
-#	Docker Buildkit -> docker build -file -path -tag -args - todo: maybe refactor docker stuff for better managment
 build_image_tradetally:
 	@DOCKER_BUILDKIT=1 docker build -f ./Dockerfile ./ -t $(TRADETALLY_IMAGE_TAG_DEV) $(BUILD_IMAGE_ARGS)
 
 build_service_images:
-	$(MAKE) build_image_tradetally
+	$(MAKE) build_image_tradetally $(BUILD_IMAGE_ARGS)
 
 install_npm_backend:
-	$(MAKE) --directory ./backend check_env_file
 	$(MAKE) --directory ./backend install
 
 install_npm_frontend:
-	$(MAKE) --directory ./frontend check_env_file
 	$(MAKE) --directory ./frontend install
-
-build_npm_backend:
-	$(MAKE) --directory ./frontend build
-
-build_npm_frontend:
-	$(MAKE) --directory ./backend build
 
 init:
 	$(MAKE) pull_base_images
@@ -47,18 +38,15 @@ init:
 	$(MAKE) install_npm_backend
 	$(MAKE) install_npm_frontend
 
-startup: check_env_file check_env
+startup: check_env
 	@case "$(ENV)" in \
 		development) \
-			docker compose -f docker-compose.dev.yaml up -d ;; \
+			docker compose -f docker-compose.dev.yaml up -d && docker exec -d tradetally-app-dev /bin/ash -c "cd frontend && npm run dev"; ;; \
 		production) \
 			docker compose -f docker-compose.yml up -d ;; \
 		*) \
 			echo "Invalid ENV '$(ENV)'"; exit 1 ;; \
 	esac
 
-docker_logs_app:
-	docker compose logs -f app;
-
 stop:
-	docker compose down app postgres --remove-orphans --volumes --timeout 30
+	docker compose down --remove-orphans --volumes --timeout 10

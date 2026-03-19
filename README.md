@@ -25,30 +25,35 @@ A comprehensive trading journal and analytics platform built with Vue.js fronten
 ## Major Features
 
 ### Trading Journal & Analysis
+
 - **Multi-Broker Support** - Import trades from Lightspeed, Charles Schwab, ThinkorSwim, IBKR, E*TRADE, ProjectX
 - **Options & Futures Trading** - Full support for options and futures contracts with specialized analytics
 - **Real-time Market Data** - Live stock quotes and unrealized P&L tracking
 - **Trade Visualization** - Interactive candlestick charts with entry/exit markers
 
 ### Analytics & Insights
+
 - **AI-Powered Analytics** - Personalized trading recommendations powered by Google Gemini
 - **Advanced Charts** - Performance analysis by hold time, day of week, sector, and more
 - **Behavioral Analytics** - Revenge trading detection and overconfidence tracking (Pro)
 - **Health Tracking** - Correlate sleep, heart rate, and other health metrics with trading performance (Pro)
 
 ### Markets & Alerts
+
 - **Watchlists** - Track favorite stocks with real-time prices and news (Pro)
 - **Price Alerts** - Email and browser notifications for price targets (Pro)
 - **News Integration** - Automatic news enrichment for traded symbols
 - **Earnings Tracking** - Monitor upcoming earnings for watchlist symbols (Pro)
 
 ### Community & Gamification
+
 - **Leaderboards** - Track achievements and compete with peers
 - **Public Trades** - Share trades and learn from the community
 - **Achievements System** - Unlock badges and track milestones
 - **Forum Integration** - Join discussions at [forum.tradetally.io](https://forum.tradetally.io)
 
 ### Mobile App
+
 - **iOS App** - Native iOS application available on [TestFlight](https://testflight.apple.com/join/11shUY3t)
 - Full feature parity with web application
 - Optimized mobile trading journal experience
@@ -56,10 +61,13 @@ A comprehensive trading journal and analytics platform built with Vue.js fronten
 ## Deployment Options
 
 ### SaaS Platform
+
 Fully hosted solution at [tradetally.io](https://tradetally.io) with subscription at $8.00/month or $80/year.
 
 ### Self-Hosted
+
 Free, open-source deployment with all Pro features included. Perfect for:
+
 - Privacy-conscious users
 - Personal or team use
 - Complete control over your data
@@ -89,16 +97,19 @@ See the [Docker Deployment Guide](https://docs.tradetally.io/deployment/docker/)
 
 ### Docker Development Startup
 
-- Create, by copy-paste
+- Create, by copy-paste (optional, but recommended to configure as far as possible!)
   - .env.example to .env
     - there are three of them but you need only the project root .env
   - Configure the new created .env file
     - the .env file is used in docker-compose by default, see docker documentation "env_file"
+    - add 5173 as port to the localhost so Vite works properly. example FRONTEND_URL & FOLLOWING_URL
 - Run this Steps
   - `make init`
     - pre-speed up startup, after that it is rarely needed. example, build images after changes, you can run the specific command -> `make build_service_images` or `make build_tradetally_image`
   - `make startup ENV=development`
     - Hot-Reload is active trough Docker-Mount of Code
+    - Backend/Frontend is auto-update trough mount + backend/src/server.js and frontend/vite
+      - Vite is under Port 5173 example localhost:5173 ignore :8081
 
 ## Documentation
 

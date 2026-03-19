@@ -12,7 +12,7 @@ NODE_MODULES_BIN := ./node_modules/.bin
 ENV ?= development
 VALID_ENVS := development production
 
-#	ENVIRONMENT File Used in docker - currently only root .env needed, dont know why backend/frontend has one without usage
+#	ENVIRONMENT File Used in docker - currently only root .env needed for docker
 ENV_APP_FILE = .env
 
 #	Image to Pull for Usage or Build on
@@ -37,7 +37,7 @@ check_env_file:
 		exit 1; \
 	fi
 
-npm: ## Runs `npm <CMD> <ARGS>`
+npm_module: ## Runs `npm_module <CMD> <ARGS>`
 	@CID=$$(docker create --init -w /srv/app ${NODE_IMAGE_TAG} ${CMD} ${ARGS}) && \
 	docker cp -a package.json $${CID}:/srv/app/. && \
 	if [ -f "package-lock.json" ]; then \
@@ -45,9 +45,6 @@ npm: ## Runs `npm <CMD> <ARGS>`
 	fi && \
 	if [ -d "node_modules" ]; then \
 		docker cp -a node_modules $${CID}:/srv/app/.; \
-	fi && \
-	if [ -f ".npmrc" ]; then \
-		docker cp -a .npmrc $${CID}:/srv/app/.; \
 	fi && \
 	docker start -a $${CID} >&1 && \
 	docker cp -a $${CID}:/srv/app/package.json . && \
@@ -61,23 +58,13 @@ npm: ## Runs `npm <CMD> <ARGS>`
 	fi
 
 install: ## Runs `npm install <ARGS>`
-	@$(MAKE) -s npm CMD="npm install"
+	@$(MAKE) -s npm_module CMD="npm install"
 
 update: ## Runs `npm update <ARGS>`
-	@$(MAKE) -s npm CMD="npm update"
+	@$(MAKE) -s npm_module CMD="npm update"
 
 update_check:
 	@$(MAKE) -s npm CMD="/bin/sh -c 'npm outdated; npm audit'"
-
-build:
-	@case "$(ENV)" in \
-	development) \
-		$(MAKE) -s npm CMD="npm run dev";; \
-	production) \
-		$(MAKE) -s npm CMD="npm run build";; \
-	*) \
-		echo "Invalid ENV '$(ENV)'"; exit 1 ;; \
-	esac
 
 test_unit: ## Runs unit tests
 	@CID=$$(docker create --init -w /srv/app ${NODE_IMAGE_TAG} $(NODE_MODULES_BIN)/jest \
