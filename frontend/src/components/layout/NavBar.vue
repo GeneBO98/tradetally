@@ -404,7 +404,24 @@ const baseNavigation = [
     ]
   },
   { name: 'Calendar', to: '/calendar', route: 'calendar' },
-  { name: 'Import', to: '/import', route: 'import' },
+  {
+    name: 'Import',
+    type: 'dropdown',
+    items: [
+      {
+        name: 'CSV Import',
+        to: '/import',
+        route: 'import',
+        description: 'Import your trades from CSV files exported by your broker'
+      },
+      {
+        name: 'Broker Sync',
+        to: '/broker-sync',
+        route: 'broker-sync',
+        description: 'Connect supported brokers to sync trades automatically'
+      }
+    ]
+  },
   { name: 'Settings', to: '/settings', route: 'settings' }
 ]
 
