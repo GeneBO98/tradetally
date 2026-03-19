@@ -147,6 +147,13 @@ const brokerStyles = computed(() => {
         bgClass: 'bg-blue-100 dark:bg-blue-900/30',
         textClass: 'text-blue-600 dark:text-blue-400'
       }
+    case 'bitunix':
+      return {
+        name: 'Bitunix',
+        abbrev: 'BU',
+        bgClass: 'bg-emerald-100 dark:bg-emerald-900/30',
+        textClass: 'text-emerald-600 dark:text-emerald-400'
+      }
     default:
       return {
         name: props.connection.brokerType,

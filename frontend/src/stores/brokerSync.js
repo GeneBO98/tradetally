@@ -9,6 +9,13 @@ export const useBrokerSyncStore = defineStore('brokerSync', () => {
   const loading = ref(false)
   const syncing = ref({}) // Track syncing state per connection ID
   const error = ref(null)
+  const configuration = ref({
+    brokerEncryption: {
+      configured: true,
+      error: null,
+      requiredBrokers: []
+    }
+  })
 
   // Getters
   const hasConnections = computed(() => connections.value.length > 0)
@@ -25,8 +32,48 @@ export const useBrokerSyncStore = defineStore('brokerSync', () => {
     connections.value.find(c => c.brokerType === 'schwab')
   )
 
+  const bitunixConnection = computed(() =>
+    connections.value.find(c => c.brokerType === 'bitunix')
+  )
+
   const isConnectionSyncing = (connectionId) => {
     return syncing.value[connectionId] === true
+  }
+
+  function getDefaultConfiguration() {
+    return {
+      brokerEncryption: {
+        configured: true,
+        error: null,
+        requiredBrokers: []
+      }
+    }
+  }
+
+  function setConfigurationFromApiResponse(responseData) {
+    configuration.value =
+      responseData?.meta?.configuration ||
+      responseData?.configuration ||
+      getDefaultConfiguration()
+  }
+
+  function applyEncryptionConfigurationFromError(err) {
+    const errorCode = err?.response?.data?.code
+    const errorMessage = err?.response?.data?.error || ''
+
+    if (
+      errorCode === 'BROKER_SYNC_ENCRYPTION_NOT_CONFIGURED' ||
+      errorMessage.includes('BROKER_ENCRYPTION_KEY') ||
+      errorMessage.includes('Broker sync is not configured on this server')
+    ) {
+      configuration.value = {
+        brokerEncryption: {
+          configured: false,
+          error: errorMessage || 'BROKER_ENCRYPTION_KEY environment variable is not set',
+          requiredBrokers: ['ibkr', 'schwab', 'bitunix']
+        }
+      }
+    }
   }
 
   // Actions
@@ -37,8 +84,10 @@ export const useBrokerSyncStore = defineStore('brokerSync', () => {
     try {
       const response = await api.get('/broker-sync/connections')
       connections.value = response.data.data || []
+      setConfigurationFromApiResponse(response.data)
     } catch (err) {
       console.error('[BROKER-SYNC] Failed to fetch connections:', err)
+      applyEncryptionConfigurationFromError(err)
       error.value = err.response?.data?.error || 'Failed to fetch connections'
       throw err
     } finally {
@@ -65,6 +114,7 @@ export const useBrokerSyncStore = defineStore('brokerSync', () => {
       return response.data.data
     } catch (err) {
       console.error('[BROKER-SYNC] Failed to add IBKR connection:', err)
+      applyEncryptionConfigurationFromError(err)
       error.value = err.response?.data?.error || 'Failed to add IBKR connection'
       throw err
     } finally {
@@ -83,7 +133,35 @@ export const useBrokerSyncStore = defineStore('brokerSync', () => {
       return response.data.authUrl
     } catch (err) {
       console.error('[BROKER-SYNC] Failed to init Schwab OAuth:', err)
+      applyEncryptionConfigurationFromError(err)
       error.value = err.response?.data?.error || 'Failed to initiate Schwab connection'
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function addBitunixConnection(credentials) {
+    loading.value = true
+    error.value = null
+
+    try {
+      const response = await api.post('/broker-sync/connections/bitunix', {
+        apiKey: credentials.apiKey,
+        apiSecret: credentials.apiSecret,
+        marginCoin: credentials.marginCoin || 'USDT',
+        autoSyncEnabled: credentials.autoSyncEnabled || false,
+        syncFrequency: credentials.syncFrequency || 'daily',
+        syncTime: credentials.syncTime || '06:00:00'
+      })
+
+      await fetchConnections()
+
+      return response.data.data
+    } catch (err) {
+      console.error('[BROKER-SYNC] Failed to add Bitunix connection:', err)
+      applyEncryptionConfigurationFromError(err)
+      error.value = err.response?.data?.error || 'Failed to add Bitunix connection'
       throw err
     } finally {
       loading.value = false
@@ -234,6 +312,7 @@ export const useBrokerSyncStore = defineStore('brokerSync', () => {
     loading.value = false
     syncing.value = {}
     error.value = null
+    configuration.value = getDefaultConfiguration()
   }
 
   return {
@@ -243,17 +322,20 @@ export const useBrokerSyncStore = defineStore('brokerSync', () => {
     loading,
     syncing,
     error,
+    configuration,
 
     // Getters
     hasConnections,
     activeConnections,
     ibkrConnection,
     schwabConnection,
+    bitunixConnection,
     isConnectionSyncing,
 
     // Actions
     fetchConnections,
     addIBKRConnection,
+    addBitunixConnection,
     initSchwabOAuth,
     updateConnection,
     deleteConnection,

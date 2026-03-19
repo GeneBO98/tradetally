@@ -19,6 +19,9 @@ class BrokerConnection {
       schwabRefreshToken,
       schwabTokenExpiresAt,
       schwabAccountId,
+      bitunixApiKey,
+      bitunixApiSecret,
+      bitunixMarginCoin,
       autoSyncEnabled = false,
       syncFrequency = 'daily',
       syncTime = '06:00:00'
@@ -28,15 +31,18 @@ class BrokerConnection {
     const encryptedIbkrToken = ibkrFlexToken ? encryptionService.encrypt(ibkrFlexToken) : null;
     const encryptedSchwabAccess = schwabAccessToken ? encryptionService.encrypt(schwabAccessToken) : null;
     const encryptedSchwabRefresh = schwabRefreshToken ? encryptionService.encrypt(schwabRefreshToken) : null;
+    const encryptedBitunixApiKey = bitunixApiKey ? encryptionService.encrypt(bitunixApiKey) : null;
+    const encryptedBitunixApiSecret = bitunixApiSecret ? encryptionService.encrypt(bitunixApiSecret) : null;
 
     const query = `
       INSERT INTO broker_connections (
         user_id, broker_type, connection_status,
         ibkr_flex_token, ibkr_flex_query_id,
         schwab_access_token, schwab_refresh_token, schwab_token_expires_at, schwab_account_id,
+        bitunix_api_key, bitunix_api_secret, bitunix_margin_coin,
         auto_sync_enabled, sync_frequency, sync_time
       )
-      VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
       ON CONFLICT (user_id, broker_type) DO UPDATE SET
         ibkr_flex_token = EXCLUDED.ibkr_flex_token,
         ibkr_flex_query_id = EXCLUDED.ibkr_flex_query_id,
@@ -44,6 +50,9 @@ class BrokerConnection {
         schwab_refresh_token = EXCLUDED.schwab_refresh_token,
         schwab_token_expires_at = EXCLUDED.schwab_token_expires_at,
         schwab_account_id = EXCLUDED.schwab_account_id,
+        bitunix_api_key = EXCLUDED.bitunix_api_key,
+        bitunix_api_secret = EXCLUDED.bitunix_api_secret,
+        bitunix_margin_coin = EXCLUDED.bitunix_margin_coin,
         auto_sync_enabled = EXCLUDED.auto_sync_enabled,
         sync_frequency = EXCLUDED.sync_frequency,
         sync_time = EXCLUDED.sync_time,
@@ -62,6 +71,9 @@ class BrokerConnection {
       encryptedSchwabRefresh,
       schwabTokenExpiresAt,
       schwabAccountId,
+      encryptedBitunixApiKey,
+      encryptedBitunixApiSecret,
+      bitunixMarginCoin || 'USDT',
       autoSyncEnabled,
       syncFrequency,
       syncTime
@@ -394,6 +406,16 @@ class BrokerConnection {
         }
         if (row.schwab_refresh_token) {
           connection.schwabRefreshToken = encryptionService.decrypt(row.schwab_refresh_token);
+        }
+      }
+    } else if (row.broker_type === 'bitunix') {
+      connection.bitunixMarginCoin = row.bitunix_margin_coin || 'USDT';
+      if (includeCredentials) {
+        if (row.bitunix_api_key) {
+          connection.bitunixApiKey = encryptionService.decrypt(row.bitunix_api_key);
+        }
+        if (row.bitunix_api_secret) {
+          connection.bitunixApiSecret = encryptionService.decrypt(row.bitunix_api_secret);
         }
       }
     }

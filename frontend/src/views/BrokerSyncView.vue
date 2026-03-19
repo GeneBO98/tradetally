@@ -56,6 +56,28 @@
         <div class="card-body">
           <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-6">Add Broker Connection</h3>
 
+          <div
+            v-if="!store.configuration.brokerEncryption.configured"
+            class="mb-6 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg"
+          >
+            <div class="flex items-start">
+              <svg class="h-5 w-5 text-amber-500 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.981-1.742 2.981H4.42c-1.53 0-2.492-1.647-1.743-2.98l5.58-9.921zM11 13a1 1 0 10-2 0 1 1 0 002 0zm-1-6a1 1 0 00-1 1v3a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" />
+              </svg>
+              <div class="ml-3">
+                <p class="text-sm font-medium text-amber-900 dark:text-amber-100">
+                  Broker credential encryption is not configured on this server.
+                </p>
+                <p class="mt-1 text-sm text-amber-800 dark:text-amber-200">
+                  Connections for {{ encryptionRequiredBrokerLabels }} are currently unavailable until <code>BROKER_ENCRYPTION_KEY</code> is configured on the backend.
+                </p>
+                <p v-if="store.configuration.brokerEncryption.error" class="mt-2 text-xs text-amber-700 dark:text-amber-300">
+                  Server issue: {{ store.configuration.brokerEncryption.error }}
+                </p>
+              </div>
+            </div>
+          </div>
+
           <div class="grid gap-6 md:grid-cols-2">
             <!-- IBKR Card -->
             <div
@@ -63,9 +85,11 @@
               :class="[
                 store.ibkrConnection
                   ? 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 opacity-50 cursor-not-allowed'
+                  : isBrokerBlockedByEncryption('ibkr')
+                    ? 'border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/10 opacity-75 cursor-not-allowed'
                   : 'border-dashed border-gray-300 dark:border-gray-600 hover:border-primary-500 dark:hover:border-primary-400'
               ]"
-              @click="!store.ibkrConnection && openIBKRModal()"
+              @click="!store.ibkrConnection && !isBrokerBlockedByEncryption('ibkr') && openIBKRModal()"
             >
               <div class="flex items-center space-x-4">
                 <div class="flex-shrink-0 w-12 h-12 bg-red-100 dark:bg-red-900/30 rounded-lg flex items-center justify-center">
@@ -74,7 +98,7 @@
                 <div>
                   <h4 class="font-medium text-gray-900 dark:text-white">Interactive Brokers</h4>
                   <p class="text-sm text-gray-500 dark:text-gray-400">
-                    {{ store.ibkrConnection ? 'Already connected' : 'Connect via Flex Query' }}
+                    {{ store.ibkrConnection ? 'Already connected' : isBrokerBlockedByEncryption('ibkr') ? 'Requires server-side credential encryption setup' : 'Connect via Flex Query' }}
                   </p>
                 </div>
               </div>
@@ -86,9 +110,11 @@
               :class="[
                 store.schwabConnection
                   ? 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 opacity-50 cursor-not-allowed'
+                  : isBrokerBlockedByEncryption('schwab')
+                    ? 'border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/10 opacity-75 cursor-not-allowed'
                   : 'border-dashed border-gray-300 dark:border-gray-600 hover:border-primary-500 dark:hover:border-primary-400'
               ]"
-              @click="!store.schwabConnection && handleSchwabConnect()"
+              @click="!store.schwabConnection && !isBrokerBlockedByEncryption('schwab') && handleSchwabConnect()"
             >
               <div class="flex items-center space-x-4">
                 <div class="flex-shrink-0 w-12 h-12 bg-primary-100 dark:bg-primary-900/30 rounded-lg flex items-center justify-center">
@@ -97,7 +123,32 @@
                 <div>
                   <h4 class="font-medium text-gray-900 dark:text-white">Charles Schwab</h4>
                   <p class="text-sm text-gray-500 dark:text-gray-400">
-                    {{ store.schwabConnection ? 'Already connected' : 'Connect via OAuth' }}
+                    {{ store.schwabConnection ? 'Already connected' : isBrokerBlockedByEncryption('schwab') ? 'Requires server-side credential encryption setup' : 'Connect via OAuth' }}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Bitunix Card -->
+            <div
+              class="p-6 border-2 rounded-lg transition-colors cursor-pointer"
+              :class="[
+                store.bitunixConnection
+                  ? 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 opacity-50 cursor-not-allowed'
+                  : isBrokerBlockedByEncryption('bitunix')
+                    ? 'border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/10 opacity-75 cursor-not-allowed'
+                  : 'border-dashed border-gray-300 dark:border-gray-600 hover:border-primary-500 dark:hover:border-primary-400'
+              ]"
+              @click="!store.bitunixConnection && !isBrokerBlockedByEncryption('bitunix') && openBitunixModal()"
+            >
+              <div class="flex items-center space-x-4">
+                <div class="flex-shrink-0 w-12 h-12 bg-emerald-100 dark:bg-emerald-900/30 rounded-lg flex items-center justify-center">
+                  <span class="text-emerald-600 dark:text-emerald-400 font-bold text-lg">BU</span>
+                </div>
+                <div>
+                  <h4 class="font-medium text-gray-900 dark:text-white">Bitunix</h4>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ store.bitunixConnection ? 'Already connected' : isBrokerBlockedByEncryption('bitunix') ? 'Requires server-side credential encryption setup' : 'Connect via API key' }}
                   </p>
                 </div>
               </div>
@@ -184,6 +235,14 @@
       :error="store.error"
     />
 
+    <BitunixConnectionModal
+      v-if="showBitunixModal"
+      @close="closeBitunixModal"
+      @save="handleBitunixSave"
+      :loading="store.loading"
+      :error="store.error"
+    />
+
     <!-- Settings Modal -->
     <ConnectionSettingsModal
       v-if="showSettingsModal"
@@ -196,13 +255,14 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, watch, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useBrokerSyncStore } from '@/stores/brokerSync'
 import { useTradesStore } from '@/stores/trades'
 import { useNotification } from '@/composables/useNotification'
 import BrokerConnectionCard from '@/components/broker-sync/BrokerConnectionCard.vue'
 import IBKRConnectionModal from '@/components/broker-sync/IBKRConnectionModal.vue'
+import BitunixConnectionModal from '@/components/broker-sync/BitunixConnectionModal.vue'
 import ConnectionSettingsModal from '@/components/broker-sync/ConnectionSettingsModal.vue'
 
 const store = useBrokerSyncStore()
@@ -211,9 +271,21 @@ const route = useRoute()
 const { showConfirmation, showDangerConfirmation } = useNotification()
 
 const showIBKRModal = ref(false)
+const showBitunixModal = ref(false)
 const showSettingsModal = ref(false)
 const selectedConnection = ref(null)
 const successMessage = ref('')
+
+const brokerDisplayNames = {
+  ibkr: 'Interactive Brokers',
+  schwab: 'Charles Schwab',
+  bitunix: 'Bitunix'
+}
+
+const encryptionRequiredBrokerLabels = computed(() => {
+  const brokers = store.configuration?.brokerEncryption?.requiredBrokers || []
+  return brokers.map(broker => brokerDisplayNames[broker] || broker.toUpperCase()).join(', ')
+})
 
 onMounted(async () => {
   await Promise.all([
@@ -254,6 +326,16 @@ function closeIBKRModal() {
   showIBKRModal.value = false
 }
 
+function openBitunixModal() {
+  store.clearError()
+  showBitunixModal.value = true
+}
+
+function closeBitunixModal() {
+  store.clearError()
+  showBitunixModal.value = false
+}
+
 function openSettingsModal(connection) {
   selectedConnection.value = connection
   showSettingsModal.value = true
@@ -264,6 +346,17 @@ async function handleIBKRSave(credentials) {
     await store.addIBKRConnection(credentials)
     showIBKRModal.value = false
     successMessage.value = 'IBKR connection added successfully!'
+    setTimeout(() => { successMessage.value = '' }, 5000)
+  } catch (error) {
+    // Error is handled by store
+  }
+}
+
+async function handleBitunixSave(credentials) {
+  try {
+    await store.addBitunixConnection(credentials)
+    showBitunixModal.value = false
+    successMessage.value = 'Bitunix connection added successfully!'
     setTimeout(() => { successMessage.value = '' }, 5000)
   } catch (error) {
     // Error is handled by store
@@ -393,6 +486,13 @@ async function handleDeleteTrades(connection) {
 
 async function refreshLogs() {
   await store.fetchSyncLogs()
+}
+
+function isBrokerBlockedByEncryption(brokerType) {
+  const brokerEncryption = store.configuration?.brokerEncryption
+  if (!brokerEncryption || brokerEncryption.configured) return false
+
+  return brokerEncryption.requiredBrokers.includes(brokerType)
 }
 
 function formatDate(date) {

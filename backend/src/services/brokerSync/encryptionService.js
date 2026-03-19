@@ -9,6 +9,7 @@ const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16; // 128 bits
 const AUTH_TAG_LENGTH = 16; // 128 bits
 const SALT_LENGTH = 32;
+const TYPICAL_KEY_MIN_LENGTH = 32;
 
 class EncryptionService {
   constructor() {
@@ -16,15 +17,45 @@ class EncryptionService {
   }
 
   /**
+   * Resolve the configured broker encryption key from env/runtime state
+   */
+  getConfiguredKey() {
+    const encryptionKey = process.env.BROKER_ENCRYPTION_KEY ?? this.encryptionKey;
+    if (typeof encryptionKey !== 'string') {
+      return null;
+    }
+
+    const normalizedKey = encryptionKey.trim();
+    return normalizedKey || null;
+  }
+
+  /**
+   * Return a configuration error message when the broker encryption key is invalid
+   */
+  getConfigurationError() {
+    const encryptionKey = this.getConfiguredKey();
+
+    if (!encryptionKey) {
+      return 'BROKER_ENCRYPTION_KEY environment variable is not set correct - see .env';
+    }
+
+    if (encryptionKey.length < TYPICAL_KEY_MIN_LENGTH) {
+      return `BROKER_ENCRYPTION_KEY must be at least ${TYPICAL_KEY_MIN_LENGTH} characters for a typical encryption key`;
+    }
+
+    return null;
+  }
+
+  /**
    * Validate that the encryption key is properly configured
    */
   validateKey() {
-    if (!this.encryptionKey) {
-      throw new Error('BROKER_ENCRYPTION_KEY environment variable is not set');
+    const configurationError = this.getConfigurationError();
+    if (configurationError) {
+      throw new Error(configurationError);
     }
-    if (this.encryptionKey.length < 32) {
-      throw new Error('BROKER_ENCRYPTION_KEY must be at least 32 characters');
-    }
+
+    this.encryptionKey = this.getConfiguredKey();
     return true;
   }
 

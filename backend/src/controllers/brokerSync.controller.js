@@ -6,6 +6,8 @@
 const BrokerConnection = require('../models/BrokerConnection');
 const ibkrService = require('../services/brokerSync/ibkrService');
 const schwabService = require('../services/brokerSync/schwabService');
+const bitunixService = require('../services/brokerSync/bitunixService');
+const encryptionService = require('../services/brokerSync/encryptionService');
 const brokerSyncService = require('../services/brokerSync');
 const AnalyticsCache = require('../services/analyticsCache');
 const cache = require('../utils/cache');
@@ -16,6 +18,29 @@ function redactAccountNumber(accountNumber) {
   const value = String(accountNumber);
   if (value.length <= 4) return value;
   return `****${value.slice(-4)}`;
+}
+
+function getBrokerEncryptionConfigResponse() {
+  const configurationError = encryptionService.getConfigurationError();
+  if (!configurationError) return null;
+
+  return {
+    success: true,
+    error: `Broker sync is not configured on this server: ${configurationError}`,
+    code: 'BROKER_SYNC_ENCRYPTION_NOT_CONFIGURED'
+  };
+}
+
+function getBrokerSyncConfiguration() {
+  const configurationError = encryptionService.getConfigurationError();
+
+  return {
+    brokerEncryption: {
+      configured: !configurationError,
+      error: configurationError,
+      requiredBrokers: ['ibkr', 'schwab', 'bitunix']
+    }
+  };
 }
 
 // Helper function to invalidate in-memory analytics cache for a user
@@ -38,7 +63,11 @@ const brokerSyncController = {
 
       res.json({
         success: true,
-        data: connections
+        data: connections,
+        configuration: getBrokerSyncConfiguration(),
+        meta: {
+          configuration: getBrokerSyncConfiguration()
+        }
       });
     } catch (error) {
       logger.logError('Error fetching broker connections:', error);
@@ -95,6 +124,11 @@ const brokerSyncController = {
         });
       }
 
+      const encryptionConfigError = getBrokerEncryptionConfigResponse();
+      if (encryptionConfigError) {
+        return res.status(503).json(encryptionConfigError);
+      }
+
       // Validate credentials with IBKR
       console.log('[BROKER-SYNC] Validating IBKR credentials...');
       const validation = await ibkrService.validateCredentials(flexToken, flexQueryId);
@@ -139,6 +173,68 @@ const brokerSyncController = {
       });
     } catch (error) {
       logger.logError('Error adding IBKR connection:', error);
+      next(error);
+    }
+  },
+
+  /**
+   * Add Bitunix connection
+   */
+  async addBitunixConnection(req, res, next) {
+    try {
+      const userId = req.user.id;
+      const {
+        apiKey,
+        apiSecret,
+        marginCoin = 'USDT',
+        autoSyncEnabled = false,
+        syncFrequency = 'daily',
+        syncTime = '06:00:00'
+      } = req.body;
+
+      if (!apiKey || !apiSecret) {
+        return res.status(400).json({
+          success: false,
+          error: 'API key and API secret are required'
+        });
+      }
+
+      // const encryptionConfigError = getBrokerEncryptionConfigResponse();
+      // if (encryptionConfigError) {
+      //   return res.status(503).json(encryptionConfigError);
+      // }
+
+      const normalizedMarginCoin = String(marginCoin || 'USDT').toUpperCase();
+
+      const validation = await bitunixService.validateCredentials(apiKey, apiSecret, normalizedMarginCoin);
+      if (!validation.valid) {
+        return res.status(400).json({
+          success: false,
+          error: validation.message
+        });
+      }
+
+      const connection = await BrokerConnection.create(userId, {
+        brokerType: 'bitunix',
+        bitunixApiKey: apiKey,
+        bitunixApiSecret: apiSecret,
+        bitunixMarginCoin: normalizedMarginCoin,
+        autoSyncEnabled,
+        syncFrequency,
+        syncTime
+      });
+
+      await BrokerConnection.updateStatus(connection.id, 'active', 'Connection validated successfully');
+
+      const updatedConnection = await BrokerConnection.findById(connection.id, false);
+
+      res.status(201).json({
+        success: true,
+        data: updatedConnection,
+        message: 'Bitunix connection added successfully'
+      });
+    } catch (error) {
+      logger.logError('Error adding Bitunix connection:', error);
       next(error);
     }
   },
@@ -192,6 +288,11 @@ const brokerSyncController = {
   async handleSchwabCallback(req, res, next) {
     try {
       const { code, state, error: oauthError } = req.query;
+
+      const encryptionConfigError = getBrokerEncryptionConfigResponse();
+      if (encryptionConfigError) {
+        return res.redirect(`${process.env.FRONTEND_URL}/settings/broker-sync?error=broker_sync_not_configured`);
+      }
 
       // Handle OAuth errors
       if (oauthError) {
@@ -515,6 +616,12 @@ const brokerSyncController = {
             testResult = { valid: false, message: `Schwab connection test failed: ${error.message}` };
           }
         }
+      } else if (connection.brokerType === 'bitunix') {
+        testResult = await bitunixService.validateCredentials(
+          connection.bitunixApiKey,
+          connection.bitunixApiSecret,
+          connection.bitunixMarginCoin
+        );
       }
 
       if (testResult.valid) {

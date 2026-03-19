@@ -9,6 +9,7 @@ const AnalyticsCache = require('../analyticsCache');
 const cache = require('../../utils/cache');
 const ibkrService = require('./ibkrService');
 const schwabService = require('./schwabService');
+const bitunixService = require('./bitunixService');
 
 // Helper function to invalidate in-memory analytics cache for a user
 function invalidateInMemoryCache(userId) {
@@ -61,6 +62,14 @@ class BrokerSyncService {
 
         case 'schwab':
           result = await schwabService.syncTrades(connection, {
+            startDate,
+            endDate,
+            syncLogId: syncLog.id
+          });
+          break;
+
+        case 'bitunix':
+          result = await bitunixService.syncTrades(connection, {
             startDate,
             endDate,
             syncLogId: syncLog.id
@@ -175,6 +184,13 @@ class BrokerSyncService {
 
       case 'schwab':
         return schwabService.validateConfig();
+
+      case 'bitunix':
+        return bitunixService.validateCredentials(
+          credentials.apiKey,
+          credentials.apiSecret,
+          credentials.marginCoin
+        );
 
       default:
         return { valid: false, message: `Unknown broker type: ${brokerType}` };
