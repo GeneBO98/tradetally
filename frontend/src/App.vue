@@ -26,7 +26,7 @@
             </a>
             <span>•</span>
             <a
-              href="mailto:support@tradetally.io"
+              :href="supportMailtoUrl"
               class="inline-flex items-center hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
             >
               <svg class="w-4 h-4 sm:mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -145,6 +145,15 @@ const { isConnected, connect, disconnect, celebrationQueue } = usePriceAlertNoti
 
 const isAuthRoute = computed(() => {
   return ['login', 'register'].includes(route.name)
+})
+
+const supportMailtoUrl = computed(() => {
+  const user = authStore.user
+  if (!user) return 'mailto:support@tradetally.io'
+  const tier = (user.tier || 'free').charAt(0).toUpperCase() + (user.tier || 'free').slice(1)
+  const subject = encodeURIComponent(`[${tier}] Support Request`)
+  const body = encodeURIComponent(`Account: ${user.email}\nPlan: ${tier}\n\nPlease describe your issue:\n\n`)
+  return `mailto:support@tradetally.io?subject=${subject}&body=${body}`
 })
 
 // Watch for authentication changes and user tier changes
