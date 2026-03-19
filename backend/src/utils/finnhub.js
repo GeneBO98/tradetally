@@ -29,6 +29,7 @@ class FinnhubClient {
     }
     this.callTimestamps = [];
     this.secondTimestamps = [];
+    this.cryptoQuoteLastCallAt = 0;
   }
 
   isConfigured() {
@@ -69,6 +70,20 @@ class FinnhubClient {
     // Record this call
     this.callTimestamps.push(now);
     this.secondTimestamps.push(now);
+  }
+
+  async waitForCryptoRateLimit() {
+    const now = Date.now();
+    const minIntervalMs = 1250;
+    const elapsed = now - this.cryptoQuoteLastCallAt;
+
+    if (elapsed < minIntervalMs) {
+      const waitTime = minIntervalMs - elapsed;
+      console.log(`[CRYPTO] Rate limit guard waiting ${waitTime}ms before CoinGecko request`);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+
+    this.cryptoQuoteLastCallAt = Date.now();
   }
 
   async makeRequest(endpoint, params = {}) {
@@ -116,6 +131,7 @@ class FinnhubClient {
 
   async getQuote(symbol, userId = null) {
     const symbolUpper = symbol.toUpperCase();
+    const cryptoBaseSymbol = this.extractCryptoBaseSymbol(symbolUpper);
 
     // Check tier and usage limits if userId provided
     if (userId) {
@@ -138,6 +154,13 @@ class FinnhubClient {
     }
 
     try {
+      if (cryptoBaseSymbol) {
+        console.log(`[CRYPTO] ${symbolUpper} detected as crypto pair, using base symbol ${cryptoBaseSymbol}`);
+        const quote = await this.getCryptoQuote(cryptoBaseSymbol);
+        await cache.set('quote', symbolUpper, quote);
+        return quote;
+      }
+
       const quote = await this.makeRequest('/quote', { symbol: symbolUpper });
 
       // Validate quote data
@@ -231,6 +254,28 @@ class FinnhubClient {
     return FinnhubClient.CRYPTO_SYMBOLS.includes(symbol.toUpperCase());
   }
 
+  extractCryptoBaseSymbol(symbol) {
+    const symbolUpper = String(symbol || '').toUpperCase().trim();
+    const stablecoinSuffixes = ['USDT', 'USDC'];
+
+    for (const suffix of stablecoinSuffixes) {
+      if (!symbolUpper.endsWith(suffix) || symbolUpper.length <= suffix.length) {
+        continue;
+      }
+
+      const baseSymbol = symbolUpper.slice(0, -suffix.length);
+      if (this.isCryptoSymbol(baseSymbol)) {
+        return baseSymbol;
+      }
+    }
+
+    return null;
+  }
+
+  isCryptoPairSymbol(symbol) {
+    return !!this.extractCryptoBaseSymbol(symbol);
+  }
+
   // Map of crypto symbols to CoinGecko IDs
   static CRYPTO_TO_COINGECKO = {
     'BTC': 'bitcoin', 'ETH': 'ethereum', 'XRP': 'ripple', 'LTC': 'litecoin',
@@ -270,7 +315,10 @@ class FinnhubClient {
       return cached;
     }
 
+    const staleCached = cache.getStale('crypto_quote', cacheKey);
+
     try {
+      await this.waitForCryptoRateLimit();
       console.log(`[CRYPTO] Fetching quote from CoinGecko for ${symbolUpper} (${coinGeckoId})`);
 
       // CoinGecko API - works without key, but key improves rate limits
@@ -306,7 +354,7 @@ class FinnhubClient {
       };
 
       // Cache the result (1 minute TTL)
-      await cache.set('crypto_quote', cacheKey, quote);
+      await cache.set('crypto_quote', cacheKey, quote, 5 * 60 * 1000);
 
       // Persist today's crypto price to historical_prices DB table
       try {
@@ -318,6 +366,11 @@ class FinnhubClient {
       console.log(`[CRYPTO] Quote for ${symbolUpper}: $${quote.c.toLocaleString()}`);
       return quote;
     } catch (error) {
+      if (error.response?.status === 429 && staleCached.value) {
+        console.warn(`[CRYPTO] CoinGecko rate limited for ${symbolUpper}, using stale cached quote`);
+        return staleCached.value;
+      }
+
       console.warn(`[CRYPTO] Failed to get crypto quote for ${symbol}: ${error.message}`);
       throw error;
     }
@@ -331,6 +384,10 @@ class FinnhubClient {
 
     // Filter out obvious CUSIPs or invalid symbols
     const validSymbols = uniqueSymbols.filter(symbol => {
+      if (this.isCryptoPairSymbol(symbol)) {
+        return true;
+      }
+
       // Skip if it looks like a CUSIP (9 characters, alphanumeric)
       if (/^[0-9A-Z]{8}[0-9]$/.test(symbol)) {
         console.log(`Skipping CUSIP-like symbol: ${symbol}`);
@@ -366,9 +423,11 @@ class FinnhubClient {
 
       const settled = await Promise.allSettled(
         chunk.map(async (symbol) => {
-          if (this.isCryptoSymbol(symbol)) {
-            console.log(`[CRYPTO] ${symbol} detected as crypto, using crypto quote`);
-            const quote = await this.getCryptoQuote(symbol);
+          const cryptoBaseSymbol = this.extractCryptoBaseSymbol(symbol);
+          if (this.isCryptoSymbol(symbol) || cryptoBaseSymbol) {
+            const quoteSymbol = cryptoBaseSymbol || symbol;
+            console.log(`[CRYPTO] ${symbol} detected as crypto, using crypto quote for ${quoteSymbol}`);
+            const quote = await this.getCryptoQuote(quoteSymbol);
             return { symbol, quote };
           } else {
             const quote = await this.getQuote(symbol);
