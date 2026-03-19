@@ -389,13 +389,13 @@
               <!-- Key Metrics Grid -->
               <div class="grid grid-cols-2 gap-3 mb-3">
                 <div class="table-card-row">
-                  <span class="table-card-label">{{ getPositionTradedLabel(position) }}</span>
+                  <span class="table-card-label">Traded</span>
                   <span class="table-card-value">
                     {{ formatPositionQuantity(position.totalSharesTraded || position.totalQuantity || 0, position) }}
                   </span>
                 </div>
                 <div class="table-card-row">
-                  <span class="table-card-label">{{ getPositionHeldLabel(position) }}</span>
+                  <span class="table-card-label">Shares Held</span>
                   <span class="table-card-value">
                     {{ position.totalQuantity === 0 ? 'Hedged' : formatPositionQuantity(position.totalQuantity || 0, position) }}
                   </span>
@@ -509,7 +509,7 @@
                     Qty Traded
                   </th>
                   <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Position Size
+                    Shares Held
                   </th>
                   <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                     Avg Entry Price
@@ -1543,15 +1543,13 @@ function formatNumber(num) {
   return parseFloat(num).toFixed(2)
 }
 
-function isCryptoLikePosition(position) {
+function usesPreciseQuantityFormatting(position) {
   const primaryTrade = position?.trades?.[0]
   const instrumentType = primaryTrade?.instrument_type || primaryTrade?.instrumentType || position?.instrumentType || 'stock'
   const symbol = String(position?.symbol || '').toUpperCase()
-  const broker = String(primaryTrade?.broker || '').toLowerCase()
 
   return instrumentType === 'crypto' ||
     instrumentType === 'future' ||
-    broker === 'bitunix' ||
     symbol.endsWith('USDT') ||
     symbol.endsWith('USDC')
 }
@@ -1559,13 +1557,13 @@ function isCryptoLikePosition(position) {
 function formatPositionQuantity(value, position) {
   const numericValue = Number(value || 0)
   const absoluteValue = Math.abs(numericValue)
-  const isCryptoLike = isCryptoLikePosition(position)
+  const shouldUsePreciseFormatting = usesPreciseQuantityFormatting(position)
 
   if (!Number.isFinite(numericValue)) {
     return '0'
   }
 
-  if (!isCryptoLike) {
+  if (!shouldUsePreciseFormatting) {
     return numericValue.toLocaleString('en-US')
   }
 
@@ -1585,14 +1583,6 @@ function formatPositionQuantity(value, position) {
     minimumFractionDigits: 0,
     maximumFractionDigits
   })
-}
-
-function getPositionTradedLabel(position) {
-  return isCryptoLikePosition(position) ? 'Qty Traded' : 'Traded'
-}
-
-function getPositionHeldLabel(position) {
-  return isCryptoLikePosition(position) ? 'Position Size' : 'Shares Held'
 }
 
 function formatPercent(num) {
