@@ -161,6 +161,20 @@ class BitunixService {
     return STABLECOIN_TO_CURRENCY[normalizedMarginCoin] || (normalizedMarginCoin.length <= 3 ? normalizedMarginCoin : 'USD');
   }
 
+  normalizePositionSide(sideValue) {
+    const normalizedSide = String(sideValue || '').trim().toUpperCase();
+
+    if (normalizedSide === 'SHORT' || normalizedSide === 'SELL') {
+      return 'short';
+    }
+
+    if (normalizedSide === 'LONG' || normalizedSide === 'BUY') {
+      return 'long';
+    }
+
+    return 'long';
+  }
+
   toIsoString(timestamp) {
     if (!timestamp) return null;
     const date = new Date(Number(timestamp));
@@ -173,7 +187,7 @@ class BitunixService {
   }
 
   parseClosedPosition(position, marginCoin) {
-    const side = String(position.side || '').toUpperCase() === 'SHORT' ? 'short' : 'long';
+    const side = this.normalizePositionSide(position.side);
     const quantity = Math.abs(parseFloat(position.maxQty || 0));
     const entryTime = this.toIsoString(position.ctime);
     const exitTime = this.toIsoString(position.mtime);
@@ -220,7 +234,7 @@ class BitunixService {
   }
 
   parsePendingPosition(position, marginCoin) {
-    const side = String(position.side || '').toUpperCase() === 'SHORT' ? 'short' : 'long';
+    const side = this.normalizePositionSide(position.side);
     const quantity = Math.abs(parseFloat(position.qty || 0));
     const entryTime = this.toIsoString(position.ctime);
     const originalCurrency = this.normalizeOriginalCurrency(marginCoin);
