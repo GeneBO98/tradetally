@@ -1,6 +1,7 @@
 const db = require('../config/database');
 const TierService = require('./tierService');
 const User = require('../models/User');
+const EmailService = require('./emailService');
 
 // Conditionally load Stripe only if billing is enabled
 let stripe = null;
@@ -321,6 +322,23 @@ class BillingService {
       const subscription = await stripe.subscriptions.retrieve(session.subscription);
       console.log('Retrieved subscription:', subscription.id, 'status:', subscription.status);
       await this.handleSubscriptionUpdated(subscription);
+
+      // Send welcome email to new subscriber
+      try {
+        const userId = subscription.metadata?.user_id || session.metadata?.user_id || session.client_reference_id;
+        if (userId) {
+          const user = await User.findById(userId);
+          if (user) {
+            const item = subscription.items?.data?.[0];
+            const interval = item?.price?.recurring?.interval;
+            const planName = interval === 'year' ? 'Pro Yearly' : 'Pro Monthly';
+            await EmailService.sendSubscriptionWelcomeEmail(user.email, user.username, planName);
+          }
+        }
+      } catch (emailError) {
+        console.error('[ERROR] Failed to send subscription welcome email:', emailError);
+        // Don't fail the webhook for email errors
+      }
     }
   }
 
