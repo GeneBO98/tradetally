@@ -44,7 +44,14 @@ export RUN_MIGRATIONS="${RUN_MIGRATIONS:-true}"
 
 # Start backend (migrations will run automatically)
 echo "[START] Starting TradeTally backend..."
-cd /app/backend && node src/server.js &
+
+cd /app/backend || exit 1
+
+if [ "$NODE_ENV" = "development" ]; then
+  npm run dev &
+else
+  node src/server.js &
+fi
 
 # Wait for backend to start
 sleep 5

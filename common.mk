@@ -58,10 +58,10 @@ npm_module: ## Runs `npm_module <CMD> <ARGS>`
 	fi
 
 install: ## Runs `npm install <ARGS>`
-	@$(MAKE) -s npm_module CMD="npm install"
+	@$(MAKE) -s npm_module CMD="npm install ${ARGS}"
 
 update: ## Runs `npm update <ARGS>`
-	@$(MAKE) -s npm_module CMD="npm update"
+	@$(MAKE) -s npm_module CMD="npm update ${ARGS}"
 
 update_check:
 	@$(MAKE) -s npm CMD="/bin/sh -c 'npm outdated; npm audit'"

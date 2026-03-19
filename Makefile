@@ -27,10 +27,10 @@ build_service_images:
 	$(MAKE) build_image_tradetally $(BUILD_IMAGE_ARGS)
 
 install_npm_backend:
-	$(MAKE) --directory ./backend install
+	$(MAKE) --directory ./backend install ARGS=$(ARGS)
 
 install_npm_frontend:
-	$(MAKE) --directory ./frontend install
+	$(MAKE) --directory ./frontend install ARGS=$(ARGS)
 
 init:
 	$(MAKE) pull_base_images
@@ -41,7 +41,8 @@ init:
 startup: check_env
 	@case "$(ENV)" in \
 		development) \
-			docker compose -f docker-compose.dev.yaml up -d && docker exec -d tradetally-app-dev /bin/ash -c "cd frontend && npm run dev"; ;; \
+			docker compose -f docker-compose.dev.yaml up -d && \
+			docker exec -d tradetally-app-dev /bin/ash -c "cd frontend && npm run dev";; \
 		production) \
 			docker compose -f docker-compose.yml up -d ;; \
 		*) \
