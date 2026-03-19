@@ -18,6 +18,11 @@ const db = require('../../config/database');
 const BITUNIX_API_BASE = 'https://fapi.bitunix.com';
 const DEFAULT_MARGIN_COIN = 'USDT';
 const PAGE_SIZE = 100;
+const STABLECOIN_TO_CURRENCY = {
+  USDT: 'USD',
+  USDC: 'USD',
+  USD: 'USD'
+};
 
 function invalidateInMemoryCache(userId) {
   const cacheKeys = Object.keys(cache.data || {}).filter(key =>
@@ -151,6 +156,11 @@ class BitunixService {
     return String(symbol || '').trim().toUpperCase();
   }
 
+  normalizeOriginalCurrency(marginCoin) {
+    const normalizedMarginCoin = String(marginCoin || DEFAULT_MARGIN_COIN).trim().toUpperCase();
+    return STABLECOIN_TO_CURRENCY[normalizedMarginCoin] || (normalizedMarginCoin.length <= 3 ? normalizedMarginCoin : 'USD');
+  }
+
   toIsoString(timestamp) {
     if (!timestamp) return null;
     const date = new Date(Number(timestamp));
@@ -167,6 +177,7 @@ class BitunixService {
     const quantity = Math.abs(parseFloat(position.maxQty || 0));
     const entryTime = this.toIsoString(position.ctime);
     const exitTime = this.toIsoString(position.mtime);
+    const originalCurrency = this.normalizeOriginalCurrency(marginCoin);
 
     if (!position.positionId || !position.symbol || !quantity || !entryTime) {
       return null;
@@ -185,7 +196,7 @@ class BitunixService {
       fees: Math.abs(parseFloat(position.funding || 0)),
       pnl: parseFloat(position.realizedPNL || 0),
       broker: 'bitunix',
-      originalCurrency: marginCoin,
+      originalCurrency,
       accountIdentifier: `bitunix-${marginCoin.toLowerCase()}`,
       executionData: [
         {
@@ -212,6 +223,7 @@ class BitunixService {
     const side = String(position.side || '').toUpperCase() === 'SHORT' ? 'short' : 'long';
     const quantity = Math.abs(parseFloat(position.qty || 0));
     const entryTime = this.toIsoString(position.ctime);
+    const originalCurrency = this.normalizeOriginalCurrency(marginCoin);
 
     if (!position.positionId || !position.symbol || !quantity || !entryTime) {
       return null;
@@ -230,7 +242,7 @@ class BitunixService {
       fees: Math.abs(parseFloat(position.funding || 0)),
       pnl: null,
       broker: 'bitunix',
-      originalCurrency: marginCoin,
+      originalCurrency,
       accountIdentifier: `bitunix-${marginCoin.toLowerCase()}`,
       executionData: [
         {
