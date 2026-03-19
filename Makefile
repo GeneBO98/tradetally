@@ -24,7 +24,7 @@ build_image_tradetally:
 	@DOCKER_BUILDKIT=1 docker build -f ./Dockerfile ./ -t $(TRADETALLY_IMAGE_TAG_DEV) $(BUILD_IMAGE_ARGS)
 
 build_service_images:
-	$(MAKE) build_image_tradetally $(BUILD_IMAGE_ARGS)
+	$(MAKE) build_image_tradetally BUILD_IMAGE_ARGS=$(BUILD_IMAGE_ARGS)
 
 install_npm_backend:
 	$(MAKE) --directory ./backend install ARGS=$(ARGS)
@@ -35,14 +35,13 @@ install_npm_frontend:
 init:
 	$(MAKE) pull_base_images
 	$(MAKE) build_service_images -j $(CPU_CORES) BUILD_IMAGE_ARGS=--no-cache
-	$(MAKE) install_npm_backend
-	$(MAKE) install_npm_frontend
+	$(MAKE) install_npm_backend ARGS=--install-dev
+	$(MAKE) install_npm_frontend ARGS=--install-dev
 
 startup: check_env
 	@case "$(ENV)" in \
 		development) \
-			docker compose -f docker-compose.dev.yaml up -d && \
-			docker exec -d tradetally-app-dev /bin/ash -c "cd frontend && npm run dev";; \
+			docker compose -f docker-compose.dev.yaml up -d ;; \
 		production) \
 			docker compose -f docker-compose.yml up -d ;; \
 		*) \

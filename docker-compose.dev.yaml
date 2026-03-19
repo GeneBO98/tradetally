@@ -71,8 +71,7 @@ services:
       PERPLEXITY_API_KEY: ${PERPLEXITY_API_KEY:-}
       # Timezone Configuration
       TZ: ${TZ:-America/Chicago}
-    ports:
-      # - "8081:80" useless as long as vite running on 5173 with nginx passtrough
+    ports: #port 5173 open to web for auto loading changes on web
       - "5173:5173"
       - "3000:3000"
     volumes:
