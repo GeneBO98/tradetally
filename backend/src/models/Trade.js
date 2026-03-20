@@ -2,6 +2,7 @@ const db = require('../config/database');
 const AchievementService = require('../services/achievementService');
 const { getUserLocalDate } = require('../utils/timezone');
 const { getFuturesPointValue, extractUnderlyingFromFuturesSymbol } = require('../utils/futuresUtils');
+const { getTradeOutcomePnlSql } = require('../utils/tradeOutcomeSql');
 const logger = require('../utils/logger');
 
 /**
@@ -2781,19 +2782,7 @@ class Trade {
       paramCount++;
     }
 
-    const outcomePnlExpression = `
-      CASE
-        WHEN t.broker = 'bitunix'
-          AND t.entry_price IS NOT NULL
-          AND t.exit_price IS NOT NULL
-          AND t.quantity IS NOT NULL
-        THEN CASE
-          WHEN t.side = 'short' THEN (t.entry_price - t.exit_price) * t.quantity
-          ELSE (t.exit_price - t.entry_price) * t.quantity
-        END
-        ELSE t.pnl
-      END
-    `;
+    const outcomePnlExpression = getTradeOutcomePnlSql('t');
 
     if (filters.pnlType === 'positive' || filters.pnlType === 'profit') {
       whereClause += ` AND (${outcomePnlExpression}) > 0`;
@@ -2936,17 +2925,7 @@ class Trade {
           symbol,
           id as trade_group,
           pnl as trade_pnl,
-          CASE
-            WHEN broker = 'bitunix'
-              AND entry_price IS NOT NULL
-              AND exit_price IS NOT NULL
-              AND quantity IS NOT NULL
-            THEN CASE
-              WHEN side = 'short' THEN (entry_price - exit_price) * quantity
-              ELSE (exit_price - entry_price) * quantity
-            END
-            ELSE pnl
-          END as trade_outcome_pnl,
+          ${getTradeOutcomePnlSql()} as trade_outcome_pnl,
           (commission + fees) as trade_costs,
           1 as execution_count,
           pnl_percent as avg_return_pct,

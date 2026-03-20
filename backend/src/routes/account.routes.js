@@ -36,6 +36,8 @@ router.post('/:accountId/transactions', accountController.addTransaction);
 // Cashflow
 router.get('/:accountId/cashflow', accountController.getCashflow);
 router.get('/:accountId/debug-cashflow', accountController.debugCashflow);
+router.post('/:accountId/sync-funding', accountController.syncAccountFunding);
+router.post('/:accountId/sync-bitunix-funding', accountController.syncBitunixFunding);
 
 // Fix trades with redacted account identifiers
 router.post('/:accountId/fix-trades', accountController.fixRedactedTrades);

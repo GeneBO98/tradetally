@@ -9,6 +9,7 @@ const MAEEstimator = require('../utils/maeEstimator');
 const symbolCategories = require('../utils/symbolCategories');
 const { sendV1NotImplemented } = require('../utils/apiResponse');
 const ensureString = require('../utils/ensureString');
+const { getTradeOutcomePnlSql } = require('../utils/tradeOutcomeSql');
 
 // Helper function to create a short but collision-resistant hash for cache keys
 function createFilterHash(filters) {
@@ -205,6 +206,7 @@ function getHoldTimeFilter(holdTimeRange) {
 // Helper function to build filter conditions for analytics queries using normalized Trade filters
 function buildFilterConditions(query) {
   const filters = convertQueryToTradeFilters(query);
+  const outcomePnlExpression = getTradeOutcomePnlSql();
 
   console.log('--- Filter Debug (normalized) ---');
   console.log('Raw query object:', query);
@@ -315,10 +317,12 @@ function buildFilterConditions(query) {
     params.push(filters.maxPnl);
     paramIndex++;
   }
-  if (filters.pnlType === 'profit') {
-    filterConditions += ` AND pnl > 0`;
-  } else if (filters.pnlType === 'loss') {
-    filterConditions += ` AND pnl < 0`;
+  if (filters.pnlType === 'positive' || filters.pnlType === 'profit') {
+    filterConditions += ` AND (${outcomePnlExpression}) > 0`;
+  } else if (filters.pnlType === 'negative' || filters.pnlType === 'loss') {
+    filterConditions += ` AND (${outcomePnlExpression}) < 0`;
+  } else if (filters.pnlType === 'breakeven') {
+    filterConditions += ` AND (${outcomePnlExpression}) = 0`;
   }
 
   // Day of week filter (use trade_date for simplicity within analytics context)
@@ -476,17 +480,7 @@ const analyticsController = {
             -- Each trade with both entry and exit price is a complete round trip
             SELECT
                 *,
-                CASE
-                  WHEN broker = 'bitunix'
-                    AND entry_price IS NOT NULL
-                    AND exit_price IS NOT NULL
-                    AND quantity IS NOT NULL
-                  THEN CASE
-                    WHEN side = 'short' THEN (entry_price - exit_price) * quantity
-                    ELSE (exit_price - entry_price) * quantity
-                  END
-                  ELSE pnl
-                END as outcome_pnl
+                ${getTradeOutcomePnlSql()} as outcome_pnl
             FROM trades
             WHERE user_id = $1 ${filterConditions}
                 AND exit_price IS NOT NULL
@@ -632,10 +626,12 @@ const analyticsController = {
       const avgWin = Math.abs(parseFloat(overview.avg_win)) || 0;
       const avgLoss = Math.abs(parseFloat(overview.avg_loss)) || 0;
       
-      if (avgLoss > 0 && overview.total_trades > 0) {
+      if (avgWin > 0 && avgLoss > 0 && overview.total_trades > 0) {
         const winLossRatio = avgWin / avgLoss;
         const kellyDecimal = (winRate * winLossRatio - lossRate) / winLossRatio;
-        overview.kelly_percentage = (kellyDecimal * 100).toFixed(2);
+        overview.kelly_percentage = Number.isFinite(kellyDecimal)
+          ? (kellyDecimal * 100).toFixed(2)
+          : '0.00';
         
         // Debug info
         console.log('Kelly % calculation:', {
