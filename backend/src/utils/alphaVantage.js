@@ -326,13 +326,16 @@ class AlphaVantageClient {
       const dividendData = data.data || [];
 
       // Normalize to common format matching Finnhub structure
+      // Alpha Vantage may return "None" (Python-style null) for missing dates
+      const sanitizeDate = (val) => (!val || val === 'None' || val === 'none') ? null : val;
+
       const dividends = dividendData.map(d => ({
         symbol: symbolUpper,
-        date: d.ex_dividend_date, // ex-dividend date
+        date: sanitizeDate(d.ex_dividend_date), // ex-dividend date
         amount: parseFloat(d.amount) || 0,
-        payDate: d.payment_date,
-        recordDate: d.record_date,
-        declarationDate: d.declaration_date,
+        payDate: sanitizeDate(d.payment_date),
+        recordDate: sanitizeDate(d.record_date),
+        declarationDate: sanitizeDate(d.declaration_date),
         currency: 'USD' // Alpha Vantage doesn't return currency, assume USD
       }));
 

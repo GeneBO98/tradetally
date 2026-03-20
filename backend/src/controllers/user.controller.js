@@ -199,9 +199,17 @@ const userController = {
       const page = parseInt(req.query.page) || 1;
       const limit = parseInt(req.query.limit) || 25;
       const offset = (page - 1) * limit;
-      const search = req.query.search || '';
-      
-      const result = await User.getAllUsers(limit, offset, search);
+      const filters = {
+        search: req.query.search || '',
+        role: req.query.role || 'all',
+        status: req.query.status || 'all',
+        marketing: req.query.marketing || 'all',
+        tier: req.query.tier || 'all',
+        joinedFrom: req.query.joinedFrom || '',
+        joinedTo: req.query.joinedTo || ''
+      };
+
+      const result = await User.getAllUsers(limit, offset, filters);
       
       // Get overall statistics (not filtered by search)
       const stats = await User.getUserStatistics();
@@ -210,6 +218,7 @@ const userController = {
         ...result,
         page,
         totalPages: Math.ceil(result.total / limit),
+        hasMore: offset + result.users.length < result.total,
         statistics: stats
       });
     } catch (error) {

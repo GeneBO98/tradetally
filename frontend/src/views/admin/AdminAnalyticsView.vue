@@ -1,10 +1,35 @@
 <template>
     <div class="content-wrapper py-8">
-        <div class="mb-8">
-            <h1 class="heading-page">Platform Analytics</h1>
-            <p class="mt-2 text-gray-600 dark:text-gray-400">
-                Monitor user activity, imports, and API usage
-            </p>
+        <div class="mb-8 flex items-start justify-between">
+            <div>
+                <h1 class="heading-page">Platform Analytics</h1>
+                <p class="mt-2 text-gray-600 dark:text-gray-400">
+                    Monitor user activity, imports, and API usage
+                </p>
+            </div>
+            <div
+                v-if="activeConnections !== null"
+                class="flex items-center space-x-2 bg-white dark:bg-gray-800 rounded-lg shadow px-4 py-3 border border-gray-200 dark:border-gray-700"
+            >
+                <span class="relative flex h-3 w-3">
+                    <span
+                        class="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75"
+                        :class="activeConnections > 0 ? 'bg-green-400' : 'bg-gray-400'"
+                    ></span>
+                    <span
+                        class="relative inline-flex rounded-full h-3 w-3"
+                        :class="activeConnections > 0 ? 'bg-green-500' : 'bg-gray-400'"
+                    ></span>
+                </span>
+                <div class="text-right">
+                    <p class="text-lg font-semibold text-gray-900 dark:text-white leading-tight">
+                        {{ activeConnections }}
+                    </p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">
+                        Connected now
+                    </p>
+                </div>
+            </div>
         </div>
 
         <!-- Period Selector -->
@@ -1245,7 +1270,7 @@
 </template>
 
 <script setup>
-import { ref, watch, onMounted } from "vue";
+import { ref, watch, onMounted, onUnmounted } from "vue";
 import api from "@/services/api";
 import AdminLineChart from "@/components/admin/AdminLineChart.vue";
 
@@ -1271,6 +1296,8 @@ const expandedRowId = ref(null);
 const showExpiredTrialUsers = ref(false);
 const copiedRowId = ref(null);
 const clipboardFeedback = ref(null);
+const activeConnections = ref(null);
+let connectionsInterval = null;
 
 function formatNumber(num) {
     if (num === null || num === undefined) return "0";
@@ -1417,8 +1444,25 @@ watch(selectedPeriod, (newPeriod) => {
     fetchAnalytics();
 });
 
+async function fetchActiveConnections() {
+    try {
+        const response = await api.get("/admin/analytics/active-connections");
+        activeConnections.value = response.data.active_connections;
+    } catch {
+        // Silently fail - not critical
+    }
+}
+
 onMounted(() => {
     fetchAnalytics();
     fetchUnknownCsvHeaders();
+    fetchActiveConnections();
+    connectionsInterval = setInterval(fetchActiveConnections, 30000);
+});
+
+onUnmounted(() => {
+    if (connectionsInterval) {
+        clearInterval(connectionsInterval);
+    }
 });
 </script>
