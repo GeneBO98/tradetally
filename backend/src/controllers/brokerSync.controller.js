@@ -199,10 +199,10 @@ const brokerSyncController = {
         });
       }
 
-      // const encryptionConfigError = getBrokerEncryptionConfigResponse();
-      // if (encryptionConfigError) {
-      //   return res.status(503).json(encryptionConfigError);
-      // }
+      const encryptionConfigError = getBrokerEncryptionConfigResponse();
+      if (encryptionConfigError) {
+        return res.status(503).json(encryptionConfigError);
+      }
 
       const normalizedMarginCoin = String(marginCoin || 'USDT').toUpperCase();
 
