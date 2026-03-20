@@ -5,6 +5,26 @@
  */
 
 const Account = require('../models/Account');
+const accountFundingSyncService = require('../services/accountFundingSync');
+
+function formatAccountResponse(account) {
+  const capabilities = accountFundingSyncService.getAccountCapabilities(account);
+
+  return {
+    id: account.id,
+    accountName: account.account_name,
+    accountIdentifier: account.account_identifier,
+    broker: account.broker,
+    initialBalance: parseFloat(account.initial_balance),
+    initialBalanceDate: account.initial_balance_date,
+    isPrimary: account.is_primary,
+    notes: account.notes,
+    tradeCount: parseInt(account.trade_count) || 0,
+    createdAt: account.created_at,
+    updatedAt: account.updated_at,
+    ...capabilities
+  };
+}
 
 const accountController = {
   /**
@@ -15,24 +35,9 @@ const accountController = {
     try {
       const accounts = await Account.findByUser(req.user.id);
 
-      // Convert to camelCase for frontend
-      const formattedAccounts = accounts.map(account => ({
-        id: account.id,
-        accountName: account.account_name,
-        accountIdentifier: account.account_identifier,
-        broker: account.broker,
-        initialBalance: parseFloat(account.initial_balance),
-        initialBalanceDate: account.initial_balance_date,
-        isPrimary: account.is_primary,
-        notes: account.notes,
-        tradeCount: parseInt(account.trade_count) || 0,
-        createdAt: account.created_at,
-        updatedAt: account.updated_at
-      }));
-
       res.json({
         success: true,
-        data: formattedAccounts
+        data: accounts.map(formatAccountResponse)
       });
     } catch (error) {
       console.error('[ACCOUNTS] Error fetching accounts:', error);
@@ -60,18 +65,7 @@ const accountController = {
 
       res.json({
         success: true,
-        data: {
-          id: account.id,
-          accountName: account.account_name,
-          accountIdentifier: account.account_identifier,
-          broker: account.broker,
-          initialBalance: parseFloat(account.initial_balance),
-          initialBalanceDate: account.initial_balance_date,
-          isPrimary: account.is_primary,
-          notes: account.notes,
-          createdAt: account.created_at,
-          updatedAt: account.updated_at
-        }
+        data: formatAccountResponse(account)
       });
     } catch (error) {
       console.error('[ACCOUNTS] Error fetching account:', error);
@@ -99,16 +93,7 @@ const accountController = {
 
       res.json({
         success: true,
-        data: {
-          id: account.id,
-          accountName: account.account_name,
-          accountIdentifier: account.account_identifier,
-          broker: account.broker,
-          initialBalance: parseFloat(account.initial_balance),
-          initialBalanceDate: account.initial_balance_date,
-          isPrimary: account.is_primary,
-          notes: account.notes
-        }
+        data: formatAccountResponse(account)
       });
     } catch (error) {
       console.error('[ACCOUNTS] Error fetching primary account:', error);
@@ -186,17 +171,7 @@ const accountController = {
 
       res.status(201).json({
         success: true,
-        data: {
-          id: account.id,
-          accountName: account.account_name,
-          accountIdentifier: account.account_identifier,
-          broker: account.broker,
-          initialBalance: parseFloat(account.initial_balance),
-          initialBalanceDate: account.initial_balance_date,
-          isPrimary: account.is_primary,
-          notes: account.notes,
-          createdAt: account.created_at
-        }
+        data: formatAccountResponse(account)
       });
     } catch (error) {
       console.error('[ACCOUNTS] Error creating account:', error);
@@ -233,17 +208,7 @@ const accountController = {
 
       res.json({
         success: true,
-        data: {
-          id: account.id,
-          accountName: account.account_name,
-          accountIdentifier: account.account_identifier,
-          broker: account.broker,
-          initialBalance: parseFloat(account.initial_balance),
-          initialBalanceDate: account.initial_balance_date,
-          isPrimary: account.is_primary,
-          notes: account.notes,
-          updatedAt: account.updated_at
-        }
+        data: formatAccountResponse(account)
       });
     } catch (error) {
       console.error('[ACCOUNTS] Error updating account:', error);
@@ -499,6 +464,53 @@ const accountController = {
         message: 'Failed to fetch cashflow'
       });
     }
+  },
+
+  /**
+   * Sync funding history into account transactions
+   * POST /api/accounts/:accountId/sync-funding
+   */
+  async syncAccountFunding(req, res) {
+    try {
+      const { accountId } = req.params;
+      const userId = req.user.id;
+
+      const account = await Account.findById(accountId, userId);
+      if (!account) {
+        return res.status(404).json({
+          success: false,
+          message: 'Account not found'
+        });
+      }
+
+      const result = await accountFundingSyncService.syncAccountFunding({
+        userId,
+        accountId,
+        account
+      });
+
+      res.json({
+        success: true,
+        data: result,
+        message: `${String(result.provider || 'account').toUpperCase()} funding history synced successfully`
+      });
+    } catch (error) {
+      console.error('[ACCOUNTS] Error syncing account funding:', error);
+      const statusCode = error.message === 'Funding sync is not implemented for this account' ? 400 : 500;
+
+      res.status(statusCode).json({
+        success: false,
+        message: error.message || 'Failed to sync account funding history'
+      });
+    }
+  },
+
+  /**
+   * Backward-compatible Bitunix alias
+   * POST /api/accounts/:accountId/sync-bitunix-funding
+   */
+  async syncBitunixFunding(req, res) {
+    return accountController.syncAccountFunding(req, res);
   },
 
   /**
