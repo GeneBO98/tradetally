@@ -888,6 +888,13 @@ const router = useRouter()
 // MDI icons
 const newspaperIcon = mdiNewspaper
 
+function redactAccountId(accountId) {
+  if (!accountId) return null
+  const str = String(accountId).trim()
+  if (str.length <= 4) return str
+  return '****' + str.slice(-4)
+}
+
 // Fullwidth mode
 const isFullWidth = ref(false)
 
@@ -1054,14 +1061,6 @@ function formatNumber(num) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   }).format(num || 0)
-}
-
-// Redact account identifier for privacy (show only last 4 characters)
-function redactAccountId(accountId) {
-  if (!accountId) return null
-  const str = String(accountId).trim()
-  if (str.length <= 4) return str
-  return '****' + str.slice(-4)
 }
 
 function formatQuantity(num) {

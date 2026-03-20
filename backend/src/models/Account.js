@@ -35,6 +35,10 @@ class Account {
     return brokerAliases[normalized] || normalized;
   }
 
+  static getEffectiveBroker(account = {}) {
+    return account.resolved_broker || this.normalizeBrokerValue(account.broker) || account.broker || null;
+  }
+
   static async getDerivedBrokerMap(userId, accountIdentifiers = []) {
     const identifiers = [...new Set(accountIdentifiers.filter(Boolean))];
     const brokerMap = new Map();
@@ -103,7 +107,7 @@ class Account {
 
       return {
         ...account,
-        broker: resolvedBroker || null,
+        broker: account.broker || null,
         resolved_broker: resolvedBroker || null
       };
     });
@@ -250,11 +254,12 @@ class Account {
     const nextAccountIdentifier = updates.accountIdentifier !== undefined
       ? updates.accountIdentifier
       : existingAccount.account_identifier;
-    const nextBroker = updates.broker !== undefined
+    const brokerWasProvided = updates.broker !== undefined;
+    const nextBroker = brokerWasProvided
       ? updates.broker
       : existingAccount.broker;
 
-    if (updates.accountIdentifier !== undefined || updates.broker !== undefined) {
+    if (brokerWasProvided) {
       updates = {
         ...updates,
         broker: await this.resolveBrokerValue(userId, nextAccountIdentifier, nextBroker)

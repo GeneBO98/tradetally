@@ -1213,6 +1213,13 @@ const splittingTrade = ref(false)
 const splitMode = ref(false)
 const selectedExecutions = ref(new Set())
 
+function redactAccountId(accountId) {
+  if (!accountId) return null
+  const str = String(accountId).trim()
+  if (str.length <= 4) return str
+  return '****' + str.slice(-4)
+}
+
 // Helper function to safely get numeric score value
 const getScore = (value) => {
   if (value === null || value === undefined) return 0
@@ -1605,29 +1612,6 @@ function formatNumber(num, decimals = 2) {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals
   }).format(num || 0)
-}
-
-function redactAccountId(accountId) {
-  if (!accountId) return null
-  const str = String(accountId).trim()
-
-  if (str.length <= 4) return str
-
-  const withoutSeparators = str.replace(/[-.\s]/g, '')
-  const digitCount = (withoutSeparators.match(/\d/g) || []).length
-  const letterCount = (withoutSeparators.match(/[a-zA-Z]/g) || []).length
-  const totalAlphanumeric = digitCount + letterCount
-
-  const isAccountNumber = totalAlphanumeric > 0 && (
-    (digitCount / totalAlphanumeric) > 0.5 ||
-    /^[A-Za-z]{1,2}\d{4,}/.test(withoutSeparators)
-  )
-
-  if (isAccountNumber) {
-    return '****' + str.slice(-4)
-  }
-
-  return str
 }
 
 function formatQuantity(num) {

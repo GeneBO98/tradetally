@@ -67,7 +67,7 @@
 
                     <div
                         v-if="activeSymbolFilter"
-                        class="mt-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-100"
+                        class="mt-4 rounded-lg border border-primary-200 bg-primary-50 px-4 py-3 text-sm text-primary-900 dark:border-primary-800 dark:bg-primary-900/20 dark:text-primary-100"
                     >
                         Symbol filter active for
                         <span class="font-semibold">{{ activeSymbolFilter }}</span

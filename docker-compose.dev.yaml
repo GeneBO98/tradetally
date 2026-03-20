@@ -35,13 +35,23 @@ services:
       - "5173:5173"
       - "3000:3000"
     volumes:
-      # - ./backend/src/logs:/app/backend/src/logs
-      # - ./backend/src/data:/app/backend/src/data
-      # - ./backend/uploads:/app/backend/uploads
-      # Mount source code for development (optional - enables hot reload if supported)
-      # Covers everything avoids annyoing npm hot reload bug
-      - ./backend:/app/backend
-      - ./frontend:/app/frontend
+      # Backend - Hot-Mount for Development on nodemon
+      # App Writen Data
+      - ./backend/scripts:/app/backend/scripts
+      - ./backend/uploads:/app/backend/uploads
+      # ./backend/src/logs is coverd by /backend/src:app/backend/src
+      # App Code Init and Hot-Running
+      - ./backend/src:/app/backend/src
+      - ./backend/migrations:/app/backend/migrations
+      - ./backend/package.json:/app/backend/package.json
+      - ./backend/package-lock.json:/app/backend/package-lock.json
+      # Frontend
+      - ./frontend/src:/app/frontend/src
+      - ./frontend/package.json:/app/frontend/package.json
+      - ./frontend/package-lock.json:/app/frontend/package-lock.json
+      - ./frontend/postcss.config.js:/app/frontend/postcss.config.js
+      - ./frontend/tailwind.config.js:/app/frontend/tailwind.config.js
+      - ./frontend/vite.config.js:/app/frontend/vite.config.js
     networks:
       - trader-network-dev
     restart: unless-stopped

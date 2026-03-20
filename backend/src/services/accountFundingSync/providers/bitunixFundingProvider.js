@@ -7,7 +7,7 @@ class BitunixFundingProvider {
   }
 
   supportsAccount(account) {
-    const broker = String(account?.broker || '').trim().toLowerCase();
+    const broker = String(account?.resolved_broker || account?.broker || '').trim().toLowerCase();
     const identifier = String(account?.account_identifier || '').trim().toLowerCase();
 
     return broker === 'bitunix' || identifier === 'bitunix-usdt';

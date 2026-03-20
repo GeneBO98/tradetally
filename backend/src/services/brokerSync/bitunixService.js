@@ -366,6 +366,11 @@ class BitunixService {
 
     const client = await db.connect();
     let insertedCount = 0;
+    const existingInitialBalance = parseFloat(
+      account?.initial_balance ?? account?.initialBalance ?? 0
+    ) || 0;
+    const existingInitialBalanceDate = account?.initial_balance_date || account?.initialBalanceDate || null;
+    let hasManualBaseline = Math.abs(existingInitialBalance) > 0.000001;
 
     try {
       await client.query('BEGIN');
@@ -382,6 +387,22 @@ class BitunixService {
       const existingDescriptions = new Set(
         existingFundingResult.rows.map(row => row.description)
       );
+
+      const nonBrokerFundingTransactionsResult = await client.query(
+        `SELECT COUNT(*)::integer AS count
+         FROM account_transactions
+         WHERE user_id = $1
+           AND account_id = $2
+           AND (
+             description IS NULL
+             OR description !~ '^\\[[^]]+ FUNDING\\]'
+           )`,
+        [userId, accountId]
+      );
+
+      hasManualBaseline =
+        hasManualBaseline ||
+        Number(nonBrokerFundingTransactionsResult.rows[0]?.count || 0) > 0;
 
       for (const event of fundingEvents) {
         if (existingDescriptions.has(event.description)) {
@@ -407,12 +428,11 @@ class BitunixService {
         insertedCount++;
       }
 
-      if (fundingEvents.length > 0) {
+      if (fundingEvents.length > 0 && !hasManualBaseline) {
         const firstFundingDate = fundingEvents[0].transactionDate;
         await client.query(
           `UPDATE user_accounts
-           SET initial_balance = 0,
-               initial_balance_date = $3,
+           SET initial_balance_date = $3,
                updated_at = CURRENT_TIMESTAMP
            WHERE id = $1
              AND user_id = $2`,
@@ -439,7 +459,10 @@ class BitunixService {
       totalWithdrawn: fundingEvents
         .filter(event => event.transactionType === 'withdrawal')
         .reduce((sum, event) => sum + event.amount, 0),
-      earliestFundingDate: fundingEvents[0]?.transactionDate || null
+      earliestFundingDate: fundingEvents[0]?.transactionDate || null,
+      preservedInitialBalance: Math.abs(existingInitialBalance) > 0.000001,
+      preservedInitialBalanceDate: Boolean(existingInitialBalanceDate),
+      skippedBaselineReset: hasManualBaseline
     };
   }
 

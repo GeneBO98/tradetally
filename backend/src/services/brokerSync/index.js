@@ -188,9 +188,9 @@ class BrokerSyncService {
 
       case 'bitunix':
         return bitunixService.validateCredentials(
-          credentials.apiKey,
-          credentials.apiSecret,
-          credentials.marginCoin
+          credentials.api_key,
+          credentials.api_secret,
+          credentials.margin_coin
         );
 
       default:

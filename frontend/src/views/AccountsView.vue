@@ -154,8 +154,8 @@
                   <span v-if="account.isPrimary" class="px-2 py-0.5 text-xs font-medium rounded bg-primary-100 text-primary-700 dark:bg-primary-900 dark:text-primary-300">
                     Primary
                   </span>
-                  <span v-if="account.broker" class="px-2 py-0.5 text-xs font-medium rounded bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
-                    {{ formatBroker(account.broker) }}
+                  <span v-if="getEffectiveBroker(account)" class="px-2 py-0.5 text-xs font-medium rounded bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                    {{ formatBroker(getEffectiveBroker(account)) }}
                   </span>
                 </div>
                 <div class="mt-1 text-sm text-gray-600 dark:text-gray-400">
@@ -287,6 +287,10 @@ function formatBroker(broker) {
   return brokerLabels[broker] || broker
 }
 
+function getEffectiveBroker(account) {
+  return account?.resolvedBroker || account?.broker || ''
+}
+
 /**
  * Smart redaction for account identifiers
  * Only redacts strings that look like actual account numbers (mostly digits)
@@ -358,7 +362,7 @@ function editAccount(account) {
   form.value = {
     accountName: account.accountName,
     accountIdentifier: account.accountIdentifier || '',
-    broker: account.broker || '',
+    broker: account.resolvedBroker || account.broker || '',
     initialBalance: parseFloat(account.initialBalance) || 0,
     initialBalanceDate: account.initialBalanceDate?.split('T')[0] || new Date().toISOString().split('T')[0],
     isPrimary: account.isPrimary || false,

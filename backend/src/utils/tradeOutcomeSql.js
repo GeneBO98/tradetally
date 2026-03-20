@@ -12,6 +12,8 @@ function getTradeDirectionPnlSql(alias = '') {
 function getTradeOutcomePnlSql(alias = '') {
   const prefix = alias ? `${alias}.` : '';
   const directionPnlSql = getTradeDirectionPnlSql(alias);
+  const feeToleranceSql = `(COALESCE(${prefix}fees, 0) + 0.00000001)`;
+  const flatPriceMoveSql = `ABS(${directionPnlSql}) <= 0.00000001`;
 
   return `
     CASE
@@ -20,8 +22,9 @@ function getTradeOutcomePnlSql(alias = '') {
         AND ${prefix}exit_price IS NOT NULL
         AND ${prefix}quantity IS NOT NULL
       THEN CASE
-        WHEN ${directionPnlSql} >= 0
-          AND ABS(COALESCE(${prefix}pnl, 0)) <= (COALESCE(${prefix}fees, 0) + 0.00000001)
+        WHEN ${flatPriceMoveSql}
+          AND COALESCE(${prefix}pnl, 0) <= 0
+          AND ABS(COALESCE(${prefix}pnl, 0)) <= ${feeToleranceSql}
         THEN 0
         ELSE ${prefix}pnl
       END

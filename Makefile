@@ -26,17 +26,9 @@ build_image_tradetally:
 build_service_images:
 	$(MAKE) build_image_tradetally BUILD_IMAGE_ARGS=$(BUILD_IMAGE_ARGS)
 
-install_npm_backend:
-	$(MAKE) --directory ./backend install ARGS=$(ARGS)
-
-install_npm_frontend:
-	$(MAKE) --directory ./frontend install ARGS=$(ARGS)
-
 init:
 	$(MAKE) pull_base_images
 	$(MAKE) build_service_images -j $(CPU_CORES) BUILD_IMAGE_ARGS=--no-cache
-	$(MAKE) install_npm_backend ARGS=--install-dev
-	$(MAKE) install_npm_frontend ARGS=--install-dev
 
 startup: check_env
 	@case "$(ENV)" in \

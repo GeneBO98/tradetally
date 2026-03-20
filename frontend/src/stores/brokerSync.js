@@ -147,12 +147,12 @@ export const useBrokerSyncStore = defineStore('brokerSync', () => {
 
     try {
       const response = await api.post('/broker-sync/connections/bitunix', {
-        apiKey: credentials.apiKey,
-        apiSecret: credentials.apiSecret,
-        marginCoin: credentials.marginCoin || 'USDT',
-        autoSyncEnabled: credentials.autoSyncEnabled || false,
-        syncFrequency: credentials.syncFrequency || 'daily',
-        syncTime: credentials.syncTime || '06:00:00'
+        api_key: credentials.api_key,
+        api_secret: credentials.api_secret,
+        margin_coin: credentials.margin_coin || 'USDT',
+        auto_sync_enabled: credentials.auto_sync_enabled ?? false,
+        sync_frequency: credentials.sync_frequency || 'daily',
+        sync_time: credentials.sync_time || '06:00:00'
       })
 
       await fetchConnections()

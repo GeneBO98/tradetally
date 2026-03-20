@@ -2,25 +2,7 @@ const db = require('../config/database');
 const TierService = require('./tierService');
 const finnhub = require('../utils/finnhub');
 const AnalyticsCache = require('./analyticsCache');
-
-function buildSymbolFilterClause(tradeFilters = {}, queryParams = [], paramCount = 1, tableAlias = '') {
-  const symbol = tradeFilters.symbol?.trim();
-  if (!symbol) {
-    return { sql: '', queryParams, paramCount };
-  }
-
-  const prefix = tableAlias ? `${tableAlias}.` : '';
-  const operator = tradeFilters.symbolExact ? '=' : 'LIKE';
-  const value = tradeFilters.symbolExact ? symbol : `${symbol}%`;
-
-  queryParams.push(value);
-
-  return {
-    sql: ` AND UPPER(${prefix}symbol) ${operator} UPPER($${paramCount})`,
-    queryParams,
-    paramCount: paramCount + 1,
-  };
-}
+const buildSymbolFilterClause = require('../utils/buildSymbolFilterClause');
 
 /**
  * Loss Aversion Analytics Service

@@ -43,10 +43,10 @@
 
           <form @submit.prevent="handleSubmit" class="space-y-4">
             <div>
-              <label for="apiKey" class="label">API Key</label>
+              <label for="api_key" class="label">API Key</label>
               <input
-                id="apiKey"
-                v-model="form.apiKey"
+                id="api_key"
+                v-model="form.api_key"
                 type="password"
                 class="input"
                 placeholder="Enter your Bitunix API key"
@@ -55,10 +55,10 @@
             </div>
 
             <div>
-              <label for="apiSecret" class="label">API Secret</label>
+              <label for="api_secret" class="label">API Secret</label>
               <input
-                id="apiSecret"
-                v-model="form.apiSecret"
+                id="api_secret"
+                v-model="form.api_secret"
                 type="password"
                 class="input"
                 placeholder="Enter your Bitunix API secret"
@@ -67,8 +67,8 @@
             </div>
 
             <div>
-              <label for="marginCoin" class="label">Margin Coin</label>
-              <select id="marginCoin" v-model="form.marginCoin" class="input">
+              <label for="margin_coin" class="label">Margin Coin</label>
+              <select id="margin_coin" v-model="form.margin_coin" class="input">
                 <option value="USDT">USDT</option>
                 <option value="USDC">USDC</option>
               </select>
@@ -85,26 +85,26 @@
               </div>
               <button
                 type="button"
-                @click="form.autoSyncEnabled = !form.autoSyncEnabled"
+                @click="form.auto_sync_enabled = !form.auto_sync_enabled"
                 :class="[
-                  form.autoSyncEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-gray-600',
+                  form.auto_sync_enabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-gray-600',
                   'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-600 focus:ring-offset-2'
                 ]"
               >
                 <span
                   :class="[
-                    form.autoSyncEnabled ? 'translate-x-5' : 'translate-x-0',
+                    form.auto_sync_enabled ? 'translate-x-5' : 'translate-x-0',
                     'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out'
                   ]"
                 />
               </button>
             </div>
 
-            <div v-if="form.autoSyncEnabled">
-              <label for="syncTime" class="label">Sync Time</label>
+            <div v-if="form.auto_sync_enabled">
+              <label for="sync_time" class="label">Sync Time</label>
               <input
-                id="syncTime"
-                v-model="form.syncTime"
+                id="sync_time"
+                v-model="form.sync_time"
                 type="time"
                 class="input"
               />
@@ -150,28 +150,28 @@ const props = defineProps({
 const emit = defineEmits(['close', 'save'])
 
 const form = ref({
-  apiKey: '',
-  apiSecret: '',
-  marginCoin: 'USDT',
-  autoSyncEnabled: true,
-  syncFrequency: 'daily',
-  syncTime: '06:00'
+  api_key: '',
+  api_secret: '',
+  margin_coin: 'USDT',
+  auto_sync_enabled: true,
+  sync_frequency: 'daily',
+  sync_time: '06:00'
 })
 
 const isValid = computed(() => {
-  return form.value.apiKey.length > 0 && form.value.apiSecret.length > 0
+  return form.value.api_key.length > 0 && form.value.api_secret.length > 0
 })
 
 function handleSubmit() {
   if (!isValid.value) return
 
   emit('save', {
-    apiKey: form.value.apiKey,
-    apiSecret: form.value.apiSecret,
-    marginCoin: form.value.marginCoin,
-    autoSyncEnabled: form.value.autoSyncEnabled,
-    syncFrequency: form.value.syncFrequency,
-    syncTime: `${form.value.syncTime}:00`
+    api_key: form.value.api_key,
+    api_secret: form.value.api_secret,
+    margin_coin: form.value.margin_coin,
+    auto_sync_enabled: form.value.auto_sync_enabled,
+    sync_frequency: form.value.sync_frequency,
+    sync_time: `${form.value.sync_time}:00`
   })
 }
 </script>

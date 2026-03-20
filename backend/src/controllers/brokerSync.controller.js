@@ -184,15 +184,22 @@ const brokerSyncController = {
     try {
       const userId = req.user.id;
       const {
-        apiKey,
-        apiSecret,
-        marginCoin = 'USDT',
-        autoSyncEnabled = false,
-        syncFrequency = 'daily',
-        syncTime = '06:00:00'
+        api_key,
+        api_secret,
+        margin_coin,
+        auto_sync_enabled,
+        sync_frequency,
+        sync_time
       } = req.body;
 
-      if (!apiKey || !apiSecret) {
+      const normalizedApiKey = api_key;
+      const normalizedApiSecret = api_secret;
+      const normalizedMarginCoinInput = margin_coin || 'USDT';
+      const normalizedAutoSyncEnabled = auto_sync_enabled ?? false;
+      const normalizedSyncFrequency = sync_frequency || 'daily';
+      const normalizedSyncTime = sync_time || '06:00:00';
+
+      if (!normalizedApiKey || !normalizedApiSecret) {
         return res.status(400).json({
           success: false,
           error: 'API key and API secret are required'
@@ -204,9 +211,13 @@ const brokerSyncController = {
         return res.status(503).json(encryptionConfigError);
       }
 
-      const normalizedMarginCoin = String(marginCoin || 'USDT').toUpperCase();
+      const normalizedMarginCoin = String(normalizedMarginCoinInput).toUpperCase();
 
-      const validation = await bitunixService.validateCredentials(apiKey, apiSecret, normalizedMarginCoin);
+      const validation = await bitunixService.validateCredentials(
+        normalizedApiKey,
+        normalizedApiSecret,
+        normalizedMarginCoin
+      );
       if (!validation.valid) {
         return res.status(400).json({
           success: false,
@@ -216,12 +227,12 @@ const brokerSyncController = {
 
       const connection = await BrokerConnection.create(userId, {
         brokerType: 'bitunix',
-        bitunixApiKey: apiKey,
-        bitunixApiSecret: apiSecret,
+        bitunixApiKey: normalizedApiKey,
+        bitunixApiSecret: normalizedApiSecret,
         bitunixMarginCoin: normalizedMarginCoin,
-        autoSyncEnabled,
-        syncFrequency,
-        syncTime
+        autoSyncEnabled: normalizedAutoSyncEnabled,
+        syncFrequency: normalizedSyncFrequency,
+        syncTime: normalizedSyncTime
       });
 
       await BrokerConnection.updateStatus(connection.id, 'active', 'Connection validated successfully');

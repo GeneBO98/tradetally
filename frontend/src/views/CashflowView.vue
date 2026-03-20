@@ -193,8 +193,8 @@
                       {{ account.accountName }}
                       <span v-if="account.isPrimary" class="ml-2 text-xs text-primary-600 dark:text-primary-400">Primary</span>
                     </div>
-                    <div v-if="account.broker" class="text-sm text-gray-500 dark:text-gray-400">
-                      {{ formatBroker(account.broker) }}
+                    <div v-if="getEffectiveBroker(account)" class="text-sm text-gray-500 dark:text-gray-400">
+                      {{ formatBroker(getEffectiveBroker(account)) }}
                     </div>
                     <div class="text-sm text-gray-500 dark:text-gray-400">
                       Initial: ${{ formatNumber(account.initialBalance) }}
@@ -439,6 +439,10 @@ function formatBroker(broker) {
   return brokerLabels[String(broker || '').toLowerCase()] || broker
 }
 
+function getEffectiveBroker(account) {
+  return account?.resolvedBroker || account?.broker || ''
+}
+
 function formatDate(dateStr) {
   if (!dateStr) return ''
   // Handle various date formats
@@ -466,45 +470,6 @@ function formatDate(dateStr) {
     day: 'numeric',
     year: 'numeric'
   })
-}
-
-/**
- * Smart redaction for account identifiers
- * Only redacts strings that look like actual account numbers (mostly digits)
- * Does NOT redact descriptive text like "Margin +", "Trading Account", "Cash", etc.
- */
-function redactAccountId(accountId) {
-  if (!accountId) return null
-  const str = String(accountId).trim()
-
-  // Don't redact short strings
-  if (str.length <= 4) return str
-
-  // Check if this looks like an actual account number
-  // Account numbers are typically: mostly digits, may have dashes/dots/spaces as separators
-  // Examples to redact: "12345678", "1234-5678", "U1234567", "DU123456"
-  // Examples to NOT redact: "Margin +", "Trading Account", "Cash", "Individual"
-
-  // Remove common separators to count digits
-  const withoutSeparators = str.replace(/[-.\s]/g, '')
-  const digitCount = (withoutSeparators.match(/\d/g) || []).length
-  const letterCount = (withoutSeparators.match(/[a-zA-Z]/g) || []).length
-  const totalAlphanumeric = digitCount + letterCount
-
-  // Consider it an account number if:
-  // 1. More than 50% digits, OR
-  // 2. Starts with 1-2 letters followed by mostly digits (like "U1234567" or "DU123456")
-  const isAccountNumber = totalAlphanumeric > 0 && (
-    (digitCount / totalAlphanumeric) > 0.5 ||
-    /^[A-Za-z]{1,2}\d{4,}/.test(withoutSeparators)
-  )
-
-  if (isAccountNumber) {
-    return '****' + str.slice(-4)
-  }
-
-  // Not an account number - return as-is (e.g., "Margin +", "Trading Account")
-  return str
 }
 
 function selectAccount(accountId) {
@@ -552,7 +517,7 @@ function getFundingSyncTooltip(account) {
     return 'Sync funding'
   }
 
-  const brokerLabel = formatBroker(account.broker || 'this broker')
+  const brokerLabel = formatBroker(getEffectiveBroker(account) || 'this broker')
   return `Funding sync is not implemented for ${brokerLabel}`
 }
 
@@ -587,7 +552,7 @@ async function handleAccountFundingSync(account) {
   if (!account?.fundingSyncSupported) {
     showError(
       'Funding Sync Unavailable',
-      `Funding sync is not implemented for ${formatBroker(account.broker || 'this broker')}`
+      `Funding sync is not implemented for ${formatBroker(getEffectiveBroker(account) || 'this broker')}`
     )
     return
   }

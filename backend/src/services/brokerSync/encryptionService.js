@@ -55,17 +55,16 @@ class EncryptionService {
       throw new Error(configurationError);
     }
 
-    this.encryptionKey = this.getConfiguredKey();
-    return true;
+    return this.getConfiguredKey();
   }
 
   /**
    * Derive a key from the master key using PBKDF2
    * This adds an extra layer of security by using a unique salt per encryption
    */
-  deriveKey(salt) {
+  deriveKey(masterKey, salt) {
     return crypto.pbkdf2Sync(
-      this.encryptionKey,
+      masterKey,
       salt,
       100000, // iterations
       32, // key length (256 bits)
@@ -81,14 +80,14 @@ class EncryptionService {
   encrypt(plaintext) {
     if (!plaintext) return null;
 
-    this.validateKey();
+    const encryptionKey = this.validateKey();
 
     // Generate random salt and IV
     const salt = crypto.randomBytes(SALT_LENGTH);
     const iv = crypto.randomBytes(IV_LENGTH);
 
     // Derive key from master key using salt
-    const key = this.deriveKey(salt);
+    const key = this.deriveKey(encryptionKey, salt);
 
     // Create cipher and encrypt
     const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
@@ -114,7 +113,7 @@ class EncryptionService {
   decrypt(encryptedData) {
     if (!encryptedData) return null;
 
-    this.validateKey();
+    const encryptionKey = this.validateKey();
 
     try {
       // Decode from base64
@@ -130,7 +129,7 @@ class EncryptionService {
       const ciphertext = combined.subarray(SALT_LENGTH + IV_LENGTH + AUTH_TAG_LENGTH);
 
       // Derive key using extracted salt
-      const key = this.deriveKey(salt);
+      const key = this.deriveKey(encryptionKey, salt);
 
       // Create decipher
       const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);

@@ -5,7 +5,10 @@ DROP CONSTRAINT IF EXISTS broker_connections_broker_type_check;
 
 ALTER TABLE broker_connections
 ADD CONSTRAINT broker_connections_broker_type_check
-CHECK (broker_type IN ('ibkr', 'schwab', 'bitunix'));
+CHECK (
+    broker_type IS NOT NULL
+    AND LENGTH(TRIM(broker_type)) > 0
+);
 
 ALTER TABLE broker_connections
 ADD COLUMN IF NOT EXISTS bitunix_api_key TEXT,

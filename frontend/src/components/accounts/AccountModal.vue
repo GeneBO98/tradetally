@@ -265,7 +265,7 @@ onMounted(async () => {
   if (props.account) {
     form.value = {
       accountName: props.account.accountName || '',
-      broker: normalizeBrokerValue(props.account.broker),
+      broker: normalizeBrokerValue(props.account.resolvedBroker || props.account.broker),
       accountIdentifier: props.account.accountIdentifier || '',
       initialBalance: props.account.initialBalance || '',
       initialBalanceDate: props.account.initialBalanceDate?.split('T')[0] || new Date().toISOString().split('T')[0],

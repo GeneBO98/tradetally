@@ -15,11 +15,11 @@ export RUN_MIGRATIONS="${RUN_MIGRATIONS:-true}"
 echo "[START] Starting TradeTally backend..."
 
 if [ "$NODE_ENV" = "development" ]; then
-    cd /app/backend && npm run dev &
-    cd /app/frontend && npm run dev &
+    cd /app/backend && npm install --install-dev && npm run dev &
+    cd /app/frontend && npm install --install-dev && npm run dev &
 else
-    cd /app/backend || exit 1
-    node src/server.js &
+    cd /app/backend || exit 1 && \
+    npm run build &
 fi
 
 # Wait for backend to start

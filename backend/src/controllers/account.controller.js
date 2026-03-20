@@ -8,13 +8,18 @@ const Account = require('../models/Account');
 const accountFundingSyncService = require('../services/accountFundingSync');
 
 function formatAccountResponse(account) {
-  const capabilities = accountFundingSyncService.getAccountCapabilities(account);
+  const effectiveBroker = account.resolved_broker || Account.normalizeBrokerValue(account.broker) || account.broker || null;
+  const capabilities = accountFundingSyncService.getAccountCapabilities({
+    ...account,
+    broker: effectiveBroker
+  });
 
   return {
     id: account.id,
     accountName: account.account_name,
     accountIdentifier: account.account_identifier,
     broker: account.broker,
+    resolvedBroker: effectiveBroker,
     initialBalance: parseFloat(account.initial_balance),
     initialBalanceDate: account.initial_balance_date,
     isPrimary: account.is_primary,
