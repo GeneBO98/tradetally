@@ -5818,60 +5818,6 @@ const buildBehavioralQueryParams = (extraParams = {}) => {
     return queryParams;
 };
 
-const buildBehavioralTradeCountParams = (extraParams = {}) => {
-    const params = {};
-    const assignIfPresent = (key, value) => {
-        if (value === null || value === undefined || value === "") return;
-        params[key] = value;
-    };
-    const assignArrayOrString = (key, value) => {
-        if (Array.isArray(value)) {
-            if (value.length > 0) {
-                params[key] = value.join(",");
-            }
-            return;
-        }
-        assignIfPresent(key, value);
-    };
-
-    assignIfPresent("symbol", filters.value.symbol?.trim());
-    if (filters.value.symbolExact) {
-        params.symbolExact = "true";
-    }
-    assignIfPresent("startDate", filters.value.startDate);
-    assignIfPresent("endDate", filters.value.endDate);
-    assignArrayOrString("strategies", filters.value.strategies);
-    assignArrayOrString("sectors", filters.value.sectors);
-    assignArrayOrString("tags", filters.value.tags);
-    assignIfPresent("side", filters.value.side);
-    assignArrayOrString("instrumentTypes", filters.value.instrumentTypes);
-    assignArrayOrString("optionTypes", filters.value.optionTypes);
-    assignArrayOrString("qualityGrades", filters.value.qualityGrades);
-    assignArrayOrString("daysOfWeek", filters.value.daysOfWeek);
-    assignArrayOrString("brokers", filters.value.brokers);
-    assignIfPresent("hasNews", filters.value.hasNews);
-    assignIfPresent("pnlType", filters.value.pnlType);
-    assignIfPresent("minPrice", filters.value.minPrice);
-    assignIfPresent("maxPrice", filters.value.maxPrice);
-    assignIfPresent("minQuantity", filters.value.minQuantity);
-    assignIfPresent("maxQuantity", filters.value.maxQuantity);
-    assignIfPresent("minPnl", filters.value.minPnl);
-    assignIfPresent("maxPnl", filters.value.maxPnl);
-
-    return { ...params, ...extraParams };
-};
-
-const getClosedTradeCountForCurrentFilters = async () => {
-    const response = await api.get("/trades/count", {
-        params: buildBehavioralTradeCountParams({
-            status: "closed",
-            limit: 1,
-        }),
-    });
-
-    return Number(response.data?.total || 0);
-};
-
 const runDedupedBehavioralLoad = async (scope, key, loader) => {
     const dedupeKey = `${scope}:${key}`;
     if (inFlightBehavioralLoads.has(dedupeKey)) {
@@ -5978,24 +5924,6 @@ const applyFilters = async () => {
         loadExistingOverconfidenceData(),
         loadExistingPersonalityData(),
     ]);
-
-    if (hasSymbolScopedFilters()) {
-        try {
-            const closedTradeCount = await getClosedTradeCountForCurrentFilters();
-            if (closedTradeCount >= 10) {
-                await analyzeLossAversion();
-            } else {
-                lossAversionData.value = null;
-                topMissedTrades.value = null;
-            }
-        } catch (error) {
-            console.warn(
-                "Failed to evaluate symbol-scoped loss aversion auto-update:",
-                error,
-            );
-        }
-        return;
-    }
 
     // Auto-load top missed trades if loss aversion data exists
     if (lossAversionData.value?.analysis) {
