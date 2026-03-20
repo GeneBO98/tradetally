@@ -69,6 +69,7 @@ update_check:
 test_unit: ## Runs unit tests
 	@CID=$$(docker create --init -w /srv/app ${NODE_IMAGE_TAG} $(NODE_MODULES_BIN)/jest \
 		--maxWorkers=$(CPU_CORES) \
+		--coverage \
 		--config jest.config.js \
 		--coverageThreshold=\"{}\" ${ARGS} 2>&1) && \
 	docker cp -a src $${CID}:/srv/app/. && \
@@ -78,7 +79,8 @@ test_unit: ## Runs unit tests
 	docker cp -a package.json $${CID}:/srv/app/. && \
 	docker cp -a package-lock.json $${CID}:/srv/app/. && \
 	docker start -a $${CID} || exit 1 && \
-	docker cp -a $${CID}:/srv/app/test/coverage test/ ; \
+	mkdir -p coverage && \
+	docker cp -a $${CID}:/srv/app/coverage/. coverage/ ; \
 	if [ -v ${CID} ]; then \
 		docker rm $${CID}; \
 	fi
