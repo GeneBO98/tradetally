@@ -1015,9 +1015,9 @@
                 <div>
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">P&L</dt>
                   <dd class="mt-1 text-2xl font-semibold" :class="[
-                    trade.pnl >= 0 ? 'text-green-600' : 'text-red-600'
+                    displayPnl >= 0 ? 'text-green-600' : 'text-red-600'
                   ]">
-                    {{ trade.exit_time ? `$${formatNumber(trade.pnl)}` : 'Open' }}
+                    {{ trade.exit_time ? `$${formatNumber(displayPnl)}` : 'Open' }}
                   </dd>
                 </div>
                 <div v-if="trade.pnl_percent">
@@ -1332,28 +1332,35 @@ const processedExecutions = computed(() => {
     const datetime = execution.datetime || execution.entry_time
 
     // Calculate commission/fees for this execution
-    // Priority: 1) execution.commission, 2) execution.fees (IBKR bundles commission in fees), 3) proportional
+    // Commission sign convention: positive = cost (debit), negative = rebate (credit)
+    // IBKR stores commission in the 'fees' field; addFill stores both 'commission' and 'fees' separately
     const proportion = totalQuantity > 0 ? quantity / totalQuantity : 0
 
-    // For IBKR and similar brokers, commission is stored in the 'fees' field of the execution
-    // Use execution.fees as the commission value if commission field is not available
+    const hasCommission = execution.commission !== undefined && execution.commission !== null
+    const hasFees = execution.fees !== undefined && execution.fees !== null
+
     let commission = 0
-    if (execution.commission !== undefined && execution.commission !== null) {
+    let fees = 0
+
+    if (hasCommission && hasFees) {
+      // Both fields present (e.g., addFill executions) - use both separately
       commission = parseFloat(execution.commission) || 0
-    } else if (execution.fees !== undefined && execution.fees !== null) {
-      // Use fees as commission (common for IBKR where everything is bundled)
+      fees = parseFloat(execution.fees) || 0
+    } else if (hasCommission) {
+      // Only commission field (e.g., some broker imports)
+      commission = parseFloat(execution.commission) || 0
+    } else if (hasFees) {
+      // Only fees field (IBKR: commission bundled in fees)
       commission = parseFloat(execution.fees) || 0
     } else {
-      // Fall back to proportional distribution
+      // Fall back to proportional distribution from trade-level totals
       commission = tradeCommission * proportion
+      fees = tradeFees * proportion
     }
 
-    // Fees is typically separate from commission (exchange fees, etc.)
-    // Only use proportional if no execution-level fees
-    const fees = (execution.fees !== undefined && execution.fees !== null)
-      ? 0  // Already counted in commission above
-      : (tradeFees * proportion)
-    const totalCost = Math.abs(commission) + Math.abs(fees)
+    // Total cost preserves sign: positive = cost subtracted from P&L,
+    // negative = rebate added to P&L (subtracting a negative adds)
+    const totalCost = commission + fees
 
     // Determine if this execution is opening or closing the position
     // For LONG trades: Buy = entry, Sell = exit
@@ -1451,10 +1458,28 @@ const processedExecutions = computed(() => {
       // Set entryTime/exitTime: prefer original values, otherwise compute based on position
       entryTime: originalEntryTime ?? (isOpening ? datetime : null),
       exitTime: originalExitTime ?? (isOpening ? null : datetime),
-      // P&L: prefer original value, otherwise use computed (only for exit executions)
-      pnl: originalPnl ?? executionPnl
+      // P&L: prefer computed FIFO value when available (more accurate with commission handling),
+      // fall back to original stored value for executions without FIFO match
+      pnl: executionPnl ?? originalPnl
     }
   })
+})
+
+// Compute P&L from execution totals for consistency with the executions table
+// This avoids discrepancies between Performance P&L (from DB) and Execution P&L (computed via FIFO)
+const executionDerivedPnl = computed(() => {
+  if (!processedExecutions.value || processedExecutions.value.length === 0) return null
+
+  const exitExecutions = processedExecutions.value.filter(exec => exec.pnl !== null && exec.pnl !== undefined)
+  if (exitExecutions.length === 0) return null
+
+  return exitExecutions.reduce((sum, exec) => sum + (parseFloat(exec.pnl) || 0), 0)
+})
+
+// Use execution-derived P&L when available, otherwise fall back to trade.pnl
+const displayPnl = computed(() => {
+  if (executionDerivedPnl.value !== null) return executionDerivedPnl.value
+  return trade.value?.pnl || null
 })
 
 const executionSummary = computed(() => {

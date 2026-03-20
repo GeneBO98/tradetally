@@ -27,4 +27,7 @@ router.get('/trends/imports', adminAnalyticsController.getImportTrend);
 // GET /api/admin/analytics/trends/api-usage?period=30d
 router.get('/trends/api-usage', adminAnalyticsController.getApiUsageTrend);
 
+// GET /api/admin/analytics/active-connections
+router.get('/active-connections', adminAnalyticsController.getActiveConnections);
+
 module.exports = router;

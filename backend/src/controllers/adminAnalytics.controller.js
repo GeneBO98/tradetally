@@ -1,5 +1,6 @@
 const AdminAnalytics = require('../models/AdminAnalytics');
 const { getUserTimezone } = require('../utils/timezone');
+const notificationsController = require('./notifications.controller');
 
 const adminAnalyticsController = {
   /**
@@ -136,6 +137,20 @@ const adminAnalyticsController = {
       });
     } catch (error) {
       console.error('[ERROR] Failed to fetch API usage trend:', error);
+      next(error);
+    }
+  },
+
+  async getActiveConnections(req, res, next) {
+    try {
+      const connections = notificationsController.getConnections();
+      const userIds = Array.from(connections.keys());
+      res.json({
+        active_connections: userIds.length,
+        user_ids: userIds
+      });
+    } catch (error) {
+      console.error('[ERROR] Failed to fetch active connections:', error);
       next(error);
     }
   }
