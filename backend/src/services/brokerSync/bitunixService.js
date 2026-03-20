@@ -16,6 +16,7 @@ const cache = require('../../utils/cache');
 const db = require('../../config/database');
 
 const BITUNIX_API_BASE = 'https://fapi.bitunix.com';
+const BITUNIX_SPOT_API_BASE = 'https://openapi.bitunix.com';
 const DEFAULT_MARGIN_COIN = 'USDT';
 const PAGE_SIZE = 100;
 const STABLECOIN_TO_CURRENCY = {
@@ -79,20 +80,20 @@ class BitunixService {
     };
   }
 
-  async request({ apiKey, apiSecret, method = 'GET', path, query = {}, body = null }) {
+  async request({ apiKey, apiSecret, method = 'GET', path, query = {}, body = null, baseURL = BITUNIX_API_BASE }) {
     const compactBody = body ? JSON.stringify(body) : '';
     const headers = this.buildHeaders(apiKey, apiSecret, query, compactBody);
 
     const response = await axios({
       method,
-      url: `${BITUNIX_API_BASE}${path}`,
+      url: `${baseURL}${path}`,
       params: query,
       data: body || undefined,
       headers,
       timeout: 30000
     });
 
-    if (response.data?.code !== 0) {
+    if (String(response.data?.code) !== '0') {
       throw new Error(response.data?.msg || `Bitunix API request failed (${response.data?.code ?? 'unknown'})`);
     }
 
@@ -221,6 +222,181 @@ class BitunixService {
     }
 
     return orders;
+  }
+
+  async getDepositRecords(apiKey, apiSecret, { coin, startTime, endTime, limit = 100 } = {}) {
+    const body = {
+      coin,
+      limit
+    };
+
+    if (startTime) body.startTime = startTime;
+    if (endTime) body.endTime = endTime;
+
+    const result = await this.request({
+      apiKey,
+      apiSecret,
+      method: 'POST',
+      path: '/api/spot/v1/deposit/page',
+      body,
+      baseURL: BITUNIX_SPOT_API_BASE
+    });
+
+    return Array.isArray(result.data) ? result.data : [];
+  }
+
+  async getWithdrawalRecords(apiKey, apiSecret, { coin, startTime, endTime, limit = 100 } = {}) {
+    const body = {
+      coin,
+      limit
+    };
+
+    if (startTime) body.startTime = startTime;
+    if (endTime) body.endTime = endTime;
+
+    const result = await this.request({
+      apiKey,
+      apiSecret,
+      method: 'POST',
+      path: '/api/spot/v1/withdraw_transfer/page',
+      body,
+      baseURL: BITUNIX_SPOT_API_BASE
+    });
+
+    return Array.isArray(result.data) ? result.data : [];
+  }
+
+  async syncFundingHistoryForAccount({ userId, accountId, connection, account }) {
+    const marginCoin = String(connection?.bitunixMarginCoin || DEFAULT_MARGIN_COIN).toUpperCase();
+    const startDate = account?.initial_balance_date
+      ? new Date(account.initial_balance_date)
+      : new Date('2020-01-01T00:00:00.000Z');
+    const startTime = startDate.getTime();
+    const endTime = Date.now();
+
+    const [deposits, withdrawals] = await Promise.all([
+      this.getDepositRecords(connection.bitunixApiKey, connection.bitunixApiSecret, {
+        coin: marginCoin,
+        startTime,
+        endTime
+      }),
+      this.getWithdrawalRecords(connection.bitunixApiKey, connection.bitunixApiSecret, {
+        coin: marginCoin,
+        startTime,
+        endTime
+      })
+    ]);
+
+    const fundingEvents = [
+      ...deposits
+        .filter(record =>
+          record &&
+          String(record.status || '').toLowerCase() === 'success' &&
+          String(record.type || '').toLowerCase() === 'deposit' &&
+          String(record.coin || '').toUpperCase() === marginCoin
+        )
+        .map(record => ({
+          transactionType: 'deposit',
+          amount: parseFloat(record.amount) || 0,
+          transactionDate: new Date(Number(record.ctime)).toISOString().slice(0, 10),
+          description: `[BITUNIX FUNDING] Deposit ${record.id}`,
+          sourceId: String(record.id)
+        })),
+      ...withdrawals
+        .filter(record =>
+          record &&
+          String(record.status || '').toLowerCase() === 'success' &&
+          String(record.type || '').toLowerCase() === 'withdraw' &&
+          String(record.coin || '').toUpperCase() === marginCoin
+        )
+        .map(record => ({
+          transactionType: 'withdrawal',
+          amount: parseFloat(record.amount) || 0,
+          transactionDate: new Date(Number(record.ctime)).toISOString().slice(0, 10),
+          description: `[BITUNIX FUNDING] Withdrawal ${record.id}`,
+          sourceId: String(record.id)
+        }))
+    ]
+      .filter(event => event.amount > 0 && event.transactionDate)
+      .sort((a, b) => new Date(a.transactionDate) - new Date(b.transactionDate));
+
+    const client = await db.connect();
+    let insertedCount = 0;
+
+    try {
+      await client.query('BEGIN');
+
+      const existingFundingResult = await client.query(
+        `SELECT description
+         FROM account_transactions
+         WHERE user_id = $1
+           AND account_id = $2
+           AND description LIKE '[BITUNIX FUNDING]%'`,
+        [userId, accountId]
+      );
+
+      const existingDescriptions = new Set(
+        existingFundingResult.rows.map(row => row.description)
+      );
+
+      for (const event of fundingEvents) {
+        if (existingDescriptions.has(event.description)) {
+          continue;
+        }
+
+        await client.query(
+          `INSERT INTO account_transactions (
+             user_id, account_id, transaction_type, amount, transaction_date, description
+           )
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [
+            userId,
+            accountId,
+            event.transactionType,
+            event.amount,
+            event.transactionDate,
+            event.description
+          ]
+        );
+
+        existingDescriptions.add(event.description);
+        insertedCount++;
+      }
+
+      if (fundingEvents.length > 0) {
+        const firstFundingDate = fundingEvents[0].transactionDate;
+        await client.query(
+          `UPDATE user_accounts
+           SET initial_balance = 0,
+               initial_balance_date = $3,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE id = $1
+             AND user_id = $2`,
+          [accountId, userId, firstFundingDate]
+        );
+      }
+
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    return {
+      marginCoin,
+      insertedCount,
+      depositsImported: fundingEvents.filter(event => event.transactionType === 'deposit').length,
+      withdrawalsImported: fundingEvents.filter(event => event.transactionType === 'withdrawal').length,
+      totalDeposited: fundingEvents
+        .filter(event => event.transactionType === 'deposit')
+        .reduce((sum, event) => sum + event.amount, 0),
+      totalWithdrawn: fundingEvents
+        .filter(event => event.transactionType === 'withdrawal')
+        .reduce((sum, event) => sum + event.amount, 0),
+      earliestFundingDate: fundingEvents[0]?.transactionDate || null
+    };
   }
 
   normalizeSymbol(symbol) {

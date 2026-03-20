@@ -171,6 +171,16 @@ export const useAccountsStore = defineStore('accounts', () => {
     currentAccount.value = null
   }
 
+  async function syncAccountFunding(accountId) {
+    try {
+      const response = await api.post(`/accounts/${accountId}/sync-funding`)
+      return response.data.data
+    } catch (err) {
+      error.value = err.response?.data?.message || 'Failed to sync account funding'
+      throw err
+    }
+  }
+
   // ========================================
   // TRANSACTIONS
   // ========================================
@@ -262,6 +272,7 @@ export const useAccountsStore = defineStore('accounts', () => {
 
     // Actions - Cashflow
     fetchCashflow,
+    syncAccountFunding,
     clearCashflow,
 
     // Actions - Transactions
