@@ -4808,12 +4808,13 @@ const tradeController = {
         trade.entry_price,
         trade.side,
         req.user.id,
-        trade.news_sentiment
+        trade.news_sentiment,
+        trade.instrument_type
       );
 
       if (!quality) {
         return res.status(400).json({
-          error: 'Unable to calculate quality. Finnhub API may be unavailable or data not found for this symbol.'
+          error: 'Unable to calculate quality for this trade. Quality grading is currently only supported for stock/equity symbols with market data available.'
         });
       }
 
@@ -4863,7 +4864,7 @@ const tradeController = {
 
       // Fetch trades
       const tradesQuery = `
-        SELECT id, symbol, entry_time, entry_price
+        SELECT id, symbol, entry_time, entry_price, side, news_sentiment, instrument_type
         FROM trades
         WHERE id = ANY($1) AND user_id = $2
       `;
