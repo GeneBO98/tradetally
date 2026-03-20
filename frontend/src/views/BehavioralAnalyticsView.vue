@@ -65,6 +65,19 @@
                 <div class="card-body">
                     <TradeFilters @filter="handleFilter" />
 
+                    <div
+                        v-if="activeSymbolFilter"
+                        class="mt-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-100"
+                    >
+                        Symbol filter active for
+                        <span class="font-semibold">{{ activeSymbolFilter }}</span
+                        >. Behavioral panels do not auto-run for single-symbol
+                        filters. Use the analysis buttons like
+                        <span class="font-semibold"
+                            >Analyze Exit Patterns</span
+                        >
+                    </div>
+
                     <!-- Analyze History Button -->
                     <div
                         class="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4"
@@ -5767,6 +5780,11 @@ const getBehavioralFilterCacheKey = () => {
 const hasSymbolScopedFilters = () => {
     return Boolean(filters.value.symbol?.trim());
 };
+
+const activeSymbolFilter = computed(() => {
+    const symbol = filters.value.symbol?.trim();
+    return symbol || "";
+});
 
 const buildBehavioralQueryParams = (extraParams = {}) => {
     const queryParams = new URLSearchParams();
