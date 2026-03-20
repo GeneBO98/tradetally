@@ -49,7 +49,7 @@
                   ? 'text-green-600 dark:text-green-400'
                   : 'text-red-600 dark:text-red-400'
               ]">
-                {{ tradesStore.totalPnL >= 0 ? '+' : '' }}${{ formatNumber(Math.abs(tradesStore.totalPnL)) }}
+                {{ tradesStore.totalPnL >= 0 ? '+' : '-' }}${{ formatNumber(Math.abs(tradesStore.totalPnL)) }}
               </div>
             </div>
             <!-- Fullwidth Toggle (Mobile) -->
@@ -83,7 +83,7 @@
                 ? 'text-green-600 dark:text-green-400'
                 : 'text-red-600 dark:text-red-400'
             ]">
-              {{ tradesStore.totalPnL >= 0 ? '+' : '' }}${{ formatNumber(Math.abs(tradesStore.totalPnL)) }}
+              {{ tradesStore.totalPnL >= 0 ? '+' : '-' }}${{ formatNumber(Math.abs(tradesStore.totalPnL)) }}
             </div>
           </div>
           <div class="flex items-center gap-6">
