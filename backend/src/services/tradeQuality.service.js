@@ -22,6 +22,16 @@ class TradeQualityService {
     this.baseUrl = 'https://finnhub.io/api/v1';
   }
 
+  isUnsupportedInstrument(symbol, instrumentType = null) {
+    const normalizedInstrumentType = String(instrumentType || '').trim().toLowerCase();
+    if (['crypto', 'future', 'futures'].includes(normalizedInstrumentType)) {
+      return true;
+    }
+
+    const normalizedSymbol = String(symbol || '').trim().toUpperCase();
+    return /[A-Z0-9]+(USDT|USDC|FDUSD|BUSD|BTC|ETH)$/.test(normalizedSymbol);
+  }
+
   /**
    * Get user's quality weight preferences from database
    * Falls back to default weights if user not found or weights not set
@@ -163,9 +173,14 @@ class TradeQualityService {
    * @param {string} newsSentiment - Categorical news sentiment ('positive', 'negative', 'neutral', 'mixed')
    * @returns {Promise<Object>} Quality grade and metrics
    */
-  async calculateQuality(symbol, entryTime, entryPrice, side = 'long', userId = null, newsSentiment = null) {
+  async calculateQuality(symbol, entryTime, entryPrice, side = 'long', userId = null, newsSentiment = null, instrumentType = null) {
     if (!this.finnhubApiKey) {
       console.log('[QUALITY] Finnhub API key not configured, skipping quality calculation');
+      return null;
+    }
+
+    if (this.isUnsupportedInstrument(symbol, instrumentType)) {
+      console.log(`[QUALITY] Skipping unsupported instrument for quality grading: ${symbol} (${instrumentType || 'unknown'})`);
       return null;
     }
 
@@ -805,7 +820,9 @@ class TradeQualityService {
         trade.entry_time,
         trade.entry_price,
         trade.side || 'long',
-        trade.user_id
+        trade.user_id,
+        trade.news_sentiment || null,
+        trade.instrument_type || null
       );
 
       results.push({
