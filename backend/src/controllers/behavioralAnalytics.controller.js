@@ -9,6 +9,18 @@ const TickDataService = require('../services/tickDataService');
 const db = require('../config/database');
 const ensureString = require('../utils/ensureString');
 
+const buildTradeFiltersFromQuery = (query = {}) => {
+  const tradeFilters = {};
+  const symbol = ensureString(query.symbol || '').trim();
+
+  if (symbol) {
+    tradeFilters.symbol = symbol;
+    tradeFilters.symbolExact = ensureString(query.symbolExact || '').toLowerCase() === 'true';
+  }
+
+  return tradeFilters;
+};
+
 const behavioralAnalyticsController = {
   
   // Get behavioral analytics overview
@@ -680,6 +692,7 @@ const behavioralAnalyticsController = {
     try {
       const userId = req.user.id;
       const { startDate, endDate, page, limit, accounts } = req.query;
+      const tradeFilters = buildTradeFiltersFromQuery(req.query);
 
       console.log(`[OVERCONFIDENCE] GET analysis request - userId: ${userId}, startDate: ${startDate}, endDate: ${endDate}, page: ${page}, limit: ${limit}`);
 
@@ -694,7 +707,7 @@ const behavioralAnalyticsController = {
       };
 
       console.log(`[OVERCONFIDENCE] Calling service.getOverconfidenceAnalysis with dateFilter:`, dateFilter);
-      const analysis = await OverconfidenceAnalyticsService.getOverconfidenceAnalysis(userId, dateFilter, paginationOptions);
+      const analysis = await OverconfidenceAnalyticsService.getOverconfidenceAnalysis(userId, { ...dateFilter, ...tradeFilters }, paginationOptions);
       console.log(`[OVERCONFIDENCE] Service returned analysis with ${analysis.events?.length || 0} events`);
 
       // Simply return existing data - don't auto-run analysis
@@ -729,6 +742,7 @@ const behavioralAnalyticsController = {
     try {
       const userId = req.user.id;
       const { startDate, endDate, accounts } = req.query;
+      const tradeFilters = buildTradeFiltersFromQuery(req.query);
 
       console.log(`[OVERCONFIDENCE] Analyzing trades for user ${userId}, date range: ${startDate || 'all'} to ${endDate || 'now'}`);
 
@@ -747,7 +761,7 @@ const behavioralAnalyticsController = {
       if (endDate) dateFilter.endDate = endDate;
       if (accounts) dateFilter.accounts = ensureString(accounts).split(',');
 
-      const analysis = await OverconfidenceAnalyticsService.analyzeHistoricalTrades(userId, dateFilter);
+      const analysis = await OverconfidenceAnalyticsService.analyzeHistoricalTrades(userId, { ...dateFilter, ...tradeFilters });
 
       res.json({
         success: true,
@@ -911,11 +925,12 @@ const behavioralAnalyticsController = {
     try {
       const userId = req.user.id;
       const { startDate, endDate, accounts } = req.query;
+      const tradeFilters = buildTradeFiltersFromQuery(req.query);
 
       console.log(`Loss aversion analysis requested for user ${userId}, dates: ${startDate} - ${endDate}`);
 
       const accountsArray = accounts ? ensureString(accounts).split(',') : undefined;
-      const analysis = await LossAversionAnalyticsService.analyzeLossAversion(userId, startDate, endDate, accountsArray);
+      const analysis = await LossAversionAnalyticsService.analyzeLossAversion(userId, startDate, endDate, accountsArray, tradeFilters);
       
       if (analysis.error) {
         console.log(`Loss aversion analysis returned error: ${analysis.error} - ${analysis.message}`);
@@ -1015,6 +1030,7 @@ const behavioralAnalyticsController = {
     try {
       const userId = req.user.id;
       const { limit = 20, startDate, endDate, forceRefresh, accounts } = req.query;
+      const tradeFilters = buildTradeFiltersFromQuery(req.query);
 
       const shouldForceRefresh = forceRefresh === 'true' || forceRefresh === true;
       const accountsArray = accounts ? ensureString(accounts).split(',') : undefined;
@@ -1027,7 +1043,8 @@ const behavioralAnalyticsController = {
         startDate,
         endDate,
         shouldForceRefresh,
-        accountsArray
+        accountsArray,
+        tradeFilters
       );
 
       res.json({
@@ -1055,11 +1072,12 @@ const behavioralAnalyticsController = {
     try {
       const userId = req.user.id;
       const { startDate, endDate, accounts } = req.query;
+      const tradeFilters = buildTradeFiltersFromQuery(req.query);
 
       console.log(`Personality analysis requested for user ${userId}, dates: ${startDate} - ${endDate}`);
 
       const accountsArray = accounts ? ensureString(accounts).split(',') : undefined;
-      const analysis = await TradingPersonalityService.analyzePersonality(userId, startDate, endDate, accountsArray);
+      const analysis = await TradingPersonalityService.analyzePersonality(userId, startDate, endDate, accountsArray, tradeFilters);
       
       if (analysis.error) {
         console.log(`Personality analysis returned error: ${analysis.error} - ${analysis.message}`);

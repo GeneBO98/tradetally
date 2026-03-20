@@ -5722,6 +5722,7 @@ const personalityData = ref(null);
 const topMissedTrades = ref(null);
 const showAllMissedTrades = ref(false);
 const topMissedTradesSection = ref(null);
+const inFlightBehavioralLoads = new Map();
 const settings = ref({
     revengeTrading: { enabled: true, sensitivity: "medium" },
     coolingPeriod: { minutes: 30 },
@@ -5730,6 +5731,7 @@ const settings = ref({
 
 const filters = ref({
     symbol: "",
+    symbolExact: false,
     startDate: "",
     endDate: "",
     strategies: [],
@@ -5751,6 +5753,142 @@ const filters = ref({
     minPnl: null,
     maxPnl: null,
 });
+
+const getBehavioralFilterCacheKey = () => {
+    const symbol = filters.value.symbol?.trim() || "all-symbols";
+    const symbolMode = filters.value.symbolExact ? "exact" : "partial";
+    const startDate = filters.value.startDate || "all-start";
+    const endDate = filters.value.endDate || "all-end";
+    const accounts = filters.value.accounts || selectedAccount.value || "all-accounts";
+
+    return [symbol, symbolMode, startDate, endDate, accounts].join("_");
+};
+
+const hasSymbolScopedFilters = () => {
+    return Boolean(filters.value.symbol?.trim());
+};
+
+const buildBehavioralQueryParams = (extraParams = {}) => {
+    const queryParams = new URLSearchParams();
+    const appendScalar = (key, value) => {
+        if (value === null || value === undefined || value === "") return;
+        queryParams.append(key, String(value));
+    };
+    const appendArrayOrString = (key, value) => {
+        if (Array.isArray(value)) {
+            if (value.length > 0) {
+                queryParams.append(key, value.join(","));
+            }
+            return;
+        }
+        appendScalar(key, value);
+    };
+
+    appendScalar("symbol", filters.value.symbol?.trim());
+    if (filters.value.symbolExact) {
+        queryParams.append("symbolExact", "true");
+    }
+    appendScalar("startDate", filters.value.startDate);
+    appendScalar("endDate", filters.value.endDate);
+    appendArrayOrString("strategies", filters.value.strategies);
+    appendArrayOrString("sectors", filters.value.sectors);
+    appendArrayOrString("tags", filters.value.tags);
+    appendScalar("status", filters.value.status);
+    appendScalar("side", filters.value.side);
+    appendArrayOrString("instrumentTypes", filters.value.instrumentTypes);
+    appendArrayOrString("optionTypes", filters.value.optionTypes);
+    appendArrayOrString("qualityGrades", filters.value.qualityGrades);
+    appendArrayOrString("daysOfWeek", filters.value.daysOfWeek);
+    appendArrayOrString("brokers", filters.value.brokers);
+    appendScalar("hasNews", filters.value.hasNews);
+    appendScalar("pnlType", filters.value.pnlType);
+    appendScalar("minPrice", filters.value.minPrice);
+    appendScalar("maxPrice", filters.value.maxPrice);
+    appendScalar("minQuantity", filters.value.minQuantity);
+    appendScalar("maxQuantity", filters.value.maxQuantity);
+    appendScalar("minPnl", filters.value.minPnl);
+    appendScalar("maxPnl", filters.value.maxPnl);
+    appendScalar("accounts", filters.value.accounts || selectedAccount.value);
+
+    Object.entries(extraParams).forEach(([key, value]) => {
+        if (value === null || value === undefined || value === "") return;
+        queryParams.append(key, String(value));
+    });
+
+    return queryParams;
+};
+
+const buildBehavioralTradeCountParams = (extraParams = {}) => {
+    const params = {};
+    const assignIfPresent = (key, value) => {
+        if (value === null || value === undefined || value === "") return;
+        params[key] = value;
+    };
+    const assignArrayOrString = (key, value) => {
+        if (Array.isArray(value)) {
+            if (value.length > 0) {
+                params[key] = value.join(",");
+            }
+            return;
+        }
+        assignIfPresent(key, value);
+    };
+
+    assignIfPresent("symbol", filters.value.symbol?.trim());
+    if (filters.value.symbolExact) {
+        params.symbolExact = "true";
+    }
+    assignIfPresent("startDate", filters.value.startDate);
+    assignIfPresent("endDate", filters.value.endDate);
+    assignArrayOrString("strategies", filters.value.strategies);
+    assignArrayOrString("sectors", filters.value.sectors);
+    assignArrayOrString("tags", filters.value.tags);
+    assignIfPresent("side", filters.value.side);
+    assignArrayOrString("instrumentTypes", filters.value.instrumentTypes);
+    assignArrayOrString("optionTypes", filters.value.optionTypes);
+    assignArrayOrString("qualityGrades", filters.value.qualityGrades);
+    assignArrayOrString("daysOfWeek", filters.value.daysOfWeek);
+    assignArrayOrString("brokers", filters.value.brokers);
+    assignIfPresent("hasNews", filters.value.hasNews);
+    assignIfPresent("pnlType", filters.value.pnlType);
+    assignIfPresent("minPrice", filters.value.minPrice);
+    assignIfPresent("maxPrice", filters.value.maxPrice);
+    assignIfPresent("minQuantity", filters.value.minQuantity);
+    assignIfPresent("maxQuantity", filters.value.maxQuantity);
+    assignIfPresent("minPnl", filters.value.minPnl);
+    assignIfPresent("maxPnl", filters.value.maxPnl);
+
+    return { ...params, ...extraParams };
+};
+
+const getClosedTradeCountForCurrentFilters = async () => {
+    const response = await api.get("/trades/count", {
+        params: buildBehavioralTradeCountParams({
+            status: "closed",
+            limit: 1,
+        }),
+    });
+
+    return Number(response.data?.total || 0);
+};
+
+const runDedupedBehavioralLoad = async (scope, key, loader) => {
+    const dedupeKey = `${scope}:${key}`;
+    if (inFlightBehavioralLoads.has(dedupeKey)) {
+        return inFlightBehavioralLoads.get(dedupeKey);
+    }
+
+    const promise = (async () => {
+        try {
+            return await loader();
+        } finally {
+            inFlightBehavioralLoads.delete(dedupeKey);
+        }
+    })();
+
+    inFlightBehavioralLoads.set(dedupeKey, promise);
+    return promise;
+};
 
 const pagination = ref({
     page: 1,
@@ -5784,13 +5922,7 @@ const loadData = async () => {
     try {
         loading.value = true;
 
-        const queryParams = new URLSearchParams();
-        if (filters.value.startDate)
-            queryParams.append("startDate", filters.value.startDate);
-        if (filters.value.endDate)
-            queryParams.append("endDate", filters.value.endDate);
-        if (filters.value.accounts)
-            queryParams.append("accounts", filters.value.accounts);
+        const queryParams = buildBehavioralQueryParams();
 
         // Add pagination parameters for revenge trading
         const revengeQueryParams = new URLSearchParams(queryParams);
@@ -5847,6 +5979,24 @@ const applyFilters = async () => {
         loadExistingPersonalityData(),
     ]);
 
+    if (hasSymbolScopedFilters()) {
+        try {
+            const closedTradeCount = await getClosedTradeCountForCurrentFilters();
+            if (closedTradeCount >= 10) {
+                await analyzeLossAversion();
+            } else {
+                lossAversionData.value = null;
+                topMissedTrades.value = null;
+            }
+        } catch (error) {
+            console.warn(
+                "Failed to evaluate symbol-scoped loss aversion auto-update:",
+                error,
+            );
+        }
+        return;
+    }
+
     // Auto-load top missed trades if loss aversion data exists
     if (lossAversionData.value?.analysis) {
         await loadTopMissedTrades();
@@ -5876,6 +6026,7 @@ const handleFilter = (newFilters) => {
 const clearFilters = async () => {
     filters.value = {
         symbol: "",
+        symbolExact: false,
         startDate: "",
         endDate: "",
         strategies: [],
@@ -6224,13 +6375,7 @@ const analyzeLossAversion = async () => {
         // Clear any existing cache before running fresh analysis
         clearLossAversionCache();
 
-        const queryParams = new URLSearchParams();
-        if (filters.value.startDate)
-            queryParams.append("startDate", filters.value.startDate);
-        if (filters.value.endDate)
-            queryParams.append("endDate", filters.value.endDate);
-        if (filters.value.accounts)
-            queryParams.append("accounts", filters.value.accounts);
+        const queryParams = buildBehavioralQueryParams();
 
         const response = await api.get(
             `/behavioral-analytics/loss-aversion?${queryParams}`,
@@ -6275,20 +6420,14 @@ const analyzeOverconfidence = async () => {
 
         // Clear frontend cache when user deliberately clicks "Analyze History"
         // This ensures fresh AI recommendations are generated
-        const cacheKey = `overconfidence_analysis_${authStore.user?.id}_${filters.value.startDate || "all"}_${filters.value.endDate || "all"}`;
+        const cacheKey = `overconfidence_analysis_${authStore.user?.id}_${getBehavioralFilterCacheKey()}`;
         localStorage.removeItem(cacheKey);
         console.log(
             "[OVERCONFIDENCE] Cleared frontend cache - will generate fresh AI recommendations",
         );
 
         // Build query params for date filters
-        const queryParams = new URLSearchParams();
-        if (filters.value.startDate)
-            queryParams.append("startDate", filters.value.startDate);
-        if (filters.value.endDate)
-            queryParams.append("endDate", filters.value.endDate);
-        if (filters.value.accounts)
-            queryParams.append("accounts", filters.value.accounts);
+        const queryParams = buildBehavioralQueryParams();
 
         const response = await api.post(
             `/behavioral-analytics/overconfidence/analyze-historical?${queryParams}`,
@@ -6358,90 +6497,89 @@ const analyzeOverconfidence = async () => {
 
 // Load top missed trades by percentage of missed opportunity
 const loadTopMissedTrades = async (forceRefresh = false) => {
-    try {
-        loadingTopMissedTrades.value = true;
-        showAllMissedTrades.value = false; // Reset expanded state
+    return runDedupedBehavioralLoad(
+        "top-missed-trades",
+        `${getBehavioralFilterCacheKey()}:${forceRefresh ? "refresh" : "normal"}`,
+        async () => {
+            try {
+                loadingTopMissedTrades.value = true;
+                showAllMissedTrades.value = false;
 
-        console.log(
-            `Loading top missed trades... (forceRefresh: ${forceRefresh})`,
-        );
+                console.log(
+                    `Loading top missed trades... (forceRefresh: ${forceRefresh})`,
+                );
 
-        // Check cache only if NOT force refreshing and load immediately to show existing data
-        const cacheKey = `top_missed_trades_${authStore.user?.id}_${filters.value.startDate || "all"}_${filters.value.endDate || "all"}`;
-        if (!forceRefresh) {
-            const cachedData = localStorage.getItem(cacheKey);
-            if (cachedData) {
-                try {
-                    const parsed = JSON.parse(cachedData);
-                    const cacheAge = Date.now() - parsed.timestamp;
-                    const maxAge = 7 * 24 * 60 * 60 * 1000; // 7 days
+                const cacheKey = `top_missed_trades_${authStore.user?.id}_${getBehavioralFilterCacheKey()}`;
+                if (!forceRefresh) {
+                    const cachedData = localStorage.getItem(cacheKey);
+                    if (cachedData) {
+                        try {
+                            const parsed = JSON.parse(cachedData);
+                            const cacheAge = Date.now() - parsed.timestamp;
+                            const maxAge = 7 * 24 * 60 * 60 * 1000;
 
-                    if (cacheAge < maxAge && parsed.data) {
-                        topMissedTrades.value = parsed.data;
-                        console.log(
-                            "Loaded top missed trades from cache (will update in background)",
+                            if (cacheAge < maxAge && parsed.data) {
+                                topMissedTrades.value = parsed.data;
+                                console.log(
+                                    "Loaded top missed trades from cache (will update in background)",
+                                );
+                            }
+                        } catch (e) {
+                            console.warn("Invalid cached top missed trades data");
+                        }
+                    }
+                } else {
+                    console.log("Force refresh - clearing frontend cache");
+                    localStorage.removeItem(cacheKey);
+                }
+
+                const queryParams = buildBehavioralQueryParams({
+                    limit: "50",
+                    forceRefresh: forceRefresh ? "true" : "",
+                });
+
+                const response = await api.get(
+                    `/behavioral-analytics/loss-aversion/top-missed-trades?${queryParams}`,
+                );
+
+                if (response.data.data) {
+                    topMissedTrades.value = response.data.data;
+
+                    const cacheData = {
+                        data: response.data.data,
+                        timestamp: Date.now(),
+                        filters: { ...filters.value },
+                    };
+                    localStorage.setItem(cacheKey, JSON.stringify(cacheData));
+
+                    if (
+                        response.data.data.topMissedTrades &&
+                        response.data.data.topMissedTrades.length > 0
+                    ) {
+                        showSuccess(
+                            "Analysis Complete",
+                            `Found ${response.data.data.topMissedTrades.length} trades with significant missed opportunities`,
+                        );
+                    } else {
+                        showSuccess(
+                            "Analysis Complete",
+                            response.data.data.message ||
+                                "No significant missed opportunities found",
                         );
                     }
-                } catch (e) {
-                    console.warn("Invalid cached top missed trades data");
                 }
+            } catch (error) {
+                console.error("Failed to load top missed trades:", error);
+                if (error.response?.status === 403) {
+                    showError("Pro Tier Required", error.response.data.message);
+                } else {
+                    showError("Error", "Failed to load top missed trades analysis");
+                }
+            } finally {
+                loadingTopMissedTrades.value = false;
             }
-        } else {
-            console.log("Force refresh - clearing frontend cache");
-            localStorage.removeItem(cacheKey);
-        }
-
-        const queryParams = new URLSearchParams();
-        if (filters.value.startDate)
-            queryParams.append("startDate", filters.value.startDate);
-        if (filters.value.endDate)
-            queryParams.append("endDate", filters.value.endDate);
-        if (filters.value.accounts)
-            queryParams.append("accounts", filters.value.accounts);
-        queryParams.append("limit", "50");
-        if (forceRefresh) queryParams.append("forceRefresh", "true");
-
-        const response = await api.get(
-            `/behavioral-analytics/loss-aversion/top-missed-trades?${queryParams}`,
-        );
-
-        if (response.data.data) {
-            topMissedTrades.value = response.data.data;
-
-            // Cache the top missed trades data
-            const cacheData = {
-                data: response.data.data,
-                timestamp: Date.now(),
-                filters: { ...filters.value },
-            };
-            localStorage.setItem(cacheKey, JSON.stringify(cacheData));
-
-            if (
-                response.data.data.topMissedTrades &&
-                response.data.data.topMissedTrades.length > 0
-            ) {
-                showSuccess(
-                    "Analysis Complete",
-                    `Found ${response.data.data.topMissedTrades.length} trades with significant missed opportunities`,
-                );
-            } else {
-                showSuccess(
-                    "Analysis Complete",
-                    response.data.data.message ||
-                        "No significant missed opportunities found",
-                );
-            }
-        }
-    } catch (error) {
-        console.error("Failed to load top missed trades:", error);
-        if (error.response?.status === 403) {
-            showError("Pro Tier Required", error.response.data.message);
-        } else {
-            showError("Error", "Failed to load top missed trades analysis");
-        }
-    } finally {
-        loadingTopMissedTrades.value = false;
-    }
+        },
+    );
 };
 
 // Analyze trading personality patterns
@@ -6449,13 +6587,7 @@ const analyzePersonality = async () => {
     try {
         loadingPersonality.value = true;
 
-        const queryParams = new URLSearchParams();
-        if (filters.value.startDate)
-            queryParams.append("startDate", filters.value.startDate);
-        if (filters.value.endDate)
-            queryParams.append("endDate", filters.value.endDate);
-        if (filters.value.accounts)
-            queryParams.append("accounts", filters.value.accounts);
+        const queryParams = buildBehavioralQueryParams();
 
         const response = await api.get(
             `/behavioral-analytics/personality?${queryParams}`,
@@ -6658,7 +6790,7 @@ const loadCachedTopMissedTrades = () => {
         // Try multiple cache key variations to find data
         const userId = authStore.user?.id;
         const cacheKeys = [
-            `top_missed_trades_${userId}_${filters.value.startDate || "all"}_${filters.value.endDate || "all"}`,
+            `top_missed_trades_${userId}_${getBehavioralFilterCacheKey()}`,
             `top_missed_trades_${userId}_all_all`, // Fallback to "all dates" version
             `top_missed_trades_${userId}`, // Even simpler fallback
         ];
@@ -6699,7 +6831,7 @@ const loadCachedOverconfidenceData = () => {
         // Try multiple cache key variations to find data
         const userId = authStore.user?.id;
         const cacheKeys = [
-            `overconfidence_analysis_${userId}_${filters.value.startDate || "all"}_${filters.value.endDate || "all"}`,
+            `overconfidence_analysis_${userId}_${getBehavioralFilterCacheKey()}`,
             `overconfidence_analysis_${userId}_all_all`, // Fallback to "all dates" version
             `overconfidence_analysis_${userId}`, // Even simpler fallback
         ];
@@ -6754,7 +6886,7 @@ const clearLossAversionCache = () => {
 // Cache loss aversion data in localStorage
 const cacheLossAversionData = (data) => {
     try {
-        const cacheKey = `loss_aversion_${route.params.userId || "current"}_${filters.value.startDate || "all"}_${filters.value.endDate || "all"}`;
+        const cacheKey = `loss_aversion_${route.params.userId || "current"}_${getBehavioralFilterCacheKey()}`;
         const cacheData = {
             data: data,
             timestamp: Date.now(),
@@ -6770,7 +6902,7 @@ const cacheLossAversionData = (data) => {
 // Load cached loss aversion data
 const loadCachedLossAversionData = () => {
     try {
-        const cacheKey = `loss_aversion_${route.params.userId || "current"}_${filters.value.startDate || "all"}_${filters.value.endDate || "all"}`;
+        const cacheKey = `loss_aversion_${route.params.userId || "current"}_${getBehavioralFilterCacheKey()}`;
         const cached = localStorage.getItem(cacheKey);
 
         if (cached) {
@@ -6794,166 +6926,201 @@ const loadCachedLossAversionData = () => {
 
 // Load existing loss aversion analysis data
 const loadExistingLossAversionData = async () => {
-    // Always try API first to get the latest data from database
-    try {
-        const lossAversionRes = await api.get(
-            "/behavioral-analytics/loss-aversion/complete",
-        );
-        if (lossAversionRes.data.data) {
-            // Use the complete analysis data which includes stored trade patterns
-            lossAversionData.value = lossAversionRes.data.data;
-            // Cache the API response
-            cacheLossAversionData(lossAversionRes.data.data);
-            return;
-        }
-    } catch (error) {
-        console.log(
-            "Failed to load complete loss aversion data, trying cache...",
-        );
-    }
+    return runDedupedBehavioralLoad(
+        "loss-aversion-existing",
+        getBehavioralFilterCacheKey(),
+        async () => {
+            const scopedToSymbol = hasSymbolScopedFilters();
+            // Always try API first to get the latest data from database
+            try {
+                const scopedQueryParams = buildBehavioralQueryParams();
+                const lossAversionEndpoint = scopedToSymbol
+                    ? `/behavioral-analytics/loss-aversion?${scopedQueryParams}`
+                    : "/behavioral-analytics/loss-aversion/complete";
+                const lossAversionRes = await api.get(lossAversionEndpoint);
+                if (lossAversionRes.data.data) {
+                    lossAversionData.value = lossAversionRes.data.data;
+                    cacheLossAversionData(lossAversionRes.data.data);
+                    return;
+                }
+            } catch (error) {
+                if (
+                    scopedToSymbol &&
+                    error.response?.status === 400 &&
+                    error.response?.data?.message
+                ) {
+                    lossAversionData.value = null;
+                    topMissedTrades.value = null;
+                    console.log(
+                        "Loss aversion symbol-scoped request has insufficient trades; skipping global fallback.",
+                    );
+                    return;
+                }
+                console.log(
+                    "Failed to load complete loss aversion data, trying cache...",
+                );
+            }
 
-    // Try cache as fallback
-    const cachedData = loadCachedLossAversionData();
-    if (cachedData) {
-        lossAversionData.value = cachedData;
-        return;
-    }
+            if (scopedToSymbol) {
+                lossAversionData.value = null;
+                topMissedTrades.value = null;
+                return;
+            }
 
-    // Fallback to basic metrics if both API and cache fail
-    try {
-        const fallbackRes = await api.get(
-            "/behavioral-analytics/loss-aversion/latest",
-        );
-        if (fallbackRes.data.data) {
-            const metrics = fallbackRes.data.data;
-            lossAversionData.value = {
-                analysis: {
-                    message: generateLossAversionMessage(
-                        metrics.hold_time_ratio,
-                        metrics.estimated_monthly_cost,
-                    ),
-                    avgWinnerHoldTime:
-                        Number(metrics.avg_winner_hold_time_minutes) || 0,
-                    avgLoserHoldTime:
-                        Number(metrics.avg_loser_hold_time_minutes) || 0,
-                    holdTimeRatio: Number(metrics.hold_time_ratio) || 0,
-                    totalTrades:
-                        Number(metrics.total_winning_trades || 0) +
-                        Number(metrics.total_losing_trades || 0),
-                    winners: Number(metrics.total_winning_trades) || 0,
-                    losers: Number(metrics.total_losing_trades) || 0,
-                    financialImpact: {
-                        estimatedMonthlyCost:
-                            Number(metrics.estimated_monthly_cost) || 0,
-                        missedProfitPotential:
-                            Number(metrics.missed_profit_potential) || 0,
-                        unnecessaryLossExtension:
-                            Number(metrics.unnecessary_loss_extension) || 0,
-                        avgPlannedRiskReward:
-                            Number(metrics.avg_planned_risk_reward) || 2.0,
-                        avgActualRiskReward:
-                            Number(metrics.avg_actual_risk_reward) || 1.0,
-                    },
-                    priceHistoryAnalysis: {
-                        totalMissedProfit: 0,
-                        avgMissedProfitPercent: 0,
-                        exampleTrades: [],
-                    },
-                },
-            };
-        }
-    } catch (fallbackError) {
-        console.error(
-            "Failed to load basic loss aversion metrics:",
-            fallbackError,
-        );
-    }
+            const cachedData = loadCachedLossAversionData();
+            if (cachedData) {
+                lossAversionData.value = cachedData;
+                return;
+            }
+
+            try {
+                const fallbackRes = await api.get(
+                    "/behavioral-analytics/loss-aversion/latest",
+                );
+                if (fallbackRes.data.data) {
+                    const metrics = fallbackRes.data.data;
+                    lossAversionData.value = {
+                        analysis: {
+                            message: generateLossAversionMessage(
+                                metrics.hold_time_ratio,
+                                metrics.estimated_monthly_cost,
+                            ),
+                            avgWinnerHoldTime:
+                                Number(metrics.avg_winner_hold_time_minutes) || 0,
+                            avgLoserHoldTime:
+                                Number(metrics.avg_loser_hold_time_minutes) || 0,
+                            holdTimeRatio: Number(metrics.hold_time_ratio) || 0,
+                            totalTrades:
+                                Number(metrics.total_winning_trades || 0) +
+                                Number(metrics.total_losing_trades || 0),
+                            winners: Number(metrics.total_winning_trades) || 0,
+                            losers: Number(metrics.total_losing_trades) || 0,
+                            financialImpact: {
+                                estimatedMonthlyCost:
+                                    Number(metrics.estimated_monthly_cost) || 0,
+                                missedProfitPotential:
+                                    Number(metrics.missed_profit_potential) || 0,
+                                unnecessaryLossExtension:
+                                    Number(metrics.unnecessary_loss_extension) || 0,
+                                avgPlannedRiskReward:
+                                    Number(metrics.avg_planned_risk_reward) || 2.0,
+                                avgActualRiskReward:
+                                    Number(metrics.avg_actual_risk_reward) || 1.0,
+                            },
+                            priceHistoryAnalysis: {
+                                totalMissedProfit: 0,
+                                avgMissedProfitPercent: 0,
+                                exampleTrades: [],
+                            },
+                        },
+                    };
+                }
+            } catch (fallbackError) {
+                console.error(
+                    "Failed to load basic loss aversion metrics:",
+                    fallbackError,
+                );
+            }
+        },
+    );
 };
 
 // Load existing overconfidence analysis data
 const loadExistingOverconfidenceData = async () => {
-    try {
-        const response = await api.get("/behavioral-analytics/overconfidence");
-        if (response.data.success && response.data.data) {
-            overconfidenceData.value = response.data.data;
+    return runDedupedBehavioralLoad(
+        "overconfidence-existing",
+        getBehavioralFilterCacheKey(),
+        async () => {
+            try {
+                const queryParams = buildBehavioralQueryParams();
+                const response = await api.get(
+                    `/behavioral-analytics/overconfidence?${queryParams}`,
+                );
+                if (response.data.success && response.data.data) {
+                    overconfidenceData.value = response.data.data;
 
-            // Cache overconfidence data locally for persistence
-            const cacheKey = `overconfidence_analysis_${authStore.user?.id}`;
-            const cacheData = {
-                data: response.data.data,
-                timestamp: Date.now(),
-                filters: filters.value,
-            };
-            localStorage.setItem(cacheKey, JSON.stringify(cacheData));
-        } else {
-            // Try to load from cache if API has no data
-            const cacheKey = `overconfidence_analysis_${authStore.user?.id}`;
-            const cachedData = localStorage.getItem(cacheKey);
-            if (cachedData) {
-                try {
-                    const parsed = JSON.parse(cachedData);
-                    const cacheAge = Date.now() - parsed.timestamp;
-                    const maxAge = 7 * 24 * 60 * 60 * 1000; // 7 days
+                    const cacheKey = `overconfidence_analysis_${authStore.user?.id}_${getBehavioralFilterCacheKey()}`;
+                    const cacheData = {
+                        data: response.data.data,
+                        timestamp: Date.now(),
+                        filters: filters.value,
+                    };
+                    localStorage.setItem(cacheKey, JSON.stringify(cacheData));
+                } else {
+                    const cacheKey = `overconfidence_analysis_${authStore.user?.id}_${getBehavioralFilterCacheKey()}`;
+                    const cachedData = localStorage.getItem(cacheKey);
+                    if (cachedData) {
+                        try {
+                            const parsed = JSON.parse(cachedData);
+                            const cacheAge = Date.now() - parsed.timestamp;
+                            const maxAge = 7 * 24 * 60 * 60 * 1000;
 
-                    if (cacheAge < maxAge && parsed.data) {
-                        overconfidenceData.value = parsed.data;
-                        console.log("Loaded overconfidence data from cache");
+                            if (cacheAge < maxAge && parsed.data) {
+                                overconfidenceData.value = parsed.data;
+                                console.log("Loaded overconfidence data from cache");
+                            }
+                        } catch (e) {
+                            console.warn("Invalid cached overconfidence data");
+                        }
                     }
-                } catch (e) {
-                    console.warn("Invalid cached overconfidence data");
                 }
+            } catch (error) {
+                console.error("Failed to load existing overconfidence data:", error);
             }
-        }
-    } catch (error) {
-        console.error("Failed to load existing overconfidence data:", error);
-    }
+        },
+    );
 };
 
 // Load existing personality analysis data
 const loadExistingPersonalityData = async () => {
-    try {
-        // First try to get the latest stored analysis from the database
-        const response = await api.get(
-            "/behavioral-analytics/personality/latest",
-        );
-        if (response.data.success && response.data.data) {
-            personalityData.value = response.data.data;
-            console.log("Loaded personality data from database");
-
-            // Also cache it locally for quick access
-            const cacheKey = `personality_analysis_${authStore.user?.id}`;
-            const cacheData = {
-                data: response.data.data,
-                timestamp: Date.now(),
-            };
-            localStorage.setItem(cacheKey, JSON.stringify(cacheData));
-            return;
-        }
-
-        // If no data from API, check localStorage cache as fallback
-        const cacheKey = `personality_analysis_${authStore.user?.id}`;
-        const cachedData = localStorage.getItem(cacheKey);
-
-        if (cachedData) {
+    return runDedupedBehavioralLoad(
+        "personality-existing",
+        getBehavioralFilterCacheKey(),
+        async () => {
             try {
-                const parsed = JSON.parse(cachedData);
-                const cacheAge = Date.now() - parsed.timestamp;
-                const maxAge = 7 * 24 * 60 * 60 * 1000; // 7 days (increased from 24 hours)
+                const queryParams = buildBehavioralQueryParams();
+                const personalityEndpoint = hasSymbolScopedFilters()
+                    ? `/behavioral-analytics/personality?${queryParams}`
+                    : "/behavioral-analytics/personality/latest";
+                const response = await api.get(personalityEndpoint);
+                if (response.data.success && response.data.data) {
+                    personalityData.value = response.data.data;
+                    console.log("Loaded personality data from database");
 
-                if (cacheAge < maxAge && parsed.data) {
-                    personalityData.value = parsed.data;
-                    console.log(
-                        "Loaded personality data from cache (API had no data)",
-                    );
+                    const cacheKey = `personality_analysis_${authStore.user?.id}_${getBehavioralFilterCacheKey()}`;
+                    const cacheData = {
+                        data: response.data.data,
+                        timestamp: Date.now(),
+                    };
+                    localStorage.setItem(cacheKey, JSON.stringify(cacheData));
                     return;
                 }
-            } catch (e) {
-                console.warn("Invalid cached personality data");
+
+                const cacheKey = `personality_analysis_${authStore.user?.id}_${getBehavioralFilterCacheKey()}`;
+                const cachedData = localStorage.getItem(cacheKey);
+
+                if (cachedData) {
+                    try {
+                        const parsed = JSON.parse(cachedData);
+                        const cacheAge = Date.now() - parsed.timestamp;
+                        const maxAge = 7 * 24 * 60 * 60 * 1000;
+
+                        if (cacheAge < maxAge && parsed.data) {
+                            personalityData.value = parsed.data;
+                            console.log(
+                                "Loaded personality data from cache (API had no data)",
+                            );
+                            return;
+                        }
+                    } catch (e) {
+                        console.warn("Invalid cached personality data");
+                    }
+                }
+            } catch (error) {
+                console.error("Failed to load existing personality data:", error);
             }
-        }
-    } catch (error) {
-        console.error("Failed to load existing personality data:", error);
-    }
+        },
+    );
 };
 
 // Automatically analyze personality if conditions are met

@@ -2,6 +2,7 @@ const axios = require('axios');
 const cache = require('./cache');
 const aiService = require('./aiService');
 const historicalPriceCache = require('./historicalPriceCache');
+const intradayCandleCache = require('./intradayCandleCache');
 const ApiUsageService = require('../services/apiUsageService');
 const TierService = require('../services/tierService');
 
@@ -30,6 +31,7 @@ class FinnhubClient {
     this.callTimestamps = [];
     this.secondTimestamps = [];
     this.cryptoQuoteLastCallAt = 0;
+    this.pendingCryptoCandleRequests = new Map();
   }
 
   isConfigured() {
@@ -74,7 +76,7 @@ class FinnhubClient {
 
   async waitForCryptoRateLimit() {
     const now = Date.now();
-    const minIntervalMs = 1250;
+    const minIntervalMs = process.env.COINGECKO_API_KEY ? 1500 : 4000;
     const elapsed = now - this.cryptoQuoteLastCallAt;
 
     if (elapsed < minIntervalMs) {
@@ -264,7 +266,7 @@ class FinnhubClient {
       }
 
       const baseSymbol = symbolUpper.slice(0, -suffix.length);
-      if (this.isCryptoSymbol(baseSymbol)) {
+      if (/^[A-Z][A-Z0-9._-]{1,19}$/.test(baseSymbol)) {
         return baseSymbol;
       }
     }
@@ -373,6 +375,214 @@ class FinnhubClient {
 
       console.warn(`[CRYPTO] Failed to get crypto quote for ${symbol}: ${error.message}`);
       throw error;
+    }
+  }
+
+  getResolutionBucketMs(resolution) {
+    switch (String(resolution || '').toUpperCase()) {
+      case '1':
+        return 60 * 1000;
+      case '5':
+        return 5 * 60 * 1000;
+      case '15':
+        return 15 * 60 * 1000;
+      case '30':
+        return 30 * 60 * 1000;
+      case '60':
+        return 60 * 60 * 1000;
+      case '240':
+        return 4 * 60 * 60 * 1000;
+      case 'D':
+        return 24 * 60 * 60 * 1000;
+      default:
+        return 5 * 60 * 1000;
+    }
+  }
+
+  buildCryptoCandlesFromMarketChart(prices = [], volumes = [], resolution = '5') {
+    if (!Array.isArray(prices) || prices.length === 0) {
+      return null;
+    }
+
+    const bucketMs = this.getResolutionBucketMs(resolution);
+    const volumeByBucket = new Map(
+      (Array.isArray(volumes) ? volumes : []).map(([timestamp, volume]) => [
+        Math.floor(timestamp / bucketMs) * bucketMs,
+        Number(volume) || 0
+      ])
+    );
+
+    const buckets = new Map();
+
+    for (const [timestamp, price] of prices) {
+      const numericTimestamp = Number(timestamp);
+      const numericPrice = Number(price);
+
+      if (!Number.isFinite(numericTimestamp) || !Number.isFinite(numericPrice)) {
+        continue;
+      }
+
+      const bucketStart = Math.floor(numericTimestamp / bucketMs) * bucketMs;
+      const existingBucket = buckets.get(bucketStart);
+
+      if (!existingBucket) {
+        buckets.set(bucketStart, {
+          time: Math.floor(bucketStart / 1000),
+          open: numericPrice,
+          high: numericPrice,
+          low: numericPrice,
+          close: numericPrice,
+          volume: volumeByBucket.get(bucketStart) || 0
+        });
+        continue;
+      }
+
+      existingBucket.high = Math.max(existingBucket.high, numericPrice);
+      existingBucket.low = Math.min(existingBucket.low, numericPrice);
+      existingBucket.close = numericPrice;
+    }
+
+    const sortedCandles = Array.from(buckets.values()).sort((a, b) => a.time - b.time);
+    if (sortedCandles.length === 0) {
+      return null;
+    }
+
+    return {
+      c: sortedCandles.map(candle => candle.close),
+      h: sortedCandles.map(candle => candle.high),
+      l: sortedCandles.map(candle => candle.low),
+      o: sortedCandles.map(candle => candle.open),
+      s: 'ok',
+      t: sortedCandles.map(candle => candle.time),
+      v: sortedCandles.map(candle => candle.volume)
+    };
+  }
+
+  async getCryptoCandles(symbol, resolution, from, to) {
+    const symbolUpper = symbol.toUpperCase();
+    const coinGeckoId = FinnhubClient.CRYPTO_TO_COINGECKO[symbolUpper];
+    const normalizedRange = intradayCandleCache.normalizeRangeBounds(from, to, resolution);
+    const normalizedFrom = normalizedRange.from;
+    const normalizedTo = normalizedRange.to;
+
+    if (!coinGeckoId) {
+      throw new Error(`Unknown crypto symbol: ${symbolUpper}`);
+    }
+
+    const cacheKey = `${symbolUpper}_${resolution}_${normalizedFrom}_${normalizedTo}`;
+    const cached = await cache.get('candles', cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    try {
+      const persistedCandles = await intradayCandleCache.getCoveredRange(symbolUpper, resolution, normalizedFrom, normalizedTo);
+      if (persistedCandles && persistedCandles.length > 0) {
+        const cachedCandles = {
+          c: persistedCandles.map(candle => candle.close),
+          h: persistedCandles.map(candle => candle.high),
+          l: persistedCandles.map(candle => candle.low),
+          o: persistedCandles.map(candle => candle.open),
+          s: 'ok',
+          t: persistedCandles.map(candle => candle.time),
+          v: persistedCandles.map(candle => candle.volume)
+        };
+
+        await cache.set('candles', cacheKey, cachedCandles);
+        console.log(`[CRYPTO] Using persisted candle cache for ${symbolUpper}, resolution ${resolution}`);
+        return cachedCandles;
+      }
+    } catch (dbError) {
+      console.warn(`[CRYPTO] Intraday DB cache lookup failed for ${symbolUpper}: ${dbError.message}`);
+    }
+
+    const staleCached = cache.getStale('candles', cacheKey);
+    const inFlightKey = `${symbolUpper}_${resolution}_${normalizedFrom}_${normalizedTo}`;
+
+    if (this.pendingCryptoCandleRequests.has(inFlightKey)) {
+      console.log(`[CRYPTO] Reusing in-flight candle request for ${symbolUpper}`);
+      const marketChart = await this.pendingCryptoCandleRequests.get(inFlightKey);
+      const candles = this.buildCryptoCandlesFromMarketChart(
+        marketChart?.prices || [],
+        marketChart?.total_volumes || [],
+        resolution
+      );
+
+      if (candles && candles.c && candles.c.length > 0) {
+        await cache.set('candles', cacheKey, candles);
+        return candles;
+      }
+    }
+
+    try {
+      const headers = { 'Accept': 'application/json' };
+      const apiKey = process.env.COINGECKO_API_KEY;
+      if (apiKey) {
+        headers['x-cg-demo-api-key'] = apiKey;
+      }
+
+      const requestPromise = (async () => {
+        await this.waitForCryptoRateLimit();
+        console.log(`[CRYPTO] Fetching candles from CoinGecko for ${symbolUpper} (${coinGeckoId}), resolution ${resolution}`);
+
+        const response = await axios.get(
+          `https://api.coingecko.com/api/v3/coins/${coinGeckoId}/market_chart/range`,
+          {
+            params: {
+              vs_currency: 'usd',
+              from: normalizedFrom,
+              to: normalizedTo
+            },
+            timeout: 15000,
+            headers
+          }
+        );
+
+        return response.data;
+      })();
+
+      this.pendingCryptoCandleRequests.set(inFlightKey, requestPromise);
+      const marketChart = await requestPromise;
+
+      const candles = this.buildCryptoCandlesFromMarketChart(
+        marketChart?.prices || [],
+        marketChart?.total_volumes || [],
+        resolution
+      );
+
+      if (!candles || !candles.c || candles.c.length === 0) {
+        throw new Error(`No candle data available for crypto symbol ${symbolUpper}`);
+      }
+
+      await cache.set('candles', cacheKey, candles);
+
+      try {
+        const normalizedCandles = candles.t.map((time, index) => ({
+          time,
+          open: candles.o[index],
+          high: candles.h[index],
+          low: candles.l[index],
+          close: candles.c[index],
+          volume: candles.v[index]
+        }));
+
+        await intradayCandleCache.insertCandles(symbolUpper, resolution, normalizedCandles, 'coingecko');
+        void intradayCandleCache.cleanupExpiredCandles();
+      } catch (dbError) {
+        console.warn(`[CRYPTO] Failed to persist candles for ${symbolUpper}: ${dbError.message}`);
+      }
+
+      return candles;
+    } catch (error) {
+      if (error.response?.status === 429 && staleCached.value) {
+        console.warn(`[CRYPTO] CoinGecko rate limited for ${symbolUpper} candles, using stale cache`);
+        return staleCached.value;
+      }
+
+      console.warn(`[CRYPTO] Failed to get candles for ${symbolUpper}: ${error.message}`);
+      throw error;
+    } finally {
+      this.pendingCryptoCandleRequests.delete(inFlightKey);
     }
   }
 
@@ -1216,8 +1426,15 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
 
   async getCandles(symbol, resolution, from, to, userId = null) {
     let symbolUpper = symbol.toUpperCase();
-    
-    // Check if this looks like a CUSIP (8-9 characters, alphanumeric)
+
+    const cryptoBaseSymbol = this.extractCryptoBaseSymbol(symbolUpper);
+    if (this.isCryptoSymbol(symbolUpper) || cryptoBaseSymbol) {
+      const candleSymbol = cryptoBaseSymbol || symbolUpper;
+      console.log(`[CRYPTO] ${symbolUpper} detected as crypto for candles, using ${candleSymbol}`);
+      return this.getCryptoCandles(candleSymbol, resolution, from, to);
+    }
+
+    // Only attempt CUSIP resolution after excluding crypto pair symbols like LINKUSDT.
     if (symbolUpper.match(/^[A-Z0-9]{8,9}$/)) {
       console.log(`Detected potential CUSIP: ${symbolUpper}, attempting to map to symbol`);
       const mappedSymbol = await this.mapCusipToSymbol(symbolUpper, userId);

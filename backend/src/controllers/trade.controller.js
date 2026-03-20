@@ -156,7 +156,7 @@ const tradeController = {
   async getTradesCount(req, res, next) {
     try {
       const {
-        symbol, startDate, endDate, tags, strategy, sector,
+        symbol, symbolExact, startDate, endDate, tags, strategy, sector,
         strategies, sectors, hasNews, daysOfWeek, instrumentTypes, optionTypes, qualityGrades,
         side, minPrice, maxPrice, minQuantity, maxQuantity,
         status, minPnl, maxPnl, pnlType, broker, brokers
@@ -164,6 +164,7 @@ const tradeController = {
 
       const filters = {
         symbol,
+        symbolExact: symbolExact === 'true',
         startDate,
         endDate,
         tags: tags ? ensureString(tags).split(',').map(t => t.trim()).filter(Boolean) : undefined,

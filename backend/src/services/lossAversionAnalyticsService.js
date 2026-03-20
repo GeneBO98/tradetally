@@ -3,6 +3,25 @@ const TierService = require('./tierService');
 const finnhub = require('../utils/finnhub');
 const AnalyticsCache = require('./analyticsCache');
 
+function buildSymbolFilterClause(tradeFilters = {}, queryParams = [], paramCount = 1, tableAlias = '') {
+  const symbol = tradeFilters.symbol?.trim();
+  if (!symbol) {
+    return { sql: '', queryParams, paramCount };
+  }
+
+  const prefix = tableAlias ? `${tableAlias}.` : '';
+  const operator = tradeFilters.symbolExact ? '=' : 'LIKE';
+  const value = tradeFilters.symbolExact ? symbol : `${symbol}%`;
+
+  queryParams.push(value);
+
+  return {
+    sql: ` AND UPPER(${prefix}symbol) ${operator} UPPER($${paramCount})`,
+    queryParams,
+    paramCount: paramCount + 1,
+  };
+}
+
 /**
  * Loss Aversion Analytics Service
  * 
@@ -11,9 +30,12 @@ const AnalyticsCache = require('./analyticsCache');
  * Pro users with Finnhub configured get full price movement analysis.
  */
 class LossAversionAnalyticsService {
+  static isCryptoLikeSymbol(symbol) {
+    return finnhub.isCryptoSymbol(symbol) || finnhub.isCryptoPairSymbol(symbol);
+  }
   
   // Analyze loss aversion patterns for a user
-  static async analyzeLossAversion(userId, startDate = null, endDate = null) {
+  static async analyzeLossAversion(userId, startDate = null, endDate = null, accountsArray = undefined, tradeFilters = {}) {
     try {
       // Check tier access
       const hasAccess = await TierService.hasFeatureAccess(userId, 'behavioral_analytics');
@@ -29,6 +51,8 @@ class LossAversionAnalyticsService {
       start = new Date(startDate);
     } else {
       // Get all available trades - query the earliest and latest trade dates
+      const dateRangeParams = [userId];
+      const dateRangeFilter = buildSymbolFilterClause(tradeFilters, dateRangeParams, 2);
       const dateRangeQuery = `
         SELECT 
           MIN(entry_time) as earliest_date,
@@ -36,8 +60,9 @@ class LossAversionAnalyticsService {
         FROM trades 
         WHERE user_id = $1 
           AND entry_time IS NOT NULL
+          ${dateRangeFilter.sql}
       `;
-      const dateRangeResult = await db.query(dateRangeQuery, [userId]);
+      const dateRangeResult = await db.query(dateRangeQuery, dateRangeFilter.queryParams);
       
       if (dateRangeResult.rows[0].earliest_date) {
         start = new Date(dateRangeResult.rows[0].earliest_date);
@@ -50,6 +75,8 @@ class LossAversionAnalyticsService {
     }
 
     // Get all completed trades in the period
+    const tradeQueryParams = [userId, start, end];
+    const tradeFilter = buildSymbolFilterClause(tradeFilters, tradeQueryParams, 4);
     const tradesQuery = `
       SELECT 
         id, symbol, entry_time, exit_time, entry_price, exit_price,
@@ -62,10 +89,11 @@ class LossAversionAnalyticsService {
         AND pnl IS NOT NULL
         AND entry_time >= $2
         AND exit_time <= $3
+        ${tradeFilter.sql}
       ORDER BY entry_time
     `;
 
-    const tradesResult = await db.query(tradesQuery, [userId, start, end]);
+    const tradesResult = await db.query(tradesQuery, tradeFilter.queryParams);
     const trades = tradesResult.rows;
     
     console.log(`Loss aversion analysis for user ${userId}: Found ${trades.length} trades between ${start.toISOString()} and ${end.toISOString()}`);
@@ -1022,6 +1050,14 @@ class LossAversionAnalyticsService {
   // Analyze market indicators at the time of exit using advanced technical analysis
   static async analyzeMarketIndicatorsAtExit(symbol, exitTime, side) {
     try {
+      if (this.isCryptoLikeSymbol(symbol)) {
+        return {
+          trend: 'crypto_unsupported',
+          signals: [],
+          recommendation: 'technical_indicators_unavailable_for_crypto'
+        };
+      }
+
       const endTime = Math.floor(exitTime.getTime() / 1000);
       const startTime = endTime - (2 * 60 * 60); // 2 hours before for better context
       
@@ -1184,6 +1220,10 @@ class LossAversionAnalyticsService {
 
   // Helper methods for safe API calls
   static async getTechnicalIndicatorSafe(symbol, resolution, from, to, indicator, params) {
+    if (this.isCryptoLikeSymbol(symbol)) {
+      return null;
+    }
+
     try {
       return await finnhub.getTechnicalIndicator(symbol, resolution, from, to, indicator, params);
     } catch (error) {
@@ -1193,6 +1233,10 @@ class LossAversionAnalyticsService {
   }
 
   static async getPatternRecognitionSafe(symbol, resolution) {
+    if (this.isCryptoLikeSymbol(symbol)) {
+      return null;
+    }
+
     try {
       return await finnhub.getPatternRecognition(symbol, resolution);
     } catch (error) {
@@ -1202,6 +1246,10 @@ class LossAversionAnalyticsService {
   }
 
   static async getSupportResistanceSafe(symbol, resolution) {
+    if (this.isCryptoLikeSymbol(symbol)) {
+      return null;
+    }
+
     try {
       return await finnhub.getSupportResistance(symbol, resolution);
     } catch (error) {
@@ -1556,7 +1604,7 @@ class LossAversionAnalyticsService {
   }
 
   // Get top missed trades by percentage of missed opportunity
-  static async getTopMissedTrades(userId, limit = 20, startDate = null, endDate = null, forceRefresh = false) {
+  static async getTopMissedTrades(userId, limit = 20, startDate = null, endDate = null, forceRefresh = false, accountsArray = undefined, tradeFilters = {}) {
     try {
       // Check tier access
       const hasAccess = await TierService.hasFeatureAccess(userId, 'behavioral_analytics');
@@ -1565,7 +1613,7 @@ class LossAversionAnalyticsService {
       }
 
       // Check cache first (include date filters in cache key) - but skip if forceRefresh is true
-      const cacheKey = AnalyticsCache.generateKey('top_missed_trades', { limit, startDate, endDate });
+      const cacheKey = AnalyticsCache.generateKey('top_missed_trades', { limit, startDate, endDate, ...tradeFilters });
 
       if (!forceRefresh) {
         const cachedData = await AnalyticsCache.get(userId, cacheKey);
@@ -1600,6 +1648,10 @@ class LossAversionAnalyticsService {
         paramCount++;
       }
 
+      const symbolFilter = buildSymbolFilterClause(tradeFilters, queryParams, paramCount, 't');
+      dateFilter += symbolFilter.sql;
+      paramCount = symbolFilter.paramCount;
+
       // Get all completed winning trades that could have been held longer
       const tradesQuery = `
         SELECT
@@ -1628,7 +1680,7 @@ class LossAversionAnalyticsService {
         ORDER BY t.exit_time DESC
       `;
 
-      const tradesResult = await db.query(tradesQuery, queryParams);
+      const tradesResult = await db.query(tradesQuery, symbolFilter.queryParams);
       const trades = tradesResult.rows;
 
       if (trades.length === 0) {

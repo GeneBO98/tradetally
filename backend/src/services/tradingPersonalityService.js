@@ -2,10 +2,32 @@ const db = require('../config/database');
 const TierService = require('./tierService');
 const finnhub = require('../utils/finnhub');
 
+function buildSymbolFilterClause(tradeFilters = {}, queryParams = [], paramCount = 1, tableAlias = '') {
+  const symbol = tradeFilters.symbol?.trim();
+  if (!symbol) {
+    return { sql: '', queryParams, paramCount };
+  }
+
+  const prefix = tableAlias ? `${tableAlias}.` : '';
+  const operator = tradeFilters.symbolExact ? '=' : 'LIKE';
+  const value = tradeFilters.symbolExact ? symbol : `${symbol}%`;
+
+  queryParams.push(value);
+
+  return {
+    sql: ` AND UPPER(${prefix}symbol) ${operator} UPPER($${paramCount})`,
+    queryParams,
+    paramCount: paramCount + 1,
+  };
+}
+
 class TradingPersonalityService {
+  static isCryptoLikeSymbol(symbol) {
+    return finnhub.isCryptoSymbol(symbol) || finnhub.isCryptoPairSymbol(symbol);
+  }
   
   // Analyze and classify a user's trading personality
-  static async analyzePersonality(userId, startDate = null, endDate = null) {
+  static async analyzePersonality(userId, startDate = null, endDate = null, accountsArray = undefined, tradeFilters = {}) {
     try {
       // Note: Basic personality analysis is available to all users
       // Only advanced technical analysis features require Pro tier
@@ -19,6 +41,8 @@ class TradingPersonalityService {
         const testEnd = new Date(endDate);
         const testStart = new Date(startDate);
         
+        const testQueryParams = [userId, testStart, testEnd];
+        const testFilter = buildSymbolFilterClause(tradeFilters, testQueryParams, 4);
         const testQuery = `
           SELECT COUNT(*) as count
           FROM trades 
@@ -28,9 +52,10 @@ class TradingPersonalityService {
             AND exit_time IS NOT NULL
             AND entry_time IS NOT NULL
             AND pnl IS NOT NULL
+            ${testFilter.sql}
         `;
         
-        const testResult = await db.query(testQuery, [userId, testStart, testEnd]);
+        const testResult = await db.query(testQuery, testFilter.queryParams);
         const tradesInRange = parseInt(testResult.rows[0].count);
         
         if (tradesInRange >= 20) {
@@ -46,6 +71,8 @@ class TradingPersonalityService {
       
       if (!useProvidedDateRange) {
         // Get all available trades - query the earliest and latest trade dates
+        const dateRangeParams = [userId];
+        const dateRangeFilter = buildSymbolFilterClause(tradeFilters, dateRangeParams, 2);
         const dateRangeQuery = `
           SELECT 
             MIN(entry_time) as earliest_date,
@@ -53,8 +80,9 @@ class TradingPersonalityService {
           FROM trades 
           WHERE user_id = $1 
             AND entry_time IS NOT NULL
+            ${dateRangeFilter.sql}
         `;
-        const dateRangeResult = await db.query(dateRangeQuery, [userId]);
+        const dateRangeResult = await db.query(dateRangeQuery, dateRangeFilter.queryParams);
         
         if (dateRangeResult.rows[0].earliest_date) {
           start = new Date(dateRangeResult.rows[0].earliest_date);
@@ -68,6 +96,8 @@ class TradingPersonalityService {
       }
 
       // Get all completed trades for analysis
+      const tradesQueryParams = [userId, start, end];
+      const tradeFilter = buildSymbolFilterClause(tradeFilters, tradesQueryParams, 4);
       const tradesQuery = `
         SELECT 
           id, symbol, entry_time, exit_time, entry_price, exit_price,
@@ -80,10 +110,11 @@ class TradingPersonalityService {
           AND pnl IS NOT NULL
           AND entry_time >= $2
           AND exit_time <= $3
+          ${tradeFilter.sql}
         ORDER BY entry_time
       `;
 
-      const tradesResult = await db.query(tradesQuery, [userId, start, end]);
+      const tradesResult = await db.query(tradesQuery, tradeFilter.queryParams);
       const trades = tradesResult.rows;
 
       console.log(`Personality analysis for user ${userId}: Found ${trades.length} trades`);
@@ -219,6 +250,10 @@ class TradingPersonalityService {
 
     for (const symbol of symbols) {
       try {
+        if (this.isCryptoLikeSymbol(symbol)) {
+          continue;
+        }
+
         // Get support/resistance levels for mean reversion analysis
         const supportResistance = await this.getSupportResistanceSafe(symbol, 'D');
 
@@ -1133,6 +1168,10 @@ class TradingPersonalityService {
 
   // Safe API call helpers
   static async getTechnicalIndicatorSafe(symbol, resolution, from, to, indicator, params) {
+    if (this.isCryptoLikeSymbol(symbol)) {
+      return null;
+    }
+
     try {
       return await finnhub.getTechnicalIndicator(symbol, resolution, from, to, indicator, params);
     } catch (error) {
@@ -1142,6 +1181,10 @@ class TradingPersonalityService {
   }
 
   static async getPatternRecognitionSafe(symbol, resolution) {
+    if (this.isCryptoLikeSymbol(symbol)) {
+      return null;
+    }
+
     try {
       return await finnhub.getPatternRecognition(symbol, resolution);
     } catch (error) {
@@ -1151,6 +1194,10 @@ class TradingPersonalityService {
   }
 
   static async getSupportResistanceSafe(symbol, resolution) {
+    if (this.isCryptoLikeSymbol(symbol)) {
+      return null;
+    }
+
     try {
       return await finnhub.getSupportResistance(symbol, resolution);
     } catch (error) {

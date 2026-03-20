@@ -4,6 +4,57 @@ const aiService = require('../utils/aiService');
 const adminSettingsService = require('./adminSettings');
 const AnalyticsCache = require('./analyticsCache');
 
+function buildSymbolFilterClause(tradeFilters = {}, queryParams = [], paramCount = 1, tableAlias = '') {
+  const symbol = tradeFilters.symbol?.trim();
+  if (!symbol) {
+    return { sql: '', queryParams, paramCount };
+  }
+
+  const prefix = tableAlias ? `${tableAlias}.` : '';
+  const operator = tradeFilters.symbolExact ? '=' : 'LIKE';
+  const value = tradeFilters.symbolExact ? symbol : `${symbol}%`;
+
+  queryParams.push(value);
+
+  return {
+    sql: ` AND UPPER(${prefix}symbol) ${operator} UPPER($${paramCount})`,
+    queryParams,
+    paramCount: paramCount + 1,
+  };
+}
+
+function buildEventSymbolCondition(dateFilter = {}, queryParams = [], paramCount = 1, eventAlias = 'oe') {
+  const symbol = dateFilter.symbol?.trim();
+  if (!symbol) {
+    return { sql: '', queryParams, paramCount };
+  }
+
+  const operator = dateFilter.symbolExact ? '=' : 'LIKE';
+  const value = dateFilter.symbolExact ? symbol : `${symbol}%`;
+  queryParams.push(value);
+
+  return {
+    sql: `
+      AND (
+        EXISTS (
+          SELECT 1
+          FROM trades outcome_trade
+          WHERE outcome_trade.id = ${eventAlias}.outcome_trade_id
+            AND UPPER(outcome_trade.symbol) ${operator} UPPER($${paramCount})
+        )
+        OR EXISTS (
+          SELECT 1
+          FROM trades streak_trade
+          WHERE streak_trade.id = ANY(${eventAlias}.streak_trades)
+            AND UPPER(streak_trade.symbol) ${operator} UPPER($${paramCount})
+        )
+      )
+    `,
+    queryParams,
+    paramCount: paramCount + 1,
+  };
+}
+
 class OverconfidenceAnalyticsService {
   
   // Calculate monetary position size for any trade
@@ -49,6 +100,9 @@ class OverconfidenceAnalyticsService {
       paramCount++;
     }
 
+    const symbolFilter = buildSymbolFilterClause(dateFilter, queryParams, paramCount);
+    dateFilterSQL += symbolFilter.sql;
+
     // Get all completed trades for the user, ordered by entry time
     const tradesQuery = `
       SELECT
@@ -63,7 +117,7 @@ class OverconfidenceAnalyticsService {
       ORDER BY entry_time ASC
     `;
 
-    const tradesResult = await db.query(tradesQuery, queryParams);
+    const tradesResult = await db.query(tradesQuery, symbolFilter.queryParams);
     const trades = tradesResult.rows;
 
     if (trades.length < 10) {
@@ -594,14 +648,17 @@ class OverconfidenceAnalyticsService {
       console.log(`[OVERCONFIDENCE SERVICE] Date filter applied: ${dateFilter.startDate} to ${dateFilter.endDate}`);
     }
 
+    const eventSymbolFilter = buildEventSymbolCondition(dateFilter, baseParams, paramCount + 1, 'oe');
+    paramCount = eventSymbolFilter.paramCount - 1;
+
     // Get total count for pagination
     const countQuery = `
       SELECT COUNT(*) as total_count
-      FROM overconfidence_events
-      WHERE user_id = $1 ${dateCondition}
+      FROM overconfidence_events oe
+      WHERE oe.user_id = $1 ${dateCondition}${eventSymbolFilter.sql}
     `;
-    console.log(`[OVERCONFIDENCE SERVICE] Running count query:`, countQuery, baseParams);
-    const countResult = await db.query(countQuery, baseParams);
+    console.log(`[OVERCONFIDENCE SERVICE] Running count query:`, countQuery, eventSymbolFilter.queryParams);
+    const countResult = await db.query(countQuery, eventSymbolFilter.queryParams);
     const totalCount = parseInt(countResult.rows[0].total_count);
     console.log(`[OVERCONFIDENCE SERVICE] Total events found: ${totalCount}`);
 
@@ -616,12 +673,12 @@ class OverconfidenceAnalyticsService {
           ELSE 'neutral'
         END as outcome_status
       FROM overconfidence_events oe
-      WHERE user_id = $1 ${dateCondition}
+      WHERE oe.user_id = $1 ${dateCondition}${eventSymbolFilter.sql}
       ORDER BY created_at DESC
       LIMIT $${++paramCount} OFFSET $${++paramCount}
     `;
     
-    const eventsParams = [...baseParams, limit, offset];
+    const eventsParams = [...eventSymbolFilter.queryParams, limit, offset];
     const eventsResult = await db.query(eventsQuery, eventsParams);
 
     // Transform events to camelCase for frontend with AI recommendations
@@ -734,11 +791,11 @@ class OverconfidenceAnalyticsService {
         COUNT(CASE WHEN severity = 'high' THEN 1 END) as high_severity_count,
         COUNT(CASE WHEN severity = 'medium' THEN 1 END) as medium_severity_count,
         COUNT(CASE WHEN severity = 'low' THEN 1 END) as low_severity_count
-      FROM overconfidence_events
-      WHERE user_id = $1 ${dateCondition}
+      FROM overconfidence_events oe
+      WHERE oe.user_id = $1 ${dateCondition}${eventSymbolFilter.sql}
     `;
 
-    const statsResult = await db.query(statsQuery, baseParams);
+    const statsResult = await db.query(statsQuery, eventSymbolFilter.queryParams);
     const stats = statsResult.rows[0];
     const totalEvents = parseInt(stats.total_events);
 
@@ -749,11 +806,11 @@ class OverconfidenceAnalyticsService {
         AVG(win_streak_length) as avg_streak_length,
         AVG(position_size_increase_percent) as avg_position_growth,
         COUNT(DISTINCT user_id) as unique_users
-      FROM overconfidence_events
-      WHERE user_id = $1 ${dateCondition}
+      FROM overconfidence_events oe
+      WHERE oe.user_id = $1 ${dateCondition}${eventSymbolFilter.sql}
     `;
     
-    const winStreakResult = await db.query(winStreakQuery, baseParams);
+    const winStreakResult = await db.query(winStreakQuery, eventSymbolFilter.queryParams);
     const winStreakStats = winStreakResult.rows[0];
 
     // Calculate performance impact and success rate
