@@ -258,6 +258,33 @@
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Account</dt>
                   <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">{{ redactAccountId(trade.account_identifier) }}</dd>
                 </div>
+                <div v-if="bitunixTradeMetadata.leverage">
+                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Leverage</dt>
+                  <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">{{ formatNumber(bitunixTradeMetadata.leverage, 0) }}x</dd>
+                </div>
+                <div v-if="bitunixTradeMetadata.marginUsed !== null && bitunixTradeMetadata.marginUsed !== undefined">
+                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Margin Used</dt>
+                  <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">${{ formatNumber(bitunixTradeMetadata.marginUsed) }}</dd>
+                </div>
+                <div v-if="bitunixTradeMetadata.liquidationPrice">
+                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Liquidation Price</dt>
+                  <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">${{ formatNumber(bitunixTradeMetadata.liquidationPrice) }}</dd>
+                </div>
+                <div v-if="bitunixTradeMetadata.pendingOrders.length > 0" class="sm:col-span-2">
+                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Pending Orders</dt>
+                  <dd class="mt-1 flex flex-wrap gap-2">
+                    <span
+                      v-for="order in bitunixTradeMetadata.pendingOrders"
+                      :key="order.orderId"
+                      class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200"
+                    >
+                      {{ order.intent === 'reduce' ? 'Reduce' : 'Scale In' }}
+                      {{ order.side?.toUpperCase() }} {{ formatQuantity(order.remainingQuantity || order.quantity || 0) }}
+                      <span v-if="order.price"> @ ${{ formatNumber(order.price) }}</span>
+                      <span v-if="order.orderType" class="ml-1 text-gray-500 dark:text-gray-400">({{ order.orderType }})</span>
+                    </span>
+                  </dd>
+                </div>
                 <div v-if="trade.strategy">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Strategy</dt>
                   <dd class="mt-1 text-sm text-gray-900 dark:text-white">{{ trade.strategy }}</dd>
@@ -1035,9 +1062,11 @@
                   </dd>
                 </div>
                 <div>
-                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Value</dt>
+                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
+                    {{ bitunixTradeMetrics.summaryLabel }}
+                  </dt>
                   <dd class="mt-1 text-sm text-gray-900 dark:text-white">
-                    ${{ formatNumber(trade.entry_price * trade.quantity) }}
+                    ${{ formatNumber(bitunixTradeMetrics.summaryValue) }}
                   </dd>
                 </div>
               </dl>
@@ -1502,6 +1531,50 @@ const executionSummary = computed(() => {
   }
 })
 
+const bitunixTradeMetadata = computed(() => {
+  const executions = Array.isArray(trade.value?.executions) ? trade.value.executions : []
+  const enrichedExecution = executions.find(execution =>
+    execution && (
+      execution.leverage !== undefined ||
+      execution.marginUsed !== undefined ||
+      execution.notionalValue !== undefined ||
+      execution.liquidationPrice !== undefined ||
+      (Array.isArray(execution.pendingOrders) && execution.pendingOrders.length > 0)
+    )
+  )
+
+  return {
+    leverage: enrichedExecution?.leverage ?? null,
+    marginUsed: enrichedExecution?.marginUsed ?? null,
+    notionalValue: enrichedExecution?.notionalValue ?? null,
+    liquidationPrice: enrichedExecution?.liquidationPrice ?? null,
+    pendingOrders: Array.isArray(enrichedExecution?.pendingOrders) ? enrichedExecution.pendingOrders : []
+  }
+})
+
+const bitunixTradeMetrics = computed(() => {
+  const fallbackValue = (trade.value?.entry_price || 0) * (trade.value?.quantity || 0)
+
+  if (bitunixTradeMetadata.value.marginUsed !== null && bitunixTradeMetadata.value.marginUsed !== undefined) {
+    return {
+      summaryLabel: 'Total Cost',
+      summaryValue: bitunixTradeMetadata.value.marginUsed
+    }
+  }
+
+  if (bitunixTradeMetadata.value.notionalValue !== null && bitunixTradeMetadata.value.notionalValue !== undefined) {
+    return {
+      summaryLabel: 'Notional Value',
+      summaryValue: bitunixTradeMetadata.value.notionalValue
+    }
+  }
+
+  return {
+    summaryLabel: 'Value',
+    summaryValue: fallbackValue
+  }
+})
+
 function formatNumber(num, decimals = 2) {
   return new Intl.NumberFormat('en-US', {
     minimumFractionDigits: decimals,
@@ -1509,12 +1582,27 @@ function formatNumber(num, decimals = 2) {
   }).format(num || 0)
 }
 
-// Redact account identifier for privacy (show only last 4 characters)
 function redactAccountId(accountId) {
   if (!accountId) return null
   const str = String(accountId).trim()
+
   if (str.length <= 4) return str
-  return '****' + str.slice(-4)
+
+  const withoutSeparators = str.replace(/[-.\s]/g, '')
+  const digitCount = (withoutSeparators.match(/\d/g) || []).length
+  const letterCount = (withoutSeparators.match(/[a-zA-Z]/g) || []).length
+  const totalAlphanumeric = digitCount + letterCount
+
+  const isAccountNumber = totalAlphanumeric > 0 && (
+    (digitCount / totalAlphanumeric) > 0.5 ||
+    /^[A-Za-z]{1,2}\d{4,}/.test(withoutSeparators)
+  )
+
+  if (isAccountNumber) {
+    return '****' + str.slice(-4)
+  }
+
+  return str
 }
 
 function formatQuantity(num) {

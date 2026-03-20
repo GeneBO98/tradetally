@@ -83,10 +83,11 @@ class BrokerSyncService {
       // Auto-close expired options after importing broker data
       const expiredClosed = await this.closeExpiredOptions(connection.userId);
       result.expiredClosed = expiredClosed;
+      const syncedTradeCount = (result.imported || 0) + (result.updated || 0) + expiredClosed;
 
       // Update sync log with results
       await BrokerConnection.updateSyncLog(syncLog.id, 'completed', {
-        tradesImported: result.imported + expiredClosed,
+        tradesImported: syncedTradeCount,
         tradesSkipped: result.skipped,
         tradesFailed: result.failed,
         duplicatesDetected: result.duplicates
@@ -99,12 +100,12 @@ class BrokerSyncService {
 
       await BrokerConnection.updateAfterSync(
         connectionId,
-        result.imported + expiredClosed,
+        syncedTradeCount,
         result.skipped,
         nextSync
       );
 
-      console.log(`[BROKER-SYNC] Sync completed: ${result.imported} imported, ${result.duplicates} duplicates, ${expiredClosed} expired options closed`);
+      console.log(`[BROKER-SYNC] Sync completed: ${result.imported || 0} imported, ${result.updated || 0} updated, ${result.duplicates || 0} duplicates, ${expiredClosed} expired options closed`);
 
       return {
         success: true,

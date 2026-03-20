@@ -2555,6 +2555,45 @@ const tradeController = {
         return trade.quantity || 0;
       };
 
+      const getBitunixExecutionMeta = (trade, executionType = 'entry') => {
+        if (!trade.executions || !Array.isArray(trade.executions)) {
+          return null;
+        }
+
+        return trade.executions.find(execution =>
+          String(execution?.type || '').toLowerCase() === executionType
+        ) || null;
+      };
+
+      const getBitunixMarginUsed = (trade) => {
+        if (trade.broker !== 'bitunix') {
+          return null;
+        }
+
+        const entryExecution = getBitunixExecutionMeta(trade, 'entry')
+          || getBitunixExecutionMeta(trade, 'exit');
+
+        const explicitMargin = parseFloat(entryExecution?.marginUsed);
+        if (Number.isFinite(explicitMargin) && explicitMargin > 0) {
+          return explicitMargin;
+        }
+
+        const leverage = parseFloat(entryExecution?.leverage);
+        const notionalValue = parseFloat(entryExecution?.notionalValue);
+        if (Number.isFinite(leverage) && leverage > 0) {
+          if (Number.isFinite(notionalValue) && notionalValue > 0) {
+            return notionalValue / leverage;
+          }
+
+          const fallbackNotional = (parseFloat(trade.entry_price) || 0) * (parseFloat(trade.quantity) || 0);
+          if (fallbackNotional > 0) {
+            return fallbackNotional / leverage;
+          }
+        }
+
+        return null;
+      };
+
       // Build a unique position key for each trade
       // Options: use underlying_strike_expiration_type to keep different contracts separate
       // Stocks/futures: use symbol
@@ -2583,6 +2622,7 @@ const tradeController = {
           totalQuantity: 0,        // Net position (shares still held)
           totalSharesTraded: 0,    // Total shares traded (all executions count positive)
           totalCost: 0,
+          priceCostBasis: 0,
           avgPrice: 0,
           instrumentType: trade.instrument_type || 'stock',
           contractSize: trade.contract_size || (trade.instrument_type === 'option' ? 100 : 1),
@@ -2617,7 +2657,15 @@ const tradeController = {
           // For stocks, no multiplier needed
           costMultiplier = 1;
         }
-        positionMap[posKey].totalCost += Math.abs(netPosition) * trade.entry_price * costMultiplier;
+        const notionalCost = Math.abs(netPosition) * trade.entry_price * costMultiplier;
+        const marginUsed = getBitunixMarginUsed(trade);
+
+        positionMap[posKey].priceCostBasis += notionalCost;
+        positionMap[posKey].totalCost += (
+          trade.broker === 'bitunix' && Number.isFinite(marginUsed) && marginUsed > 0
+            ? marginUsed
+            : notionalCost
+        );
       });
 
       // Merge positions that were split due to incomplete option metadata
@@ -2654,6 +2702,7 @@ const tradeController = {
             compositePosition.totalQuantity += fbPosition.totalQuantity;
             compositePosition.totalSharesTraded += fbPosition.totalSharesTraded;
             compositePosition.totalCost += fbPosition.totalCost;
+            compositePosition.priceCostBasis += fbPosition.priceCostBasis;
 
             // Fill in missing option metadata from fallback position
             if (!compositePosition.underlying_symbol && fbPosition.underlying_symbol) compositePosition.underlying_symbol = fbPosition.underlying_symbol;
@@ -2694,7 +2743,8 @@ const tradeController = {
         }
 
         // avgPrice should be per-share/per-contract price, so divide totalCost by (quantity * multiplier)
-        position.avgPrice = position.totalCost / (absQuantity * avgPriceMultiplier);
+        const priceBasis = position.priceCostBasis || position.totalCost;
+        position.avgPrice = priceBasis / (absQuantity * avgPriceMultiplier);
       });
 
       // Remove positions with zero net quantity
@@ -2790,9 +2840,10 @@ const tradeController = {
             const currentPrice = alpacaQuote.price;
             const valueMultiplier = position.contractSize || 100;
             const currentValue = currentPrice * position.totalQuantity * valueMultiplier;
+            const pnlCostBasis = position.priceCostBasis || position.totalCost;
             const unrealizedPnL = position.side === 'short'
-              ? position.totalCost - currentValue
-              : currentValue - position.totalCost;
+              ? pnlCostBasis - currentValue
+              : currentValue - pnlCostBasis;
             const unrealizedPnLPercent = position.totalCost > 0
               ? (unrealizedPnL / position.totalCost) * 100
               : 0;
@@ -2831,11 +2882,14 @@ const tradeController = {
             valueMultiplier = 1;
           }
           const currentValue = currentPrice * position.totalQuantity * valueMultiplier;
+          const pnlCostBasis = position.priceCostBasis || position.totalCost;
           // For short positions, profit is made when price goes down
           const unrealizedPnL = position.side === 'short'
-            ? position.totalCost - currentValue
-            : currentValue - position.totalCost;
-          const unrealizedPnLPercent = (unrealizedPnL / position.totalCost) * 100;
+            ? pnlCostBasis - currentValue
+            : currentValue - pnlCostBasis;
+          const unrealizedPnLPercent = position.totalCost > 0
+            ? (unrealizedPnL / position.totalCost) * 100
+            : 0;
 
           return {
             ...position,

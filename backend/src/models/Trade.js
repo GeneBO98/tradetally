@@ -2781,12 +2781,26 @@ class Trade {
       paramCount++;
     }
 
+    const outcomePnlExpression = `
+      CASE
+        WHEN t.broker = 'bitunix'
+          AND t.entry_price IS NOT NULL
+          AND t.exit_price IS NOT NULL
+          AND t.quantity IS NOT NULL
+        THEN CASE
+          WHEN t.side = 'short' THEN (t.entry_price - t.exit_price) * t.quantity
+          ELSE (t.exit_price - t.entry_price) * t.quantity
+        END
+        ELSE t.pnl
+      END
+    `;
+
     if (filters.pnlType === 'positive' || filters.pnlType === 'profit') {
-      whereClause += ` AND t.pnl > 0`;
+      whereClause += ` AND (${outcomePnlExpression}) > 0`;
     } else if (filters.pnlType === 'negative' || filters.pnlType === 'loss') {
-      whereClause += ` AND t.pnl < 0`;
+      whereClause += ` AND (${outcomePnlExpression}) < 0`;
     } else if (filters.pnlType === 'breakeven') {
-      whereClause += ` AND t.pnl = 0`;
+      whereClause += ` AND (${outcomePnlExpression}) = 0`;
     }
 
     // Broker filter - support both single and multi-select
@@ -2922,6 +2936,17 @@ class Trade {
           symbol,
           id as trade_group,
           pnl as trade_pnl,
+          CASE
+            WHEN broker = 'bitunix'
+              AND entry_price IS NOT NULL
+              AND exit_price IS NOT NULL
+              AND quantity IS NOT NULL
+            THEN CASE
+              WHEN side = 'short' THEN (entry_price - exit_price) * quantity
+              ELSE (exit_price - entry_price) * quantity
+            END
+            ELSE pnl
+          END as trade_outcome_pnl,
           (commission + fees) as trade_costs,
           1 as execution_count,
           pnl_percent as avg_return_pct,
@@ -2937,27 +2962,27 @@ class Trade {
       trade_stats AS (
         SELECT
           COUNT(*)::integer as total_trades,
-          COUNT(*) FILTER (WHERE trade_pnl > 0)::integer as winning_trades,
-          COUNT(*) FILTER (WHERE trade_pnl < 0)::integer as losing_trades,
-          COUNT(*) FILTER (WHERE trade_pnl = 0)::integer as breakeven_trades,
+          COUNT(*) FILTER (WHERE trade_outcome_pnl > 0)::integer as winning_trades,
+          COUNT(*) FILTER (WHERE trade_outcome_pnl < 0)::integer as losing_trades,
+          COUNT(*) FILTER (WHERE trade_outcome_pnl = 0)::integer as breakeven_trades,
           COALESCE(SUM(trade_pnl), 0)::numeric as total_pnl,
           ${useMedian
             ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY trade_pnl), 0)::numeric as avg_pnl'
             : 'COALESCE(AVG(trade_pnl), 0)::numeric as avg_pnl'
           },
           ${useMedian
-            ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY trade_pnl) FILTER (WHERE trade_pnl > 0), 0)::numeric as avg_win'
-            : 'COALESCE(AVG(trade_pnl) FILTER (WHERE trade_pnl > 0), 0)::numeric as avg_win'
+            ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY trade_outcome_pnl) FILTER (WHERE trade_outcome_pnl > 0), 0)::numeric as avg_win'
+            : 'COALESCE(AVG(trade_outcome_pnl) FILTER (WHERE trade_outcome_pnl > 0), 0)::numeric as avg_win'
           },
           ${useMedian
-            ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY trade_pnl) FILTER (WHERE trade_pnl < 0), 0)::numeric as avg_loss'
-            : 'COALESCE(AVG(trade_pnl) FILTER (WHERE trade_pnl < 0), 0)::numeric as avg_loss'
+            ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY trade_outcome_pnl) FILTER (WHERE trade_outcome_pnl < 0), 0)::numeric as avg_loss'
+            : 'COALESCE(AVG(trade_outcome_pnl) FILTER (WHERE trade_outcome_pnl < 0), 0)::numeric as avg_loss'
           },
           COALESCE(MAX(trade_pnl), 0)::numeric as best_trade,
           COALESCE(MIN(trade_pnl), 0)::numeric as worst_trade,
           COALESCE(SUM(trade_costs), 0)::numeric as total_costs,
-          COALESCE(SUM(trade_pnl) FILTER (WHERE trade_pnl > 0), 0)::numeric as total_gross_wins,
-          COALESCE(ABS(SUM(trade_pnl) FILTER (WHERE trade_pnl < 0)), 0)::numeric as total_gross_losses,
+          COALESCE(SUM(trade_outcome_pnl) FILTER (WHERE trade_outcome_pnl > 0), 0)::numeric as total_gross_wins,
+          COALESCE(ABS(SUM(trade_outcome_pnl) FILTER (WHERE trade_outcome_pnl < 0)), 0)::numeric as total_gross_losses,
           ${useMedian
             ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY avg_return_pct) FILTER (WHERE avg_return_pct IS NOT NULL), 0)::numeric as avg_return_pct'
             : 'COALESCE(AVG(avg_return_pct) FILTER (WHERE avg_return_pct IS NOT NULL), 0)::numeric as avg_return_pct'

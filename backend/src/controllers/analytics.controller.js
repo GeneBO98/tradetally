@@ -475,7 +475,18 @@ const analyticsController = {
         WITH completed_trades AS (
             -- Each trade with both entry and exit price is a complete round trip
             SELECT
-                *
+                *,
+                CASE
+                  WHEN broker = 'bitunix'
+                    AND entry_price IS NOT NULL
+                    AND exit_price IS NOT NULL
+                    AND quantity IS NOT NULL
+                  THEN CASE
+                    WHEN side = 'short' THEN (entry_price - exit_price) * quantity
+                    ELSE (exit_price - entry_price) * quantity
+                  END
+                  ELSE pnl
+                END as outcome_pnl
             FROM trades
             WHERE user_id = $1 ${filterConditions}
                 AND exit_price IS NOT NULL
@@ -490,21 +501,21 @@ const analyticsController = {
         )
         SELECT
           (SELECT COUNT(*) FROM completed_trades)::integer as total_trades,
-          (SELECT COUNT(*) FROM completed_trades WHERE pnl > 0)::integer as winning_trades,
-          (SELECT COUNT(*) FROM completed_trades WHERE pnl < 0)::integer as losing_trades,
-          (SELECT COUNT(*) FROM completed_trades WHERE pnl = 0)::integer as breakeven_trades,
+          (SELECT COUNT(*) FROM completed_trades WHERE outcome_pnl > 0)::integer as winning_trades,
+          (SELECT COUNT(*) FROM completed_trades WHERE outcome_pnl < 0)::integer as losing_trades,
+          (SELECT COUNT(*) FROM completed_trades WHERE outcome_pnl = 0)::integer as breakeven_trades,
           COALESCE(SUM(pnl), 0)::numeric as total_pnl,
           ${useMedian
             ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl), 0)::numeric as avg_pnl'
             : 'COALESCE(AVG(pnl), 0)::numeric as avg_pnl'
           },
           ${useMedian
-            ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE pnl > 0), 0)::numeric as avg_win'
-            : 'COALESCE(AVG(pnl) FILTER (WHERE pnl > 0), 0)::numeric as avg_win'
+            ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY outcome_pnl) FILTER (WHERE outcome_pnl > 0), 0)::numeric as avg_win'
+            : 'COALESCE(AVG(outcome_pnl) FILTER (WHERE outcome_pnl > 0), 0)::numeric as avg_win'
           },
           ${useMedian
-            ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE pnl < 0), 0)::numeric as avg_loss'
-            : 'COALESCE(AVG(pnl) FILTER (WHERE pnl < 0), 0)::numeric as avg_loss'
+            ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY outcome_pnl) FILTER (WHERE outcome_pnl < 0), 0)::numeric as avg_loss'
+            : 'COALESCE(AVG(outcome_pnl) FILTER (WHERE outcome_pnl < 0), 0)::numeric as avg_loss'
           },
           ${useMedian
             ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY r_value) FILTER (WHERE r_value IS NOT NULL AND stop_loss IS NOT NULL), 0)::numeric as avg_r_value'
@@ -513,28 +524,28 @@ const analyticsController = {
           COALESCE(SUM(r_value) FILTER (WHERE r_value IS NOT NULL AND stop_loss IS NOT NULL), 0)::numeric as total_r_value,
           -- R-value specific stats (only trades with stop_loss set)
           (SELECT COUNT(*) FROM completed_trades WHERE stop_loss IS NOT NULL)::integer as r_total_trades,
-          (SELECT COUNT(*) FROM completed_trades WHERE pnl > 0 AND stop_loss IS NOT NULL)::integer as r_winning_trades,
-          (SELECT COUNT(*) FROM completed_trades WHERE pnl < 0 AND stop_loss IS NOT NULL)::integer as r_losing_trades,
-          (SELECT COUNT(*) FROM completed_trades WHERE pnl = 0 AND stop_loss IS NOT NULL)::integer as r_breakeven_trades,
+          (SELECT COUNT(*) FROM completed_trades WHERE outcome_pnl > 0 AND stop_loss IS NOT NULL)::integer as r_winning_trades,
+          (SELECT COUNT(*) FROM completed_trades WHERE outcome_pnl < 0 AND stop_loss IS NOT NULL)::integer as r_losing_trades,
+          (SELECT COUNT(*) FROM completed_trades WHERE outcome_pnl = 0 AND stop_loss IS NOT NULL)::integer as r_breakeven_trades,
           COALESCE(SUM(pnl) FILTER (WHERE stop_loss IS NOT NULL), 0)::numeric as r_total_pnl,
           ${useMedian
             ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE stop_loss IS NOT NULL), 0)::numeric as r_avg_pnl'
             : 'COALESCE(AVG(pnl) FILTER (WHERE stop_loss IS NOT NULL), 0)::numeric as r_avg_pnl'
           },
           ${useMedian
-            ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE pnl > 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_win'
-            : 'COALESCE(AVG(pnl) FILTER (WHERE pnl > 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_win'
+            ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY outcome_pnl) FILTER (WHERE outcome_pnl > 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_win'
+            : 'COALESCE(AVG(outcome_pnl) FILTER (WHERE outcome_pnl > 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_win'
           },
           ${useMedian
-            ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pnl) FILTER (WHERE pnl < 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_loss'
-            : 'COALESCE(AVG(pnl) FILTER (WHERE pnl < 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_loss'
+            ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY outcome_pnl) FILTER (WHERE outcome_pnl < 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_loss'
+            : 'COALESCE(AVG(outcome_pnl) FILTER (WHERE outcome_pnl < 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_loss'
           },
           -- Best/worst trades
           (SELECT individual_best_trade FROM individual_trades) as best_trade,
           (SELECT individual_worst_trade FROM individual_trades) as worst_trade,
           (SELECT COUNT(*) FROM completed_trades)::integer as total_executions,
-          COALESCE(SUM(pnl) FILTER (WHERE pnl > 0), 0) as total_gross_wins,
-          COALESCE(ABS(SUM(pnl) FILTER (WHERE pnl < 0)), 0) as total_gross_losses,
+          COALESCE(SUM(outcome_pnl) FILTER (WHERE outcome_pnl > 0), 0) as total_gross_wins,
+          COALESCE(ABS(SUM(outcome_pnl) FILTER (WHERE outcome_pnl < 0)), 0) as total_gross_losses,
           COALESCE(SUM(commission), 0) as total_commissions,
           COALESCE(SUM(fees), 0) as total_fees,
           COALESCE(STDDEV(pnl), 0) as pnl_stddev,
