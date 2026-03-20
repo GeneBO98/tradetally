@@ -3347,9 +3347,39 @@ class Trade {
       const entryPrice = parseFloat(trade.entry_price);
       if (isNaN(entryPrice)) continue;
 
+      const getExecutionAction = (execution) => {
+        if (!execution) return null;
+
+        const explicitAction = String(execution.action || '').toLowerCase();
+        if (explicitAction === 'buy' || explicitAction === 'sell') {
+          return explicitAction;
+        }
+
+        const normalizedSide = String(execution.side || '').toLowerCase();
+        if (normalizedSide === 'buy' || normalizedSide === 'sell') {
+          return normalizedSide;
+        }
+
+        const normalizedType = String(execution.type || '').toLowerCase();
+        if (normalizedType === 'entry') {
+          return side === 'long' ? 'buy' : 'sell';
+        }
+        if (normalizedType === 'exit') {
+          return side === 'long' ? 'sell' : 'buy';
+        }
+
+        const reduceOnly = execution.reduceOnly === true || execution.reduceOnly === 'true';
+        if (reduceOnly) {
+          return side === 'long' ? 'sell' : 'buy';
+        }
+
+        return null;
+      };
+
       // Separate exit fills using same logic as recalculateFromFills
       const exitFills = executions.filter(e =>
-        (side === 'long' && e.action === 'sell') || (side === 'short' && e.action === 'buy')
+        (side === 'long' && getExecutionAction(e) === 'sell') ||
+        (side === 'short' && getExecutionAction(e) === 'buy')
       );
 
       // Must have at least 2 exit fills to be included
