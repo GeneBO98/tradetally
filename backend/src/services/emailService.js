@@ -641,6 +641,92 @@ class EmailService {
       throw error;
     }
   }
+  /**
+   * Send welcome email when a user subscribes to a paid plan
+   * @param {string} email - Recipient email
+   * @param {string} username - Username for greeting
+   * @param {string} planName - Plan name (e.g., "Pro Monthly", "Pro Yearly")
+   */
+  static async sendSubscriptionWelcomeEmail(email, username, planName) {
+    if (!this.isConfigured()) {
+      console.log('Email not configured, skipping subscription welcome email');
+      return;
+    }
+
+    const dashboardUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/dashboard`;
+    const supportEmail = process.env.SUPPORT_EMAIL || 'support@tradetally.io';
+    const safeUsername = escapeHtml(username);
+    const safePlanName = escapeHtml(planName || 'Pro');
+
+    const content = `
+      <h1 style="color: #18181b; font-size: 22px; margin: 0 0 8px 0; font-weight: 700; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        Welcome to TradeTally Pro
+      </h1>
+      <p style="color: #71717a; font-size: 15px; line-height: 1.6; margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        Hi ${safeUsername},
+      </p>
+      <p style="color: #52525b; font-size: 15px; line-height: 1.6; margin: 0 0 24px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        Thank you for subscribing to ${safePlanName}. We genuinely appreciate your support and are glad to have you as a Pro member.
+      </p>
+      <p style="color: #52525b; font-size: 15px; line-height: 1.6; margin: 0 0 8px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        Everything Pro is now unlocked for you:
+      </p>
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin: 0 0 24px 0;">
+        <tr>
+          <td style="padding: 0 0 0 8px; color: #52525b; font-size: 15px; line-height: 2; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+            - Behavioral &amp; advanced analytics<br>
+            - Unlimited broker imports &amp; sync<br>
+            - Price alerts &amp; watchlists<br>
+            - AI-powered trade insights<br>
+            - Full API access
+          </td>
+        </tr>
+      </table>
+
+      <div style="background-color: #fafafa; border-radius: 8px; padding: 20px 24px; margin: 0 0 28px 0;">
+        <p style="color: #18181b; font-size: 14px; font-weight: 600; margin: 0 0 8px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+          Priority support
+        </p>
+        <p style="color: #52525b; font-size: 14px; line-height: 1.6; margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+          As a Pro subscriber, you get priority service for any issues or feature requests. Reach out anytime at <a href="mailto:${supportEmail}" style="color: #18181b; text-decoration: underline;">${supportEmail}</a> and we'll get back to you first.
+        </p>
+      </div>
+
+      <div style="text-align: center; margin: 0 0 28px 0;">
+        <a href="${dashboardUrl}" style="${this.getButtonStyle()}">
+          Go to Dashboard
+        </a>
+      </div>
+
+      <p style="color: #a1a1aa; font-size: 13px; line-height: 1.5; margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        You can manage your subscription anytime from Settings > Billing.
+      </p>
+    `;
+
+    const mailOptions = {
+      from: {
+        name: 'TradeTally',
+        address: process.env.EMAIL_FROM || 'noreply@tradetally.io'
+      },
+      to: email,
+      subject: 'Welcome to TradeTally Pro',
+      html: this.getBaseTemplate('Welcome to TradeTally Pro', content),
+      text: `Hi ${username}, thank you for subscribing to ${planName || 'Pro'}. All Pro features are now unlocked. As a Pro subscriber, you get priority service for any issues or feature requests — reach out anytime at ${supportEmail}. Manage your subscription at Settings > Billing. Go to your dashboard: ${dashboardUrl}`,
+      headers: {
+        'X-Entity-Ref-ID': `subscription-welcome-${Date.now()}`,
+        'Message-ID': `<subscription-welcome-${Date.now()}@tradetally.io>`
+      }
+    };
+
+    try {
+      const transporter = this.createTransporter();
+      await transporter.sendMail(mailOptions);
+      console.log('[SUCCESS] Subscription welcome email sent to', maskEmail(email));
+    } catch (error) {
+      console.error('[ERROR] Error sending subscription welcome email to', maskEmail(email), error);
+      throw error;
+    }
+  }
 }
 
 module.exports = EmailService;

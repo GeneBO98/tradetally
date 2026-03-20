@@ -1060,12 +1060,27 @@ const analyticsController = {
             ${fc}
           GROUP BY ${tableAlias}.id
         ),
+        trade_exit_dates AS (
+          SELECT trade_id, COUNT(DISTINCT exec_date) AS distinct_dates
+          FROM exit_executions
+          GROUP BY trade_id
+        ),
         daily_from_exec AS (
+          -- Single exit date: use exact trade P&L to avoid proration rounding errors
+          SELECT e.trade_id, e.exec_date AS trade_date, e.trade_pnl AS pnl
+          FROM exit_executions e
+          JOIN trade_exit_dates d ON e.trade_id = d.trade_id
+          WHERE d.distinct_dates = 1
+          GROUP BY e.trade_id, e.exec_date, e.trade_pnl
+          UNION ALL
+          -- Multiple exit dates: prorate P&L proportionally by execution quantity
           SELECT e.trade_id, e.exec_date AS trade_date,
             e.trade_pnl * (e.exec_qty / NULLIF(t.total_exit_qty, 0)) AS pnl
           FROM exit_executions e
           JOIN trade_exit_totals t ON e.trade_id = t.trade_id
-          WHERE t.total_exit_qty > 0
+          JOIN trade_exit_dates d ON e.trade_id = d.trade_id
+          WHERE d.distinct_dates > 1
+            AND t.total_exit_qty > 0
         ),
         daily_from_trade AS (
           SELECT ${tableAlias}.id AS trade_id, (${tableAlias}.exit_time::timestamp)::date AS trade_date, ${tableAlias}.pnl
@@ -1209,20 +1224,23 @@ const analyticsController = {
             ${fc}
           GROUP BY t.id
         ),
-        prorated_execs AS (
-          SELECT e.trade_id, e.symbol, e.side,
-            e.trade_pnl * (e.exec_qty / NULLIF(t.total_exit_qty, 0)) AS exec_pnl,
-            e.exec_qty
-          FROM exit_execs e
-          JOIN trade_exit_totals t ON e.trade_id = t.trade_id
-          WHERE t.total_exit_qty > 0
+        day_exit_summary AS (
+          SELECT trade_id, symbol, side, trade_pnl,
+            COUNT(*)::int AS exit_count,
+            SUM(exec_qty) AS day_exit_qty
+          FROM exit_execs
+          GROUP BY trade_id, symbol, side, trade_pnl
         ),
         grouped_by_trade AS (
-          SELECT trade_id, symbol, side,
-            SUM(exec_pnl) AS total_pnl,
-            COUNT(*)::int AS exit_count
-          FROM prorated_execs
-          GROUP BY trade_id, symbol, side
+          SELECT d.trade_id, d.symbol, d.side,
+            CASE
+              WHEN d.day_exit_qty = t.total_exit_qty THEN d.trade_pnl
+              ELSE d.trade_pnl * (d.day_exit_qty / NULLIF(t.total_exit_qty, 0))
+            END AS total_pnl,
+            d.exit_count
+          FROM day_exit_summary d
+          JOIN trade_exit_totals t ON d.trade_id = t.trade_id
+          WHERE t.total_exit_qty > 0
         )
         SELECT g.trade_id, g.symbol, g.side, g.total_pnl AS exec_pnl, g.exit_count,
                COALESCE(tt.total_exit_count, 1) AS total_exit_count,

@@ -424,50 +424,143 @@ class User {
   }
 
   // Admin user management methods
-  static async getAllUsers(limit = 25, offset = 0, search = '') {
+  static async getAllUsers(limit = 25, offset = 0, filters = {}) {
     try {
-      // First try a simple query to test basic functionality
-      const simpleQuery = `SELECT COUNT(*) as total FROM users`;
-      const countResult = await db.query(simpleQuery);
-      
-      // If search is provided, add search condition
-      let whereClause = '';
-      let params = [];
+      const {
+        search = '',
+        role = 'all',
+        status = 'all',
+        marketing = 'all',
+        tier = 'all',
+        joinedFrom = '',
+        joinedTo = ''
+      } = filters;
+
+      const conditions = [];
+      const params = [];
+      const activeTrialExists = `
+        EXISTS (
+          SELECT 1
+          FROM tier_overrides tov_filter
+          WHERE tov_filter.user_id = u.id
+            AND tov_filter.tier = 'pro'
+            AND tov_filter.reason ILIKE '%trial%'
+            AND (tov_filter.expires_at IS NULL OR tov_filter.expires_at > NOW())
+        )
+      `;
+
       if (search && search.trim() !== '') {
-        whereClause = `WHERE (u.email ILIKE $1 OR u.username ILIKE $1 OR u.full_name ILIKE $1)`;
         params.push(`%${search.trim()}%`);
+        conditions.push(`(u.email ILIKE $${params.length} OR u.username ILIKE $${params.length} OR u.full_name ILIKE $${params.length})`);
       }
 
-      // Get users with pagination, including trial status from tier_overrides
+      if (['user', 'admin', 'owner'].includes(role)) {
+        params.push(role);
+        conditions.push(`u.role = $${params.length}`);
+      }
+
+      if (status === 'active') {
+        conditions.push('u.is_active = true');
+      } else if (status === 'inactive') {
+        conditions.push('u.is_active = false');
+      } else if (status === 'pending_approval') {
+        conditions.push('u.admin_approved = false');
+      } else if (status === 'unverified') {
+        conditions.push('u.is_verified = false');
+      }
+
+      if (marketing === 'subscribed') {
+        conditions.push('u.marketing_consent = true');
+      } else if (marketing === 'unsubscribed') {
+        conditions.push('u.marketing_consent = false');
+      }
+
+      if (tier === 'trial') {
+        conditions.push(activeTrialExists);
+      } else if (tier === 'pro') {
+        conditions.push(`(u.role IN ('admin', 'owner') OR (u.tier = 'pro' AND NOT ${activeTrialExists}))`);
+      } else if (tier === 'free') {
+        conditions.push(`(u.role NOT IN ('admin', 'owner') AND COALESCE(u.tier, 'free') = 'free' AND NOT ${activeTrialExists})`);
+      }
+
+      if (joinedFrom) {
+        params.push(joinedFrom);
+        conditions.push(`u.created_at >= $${params.length}::date`);
+      }
+
+      if (joinedTo) {
+        params.push(joinedTo);
+        conditions.push(`u.created_at < ($${params.length}::date + INTERVAL '1 day')`);
+      }
+
+      const whereClause = conditions.length > 0
+        ? `WHERE ${conditions.join(' AND ')}`
+        : '';
+
       const userQuery = `
         SELECT
           u.id, u.email, u.username, u.full_name, u.avatar_url, u.role,
           u.is_verified, u.admin_approved, u.is_active, u.timezone, u.tier,
-          u.marketing_consent, u.created_at, u.updated_at,
+          u.marketing_consent, u.created_at, u.updated_at, u.last_login_at,
           CASE
-            WHEN tov.id IS NOT NULL AND tov.reason ILIKE '%trial%' AND (tov.expires_at IS NULL OR tov.expires_at > NOW())
+            WHEN trial_override.id IS NOT NULL
             THEN true
             ELSE false
-          END as is_trial
+          END as is_trial,
+          COALESCE(trade_stats.trade_count, 0)::integer as trade_count,
+          COALESCE(import_stats.import_count, 0)::integer as import_count,
+          COALESCE(import_stats.trades_imported_count, 0)::integer as trades_imported_count,
+          import_stats.last_import_at,
+          CASE
+            WHEN u.last_login_at IS NULL
+              AND import_stats.last_import_at IS NULL
+              AND trade_stats.last_trade_at IS NULL
+            THEN NULL
+            ELSE GREATEST(
+              COALESCE(u.last_login_at, TO_TIMESTAMP(0)),
+              COALESCE(import_stats.last_import_at, TO_TIMESTAMP(0)),
+              COALESCE(trade_stats.last_trade_at, TO_TIMESTAMP(0))
+            )
+          END as last_active_at
         FROM users u
-        LEFT JOIN tier_overrides tov ON u.id = tov.user_id
-          AND tov.tier = 'pro'
-          AND (tov.expires_at IS NULL OR tov.expires_at > NOW())
+        LEFT JOIN LATERAL (
+          SELECT tov.id
+          FROM tier_overrides tov
+          WHERE tov.user_id = u.id
+            AND tov.tier = 'pro'
+            AND tov.reason ILIKE '%trial%'
+            AND (tov.expires_at IS NULL OR tov.expires_at > NOW())
+          ORDER BY tov.created_at DESC NULLS LAST
+          LIMIT 1
+        ) trial_override ON true
+        LEFT JOIN LATERAL (
+          SELECT
+            COUNT(*) as trade_count,
+            MAX(COALESCE(t.updated_at, t.created_at, t.trade_date::timestamp)) as last_trade_at
+          FROM trades t
+          WHERE t.user_id = u.id
+        ) trade_stats ON true
+        LEFT JOIN LATERAL (
+          SELECT
+            COUNT(*) as import_count,
+            COALESCE(SUM(il.trades_imported), 0) as trades_imported_count,
+            MAX(COALESCE(il.completed_at, il.created_at)) as last_import_at
+          FROM import_logs il
+          WHERE il.user_id = u.id
+            AND il.status = 'completed'
+        ) import_stats ON true
         ${whereClause}
-        ORDER BY u.created_at DESC
+        ORDER BY last_active_at DESC, u.created_at DESC
         LIMIT $${params.length + 1} OFFSET $${params.length + 2}
       `;
       params.push(limit, offset);
 
       const userResult = await db.query(userQuery, params);
-      
-      // Get filtered count if search was provided
-      let total = parseInt(countResult.rows[0].total);
-      if (search && search.trim() !== '') {
-        const filteredCountQuery = `SELECT COUNT(*) as total FROM users u ${whereClause}`;
-        const filteredCountResult = await db.query(filteredCountQuery, [params[0]]);
-        total = parseInt(filteredCountResult.rows[0].total);
-      }
+
+      const countParams = params.slice(0, -2);
+      const filteredCountQuery = `SELECT COUNT(*) as total FROM users u ${whereClause}`;
+      const filteredCountResult = await db.query(filteredCountQuery, countParams);
+      const total = parseInt(filteredCountResult.rows[0].total);
       
       return {
         users: userResult.rows,

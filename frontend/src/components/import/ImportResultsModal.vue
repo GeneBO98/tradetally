@@ -198,6 +198,9 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { CheckCircleIcon, ExclamationTriangleIcon, XCircleIcon, InformationCircleIcon } from '@heroicons/vue/24/outline'
+import { useAuthStore } from '@/stores/auth'
+
+const authStore = useAuthStore()
 
 const props = defineProps({
   isOpen: {
@@ -342,7 +345,8 @@ const showNeedHelp = computed(() => {
 const supportMailtoLink = computed(() => {
   const broker = effectiveBroker.value
   const brokerDisplay = formatBrokerName(broker)
-  const subject = encodeURIComponent(`Import Support: ${brokerDisplay} - 0 trades parsed`)
+  const tier = (authStore.user?.tier || 'free').charAt(0).toUpperCase() + (authStore.user?.tier || 'free').slice(1)
+  const subject = encodeURIComponent(`[${tier}] Import Support: ${brokerDisplay} - 0 trades parsed`)
 
   const headers = props.diagnostics?.headerAnalysis?.foundHeaders?.join(', ') || 'N/A'
   const totalRows = props.diagnostics?.totalRows || 0
