@@ -7,6 +7,108 @@
 const db = require('../config/database');
 
 class Account {
+  static normalizeBrokerValue(broker) {
+    if (!broker) return null;
+
+    const normalized = String(broker).trim().toLowerCase();
+
+    if (!normalized) return null;
+
+    const brokerAliases = {
+      'interactive brokers': 'ibkr',
+      'charles schwab': 'schwab',
+      'td ameritrade': 'tdameritrade',
+      'e*trade': 'etrade',
+      fidelity: 'fidelity',
+      webull: 'webull',
+      robinhood: 'robinhood',
+      lightspeed: 'lightspeed',
+      tradestation: 'tradestation',
+      tastytrade: 'tastytrade',
+      coinbase: 'coinbase',
+      kraken: 'kraken',
+      binance: 'binance',
+      bitunix: 'bitunix',
+      other: 'other'
+    };
+
+    return brokerAliases[normalized] || normalized;
+  }
+
+  static async getDerivedBrokerMap(userId, accountIdentifiers = []) {
+    const identifiers = [...new Set(accountIdentifiers.filter(Boolean))];
+    const brokerMap = new Map();
+
+    identifiers.forEach(identifier => {
+      if (String(identifier).trim().toLowerCase() === 'bitunix-usdt') {
+        brokerMap.set(identifier, 'bitunix');
+      }
+    });
+
+    if (identifiers.length === 0) {
+      return brokerMap;
+    }
+
+    const result = await db.query(`
+      SELECT
+        account_identifier,
+        LOWER(broker) as broker,
+        COUNT(*) as trade_count
+      FROM trades
+      WHERE user_id = $1
+        AND account_identifier = ANY($2)
+        AND broker IS NOT NULL
+        AND broker != ''
+      GROUP BY account_identifier, LOWER(broker)
+      ORDER BY account_identifier ASC, COUNT(*) DESC, LOWER(broker) ASC
+    `, [userId, identifiers]);
+
+    result.rows.forEach(row => {
+      if (!brokerMap.has(row.account_identifier)) {
+        brokerMap.set(row.account_identifier, row.broker);
+      }
+    });
+
+    return brokerMap;
+  }
+
+  static async resolveBrokerValue(userId, accountIdentifier, broker) {
+    const normalizedBroker = this.normalizeBrokerValue(broker);
+
+    if (normalizedBroker && normalizedBroker !== 'other') {
+      return normalizedBroker;
+    }
+
+    const derivedBrokerMap = await this.getDerivedBrokerMap(userId, [accountIdentifier]);
+    return derivedBrokerMap.get(accountIdentifier) || normalizedBroker;
+  }
+
+  static async enrichAccountsWithResolvedBroker(userId, accounts) {
+    if (!accounts || accounts.length === 0) {
+      return accounts;
+    }
+
+    const derivedBrokerMap = await this.getDerivedBrokerMap(
+      userId,
+      accounts.map(account => account.account_identifier)
+    );
+
+    return accounts.map(account => {
+      const normalizedStoredBroker = this.normalizeBrokerValue(account.broker);
+      const resolvedBroker = (
+        normalizedStoredBroker && normalizedStoredBroker !== 'other'
+          ? normalizedStoredBroker
+          : derivedBrokerMap.get(account.account_identifier) || normalizedStoredBroker
+      );
+
+      return {
+        ...account,
+        broker: resolvedBroker || null,
+        resolved_broker: resolvedBroker || null
+      };
+    });
+  }
+
   /**
    * Create a new account
    */
@@ -20,6 +122,8 @@ class Account {
       isPrimary,
       notes
     } = accountData;
+
+    const resolvedBroker = await this.resolveBrokerValue(userId, accountIdentifier, broker);
 
     // If setting as primary, unset existing primary first
     if (isPrimary) {
@@ -42,7 +146,7 @@ class Account {
       userId,
       accountName,
       accountIdentifier || null,
-      broker || null,
+      resolvedBroker || null,
       initialBalance || 0,
       initialBalanceDate,
       isPrimary || false,
@@ -50,7 +154,7 @@ class Account {
     ]);
 
     console.log(`[ACCOUNTS] Created account "${accountName}" for user ${userId}`);
-    return result.rows[0];
+    return (await this.enrichAccountsWithResolvedBroker(userId, result.rows))[0];
   }
 
   /**
@@ -73,7 +177,7 @@ class Account {
     `;
 
     const result = await db.query(query, [userId]);
-    return result.rows;
+    return this.enrichAccountsWithResolvedBroker(userId, result.rows);
   }
 
   /**
@@ -86,7 +190,7 @@ class Account {
     `;
 
     const result = await db.query(query, [accountId, userId]);
-    return result.rows[0];
+    return (await this.enrichAccountsWithResolvedBroker(userId, result.rows))[0];
   }
 
   /**
@@ -99,7 +203,7 @@ class Account {
     `;
 
     const result = await db.query(query, [userId]);
-    return result.rows[0];
+    return (await this.enrichAccountsWithResolvedBroker(userId, result.rows))[0];
   }
 
   /**
@@ -129,12 +233,32 @@ class Account {
    * Update an account
    */
   static async update(accountId, userId, updates) {
+    const existingAccount = await this.findById(accountId, userId);
+
+    if (!existingAccount) {
+      return null;
+    }
+
     // Handle primary account toggle
     if (updates.isPrimary) {
       await db.query(
         'UPDATE user_accounts SET is_primary = false WHERE user_id = $1 AND id != $2',
         [userId, accountId]
       );
+    }
+
+    const nextAccountIdentifier = updates.accountIdentifier !== undefined
+      ? updates.accountIdentifier
+      : existingAccount.account_identifier;
+    const nextBroker = updates.broker !== undefined
+      ? updates.broker
+      : existingAccount.broker;
+
+    if (updates.accountIdentifier !== undefined || updates.broker !== undefined) {
+      updates = {
+        ...updates,
+        broker: await this.resolveBrokerValue(userId, nextAccountIdentifier, nextBroker)
+      };
     }
 
     const fields = [];
@@ -171,7 +295,7 @@ class Account {
     `;
 
     const result = await db.query(query, values);
-    return result.rows[0];
+    return (await this.enrichAccountsWithResolvedBroker(userId, result.rows))[0];
   }
 
   /**
@@ -343,22 +467,108 @@ class Account {
     // - Rebates (negative commissions) have the opposite effect
     // - This matches how broker statements show net cash movements per transaction
     const query = `
-      WITH entry_cashflows AS (
+      WITH trade_base AS (
+        SELECT
+          t.*,
+          DATE(COALESCE(t.entry_time, t.trade_date)) as entry_date,
+          DATE(t.exit_time) as exit_date,
+          CASE
+            WHEN t.instrument_type = 'option' THEN COALESCE(t.contract_size, 100)
+            WHEN t.instrument_type = 'future' THEN COALESCE(t.point_value, 1)
+            ELSE 1
+          END as position_multiplier,
+          CASE
+            WHEN t.broker = 'bitunix' THEN COALESCE(
+              (
+                SELECT NULLIF(exec->>'marginUsed', '')::numeric
+                FROM jsonb_array_elements(COALESCE(t.executions, '[]'::jsonb)) exec
+                WHERE LOWER(COALESCE(exec->>'type', '')) = 'entry'
+                LIMIT 1
+              ),
+              (
+                SELECT
+                  CASE
+                    WHEN NULLIF(exec->>'leverage', '') IS NOT NULL
+                      AND NULLIF(exec->>'leverage', '')::numeric <> 0
+                    THEN COALESCE(
+                      NULLIF(exec->>'notionalValue', '')::numeric,
+                      t.entry_price * t.quantity
+                    ) / NULLIF((exec->>'leverage')::numeric, 0)
+                    ELSE NULL
+                  END
+                FROM jsonb_array_elements(COALESCE(t.executions, '[]'::jsonb)) exec
+                WHERE LOWER(COALESCE(exec->>'type', '')) = 'entry'
+                LIMIT 1
+              ),
+              t.entry_price * t.quantity * (
+                CASE
+                  WHEN t.instrument_type = 'option' THEN COALESCE(t.contract_size, 100)
+                  WHEN t.instrument_type = 'future' THEN COALESCE(t.point_value, 1)
+                  ELSE 1
+                END
+              )
+            )
+            ELSE NULL
+          END as bitunix_entry_margin,
+          CASE
+            WHEN t.broker = 'bitunix' THEN COALESCE(
+              (
+                SELECT NULLIF(exec->>'marginUsed', '')::numeric
+                FROM jsonb_array_elements(COALESCE(t.executions, '[]'::jsonb)) exec
+                WHERE LOWER(COALESCE(exec->>'type', '')) = 'exit'
+                LIMIT 1
+              ),
+              (
+                SELECT NULLIF(exec->>'marginUsed', '')::numeric
+                FROM jsonb_array_elements(COALESCE(t.executions, '[]'::jsonb)) exec
+                WHERE LOWER(COALESCE(exec->>'type', '')) = 'entry'
+                LIMIT 1
+              ),
+              (
+                SELECT
+                  CASE
+                    WHEN NULLIF(exec->>'leverage', '') IS NOT NULL
+                      AND NULLIF(exec->>'leverage', '')::numeric <> 0
+                    THEN COALESCE(
+                      NULLIF(exec->>'notionalValue', '')::numeric,
+                      t.entry_price * t.quantity
+                    ) / NULLIF((exec->>'leverage')::numeric, 0)
+                    ELSE NULL
+                  END
+                FROM jsonb_array_elements(COALESCE(t.executions, '[]'::jsonb)) exec
+                WHERE LOWER(COALESCE(exec->>'type', '')) IN ('exit', 'entry')
+                LIMIT 1
+              ),
+              t.entry_price * t.quantity * (
+                CASE
+                  WHEN t.instrument_type = 'option' THEN COALESCE(t.contract_size, 100)
+                  WHEN t.instrument_type = 'future' THEN COALESCE(t.point_value, 1)
+                  ELSE 1
+                END
+              )
+            )
+            ELSE NULL
+          END as bitunix_exit_margin
+        FROM trades t
+        WHERE t.user_id = $1
+          AND (
+            ($2::varchar IS NOT NULL AND t.account_identifier = $2)
+            OR ($2::varchar IS NULL AND (t.account_identifier IS NULL OR t.account_identifier = ''))
+          )
+      ),
+      entry_cashflows AS (
         -- Cash flows that happen on ENTRY date (when trade is opened)
         -- Track trade values and commissions separately by trade direction
         -- Commission is separated into fees (positive) and rebates (negative) BY TRADE TYPE
         SELECT
-          DATE(COALESCE(entry_time, trade_date)) as date,
+          entry_date as date,
           -- SHORT entry inflow: raw trade value only
           COALESCE(SUM(
             CASE
+              WHEN broker = 'bitunix' AND entry_price IS NOT NULL THEN 0
               WHEN side IN ('short', 'sell') AND entry_price IS NOT NULL
                 THEN (entry_price * quantity * (
-                  CASE
-                    WHEN instrument_type = 'option' THEN COALESCE(contract_size, 100)
-                    WHEN instrument_type = 'future' THEN COALESCE(point_value, 1)
-                    ELSE 1
-                  END
+                  position_multiplier
                 ))
               ELSE 0
             END
@@ -366,13 +576,11 @@ class Account {
           -- LONG entry outflow: raw trade value only
           COALESCE(SUM(
             CASE
+              WHEN broker = 'bitunix' AND entry_price IS NOT NULL
+                THEN COALESCE(bitunix_entry_margin, 0)
               WHEN side IN ('long', 'buy') AND entry_price IS NOT NULL
                 THEN (entry_price * quantity * (
-                  CASE
-                    WHEN instrument_type = 'option' THEN COALESCE(contract_size, 100)
-                    WHEN instrument_type = 'future' THEN COALESCE(point_value, 1)
-                    ELSE 1
-                  END
+                  position_multiplier
                 ))
               ELSE 0
             END
@@ -380,6 +588,7 @@ class Account {
           -- Fees from SHORT entries (reduce inflow) - positive commission values
           COALESCE(SUM(
             CASE
+              WHEN broker = 'bitunix' THEN 0
               WHEN side IN ('short', 'sell') THEN
                 CASE
                   WHEN COALESCE(entry_commission, 0) != 0
@@ -394,6 +603,7 @@ class Account {
           -- Rebates from SHORT entries (add to inflow) - negative commission values as positive
           COALESCE(SUM(
             CASE
+              WHEN broker = 'bitunix' THEN 0
               WHEN side IN ('short', 'sell') THEN
                 CASE
                   WHEN COALESCE(entry_commission, 0) != 0
@@ -408,6 +618,7 @@ class Account {
           -- Fees from LONG entries (add to outflow) - positive commission values
           COALESCE(SUM(
             CASE
+              WHEN broker = 'bitunix' THEN 0
               WHEN side IN ('long', 'buy') THEN
                 CASE
                   WHEN COALESCE(entry_commission, 0) != 0
@@ -422,6 +633,7 @@ class Account {
           -- Rebates from LONG entries (reduce outflow) - negative commission values as positive
           COALESCE(SUM(
             CASE
+              WHEN broker = 'bitunix' THEN 0
               WHEN side IN ('long', 'buy') THEN
                 CASE
                   WHEN COALESCE(entry_commission, 0) != 0
@@ -432,33 +644,28 @@ class Account {
                 END
               ELSE 0
             END
-          ), 0) as outflow_rebates
-        FROM trades
-        WHERE user_id = $1
-          AND (
-            ($2::varchar IS NOT NULL AND account_identifier = $2)
-            OR ($2::varchar IS NULL AND (account_identifier IS NULL OR account_identifier = ''))
-          )
-          AND DATE(COALESCE(entry_time, trade_date)) >= $3
-          AND DATE(COALESCE(entry_time, trade_date)) <= $4
-        GROUP BY DATE(COALESCE(entry_time, trade_date))
+          ), 0) as outflow_rebates,
+          0::numeric as cashflow_other_fees,
+          0::numeric as display_fees
+        FROM trade_base
+        WHERE entry_date >= $3
+          AND entry_date <= $4
+        GROUP BY entry_date
       ),
       exit_cashflows AS (
         -- Cash flows that happen on EXIT date (when trade is closed)
         -- LONG exit: Inflow (selling shares) - commission reduces inflow
         -- SHORT exit: Outflow (covering short) - commission increases outflow
         SELECT
-          DATE(exit_time) as date,
+          exit_date as date,
           -- LONG exit inflow: raw trade value only
           COALESCE(SUM(
             CASE
+              WHEN broker = 'bitunix' AND exit_price IS NOT NULL AND exit_time IS NOT NULL
+                THEN GREATEST(0, COALESCE(bitunix_exit_margin, bitunix_entry_margin, 0) + COALESCE(pnl, 0))
               WHEN side IN ('long', 'buy') AND exit_price IS NOT NULL AND exit_time IS NOT NULL
                 THEN (exit_price * quantity * (
-                  CASE
-                    WHEN instrument_type = 'option' THEN COALESCE(contract_size, 100)
-                    WHEN instrument_type = 'future' THEN COALESCE(point_value, 1)
-                    ELSE 1
-                  END
+                  position_multiplier
                 ))
               ELSE 0
             END
@@ -466,13 +673,11 @@ class Account {
           -- SHORT exit outflow: raw trade value only
           COALESCE(SUM(
             CASE
+              WHEN broker = 'bitunix' AND exit_price IS NOT NULL AND exit_time IS NOT NULL
+                THEN GREATEST(0, -(COALESCE(bitunix_exit_margin, bitunix_entry_margin, 0) + COALESCE(pnl, 0)))
               WHEN side IN ('short', 'sell') AND exit_price IS NOT NULL AND exit_time IS NOT NULL
                 THEN (exit_price * quantity * (
-                  CASE
-                    WHEN instrument_type = 'option' THEN COALESCE(contract_size, 100)
-                    WHEN instrument_type = 'future' THEN COALESCE(point_value, 1)
-                    ELSE 1
-                  END
+                  position_multiplier
                 ))
               ELSE 0
             END
@@ -480,6 +685,7 @@ class Account {
           -- Fees from LONG exits (reduce inflow) - positive commission values
           COALESCE(SUM(
             CASE
+              WHEN broker = 'bitunix' THEN 0
               WHEN side IN ('long', 'buy') AND exit_time IS NOT NULL THEN
                 CASE
                   WHEN COALESCE(exit_commission, 0) != 0 THEN GREATEST(0, exit_commission)
@@ -493,6 +699,7 @@ class Account {
           -- Rebates from LONG exits (add to inflow)
           COALESCE(SUM(
             CASE
+              WHEN broker = 'bitunix' THEN 0
               WHEN side IN ('long', 'buy') AND exit_time IS NOT NULL THEN
                 CASE
                   WHEN COALESCE(exit_commission, 0) != 0 THEN ABS(LEAST(0, exit_commission))
@@ -506,6 +713,7 @@ class Account {
           -- Fees from SHORT exits (add to outflow) - positive commission values
           COALESCE(SUM(
             CASE
+              WHEN broker = 'bitunix' THEN 0
               WHEN side IN ('short', 'sell') AND exit_time IS NOT NULL THEN
                 CASE
                   WHEN COALESCE(exit_commission, 0) != 0 THEN GREATEST(0, exit_commission)
@@ -519,6 +727,7 @@ class Account {
           -- Rebates from SHORT exits (reduce outflow)
           COALESCE(SUM(
             CASE
+              WHEN broker = 'bitunix' THEN 0
               WHEN side IN ('short', 'sell') AND exit_time IS NOT NULL THEN
                 CASE
                   WHEN COALESCE(exit_commission, 0) != 0 THEN ABS(LEAST(0, exit_commission))
@@ -530,17 +739,13 @@ class Account {
             END
           ), 0) as outflow_rebates,
           -- Separate fees field (always positive = outflow)
-          COALESCE(SUM(COALESCE(fees, 0)), 0) as other_fees
-        FROM trades
-        WHERE user_id = $1
-          AND (
-            ($2::varchar IS NOT NULL AND account_identifier = $2)
-            OR ($2::varchar IS NULL AND (account_identifier IS NULL OR account_identifier = ''))
-          )
-          AND exit_time IS NOT NULL
-          AND DATE(exit_time) >= $3
-          AND DATE(exit_time) <= $4
-        GROUP BY DATE(exit_time)
+          COALESCE(SUM(CASE WHEN broker = 'bitunix' THEN 0 ELSE COALESCE(fees, 0) END), 0) as cashflow_other_fees,
+          COALESCE(SUM(COALESCE(fees, 0)), 0) as display_fees
+        FROM trade_base
+        WHERE exit_time IS NOT NULL
+          AND exit_date >= $3
+          AND exit_date <= $4
+        GROUP BY exit_date
       ),
       daily_trades AS (
         -- Combine entry and exit cashflows by date
@@ -552,13 +757,13 @@ class Account {
           -- Net inflows: trade value - fees + rebates
           GREATEST(0, SUM(trade_inflow) - SUM(inflow_fees) + SUM(inflow_rebates)) as trade_inflow,
           -- Net outflows: trade value + fees - rebates + other fees
-          GREATEST(0, SUM(trade_outflow) + SUM(outflow_fees) - SUM(outflow_rebates) + SUM(COALESCE(other_fees, 0))) as trade_outflow,
+          GREATEST(0, SUM(trade_outflow) + SUM(outflow_fees) - SUM(outflow_rebates) + SUM(COALESCE(cashflow_other_fees, 0))) as trade_outflow,
           -- Track total fees for display
-          SUM(inflow_fees) - SUM(inflow_rebates) + SUM(outflow_fees) - SUM(outflow_rebates) + SUM(COALESCE(other_fees, 0)) as fees
+          SUM(inflow_fees) - SUM(inflow_rebates) + SUM(outflow_fees) - SUM(outflow_rebates) + SUM(COALESCE(display_fees, 0)) as fees
         FROM (
-          SELECT date, trade_inflow, trade_outflow, inflow_fees, inflow_rebates, outflow_fees, outflow_rebates, 0::numeric as other_fees FROM entry_cashflows
+          SELECT date, trade_inflow, trade_outflow, inflow_fees, inflow_rebates, outflow_fees, outflow_rebates, cashflow_other_fees, display_fees FROM entry_cashflows
           UNION ALL
-          SELECT date, trade_inflow, trade_outflow, inflow_fees, inflow_rebates, outflow_fees, outflow_rebates, other_fees FROM exit_cashflows
+          SELECT date, trade_inflow, trade_outflow, inflow_fees, inflow_rebates, outflow_fees, outflow_rebates, cashflow_other_fees, display_fees FROM exit_cashflows
         ) combined
         GROUP BY date
       ),
