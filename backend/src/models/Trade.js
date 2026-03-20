@@ -1171,10 +1171,14 @@ class Trade {
       paramCount++;
     }
 
-    if (filters.pnlType === 'profit') {
-      whereClause += ` AND t.pnl > 0`;
-    } else if (filters.pnlType === 'loss') {
-      whereClause += ` AND t.pnl < 0`;
+    const outcomePnlExpression = getTradeOutcomePnlSql('t');
+
+    if (filters.pnlType === 'positive' || filters.pnlType === 'profit') {
+      whereClause += ` AND (${outcomePnlExpression}) > 0`;
+    } else if (filters.pnlType === 'negative' || filters.pnlType === 'loss') {
+      whereClause += ` AND (${outcomePnlExpression}) < 0`;
+    } else if (filters.pnlType === 'breakeven') {
+      whereClause += ` AND (${outcomePnlExpression}) = 0`;
     }
 
     // Days of week filter (timezone-aware)
@@ -2595,10 +2599,14 @@ class Trade {
       paramCount++;
     }
 
-    if (filters.pnlType === 'profit') {
-      query += ` AND ${tablePrefix}pnl > 0`;
-    } else if (filters.pnlType === 'loss') {
-      query += ` AND ${tablePrefix}pnl < 0`;
+    const outcomePnlExpression = getTradeOutcomePnlSql(needsJoin ? 't' : '');
+
+    if (filters.pnlType === 'positive' || filters.pnlType === 'profit') {
+      query += ` AND (${outcomePnlExpression}) > 0`;
+    } else if (filters.pnlType === 'negative' || filters.pnlType === 'loss') {
+      query += ` AND (${outcomePnlExpression}) < 0`;
+    } else if (filters.pnlType === 'breakeven') {
+      query += ` AND (${outcomePnlExpression}) = 0`;
     }
 
     if (filters.status === 'pending') {

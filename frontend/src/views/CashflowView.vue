@@ -613,8 +613,9 @@ function closeAccountModal() {
 async function saveAccount(accountData) {
   try {
     let savedAccount
+    const isCreate = !editingAccount.value
 
-    if (editingAccount.value) {
+    if (!isCreate) {
       savedAccount = await store.updateAccount(editingAccount.value.id, accountData)
       showSuccess('Success', 'Account updated successfully')
     } else {
@@ -629,7 +630,7 @@ async function saveAccount(accountData) {
       await loadCashflow()
     }
 
-    if (savedAccount?.fundingSyncSupported) {
+    if (isCreate && savedAccount?.fundingSyncSupported) {
       await syncAccountFunding(savedAccount)
     }
   } catch (error) {

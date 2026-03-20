@@ -18,6 +18,7 @@ const db = require('../../config/database');
 const BITUNIX_API_BASE = 'https://fapi.bitunix.com';
 const BITUNIX_SPOT_API_BASE = 'https://openapi.bitunix.com';
 const DEFAULT_MARGIN_COIN = 'USDT';
+const FUNDING_HISTORY_START_DATE = '2020-01-01T00:00:00.000Z';
 const PAGE_SIZE = 100;
 const STABLECOIN_TO_CURRENCY = {
   USDT: 'USD',
@@ -268,9 +269,10 @@ class BitunixService {
 
   async syncFundingHistoryForAccount({ userId, accountId, connection, account }) {
     const marginCoin = String(connection?.bitunixMarginCoin || DEFAULT_MARGIN_COIN).toUpperCase();
-    const startDate = account?.initial_balance_date
-      ? new Date(account.initial_balance_date)
-      : new Date('2020-01-01T00:00:00.000Z');
+    // Funding is authoritative broker data, so always fetch the full known history
+    // and dedupe locally. This avoids permanently missing older deposits when an
+    // account was created with a late manual initial balance date.
+    const startDate = new Date(FUNDING_HISTORY_START_DATE);
     const startTime = startDate.getTime();
     const endTime = Date.now();
 
