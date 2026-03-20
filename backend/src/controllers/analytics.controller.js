@@ -1472,7 +1472,7 @@ const analyticsController = {
             CASE
               WHEN executions IS NOT NULL AND jsonb_array_length(executions) > 0 THEN
                 (
-                  SELECT COALESCE(SUM((exec->>'quantity')::integer), 0)
+                  SELECT COALESCE(SUM((exec->>'quantity')::numeric), 0)
                   FROM jsonb_array_elements(executions) AS exec
                 )
               ELSE quantity  -- Fallback to trade quantity if no executions data
@@ -1486,6 +1486,7 @@ const analyticsController = {
         volume_ranges AS (
           SELECT
             CASE
+              WHEN total_volume > 0 AND total_volume < 2 THEN '<2'
               WHEN total_volume BETWEEN 2 AND 4 THEN '2-4'
               WHEN total_volume BETWEEN 5 AND 9 THEN '5-9'
               WHEN total_volume BETWEEN 10 AND 19 THEN '10-19'
@@ -1502,6 +1503,7 @@ const analyticsController = {
               ELSE 'Other'
             END as volume_range,
             CASE
+              WHEN total_volume > 0 AND total_volume < 2 THEN 1
               WHEN total_volume BETWEEN 2 AND 4 THEN 1
               WHEN total_volume BETWEEN 5 AND 9 THEN 2
               WHEN total_volume BETWEEN 10 AND 19 THEN 3
@@ -1690,14 +1692,14 @@ const analyticsController = {
       const volumeRDataMap = new Map();
       const volumeCountMap = new Map();
       const volumeOrderMap = {
-        '2-4': 1, '5-9': 2, '10-19': 3, '20-49': 4, '50-99': 5, '100-500': 6,
-        '500-999': 7, '1K-2K': 8, '2K-3K': 9, '3K-5K': 10, '5K-10K': 11,
-        '10K-20K': 12, '20K+': 13
+        '<2': 1, '2-4': 2, '5-9': 3, '10-19': 4, '20-49': 5, '50-99': 6, '100-500': 7,
+        '500-999': 8, '1K-2K': 9, '2K-3K': 10, '3K-5K': 11, '5K-10K': 12,
+        '10K-20K': 13, '20K+': 14
       };
 
-      // Collect data and filter out empty categories
+      // Keep categories with trades even if total P&L nets to zero.
       perfByVolumeResult.rows.forEach(row => {
-        if (row.volume_range && row.volume_range !== 'Other' && parseFloat(row.total_pnl) !== 0) {
+        if (row.volume_range && row.volume_range !== 'Other' && parseInt(row.trade_count || 0) > 0) {
           volumeDataMap.set(row.volume_range, parseFloat(row.total_pnl));
           volumeRDataMap.set(row.volume_range, parseFloat(row.total_r_value || 0));
           volumeCountMap.set(row.volume_range, parseInt(row.trade_count || 0));
@@ -1817,7 +1819,7 @@ const analyticsController = {
             CASE 
               WHEN executions IS NOT NULL AND jsonb_array_length(executions) > 0 THEN
                 (
-                  SELECT COALESCE(SUM((exec->>'quantity')::integer), 0)
+                  SELECT COALESCE(SUM((exec->>'quantity')::numeric), 0)
                   FROM jsonb_array_elements(executions) AS exec
                 )
               ELSE quantity  -- Fallback to trade quantity if no executions data
