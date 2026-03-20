@@ -47,6 +47,8 @@ services:
       - ./backend/package-lock.json:/app/backend/package-lock.json
       # Frontend
       - ./frontend/src:/app/frontend/src
+      - ./frontend/public:/app/frontend/public
+      - ./frontend/index.html:/app/frontend/index.html
       - ./frontend/package.json:/app/frontend/package.json
       - ./frontend/package-lock.json:/app/frontend/package-lock.json
       - ./frontend/postcss.config.js:/app/frontend/postcss.config.js
