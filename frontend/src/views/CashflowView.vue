@@ -84,20 +84,20 @@
           <div class="card">
             <div class="card-body">
               <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
-                Total Inflow
+                Trade Inflow
               </dt>
               <dd class="mt-1 text-lg font-semibold text-green-600 dark:text-green-400">
-                +${{ formatNumber(cashflow.summary.totalInflow) }}
+                +${{ formatNumber(cashflow.summary.totalTradeInflow) }}
               </dd>
             </div>
           </div>
           <div class="card">
             <div class="card-body">
               <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
-                Total Outflow
+                Trade Outflow
               </dt>
               <dd class="mt-1 text-lg font-semibold text-red-600 dark:text-red-400">
-                -${{ formatNumber(cashflow.summary.totalOutflow) }}
+                -${{ formatNumber(cashflow.summary.totalTradeOutflow) }}
               </dd>
             </div>
           </div>
@@ -194,7 +194,7 @@
                       <span v-if="account.isPrimary" class="ml-2 text-xs text-primary-600 dark:text-primary-400">Primary</span>
                     </div>
                     <div v-if="account.broker" class="text-sm text-gray-500 dark:text-gray-400">
-                      {{ account.broker }}
+                      {{ formatBroker(account.broker) }}
                     </div>
                     <div class="text-sm text-gray-500 dark:text-gray-400">
                       Initial: ${{ formatNumber(account.initialBalance) }}
@@ -204,6 +204,26 @@
                     </div>
                   </div>
                   <div class="flex items-center space-x-2 ml-2">
+                    <button
+                      @click.stop="handleAccountFundingSync(account)"
+                      class="transition-colors"
+                      :class="account.fundingSyncSupported
+                        ? 'text-gray-400 hover:text-primary-500'
+                        : 'text-gray-600 dark:text-gray-500'"
+                      :disabled="isSyncingAccount(account.id)"
+                      :title="account.fundingSyncSupported ? getFundingSyncTooltip(account) : ''"
+                    >
+                      <img
+                        src="/sync-icon.svg"
+                        alt=""
+                        aria-hidden="true"
+                        class="h-4 w-4 opacity-80 dark:invert"
+                        :class="{
+                          'opacity-40': !account.fundingSyncSupported,
+                          'animate-spin': isSyncingAccount(account.id)
+                        }"
+                      />
+                    </button>
                     <button
                       @click.stop="editAccount(account)"
                       class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
@@ -356,6 +376,7 @@ const selectedAccountId = ref('')
 const showAccountModal = ref(false)
 const editingAccount = ref(null)
 const submitting = ref(false)
+const syncingAccountIds = ref([])
 
 // Date filter state
 const startDate = ref('')
@@ -392,6 +413,30 @@ function formatNumber(num) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   })
+}
+
+function formatBroker(broker) {
+  const brokerLabels = {
+    bitunix: 'Bitunix',
+    ibkr: 'Interactive Brokers',
+    schwab: 'Charles Schwab',
+    tdameritrade: 'TD Ameritrade',
+    etrade: 'E*TRADE',
+    fidelity: 'Fidelity',
+    webull: 'Webull',
+    robinhood: 'Robinhood',
+    lightspeed: 'Lightspeed',
+    tradestation: 'TradeStation',
+    tastytrade: 'Tastytrade',
+    coinbase: 'Coinbase',
+    kraken: 'Kraken',
+    binance: 'Binance',
+    tradovate: 'Tradovate',
+    tradingview: 'TradingView',
+    other: 'Other'
+  }
+
+  return brokerLabels[String(broker || '').toLowerCase()] || broker
 }
 
 function formatDate(dateStr) {
@@ -494,6 +539,62 @@ async function loadCashflow() {
   }
 }
 
+function isSyncingAccount(accountId) {
+  return syncingAccountIds.value.includes(accountId)
+}
+
+function getFundingSyncTooltip(account) {
+  if (isSyncingAccount(account.id)) {
+    return 'Syncing funding'
+  }
+
+  if (account.fundingSyncSupported) {
+    return 'Sync funding'
+  }
+
+  const brokerLabel = formatBroker(account.broker || 'this broker')
+  return `Funding sync is not implemented for ${brokerLabel}`
+}
+
+async function syncAccountFunding(account) {
+  if (!account?.fundingSyncSupported || isSyncingAccount(account.id)) return
+
+  try {
+    syncingAccountIds.value = [...syncingAccountIds.value, account.id]
+
+    const result = await store.syncAccountFunding(account.id)
+    await store.fetchAccounts()
+
+    if (selectedAccountId.value === account.id) {
+      await loadCashflow()
+    }
+
+    showSuccess(
+      'Funding Synced',
+      `${String(result.provider || account.fundingSyncProvider || 'account').toUpperCase()}: ${result.depositsImported || 0} deposits and ${result.withdrawalsImported || 0} withdrawals imported`
+    )
+  } catch (error) {
+    showError(
+      'Sync Failed',
+      error.response?.data?.message || 'Failed to sync account funding history'
+    )
+  } finally {
+    syncingAccountIds.value = syncingAccountIds.value.filter(id => id !== account.id)
+  }
+}
+
+async function handleAccountFundingSync(account) {
+  if (!account?.fundingSyncSupported) {
+    showError(
+      'Funding Sync Unavailable',
+      `Funding sync is not implemented for ${formatBroker(account.broker || 'this broker')}`
+    )
+    return
+  }
+
+  await syncAccountFunding(account)
+}
+
 function openAddAccountModal() {
   editingAccount.value = null
   showAccountModal.value = true
@@ -511,11 +612,13 @@ function closeAccountModal() {
 
 async function saveAccount(accountData) {
   try {
+    let savedAccount
+
     if (editingAccount.value) {
-      await store.updateAccount(editingAccount.value.id, accountData)
+      savedAccount = await store.updateAccount(editingAccount.value.id, accountData)
       showSuccess('Success', 'Account updated successfully')
     } else {
-      await store.createAccount(accountData)
+      savedAccount = await store.createAccount(accountData)
       showSuccess('Success', 'Account created successfully')
     }
     closeAccountModal()
@@ -524,6 +627,10 @@ async function saveAccount(accountData) {
     if (accounts.value.length === 1) {
       selectedAccountId.value = accounts.value[0].id
       await loadCashflow()
+    }
+
+    if (savedAccount?.fundingSyncSupported) {
+      await syncAccountFunding(savedAccount)
     }
   } catch (error) {
     showError('Error', error.message || 'Failed to save account')

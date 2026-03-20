@@ -495,8 +495,13 @@ const accountController = {
         message: `${String(result.provider || 'account').toUpperCase()} funding history synced successfully`
       });
     } catch (error) {
-      console.error('[ACCOUNTS] Error syncing account funding:', error);
       const statusCode = error.message === 'Funding sync is not implemented for this account' ? 400 : 500;
+
+      if (statusCode >= 500) {
+        console.error('[ACCOUNTS] Error syncing account funding:', error);
+      } else {
+        console.warn('[ACCOUNTS] Funding sync unavailable:', error.message);
+      }
 
       res.status(statusCode).json({
         success: false,

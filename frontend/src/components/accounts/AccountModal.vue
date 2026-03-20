@@ -37,8 +37,8 @@
             <label for="broker" class="label">Broker</label>
             <select id="broker" v-model="form.broker" class="input w-full">
               <option value="">Select broker (optional)</option>
-              <option v-for="broker in brokerOptions" :key="broker" :value="broker">
-                {{ broker }}
+              <option v-for="broker in brokerOptions" :key="broker.value" :value="broker.value">
+                {{ broker.label }}
               </option>
             </select>
           </div>
@@ -48,17 +48,17 @@
             <label for="accountIdentifier" class="label">Account Identifier</label>
             <div class="space-y-2">
               <select
-                v-if="unlinkedIdentifiers.length > 0"
+                v-if="availableIdentifiers.length > 0"
                 v-model="form.accountIdentifier"
                 class="input w-full"
               >
                 <option value="">Select from existing trades or enter manually</option>
-                <option v-for="id in unlinkedIdentifiers" :key="id.accountIdentifier" :value="id.accountIdentifier">
+                <option v-for="id in availableIdentifiers" :key="id.accountIdentifier" :value="id.accountIdentifier">
                   {{ id.accountIdentifier }} {{ id.broker ? `(${id.broker})` : '' }}
                 </option>
               </select>
               <input
-                v-if="unlinkedIdentifiers.length === 0 || form.accountIdentifier === '' || !unlinkedIdentifiers.find(i => i.accountIdentifier === form.accountIdentifier)"
+                v-if="availableIdentifiers.length === 0 || form.accountIdentifier === '' || !availableIdentifiers.find(i => i.accountIdentifier === form.accountIdentifier)"
                 v-model="form.accountIdentifier"
                 type="text"
                 class="input w-full"
@@ -169,6 +169,22 @@ const loading = ref(false)
 const unlinkedIdentifiers = ref([])
 
 const isEditing = computed(() => !!props.account)
+const availableIdentifiers = computed(() => {
+  const identifiers = [...unlinkedIdentifiers.value]
+  const currentIdentifier = props.account?.accountIdentifier
+
+  if (
+    currentIdentifier &&
+    !identifiers.some(identifier => identifier.accountIdentifier === currentIdentifier)
+  ) {
+    identifiers.unshift({
+      accountIdentifier: currentIdentifier,
+      broker: props.account?.broker || null
+    })
+  }
+
+  return identifiers
+})
 
 const form = ref({
   accountName: '',
@@ -181,21 +197,47 @@ const form = ref({
 })
 
 const brokerOptions = [
-  'Interactive Brokers',
-  'Charles Schwab',
-  'TD Ameritrade',
-  'E*TRADE',
-  'Fidelity',
-  'Webull',
-  'Robinhood',
-  'Lightspeed',
-  'TradeStation',
-  'Tastytrade',
-  'Coinbase',
-  'Kraken',
-  'Binance',
-  'Other'
+  { value: 'ibkr', label: 'Interactive Brokers' },
+  { value: 'schwab', label: 'Charles Schwab' },
+  { value: 'tdameritrade', label: 'TD Ameritrade' },
+  { value: 'etrade', label: 'E*TRADE' },
+  { value: 'fidelity', label: 'Fidelity' },
+  { value: 'webull', label: 'Webull' },
+  { value: 'robinhood', label: 'Robinhood' },
+  { value: 'lightspeed', label: 'Lightspeed' },
+  { value: 'tradestation', label: 'TradeStation' },
+  { value: 'tastytrade', label: 'Tastytrade' },
+  { value: 'coinbase', label: 'Coinbase' },
+  { value: 'kraken', label: 'Kraken' },
+  { value: 'binance', label: 'Binance' },
+  { value: 'bitunix', label: 'Bitunix' },
+  { value: 'other', label: 'Other' }
 ]
+
+function normalizeBrokerValue(broker) {
+  if (!broker) return ''
+
+  const normalized = String(broker).trim().toLowerCase()
+  const brokerAliases = {
+    'interactive brokers': 'ibkr',
+    'charles schwab': 'schwab',
+    'td ameritrade': 'tdameritrade',
+    'e*trade': 'etrade',
+    fidelity: 'fidelity',
+    webull: 'webull',
+    robinhood: 'robinhood',
+    lightspeed: 'lightspeed',
+    tradestation: 'tradestation',
+    tastytrade: 'tastytrade',
+    coinbase: 'coinbase',
+    kraken: 'kraken',
+    binance: 'binance',
+    bitunix: 'bitunix',
+    other: 'other'
+  }
+
+  return brokerAliases[normalized] || normalized
+}
 
 async function handleSubmit() {
   loading.value = true
@@ -223,7 +265,7 @@ onMounted(async () => {
   if (props.account) {
     form.value = {
       accountName: props.account.accountName || '',
-      broker: props.account.broker || '',
+      broker: normalizeBrokerValue(props.account.broker),
       accountIdentifier: props.account.accountIdentifier || '',
       initialBalance: props.account.initialBalance || '',
       initialBalanceDate: props.account.initialBalanceDate?.split('T')[0] || new Date().toISOString().split('T')[0],

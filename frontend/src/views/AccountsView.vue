@@ -263,12 +263,21 @@ const form = ref({
 })
 
 const brokerLabels = {
+  bitunix: 'Bitunix',
   schwab: 'Charles Schwab',
   thinkorswim: 'thinkorswim',
   ibkr: 'Interactive Brokers',
+  tdameritrade: 'TD Ameritrade',
   lightspeed: 'Lightspeed',
   webull: 'Webull',
   etrade: 'E*TRADE',
+  fidelity: 'Fidelity',
+  robinhood: 'Robinhood',
+  tradestation: 'TradeStation',
+  tastytrade: 'Tastytrade',
+  coinbase: 'Coinbase',
+  kraken: 'Kraken',
+  binance: 'Binance',
   tradingview: 'TradingView',
   tradovate: 'Tradovate',
   other: 'Other'
