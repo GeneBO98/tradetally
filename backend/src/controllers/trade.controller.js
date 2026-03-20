@@ -47,6 +47,7 @@ const tradeController = {
 
       const filters = {
         symbol,
+        symbolExact: symbolExact === 'true',
         startDate,
         endDate,
         exitStartDate,
