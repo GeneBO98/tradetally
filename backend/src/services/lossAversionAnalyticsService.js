@@ -12,6 +12,31 @@ const buildSymbolFilterClause = require('../utils/buildSymbolFilterClause');
  * Pro users with Finnhub configured get full price movement analysis.
  */
 class LossAversionAnalyticsService {
+  static MIN_PERCENT_PROFIT_BASIS = 1;
+  static MAX_MISSED_OPPORTUNITY_PERCENT = 999.9;
+
+  // Percent-of-profit metrics become meaningless for dust-sized winners.
+  // Normalize the denominator so tiny profits don't explode into absurd values.
+  static calculateMissedOpportunityPercent(additionalProfit, actualProfit) {
+    const additional = parseFloat(additionalProfit) || 0;
+    const profit = Math.abs(parseFloat(actualProfit) || 0);
+
+    if (additional <= 0 || profit <= 0) {
+      return 0;
+    }
+
+    const normalizedProfit = Math.max(
+      profit,
+      this.MIN_PERCENT_PROFIT_BASIS
+    );
+    const percent = (additional / normalizedProfit) * 100;
+
+    return Math.min(
+      Math.round(percent * 10) / 10,
+      this.MAX_MISSED_OPPORTUNITY_PERCENT
+    );
+  }
+
   static isCryptoLikeSymbol(symbol) {
     return finnhub.isCryptoSymbol(symbol) || finnhub.isCryptoPairSymbol(symbol);
   }
@@ -526,7 +551,10 @@ class LossAversionAnalyticsService {
         if (potentialAdditionalProfit.optimal > actualProfit * 0.5) { // 50%+ additional profit possible
           exampleTrades.push({
             ...analysis,
-            missedOpportunityPercent: ((potentialAdditionalProfit.optimal / actualProfit) * 100).toFixed(1),
+            missedOpportunityPercent: this.calculateMissedOpportunityPercent(
+              potentialAdditionalProfit.optimal,
+              actualProfit
+            ),
             recommendation: this.generateTradeRecommendation(analysis)
           });
         }
@@ -543,7 +571,10 @@ class LossAversionAnalyticsService {
     
     const avgMissedProfitPercent = analysisResults.length > 0 ?
       analysisResults.reduce((sum, analysis) => 
-        sum + (analysis.potentialAdditionalProfit.optimal / Math.abs(analysis.actualProfit)) * 100, 0
+        sum + this.calculateMissedOpportunityPercent(
+          analysis.potentialAdditionalProfit.optimal,
+          analysis.actualProfit
+        ), 0
       ) / analysisResults.length : 0;
     
     return {
@@ -1479,7 +1510,10 @@ class LossAversionAnalyticsService {
         const totalPercent = validTrades.reduce((sum, trade) => {
           const actualProfit = parseFloat(trade.actualProfit);
           const additionalProfit = parseFloat(trade.potentialAdditionalProfit.optimal);
-          return sum + ((additionalProfit / Math.abs(actualProfit)) * 100);
+          return sum + this.calculateMissedOpportunityPercent(
+            additionalProfit,
+            actualProfit
+          );
         }, 0);
         
         return Math.round((totalPercent / validTrades.length) * 10) / 10;
@@ -1514,7 +1548,10 @@ class LossAversionAnalyticsService {
       const estimatedAdditionalProfit = this.estimatePotentialProfit(tradeRow, latestMetrics);
       
       // Calculate percentage based on individual estimated profit
-      return Math.round((estimatedAdditionalProfit / actualProfit) * 100 * 10) / 10;
+      return this.calculateMissedOpportunityPercent(
+        estimatedAdditionalProfit,
+        actualProfit
+      );
     }
     
     // Fallback: individualized default estimates
@@ -1729,7 +1766,10 @@ class LossAversionAnalyticsService {
                 }
 
                 if (actualMissedProfit > 0) {
-                  missedOpportunityPercent = (actualMissedProfit / parseFloat(trade.pnl)) * 100;
+                  missedOpportunityPercent = this.calculateMissedOpportunityPercent(
+                    actualMissedProfit,
+                    parseFloat(trade.pnl)
+                  );
                   tradesWithPriceAnalysis++;
                   
                   missedOpportunityData = {

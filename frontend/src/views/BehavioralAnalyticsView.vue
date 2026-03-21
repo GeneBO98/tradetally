@@ -6019,6 +6019,17 @@ const loadFilters = () => {
     if (savedFilters) {
         try {
             const parsed = JSON.parse(savedFilters);
+
+            const isLegacyDefaultDateRange =
+                parsed?.startDate === "2024-01-01" &&
+                parsed?.endDate === "2024-12-31";
+
+            if (isLegacyDefaultDateRange) {
+                setDefaultDateRange();
+                saveFilters();
+                return;
+            }
+
             filters.value = parsed;
         } catch (e) {
             console.error("Error loading saved filters:", e);
@@ -6031,9 +6042,9 @@ const loadFilters = () => {
 
 // Set default date range
 const setDefaultDateRange = () => {
-    // Set default to cover actual trade data instead of current date
-    filters.value.endDate = "2024-12-31";
-    filters.value.startDate = "2024-01-01";
+    // Default to all-time so historical behavioral events are not hidden on first load.
+    filters.value.startDate = "";
+    filters.value.endDate = "";
 };
 
 // Analyze historical trades for revenge trading patterns
@@ -6047,7 +6058,7 @@ const analyzeHistoricalTrades = async () => {
 
         showSuccess(
             "Analysis Complete",
-            `Analyzed historical trades. Found ${response.data.patternsDetected || 0} revenge trading patterns.`,
+            `Analyzed historical trades. Found ${response.data.data?.revengeEventsCreated || 0} revenge trading events.`,
         );
 
         // Reload data after analysis
