@@ -1308,11 +1308,25 @@ const filters = ref({
 
 const showTimeRangeDropdown = ref(false)
 
+// Generate month options dynamically (last 12 months including current)
+function generateMonthOptions() {
+  const months = []
+  const now = new Date()
+  for (let i = 0; i < 12; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    const year = d.getFullYear()
+    const month = d.getMonth() // 0-indexed
+    const label = d.toLocaleString('default', { month: 'long', year: 'numeric' })
+    const value = `month_${year}_${month}`
+    months.push({ value, label })
+  }
+  return months
+}
+
 const timeRangeOptions = [
   { value: 'all', label: 'All Time' },
   { value: 'custom', label: 'Custom Range' },
-  { value: 'feb2025', label: 'February 2025' },
-  { value: 'march2025', label: 'March 2025' },
+  ...generateMonthOptions(),
   { value: '7d', label: 'Last 7 Days' },
   { value: '30d', label: 'Last 30 Days' },
   { value: '90d', label: 'Last 90 Days' },
@@ -1578,20 +1592,23 @@ function getDateRange(range) {
     }
   }
   
+  // Handle dynamic month ranges (e.g., month_2026_2 = March 2026)
+  const monthMatch = range.match(/^month_(\d{4})_(\d{1,2})$/)
+  if (monthMatch) {
+    const year = parseInt(monthMatch[1])
+    const month = parseInt(monthMatch[2])
+    const firstDay = new Date(year, month, 1)
+    const lastDay = new Date(year, month + 1, 0)
+    return {
+      startDate: formatLocalDate(firstDay),
+      endDate: formatLocalDate(lastDay)
+    }
+  }
+
   const now = new Date()
   const start = new Date()
-  
+
   switch (range) {
-    case 'feb2025':
-      return {
-        startDate: '2025-02-01',
-        endDate: '2025-02-28'
-      }
-    case 'march2025':
-      return {
-        startDate: '2025-03-01',
-        endDate: '2025-03-31'
-      }
     case '7d':
       start.setDate(now.getDate() - 7)
       break
