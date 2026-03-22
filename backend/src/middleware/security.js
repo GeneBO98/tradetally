@@ -15,16 +15,13 @@ const securityMiddleware = () => {
           defaultSrc: ["'self'"],
           scriptSrc: [
             "'self'",
-            // OWASP CWE-693 Mitigation: Strict script sources
-            "'unsafe-inline'", // TODO: Replace with nonces for CWE-693 compliance
-            "https://cdn.jsdelivr.net",
-            "https://unpkg.com",
+            // Required for inline PostHog init and index.html bootstrap script.
+            // TODO: Replace with nonces via generateCSPNonce middleware for full CWE-693 compliance.
+            "'unsafe-inline'",
           ],
           styleSrc: [
             "'self'",
-            "'unsafe-inline'", // Required for CSS frameworks
-            "https://fonts.googleapis.com",
-            "https://cdn.jsdelivr.net",
+            "'unsafe-inline'", // Required for Vue scoped styles and Tailwind
           ],
           imgSrc: [
             "'self'",
@@ -34,7 +31,6 @@ const securityMiddleware = () => {
           ],
           fontSrc: [
             "'self'",
-            "https://fonts.gstatic.com",
             "data:",
           ],
           connectSrc: [

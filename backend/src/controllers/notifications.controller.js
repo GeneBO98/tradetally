@@ -51,7 +51,7 @@ const notificationsController = {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive',
-        'Access-Control-Allow-Origin': req.headers.origin || '*',
+        'Access-Control-Allow-Origin': req.headers.origin || '',
         'Access-Control-Allow-Headers': 'Cache-Control, Authorization',
         'Access-Control-Allow-Credentials': 'true',
         'X-Accel-Buffering': 'no', // Disable proxy buffering

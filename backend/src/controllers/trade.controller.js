@@ -1314,10 +1314,9 @@ const tradeController = {
     try {
       console.log('=== IMPORT TRADES STARTED ===');
       console.log('User ID:', req.user.id);
-      console.log('Request headers:', req.headers);
-      console.log('Request body:', req.body);
-      console.log('Request files:', req.files);
-      console.log('Request file:', req.file);
+      console.log('Content-Type:', req.headers['content-type']);
+      console.log('Request body keys:', Object.keys(req.body || {}));
+      console.log('Request file:', req.file ? req.file.originalname : 'none');
       console.log('File info:', req.file ? {
         originalname: req.file.originalname,
         mimetype: req.file.mimetype,

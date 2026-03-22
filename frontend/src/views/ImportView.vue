@@ -1988,16 +1988,25 @@ function loadMoreLogFiles() {
 
 // Computed property for highlighted log content
 const highlightedLogContent = computed(() => {
-  if (!logSearchQuery.value || !logContent.value) {
-    return logContent.value
+  if (!logContent.value) return ''
+
+  // Escape HTML entities first to prevent XSS from log content
+  const escaped = logContent.value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+
+  if (!logSearchQuery.value) {
+    return escaped
   }
-  
+
   try {
     const query = logSearchQuery.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     const regex = new RegExp(`(${query})`, 'gi')
-    return logContent.value.replace(regex, '<mark class="bg-yellow-300 dark:bg-yellow-600 text-black dark:text-white">$1</mark>')
+    return escaped.replace(regex, '<mark class="bg-yellow-300 dark:bg-yellow-600 text-black dark:text-white">$1</mark>')
   } catch (error) {
-    return logContent.value
+    return escaped
   }
 })
 

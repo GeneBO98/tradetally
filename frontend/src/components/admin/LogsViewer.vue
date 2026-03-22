@@ -274,11 +274,18 @@ function getLogLineClass(log) {
 
 // Highlight search terms in log messages
 function highlightSearch(message) {
-  if (!searchQuery.value) return message
+  // Escape HTML entities in the message first to prevent XSS
+  const escaped = message
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+
+  if (!searchQuery.value) return escaped
 
   const query = searchQuery.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const regex = new RegExp(`(${query})`, 'gi')
-  return message.replace(regex, '<span class="bg-yellow-400 text-gray-900 px-1 rounded">$1</span>')
+  return escaped.replace(regex, '<span class="bg-yellow-400 text-gray-900 px-1 rounded">$1</span>')
 }
 
 // Debounced search

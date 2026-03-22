@@ -1,4 +1,5 @@
 import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 
 /**
  * Parse markdown text to HTML with custom styling
@@ -31,8 +32,8 @@ export function parseMarkdown(text) {
       .replace(/<h3>/g, '<h3 class="text-sm font-medium mb-1">') // Style h3
       .replace(/<blockquote>/g, '<blockquote class="border-l-4 border-gray-300 dark:border-gray-600 pl-3 italic text-gray-700 dark:text-gray-300 mb-2">') // Style blockquotes
     
-    return result
-    
+    return DOMPurify.sanitize(result)
+
   } catch (error) {
     console.error('Error parsing markdown:', error)
     // Fallback: return text with basic HTML escaping and line breaks
@@ -52,15 +53,14 @@ export function parseMarkdown(text) {
  */
 export function truncateHtml(html, maxLength) {
   if (!html || html.length <= maxLength) return html
-  
-  // Create a temporary div to work with the HTML
-  const div = document.createElement('div')
-  div.innerHTML = html
-  
-  const text = div.textContent || div.innerText || ''
-  
+
+  // Use DOMParser instead of innerHTML to avoid unsafe DOM manipulation
+  const parser = new DOMParser()
+  const doc = parser.parseFromString(html, 'text/html')
+  const text = doc.body.textContent || ''
+
   if (text.length <= maxLength) return html
-  
+
   // Simple truncation - just return the first part of the text with ellipsis
   return text.substring(0, maxLength) + '...'
 }

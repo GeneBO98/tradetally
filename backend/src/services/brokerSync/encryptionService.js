@@ -60,7 +60,7 @@ class EncryptionService {
     const key = this.deriveKey(salt);
 
     // Create cipher and encrypt
-    const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
+    const cipher = crypto.createCipheriv(ALGORITHM, key, iv, { authTagLength: AUTH_TAG_LENGTH });
 
     let encrypted = cipher.update(plaintext, 'utf8');
     encrypted = Buffer.concat([encrypted, cipher.final()]);
@@ -102,7 +102,7 @@ class EncryptionService {
       const key = this.deriveKey(salt);
 
       // Create decipher
-      const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
+      const decipher = crypto.createDecipheriv(ALGORITHM, key, iv, { authTagLength: AUTH_TAG_LENGTH });
       decipher.setAuthTag(authTag);
 
       // Decrypt
