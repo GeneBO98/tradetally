@@ -94,7 +94,13 @@ class BackupController {
 
       const filters = {};
       if (type) filters.type = type;
-      if (limit) filters.limit = parseInt(limit);
+      if (limit !== undefined) {
+        const parsedLimit = Number.parseInt(limit, 10);
+        if (!Number.isInteger(parsedLimit) || parsedLimit < 1 || parsedLimit > 100) {
+          return res.status(400).json({ error: 'Limit must be an integer between 1 and 100' });
+        }
+        filters.limit = parsedLimit;
+      }
 
       const backups = await backupService.getBackups(filters);
 
@@ -125,10 +131,10 @@ class BackupController {
         });
       }
 
-      // Validate file_path is within the expected backup directory (prevent path traversal)
-      const backupDir = path.resolve(__dirname, '../data/backups');
-      const resolvedPath = path.resolve(backup.file_path);
-      if (!resolvedPath.startsWith(backupDir + path.sep) && resolvedPath !== backupDir) {
+      let resolvedPath;
+      try {
+        resolvedPath = backupService.resolveBackupPath(backup.file_path);
+      } catch (error) {
         console.error('[BACKUP] Path traversal attempt detected:', backup.file_path);
         return res.status(400).json({ error: 'Invalid backup path' });
       }
@@ -167,10 +173,10 @@ class BackupController {
 
       const backup = await backupService.getBackupById(id);
 
-      // Validate file_path is within the expected backup directory (prevent path traversal)
-      const backupDir = path.resolve(__dirname, '../data/backups');
-      const resolvedPath = path.resolve(backup.file_path);
-      if (!resolvedPath.startsWith(backupDir + path.sep) && resolvedPath !== backupDir) {
+      let resolvedPath;
+      try {
+        resolvedPath = backupService.resolveBackupPath(backup.file_path);
+      } catch (error) {
         console.error('[BACKUP] Path traversal attempt detected:', backup.file_path);
         return res.status(400).json({ error: 'Invalid backup path' });
       }
@@ -256,7 +262,10 @@ class BackupController {
   async cleanupOldBackups(req, res, next) {
     try {
       const { days } = req.body;
-      const daysToKeep = days || 30;
+      const daysToKeep = days === undefined ? 30 : Number.parseInt(days, 10);
+      if (!Number.isInteger(daysToKeep) || daysToKeep < 1 || daysToKeep > 365) {
+        return res.status(400).json({ error: 'Retention days must be an integer between 1 and 365' });
+      }
 
       const deletedCount = await backupService.deleteOldBackups(daysToKeep);
 

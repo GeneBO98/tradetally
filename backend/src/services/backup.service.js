@@ -17,8 +17,21 @@ function maskEmail(email) {
  */
 class BackupService {
   constructor() {
-    this.backupDir = path.join(__dirname, '../data/backups');
+    this.backupDir = path.resolve(__dirname, '../data/backups');
     this.ensureBackupDirectory();
+  }
+
+  resolveBackupPath(filePath) {
+    if (typeof filePath !== 'string' || filePath.trim() === '') {
+      throw new Error('Invalid backup path');
+    }
+
+    const resolvedPath = path.resolve(filePath);
+    if (!resolvedPath.startsWith(this.backupDir + path.sep)) {
+      throw new Error('Invalid backup path');
+    }
+
+    return resolvedPath;
   }
 
   /**
@@ -202,13 +215,18 @@ class BackupService {
    * @returns {Promise<number>} Number of backups deleted
    */
   async deleteOldBackups(daysToKeep = 30) {
-    console.log(`[BACKUP] Deleting backups older than ${daysToKeep} days...`);
+    const retentionDays = Number.parseInt(daysToKeep, 10);
+    if (!Number.isInteger(retentionDays) || retentionDays < 1 || retentionDays > 365) {
+      throw new Error('Retention days must be an integer between 1 and 365');
+    }
+
+    console.log(`[BACKUP] Deleting backups older than ${retentionDays} days...`);
 
     // Get old backups
     const result = await db.query(
       `SELECT * FROM backups
-       WHERE created_at < NOW() - INTERVAL '${daysToKeep} days'`,
-      []
+       WHERE created_at < NOW() - ($1::int * INTERVAL '1 day')`,
+      [retentionDays]
     );
 
     const oldBackups = result.rows;
@@ -218,7 +236,16 @@ class BackupService {
       try {
         // Delete file if it exists
         if (backup.file_path) {
-          await fs.unlink(backup.file_path);
+          try {
+            const resolvedPath = this.resolveBackupPath(backup.file_path);
+            await fs.unlink(resolvedPath);
+          } catch (error) {
+            if (error.message === 'Invalid backup path') {
+              console.warn(`[BACKUP] Skipping unsafe backup path for backup ${backup.id}: ${backup.file_path}`);
+            } else if (error.code !== 'ENOENT') {
+              console.warn(`[BACKUP] Failed to delete backup file for backup ${backup.id}: ${error.message}`);
+            }
+          }
         }
 
         // Delete from database

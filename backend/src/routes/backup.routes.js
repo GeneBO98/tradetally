@@ -7,7 +7,7 @@ const { authenticate, requireAdmin } = require('../middleware/auth');
 // Configure multer for backup file upload (in memory)
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 500 * 1024 * 1024 }, // 500MB limit for backup files
+  limits: { fileSize: parseInt(process.env.BACKUP_MAX_FILE_SIZE || process.env.MAX_FILE_SIZE || '52428800', 10) }, // Default to 50MB unless explicitly overridden
   fileFilter: (req, file, cb) => {
     if (file.mimetype === 'application/json' || file.originalname.endsWith('.json')) {
       cb(null, true);
