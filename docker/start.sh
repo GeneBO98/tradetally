@@ -11,9 +11,9 @@ echo "[OK] Database connection established"
 # Set environment variables for mobile support
 export RUN_MIGRATIONS="${RUN_MIGRATIONS:-true}"
 
-# Start backend (migrations will run automatically)
+# Start backend as non-root user (migrations will run automatically)
 echo "[START] Starting TradeTally backend..."
-cd /app/backend && node src/server.js &
+cd /app/backend && su-exec appuser node src/server.js &
 
 # Wait for backend to start
 sleep 5

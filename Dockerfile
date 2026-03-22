@@ -61,7 +61,8 @@ RUN apk update && apk upgrade --no-cache && \
     apk add --no-cache \
     nginx \
     netcat-openbsd \
-    libc6-compat && \
+    libc6-compat \
+    su-exec && \
     mkdir -p /run/nginx /var/lib/nginx /var/lib/nginx/tmp /var/log/nginx && \
     chown -R nginx:nginx /run/nginx /var/lib/nginx /var/log/nginx
 WORKDIR /app
@@ -77,6 +78,12 @@ COPY docker/nginx.conf /etc/nginx/http.d/default.conf
 COPY docker/start.sh /app/start.sh
 COPY docker/docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod +x /app/start.sh /app/docker-entrypoint.sh
+
+# Create non-root user for the Node.js backend process
+# Note: nginx master process requires root to bind port 80, but worker processes
+# run as the 'nginx' user. The Node.js backend is started as 'appuser' in start.sh.
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup && \
+    chown -R appuser:appgroup /app
 
 EXPOSE 80 3000
 CMD ["/app/start.sh"]
