@@ -1,19 +1,30 @@
 <template>
   <div class="content-wrapper py-8">
-    <div class="mb-8">
-      <h1 class="heading-page">Import Trades</h1>
-      <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
-        Import your trades from CSV files exported from major brokers.
-      </p>
+    <div class="mb-8 flex items-start justify-between">
+      <div>
+        <h1 class="heading-page">Import Trades</h1>
+        <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
+          Import your trades from CSV files exported from major brokers.
+        </p>
+      </div>
+      <router-link to="/broker-sync" class="mt-1 btn-secondary inline-flex items-center gap-2">
+        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+        </svg>
+        Broker Sync
+      </router-link>
     </div>
 
-    <!-- Guided onboarding: contextual card for this page (first-time only) -->
+    <!-- Guided onboarding: step 2 of tour -->
     <OnboardingCard
-      v-if="authStore.showOnboardingModal"
-      title="Import your trades"
-      description="Upload a CSV file or connect a broker to sync your trades. Choose your broker format below or use Auto-Detect."
-      cta-label="Next: View Dashboard"
-      cta-route="dashboard"
+      v-if="authStore.onboardingStep === 2"
+      :step="2"
+      :total-steps="5"
+      :next-step="3"
+      title="Import Your Trades"
+      description="When you're ready, upload a CSV from your broker or use Broker Sync. Auto-Detect handles the format for you."
+      cta-label="Next: Trading Journal"
+      cta-route="diary"
     />
 
     <div class="space-y-8">
@@ -21,6 +32,49 @@
       <div class="card">
         <div class="card-body">
           <form @submit.prevent="handleImport" class="space-y-6">
+            <!-- File Upload Drop Zone -->
+            <div>
+              <div
+                class="flex justify-center px-6 pt-8 pb-8 border-2 border-dashed rounded-xl transition-colors cursor-pointer"
+                :class="[
+                  dragOver ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20' : 'border-gray-300 dark:border-gray-600 hover:border-primary-400 dark:hover:border-primary-500'
+                ]"
+                @dragover.prevent="handleDragOver"
+                @dragleave.prevent="handleDragLeave"
+                @drop.prevent="handleDrop"
+                @click="$refs.fileInput && $refs.fileInput.click()"
+              >
+                <div class="space-y-2 text-center">
+                  <ArrowUpTrayIcon class="mx-auto h-16 w-16 text-gray-400" />
+                  <p class="text-base font-medium text-gray-900 dark:text-white">Drop your broker CSV here</p>
+                  <div class="flex text-sm text-gray-600 dark:text-gray-400">
+                    <label
+                      for="file-upload"
+                      class="relative cursor-pointer rounded-md font-medium text-primary-600 hover:text-primary-500"
+                      @click.stop
+                    >
+                      <span>Browse files</span>
+                      <input
+                        id="file-upload"
+                        ref="fileInput"
+                        name="file-upload"
+                        type="file"
+                        class="sr-only"
+                        @change="handleFileSelect"
+                      />
+                    </label>
+                    <p class="pl-1">or drag and drop</p>
+                  </div>
+                  <p class="text-xs text-gray-500 dark:text-gray-400">CSV files only (up to 50MB)</p>
+                </div>
+              </div>
+              <div v-if="selectedFile" class="mt-2">
+                <p class="text-sm text-gray-900 dark:text-white">
+                  Selected: {{ selectedFile.name }} ({{ formatFileSize(selectedFile.size) }})
+                </p>
+              </div>
+            </div>
+
             <div>
               <label for="broker" class="label">Broker Format</label>
               <select id="broker" v-model="selectedBroker" required class="input">
@@ -70,43 +124,72 @@
               </p>
             </div>
 
-            <div>
-              <label for="file" class="label">CSV File</label>
-              <div 
-                class="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-dashed rounded-md transition-colors"
-                :class="[
-                  dragOver ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20' : 'border-gray-300 dark:border-gray-600'
-                ]"
-                @dragover.prevent="handleDragOver"
-                @dragleave.prevent="handleDragLeave"
-                @drop.prevent="handleDrop"
-              >
-                <div class="space-y-1 text-center">
-                  <ArrowUpTrayIcon class="mx-auto h-12 w-12 text-gray-400" />
-                  <div class="flex text-sm text-gray-600 dark:text-gray-400">
-                    <label
-                      for="file-upload"
-                      class="relative cursor-pointer bg-white dark:bg-gray-800 rounded-md font-medium text-primary-600 hover:text-primary-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-primary-500"
-                    >
-                      <span>Upload a file</span>
-                      <input
-                        id="file-upload"
-                        ref="fileInput"
-                        name="file-upload"
-                        type="file"
-                        class="sr-only"
-                        @change="handleFileSelect"
-                      />
-                    </label>
-                    <p class="pl-1">or drag and drop</p>
-                  </div>
-                  <p class="text-xs text-gray-500 dark:text-gray-400">CSV files only (up to 50MB)</p>
+            <div v-if="selectedFile" class="rounded-2xl border border-gray-200 bg-gray-50/80 p-4 dark:border-gray-700 dark:bg-gray-900/50">
+              <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <p class="text-sm font-semibold text-gray-900 dark:text-white">Pre-import check</p>
+                  <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                    {{ fileReadinessMessage }}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  class="self-start text-sm font-medium text-primary-600 hover:text-primary-500 dark:text-primary-400"
+                  @click="analyzeSelectedFile(selectedFile)"
+                >
+                  Re-check file
+                </button>
+              </div>
+
+              <div v-if="isAnalyzingFile" class="mt-4 rounded-xl border border-primary-200 bg-primary-50 px-4 py-3 text-sm text-primary-700 dark:border-primary-800 dark:bg-primary-900/20 dark:text-primary-300">
+                Analyzing headers and estimating trade count...
+              </div>
+
+              <div v-else class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div class="rounded-xl bg-white p-3 shadow-sm ring-1 ring-gray-200 dark:bg-gray-800 dark:ring-gray-700">
+                  <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Estimated rows</p>
+                  <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
+                    {{ fileAnalysis.rowCount !== null ? fileAnalysis.rowCount.toLocaleString() : 'Unknown' }}
+                  </p>
+                </div>
+                <div class="rounded-xl bg-white p-3 shadow-sm ring-1 ring-gray-200 dark:bg-gray-800 dark:ring-gray-700">
+                  <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Format check</p>
+                  <p class="mt-1 text-sm font-semibold" :class="fileAnalysis.formatDetected ? 'text-green-700 dark:text-green-400' : 'text-yellow-700 dark:text-yellow-400'">
+                    {{ fileAnalysis.formatDetected ? 'Recognized' : 'Needs review' }}
+                  </p>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{ fileAnalysis.detectedBroker ? formatBrokerName(fileAnalysis.detectedBroker) : 'We may need column mapping.' }}
+                  </p>
+                </div>
+                <div class="rounded-xl bg-white p-3 shadow-sm ring-1 ring-gray-200 dark:bg-gray-800 dark:ring-gray-700">
+                  <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Import mode</p>
+                  <p class="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{{ selectedBrokerLabel }}</p>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ brokerRecommendation }}</p>
+                </div>
+                <div class="rounded-xl bg-white p-3 shadow-sm ring-1 ring-gray-200 dark:bg-gray-800 dark:ring-gray-700">
+                  <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Account</p>
+                  <p class="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{{ accountReadinessLabel }}</p>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ accountReadinessMessage }}</p>
                 </div>
               </div>
-              <div v-if="selectedFile" class="mt-2">
-                <p class="text-sm text-gray-900 dark:text-white">
-                  Selected: {{ selectedFile.name }} ({{ formatFileSize(selectedFile.size) }})
-                </p>
+
+              <div v-if="displayedHeaderPreview.length > 0" class="mt-4">
+                <p class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Detected columns</p>
+                <div class="mt-2 flex flex-wrap gap-2">
+                  <span
+                    v-for="header in displayedHeaderPreview"
+                    :key="header"
+                    class="rounded-full bg-white px-3 py-1 text-xs text-gray-700 ring-1 ring-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:ring-gray-700"
+                  >
+                    {{ header }}
+                  </span>
+                  <span
+                    v-if="fileAnalysis.headers.length > displayedHeaderPreview.length"
+                    class="rounded-full bg-primary-50 px-3 py-1 text-xs text-primary-700 ring-1 ring-primary-200 dark:bg-primary-900/20 dark:text-primary-300 dark:ring-primary-800"
+                  >
+                    +{{ fileAnalysis.headers.length - displayedHeaderPreview.length }} more
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -133,10 +216,104 @@
                   <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
                 <span v-if="loading">Importing...</span>
-                <span v-else>Import Trades</span>
+                <span v-else>{{ importButtonLabel }}</span>
               </button>
             </div>
           </form>
+        </div>
+      </div>
+
+      <!-- Import History -->
+      <div v-if="importHistory.length > 0" class="card">
+        <div class="card-body">
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center space-x-3">
+              <h3 class="heading-card">
+                Import History
+                <span v-if="pagination.total > 0" class="text-sm font-normal text-gray-500 dark:text-gray-400">
+                  ({{ importHistory.length }} of {{ pagination.total }})
+                </span>
+              </h3>
+              <button
+                v-if="selectedImportIds.size > 0"
+                @click="bulkDeleteImports"
+                class="px-3 py-1 bg-red-600 text-white text-sm rounded-md hover:bg-red-700 disabled:opacity-50"
+                :disabled="bulkDeleting"
+              >
+                Delete Selected ({{ selectedImportIds.size }})
+              </button>
+            </div>
+            <div class="flex items-center space-x-3">
+              <label class="flex items-center space-x-2 text-sm text-gray-500 dark:text-gray-400 cursor-pointer select-none">
+                <input
+                  ref="selectAllCheckbox"
+                  type="checkbox"
+                  :checked="importHistory.length > 0 && selectedImportIds.size === importHistory.length"
+                  @change="toggleSelectAll"
+                  class="rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500"
+                />
+                <span>Select All</span>
+              </label>
+              <button @click="fetchLogs" class="btn-secondary text-sm">
+                View Logs
+              </button>
+            </div>
+          </div>
+          <div class="space-y-3">
+            <div
+              v-for="importLog in importHistory"
+              :key="importLog.id"
+              class="flex items-center justify-between p-3 border rounded-lg"
+              :class="selectedImportIds.has(importLog.id) ? 'border-primary-300 dark:border-primary-600 bg-primary-50 dark:bg-primary-900/20' : 'border-gray-200 dark:border-gray-700'"
+            >
+              <div class="flex items-center space-x-3">
+                <input
+                  type="checkbox"
+                  :checked="selectedImportIds.has(importLog.id)"
+                  @change="toggleImportSelection(importLog.id)"
+                  class="rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500"
+                />
+                <div>
+                  <p class="font-medium text-gray-900 dark:text-white">{{ importLog.file_name }}</p>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ formatDate(importLog.created_at) }} • {{ importLog.broker }}
+                  </p>
+                </div>
+              </div>
+              <div class="flex items-center space-x-3">
+                <div class="text-right">
+                  <div class="flex items-center space-x-2">
+                    <span class="px-2 py-1 text-xs rounded-full" :class="getStatusClass(importLog.status)">
+                      {{ getStatusText(importLog.status) }}
+                    </span>
+                  </div>
+                  <p v-if="importLog.status === 'completed'" class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ importLog.trades_imported }} imported
+                    <span v-if="importLog.trades_failed > 0">
+                      • {{ importLog.trades_failed }} failed
+                    </span>
+                  </p>
+                </div>
+                <button
+                  @click="deleteImport(importLog.id)"
+                  class="text-red-600 hover:text-red-500 text-sm"
+                  :disabled="deleting"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Load More Button -->
+          <div v-if="pagination.hasMore" class="mt-4 text-center">
+            <button
+              @click="loadMoreHistory"
+              class="btn-secondary text-sm"
+            >
+              Load More ({{ pagination.total - importHistory.length }} remaining)
+            </button>
+          </div>
         </div>
       </div>
 
@@ -199,6 +376,147 @@
               >
                 <XMarkIcon class="h-5 w-5" />
               </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CUSIP Management (admin only) -->
+      <div v-if="authStore.user?.role === 'admin' || authStore.user?.role === 'owner'" class="card">
+        <div class="card-body">
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-3">
+              <h3 class="heading-card">CUSIP Symbol Mappings</h3>
+              <div class="flex items-center gap-2">
+                <button
+                  @click="showAllMappingsModal = true"
+                  class="btn-secondary text-sm"
+                >
+                  <Cog6ToothIcon class="h-5 w-5 sm:mr-2" />
+                  <span class="hidden sm:inline">Manage All</span>
+                </button>
+                <button
+                  v-if="unmappedCusipsCount > 0"
+                  @click="showUnmappedModal = true"
+                  class="btn-yellow text-sm"
+                >
+                  <ExclamationTriangleIcon class="h-5 w-5 sm:mr-2" />
+                  <span class="hidden sm:inline">{{ unmappedCusipsCount }} Unmapped</span>
+                  <span class="sm:hidden">{{ unmappedCusipsCount }}</span>
+                </button>
+              </div>
+            </div>
+            <button
+              @click="showCusipManagement = !showCusipManagement"
+              class="flex items-center space-x-2 text-sm text-primary-600 dark:text-primary-400 hover:text-primary-500"
+            >
+              <span>{{ showCusipManagement ? 'Hide' : 'Show' }}</span>
+              <svg
+                class="w-4 h-4 transition-transform duration-200"
+                :class="{ 'rotate-180': showCusipManagement }"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+          </div>
+
+          <div v-if="showCusipManagement">
+            <div v-if="unmappedCusipsCount > 0" class="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md p-3 mb-6">
+              <div class="flex items-center">
+                <ExclamationTriangleIcon class="h-5 w-5 text-yellow-600 dark:text-yellow-400 mr-2" />
+                <div class="text-sm">
+                  <span class="font-medium text-yellow-800 dark:text-yellow-200">
+                    {{ unmappedCusipsCount }} unmapped CUSIP{{ unmappedCusipsCount !== 1 ? 's' : '' }} found in your trades
+                  </span>
+                  <p class="text-yellow-700 dark:text-yellow-300 mt-1">
+                    These trades may not appear when filtering by ticker symbol. Click "Unmapped" to resolve them.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <!-- Add New Mapping -->
+              <div>
+                <h4 class="font-medium text-gray-900 dark:text-white mb-3">Add CUSIP Mapping</h4>
+                <div class="space-y-3">
+                  <div>
+                    <label for="cusip" class="label">CUSIP (9 characters)</label>
+                    <input
+                      id="cusip"
+                      v-model="cusipForm.cusip"
+                      type="text"
+                      maxlength="9"
+                      placeholder="31447N204"
+                      class="input"
+                    />
+                  </div>
+                  <div>
+                    <label for="ticker" class="label">Ticker Symbol</label>
+                    <input
+                      id="ticker"
+                      v-model="cusipForm.ticker"
+                      type="text"
+                      placeholder="FMTO"
+                      class="input"
+                    />
+                  </div>
+                  <button
+                    @click="addCusipMapping"
+                    :disabled="!cusipForm.cusip || !cusipForm.ticker || cusipLoading"
+                    class="btn-primary w-full"
+                  >
+                    <span v-if="cusipLoading">Adding...</span>
+                    <span v-else>Add Mapping</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Lookup Existing -->
+              <div>
+                <h4 class="font-medium text-gray-900 dark:text-white mb-3">Lookup CUSIP</h4>
+                <div class="space-y-3">
+                  <div>
+                    <label for="lookupCusip" class="label">CUSIP to Lookup</label>
+                    <input
+                      id="lookupCusip"
+                      v-model="lookupForm.cusip"
+                      type="text"
+                      maxlength="9"
+                      placeholder="31447N204"
+                      class="input"
+                    />
+                  </div>
+                  <button
+                    @click="lookupCusip"
+                    :disabled="!lookupForm.cusip || cusipLoading"
+                    class="btn-primary w-full"
+                  >
+                    <span v-if="cusipLoading">Looking up...</span>
+                    <span v-else>Lookup</span>
+                  </button>
+                  <div v-if="lookupResult" class="p-3 rounded-md" :class="[
+                    lookupResult.found ? 'bg-green-50 dark:bg-green-900/20' : 'bg-red-50 dark:bg-red-900/20'
+                  ]">
+                    <p class="text-sm" :class="[
+                      lookupResult.found ? 'text-green-800 dark:text-green-400' : 'text-red-800 dark:text-red-400'
+                    ]">
+                      <span v-if="lookupResult.found">
+                        {{ lookupResult.cusip }} → {{ lookupResult.ticker }}
+                      </span>
+                      <span v-else>
+                        CUSIP {{ lookupResult.cusip }} not found
+                      </span>
+                    </p>
+                    <div v-if="lookupResult.found" class="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                      Source: {{ lookupResult.source }} • {{ lookupResult.verified ? 'Verified' : 'Unverified' }}
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -450,100 +768,6 @@
       </div>
 
 
-      <!-- Import History -->
-      <div v-if="importHistory.length > 0" class="card">
-        <div class="card-body">
-          <div class="flex items-center justify-between mb-4">
-            <div class="flex items-center space-x-3">
-              <h3 class="heading-card">
-                Import History
-                <span v-if="pagination.total > 0" class="text-sm font-normal text-gray-500 dark:text-gray-400">
-                  ({{ importHistory.length }} of {{ pagination.total }})
-                </span>
-              </h3>
-              <button
-                v-if="selectedImportIds.size > 0"
-                @click="bulkDeleteImports"
-                class="px-3 py-1 bg-red-600 text-white text-sm rounded-md hover:bg-red-700 disabled:opacity-50"
-                :disabled="bulkDeleting"
-              >
-                Delete Selected ({{ selectedImportIds.size }})
-              </button>
-            </div>
-            <div class="flex items-center space-x-3">
-              <label class="flex items-center space-x-2 text-sm text-gray-500 dark:text-gray-400 cursor-pointer select-none">
-                <input
-                  ref="selectAllCheckbox"
-                  type="checkbox"
-                  :checked="importHistory.length > 0 && selectedImportIds.size === importHistory.length"
-                  @change="toggleSelectAll"
-                  class="rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500"
-                />
-                <span>Select All</span>
-              </label>
-              <button @click="fetchLogs" class="btn-secondary text-sm">
-                View Logs
-              </button>
-            </div>
-          </div>
-          <div class="space-y-3">
-            <div
-              v-for="importLog in importHistory"
-              :key="importLog.id"
-              class="flex items-center justify-between p-3 border rounded-lg"
-              :class="selectedImportIds.has(importLog.id) ? 'border-primary-300 dark:border-primary-600 bg-primary-50 dark:bg-primary-900/20' : 'border-gray-200 dark:border-gray-700'"
-            >
-              <div class="flex items-center space-x-3">
-                <input
-                  type="checkbox"
-                  :checked="selectedImportIds.has(importLog.id)"
-                  @change="toggleImportSelection(importLog.id)"
-                  class="rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500"
-                />
-                <div>
-                  <p class="font-medium text-gray-900 dark:text-white">{{ importLog.file_name }}</p>
-                  <p class="text-sm text-gray-500 dark:text-gray-400">
-                    {{ formatDate(importLog.created_at) }} • {{ importLog.broker }}
-                  </p>
-                </div>
-              </div>
-              <div class="flex items-center space-x-3">
-                <div class="text-right">
-                  <div class="flex items-center space-x-2">
-                    <span class="px-2 py-1 text-xs rounded-full" :class="getStatusClass(importLog.status)">
-                      {{ getStatusText(importLog.status) }}
-                    </span>
-                  </div>
-                  <p v-if="importLog.status === 'completed'" class="text-sm text-gray-500 dark:text-gray-400">
-                    {{ importLog.trades_imported }} imported
-                    <span v-if="importLog.trades_failed > 0">
-                      • {{ importLog.trades_failed }} failed
-                    </span>
-                  </p>
-                </div>
-                <button
-                  @click="deleteImport(importLog.id)"
-                  class="text-red-600 hover:text-red-500 text-sm"
-                  :disabled="deleting"
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Load More Button -->
-          <div v-if="pagination.hasMore" class="mt-4 text-center">
-            <button
-              @click="loadMoreHistory"
-              class="btn-secondary text-sm"
-            >
-              Load More ({{ pagination.total - importHistory.length }} remaining)
-            </button>
-          </div>
-        </div>
-      </div>
-
       <!-- Logs Modal -->
       <div v-if="showLogs" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg w-11/12 max-w-4xl h-3/4 flex flex-col">
@@ -687,135 +911,6 @@
         </div>
       </div>
 
-      <!-- CUSIP Management -->
-      <div class="card">
-        <div class="card-body">
-          <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-4">
-            <div class="flex-1 min-w-0">
-              <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">
-                CUSIP Symbol Mappings
-              </h3>
-              <p class="text-sm text-gray-600 dark:text-gray-400">
-                Some brokers export trades with CUSIP codes instead of ticker symbols. Manage how these codes are mapped to ticker symbols for better organization and filtering.
-              </p>
-            </div>
-            <div class="flex items-center gap-2 flex-shrink-0">
-              <button
-                @click="showAllMappingsModal = true"
-                class="btn-secondary text-sm"
-              >
-                <Cog6ToothIcon class="h-5 w-5 sm:mr-2" />
-                <span class="hidden sm:inline">Manage All</span>
-              </button>
-              <button
-                v-if="unmappedCusipsCount > 0"
-                @click="showUnmappedModal = true"
-                class="btn-yellow text-sm"
-              >
-                <ExclamationTriangleIcon class="h-5 w-5 sm:mr-2" />
-                <span class="hidden sm:inline">{{ unmappedCusipsCount }} Unmapped</span>
-                <span class="sm:hidden">{{ unmappedCusipsCount }}</span>
-              </button>
-            </div>
-          </div>
-          
-          <div v-if="unmappedCusipsCount > 0" class="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md p-3 mb-6">
-            <div class="flex items-center">
-              <ExclamationTriangleIcon class="h-5 w-5 text-yellow-600 dark:text-yellow-400 mr-2" />
-              <div class="text-sm">
-                <span class="font-medium text-yellow-800 dark:text-yellow-200">
-                  {{ unmappedCusipsCount }} unmapped CUSIP{{ unmappedCusipsCount !== 1 ? 's' : '' }} found in your trades
-                </span>
-                <p class="text-yellow-700 dark:text-yellow-300 mt-1">
-                  These trades may not appear when filtering by ticker symbol. Click "Unmapped" to resolve them.
-                </p>
-              </div>
-            </div>
-          </div>
-          
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <!-- Add New Mapping -->
-            <div>
-              <h4 class="font-medium text-gray-900 dark:text-white mb-3">Add CUSIP Mapping</h4>
-              <div class="space-y-3">
-                <div>
-                  <label for="cusip" class="label">CUSIP (9 characters)</label>
-                  <input
-                    id="cusip"
-                    v-model="cusipForm.cusip"
-                    type="text"
-                    maxlength="9"
-                    placeholder="31447N204"
-                    class="input"
-                  />
-                </div>
-                <div>
-                  <label for="ticker" class="label">Ticker Symbol</label>
-                  <input
-                    id="ticker"
-                    v-model="cusipForm.ticker"
-                    type="text"
-                    placeholder="FMTO"
-                    class="input"
-                  />
-                </div>
-                <button
-                  @click="addCusipMapping"
-                  :disabled="!cusipForm.cusip || !cusipForm.ticker || cusipLoading"
-                  class="btn-primary w-full"
-                >
-                  <span v-if="cusipLoading">Adding...</span>
-                  <span v-else>Add Mapping</span>
-                </button>
-              </div>
-            </div>
-
-            <!-- Lookup Existing -->
-            <div>
-              <h4 class="font-medium text-gray-900 dark:text-white mb-3">Lookup CUSIP</h4>
-              <div class="space-y-3">
-                <div>
-                  <label for="lookupCusip" class="label">CUSIP to Lookup</label>
-                  <input
-                    id="lookupCusip"
-                    v-model="lookupForm.cusip"
-                    type="text"
-                    maxlength="9"
-                    placeholder="31447N204"
-                    class="input"
-                  />
-                </div>
-                <button
-                  @click="lookupCusip"
-                  :disabled="!lookupForm.cusip || cusipLoading"
-                  class="btn-primary w-full"
-                >
-                  <span v-if="cusipLoading">Looking up...</span>
-                  <span v-else>Lookup</span>
-                </button>
-                <div v-if="lookupResult" class="p-3 rounded-md" :class="[
-                  lookupResult.found ? 'bg-green-50 dark:bg-green-900/20' : 'bg-red-50 dark:bg-red-900/20'
-                ]">
-                  <p class="text-sm" :class="[
-                    lookupResult.found ? 'text-green-800 dark:text-green-400' : 'text-red-800 dark:text-red-400'
-                  ]">
-                    <span v-if="lookupResult.found">
-                      {{ lookupResult.cusip }} → {{ lookupResult.ticker }}
-                    </span>
-                    <span v-else>
-                      CUSIP {{ lookupResult.cusip }} not found
-                    </span>
-                  </p>
-                  <div v-if="lookupResult.found" class="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                    Source: {{ lookupResult.source }} • {{ lookupResult.verified ? 'Verified' : 'Unverified' }}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-        </div>
-      </div>
     </div>
 
     <!-- Unmapped CUSIPs Modal -->
@@ -1058,6 +1153,7 @@ import { format } from 'date-fns'
 import { formatTradeDate } from '@/utils/date'
 import { useUserTimezone } from '@/composables/useUserTimezone'
 import { ArrowUpTrayIcon, XMarkIcon, ExclamationTriangleIcon, Cog6ToothIcon, MagnifyingGlassIcon } from '@heroicons/vue/24/outline'
+import { useAnalytics } from '@/composables/useAnalytics'
 import api from '@/services/api'
 
 const { formatDateTime: formatDateTimeTz } = useUserTimezone()
@@ -1074,12 +1170,20 @@ const tradesStore = useTradesStore()
 const authStore = useAuthStore()
 const { showSuccess, showError, showImportantWarning, showSuccessModal, clearModalAlert } = useNotification()
 const { celebrationQueue } = usePriceAlertNotifications()
+const { track } = useAnalytics()
 
 const loading = ref(false)
 const error = ref(null)
 const importStage = ref('')
 const selectedBroker = ref('auto')
 const selectedFile = ref(null)
+const isAnalyzingFile = ref(false)
+const fileAnalysis = ref({
+  rowCount: null,
+  headers: [],
+  formatDetected: false,
+  detectedBroker: ''
+})
 const showCurrencyProModal = ref(false)
 
 // Trial info for import limit modal
@@ -1156,6 +1260,7 @@ const csvHeaders = ref([])
 const currentMappingFile = ref(null)
 const customMappings = ref([])
 const showCustomMappings = ref(false)
+const showCusipManagement = ref(false)
 const deletingMappingId = ref(null)
 const mappingToDelete = ref(null)
 
@@ -1190,6 +1295,82 @@ const importResultsData = ref({
   diagnostics: null,
   failedTrades: []
 })
+let activeFileAnalysisId = 0
+
+const popularBrokerOptions = [
+  { value: 'auto', label: 'Auto-Detect' },
+  { value: 'schwab', label: 'Schwab' },
+  { value: 'thinkorswim', label: 'thinkorswim' },
+  { value: 'ibkr', label: 'IBKR' },
+  { value: 'tradovate', label: 'Tradovate' },
+  { value: 'tradingview', label: 'TradingView' }
+]
+
+const selectedBrokerLabel = computed(() => {
+  if (selectedBroker.value?.startsWith('custom:')) {
+    const mapping = customMappings.value.find(item => `custom:${item.id}` === selectedBroker.value)
+    return mapping?.mapping_name || 'Custom Importer'
+  }
+
+  if (selectedBroker.value === 'auto') return 'Auto-Detect'
+  if (selectedBroker.value === 'generic') return 'Generic CSV'
+
+  return formatBrokerName(selectedBroker.value)
+})
+
+const displayedHeaderPreview = computed(() => fileAnalysis.value.headers.slice(0, 6))
+
+const brokerRecommendation = computed(() => {
+  if (!selectedFile.value) {
+    return 'Upload a file to see guidance.'
+  }
+
+  if (selectedBroker.value === 'auto') {
+    return fileAnalysis.value.detectedBroker
+      ? `We can probably route this as ${formatBrokerName(fileAnalysis.value.detectedBroker)}.`
+      : 'Best for first-time imports and supported brokers.'
+  }
+
+  if (!fileAnalysis.value.detectedBroker) {
+    return 'If this is a custom export, Generic CSV is the safer choice.'
+  }
+
+  if (selectedBroker.value !== 'generic' && selectedBroker.value !== fileAnalysis.value.detectedBroker) {
+    return `Headers look closer to ${formatBrokerName(fileAnalysis.value.detectedBroker)}.`
+  }
+
+  return 'Selected format matches the file we inspected.'
+})
+
+const accountReadinessLabel = computed(() => {
+  if (!requiresAccountSelection.value) return 'Optional'
+  if (selectedAccountId.value === 'none') return 'No account'
+  if (selectedAccountId.value !== null) return 'Assigned'
+  return 'Needs selection'
+})
+
+const accountReadinessMessage = computed(() => {
+  if (!requiresAccountSelection.value) return 'This import can continue without selecting an account.'
+  if (selectedAccountId.value === 'none') return 'Trades will be imported without linking to an existing account.'
+  if (selectedAccountId.value !== null) return 'Trades will be attached to your selected account.'
+  return 'Pick an account before starting import.'
+})
+
+const fileReadinessMessage = computed(() => {
+  if (!selectedFile.value) return 'Upload a CSV file to start.'
+  if (isAnalyzingFile.value) return 'Analyzing your file before import.'
+  if (!fileAnalysis.value.headers.length) return 'We could not read headers from this file yet.'
+  if (!fileAnalysis.value.formatDetected) return 'This file may need Generic CSV or column mapping.'
+  return `This file looks import-ready${fileAnalysis.value.detectedBroker ? ` for ${formatBrokerName(fileAnalysis.value.detectedBroker)}` : ''}.`
+})
+
+const importButtonLabel = computed(() => {
+  if (fileAnalysis.value.rowCount && fileAnalysis.value.rowCount > 0) {
+    return `Import ~${fileAnalysis.value.rowCount.toLocaleString()} Trades`
+  }
+
+  return 'Import Trades'
+})
 
 function runWhenIdle(callback, timeout = 1500) {
   if (typeof window === 'undefined') return
@@ -1202,7 +1383,7 @@ function runWhenIdle(callback, timeout = 1500) {
   window.setTimeout(callback, 1)
 }
 
-function handleFileSelect(event) {
+async function handleFileSelect(event) {
   const file = event.target.files[0]
   console.log('File selected:', {
     name: file?.name,
@@ -1211,15 +1392,7 @@ function handleFileSelect(event) {
     lastModified: file?.lastModified
   })
   
-  if (file && (file.type === 'text/csv' || file.type === 'application/csv' || file.name.toLowerCase().endsWith('.csv'))) {
-    selectedFile.value = file
-    error.value = null
-    console.log('File accepted:', file.name)
-  } else {
-    error.value = 'Please select a valid CSV file'
-    selectedFile.value = null
-    console.log('File rejected - not CSV')
-  }
+  await setSelectedFile(file, 'picker')
 }
 
 function formatFileSize(bytes) {
@@ -1262,6 +1435,20 @@ function redactAccountId(accountId) {
   return '****' + str.slice(-4)
 }
 
+function resetFileAnalysis() {
+  fileAnalysis.value = {
+    rowCount: null,
+    headers: [],
+    formatDetected: false,
+    detectedBroker: ''
+  }
+}
+
+function selectQuickBroker(broker) {
+  selectedBroker.value = broker
+  track('import_broker_quick_pick', { broker })
+}
+
 function handleDragOver(event) {
   event.preventDefault()
   dragOver.value = true
@@ -1272,7 +1459,7 @@ function handleDragLeave(event) {
   dragOver.value = false
 }
 
-function handleDrop(event) {
+async function handleDrop(event) {
   event.preventDefault()
   dragOver.value = false
   
@@ -1285,15 +1472,7 @@ function handleDrop(event) {
       size: file?.size
     })
     
-    if (file.type === 'text/csv' || file.type === 'application/csv' || file.name.toLowerCase().endsWith('.csv')) {
-      selectedFile.value = file
-      error.value = null
-      console.log('Dropped file accepted:', file.name)
-    } else {
-      error.value = 'Please select a valid CSV file'
-      selectedFile.value = null
-      console.log('Dropped file rejected - not CSV')
-    }
+    await setSelectedFile(file, 'drop')
   }
 }
 
@@ -1389,8 +1568,7 @@ async function parseCSVHeaders(file) {
   })
 }
 
-// Detect if headers match a known format
-function detectKnownFormat(headers) {
+function detectBrokerFromHeaders(headers) {
   if (!headers || headers.length === 0) return false
 
   const lowerHeaders = headers.map(h => h.toLowerCase())
@@ -1399,63 +1577,63 @@ function detectKnownFormat(headers) {
   // ThinkorSwim detection
   if (headersStr.includes('date') && headersStr.includes('time') && headersStr.includes('type') &&
       headersStr.includes('ref #') && headersStr.includes('description')) {
-    return true
+    return 'thinkorswim'
   }
 
   // TradingView detection
   if (headersStr.includes('symbol') && headersStr.includes('side') &&
       headersStr.includes('fill price') && headersStr.includes('status') &&
       headersStr.includes('order id') && headersStr.includes('leverage')) {
-    return true
+    return 'tradingview'
   }
 
   // Lightspeed detection
   if ((headersStr.includes('trade number') || headersStr.includes('sequence number')) &&
       (headersStr.includes('execution time') || headersStr.includes('raw exec')) &&
       (headersStr.includes('commission amount') || headersStr.includes('feesec'))) {
-    return true
+    return 'lightspeed'
   }
 
   // PaperMoney detection
   if (headersStr.includes('exec time') && headersStr.includes('pos effect') &&
       headersStr.includes('spread')) {
-    return true
+    return 'papermoney'
   }
 
   // Schwab detection (two formats)
   if ((headersStr.includes('opened date') && headersStr.includes('closed date') && headersStr.includes('gain/loss')) ||
       (headersStr.includes('symbol') && headersStr.includes('quantity') && headersStr.includes('cost per share') && headersStr.includes('proceeds per share'))) {
-    return true
+    return 'schwab'
   }
   if (headersStr.includes('action') && headersStr.includes('fees & comm') &&
       (headersStr.includes('date') && headersStr.includes('symbol') && headersStr.includes('description'))) {
-    return true
+    return 'schwab'
   }
 
   // IBKR detection (two formats)
   if (headersStr.includes('underlyingsymbol') && headersStr.includes('strike') &&
       headersStr.includes('expiry') && headersStr.includes('put/call') &&
       headersStr.includes('multiplier') && headersStr.includes('buy/sell')) {
-    return true
+    return 'ibkr'
   }
   if (headersStr.includes('symbol') &&
       (headersStr.includes('date/time') || headersStr.includes('datetime')) &&
       headersStr.includes('quantity') && headersStr.includes('price') &&
       !headersStr.includes('action')) {
-    return true
+    return 'ibkr'
   }
 
   // E*TRADE detection
   if (headersStr.includes('transaction date') && headersStr.includes('transaction type') &&
       (headersStr.includes('buy') || headersStr.includes('sell'))) {
-    return true
+    return 'etrade'
   }
 
   // ProjectX detection
   if (headersStr.includes('contractname') && headersStr.includes('enteredat') &&
       headersStr.includes('exitedat') && headersStr.includes('pnl') &&
       headersStr.includes('tradeduration')) {
-    return true
+    return 'projectx'
   }
 
   // Tradovate detection
@@ -1463,28 +1641,28 @@ function detectKnownFormat(headers) {
       headersStr.includes('product') && headersStr.includes('fill time') &&
       (headersStr.includes('avgprice') || headersStr.includes('avg fill price')) &&
       (headersStr.includes('filledqty') || headersStr.includes('filled qty'))) {
-    return true
+    return 'tradovate'
   }
 
   // Questrade detection
   if (headersStr.includes('fill qty') && headersStr.includes('fill price') &&
       headersStr.includes('exec time') && headersStr.includes('option') &&
       headersStr.includes('strategy')) {
-    return true
+    return 'questrade'
   }
 
   // TradeStation detection
   if (headersStr.includes('account') && headersStr.includes('t/d') &&
       headersStr.includes('s/d') && headersStr.includes('exec time') &&
       (headersStr.includes('gross proceeds') || headersStr.includes('net proceeds'))) {
-    return true
+    return 'tradestation'
   }
 
   // TradingView Performance detection
   if (headersStr.includes('buyfillid') && headersStr.includes('sellfillid') &&
       headersStr.includes('boughttimestamp') && headersStr.includes('soldtimestamp') &&
       headersStr.includes('pnl')) {
-    return true
+    return 'tradingview_performance'
   }
 
   // Generic CSV detection - check if it has basic required fields
@@ -1495,11 +1673,83 @@ function detectKnownFormat(headers) {
 
   // If it has these basic fields, consider it a generic format
   if (hasSymbol && hasSide && hasQuantity && hasPrice) {
-    return true
+    return 'generic'
   }
 
   // No known format detected
-  return false
+  return ''
+}
+
+// Detect if headers match a known format
+function detectKnownFormat(headers) {
+  return !!detectBrokerFromHeaders(headers)
+}
+
+async function analyzeSelectedFile(file) {
+  if (!file) {
+    resetFileAnalysis()
+    return
+  }
+
+  const analysisId = ++activeFileAnalysisId
+  isAnalyzingFile.value = true
+
+  try {
+    const [rowCount, headers] = await Promise.all([
+      countCSVRows(file),
+      parseCSVHeaders(file)
+    ])
+    const detectedBroker = detectBrokerFromHeaders(headers)
+
+    if (analysisId !== activeFileAnalysisId) {
+      return
+    }
+
+    fileAnalysis.value = {
+      rowCount,
+      headers,
+      formatDetected: !!detectedBroker,
+      detectedBroker
+    }
+
+    track('import_file_analyzed', {
+      broker_selected: selectedBroker.value,
+      detected_broker: detectedBroker || 'unknown',
+      row_count: rowCount,
+      header_count: headers.length
+    })
+  } catch (analysisError) {
+    console.error('[IMPORT] Failed to analyze file:', analysisError)
+
+    if (analysisId !== activeFileAnalysisId) {
+      return
+    }
+
+    resetFileAnalysis()
+  } finally {
+    if (analysisId === activeFileAnalysisId) {
+      isAnalyzingFile.value = false
+    }
+  }
+}
+
+async function setSelectedFile(file, source = 'picker') {
+  if (file && (file.type === 'text/csv' || file.type === 'application/csv' || file.name.toLowerCase().endsWith('.csv'))) {
+    selectedFile.value = file
+    error.value = null
+    console.log('File accepted:', file.name)
+    track('import_file_selected', {
+      source,
+      file_name: file.name,
+      file_size: file.size
+    })
+    await analyzeSelectedFile(file)
+  } else {
+    error.value = 'Please select a valid CSV file'
+    selectedFile.value = null
+    resetFileAnalysis()
+    console.log('File rejected - not CSV')
+  }
 }
 
 async function handleImport() {
@@ -1527,6 +1777,11 @@ async function handleImport() {
   loading.value = true
   error.value = null
   importStage.value = 'Validating file...'
+  track('import_started', {
+    broker: selectedBroker.value,
+    file_name: selectedFile.value.name,
+    estimated_rows: fileAnalysis.value.rowCount
+  })
 
   try {
     // Pre-check: Count rows and check tier limits before uploading
@@ -1607,6 +1862,11 @@ async function handleImport() {
         csvHeaders.value = headers
         currentMappingFile.value = selectedFile.value
         showMappingModal.value = true
+        track('import_mapping_requested', {
+          reason: 'unknown_format_precheck',
+          broker: selectedBroker.value,
+          header_count: headers.length
+        })
         showError(
           'Format Not Recognized',
           'Your CSV format was not recognized. Please map the columns to import your trades.'
@@ -1671,6 +1931,11 @@ async function handleImport() {
           csvHeaders.value = headers
           currentMappingFile.value = selectedFile.value
           showMappingModal.value = true
+          track('import_mapping_requested', {
+            reason: 'import_error_fallback',
+            broker: selectedBroker.value,
+            header_count: headers.length
+          })
         } else {
           error.value = 'Could not parse CSV headers. Please check your file format.'
           showError('Import Failed', error.value)
@@ -1774,6 +2039,10 @@ async function handleKeepBrokerSelected(selectedBrokerValue) {
 // Import results modal handler
 function handleImportResultsClose() {
   showImportResultsModal.value = false
+  track('import_results_closed', {
+    trades_imported: importResultsData.value.tradesImported,
+    duplicates_skipped: importResultsData.value.duplicatesSkipped
+  })
   importResultsData.value = {
     tradesImported: 0,
     duplicatesSkipped: 0,
@@ -2328,6 +2597,10 @@ function pollImportStatus(importId) {
 
         // Show actionable help when 0 trades imported
         if (tradesImported === 0 && duplicatesSkipped === 0) {
+          track('import_zero_trades', {
+            broker: selectedBroker.value,
+            detected_broker: diagnostics?.detectedBroker || 'unknown'
+          })
           const brokerName = selectedBroker.value || 'selected'
           const isSpecificBroker = selectedBroker.value && selectedBroker.value !== 'auto' && selectedBroker.value !== 'generic'
           const suggestions = [
