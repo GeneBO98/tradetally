@@ -4,6 +4,7 @@ const morgan = require('morgan');
 const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
 require('dotenv').config();
+require('dotenv').config({ path: require('path').resolve(__dirname, '../.env.local'), override: false });
 
 const { migrate } = require('./utils/migrate');
 const { initializePostHogTelemetry, shutdown: shutdownPostHogTelemetry } = require('./posthog-telemetry');
@@ -65,6 +66,7 @@ const newsScheduler = require('./services/newsScheduler');
 const earningsScheduler = require('./services/earningsScheduler');
 const symbolCategoryScheduler = require('./services/symbolCategoryScheduler');
 const webhookEventBridge = require('./services/webhookEventBridge');
+const crmSyncScheduler = require('./services/crmSyncScheduler');
 const backgroundWorker = require('./workers/backgroundWorker');
 const jobRecoveryService = require('./services/jobRecoveryService');
 const pushNotificationService = require('./services/pushNotificationService');
@@ -491,6 +493,15 @@ async function startServer() {
 
     if (process.env.ENABLE_V1_WEBHOOKS === 'true') {
       webhookEventBridge.start();
+    }
+
+    // Start CRM sync scheduler (Twenty CRM + Invoice Ninja)
+    if (process.env.ENABLE_CRM_SYNC === 'true') {
+      console.log('Starting CRM sync scheduler...');
+      crmSyncScheduler.start();
+      console.log('[SUCCESS] CRM sync scheduler started');
+    } else {
+      console.log('CRM sync disabled (ENABLE_CRM_SYNC=false)');
     }
 
     // Initialize push notification service
