@@ -5082,6 +5082,34 @@ const tradeController = {
       next(error);
     }
   }
+  ,
+
+  async deleteSampleData(req, res, next) {
+    try {
+      const userId = req.user.id;
+      const SampleDataService = require('../services/sampleDataService');
+      const result = await SampleDataService.removeForUser(userId);
+      res.json({
+        message: 'Sample data removed successfully',
+        ...result
+      });
+    } catch (error) {
+      logger.logError('Error deleting sample data:', error);
+      next(error);
+    }
+  },
+
+  async checkSampleData(req, res, next) {
+    try {
+      const userId = req.user.id;
+      const SampleDataService = require('../services/sampleDataService');
+      const hasSample = await SampleDataService.hasSampleData(userId);
+      res.json({ has_sample_data: hasSample });
+    } catch (error) {
+      logger.logError('Error checking sample data:', error);
+      next(error);
+    }
+  }
 };
 
 module.exports = tradeController;

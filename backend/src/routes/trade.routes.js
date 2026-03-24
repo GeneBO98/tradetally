@@ -737,6 +737,12 @@ router.post('/expired-options/auto-close', authenticate, tradeController.autoClo
 // Use ?dryRun=true (default) to preview, ?dryRun=false to apply fixes
 router.post('/repair-inconsistent', authenticate, tradeController.repairInconsistentTrades);
 
+// Sample data management - remove all sample trades/journal/account
+router.delete('/sample-data', authenticate, tradeController.deleteSampleData);
+
+// Check if user has sample data
+router.get('/sample-data/check', authenticate, tradeController.checkSampleData);
+
 // Chart data endpoint - MUST be before /:id route
 router.get('/tradingview/snapshot/:snapshotId', tradeController.proxyTradingViewSnapshot);
 router.get('/:id/chart-data', authenticate, tradeController.getTradeChartData);
