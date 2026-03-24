@@ -1,5 +1,16 @@
 <template>
   <div class="content-wrapper py-8">
+    <!-- Guided onboarding: step 5 of tour -->
+    <OnboardingCard
+      v-if="authStore.onboardingStep === 5"
+      :step="5"
+      :total-steps="5"
+      :next-step="6"
+      title="Performance Calendar"
+      description="See your P&L at a glance. Green days, red days, and everything in between."
+      cta-label="Done"
+    />
+
     <div class="mb-8 flex justify-between items-center">
       <div>
         <h1 class="heading-page">Trading Calendar</h1>
@@ -276,6 +287,10 @@
 <script setup>
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import OnboardingCard from '@/components/onboarding/OnboardingCard.vue'
+import { useAuthStore } from '@/stores/auth'
+
+const authStore = useAuthStore()
 import { format, startOfYear, endOfYear, eachMonthOfInterval, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameMonth, addMonths } from 'date-fns'
 import { ChevronLeftIcon, ChevronRightIcon, XMarkIcon, ArrowsPointingOutIcon, ArrowsPointingInIcon } from '@heroicons/vue/24/outline'
 import api from '@/services/api'

@@ -77,12 +77,16 @@
       </div>
     </div>
 
-    <!-- Guided onboarding: contextual card for this page (first-time only) -->
+    <!-- Guided onboarding: step 3 of tour -->
     <OnboardingCard
-      v-if="authStore.showOnboardingModal"
+      v-if="authStore.onboardingStep === 3"
+      :step="3"
+      :total-steps="5"
+      :next-step="4"
       title="Trading Journal"
-      description="Keep a diary and link notes to trades for better reflection. Create entries to track your daily market thoughts and plans."
-      cta-label="Done"
+      description="Track your daily market outlook, key levels, and lessons learned. Build the habit that separates consistent traders."
+      cta-label="Next: Accounts"
+      cta-route="accounts"
     />
 
     <!-- Filters -->

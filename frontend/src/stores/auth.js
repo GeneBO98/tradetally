@@ -18,6 +18,17 @@ export const useAuthStore = defineStore('auth', () => {
     return pendingOnboarding.value || !user.value.onboarding_completed
   })
 
+  // Step-based onboarding (0 = not started, 1-5 = in progress, 6 = completed)
+  const onboardingStep = computed(() => {
+    if (!user.value) return 0
+    return user.value.onboarding_step || 0
+  })
+
+  const proOnboardingStep = computed(() => {
+    if (!user.value) return 0
+    return user.value.pro_onboarding_step || 0
+  })
+
   async function login(credentials, returnUrl = null) {
     loading.value = true
     error.value = null
@@ -123,6 +134,9 @@ export const useAuthStore = defineStore('auth', () => {
       user.value = null
       token.value = null
       localStorage.removeItem('token')
+      localStorage.removeItem('calendar_year')
+      localStorage.removeItem('calendar_expanded_month')
+      localStorage.removeItem('calendar_expanded_year')
       router.push({ name: 'home' })
     }
   }
@@ -138,6 +152,8 @@ export const useAuthStore = defineStore('auth', () => {
       user.value = {
         ...u,
         onboarding_completed: u.onboarding_completed ?? false,
+        onboarding_step: u.onboarding_step ?? 0,
+        pro_onboarding_step: u.pro_onboarding_step ?? 0,
         settings: {
           publicProfile: settings.public_profile ?? false,
           emailNotifications: settings.email_notifications ?? true,
@@ -303,11 +319,42 @@ export const useAuthStore = defineStore('auth', () => {
       await api.post('/users/onboarding-completed')
       pendingOnboarding.value = false
       if (user.value) {
-        user.value = { ...user.value, onboarding_completed: true }
+        user.value = { ...user.value, onboarding_completed: true, onboarding_step: 6 }
       }
     } catch (err) {
       console.error('Failed to mark onboarding completed:', err)
       pendingOnboarding.value = false
+    }
+  }
+
+  async function advanceOnboardingStep(step, type = 'free') {
+    try {
+      await api.post('/users/onboarding-step', { step, type })
+      if (user.value) {
+        if (type === 'pro') {
+          user.value = { ...user.value, pro_onboarding_step: step }
+        } else {
+          user.value = {
+            ...user.value,
+            onboarding_step: step,
+            onboarding_completed: step >= 6 ? true : user.value.onboarding_completed
+          }
+        }
+      }
+      if (type === 'free' && step >= 6) {
+        pendingOnboarding.value = false
+      }
+    } catch (err) {
+      console.error('Failed to advance onboarding step:', err)
+    }
+  }
+
+  async function skipOnboarding(type = 'free') {
+    if (type === 'pro') {
+      await advanceOnboardingStep(4, 'pro')
+    } else {
+      await advanceOnboardingStep(6, 'free')
+      await completeOnboarding()
     }
   }
 
@@ -360,6 +407,10 @@ export const useAuthStore = defineStore('auth', () => {
     loginWithPasskey,
     navigateAfterLogin,
     completeOnboarding,
+    advanceOnboardingStep,
+    skipOnboarding,
+    onboardingStep,
+    proOnboardingStep,
     getRegistrationConfig
   }
 })

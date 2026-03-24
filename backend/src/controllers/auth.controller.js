@@ -6,6 +6,7 @@ const bcrypt = require('bcryptjs');
 const TierService = require('../services/tierService');
 const YearWrappedService = require('../services/yearWrappedService');
 const refreshTokenService = require('../services/refreshToken.service');
+const SampleDataService = require('../services/sampleDataService');
 
 // Check if email configuration is available
 function isEmailConfigured() {
@@ -48,6 +49,16 @@ function maskEmail(email) {
   const [localPart, domain] = email.split('@');
   if (localPart.length <= 2) return `**@${domain}`;
   return `${localPart.slice(0, 2)}***@${domain}`;
+}
+
+function sendVerificationEmailInBackground(email, token) {
+  setImmediate(async () => {
+    try {
+      await sendVerificationEmail(email, token);
+    } catch (error) {
+      console.warn('[WARNING] Failed to send verification email after registration:', error.message);
+    }
+  });
 }
 
 const authController = {
@@ -125,20 +136,23 @@ const authController = {
       });
       await User.createSettings(user.id);
 
+      // Create sample data for new users on billing-enabled instances
+      try {
+        const billingEnabled = await TierService.isBillingEnabled(req.headers.host);
+        console.log(`[REGISTER] Sample data check: billingEnabled=${billingEnabled}, isFirstUser=${isFirstUser}`);
+        if (billingEnabled && !isFirstUser) {
+          await SampleDataService.createForUser(user.id);
+          console.log(`[REGISTER] Sample data created for new user ${user.username}`);
+        } else {
+          console.log(`[REGISTER] Skipping sample data: billingEnabled=${billingEnabled}, isFirstUser=${isFirstUser}`);
+        }
+      } catch (sampleErr) {
+        console.log('[REGISTER] Sample data creation failed (non-blocking):', sampleErr.message);
+      }
+
       // Log if this user was made an admin
       if (isFirstUser) {
         console.log(`🔐 First user registered - automatically granted admin privileges: ${user.username} (${maskEmail(user.email)})`);
-      }
-
-      // Send verification email only if email is configured AND not first user
-      if (emailConfigured && !isFirstUser) {
-        try {
-          await sendVerificationEmail(email, verificationToken);
-        } catch (error) {
-          console.warn('[WARNING] Failed to send verification email (continuing with registration):', error.message);
-        }
-      } else {
-        console.log(`[INFO] Email verification skipped - no email configuration found for user: ${user.username}`);
       }
 
       // Determine response message
@@ -175,6 +189,12 @@ const authController = {
           adminApproved: user.admin_approved
         }
       });
+
+      if (emailConfigured && !isFirstUser) {
+        sendVerificationEmailInBackground(email, verificationToken);
+      } else {
+        console.log(`[INFO] Email verification skipped - no email configuration found for user: ${user.username}`);
+      }
     } catch (error) {
       console.error('Registration error:', error);
       next(error);
@@ -245,6 +265,9 @@ const authController = {
       const TierService = require('../services/tierService');
       const { tier: userTier, billingEnabled } = await TierService.getUserTierWithBillingStatus(user.id, req.headers.host);
 
+      // Get onboarding step for guided tour
+      const loginSettings = await User.getSettings(user.id);
+
       res.json({
         message: 'Login successful',
         user: {
@@ -259,7 +282,9 @@ const authController = {
           isVerified: user.is_verified,
           adminApproved: user.admin_approved,
           twoFactorEnabled: user.two_factor_enabled || false,
-          createdAt: user.created_at
+          createdAt: user.created_at,
+          onboarding_step: (loginSettings && loginSettings.onboarding_step) || 0,
+          pro_onboarding_step: (loginSettings && loginSettings.pro_onboarding_step) || 0
         },
         is_first_login: isFirstLogin,
         token
@@ -389,7 +414,9 @@ const authController = {
           timezone: user.timezone,
           createdAt: user.created_at,
           billingEnabled: req.user.billingEnabled,
-          onboarding_completed: onboardingCompleted
+          onboarding_completed: onboardingCompleted,
+          onboarding_step: (settings && settings.onboarding_step) || 0,
+          pro_onboarding_step: (settings && settings.pro_onboarding_step) || 0
         },
         settings
       });

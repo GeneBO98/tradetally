@@ -280,6 +280,12 @@ const billingController = {
         await client.query(`UPDATE users SET trial_used = true WHERE id = $1`, [userId]);
         console.log('[SUCCESS] Updated trial_used flag');
         
+        // Trigger pro onboarding tour
+        await client.query(
+          `UPDATE user_settings SET pro_onboarding_step = 1 WHERE user_id = $1 AND pro_onboarding_step = 0`,
+          [userId]
+        );
+
         await client.query('COMMIT');
         console.log('[SUCCESS] Trial created successfully for user:', userId, 'Trial ID:', insertResult.rows[0].id);
 

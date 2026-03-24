@@ -57,10 +57,10 @@
               v-model="form.email"
               name="email"
               type="email"
+              autocomplete="email"
               required
               class="input"
               placeholder="john@example.com"
-              @keydown.enter="handleRegister"
             />
           </div>
 
@@ -71,10 +71,10 @@
               v-model="form.password"
               name="password"
               type="password"
+              autocomplete="new-password"
               required
               class="input"
               placeholder="Minimum 8 characters"
-              @keydown.enter="handleRegister"
             />
           </div>
         </div>
