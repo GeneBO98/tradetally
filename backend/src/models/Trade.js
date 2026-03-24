@@ -3705,9 +3705,15 @@ class Trade {
 
   static async getAccountList(userId) {
     const query = `
-      SELECT DISTINCT account_identifier
-      FROM trades
-      WHERE user_id = $1 AND account_identifier IS NOT NULL AND account_identifier != ''
+      SELECT DISTINCT account_identifier FROM (
+        SELECT account_identifier
+        FROM trades
+        WHERE user_id = $1 AND account_identifier IS NOT NULL AND account_identifier != ''
+        UNION
+        SELECT account_identifier
+        FROM user_accounts
+        WHERE user_id = $1 AND account_identifier IS NOT NULL AND account_identifier != ''
+      ) combined
       ORDER BY account_identifier
     `;
     const result = await db.query(query, [userId]);

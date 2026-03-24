@@ -7,6 +7,18 @@
       </p>
     </div>
 
+    <!-- Guided onboarding: step 4 of tour -->
+    <OnboardingCard
+      v-if="authStore.onboardingStep === 4"
+      :step="4"
+      :total-steps="5"
+      :next-step="5"
+      title="Accounts & Cashflow"
+      description="Set up your trading accounts to track balances, deposits, and withdrawals over time."
+      cta-label="Next: Calendar"
+      cta-route="calendar"
+    />
+
     <!-- Loading State -->
     <div v-if="loading" class="flex justify-center py-12">
       <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
@@ -189,6 +201,36 @@
           </div>
         </div>
       </div>
+      <!-- Unlinked Account Identifiers -->
+      <div v-if="unlinkedIdentifiers.length > 0" class="card mt-8">
+        <div class="card-body">
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">Unmanaged Account Identifiers</h3>
+          <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">
+            These account identifiers exist on your trades but don't have a managed account. Add them to track cashflow and balances.
+          </p>
+
+          <div class="space-y-3">
+            <div
+              v-for="item in unlinkedIdentifiers"
+              :key="item.accountIdentifier"
+              class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-dashed border-gray-300 dark:border-gray-600"
+            >
+              <div>
+                <span class="font-medium text-gray-900 dark:text-white">{{ redactAccountId(item.accountIdentifier) }}</span>
+                <span v-if="item.broker" class="ml-2 px-2 py-0.5 text-xs font-medium rounded bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                  {{ formatBroker(item.broker) }}
+                </span>
+              </div>
+              <button
+                @click="createFromUnlinked(item)"
+                class="btn-secondary text-sm"
+              >
+                Add Account
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     </template>
 
     <!-- Delete Confirmation Modal -->
@@ -242,12 +284,17 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import api from '@/services/api'
+import OnboardingCard from '@/components/onboarding/OnboardingCard.vue'
+import { useAuthStore } from '@/stores/auth'
+
+const authStore = useAuthStore()
 
 const loading = ref(true)
 const saving = ref(false)
 const deleting = ref(false)
 const error = ref(null)
 const accounts = ref([])
+const unlinkedIdentifiers = ref([])
 const editingAccount = ref(null)
 const showDeleteModal = ref(false)
 const accountToDelete = ref(null)
@@ -321,14 +368,32 @@ async function fetchAccounts() {
   loading.value = true
   error.value = null
   try {
-    const response = await api.get('/accounts')
-    accounts.value = response.data.data || []
+    const [accountsRes, unlinkedRes] = await Promise.all([
+      api.get('/accounts'),
+      api.get('/accounts/unlinked-identifiers')
+    ])
+    accounts.value = accountsRes.data.data || []
+    unlinkedIdentifiers.value = unlinkedRes.data.data || []
   } catch (err) {
     console.error('Failed to fetch accounts:', err)
     error.value = err.response?.data?.error || err.response?.data?.message || 'Failed to load accounts'
   } finally {
     loading.value = false
   }
+}
+
+function createFromUnlinked(item) {
+  form.value = {
+    accountName: item.broker ? `${formatBroker(item.broker)} - ${item.accountIdentifier}` : item.accountIdentifier,
+    accountIdentifier: item.accountIdentifier,
+    broker: item.broker || '',
+    initialBalance: 0,
+    initialBalanceDate: new Date().toISOString().split('T')[0],
+    isPrimary: false,
+    notes: ''
+  }
+  editingAccount.value = null
+  window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
 function resetForm() {
